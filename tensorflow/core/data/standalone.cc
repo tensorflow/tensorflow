@@ -135,6 +135,17 @@ absl::Status Iterator::Restore(const std::vector<Tensor>& saved_iterator) {
   return iterator_->Restore(ctx_.get(), &reader);
 }
 
+void Iterator::Cancel() {
+  if (ctx_) {
+    if (ctx_->cancellation_manager()) {
+      ctx_->cancellation_manager()->StartCancel();
+    }
+    for (auto& split_provider : ctx_->split_providers()) {
+      split_provider->Cancel();
+    }
+  }
+}
+
 std::shared_ptr<model::Model> Iterator::model() const { return ctx_->model(); }
 
 absl::Status Dataset::FromGraph(Params params, const GraphDef& graph_def,

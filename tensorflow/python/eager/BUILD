@@ -75,6 +75,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/debugging:leak_check",
         "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -205,10 +206,10 @@ py_library(
 py_library(
     name = "context",
     srcs = ["context.py"],
+    lazy_imports = True,
     strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = [
-    # "//smartass/brain/ops:__subpackages__",
     # "//third_party/py/courier:__subpackages__",
     # "//third_party/py/jax_tpu_embedding:__subpackages__",
     # "//tensorflow:internal",
@@ -329,8 +330,15 @@ cuda_py_strict_test(
     name = "context_cross_platform_gpu_test",
     size = "small",
     srcs = ["context_cross_platform_gpu_test.py"],
+    # copybara:uncomment_begin(google-only)
+    # exec_properties = select({
+    # "//tools/cpp:msan_build": {"cpp_link.mem": "16g"},
+    # "//conditions:default": None,
+    # }),
+    # copybara:uncomment_end
     tags = [
         "no_oss",
+        "no_pip",
         "noasan",  # TODO(b/417285186): Re-enable once the test is fixed.
     ],
     tpu_ops_enabled = True,

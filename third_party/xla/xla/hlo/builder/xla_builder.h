@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/array.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
@@ -58,7 +59,6 @@ limitations under the License.
 #include "xla/tsl/lib/core/bitmap.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/stacktrace.h"
 
 namespace xla {
@@ -1035,6 +1035,17 @@ class XlaBuilder {
       XlaOp operand, const CollectiveDeviceListBase& replica_groups,
       const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
+  XlaOp CollectiveBroadcast(
+      absl::Span<const XlaOp> operands,
+      absl::Span<const ReplicaGroup> replica_groups,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt,
+      bool has_dynamic_root = false);
+  XlaOp CollectiveBroadcastWithDeviceList(
+      absl::Span<const XlaOp> operands,
+      const CollectiveDeviceListBase& replica_groups,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt,
+      bool has_dynamic_root = false);
+
   XlaOp CollectivePermute(
       XlaOp operand,
       const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
@@ -1095,9 +1106,10 @@ class XlaBuilder {
                                              XlaComputationId comparator,
                                              int64_t dimension, bool is_stable);
 
-  XlaOp TopK(XlaOp operand, int64_t k, bool largest);
+  XlaOp TopK(XlaOp operand, int64_t k, bool largest, bool is_stable = true);
   virtual absl::StatusOr<XlaOp> TopKInternal(const Shape& shape, XlaOp operand,
-                                             int64_t k, bool largest);
+                                             int64_t k, bool largest,
+                                             bool is_stable);
 
   XlaOp Clamp(XlaOp min, XlaOp operand, XlaOp max);
 
@@ -1679,6 +1691,8 @@ class XlaBuilder {
                    absl::Span<const int64_t> broadcast_dimensions);
   friend XlaOp Mul(XlaOp lhs, XlaOp rhs,
                    absl::Span<const int64_t> broadcast_dimensions);
+  friend XlaOp Mulhi(XlaOp lhs, XlaOp rhs,
+                     absl::Span<const int64_t> broadcast_dimensions);
   friend XlaOp Div(XlaOp lhs, XlaOp rhs,
                    absl::Span<const int64_t> broadcast_dimensions);
   friend XlaOp Rem(XlaOp lhs, XlaOp rhs,
@@ -1856,6 +1870,14 @@ class XlaBuilder {
   friend XlaOp CollectiveBroadcastWithDeviceList(
       XlaOp operand, const CollectiveDeviceListBase& replica_groups,
       const std::optional<ChannelHandle>& channel_id);
+  friend XlaOp CollectiveBroadcast(
+      absl::Span<const XlaOp> operands,
+      absl::Span<const ReplicaGroup> replica_groups,
+      const std::optional<ChannelHandle>& channel_id, bool has_dynamic_root);
+  friend XlaOp CollectiveBroadcastWithDeviceList(
+      absl::Span<const XlaOp> operands,
+      const CollectiveDeviceListBase& replica_groups,
+      const std::optional<ChannelHandle>& channel_id, bool has_dynamic_root);
   friend XlaOp CollectivePermute(
       XlaOp operand,
       const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
@@ -1955,7 +1977,7 @@ class XlaBuilder {
   friend XlaOp Sort(absl::Span<const XlaOp> operands,
                     XlaComputationId comparator, int64_t dimension,
                     bool is_stable);
-  friend XlaOp TopK(XlaOp operand, int64_t k, bool largest);
+  friend XlaOp TopK(XlaOp operand, int64_t k, bool largest, bool is_stable);
   friend XlaOp Clamp(XlaOp min, XlaOp operand, XlaOp max);
   friend XlaOp Map(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                    XlaComputationId computation,
@@ -2052,12 +2074,14 @@ class XlaBuilder {
                       const std::optional<Shape>& layout,
                       std::optional<bool> use_global_device_ids, bool async);
 
-  XlaOp CollectiveBroadcastImpl(XlaOp operand,
+  XlaOp CollectiveBroadcastImpl(absl::Span<const XlaOp> operands,
                                 absl::Span<const ReplicaGroup> replica_groups,
-                                const std::optional<ChannelHandle>& channel_id);
-  XlaOp CollectiveBroadcastImpl(XlaOp operand,
+                                const std::optional<ChannelHandle>& channel_id,
+                                bool has_dynamic_root);
+  XlaOp CollectiveBroadcastImpl(absl::Span<const XlaOp> operands,
                                 const CollectiveDeviceListBase& replica_groups,
-                                const std::optional<ChannelHandle>& channel_id);
+                                const std::optional<ChannelHandle>& channel_id,
+                                bool has_dynamic_root);
 
   XlaOp CollectivePermuteImpl(
       XlaOp operand,
@@ -2117,7 +2141,7 @@ class XlaBuilder {
   // absl::StatusOr similar to absl::StatusOr.
   template <typename InstructionType>
   absl::StatusOr<InstructionType> LookUpInstructionInternal(XlaOp op) const {
-    TF_RETURN_IF_ERROR(CheckOpBuilder(op));
+    RETURN_IF_ERROR(CheckOpBuilder(op));
     return LookUpInstructionByHandleInternal<InstructionType>(op.handle());
   }
 
@@ -2858,6 +2882,10 @@ XlaOp Sub(XlaOp lhs, XlaOp rhs,
 XlaOp Mul(XlaOp lhs, XlaOp rhs,
           absl::Span<const int64_t> broadcast_dimensions = {});
 
+// Enqueues a multiply-high instruction onto the computation.
+XlaOp Mulhi(XlaOp lhs, XlaOp rhs,
+            absl::Span<const int64_t> broadcast_dimensions = {});
+
 // Enqueues a divide instruction onto the computation.
 XlaOp Div(XlaOp lhs, XlaOp rhs,
           absl::Span<const int64_t> broadcast_dimensions = {});
@@ -3160,6 +3188,17 @@ XlaOp CollectiveBroadcastWithDeviceList(
     XlaOp operand, const CollectiveDeviceListBase& replica_groups,
     const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
+XlaOp CollectiveBroadcast(
+    absl::Span<const XlaOp> operands,
+    absl::Span<const ReplicaGroup> replica_groups,
+    const std::optional<ChannelHandle>& channel_id = std::nullopt,
+    bool has_dynamic_root = false);
+XlaOp CollectiveBroadcastWithDeviceList(
+    absl::Span<const XlaOp> operands,
+    const CollectiveDeviceListBase& replica_groups,
+    const std::optional<ChannelHandle>& channel_id = std::nullopt,
+    bool has_dynamic_root = false);
+
 // Enqueues an collective operation that sends and receives data cross replicas.
 //
 // - `source_target_pair`: a list of (source_replica_id, target_replica_id)
@@ -3375,7 +3414,10 @@ XlaOp Sort(absl::Span<const XlaOp> operands, XlaComputationId comparator,
 
 // Enqueues a topk instruction onto the computation. TopK returns the largest
 // 'k' values and their indices along the last dimension of the 'operand' if
-// `lagest=true` or the smallest `k` values if `largest=false`.
+// `largest=true` or the smallest `k` values if `largest=false`.
+// If `is_stable=true`, the output indices will maintain the original relative
+// order of equal elements. If `false`, the order of equal elements is
+// undefined.
 //
 // * If the operand is a rank-1 tensor (an array), the result is a tuple that
 //   consists of:
@@ -3391,7 +3433,7 @@ XlaOp Sort(absl::Span<const XlaOp> operands, XlaComputationId comparator,
 //     dimension.
 //   For example, if the input is [0.1, 0.3, 0.2][0.5, 0.4, 0.6] and k == 1, the
 //   output tuple is ([0.3][0.6], [1][2]).
-XlaOp TopK(XlaOp operand, int64_t k, bool largest);
+XlaOp TopK(XlaOp operand, int64_t k, bool largest, bool is_stable = true);
 
 // Enqueues a clamp instruction onto the computation.
 XlaOp Clamp(XlaOp min, XlaOp operand, XlaOp max);

@@ -159,6 +159,7 @@ cc_library(
     deps = [
         ":batch_scheduler_hdrs",
         ":batch_stats",
+        "//tensorflow/core:lib",
         "//tensorflow/core:portable_gif_internal",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
@@ -225,6 +226,8 @@ cc_library(
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
@@ -250,6 +253,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
@@ -284,9 +289,12 @@ tf_cc_test(
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_benchmark//:benchmark",
         "@com_google_googletest//:gtest_main",
+        "@xla//xla/tsl/lib/monitoring:cell_reader",
     ],
 )
 
@@ -551,9 +559,7 @@ tf_cc_test(
         "@xla//xla/tsl/lib/monitoring:test_utils",
         "@xla//xla/tsl/platform:criticality",
         "@xla//xla/tsl/platform:statusor",
-    ] + if_google([
-        "//base:context",
-    ]),
+    ],
 )
 
 tf_cc_test(

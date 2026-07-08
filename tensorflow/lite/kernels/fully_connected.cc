@@ -605,17 +605,10 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
        (filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8 ||
         filter->type == kTfLiteInt4 || filter->type == kTfLiteInt2));
   const bool is_sparse = filter->sparsity != nullptr;
-#if defined(__arm__)
-  // To use reference kernel for 4bit filters on armv7 until EvalHybridDense4Bit
-  // is verified on armv7.
-  const bool is_armv7 = true;
-#else
-  const bool is_armv7 = false;
-#endif
   if (is_hybrid) {
     // Use optimized implementation for 4bit
     if (filter->type == kTfLiteInt4 && kernel_type == kGenericOptimized &&
-        !is_armv7 && IsConstantTensor(filter) && batch_size &&
+        IsConstantTensor(filter) && batch_size &&
         ((input_size / batch_size) % 2 == 0) &&
         num_units >= optimized_4bit::FilterWidth &&
         (input_size / batch_size) >= optimized_4bit::FilterDepth) {

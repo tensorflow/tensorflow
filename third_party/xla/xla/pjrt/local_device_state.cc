@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/client/local_client.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/buffer_sequencing_event.h"
@@ -63,10 +64,7 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
     : allocation_model_(allocation_model),
       event_pool_(allow_event_reuse),
       executor_(executor),
-      client_(client),
-      prng_seed_generator_(prng_seed_device_()),
-      prng_seed_distribution_(std::numeric_limits<int>::min(),
-                              std::numeric_limits<int>::max()) {
+      client_(client) {
   if (max_inflight_computations.has_value()) {
     compute_semaphore_.emplace(*max_inflight_computations);
   }
@@ -166,6 +164,31 @@ LocalDeviceState::~LocalDeviceState() {
     LOG(ERROR) << "Error when closing device: " << status;
   }
 
+  // 1. Join scheduling threads first to prevent any new work from being
+  // enqueued.
+  execute_thread_.reset();
+  async_dispatch_thread_.reset();
+
+  // 2. Clear streams and stream pools to trigger all pending
+  // callbacks/finalizations.
+  // Drain the callback thread before touching compute_events_.
+  //
+  // After SynchronizeAllActivity() above, all GPU host-callbacks registered
+  // via hipLaunchHostFunc / ThenExecuteCallback have been *invoked*, which
+  // means every callback_thread_->Schedule() call they contain has already
+  // been issued.  Those closures (e.g. the AndThen that calls
+  // compute_events_.pop_front()) may still be sitting in the queue or
+  // actively executing.
+  //
+  // Because compute_events_ is declared *after* callback_thread_ in the
+  // class, C++ destroys it *before* callback_thread_'s destructor joins the
+  // worker thread — creating a window where pop_front() runs on an
+  // already-destroyed deque (undefined behaviour / use-after-free).
+  //
+  // Draining the thread here closes that window: every closure enqueued
+  // before this point completes before we touch compute_events_.
+  callback_thread_->Drain();
+
   // Explicitly delete all the streams and events to ensure that their callbacks
   // are executed before the destruction of the LocalDeviceState and its
   // callback threads.
@@ -173,8 +196,24 @@ LocalDeviceState::~LocalDeviceState() {
   fixed_size_pool_usage_streams_.clear();
   device_to_device_streams_.clear();
   device_to_host_streams_.clear();
+  {
+    absl::MutexLock lock(stream_pool_mu_);
+    usage_stream_pool_ = {};
+  }
+  {
+    absl::MutexLock lock(callback_stream_map_mu_);
+    if (callback_stream_map_.has_value()) {
+      callback_stream_map_.reset();
+    }
+  }
   host_to_device_stream_.reset();
   compute_stream_.reset();
+
+  // 3. Join callback/cleanup threads to execute all pending tasks.
+  callback_thread_.reset();
+  cleanup_thread_.reset();
+
+  // 4. Finally, clear compute events.
   compute_events_.clear();
 }
 
@@ -222,11 +261,11 @@ absl::Status LocalDeviceState::ThenExecuteCallback(
     se::Stream* callback_exec_stream = nullptr;
     {
       // Prevent concurrent updates to the callback stream map.
-      absl::MutexLock lock(&callback_stream_map_mu_);
+      absl::MutexLock lock(callback_stream_map_mu_);
       auto it = callback_stream_map_->find(stream);
       if (it == callback_stream_map_->end()) {
         tsl::profiler::TraceMe traceme_create("CreateCallbackStream");
-        TF_ASSIGN_OR_RETURN(auto new_stream, executor_->CreateStream());
+        ASSIGN_OR_RETURN(auto new_stream, executor_->CreateStream());
         new_stream->SetName(
             absl::StrFormat("Callback for %s", stream->GetName()));
         it =
@@ -235,7 +274,7 @@ absl::Status LocalDeviceState::ThenExecuteCallback(
       callback_exec_stream = it->second.get();
     }
     tsl::profiler::TraceMe traceme_create("LocalDeviceState::WaitFor");
-    TF_RETURN_IF_ERROR(callback_exec_stream->WaitFor(stream));
+    RETURN_IF_ERROR(callback_exec_stream->WaitFor(stream));
     stream = callback_exec_stream;
   }
   if (error_cb) {
@@ -345,26 +384,26 @@ void LocalDeviceState::ReturnStreamToPool(std::unique_ptr<se::Stream> stream) {
   usage_stream_pool_.push(std::move(stream));
 }
 
-int LocalDeviceState::GetNewPrngSeed() {
-  absl::MutexLock lock(mu_);
-  int x = 0;
-  do {
-    x = prng_seed_distribution_(prng_seed_generator_);
-  } while (x == 0);
-  return x;
-}
 
 absl::Status LocalDeviceState::AllocateAndRecordEvent(
     AsyncWorkRunner* async_work_runner, BufferSequencingEventRef event,
-    se::Stream* stream, absl::string_view tag) {
+    se::Stream* stream, absl::string_view tag,
+    absl::AnyInvocable<void() &&> cleanup) {
   auto status = [&]() {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         EventPool::Handle device_event,
         event_pool().AllocateEvent(async_work_runner, stream->parent()));
     event_pool().ThenRecordEvent(stream, device_event);
     event->SetSequencingEvent(std::move(device_event), stream);
     return ThenExecuteCallback(
-        stream, [event]() { event.SetStateConcrete(); },
+        stream,
+        [event, cleanup = std::move(cleanup)]() mutable {
+          if (cleanup) {
+            std::move(cleanup)();
+            cleanup = nullptr;
+          }
+          event.SetStateConcrete();
+        },
         [event](absl::Status status) {
           event.SetError(event->AppendErrorContext(status));
         },

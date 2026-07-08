@@ -1,5 +1,5 @@
-// RUN: hlo_to_xtileir %s | FileCheck %s
-// RUN: triton_test_correctness --abs_error_bound=2e-4 --rel_error_bound=1e-6 %s
+// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false --abs_error_bound=2e-4 --rel_error_bound=1e-6 %s
 
 // RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s
 // RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation --abs_error_bound=2e-4 --rel_error_bound=1e-6
@@ -14,7 +14,7 @@ fusion {
   ROOT abs = f32[2,32,128] abs(dot)
 }
 // CHECK-DAG: ([[PID:pid(_0)?]]) -> (([[PID]] mod 16) * 8)
-// CHECK-DAG: ([[PID]]) -> ((([[PID]] floordiv 16) mod 2) * 16)
+// CHECK-DAG: ([[PID]]) -> ((([[PID]] / 16) mod 2) * 16)
 
 ENTRY main {
   p0 = f32[2,32,64] parameter(0)

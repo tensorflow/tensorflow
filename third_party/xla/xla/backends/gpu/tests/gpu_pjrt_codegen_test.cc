@@ -15,13 +15,18 @@ limitations under the License.
 
 #include "xla/backends/gpu/tests/gpu_pjrt_codegen_test.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include <gmock/gmock.h>
-#include "absl/base/thread_annotations.h"
+#include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -56,26 +61,20 @@ void GpuPjRtCodegenTest::CompileAndOptionallyVerifyPtx(
   GpuCompiler* gpu_compiler = dynamic_cast<GpuCompiler*>(compiler());
   CHECK_NOTNULL(gpu_compiler);
 
-  absl::Mutex ptx_str_mu;
-  std::string ptx_str ABSL_GUARDED_BY(ptx_str_mu);
-  gpu_compiler->SetAsmHook([&](absl::string_view ptx) {
-    absl::MutexLock lock(&ptx_str_mu);
-    ptx_str += ptx;
-  });
+  std::string ptx_str;
+  gpu_compiler->SetAsmHook([&](absl::string_view ptx) { ptx_str += ptx; });
 
   auto status_or_executable =
       CompileToExecutable(std::move(hlo_module), run_optimization_passes);
   gpu_compiler->RemoveAsmHook();
 
-  absl::MutexLock lock(&ptx_str_mu);
-
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
                        std::move(status_or_executable));
 
-  // On the ROCM platform the "ptx" string is not populated for the compiled
-  // executable, and hence the "ptx_str" will be empty. So disabling the
-  // pattern check on the ROCm platform
-  if (!is_built_with_rocm_) {
+  // On ROCM and oneAPI platforms the "ptx" string is not populated for the
+  // compiled executable, and hence the "ptx_str" will be empty. So disabling
+  // the pattern check on ROCm and oneAPI platforms
+  if (!IsBuiltWithRocm() && !IsBuiltWithOneAPI()) {
     absl::StatusOr<bool> filecheck_result = RunFileCheck(ptx_str, pattern);
     ASSERT_TRUE(filecheck_result.ok());
     EXPECT_TRUE(filecheck_result.value());
@@ -87,23 +86,23 @@ std::string GpuPjRtCodegenTest::MakePlatformSpecificLlvm(
   return absl::StrReplaceAll(
       input,
       {{"KERNEL_ANNOTATION",
-        is_built_with_rocm_ ? "amdgpu_kernel void" : "ptx_kernel void"},
-       {"BARRIER()", is_built_with_rocm_
+        IsBuiltWithRocm() ? "amdgpu_kernel void" : "ptx_kernel void"},
+       {"BARRIER()", IsBuiltWithRocm()
                          ? "@llvm.amdgcn.s.barrier()"
                          : "@llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)"},
-       {"SHUFFLE", is_built_with_rocm_ ? "i32 @llvm.amdgcn.ds.swizzle"
-                                       : "float @llvm.nvvm.shfl.sync.down.f32"},
-       {"TIDX", is_built_with_rocm_ ? "@llvm.amdgcn.workitem.id.x"
-                                    : "@llvm.nvvm.read.ptx.sreg.tid.x"},
-       {"LCAL", is_built_with_rocm_ ? "%[[LOGICAL_T1:.*]] = call { i1, i64 } "
-                                      "@llvm.amdgcn.if.i64(i1 %[[LOGICAL_T0]])"
-                                    : "0"},
+       {"SHUFFLE", IsBuiltWithRocm() ? "i32 @llvm.amdgcn.ds.swizzle"
+                                     : "float @llvm.nvvm.shfl.sync.down.f32"},
+       {"TIDX", IsBuiltWithRocm() ? "@llvm.amdgcn.workitem.id.x"
+                                  : "@llvm.nvvm.read.ptx.sreg.tid.x"},
+       {"LCAL", IsBuiltWithRocm() ? "%[[LOGICAL_T1:.*]] = call { i1, i64 } "
+                                    "@llvm.amdgcn.if.i64(i1 %[[LOGICAL_T0]])"
+                                  : "0"},
        {"EXTV",
-        is_built_with_rocm_
+        IsBuiltWithRocm()
             ? "%[[LOGICAL_T2:.*]] = extractvalue { i1, i64 } %[[LOGICAL_T1]], 0"
             : "0"},
-       {"BR_CAL", is_built_with_rocm_ ? "br i1 %[[LOGICAL_T2]],"
-                                      : "br i1 %[[LOGICAL_T0]]"}});
+       {"BR_CAL", IsBuiltWithRocm() ? "br i1 %[[LOGICAL_T2]],"
+                                    : "br i1 %[[LOGICAL_T0]]"}});
 }
 
 absl::StatusOr<std::unique_ptr<Executable>>

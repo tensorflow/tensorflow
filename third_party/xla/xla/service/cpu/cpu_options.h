@@ -73,6 +73,7 @@ bool UseExperimentalLoopFusion(const HloModuleConfig& config);
 bool FlattenAfterFusion(const HloModuleConfig& config);
 bool UseMultiOutputFusion(const HloModuleConfig& config);
 bool EnableTiledEmitter(const HloModuleConfig& config);
+bool EnableExperimentalTiling(const HloModuleConfig& config);
 
 }  // namespace xla::cpu::options
 

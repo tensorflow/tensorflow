@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -153,11 +154,11 @@ class FakeDnnGraph : public se::dnn::DnnGraph {
  public:
   explicit FakeDnnGraph(uint32_t sentinel) : sentinel_(sentinel) {}
 
-  absl::Status Prepare(se::dnn::DnnSupport&,
+  absl::Status Prepare(se::dnn::DnnSupport*, const se::DeviceDescription&,
                        const se::EngineOptions&) override {
     return absl::OkStatus();
   }
-  absl::Status Build(se::dnn::DnnSupport&,
+  absl::Status Build(se::dnn::DnnSupport*, const se::DeviceDescription&,
                      std::optional<int64_t> plan_id) override {
     return absl::OkStatus();
   }
@@ -280,11 +281,13 @@ class CuDnnThunkCmdBufTest : public ::testing::Test {
           .set_uid(3);
       return g;
     }());
-    TF_ASSERT_OK(graph.Prepare(
-        dnn_support, se::EngineOptions{/*require_determinism=*/false,
-                                       /*allow_tf32=*/true,
-                                       /*require_command_buffer=*/true}));
-    TF_ASSERT_OK(graph.Build(dnn_support, /*plan_id=*/std::nullopt));
+    TF_ASSERT_OK(
+        graph.Prepare(&dnn_support, executor_->GetDeviceDescription(),
+                      se::EngineOptions{/*require_determinism=*/false,
+                                        /*allow_tf32=*/true,
+                                        /*require_command_buffer=*/true}));
+    TF_ASSERT_OK(graph.Build(&dnn_support, executor_->GetDeviceDescription(),
+                             /*plan_id=*/std::nullopt));
     ASSERT_THAT(graph.SupportsExplicitCommandBufferConstruction(),
                 absl_testing::IsOkAndHolds(true));
 

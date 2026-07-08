@@ -40,6 +40,7 @@ cc_library(
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -158,6 +159,7 @@ cc_library(
         "//xla/service:dot_as_convolution_util",
         "//xla/service:gather_scatter_utils",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
@@ -238,6 +240,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_proto_cc",
         "//xla/service:pattern_matcher",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -285,9 +288,63 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_original_value_analyzer_utils",
+    srcs = ["hlo_original_value_analyzer_utils.cc"],
+    hdrs = ["hlo_original_value_analyzer_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_original_value_analyzer_utils_test",
+    srcs = ["hlo_original_value_analyzer_utils_test.cc"],
+    deps = [
+        ":hlo_original_value_analyzer_utils",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo_sharding",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:test",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "pointer_utils",
     hdrs = ["pointer_utils.h"],
     deps = ["@com_google_absl//absl/hash"],
+)
+
+cc_library(
+    name = "hlo_sharding_reconstruction_util",
+    srcs = ["hlo_sharding_reconstruction_util.cc"],
+    hdrs = ["hlo_sharding_reconstruction_util.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo_sharding",
+        "//xla/hlo/ir:mesh_and_axis",
+        "//xla/hlo/ir:named_sharding",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 xla_cc_test(
@@ -302,6 +359,27 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_sharding_reconstruction_util_test",
+    srcs = ["hlo_sharding_reconstruction_util_test.cc"],
+    deps = [
+        ":hlo_sharding_reconstruction_util",
+        "//xla:array",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo_sharding",
+        "//xla/hlo/ir:mesh_and_axis",
+        "//xla/hlo/ir:named_sharding",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )

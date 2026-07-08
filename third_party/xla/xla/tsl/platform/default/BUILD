@@ -24,6 +24,7 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = internal_visibility([
+        "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/jpeg:__pkg__",
         "//tensorflow/core/platform:__pkg__",
         "@tsl//tsl/platform:__pkg__",
@@ -172,6 +173,7 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:threadpool_interface",
         "//xla/tsl/platform:types",
@@ -572,6 +574,7 @@ cc_library(
     deps = [
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status:statusor",
     ],
 )
@@ -629,20 +632,35 @@ filegroup(
 )
 
 filegroup(
+    name = "additional_mobile_hdrs_no_runtime",
+    visibility = internal_visibility(["//tensorflow/core/platform:__pkg__"]),
+)
+
+filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
-        "casts.h",
-        "context.h",
         "env.cc",
         "load_library.cc",
         "port.cc",
         "posix_file_system.cc",
+        "//xla/tsl/platform:numa_noop.cc",
+    ],
+    visibility = internal_visibility([
+        "//tensorflow/core/platform:__pkg__",
+        "@tsl//tsl/platform:__pkg__",
+    ]),
+)
+
+filegroup(
+    name = "mobile_hdrs_no_runtime",
+    srcs = [
+        "casts.h",
+        "context.h",
         "posix_file_system.h",
         "stacktrace.h",
         "status.h",
         "statusor.h",
         "tracing_impl.h",
-        "//xla/tsl/platform:numa_noop.cc",
         "//xla/tsl/platform/profile_utils:cpu_utils.h",
         "//xla/tsl/platform/profile_utils:i_cpu_utils_helper.h",
     ],
@@ -655,12 +673,20 @@ filegroup(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
-        "casts.h",
         "error_logging.cc",
         "unbounded_work_queue.cc",
-        "unbounded_work_queue.h",
     ] + if_not_fuchsia([
         "subprocess.cc",
+    ]),
+    visibility = internal_visibility(["//tensorflow/core/platform:__pkg__"]),
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
+        "casts.h",
+        "unbounded_work_queue.h",
+    ] + if_not_fuchsia([
         "subprocess.h",
     ]),
     visibility = internal_visibility(["//tensorflow/core/platform:__pkg__"]),
@@ -686,4 +712,19 @@ exports_files(
         "//tensorflow/core/lib/jpeg:__pkg__",
         "//tensorflow/core/platform:__pkg__",
     ]),
+)
+
+cc_library(
+    name = "builddata",
+    srcs = ["builddata.cc"],
+    copts = tsl_copts(),
+    visibility = ["//xla/tsl/builddata:__pkg__"],
+    deps = [
+        "//xla/tsl/builddata:builddata_globals_hdrs",
+        "//xla/tsl/builddata:builddata_headers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+    ],
+    alwayslink = 1,
 )

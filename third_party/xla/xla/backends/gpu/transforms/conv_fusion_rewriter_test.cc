@@ -71,6 +71,29 @@ static const std::initializer_list<absl::string_view> kf16f32{"f16", "f32"};
     }                                                             \
   } while (0)
 
+// Explanation of Convolution Layouts in these tests:
+//
+// Layouts describe how dimensions are ordered in memory, from major to minor.
+// In XLA HLO text, if a layout is omitted, it defaults to major-to-minor
+// (dimension index N-1 is most minor/contiguous, index 0 is most major).
+//
+// Here are two examples showing how shape and dim_labels combine to create
+// different physical layouts by default:
+//
+// 1. NHWC (Channels-Last):
+//    Shape: `s8[1,9,9,17]`
+//    dim_labels = b01f  (Batch, Height, Width, Channels)
+//    - Logical dimensions: Batch=1, Height=9, Width=9, Channels=17.
+//    - Default layout makes Channels (dim 3) the most minor.
+//    - This corresponds to physical NHWC layout.
+//
+// 2. NCHW (Channels-First):
+//    Shape: `s8[1,17,9,9]`
+//    dim_labels = bf01  (Batch, Channels, Height, Width)
+//    - Logical dimensions: Batch=1, Channels=17, Height=9, Width=9.
+//    - Default layout makes Width (dim 3) the most minor.
+//    - This corresponds to physical NCHW layout.
+
 // This class performs isolated unit testing of the ConvFusionRewriter pass.
 // It verifies that specific HLO patterns are correctly recognized and
 // rewritten into custom fusions.
@@ -121,10 +144,10 @@ class ConvFusionRewriterUnitTest : public HloPjRtGpuTestBase {
   }
 
   ConvFusionRewriterUnitTest()
-      : HloPjRtGpuTestBase(HloPjRtTestBaseOptions{
-            /*verifier_layout_sensitive=*/false,
-            /*allow_mixed_precision_in_hlo_verifier=*/false,
-            /*instruction_can_change_layout_func=*/{}}) {}
+      : HloPjRtGpuTestBase(
+            HloTestBaseOptions{/*verifier_layout_sensitive=*/false,
+                               /*allow_mixed_precision_in_hlo_verifier=*/false,
+                               /*instruction_can_change_layout_func=*/{}}) {}
 };
 
 TEST_F(ConvFusionRewriterUnitTest, TestConvInt8ToFloat) {
@@ -133,21 +156,22 @@ TEST_F(ConvFusionRewriterUnitTest, TestConvInt8ToFloat) {
     HloModule Test
 
     ENTRY Test {
-      input = s8[1,17,9,9] parameter(0)
+      // NHWC layout (implied by b01f) enables epilogue fusion.
+      input = s8[1,9,9,17] parameter(0)
       filter = s8[3,3,17,32] parameter(1)
 
-      inputs32 = s32[1,17,9,9] convert(input)
+      inputs32 = s32[1,9,9,17] convert(input)
       filters32 = s32[3,3,17,32] convert(filter)
 
-      conv = s32[1,32,9,9] convolution(inputs32, filters32),
+      conv = s32[1,9,9,32] convolution(inputs32, filters32),
                window={size=3x3 pad=1_1x1_1},
-               dim_labels=bf01_01io->bf01
+               dim_labels=b01f_01io->b01f
 
-      ROOT convert = f32[1,32,9,9] convert(conv)
+      ROOT convert = f32[1,9,9,32] convert(conv)
     })",
               m::Fusion()
                   .WithFusionKind(HloInstruction::FusionKind::kCustom)
-                  .WithShape(F32, {1, 32, 9, 9}));
+                  .WithShape(F32, {1, 9, 9, 32}));
 }
 
 TEST_F(ConvFusionRewriterUnitTest, AsymmetricConvertPrologueNotFused) {
@@ -160,6 +184,7 @@ TEST_F(ConvFusionRewriterUnitTest, AsymmetricConvertPrologueNotFused) {
     HloModule Test
 
     ENTRY Test {
+      // NHWC layout (implied by b01f) enables epilogue fusion.
       input_f32 = f32[4,48,96,64] parameter(0)
       input_f16 = f16[4,48,96,64] convert(input_f32)
       filter = f16[128,3,3,64] parameter(1)
@@ -202,23 +227,24 @@ TEST_F(ConvFusionRewriterUnitTest, TestConvInt8ToInt8BiasSideInput) {
     HloModule Test
 
     ENTRY Test {
-      input = s32[1,17,9,9] convert(s8[1,17,9,9] parameter(0))
+      // NHWC layout (implied by b01f) enables epilogue fusion.
+      input = s32[1,9,9,17] convert(s8[1,9,9,17] parameter(0))
       filter = s32[3,3,17,32] convert(s8[3,3,17,32] parameter(1))
-      bias = f32[1,32,9,9] broadcast(f32[32] parameter(2)), dimensions={1}
-      side_input = f32[1,32,9,9] convert(s8[1,32,9,9] parameter(3))
+      bias = f32[1,9,9,32] broadcast(f32[32] parameter(2)), dimensions={3}
+      side_input = f32[1,9,9,32] convert(s8[1,9,9,32] parameter(3))
 
-      conv = s32[1,32,9,9] convolution(input, filter),
+      conv = s32[1,9,9,32] convolution(input, filter),
                window={size=3x3 pad=1_1x1_1},
-               dim_labels=bf01_01io->bf01
-      conv_f32 = f32[1,32,9,9] convert(conv)
-      ROOT root = s8[1,32,9,9] convert(clamp(f32[1,32,9,9] broadcast(f32[] constant(-128)),
+               dim_labels=b01f_01io->b01f
+      conv_f32 = f32[1,9,9,32] convert(conv)
+      ROOT root = s8[1,9,9,32] convert(clamp(f32[1,9,9,32] broadcast(f32[] constant(-128)),
                                               add(add(conv_f32, bias), side_input),
-                                              f32[1,32,9,9] broadcast(f32[] constant(127))))
+                                              f32[1,9,9,32] broadcast(f32[] constant(127))))
     })",
               m::Fusion(m::Parameter(0), m::Parameter(1), m::Broadcast(),
                         m::Parameter(3))
                   .WithFusionKind(HloInstruction::FusionKind::kCustom)
-                  .WithShape(S8, {1, 32, 9, 9}),
+                  .WithShape(S8, {1, 9, 9, 32}),
               /*run_algebraic_simplifier=*/true);
 }
 
@@ -229,21 +255,22 @@ TEST_F(ConvFusionRewriterUnitTest,
     HloModule Test
 
     ENTRY Test {
-      input = s32[1,17,9,9] convert(s8[1,17,9,9] parameter(0))
+      // NHWC layout (implied by b01f) enables epilogue fusion.
+      input = s32[1,9,9,17] convert(s8[1,9,9,17] parameter(0))
       filter = s32[3,3,17,32] convert(s8[3,3,17,32] parameter(1))
-      bias = f32[1,32,9,9] broadcast(f32[32] parameter(2)), dimensions={1}
-      side_input = f32[1,32,9,9] convert(s8[1,32,9,9] parameter(3))
+      bias = f32[1,9,9,32] broadcast(f32[32] parameter(2)), dimensions={3}
+      side_input = f32[1,9,9,32] convert(s8[1,9,9,32] parameter(3))
 
-      conv = s32[1,32,9,9] convolution(input, filter),
+      conv = s32[1,9,9,32] convolution(input, filter),
                window={size=3x3 pad=1_1x1_1},
-               dim_labels=bf01_01io->bf01
-      conv_f32 = f32[1,32,9,9] convert(conv)
-      ROOT root = s8[1,32,9,9] convert(add(add(conv_f32, bias), side_input))
+               dim_labels=b01f_01io->b01f
+      conv_f32 = f32[1,9,9,32] convert(conv)
+      ROOT root = s8[1,9,9,32] convert(add(add(conv_f32, bias), side_input))
     })",
               m::Fusion(m::Parameter(0), m::Parameter(1), m::Broadcast(),
                         m::Parameter(3))
                   .WithFusionKind(HloInstruction::FusionKind::kCustom)
-                  .WithShape(S8, {1, 32, 9, 9}),
+                  .WithShape(S8, {1, 9, 9, 32}),
               /*run_algebraic_simplifier=*/true);
 }
 
@@ -253,21 +280,22 @@ TEST_F(ConvFusionRewriterUnitTest, TestReluAfterConvert) {
     HloModule Test
 
     ENTRY Test {
-      input = s32[1,17,9,9] convert(s8[1,17,9,9] parameter(0))
+      // NHWC layout (implied by b01f) enables epilogue fusion.
+      input = s32[1,9,9,17] convert(s8[1,9,9,17] parameter(0))
       filter = s32[3,3,17,32] convert(s8[3,3,17,32] parameter(1))
 
-      conv = s32[1,32,9,9] convolution(input, filter),
+      conv = s32[1,9,9,32] convolution(input, filter),
                window={size=3x3 pad=1_1x1_1},
-               dim_labels=bf01_01io->bf01
-      conv_s8 = s8[1,32,9,9] convert(clamp(s32[1,32,9,9] broadcast(s32[] constant(-128)),
+               dim_labels=b01f_01io->b01f
+      conv_s8 = s8[1,9,9,32] convert(clamp(s32[1,9,9,32] broadcast(s32[] constant(-128)),
                                            conv,
-                                           s32[1,32,9,9] broadcast(s32[] constant(127))))
-      zeros = s8[1,32,9,9] broadcast(s8[] constant(0)), dimensions={}
-      ROOT root = s8[1,32,9,9] maximum(conv_s8, zeros)
+                                           s32[1,9,9,32] broadcast(s32[] constant(127))))
+      zeros = s8[1,9,9,32] broadcast(s8[] constant(0)), dimensions={}
+      ROOT root = s8[1,9,9,32] maximum(conv_s8, zeros)
     })",
               m::Fusion(m::Parameter(0), m::Parameter(1))
                   .WithFusionKind(HloInstruction::FusionKind::kCustom)
-                  .WithShape(S8, {1, 32, 9, 9}),
+                  .WithShape(S8, {1, 9, 9, 32}),
               /*run_algebraic_simplifier=*/true);
 }
 
@@ -277,27 +305,69 @@ TEST_F(ConvFusionRewriterUnitTest, TestConvInt8ToFloatBiasSideInput) {
     HloModule Test
 
     ENTRY Test {
-      input = s8[1,17,9,9] parameter(0)
+      // NHWC layout (implied by b01f) enables epilogue fusion.
+      input = s8[1,9,9,17] parameter(0)
       filter = s8[3,3,17,32] parameter(1)
       bias = f32[32] parameter(2)
-      bias_broadcast = f32[1,32,9,9] broadcast(bias), dimensions={1}
-      side_input_f32 = f32[1,32,9,9] parameter(3)
+      bias_broadcast = f32[1,9,9,32] broadcast(bias), dimensions={3}
+      side_input_f32 = f32[1,9,9,32] parameter(3)
 
-      inputs32 = s32[1,17,9,9] convert(input)
+      inputs32 = s32[1,9,9,17] convert(input)
       filters32 = s32[3,3,17,32] convert(filter)
 
-      conv = s32[1,32,9,9] convolution(inputs32, filters32),
+      conv = s32[1,9,9,32] convolution(inputs32, filters32),
                window={size=3x3 pad=1_1x1_1},
-               dim_labels=bf01_01io->bf01
-      conv_f32 = f32[1,32,9,9] convert(conv)
+               dim_labels=b01f_01io->b01f
+      conv_f32 = f32[1,9,9,32] convert(conv)
       sum1 = add(conv_f32, bias_broadcast)
       ROOT sum2 = add(sum1, side_input_f32)
     })",
               m::Fusion(m::Parameter(0), m::Parameter(1), m::Broadcast(),
                         m::Parameter(3))
                   .WithFusionKind(HloInstruction::FusionKind::kCustom)
-                  .WithShape(F32, {1, 32, 9, 9}),
+                  .WithShape(F32, {1, 9, 9, 32}),
               /*run_algebraic_simplifier=*/true);
+}
+
+TEST_F(ConvFusionRewriterUnitTest, TestConvNCHWAddNotFused) {
+  RunAndMatch(R"(
+    HloModule Test
+
+    ENTRY Test {
+      input = f32[1,17,9,9] parameter(0)
+      filter = f32[3,3,17,32] parameter(1)
+      bias = f32[32] parameter(2)
+      bias_broadcast = f32[1,32,9,9] broadcast(bias), dimensions={1}
+
+      conv = f32[1,32,9,9] convolution(input, filter),
+               window={size=3x3 pad=1_1x1_1},
+               dim_labels=bf01_01io->bf01
+      ROOT sum = add(conv, bias_broadcast)
+    })",
+              m::Add(m::Fusion(m::Parameter(0), m::Parameter(1))
+                         .WithFusionKind(HloInstruction::FusionKind::kCustom),
+                     m::Broadcast()));
+}
+
+TEST_F(ConvFusionRewriterUnitTest, TestConvAddFused) {
+  RunAndMatch(R"(
+    HloModule Test
+
+    ENTRY Test {
+      // NHWC layout (implied by b01f) enables epilogue fusion.
+      input = f32[1,9,9,17] parameter(0)
+      filter = f32[32,3,3,17] parameter(1)
+      bias = f32[32] parameter(2)
+      bias_broadcast = f32[1,9,9,32] broadcast(bias), dimensions={3}
+
+      conv = f32[1,9,9,32] convolution(input, filter),
+               window={size=3x3 pad=1_1x1_1},
+               dim_labels=b01f_o01i->b01f
+      ROOT sum = add(conv, bias_broadcast)
+    })",
+              m::Fusion(m::Parameter(0), m::Parameter(1), m::Broadcast())
+                  .WithFusionKind(HloInstruction::FusionKind::kCustom)
+                  .WithShape(F32, {1, 9, 9, 32}));
 }
 
 TEST_F(ConvFusionRewriterUnitTest, FuseAlpha) {
@@ -306,22 +376,23 @@ TEST_F(ConvFusionRewriterUnitTest, FuseAlpha) {
     HloModule Test
 
     ENTRY Test {
-      input = s8[1,17,9,9] parameter(0)
+      // NHWC layout (implied by b01f) enables epilogue fusion.
+      input = s8[1,9,9,17] parameter(0)
       filter = s8[3,3,17,32] parameter(1)
-      inputs32 = s32[1,17,9,9] convert(input)
+      inputs32 = s32[1,9,9,17] convert(input)
       filters32 = s32[3,3,17,32] convert(filter)
       alpha = f32[] constant(42)
-      alpha_broadcast = f32[1,32,9,9] broadcast(alpha), dimensions={}
+      alpha_broadcast = f32[1,9,9,32] broadcast(alpha), dimensions={}
 
-      conv = s32[1,32,9,9] convolution(inputs32, filters32),
+      conv = s32[1,9,9,32] convolution(inputs32, filters32),
                window={size=3x3 pad=1_1x1_1},
-               dim_labels=bf01_01io->bf01
-      convert = f32[1,32,9,9] convert(conv)
+               dim_labels=b01f_01io->b01f
+      convert = f32[1,9,9,32] convert(conv)
       ROOT root = multiply(convert, alpha_broadcast)
     })",
               m::Fusion(m::Parameter(0), m::Parameter(1))
                   .WithFusionKind(HloInstruction::FusionKind::kCustom)
-                  .WithShape(F32, {1, 32, 9, 9}));
+                  .WithShape(F32, {1, 9, 9, 32}));
 }
 
 TEST_F(ConvFusionRewriterUnitTest, FuseRelu) {
@@ -329,21 +400,48 @@ TEST_F(ConvFusionRewriterUnitTest, FuseRelu) {
     HloModule Test
 
     ENTRY Test {
-      inputs = f32[1,17,9,9] parameter(0)
+      // NHWC layout (implied by b01f) enables epilogue fusion.
+      inputs = f32[1,9,9,17] parameter(0)
       filters = f32[3,3,17,32] parameter(1)
       bias = f32[32] parameter(2)
-      bias_broadcast = f32[1,32,9,9] broadcast(bias), dimensions={1}
+      bias_broadcast = f32[1,9,9,32] broadcast(bias), dimensions={3}
       zero = f32[] constant(0)
-      zeros = f32[1,32,9,9] broadcast(zero), dimensions={}
-      conv = f32[1,32,9,9] convolution(inputs, filters),
+      zeros = f32[1,9,9,32] broadcast(zero), dimensions={}
+      conv = f32[1,9,9,32] convolution(inputs, filters),
                window={size=3x3 pad=1_1x1_1},
-               dim_labels=bf01_01io->bf01
+               dim_labels=b01f_01io->b01f
       sum = add(conv, bias_broadcast)
       ROOT relu = maximum(sum, zeros)
     })",
               m::Fusion(m::Parameter(0), m::Parameter(1), m::Broadcast())
                   .WithFusionKind(HloInstruction::FusionKind::kCustom)
-                  .WithShape(F32, {1, 32, 9, 9}));
+                  .WithShape(F32, {1, 9, 9, 32}));
+}
+
+TEST_F(ConvFusionRewriterUnitTest, GroupedConvEpilogueNotFused) {
+  RunAndMatch(
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+      inputs = f32[8,32,28,32] parameter(0)
+      filters = f32[32,3,3,1] parameter(1)
+      bias = f32[32] parameter(2)
+      bias_broadcast = f32[8,32,28,32] broadcast(bias), dimensions={1}
+      zero = f32[] constant(0)
+      zeros = f32[8,32,28,32] broadcast(zero), dimensions={}
+      conv = f32[8,32,28,32] convolution(inputs, filters),
+               window={size=3x3 pad=1_1x1_1},
+               dim_labels=b01f_o01i->b01f,
+               feature_group_count=32
+      sum = add(conv, bias_broadcast)
+      ROOT relu = maximum(sum, zeros)
+    })",
+      m::Maximum(
+          m::Add(m::Fusion(m::Parameter(0), m::Parameter(1))
+                     .WithFusionKind(HloInstruction::FusionKind::kCustom),
+                 m::Op()),
+          m::Op()));
 }
 
 TEST_F(ConvFusionRewriterUnitTest, StrengthReduceF32ToF16) {
@@ -351,33 +449,34 @@ TEST_F(ConvFusionRewriterUnitTest, StrengthReduceF32ToF16) {
     HloModule Test
 
     ENTRY Test {
-      inputs = f16[1,17,9,9] parameter(0)
+      // NHWC layout (implied by b01f) enables epilogue fusion.
+      inputs = f16[1,9,9,17] parameter(0)
       filters = f16[3,3,17,32] parameter(1)
       bias = f16[32] parameter(2)
-      side_input = f16[1,32,9,9] parameter(3)
+      side_input = f16[1,9,9,32] parameter(3)
 
-      inputs_f32 = f32[1,17,9,9] convert(inputs)
+      inputs_f32 = f32[1,9,9,17] convert(inputs)
       filters_f32 = f32[3,3,17,32] convert(filters)
       bias_f32 = f32[32] convert(bias)
-      bias_broadcast = f32[1,32,9,9] broadcast(bias_f32), dimensions={1}
-      side_input_f32 = f32[1,32,9,9] convert(side_input)
-      conv = f32[1,32,9,9] convolution(inputs_f32, filters_f32),
+      bias_broadcast = f32[1,9,9,32] broadcast(bias_f32), dimensions={3}
+      side_input_f32 = f32[1,9,9,32] convert(side_input)
+      conv = f32[1,9,9,32] convolution(inputs_f32, filters_f32),
                window={size=3x3 pad=1_1x1_1},
-               dim_labels=bf01_01io->bf01
+               dim_labels=b01f_01io->b01f
       sum = add(conv, side_input_f32)
       sum2 = add(sum, bias_broadcast)
-      ROOT conv_f16 = f16[1,32,9,9] convert(sum2)
+      ROOT conv_f16 = f16[1,9,9,32] convert(sum2)
     })",
               m::Fusion(m::Parameter(0), m::Parameter(1), m::Parameter(3),
                         m::Broadcast())
-                  .WithShape(F16, {1, 32, 9, 9}));
+                  .WithShape(F16, {1, 9, 9, 32}));
 }
 
 // This class performs end-to-end integration testing of the ConvFusionRewriter.
 // It verifies that the rewriter works correctly within the full GPU
 // optimization pipeline and produces numerically correct results on hardware.
 class ConvFusionRewriterIntegrationTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {
+    : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  public:
   bool IsCuda() const {
     return device_description().gpu_compute_capability().IsCuda();
@@ -397,11 +496,10 @@ class ConvFusionRewriterIntegrationTest
   }
 
   ConvFusionRewriterIntegrationTest()
-      : HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase>(
-            HloPjRtTestBaseOptions{
-                /*verifier_layout_sensitive=*/false,
-                /*allow_mixed_precision_in_hlo_verifier=*/false,
-                /*instruction_can_change_layout_func=*/{}}) {}
+      : HloInterpreterReferenceMixin<HloPjRtGpuTestBase>(
+            HloTestBaseOptions{/*verifier_layout_sensitive=*/false,
+                               /*allow_mixed_precision_in_hlo_verifier=*/false,
+                               /*instruction_can_change_layout_func=*/{}}) {}
 
  protected:
   std::string GetOptimizedHlo(absl::string_view hlo_string) {
@@ -568,6 +666,7 @@ TEST_F(ConvFusionRewriterIntegrationTest, DISABLED_TestBias) {
       zero = TYPE[] constant(0)
       zeros = TYPE[1,3,3,64] broadcast(zero), dimensions={}
 
+      // NHWC layout (implied by b01f) enables epilogue fusion.
       input = TYPE[1,3,3,64] parameter(0)
       filter = TYPE[3,3,64,64] parameter(1)
       bias = TYPE[64] parameter(2)
@@ -590,6 +689,7 @@ TEST_F(ConvFusionRewriterIntegrationTest, DISABLED_Test3D) {
       zero = TYPE[] constant(0)
       zeros = TYPE[1,3,5,7,64] broadcast(zero), dimensions={}
 
+      // NHWC layout (implied by b012f) enables epilogue fusion.
       input = TYPE[1,3,5,7,64] parameter(0)
       filter = TYPE[3,3,3,64,64] parameter(1)
       bias = TYPE[64] parameter(2)
@@ -626,6 +726,7 @@ TEST_F(ConvFusionRewriterIntegrationTest, DISABLED_TestBiasMultiCall) {
       zero = TYPE[] constant(0)
       zeros = TYPE[1,<<<format>>>,64] broadcast(zero), dimensions={}
 
+      // NHWC layout (implied by b01f) enables epilogue fusion.
       input = TYPE[1,<<<format>>>,64] parameter(0)
       filter = TYPE[3,3,64,64] parameter(1)
       bias = TYPE[64] parameter(2)

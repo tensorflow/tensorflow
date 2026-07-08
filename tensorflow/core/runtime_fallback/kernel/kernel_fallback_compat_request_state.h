@@ -90,7 +90,7 @@ class KernelFallbackCompatRequestState {
       tfrt_stub::OpKernelRunnerTable* runner_table,
       FallbackResourceArray* resource_array,
       tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
-      const absl::optional<SessionMetadata>& model_metadata,
+      const std::optional<SessionMetadata>& model_metadata,
       const tensorflow::ProcessFunctionLibraryRuntime* pflr);
 
   // NOTE: This is the constructor for inference.
@@ -100,7 +100,7 @@ class KernelFallbackCompatRequestState {
       tfrt_stub::OpKernelRunnerTable* runner_table,
       FallbackResourceArray* resource_array,
       tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
-      const absl::optional<SessionMetadata>& model_metadata,
+      const std::optional<SessionMetadata>& model_metadata,
       const tensorflow::ProcessFunctionLibraryRuntime* pflr);
 
   int64_t step_id() const { return step_id_; }

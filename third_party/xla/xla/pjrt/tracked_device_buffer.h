@@ -95,7 +95,22 @@ class RawSEDeviceMemory {
   se::DeviceAddressBase value_;
 };
 
+class ForeignRawSEDeviceMemory : public RawSEDeviceMemory {
+ public:
+  ForeignRawSEDeviceMemory(se::DeviceAddressBase value,
+                           absl::AnyInvocable<void() &&> on_delete_callback)
+      : RawSEDeviceMemory(value),
+        on_delete_callback_(std::move(on_delete_callback)) {}
 
+  ~ForeignRawSEDeviceMemory() override { std::move(on_delete_callback_)(); }
+
+  void UnsafeReleaseMemory() override {
+    LOG(FATAL) << "ForeignRawSEDeviceMemory cannot be donated.";
+  }
+
+ private:
+  absl::AnyInvocable<void() &&> on_delete_callback_;
+};
 
 }  // namespace xla
 

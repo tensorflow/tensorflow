@@ -54,14 +54,19 @@ class TfAllocatorAdapter : public DeviceAddressAllocator {
   //                Different memory spaces may require different alignment
   //                (e.g. symmetric memory requires higher alignment than
   //                default memory used for on-device compute).
+  //
+  // allocation_end: which end of a spatially partitioned allocator to serve
+  //                 requests from. Ignored by allocators that do not partition.
   TfAllocatorAdapter(
       tsl::Allocator* wrapped, Stream* stream,
-      size_t min_alignment = tsl::Allocator::kAllocatorAlignment);
+      size_t min_alignment = tsl::Allocator::kAllocatorAlignment,
+      tsl::AllocationEnd allocation_end = tsl::AllocationEnd::kLower);
 
   // Constructor for cases where `stream` is not available.
   TfAllocatorAdapter(
       tsl::Allocator* wrapped, const Platform* platform,
-      size_t min_alignment = tsl::Allocator::kAllocatorAlignment);
+      size_t min_alignment = tsl::Allocator::kAllocatorAlignment,
+      tsl::AllocationEnd allocation_end = tsl::AllocationEnd::kLower);
 
   ~TfAllocatorAdapter() override;
 
@@ -88,6 +93,7 @@ class TfAllocatorAdapter : public DeviceAddressAllocator {
   tsl::Allocator* wrapped_;
   Stream* stream_;
   size_t min_alignment_;
+  tsl::AllocationEnd allocation_end_;
 };
 
 // Adapter class that wraps per-device TF allocators with corresponding streams
@@ -117,6 +123,11 @@ class MultiDeviceAdapter : public DeviceAddressAllocator {
   // min_alignment:  minimum alignment passed to tsl::Allocator::AllocateRaw.
   //                 Symmetric/collective memory typically needs higher
   //                 alignment than default compute buffers.
+  //
+  // allocation_end: which end of a spatially partitioned allocator to serve
+  //                 from. When one BFC allocator backs both kDefault and
+  //                 kCollective, the kCollective entry uses kUpper so its
+  //                 offsets stay independent of default-memory activity.
   struct AllocatorInfo {
     std::shared_ptr<tsl::Allocator> allocator;
     Stream* stream;
@@ -124,6 +135,7 @@ class MultiDeviceAdapter : public DeviceAddressAllocator {
     std::optional<int32_t> device_ordinal = std::nullopt;
     const Platform* platform = nullptr;
     size_t min_alignment = tsl::Allocator::kAllocatorAlignment;
+    tsl::AllocationEnd allocation_end = tsl::AllocationEnd::kLower;
   };
 
   MultiDeviceAdapter(const Platform* platform,
@@ -149,6 +161,9 @@ class MultiDeviceAdapter : public DeviceAddressAllocator {
   absl::StatusOr<tsl::Allocator*> GetAllocator(int device_ordinal);
 
  private:
+  absl::StatusOr<std::shared_ptr<TfAllocatorAdapter>> GetDefaultAllocator(
+      int device_ordinal);
+
   absl::flat_hash_map<int64_t, std::vector<std::shared_ptr<TfAllocatorAdapter>>>
       memory_space_to_per_device_allocators_;
   // Map of device ordinal, buffer to which memory space it resides in.

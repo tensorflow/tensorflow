@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
@@ -48,7 +49,7 @@ std::unique_ptr<mlir::MLIRContext> CreateMlirContext() {
 absl::StatusOr<std::unique_ptr<xla::ifrt::HloProgram>> ParseHloProgramString(
     absl::string_view str) {
   auto context = CreateMlirContext();
-  TF_ASSIGN_OR_RETURN(auto module, xla::ParseMlirModuleString(str, *context));
+  ASSIGN_OR_RETURN(auto module, xla::ParseMlirModuleString(str, *context));
   return std::make_unique<xla::ifrt::HloProgram>(std::move(context),
                                                  std::move(module));
 }
@@ -97,6 +98,29 @@ module @foo {
     return %arg0 : tensor<2x3xi32> loc("bar")
   }
 })"));
+
+  EXPECT_EQ(hlo_program1->Fingerprint(), hlo_program2->Fingerprint());
+}
+
+TEST(HloProgramTest, FingerprintIgnoresDebugInfoStructure) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::unique_ptr<xla::ifrt::HloProgram> hlo_program1,
+      ParseHloProgramString(R"(
+module @foo {
+  func.func @main(%arg0: tensor<2x3xi32> loc("foo")) -> tensor<2x3xi32> {
+    return %arg0 : tensor<2x3xi32> loc("foo")
+  } loc("foo")
+} loc("foo")
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::unique_ptr<xla::ifrt::HloProgram> hlo_program2,
+      ParseHloProgramString(R"(
+module @foo {
+  func.func @main(%arg0: tensor<2x3xi32> loc("bar")) -> tensor<2x3xi32> {
+    return %arg0 : tensor<2x3xi32> loc("baz")
+  } loc("qux")
+} loc("quux")
+)"));
 
   EXPECT_EQ(hlo_program1->Fingerprint(), hlo_program2->Fingerprint());
 }

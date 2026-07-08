@@ -26,6 +26,7 @@ load("@xla//third_party/gpus:sycl_configure.bzl", "sycl_configure")
 load("@xla//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
 load("@xla//third_party/hwloc:workspace.bzl", hwloc = "repo")
 load("@xla//third_party/implib_so:workspace.bzl", implib_so = "repo")
+load("@xla//third_party/libdrm:workspace.bzl", libdrm = "repo")
 load("@xla//third_party/llvm:workspace.bzl", llvm = "repo")
 load("@xla//third_party/mkl_dnn:workspace.bzl", onednn = "repo")
 load("@xla//third_party/nanobind:workspace.bzl", nanobind = "repo")
@@ -49,7 +50,6 @@ load("@xla//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
 load("@xla//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
 load("@xla//third_party/triton:workspace.bzl", triton = "repo")
 load("@xla//third_party/xnnpack:workspace.bzl", xnnpack = "repo")
-load("@xla//third_party/xxd:workspace.bzl", xxd = "repo")
 load("@xla//tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
 load("@xla//tools/toolchains:cpus/aarch64/aarch64_compiler_configure.bzl", "aarch64_compiler_configure")
 load("@xla//tools/toolchains:cpus/arm/arm_compiler_configure.bzl", "arm_compiler_configure")
@@ -99,6 +99,7 @@ load("//third_party/tflite_ovic_testdata:workspace.bzl", tflite_ovic_testdata = 
 load("//third_party/vulkan_headers:workspace.bzl", vulkan_headers = "repo")
 load("//third_party/xctestrunner:workspace.bzl", xctestrunner = "repo")
 load("//third_party/xprof:workspace.bzl", xprof = "repo")
+load("//third_party/xxd:workspace.bzl", xxd = "repo")
 
 def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
@@ -119,6 +120,7 @@ def _initialize_third_party():
     hwloc()
     icu()
     implib_so()
+    libdrm()
     jpeg()
     jpegxl()
     kissfft()
@@ -234,9 +236,9 @@ def _tf_repositories():
     # XNNPack dependency.
     tf_http_archive(
         name = "KleidiAI",
-        sha256 = "be1d6fb524b2a5e3772b38472a24d660e22b210f6b53b73bd8a5437ac2d882a7",
-        strip_prefix = "kleidiai-d41219d3db13758074a6440d7b55a87487334c8b",
-        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/d41219d3db13758074a6440d7b55a87487334c8b.zip"),
+        sha256 = "9b8d0df9bab42d1d19acb571337cbaa527027cae0efd361d75dfb9b10fd7dc4e",
+        strip_prefix = "kleidiai-51f7190558e51b7415d9ba24994fb477d7371446",
+        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/51f7190558e51b7415d9ba24994fb477d7371446.zip"),
     )
 
     FXdiv()
@@ -395,13 +397,13 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_github_grpc_grpc",
-        sha256 = "e2ace790a5f2d0f83259d1390a816a33b013ea34df2e86084d927e58daa4c5d9",
-        strip_prefix = "grpc-1.78.0",
+        sha256 = "41b695614b26652ff9e97ce50cfd4a6c7a3d45a9fe598d1454407746499bbf2c",
+        strip_prefix = "grpc-1.81.0",
         system_build_file = "//third_party/systemlibs:grpc.BUILD",
         patch_file = [
             "@xla//third_party/grpc:grpc.patch",
         ],
-        urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.78.0.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.81.0.tar.gz"),
     )
 
     linenoise()

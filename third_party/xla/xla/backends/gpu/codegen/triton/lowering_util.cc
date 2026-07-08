@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -133,7 +134,7 @@ absl::StatusOr<stream_executor::gpu::TmaMetadata> ExtractTmaMetadata(
     if (auto attr =
             func_op.getArgAttrOfType<mlir::triton::xla::TmaDescriptorAttr>(
                 idx, "tt.tma_descriptor")) {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           auto tma_desc,
           CreateTmaDescriptor(attr.getGlobalShape(), attr.getTileShape(),
                               attr.getTileStrides(), attr.getLayout(),

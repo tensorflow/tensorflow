@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "include/dlpack/dlpack.h"  // from @dlpack
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
@@ -49,8 +51,14 @@ const Tensor* GetTensorFromHandle(TFE_TensorHandle* h, TF_Status* status) {
     status->status = absl::InvalidArgumentError("Invalid handle");
     return nullptr;
   }
+  tensorflow::ImmediateExecutionTensorHandle* unwrapped_handle =
+      tensorflow::unwrap(h);
+  if (!tensorflow::TensorHandle::classof(unwrapped_handle)) {
+    status->status = absl::InvalidArgumentError("Invalid handle");
+    return nullptr;
+  }
   tensorflow::TensorHandle* handle =
-      tensorflow::TensorHandleFromInterface(tensorflow::unwrap(h));
+      tensorflow::TensorHandleFromInterface(unwrapped_handle);
   if (handle->Type() != TensorHandle::LOCAL) {
     status->status = absl::InvalidArgumentError(absl::StrCat(
         "DLPack doesn't support ", handle->TypeString(), " tensor"));
@@ -155,7 +163,7 @@ absl::optional<std::string> DeviceNameFromDlContext(const DLDevice& ctx,
     case DLDeviceType::kDLROCM:
       return absl::StrCat("GPU:", ctx.device_id);
     default:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 
@@ -304,6 +312,9 @@ void* TFE_HandleToDLPack(TFE_TensorHandle* h, TF_Status* status) {
   }
 
   const Tensor* tensor = GetTensorFromHandle(h, status);
+  if (!status->status.ok() || tensor == nullptr) {
+    return nullptr;
+  }
   TF_DataType data_type = static_cast<TF_DataType>(tensor->dtype());
 
   auto tf_dlm_type = GetDlDataType(data_type, status);

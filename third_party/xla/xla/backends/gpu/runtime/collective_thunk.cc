@@ -17,13 +17,16 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstdlib>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -53,7 +56,8 @@ limitations under the License.
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/trace_command_buffer_factory.h"
@@ -208,7 +212,7 @@ CollectiveThunk::CollectiveThunk(Kind kind, ThunkInfo thunk_info,
                                  std::vector<Buffer> buffers,
                                  CommunicationId communication_id,
                                  CollectivesMode collectives_mode)
-    : Command(CommandType::kCollectiveCmd, kind, std::move(thunk_info)),
+    : Command(kind, std::move(thunk_info)),
       buffers_(std::move(buffers)),
       communication_id_(communication_id),
       collectives_mode_(collectives_mode) {}
@@ -311,13 +315,13 @@ absl::Status CollectiveThunk::Prepare(const PrepareParams& params) {
   if (CanUseSymmetricBuffer() && config().use_symmetric_buffer) {
     for (const Buffer& buffer : buffers_) {
       if (buffer.source_memory_space == kCollectiveMemorySpaceColor) {
-        TF_RETURN_IF_ERROR(
+        RETURN_IF_ERROR(
             params.collective_memory_requests->RequestSymmetricAllocation(
                 clique_key, buffer.source_buffer.slice.index()));
       }
 
       if (buffer.destination_memory_space == kCollectiveMemorySpaceColor) {
-        TF_RETURN_IF_ERROR(
+        RETURN_IF_ERROR(
             params.collective_memory_requests->RequestSymmetricAllocation(
                 clique_key, buffer.destination_buffer.slice.index()));
       }
@@ -434,18 +438,6 @@ absl::StatusOr<const se::CommandBuffer::Command*> CollectiveThunk::Record(
   return Internal("Invalid record action");
 }
 
-absl::StatusOr<std::vector<Communicator*>> CollectiveThunk::GetCommunicators(
-    const ExecuteParams& params) const {
-  ASSIGN_OR_RETURN(
-      GpuCliqueKey clique_key,
-      GetGpuCliqueKey(*params.collective_params, config().replica_groups,
-                      config().group_mode, communication_id_));
-  ASSIGN_OR_RETURN(Communicator * comm,
-                   params.collective_cliques->GetComm(
-                       clique_key, params.collective_params->global_device_id));
-  return std::vector<Communicator*>{comm};
-}
-
 Thunk::BufferUses CollectiveThunk::buffer_uses() const {
   BufferUses uses;
   uses.reserve(buffers_.size() * 2);
@@ -456,6 +448,12 @@ Thunk::BufferUses CollectiveThunk::buffer_uses() const {
                                     buffer.destination_buffer.shape));
   }
   return uses;
+}
+
+absl::StatusOr<GpuCliqueKey> CollectiveThunk::GetCliqueKey(
+    const ExecuteParams& params) const {
+  return GetGpuCliqueKey(*params.collective_params, config().replica_groups,
+                         config().group_mode, communication_id_);
 }
 
 std::string CollectiveThunk::GetDeviceString(

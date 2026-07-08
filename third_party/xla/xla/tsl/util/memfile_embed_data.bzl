@@ -38,7 +38,7 @@ def _gen_source_impl(ctx):
         DefaultInfo(files = depset([ctx.outputs.generated_file])),
     ]
 
-_gen_source = rule(
+_memfile_embed_data_gen_source = rule(
     implementation = _gen_source_impl,
     attrs = {
         "generated_file": attr.output(
@@ -114,7 +114,7 @@ def memfile_embed_data(
 
     embedded_dir_name = name if not embedded_dir_name else embedded_dir_name
     cc_name = "%s_embed_internal_builtin.cc" % name
-    _gen_source(
+    _memfile_embed_data_gen_source(
         name = "%s_embed_cc_src" % name,
         generated_file = cc_name,
         embed_dir = embedded_dir_name,

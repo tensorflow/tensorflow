@@ -360,6 +360,14 @@ TEST(TileAssignmentTest, AnalyzeTileAssignment) {
   auto result_v1_iota = AnalyzeTileAssignment(ta_v1_iota);
   EXPECT_TRUE(result_v1_iota.has_value());
   EXPECT_THAT(result_v1_iota->local_mesh, ::testing::ElementsAre(2, 2));
+
+  // V1 sharding with iota pattern and 1s in dimensions.
+  Array<int64_t> array_iota_1s({1, 2, 1, 2});
+  array_iota_1s.FillIota(0);
+  TileAssignment ta_v1_iota_1s(std::make_shared<Array<int64_t>>(array_iota_1s));
+  auto result_v1_iota_1s = AnalyzeTileAssignment(ta_v1_iota_1s);
+  EXPECT_TRUE(result_v1_iota_1s.has_value());
+  EXPECT_THAT(result_v1_iota_1s->local_mesh, ::testing::ElementsAre(2, 2));
 }
 
 }  // namespace

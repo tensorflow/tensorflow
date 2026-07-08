@@ -88,6 +88,9 @@ std::string CudnnConvKindToString(CudnnConvKind kind);
 // Matrix multiplication rewritten into a GEMM custom call.
 // All matrix multiplications should be rewritten as such custom calls
 // after a GemmRewriter lowering pass.
+bool IsCublasLtGemm(const HloInstruction& hlo);
+
+// Legacy alias for IsCublasLtGemm that also includes legacy cublas.
 bool IsCublasGemm(const HloInstruction& hlo);
 
 // Matrix multiplication that calls into legacy cublas.
@@ -95,6 +98,10 @@ bool IsLegacyCublasMatmul(const HloInstruction& hlo);
 
 // Matrix multiplication that calls into cublasLt.
 bool IsCublasLtMatmul(const HloInstruction& hlo);
+
+// Returns true if hlo is a non-fused cublasLt matmul (default epilogue,
+// beta=0).
+bool IsNonFusedCublasLtMatmul(const HloInstruction& hlo);
 
 // Scaled matrix multiplication in FP8. Calls into cublasLt.
 bool IsCublasLtMatmulF8(const HloInstruction& hlo);

@@ -1,5 +1,5 @@
-// RUN: hlo_to_xtileir %s | FileCheck %s
-// RUN: triton_test_correctness %s --abs_error_bound=1e-4 --rel_error_bound=1e-6
+// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %s --abs_error_bound=1e-4 --rel_error_bound=1e-6
 
 // RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s
 // RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation --abs_error_bound=1e-4 --rel_error_bound=1e-6
@@ -15,9 +15,9 @@ fusion {
     algorithm=dot_f32_f32_f32, backend_config={sizes:[32]}
 }
 // CHECK: #[[$ATTR_0:.+]] = #xla.indexing_map<"([[PID:pid(_0)?]]) -> (([[PID]] mod 2) * 16), domain: [[PID]] in [0, 255]">
-// CHECK: #[[$ATTR_1:.+]] = #xla.indexing_map<"([[PID]]) -> ([[PID]] floordiv 16), domain: [[PID]] in [0, 255]">
+// CHECK: #[[$ATTR_1:.+]] = #xla.indexing_map<"([[PID]]) -> ([[PID]] / 16), domain: [[PID]] in [0, 255]">
 // CHECK: #[[$ATTR_2:.+]] = #xla.indexing_map<"(d0) -> (d0 * 32), domain: d0 in [0, 7]">
-// CHECK: #[[$ATTR_3:.+]] = #xla.indexing_map<"([[PID]]) -> ((([[PID]] floordiv 2) mod 8) * 64), domain: [[PID]] in [0, 255]">
+// CHECK: #[[$ATTR_3:.+]] = #xla.indexing_map<"([[PID]]) -> ((([[PID]] / 2) mod 8) * 64), domain: [[PID]] in [0, 255]">
 
 // CHECK:      xtile.entry_func @triton_fn
 // CHECK-SAME:  %[[ARG0:[A-Za-z0-9]+]]: memref<32x16x256xf32, #xtile.layout<[2, 0, 1]>>,

@@ -116,9 +116,8 @@ TEST_F(HloOpProfilesTest, GetProfileA6000) {
 }
 
 TEST_F(HloOpProfilesTest, GetProfileH100) {
-  auto hlo_op_profiles =
-      HloOpProfiles::Load(kDeviceHloOpProfiles,
-                          /*default_profile_name=*/"sm_100_B200");
+  auto hlo_op_profiles = HloOpProfiles::Load(kDeviceHloOpProfiles,
+                                             /*default_profile_name=*/"sm_100");
   auto device_info_sm_85 = TestGpuDeviceInfo::H100SXMDeviceInfo(
       stream_executor::CudaComputeCapability(9, 0));
 
@@ -144,6 +143,34 @@ TEST_F(HloOpProfilesTest, GetProfileSm103) {
   EXPECT_EQ(
       op_profile.at(std::make_pair(HloOpcode::kDivide, PrimitiveType::S8)),
       372);
+}
+
+TEST_F(HloOpProfilesTest, GetProfileSm100) {
+  auto hlo_op_profiles = HloOpProfiles::Load(kDeviceHloOpProfiles,
+                                             /*default_profile_name=*/"sm_80");
+  stream_executor::DeviceDescription b200_device_info;
+  b200_device_info.set_name("NVIDIA B200");
+  b200_device_info.set_gpu_compute_capability(
+      stream_executor::GpuComputeCapability(
+          stream_executor::CudaComputeCapability(10, 0)));
+  stream_executor::DeviceDescription gb200_device_info;
+  gb200_device_info.set_name("NVIDIA GB200");
+  gb200_device_info.set_gpu_compute_capability(
+      stream_executor::GpuComputeCapability(
+          stream_executor::CudaComputeCapability(10, 0)));
+
+  EXPECT_EQ(HloOpProfiles::GetProfileName(b200_device_info), "sm_100");
+  EXPECT_EQ(HloOpProfiles::GetDeviceSpecificProfileName(b200_device_info),
+            "sm_100_B200");
+  EXPECT_EQ(HloOpProfiles::GetProfileName(gb200_device_info), "sm_100");
+  EXPECT_EQ(HloOpProfiles::GetDeviceSpecificProfileName(gb200_device_info),
+            "sm_100_GB200");
+  const auto& op_profile = hlo_op_profiles->GetProfile(b200_device_info);
+  ASSERT_TRUE(op_profile.contains(
+      std::make_pair(HloOpcode::kDivide, PrimitiveType::S8)));
+  EXPECT_EQ(
+      op_profile.at(std::make_pair(HloOpcode::kDivide, PrimitiveType::S8)),
+      373);
 }
 
 TEST_F(HloOpProfilesTest, GetProfileMI210) {

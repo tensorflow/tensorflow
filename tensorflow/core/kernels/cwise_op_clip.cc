@@ -85,6 +85,12 @@ struct UnaryClipFunc {
   T operator()(const T& value) const {
     return (std::max)((std::min)(value, value_max), value_min);
   }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
+    return Eigen::internal::pmax(
+        Eigen::internal::pmin(x, Eigen::internal::pset1<Packet>(value_max)),
+        Eigen::internal::pset1<Packet>(value_min));
+  }
   T value_min;
   T value_max;
 };
@@ -113,7 +119,8 @@ struct UnaryClipOp<CPUDevice, T> {
                   typename TTypes<T>::ConstFlat& in1_flat,
                   typename TTypes<T>::ConstFlat& in2_flat,
                   typename TTypes<T>::Flat& out_flat) const {
-    out_flat = in0_flat.unaryExpr(UnaryClipFunc<T>(in1_flat(0), in2_flat(0)));
+    out_flat.device(d) =
+        in0_flat.unaryExpr(UnaryClipFunc<T>(in1_flat(0), in2_flat(0)));
   }
 };
 
@@ -123,6 +130,12 @@ struct BinaryRightClipFunc {
   explicit BinaryRightClipFunc(const T& value_min) : value_min(value_min) {}
   T operator()(const T& value, const T& value_max) const {
     return (std::max)((std::min)(value, value_max), value_min);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x,
+                                                        const Packet& y) const {
+    return Eigen::internal::pmax(Eigen::internal::pmin(x, y),
+                                 Eigen::internal::pset1<Packet>(value_min));
   }
   T value_min;
 };
@@ -147,7 +160,7 @@ struct BinaryRightClipOp<CPUDevice, T> {
                   typename TTypes<T>::ConstFlat& in1_flat,
                   typename TTypes<T>::ConstFlat& in2_flat,
                   typename TTypes<T>::Flat& out_flat) const {
-    out_flat =
+    out_flat.device(d) =
         in0_flat.binaryExpr(in2_flat, BinaryRightClipFunc<T>(in1_flat(0)));
   }
 };
@@ -158,6 +171,12 @@ struct BinaryLeftClipFunc {
   explicit BinaryLeftClipFunc(const T& value_max) : value_max(value_max) {}
   T operator()(const T& value, const T& value_min) const {
     return (std::max)((std::min)(value, value_max), value_min);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x,
+                                                        const Packet& y) const {
+    return Eigen::internal::pmax(
+        Eigen::internal::pmin(x, Eigen::internal::pset1<Packet>(value_max)), y);
   }
   T value_max;
 };
@@ -182,7 +201,7 @@ struct BinaryLeftClipOp<CPUDevice, T> {
                   typename TTypes<T>::ConstFlat& in1_flat,
                   typename TTypes<T>::ConstFlat& in2_flat,
                   typename TTypes<T>::Flat& out_flat) const {
-    out_flat =
+    out_flat.device(d) =
         in0_flat.binaryExpr(in1_flat, BinaryLeftClipFunc<T>(in2_flat(0)));
   }
 };
@@ -312,3 +331,33 @@ REGISTER_KERNEL_BUILDER(Name("ClipByValue")
 #endif
 
 }  // namespace tensorflow
+
+namespace Eigen {
+namespace internal {
+
+template <typename T>
+struct functor_traits<tensorflow::functor::UnaryClipFunc<T, false>> {
+  enum {
+    Cost = NumTraits<T>::AddCost * 2,
+    PacketAccess = packet_traits<T>::HasMin && packet_traits<T>::HasMax
+  };
+};
+
+template <typename T>
+struct functor_traits<tensorflow::functor::BinaryRightClipFunc<T, false>> {
+  enum {
+    Cost = NumTraits<T>::AddCost * 2,
+    PacketAccess = packet_traits<T>::HasMin && packet_traits<T>::HasMax
+  };
+};
+
+template <typename T>
+struct functor_traits<tensorflow::functor::BinaryLeftClipFunc<T, false>> {
+  enum {
+    Cost = NumTraits<T>::AddCost * 2,
+    PacketAccess = packet_traits<T>::HasMin && packet_traits<T>::HasMax
+  };
+};
+
+}  // namespace internal
+}  // namespace Eigen

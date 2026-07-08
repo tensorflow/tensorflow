@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_AUTOTUNER_MIOPEN_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -54,8 +55,13 @@ class MIOpenBackend : public GpuCodegenBackend {
   absl::Status ApplyConfig(HloInstruction& instr,
                            const BackendConfig& config) override;
 
+  std::string version() const override {
+    return target_config().dnn_version_info.ToString();
+  }
+
  private:
   bool IsSupported(const HloInstruction& instr) override;
+
   bool do_not_autotune_;
   stream_executor::DeviceAddressAllocator* allocator_;
 };

@@ -64,6 +64,7 @@ cc_library(
     deps = [
         ":subprocess_registry",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/profiler/utils:timestamp_utils",
         "//xla/tsl/profiler/utils:xplane_schema",

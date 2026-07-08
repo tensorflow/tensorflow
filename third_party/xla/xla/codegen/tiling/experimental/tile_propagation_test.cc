@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/codegen/tiling/experimental/tile_propagation.h"
 
-#include <algorithm>
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -26,11 +24,12 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
-#include "absl/strings/escaping.h"
-#include "absl/strings/str_cat.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/test_utils.h"
@@ -45,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu::experimental {
@@ -53,55 +53,6 @@ namespace {
 using ::absl_testing::StatusIs;
 using ::llvm::SmallVector;
 using ::mlir::MLIRContext;
-
-// Generates a human readable report of the first mismatch between two strings.
-// Intended to be used only when ApproximateMatch returns false.
-std::string GetMismatchReport(int lhs_index, int rhs_index,
-                              absl::string_view expected,
-                              absl::string_view actual) {
-  // Failsafe. Should never happen if only called when ApproximateMatch returns
-  // false.
-  if (lhs_index == expected.size() && rhs_index == actual.size()) {
-    return "Strings match (ignoring whitespace).";
-  }
-  std::string report =
-      absl::StrCat("\nMismatch found. Expected char at ", lhs_index,
-                   ", Actual char at ", rhs_index, "\n");
-
-  const auto append_context = [&](absl::string_view str, size_t mismatch_idx,
-                                  absl::string_view label) {
-    static constexpr size_t kContextWidth = 10;
-    const size_t start =
-        mismatch_idx > kContextWidth ? mismatch_idx - kContextWidth : 0;
-    const size_t end = std::min(str.length(), mismatch_idx + kContextWidth);
-    std::string line = absl::StrCat(label, ": ");
-    static constexpr absl::string_view kTruncated = "[truncated]";
-    static constexpr absl::string_view kEOF = "[EOF]";
-    if (start > 0) {
-      absl::StrAppend(&line, kTruncated);
-    }
-    absl::StrAppend(&line,
-                    absl::CEscape(str.substr(start, mismatch_idx - start)));
-    // Position of mismatch in the line.
-    size_t caret_pos = line.length();
-    // Content from mismatch onwards
-    if (mismatch_idx < str.length()) {
-      absl::StrAppend(
-          &line, absl::CEscape(str.substr(mismatch_idx, end - mismatch_idx)));
-    } else {
-      absl::StrAppend(&line, kEOF);
-    }
-    if (end < str.length()) {
-      absl::StrAppend(&line, kTruncated);
-    }
-    absl::StrAppend(&report, line, "\n");
-    std::string caret_line(caret_pos, ' ');
-    absl::StrAppend(&report, caret_line, "^\n");
-  };
-  append_context(expected, lhs_index, "Expected");
-  append_context(actual, rhs_index, "Actual  ");
-  return report;
-}
 
 MATCHER_P(MatchToString, test_string, "") {
   absl::string_view expected_string = test_string;
@@ -119,7 +70,7 @@ MATCHER_P(MatchToString, test_string, "") {
 
 class TilePropagationTest : public HloHardwareIndependentTestBase {
  public:
-  TilePropagationTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+  TilePropagationTest() = default;
 
   HloInstruction* ParseAndGetRoot(absl::string_view hlo_string) {
     auto module_or = ParseAndReturnVerifiedModule(hlo_string);
@@ -159,8 +110,10 @@ TEST_P(ReshapeTilePropagationTest, PropagateReshape) {
   HloInstruction* reshape =
       builder.AddInstruction(HloInstruction::CreateReshape(output_shape, p0));
 
-  auto tiling_space = TilingSpace::Create(*HloFusionAdaptor::ForInstruction(p0),
-                                          &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(p0),
+                          &mlir_context_));
   if (!param.input_tile_sizes.empty()) {
     CHECK_EQ(param.input_tile_sizes.size(), tiling_space->num_dimensions());
     ASSERT_OK(tiling_space->AssignTileSizes(param.input_tile_sizes));
@@ -181,6 +134,14 @@ TEST_P(ReshapeTilePropagationTest, PropagateReshape) {
   auto output_tiles =
       PropagateTileToOutput(*tiling_space, *reshape, input_tile, 0);
 
+  input_tile.Simplify();
+  if (output_tiles.ok()) {
+    ASSERT_EQ(output_tiles->size(), 1);
+    auto output_tile = output_tiles.value()[0];
+    output_tile.Simplify();
+    ASSERT_OK(VerifyTileEquivalence(input_tile, input_shape, output_tile,
+                                    output_shape, tiling_space.get()));
+  }
   if (param.expected_output.empty()) {
     ASSERT_FALSE(output_tiles.ok());
   } else {
@@ -194,6 +155,9 @@ TEST_P(ReshapeTilePropagationTest, PropagateReshape) {
 INSTANTIATE_TEST_SUITE_P(
     ReshapeTilePropagationTests, ReshapeTilePropagationTest,
     ::testing::ValuesIn<ReshapeTestCase>({
+        // =====================================================================
+        // General / Other Reshapes
+        // =====================================================================
         {"Identity",
          /*input_shape=*/{10, 20},
          /*input_tile_sizes=*/{},
@@ -205,6 +169,19 @@ INSTANTIATE_TEST_SUITE_P(
       -> offsets [tid_0 * ts_0, tid_1 * ts_1]
          sizes [ts_0, ts_1]
          strides [1, 2]
+         upper bounds [10, 20]
+  )"},
+        {"IdentityConcrete",
+         /*input_shape=*/{10, 20},
+         /*input_tile_sizes=*/{2, 2},
+         /*input_tile_strides=*/{1, 1},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{10, 20},
+         /*expected_output=*/R"(
+    0) (tid_0, tid_1)
+      -> offsets [tid_0 * 2, tid_1 * 2]
+         sizes [2, 2]
+         strides [1, 1]
          upper bounds [10, 20]
   )"},
         {"IncreaseRank",
@@ -260,11 +237,15 @@ INSTANTIATE_TEST_SUITE_P(
          /*input_tile_offsets=*/{},
          /*output_shape=*/{1, 12, 7, 5, 2},
          /*expected_output=*/""},
+
+        // =====================================================================
+        // CollapseShapeContiguous
+        // =====================================================================
         // Example (tid_0, tid_1) -> (offset, upper bound):
         // (0, 0) -> (0,  3), (0, 1) -> ( 3,  4)
         // (1, 0) -> (4,  7), (1, 1) -> ( 7,  8)
         // (2, 0) -> (8, 11), (2, 1) -> (11, 12)
-        {"CollapseShapeCase1_Stride1_LastDimPartialTiled",
+        {"CollapseShapeContiguous_Stride1_LastDimPartialTiled",
          /*input_shape=*/{3, 4},
          /*input_tile_sizes=*/{1, 3},
          /*input_tile_strides=*/{1, 1},
@@ -277,7 +258,7 @@ INSTANTIATE_TEST_SUITE_P(
          strides [1]
          upper bounds [min(tid_0, 2) * 4 + min(tid_1 * 3 + 2, 3) + 1]
   )"},
-        {"CollapseShapeCase2_Stride1_LastDimFullTiled",
+        {"CollapseShapeContiguous_Stride1_LastDimFullTiled",
          /*input_shape=*/{3, 4},
          /*input_tile_sizes=*/{2, 4},
          /*input_tile_strides=*/{1, 1},
@@ -285,16 +266,29 @@ INSTANTIATE_TEST_SUITE_P(
          /*output_shape=*/{12},
          /*expected_output=*/R"(
     0) (tid_0, tid_1)
-      -> offsets [tid_0 * 8 + tid_1 * 4]
+      -> offsets [tid_0 * 8]
          sizes [8]
          strides [1]
-         upper bounds [min(tid_0 * 2 + 1, 2) * 4 + min(tid_1 * 4 + 3, 3) + 1]
+         upper bounds [min(tid_0 * 2 + 1, 2) * 4 + 4]
+  )"},
+        {"CollapseShapeContiguous_10x4_1x4",
+         /*input_shape=*/{10, 4},
+         /*input_tile_sizes=*/{1, 4},
+         /*input_tile_strides=*/{1, 1},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{40},
+         /*expected_output=*/R"(
+    0) (tid_0, tid_1)
+      -> offsets [tid_0 * 4]
+         sizes [4]
+         strides [1]
+         upper bounds [min(tid_0, 9) * 4 + 4]
   )"},
         // Example (tid_0, tid_1) -> (offset, upper bound):
         // (0, 0) -> (0,  4), (0, 1) -> ( 3,  4)
         // (1, 0) -> (4,  8), (1, 1) -> ( 7,  8)
         // (2, 0) -> (8, 12), (2, 1) -> (11, 12)
-        {"CollapseShapeCase3_StrideNot1_LastDimPartialTiled",
+        {"CollapseShapeContiguous_StrideNot1_LastDimPartialTiled",
          /*input_shape=*/{3, 4},
          /*input_tile_sizes=*/{1, 3},
          /*input_tile_strides=*/{1, 2},
@@ -307,7 +301,7 @@ INSTANTIATE_TEST_SUITE_P(
          strides [2]
          upper bounds [min(tid_0, 2) * 4 + min(tid_1 * 3 + 4, 3) + 1]
   )"},
-        {"CollapseShape_WithLeadingOneInOutput",
+        {"CollapseShapeContiguous_WithLeadingOneInOutput",
          /*input_shape=*/{3, 4},
          /*input_tile_sizes=*/{1, 3},
          /*input_tile_strides=*/{1, 1},
@@ -320,7 +314,7 @@ INSTANTIATE_TEST_SUITE_P(
          strides [1, 1]
          upper bounds [1, min(tid_0, 2) * 4 + min(tid_1 * 3 + 2, 3) + 1]
   )"},
-        {"CollapseShape_WithTrailingOneInOutput",
+        {"CollapseShapeContiguous_WithTrailingOneInOutput",
          /*input_shape=*/{3, 4},
          /*input_tile_sizes=*/{1, 3},
          /*input_tile_strides=*/{1, 1},
@@ -333,7 +327,7 @@ INSTANTIATE_TEST_SUITE_P(
          strides [1, 1]
          upper bounds [min(tid_0, 2) * 4 + min(tid_1 * 3 + 2, 3) + 1, 1]
   )"},
-        {"CollapseShape_WithMiddleOneInInput",
+        {"CollapseShapeContiguous_WithMiddleOneInInput",
          /*input_shape=*/{3, 1, 4},
          /*input_tile_sizes=*/{1, 1, 3},
          /*input_tile_strides=*/{1, 1, 1},
@@ -346,20 +340,185 @@ INSTANTIATE_TEST_SUITE_P(
          strides [1]
          upper bounds [min(tid_0, 2) * 4 + min(tid_2 * 3 + 2, 3) + 1]
   )"},
-        {"CollapseShape_3DCollapseWithTrivialInnerDim",
+        {"CollapseShapeContiguous_3DCollapseWithTrivialInnerDim",
          /*input_shape=*/{2, 32, 128},
          /*input_tile_sizes=*/{1, 16, 1},
          /*input_tile_strides=*/{1, 1, 1},
          /*input_tile_offsets=*/{},
          /*output_shape=*/{8192},
          /*expected_output=*/R"(
-     0) (tid_0, tid_1, tid_2)
-       -> offsets [tid_0 * 4096 + tid_1 * 2048 + tid_2]
-          sizes [16]
-          strides [128]
-          upper bounds [min(tid_1 * 16 + 15, 31) * 128 + min(tid_0, 1) * 4096 + min(tid_2, 127) + 1]
-   )"},
-        {"ExpandShape_FullTargetInnerDim",
+      0) (tid_0, tid_1, tid_2)
+        -> offsets [tid_0 * 4096 + tid_1 * 2048 + tid_2]
+           sizes [16]
+           strides [128]
+           upper bounds [min(tid_1 * 16 + 15, 31) * 128 + min(tid_0, 1) * 4096 + min(tid_2, 127) + 1]
+    )"},
+        {"CollapseShapeContiguous_3DCollapseWithTrivialInnerDim_Strided",
+         /*input_shape=*/{2, 32, 128},
+         /*input_tile_sizes=*/{1, 16, 1},
+         /*input_tile_strides=*/{1, 1, 2},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{8192},
+         /*expected_output=*/R"(
+      0) (tid_0, tid_1, tid_2)
+        -> offsets [tid_0 * 4096 + tid_1 * 2048 + tid_2]
+           sizes [16]
+           strides [128]
+           upper bounds [min(tid_1 * 16 + 15, 31) * 128 + min(tid_0, 1) * 4096 + min(tid_2, 127) + 1]
+    )"},
+        {"CollaseShapeNonContinousTile1",
+         /*input_shape=*/{17, 2, 4},
+         /*input_tile_sizes=*/{4, 1, 4},
+         /*input_tile_strides=*/{1, 1, 1},
+         /*input_tile_offsets=*/{0, 0, 0},
+         /*output_shape=*/{136},
+         /*expected_output=*/""},
+        {"CollapseShapeContiguous_FullySpannedInnermost",
+         /*input_shape=*/{3, 4},
+         /*input_tile_sizes=*/{3, 2},
+         /*input_tile_strides=*/{1, 2},
+         /*input_tile_offsets=*/{0, 0},
+         /*output_shape=*/{12},
+         /*expected_output=*/R"(
+    0) (tid_0, tid_1)
+      -> offsets [0]
+         sizes [6]
+         strides [2]
+         upper bounds [11]
+  )"},
+        {"CollapseShapeContiguous_PreserveInnermostStride",
+         /*input_shape=*/{3, 4},
+         /*input_tile_sizes=*/{1, 2},
+         /*input_tile_strides=*/{1, 2},
+         /*input_tile_offsets=*/{1, 0},
+         /*output_shape=*/{12},
+         /*expected_output=*/R"(
+    0) (tid_0, tid_1)
+      -> offsets [4]
+         sizes [2]
+         strides [2]
+         upper bounds [7]
+  )"},
+
+        // =====================================================================
+        // CollapseShapeNonContiguous
+        // =====================================================================
+        {"CollapseShapeNonContiguous_SteppedOuterDimension",
+         /*input_shape=*/{3, 4},
+         /*input_tile_sizes=*/{2, 1},
+         /*input_tile_strides=*/{2, 1},
+         /*input_tile_offsets=*/{0, 0},
+         /*output_shape=*/{12},
+         /*expected_output=*/R"(
+    0) (tid_0, tid_1)
+      -> offsets [0]
+         sizes [2]
+         strides [8]
+         upper bounds [9]
+  )"},
+        {"CollapseShapeNonContiguous_MultipleSteppedOuterDimensions",
+         /*input_shape=*/{3, 4, 5},
+         /*input_tile_sizes=*/{2, 2, 1},
+         /*input_tile_strides=*/{2, 2, 1},
+         /*input_tile_offsets=*/{0, 0, 0},
+         /*output_shape=*/{60},
+         /*expected_output=*/""},
+        {"CollapseShapeNonContiguous_SteppedOuterDimensionAndAnotherTiled",
+         /*input_shape=*/{3, 4},
+         /*input_tile_sizes=*/{2, 2},
+         /*input_tile_strides=*/{2, 1},
+         /*input_tile_offsets=*/{0, 0},
+         /*output_shape=*/{12},
+         /*expected_output=*/""},
+        {"CollapseShapeNonContiguous_SteppedOuterAndInnermostStrideNot1_"
+         "InnermostSize1",
+         /*input_shape=*/{3, 4},
+         /*input_tile_sizes=*/{2, 1},
+         /*input_tile_strides=*/{2, 2},
+         /*input_tile_offsets=*/{0, 0},
+         /*output_shape=*/{12},
+         /*expected_output=*/R"(
+    0) (tid_0, tid_1)
+      -> offsets [0]
+         sizes [2]
+         strides [8]
+         upper bounds [9]
+  )"},
+        {"CollapseShapeNonContiguous_SteppedOuterAndInnermostStrideNot1_"
+         "BothTiled",
+         /*input_shape=*/{3, 4},
+         /*input_tile_sizes=*/{2, 2},
+         /*input_tile_strides=*/{2, 2},
+         /*input_tile_offsets=*/{0, 0},
+         /*output_shape=*/{12},
+         /*expected_output=*/""},
+        {"CollapseShapeNonContiguous_ZeroStride",
+         /*input_shape=*/{3, 4},
+         /*input_tile_sizes=*/{1, 3},
+         /*input_tile_strides=*/{0, 1},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{12},
+         /*expected_output=*/""},
+        {"CollapseShapeNonContiguous_NegativeStride",
+         /*input_shape=*/{3, 4},
+         /*input_tile_sizes=*/{1, 3},
+         /*input_tile_strides=*/{-1, 1},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{12},
+         /*expected_output=*/""},
+        {"CollapseShapeTrivialTiledDim",
+         /*input_shape=*/{1, 4},
+         /*input_tile_sizes=*/{2, 2},
+         /*input_tile_strides=*/{1, 1},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{4},
+         /*expected_output=*/R"(
+         0) (tid_0, tid_1) ->
+          offsets [tid_1 * 2] sizes [2] strides [1] upper bounds [4] )"},
+        {"CollapseShapeWithTrivialTiledDimInGroup",
+         /*input_shape=*/{2, 1, 2},
+         /*input_tile_sizes=*/{2, 2, 2},
+         /*input_tile_strides=*/{1, 2, 1},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{4},
+         /*expected_output=*/R"(
+         0) (tid_0, tid_1, tid_2) ->
+          offsets [0] sizes [4] strides [1] upper bounds [4]
+        )"},
+        {"CollapseToSingleElement",
+         /*input_shape=*/{1, 1, 1},
+         /*input_tile_sizes=*/{1, 1, 1},
+         /*input_tile_strides=*/{1, 1, 1},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{1},
+         /*expected_output=*/R"(
+         0) (tid_0, tid_1, tid_2) ->
+          offsets [0] sizes [1] strides [1] upper bounds [1]
+        )"},
+        {"CollapseToSingleElementTiled",
+         /*input_shape=*/{1, 1, 1},
+         /*input_tile_sizes=*/{2, 1, 1},
+         /*input_tile_strides=*/{1, 1, 1},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{1},
+         /*expected_output=*/R"(
+         0) (tid_0, tid_1, tid_2) ->
+          offsets [0] sizes [1] strides [1] upper bounds [1]
+        )"},
+        {"CollapseToScalar",
+         /*input_shape=*/{1, 1, 1},
+         /*input_tile_sizes=*/{2, 2, 2},
+         /*input_tile_strides=*/{1, 1, 1},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{},
+         /*expected_output=*/R"(
+         0) (tid_0, tid_1, tid_2) ->
+          offsets [] sizes [] strides [] upper bounds []
+        )"},
+        // =====================================================================
+        // ExpandShapeContiguous
+        // =====================================================================
+        {"ExpandShapeContiguous_FullTargetInnerDim",
          /*input_shape=*/{12},
          /*input_tile_sizes=*/{4},
          /*input_tile_strides=*/{1},
@@ -372,7 +531,7 @@ INSTANTIATE_TEST_SUITE_P(
          strides [1, 1]
          upper bounds [tid_0 + 1, 4]
   )"},
-        {"ExpandShape_PartialTargetInnerDim",
+        {"ExpandShapeContiguous_PartialTargetInnerDim",
          /*input_shape=*/{12},
          /*input_tile_sizes=*/{2},
          /*input_tile_strides=*/{1},
@@ -385,7 +544,7 @@ INSTANTIATE_TEST_SUITE_P(
          strides [1, 1]
          upper bounds [1, 3]
   )"},
-        {"ExpandShape_MultipleTargetInnerDims",
+        {"ExpandShapeContiguous_MultipleTargetInnerDims",
          /*input_shape=*/{12},
          /*input_tile_sizes=*/{8},
          /*input_tile_strides=*/{1},
@@ -398,14 +557,14 @@ INSTANTIATE_TEST_SUITE_P(
          strides [1, 1]
          upper bounds [3, 4]
   )"},
-        {"ExpandShape_Unsupported_NonBox",
+        {"ExpandShapeContiguous_Unsupported_NonBox",
          /*input_shape=*/{12},
          /*input_tile_sizes=*/{5},
          /*input_tile_strides=*/{1},
          /*input_tile_offsets=*/{0},
          /*output_shape=*/{3, 4},
          /*expected_output=*/""},
-        {"ExpandShape_WithUnitDim",
+        {"ExpandShapeContiguous_WithUnitDim",
          /*input_shape=*/{12},
          /*input_tile_sizes=*/{4},
          /*input_tile_strides=*/{1},
@@ -418,7 +577,7 @@ INSTANTIATE_TEST_SUITE_P(
          strides [1, 1, 1]
          upper bounds [tid_0 + 1, 1, 4]
   )"},
-        {"ExpandShape_To1DIdentity",
+        {"ExpandShapeContiguous_To1DIdentity",
          /*input_shape=*/{12},
          /*input_tile_sizes=*/{4},
          /*input_tile_strides=*/{1},
@@ -431,18 +590,61 @@ INSTANTIATE_TEST_SUITE_P(
          strides [1, 1]
          upper bounds [1, 12]
   )"},
-        {"CollapseShape_PreserveInnermostStride",
-         /*input_shape=*/{3, 4},
-         /*input_tile_sizes=*/{1, 2},
-         /*input_tile_strides=*/{1, 2},
-         /*input_tile_offsets=*/{1, 0},
-         /*output_shape=*/{12},
+        {"ExpandSingleElement",
+         /*input_shape=*/{1},
+         /*input_tile_sizes=*/{1},
+         /*input_tile_strides=*/{1},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{1, 1, 1},
          /*expected_output=*/R"(
-    0) (tid_0, tid_1)
-      -> offsets [4]
-         sizes [2]
-         strides [2]
-         upper bounds [7]
+         0) (tid_0) ->
+          offsets [0, 0, 0]
+          sizes [1, 1, 1]
+          strides [1, 1, 1]
+          upper bounds [1, 1, 1]
+        )"},
+        {"ExpandSingleTiledElement",
+         /*input_shape=*/{1},
+         /*input_tile_sizes=*/{1},
+         /*input_tile_strides=*/{1},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{1, 1, 1},
+         /*expected_output=*/R"(
+         0) (tid_0) ->
+          offsets [0, 0, 0]
+          sizes [1, 1, 1]
+          strides [1, 1, 1]
+          upper bounds [1, 1, 1]
+        )"},
+        {"ExpandScalar",
+         /*input_shape=*/{},
+         /*input_tile_sizes=*/{},
+         /*input_tile_strides=*/{},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{1, 1, 1},
+         /*expected_output=*/R"(
+         0) () ->
+          offsets [0, 0, 0]
+          sizes [1, 1, 1]
+          strides [1, 1, 1]
+          upper bounds [1, 1, 1]
+        )"},
+
+        // =====================================================================
+        // ExpandShapeNonContiguous
+        // =====================================================================
+        {"ExpandShapeNonContiguous_SteppedSource",
+         /*input_shape=*/{128},
+         /*input_tile_sizes=*/{2},
+         /*input_tile_strides=*/{64},
+         /*input_tile_offsets=*/{0},
+         /*output_shape=*/{1, 2, 64},
+         /*expected_output=*/R"(
+    0) (tid_0)
+      -> offsets [0, 0, 0]
+         sizes [1, 2, 1]
+         strides [1, 1, 1]
+         upper bounds [1, 2, 1]
   )"},
     }),
     [](const ::testing::TestParamInfo<ReshapeTilePropagationTest::ParamType>&
@@ -457,8 +659,10 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfElementwiseOp) {
       ROOT add0 = f32[10,20] add(p0, p1)
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
   ASSERT_OK_AND_ASSIGN(
       auto tiled_operands,
       PropagateTileToInput(
@@ -487,8 +691,10 @@ TEST_F(TilePropagationTest, CanPropagateToOutputsOfElementwiseOp) {
       ROOT add0 = f32[10,20] add(p0, p1)
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
   constexpr absl::string_view kExpected = R"(
     0) (tid_0, tid_1)
       -> offsets [tid_0 * ts_0, tid_1 * ts_1]
@@ -521,31 +727,20 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfAllReduceOp) {
     }
     ENTRY %module {
       %p0 = f32[2,8,256] parameter(0)
-      %ar-start = f32[2,8,256] all-reduce-start(p0), replica_groups={{0,1}},
+      ROOT %ar = f32[2,8,256] all-reduce(p0), replica_groups={{0,1}},
         to_apply=%add
-      ROOT %ar-done = f32[2,8,256] all-reduce-done(%ar-start)
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
   ASSERT_OK_AND_ASSIGN(
-      auto ar_done_operands,
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(
+      auto ar_operands,
       PropagateTileToInput(
           *tiling_space, *root,
           GetTestTile(*tiling_space, root->shape().dimensions()), 0));
-  EXPECT_THAT(ar_done_operands, MatchToString(R"(
-    0) (tid_0, tid_1, tid_2)
-      -> offsets [tid_0 * ts_0, tid_1 * ts_1, tid_2 * ts_2]
-         sizes [ts_0, ts_1, ts_2]
-         strides [1, 2, 3]
-         upper bounds [2, 8, 256]
-  )"));
-  ASSERT_OK_AND_ASSIGN(
-      auto ar_start_operands,
-      PropagateTileToInput(
-          *tiling_space, *root->operand(0),
-          GetTestTile(*tiling_space, root->shape().dimensions()), 0));
-  EXPECT_THAT(ar_start_operands, MatchToString(R"(
+  EXPECT_THAT(ar_operands, MatchToString(R"(
     0) (tid_0, tid_1, tid_2)
       -> offsets [tid_0 * ts_0, tid_1 * ts_1, tid_2 * ts_2]
          sizes [ts_0, ts_1, ts_2]
@@ -562,8 +757,10 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfAllGatherOp) {
       ROOT all_gather = f32[128,256] all-gather(p0), replica_groups={{0,1}}, dimensions={0}
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
   ASSERT_OK_AND_ASSIGN(
       auto tiled_operands,
       PropagateTileToInput(
@@ -574,7 +771,13 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfAllGatherOp) {
       -> offsets [(tid_0 * ts_0) mod 64, tid_1 * ts_1]
          sizes [ts_0, ts_1]
          strides [1, 2]
-         upper bounds [64, 256] replica_id [(tid_0 * ts_0) floordiv 64]
+         upper bounds [64, 256]
+         replica ids {
+           offsets [(tid_0 * ts_0) / 64]
+           sizes [1]
+           strides [1]
+           upper bounds [2]
+         }
   )"));
 }
 
@@ -586,8 +789,10 @@ TEST_F(TilePropagationTest, CanPropagateToInputOfBroadcastOp) {
       ROOT broadcast = f32[10,20,30] broadcast(p0), dimensions={0,2}
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
   ASSERT_OK_AND_ASSIGN(
       auto tiled_operands,
       PropagateTileToInput(
@@ -610,8 +815,10 @@ TEST_F(TilePropagationTest, CanPropagateToOutputOfBroadcastOp) {
       ROOT broadcast = f32[10,20,30] broadcast(p0), dimensions={0,2}
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
   ASSERT_OK_AND_ASSIGN(
       auto tiled_operands,
       PropagateTileToOutput(
@@ -635,8 +842,10 @@ TEST_F(TilePropagationTest, CanPropagateThroughBitcastTransposeOp) {
       ROOT bitcast = f32[3, 6, 128, 12288] {2, 1, 3, 0} bitcast(p0)
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
   ASSERT_OK_AND_ASSIGN(
       auto input_tiled_operands,
       PropagateTileToInput(
@@ -644,22 +853,23 @@ TEST_F(TilePropagationTest, CanPropagateThroughBitcastTransposeOp) {
           GetTestTile(*tiling_space, root->shape().dimensions()), 0));
   EXPECT_THAT(input_tiled_operands, MatchToString(R"(
     0) (tid_0, tid_1, tid_2, tid_3)
-      -> offsets [tid_0 * ts_0, tid_2 * ts_2, tid_3 * ts_3, tid_1 * ts_1]
-         sizes [ts_0, ts_2, ts_3, ts_1]
-         strides [1, 3, 4, 2]
-         upper bounds [3, 128, 12288, 6]
+      -> offsets [tid_0 * ts_0, tid_3 * ts_3, tid_1 * ts_1, tid_2 * ts_2]
+         sizes [ts_0, ts_3, ts_1, ts_2]
+         strides [1, 4, 2, 3]
+         upper bounds [3, 12288, 6, 128]
   )"));
   ASSERT_OK_AND_ASSIGN(
       auto output_tiled_operands,
       PropagateTileToOutput(
           *tiling_space, *root,
-          GetTestTile(*tiling_space, root->shape().dimensions()), 0));
+          GetTestTile(*tiling_space, root->operand(0)->shape().dimensions()),
+          0));
   EXPECT_THAT(output_tiled_operands, MatchToString(R"(
     0) (tid_0, tid_1, tid_2, tid_3)
-      -> offsets [tid_0 * ts_0, tid_3 * ts_3, tid_1 * ts_1, tid_2 * ts_2]
-         sizes [ts_0, ts_3, ts_1, ts_2]
-         strides [1, 4, 2, 3]
-         upper bounds [3, 12288, 6, 128]
+      -> offsets [tid_0 * ts_0, tid_2 * ts_2, tid_3 * ts_3, tid_1 * ts_1]
+         sizes [ts_0, ts_2, ts_3, ts_1]
+         strides [1, 3, 4, 2]
+         upper bounds [3, 6, 128, 12288]
   )"));
 }
 
@@ -671,12 +881,11 @@ TEST_F(TilePropagationTest, CanNotPropagateThroughBitcastReshapeOp) {
       ROOT bitcast = f32[4, 8, 4] bitcast(p0)
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
-  EXPECT_THAT(PropagateTileToInput(
-                  *tiling_space, *root,
-                  GetTestTile(*tiling_space, root->shape().dimensions()), 0),
-              StatusIs(absl::StatusCode::kUnimplemented));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  ASSERT_OK(tiling_space->AssignTileSizes({2, 2, 2}));
   EXPECT_THAT(PropagateTileToInput(
                   *tiling_space, *root,
                   GetTestTile(*tiling_space, root->shape().dimensions()), 0),
@@ -691,11 +900,41 @@ TEST_F(TilePropagationTest, CanNotPropagateThroughBitcastTrtInput) {
       ROOT bitcast = bf16[16, 2048, 4096]{1, 2, 0} bitcast(p0)
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  ASSERT_OK(tiling_space->AssignTileSizes({2, 2, 2}));
   EXPECT_THAT(PropagateTileToInput(
                   *tiling_space, *root,
                   GetTestTile(*tiling_space, root->shape().dimensions()), 0),
+              StatusIs(absl::StatusCode::kUnimplemented));
+}
+
+TEST_F(TilePropagationTest, AllowSymbolicTilingOfRehsapeButRejectsConcrete) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[4, 4, 4, 4] parameter(0)
+      ROOT bitcast = f32[256] bitcast(p0)
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+
+  // Before AssignTileSizes: ACCEPTED as the tiling space is symbolic.
+  EXPECT_TRUE(PropagateTileToInput(*tiling_space, *root,
+                                   tiling_space->tiled_roots()[0], 0)
+                  .ok());
+
+  // After AssignTileSizes: REJECTED as "Multiple dimensions are partially tiled
+  // tile_size [1, 1, 3, 2], dims [4, 4, 4, 4]".
+  ASSERT_OK(tiling_space->AssignTileSizes({10}));
+  Tile input_tile = tiling_space->tiled_roots()[0];
+  input_tile.Simplify();
+  EXPECT_THAT(PropagateTileToInput(*tiling_space, *root, input_tile, 0),
               StatusIs(absl::StatusCode::kUnimplemented));
 }
 
@@ -709,8 +948,10 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfConcatenateOp) {
       ROOT concatenate = f32[60] concatenate(p0, p1, p2), dimensions={0}
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
   ASSERT_OK_AND_ASSIGN(
       auto tiled_operands,
       PropagateTileToInput(
@@ -745,8 +986,10 @@ TEST_F(TilePropagationTest, CanPropagateToOutputsOfConcatenateOp) {
       ROOT concatenate = f32[10, 15] concatenate(p0, p1, p2), dimensions={1}
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
 
   // Operand 0
   ASSERT_OK_AND_ASSIGN(
@@ -805,8 +1048,10 @@ TEST_F(TilePropagationTest,
       ROOT concatenate = f32[60] concatenate(p0, p1, p2), dimensions={0}
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
   Tile tile = GetTestTile(*tiling_space, root->shape().dimensions());
   llvm::SmallVector<SymbolicExpr, 1> upper_bounds{
       CreateSymbolicConstant(25, &mlir_context_)};
@@ -844,8 +1089,10 @@ TEST_F(TilePropagationTest,
       ROOT concatenate = f32[60] concatenate(p0, p1, p2), dimensions={0}
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
   Tile tile = GetTestTile(*tiling_space, root->shape().dimensions());
   llvm::SmallVector<SymbolicExpr, 1> upper_bounds{
       CreateDimExpr(0, &mlir_context_) * 30};
@@ -881,8 +1128,10 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfPadOpWithEdgePadding) {
       ROOT pad = f32[12,13] pad(p0, p1), padding=1_7x0_9
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
   ASSERT_OK_AND_ASSIGN(
       auto tiled_operands,
       PropagateTileToInput(
@@ -909,8 +1158,10 @@ TEST_F(TilePropagationTest, CanNotPropagateToInputsOfPadOpWithInteriorPadding) {
       ROOT pad = f32[30,13] pad(p0, p1), padding=1_4_7x0_9
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
   EXPECT_THAT(PropagateTileToInput(
                   *tiling_space, *root,
                   GetTestTile(*tiling_space, root->shape().dimensions()),
@@ -926,8 +1177,10 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfTransposeOp) {
       ROOT transpose = f32[1,2,3,5] transpose(p0), dimensions={2,0,3,1}
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
   ASSERT_OK_AND_ASSIGN(
       auto tiled_operands,
       PropagateTileToInput(
@@ -950,8 +1203,10 @@ TEST_F(TilePropagationTest, CanPropagateToOutputOfTransposeOp) {
       ROOT transpose = f32[1,2,3,5] transpose(p0), dimensions={2,0,3,1}
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
   ASSERT_OK_AND_ASSIGN(
       auto tiled_operands,
       PropagateTileToOutput(
@@ -975,8 +1230,10 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfSliceOp) {
       ROOT slice = f32[2,7,4] slice(p0), slice={[1:5:2], [0:7], [5:13:2]}
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
   ASSERT_OK_AND_ASSIGN(
       auto tiled_operands,
       PropagateTileToInput(
@@ -1003,9 +1260,11 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfDynSliceOp) {
         dynamic_slice_sizes={1, 2, 32}
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
-  auto tile = GetTestTile(*tiling_space, root->shape().dimensions());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  Tile tile = GetTestTile(*tiling_space, root->shape().dimensions());
   ASSERT_OK_AND_ASSIGN(auto tiled_operands,
                        PropagateTileToInput(*tiling_space, *root, tile, 0));
   EXPECT_THAT(tiled_operands, MatchToString(R"(
@@ -1034,9 +1293,11 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfDotOp) {
         lhs_contracting_dims={4,2}, rhs_contracting_dims={3,0}
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
-  auto tile = GetTestTile(*tiling_space, root->shape().dimensions());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  Tile tile = GetTestTile(*tiling_space, root->shape().dimensions());
   tile = Tile{*tiling_space, tile.offsets(), tile.sizes(), tile.strides(),
               tile.upper_bounds()};
   ASSERT_OK_AND_ASSIGN(auto tiled_operands,
@@ -1055,6 +1316,24 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfDotOp) {
             strides [1, 1, 5, 1, 6, 2]
             upper bounds [17, 10, 16, 18, 22, 38]
   )"));
+
+  EXPECT_OK(tiling_space->AssignTileSizes({16, 16, 16, 16, 16, 16, 16, 16}));
+  ASSERT_OK_AND_ASSIGN(auto concrete_tiled_operands,
+                       PropagateTileToInput(*tiling_space, *root,
+                                            tiling_space->tiled_roots()[0], 0));
+
+  EXPECT_THAT(concrete_tiled_operands, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2, tid_3, tid_4, tid_5, tid_6, tid_7)
+         -> offsets [0, tid_1 * 16, tid_7 * 16, 0, tid_6 * 16, 0]
+            sizes [16, 16, 16, 16, 16, 16]
+            strides [1, 1, 1, 1, 1, 1]
+            upper bounds [4, 38, 17, 11, 18, 10]
+    1) (tid_0, tid_1, tid_2, tid_3, tid_4, tid_5, tid_6, tid_7)
+         -> offsets [tid_7 * 16, 0, 0, tid_6 * 16, tid_5 * 16, tid_1 * 16]
+            sizes [16, 16, 16, 16, 16, 16]
+            strides [1, 1, 1, 1, 1, 1]
+            upper bounds [17, 10, 16, 18, 22, 38]
+  )"));
 }
 
 TEST_F(TilePropagationTest, CanPropagateToInputsForScaledDotOp) {
@@ -1071,9 +1350,11 @@ TEST_F(TilePropagationTest, CanPropagateToInputsForScaledDotOp) {
           rhs_contracting_dims={1}
       }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
-  auto tile = GetTestTile(*tiling_space, root->shape().dimensions());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  Tile tile = GetTestTile(*tiling_space, root->shape().dimensions());
   ASSERT_OK_AND_ASSIGN(auto tiled_operands,
                        PropagateTileToInput(*tiling_space, *root, tile, 0));
   EXPECT_THAT(tiled_operands, MatchToString(R"(
@@ -1088,8 +1369,8 @@ TEST_F(TilePropagationTest, CanPropagateToInputsForScaledDotOp) {
          strides [2, 1]
          upper bounds [64, 512]
     2) (tid_0, tid_1, tid_2)
-      -> offsets [(tid_0 * ts_0) floordiv 32, (tid_2 * ts_2) floordiv 256]
-         sizes [(tid_0 * ts_0 + ts_0 - 1) floordiv 32 - (tid_0 * ts_0) floordiv 32 + 1, (tid_2 * ts_2 + ts_2 - 1) floordiv 256 - (tid_2 * ts_2) floordiv 256 + 1]
+      -> offsets [(tid_0 * ts_0) / 32, (tid_2 * ts_2) / 256]
+         sizes [(tid_0 * ts_0 + ts_0 - 1) / 32 - (tid_0 * ts_0) / 32 + 1, (tid_2 * ts_2 + ts_2 - 1) / 256 - (tid_2 * ts_2) / 256 + 1]
          strides [1, 1]
          upper bounds [32, 2]
     3) (tid_0, tid_1, tid_2)
@@ -1111,8 +1392,10 @@ TEST_F(TilePropagationTest, CanPropagateReplicaIdThroughBroadcast) {
       ROOT all_gather = f32[10, 64, 5] all-gather(broadcast), replica_groups={{0,1}}, dimensions={1}
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
 
   ASSERT_OK_AND_ASSIGN(
       auto tiled_ag_operands,
@@ -1125,7 +1408,13 @@ TEST_F(TilePropagationTest, CanPropagateReplicaIdThroughBroadcast) {
       -> offsets [tid_0 * ts_0, (tid_1 * ts_1) mod 32, tid_2 * ts_2]
          sizes [ts_0, ts_1, ts_2]
          strides [1, 2, 3]
-         upper bounds [10, 32, 5] replica_id [(tid_1 * ts_1) floordiv 32]
+         upper bounds [10, 32, 5]
+         replica ids {
+           offsets [(tid_1 * ts_1) / 32]
+           sizes [1]
+           strides [1]
+           upper bounds [2]
+         }
   )"));
   // operand(0) is the broadcast, tile_ag_operands[0] is its output tile.
   // This should preserve the replica_id and drop dimension 2.
@@ -1137,7 +1426,13 @@ TEST_F(TilePropagationTest, CanPropagateReplicaIdThroughBroadcast) {
       -> offsets [tid_0 * ts_0, (tid_1 * ts_1) mod 32]
          sizes [ts_0, ts_1]
          strides [1, 2]
-         upper bounds [10, 32] replica_id [(tid_1 * ts_1) floordiv 32]
+         upper bounds [10, 32]
+         replica ids {
+           offsets [(tid_1 * ts_1) / 32]
+           sizes [1]
+           strides [1]
+           upper bounds [2]
+         }
   )"));
 }
 
@@ -1156,8 +1451,10 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfReduceOp) {
         dimensions={3, 1}, to_apply=max
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
 
   ASSERT_OK_AND_ASSIGN(auto tiled_operands,
                        PropagateTileToInput(*tiling_space, *root,
@@ -1178,7 +1475,7 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfReduceOp) {
                                             tiling_space->tiled_roots()[0], 0));
   EXPECT_THAT(concrete_tiled_operands, MatchToString(R"(
     0) (tid_0, tid_1, tid_2, tid_3)
-      -> offsets [tid_0 * 8, tid_3 * 64, tid_1 * 16, tid_2 * 32]
+      -> offsets [tid_0 * 8, 0, 0, tid_2 * 32]
         sizes [8, 64, 16, 32]
         strides [1, 1, 1, 1]
         upper bounds [150, 20, 10, 50]
@@ -1202,8 +1499,10 @@ TEST_F(TilePropagationTest, CanPropagateToOutputOfReduceOp) {
         dimensions={3, 1}, to_apply=max
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
   ASSERT_OK_AND_ASSIGN(
       auto tiled_operands,
       PropagateTileToOutput(
@@ -1241,10 +1540,12 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfVariadicReduceOp) {
         dimensions={0}, to_apply=min
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
   MLIRContext mlir_context;
-  auto tile = GetTestTile(*tiling_space, GetFirstShape(root).dimensions());
+  Tile tile = GetTestTile(*tiling_space, GetFirstShape(root).dimensions());
   tile = Tile{*tiling_space, tile.offsets(), tile.sizes(), tile.strides(),
               tile.upper_bounds()};
   ASSERT_OK_AND_ASSIGN(auto tiled_operands,
@@ -1261,53 +1562,6 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfVariadicReduceOp) {
   )"));
 }
 
-TEST_F(TilePropagationTest,
-       ConcatenateOpAddsOperandSizeDivisibilityConstraints) {
-  HloInstruction* root = ParseAndGetRoot(R"(
-    HloModule m
-    ENTRY e {
-      p0 = f32[10] parameter(0)
-      p1 = f32[20] parameter(1)
-      concat = f32[30] concatenate(p0, p1), dimensions={0}
-      ROOT slice = f32[10] slice(concat), slice={[5:15]}
-    }
-  )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
-  Tile tile = GetTestTile(*tiling_space, root->shape().dimensions());
-
-  // Propagate from slice to concat.
-  ASSERT_OK_AND_ASSIGN(auto operands_of_slice,
-                       PropagateTileToInput(*tiling_space, *root, tile, 0));
-
-  // Propagate from concat to operands.
-  const Tile& concat_tile = operands_of_slice[0];
-  const HloInstruction* concat = root->operand(0);
-  ASSERT_OK_AND_ASSIGN(
-      auto operands_of_concat,
-      PropagateTileToInput(*tiling_space, *concat, concat_tile, 0));
-
-  std::string space_str = tiling_space->ToString();
-  EXPECT_THAT(space_str, ::testing::HasSubstr("d0 * s0 is multiple of s0"));
-  EXPECT_THAT(space_str, ::testing::HasSubstr("5 is multiple of s0"));
-
-  EXPECT_OK(tiling_space->AssignTileSizes({5}));
-
-  auto tiling_space2 = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
-  Tile tile2 = GetTestTile(*tiling_space2, root->shape().dimensions());
-  ASSERT_OK_AND_ASSIGN(auto operands_of_slice2,
-                       PropagateTileToInput(*tiling_space2, *root, tile2, 0));
-  const Tile& concat_tile2 = operands_of_slice2[0];
-  ASSERT_OK(
-      PropagateTileToInput(*tiling_space2, *concat, concat_tile2, 0).status());
-
-  EXPECT_THAT(
-      tiling_space2->AssignTileSizes({4}),
-      StatusIs(absl::StatusCode::kInvalidArgument,
-               ::testing::HasSubstr("Divisibility constraint not satisfied")));
-}
-
 TEST_F(TilePropagationTest, ConcatenateOpSupportsShiftedConstantBaseOffset) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
@@ -1319,10 +1573,13 @@ TEST_F(TilePropagationTest, ConcatenateOpSupportsShiftedConstantBaseOffset) {
       ROOT slice = f32[30] slice(concat), slice={[13:43]}
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
   Tile tile = GetTestTile(*tiling_space, root->shape().dimensions());
 
+  // Symbolic tiling.
   ASSERT_OK_AND_ASSIGN(auto operands_of_slice,
                        PropagateTileToInput(*tiling_space, *root, tile, 0));
   const Tile& concat_tile = operands_of_slice[0];
@@ -1331,25 +1588,14 @@ TEST_F(TilePropagationTest, ConcatenateOpSupportsShiftedConstantBaseOffset) {
       auto operands_of_concat,
       PropagateTileToInput(*tiling_space, *concat, concat_tile, 0));
 
-  std::string space_str = tiling_space->ToString();
-  EXPECT_THAT(space_str, ::testing::HasSubstr("d0 * s0 is multiple of s0"));
-  EXPECT_THAT(space_str, ::testing::HasSubstr("17 is multiple of s0"));
-
   EXPECT_OK(tiling_space->AssignTileSizes({17}));
-
-  auto tiling_space2 = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
-  Tile tile2 = GetTestTile(*tiling_space2, root->shape().dimensions());
-  ASSERT_OK_AND_ASSIGN(auto operands_of_slice2,
-                       PropagateTileToInput(*tiling_space2, *root, tile2, 0));
-  const Tile& concat_tile2 = operands_of_slice2[0];
+  const Tile& root_tile = tiling_space->tiled_roots()[0];
+  ASSERT_OK_AND_ASSIGN(
+      auto operands_of_slice2,
+      PropagateTileToInput(*tiling_space, *root, root_tile, 0));
+  const Tile& concat_tile_17 = operands_of_slice2[0];
   ASSERT_OK(
-      PropagateTileToInput(*tiling_space2, *concat, concat_tile2, 0).status());
-
-  EXPECT_THAT(
-      tiling_space2->AssignTileSizes({5}),
-      StatusIs(absl::StatusCode::kInvalidArgument,
-               ::testing::HasSubstr("Divisibility constraint not satisfied")));
+      PropagateTileToInput(*tiling_space, *concat, concat_tile_17, 0).status());
 }
 
 TEST_F(TilePropagationTest,
@@ -1364,8 +1610,10 @@ TEST_F(TilePropagationTest,
       ROOT slice = f32[30] slice(concat), slice={[13:43]}
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
   EXPECT_OK(tiling_space->AssignTileSizes({5}));
 
   const Tile& root_tile = tiling_space->tiled_roots()[0];
@@ -1384,5 +1632,150 @@ TEST_F(TilePropagationTest,
                    "1 must be a clean multiple of its tile size 5")));
 }
 
+TEST_F(TilePropagationTest, CanPropagateToInputOfScanOp) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+
+    scan_add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      add1 = f32[] add(p0, p1)
+      ROOT tuple = (f32[], f32[]) tuple(add1, add1)
+    }
+
+    ENTRY e {
+      p0 = f32[4] parameter(0)
+      p1 = f32[] parameter(1)
+      scan = (f32[4], f32[]) scan(p0, p1), dimensions={0}, num_carries=1, to_apply=scan_add
+      ROOT gte = f32[4] get-tuple-element(scan), index=0
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  const HloInstruction* scan = root->operand(0);
+
+  // Create a tile for an array output (output_index = 0)
+  Tile tile_arr = GetTestTile(*tiling_space, {4});
+  ASSERT_OK_AND_ASSIGN(auto tiled_operands_arr,
+                       PropagateTileToInput(*tiling_space, *scan, tile_arr, 0));
+
+  EXPECT_THAT(tiled_operands_arr, MatchToString(R"(
+    0) (tid_0)
+         -> offsets [tid_0 * ts_0]
+            sizes [ts_0]
+            strides [1]
+            upper bounds [4]
+    1) (tid_0)
+         -> offsets []
+            sizes []
+            strides []
+            upper bounds []
+  )"));
+
+  // Create a tile for a scalar carry output (output_index = 1)
+  Tile tile_carry = GetTestTile(*tiling_space, {});
+  ASSERT_OK_AND_ASSIGN(
+      auto tiled_operands_carry,
+      PropagateTileToInput(*tiling_space, *scan, tile_carry, 1));
+
+  EXPECT_THAT(tiled_operands_carry, MatchToString(R"(
+    0) (tid_0)
+         -> offsets []
+            sizes []
+            strides []
+            upper bounds []
+    1) (tid_0)
+         -> offsets []
+            sizes []
+            strides []
+            upper bounds []
+  )"));
+}
+
+TEST_F(TilePropagationTest, CanPropagateToOutputOfScanOp) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+
+    scan_add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      add1 = f32[] add(p0, p1)
+      ROOT tuple = (f32[], f32[]) tuple(add1, add1)
+    }
+
+    ENTRY e {
+      p0 = f32[4] parameter(0)
+      p1 = f32[] parameter(1)
+      scan = (f32[4], f32[]) scan(p0, p1), dimensions={0}, num_carries=1, to_apply=scan_add
+      ROOT gte = f32[4] get-tuple-element(scan), index=0
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  const HloInstruction* scan = root->operand(0);
+
+  // Create a tile for an array input (input_index = 0)
+  Tile tile_arr = GetTestTile(*tiling_space, {4});
+  ASSERT_OK_AND_ASSIGN(
+      auto output_tiles,
+      PropagateTileToOutput(*tiling_space, *scan, tile_arr, 0));
+
+  EXPECT_THAT(output_tiles, MatchToString(R"(
+    0) (tid_0)
+         -> offsets [tid_0 * ts_0]
+            sizes [ts_0]
+            strides [1]
+            upper bounds [4]
+    1) (tid_0)
+         -> offsets []
+            sizes []
+            strides []
+            upper bounds []
+  )"));
+
+  // Create a tile for a scalar carry input (input_index = 1)
+  Tile tile_carry = GetTestTile(*tiling_space, {});
+  EXPECT_THAT(PropagateTileToOutput(*tiling_space, *scan, tile_carry, 1),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(TilePropagationTest, CanPropagateToGetTupleElementOp) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = (f32[4], f32[]) parameter(0)
+      ROOT gte = f32[4] get-tuple-element(p0), index=0
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+
+  Tile tile = GetTestTile(*tiling_space, {4});
+  ASSERT_OK_AND_ASSIGN(auto input_tiles,
+                       PropagateTileToInput(*tiling_space, *root, tile, 0));
+  EXPECT_THAT(input_tiles, MatchToString(R"(
+    0) (tid_0)
+         -> offsets [tid_0 * ts_0]
+            sizes [ts_0]
+            strides [1]
+            upper bounds [4]
+  )"));
+
+  ASSERT_OK_AND_ASSIGN(auto output_tiles,
+                       PropagateTileToOutput(*tiling_space, *root, tile, 0));
+  EXPECT_THAT(output_tiles, MatchToString(R"(
+    0) (tid_0)
+         -> offsets [tid_0 * ts_0]
+            sizes [ts_0]
+            strides [1]
+            upper bounds [4]
+  )"));
+}
 }  // namespace
 }  // namespace xla::gpu::experimental

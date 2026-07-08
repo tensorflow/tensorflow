@@ -47,14 +47,22 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "allocator.cc",
-        "allocator.h",
         "allocator_registry.cc",
-        "allocator_registry.h",
         "cpu_allocator_impl.cc",
+        "scoped_allocation_trace.cc",
+        "tracking_allocator.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs_no_runtime",
+    srcs = [
+        "allocator.h",
+        "allocator_registry.h",
         "device_type.h",
         "fixedpoint_types.h",
         "numeric_types.h",
-        "tracking_allocator.cc",
+        "scoped_allocation_trace.h",
         "tracking_allocator.h",
         "type_traits.h",
     ],
@@ -65,9 +73,15 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "cancellation.cc",
+        "metrics.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
         "cancellation.h",
         "fixedpoint_types.h",
-        "metrics.cc",
         "metrics.h",
     ],
 )
@@ -174,6 +188,20 @@ cc_library(
 )
 
 cc_library(
+    name = "scoped_allocation_trace",
+    srcs = ["scoped_allocation_trace.cc"],
+    hdrs = ["scoped_allocation_trace.h"],
+    features = ["parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
     name = "bfc_allocator",
     srcs = [
         "allocator_retry.cc",
@@ -186,6 +214,7 @@ cc_library(
     deps = [
         ":allocator",
         ":metrics",
+        ":scoped_allocation_trace",
         ":shared_counter",
         "//xla/tsl/lib/core:bits",
         "//xla/tsl/platform:env",
@@ -214,14 +243,17 @@ tsl_cc_test(
     deps = [
         ":allocator",
         ":bfc_allocator",
+        ":scoped_allocation_trace",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:env_impl",  # buildcleaner: keep
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:log_severity",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/log:scoped_mock_log",
         "@com_google_absl//absl/synchronization",
-        "@tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -285,6 +317,7 @@ cc_library(
         ":device_type",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:device_name_utils",
         "@com_google_absl//absl/algorithm:container",

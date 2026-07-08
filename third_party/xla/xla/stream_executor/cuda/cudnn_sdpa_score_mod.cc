@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -185,12 +186,12 @@ Tensor LiteralToCudnnTensor(const xla::HloInstruction* hlo,
 
 absl::Status ScoreModFunc::UpdateCudnnMap(cudnn_frontend::graph::Graph& graph,
                                           UidGenerator next_uid) {
-  TF_RETURN_IF_ERROR(UpdateHloParameterToCudnnMap(graph, fwd_hlo_to_cudnn_,
-                                                  fwd_comp_, next_uid));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(UpdateHloParameterToCudnnMap(graph, fwd_hlo_to_cudnn_,
+                                               fwd_comp_, next_uid));
+  RETURN_IF_ERROR(
       UpdateHloConstantToCudnnMap(graph, fwd_hlo_to_cudnn_, fwd_comp_));
   if (bwd_comp_) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         UpdateHloConstantToCudnnMap(graph, bwd_hlo_to_cudnn_, bwd_comp_));
   }
   return absl::OkStatus();
@@ -202,9 +203,9 @@ absl::Status ScoreModFunc::UpdateHloParameterToCudnnMap(
     const xla::HloComputation* computation, UidGenerator next_uid) {
   for (int i = 1; i < computation->num_parameters(); i++) {
     auto parameter = computation->parameter_instruction(i);
-    TF_ASSIGN_OR_RETURN(const dnn::DataType type,
-                        xla::gpu::GetDNNDataTypeFromPrimitiveType(
-                            parameter->shape().element_type()));
+    ASSIGN_OR_RETURN(const dnn::DataType type,
+                     xla::gpu::GetDNNDataTypeFromPrimitiveType(
+                         parameter->shape().element_type()));
     auto desc = dnn::TensorDescriptor::For(
         type, parameter->shape().dimensions(),
         parameter->shape().layout().minor_to_major());

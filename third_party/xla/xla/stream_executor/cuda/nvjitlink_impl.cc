@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/nvJitLink.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -136,7 +137,7 @@ absl::StatusOr<cuda::Assembly> CompileAndLinkUsingLibNvJitLink(
     return cuda::Assembly{};
   }
 
-  TF_ASSIGN_OR_RETURN(NvJitLinkVersion version, GetNvJitLinkVersion());
+  ASSIGN_OR_RETURN(NvJitLinkVersion version, GetNvJitLinkVersion());
   auto [version_major, version_minor] = version;
   WarnIfBadPtxasVersion("nvJitLink", cc, {version_major, version_minor, 0});
 
@@ -175,8 +176,7 @@ absl::StatusOr<cuda::Assembly> CompileAndLinkUsingLibNvJitLink(
   };
 
   if (create_result != NVJITLINK_SUCCESS) {
-    TF_ASSIGN_OR_RETURN(std::string error_log,
-                        nvJitLinkGetErrorLog(link_handle));
+    ASSIGN_OR_RETURN(std::string error_log, nvJitLinkGetErrorLog(link_handle));
 
     VLOG(3) << "libnvjitlink error log output: " << error_log;
 
@@ -203,15 +203,15 @@ absl::StatusOr<cuda::Assembly> CompileAndLinkUsingLibNvJitLink(
 
     std::optional<std::string> error_log;
     if (dump_compilation_log || result != NVJITLINK_SUCCESS) {
-      TF_ASSIGN_OR_RETURN(error_log, nvJitLinkGetErrorLog(link_handle));
+      ASSIGN_OR_RETURN(error_log, nvJitLinkGetErrorLog(link_handle));
     }
 
     if (result != NVJITLINK_SUCCESS) {
       // Print the verbose output of ptxas.
       VLOG(3) << "libnvjitlink error log output: " << *error_log;
 
-      TF_RETURN_IF_ERROR(CreateErrorFromPTXASLog(*error_log, architecture,
-                                                 cancel_if_reg_spill));
+      RETURN_IF_ERROR(CreateErrorFromPTXASLog(*error_log, architecture,
+                                              cancel_if_reg_spill));
       return ToStatus(result, *error_log);
     }
 
@@ -226,23 +226,22 @@ absl::StatusOr<cuda::Assembly> CompileAndLinkUsingLibNvJitLink(
   nvJitLinkResult linking_result = nvJitLinkComplete(link_handle);
 
   if (linking_result != NVJITLINK_SUCCESS) {
-    TF_ASSIGN_OR_RETURN(std::string error_log,
-                        nvJitLinkGetErrorLog(link_handle));
+    ASSIGN_OR_RETURN(std::string error_log, nvJitLinkGetErrorLog(link_handle));
 
     // Print the verbose output of ptxas.
     VLOG(3) << "libnvjitlink error log output: " << error_log;
 
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         CreateErrorFromPTXASLog(error_log, architecture, cancel_if_reg_spill));
     return ToStatus(linking_result, error_log);
   }
 
-  TF_ASSIGN_OR_RETURN(std::string info_log, nvJitLinkGetInfoLog(link_handle));
+  ASSIGN_OR_RETURN(std::string info_log, nvJitLinkGetInfoLog(link_handle));
 
   // Print the verbose output of ptxas.
   VLOG(3) << "libnvjitlink info log output: " << info_log;
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       CreateErrorFromPTXASLog(info_log, architecture, cancel_if_reg_spill));
   ModuleStats module_stats = ExtractModuleStatsFromLog(info_log);
 
@@ -279,8 +278,7 @@ absl::StatusOr<int> GetLatestPtxIsaVersionForLibNvJitLink() {
   };
 
   if (create_result != NVJITLINK_SUCCESS) {
-    TF_ASSIGN_OR_RETURN(std::string error_log,
-                        nvJitLinkGetErrorLog(link_handle));
+    ASSIGN_OR_RETURN(std::string error_log, nvJitLinkGetErrorLog(link_handle));
 
     VLOG(3) << "libnvjitlink error log output: " << error_log;
 
@@ -304,7 +302,7 @@ absl::StatusOr<int> GetLatestPtxIsaVersionForLibNvJitLink() {
         "libnvjitlink compilation succeeded where it was expected to fail");
   }
 
-  TF_ASSIGN_OR_RETURN(std::string error_log, nvJitLinkGetErrorLog(link_handle));
+  ASSIGN_OR_RETURN(std::string error_log, nvJitLinkGetErrorLog(link_handle));
   return GetLatestPtxIsaVersionFromUnsupportedVersionErrorLog(error_log);
 }
 

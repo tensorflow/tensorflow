@@ -32,7 +32,6 @@ limitations under the License.
 #include "third_party/cudnn_frontend/include/cudnn_frontend_utils.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/gpu/runtime/command.h"
-#include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
@@ -122,11 +121,14 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
     return graph;
   }());
   int64_t workspace_size = graph.Graph().get_workspace_size();
-  TF_ASSERT_OK(graph.Prepare(
-      dnn_support, se::EngineOptions{/*require_determinism=*/false,
-                                     /*allow_tf32=*/true,
-                                     /*require_command_buffer=*/true}));
-  TF_ASSERT_OK(graph.Build(dnn_support, /*plan_id=*/std::nullopt));
+  TF_ASSERT_OK(
+      graph.Prepare(&dnn_support, stream_executor->GetDeviceDescription(),
+                    se::EngineOptions{/*require_determinism=*/false,
+                                      /*allow_tf32=*/true,
+                                      /*require_command_buffer=*/true}));
+  TF_ASSERT_OK(graph.Build(&dnn_support,
+                           stream_executor->GetDeviceDescription(),
+                           /*plan_id=*/std::nullopt));
   EXPECT_THAT(graph.SupportsExplicitCommandBufferConstruction(),
               absl_testing::IsOkAndHolds(true));
 

@@ -1,9 +1,11 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/stream_executor:build_defs.bzl", "stream_executor_build_defs_bzl_deps", "stream_executor_friends", "stream_executor_internal")
+load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm_is_configured", "stream_executor_build_defs_bzl_deps", "stream_executor_friends", "stream_executor_internal")
 load("//xla/tsl:tsl.bzl", "if_google", "if_oss", "internal_visibility")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -138,6 +140,7 @@ cc_library(
         ":device_address",
         ":platform",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -216,6 +219,28 @@ cc_library(
         ":stream_executor_h",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
+    name = "mock_command_buffer",
+    testonly = True,
+    hdrs = ["mock_command_buffer.h"],
+    deps = [
+        ":bit_pattern",
+        ":command_buffer",
+        ":device_address",
+        ":dnn",
+        ":kernel",
+        ":kernel_args",
+        ":launch_dim",
+        ":platform",
+        ":stream",
+        "//xla/hlo/testlib:test",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -304,6 +329,7 @@ cc_library(
         ":platform",
         ":stream",
         ":stream_executor_h",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
@@ -327,9 +353,9 @@ cc_library(
 )
 
 cc_library(
-    name = "vmm_device_address_allocator",
-    srcs = ["vmm_device_address_allocator.cc"],
-    hdrs = ["vmm_device_address_allocator.h"],
+    name = "device_address_vmm_allocator",
+    srcs = ["device_address_vmm_allocator.cc"],
+    hdrs = ["device_address_vmm_allocator.h"],
     deps = [
         ":device_address",
         ":device_address_allocator",
@@ -338,7 +364,8 @@ cc_library(
         ":platform",
         ":stream",
         ":stream_executor_h",
-        "//xla/tsl/platform:statusor",
+        "//xla/service:computation_placer_hdr",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -353,12 +380,85 @@ cc_library(
     ],
 )
 
+# Factory backends. Each implementation is free of platform `#if` macros; the
+# right one is selected by the top-level `device_address_vmm_allocator_factory`
+# dispatcher below (Stub / CUDA / ROCm), mirroring the //xla/pjrt:triton idiom.
+cc_library(
+    name = "device_address_vmm_allocator_factory_stub",
+    srcs = ["device_address_vmm_allocator_factory_stub.cc"],
+    tags = ["manual"],
+    deps = [
+        ":device_address_vmm_allocator",
+        ":platform",
+        ":stream",
+        ":stream_executor_h",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "device_address_vmm_allocator_factory_cuda",
+    srcs = ["device_address_vmm_allocator_factory_cuda.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+        "manual",
+    ],
+    deps = [
+        ":device_address_vmm_allocator",
+        ":platform",
+        ":stream",
+        ":stream_executor_h",
+        "//xla/stream_executor/cuda:cuda_device_address_vmm_allocator",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "device_address_vmm_allocator_factory_rocm",
+    srcs = ["device_address_vmm_allocator_factory_rocm.cc"],
+    tags = [
+        "gpu",
+        "manual",
+        "rocm-only",
+    ],
+    deps = [
+        ":device_address_vmm_allocator",
+        ":platform",
+        ":stream",
+        ":stream_executor_h",
+        "//xla/stream_executor/rocm:rocm_device_address_vmm_allocator",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "device_address_vmm_allocator_factory",
+    deps = [
+        ":device_address_vmm_allocator",
+    ] + if_cuda_or_rocm_is_configured(
+        [],
+        [":device_address_vmm_allocator_factory_stub"],
+    ) + if_rocm_is_configured(
+        [":device_address_vmm_allocator_factory_rocm"],
+    ) + if_cuda_is_configured(
+        [":device_address_vmm_allocator_factory_cuda"],
+    ),
+)
+
 cc_library(
     name = "launch_dim",
     srcs = ["launch_dim.cc"],
     hdrs = ["launch_dim.h"],
     deps = [
         ":launch_dim_proto_cc",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -410,11 +510,13 @@ cc_library(
         ":device_address",
         ":memory_allocation",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -426,6 +528,7 @@ cc_library(
     deps = [
         ":platform",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -481,6 +584,7 @@ cc_library(
         ":scratch_allocator",
         ":stream",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -536,6 +640,7 @@ cc_library(
         ":dnn",
         ":stream",
         ":stream_executor_h",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/base",
@@ -575,6 +680,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
@@ -685,6 +791,7 @@ cc_library(
     deps = [
         ":stream_executor_h",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -738,6 +845,7 @@ cc_library(
         ":kernel_args",
         ":kernel_args_packing_spec",
         ":kernel_spec_proto_cc",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
@@ -791,12 +899,12 @@ cc_library(
     srcs = ["kernel_args_packing_spec.cc"],
     hdrs = ["kernel_args_packing_spec.h"],
     deps = [
-        ":device_address",
         ":kernel_args",
         ":kernel_args_packed_vector",
         ":kernel_args_packing_spec_proto_cc",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/util:safe_reinterpret_cast",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
@@ -851,6 +959,7 @@ cc_library(
         ":kernel",
         ":kernel_spec",
         ":stream_executor_h",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -883,6 +992,7 @@ cc_library(
     srcs = ["semantic_version.cc"],
     hdrs = ["semantic_version.h"],
     deps = [
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -898,9 +1008,14 @@ cc_library(
     deps = [
         ":device_address",
         ":device_address_allocator",
-        "//xla/tsl/platform:statusor",
+        ":stream",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -975,9 +1090,9 @@ cc_library(
         ":command_buffer",
         ":stream",
         ":stream_executor_h",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
     ],
@@ -1012,6 +1127,7 @@ cc_library(
         ":stream",
         ":stream_executor_h",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
@@ -1080,6 +1196,15 @@ cc_library(
 #===--------------------------------------------------------------------------------------------===#
 
 xla_cc_test(
+    name = "command_buffer_test",
+    srcs = ["command_buffer_test.cc"],
+    deps = [
+        ":command_buffer",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
     name = "generic_memory_allocation_test",
     srcs = ["generic_memory_allocation_test.cc"],
     deps = [
@@ -1100,6 +1225,20 @@ xla_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest",
+        "@tsl//tsl/platform:test_main",
+    ],
+)
+
+xla_cc_test(
+    name = "memory_allocator_test",
+    srcs = ["memory_allocator_test.cc"],
+    deps = [
+        ":device_address",
+        ":memory_allocation",
+        ":memory_allocator",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest",
         "@tsl//tsl/platform:test_main",
     ],
@@ -1170,6 +1309,7 @@ xla_cc_test(
         ":platform_manager",
         ":stream_executor_h",
         "//xla/stream_executor/host:host_platform",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:statusor",
@@ -1201,6 +1341,7 @@ xla_cc_test(
     deps = [
         ":dnn",
         "//xla/tsl/platform:test",
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1228,7 +1369,6 @@ xla_cc_test(
         "//xla/backends/gpu/target_config",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/rocm:rocm_compute_capability",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],

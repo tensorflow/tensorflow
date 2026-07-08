@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -232,7 +233,7 @@ class StreamExecutor {
   virtual void DeallocateStream(Stream* stream) = 0;
 
   // Enables peer access from this StreamExecutor to memory
-  // allocated by other, such that launched device code, memcpies, etc may
+  // allocated by other, such that launched device code, memcopies, etc may
   // access it directly.
   virtual absl::Status EnablePeerAccessTo(StreamExecutor* other) = 0;
 
@@ -266,6 +267,11 @@ class StreamExecutor {
   // caller.
   virtual absl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription() const = 0;
+
+  // Returns the interconnect status of the device.
+  virtual absl::StatusOr<std::string> GetInterconnectStatus() const {
+    return absl::UnimplementedError("Not implemented");
+  }
 
   // Return the platform dependent stream priority value for the given priority.
   virtual int GetGpuStreamPriority(StreamPriority priority) { return 0; }
@@ -419,7 +425,20 @@ inline DeviceAddress<T> StreamExecutor::AllocateArray(uint64_t element_count,
                  << "]";
     return DeviceAddress<T>();
   }
-  return DeviceAddress<T>(Allocate(bytes, memory_space));
+
+  DeviceAddressBase raw_allocation = Allocate(bytes, memory_space);
+  if (raw_allocation.is_null()) {
+    return DeviceAddress<T>();
+  }
+
+  // Raw allocations can report a larger backend allocation size (for example,
+  // CUDA VMM granularity padding). AllocateArray exposes only the logical array
+  // byte range because callers requested exactly `element_count` elements and
+  // should not treat allocator padding as additional array elements.
+  DCHECK_GE(raw_allocation.size(), bytes);
+  DeviceAddressBase logical_allocation(raw_allocation.opaque(), bytes);
+  logical_allocation.SetPayload(raw_allocation.payload());
+  return DeviceAddress<T>(logical_allocation);
 }
 
 }  // namespace stream_executor

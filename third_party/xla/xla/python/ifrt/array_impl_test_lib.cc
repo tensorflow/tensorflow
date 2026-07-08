@@ -24,6 +24,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
@@ -38,6 +40,8 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/index.h"
+#include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
@@ -45,11 +49,14 @@ limitations under the License.
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
@@ -743,8 +750,28 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithLayout) {
   absl::c_iota(data, 0);
   Device* device = client->addressable_devices()[0];
 
-  auto layout = std::make_shared<xla::PjRtLayout>(
-      xla::LayoutUtil::MakeDescendingLayout(shape.dims().size()));
+  std::shared_ptr<xla::PjRtLayout> layout;
+  int64_t expected_size;
+  {
+    auto xla_layout =
+        xla::LayoutUtil::MakeDescendingLayout(shape.dims().size());
+    TF_ASSERT_OK_AND_ASSIGN(auto device_list, client->MakeDeviceList({device}));
+    auto topology = client->GetTopologyForDevices(device_list);
+    if (topology.ok()) {
+      auto topology_desc = (*topology)->description();
+      TF_ASSERT_OK_AND_ASSIGN(
+          xla::Shape xla_shape,
+          topology_desc->MakeCanonicalShapeForMemorySpace(
+              topology_desc->GetDefaultMemorySpaceKindId(),
+              xla::ShapeUtil::MakeShape(xla::PrimitiveType::F32, shape.dims()),
+              &xla_layout));
+      layout = std::make_shared<xla::PjRtLayout>(xla_shape.layout());
+      expected_size = xla::ShapeUtil::ArraySize(xla_shape);
+    } else {
+      layout = std::make_shared<xla::PjRtLayout>(std::move(xla_layout));
+      expected_size = *dtype.byte_size() * shape.num_elements();
+    }
+  }
 
   ArrayRef array;
   {
@@ -778,7 +805,6 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithLayout) {
   ASSERT_NE(result_layout, nullptr);
   EXPECT_EQ(*result_layout, *layout);
 
-  const int64_t expected_size = *dtype.byte_size() * shape.num_elements();
   EXPECT_THAT(array->ByteSize(), IsOkAndHolds(Optional(expected_size)));
 }
 
@@ -2085,6 +2111,252 @@ TEST(ArrayImplTest, CopyArraysWithPartialReuse) {
   }
 }
 
+class ArrayImplHashTest : public ::testing::TestWithParam<Client::HashMode> {};
+
+TEST_P(ArrayImplHashTest, HashValuesDifferentData) {
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  if (client->addressable_devices().size() < 2) {
+    GTEST_SKIP() << "This test needs at least 2 devices";
+  }
+  Client::HashMode hash_mode = GetParam();
+
+  DType dtype(DType::kF32);
+  Shape shape({4});
+  std::vector<float> data0 = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<float> data1 = {1.0f, 2.0f, 5.0f, 6.0f};
+
+  absl::Span<Device* const> devices =
+      client->addressable_devices().subspan(0, 2);
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                       client->MakeDeviceList(devices));
+
+  std::vector<Shape> shard_shapes = {Shape({2}), Shape({2})};
+  std::vector<IndexDomain> index_domains = {
+      IndexDomain(Index({0}), shard_shapes[0]),
+      IndexDomain(Index({2}), shard_shapes[1])};
+
+  ShardingRef sharding = ConcreteSharding::Create(
+      device_list, MemoryKind(), shape, shard_shapes, index_domains);
+
+  std::vector<Client::MakeArraysFromHostBufferShardsSpec> specs0;
+  specs0.push_back({
+      /*buffers=*/{{{0},
+                    {data0.data(), dtype, shard_shapes[0],
+                     /*byte_strides=*/std::nullopt, /*layout=*/nullptr}},
+                   {{1},
+                    {data0.data() + 2, dtype, shard_shapes[1],
+                     /*byte_strides=*/std::nullopt, /*layout=*/nullptr}}},
+      /*array_spec=*/{dtype, shape, sharding, /*layout=*/nullptr},
+  });
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<ArrayRef> arrays0,
+      client->MakeArraysFromHostBufferShards(
+          absl::MakeSpan(specs0),
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall));
+  ArrayRef array0 = arrays0.front();
+
+  std::vector<Client::MakeArraysFromHostBufferShardsSpec> specs1;
+  specs1.push_back({
+      /*buffers=*/{{{0},
+                    {data1.data(), dtype, shard_shapes[0],
+                     /*byte_strides=*/std::nullopt, /*layout=*/nullptr}},
+                   {{1},
+                    {data1.data() + 2, dtype, shard_shapes[1],
+                     /*byte_strides=*/std::nullopt, /*layout=*/nullptr}}},
+      /*array_spec=*/{dtype, shape, sharding, /*layout=*/nullptr},
+  });
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<ArrayRef> arrays1,
+      client->MakeArraysFromHostBufferShards(
+          absl::MakeSpan(specs1),
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall));
+  ArrayRef array1 = arrays1.front();
+
+  absl::StatusOr<std::vector<uint64_t>> result0 =
+      client->HashValues({array0}, hash_mode).Await();
+  if (absl::IsUnimplemented(result0.status())) {
+    GTEST_SKIP() << "HashValues not implemented";
+  }
+  ASSERT_OK(result0.status());
+
+  ASSERT_OK_AND_ASSIGN(std::vector<uint64_t> result1,
+                       client->HashValues({array1}, hash_mode).Await());
+
+  EXPECT_NE(result0->front(), result1.front());
+}
+
+TEST_P(ArrayImplHashTest, HashValuesDifferentShardings) {
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  if (client->addressable_devices().size() < 2) {
+    GTEST_SKIP() << "This test needs at least 2 devices";
+  }
+  Client::HashMode hash_mode = GetParam();
+
+  DType dtype(DType::kF32);
+  Shape shape({4});
+  std::vector<float> data(4);
+  absl::c_iota(data, 1.0f);
+
+  // Array 0: Single device
+  Device* device0 = client->addressable_devices().at(0);
+  ShardingRef sharding0 = SingleDeviceSharding::Create(device0, MemoryKind());
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef array0,
+      client->MakeArrayFromHostBuffer(
+          data.data(), dtype, shape,
+          /*byte_strides=*/std::nullopt, sharding0, /*layout=*/nullptr,
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr));
+
+  // Array 1: Fully-replicated on 2 devices
+  absl::Span<Device* const> devices =
+      client->addressable_devices().subspan(0, 2);
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                       client->MakeDeviceList(devices));
+  ShardingRef sharding1 = ConcreteEvenSharding::Create(
+      device_list, MemoryKind(), shape, /*shard_shape=*/shape,
+      /*is_fully_replicated=*/true);
+
+  std::vector<Client::MakeArraysFromHostBufferShardsSpec> specs;
+  specs.push_back({
+      /*buffers=*/{{{0},
+                    {data.data(), dtype, shape,
+                     /*byte_strides=*/std::nullopt, /*layout=*/nullptr}},
+                   {{1},
+                    {data.data(), dtype, shape,
+                     /*byte_strides=*/std::nullopt, /*layout=*/nullptr}}},
+      /*array_spec=*/{dtype, shape, sharding1, /*layout=*/nullptr},
+  });
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<ArrayRef> arrays,
+      client->MakeArraysFromHostBufferShards(
+          absl::MakeSpan(specs),
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall));
+  ArrayRef array1 = arrays.front();
+
+  absl::StatusOr<std::vector<uint64_t>> result0 =
+      client->HashValues({array0}, hash_mode).Await();
+  if (absl::IsUnimplemented(result0.status())) {
+    GTEST_SKIP() << "HashValues not implemented";
+  }
+  ASSERT_OK(result0.status());
+
+  ASSERT_OK_AND_ASSIGN(std::vector<uint64_t> result1,
+                       client->HashValues({array1}, hash_mode).Await());
+
+  EXPECT_EQ(result0->front(), result1.front());
+}
+
+TEST_P(ArrayImplHashTest, HashValuesDifferentElementOrders) {
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  Client::HashMode hash_mode = GetParam();
+
+  DType dtype(DType::kF32);
+  Shape shape({4});
+  std::vector<float> data0 = {1.0, 2.0, 3.0, 4.0};
+  std::vector<float> data1 = {1.0, 3.0, 2.0, 4.0};
+
+  Device* device = client->addressable_devices().at(0);
+  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
+
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef array0,
+      client->MakeArrayFromHostBuffer(
+          data0.data(), dtype, shape,
+          /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr));
+
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef array1,
+      client->MakeArrayFromHostBuffer(
+          data1.data(), dtype, shape,
+          /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr));
+
+  absl::StatusOr<std::vector<uint64_t>> result0 =
+      client->HashValues({array0}, hash_mode).Await();
+  if (absl::IsUnimplemented(result0.status())) {
+    GTEST_SKIP() << "HashValues not implemented";
+  }
+  ASSERT_OK(result0.status());
+
+  ASSERT_OK_AND_ASSIGN(std::vector<uint64_t> result1,
+                       client->HashValues({array1}, hash_mode).Await());
+
+  EXPECT_NE(result0->front(), result1.front());
+}
+
+TEST_P(ArrayImplHashTest, HashValuesInconsistentReplicas) {
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  if (client->addressable_devices().size() < 2) {
+    GTEST_SKIP() << "This test needs at least 2 devices";
+  }
+  Client::HashMode hash_mode = GetParam();
+
+  DType dtype(DType::kF32);
+  Shape shape({4});
+  std::vector<float> data0 = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<float> data1 = {1.0f, 2.0f, 3.0f, 5.0f};
+
+  absl::Span<Device* const> devices =
+      client->addressable_devices().subspan(0, 2);
+  ASSERT_OK_AND_ASSIGN(
+      auto array0,
+      client->MakeArrayFromHostBuffer(
+          data0.data(), dtype, shape, /*byte_strides=*/std::nullopt,
+          SingleDeviceSharding::Create(devices[0], MemoryKind()),
+          /*layout=*/nullptr,
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto array1,
+      client->MakeArrayFromHostBuffer(
+          data1.data(), dtype, shape, /*byte_strides=*/std::nullopt,
+          SingleDeviceSharding::Create(devices[1], MemoryKind()),
+          /*layout=*/nullptr,
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr));
+
+  std::vector<ArrayRef> arrays = {array0, array1};
+
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                       client->MakeDeviceList(devices));
+  ShardingRef sharding = ConcreteEvenSharding::Create(
+      device_list, MemoryKind(), shape, /*shard_shape=*/shape,
+      /*is_fully_replicated=*/true);
+
+  ASSERT_OK_AND_ASSIGN(ArrayRef array,
+                       client->AssembleArrayFromSingleDeviceArrays(
+                           dtype, shape, sharding, absl::MakeSpan(arrays),
+                           ArrayCopySemantics::kAlwaysCopy,
+                           SingleDeviceShardSemantics::kAddressableShards));
+
+  ASSERT_OK(array->GetReadyFuture().Await());
+
+  absl::StatusOr<std::vector<uint64_t>> result =
+      client->HashValues({array}, hash_mode).Await();
+  if (absl::IsUnimplemented(result.status())) {
+    GTEST_SKIP() << "HashValues not implemented";
+  }
+  EXPECT_THAT(result.status(), StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ArrayImplHashTests, ArrayImplHashTest,
+    ::testing::Values(Client::HashMode::kPhysical, Client::HashMode::kLogical),
+    [](const ::testing::TestParamInfo<Client::HashMode>& info) {
+      switch (info.param) {
+        case Client::HashMode::kPhysical:
+          return "Physical";
+        case Client::HashMode::kLogical:
+          return "Logical";
+      }
+    });
+
 TEST(ArrayImplTest, GetReadyFuture) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
 
@@ -2145,7 +2417,38 @@ TEST(ArrayImplTest, Delete) {
                                       /*byte_strides=*/std::nullopt, sharding,
                                       /*layout=*/nullptr, semantics,
                                       /*on_done_with_host_buffer=*/{}));
-  TF_EXPECT_OK(array->Delete().Await());
+  EXPECT_OK(array->Delete().Await());
+  EXPECT_TRUE(array->IsDeleted());
+}
+
+TEST(ArrayImplTest, BatchedDelete) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  std::vector<ValueRef> values;
+  for (int i = 0; i < 10; ++i) {
+    DType dtype(DType::kF32);
+    Shape shape({2, 3});
+    std::vector<float> data(6);
+    absl::c_iota(data, 0);
+    Device* device = client->addressable_devices().at(0);
+    ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
+    auto semantics = Client::HostBufferSemantics::kImmutableOnlyDuringCall;
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        values.emplace_back(),
+        client->MakeArrayFromHostBuffer(data.data(), dtype, shape,
+                                        /*byte_strides=*/std::nullopt, sharding,
+                                        /*layout=*/nullptr, semantics,
+                                        /*on_done_with_host_buffer=*/{}));
+  }
+
+  // Delete the first value separately to test that Delete is idempotent.
+  EXPECT_OK(values.front()->Delete().Await());
+  EXPECT_OK(client->DeleteValues(absl::MakeSpan(values)).Await());
+
+  for (const auto& value : values) {
+    EXPECT_TRUE(value->IsDeleted());
+  }
 }
 
 TEST(ArrayImplTest, DeleteIsIdempotent) {

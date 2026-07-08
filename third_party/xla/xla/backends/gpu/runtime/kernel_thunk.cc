@@ -20,10 +20,12 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
@@ -63,7 +65,7 @@ KernelThunk::KernelThunk(Thunk::ThunkInfo thunk_info, std::string kernel_name,
                          stream_executor::gpu::TmaMetadata tma_metadata,
                          std::vector<int64_t> zeroed_output_buffer_indices,
                          bool use_pdl)
-    : Command(CommandType::kLaunchCmd, Kind::kKernel, std::move(thunk_info)),
+    : Command(Kind::kKernel, std::move(thunk_info)),
       args_(kernel_arguments.GetArgumentShapedSlices()),
       written_(kernel_arguments.GetArgumentOutputFlags()),
       zeroed_output_buffer_indices_(std::move(zeroed_output_buffer_indices)),

@@ -25,6 +25,7 @@ limitations under the License.
 #include <iostream>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include "absl/status/status.h"

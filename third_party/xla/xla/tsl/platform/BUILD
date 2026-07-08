@@ -134,6 +134,7 @@ filegroup(
         "ram_file_system.h",
         "resource.h",
         "stack_frame.h",
+        "status.h",
         "statusor.h",
         "subprocess.h",
     ],
@@ -169,29 +170,11 @@ filegroup(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
-        "byte_order.h",
-        "criticality.h",
-        "dynamic_annotations.h",
         "env.cc",
-        "env.h",
-        "env_time.h",
         "errors.cc",
-        "errors.h",
-        "file_statistics.h",
         "file_system.cc",
-        "file_system.h",
-        "file_system_helper.h",
-        "intrusive_ptr.h",
-        "macros.h",
-        "prefetch.h",
-        "ram_file_system.h",
-        "resource.h",
         "status.cc",
-        "status.h",
-        "statusor.h",
         "threadpool.cc",
-        "threadpool.h",
-        "threadpool_interface.h",
     ] + select({
         "//xla/tsl:fuchsia": [],
         "//conditions:default": [
@@ -202,7 +185,32 @@ filegroup(
 )
 
 filegroup(
-    name = "mobile_srcs_only_runtime",
+    name = "mobile_hdrs_no_runtime",
+    srcs = [
+        "byte_order.h",
+        "criticality.h",
+        "dynamic_annotations.h",
+        "env.h",
+        "env_time.h",
+        "errors.h",
+        "file_statistics.h",
+        "file_system.h",
+        "file_system_helper.h",
+        "intrusive_ptr.h",
+        "macros.h",
+        "prefetch.h",
+        "ram_file_system.h",
+        "resource.h",
+        "status.h",
+        "statusor.h",
+        "threadpool.h",
+        "threadpool_interface.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
     srcs = [] + if_not_fuchsia(["subprocess.h"]),
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([
@@ -393,6 +401,7 @@ cc_library(
         ":threadpool_interface",
         ":types",
         "//xla/tsl/concurrency:executor",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:nullability",
@@ -464,6 +473,7 @@ tsl_cc_test(
     deps = [
         ":errors",
         ":test",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
@@ -480,6 +490,7 @@ cc_library(
         ":env",
         ":errors",
         ":file_statistics",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
@@ -679,6 +690,7 @@ tsl_cc_test(
         ":test",
         ":test_benchmark",
         ":test_main",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
     ],
@@ -779,7 +791,10 @@ cc_library(
     hdrs = ["status_macros.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([]),  # The header should be used only in OSS.
-    deps = [":statusor"],
+    deps = [
+        ":statusor",
+        "@com_google_absl//absl/status:status_macros",
+    ],
 )
 # copybara:comment_end
 

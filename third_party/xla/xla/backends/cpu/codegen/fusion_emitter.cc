@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "xla/codegen/ir_emission_utils.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/mlir_kernel_source.h"
-#include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -221,8 +221,8 @@ static absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitLoopFusionKernel(
   emitters::LoopFusionKernelEmitter loop_fusion_emitter(
       context, fusion, std::move(fusion_spec), buffer_assignment,
       GetDefaultBufferAlignment(), work_dimensions, name, BackendKind::kCpu);
-  TF_ASSIGN_OR_RETURN(auto mlir_kernel_definition,
-                      loop_fusion_emitter.EmitKernelDefinition());
+  ASSIGN_OR_RETURN(auto mlir_kernel_definition,
+                   loop_fusion_emitter.EmitKernelDefinition());
 
   mlir::OpBuilder builder(&context);
   mlir_kernel_definition.source().module().getOperation()->setAttr(
@@ -245,8 +245,8 @@ EmitConcatenateFusionKernel(MLIRContext& context,
   emitters::ConcatenateFusionKernelEmitter concatenate_fusion_emitter(
       context, fusion, std::move(fusion_spec), buffer_assignment,
       GetDefaultBufferAlignment(), work_dimensions, name, BackendKind::kCpu);
-  TF_ASSIGN_OR_RETURN(auto mlir_kernel_definition,
-                      concatenate_fusion_emitter.EmitKernelDefinition());
+  ASSIGN_OR_RETURN(auto mlir_kernel_definition,
+                   concatenate_fusion_emitter.EmitKernelDefinition());
 
   mlir::OpBuilder builder(&context);
   mlir_kernel_definition.source().module().getOperation()->setAttr(
@@ -270,8 +270,7 @@ EmitDynamicUpdateSliceFusionKernel(MLIRContext& context,
   emitters::DynamicUpdateSliceKernelEmitter emitter(
       context, fusion, std::move(fusion_spec), buffer_assignment,
       GetDefaultBufferAlignment(), work_dimensions, name, BackendKind::kCpu);
-  TF_ASSIGN_OR_RETURN(auto mlir_kernel_definition,
-                      emitter.EmitKernelDefinition());
+  ASSIGN_OR_RETURN(auto mlir_kernel_definition, emitter.EmitKernelDefinition());
 
   mlir::OpBuilder builder(&context);
   mlir_kernel_definition.source().module().getOperation()->setAttr(
@@ -286,22 +285,22 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitFusionKernel(
     MLIRContext& mlir_context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, bool use_unique_c_name,
     bool enable_tiled_emitter) {
-  TF_ASSIGN_OR_RETURN(std::string name, GetName(fusion, use_unique_c_name));
+  ASSIGN_OR_RETURN(std::string name, GetName(fusion, use_unique_c_name));
 
-  if (enable_tiled_emitter && IsSupportedTiledFusion(fusion).ok()) {
-    if (absl::StatusOr<SymbolicTileAnalysis> symbolic_tile_analysis_or =
-            GetSymbolicTileAnalysis(mlir_context, fusion);
-        symbolic_tile_analysis_or.ok()) {
-      SymbolicTileAnalysis& symbolic_tile_analysis = *symbolic_tile_analysis_or;
-      if (auto tiling_or =
-              GetTiling(mlir_context, fusion, symbolic_tile_analysis);
-          tiling_or.ok()) {
-        return EmitTiledFusionKernel(mlir_context, fusion, buffer_assignment,
-                                     name, GetWorkGroupCount(fusion),
-                                     symbolic_tile_analysis,
-                                     std::move(*tiling_or));
-      }
+  if (enable_tiled_emitter) {
+    TiledEmissionResult result =
+        EmitTiledFusionKernel(mlir_context, fusion, buffer_assignment, name,
+                              GetWorkGroupCount(fusion));
+    if (result.kernel.ok()) {
+      return std::move(*result.kernel);
     }
+
+    if (result.tiling_succeeded) {
+      return result.kernel.status();
+    }
+
+    VLOG(2) << "Tiled emitter failed due to tiling failure: "
+            << result.kernel.status() << ", falling back to loop emitter.";
   }
 
   if (fusion.fusion_kind() == HloFusionInstruction::FusionKind::kLoop) {
@@ -313,10 +312,9 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitFusionKernel(
     }
     auto fusion_spec = GetLoopFusionSpec(fusion);
     if (IsDynamicUpdateSliceFusion(fusion_spec)) {
-      TF_ASSIGN_OR_RETURN(
-          bool dus_inplace,
-          CanEmitFusedDynamicUpdateSliceInPlace(fusion_spec.fusion(),
-                                                buffer_assignment, &fusion));
+      ASSIGN_OR_RETURN(bool dus_inplace,
+                       CanEmitFusedDynamicUpdateSliceInPlace(
+                           fusion_spec.fusion(), buffer_assignment, &fusion));
       if (dus_inplace) {
         return EmitDynamicUpdateSliceFusionKernel(mlir_context, fusion,
                                                   buffer_assignment, name);

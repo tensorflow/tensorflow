@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/codegen/triton/support_legacy.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -153,7 +154,7 @@ absl::StatusOr<HloInstruction*> DotStrengthReduction::ExpandInstruction(
     HloInstruction* instruction) {
   HloDotInstruction* dot = Cast<HloDotInstruction>(instruction);
   const OpMetadata* metadata = &dot->metadata();
-  TF_ASSIGN_OR_RETURN(auto dot_dims, DotOperandDims::FromDot(dot));
+  ASSIGN_OR_RETURN(auto dot_dims, DotOperandDims::FromDot(dot));
 
   std::array<HloInstruction*, 2> operands = {dot->mutable_operand(0),
                                              dot->mutable_operand(1)};
@@ -181,7 +182,7 @@ absl::StatusOr<HloInstruction*> DotStrengthReduction::ExpandInstruction(
 
   // At this point, both operands have the same shape. Elementwise multiply.
   CHECK(operands[0]->shape().dimensions() == operands[1]->shape().dimensions());
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       HloInstruction * flow,
       MakeMultiplyForDotPrecisionAlgorithm(
           operands[0], operands[1], dot->precision_config().algorithm()));

@@ -19,6 +19,8 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <ostream>
+#include <type_traits>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -26,6 +28,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -36,48 +40,54 @@ namespace xla::gpu {
 
 // Utilities for analyzing dynamic-slice fusion instructions. These fusions are
 // created by the dynamic-slice fusion rewriter when it can prove that DS/DUS
-// offsets depend only on the while-loop induction variable or are fully static.
+// offsets can be represented in a tiny offset expression language over scalar
+// fusion parameters and constants. The language supports constants, parameter
+// reads, arithmetic, comparisons, and selects that can be evaluated at run
+// time.
 //
 // A dynamic-slice fusion wraps a hero computation (e.g. a custom call or a
 // kernel fusion) with dynamic-slice (DS) inputs and dynamic-update-slice (DUS)
 // outputs. At run time, the DynamicSliceFusionThunk adjusts buffer offsets
 // per while-loop iteration so the hero operates on a different slice each time.
 //
-// Example HLO (a custom call reading and writing one row per iteration of a
-// 4-iteration while loop). The induction variable `ivar` is passed as a fusion
-// parameter so the runtime can verify the annotated offset.
+// Example HLO (a custom call reading and writing row `ivar + 1` per iteration
+// of a 4-iteration while loop). The induction variable `ivar` is passed as a
+// fusion parameter so the annotated offset expression can be verified.
 //
 //   %dsf_computation {
-//     %p0 = f32[4,8,8] parameter(0)         // input buffer
-//     %p1 = s32[] parameter(1)              // ivar (runtime offset)
-//     %p2 = f32[4,8,8] parameter(2)         // output buffer
+//     %p0 = f32[5,8,8] parameter(0)         // input buffer
+//     %p1 = s32[] parameter(1)              // ivar
+//     %p2 = f32[5,8,8] parameter(2)         // output buffer
 //     %c0 = s32[] constant(0)
-//     %ds = f32[1,8,8] dynamic-slice(%p0, %p1, %c0, %c0),
+//     %c1 = s32[] constant(1)
+//     %offset = s32[] add(%p1, %c1)
+//     %ds = f32[1,8,8] dynamic-slice(%p0, %offset, %c0, %c0),
 //       dynamic_slice_sizes={1,8,8},
 //       backend_config={"dynamic_slice_config":{
-//         "loop_index":0, "byte_offset":0, "byte_stride":256}}
+//         "loop_index":0, "byte_offset":256, "byte_stride":256}}
 //     %bc_in = f32[8,8] bitcast(%ds)
 //     %hero = f32[8,8] custom-call(%bc_in),
 //       custom_call_target="fake_target"
 //     %bc_out = f32[1,8,8] bitcast(%hero)
-//     ROOT %dus = f32[4,8,8] dynamic-update-slice(%p2, %bc_out, %p1, %c0, %c0),
+//     ROOT %dus = f32[5,8,8] dynamic-update-slice(
+//       %p2, %bc_out, %offset, %c0, %c0),
 //       backend_config={"dynamic_slice_config":{
-//         "loop_index":0, "byte_offset":0, "byte_stride":256}}
+//         "loop_index":0, "byte_offset":256, "byte_stride":256}}
 //   }
 //
 //   body {
-//     %param = (s32[], f32[4,8,8], f32[4,8,8]) parameter(0)
+//     %param = (s32[], f32[5,8,8], f32[5,8,8]) parameter(0)
 //     %ivar = s32[] get-tuple-element(%param), index=0
-//     %input = f32[4,8,8] get-tuple-element(%param), index=1
-//     %output = f32[4,8,8] get-tuple-element(%param), index=2
-//     %updated = f32[4,8,8] fusion(%input, %ivar, %output),
+//     %input = f32[5,8,8] get-tuple-element(%param), index=1
+//     %output = f32[5,8,8] get-tuple-element(%param), index=2
+//     %updated = f32[5,8,8] fusion(%input, %ivar, %output),
 //       kind=kCustom, calls=%dsf_computation,
 //       backend_config={"fusion_backend_config":{
 //         "kind":"__custom_fusion",
 //         "custom_fusion_config":{"name":"dynamic_slice_fusion"}}}
 //     %one = s32[] constant(1)
 //     %next_ivar = s32[] add(%ivar, %one)
-//     ROOT %result = (s32[], f32[4,8,8], f32[4,8,8])
+//     ROOT %result = (s32[], f32[5,8,8], f32[5,8,8])
 //       tuple(%next_ivar, %input, %updated)
 //   }
 //
@@ -88,29 +98,47 @@ namespace xla::gpu {
 // parameter and result maps to fusion parameters and how offsets are computed
 // at runtime.
 struct DynamicSliceFusion {
-  // A DS/DUS offset for one dimension that is a compile-time constant (e.g.
-  // `s32[] constant(0)` inside the fusion body). The actual byte contribution
-  // for this dimension is `offset * byte_stride_for_dimension`.
-  struct ConstantOffset {
-    int64_t offset;            // Constant index value for this dimension.
-    int64_t dimension_number;  // Which dimension of the DS/DUS this applies to.
-  };
+  // Per-dimension offset for a DS or DUS instruction.
+  struct Offset {
+    // Scalar expression used to compute one DS/DUS offset. Leaves are either
+    // constants or fusion parameters that hold scalar values; internal nodes
+    // are simple arithmetic, comparison, and select operations.
+    struct Expr {
+      // A tiny AST that can express offset computations on scalars inside a
+      // dynamic-slice-fusion operation.
+      // clang-format off
+      struct Constant  { int64_t value;              };
+      struct Parameter { int64_t parameter_number;   };
+      struct Add       { std::vector<Expr> args;     };
+      struct Subtract  { std::vector<Expr> args;     };
+      struct Multiply  { std::vector<Expr> args;     };
+      struct Select    { std::vector<Expr> args;     };
+      struct Compare   { ComparisonDirection direction;
+                         std::vector<Expr> args;     };
+      // clang-format on
 
-  // A DS/DUS offset for one dimension that comes from a fusion parameter
-  // holding a runtime scalar (e.g. the loop induction variable passed as a
-  // fusion operand). At emit time the thunk emitter maps `parameter_number`
-  // to a BufferAllocation::Slice; at runtime the thunk D2H-copies the scalar
-  // to verify that the annotated DynamicSliceConfig offset matches the actual
-  // XLA-computed offset.
-  struct RuntimeOffset {
-    int64_t parameter_number;  // Fusion parameter index of the offset scalar.
-    int64_t dimension_number;  // Which dimension of the DS/DUS this applies to.
-  };
+      using Value = std::variant<Constant, Parameter, Add, Subtract, Multiply,
+                                 Compare, Select>;
+      Value value;
+    };
 
-  // Per-dimension offset for a DS or DUS instruction: either a compile-time
-  // constant (literal inside the fusion) or a reference to a runtime scalar
-  // fusion parameter.
-  using Offset = std::variant<ConstantOffset, RuntimeOffset>;
+    // Returns whether an HLO instruction can appear as an operation or leaf in
+    // the offset expression language. Offset expressions are scalar integer
+    // computations, with scalar pred values allowed for compare/select
+    // predicates.
+    static bool IsExpr(const HloInstruction* instr);
+
+    static Expr Constant(int64_t value);
+    static Expr Parameter(int64_t parameter_number);
+    static Expr Add(Expr lhs, Expr rhs);
+    static Expr Subtract(Expr lhs, Expr rhs);
+    static Expr Multiply(Expr lhs, Expr rhs);
+    static Expr Compare(ComparisonDirection direction, Expr lhs, Expr rhs);
+    static Expr Select(Expr pred, Expr on_true, Expr on_false);
+
+    int64_t dimension_number;  // Which dimension of the DS/DUS this applies to.
+    Expr expr;                 // Scalar expression computing the index value.
+  };
 
   // Parameter numbers in the structs below correspond to
   // HloParameterInstruction::parameter_number() inside the fusion body. Note
@@ -179,47 +207,92 @@ struct DynamicSliceFusion {
   static absl::StatusOr<std::vector<Parameter>> ResolveParameters(
       const HloInstruction* hero);
 
+  // Resolves one hero operand. This is useful for analysis libraries that need
+  // to inspect a value as if it were copied by a trivial hero, without
+  // materializing a temporary HLO instruction.
+  static absl::StatusOr<Parameter> ResolveParameter(
+      const HloInstruction* operand);
+
   // Resolves results for the hero instruction. Returns an entry for all results
   // of the dynamic slice fusion (root of the hero, or for each tuple entry).
   static absl::StatusOr<std::vector<Result>> ResolveResults(
       const HloInstruction* hero);
+
+  // Evaluates an offset expression with parameter values represented as
+  // (fusion parameter number, scalar value) pairs.
+  static absl::StatusOr<int64_t> Evaluate(
+      const Offset::Expr& expr,
+      absl::Span<const std::pair<int64_t, int64_t>> parameters);
+
+  // Returns fusion parameters referenced by an offset expression.
+  static std::vector<int64_t> CollectOffsetParameters(const Offset::Expr& expr);
 };
 
 //===----------------------------------------------------------------------===//
 // DynamicSliceFusion comparison and stringification
 //===----------------------------------------------------------------------===//
 
-inline bool operator==(const DynamicSliceFusion::ConstantOffset& a,
-                       const DynamicSliceFusion::ConstantOffset& b) {
-  return a.offset == b.offset && a.dimension_number == b.dimension_number;
+inline bool operator==(const DynamicSliceFusion::Offset::Expr& a,
+                       const DynamicSliceFusion::Offset::Expr& b);
+
+inline bool operator==(const DynamicSliceFusion::Offset::Expr::Constant& a,
+                       const DynamicSliceFusion::Offset::Expr::Constant& b) {
+  return a.value == b.value;
 }
 
-inline bool operator==(const DynamicSliceFusion::RuntimeOffset& a,
-                       const DynamicSliceFusion::RuntimeOffset& b) {
-  return a.parameter_number == b.parameter_number &&
-         a.dimension_number == b.dimension_number;
+inline bool operator==(const DynamicSliceFusion::Offset::Expr::Parameter& a,
+                       const DynamicSliceFusion::Offset::Expr::Parameter& b) {
+  return a.parameter_number == b.parameter_number;
 }
 
-inline bool ConfigsEqual(const std::optional<DynamicSliceConfig>& a,
-                         const std::optional<DynamicSliceConfig>& b) {
-  if (a.has_value() != b.has_value()) {
-    return false;
-  }
-  if (!a.has_value()) {
-    return true;
-  }
-  return a->has_loop_index() == b->has_loop_index() &&
-         a->loop_index() == b->loop_index() &&
-         a->byte_offset() == b->byte_offset() &&
-         a->byte_stride() == b->byte_stride();
+inline bool operator==(const DynamicSliceFusion::Offset::Expr::Add& a,
+                       const DynamicSliceFusion::Offset::Expr::Add& b) {
+  return a.args == b.args;
+}
+
+inline bool operator==(const DynamicSliceFusion::Offset::Expr::Subtract& a,
+                       const DynamicSliceFusion::Offset::Expr::Subtract& b) {
+  return a.args == b.args;
+}
+
+inline bool operator==(const DynamicSliceFusion::Offset::Expr::Multiply& a,
+                       const DynamicSliceFusion::Offset::Expr::Multiply& b) {
+  return a.args == b.args;
+}
+
+inline bool operator==(const DynamicSliceFusion::Offset::Expr::Compare& a,
+                       const DynamicSliceFusion::Offset::Expr::Compare& b) {
+  return a.direction == b.direction && a.args == b.args;
+}
+
+inline bool operator==(const DynamicSliceFusion::Offset::Expr::Select& a,
+                       const DynamicSliceFusion::Offset::Expr::Select& b) {
+  return a.args == b.args;
+}
+
+inline bool operator==(const DynamicSliceFusion::Offset::Expr& a,
+                       const DynamicSliceFusion::Offset::Expr& b) {
+  return a.value == b.value;
+}
+
+inline bool operator==(const DynamicSliceFusion::Offset& a,
+                       const DynamicSliceFusion::Offset& b) {
+  return a.dimension_number == b.dimension_number && a.expr == b.expr;
+}
+
+inline bool operator==(const DynamicSliceConfig& a,
+                       const DynamicSliceConfig& b) {
+  return a.has_loop_index() == b.has_loop_index() &&
+         a.loop_index() == b.loop_index() &&
+         a.byte_offset() == b.byte_offset() &&
+         a.byte_stride() == b.byte_stride();
 }
 
 inline bool operator==(const DynamicSliceFusion::Parameter& a,
                        const DynamicSliceFusion::Parameter& b) {
   return a.parameter_number == b.parameter_number &&
          a.parameter_shape == b.parameter_shape &&
-         a.slice_shape == b.slice_shape &&
-         ConfigsEqual(a.slice_config, b.slice_config) &&
+         a.slice_shape == b.slice_shape && a.slice_config == b.slice_config &&
          a.slice_offsets == b.slice_offsets;
 }
 
@@ -228,23 +301,41 @@ inline bool operator==(const DynamicSliceFusion::Result& a,
   return a.parameter_number == b.parameter_number &&
          a.result_number == b.result_number &&
          a.result_shape == b.result_shape && a.update_shape == b.update_shape &&
-         ConfigsEqual(a.update_config, b.update_config) &&
+         a.update_config == b.update_config &&
          a.update_offsets == b.update_offsets;
 }
 
 template <typename Sink>
-void AbslStringify(Sink& sink, const DynamicSliceFusion::ConstantOffset& o) {
-  absl::Format(&sink, "c(d%d,%d)", o.dimension_number, o.offset);
-}
-
-template <typename Sink>
-void AbslStringify(Sink& sink, const DynamicSliceFusion::RuntimeOffset& o) {
-  absl::Format(&sink, "r(d%d,p%d)", o.dimension_number, o.parameter_number);
+void AbslStringify(Sink& sink, const DynamicSliceFusion::Offset::Expr& expr) {
+  using Expr = DynamicSliceFusion::Offset::Expr;
+  std::visit(
+      [&](const auto& e) {
+        using T = std::decay_t<decltype(e)>;
+        if constexpr (std::is_same_v<T, Expr::Constant>) {
+          absl::Format(&sink, "%d", e.value);
+        } else if constexpr (std::is_same_v<T, Expr::Parameter>) {
+          absl::Format(&sink, "p%d", e.parameter_number);
+        } else if constexpr (std::is_same_v<T, Expr::Add>) {
+          absl::Format(&sink, "add(%v, %v)", e.args[0], e.args[1]);
+        } else if constexpr (std::is_same_v<T, Expr::Subtract>) {
+          absl::Format(&sink, "sub(%v, %v)", e.args[0], e.args[1]);
+        } else if constexpr (std::is_same_v<T, Expr::Multiply>) {
+          absl::Format(&sink, "mul(%v, %v)", e.args[0], e.args[1]);
+        } else if constexpr (std::is_same_v<T, Expr::Compare>) {
+          absl::Format(&sink, "cmp(%s, %v, %v)",
+                       ComparisonDirectionToString(e.direction), e.args[0],
+                       e.args[1]);
+        } else if constexpr (std::is_same_v<T, Expr::Select>) {
+          absl::Format(&sink, "select(%v, %v, %v)", e.args[0], e.args[1],
+                       e.args[2]);
+        }
+      },
+      expr.value);
 }
 
 template <typename Sink>
 void AbslStringify(Sink& sink, const DynamicSliceFusion::Offset& o) {
-  std::visit([&sink](const auto& v) { AbslStringify(sink, v); }, o);
+  absl::Format(&sink, "o(d%d,%s)", o.dimension_number, absl::StrCat(o.expr));
 }
 
 template <typename Sink>
@@ -293,12 +384,7 @@ void AbslStringify(Sink& sink, const DynamicSliceFusion::Result& r) {
 }
 
 inline std::ostream& operator<<(std::ostream& os,
-                                const DynamicSliceFusion::ConstantOffset& o) {
-  return os << absl::StrCat(o);
-}
-
-inline std::ostream& operator<<(std::ostream& os,
-                                const DynamicSliceFusion::RuntimeOffset& o) {
+                                const DynamicSliceFusion::Offset::Expr& o) {
   return os << absl::StrCat(o);
 }
 

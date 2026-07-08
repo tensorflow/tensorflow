@@ -46,5 +46,15 @@ TEST(PjRtCApiStatusUtilsTest, PjrtErrorToStatusNullError) {
   EXPECT_TRUE(result.ok());
 }
 
+TEST(PjRtCApiStatusUtilsTest, PjrtErrorCodeToStatusCodeFallback) {
+  EXPECT_EQ(PjrtErrorCodeToStatusCode(static_cast<PJRT_Error_Code>(-1)),
+            absl::StatusCode::kUnknown);
+}
+
+TEST(PjRtCApiStatusUtilsTest, StatusCodeToPjrtErrorCodeFallback) {
+  EXPECT_EQ(StatusCodeToPjrtErrorCode(static_cast<absl::StatusCode>(-1)),
+            PJRT_Error_Code_UNKNOWN);
+}
+
 }  // namespace
 }  // namespace pjrt

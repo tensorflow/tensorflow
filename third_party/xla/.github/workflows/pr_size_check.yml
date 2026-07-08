@@ -16,7 +16,10 @@ name: PR Size Check
 permissions:
   pull-requests: write
 on:
+  # zizmor: ignore[dangerous-triggers]
   pull_request_target:
+    branches:
+      - main
 
 jobs:
   check-size:
@@ -27,16 +30,17 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
-      REPO: ${{ github.repository }}
       ADDITIONS: ${{ github.event.pull_request.additions }}
       DELETIONS: ${{ github.event.pull_request.deletions }}
     timeout-minutes: 5
     if: |
-      github.event.sender.type == 'User' ||
-      contains(github.event.pull_request.body, 'FORCE_TEST_ACTIONS')
+      github.repository == 'openxla/xla' && (
+        github.event.sender.type == 'User' ||
+        contains(github.event.pull_request.body, 'FORCE_TEST_ACTIONS')
+      )
     steps:
       - name: "Checking out repository"
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: "Check PR Size"

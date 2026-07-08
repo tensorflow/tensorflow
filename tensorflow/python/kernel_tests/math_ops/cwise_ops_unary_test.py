@@ -239,6 +239,35 @@ class UnaryOpTest(test.TestCase):
     self._compareBothSparse(y, np.sign, math_ops.sign)
     self._compareBothSparse(x, np.vectorize(math.erf), math_ops.erf)
 
+  def testFloatErfinvNearOne(self):
+    # Regression test for GitHub issue #121629: eager float32 erfinv used to
+    # lose ~4 digits of precision for inputs close to +/-1 because it computed
+    # ndtri(0.5 * x + 0.5), and forming 0.5 * x + 0.5 in float32 destroys the
+    # distance of the argument from 1.  Verify the float32 op now agrees with
+    # the float64 ground truth (and is symmetric) in that region.
+    x = np.array(
+        [0.9990000129, 0.9998999834, 0.9999899864, 0.9999989867, 0.9999998212],
+        dtype=np.float32,
+    )
+    x = np.concatenate([x, -x])
+    with self.cached_session():
+      expected = self.evaluate(
+          math_ops.erfinv(ops.convert_to_tensor(x.astype(np.float64)))
+      )
+      actual = self.evaluate(math_ops.erfinv(ops.convert_to_tensor(x)))
+    self.assertAllClose(expected, actual, rtol=1e-5, atol=1e-5)
+
+  def testFloatErfinvEdgeCases(self):
+    # erfinv is +/-inf at +/-1 and undefined (NaN) outside [-1, 1].  The float32
+    # path mirrors the XLA implementation here.
+    x = np.array([1.0, -1.0, 1.5, -2.0], dtype=np.float32)
+    with self.cached_session():
+      y = self.evaluate(math_ops.erfinv(ops.convert_to_tensor(x)))
+    self.assertEqual(np.inf, y[0])
+    self.assertEqual(-np.inf, y[1])
+    self.assertTrue(np.isnan(y[2]))
+    self.assertTrue(np.isnan(y[3]))
+
   @test_util.run_deprecated_v1
   def testFloatTanhEdge(self):
     x = np.arange(40, 40 + 6).reshape(6).astype(np.float32)

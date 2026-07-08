@@ -107,9 +107,6 @@ config_setting(
     define_values = {
         "framework_shared_object": "true",
     },
-    values = {
-        "apple_platform_type": "macos",
-    },
     visibility = ["//visibility:public"],
 )
 
@@ -121,9 +118,6 @@ config_setting(
     ],
     define_values = {
         "framework_shared_object": "true",
-    },
-    values = {
-        "apple_platform_type": "macos",
     },
     visibility = ["//visibility:public"],
 )
@@ -147,27 +141,13 @@ config_setting(
 # Config setting for determining if we are building for Android.
 config_setting(
     name = "android",
-    constraint_values = if_google(
-        ["@platforms//os:android"],
-        [],
-    ),
-    values = if_oss(
-        {"crosstool_top": "//external:android/crosstool"},
-        {},
-    ),
+    constraint_values = ["@platforms//os:android"],
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "emscripten",
-    constraint_values = if_google(
-        ["@platforms//os:emscripten"],
-        [],
-    ),
-    values = if_oss(
-        {"crosstool_top": "//external:android/emscripten"},
-        {},
-    ),
+    constraint_values = ["@platforms//os:emscripten"],
     visibility = ["//visibility:public"],
 )
 
@@ -177,9 +157,6 @@ config_setting(
         "@platforms//cpu:x86_64",
         "@platforms//os:macos",
     ],
-    values = {
-        "apple_platform_type": "macos",
-    },
     visibility = ["//visibility:public"],
 )
 
@@ -189,9 +166,6 @@ config_setting(
         "@platforms//cpu:aarch64",
         "@platforms//os:macos",
     ],
-    values = {
-        "apple_platform_type": "macos",
-    },
     visibility = ["//visibility:public"],
 )
 
@@ -233,14 +207,7 @@ config_setting(
 # TODO(jakeharmon): Remove equivalent from tensorflow/BUILD
 config_setting(
     name = "ios",
-    constraint_values = if_google(
-        ["@platforms//os:ios"],
-        [],
-    ),
-    values = if_oss(
-        {"apple_platform_type": "ios"},
-        {},
-    ),
+    constraint_values = ["@platforms//os:ios"],
     visibility = ["//visibility:public"],
 )
 
@@ -272,11 +239,6 @@ config_setting(
             "@platforms//cpu:armv7",
             "@platforms//os:android",
         ],
-    values = dict(
-        if_oss(
-            {"crosstool_top": "//external:android/crosstool"},
-        ),
-    ),
     visibility = ["//visibility:public"],
 )
 
@@ -360,11 +322,6 @@ config_setting(
             "@platforms//cpu:x86_64",
             "@platforms//os:ios",
         ],
-    values = dict(
-        if_oss(
-            {"crosstool_top": "//tools/osx/crosstool:crosstool"},
-        ),
-    ),
     visibility = ["//visibility:public"],
 )
 
@@ -460,11 +417,6 @@ config_setting(
             "@platforms//cpu:x86_32",
             "@platforms//os:android",
         ],
-    values = dict(
-        if_oss(
-            {"crosstool_top": "//external:android/crosstool"},
-        ),
-    ),
     visibility = ["//visibility:public"],
 )
 

@@ -16,7 +16,10 @@ limitations under the License.
 #include "xla/tools/hlo_isolation/hlo_isolation_api.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -26,17 +29,26 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/btree_map.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/flags/commandlineflag.h"
+#include "absl/flags/reflection.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "re2/re2.h"
 #include "xla/comparison_util.h"
 #include "xla/error_spec.h"
@@ -49,16 +61,18 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/literal.h"
 #include "xla/literal_comparison.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tools/hlo_decomposer.h"
+#include "xla/tools/hlo_isolation/hlo_isolation.pb.h"
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
 
 using ::xla::hlo_isolation::ModuleIsolationOptions;
@@ -69,30 +83,37 @@ namespace hlo_isolation {
 
 namespace {
 
+constexpr absl::string_view kResultsFilename =
+    "hlo_isolation_test_results.pbtxt";
+
 absl::Status InitIsolatorOptions(ModuleIsolationOptions& options) {
   if (!options.run_module_fn) {
     options.run_module_fn =
         [run_hlo_passes = options.run_hlo_passes](
             std::unique_ptr<HloModule> m, HloRunnerInterface* r,
-            absl::Span<const Literal> i) -> absl::StatusOr<Literal> {
-      return RunModule(std::move(m), r, i, run_hlo_passes);
+            absl::Span<const Literal> i,
+            const RunModuleOptions& run_opts) -> absl::StatusOr<Literal> {
+      RunModuleOptions run_opts_copy = run_opts;
+      run_opts_copy.run_hlo_passes = run_hlo_passes;
+      return RunModule(std::move(m), r, i, run_opts_copy);
     };
   }
   if (!options.on_mismatch_fn) {
     options.on_mismatch_fn = [](const HloModule& module,
                                 const Literal& /*test_output*/,
                                 const Literal& /*reference_output*/,
-                                const absl::Status& /*compare_status*/) {
+                                const absl::Status& compare_status) {
+      ADD_FAILURE() << compare_status.message();
+      LOG(ERROR) << compare_status.message();
       auto* env = tsl::Env::Default();
       std::string outdir;
       std::string filename;
       if (tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
         filename = tsl::io::JoinPath(
-            outdir, absl::StrCat("failed_module-", env->NowMicros(), "-",
-                                 module.name(), ".txt"));
+            outdir, absl::StrCat("failed-module-", module.name(), ".txt"));
       } else {
         filename = tsl::io::GetTempFilename(
-            absl::StrCat("failed_module-", module.name(), ".txt"));
+            absl::StrCat("failed-module-", module.name(), ".txt"));
       }
       CHECK_OK(tsl::WriteStringToFile(env, filename, module.ToString()));
       LOG(INFO) << "Wrote failed HLO module to " << filename;
@@ -138,24 +159,40 @@ void WriteLiteralToTempFile(const LiteralSlice& literal,
                             const std::string& module_name,
                             const std::string& name) {
   auto* env = tsl::Env::Default();
-  std::string binary_filename;
   std::string text_filename;
   std::string outdir;
   std::string prefix = absl::StrCat(module_name, "-", name);
   if (tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
-    std::string filename = tsl::io::JoinPath(
-        outdir, absl::StrCat("failed-", env->NowMicros(), "-", prefix));
-    binary_filename = absl::StrCat(filename, ".pb");
+    std::string filename =
+        tsl::io::JoinPath(outdir, absl::StrCat("failed-", prefix));
     text_filename = absl::StrCat(filename, ".txt");
   } else {
-    binary_filename = tsl::io::GetTempFilename(absl::StrCat(prefix, ".pb"));
     text_filename = tsl::io::GetTempFilename(absl::StrCat(prefix, ".txt"));
   }
-
-  CHECK_OK(tsl::WriteBinaryProto(env, binary_filename, literal.ToProto()));
   CHECK_OK(tsl::WriteStringToFile(env, text_filename, literal.ToString()));
-  LOG(INFO) << "Wrote Literal to " << prefix << " binary: " << binary_filename
-            << " text: " << text_filename;
+  LOG(INFO) << "Wrote Literal to " << prefix << " text: " << text_filename;
+}
+
+void WriteResults(const std::vector<HloIsolationTestResult>& pipeline_results) {
+  auto* env = tsl::Env::Default();
+  std::string outdir;
+  std::string filename;
+  if (tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
+    filename = tsl::io::JoinPath(outdir, kResultsFilename);
+  } else {
+    filename = tsl::io::GetTempFilename(std::string(kResultsFilename));
+  }
+  HloIsolationTestSummary results_proto;
+  for (const auto& res : pipeline_results) {
+    *results_proto.add_results() = res;
+  }
+  absl::Status status = tsl::WriteTextProto(env, filename, results_proto);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to write results proto to " << filename << ": "
+               << status;
+  } else {
+    LOG(INFO) << "Wrote test results to " << filename;
+  }
 }
 
 absl::Status CompareOutputs(const HloModule& module, const Literal& test_output,
@@ -196,37 +233,308 @@ absl::Status CompareOutputs(const HloModule& module, const Literal& test_output,
     options.on_mismatch_fn(module, test_output, reference_output, status);
     absl::StatusOr<std::vector<NumericMismatch>> top_mismatches =
         ExtractAndEnrichTopMismatches(std::string(status.message()), &module);
-    if (!top_mismatches.ok()) {
-      LOG(ERROR) << "Failed to extract top relative error mismatch: "
-                 << top_mismatches.status();
-    } else if (top_mismatches->empty()) {
-      LOG(ERROR) << "No top relative error mismatches found.";
-    } else {
-      numeric_check->clear_top_mismatches();
-      for (const NumericMismatch& mismatch : *top_mismatches) {
-        *numeric_check->add_top_mismatches() = mismatch;
-      }
-      NumericMismatch top_relative_error_mismatch = top_mismatches->at(0);
-      for (const NumericMismatch& mismatch : *top_mismatches) {
-        if (mismatch.rel_error() > top_relative_error_mismatch.rel_error()) {
-          top_relative_error_mismatch = mismatch;
-        }
-      }
-      *numeric_check->mutable_top_mismatch() = top_relative_error_mismatch;
-    }
+    PopulateNumericCheckMismatches(numeric_check, top_mismatches);
   }
   return status;
 }
 
+using GroupKey = std::pair<HloOpcode, std::string>;
+
+std::vector<HloOutputCallback> CreateDumpHloOutputCallbacks(
+    HloModule* module, const std::function<void(absl::string_view, Literal*)>&
+                           eval_literal_mutator) {
+  std::vector<HloOutputCallback> reference_callbacks;
+  int64_t next_id = 1000000;
+  for (auto* computation : module->computations()) {
+    for (auto* instruction : computation->instructions()) {
+      int64_t hlo_id = next_id++;
+      xla::FrontendAttributes frontend_attributes =
+          instruction->frontend_attributes();
+      (*frontend_attributes.mutable_map())["_xla_tag"] = std::to_string(hlo_id);
+      instruction->set_frontend_attributes(frontend_attributes);
+
+      HloOutputCallback hlo_cb;
+      hlo_cb.callback_id = hlo_id;
+      hlo_cb.num_operands = 1;
+      hlo_cb.callback =
+          [hlo_name = std::string(instruction->name()), eval_literal_mutator](
+              int64_t replica_id, int64_t partition_id,
+              absl::Span<std::shared_ptr<const Literal> const> literals) {
+            if (literals.empty() || !literals[0]) {
+              return;
+            }
+            Literal mutated_literal = literals[0]->Clone();
+            if (eval_literal_mutator) {
+              eval_literal_mutator(hlo_name, &mutated_literal);
+            }
+
+            auto* env = tsl::Env::Default();
+            std::string outdir;
+            std::string filename =
+                absl::StrCat("fusion-debugger-reference-", hlo_name, ".bin");
+            std::string filepath;
+            if (tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
+              filepath = tsl::io::JoinPath(outdir, filename);
+            } else {
+              filepath = tsl::io::GetTempFilename(filename);
+            }
+            auto status = tsl::WriteStringToFile(
+                env, filepath, mutated_literal.ToProto().SerializeAsString());
+            if (!status.ok()) {
+              LOG(ERROR) << "Failed to write literal to Sponge artifacts: "
+                         << status;
+            }
+          };
+      reference_callbacks.push_back(std::move(hlo_cb));
+    }
+  }
+  return reference_callbacks;
+}
+
+std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
+    HloModule* test_module_clone,
+    const absl::flat_hash_map<GroupKey, std::vector<std::string>>& ref_groups,
+    const HloModule& original_module, const ModuleIsolationOptions& options,
+    std::shared_ptr<absl::Mutex> result_mutex,
+    HloIsolationTestResult* test_result) {
+  auto* env = tsl::Env::Default();
+  auto get_path = [](absl::string_view filename) -> std::string {
+    std::string outdir;
+    if (tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
+      return tsl::io::JoinPath(outdir, filename);
+    }
+    return tsl::io::GetTempFilename(std::string(filename));
+  };
+
+  int64_t next_hlo_id = 1;
+  std::vector<xla::HloOutputCallback> dynamic_cbs;
+
+  absl::btree_map<GroupKey, std::vector<std::string>> test_groups;
+  for (const auto* computation : test_module_clone->computations()) {
+    for (const auto* instruction : computation->MakeInstructionPostOrder()) {
+      GroupKey key(instruction->opcode(), instruction->shape().ToString());
+      test_groups[key].push_back(std::string(instruction->name()));
+    }
+  }
+
+  absl::flat_hash_map<std::string, std::string> test_name_to_ref_name;
+  for (const auto& [key, test_names] : test_groups) {
+    auto it = ref_groups.find(key);
+    if (it != ref_groups.end()) {
+      const auto& ref_names = it->second;
+      size_t map_size = std::min(test_names.size(), ref_names.size());
+      for (size_t i = 0; i < map_size; ++i) {
+        test_name_to_ref_name[test_names[i]] = ref_names[i];
+      }
+    }
+  }
+
+  for (auto* computation : test_module_clone->computations()) {
+    for (auto* instruction : computation->instructions()) {
+      int64_t hlo_id = next_hlo_id++;
+      xla::FrontendAttributes frontend_attributes;
+      (*frontend_attributes.mutable_map())["_xla_tag"] = std::to_string(hlo_id);
+      instruction->add_frontend_attributes(frontend_attributes);
+
+      std::string op_name(instruction->name());
+      std::string ref_op_name = op_name;
+      if (auto it = test_name_to_ref_name.find(op_name);
+          it != test_name_to_ref_name.end()) {
+        ref_op_name = it->second;
+      }
+
+      double abs_error = options.abs_error_bound;
+      double rel_error = options.rel_error_bound;
+
+      xla::HloOutputCallback dynamic_cb;
+      dynamic_cb.callback_id = hlo_id;
+      dynamic_cb.num_operands = 1;
+      dynamic_cb.callback =
+          [op_name, ref_op_name, module_name = original_module.name(), get_path,
+           env, abs_error, rel_error, result_mutex, test_result](
+              int64_t replica_id, int64_t partition_id,
+              absl::Span<std::shared_ptr<const Literal> const> literals) {
+            if (literals.empty() || !literals[0]) {
+              LOG(ERROR)
+                  << "HloOutputCallback called with empty or null literals for "
+                  << op_name;
+              return;
+            }
+
+            std::string filename =
+                absl::StrCat("fusion-debugger-reference-", ref_op_name, ".bin");
+            std::string filepath = get_path(filename);
+
+            bool shape_matched = false;
+            Literal expected_literal;
+            xla::LiteralProto literal_proto;
+            std::string content;
+            if (tsl::ReadFileToString(env, filepath, &content).ok()) {
+              if (literal_proto.ParseFromString(content)) {
+                auto expected_status = Literal::CreateFromProto(literal_proto);
+                if (expected_status.ok()) {
+                  expected_literal = std::move(*expected_status);
+                  if (ShapeUtil::Compatible(expected_literal.shape(),
+                                            literals[0]->shape())) {
+                    shape_matched = true;
+                  }
+                }
+              }
+            }
+
+            if (!shape_matched) {
+              LOG(WARNING)
+                  << "No reference literal matches the shape of the current "
+                     "actual literal "
+                  << literals[0]->shape().ToString() << " for op " << op_name;
+              return;
+            }
+
+            if (expected_literal.shape().element_type() !=
+                literals[0]->shape().element_type()) {
+              absl::StatusOr<Literal> converted_literal_status =
+                  expected_literal.Convert(literals[0]->shape().element_type());
+              if (!converted_literal_status.ok()) {
+                LOG(ERROR) << "Failed to convert expected literal type: "
+                           << converted_literal_status.status();
+                return;
+              }
+              expected_literal = std::move(*converted_literal_status);
+            }
+
+            auto on_miscompare =
+                [module_name, op_name](
+                    const LiteralSlice& expected, const LiteralSlice& actual,
+                    const LiteralSlice& mismatches,
+                    const ShapeIndex& shape_index,
+                    const literal_comparison::ErrorBuckets& /*error_buckets*/) {
+                  std::string escaped_shape_index =
+                      absl::StrReplaceAll(shape_index.ToString(),
+                                          {{",", "_"}, {"{", ""}, {"}", ""}});
+                  std::string shape_suffix =
+                      escaped_shape_index.empty()
+                          ? ""
+                          : absl::StrCat("-shape-", escaped_shape_index);
+                  WriteLiteralToTempFile(
+                      expected, module_name,
+                      absl::StrCat(op_name, "-expected", shape_suffix));
+                  WriteLiteralToTempFile(
+                      actual, module_name,
+                      absl::StrCat(op_name, "-actual", shape_suffix));
+                  WriteLiteralToTempFile(
+                      mismatches, module_name,
+                      absl::StrCat(op_name, "-mismatches", shape_suffix));
+                };
+
+            xla::ErrorSpec error_spec(static_cast<float>(abs_error),
+                                      static_cast<float>(rel_error));
+            absl::Status matched = xla::literal_comparison::Near(
+                /*expected=*/expected_literal,
+                /*actual=*/*literals[0],
+                /*error=*/error_spec,
+                /*detailed_message=*/true,
+                /*miscompare_callback=*/on_miscompare);
+
+            if (!matched.ok()) {
+              std::string error_message =
+                  absl::StrFormat("FusionDebugger: Mismatch found in op %s\n%s",
+                                  op_name, matched.message());
+              ADD_FAILURE() << error_message;
+              LOG(ERROR) << error_message;
+
+              absl::MutexLock lock(result_mutex.get());
+              NumericCheck* numeric_check = test_result->add_numeric_checks();
+              numeric_check->set_name(absl::StrCat("FusionDebugger:", op_name));
+              numeric_check->set_expected_contains_inf_or_nan(
+                  LiteralContainsInfOrNan(expected_literal));
+              numeric_check->set_actual_contains_inf_or_nan(
+                  LiteralContainsInfOrNan(*literals[0]));
+
+              absl::StatusOr<std::vector<NumericMismatch>> top_mismatches =
+                  ExtractTopMismatches(std::string(matched.message()),
+                                       literals[0]->shape().IsTuple());
+              PopulateNumericCheckMismatches(numeric_check, top_mismatches);
+            }
+          };
+
+      dynamic_cbs.push_back(std::move(dynamic_cb));
+    }
+  }
+  return dynamic_cbs;
+}
+
 }  // namespace
+
+void PopulateNumericCheckMismatches(
+    NumericCheck* numeric_check,
+    const absl::StatusOr<std::vector<NumericMismatch>>& top_mismatches) {
+  if (!top_mismatches.ok()) {
+    LOG(ERROR) << "Failed to extract top relative error mismatch: "
+               << top_mismatches.status();
+  } else if (top_mismatches->empty()) {
+    LOG(ERROR) << "No top relative error mismatches found.";
+  } else {
+    numeric_check->clear_top_mismatches();
+    for (const NumericMismatch& mismatch : *top_mismatches) {
+      *numeric_check->add_top_mismatches() = mismatch;
+    }
+    *numeric_check->mutable_top_mismatch() = *std::max_element(
+        top_mismatches->begin(), top_mismatches->end(),
+        [](const NumericMismatch& a, const NumericMismatch& b) {
+          return a.rel_error() < b.rel_error();
+        });
+  }
+}
 
 absl::StatusOr<Literal> RunModule(std::unique_ptr<HloModule> module,
                                   HloRunnerInterface* runner,
                                   absl::Span<const Literal> input_data,
-                                  bool run_hlo_passes) {
-  TF_ASSIGN_OR_RETURN(auto executable, runner->CreateExecutable(
-                                           std::move(module), run_hlo_passes));
-  return runner->ExecuteWithExecutable(executable.get(), input_data);
+                                  const RunModuleOptions& options) {
+  if (!options.run_hlo_passes && !module->has_schedule()) {
+    RETURN_IF_ERROR(HloTrivialScheduler().Run(module.get()).status());
+  }
+
+  absl::FlagSaver flag_saver;
+  if (options.use_fusion_debugger) {
+    auto set_flag = [](absl::string_view name, absl::string_view value) {
+      if (absl::CommandLineFlag* flag = absl::FindCommandLineFlag(name)) {
+        std::string error;
+        flag->ParseFrom(value, &error);
+      }
+    };
+    set_flag("xla_tpu_enable_fusion_debugger", "true");
+    set_flag("xla_tpu_hlo_graph_fusion_debug", "true");
+    set_flag("xla_tpu_fusion_debug_use_log_callback", "true");
+  }
+
+  std::vector<HloOutputCallback> reference_callbacks;
+  if (options.use_fusion_debugger && options.hlo_output_callbacks.empty()) {
+    reference_callbacks = CreateDumpHloOutputCallbacks(
+        module.get(), options.eval_literal_mutator);
+  }
+
+  ASSIGN_OR_RETURN(
+      std::unique_ptr<OpaqueExecutable> executable,
+      runner->CreateExecutable(std::move(module), options.run_hlo_passes));
+
+  HloRunnerInterface::ReplicatedExecuteOptions exec_options;
+  exec_options.arguments.reserve(input_data.size());
+  for (const auto& arg : input_data) {
+    exec_options.arguments.push_back(&arg);
+  }
+  exec_options.hlo_output_callbacks = !reference_callbacks.empty()
+                                          ? reference_callbacks
+                                          : options.hlo_output_callbacks;
+
+  auto results_or =
+      runner->ExecuteReplicatedWithExecutable(executable.get(), exec_options);
+
+  ASSIGN_OR_RETURN(auto results, std::move(results_or));
+  if (results.empty()) {
+    return absl::InternalError(
+        "No results returned from ExecuteReplicatedWithExecutable");
+  }
+  return std::move(results[0]);
 }
 
 absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
@@ -236,11 +544,11 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
   HloIsolationTestResult result;
   result.set_module_name(module.name());
 
-  TF_RETURN_IF_ERROR(InitIsolatorOptions(options));
+  RETURN_IF_ERROR(InitIsolatorOptions(options));
 
   std::vector<Literal> local_inputs;
   if (input_data.empty()) {
-    TF_ASSIGN_OR_RETURN(local_inputs, options.make_fake_arguments_fn(module));
+    ASSIGN_OR_RETURN(local_inputs, options.make_fake_arguments_fn(module));
     input_data = local_inputs;
   }
 
@@ -253,8 +561,9 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
   //   - Repeat TPU vs interpreter
 
   auto run_module = [&](std::unique_ptr<HloModule> m, HloRunnerInterface* r,
-                        absl::Span<const Literal> i) {
-    return options.run_module_fn(std::move(m), r, i);
+                        absl::Span<const Literal> i,
+                        const RunModuleOptions& run_opts = {}) {
+    return options.run_module_fn(std::move(m), r, i, run_opts);
   };
 
   // Run test runner.
@@ -270,7 +579,7 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
 
   // Run defused test runner.
   std::unique_ptr<HloModule> defused_module = module.Clone("defused");
-  TF_RETURN_IF_ERROR(DefuseModule(defused_module.get()));
+  RETURN_IF_ERROR(DefuseModule(defused_module.get()));
   absl::StatusOr<Literal> defused_output =
       run_module(std::move(defused_module), test_runner, input_data);
   if (!defused_output.ok()) {
@@ -310,7 +619,7 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
     std::unique_ptr<HloModule> despecialized_module =
         module.Clone("despecialized");
     Despecializer despecializer;
-    TF_RETURN_IF_ERROR(despecializer.Run(despecialized_module.get()).status());
+    RETURN_IF_ERROR(despecializer.Run(despecialized_module.get()).status());
     std::string despecialized_module_name = despecialized_module->name();
 
     // Run the reference runner.
@@ -333,6 +642,64 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
       result.set_reason("STAGE_2_INTERPRETER_SUCCESS");
       return result;
     }
+
+    // If there was a mismatch then we should re-run the failing HLO module
+    // with the fusion debugger enabled - to isolate the mismatch.
+    // Run the reference runner again with despecialization to dump reference
+    // binaries.
+    std::unique_ptr<HloModule> debug_despecialized_module =
+        module.Clone("despecialized");
+    RETURN_IF_ERROR(
+        despecializer.Run(debug_despecialized_module.get()).status());
+    std::string debug_despecialized_module_name =
+        debug_despecialized_module->name();
+
+    using GroupKey = std::pair<HloOpcode, std::string>;
+    absl::flat_hash_map<GroupKey, std::vector<std::string>> ref_groups;
+    for (const auto* computation : debug_despecialized_module->computations()) {
+      for (const auto* instruction : computation->MakeInstructionPostOrder()) {
+        GroupKey key(instruction->opcode(), instruction->shape().ToString());
+        ref_groups[key].push_back(std::string(instruction->name()));
+      }
+    }
+
+    RunModuleOptions reference_opts;
+    reference_opts.use_fusion_debugger = true;
+    absl::StatusOr<Literal> debug_reference_output =
+        run_module(std::move(debug_despecialized_module), reference_runner,
+                   input_data, reference_opts);
+    if (!debug_reference_output.ok()) {
+      result.set_state(State::FAILURE);
+      result.set_reason("REFERENCE_RUNNER_FAILURE");
+      LOG(ERROR) << "Reference runner failed: "
+                 << debug_reference_output.status()
+                 << " for module: " << debug_despecialized_module_name;
+      return result;
+    }
+
+    std::shared_ptr<absl::Mutex> result_mutex = std::make_shared<absl::Mutex>();
+    HloIsolationTestResult* test_result = &result;
+
+    std::unique_ptr<HloModule> test_module_clone = module.Clone("");
+
+    std::vector<xla::HloOutputCallback> dynamic_cbs =
+        CreateComparisonHloOutputCallbacks(test_module_clone.get(), ref_groups,
+                                           module, options, result_mutex,
+                                           test_result);
+
+    RunModuleOptions retry_opts;
+    retry_opts.hlo_output_callbacks = dynamic_cbs;
+    retry_opts.use_fusion_debugger = true;
+    absl::StatusOr<Literal> retry_test_output = run_module(
+        std::move(test_module_clone), test_runner, input_data, retry_opts);
+    if (!retry_test_output.ok()) {
+      result.set_state(State::FAILURE);
+      result.set_reason("TEST_RUNNER_FAILURE_ON_RETRY");
+      LOG(ERROR) << "Test runner failed on retry: "
+                 << retry_test_output.status()
+                 << " for module: " << module.name();
+      return result;
+    }
   }
 
   result.set_state(State::FAILURE);
@@ -343,10 +710,10 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
 absl::StatusOr<std::vector<HloIsolationTestResult>> RunIsolationPipeline(
     const HloModule& input_module, HloRunnerInterface* test_runner,
     HloRunnerInterface* reference_runner, PipelineIsolationOptions options) {
-  TF_RETURN_IF_ERROR(ValidatePipelineOptions(options));
-  TF_RETURN_IF_ERROR(InitIsolatorOptions(options.module_options));
+  RETURN_IF_ERROR(ValidatePipelineOptions(options));
+  RETURN_IF_ERROR(InitIsolatorOptions(options.module_options));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<HloModule>> modules,
       DecomposeHloModule(input_module, /*deduplicate_modules=*/true));
 
@@ -407,6 +774,7 @@ absl::StatusOr<std::vector<HloIsolationTestResult>> RunIsolationPipeline(
       skipped_result.set_state(State::SKIPPED);
       skipped_result.set_reason(skip_reason);
       pipeline_results.push_back(std::move(skipped_result));
+      WriteResults(pipeline_results);
       continue;
     }
 
@@ -430,9 +798,51 @@ absl::StatusOr<std::vector<HloIsolationTestResult>> RunIsolationPipeline(
       failed_result.set_state(State::FAILURE);
       failed_result.set_reason(result_or.status().message());
       pipeline_results.push_back(std::move(failed_result));
+      WriteResults(pipeline_results);
       continue;
     }
-    pipeline_results.push_back(std::move(*result_or));
+    HloIsolationTestResult main_result = std::move(*result_or);
+    std::vector<HloIsolationTestResult> fusion_debug_results;
+
+    // Unbundle Fusion Debugger checks into standalone test results.
+    // When the TPU fusion debugger identifies failing sub-instructions within a
+    // fusion, it attaches `FusionDebugger:<op_name>` checks to `main_result`.
+    // To ensure CI dashboards report each failing sub-instruction as an
+    // independent test failure, we extract them into standalone test results
+    // named `<module_name>-<op_name>` while preserving standard checks in
+    // `main_result`.
+    auto* mutable_checks = main_result.mutable_numeric_checks();
+    google::protobuf::RepeatedPtrField<NumericCheck> module_level_checks;
+    for (int j = 0; j < mutable_checks->size(); ++j) {
+      NumericCheck* check = mutable_checks->Mutable(j);
+      absl::string_view check_name = check->name();
+      if (absl::StartsWith(check_name, "FusionDebugger:")) {
+        std::string op_name(absl::StripPrefix(check_name, "FusionDebugger:"));
+        HloIsolationTestResult fusion_result;
+        fusion_result.set_module_name(
+            absl::StrCat(main_result.module_name(), "-", op_name));
+        fusion_result.set_state(State::FAILURE);
+        fusion_result.set_reason("NUMERIC_MISMATCH");
+        if (main_result.has_shard_index()) {
+          fusion_result.set_shard_index(main_result.shard_index());
+        }
+
+        NumericCheck* new_check = fusion_result.add_numeric_checks();
+        *new_check = std::move(*check);
+        new_check->set_name("TPU_VS_INTERPRETER");
+
+        fusion_debug_results.push_back(std::move(fusion_result));
+      } else {
+        *module_level_checks.Add() = std::move(*check);
+      }
+    }
+    mutable_checks->Swap(&module_level_checks);
+
+    pipeline_results.push_back(std::move(main_result));
+    for (auto&& f_result : fusion_debug_results) {
+      pipeline_results.push_back(std::move(f_result));
+    }
+    WriteResults(pipeline_results);
   }
 
   return pipeline_results;
@@ -441,8 +851,8 @@ absl::StatusOr<std::vector<HloIsolationTestResult>> RunIsolationPipeline(
 absl::StatusOr<std::vector<HloIsolationTestResult>> RunIsolationPipeline(
     const std::string& input_path, HloRunnerInterface* test_runner,
     HloRunnerInterface* reference_runner, PipelineIsolationOptions options) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> loaded_module,
-                      LoadModuleFromFile(input_path));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> loaded_module,
+                   LoadModuleFromFile(input_path));
   return RunIsolationPipeline(*loaded_module, test_runner, reference_runner,
                               options);
 }
@@ -579,8 +989,8 @@ absl::StatusOr<std::vector<NumericMismatch>> ExtractTopMismatches(
 
 absl::StatusOr<NumericMismatch> ExtractTopRelativeErrorMismatch(
     std::string error_message) {
-  TF_ASSIGN_OR_RETURN(std::vector<NumericMismatch> mismatches,
-                      ExtractTopMismatches(error_message, false));
+  ASSIGN_OR_RETURN(std::vector<NumericMismatch> mismatches,
+                   ExtractTopMismatches(error_message, false));
   if (mismatches.empty()) {
     return absl::NotFoundError(
         "Could not find top relative error mismatch in the error message.");
@@ -603,7 +1013,7 @@ absl::StatusOr<std::vector<bool>> DetectReducesInModuleOutput(
   }
   std::vector<bool> reduce_in_output(num_outputs, false);
   std::unique_ptr<HloModule> defused_module = module->Clone("defused");
-  TF_RETURN_IF_ERROR(DefuseModule(defused_module.get()));
+  RETURN_IF_ERROR(DefuseModule(defused_module.get()));
 
   auto bfs = [&reduce_in_output](HloModule* module,
                                  int64_t output_index) -> void {
@@ -657,10 +1067,10 @@ absl::StatusOr<std::vector<NumericMismatch>> ExtractAndEnrichTopMismatches(
   int64_t num_outputs =
       is_tuple ? module->result_shape().tuple_shapes().size() : 1;
 
-  TF_ASSIGN_OR_RETURN(std::vector<NumericMismatch> mismatches,
-                      ExtractTopMismatches(error_message, is_tuple));
-  TF_ASSIGN_OR_RETURN(std::vector<bool> reduce_in_output,
-                      DetectReducesInModuleOutput(module));
+  ASSIGN_OR_RETURN(std::vector<NumericMismatch> mismatches,
+                   ExtractTopMismatches(error_message, is_tuple));
+  ASSIGN_OR_RETURN(std::vector<bool> reduce_in_output,
+                   DetectReducesInModuleOutput(module));
   for (NumericMismatch& mismatch : mismatches) {
     int output_index = mismatch.output_shape_index();
     if (output_index >= num_outputs) {

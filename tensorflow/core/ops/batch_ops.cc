@@ -108,6 +108,10 @@ REGISTER_OP("BatchFunction")
     // If true, the queue implementation will re-split tasks into subtasks with
     // priority aware batch scheduler.
     .Attr("enable_priority_aware_batch_scheduler_resplit: bool = false")
+    // If true, the priority aware batch scheduler will lazily filter out and
+    // cancel tasks that have been cancelled or have exceeded their deadline
+    // before batch formation.
+    .Attr("enable_batching_task_lazy_cancellation: bool = false")
     // If greater than zero, a separate thread pool with this number of threads
     // is used for processing warmup requests.
     .Attr("num_warmup_batch_threads: int = 0")

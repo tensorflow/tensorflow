@@ -190,6 +190,7 @@ class BatchResource : public serving::BatchResourceBase {
                   enable_large_batch_splitting,
                   /*enable_priority_aware_batch_scheduler=*/false,
                   /*enable_priority_aware_batch_scheduler_resplit=*/false,
+                  /*enable_batching_task_lazy_cancellation=*/false,
                   /*batch_padding_policy=*/"PAD_UP",
                   /*num_warmup_batch_threads=*/0, resource);
   }
@@ -207,6 +208,7 @@ class BatchResource : public serving::BatchResourceBase {
       bool enable_large_batch_splitting,
       bool enable_priority_aware_batch_scheduler,
       bool enable_priority_aware_batch_scheduler_resplit,
+      bool enable_batching_task_lazy_cancellation,
       absl::string_view batch_padding_policy, int32_t num_warmup_batch_threads,
       std::unique_ptr<BatchResource>* resource) {
     BatcherT::Options batcher_options;
@@ -242,7 +244,8 @@ class BatchResource : public serving::BatchResourceBase {
             low_priority_max_enqueued_batches, low_priority_allowed_batch_sizes,
             mixed_priority_batching_policy,
             enable_priority_aware_batch_scheduler,
-            enable_priority_aware_batch_scheduler_resplit),
+            enable_priority_aware_batch_scheduler_resplit,
+            enable_batching_task_lazy_cancellation),
         allowed_batch_sizes));
     return absl::OkStatus();
   }
@@ -307,7 +310,7 @@ class BatchResource : public serving::BatchResourceBase {
 
     auto* flib = last_task_context->function_library();
     FunctionLibraryRuntime::Handle fhandle =
-        down_cast<const BatchTask&>(last_task).fhandle;
+        absl::down_cast<const BatchTask&>(last_task).fhandle;
     flib->Run(opts, fhandle, inputs, combined_outputs,
               [&](const absl::Status& run_status) {
                 done(run_status);
@@ -359,6 +362,11 @@ BatchFunctionKernel::BatchFunctionKernel(OpKernelConstruction* c)
     OP_REQUIRES_OK(c,
                    c->GetAttr("enable_priority_aware_batch_scheduler_resplit",
                               &enable_priority_aware_batch_scheduler_resplit_));
+  }
+
+  if (c->HasAttr("enable_batching_task_lazy_cancellation")) {
+    OP_REQUIRES_OK(c, c->GetAttr("enable_batching_task_lazy_cancellation",
+                                 &enable_batching_task_lazy_cancellation_));
   }
 
   if (c->HasAttr("num_warmup_batch_threads")) {
@@ -491,7 +499,8 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
           low_priority_max_enqueued_batches_, low_priority_allowed_batch_sizes_,
           mixed_priority_batching_policy, enable_large_batch_splitting_,
           enable_priority_aware_batch_scheduler_,
-          enable_priority_aware_batch_scheduler_resplit_, batch_padding_policy_,
+          enable_priority_aware_batch_scheduler_resplit_,
+          enable_batching_task_lazy_cancellation_, batch_padding_policy_,
           num_warmup_batch_threads_, &new_resource));
       if (session_metadata) {
         new_resource->set_session_metadata(*session_metadata);

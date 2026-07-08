@@ -99,7 +99,7 @@ using ::mlir::sdy::TensorShardingAttr;
 // Convert the shardings from kShardingAttr into kXlaShardingAttr.
 void exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
                 OpBuilder& builder, bool addMissingShardingToControlFlow,
-                bool enableHloShardingV3) {
+                bool enableHloShardingV3, bool simplifyReplicatedShardings) {
   std::function<StringAttr(const HloSharding&)> getStringAttr =
       [&](const HloSharding& hloSharding) {
         return builder.getStringAttr(hloSharding.ToString());
@@ -122,9 +122,10 @@ void exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
         manualAxes = manualAxesAttr.getValue();
         attrs.erase(kManualAxes);
       }
-      attrs.set(kXlaShardingAttr, getStringAttr(convertToHloSharding(
-                                      sdySharding, getMeshAttr, manualAxes,
-                                      enableHloShardingV3)));
+      attrs.set(kXlaShardingAttr,
+                getStringAttr(convertToHloSharding(
+                    sdySharding, getMeshAttr, manualAxes, enableHloShardingV3,
+                    simplifyReplicatedShardings)));
       attrs.erase(kShardingAttr);
       anyChanged = true;
     }
@@ -146,9 +147,10 @@ void exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
         manualAxes = manualAxesAttr.getValue();
         attrs.erase(kManualAxes);
       }
-      attrs.set(kXlaShardingAttr, getStringAttr(convertToHloSharding(
-                                      sdySharding, getMeshAttr, manualAxes,
-                                      enableHloShardingV3)));
+      attrs.set(kXlaShardingAttr,
+                getStringAttr(convertToHloSharding(
+                    sdySharding, getMeshAttr, manualAxes, enableHloShardingV3,
+                    simplifyReplicatedShardings)));
       attrs.erase(kShardingAttr);
     }
     newResultAttrs.push_back(attrs.getDictionary(funcOp.getContext()));
@@ -166,7 +168,7 @@ void exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
     if (ArrayRef<TensorShardingAttr> shardings = mlir::sdy::getShardings(op);
         !shardings.empty()) {
       setHloShardingAttr(op, shardings, getMeshAttr, manualAxes,
-                         enableHloShardingV3);
+                         enableHloShardingV3, simplifyReplicatedShardings);
       op->removeAttr(kShardingAttr);
     } else if (addMissingShardingToControlFlow &&
                mlir::isa<stablehlo::WhileOp, stablehlo::CaseOp,
@@ -190,10 +192,12 @@ class ExportStablehloShardingsPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ExportStablehloShardingsPass)
 
-  explicit ExportStablehloShardingsPass(bool addMissingShardingToControlFlow,
-                                        bool enableHloShardingV3 = false)
+  explicit ExportStablehloShardingsPass(
+      bool addMissingShardingToControlFlow, bool enableHloShardingV3 = false,
+      bool simplifyReplicatedShardings = false)
       : addMissingShardingToControlFlow(addMissingShardingToControlFlow),
-        enableHloShardingV3(enableHloShardingV3) {}
+        enableHloShardingV3(enableHloShardingV3),
+        simplifyReplicatedShardings(simplifyReplicatedShardings) {}
 
   StringRef getArgument() const override {
     return "xla-sdy-stablehlo-export-shardings";
@@ -219,7 +223,7 @@ class ExportStablehloShardingsPass
 
     for (auto funcOp : moduleOp.getOps<FuncOp>()) {
       exportFunc(funcOp, symbolTable, builder, addMissingShardingToControlFlow,
-                 enableHloShardingV3);
+                 enableHloShardingV3, simplifyReplicatedShardings);
     }
 
     moduleOp.walk([&](stablehlo::CustomCallOp customCall) {
@@ -287,30 +291,35 @@ class ExportStablehloShardingsPass
  private:
   bool addMissingShardingToControlFlow;
   bool enableHloShardingV3;
+  bool simplifyReplicatedShardings;
 };
 
 HloSharding getHloShardingForOp(
     Operation* op, ArrayRef<TensorShardingAttr> shardings,
     std::function<MeshAttr(TensorShardingAttr)> getMeshAttr,
-    ArrayRef<StringAttr> manualAxes, bool enableHloShardingV3) {
+    ArrayRef<StringAttr> manualAxes, bool enableHloShardingV3,
+    bool simplifyReplicatedShardings) {
   bool isNoResultMaximal = op->getNumResults() == 0 && shardings.size() == 1 &&
                            (getMeshAttr(shardings.front()).isMaximal() ||
                             shardings.front().isFullyReplicated());
   CHECK(shardings.size() == op->getNumResults() || isNoResultMaximal);
   if (op->getNumResults() == 1 || isNoResultMaximal) {
     return convertToHloSharding(shardings.front(), getMeshAttr, manualAxes,
-                                enableHloShardingV3);
+                                enableHloShardingV3,
+                                simplifyReplicatedShardings);
   }
 
   std::vector<HloSharding> newShardings;
+  newShardings.reserve(shardings.size());
   llvm::transform(shardings, std::back_inserter(newShardings),
                   [&](TensorShardingAttr sdySharding) {
                     return convertToHloSharding(sdySharding, getMeshAttr,
-                                                manualAxes,
-                                                enableHloShardingV3);
+                                                manualAxes, enableHloShardingV3,
+                                                simplifyReplicatedShardings);
                   });
 
   std::vector<xla::Shape> shapes;
+  shapes.reserve(op->getNumResults());
   llvm::transform(op->getResultTypes(), std::back_inserter(shapes),
                   [&](mlir::Type type) { return xla::TypeToShape(type); });
 
@@ -334,7 +343,7 @@ AxisRef toAxisRef(AxisRefAttr axisRefAttr,
 NamedSharding convertToNamedSharding(
     TensorShardingAttr sdySharding,
     std::function<MeshAttr(TensorShardingAttr)> getMeshAttr,
-    ArrayRef<StringAttr> manualAxes) {
+    ArrayRef<StringAttr> manualAxes, bool simplifyReplicatedShardings) {
   MeshAttr sdyMesh = getMeshAttr(sdySharding);
   // If there are no axes, convert to:
   // - maximal sharding if the mesh has a device id
@@ -352,6 +361,20 @@ NamedSharding convertToNamedSharding(
           NamedSharding::DimensionSharding({}, dimSharding.getIsClosed()));
     }
     return NamedSharding(Mesh(), dimShardings);
+  }
+
+  // If simplifyReplicatedShardings is enabled, we convert fully replicated,
+  // closed, non-manual, and non-unreduced shardings to
+  // NamedSharding::Replicate(), which is represented as "{mesh[], replicated}".
+  // We do this only during the final export at the end of ShardyXLA pass to
+  // make the final HLO strings much shorter and more human-readable. We must
+  // NOT do this during the initial MLIR-to-HLO export, because preserving the
+  // rank and open/closed dimension states is required for Shardy verification
+  // passes.
+  if (simplifyReplicatedShardings && sdySharding.isFullyReplicated() &&
+      sdySharding.isFullyClosed() && sdySharding.getUnreducedAxes().empty() &&
+      manualAxes.empty()) {
+    return NamedSharding::Replicate();
   }
 
   std::vector<int64_t> axisSizes;
@@ -417,10 +440,11 @@ NamedSharding convertToNamedSharding(
 HloSharding convertToHloSharding(
     TensorShardingAttr sdySharding,
     std::function<MeshAttr(TensorShardingAttr)> getMeshAttr,
-    ArrayRef<StringAttr> manualAxes, bool enableHloShardingV3) {
+    ArrayRef<StringAttr> manualAxes, bool enableHloShardingV3,
+    bool simplifyReplicatedShardings) {
   if (enableHloShardingV3) {
-    return HloSharding(
-        convertToNamedSharding(sdySharding, getMeshAttr, manualAxes));
+    return HloSharding(convertToNamedSharding(
+        sdySharding, getMeshAttr, manualAxes, simplifyReplicatedShardings));
   }
 
   MeshAttr mesh = getMeshAttr(sdySharding);
@@ -525,17 +549,21 @@ HloSharding convertToHloSharding(
 void setHloShardingAttr(Operation* op, ArrayRef<TensorShardingAttr> shardings,
                         std::function<MeshAttr(TensorShardingAttr)> getMeshAttr,
                         ArrayRef<StringAttr> manualAxes,
-                        bool enableHloShardingV3) {
-  HloSharding hloSharding = getHloShardingForOp(
-      op, shardings, getMeshAttr, manualAxes, enableHloShardingV3);
+                        bool enableHloShardingV3,
+                        bool simplifyReplicatedShardings) {
+  HloSharding hloSharding =
+      getHloShardingForOp(op, shardings, getMeshAttr, manualAxes,
+                          enableHloShardingV3, simplifyReplicatedShardings);
   op->setAttr(kXlaShardingAttr,
               StringAttr::get(op->getContext(), hloSharding.ToString()));
 }
 
 std::unique_ptr<Pass> createExportStablehloShardingsPass(
-    bool addMissingShardingToControlFlow, bool enableHloShardingV3) {
+    bool addMissingShardingToControlFlow, bool enableHloShardingV3,
+    bool simplifyReplicatedShardings) {
   return std::make_unique<ExportStablehloShardingsPass>(
-      addMissingShardingToControlFlow, enableHloShardingV3);
+      addMissingShardingToControlFlow, enableHloShardingV3,
+      simplifyReplicatedShardings);
 }
 
 void registerStablehloExportShardingsPass() {

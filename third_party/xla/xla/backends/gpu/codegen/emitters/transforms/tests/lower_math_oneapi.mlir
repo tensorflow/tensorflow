@@ -18,6 +18,21 @@ module {
 // -----
 
 module {
+  // CHECK-LABEL: func @test_exp
+  func.func @test_exp(%arg0: f16) -> f16 {
+    // CHECK-NOT: llvm.intr.exp
+    // CHECK: %[[EXT:.*]] = llvm.fpext %arg0
+    // CHECK: llvm.call spir_funccc @_Z{{.*}}__spirv_ocl_expf(%[[EXT]])
+    // CHECK: %{{.*}} = llvm.fptrunc %{{.*}}
+    // CHECK: return %{{.*}} : f16
+    %0 = math.exp %arg0 : f16
+    return %0 : f16
+  }
+}
+
+// -----
+
+module {
   func.func @test_tan(%arg0: complex<f32>) -> complex<f32> {
     %0 = complex.tan %arg0 : complex<f32>
     func.return %0 : complex<f32>

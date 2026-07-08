@@ -217,6 +217,7 @@ tf_python_pybind_extension(
         "//tensorflow/core/common_runtime:device_factory",
         "//tensorflow/python/lib/core:pybind11_proto",
         "//tensorflow/python/lib/core:pybind11_status",
+        "@com_google_absl//absl/status",
         "@pybind11",
         "@xla//third_party/python_runtime:headers",
     ],
@@ -355,6 +356,7 @@ tf_cuda_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
     ],
     alwayslink = 1,
 )

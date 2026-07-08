@@ -101,7 +101,7 @@ static absl::StatusOr<int64_t> EvaluateByteOffsetAtIteration(
   int32_t first_offset_index = GetFirstOffsetOperandIndex(instr);
   int32_t rank = instr->operand(0)->shape().dimensions().size();
 
-  Literal ivar_literal(induction_var->shape());
+  ASSIGN_OR_RETURN(Literal ivar_literal, Literal::Make(induction_var->shape()));
   RETURN_IF_ERROR(ivar_literal.SetIntegralAsS64({}, ivar_value));
 
   absl::flat_hash_map<const HloInstruction*, const LiteralBase*> substitutions;
@@ -155,6 +155,37 @@ struct StaggeredVariable {
   const HloInstruction* gte;
   int64_t init_value;
 };
+
+struct InitStep {
+  int64_t init;
+  int64_t step;
+};
+
+static InitStep GetInitStepForVariable(const HloInstruction* variable,
+                                       const WhileLoopBackendConfig& config) {
+  InitStep init_step{config.known_init_step().init(),
+                     config.known_init_step().step()};
+
+  if (variable->opcode() != HloOpcode::kGetTupleElement) {
+    return init_step;
+  }
+
+  int64_t tuple_idx = variable->tuple_index();
+  for (const auto& dynamic_variable : config.dynamic_variables()) {
+    if (dynamic_variable.tuple_index() != tuple_idx) {
+      continue;
+    }
+    if (dynamic_variable.has_init()) {
+      init_step.init = dynamic_variable.init();
+    }
+    if (dynamic_variable.has_step()) {
+      init_step.step = dynamic_variable.step();
+    }
+    break;
+  }
+
+  return init_step;
+}
 
 static const HloInstruction* StripCopies(const HloInstruction* instr) {
   while (instr->opcode() == HloOpcode::kCopy) {
@@ -279,6 +310,7 @@ absl::StatusOr<std::optional<DynamicSliceDescriptor>> AnalyzeDynamicSlice(
   struct ResolvedOffset {
     const HloInstruction* loop;
     const HloInstruction* ivar;
+    const HloInstruction* init_step_variable;
     bool is_staggered;
     int64_t staggered_init;
     int64_t loop_index;
@@ -301,27 +333,40 @@ absl::StatusOr<std::optional<DynamicSliceDescriptor>> AnalyzeDynamicSlice(
     auto functional_dependency =
         ResolveFunctionalDependencyOnInductionVariable(operand);
     if (functional_dependency) {
-      // ResolveFunctionalDependencyOnInductionVariable guarantees exactly one
-      // while loop in the chain (returns nullopt otherwise), so loop_index is
-      // 0.
-      resolved_offsets.push_back({functional_dependency->loop,
+      // Use the induction variable from the while body by default. If the
+      // DUS is inside a called computation (async/fusion/call), find the
+      // local parameter that corresponds to the induction variable so that
+      // HloEvaluator can substitute it without crossing computation
+      // boundaries.
+      const HloInstruction* local_ivar = functional_dependency->induction_var;
+      const HloComputation* instr_comp = instr->parent();
+      auto it = functional_dependency->required_parameters.find(instr_comp);
+      if (it != functional_dependency->required_parameters.end()) {
+        auto param_it = absl::c_find(it->second, true);
+        if (param_it != it->second.end()) {
+          local_ivar =
+              instr_comp->parameter_instruction(param_it - it->second.begin());
+        }
+      }
+
+      resolved_offsets.push_back({functional_dependency->loop, local_ivar,
                                   functional_dependency->induction_var,
-                                  /*is_staggered=*/false, /*staggered_init=*/0,
-                                  /*loop_index=*/0});
+                                  /*is_staggered=*/false,
+                                  /*staggered_init=*/0, /*loop_index=*/0});
       continue;
     }
 
     // Step 4b: Standard analysis failed. It only recognizes the primary
-    // induction variable (or entries in dynamic_variable_tuple_indices), not
+    // induction variable (or entries in dynamic_variables), not
     // staggered copies. Try to detect a staggered induction variable — a
     // copy of the primary ivar at a different tuple index, created by
     // CollectivePipeliner when it peels the first iteration.
     auto staggered_var = TryResolveStaggeredVariable(operand);
     if (staggered_var) {
-      resolved_offsets.push_back({staggered_var->loop, staggered_var->gte,
-                                  /*is_staggered=*/true,
-                                  staggered_var->init_value,
-                                  /*loop_index=*/0});
+      resolved_offsets.push_back(
+          {staggered_var->loop, staggered_var->gte, staggered_var->gte,
+           /*is_staggered=*/true, staggered_var->init_value,
+           /*loop_index=*/0});
       continue;
     }
 
@@ -375,8 +420,8 @@ absl::StatusOr<std::optional<DynamicSliceDescriptor>> AnalyzeDynamicSlice(
     return std::nullopt;
   }
 
-  int64_t init = loop_config.known_init_step().init();
-  int64_t step = loop_config.known_init_step().step();
+  InitStep init_step =
+      GetInitStepForVariable(front.init_step_variable, loop_config);
   int64_t trip_count = loop_config.known_trip_count().n();
 
   if (trip_count < 1) {
@@ -387,13 +432,13 @@ absl::StatusOr<std::optional<DynamicSliceDescriptor>> AnalyzeDynamicSlice(
   // init value rather than the primary induction variable's init. E.g. if the
   // primary ivar starts at 1 with step 1, a staggered copy starts at 0.
   int64_t effective_init =
-      all_staggered ? resolved_offsets.front().staggered_init : init;
+      all_staggered ? resolved_offsets.front().staggered_init : init_step.init;
 
   // Step 8: Evaluate the byte offset for every iteration by substituting the
   // induction variable value into HloEvaluator.
   std::vector<int64_t> offsets(trip_count);
   for (int64_t iter = 0; iter < trip_count; ++iter) {
-    int64_t ivar = effective_init + iter * step;
+    int64_t ivar = effective_init + iter * init_step.step;
     ASSIGN_OR_RETURN(offsets[iter], EvaluateByteOffsetAtIteration(
                                         instr, *strides, induction_var, ivar));
     VLOG(3) << instr->name() << ": iteration " << iter << " (ivar=" << ivar

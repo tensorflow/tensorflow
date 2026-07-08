@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/pjrt/compiled_memory_stats.h"
@@ -78,7 +79,7 @@ class ProgramMemoryTracerTest
       mlir::ModuleOp mlir_module, DeviceListRef devices) {
     auto program = std::make_unique<IfrtIRProgram>(mlir_module);
     auto options = CreateCompileOptions(devices);
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         LoadedExecutableRef executable,
         client_->GetDefaultCompiler()
             ->CompileAndLoad(std::move(program), std::move(options))

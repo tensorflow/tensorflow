@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
@@ -81,7 +82,7 @@ DotKernelEmitter::EmitKernelDefinition() {
   std::unique_ptr<llvm::Module> llvm_module = KernelApiIrBuilder::CreateModule(
       absl::StrCat(instr_->name(), "_elemental_kernel_module"), *ctx);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       KernelApiIrBuilder::KernelPrototype kernel_prototype,
       kernel_api_ir_builder.EmitKernelPrototype(
           *llvm_module, instr_, buffer_assignment_, name(), "_kernel"));
@@ -94,15 +95,14 @@ DotKernelEmitter::EmitKernelDefinition() {
   llvm_ir::IrArray rhs_array = kernel_prototype.arguments[1];
   llvm_ir::IrArray target_array = kernel_prototype.results[0];
 
-  TF_ASSIGN_OR_RETURN(
-      DotOpWorkGroupDim num_workgroups,
-      EmitDotOperation(
-          *instr_, target_array, lhs_array, rhs_array,
-          /*addend_array=*/nullptr,
-          {kernel_prototype.workgroup_id.x, kernel_prototype.workgroup_id.y},
-          /*executable_run_options_value=*/nullptr, &builder, config,
-          *target_machine_,
-          /*allow_runtime_calls=*/false));
+  ASSIGN_OR_RETURN(DotOpWorkGroupDim num_workgroups,
+                   EmitDotOperation(*instr_, target_array, lhs_array, rhs_array,
+                                    /*addend_array=*/nullptr,
+                                    {kernel_prototype.workgroup_id.x,
+                                     kernel_prototype.workgroup_id.y},
+                                    /*executable_run_options_value=*/nullptr,
+                                    &builder, config, *target_machine_,
+                                    /*allow_runtime_calls=*/false));
 
   LlvmKernelSource source(std::move(ctx), std::move(llvm_module));
 

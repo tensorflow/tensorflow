@@ -82,7 +82,7 @@ benchmarks: [
     owner: "xprof-devs@"
     input_artifact: {
       input_format: HLO_TEXT
-      artifact_path: "xla/tools/benchmarks/hlo/gemma4_2b_bf16.hlo"
+      artifact_path: "xla/tools/benchmarks/hlo/hlo_gemma4_2b_bf16.hlo"
     }
     model_source_info: ["Gemma4 2B"]
     hardware_execution_configs: [{

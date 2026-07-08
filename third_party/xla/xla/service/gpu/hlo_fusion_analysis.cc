@@ -127,10 +127,6 @@ HloFusionAnalysis::EmitterFusionKind GetEmitterFusionKind(
     return HloFusionAnalysis::EmitterFusionKind::kTriton;
   }
 
-  if (fusion_backend_config.kind() == kDynamicMemcpyFusionKind) {
-    return HloFusionAnalysis::EmitterFusionKind::kDynamicMemcpy;
-  }
-
   if (fusion_backend_config.kind() == kCuDnnFusionKind) {
     return HloFusionAnalysis::EmitterFusionKind::kCuDnn;
   }
@@ -313,6 +309,14 @@ HloFusionAnalysis HloFusionAnalysis::Create(
       std::move(fusion_backend_config),
       HloFusionAdaptor::ForProducerConsumer(&producer, &consumer),
       &device_info);
+}
+
+const Shape& HloFusionAnalysis::first_result_shape() const {
+  const Shape* shape = &fusion_root(0).shape();
+  while (shape->IsTuple()) {
+    shape = &shape->tuple_shapes(0);
+  }
+  return *shape;
 }
 
 const HloInstruction* HloFusionAnalysis::FindHeroReduction() const {

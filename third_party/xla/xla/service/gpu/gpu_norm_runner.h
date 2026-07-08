@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_norm_runner.pb.h"
@@ -83,52 +84,48 @@ struct GpuNormConfig {
     GpuNormConfig config;
     config.epsilon = desc.backend_config.epsilon();
     config.algorithm = se::dnn::AlgorithmDesc(desc.backend_config.algorithm());
-    TF_ASSIGN_OR_RETURN(config.kind,
-                        AsCudnnNormKind(desc.backend_config.kind()));
+    ASSIGN_OR_RETURN(config.kind, AsCudnnNormKind(desc.backend_config.kind()));
 
     auto tensor_descriptor_from_shape =
         [](Shape shape) -> absl::StatusOr<se::dnn::TensorDescriptor> {
-      TF_ASSIGN_OR_RETURN(
-          se::dnn::DataType data_type,
-          GetDNNDataTypeFromPrimitiveType(shape.element_type()));
+      ASSIGN_OR_RETURN(se::dnn::DataType data_type,
+                       GetDNNDataTypeFromPrimitiveType(shape.element_type()));
       return se::dnn::TensorDescriptor::For(data_type, shape.dimensions(),
                                             shape.layout().minor_to_major());
     };
 
-    TF_ASSIGN_OR_RETURN(config.x_descriptor,
-                        tensor_descriptor_from_shape(desc.x_shape));
-    TF_ASSIGN_OR_RETURN(config.scale_descriptor,
-                        tensor_descriptor_from_shape(desc.scale_shape));
-    TF_ASSIGN_OR_RETURN(config.y_or_dx_descriptor,
-                        tensor_descriptor_from_shape(desc.y_or_dx_shape));
+    ASSIGN_OR_RETURN(config.x_descriptor,
+                     tensor_descriptor_from_shape(desc.x_shape));
+    ASSIGN_OR_RETURN(config.scale_descriptor,
+                     tensor_descriptor_from_shape(desc.scale_shape));
+    ASSIGN_OR_RETURN(config.y_or_dx_descriptor,
+                     tensor_descriptor_from_shape(desc.y_or_dx_shape));
     if (desc.bias_shape) {
-      TF_ASSIGN_OR_RETURN(config.bias_descriptor, tensor_descriptor_from_shape(
-                                                      desc.bias_shape.value()));
+      ASSIGN_OR_RETURN(config.bias_descriptor,
+                       tensor_descriptor_from_shape(desc.bias_shape.value()));
     }
     if (desc.expectation_shape) {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           config.expectation_descriptor,
           tensor_descriptor_from_shape(desc.expectation_shape.value()));
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           config.norm_factor_descriptor,
           tensor_descriptor_from_shape(desc.norm_factor_shape.value()));
     }
     if (desc.dscale_shape) {
-      TF_ASSIGN_OR_RETURN(config.dy_descriptor,
-                          tensor_descriptor_from_shape(desc.dy_shape.value()));
-      TF_ASSIGN_OR_RETURN(
-          config.dscale_descriptor,
-          tensor_descriptor_from_shape(desc.dscale_shape.value()));
-      TF_ASSIGN_OR_RETURN(
-          config.dbias_descriptor,
-          tensor_descriptor_from_shape(desc.dbias_shape.value()));
+      ASSIGN_OR_RETURN(config.dy_descriptor,
+                       tensor_descriptor_from_shape(desc.dy_shape.value()));
+      ASSIGN_OR_RETURN(config.dscale_descriptor,
+                       tensor_descriptor_from_shape(desc.dscale_shape.value()));
+      ASSIGN_OR_RETURN(config.dbias_descriptor,
+                       tensor_descriptor_from_shape(desc.dbias_shape.value()));
     }
     return config;
   }
 
   absl::StatusOr<se::dnn::NormOp::Config> AsDnnNormOpConfig() const {
-    TF_ASSIGN_OR_RETURN(se::dnn::NormKind norm_kind,
-                        GetDNNNormKindFromCudnnNormKind(kind));
+    ASSIGN_OR_RETURN(se::dnn::NormKind norm_kind,
+                     GetDNNNormKindFromCudnnNormKind(kind));
     return se::dnn::NormOp::Config{norm_kind,
                                    epsilon,
                                    x_descriptor,

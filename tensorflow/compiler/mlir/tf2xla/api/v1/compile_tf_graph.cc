@@ -287,6 +287,14 @@ absl::Status CompileMLIRTFFunction(
       device_type, consts, func, metadata, client, arg_core_mapping,
       per_core_arg_shapes, use_tuple_args, compilation_result));
 
+  if (compilation_result != nullptr &&
+      compilation_result->computation != nullptr) {
+    if (auto module_name = mlir_module.getName()) {
+      compilation_result->computation->mutable_proto()->set_name(
+          module_name->str());
+    }
+  }
+
   return PopulateInputOutputAliasing(main_fn, compilation_result,
                                      use_tuple_args);
 }

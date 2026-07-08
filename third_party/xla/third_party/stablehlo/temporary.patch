@@ -1,698 +1,303 @@
-diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h b/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h
---- stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h
-+++ stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h
-@@ -163,22 +163,22 @@
- //////////////////////
- template <typename T>
- typename std::enable_if<std::is_floating_point_v<T>,
--                        std::complex<APFloat>>::type
-+                        mlir::Complex<APFloat>>::type
- getComplexValue(std::complex<T> value, FloatType floatType) {
-   FloatAttr realAttr = getFloatAttr(value.real(), floatType);
-   FloatAttr imagAttr = getFloatAttr(value.imag(), floatType);
--  return std::complex<APFloat>(realAttr.getValue(), imagAttr.getValue());
--}
--template <typename T>
--std::complex<APFloat> getComplexValue(T value, FloatType floatType) {
-+  return mlir::Complex<APFloat>(realAttr.getValue(), imagAttr.getValue());
-+}
-+template <typename T>
-+mlir::Complex<APFloat> getComplexValue(T value, FloatType floatType) {
-   FloatAttr realAttr = getFloatAttr(value, floatType);
--  return std::complex<APFloat>(realAttr.getValue(), toAPFloat(0.0, floatType));
--}
--template <typename T>
--SmallVector<std::complex<APFloat>> getComplexValues(ArrayRef<T> values,
-+  return mlir::Complex<APFloat>(realAttr.getValue(), toAPFloat(0.0, floatType));
-+}
-+template <typename T>
-+SmallVector<mlir::Complex<APFloat>> getComplexValues(ArrayRef<T> values,
-                                                     FloatType floatType) {
-   return llvm::to_vector(
--      llvm::map_range(values, [&](T value) -> std::complex<APFloat> {
-+      llvm::map_range(values, [&](T value) -> mlir::Complex<APFloat> {
-         return getComplexValue(value, floatType);
-       }));
+diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
+--- stablehlo/BUILD.bazel
++++ stablehlo/BUILD.bazel
+@@ -349,6 +349,7 @@
+     deps = [
+         ":base",
+         ":interpreter_ops_inc_gen",
++        ":reference_configuration",
+         ":reference_numpy",
+         ":reference_ops",
+         ":reference_process",
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir b/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
+--- stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
++++ stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
+@@ -815,7 +815,6 @@
+ // -----
+ 
+ func.func @pad_interior(%arg0: tensor<12x4xui32>, %arg1: tensor<ui32>) -> tensor<29x15xui32> {
+-  %0 = arith.constant dense<0> : tensor<ui32>
+   %1 = "stablehlo.pad"(%arg0, %arg1) {
+     edge_padding_high = array<i64: 2, 3>,
+     edge_padding_low = array<i64: 4, 5>,
+@@ -836,7 +835,6 @@
+ // -----
+ 
+ func.func @pad_interior_negative(%arg0: tensor<12x4xui32>, %arg1: tensor<ui32>) -> tensor<25x9xui32> {
+-  %0 = arith.constant dense<0> : tensor<ui32>
+   %1 = "stablehlo.pad"(%arg0, %arg1) {
+     edge_padding_high = array<i64: -2, 3>,
+     edge_padding_low = array<i64: 4, -1>,
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialect/ChloOps.td
+--- stablehlo/stablehlo/dialect/ChloOps.td
++++ stablehlo/stablehlo/dialect/ChloOps.td
+@@ -917,13 +917,16 @@
+     values.shape = indices.shape = input.shape[:-1] + [k]
+     ```
+ 
+-    If two elements are equal, the lower-index element appears first.
++    If `is_stable` is true, the sort is stable: if two elements are equal, the
++    lower-index element appears first. If false, the relative order of equal
++    elements is implementation-defined.
+   }];
+ 
+   let arguments = (ins
+     Arg<HLO_AnyTensor, [{1-D or higher with last dimension at least `k`.}]>:$operand,
+     Arg<I64Attr, [{0-D.  Number of top elements to look for along the last dimension (along each
+-row for matrices).}]>:$k
++row for matrices).}]>:$k,
++    DefaultValuedOptionalAttr<BoolAttr, "true">:$is_stable
+   );
+ 
+   let results = (outs
+@@ -931,7 +934,7 @@
+     HLO_AnyTensor:$indices);
+ 
+   let assemblyFormat = [{
+-    `(`$operand `,` `k` `=` $k`)` attr-dict `:`
++    `(`$operand `,` `k` `=` $k (`,` `is_stable` `=` $is_stable^)? `)` attr-dict `:`
+     type($operand) `->` `(`type($values)`,` type($indices)`)`
+   }];
  }
-@@ -225,7 +225,7 @@
-           llvm::report_fatal_error(
-               "makeConstant with non-float complex type is unsupported.");
+@@ -1011,4 +1014,3 @@
+ }
  
--        std::complex<APFloat> complexValue =
-+        mlir::Complex<APFloat> complexValue =
-             detail::getComplexValue(value, floatType);
-         return DenseElementsAttr::get(tensorType, complexValue);
-       })
-@@ -262,7 +262,7 @@
-           llvm::report_fatal_error(
-               "makeConstant with non-float complex type is unsupported.");
- 
--        SmallVector<std::complex<APFloat>> complexValues =
-+        SmallVector<mlir::Complex<APFloat>> complexValues =
-             detail::getComplexValues(values, floatType);
-         return DenseElementsAttr::get(tensorType, complexValues);
-       })
-diff --ruN a/stablehlo/stablehlo/reference/Element.cpp b/stablehlo/stablehlo/reference/Element.cpp
---- stablehlo/stablehlo/reference/Element.cpp
-+++ stablehlo/stablehlo/reference/Element.cpp
-@@ -120,7 +120,7 @@
-     return convert(type, floatFn(el.getFloatValue().convertToDouble()));
- 
-   if (isSupportedComplexType(type))
--    return convert(type, complexFn(std::complex<double>(
-+    return convert(type, complexFn(mlir::Complex<double>(
-                              el.getComplexValue().real().convertToDouble(),
-                              el.getComplexValue().imag().convertToDouble())));
- 
-@@ -144,10 +144,10 @@
- 
-   if (isSupportedComplexType(type)) {
-     return convert(
--        type, complexFn(std::complex<double>(
-+        type, complexFn(mlir::Complex<double>(
-                             lhs.getComplexValue().real().convertToDouble(),
-                             lhs.getComplexValue().imag().convertToDouble()),
--                        std::complex<double>(
-+                        mlir::Complex<double>(
-                             rhs.getComplexValue().real().convertToDouble(),
-                             rhs.getComplexValue().imag().convertToDouble())));
+ #endif  // STABLEHLO_DIALECT_CHLO_OPS
+-
+diff --ruN a/stablehlo/stablehlo/dialect/Version.cpp b/stablehlo/stablehlo/dialect/Version.cpp
+--- stablehlo/stablehlo/dialect/Version.cpp
++++ stablehlo/stablehlo/dialect/Version.cpp
+@@ -85,7 +85,7 @@
+     case CompatibilityRequirement::WEEK_4:
+       return Version(1, 16, 1);  // WEEK_4 ANCHOR: DO NOT MODIFY
+     case CompatibilityRequirement::WEEK_12:
+-      return Version(1, 13, 8);  // WEEK_12 ANCHOR: DO NOT MODIFY
++      return Version(1, 14, 0);  // WEEK_12 ANCHOR: DO NOT MODIFY
+     case CompatibilityRequirement::MAX:
+       return Version::getMinimumVersion();
    }
-@@ -223,7 +223,7 @@
-   value_ = value;
- }
+diff --ruN a/stablehlo/stablehlo/reference/Api.cpp b/stablehlo/stablehlo/reference/Api.cpp
+--- stablehlo/stablehlo/reference/Api.cpp
++++ stablehlo/stablehlo/reference/Api.cpp
+@@ -14,6 +14,7 @@
+ ==============================================================================*/
+ #include "stablehlo/reference/Api.h"
  
--Element::Element(Type type, std::complex<APFloat> value) {
-+Element::Element(Type type, mlir::Complex<APFloat> value) {
-   if (!isSupportedComplexType(type))
-     report_fatal_error(invalidArgument("Unsupported element type: %s",
-                                        debugString(type).c_str()));
-@@ -264,12 +264,12 @@
-   return std::get<APFloat>(value_);
- }
++#include <atomic>
+ #include <cstdint>
+ #include <iterator>
+ #include <queue>
+@@ -123,7 +124,7 @@
  
--std::complex<APFloat> Element::getComplexValue() const {
-+mlir::Complex<APFloat> Element::getComplexValue() const {
-   if (!isSupportedComplexType(type_))
-     llvm::report_fatal_error("Element is not a complex value");
+       SymbolTable symbolTable{op.getParentOfType<ModuleOp>()};
+       auto results = stablehlo::interpreter::evalRunParallelOp(
+-          runtimeOperands, infeed, programs, symbolTable);
++          runtimeOperands, infeed, programs, symbolTable, this);
+       scope.add(runParallelOp.getResults(), results);
+       return wrapFallbackStatus(llvm::Error::success(), funcName,
+                                 "interpreter.run_parallel");
+@@ -138,7 +139,7 @@
  
-   auto floatPair = std::get<std::pair<APFloat, APFloat>>(value_);
--  return std::complex<APFloat>(floatPair.first, floatPair.second);
-+  return mlir::Complex<APFloat>(floatPair.first, floatPair.second);
- }
- 
- APInt Element::toBits() const {
-@@ -328,8 +328,8 @@
-       [](APFloat lhs, APFloat rhs) -> APFloat {
-         llvm::report_fatal_error("float & float is unsupported");
-       },
--      [](std::complex<APFloat> lhs,
--         std::complex<APFloat> rhs) -> std::complex<APFloat> {
-+      [](mlir::Complex<APFloat> lhs,
-+         mlir::Complex<APFloat> rhs) -> mlir::Complex<APFloat> {
-         llvm::report_fatal_error("complex & complex is unsupported");
-       });
- }
-@@ -339,11 +339,11 @@
-       *this, other, [](APInt lhs, APInt rhs) { return lhs * rhs; },
-       [](bool lhs, bool rhs) -> bool { return lhs & rhs; },
-       [](APFloat lhs, APFloat rhs) { return lhs * rhs; },
--      [](std::complex<APFloat> lhs, std::complex<APFloat> rhs) {
--        // TODO(#226): Use std::complex::operator*
-+      [](mlir::Complex<APFloat> lhs, mlir::Complex<APFloat> rhs) {
-+        // TODO(#226): Use mlir::Complex::operator*
-         auto resultReal = lhs.real() * rhs.real() - lhs.imag() * rhs.imag();
-         auto resultImag = lhs.real() * rhs.imag() + lhs.imag() * rhs.real();
--        return std::complex<APFloat>(resultReal, resultImag);
-+        return mlir::Complex<APFloat>(resultReal, resultImag);
-       });
- }
- 
-@@ -352,11 +352,11 @@
-       *this, other, [](APInt lhs, APInt rhs) { return lhs + rhs; },
-       [](bool lhs, bool rhs) -> bool { return lhs | rhs; },
-       [](APFloat lhs, APFloat rhs) { return lhs + rhs; },
--      [](std::complex<APFloat> lhs, std::complex<APFloat> rhs) {
--        // TODO(#226): Use std::complex::operator+
-+      [](mlir::Complex<APFloat> lhs, mlir::Complex<APFloat> rhs) {
-+        // TODO(#226): Use mlir::Complex::operator+
-         auto resultReal = lhs.real() + rhs.real();
-         auto resultImag = lhs.imag() + rhs.imag();
--        return std::complex<APFloat>(resultReal, resultImag);
-+        return mlir::Complex<APFloat>(resultReal, resultImag);
-       });
- }
- 
-@@ -367,7 +367,7 @@
-         llvm::report_fatal_error("-bool is unsupported");
-       },
-       [&](APFloat val) { return -val; },
--      [](std::complex<APFloat> val) { return -val; });
-+      [](mlir::Complex<APFloat> val) { return -val; });
- }
- 
- Element Element::operator-(const Element &other) const {
-@@ -377,11 +377,11 @@
-         llvm::report_fatal_error("bool - bool is unsupported");
-       },
-       [](APFloat lhs, APFloat rhs) { return lhs - rhs; },
--      [](std::complex<APFloat> lhs, std::complex<APFloat> rhs) {
--        // TODO(#226): Use std::complex::operator-
-+      [](mlir::Complex<APFloat> lhs, mlir::Complex<APFloat> rhs) {
-+        // TODO(#226): Use mlir::Complex::operator-
-         auto resultReal = lhs.real() - rhs.real();
-         auto resultImag = lhs.imag() - rhs.imag();
--        return std::complex<APFloat>(resultReal, resultImag);
-+        return mlir::Complex<APFloat>(resultReal, resultImag);
-       });
- }
- 
-@@ -410,20 +410,20 @@
-   }
- 
-   if (isSupportedComplexType(type)) {
--    // TODO(#226): Use std::complex::operator/
-+    // TODO(#226): Use mlir::Complex::operator/
-     auto lhsVal = lhs.getComplexValue();
-     auto rhsVal = rhs.getComplexValue();
-     const llvm::fltSemantics &elSemantics = lhsVal.real().getSemantics();
--    auto resultVal = std::complex<double>(lhsVal.real().convertToDouble(),
--                                          lhsVal.imag().convertToDouble()) /
--                     std::complex<double>(rhsVal.real().convertToDouble(),
--                                          rhsVal.imag().convertToDouble());
-+    auto resultVal = mlir::Complex<double>(lhsVal.real().convertToDouble(),
-+                                           lhsVal.imag().convertToDouble()) /
-+                     mlir::Complex<double>(rhsVal.real().convertToDouble(),
-+                                           rhsVal.imag().convertToDouble());
-     bool roundingErr;
-     APFloat resultReal(resultVal.real());
-     resultReal.convert(elSemantics, APFloat::rmNearestTiesToEven, &roundingErr);
-     APFloat resultImag(resultVal.imag());
-     resultImag.convert(elSemantics, APFloat::rmNearestTiesToEven, &roundingErr);
--    return Element(type, std::complex<APFloat>(resultReal, resultImag));
-+    return Element(type, mlir::Complex<APFloat>(resultReal, resultImag));
-   }
- 
-   report_fatal_error(invalidArgument("Unsupported element type: %s",
-@@ -546,8 +546,8 @@
-       [](APFloat lhs, APFloat rhs) -> APFloat {
-         llvm::report_fatal_error("float ^ float is unsupported");
-       },
--      [](std::complex<APFloat> lhs,
--         std::complex<APFloat> rhs) -> std::complex<APFloat> {
-+      [](mlir::Complex<APFloat> lhs,
-+         mlir::Complex<APFloat> rhs) -> mlir::Complex<APFloat> {
-         llvm::report_fatal_error("complex ^ complex is unsupported");
-       });
- }
-@@ -559,8 +559,8 @@
-       [](APFloat lhs, APFloat rhs) -> APFloat {
-         llvm::report_fatal_error("float | float is unsupported");
-       },
--      [](std::complex<APFloat> lhs,
--         std::complex<APFloat> rhs) -> std::complex<APFloat> {
-+      [](mlir::Complex<APFloat> lhs,
-+         mlir::Complex<APFloat> rhs) -> mlir::Complex<APFloat> {
-         llvm::report_fatal_error("complex | complex is unsupported");
-       });
- }
-@@ -577,7 +577,7 @@
-       [](APFloat val) -> APFloat {
-         llvm::report_fatal_error("~float is unsupported");
-       },
--      [](std::complex<APFloat> val) -> std::complex<APFloat> {
-+      [](mlir::Complex<APFloat> val) -> mlir::Complex<APFloat> {
-         llvm::report_fatal_error("~complex is unsupported");
-       });
- }
-@@ -597,7 +597,7 @@
- 
-   if (isSupportedComplexType(type)) {
-     auto elVal = el.getComplexValue();
--    auto resultVal = std::abs(std::complex<double>(
-+    auto resultVal = std::abs(mlir::Complex<double>(
-         elVal.real().convertToDouble(), elVal.imag().convertToDouble()));
-     return convert(cast<ComplexType>(type).getElementType(), resultVal);
-   }
-@@ -642,7 +642,7 @@
- 
-   if (isSupportedComplexType(type)) {
-     // atan2(y, x) = -i * log((x + i * y) / sqrt(x**2+y**2))
--    auto i = convert(type, std::complex<double>(0.0, 1.0));
-+    auto i = convert(type, mlir::Complex<double>(0.0, 1.0));
-     return -i * log((e2 + i * e1) / sqrt(e2 * e2 + e1 * e1));
-   }
- 
-@@ -699,11 +699,11 @@
- Element cbrt(const Element &el) {
-   return mapWithUpcastToDouble(
-       el, [](double e) { return std::cbrt(e); },
--      [](std::complex<double> e) {
-+      [](mlir::Complex<double> e) {
-         auto theta = std::atan2(e.imag(), e.real()) / 3.0;
-         return std::pow(std::pow(e.real(), 2.0) + std::pow(e.imag(), 2.0),
-                         1.0 / 6.0) *
--               std::complex<double>(std::cos(theta), std::sin(theta));
-+               mlir::Complex<double>(std::cos(theta), std::sin(theta));
-       });
- }
- 
-@@ -716,8 +716,8 @@
- Element complex(const Element &e1, const Element &e2) {
-   auto complexType = ComplexType::get(e1.getType());
-   if (isSupportedComplexType(complexType))
--    return Element(complexType, std::complex<APFloat>(e1.getFloatValue(),
--                                                      e2.getFloatValue()));
-+    return Element(complexType, mlir::Complex<APFloat>(e1.getFloatValue(),
-+                                                       e2.getFloatValue()));
-   report_fatal_error(invalidArgument("Unsupported element type: %s",
-                                      debugString(complexType).c_str()));
- }
-@@ -791,7 +791,7 @@
-     return Element(type, value);
-   }
-   if (isSupportedComplexType(type))
--    return convert(type, std::complex<APFloat>(value, APFloat(0.0)));
-+    return convert(type, mlir::Complex<APFloat>(value, APFloat(0.0)));
-   report_fatal_error(invalidArgument("Unsupported element type: %s",
-                                      debugString(type).c_str()));
- }
-@@ -800,20 +800,20 @@
-   return convert(type, APFloat(value));
- }
- 
--Element convert(Type type, std::complex<APFloat> value) {
-+Element convert(Type type, mlir::Complex<APFloat> value) {
-   if (isSupportedComplexType(type)) {
-     auto elementType = cast<ComplexType>(type).getElementType();
-     auto realElement = convert(elementType, value.real());
-     auto imagElement = convert(elementType, value.imag());
--    return Element(type, std::complex<APFloat>(realElement.getFloatValue(),
--                                               imagElement.getFloatValue()));
-+    return Element(type, mlir::Complex<APFloat>(realElement.getFloatValue(),
-+                                                imagElement.getFloatValue()));
-   }
-   return convert(type, value.real());
- }
- 
--Element convert(Type type, std::complex<double> value) {
--  return convert(type, std::complex<APFloat>(APFloat(value.real()),
--                                             APFloat(value.imag())));
-+Element convert(Type type, mlir::Complex<double> value) {
-+  return convert(type, mlir::Complex<APFloat>(APFloat(value.real()),
-+                                              APFloat(value.imag())));
- }
- 
- Element getZeroValueOfType(Type type) {
-@@ -825,7 +825,7 @@
-   if (isSupportedFloatType(type))
-     return convert(type, static_cast<APFloat>(0.0));
-   if (isSupportedComplexType(type))
--    return convert(type, std::complex<APFloat>(APFloat(0.0), APFloat(0.0)));
-+    return convert(type, mlir::Complex<APFloat>(APFloat(0.0), APFloat(0.0)));
-   report_fatal_error(invalidArgument("Unsupported element type: %s",
-                                      debugString(type).c_str()));
- }
-@@ -833,14 +833,14 @@
- Element exponential(const Element &el) {
-   return mapWithUpcastToDouble(
-       el, [](double e) { return std::exp(e); },
--      [](std::complex<double> e) { return std::exp(e); });
-+      [](mlir::Complex<double> e) { return std::exp(e); });
- }
- 
- Element exponentialMinusOne(const Element &el) {
-   return mapWithUpcastToDouble(
-       el, [](double e) { return std::expm1(e); },
--      [](std::complex<double> e) {
--        return std::exp(e) - std::complex<double>(1.0, 0.0);
-+      [](mlir::Complex<double> e) {
-+        return std::exp(e) - mlir::Complex<double>(1.0, 0.0);
-       });
- }
- 
-@@ -873,20 +873,20 @@
- Element cosine(const Element &el) {
-   return mapWithUpcastToDouble(
-       el, [](double e) { return std::cos(e); },
--      [](std::complex<double> e) { return std::cos(e); });
-+      [](mlir::Complex<double> e) { return std::cos(e); });
- }
- 
- Element log(const Element &el) {
-   return mapWithUpcastToDouble(
-       el, [](double e) { return std::log(e); },
--      [](std::complex<double> e) { return std::log(e); });
-+      [](mlir::Complex<double> e) { return std::log(e); });
- }
- 
- Element logPlusOne(const Element &el) {
-   return mapWithUpcastToDouble(
-       el, [](double e) { return std::log1p(e); },
--      [](std::complex<double> e) {
--        return std::log(e + std::complex<double>(1.0));
-+      [](mlir::Complex<double> e) {
-+        return std::log(e + mlir::Complex<double>(1.0));
-       });
- }
- 
-@@ -905,7 +905,7 @@
-       },
-       [](bool lhs, bool rhs) -> bool { return lhs | rhs; },
-       [](APFloat lhs, APFloat rhs) { return llvm::maximum(lhs, rhs); },
--      [](std::complex<APFloat> lhs, std::complex<APFloat> rhs) {
-+      [](mlir::Complex<APFloat> lhs, mlir::Complex<APFloat> rhs) {
-         auto cmpRes = lhs.real().compare(rhs.real()) == APFloat::cmpEqual
-                           ? lhs.imag() > rhs.imag()
-                           : lhs.real() > rhs.real();
-@@ -923,7 +923,7 @@
-       },
-       [](bool lhs, bool rhs) -> bool { return lhs & rhs; },
-       [](APFloat lhs, APFloat rhs) { return llvm::minimum(lhs, rhs); },
--      [](std::complex<APFloat> lhs, std::complex<APFloat> rhs) {
-+      [](mlir::Complex<APFloat> lhs, mlir::Complex<APFloat> rhs) {
-         auto cmpRes = lhs.real().compare(rhs.real()) == APFloat::cmpEqual
-                           ? lhs.imag() < rhs.imag()
-                           : lhs.real() < rhs.real();
-@@ -960,7 +960,7 @@
- 
-   return mapWithUpcastToDouble(
-       e1, e2, [](double lhs, double rhs) { return std::pow(lhs, rhs); },
--      [](std::complex<double> lhs, std::complex<double> rhs) {
-+      [](mlir::Complex<double> lhs, mlir::Complex<double> rhs) {
-         return std::pow(lhs, rhs);
-       });
- }
-@@ -1056,8 +1056,8 @@
-         (void)lhs.mod(rhs);
-         return lhs;
-       },
--      [](std::complex<APFloat> lhs,
--         std::complex<APFloat> rhs) -> std::complex<APFloat> {
-+      [](mlir::Complex<APFloat> lhs,
-+         mlir::Complex<APFloat> rhs) -> mlir::Complex<APFloat> {
-         // TODO(#997): remove support for complex
-         llvm::report_fatal_error("rem(complex, complex) is not implemented");
-       });
-@@ -1080,7 +1080,7 @@
- Element rsqrt(const Element &el) {
-   return mapWithUpcastToDouble(
-       el, [](double e) { return 1.0 / std::sqrt(e); },
--      [](std::complex<double> e) { return 1.0 / std::sqrt(e); });
-+      [](mlir::Complex<double> e) { return 1.0 / std::sqrt(e); });
- }
- 
- Element shiftLeft(const Element &e1, const Element &e2) {
-@@ -1119,13 +1119,14 @@
-     const llvm::fltSemantics &elSemantics = elVal.real().getSemantics();
- 
-     if (elVal.real().isNaN() || elVal.imag().isNaN())
--      return Element(type, std::complex<APFloat>(APFloat::getNaN(elSemantics),
--                                                 APFloat::getNaN(elSemantics)));
-+      return Element(type,
-+                     mlir::Complex<APFloat>(APFloat::getNaN(elSemantics),
-+                                            APFloat::getNaN(elSemantics)));
- 
-     if (elVal.real().isZero() && elVal.imag().isZero())
-       return Element(type,
--                     std::complex<APFloat>(APFloat::getZero(elSemantics),
--                                           APFloat::getZero(elSemantics)));
-+                     mlir::Complex<APFloat>(APFloat::getZero(elSemantics),
-+                                            APFloat::getZero(elSemantics)));
- 
-     return el / convert(type, abs(el).getFloatValue());
-   }
-@@ -1137,25 +1138,25 @@
- Element sine(const Element &el) {
-   return mapWithUpcastToDouble(
-       el, [](double e) { return std::sin(e); },
--      [](std::complex<double> e) { return std::sin(e); });
-+      [](mlir::Complex<double> e) { return std::sin(e); });
- }
- 
- Element sqrt(const Element &el) {
-   return mapWithUpcastToDouble(
-       el, [](double e) { return std::sqrt(e); },
--      [](std::complex<double> e) { return std::sqrt(e); });
-+      [](mlir::Complex<double> e) { return std::sqrt(e); });
- }
- 
- Element tan(const Element &el) {
-   return mapWithUpcastToDouble(
-       el, [](double e) { return std::tan(e); },
--      [](std::complex<double> e) { return std::tan(e); });
-+      [](mlir::Complex<double> e) { return std::tan(e); });
- }
- 
- Element tanh(const Element &el) {
-   return mapWithUpcastToDouble(
-       el, [](double e) { return std::tanh(e); },
--      [](std::complex<double> e) { return std::tanh(e); });
-+      [](mlir::Complex<double> e) { return std::tanh(e); });
- }
- 
- void Element::print(raw_ostream &os, bool elideType) const {
-diff --ruN a/stablehlo/stablehlo/reference/Element.h b/stablehlo/stablehlo/reference/Element.h
---- stablehlo/stablehlo/reference/Element.h
-+++ stablehlo/stablehlo/reference/Element.h
-@@ -23,6 +23,7 @@
- #include "llvm/Support/raw_ostream.h"
- #include "mlir/IR/BuiltinTypes.h"
- #include "mlir/IR/Types.h"
-+#include "mlir/Support/Complex.h"
- 
- namespace mlir {
- namespace stablehlo {
-@@ -48,7 +49,7 @@
- 
-   /// Initializes Element object with type `type` and value `value`. `type` must
-   /// be a complex type of the same semantics as `value`.
--  Element(Type type, std::complex<APFloat> value);
-+  Element(Type type, mlir::Complex<APFloat> value);
- 
-   Element(const Element &other) = default;
-   /// @}
-@@ -73,7 +74,7 @@
- 
-   /// Returns the underlying complex value stored in an Element object with
-   /// complex type.
--  std::complex<APFloat> getComplexValue() const;
-+  mlir::Complex<APFloat> getComplexValue() const;
- 
-   /// Returns the implementation-defined bits of the underlying value.
-   APInt toBits() const;
-@@ -213,7 +214,7 @@
- /// destination type), then then the behavior is TBD (#180). If the real part of
- /// `value` cannot be exactly represented in the non-complex destination type,
- /// then the behavior is also TBD (#180).
--Element convert(Type type, std::complex<APFloat> value);
-+Element convert(Type type, mlir::Complex<APFloat> value);
- 
- /// Returns converted Element object of type `type` from source complex<double>
- /// `value`. Only the real part of `value` is used to convert to non-complex
-@@ -222,7 +223,7 @@
- /// destination type), then then the behavior is TBD (#180). If the real part of
- /// `value` cannot be exactly represented in the non-complex destination type,
- /// then the behavior is also TBD (#180).
--Element convert(Type type, std::complex<double> value);
-+Element convert(Type type, mlir::Complex<double> value);
- 
- /// Returns Element object of type `type` from zero `value`
- Element getZeroValueOfType(Type type);
-diff --ruN a/stablehlo/stablehlo/reference/Ops.cpp b/stablehlo/stablehlo/reference/Ops.cpp
---- stablehlo/stablehlo/reference/Ops.cpp
-+++ stablehlo/stablehlo/reference/Ops.cpp
-@@ -1816,7 +1816,7 @@
-     auto N = operand.getShape()[dimension];
- 
-     Element X(resultType.getElementType(),
--              std::complex<APFloat>(APFloat(0.0), APFloat(0.0)));
-+              mlir::Complex<APFloat>(APFloat(0.0), APFloat(0.0)));
- 
-     for (int n = 0; n < N; n++) {
-       auto operandIndex = Index(resultIndex);
-@@ -1860,7 +1860,7 @@
-     // compute IFFT as conjugation, FFT, conjugation and normalization
-     Tensor result(operand);
-     for (auto d = fftDims.begin(); d != fftDims.end(); ++d) {
--      auto divisorValue = std::complex<APFloat>(
-+      auto divisorValue = mlir::Complex<APFloat>(
-           APFloat(static_cast<double>(resultType.getDimSize(*d))),
-           APFloat(0.0));
-       auto divisor =
-diff --ruN a/stablehlo/stablehlo/reference/Tensor.cpp b/stablehlo/stablehlo/reference/Tensor.cpp
---- stablehlo/stablehlo/reference/Tensor.cpp
-+++ stablehlo/stablehlo/reference/Tensor.cpp
-@@ -191,16 +191,16 @@
-       auto elementData =
-           reinterpret_cast<const std::complex<float> *>(elementPtr);
-       return Element(elementType,
--                     std::complex<APFloat>(APFloat(elementData->real()),
--                                           APFloat(elementData->imag())));
-+                     mlir::Complex<APFloat>(APFloat(elementData->real()),
-+                                            APFloat(elementData->imag())));
-     }
- 
-     if (complexElemTy.isF64()) {
-       auto elementData =
-           reinterpret_cast<const std::complex<double> *>(elementPtr);
-       return Element(elementType,
--                     std::complex<APFloat>(APFloat(elementData->real()),
--                                           APFloat(elementData->imag())));
-+                     mlir::Complex<APFloat>(APFloat(elementData->real()),
-+                                            APFloat(elementData->imag())));
-     }
-   }
- 
-@@ -539,8 +539,8 @@
-     auto complexElemTy = cast<ComplexType>(elementType).getElementType();
-     if (complexElemTy.isF32()) {
-       auto complexValues = llvm::map_to_vector(
--          attr.getValues<std::complex<APFloat>>(),
--          [&](std::complex<APFloat> value) -> std::complex<float> {
-+          attr.getValues<mlir::Complex<APFloat>>(),
-+          [&](mlir::Complex<APFloat> value) -> std::complex<float> {
-             return std::complex<float>(value.real().convertToFloat(),
-                                        value.imag().convertToFloat());
-           });
-@@ -551,8 +551,8 @@
-     }
-     if (complexElemTy.isF64()) {
-       auto complexValues = llvm::map_to_vector(
--          attr.getValues<std::complex<APFloat>>(),
--          [&](std::complex<APFloat> value) -> std::complex<double> {
-+          attr.getValues<mlir::Complex<APFloat>>(),
-+          [&](mlir::Complex<APFloat> value) -> std::complex<double> {
-             return std::complex<double>(value.real().convertToDouble(),
-                                         value.imag().convertToDouble());
-           });
-diff --ruN a/stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compatibility.mlir b/stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compatibility.mlir
---- stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compatibility.mlir
-+++ stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compatibility.mlir
-@@ -1,4 +1,4 @@
--// RUN: stablehlo-opt %s -stablehlo-compatibility-expander="target=1.14.0" | FileCheck %s
-+// RUN: stablehlo-opt %s -stablehlo-compatibility-expander="target=1.14.0" -allow-unregistered-dialect | FileCheck %s
- 
- module {
- 
-@@ -40,4 +40,48 @@
- 
-     return %0 : tensor<4xf32>
-   }
-+  "sdy.mesh"() {sym_name = "sdy_mesh", stablehlo.mesh = {axes = [{name = "x", size = 2 : i64}, {name = "y", size = 2 : i64}]}} : () -> ()
-+
-+  // CHECK-LABEL: @all_reduce_sdy_mesh
-+  func.func @all_reduce_sdy_mesh(%arg0: tensor<4xf32>) -> tensor<4xf32> {
-+    // CHECK: replica_groups = dense<{{\[\[}}0, 2], [1, 3]]> : tensor<2x2xi64>
-+    %0 = "stablehlo.all_reduce"(%arg0) ({
-+    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-+      %1 = "stablehlo.add"(%arg1, %arg2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-+      "stablehlo.return"(%1) : (tensor<f32>) -> ()
-+    }) {
-+      replica_groups = #stablehlo.replica_group_mesh_axes<mesh = @sdy_mesh, axes = [#stablehlo.axis_ref<name = "x">]>
-+    } : (tensor<4xf32>) -> tensor<4xf32>
-+    return %0 : tensor<4xf32>
-+  }
-+
-+  "sdy.mesh"() {sym_name = "sdy_mesh_dev", stablehlo.mesh = {axes = [{name = "x", size = 2 : i64}, {name = "y", size = 2 : i64}], device_ids = dense<[0, 2, 1, 3]> : tensor<4xi64>}} : () -> ()
-+
-+  // CHECK-LABEL: @all_reduce_sdy_mesh_dev
-+  func.func @all_reduce_sdy_mesh_dev(%arg0: tensor<4xf32>) -> tensor<4xf32> {
-+    // CHECK: replica_groups = dense<{{\[\[}}0, 1], [2, 3]]> : tensor<2x2xi64>
-+    %0 = "stablehlo.all_reduce"(%arg0) ({
-+    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-+      %1 = "stablehlo.add"(%arg1, %arg2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-+      "stablehlo.return"(%1) : (tensor<f32>) -> ()
-+    }) {
-+      replica_groups = #stablehlo.replica_group_mesh_axes<mesh = @sdy_mesh_dev, axes = [#stablehlo.axis_ref<name = "x">]>
-+    } : (tensor<4xf32>) -> tensor<4xf32>
-+    return %0 : tensor<4xf32>
-+  }
-+
-+  "sdy.mesh"() {sym_name = "sdy_mesh_max", stablehlo.mesh = {axes = [], device_ids = dense<0> : tensor<1xi64>}} : () -> ()
-+
-+  // CHECK-LABEL: @all_reduce_sdy_mesh_max
-+  func.func @all_reduce_sdy_mesh_max(%arg0: tensor<4xf32>) -> tensor<4xf32> {
-+    // CHECK: replica_groups = dense<0> : tensor<1x1xi64>
-+    %0 = "stablehlo.all_reduce"(%arg0) ({
-+    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-+      %1 = "stablehlo.add"(%arg1, %arg2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-+      "stablehlo.return"(%1) : (tensor<f32>) -> ()
-+    }) {
-+      replica_groups = #stablehlo.replica_group_mesh_axes<mesh = @sdy_mesh_max, axes = []>
-+    } : (tensor<4xf32>) -> tensor<4xf32>
-+    return %0 : tensor<4xf32>
-+  }
- }
-diff --ruN a/stablehlo/stablehlo/transforms/StablehloCompatibilityExpander.cpp b/stablehlo/stablehlo/transforms/StablehloCompatibilityExpander.cpp
---- stablehlo/stablehlo/transforms/StablehloCompatibilityExpander.cpp
-+++ stablehlo/stablehlo/transforms/StablehloCompatibilityExpander.cpp
-@@ -311,6 +311,31 @@
-   }
+   /// Probe instrumentation counter for uniquely identifying instrumented tensor
+   /// filenames.
+-  int64_t serializedProbeFileId = 0;
++  std::atomic<int64_t> serializedProbeFileId{0};
  };
  
-+stablehlo::MeshAttr resolveMeshAttrFromDict(DictionaryAttr dictAttr) {
-+  MLIRContext* ctx = dictAttr.getContext();
+ LogicalResult validateEntrySignature(func::FuncOp func,
+diff --ruN a/stablehlo/stablehlo/reference/InterpreterOps.cpp b/stablehlo/stablehlo/reference/InterpreterOps.cpp
+--- stablehlo/stablehlo/reference/InterpreterOps.cpp
++++ stablehlo/stablehlo/reference/InterpreterOps.cpp
+@@ -19,6 +19,7 @@
+ #include <cstdint>
+ #include <functional>
+ #include <future>
++#include <mutex>
+ #include <queue>
+ #include <string>
+ 
+@@ -171,7 +172,8 @@
+ 
+ SmallVector<InterpreterValue> evalRunParallelOp(
+     ArrayRef<InterpreterValue> inputs, std::queue<StringAttr>& infeed,
+-    SmallVector<SmallVector<StringAttr>> programs, SymbolTable& symbolTable) {
++    SmallVector<SmallVector<StringAttr>> programs, SymbolTable& symbolTable,
++    InterpreterFallback* fallback) {
+   llvm::DefaultThreadPool threadPool;
+   SmallVector<std::shared_future<SmallVector<InterpreterValue>>> futures;
+ 
+@@ -188,7 +190,7 @@
+       auto evalWrapper = [&](Region& region, ArrayRef<InterpreterValue> args,
+                              ProcessId processId) {
+         Process process{processId, &processGrid};
+-        return eval(region, args, /*config=*/nullptr, &process,
++        return eval(region, args, fallback, &process,
+                     /*parent=*/nullptr);
+       };
+ 
+@@ -208,6 +210,9 @@
+ }
+ 
+ llvm::Error evalPrintOp(PrintOp& op, InterpreterValue operand) {
++  static std::mutex printing_lock;
++  std::lock_guard<std::mutex> lock(printing_lock);
 +
-+  // Extract axes
-+  auto axesAttr = dictAttr.getAs<ArrayAttr>("axes");
-+  if (!axesAttr) return {};
+   std::string ssaValueStr;
+   llvm::raw_string_ostream stream(ssaValueStr);
+   stream << op.getOperand();
+diff --ruN a/stablehlo/stablehlo/reference/InterpreterOps.h b/stablehlo/stablehlo/reference/InterpreterOps.h
+--- stablehlo/stablehlo/reference/InterpreterOps.h
++++ stablehlo/stablehlo/reference/InterpreterOps.h
+@@ -23,6 +23,7 @@
+ #include "mlir/IR/Dialect.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/Support/LLVM.h"
++#include "stablehlo/reference/Configuration.h"
+ #include "stablehlo/reference/Value.h"
+ 
+ #define GET_OP_CLASSES
+@@ -39,8 +40,9 @@
+ };
+ 
+ SmallVector<InterpreterValue> evalRunParallelOp(
+-    ArrayRef<InterpreterValue> inputs, std::queue<StringAttr> &infeed,
+-    SmallVector<SmallVector<StringAttr>> programs, SymbolTable &symbolTable);
++    ArrayRef<InterpreterValue> inputs, std::queue<StringAttr>& infeed,
++    SmallVector<SmallVector<StringAttr>> programs, SymbolTable& symbolTable,
++    InterpreterFallback* fallback);
+ 
+ // Print the SSA name followed by its type and value like:
+ // >>> %0 = tensor<i1> {
+diff --ruN a/stablehlo/stablehlo/tests/interpret/printing.mlir b/stablehlo/stablehlo/tests/interpret/printing.mlir
+--- stablehlo/stablehlo/tests/interpret/printing.mlir
++++ stablehlo/stablehlo/tests/interpret/printing.mlir
+@@ -123,3 +123,35 @@
+   %complex_f64 = stablehlo.constant dense<(3.140000e+00, 1.0)> : tensor<4xcomplex<f64>>
+   func.return %complex_f32, %complex_f64 : tensor<4xcomplex<f32>>, tensor<4xcomplex<f64>>
+ }
 +
-+  SmallVector<stablehlo::MeshAxisAttr> axes;
-+  for (Attribute attr : axesAttr) {
-+    auto axisDict = dyn_cast<DictionaryAttr>(attr);
-+    if (!axisDict) return {};
-+    auto nameAttr = axisDict.getAs<StringAttr>("name");
-+    auto sizeAttr = axisDict.getAs<IntegerAttr>("size");
-+    if (!nameAttr || !sizeAttr) return {};
-+    axes.push_back(stablehlo::MeshAxisAttr::get(ctx, nameAttr.getValue(),
-+                                                sizeAttr.getInt()));
-+  }
++// -----
 +
-+  // Extract device_ids
-+  DenseIntElementsAttr deviceIds =
-+      dictAttr.getAs<DenseIntElementsAttr>("device_ids");
++// This test checks that printing works correctly when called from multiple
++// threads in parallel using the `interpreter.run_parallel` op.
++//
++// By "correctly", we mean the following:-
++// 1. `interpreter.print` is recognised as a valid op within the
++//    `interpreter.run_parallel` context (no "Unsupported op" errors).
++// 2. The outputs of different threads are not interleaved, i.e., each output of
++//    an `interpreter.print` is completed before the other thread's output is
++//    printed.
 +
-+  return stablehlo::MeshAttr::get(ctx, axes, deviceIds);
++func.func @iota_printing_called_inside_run_parallel() -> tensor<2xi32> {
++  %0 = stablehlo.iota dim = 0 : tensor<2xi32>
++  interpreter.print %0 : tensor<2xi32>
++  return %0 : tensor<2xi32>
 +}
 +
- // ReplicaGroupMeshAxesExpander handles the conversion of
- // #stablehlo.replica_group_mesh_axes to a dense I64ElementsAttr for target
- // versions that do not support it.
-@@ -341,6 +366,12 @@
-             symbolOp->getAttrOfType<stablehlo::MeshAttr>("stablehlo.mesh");
-       }
-       if (!meshAttr) {
-+        if (auto dictAttr =
-+                symbolOp->getAttrOfType<DictionaryAttr>("stablehlo.mesh")) {
-+          meshAttr = resolveMeshAttrFromDict(dictAttr);
++func.func @main() {
++  // CHECK:      %0 = tensor<2xi32> {
++  // CHECK-NEXT:   [0, 1]
++  // CHECK-NEXT: }
++  // CHECK:      %0 = tensor<2xi32> {
++  // CHECK-NEXT:   [0, 1]
++  // CHECK-NEXT: }
++
++  %results:2 = "interpreter.run_parallel"() {
++    programs = [[@iota_printing_called_inside_run_parallel, @iota_printing_called_inside_run_parallel]]
++  } : () -> (tensor<2xi32>, tensor<2xi32>)
++  func.return
++}
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir b/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
+@@ -1,9 +1,10 @@
++// REQUIRES: asserts
+ // RUN: stablehlo-opt %s | stablehlo-opt
+ // RUN: stablehlo-opt %s > %t.0
+ // RUN: stablehlo-opt -emit-bytecode %s | stablehlo-opt > %t.1
+ // RUN: diff %t.0 %t.1
+-// RUN: stablehlo-opt --help-hidden | grep -q "debug-only" && stablehlo-opt -emit-bytecode -debug-only=stablehlo-bytecode %s 2>&1 | FileCheck --check-prefix=CHECK-WARN %s || echo "Skip in release mode"
+-// RUN: stablehlo-opt --help-hidden | grep -q "debug-only" && stablehlo-opt -emit-bytecode %s | stablehlo-opt -debug-only=stablehlo-bytecode 2>&1 | FileCheck --check-prefix=CHECK-WARN %s || echo "Skip in release mode"
++// RUN: stablehlo-opt -emit-bytecode -debug-only=stablehlo-bytecode %s 2>&1 | FileCheck --check-prefix=CHECK-WARN %s
++// RUN: stablehlo-opt -emit-bytecode %s | stablehlo-opt -debug-only=stablehlo-bytecode 2>&1 | FileCheck --check-prefix=CHECK-WARN %s
+ 
+ // CHECK-WARN-NOT: Not Implemented
+ 
+@@ -182,7 +183,7 @@
+   %cst_3 = arith.constant dense<[1, 2, 3, 4]> : tensor<4xi32>
+   %cst_4 = arith.constant dense<[[1, 2], [3, 4]]> : tensor<2x2xi32>
+   %cst_5 = arith.constant dense<[[3, 2], [1, 4]]> : tensor<2x2xi32>
+-  %cst_6 = arith.constant dense<[[1, 2], [4, 8]]> : tensor<2x2xui32>
++  %cst_6 = stablehlo.constant dense<[[1, 2], [4, 8]]> : tensor<2x2xui32>
+   %cst_18 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf4E2M1FN>
+   %cst_19 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf6E2M3FN>
+   %cst_20 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf6E3M2FN>
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+@@ -1021,6 +1021,16 @@
+   %0 = stablehlo.add %arg0, %arg0 {mhlo.frontend_attributes = {bar = "1", foo = "0"}} : tensor<f32>
+   %1 = stablehlo.multiply %0, %cst {mhlo.frontend_attributes = {foo = "1"}} : tensor<f32>
+   // CHECK: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 {mhlo.frontend_attributes = {bar = "1", foo = "1"}} : tensor<f32>
++  // CHECK: return %[[ADD]] : tensor<f32>
++  return %1 : tensor<f32>
++}
++
++// CHECK-LABEL: @multiply_by_one_merge_attrs_conflict_xla_metadata_payload
++func.func @multiply_by_one_merge_attrs_conflict_xla_metadata_payload(%arg0: tensor<f32>) -> tensor<f32> {
++  %cst = stablehlo.constant dense<1.0> : tensor<f32>
++  %0 = stablehlo.add %arg0, %arg0 {mhlo.frontend_attributes = {foo = "1", xla_metadata_payload = "0"}} : tensor<f32>
++  %1 = stablehlo.multiply %0, %cst {mhlo.frontend_attributes = {xla_metadata_payload = "1"}} : tensor<f32>
++  // CHECK: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 {mhlo.frontend_attributes = {foo = "1", xla_metadata_payload = "0"}} : tensor<f32>
+   // CHECK: return %[[ADD]] : tensor<f32>
+   return %1 : tensor<f32>
+ }
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
+@@ -20,7 +20,8 @@
+   // CHECK: %[[CST:.*]] = arith.constant dense<[0, 1, -1]> : tensor<3xi8>
+   // CHECK: %[[ADD:.*]] = stablehlo.add %arg0, %[[CST]] : tensor<3xi8>
+   // CHECK: return %[[ADD]] : tensor<3xi8>
+-  %cst = arith.constant dense<[0, 1, 255]> : tensor<3xui8>
++  %cst_signless = arith.constant dense<[0, 1, 255]> : tensor<3xi8>
++  %cst = builtin.unrealized_conversion_cast %cst_signless : tensor<3xi8> to tensor<3xui8>
+   %0 = stablehlo.add %arg0, %cst : tensor<3xui8>
+   return %0 : tensor<3xui8>
+ }
+diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+@@ -3260,8 +3260,7 @@
+     Type elementType = operandType.getElementType();
+     mlir::stablehlo::SortOp sortOp =
+         createSortOp(&rewriter, op.getLoc(), {op.getOperand(), iotaOp},
+-                     {elementType, i32Type}, lastDimIndex,
+-                     /*isStable=*/true,
++                     {elementType, i32Type}, lastDimIndex, op.getIsStable(),
+                      /*direction=*/mlir::stablehlo::ComparisonDirection::GT);
+ 
+     // Get the sorted input and index tuple element.
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+@@ -87,12 +87,17 @@
+   for (auto attr : sourceAttrs.getValue()) {
+     if (attr.getName() == "mhlo.frontend_attributes" &&
+         mergedAttrs.get("mhlo.frontend_attributes")) {
+-      // Merge frontend attributes, prioritizing source attributes.
++      // Merge frontend attributes, prioritizing source attributes except for
++      // `xla_metadata_payload`, which is set by the surviving op.
+       auto destFrontendAttrs =
+           cast<DictionaryAttr>(mergedAttrs.get("mhlo.frontend_attributes"));
+       auto sourceFrontendAttrs = cast<DictionaryAttr>(attr.getValue());
+       NamedAttrList frontendAttrs(destFrontendAttrs);
+       for (auto sourceAttr : sourceFrontendAttrs) {
++        if (sourceAttr.getName() == "xla_metadata_payload" &&
++            frontendAttrs.get("xla_metadata_payload")) {
++          continue;  // keep the surviving op's own identity
 +        }
-+      }
-+      if (!meshAttr) {
-         return op->emitError("Failed to find mesh attribute on symbol");
+         frontendAttrs.set(sourceAttr.getName(), sourceAttr.getValue());
        }
-     }
-diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOps.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOps.cpp
---- stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOps.cpp
-+++ stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOps.cpp
-@@ -126,7 +126,7 @@
-       APFloat real(floatTy.getFloatSemantics(), rawValue);
-       APFloat imag = APFloat::getZero(floatTy.getFloatSemantics());
-       return DenseElementsAttr::get(scalarTy,
--                                    std::complex<APFloat>(real, imag));
-+                                    mlir::Complex<APFloat>(real, imag));
-     }
-   }
-   llvm::report_fatal_error("unsupported type");
-diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
---- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
-+++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
-@@ -112,7 +112,7 @@
-         bool losesInfo;
-         apFloatZero.convert(realImagComponentFloatType.getFloatSemantics(),
-                             llvm::RoundingMode::NearestTiesToEven, &losesInfo);
--        std::complex<APFloat> complexZeroScalar(apFloatZero, apFloatZero);
-+        mlir::Complex<APFloat> complexZeroScalar(apFloatZero, apFloatZero);
-         auto complexZeroSplat =
-             SplatElementsAttr::get(shapedType, complexZeroScalar);
-         return LazyPlaceholderValue(
+       mergedAttrs.set("mhlo.frontend_attributes",
 

@@ -23,8 +23,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
+#include "xla/backends/gpu/codegen/triton/triton_wrapper_result.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/llvm_kernel_source.h"
@@ -33,11 +37,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/runtime/object_pool.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
-
+struct TritonWrapperResult;
 using BorrowedMlirContext =
     ObjectPool<std::unique_ptr<mlir::MLIRContext>>::BorrowedObject;
 
@@ -76,7 +81,16 @@ class KernelCompiler {
       const std::string& entry_function_name, int unroll_factor,
       MlirKernelSource source, BorrowedMlirContext borrowed_context) = 0;
 
-  virtual xla::Future<std::vector<uint8_t>> CompileToPtx(
+  // Compiles the given Triton kernel source to LLVM IR asynchronously.
+  virtual xla::Future<TritonWrapperResult> CompileTritonToLlvm(
+      absl::string_view kernel_name, const HloModule& hlo_module,
+      const se::DeviceDescription& device_info,
+      const BlockLevelParameters& block_level_parameters,
+      const llvm::Triple& target_triple, const std::string& data_layout,
+      TritonKernelSource triton_source, BorrowedMlirContext borrowed_context,
+      bool is_xla_fusion) = 0;
+
+  virtual xla::Future<std::vector<uint8_t>> CompileToTargetBinary(
       LlvmKernelSource kernel_source) = 0;
 
   // Sets a callback to be called prior to llvm::Module compilation.

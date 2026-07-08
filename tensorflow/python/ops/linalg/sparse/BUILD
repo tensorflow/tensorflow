@@ -1,6 +1,5 @@
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library")
 
 # Description: Sparse CSR support for TensorFlow.
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
@@ -21,7 +20,7 @@ tf_gen_op_wrapper_py(
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
-    py_lib_rule = py_strict_library,
+    py_lib_rule = py_library,
     visibility = ["//visibility:private"],
     deps = ["//tensorflow/core:sparse_csr_matrix_ops_op_lib"],
 )

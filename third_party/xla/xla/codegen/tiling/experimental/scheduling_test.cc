@@ -68,7 +68,8 @@ class SchedulingTest : public HloHardwareIndependentTestBase {
       absl::string_view hlo_string, absl::Span<const int64_t> tile_sizes = {}) {
     HloInstruction* root = ParseAndGetRoot(hlo_string);
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-    auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+    ASSIGN_OR_RETURN(auto tiling_space,
+                     TilingSpace::Create(*fusion_adaptor, &mlir_context_));
     if (!tile_sizes.empty()) {
       RETURN_IF_ERROR(tiling_space->AssignTileSizes(tile_sizes));
     }
@@ -96,7 +97,7 @@ TEST_F(SchedulingTest, OnlyParallelDimensions) {
   auto scheduling = GetSchedule(tiled_computation);
   EXPECT_THAT(scheduling,
               IsOkAndHolds(MatchSchedule(
-                  "d0 -> pid floordiv 4, d1 -> pid mod 4, pid_bounds=[0, 7]")));
+                  "d0 -> pid / 4, d1 -> pid mod 4, pid_bounds=[0, 7]")));
 }
 
 TEST_F(SchedulingTest, ReductionsAndContractionsAreNotSupported) {
@@ -121,7 +122,7 @@ TEST_F(SchedulingTest, ReductionsAndContractionsAreNotSupported) {
                                     {1, 32, /*reduction_tile_size=*/8}));
   EXPECT_THAT(GetSchedule(tiled_computation),
               IsOkAndHolds(MatchSchedule(
-                  "d0 -> pid floordiv 4, d1 -> pid mod 4, pid_bounds=[0, 7]")));
+                  "d0 -> pid / 4, d1 -> pid mod 4, pid_bounds=[0, 7]")));
 }
 
 TEST_F(SchedulingTest, GetDotPermutationMultipleBatchDims) {
@@ -141,12 +142,12 @@ TEST_F(SchedulingTest, GetDotPermutationMultipleBatchDims) {
     })",
                                     {1, 1, 8, 64, 32}));
   // d0, d1 are batch. d2 is m, d3 is n.
-  EXPECT_THAT(GetSchedule(tiled_computation),
-              IsOkAndHolds(MatchSchedule(
-                  "d0 -> pid floordiv 384, d1 -> (pid mod 384) floordiv 128, "
-                  "d2 -> pid mod 384 mod 128 mod 2, "
-                  "d3 -> (pid mod 384 mod 128) floordiv 2, "
-                  "pid_bounds=[0, 767]")));
+  EXPECT_THAT(
+      GetSchedule(tiled_computation),
+      IsOkAndHolds(MatchSchedule("d0 -> pid / 384, d1 -> (pid mod 384) / 128, "
+                                 "d2 -> pid mod 384 mod 128 mod 2, "
+                                 "d3 -> (pid mod 384 mod 128) / 2, "
+                                 "pid_bounds=[0, 767]")));
 }
 
 }  // namespace xla::gpu::experimental

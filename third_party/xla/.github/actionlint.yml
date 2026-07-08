@@ -22,7 +22,9 @@ self-hosted-runner:
     - "linux-arm64-c4a-16" # Linux ARM64 CPU Runner using the 16 vcpu c4a-standard-16 machine.
     - "linux-arm64-t2a-48" # Linux ARM64 CPU Runner using the 48 vcpu t2a-standard-48 machine.
     - "windows-x86-n2-16" # Windows X86 runner using n2-standard-16 machine.
-    - "linux-x86-64-1gpu-amd" # AMD runner with 1 GPU.
-    - "linux-x86-64-4gpu-amd" # AMD runner with 4 GPUs.
+    - "amd-do-linux-xla-gpu-gfx950-1" # AMD runner 1 GPU.
+    - "amd-do-linux-xla-gpu-gfx950-4" # AMD runner 4 GPU.
+    - "amd-do-linux-xla-gpu-gfx950-8" # AMD runner 8 GPUs.
     - "linux-x86-a4-224-b200-1gpu" # Linux X86 GPU runner using 1 B200 GPU and 1/8 the resources of a a4-highgpu-8g machine
     - "linux-x86-a3-8g-h100-8gpu" # Linux X86 GPU runner using a3-highgpu-8g machine with 8 NVIDIA H100 GPUs attached.
+    - "linux-x64-battlemage-256-1gpu-intel" # Linux X86 GPU runner using an EMR4148 machine with 2 Intel BMG GPUs attached.

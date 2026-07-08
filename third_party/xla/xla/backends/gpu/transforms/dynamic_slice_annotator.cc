@@ -37,7 +37,7 @@ absl::StatusOr<bool> DynamicSliceAnnotator::RunImpl(
   bool has_changed = false;
 
   for (HloComputation* computation :
-       module->MakeNonfusionComputations(execution_threads)) {
+       module->MakeComputationPostOrder(execution_threads)) {
     for (HloInstruction* instr : computation->instructions()) {
       if (instr->opcode() != HloOpcode::kDynamicSlice &&
           instr->opcode() != HloOpcode::kDynamicUpdateSlice) {

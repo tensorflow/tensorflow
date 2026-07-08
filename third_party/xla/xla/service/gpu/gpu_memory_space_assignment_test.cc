@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_value.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -44,30 +43,7 @@ using ::testing::IsTrue;
 using ::testing::NotNull;
 using ::testing::SizeIs;
 
-class GpuMemorySpaceAssignmentTest : public HloHardwareIndependentTestBase {
- public:
-  GpuMemorySpaceAssignmentTest()
-      : single_device_gpu_topology_(/*platform_version=*/"_",
-                                    /*num_partitions=*/1,
-                                    /*num_hosts_per_partition=*/1,
-                                    /*num_devices_per_host=*/1),
-        multi_host_gpu_topology_(/*platform_version=*/"_",
-                                 /*num_partitions=*/16,
-                                 /*num_hosts_per_partition=*/1,
-                                 /*num_devices_per_host=*/1) {}
-
- public:
-  const GpuTopology& multi_host_gpu_topology() const {
-    return multi_host_gpu_topology_;
-  }
-  const GpuTopology& single_device_gpu_topology() const {
-    return single_device_gpu_topology_;
-  }
-
- private:
-  GpuTopology single_device_gpu_topology_;
-  GpuTopology multi_host_gpu_topology_;
-};
+class GpuMemorySpaceAssignmentTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(GpuMemorySpaceAssignmentTest, TestDefaultColorAssignment) {
   absl::string_view kHloModule = R"(
@@ -79,8 +55,7 @@ TEST_F(GpuMemorySpaceAssignmentTest, TestDefaultColorAssignment) {
   )";
 
   HloModuleConfig config = GetModuleConfigForTest();
-  BufferAssigner::Colorer colorer =
-      CreateColorer(config.debug_options(), single_device_gpu_topology());
+  BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
@@ -136,8 +111,7 @@ TEST_P(GpuCollectiveMemorySpaceAssignmentTest,
   debug_options.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(
       UseNcclSymmetricBuffers());
   config.set_debug_options(debug_options);
-  BufferAssigner::Colorer colorer =
-      CreateColorer(config.debug_options(), single_device_gpu_topology());
+  BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
@@ -189,143 +163,10 @@ INSTANTIATE_TEST_SUITE_P(
                               : "without_nccl_symmetric_buffers");
     });
 
-struct MosaicMemorySpaceAssignmentTestParams {
-  bool use_nvshmem;
-  bool mosaic_contains_nvshmem;
-};
 
-class GpuMosaicMemorySpaceAssignmentTest
-    : public GpuMemorySpaceAssignmentTest,
-      public ::testing::WithParamInterface<
-          MosaicMemorySpaceAssignmentTestParams> {
- public:
-  bool UseNvshmem() const { return GetParam().use_nvshmem; }
 
-  bool MosaicContainsNvshmem() const {
-    return GetParam().mosaic_contains_nvshmem;
-  }
-};
 
-TEST_P(GpuMosaicMemorySpaceAssignmentTest, TestMosaicMemorySpaceAssignment) {
-  const absl::string_view kMosaicModule = R"(
-    HloModule m
 
-    ENTRY main {
-      ROOT %custom-call.9 = (f16[8], f16[8]) custom-call(), custom_call_target="mosaic_gpu_v2"
-    }
-  )";
-
-  const absl::string_view kMosaicNvshmemModule = R"(
-    HloModule m
-
-    ENTRY main {
-      ROOT %custom-call.9 = (f16[8], f16[8]) custom-call(), custom_call_target="mosaic_gpu_v2", backend_config={module="nvshmem"}
-    }
-  )";
-
-  const absl::string_view kHloModule =
-      MosaicContainsNvshmem() ? kMosaicNvshmemModule : kMosaicModule;
-
-  HloModuleConfig config = GetModuleConfigForTest();
-  DebugOptions debug_options = config.debug_options();
-  debug_options.set_xla_gpu_experimental_enable_nvshmem(UseNvshmem());
-  config.set_debug_options(debug_options);
-  BufferAssigner::Colorer colorer =
-      CreateColorer(config.debug_options(), single_device_gpu_topology());
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
-  AliasInfo alias_info;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                          HloAliasAnalysis::Run(module.get(), &alias_info));
-  DependencyHloOrdering ordering(module.get());
-  TF_EXPECT_OK(colorer(alias_analysis.get(), ordering));
-
-  EXPECT_EQ(alias_analysis->buffers().size(), 3);
-
-  const int kExpectedBuffersCount = 3;
-  for (int i = 0; i < kExpectedBuffersCount; ++i) {
-    EXPECT_EQ(alias_analysis->buffers()[i].values().size(), 1);
-    if (MosaicContainsNvshmem()) {
-      EXPECT_EQ(alias_analysis->buffers()[i].values()[0]->has_color(), true);
-      EXPECT_EQ(alias_analysis->buffers()[i].values()[0]->color(),
-                (int)(MosaicContainsNvshmem()
-                          ? ((UseNvshmem() && !alias_analysis->buffers()[i]
-                                                   .values()[0]
-                                                   ->defining_position()
-                                                   .shape()
-                                                   .IsTuple())
-                                 ? MemorySpaceColor::kCollective
-                                 : MemorySpaceColor::kDefault)
-                          : MemorySpaceColor::kDefault));
-    }
-  }
-}
-
-INSTANTIATE_TEST_SUITE_P(
-    GpuMosaicMemorySpaceAssignmentTestSuiteInstantiation,
-    GpuMosaicMemorySpaceAssignmentTest,
-    ::testing::ValuesIn<MosaicMemorySpaceAssignmentTestParams>(
-        {{false, false}, {true, false}, {false, true}, {true, true}}),
-    [](const ::testing::TestParamInfo<
-        GpuMosaicMemorySpaceAssignmentTest::ParamType>& info) {
-      return absl::StrCat(
-          info.param.use_nvshmem ? "with_nvshmem" : "without_nvshmem", "_",
-          info.param.mosaic_contains_nvshmem ? "contains_nvshmem"
-                                             : "does_not_contain_nvshmem");
-    });
-
-TEST_F(GpuMemorySpaceAssignmentTest, TestNvshmemMemorySpaceAssignment) {
-  absl::string_view kHloModule = R"(
-    HloModule m
-
-    apply_op {
-      x = f32[] parameter(0)
-      y = f32[] parameter(1)
-      ROOT apply_op = f32[] add(x, y)
-    }
-
-    ENTRY main {
-      parameter0 = f32[] parameter(0)
-      all-reduce = f32[] all-reduce-start(parameter0), to_apply=apply_op, backend_config={"collective_backend_config":{"backend":"NVSHMEM"}}
-      ROOT all-reduce-done = f32[] all-reduce-done(all-reduce)
-    }
-  )";
-
-  HloModuleConfig config = GetModuleConfigForTest();
-  auto debug_options = config.debug_options();
-  debug_options.set_xla_gpu_experimental_enable_nvshmem(true);
-  config.set_debug_options(debug_options);
-  BufferAssigner::Colorer colorer =
-      CreateColorer(config.debug_options(), single_device_gpu_topology());
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
-  AliasInfo alias_info;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                          HloAliasAnalysis::Run(module.get(), &alias_info));
-  DependencyHloOrdering ordering(module.get());
-  TF_EXPECT_OK(colorer(alias_analysis.get(), ordering));
-
-  const int kExpectedBuffersCount = 5;
-  EXPECT_EQ(alias_analysis->buffers().size(), kExpectedBuffersCount);
-
-  const int kExpectedDefaultBuffersCount = 3;
-
-  for (int i = 0; i < kExpectedDefaultBuffersCount; ++i) {
-    EXPECT_EQ(alias_analysis->buffers()[i].values().size(), 1);
-    EXPECT_EQ(alias_analysis->buffers()[i].values()[0]->has_color(), true);
-    EXPECT_EQ(alias_analysis->buffers()[i].values()[0]->color(),
-              (int)MemorySpaceColor::kDefault);
-  }
-
-  for (int i = kExpectedDefaultBuffersCount; i < kExpectedBuffersCount; ++i) {
-    EXPECT_EQ(alias_analysis->buffers()[i].values().size(), 1);
-    EXPECT_EQ(alias_analysis->buffers()[i].values()[0]->has_color(), true);
-    EXPECT_EQ(alias_analysis->buffers()[i].values()[0]->color(),
-              (int)MemorySpaceColor::kCollective);
-  }
-}
 
 TEST_F(GpuMemorySpaceAssignmentTest, TestMultimemMosaicMemorySpaceAssignment) {
   constexpr absl::string_view kHloModule = R"(
@@ -337,8 +178,7 @@ TEST_F(GpuMemorySpaceAssignmentTest, TestMultimemMosaicMemorySpaceAssignment) {
   )";
 
   HloModuleConfig config = GetModuleConfigForTest();
-  BufferAssigner::Colorer colorer =
-      CreateColorer(config.debug_options(), single_device_gpu_topology());
+  BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
@@ -437,8 +277,7 @@ TEST_F(GpuMemorySpaceAssignmentTest, CustomCallOperandMemorySpace) {
   )";
 
   HloModuleConfig config = GetModuleConfigForTest();
-  BufferAssigner::Colorer colorer =
-      CreateColorer(config.debug_options(), single_device_gpu_topology());
+  BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
@@ -468,8 +307,7 @@ TEST_F(GpuMemorySpaceAssignmentTest, CustomCallResultMemorySpace) {
   )";
 
   HloModuleConfig config = GetModuleConfigForTest();
-  BufferAssigner::Colorer colorer =
-      CreateColorer(config.debug_options(), single_device_gpu_topology());
+  BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
@@ -497,8 +335,7 @@ TEST_F(GpuMemorySpaceAssignmentTest, CustomCallTupleResultMemorySpace) {
   )";
 
   HloModuleConfig config = GetModuleConfigForTest();
-  BufferAssigner::Colorer colorer =
-      CreateColorer(config.debug_options(), single_device_gpu_topology());
+  BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
@@ -530,12 +367,14 @@ class GpuMosaicCollectiveMemorySpaceAssignmentTest
 
 TEST_P(GpuMosaicCollectiveMemorySpaceAssignmentTest,
        MosaicCollectiveMemorySpaceAssignment) {
-  const std::string kMosaicModule =
-      absl::StrCat(R"(
+  const std::string kMosaicModule = absl::StrCat(
+      R"(
     HloModule m
     ENTRY main {
-      ROOT %custom-call.9 = (f16[8], f16[8]) custom-call(), custom_call_target="mosaic_gpu_v2", backend_config={uses_xla_collective_metadata=)",
-                   IsMosaicWithCollectiveMetadata() ? "true" : "false", R"(}
+      ROOT %custom-call.9 = (f16[8])",
+      IsMosaicWithCollectiveMetadata() ? "{0:S(1)}" : "", R"(, f16[8])",
+      IsMosaicWithCollectiveMetadata() ? "{0:S(1)}" : "",
+      R"() custom-call(), custom_call_target="mosaic_gpu_v2"
     }
   )");
 
@@ -543,8 +382,7 @@ TEST_P(GpuMosaicCollectiveMemorySpaceAssignmentTest,
   DebugOptions debug_options = config.debug_options();
   config.set_debug_options(debug_options);
 
-  BufferAssigner::Colorer colorer =
-      CreateColorer(config.debug_options(), multi_host_gpu_topology());
+  BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kMosaicModule, config));

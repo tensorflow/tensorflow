@@ -134,6 +134,7 @@ cc_library(
         "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
+        "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:legalize_tf",
         "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -166,6 +167,7 @@ cc_library(
         "@xla//xla/service:computation_placer_hdr",
         "@xla//xla/service:hlo_proto_cc",
         "@xla//xla/stream_executor:platform_manager",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -294,7 +296,7 @@ tf_cc_test(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@llvm-project//mlir:RegisterAllDialects",
+        "@llvm-project//mlir:RegisterAllDialects",  # buildcleaner: keep
         "@tf_runtime//:hostcontext",
         "@xla//xla/python/ifrt",
         "@xla//xla/python/ifrt:test_util",

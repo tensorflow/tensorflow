@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/Support/LLVM.h"
@@ -62,10 +63,9 @@ absl::StatusOr<xla::ifrt::DeviceListRef> MakeDeviceListFromAtomDeviceIds(
   std::vector<xla::ifrt::Device*> device_ptrs;
   device_ptrs.reserve(atom_logical_device_ids.size());
   for (const auto& atom_logical_device_id : atom_logical_device_ids) {
-    TF_ASSIGN_OR_RETURN(
-        xla::ifrt::Device * device,
-        client.LookupDevice(
-            device_assignments[atom_logical_device_id.value()]));
+    ASSIGN_OR_RETURN(xla::ifrt::Device * device,
+                     client.LookupDevice(
+                         device_assignments[atom_logical_device_id.value()]));
     device_ptrs.push_back(device);
   }
   return client.MakeDeviceList(device_ptrs);
@@ -100,21 +100,20 @@ absl::Status IfrtIrExecutableVersion::IsCompatibleWith(
 
 absl::Status IfrtIrExecutableVersion::IsCompatibleWith(
     xla::ifrt::Client& client, const ExecutableVersion& other) const {
-  TF_RETURN_IF_ERROR(IsCompatibleWith(other));
+  RETURN_IF_ERROR(IsCompatibleWith(other));
   const auto* other_ifrt_ir_executable_version =
       llvm::cast<IfrtIrExecutableVersion>(&other);
   // This version is compatible with the other IFRT IR version if the other's
   // atom executables are compatible with this client on the assigned devices.
   for (const auto& [other_atom_abi_version, other_atom_logical_device_ids] :
        other_ifrt_ir_executable_version->runtime_abi_versions) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         DeviceListRef other_atom_device_list,
         MakeDeviceListFromAtomDeviceIds(
             client, other_ifrt_ir_executable_version->device_assignments,
             other_atom_logical_device_ids));
-    TF_RETURN_IF_ERROR(
-        client.GetDefaultCompiler()->IsExecutableVersionCompatible(
-            *other_atom_abi_version, other_atom_device_list));
+    RETURN_IF_ERROR(client.GetDefaultCompiler()->IsExecutableVersionCompatible(
+        *other_atom_abi_version, other_atom_device_list));
   }
   return absl::OkStatus();
 }
@@ -133,12 +132,11 @@ absl::StatusOr<IfrtIrExecutableVersionProto> IfrtIrExecutableVersion::ToProto(
   for (const auto& [runtime_abi_version, atom_logical_device_ids] :
        runtime_abi_versions) {
     xla::ifrt::Serialized serialized_runtime_abi_version;
-    TF_ASSIGN_OR_RETURN(
-        serialized_runtime_abi_version,
-        xla::ifrt::Serialize(
-            *runtime_abi_version,
-            std::make_unique<xla::ifrt::SerializeOptions>(
-                xla::ifrt::SerDesWeek4OldVersionAccessor::Get())));
+    ASSIGN_OR_RETURN(serialized_runtime_abi_version,
+                     xla::ifrt::Serialize(
+                         *runtime_abi_version,
+                         std::make_unique<xla::ifrt::SerializeOptions>(
+                             xla::ifrt::SerDesWeek4OldVersionAccessor::Get())));
 
     AtomExecutableVersionProto atom_executable_version_proto;
     if (!serialized_runtime_abi_version.SerializeToString(
@@ -177,10 +175,10 @@ IfrtIrExecutableVersion::FromProto(
           "Failed to parse serialized runtime ABI version");
     }
 
-    TF_ASSIGN_OR_RETURN(atom_executable_version.runtime_abi_version,
-                        xla::ifrt::Deserialize<xla::ifrt::ExecutableVersion>(
-                            serialized_runtime_abi_version,
-                            std::make_unique<xla::ifrt::DeserializeOptions>()));
+    ASSIGN_OR_RETURN(atom_executable_version.runtime_abi_version,
+                     xla::ifrt::Deserialize<xla::ifrt::ExecutableVersion>(
+                         serialized_runtime_abi_version,
+                         std::make_unique<xla::ifrt::DeserializeOptions>()));
 
     for (auto logical_device_index :
          atom_executable_version_proto.logical_device_indexes()) {
@@ -259,8 +257,8 @@ class IfrtIrExecutableVersionSerDes
     const auto& ifrt_ir_executable_version =
         llvm::cast<IfrtIrExecutableVersion>(serializable);
 
-    TF_ASSIGN_OR_RETURN(IfrtIrExecutableVersionProto proto,
-                        ifrt_ir_executable_version.ToProto(version));
+    ASSIGN_OR_RETURN(IfrtIrExecutableVersionProto proto,
+                     ifrt_ir_executable_version.ToProto(version));
     std::string serialized;
     if (!proto.SerializeToString(&serialized)) {
       return absl::InternalError(

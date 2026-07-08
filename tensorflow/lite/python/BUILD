@@ -14,7 +14,7 @@ package(
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
         "//third_party/odml/infra/genai/conversion:__subpackages__",
-        "//third_party/odml/litert/litert/python:__subpackages__",
+        "//third_party/odml/litert:__subpackages__",
         "//third_party/odml/model_customization/quantization:__subpackages__",
         "//third_party/py/ai_edge_torch:__subpackages__",
         "//third_party/py/litert_torch:__subpackages__",
@@ -302,7 +302,7 @@ py_test(
     exec_properties = if_oss(
         None,
         select({
-            "//tools/cpp:asan_build": {"cpp_link.mem": "20g"},
+            "@bazel_tools//tools/cpp:asan_build": {"cpp_link.mem": "20g"},
             "//conditions:default": None,
         }),
     ),

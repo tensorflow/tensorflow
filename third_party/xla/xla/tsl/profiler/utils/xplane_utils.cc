@@ -17,6 +17,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -94,7 +95,9 @@ void RemoveAt(protobuf::RepeatedPtrField<T>* array,
 template <typename T>
 void Remove(protobuf::RepeatedPtrField<T>* array, const T* elem) {
   int i = Find(*array, [elem](const T* e) { return elem == e; });
-  RemoveAt(array, {i});
+  if (i != -1) {
+    RemoveAt(array, {i});
+  }
 }
 
 template <typename T, typename Pred>
@@ -288,6 +291,12 @@ const XLine* FindLineWithName(const XPlane& plane, absl::string_view name) {
   int i = Find(plane.lines(),
                [name](const XLine* line) { return line->name() == name; });
   return (i != -1) ? &plane.lines(i) : nullptr;
+}
+
+XLine* FindMutableLineWithName(XPlane& plane, absl::string_view name) {
+  int i = Find(plane.lines(),
+               [name](const XLine* line) { return line->name() == name; });
+  return (i != -1) ? plane.mutable_lines(i) : nullptr;
 }
 
 XStat* FindOrAddMutableStat(const XStatMetadata& stat_metadata, XEvent* event) {
@@ -756,6 +765,216 @@ bool IsDevicePlane(const XPlane& plane) {
   return absl::StartsWith(plane.name(), "/device") ||
          absl::StartsWith(plane.name(), kTpuNonCorePlaneNamePrefix) ||
          IsCustomPlane(plane);
+}
+
+// Merges top-level session metadata (hostnames, errors, and warnings) safely
+// by deduplicating string entries.
+void MergeXSpaceTopLevelMetadata(const XSpace& from, XSpace* to) {
+  absl::flat_hash_set<absl::string_view> existing_hostnames(
+      to->hostnames().begin(), to->hostnames().end());
+  for (const std::string& hostname : from.hostnames()) {
+    if (existing_hostnames.insert(hostname).second) {
+      to->add_hostnames(hostname);
+    }
+  }
+
+  absl::flat_hash_set<absl::string_view> existing_errors(to->errors().begin(),
+                                                         to->errors().end());
+  for (const std::string& error : from.errors()) {
+    if (existing_errors.insert(error).second) {
+      to->add_errors(error);
+    }
+  }
+
+  absl::flat_hash_set<absl::string_view> existing_warnings(
+      to->warnings().begin(), to->warnings().end());
+  for (const std::string& warning : from.warnings()) {
+    if (existing_warnings.insert(warning).second) {
+      to->add_warnings(warning);
+    }
+  }
+}
+
+// A generic helper to build a name-to-ID translation map for a given metadata
+// dictionary type (e.g. EventMetadata or StatMetadata), dynamically assigning
+// new sequential IDs for newly encountered names to avoid collisions.
+template <typename MetadataMap>
+void BuildSingleMetadataMap(const MetadataMap& from_metadata,
+                            MetadataMap* to_metadata,
+                            absl::flat_hash_map<int64_t, int64_t>* id_map) {
+  absl::flat_hash_map<absl::string_view, int64_t> to_by_name;
+  int64_t next_id = 0;
+  // NOLINTNEXTLINE
+  for (const auto& [id, metadata] : *to_metadata) {
+    if (!metadata.name().empty()) {
+      to_by_name[metadata.name()] = id;
+    }
+    next_id = std::max(next_id, id + 1);
+  }
+  // NOLINTNEXTLINE
+  for (const auto& [from_id, from_meta] : from_metadata) {
+    if (from_meta.name().empty()) {
+      (*id_map)[from_id] = from_id;
+      continue;
+    }
+    auto [it_meta, inserted] =
+        to_by_name.try_emplace(from_meta.name(), next_id);
+    if (inserted) {
+      (*to_metadata)[next_id] = from_meta;
+      next_id++;
+    }
+    (*id_map)[from_id] = it_meta->second;
+  }
+}
+
+// Builds remapping tables for both Event and Stat metadata IDs between
+// `from_plane` and `to_plane`.
+void BuildMetadataIdMaps(const XPlane& from_plane, XPlane* to_plane,
+                         absl::flat_hash_map<int64_t, int64_t>* event_map,
+                         absl::flat_hash_map<int64_t, int64_t>* stat_map) {
+  BuildSingleMetadataMap(from_plane.event_metadata(),
+                         to_plane->mutable_event_metadata(), event_map);
+  BuildSingleMetadataMap(from_plane.stat_metadata(),
+                         to_plane->mutable_stat_metadata(), stat_map);
+}
+
+// Remaps the metadata_id of an event (and its associated stats) to the target
+// plane's dictionary based on the computed translation tables.
+void RemapEventMetadata(XEvent* event,
+                        const absl::flat_hash_map<int64_t, int64_t>& event_map,
+                        const absl::flat_hash_map<int64_t, int64_t>& stat_map) {
+  auto it_remap = event_map.find(event->metadata_id());
+  if (it_remap != event_map.end()) {
+    event->set_metadata_id(it_remap->second);
+  }
+
+  for (XStat& stat : *event->mutable_stats()) {
+    auto it_stat = stat_map.find(stat.metadata_id());
+    if (it_stat != stat_map.end()) {
+      stat.set_metadata_id(it_stat->second);
+    }
+  }
+}
+
+// Aligns the starting timestamps of two lines, offset-shifts event start times
+// to preserve relative timeline positions, and zero-copy transfers events from
+// the source line to the target line.
+void MergeLine(std::unique_ptr<XLine> from_line, XLine* to_line,
+               const absl::flat_hash_map<int64_t, int64_t>& event_map,
+               const absl::flat_hash_map<int64_t, int64_t>& stat_map) {
+  // Align timestamps
+  const int64_t to_start = to_line->timestamp_ns();
+  const int64_t from_start = from_line->timestamp_ns();
+  if (from_start < to_start) {
+    int64_t offset_ps = (to_start - from_start) * 1000;
+    for (XEvent& event : *to_line->mutable_events()) {
+      event.set_offset_ps(event.offset_ps() + offset_ps);
+    }
+    to_line->set_timestamp_ns(from_start);
+  } else if (from_start > to_start) {
+    int64_t offset_ps = (from_start - to_start) * 1000;
+    for (XEvent& event : *from_line->mutable_events()) {
+      event.set_offset_ps(event.offset_ps() + offset_ps);
+    }
+  }
+
+  // Move events preserving chronological order by first releasing into a
+  // temporary LIFO stack.
+  std::vector<XEvent*> events_to_move;
+  events_to_move.reserve(from_line->events_size());
+  while (!from_line->events().empty()) {
+    events_to_move.push_back(from_line->mutable_events()->ReleaseLast());
+  }
+  for (auto it = events_to_move.rbegin(); it != events_to_move.rend(); ++it) {
+    XEvent* event = *it;
+    RemapEventMetadata(event, event_map, stat_map);
+    to_line->mutable_events()->AddAllocated(event);
+  }
+  to_line->set_duration_ps(
+      std::max(to_line->duration_ps(), from_line->duration_ps()));
+}
+
+// Iterates over all lines in `from_plane` and merges them into `to_plane`,
+// remapping metadata IDs on all transferred events.
+void MergePlaneLines(XPlane* from_plane, XPlane* to_plane,
+                     const absl::flat_hash_map<int64_t, int64_t>& event_map,
+                     const absl::flat_hash_map<int64_t, int64_t>& stat_map) {
+  absl::flat_hash_map<int64_t, XLine*> to_lines;
+  for (int i = 0; i < to_plane->lines_size(); ++i) {
+    XLine* l = to_plane->mutable_lines(i);
+    to_lines[l->id()] = l;
+  }
+
+  while (!from_plane->lines().empty()) {
+    std::unique_ptr<XLine> from_line(
+        from_plane->mutable_lines()->ReleaseLast());
+    auto line_it = to_lines.find(from_line->id());
+
+    if (line_it == to_lines.end()) {
+      for (XEvent& event : *from_line->mutable_events()) {
+        RemapEventMetadata(&event, event_map, stat_map);
+      }
+      to_plane->mutable_lines()->AddAllocated(from_line.release());
+    } else {
+      MergeLine(std::move(from_line), line_it->second, event_map, stat_map);
+    }
+  }
+}
+
+// High-level orchestrator to merge a source plane into a target plane.
+void MergePlane(std::unique_ptr<XPlane> from_plane, XPlane* to_plane) {
+  absl::flat_hash_map<int64_t, int64_t> event_map;
+  absl::flat_hash_map<int64_t, int64_t> stat_map;
+
+  // Remap metadata IDs
+  BuildMetadataIdMaps(*from_plane, to_plane, &event_map, &stat_map);
+
+  // Merge lines and events
+  MergePlaneLines(from_plane.get(), to_plane, event_map, stat_map);
+
+  // Merge plane-level stats
+  absl::flat_hash_set<int64_t> existing_plane_stats;
+  for (const XStat& stat : to_plane->stats()) {
+    existing_plane_stats.insert(stat.metadata_id());
+  }
+  for (const XStat& stat : from_plane->stats()) {
+    auto it_stat_meta = stat_map.find(stat.metadata_id());
+    int64_t remapped_id = (it_stat_meta != stat_map.end())
+                              ? it_stat_meta->second
+                              : stat.metadata_id();
+    if (existing_plane_stats.insert(remapped_id).second) {
+      auto* new_stat = to_plane->add_stats();
+      *new_stat = stat;
+      new_stat->set_metadata_id(remapped_id);
+    }
+  }
+}
+
+void MergeXSpace(std::unique_ptr<XSpace> from, XSpace* to) {
+  if (!from) {
+    return;
+  }
+
+  // 1. Merge top-level data
+  MergeXSpaceTopLevelMetadata(*from, to);
+
+  absl::flat_hash_map<absl::string_view, XPlane*> to_planes;
+  for (int i = 0; i < to->planes_size(); ++i) {
+    XPlane* p = to->mutable_planes(i);
+    to_planes[p->name()] = p;
+  }
+
+  // 2. Process planes
+  while (!from->planes().empty()) {
+    std::unique_ptr<XPlane> from_plane(from->mutable_planes()->ReleaseLast());
+    auto it = to_planes.find(from_plane->name());
+
+    if (it == to_planes.end()) {
+      to->mutable_planes()->AddAllocated(from_plane.release());
+    } else {
+      MergePlane(std::move(from_plane), it->second);
+    }
+  }
 }
 
 }  // namespace profiler

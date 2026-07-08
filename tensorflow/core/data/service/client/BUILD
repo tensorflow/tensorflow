@@ -61,6 +61,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
+        "@tsl//tsl/platform:random",
         "@tsl//tsl/platform:retrying_utils",
         "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
@@ -151,6 +152,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 

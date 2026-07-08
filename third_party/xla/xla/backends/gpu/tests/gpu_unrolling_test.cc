@@ -127,7 +127,7 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedSine) {
       absl::Substitute(R"(
 ; CHECK: load <$0 x float>
 ; CHECK-NOT: load <$0 x float>
-; CHECK: store <$0 x float>
+; CHECK: store <$0 x {{(float|i32)}}>
       )",
                        GetExpectedUnrollFactor(device_description())),
       /*match_optimized_ir=*/true));

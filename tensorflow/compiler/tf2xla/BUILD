@@ -1,4 +1,5 @@
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 
 # copybara:uncomment_begin(google-only)
 # load("//devtools/deps/check:deps_check.bzl", "check_dependencies")
@@ -12,7 +13,6 @@ load(
     "@xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "if_libtpu", "tf_cc_binary", "tf_cc_test", "tf_copts", "tf_cuda_cc_test", "tf_gen_op_wrapper_py", "tf_openmp_copts")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "filegroup", "get_compatible_with_portable")
 load(
@@ -212,6 +212,8 @@ cc_library(
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:vlog_is_on",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:IR",
         "@tsl//tsl/platform:errors",
@@ -1325,7 +1327,7 @@ tf_gen_op_wrapper_py(
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
-    py_lib_rule = py_strict_library,
+    py_lib_rule = py_library,
     deps = [
         ":light_outside_compilation_kernels_for_test",
     ],

@@ -185,8 +185,8 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
   }
 
   VLOG(3) << "Driver compilation info log output: " << info_log_buffer;
-  TF_RETURN_IF_ERROR(CreateErrorFromPTXASLog(info_log_buffer, architecture,
-                                             options.cancel_if_reg_spill));
+  RETURN_IF_ERROR(CreateErrorFromPTXASLog(info_log_buffer, architecture,
+                                          options.cancel_if_reg_spill));
 
   std::vector<uint8_t> cubin(static_cast<uint8_t*>(cubin_out),
                              static_cast<uint8_t*>(cubin_out) + cubin_size);

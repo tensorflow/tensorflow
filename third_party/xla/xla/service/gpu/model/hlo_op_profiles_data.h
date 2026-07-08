@@ -954,7 +954,7 @@ inline constexpr char kDeviceHloOpProfiles[] = R"pb(
   }
 
   entries {
-    key: "sm_100_B200"
+    key: "sm_100"  # "B200"
     value {
       entries {
         instruction {

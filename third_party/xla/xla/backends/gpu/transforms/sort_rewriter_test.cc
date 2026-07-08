@@ -79,11 +79,10 @@ std::string GetNumpyOrderComparator(
                       absl::Substitute(kBody, type_name, direction), "}");
 }
 
-class SortRewriterTestBase
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+class SortRewriterTestBase : public HloInterpreterReferenceMixin<HloTestBase> {
  public:
   void SetUp() override {
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>::SetUp();
+    HloInterpreterReferenceMixin<HloTestBase>::SetUp();
     SortRewriter::SetSortModeForTestingOnly(SortRewriter::Mode::kAlways);
   }
 

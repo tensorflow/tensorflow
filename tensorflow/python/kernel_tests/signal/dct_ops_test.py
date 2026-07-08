@@ -217,6 +217,60 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
     # Run with actual shape
     f(signals)
 
+  def test_error(self):
+    signals = np.random.rand(10)
+    # Unsupported type.
+    with self.assertRaises(ValueError):
+      dct_ops.dct(signals, type=5)
+    # Invalid n.
+    with self.assertRaises(ValueError):
+      dct_ops.dct(signals, n=-2)
+    # DCT-I normalization not implemented.
+    with self.assertRaises(ValueError):
+      dct_ops.dct(signals, type=1, norm="ortho")
+    # DCT-I requires at least two inputs.
+    with self.assertRaises(ValueError):
+      dct_ops.dct(np.random.rand(1), type=1)
+    # DCT-I requires n to be greater than one, since truncating the input
+    # to length one would violate the same requirement.
+    with self.assertRaises(ValueError):
+      dct_ops.dct(signals, type=1, n=1)
+    with self.assertRaises(ValueError):
+      dct_ops.idct(signals, type=1, n=1)
+    # Unknown normalization.
+    with self.assertRaises(ValueError):
+      dct_ops.dct(signals, norm="bad")
+    with self.assertRaises(NotImplementedError):
+      dct_ops.dct(signals, axis=0)
+
+  def test_idct_n_argument_supported(self):
+    # Regression for https://github.com/tensorflow/tensorflow/issues/102418:
+    # the docstring of `idct` previously claimed that `n` "must be None",
+    # but the implementation routes through `_dct_internal` which has
+    # always supported an arbitrary positive `n`. The runtime contract is
+    # asserted here so a future change cannot silently re-introduce the
+    # mismatch the docstring used to advertise.
+    signals = np.random.rand(8).astype(np.float32)
+    # Same n as the input length — must not raise and must agree with the
+    # default-None call.
+    out_default = dct_ops.idct(signals, type=3, norm="ortho")
+    out_explicit = dct_ops.idct(signals, type=3, norm="ortho", n=8)
+    self.assertAllClose(out_default, out_explicit)
+    # Smaller n (truncate). The runtime accepts it; we only assert no
+    # exception and the expected output length.
+    out_trunc = dct_ops.idct(signals, type=3, norm="ortho", n=4)
+    self.assertEqual(out_trunc.shape[-1], 4)
+    # Larger n (zero-pad).
+    out_pad = dct_ops.idct(signals, type=3, norm="ortho", n=12)
+    self.assertEqual(out_pad.shape[-1], 12)
+    # Negative n still rejected by the shared validator.
+    with self.assertRaises(ValueError):
+      dct_ops.idct(signals, n=-1)
+
+  def test_idct_docstring_does_not_claim_n_must_be_none(self):
+    # Ensures the docstring stays in sync with the runtime contract
+    # (regression for the pure-doc issue tracked in #102418).
+    self.assertNotIn("Must be `None`", dct_ops.idct.__doc__)
 
   @parameterized.parameters(itertools.product(
       [1, 2, 3, 4],
@@ -253,32 +307,6 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
       tf_idct = dct_ops.idct(signals, type=dct_type, n=n, norm=norm)
       self.assertEqual(tf_idct.dtype.as_numpy_dtype, dtype)
       self.assertAllClose(np_idct, tf_idct, atol=tol, rtol=tol)
-
-  def test_error(self):
-    signals = np.random.rand(10)
-    # Unsupported type.
-    with self.assertRaises(ValueError):
-      dct_ops.dct(signals, type=5)
-    # Invalid n.
-    with self.assertRaises(ValueError):
-      dct_ops.dct(signals, n=-2)
-    # DCT-I normalization not implemented.
-    with self.assertRaises(ValueError):
-      dct_ops.dct(signals, type=1, norm="ortho")
-    # DCT-I requires at least two inputs.
-    with self.assertRaises(ValueError):
-      dct_ops.dct(np.random.rand(1), type=1)
-    # DCT-I requires n to be greater than one, since truncating the input
-    # to length one would violate the same requirement.
-    with self.assertRaises(ValueError):
-      dct_ops.dct(signals, type=1, n=1)
-    with self.assertRaises(ValueError):
-      dct_ops.idct(signals, type=1, n=1)
-    # Unknown normalization.
-    with self.assertRaises(ValueError):
-      dct_ops.dct(signals, norm="bad")
-    with self.assertRaises(NotImplementedError):
-      dct_ops.dct(signals, axis=0)
 
 
 if __name__ == "__main__":

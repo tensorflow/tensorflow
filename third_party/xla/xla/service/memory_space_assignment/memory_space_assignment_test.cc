@@ -44,6 +44,7 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
@@ -12858,7 +12859,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
                                      concat_bitcast->name(),
                                      " is not an async-slice-start.");
       }
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           int schedule_index,
           FindScheduleIndexOfInstruction(schedule, async_slice_start->name(),
                                          InstructionClass::kRelatedSliceStart));
@@ -13105,55 +13106,55 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
 
     // Update schedule_to_class with the instructions we care about.
     int slices_start_after_index;
-    TF_ASSIGN_OR_RETURN(slices_start_after_index,
-                        FindScheduleIndexOfInstruction(
-                            entry_schedule, slices_start_after_instruction_name,
-                            InstructionClass::kStartAfterNonCopy));
+    ASSIGN_OR_RETURN(slices_start_after_index,
+                     FindScheduleIndexOfInstruction(
+                         entry_schedule, slices_start_after_instruction_name,
+                         InstructionClass::kStartAfterNonCopy));
     schedule_to_class[slices_start_after_index] =
         InstructionClass::kStartAfterNonCopy;
     int slices_done_before_index;
-    TF_ASSIGN_OR_RETURN(slices_done_before_index,
-                        FindScheduleIndexOfInstruction(
-                            entry_schedule, slices_done_before_instruction_name,
-                            InstructionClass::kDoneBeforeNonCopy));
+    ASSIGN_OR_RETURN(slices_done_before_index,
+                     FindScheduleIndexOfInstruction(
+                         entry_schedule, slices_done_before_instruction_name,
+                         InstructionClass::kDoneBeforeNonCopy));
     schedule_to_class[slices_done_before_index] =
         InstructionClass::kDoneBeforeNonCopy;
     int concat_bitcast_index;
-    TF_ASSIGN_OR_RETURN(concat_bitcast_index,
-                        FindScheduleIndexOfInstruction(
-                            entry_schedule, concat_bitcast->name(),
-                            InstructionClass::kRelatedConcatBitcast));
+    ASSIGN_OR_RETURN(concat_bitcast_index,
+                     FindScheduleIndexOfInstruction(
+                         entry_schedule, concat_bitcast->name(),
+                         InstructionClass::kRelatedConcatBitcast));
     schedule_to_class[concat_bitcast_index] =
         InstructionClass::kRelatedConcatBitcast;
     for (const HloInstruction* slice : concat_bitcast->operands()) {
       int done_index;
-      TF_ASSIGN_OR_RETURN(done_index, FindScheduleIndexOfInstruction(
-                                          entry_schedule, slice->name(),
-                                          InstructionClass::kRelatedSliceDone));
+      ASSIGN_OR_RETURN(done_index, FindScheduleIndexOfInstruction(
+                                       entry_schedule, slice->name(),
+                                       InstructionClass::kRelatedSliceDone));
       schedule_to_class[done_index] = InstructionClass::kRelatedSliceDone;
       int start_index;
-      TF_ASSIGN_OR_RETURN(start_index,
-                          FindScheduleIndexOfInstruction(
-                              entry_schedule, slice->operand(0)->name(),
-                              InstructionClass::kRelatedSliceStart));
+      ASSIGN_OR_RETURN(start_index,
+                       FindScheduleIndexOfInstruction(
+                           entry_schedule, slice->operand(0)->name(),
+                           InstructionClass::kRelatedSliceStart));
       schedule_to_class[start_index] = InstructionClass::kRelatedSliceStart;
     }
 
     // Perform scheduling checks.
-    TF_RETURN_IF_ERROR(ConcatBitcastAndSlicesAfterInstruction(
+    RETURN_IF_ERROR(ConcatBitcastAndSlicesAfterInstruction(
         entry_schedule, schedule_to_class, slices_start_after_index));
-    TF_RETURN_IF_ERROR(OneSliceStartAfterInstructionWithNoCopyLikeBetween(
+    RETURN_IF_ERROR(OneSliceStartAfterInstructionWithNoCopyLikeBetween(
         entry_schedule, schedule_to_class, slices_start_after_index));
     if (expect_slices_started_at_different_times) {
-      TF_RETURN_IF_ERROR(AtLeastOneNonCopyLikeInstructionBetweenSliceStarts(
+      RETURN_IF_ERROR(AtLeastOneNonCopyLikeInstructionBetweenSliceStarts(
           entry_schedule, schedule_to_class));
     }
-    TF_RETURN_IF_ERROR(ConcatBitcastAndSlicesBeforeInstruction(
+    RETURN_IF_ERROR(ConcatBitcastAndSlicesBeforeInstruction(
         entry_schedule, schedule_to_class, slices_done_before_index));
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         ConcatBitcastAndSliceDonesBeforeInstructionWithNoCopyLikeBetween(
             entry_schedule, schedule_to_class, slices_done_before_index));
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         ConcatBitcastAfterSliceDones(entry_schedule, schedule_to_class));
 
     return absl::OkStatus();
@@ -14257,8 +14258,8 @@ ENTRY main {
       [&](Options options,
           absl::string_view hlo_text) -> absl::StatusOr<ModuleAndAssignments> {
     ModuleAndAssignments module_and_assignments;
-    TF_ASSIGN_OR_RETURN(module_and_assignments.module,
-                        ParseAndReturnVerifiedModule(hlo_text));
+    ASSIGN_OR_RETURN(module_and_assignments.module,
+                     ParseAndReturnVerifiedModule(hlo_text));
     VLOG(1) << "Original module:\n"
             << module_and_assignments.module->ToString(
                    HloPrintOptions::ShortParsable());

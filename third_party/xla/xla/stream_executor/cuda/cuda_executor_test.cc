@@ -77,16 +77,15 @@ TEST(CudaExecutorTest, CreateDeviceDescription) {
               ::testing::Field("major", &CudaComputeCapability::major, Ge(1)));
 
   DeviceInterconnectInfo info = result->device_interconnect_info();
-  // nvmlDeviceGetGpuFabricInfoV is only available in driver r545+
   if (result->cuda_compute_capability().IsAtLeastHopper() &&
-      result->kernel_mode_driver_version().major_version() >= 545 &&
       info.active_links) {
     EXPECT_GE(info.active_links, 18);
-
-    EXPECT_THAT(info.clique_id, Not(IsEmpty()));
-    EXPECT_THAT(info.cluster_uuid, Not(IsEmpty()));
+    // nvmlDeviceGetGpuFabricInfoV is only available in driver r545+
+    if (result->kernel_mode_driver_version().major_version() >= 545) {
+      EXPECT_THAT(info.clique_id, Not(IsEmpty()));
+      EXPECT_THAT(info.cluster_uuid, Not(IsEmpty()));
+    }
   }
-
   EXPECT_THAT(DeviceDescription::FromProto(result->ToProto()),
               IsOkAndHolds(*result));
 }
@@ -158,7 +157,20 @@ TEST(CudaExecutorTest, CreateCollectiveMemoryAllocatorWorks) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
                           allocator->Allocate(1024));
   EXPECT_NE(allocation->address().opaque(), nullptr);
-  EXPECT_EQ(allocation->address().size(), 1024);
+  EXPECT_GE(allocation->address().size(), 1024);
+}
+
+TEST(CudaExecutorTest, AllocateArrayReturnsRequestedSize) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          PlatformManager::PlatformWithName("CUDA"));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
+
+  DeviceAddress<uint64_t> buffer = executor->AllocateScalar<uint64_t>();
+  ASSERT_NE(buffer.opaque(), nullptr);
+  EXPECT_EQ(buffer.size(), sizeof(uint64_t));
+  EXPECT_NE(buffer.payload(), 0);
+  executor->Deallocate(&buffer);
 }
 
 // TODO: b/420735471 - Enable test once fixed.
@@ -229,7 +241,7 @@ TEST(CudaExecutorTest, GetPointerMemorySpaceWorksWithDeviceAddress) {
               absl_testing::IsOkAndHolds(MemorySpace::kDevice));
 }
 
-TEST(CudaExecutorTest, AllocateMemoryWithVmmApi) {
+TEST(CudaExecutorTest, AllocateCollectiveMemoryWithDeviceAllocator) {
   TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
                           PlatformManager::PlatformWithName("CUDA"));
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
@@ -238,7 +250,7 @@ TEST(CudaExecutorTest, AllocateMemoryWithVmmApi) {
   auto cuda_executor = dynamic_cast<CudaExecutor*>(executor);
   ASSERT_NE(cuda_executor, nullptr);
   DeviceAddressBase ptr =
-      cuda_executor->Allocate(1024, static_cast<int>(MemorySpace::kP2P));
+      cuda_executor->Allocate(1024, static_cast<int>(MemorySpace::kCollective));
 
   EXPECT_NE(ptr.opaque(), nullptr);
   TF_ASSERT_OK_AND_ASSIGN(size_t granularity,
@@ -250,6 +262,7 @@ TEST(CudaExecutorTest, AllocateMemoryWithVmmApi) {
   TF_ASSERT_OK_AND_ASSIGN(CudaExecutor::VmmMemoryHandle handle,
                           cuda_executor->RetainVmmMemoryHandle(ptr.opaque()));
   EXPECT_NE(handle.handle(), 0);
+  cuda_executor->Deallocate(&ptr);
 }
 
 TEST(CudaExecutorTest, MultipleExecutorsForSameDevice) {
@@ -278,18 +291,18 @@ TEST(CudaExecutorTest, MultipleExecutorsForSameDevice) {
     EXPECT_NE(ptr.opaque(), nullptr);
     executors[i]->Deallocate(&ptr);
 
-    // Allocate VMM memory (collective memory space uses the VMM allocator).
+    // Allocate collective memory through the device allocator.
     TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<MemoryAllocator> vmm_allocator,
+        std::unique_ptr<MemoryAllocator> collective_allocator,
         executors[i]->CreateMemoryAllocator(MemorySpace::kCollective));
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> vmm_allocation,
-                            vmm_allocator->Allocate(4096));
-    EXPECT_NE(vmm_allocation->address().opaque(), nullptr);
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<MemoryAllocation> collective_allocation,
+        collective_allocator->Allocate(4096));
+    EXPECT_NE(collective_allocation->address().opaque(), nullptr);
   }
 }
 
-TEST(CudaExecutorTest,
-     RetainVmmMemoryHandleForTheMemoryAllocatedWithoutVmmApi) {
+TEST(CudaExecutorTest, RetainVmmMemoryHandleForDefaultDeviceMemory) {
   TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
                           PlatformManager::PlatformWithName("CUDA"));
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
@@ -301,10 +314,14 @@ TEST(CudaExecutorTest,
       cuda_executor->Allocate(1024, static_cast<int>(MemorySpace::kDevice));
 
   EXPECT_NE(ptr.opaque(), nullptr);
-  EXPECT_EQ(ptr.size(), 1024);
+  TF_ASSERT_OK_AND_ASSIGN(size_t granularity,
+                          cuda_executor->GetVmmGranularity());
+  EXPECT_EQ(ptr.size(), granularity);
 
-  EXPECT_THAT(cuda_executor->RetainVmmMemoryHandle(ptr.opaque()),
-              absl_testing::StatusIs(absl::StatusCode::kInternal));
+  TF_ASSERT_OK_AND_ASSIGN(CudaExecutor::VmmMemoryHandle handle,
+                          cuda_executor->RetainVmmMemoryHandle(ptr.opaque()));
+  EXPECT_NE(handle.handle(), 0);
+  cuda_executor->Deallocate(&ptr);
 }
 }  // namespace
 }  // namespace stream_executor::gpu

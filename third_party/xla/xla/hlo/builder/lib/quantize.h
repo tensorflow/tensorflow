@@ -16,13 +16,18 @@ limitations under the License.
 #ifndef XLA_HLO_BUILDER_LIB_QUANTIZE_H_
 #define XLA_HLO_BUILDER_LIB_QUANTIZE_H_
 
-#include <algorithm>
+#include <climits>
+#include <cstdint>
 #include <limits>
-#include <numeric>
+#include <type_traits>
 #include <vector>
 
-#include "xla/hlo/builder/lib/constants.h"
+#include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/shape.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -90,7 +95,7 @@ inline XlaOp Dequantize(XlaOp input, const QuantizedRange& range,
                std::numeric_limits<T>::min() + 1) /
                   2.0f;
     const int64_t unpack_size = sizeof(uint32_t) / sizeof(T);
-    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(input));
+    ASSIGN_OR_RETURN(Shape shape, builder->GetShape(input));
 
     auto element_type = shape.element_type();
     if (element_type != U32) {
@@ -121,8 +126,7 @@ inline XlaOp Dequantize(XlaOp input, const QuantizedRange& range,
     }
 
     std::vector<int64_t> shift_transpose_dimensions(shape.dimensions().size());
-    std::iota(shift_transpose_dimensions.begin(),
-              shift_transpose_dimensions.end(), 0);
+    absl::c_iota(shift_transpose_dimensions, 0);
     shift_transpose_dimensions.insert(shift_transpose_dimensions.begin(), 1,
                                       shape.dimensions().size());
 
@@ -155,8 +159,8 @@ inline XlaOp Dequantize(XlaOp input, const QuantizedRange& range,
     }
 
     std::vector<int64_t> transpose_dimensions(shape.dimensions().size());
-    std::iota(transpose_dimensions.begin(), transpose_dimensions.end(), 1);
-    std::reverse(transpose_dimensions.begin(), transpose_dimensions.end());
+    absl::c_iota(transpose_dimensions, 1);
+    absl::c_reverse(transpose_dimensions);
     transpose_dimensions.insert(transpose_dimensions.begin() + 1, 1, 0);
 
     // Transpose the result to be [dn, unpack_size, dn-1, ..., d1, d0].
@@ -172,8 +176,8 @@ inline XlaOp Dequantize(XlaOp input, const QuantizedRange& range,
 
     // Transpose the result to be [d0, d1, ..., dn-1, dn * unpack_size].
     std::vector<int64_t> result_dimensions(shape.dimensions().size());
-    std::iota(result_dimensions.begin(), result_dimensions.end(), 0);
-    std::reverse(result_dimensions.begin(), result_dimensions.end());
+    absl::c_iota(result_dimensions, 0);
+    absl::c_reverse(result_dimensions);
 
     return Transpose(reshaped_result, result_dimensions);
   });

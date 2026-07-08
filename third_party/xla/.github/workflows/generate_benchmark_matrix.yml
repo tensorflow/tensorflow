@@ -44,7 +44,7 @@ jobs:
   generate:
     name: Generate Matrix (${{ inputs.workflow_type }})
     runs-on: linux-x86-n2-64
-    container: us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest
+    container: us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest # zizmor: ignore[unpinned-images]
     outputs:
       matrix_json_output: ${{ steps.run_generator.outputs.matrix_json }}
     defaults:
@@ -54,7 +54,7 @@ jobs:
 
     steps:
       - name: Checkout OpenXLA
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           # Use inputs.checkout_ref if provided, otherwise default to the event's ref
           # (e.g., PR's HEAD SHA or caller's commit SHA)

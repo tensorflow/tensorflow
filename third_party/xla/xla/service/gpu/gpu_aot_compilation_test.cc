@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
@@ -35,27 +36,30 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
+using ::testing::IsEmpty;
+using ::testing::Not;
 
-class GpuAotCompilationTest : public HloTestBase,
+class GpuAotCompilationTest : public HloTestBaseLegacy,
                               public ::testing::WithParamInterface<bool> {
  protected:
   void SetUp() override { debug_options_ = GetDebugOptionsForTest(); }
 
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloTestBaseLegacy::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_experimental_aot_compiled_thunks(GetParam());
     return debug_options;
   }
@@ -109,6 +113,11 @@ TEST_P(GpuAotCompilationTest, ExportAndLoadExecutable) {
       std::move(*aot_result)
           .LoadExecutable(compiler->PlatformId(),
                           stream_exec->GetDeviceDescription(), debug_options_));
+
+  auto* gpu_executable = dynamic_cast<GpuExecutable*>(executable.get());
+  ASSERT_NE(gpu_executable, nullptr);
+  EXPECT_THAT(gpu_executable->buffer_allocations_debug_summary(),
+              Not(IsEmpty()));
 }
 
 TEST_P(GpuAotCompilationTest, AotCompilationWithoutGpuDevice) {

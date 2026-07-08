@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -100,9 +101,9 @@ absl::Status CheckTypes(HloInstruction* conv, const se::GpuComputeCapability cc,
     return absl::OkStatus();
   };
 
-  TF_RETURN_IF_ERROR(valid_shape(conv->shape()));
-  TF_RETURN_IF_ERROR(valid_shape(conv->operand(0)->shape()));
-  TF_RETURN_IF_ERROR(valid_shape(conv->operand(1)->shape()));
+  RETURN_IF_ERROR(valid_shape(conv->shape()));
+  RETURN_IF_ERROR(valid_shape(conv->operand(0)->shape()));
+  RETURN_IF_ERROR(valid_shape(conv->operand(1)->shape()));
   return absl::OkStatus();
 }
 
@@ -500,7 +501,7 @@ HloInstruction* ConvertBatchGroupedToFeatureGroupedConvolution(
 absl::StatusOr<HloInstruction*> AssignConvKind(
     HloInstruction* conv, const se::GpuComputeCapability& cc,
     const se::dnn::VersionInfo& dnn_version) {
-  TF_RETURN_IF_ERROR(CheckTypes(conv, cc, dnn_version));
+  RETURN_IF_ERROR(CheckTypes(conv, cc, dnn_version));
   if (ConvolutionMatch m = MatchBackwardInput(conv)) {
     conv = CreateGpuConv(CONVOLUTION_KIND_DGRAD, conv, conv->mutable_operand(0),
                          *m);
@@ -523,15 +524,15 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* conv,
                                       const se::GpuComputeCapability& cc,
                                       const se::dnn::VersionInfo& dnn_version) {
   CHECK_EQ(conv->opcode(), HloOpcode::kConvolution);
-  TF_ASSIGN_OR_RETURN(HloInstruction * conv_with_kind,
-                      AssignConvKind(conv, cc, dnn_version));
+  ASSIGN_OR_RETURN(HloInstruction * conv_with_kind,
+                   AssignConvKind(conv, cc, dnn_version));
   if (conv == nullptr) {
     return false;
   }
 
   VLOG(1) << "Replacing convolution " << conv->ToString() << " with "
           << conv_with_kind->ToString();
-  TF_RETURN_IF_ERROR(conv->parent()->ReplaceInstruction(conv, conv_with_kind));
+  RETURN_IF_ERROR(conv->parent()->ReplaceInstruction(conv, conv_with_kind));
   return true;
 }
 
@@ -551,7 +552,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation,
 
   bool changed = false;
   for (HloInstruction* conv : convs) {
-    TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(conv, cc, dnn_version));
+    ASSIGN_OR_RETURN(bool result, RunOnInstruction(conv, cc, dnn_version));
     changed |= result;
   }
   return changed;
@@ -566,7 +567,7 @@ absl::StatusOr<bool> ConvKindAssignment::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         bool result,
         RunOnComputation(computation, compute_capability_, dnn_version_));
     changed |= result;

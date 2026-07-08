@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/runtime/object_pool.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
@@ -81,6 +82,8 @@ class AsyncExecution {
   // as a key in the execution scoped state and its profile annotation for
   // logging.
   explicit AsyncExecution(Thunk::ThunkInfo start_thunk_info);
+
+  ThunkId start_thunk_id() const { return start_thunk_info_.thunk_id; }
 
   // An RAII guard that automatically records an event on a given async stream
   // when it goes out of scope.

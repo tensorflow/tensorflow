@@ -183,9 +183,8 @@ class MlirKernelFusion final : public KernelFusionInterface {
     return emitter_->ComputeThreadIdToInputIndexing(root_index, ctx);
   }
 
-  absl::StatusOr<FusionEmissionResult> Emit(
-      IrEmitterContext& ir_emitter_context,
-      const HloFusionInstruction& fusion) const final;
+  AsyncThunkSequence Emit(IrEmitterContext& ir_emitter_context,
+                          const HloFusionInstruction& fusion) const final;
 
   // Visible for testing. `buffer_assignment` is optional for testing (assigns
   // a different buffer to each tensor).

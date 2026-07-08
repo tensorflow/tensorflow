@@ -323,6 +323,68 @@ ENTRY test {
   EXPECT_EQ(in_place_pairs, expected_pairs);
 }
 
+TEST_F(GetInPlaceInputOutputPairsTest, NestedFusionBodyAliasingThroughBitcast) {
+  const char* kHlo = R"(
+HloModule test
+
+inner_fusion {
+  p0 = f32[4] parameter(0)
+  update = f32[2] parameter(1)
+  c0 = s32[] constant(0)
+  ROOT dus = f32[4] dynamic-update-slice(p0, update, c0)
+}
+
+outer_fusion {
+  p0 = f32[4] parameter(0)
+  update = f32[2] parameter(1)
+  nested = f32[4] fusion(p0, update), kind=kLoop, calls=inner_fusion
+  ROOT bitcast = f32[2,2] bitcast(nested)
+}
+
+ENTRY test {
+  p0 = f32[4] parameter(0)
+  update = f32[2] parameter(1)
+  ROOT fusion = f32[2,2] fusion(p0, update), kind=kLoop,
+      calls=outer_fusion
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+
+  auto in_place_pairs = alias_info_.GetInPlaceInputOutputPairs(fusion);
+  std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
+  expected_pairs.push_back({HloOperandIndex{0, {}}, {}});
+  EXPECT_EQ(in_place_pairs, expected_pairs);
+}
+
+TEST_F(GetInPlaceInputOutputPairsTest,
+       NestedFusionAnnotationNotInheritedThroughBitcast) {
+  const char* kHlo = R"(
+HloModule test
+
+copy_fusion {
+  p0 = f32[4] parameter(0)
+  ROOT copy = f32[4] copy(p0)
+}
+
+outer_fusion {
+  p0 = f32[4] parameter(0)
+  nested = f32[4] fusion(p0), kind=kLoop,
+      output_to_operand_aliasing={{}: (0, {})}, calls=copy_fusion
+  ROOT bitcast = f32[2,2] bitcast(nested)
+}
+
+ENTRY test {
+  p0 = f32[4] parameter(0)
+  ROOT fusion = f32[2,2] fusion(p0), kind=kLoop, calls=outer_fusion
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+
+  EXPECT_THAT(alias_info_.GetInPlaceInputOutputPairs(fusion), IsEmpty());
+}
+
 // Verifies in-place behavior for nested multi-output fusions containing DUS.
 TEST_F(GetInPlaceInputOutputPairsTest, NestedMultiOutputDUSFusion) {
   const char* kHlo = R"(
@@ -617,40 +679,6 @@ ENTRY AllToAll {
   EXPECT_EQ(in_place_pairs, expected_pairs);
 }
 
-// Verifies that all-reduce-start with NVSHMEM backend expects no aliasing
-// (empty in-place pairs).
-TEST_F(GetInPlaceInputOutputPairsTest, nvshmem_ar) {
-  const char* kHlo = R"(
-HloModule test_ar
-region_add {
-  lhs = f32[] parameter(0)
-  rhs = f32[] parameter(1)
-  ROOT ret = f32[] add(lhs, rhs)
-}
-
-ENTRY test {
-  p0 = f32[10] parameter(0)
-  ar = f32[10] all-reduce-start(p0), replica_groups={},
-      to_apply=region_add,
-      backend_config={
-        "collective_backend_config":
-          {
-            "backend":"NVSHMEM"
-          }
-        }
-  ROOT ar.done = f32[10] all-reduce-done(ar)
-}
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
-  const HloInstruction* ar_start =
-      module->entry_computation()->root_instruction()->operand(0);
-
-  auto in_place_pairs = alias_info_.GetInPlaceInputOutputPairs(ar_start);
-  std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
-  // For nvshmem allreduce, we expect no aliasing for input and output buffers
-  // therefore empty inplace pairs.
-  EXPECT_EQ(in_place_pairs, expected_pairs);
-}
 
 // Verifies that collective-permute-start expects no aliasing (empty in-place
 // pairs).

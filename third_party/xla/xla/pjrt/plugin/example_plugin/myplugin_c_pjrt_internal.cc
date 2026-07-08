@@ -35,9 +35,12 @@ namespace myplugin_pjrt {
 
 // Create my C++ client. Called by the C API and is the glue between the C API
 // and the C++ API.
+const PJRT_Api* GetMyPluginPjrtApi();
+
 PJRT_Error* PJRT_MypluginClient_Create(PJRT_Client_Create_Args* args) {
   std::unique_ptr<xla::PjRtClient> client = CreateMyPluginPjrtClient();
-  args->client = pjrt::CreateWrapperClient(std::move(client));
+  args->client =
+      pjrt::CreateWrapperClient(GetMyPluginPjrtApi(), std::move(client));
   printf("Creating PJRT Client from myplugin_pjrt.cc\n");
   return nullptr;
 }

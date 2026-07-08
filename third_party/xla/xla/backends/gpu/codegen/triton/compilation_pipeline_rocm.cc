@@ -42,10 +42,12 @@ namespace mt = ::mlir::triton;
 
 // Based on make_ttir() in
 // @triton//:third_party/amd/backend/compiler.py
-static void MakeTTIR(mlir::OpPassManager* pm) {
+static void MakeTTIR(mlir::OpPassManager* pm,
+                     const stream_executor::RocmComputeCapability& rocm_cc) {
   pm->addPass(mlir::createInlinerPass());
-  // if not amd.supports_tdm(arch)
-  // pm->addPass(mt::createTritonRewriteTensorDescriptorToPointer());
+  if (!rocm_cc.has_tdm_support()) {
+    pm->addPass(mt::createTritonRewriteTensorDescriptorToPointer());
+  }
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mt::createTritonCombineOps());
   pm->addPass(mt::createTritonReorderBroadcast());
@@ -102,6 +104,7 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
   bool use_block_pingpong =
       is_pingpong_schedule_enabled(rocm_cc, use_async_copy);
 
+  pm->addPass(mlir::createTritonAMDGPUOptimizeDescriptorEncoding());
   pm->addPass(mlir::createTritonAMDGPUScheduleLoops({num_stages}));
   pm->addPass(
       mlir::createTritonAMDGPUPipeline({use_async_copy, use_block_pingpong}));
@@ -111,10 +114,6 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
   }
   pm->addPass(mlir::createTritonAMDGPUConvertToTensorOps());
   pm->addPass(mlir::createCanonicalizerPass());
-  if (schedule_hint != "none") {
-    pm->addPass(
-        mt::createTritonAMDGPUInsertInstructionSchedHintsPass({schedule_hint}));
-  }
   pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm->addPass(mt::gpu::createTritonGPUReduceDataDuplication());
   if (is_in_thread_transpose_enabled(rocm_cc)) {
@@ -176,24 +175,23 @@ static void MakeLLIR(mlir::OpPassManager* pm,
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mlir::createSymbolDCEPass());
-  if (/*(instruction_sched_variant=="none") == */ /* DISABLES CODE */ (false)) {
-    pm->addPass(mt::createTritonAMDGPULowerInstructionSchedHintsPass(
-        rocm_cc.gfx_version(), num_stages));
-  }
   pm->addPass(mt::createConvertBuiltinFuncToLLVMPass(rocm_cc.gfx_version(),
                                                      /*ftz=*/true));
 
   // Add XLA custom pass to implement extern_elementwise functions
   // This must run after MLIR->LLVM conversion but before final optimizations
-  pm->addPass(mlir::triton::xla::CreateTritonXLAImplementExternElementWisePass(
-      mlir::triton::xla::TargetBackend::ROCM));
+  mlir::triton::xla::TritonXLAImplementExternElementWisePassOptions
+      impl_extern_options;
+  impl_extern_options.target_ = mlir::triton::xla::TargetBackend::ROCM;
+  pm->addPass(mlir::triton::xla::createTritonXLAImplementExternElementWisePass(
+      impl_extern_options));
 }
 
 void CreateTritonRocmPipeline(
     mlir::OpPassManager* pm,
     const stream_executor::RocmComputeCapability& rocm_cc, int num_warps,
     int num_ctas, int num_stages) {
-  MakeTTIR(pm);
+  MakeTTIR(pm, rocm_cc);
   MakeTTGIR(pm, rocm_cc, num_warps, num_ctas, num_stages);
   MakeLLIR(pm, rocm_cc, num_stages);
 }

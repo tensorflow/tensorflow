@@ -28,8 +28,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/symbolic_tile_analysis.h"
-#include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/stream_executor/device_description.h"
 

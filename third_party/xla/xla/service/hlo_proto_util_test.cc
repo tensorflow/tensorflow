@@ -184,6 +184,29 @@ TEST_F(HloProtoUtilTest, ToProtoWithInlinedPayloadsInvalidId) {
   EXPECT_EQ(result.backend_config_payload().id(), 5);
 }
 
+TEST_F(HloProtoUtilTest, ToProtoWithInlinedPayloadsMetadata) {
+  HloInstructionProto instruction;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        metadata { metadata_payload { id: 1 } }
+      )pb",
+      &instruction));
+
+  HloModuleProto module;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        payloads: "payload_0" payloads: "payload_1"
+      )pb",
+      &module));
+
+  HloInstructionProto result = ToProtoWithInlinedPayloads(instruction, &module);
+  EXPECT_TRUE(result.has_metadata());
+  EXPECT_TRUE(result.metadata().has_metadata_payload());
+  EXPECT_EQ(result.metadata().metadata_payload().payload_source_case(),
+            xla::Payload::kValue);
+  EXPECT_EQ(result.metadata().metadata_payload().value(), "payload_1");
+}
+
 }  // namespace
 
 }  // namespace xla

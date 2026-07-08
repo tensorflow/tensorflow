@@ -38,7 +38,6 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
@@ -274,7 +273,8 @@ CustomCallOp cloneCustomCallWithNewResultTypes(CustomCallOp op,
       op.getCallTargetNameAttr(), op.getHasSideEffectAttr(),
       op.getBackendConfigAttr(), op.getApiVersionAttr(),
       op.getCalledComputations(), op.getOperandLayoutsAttr(),
-      op.getResultLayoutsAttr(), op.getOutputOperandAliases());
+      op.getResultLayoutsAttr(), op.getOutputOperandAliases(),
+      op.getResultTilingsAttr());
   customCallOp->setDiscardableAttrs(mlir::DictionaryAttr::get(
       op->getContext(), llvm::to_vector(op->getDiscardableAttrs())));
   return customCallOp;
@@ -410,6 +410,36 @@ bool hasGspmdAttrsOrOps(mlir::ModuleOp module) {
   return false;
 }
 
+bool hasFrontendMhloShardings(mlir::ModuleOp module) {
+  for (auto func : module.getOps<mlir::func::FuncOp>()) {
+    for (unsigned int argIndex = 0; argIndex < func.getNumArguments();
+         ++argIndex) {
+      if (hasKey(sdy::getFuncArgFrontendAttrs(func, argIndex),
+                 xla::ToStringRef(HloSharding::kShardingFrontendAttrName))) {
+        return true;
+      }
+    }
+    bool hasFrontendSharding = false;
+    func->walk([&hasFrontendSharding](mlir::Operation* op) {
+      if (hasKey(sdy::getFrontendAttrs(op),
+                 xla::ToStringRef(HloSharding::kShardingFrontendAttrName))) {
+        hasFrontendSharding = true;
+        return mlir::WalkResult::interrupt();
+      }
+      return mlir::WalkResult::advance();
+    });
+    if (hasFrontendSharding) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool hasFrontendMeshes(mlir::ModuleOp module) {
+  return tryGetFrontendAttr<mlir::DictionaryAttr>(module, kMeshesRoundTripAttr)
+      .has_value();
+}
+
 bool hasShardyMesh(mlir::ModuleOp module) {
   return !module.getOps<mlir::sdy::MeshOp>().empty();
 }
@@ -476,7 +506,8 @@ mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
         << "Expected HloShardingV3 during Shardy import when "
            "'xla_enable_hlo_sharding_v3' flag is enabled, but got "
            "non-replicated HloShardingV2 <<"
-        << hloSharding;
+        << hloSharding
+        << ". Please contact OpenXLA/Shardy team if you encounter this error.";
     return nullptr;
   }
 
@@ -534,28 +565,13 @@ mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
       context, convertToSdyShardingAttr(hloSharding, context));
 }
 
-bool isManualComputation(CallOp callOp, bool isInlineable) {
-  return callOp.getCallee().contains(isInlineable
-                                         ? kInlineableManualComputationFuncName
-                                         : kManualComputationFuncName);
+bool isManualComputation(CallOp callOp) {
+  return isManualComputationOnName(callOp.getCallee());
 }
 
-bool isManualComputation(FuncOp funcOp, bool isInlineable) {
-  return funcOp.getName().contains(isInlineable
-                                       ? kInlineableManualComputationFuncName
-                                       : kManualComputationFuncName);
-}
-
-bool isSizeOfOne(mlir::Type type) {
-  if (auto shapedType = mlir::dyn_cast<mlir::ShapedType>(type)) {
-    if (!shapedType.hasStaticShape()) {
-      // Returns false if not a static shape.
-      return false;
-    }
-    return shapedType.getNumElements() == 1;
-  }
-  // Returns false if not a shaped type.
-  return false;
+bool isManualComputationOnName(mlir::StringRef funcName, bool isInlineable) {
+  return funcName.contains(isInlineable ? kInlineableManualComputationFuncName
+                                        : kManualComputationFuncName);
 }
 
 }  // namespace sdy

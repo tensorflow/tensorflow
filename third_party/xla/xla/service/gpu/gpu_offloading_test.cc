@@ -55,7 +55,7 @@ namespace {
 namespace op = xla::testing::opcode_matchers;
 
 class GpuOffloadingTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {
+    : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  protected:
   absl::StatusOr<bool> RunHloRematerialization(int64_t memory_limit_bytes,
                                                HloModule* module,

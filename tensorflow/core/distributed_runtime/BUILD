@@ -222,6 +222,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -324,6 +325,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 

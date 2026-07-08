@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/sorted_range.h"
+#include "xla/xla_data.pb.h"
 
 namespace stream_executor {
 
@@ -94,15 +95,20 @@ absl::StatusOr<DeviceDescription> DeviceDescription::FromProto(
   device_description.l2_cache_size_ = proto.l2_cache_size();
   device_description.memory_bandwidth_ = proto.memory_bandwidth();
   device_description.pcie_bandwidth_ = proto.pcie_bandwidth();
+  device_description.mem_clock_ghz_ = proto.mem_clock_ghz();
   device_description.ecc_enabled_ = proto.ecc_enabled();
   device_description.shared_memory_per_core_ = proto.shared_memory_per_core();
   device_description.shared_memory_per_block_ = proto.shared_memory_per_block();
   device_description.shared_memory_per_block_optin_ =
       proto.shared_memory_per_block_optin();
+  device_description.reserved_shared_memory_per_block_ =
+      proto.reserved_shared_memory_per_block();
+  device_description.max_blocks_per_multiprocessor_ =
+      proto.max_blocks_per_multiprocessor();
   device_description.clock_rate_ghz_ = proto.clock_rate_ghz();
 
   if (proto.has_cuda_compute_capability()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         device_description.gpu_compute_capability_,
         CudaComputeCapability::FromProto(proto.cuda_compute_capability()));
   }
@@ -118,12 +124,12 @@ absl::StatusOr<DeviceDescription> DeviceDescription::FromProto(
   device_description.fpus_per_core_ = proto.fpus_per_core();
 
   if (proto.has_scalar_unit_description()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         device_description.scalar_unit_description_,
         ExecutionUnitDescription::FromProto(proto.scalar_unit_description()));
   }
   if (proto.has_matrix_unit_description()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         device_description.matrix_unit_description_,
         ExecutionUnitDescription::FromProto(proto.matrix_unit_description()));
   }
@@ -185,6 +191,8 @@ GpuDeviceInfoProto DeviceDescription::ToProto() const {
   proto.set_threads_per_warp(threads_per_warp_);
   proto.set_shared_memory_per_block(shared_memory_per_block_);
   proto.set_shared_memory_per_block_optin(shared_memory_per_block_optin_);
+  proto.set_reserved_shared_memory_per_block(reserved_shared_memory_per_block_);
+  proto.set_max_blocks_per_multiprocessor(max_blocks_per_multiprocessor_);
   proto.set_shared_memory_per_core(shared_memory_per_core_);
   proto.set_threads_per_core_limit(threads_per_core_limit_);
   proto.set_core_count(core_count_);
@@ -194,6 +202,7 @@ GpuDeviceInfoProto DeviceDescription::ToProto() const {
   proto.set_block_dim_limit_z(block_dim_limit().z);
   proto.set_memory_bandwidth(memory_bandwidth_);
   proto.set_pcie_bandwidth(pcie_bandwidth_);
+  proto.set_mem_clock_ghz(mem_clock_ghz_);
   proto.set_l2_cache_size(l2_cache_size_);
   proto.set_clock_rate_ghz(clock_rate_ghz_);
   proto.set_device_memory_size(device_memory_size_);
@@ -266,6 +275,14 @@ bool DeviceDescription::EqualsTo(
     if (interconnect_info_.clique_id != other.interconnect_info_.clique_id) {
       return false;
     }
+    // Device memory size can vary between hosts due to driver versions.
+    if (device_memory_size_ != other.device_memory_size_) {
+      return false;
+    }
+    // Model string embeds the device memory size.
+    if (model_str_ != other.model_str_) {
+      return false;
+    }
     // interconnect_info.active_links is portable and comparison is below.
   }
   if (!absl::c_linear_search(compare_options,
@@ -292,7 +309,7 @@ bool DeviceDescription::EqualsTo(
 
   return name_ == other.name_ && device_vendor_ == other.device_vendor_ &&
          platform_version_ == other.platform_version_ &&
-         model_str_ == other.model_str_ && core_count_ == other.core_count_ &&
+         core_count_ == other.core_count_ &&
          fpus_per_core_ == other.fpus_per_core_ &&
          thread_dim_limit_ == other.thread_dim_limit_ &&
          block_dim_limit_ == other.block_dim_limit_ &&
@@ -302,10 +319,10 @@ bool DeviceDescription::EqualsTo(
          registers_per_core_limit_ == other.registers_per_core_limit_ &&
          registers_per_block_limit_ == other.registers_per_block_limit_ &&
          device_address_bits_ == other.device_address_bits_ &&
-         device_memory_size_ == other.device_memory_size_ &&
          l2_cache_size_ == other.l2_cache_size_ &&
          memory_bandwidth_ == other.memory_bandwidth_ &&
          pcie_bandwidth_ == other.pcie_bandwidth_ &&
+         mem_clock_ghz_ == other.mem_clock_ghz_ &&
          clock_rate_ghz_ == other.clock_rate_ghz_ &&
          ecc_enabled_ == other.ecc_enabled_ &&
          gpu_compute_capability_ == other.gpu_compute_capability_ &&
@@ -395,7 +412,7 @@ GpuComputeCapabilityProto GpuComputeCapability::ToProto() const {
 absl::StatusOr<GpuComputeCapability> GpuComputeCapability::FromProto(
     const GpuComputeCapabilityProto& proto) {
   if (proto.has_cuda_compute_capability()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         CudaComputeCapability cuda_compute_capability,
         CudaComputeCapability::FromProto(proto.cuda_compute_capability()));
     return GpuComputeCapability(cuda_compute_capability);

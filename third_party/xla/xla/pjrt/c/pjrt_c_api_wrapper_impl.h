@@ -68,6 +68,7 @@ struct PJRT_Memory_LocalState {
 };
 
 struct PJRT_Client {
+  const PJRT_Api* api;
   std::unique_ptr<xla::PjRtClient> client;
   std::vector<PJRT_Device> owned_devices;
   // `devices` contains the addresses of the contents of `owned_devices`.
@@ -83,7 +84,8 @@ struct PJRT_Client {
   std::vector<PJRT_Memory*> addressable_memories;
   absl::StatusOr<std::unique_ptr<PJRT_TopologyDescription>> topology;
 
-  explicit PJRT_Client(std::unique_ptr<xla::PjRtClient> cpp_client);
+  explicit PJRT_Client(const PJRT_Api* api,
+                       std::unique_ptr<xla::PjRtClient> cpp_client);
 };
 
 struct PJRT_MemoryDescription {
@@ -484,6 +486,10 @@ PJRT_Error* PJRT_TopologyDescription_Fingerprint(
     PJRT_TopologyDescription_Fingerprint_Args* args);
 PJRT_Error* PJRT_TopologyDescription_Attributes(
     PJRT_TopologyDescription_Attributes_Args* args);
+PJRT_Error* PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace(
+    PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace_Args* args);
+PJRT_Error* PJRT_TopologyDescription_GetMemorySpaceKindIds(
+    PJRT_TopologyDescription_GetMemorySpaceKindIds_Args* args);
 
 PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
 PJRT_Error* PJRT_TopologyDescription_Deserialize(
@@ -554,7 +560,8 @@ PJRT_TopologyDescription* CreateWrapperDeviceTopology(
 // Creates a C PJRT client from a C++ PJRT client and creates C PJRT devices
 // from cpp_client's devices. The returned client is owned by the caller and
 // should be destroyed with PJRT_Client_Destroy.
-PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client);
+PJRT_Client* CreateWrapperClient(const PJRT_Api* api,
+                                 std::unique_ptr<xla::PjRtClient> cpp_client);
 
 // Searches `client` for a PJRT_Memory* that wraps a provided
 // `xla::PjRtMemorySpace *` (`cpp_memory`). If a match is found, that

@@ -101,8 +101,11 @@ Tile::Tile(const TilingSpace& tiling_space, ArrayRef<SymbolicExpr> offsets,
 }
 
 Tile::Tile(const TilingSpace& tiling_space,
-           llvm::SmallVector<DimTile> dim_tiles)
-    : tiling_space_(&tiling_space), dim_tiles_(std::move(dim_tiles)) {}
+           llvm::SmallVector<DimTile> dim_tiles,
+           llvm::SmallVector<DimTile> replica_ids)
+    : tiling_space_(&tiling_space),
+      dim_tiles_(std::move(dim_tiles)),
+      replica_ids_(std::move(replica_ids)) {}
 
 MLIRContext* Tile::mlir_context() const {
   return tiling_space_->mlir_context();
@@ -143,45 +146,57 @@ std::string Tile::ToString(bool print_variables) const {
   ss << "] upper bounds [";
   llvm::interleaveComma(upper_bounds(), ss, print_expr);
   ss << ']';
-  if (replica_id_.has_value()) {
-    ss << " replica_id [";
-    ss << replica_id_->ToString(tid_names, symbol_names);
+  if (!replica_ids_.empty()) {
+    ss << " replica ids {";
+    ss << " offsets [";
+    llvm::interleaveComma(offsets(DimTileType::kReplicaId), ss, print_expr);
+    ss << "] sizes [";
+    llvm::interleaveComma(sizes(DimTileType::kReplicaId), ss, print_expr);
+    ss << "] strides [";
+    llvm::interleaveComma(strides(DimTileType::kReplicaId), ss, print_expr);
+    ss << "] upper bounds [";
+    llvm::interleaveComma(upper_bounds(DimTileType::kReplicaId), ss,
+                          print_expr);
     ss << ']';
+    ss << '}';
   }
   return ss.str();
 }
 
-SmallVector<SymbolicExpr> Tile::offsets() const {
+SmallVector<SymbolicExpr> Tile::offsets(DimTileType type) const {
   SmallVector<SymbolicExpr> offsets;
-  offsets.reserve(dim_tiles_.size());
-  for (const DimTile& dim_tile : dim_tiles_) {
+  offsets.reserve(TilesOf(type).size());
+  for (const DimTile& dim_tile : TilesOf(type)) {
     offsets.push_back(dim_tile.offset);
   }
   return offsets;
 }
 
-SmallVector<SymbolicExpr> Tile::sizes() const {
+SmallVector<SymbolicExpr> Tile::sizes(DimTileType type) const {
   SmallVector<SymbolicExpr> sizes;
-  sizes.reserve(dim_tiles_.size());
-  for (const DimTile& dim_tile : dim_tiles_) {
+  llvm::ArrayRef<DimTile> tiles = TilesOf(type);
+  sizes.reserve(tiles.size());
+  for (const DimTile& dim_tile : tiles) {
     sizes.push_back(dim_tile.size);
   }
   return sizes;
 }
 
-SmallVector<SymbolicExpr> Tile::strides() const {
+SmallVector<SymbolicExpr> Tile::strides(DimTileType type) const {
   SmallVector<SymbolicExpr> strides;
-  strides.reserve(dim_tiles_.size());
-  for (const DimTile& dim_tile : dim_tiles_) {
+  llvm::ArrayRef<DimTile> tiles = TilesOf(type);
+  strides.reserve(tiles.size());
+  for (const DimTile& dim_tile : tiles) {
     strides.push_back(dim_tile.stride);
   }
   return strides;
 }
 
-SmallVector<SymbolicExpr> Tile::upper_bounds() const {
+SmallVector<SymbolicExpr> Tile::upper_bounds(DimTileType type) const {
   SmallVector<SymbolicExpr> upper_bounds;
-  upper_bounds.reserve(dim_tiles_.size());
-  for (const DimTile& dim_tile : dim_tiles_) {
+  llvm::ArrayRef<DimTile> tiles = TilesOf(type);
+  upper_bounds.reserve(tiles.size());
+  for (const DimTile& dim_tile : tiles) {
     upper_bounds.push_back(dim_tile.upper_bound);
   }
   return upper_bounds;
@@ -196,27 +211,36 @@ absl::StatusOr<llvm::SmallVector<int64_t>> Tile::GetStaticTileStrides() const {
 }
 
 void Tile::Replace(const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& map) {
-  for (DimTile& dim_tile : dim_tiles_) {
+  for (DimTile& dim_tile : llvm::concat<DimTile>(dim_tiles_, replica_ids_)) {
     dim_tile.offset = dim_tile.offset.Replace(map);
     dim_tile.size = dim_tile.size.Replace(map);
     dim_tile.stride = dim_tile.stride.Replace(map);
     dim_tile.upper_bound = dim_tile.upper_bound.Replace(map);
   }
-  if (replica_id_.has_value()) {
-    replica_id_ = replica_id_->Replace(map);
+}
+
+void DimTile::Simplify(const TilingSpace& space) {
+  offset = space.SimplifyExpression(offset);
+  size = space.SimplifyExpression(size);
+  stride = space.SimplifyExpression(stride);
+  upper_bound = space.SimplifyExpression(upper_bound);
+}
+
+void Tile::Simplify() {
+  for (DimTile& dim_tile : llvm::concat<DimTile>(dim_tiles_, replica_ids_)) {
+    dim_tile.Simplify(*tiling_space_);
   }
 }
 
 Tile Tile::CloneWithNewDims(llvm::SmallVector<DimTile> new_dim_tiles) const {
-  Tile ret{*tiling_space_, std::move(new_dim_tiles)};
-  ret.set_replica_id(replica_id_);
+  Tile ret{*tiling_space_, std::move(new_dim_tiles), replica_ids_};
   return ret;
 }
 
 bool Tile::operator==(const Tile& other) const {
   return tiling_space_ == other.tiling_space_ &&  //
          dim_tiles_ == other.dim_tiles_ &&        //
-         replica_id_ == other.replica_id_;
+         replica_ids_ == other.replica_ids_;
 }
 
 }  // namespace xla::gpu::experimental

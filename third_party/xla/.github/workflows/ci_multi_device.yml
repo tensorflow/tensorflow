@@ -45,20 +45,20 @@ jobs:
         ]
     name: ${{ matrix.job_info.name }}
     runs-on: ${{ matrix.job_info.pool }}
-    container: ${{ matrix.job_info.container }}
+    container: ${{ matrix.job_info.container }} # zizmor: ignore[unpinned-images]
     defaults:
       run:
         shell: bash
     timeout-minutes: 60
     steps:
       - name: "Checking out openxla/xla"
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           path: "openxla/xla"
           persist-credentials: false
       - name: Checking out ${{ matrix.job_info.repo }}
         if: ${{ matrix.job_info.repo != 'openxla/xla' }}
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: ${{ matrix.job_info.repo }}
           path: ${{ matrix.job_info.repo }}

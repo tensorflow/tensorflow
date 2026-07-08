@@ -2884,5 +2884,56 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, ScatterAllReduceInvalidSelectPattern) {
   EXPECT_THAT(while_body->instructions(), Contains(op::AllReduce()));
 }
 
+TEST_F(WhileLoopAllReduceCodeMotionTest, PreserveFrontendAttributes) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule accumulated_all_reduce
+
+    %reduction {
+      %x = f32[] parameter(0)
+      %y = f32[] parameter(1)
+      ROOT %add = f32[] add(f32[] %x, f32[] %y)
+    }
+
+    %while_condition {
+      %param = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      ROOT result = pred[] compare(%gte.0, %gte.1), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      %gte.2 = f32[1024, 1024] get-tuple-element(%param), index=2
+      %gte.3 = f32[1024, 1024] get-tuple-element(%param), index=3
+      %all-reduce = f32[1024, 1024] all-reduce(f32[1024, 1024] %gte.2), channel_id=1, replica_groups={{0,1,2,3}}, use_global_device_ids=true, to_apply=%reduction
+      %accumulation = f32[1024, 1024] add(f32[1024, 1024] %all-reduce, f32[1024, 1024] %gte.3)
+      %constant = s32[] constant(1)
+      %increment_iteration = s32[] add(s32[] %gte.0, s32[] %constant)
+      ROOT %loop_result = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) tuple(%increment_iteration, %gte.1, %gte.2, %accumulation)
+    }
+
+    ENTRY accumulated_all_reduce {
+      %param.0 = s32[] parameter(0)
+      %param.1 = f32[1024, 1024] parameter(1)
+      %constant.0 = s32[] constant(1)
+      %accumulation_buffer_init = f32[] constant(0)
+      %accumulation_buffer = f32[1024, 1024] broadcast(f32[] %accumulation_buffer_init), dimensions={}
+      %while_init = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) tuple(s32[] %constant.0, s32[] %param.0, f32[1024, 1024] %param.1, f32[1024, 1024] %accumulation_buffer)
+      ROOT %while = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) while(%while_init), condition=%while_condition, body=%while_body, frontend_attributes={foo="bar"}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  ASSERT_TRUE(simplified_loop);
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
+  ASSERT_THAT(transformed_while, NotNull());
+  EXPECT_EQ(transformed_while->frontend_attributes().map().at("foo"), "bar");
+}
+
 }  // namespace
 }  // namespace xla

@@ -42,6 +42,7 @@ class ScopedLauncher {
   void AddDependency(tsl::AsyncValue* dependency);
 
   void AddDependency(absl::Span<const PjRtDeviceEventRef> dependencies);
+  void AddDependency(PjRtDeviceEventSpan dependencies);
 
  private:
   class Callee;
@@ -55,9 +56,14 @@ inline void ExecuteWhenReady(absl::Span<const PjRtDeviceEventRef> events,
                              tsl::Executor* executor,
                              tsl::Executor::Task task) {
   ScopedLauncher launcher_(std::move(task), executor);
-  for (auto& dep : events) {
-    launcher_.AddDependency(dep);
-  }
+  launcher_.AddDependency(events);
+}
+
+inline void ExecuteWhenReady(PjRtDeviceEventSpan events,
+                             tsl::Executor* executor,
+                             tsl::Executor::Task task) {
+  ScopedLauncher launcher_(std::move(task), executor);
+  launcher_.AddDependency(events);
 }
 
 // Runs `callback` when all `events` are ready.
@@ -66,9 +72,14 @@ inline void RunWhenReady(absl::Span<const PjRtDeviceEventRef> events,
   ExecuteWhenReady(events, nullptr, std::move(task));
 }
 
+inline void RunWhenReady(PjRtDeviceEventSpan events, tsl::Executor::Task task) {
+  ExecuteWhenReady(events, nullptr, std::move(task));
+}
+
 // Returns an error if any of the `events` have an error.
 // Does not wait for events to become ready.
 absl::Status GetErrors(absl::Span<const PjRtDeviceEventRef> events);
+absl::Status GetErrors(PjRtDeviceEventSpan events);
 
 void BlockUntilReady(PjRtDeviceEventPtr event);
 

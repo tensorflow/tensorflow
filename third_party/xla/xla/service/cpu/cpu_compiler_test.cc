@@ -28,7 +28,7 @@ namespace xla {
 namespace cpu {
 namespace {
 
-using CpuCompilerTest = HloPjRtTestBase;
+using CpuCompilerTest = HloTestBase;
 
 constexpr absl::string_view kCpuCompilerStacktraceMetricName =
     "/xla/service/cpu/compiler_stacktrace_count";

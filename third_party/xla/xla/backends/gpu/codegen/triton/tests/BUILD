@@ -52,7 +52,11 @@ xla_cc_binary(
 
 deviceless_tests = [
     "collectives/all_reduce.hlo",
+    "collectives/all_gather.hlo",
+    "concat/concat_active_scalar_constant.hlo",
     "concat/concat_offset_not_a_multiple_of_tile_size.hlo",
+    "constraints/max_tensor_elements_violation.hlo",
+    "dot/duplicate_dot_operand.hlo",
 ]
 
 lit_test_suite(
@@ -104,6 +108,7 @@ xla_cc_test(
     tags = ["no_oss"],  # Doesn't pass in OSS when building with the `fusion_emitter_stub`.
     deps = [
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/codegen/triton:triton_kernel_source",
         "//xla/backends/gpu/codegen/triton:xtile_compiler",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
@@ -154,7 +159,6 @@ xla_test(
         "//xla/backends/gpu/codegen/triton:xtile_compiler",
         "//xla/backends/gpu/codegen/triton:xtile_test_base",
         "//xla/backends/gpu/tests:gpu_pjrt_codegen_test",
-        "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -167,12 +171,13 @@ xla_test(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/rocm:rocm_compute_capability",
-        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_interpreter_reference_mixin",
         "//xla/tests:test_utils",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/log",
@@ -233,8 +238,8 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
+    shard_count = 4,
     tags = ["no_mac"],
-    use_legacy_runtime = True,
     deps = [
         "//xla:comparison_util",
         "//xla:error_spec",
@@ -242,13 +247,15 @@ xla_test(
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/triton:support",
         "//xla/backends/gpu/codegen/triton:test_utils",
-        "//xla/backends/gpu/tests:gpu_codegen_test",
+        "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_description",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
@@ -259,14 +266,13 @@ xla_cc_test(
     srcs = ["fusion_emitter_shared_dialect_test.cc"],
     tags = ["no_mac"],
     deps = [
+        "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/triton:xtile_test_base",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service/gpu/model:block_level_parameters",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
     ],
@@ -292,9 +298,9 @@ xla_test(
         "//xla/hlo/testlib:filecheck",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/stream_executor:device_description",
-        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_interpreter_reference_mixin",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@tsl//tsl/platform:path",

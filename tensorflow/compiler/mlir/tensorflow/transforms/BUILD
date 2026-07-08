@@ -42,6 +42,7 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@shardy//shardy/dialect/sdy/ir:dialect",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -683,6 +684,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -883,6 +885,7 @@ cc_library(
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass_registration",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1038,8 +1041,10 @@ cc_library(
         "@xla//xla:shape_util",
         "@xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "@xla//xla/mlir_hlo",
-        "@xla//xla/stream_executor/tpu:c_api_conversions",
-        "@xla//xla/stream_executor/tpu:tpu_api",
+        "@xla//xla/tpu:c_api_conversions",
+        "@xla//xla/tpu:c_api_decl",
+        "@xla//xla/tpu:tpu_executor_api",
+        "@xla//xla/tpu:tpu_executor_c_api_hdrs",
     ],
 )
 

@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -92,7 +93,7 @@ class TestBufferIntervalComparator : public BufferIntervalComparator {
   MsaBufferIntervalCompare compare_method_;
 };
 
-class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
+class MemorySpaceAssignmentTestBase : public HloTestBase {
  protected:
   // We use the following two memory space values to describe the default (slow
   // and large) and alternate (fast and small) memory spaces.
@@ -192,7 +193,8 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
     for (HloComputation* computation : module->MakeNonfusionComputations()) {
       CHECK_OK(computation->Accept(&hlo_cost_analysis));
     }
-    CHECK_OK(HloAliasAnalysis::Run(module, &alias_info_).status());
+    auto alias_analysis_or = HloAliasAnalysis::Run(module, &alias_info_);
+    CHECK_OK(alias_analysis_or.status());
 
     Options memory_space_options = DefaultMemorySpaceOptions();
     if (memory_space_options_override) {
@@ -212,8 +214,9 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
             CreateHloCostAnalysisCalculator(hlo_cost_analysis_wrapper),
             /*enable_cache=*/false));
 
-    auto status_or_cost_analysis = CostAnalysis::Create(
-        op_cost_manager, cost_analysis_options, &alias_info_, *module);
+    auto status_or_cost_analysis =
+        CostAnalysis::Create(op_cost_manager, cost_analysis_options,
+                             &alias_info_, *module, alias_analysis_or->get());
     CHECK_OK(status_or_cost_analysis.status());
     auto cost_analysis = std::move(status_or_cost_analysis.value());
 
@@ -313,13 +316,13 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
       options.is_allowed_in_alternate_mem_fn = is_allowed_in_alternate_mem;
     }
 
-    TF_ASSIGN_OR_RETURN(auto alias_analysis,
-                        HloAliasAnalysis::Run(module, &alias_info_));
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
-                        HloLiveRange::Run(module->schedule(), *alias_analysis,
-                                          module->entry_computation()));
+    ASSIGN_OR_RETURN(auto alias_analysis,
+                     HloAliasAnalysis::Run(module, &alias_info_));
+    ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
+                     HloLiveRange::Run(module->schedule(), *alias_analysis,
+                                       module->entry_computation()));
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         std::unique_ptr<PresetAssignments> preset_assignments,
         MemorySpaceAssignment::Run(module, *hlo_live_range, *alias_analysis,
                                    &alias_info_, options));

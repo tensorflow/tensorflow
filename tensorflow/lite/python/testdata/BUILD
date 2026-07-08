@@ -1,10 +1,9 @@
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_custom_op_library",
-    "tf_features_nolayering_check_if_ios",
     "tf_gen_op_wrapper_py",
     "tf_opts_nortti_if_android",
 )
@@ -109,7 +108,6 @@ cc_library(
         "//tensorflow:android": ["-Wno-private-header"],
         "//conditions:default": [],
     }),
-    features = tf_features_nolayering_check_if_ios(),
     deps = select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -141,7 +139,7 @@ tf_gen_op_wrapper_py(
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
-    py_lib_rule = py_strict_library,
+    py_lib_rule = py_library,
     deps = [":double_op_and_kernels"],
 )
 

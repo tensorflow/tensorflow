@@ -14,10 +14,6 @@ load(
     "if_gpu_is_configured",
 )
 load("//xla/tsl:tsl.default.bzl", "filegroup")
-load(
-    "//xla/tsl/platform:build_config_root.bzl",
-    "tf_gpu_tests_tags",
-)
 
 # hlo-opt tool.
 load(
@@ -100,7 +96,6 @@ cc_library(
         "//xla/backends/gpu/transforms:fusion_wrapper",
         "//xla/backends/gpu/transforms:gemm_broadcast_folding_rewriter",
         "//xla/backends/gpu/transforms:gemm_fusion",
-        "//xla/backends/gpu/transforms:gemv_rewriter",
         "//xla/backends/gpu/transforms:reduce_scatter_creator",
         "//xla/backends/gpu/transforms:reduction_degenerate_dim_remover",
         "//xla/backends/gpu/transforms:reduction_dimension_grouper",
@@ -117,6 +112,7 @@ cc_library(
         "//xla/hlo/tools/hlo_opt:opt_lib",
         "//xla/hlo/transforms:host_offloader",
         "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
+        "//xla/hlo/transforms/simplifiers:gemv_rewriter",
         "//xla/hlo/transforms/simplifiers:hlo_memory_scheduler",
         "//xla/hlo/transforms/simplifiers:reduce_window_rewriter",
         "//xla/service:buffer_value",
@@ -211,6 +207,7 @@ cc_library(
         "//xla/stream_executor/host:host_platform",
         "//xla/stream_executor/platform:initialize",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
@@ -258,7 +255,7 @@ lit_test_suite(
     ]),
     cfg = "//xla:lit.cfg.py",
     data = [":test_utilities"],
-    default_tags = tf_gpu_tests_tags(),
+    default_tags = ["gpu"],  # Needs to run in a build with a gpu configured.
     hermetic_cuda_data_dir = "%S/../../../../../" + get_canonical_repo_name("cuda_nvcc"),
     tags_override = {
         "tests/gpu_hlo_ptx.hlo": ["cuda-only"],

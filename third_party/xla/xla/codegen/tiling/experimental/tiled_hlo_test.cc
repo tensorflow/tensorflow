@@ -75,8 +75,10 @@ TEST_F(TiledHloTest, TestPrinting) {
       ROOT broadcast = f32[10,20,30] broadcast(p0), dimensions={0,2}
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      auto tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
   ASSERT_OK_AND_ASSIGN(
       Tiles tiled_operands,
       PropagateTileToInput(
@@ -115,6 +117,12 @@ class TileAnalysisTest : public HloHardwareIndependentTestBase {
     auto module_or = ParseAndReturnVerifiedModule(hlo_string);
     CHECK_OK(module_or);
     module_ = std::move(module_or.value());
+    // TODO: b/502910372 - multi output fusions are not supported yet but to
+    // exercise some of the code paths that deal with multiple roots we allow
+    // them in the test.
+    module_->mutable_config()
+        .mutable_debug_options()
+        .set_xla_gpu_unsupported_enable_triton_multi_output_fusion(true);
     return module_->entry_computation()->root_instruction();
   }
 
@@ -122,7 +130,8 @@ class TileAnalysisTest : public HloHardwareIndependentTestBase {
       absl::string_view hlo_string, absl::Span<const int64_t> tile_sizes) {
     HloInstruction* root = ParseAndGetRoot(hlo_string);
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-    auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+    ASSIGN_OR_RETURN(auto tiling_space,
+                     TilingSpace::Create(*fusion_adaptor, &mlir_context_));
     RETURN_IF_ERROR(tiling_space->AssignTileSizes(tile_sizes));
     return TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space));
   }
@@ -152,12 +161,12 @@ Dimensions:
 0 type: parallel size: 2 tile size: 4 dim ID:0 hlo: %reduce = f32[2]{0} reduce(%p0, %constant), dimensions={1}, to_apply=%max
 1 type: sequential size: 97 tile size: 100 dim ID:1 hlo: %reduce = f32[2]{0} reduce(%p0, %constant), dimensions={1}, to_apply=%max
 Root tiles:
-0 root tile:  offsets [tid_0 * 4] sizes [4] strides [1] upper bounds [2]
+0 root tile:  offsets [0] sizes [4] strides [1] upper bounds [2]
 
 Tiled HLO:
-  p0.tile_0 = parameter(0)  offsets [tid_0 * 4, tid_1 * 100] sizes [4, 100] strides [1, 1] upper bounds [2, 97]
+  p0.tile_0 = parameter(0)  offsets [0, 0] sizes [4, 100] strides [1, 1] upper bounds [2, 97]
   constant.tile_0 = constant()  offsets [] sizes [] strides [] upper bounds []
-  reduce.tile_0 = reduce(p0.tile_0, constant.tile_0)  offsets [tid_0 * 4] sizes [4] strides [1] upper bounds [2]
+  reduce.tile_0 = reduce(p0.tile_0, constant.tile_0)  offsets [0] sizes [4] strides [1] upper bounds [2]
   )"));
 
   EXPECT_THAT(
@@ -177,34 +186,33 @@ TEST_F(TileAnalysisTest, SimpleNormalizationDiamond) {
     }
 
     fusion {
-      p0 = f32[2,97]{1,0} parameter(0)
+      p0 = f32[16,97]{1,0} parameter(0)
       constant = f32[] constant(-inf)
-      reduce = f32[2] reduce(p0, constant), dimensions={1}, to_apply=max
-      broadcast = f32[2,97]{1,0} broadcast(reduce), dimensions={0}
-      ROOT subtract = f32[2,97]{1,0} subtract(p0, broadcast)
+      reduce = f32[16] reduce(p0, constant), dimensions={1}, to_apply=max
+      broadcast = f32[16,97]{1,0} broadcast(reduce), dimensions={0}
+      ROOT subtract = f32[16,97]{1,0} subtract(p0, broadcast)
     }
 
     ENTRY main {
-      p0 = f32[2,97]{1,0} parameter(0)
-      ROOT fusion = f32[2,97]{1,0} fusion(p0), kind=kLoop, calls=fusion
+      p0 = f32[16,97]{1,0} parameter(0)
+      ROOT fusion = f32[16,97]{1,0} fusion(p0), kind=kLoop, calls=fusion
     })hlo",
                                     {8, 128, 128}));
 
   EXPECT_THAT(tiled_computation, MatchString(R"(
 Dimensions:
-0 type: parallel size: 2 tile size: 8 dim ID:0 hlo: %subtract = f32[2,97]{1,0} subtract(%p0.1, %broadcast)
-1 type: parallel size: 97 tile size: 128 dim ID:1 hlo: %subtract = f32[2,97]{1,0} subtract(%p0.1, %broadcast)
-2 type: sequential size: 97 tile size: 128 dim ID:1 hlo: %reduce = f32[2]{0} reduce(%p0.1, %constant), dimensions={1}, to_apply=%max
+0 type: parallel size: 16 tile size: 8 dim ID:0 hlo: %subtract = f32[16,97]{1,0} subtract(%p0.1, %broadcast)
+1 type: parallel size: 97 tile size: 128 dim ID:1 hlo: %subtract = f32[16,97]{1,0} subtract(%p0.1, %broadcast)
+2 type: sequential size: 97 tile size: 128 dim ID:1 hlo: %reduce = f32[16]{0} reduce(%p0.1, %constant), dimensions={1}, to_apply=%max
 Root tiles:
-0 root tile:  offsets [tid_0 * 8, tid_1 * 128] sizes [8, 128] strides [1, 1] upper bounds [2, 97]
+0 root tile:  offsets [tid_0 * 8, 0] sizes [8, 128] strides [1, 1] upper bounds [16, 97]
 
 Tiled HLO:
-  p0.2.tile_0 = parameter(0)  offsets [tid_0 * 8, tid_1 * 128] sizes [8, 128] strides [1, 1] upper bounds [2, 97]
-  p0.2.tile_1 = parameter(0)  offsets [tid_0 * 8, tid_2 * 128] sizes [8, 128] strides [1, 1] upper bounds [2, 97]
+  p0.2.tile_0 = parameter(0)  offsets [tid_0 * 8, 0] sizes [8, 128] strides [1, 1] upper bounds [16, 97]
   constant.tile_0 = constant()  offsets [] sizes [] strides [] upper bounds []
-  reduce.tile_0 = reduce(p0.2.tile_1, constant.tile_0)  offsets [tid_0 * 8] sizes [8] strides [1] upper bounds [2]
-  broadcast.tile_0 = broadcast(reduce.tile_0)  offsets [tid_0 * 8, tid_1 * 128] sizes [8, 128] strides [1, 1] upper bounds [2, 97]
-  subtract.tile_0 = subtract(p0.2.tile_0, broadcast.tile_0)  offsets [tid_0 * 8, tid_1 * 128] sizes [8, 128] strides [1, 1] upper bounds [2, 97]
+  reduce.tile_0 = reduce(p0.2.tile_0, constant.tile_0)  offsets [tid_0 * 8] sizes [8] strides [1] upper bounds [16]
+  broadcast.tile_0 = broadcast(reduce.tile_0)  offsets [tid_0 * 8, 0] sizes [8, 128] strides [1, 1] upper bounds [16, 97]
+  subtract.tile_0 = subtract(p0.2.tile_0, broadcast.tile_0)  offsets [tid_0 * 8, 0] sizes [8, 128] strides [1, 1] upper bounds [16, 97]
   )"));
 
   EXPECT_THAT(tiled_computation.tiled_hlo_instructions(),
@@ -261,6 +269,32 @@ Tiled HLO:
               Contains(IsHloWithOperands(
                   HloOpcode::kConcatenate,
                   std::vector<HloOpcode>(3, HloOpcode::kParameter))));
+}
+
+TEST_F(TileAnalysisTest, DuplicateRegionRoots) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"hlo(
+    ENTRY e {
+      p0 = f32[128,128] parameter(0)
+      ROOT dot = f32[128,128] dot(p0, p0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    })hlo",
+                                    {16, 16, 16}));
+
+  EXPECT_THAT(tiled_computation, MatchString(R"(
+     Dimensions:
+       0 type: parallel size: 128 tile size: 16 dim ID:0 hlo: %dot = f32[128,128]{1,0} dot(%p0, %p0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+       1 type: parallel size: 128 tile size: 16 dim ID:1 hlo: %dot = f32[128,128]{1,0} dot(%p0, %p0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+       2 type: sequential size: 128 tile size: 16 dim ID:2 hlo: %dot = f32[128,128]{1,0} dot(%p0, %p0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+       Root tiles:
+       0 root tile:  offsets [tid_0 * 16, tid_1 * 16] sizes [16, 16] strides [1, 1] upper bounds [128, 128]
+
+     Tiled HLO:
+       dot.tile_0 = dot(p0.tile_0, p0.tile_1)  offsets [tid_0 * 16, tid_1 * 16] sizes [16, 16] strides [1, 1] upper bounds [128, 128]
+       region #0 {
+         p0.tile_0 = parameter(0)  offsets [tid_0 * 16, tid_2 * 16] sizes [16, 16] strides [1, 1] upper bounds [128, 128]
+         p0.tile_1 = parameter(0)  offsets [tid_2 * 16, tid_1 * 16] sizes [16, 16] strides [1, 1] upper bounds [128, 128]
+       }
+  )"));
 }
 
 TEST_F(TileAnalysisTest, Dot) {
@@ -327,13 +361,13 @@ Dimensions:
 1 type: parallel size: 16 tile size: 32 dim ID:1 hlo: %dot = f32[4,16]{1,0} dot(%p0, %p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 2 type: sequential size: 8 tile size: 32 dim ID:2 hlo: %dot = f32[4,16]{1,0} dot(%p0, %p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 Root tiles:
-0 root tile:  offsets [tid_0 * 32, tid_1 * 32] sizes [32, 32] strides [1, 1] upper bounds [4, 16]
+0 root tile:  offsets [0, 0] sizes [32, 32] strides [1, 1] upper bounds [4, 16]
 
 Tiled HLO:
-  dot.tile_0 = dot(p0.1.tile_0, p1.1.tile_0)  offsets [tid_0 * 32, tid_1 * 32] sizes [32, 32] strides [1, 1] upper bounds [4, 16]
+  dot.tile_0 = dot(p0.1.tile_0, p1.1.tile_0)  offsets [0, 0] sizes [32, 32] strides [1, 1] upper bounds [4, 16]
   region #0 {
-    p0.1.tile_0 = parameter(0)  offsets [tid_0 * 32, tid_2 * 32] sizes [32, 32] strides [1, 1] upper bounds [4, 8]
-    p1.1.tile_0 = parameter(1)  offsets [tid_2 * 32, tid_1 * 32] sizes [32, 32] strides [1, 1] upper bounds [8, 16]
+    p0.1.tile_0 = parameter(0)  offsets [0, 0] sizes [32, 32] strides [1, 1] upper bounds [4, 8]
+    p1.1.tile_0 = parameter(1)  offsets [0, 0] sizes [32, 32] strides [1, 1] upper bounds [8, 16]
   }
   )"));
 
@@ -378,8 +412,8 @@ Tiled HLO:
   region #0 {
     lhs.1.tile_0 = parameter(0)  offsets [tid_0 * 2, tid_2 * 8] sizes [2, 8] strides [1, 1] upper bounds [128, 64]
     rhs.1.tile_0 = parameter(1)  offsets [tid_2 * 8, tid_1 * 4] sizes [8, 4] strides [1, 1] upper bounds [64, 128]
-    lhs_scale.1.tile_0 = parameter(2)  offsets [tid_0 * 2, (tid_2 * 8) floordiv 32] sizes [2, (tid_2 * 8 + 7) floordiv 32 - tid_2 floordiv 4 + 1] strides [1, 1] upper bounds [128, 2]
-    rhs_scale.1.tile_0 = parameter(3)  offsets [(tid_2 * 8) floordiv 32, tid_1 * 4] sizes [(tid_2 * 8 + 7) floordiv 32 - tid_2 floordiv 4 + 1, 4] strides [1, 1] upper bounds [2, 128]
+    lhs_scale.1.tile_0 = parameter(2)  offsets [tid_0 * 2, tid_2 / 4] sizes [2, 1] strides [1, 1] upper bounds [128, 2]
+    rhs_scale.1.tile_0 = parameter(3)  offsets [tid_2 / 4, tid_1 * 4] sizes [1, 4] strides [1, 1] upper bounds [2, 128]
   }
   )"));
 
@@ -412,14 +446,14 @@ Dimensions:
 Runtime variables:
 0 bounds: [0, 54] hlo: %add = s32[] add(%c7, %c13)
 Root tiles:
-0 root tile:  offsets [tid_0 * 10] sizes [10] strides [1] upper bounds [10]
+0 root tile:  offsets [0] sizes [10] strides [1] upper bounds [10]
 
 Tiled HLO:
   c7.tile_0 = constant()  offsets [] sizes [] strides [] upper bounds []
   c13.tile_0 = constant()  offsets [] sizes [] strides [] upper bounds []
   add.tile_0 = add(c7.tile_0, c13.tile_0)  offsets [] sizes [] strides [] upper bounds []
-  p0.1.tile_0 = parameter(0)  offsets [rt_0 + tid_0 * 10] sizes [10] strides [1] upper bounds [rt_0 + 10]
-  r.tile_0 = dynamic-slice(p0.1.tile_0, add.tile_0)  offsets [tid_0 * 10] sizes [10] strides [1] upper bounds [10]
+  p0.1.tile_0 = parameter(0)  offsets [rt_0] sizes [10] strides [1] upper bounds [rt_0 + 10]
+  r.tile_0 = dynamic-slice(p0.1.tile_0, add.tile_0)  offsets [0] sizes [10] strides [1] upper bounds [10]
   )"));
   EXPECT_THAT(
       tiled_computation.rt_symbol_to_tiled_hlo(),
@@ -431,7 +465,7 @@ Tiled HLO:
                     ::testing::_))));
 }
 
-TEST_F(TileAnalysisTest, CSEworksCorrectly) {
+TEST_F(TileAnalysisTest, CSEWorksCorrectly) {
   ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
                        ParseAndTile(R"hlo(
     fusion {
@@ -458,7 +492,7 @@ Runtime variables:
 0 bounds: [0, 10] hlo: %off2 = s32[] reshape(%slice2)
 1 bounds: [0, 44] hlo: %off = s32[] reshape(%slice1)
 Root tiles:
-0 root tile:  offsets [tid_0 * 16] sizes [16] strides [1] upper bounds [10]
+0 root tile:  offsets [0] sizes [16] strides [1] upper bounds [10]
 
 Tiled HLO:
   p0.1.tile_0 = parameter(0)  offsets [0] sizes [1] strides [1] upper bounds [1]
@@ -470,10 +504,10 @@ Tiled HLO:
   d1.tile_0 = dynamic-slice(c0.tile_1, off.tile_0)  offsets [1] sizes [1] strides [1] upper bounds [2]
   slice2.tile_0 = slice(d1.tile_0)  offsets [0] sizes [1] strides [1] upper bounds [1]
   off2.tile_0 = reshape(slice2.tile_0)  offsets [] sizes [] strides [] upper bounds []
-  p0.1.tile_2 = parameter(0)  offsets [rt_1 + rt_0 + tid_0 * 16] sizes [16] strides [1] upper bounds [rt_0 + 10 + rt_1]
-  c0.tile_2 = convert(p0.1.tile_2)  offsets [rt_1 + rt_0 + tid_0 * 16] sizes [16] strides [1] upper bounds [rt_0 + 10 + rt_1]
-  d1.tile_1 = dynamic-slice(c0.tile_2, off.tile_0)  offsets [rt_0 + tid_0 * 16] sizes [16] strides [1] upper bounds [rt_0 + 10]
-  d2.tile_0 = dynamic-slice(d1.tile_1, off2.tile_0)  offsets [tid_0 * 16] sizes [16] strides [1] upper bounds [10]
+  p0.1.tile_2 = parameter(0)  offsets [rt_0 + rt_1] sizes [16] strides [1] upper bounds [rt_0 + rt_1 + 10]
+  c0.tile_2 = convert(p0.1.tile_2)  offsets [rt_0 + rt_1] sizes [16] strides [1] upper bounds [rt_0 + rt_1 + 10]
+  d1.tile_1 = dynamic-slice(c0.tile_2, off.tile_0)  offsets [rt_0] sizes [16] strides [1] upper bounds [rt_0 + 10]
+  d2.tile_0 = dynamic-slice(d1.tile_1, off2.tile_0)  offsets [0] sizes [16] strides [1] upper bounds [10]
   )"));
 }
 
@@ -505,11 +539,33 @@ TEST_F(TileAnalysisTest, CollectiveDotBasic) {
     Tiled HLO:
       dot.tile_0 = dot(ag.tile_0, p1.1.tile_0)  offsets [tid_0 * 16, tid_1 * 32] sizes [16, 32] strides [1, 1] upper bounds [128, 512]
       region #0 {
-        p0.1.tile_0 = parameter(0)  offsets [(tid_0 * 16) mod 64, tid_2 * 32] sizes [16, 32] strides [1, 1] upper bounds [64, 256] replica_id [(tid_0 * 16) floordiv 64]
+        p0.1.tile_0 = parameter(0)  offsets [(tid_0 mod 4) * 16, tid_2 * 32] sizes [16, 32] strides [1, 1] upper bounds [64, 256]
+                                    replica ids { offsets [tid_0 / 4] sizes [1] strides [1] upper bounds [2] }
         ag.tile_0 = all-gather(p0.1.tile_0)  offsets [tid_0 * 16, tid_2 * 32] sizes [16, 32] strides [1, 1] upper bounds [128, 256]
         p1.1.tile_0 = parameter(1)  offsets [tid_2 * 32, tid_1 * 32] sizes [32, 32] strides [1, 1] upper bounds [256, 512]
       }
   )"));
+}
+
+// TODO: b/502910372 - there is a bug (likely use after free) in multi-output
+// fusions processing (only without -c opt).
+TEST_F(TileAnalysisTest, DISABLED_DuplicateFusionRoots) {
+  EXPECT_DEATH(
+      {
+        auto result = ParseAndTile(R"hlo(
+    fusion {
+      p0 = f32[128] parameter(0)
+      add0 = f32[128] add(p0, p0)
+      ROOT tuple = (f32[128], f32[128]) tuple(add0, add0)
+    }
+
+    ENTRY e {
+      p0 = f32[128] parameter(0)
+      ROOT call = (f32[128], f32[128]) fusion(p0), kind=kLoop, calls=fusion
+    })hlo",
+                                   {128, 128});
+      },
+      "xla::gpu::experimental::SortTiledHloInstructionsInPostOrder()");
 }
 
 // TODO(b/422676780): Port the remaining tests.

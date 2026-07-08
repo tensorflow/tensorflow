@@ -16,7 +16,6 @@ limitations under the License.
 // This file implements logic for some optimizations to reduce size on export.
 
 #include <cassert>
-#include <complex>
 #include <cstdint>
 
 #include "llvm/ADT/STLExtras.h"

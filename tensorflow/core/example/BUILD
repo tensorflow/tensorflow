@@ -153,7 +153,14 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "feature_util.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs_no_runtime",
+    srcs = [
         "feature_util.h",
+        ":example_protos_cc",
     ],
 )
 

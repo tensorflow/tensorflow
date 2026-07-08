@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
@@ -38,6 +39,25 @@ namespace xla {
 absl::StatusOr<bool> HloModuleStitcher::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  // Reset visited set on top-level entry to support pass reuse.
+  if (visiting_modules_.empty()) {  // Top-level call.
+    visited_modules_.clear();
+  }
+
+  if (visiting_modules_.contains(module)) {
+    return absl::InternalError(
+        absl::StrCat("Circular dependency detected in submodule stitching: ",
+                     module->name()));
+  }
+
+  if (visited_modules_.contains(module)) {
+    return false;
+  }
+
+  visiting_modules_.insert(module);
+  auto cleanup =
+      absl::MakeCleanup([this, module]() { visiting_modules_.erase(module); });
+
   bool changed = false;
 
   std::vector<HloComputation*> computations =
@@ -56,7 +76,12 @@ absl::StatusOr<bool> HloModuleStitcher::RunImpl(
               absl::StrCat("Sub-module ", sub_module_name, " not found"));
         }
 
-        const HloModule* sub_module = it->second;
+        HloModule* sub_module = it->second;
+        if (sub_module == nullptr) {
+          return absl::InternalError("sub_module is null");
+        }
+        // Resolve all nested custom calls in the submodule first recursively.
+        RETURN_IF_ERROR(Run(sub_module).status());
         HloComputation* sub_entry = sub_module->entry_computation();
 
         if (inst->operand_count() != sub_entry->num_parameters()) {
@@ -67,8 +92,10 @@ absl::StatusOr<bool> HloModuleStitcher::RunImpl(
         }
 
         HloCloneContext context(module);
-        HloComputation* cloned_sub_entry =
-            module->DeepCloneComputation(sub_entry, &context);
+        HloComputation* cloned_sub_entry = context.FindComputation(sub_entry);
+        if (cloned_sub_entry == nullptr) {
+          cloned_sub_entry = module->DeepCloneComputation(sub_entry, &context);
+        }
 
         std::vector<HloInstruction*> operands;
         operands.reserve(inst->operand_count());
@@ -114,6 +141,7 @@ absl::StatusOr<bool> HloModuleStitcher::RunImpl(
     }
   }
 
+  visited_modules_.insert(module);
   return changed;
 }
 

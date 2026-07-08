@@ -29,11 +29,16 @@ import bisect
 import collections
 from collections.abc import Callable, Sequence
 import dataclasses
+import functools
+import itertools
 import json
 import logging
+import os
 import pathlib
+import subprocess
 import sys
-from typing import IO, TypedDict
+import tempfile
+from typing import IO, Protocol, TypedDict
 
 from build_tools.lint import diff_parser
 
@@ -43,16 +48,19 @@ class AppConfig:
   """Configuration for the ClangTidyDiffFilter application.
 
   Attributes:
-    patch: Path to the patch file containing the diff.
+    patch: Path to the patch file containing the diff or None if no diff
+      filtering should be applied.
     repo_root: Absolute path to the repository root.
     bep_file: Path to the Bazel Build Event Protocol JSON file.
     warnings_as_errors: If True, treat Clang-Tidy warnings as errors.
+    fix: If True, apply fixes to the source files.
   """
 
-  patch: str
+  patch: str | None
   repo_root: str
   bep_file: str
   warnings_as_errors: bool
+  fix: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -69,6 +77,9 @@ class Diagnostic:
     message: The diagnostic message.
     yaml_file: The path to the .clang-tidy.yaml file where this diagnostic was
       reported.
+    has_replacements: Whether the diagnostic has replacements available. For
+      some diagnostics, clang-tidy can automatically fix the issue, and this
+      attribute will be True if there are one or more replacements available.
   """
 
   file_path: str
@@ -78,6 +89,25 @@ class Diagnostic:
   name: str
   message: str
   yaml_file: str
+  has_replacements: bool
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class DiagnosticSummary:
+  """Summary for all Clang-Tidy diagnostics for a file.
+
+  Attributes:
+    file_path: The path to the file where the diagnostics were found, relative
+      to the repo root.
+    was_skipped: Whether the file was skipped due to not being in the git diff.
+    total: The total number of diagnostics found in the report.
+    matched: The number of diagnostics that matched the diff.
+  """
+
+  file_path: str
+  was_skipped: bool
+  total: int
+  matched: int
 
 
 # Can't use TypedDict with classes because linting will complain about fields
@@ -90,6 +120,7 @@ ClangTidyDiagnostic = TypedDict(
         "FilePath": str,
         "FileOffset": int,
         "Level": str,
+        "HasReplacements": bool,
     },
     total=False,
 )
@@ -103,6 +134,36 @@ ClangTidyReport = TypedDict(
     },
     total=False,
 )
+
+
+class ApplyFixes(Protocol):
+  """A callable for applying fixes from clang-tidy diagnostics."""
+
+  def __call__(self, temp_dir: pathlib.Path) -> None:
+    """Applies fixes to the source files in the given temporary directory.
+
+    Args:
+      temp_dir: The temporary directory containing the source files to apply
+        fixes to.
+    """
+    ...
+
+
+def clang_apply_fixes(bin_path: pathlib.Path, temp_dir: pathlib.Path) -> None:
+  """Applies fixes to the source files in the given temporary directory.
+
+  Args:
+    bin_path: Path to the clang-apply-replacements binary.
+    temp_dir: The temporary directory containing the source files to apply fixes
+      to.
+  """
+  cmd = [
+      bin_path.as_posix(),
+      "-remove-change-desc-files",
+      temp_dir.as_posix(),
+  ]
+  _logger().info("Running command: %r", " ".join(cmd))
+  subprocess.check_output(cmd)
 
 
 def _logger() -> logging.Logger:
@@ -134,6 +195,40 @@ def _set_log_level(log_level: str) -> None:
       _set_level(logging.ERROR)
     case _:
       raise ValueError(f"Unsupported log level: {log_level}")
+
+
+def _resolve_clang_apply_replacements(
+    clang_apply_replacements_bin: pathlib.Path | None,
+) -> pathlib.Path | None:
+  """Resolve path to the clang-apply-replacements binary.
+
+  If the path is explicitly provided, use that. Otherwise, try to find it using
+  bazel-runfiles.
+
+  Args:
+    clang_apply_replacements_bin: The path to the clang-apply-replacements
+      binary, or None if it should be resolved from the environment.
+
+  Returns:
+    The path to the clang-apply-replacements binary, or None if it could not be
+    resolved.
+  """
+  if clang_apply_replacements_bin:
+    return clang_apply_replacements_bin
+  runfiles_dir = os.environ.get("RUNFILES_DIR")
+  if not runfiles_dir:
+    return None
+  runfiles_path = (
+      pathlib.Path(runfiles_dir)
+      / "xla/build_tools/ci/clang_apply_replacements_bin"
+  )
+  if runfiles_path.exists():
+    return runfiles_path
+  _logger().warning(
+      "clang-apply-replacements binary not found in RUNFILES_DIR: %s",
+      runfiles_path,
+  )
+  return None
 
 
 def parse_diff(diff_path: str) -> dict[str, set[int]]:
@@ -183,15 +278,15 @@ def normalize_path(path: str, repo_root: str) -> str:
   if not path:
     return ""
   p = pathlib.Path(path)
+  # Handle local absolute paths under repo_root (CI Runner paths)
+  # This handles /__w/xla/xla by removing the prefix.
+  if p.is_absolute() and p.is_relative_to(repo_root):
+    return p.relative_to(repo_root).as_posix()
   # Handle bazel execroot paths
   if "execroot" in p.parts:
     idx = p.parts.index("execroot")
     if idx + 2 < len(p.parts):
       return pathlib.Path(*p.parts[idx + 2 :]).as_posix()
-  # Handle local absolute paths under repo_root (CI Runner paths)
-  # This handles /__w/xla/xla by removing the prefix.
-  if p.is_absolute() and p.is_relative_to(repo_root):
-    return p.relative_to(repo_root).as_posix()
   # Handle remote execution paths
   # p is like "/b/f/w/xla/..."
   # NB: We don't quite know the top level directory to look for in the remote
@@ -288,7 +383,8 @@ def parse_clang_tidy_yaml(yaml_path: str) -> ClangTidyReport:
           current_diag["Level"] = extract(stripped)
       elif stripped.startswith("Replacements:"):
         in_diag_message = False
-
+        if current_diag is not None:
+          current_diag["HasReplacements"] = not stripped.endswith("[]")
   return result
 
 
@@ -343,7 +439,8 @@ def print_diagnostic(
       lines = f.readlines()
   except FileNotFoundError:
     _logger().warning(
-        "Could not read file %s to print diagnostic snippet.", abs_path
+        "Could not read file %r to print diagnostic snippet.",
+        abs_path.as_posix(),
     )
     return
 
@@ -366,13 +463,56 @@ def print_diagnostic(
       stream.write(f"{prefix}{line_content}\n")
 
 
+def _find_with_prefix(
+    parts: Sequence[str], prefix: str
+) -> tuple[int, str | None]:
+  """Finds the index and value of the first part starting with the prefix.
+
+  Args:
+    parts: The path parts to search.
+    prefix: The prefix to search for.
+
+  Returns:
+    A tuple of (index, dir) where dir is the directory starting with the
+    prefix or None if not found.
+  """
+  for idx, part in enumerate(parts):
+    if part.startswith(prefix):
+      return idx, part
+  return 0, None
+
+
+def _get_report_source(yaml_file_path: pathlib.Path, repo_root: str) -> str:
+  """Returns the source file path for a Clang-Tidy YAML report file."""
+  # yaml_path looks like:
+  # x/y/z/bazel_clang_tidy/path/to/file.cc.<target>.clang-tidy.yml.
+  expected_prefix = "bazel_clang_tidy_"
+  idx, aspect_dir = _find_with_prefix(yaml_file_path.parts, expected_prefix)
+  if aspect_dir is not None:
+    toplevel = [aspect_dir.removeprefix(expected_prefix)]
+    rel_parts = yaml_file_path.parts[idx + 1 :]
+    # Remove <target>.clang-tidy.yml suffix.
+    filename = rel_parts[-1].rsplit(".", 3)[0]
+  else:
+    toplevel = []
+    rel_parts = yaml_file_path.parts
+    # Remove .clang-tidy.yml without the <target>.
+    filename = rel_parts[-1].rsplit(".", 2)[0]
+  return normalize_path(
+      pathlib.Path(*toplevel, *rel_parts[:-1], filename).as_posix(),
+      repo_root,
+  )
+
+
 class ClangTidyDiffFilter:
   """Filters Clang-Tidy diagnostics based on a diff."""
 
   def __init__(
       self,
       config: AppConfig,
+      *,
       offset_provider: Callable[[str], Sequence[int]] = get_line_offsets,
+      apply_fixes_fn: ApplyFixes | None = None,
   ):
     """Initializes the ClangTidyDiffFilter.
 
@@ -381,17 +521,31 @@ class ClangTidyDiffFilter:
       offset_provider: A callable that takes a file path and returns a list of
         byte offsets for the start of each line in the file. Defaults to
         `get_line_offsets`.
+      apply_fixes_fn: Method to call to apply fixes, if --fix is enabled. It
+        will be called with the path to the temp directory where the relevant
+        YAML files have been staged. If None, fixes will not be applied.
     """
-    self.diff_ranges = parse_diff(config.patch)
+    self.has_diff = config.patch is not None
+    self.diff_ranges = parse_diff(config.patch) if config.patch else {}
     self.yaml_files = parse_bep(config.bep_file, config.repo_root)
     self.repo_root = config.repo_root
     self.warnings_as_errors = config.warnings_as_errors
     self.offset_provider = offset_provider
     self.file_offsets_cache: dict[str, Sequence[int]] = {}
     self.seen_files: set[str] = set()
+    self.apply_fixes_fn = apply_fixes_fn
 
-  def process_file(self, yaml_file: str) -> Sequence[Diagnostic]:
-    """Processes a single Clang-Tidy YAML report file."""
+  def process_file(
+      self, yaml_file: str
+  ) -> tuple[Sequence[Diagnostic], DiagnosticSummary]:
+    """Processes a single Clang-Tidy YAML report file.
+
+    Args:
+      yaml_file: The path to the Clang-Tidy YAML report file.
+
+    Returns:
+      A tuple of (matched_diagnostics, summary).
+    """
     matched_diagnostics: list[Diagnostic] = []
     data = parse_clang_tidy_yaml(yaml_file)
     _logger().debug(
@@ -399,37 +553,39 @@ class ClangTidyDiffFilter:
         yaml_file,
         data,
     )
-
+    yaml_file_path = pathlib.Path(yaml_file)
+    report_source = _get_report_source(yaml_file_path, self.repo_root)
     if not data:
-      return []
+      return [], DiagnosticSummary(
+          file_path=report_source,
+          was_skipped=self.has_diff,
+          total=0,
+          matched=0,
+      )
 
     main_source = data.get("MainSourceFile")
     if main_source:
       norm_main_source = normalize_path(main_source, self.repo_root)
       self.seen_files.add(norm_main_source)
-    report_source = normalize_path(
-        yaml_file.removesuffix(".clang-tidy.yaml"), self.repo_root
-    )
-    if report_source in self.diff_ranges:
+    if self.has_diff and report_source in self.diff_ranges:
       self.seen_files.add(report_source)
     if "Diagnostics" not in data:
-      return []
+      return [], DiagnosticSummary(
+          file_path=report_source,
+          was_skipped=self.has_diff,
+          total=0,
+          matched=0,
+      )
 
     for diag in data["Diagnostics"]:
-      msg: ClangTidyDiagnostic = diag.get("DiagnosticMessage", {})
-      file_path = msg.get("FilePath") or diag.get("FilePath")
-      offset = msg.get("FileOffset") or diag.get("FileOffset")
+      file_path = diag.get("FilePath")
+      offset = diag.get("FileOffset")
 
       if not file_path or offset is None:
         continue
 
       norm_path = normalize_path(file_path, self.repo_root)
-
-      if norm_path not in self.diff_ranges:
-        _logger().info(
-            "Skipping diagnostic for file %s as it is not in the diff.",
-            norm_path,
-        )
+      if self.has_diff and norm_path not in self.diff_ranges:
         continue
 
       abs_path = pathlib.Path(self.repo_root) / norm_path
@@ -441,7 +597,7 @@ class ClangTidyDiffFilter:
       offsets = self.file_offsets_cache[norm_path]
       if not offsets:
         _logger().warning(
-            "Could not read file %s to calculate line number.",
+            "Could not read file %r to calculate line number.",
             abs_path.as_posix(),
         )
         continue
@@ -451,8 +607,8 @@ class ClangTidyDiffFilter:
       line_start_offset = offsets[line_num - 1]
       col_num = offset - line_start_offset + 1
 
-      lines = self.diff_ranges[norm_path]
-      if line_num in lines:
+      lines = self.diff_ranges[norm_path] if self.has_diff else set()
+      if not self.has_diff or line_num in lines:
         matched_diagnostics.append(
             Diagnostic(
                 file_path=norm_path,
@@ -460,14 +616,22 @@ class ClangTidyDiffFilter:
                 col_num=col_num,
                 level=diag.get("Level") or "",
                 name=diag.get("DiagnosticName") or "",
-                message=msg.get("Message") or diag.get("Message") or "",
+                message=diag.get("Message") or "",
                 yaml_file=yaml_file,
+                has_replacements=diag.get("HasReplacements", False),
             )
         )
-    return matched_diagnostics
+    return matched_diagnostics, DiagnosticSummary(
+        file_path=report_source,
+        was_skipped=self.has_diff and report_source not in self.diff_ranges,
+        total=len(data["Diagnostics"]),
+        matched=len(matched_diagnostics),
+    )
 
   def report_missing(self) -> None:
     """Reports any touched files that were not processed using the logger."""
+    if not self.has_diff:
+      return
     touched_files = set(self.diff_ranges.keys())
     missing_files = [
         f for f in touched_files - self.seen_files if f.endswith((".h", ".cc"))
@@ -480,6 +644,46 @@ class ClangTidyDiffFilter:
       for f in sorted(missing_files):
         _logger().warning("  - %s", f)
 
+  def _copy_and_normalize_yaml(
+      self, src: pathlib.Path, dest: pathlib.Path
+  ) -> None:
+    """Copies a YAML report and normalizes all remote paths to local absolute paths."""
+    with src.open("r") as f_source, dest.open("w") as f_dest:
+      for line in f_source:
+        stripped = line.strip()
+        # Paths in clang-tidy YAMLs only appear in these two fields.
+        if not stripped.startswith(("MainSourceFile:", "FilePath:")):
+          f_dest.write(line)
+          continue
+        _, val = line.split(":", 1)
+        raw_path = val.strip()
+        if not raw_path:
+          continue
+        norm_rel_path = normalize_path(raw_path, self.repo_root)
+        local_abs_path = (
+            pathlib.Path(self.repo_root) / norm_rel_path
+        ).as_posix()
+        line = line.replace(raw_path, local_abs_path)
+        f_dest.write(line)
+
+  def apply_fixes(self, yaml_files: Sequence[str]) -> None:
+    """Stages YAML files in temp directory and calls apply_fixes_fn."""
+    if not self.apply_fixes_fn or not yaml_files:
+      return
+    _logger().info("Applying fixes automatically.")
+    with tempfile.TemporaryDirectory() as temp_dir_str:
+      temp_dir = pathlib.Path(temp_dir_str)
+      counter = itertools.count()
+      for y in yaml_files:
+        dest_path = (
+            pathlib.Path(temp_dir) / f"{next(counter)}_{pathlib.Path(y).name}"
+        )
+        self._copy_and_normalize_yaml(pathlib.Path(y), dest_path)
+        _logger().info(
+            "Copied YAML report to temp dir for fixes: %s", dest_path
+        )
+      self.apply_fixes_fn(temp_dir)
+
   def run(self) -> bool:
     """Runs the Clang-Tidy diff filter.
 
@@ -487,21 +691,42 @@ class ClangTidyDiffFilter:
       True if the check was successful (no errors found), False if errors were
       found or running the check failed.
     """
-    if not self.diff_ranges or not self.yaml_files:
+    if self.has_diff and not self.diff_ranges:
+      _logger().error("No modified files found in patch.")
+      return False
+    if not self.yaml_files:
       _logger().error("No YAML files provided or found in BEP.")
       return False
 
     found_diagnostics = False
+    yaml_files_to_fix: set[str] = set()
     for y in self.yaml_files:
-      diagnostics = self.process_file(y)
-      if diagnostics:
-        found_diagnostics = True
-      for d in diagnostics:
-        print_diagnostic(
-            d, self.repo_root, warnings_as_errors=self.warnings_as_errors
+      diagnostics, summary = self.process_file(y)
+      if summary.was_skipped and summary.total > 0:
+        _logger().info(
+            "Skipping %r with %d diagnostics because it is not in the diff.",
+            summary.file_path,
+            summary.total,
         )
+      if summary.total > summary.matched and not summary.was_skipped:
+        _logger().info(
+            "Not all diagnostics will be reported for %r because they are not"
+            " part of the diff. Found %d diagnostics but reported %d.",
+            summary.file_path,
+            summary.total,
+            summary.matched,
+        )
+      for d in diagnostics:
+        if d.has_replacements and self.apply_fixes_fn is not None:
+          yaml_files_to_fix.add(y)
+        else:
+          print_diagnostic(
+              d, self.repo_root, warnings_as_errors=self.warnings_as_errors
+          )
+          found_diagnostics = True
 
     self.report_missing()
+    self.apply_fixes(sorted(yaml_files_to_fix))
     return not found_diagnostics
 
 
@@ -511,7 +736,7 @@ def main() -> None:
   parser = argparse.ArgumentParser(
       description="Filter Clang-Tidy errors by Git diff."
   )
-  parser.add_argument("--patch", required=True, help="Path to the patch file.")
+  parser.add_argument("--patch", default=None, help="Path to the patch file.")
   parser.add_argument(
       "--repo-root", required=True, help="Absolute path to the repo root."
   )
@@ -532,6 +757,17 @@ def main() -> None:
       choices=["DEBUG", "INFO", "WARNING", "ERROR"],
       help="Set the log level.",
   )
+  parser.add_argument(
+      "--fix",
+      action="store_true",
+      help="Apply automatic fixes to touched files.",
+  )
+  parser.add_argument(
+      "--clang-apply-replacements",
+      type=pathlib.Path,
+      default=None,
+      help="Path to clang-apply-replacements binary.",
+  )
 
   args = parser.parse_args()
   _set_log_level(args.log_level)
@@ -541,9 +777,25 @@ def main() -> None:
       repo_root=args.repo_root,
       bep_file=args.bep_file,
       warnings_as_errors=args.warnings_as_errors == "true",
+      fix=args.fix,
   )
-
-  filterer = ClangTidyDiffFilter(config)
+  apply_replacements_bin_path = (
+      _resolve_clang_apply_replacements(args.clang_apply_replacements)
+      if args.fix
+      else None
+  )
+  if args.fix and apply_replacements_bin_path is None:
+    _logger().error(
+        "--clang-apply-replacements is required when --fix is enabled "
+        "and the binary could not be resolved automatically in runfiles."
+    )
+    sys.exit(1)
+  apply_fixes_fn = (
+      functools.partial(clang_apply_fixes, apply_replacements_bin_path)
+      if apply_replacements_bin_path
+      else None
+  )
+  filterer = ClangTidyDiffFilter(config, apply_fixes_fn=apply_fixes_fn)
   if not filterer.run():
     sys.exit(1)
 

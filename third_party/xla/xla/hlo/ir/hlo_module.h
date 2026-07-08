@@ -91,6 +91,7 @@ using NumericOrString = std::variant<std::string, int64_t, double>;
 // computation is attached to an HloInstruction within some other computation.
 // The meaning of the nested computation depends on the instruction it's
 // attached to.
+
 class HloModule {
  public:
   HloModule(const std::string& name, HloModuleConfig config);
@@ -369,6 +370,14 @@ class HloModule {
   // of local IDs.
   void CanonicalizeComputationLocalIds();
 
+  // Reorders the computations in the module to match the post-order.
+  //
+  // Many analysis and optimization passes benefit from processing computations
+  // in post-order (callees before callers). Canonicalizing them in this order
+  // makes simple iteration over computations() yield a valid traversal order,
+  // improving determinism.
+  absl::Status ReorderComputationsToPostOrder();
+
   // Compute and return a topological sort of all computations in the module.
   // The sort is defined like so: if computation A has an instruction which
   // calls computation B, then A will appear after B in the sort.
@@ -542,11 +551,12 @@ class HloModule {
           computation_id_to_id_remap_map);
 
   // Convert an HloModule to a proto.
-  void ToProto(HloModuleProto* proto) const;
+  void ToProto(HloModuleProto* proto,
+               HloProtoOptions options = HloProtoOptions()) const;
 
-  HloModuleProto ToProto() const {
+  HloModuleProto ToProto(HloProtoOptions options = HloProtoOptions()) const {
     HloModuleProto proto;
-    ToProto(&proto);
+    ToProto(&proto, options);
     return proto;
   }
 
@@ -570,13 +580,16 @@ class HloModule {
       bool preserve_instruction_ids = true);
 
   // Convert an HloModule to or from a proto that includes module configuration
-  void ToProtoWithConfig(HloModuleProtoWithConfig* proto) const;
+  void ToProtoWithConfig(HloModuleProtoWithConfig* proto,
+                         HloProtoOptions options = HloProtoOptions()) const;
 
-  HloModuleProtoWithConfig ToProtoWithConfig() const {
+  HloModuleProtoWithConfig ToProtoWithConfig(
+      HloProtoOptions options = HloProtoOptions()) const {
     HloModuleProtoWithConfig proto;
-    ToProtoWithConfig(&proto);
+    ToProtoWithConfig(&proto, options);
     return proto;
   }
+
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProtoWithConfig(
       const HloModuleProtoWithConfig& proto, bool prohibit_empty_literal = true,
       std::unique_ptr<CompilationEnvironments> comp_envs = nullptr,
@@ -816,6 +829,9 @@ class HloModule {
   const HloModuleMetadata& metadata() const { return metadata_; }
   HloModuleMetadata* metadata() { return &metadata_; }
 
+  bool hlo_passes_started() const { return hlo_passes_started_; }
+  void set_hlo_passes_started(bool started) { hlo_passes_started_ = started; }
+
   // Moves (not copies) metadata from this HloModule to `module`. To be used
   // when metadata should be transferred out of a module before it's destroyed.
   void MoveMetadataToModule(HloModule* module) {
@@ -1011,6 +1027,13 @@ class HloModule {
 
   // True if the module contains dynamic computation.
   bool is_dynamic_ = false;
+
+  // This only has an effect when debug_options.xla_run_hlo_passes_starting_from
+  // is not empty.
+  // - false: We are skipping passes until we reach the pass specified by
+  // debug_options.xla_run_hlo_passes_starting_from.
+  // - true: We have reached the starting pass and passes are run as normal.
+  bool hlo_passes_started_ = false;
 
   // Optional compilation profile handle.
   int64_t profile_version_ = 0;

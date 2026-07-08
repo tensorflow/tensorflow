@@ -732,6 +732,21 @@ TEST_P(CompilationProviderTest, CancelsOnRegSpill) {
       absl_testing::IsOk());
 }
 
+TEST_P(CompilationProviderTest, PropagatesAdditionalPtxasFlags) {
+  if (GetParam() == kDriverCompilationProviderName) {
+    GTEST_SKIP() << "Driver compilation provider does not use ptxas flags";
+  }
+
+  CompilationOptions options;
+  options.additional_ptxas_flags = {"--this-is-an-invalid-ptxas-flag"};
+
+  EXPECT_THAT(
+      compilation_provider()->Compile(kDefaultComputeCapability, kStandalonePtx,
+                                      options),
+      absl_testing::StatusIs(_, HasSubstr("ptxas fatal   : Unknown option "
+                                          "'-this-is-an-invalid-ptxas-flag'")));
+}
+
 TEST_P(CompilationProviderTest,
        CompileFailsWhenInvalidArchitectureIsRequested) {
   CompilationOptions default_options;

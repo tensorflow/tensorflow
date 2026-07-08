@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -161,7 +162,7 @@ IfrtCompileAtomProgramPass::GetXlaCompileOptions(CallOp call_op,
   // compile options.
   if (auto compile_options_key =
           call_op->getAttrOfType<mlir::StringAttr>(kIfrtCompileOptionsKey)) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         std::optional<xla::CompileOptions> compile_options_override,
         GetModuleXlaCompileOverrides(compile_options_key,
                                      compile_options_overrides_));
@@ -178,8 +179,8 @@ IfrtCompileAtomProgramPass::GetXlaCompileOptions(CallOp call_op,
 
 absl::StatusOr<AtomProgramCompileResult> IfrtCompileAtomProgramPass::CompileXla(
     CallOp call_op, mlir::ModuleOp module_op) {
-  TF_ASSIGN_OR_RETURN(xla::CompileOptions compile_options,
-                      GetXlaCompileOptions(call_op, module_op));
+  ASSIGN_OR_RETURN(xla::CompileOptions compile_options,
+                   GetXlaCompileOptions(call_op, module_op));
   // In order to be able to compile multiple XLA computations in parallel, we
   // need to:
   // 1. Use an MLIR context with threading disabled to ensure MLIR doesn't
@@ -189,8 +190,8 @@ absl::StatusOr<AtomProgramCompileResult> IfrtCompileAtomProgramPass::CompileXla(
   //    because MLIR printing takes different paths depending on if a ModuleOp
   //    has a parent or not. Thus, by cloning the module we ensure that the
   //    module's string representation is maintained.
-  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> cloned_module,
-                      CloneModuleIntoContext(module_op, *hlo_program_context_));
+  ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> cloned_module,
+                   CloneModuleIntoContext(module_op, *hlo_program_context_));
   auto hlo_program = std::make_unique<HloProgram>(hlo_program_context_,
                                                   std::move(cloned_module));
   AtomProgramCompileResult result;
@@ -219,8 +220,8 @@ IfrtCompileAtomProgramPass::CompileMpmdReshard(mlir::ModuleOp module_op) {
   out_arrays_types.reserve(main_func.getResultTypes().size());
   for (const mlir::Type arg_type : main_func.getArgumentTypes()) {
     IfrtArrayType array_type = GetArrayType(arg_type);
-    TF_ASSIGN_OR_RETURN(DType dtype,
-                        ToIfrtDType(array_type.getShape().getElementType()));
+    ASSIGN_OR_RETURN(DType dtype,
+                     ToIfrtDType(array_type.getShape().getElementType()));
     dtypes.push_back(std::move(dtype));
     shapes.push_back(Shape(array_type.getShape().getShape()));
     in_arrays_types.push_back(array_type);

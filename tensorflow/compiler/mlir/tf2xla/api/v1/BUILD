@@ -142,8 +142,6 @@ cc_library(
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/tpu:tpu_compile",
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
-        "//tensorflow/core/tpu/kernels:tpu_compile_proto_cc",
-        "//tensorflow/core/tpu/kernels:tpu_util",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:vlog_is_on",

@@ -42,11 +42,13 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
@@ -223,7 +225,7 @@ absl::StatusOr<int64_t> HeapSimulator::MinimumMemoryForModule(
   // ignoring fragmentation. We run the heap simulation on the whole module,
   // rather than summing each computation, since it gives us a better lower
   // bound, by minimizing the liveness of sub-computations.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       HeapSimulator::Result<HloValue> result,
       HeapSimulator::Run(std::make_unique<NoFragmentationStatsHeap<HloValue>>(),
                          *module, schedule, alias_analysis, alias_info,
@@ -236,7 +238,7 @@ absl::StatusOr<int64_t> HeapSimulator::MinimumMemoryForComputation(
     const HloComputation& computation, const HloInstructionSequence& sequence,
     const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
     const LogicalBuffer::SizeFunction* absl_nonnull size_function) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       HeapSimulator::Result<HloValue> result,
       HeapSimulator::Run(std::make_unique<NoFragmentationStatsHeap<HloValue>>(),
                          computation, sequence, alias_analysis, alias_info,
@@ -255,12 +257,12 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
   const HloComputation* entry_computation = module.entry_computation();
   const HloInstructionSequence& instruction_sequence =
       schedule.sequence(entry_computation);
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<HloLiveRange> hlo_live_range,
       HloLiveRange::Run(schedule, alias_analysis, entry_computation));
-  TF_RETURN_IF_ERROR(heap.RunComputation(*entry_computation,
-                                         instruction_sequence, alias_analysis,
-                                         alias_info, hlo_live_range.get()));
+  RETURN_IF_ERROR(heap.RunComputation(*entry_computation, instruction_sequence,
+                                      alias_analysis, alias_info,
+                                      hlo_live_range.get()));
   return heap.Finish();
 }
 
@@ -276,12 +278,12 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
                      /*schedule=*/nullptr);
   HloSchedule schedule(computation.parent());
   schedule.set_sequence(&computation, instruction_sequence);
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
-                      HloLiveRange::Run(schedule, alias_analysis, &computation,
-                                        /*module_scoped_analysis=*/false));
-  TF_RETURN_IF_ERROR(heap.RunComputation(computation, instruction_sequence,
-                                         alias_analysis, alias_info,
-                                         hlo_live_range.get()));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
+                   HloLiveRange::Run(schedule, alias_analysis, &computation,
+                                     /*module_scoped_analysis=*/false));
+  RETURN_IF_ERROR(heap.RunComputation(computation, instruction_sequence,
+                                      alias_analysis, alias_info,
+                                      hlo_live_range.get()));
   return heap.Finish();
 }
 
@@ -295,12 +297,11 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
     const HloSchedule* schedule, const Options& options) {
   HeapSimulator heap(std::move(algorithm), size_fn, options,
                      /*schedule=*/schedule);
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloLiveRange> hlo_live_range,
-      HloLiveRange::Run(*schedule, alias_analysis, &computation));
-  TF_RETURN_IF_ERROR(heap.RunComputation(computation, instruction_sequence,
-                                         alias_analysis, alias_info,
-                                         hlo_live_range.get()));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
+                   HloLiveRange::Run(*schedule, alias_analysis, &computation));
+  RETURN_IF_ERROR(heap.RunComputation(computation, instruction_sequence,
+                                      alias_analysis, alias_info,
+                                      hlo_live_range.get()));
   return heap.Finish();
 }
 
@@ -584,7 +585,7 @@ int64_t HeapSimulator::GetBufferSize(const HloValue* buffer) const {
 }
 
 absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Finish() {
-  TF_ASSIGN_OR_RETURN(Result<HloValue> result, algorithm_->Finish());
+  ASSIGN_OR_RETURN(Result<HloValue> result, algorithm_->Finish());
 
   // Post-process the result to add chunks for shared buffers.  An empty chunk
   // map means that either no buffers were allocated, or the heap was only
@@ -603,8 +604,8 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Finish() {
   }
 
   // Fragmentation is the difference between the actual and ideal sizes.
-  TF_ASSIGN_OR_RETURN(const Result<HloValue> no_frag_result,
-                      no_fragmentation_stats_->Finish());
+  ASSIGN_OR_RETURN(const Result<HloValue> no_frag_result,
+                   no_fragmentation_stats_->Finish());
   result.fragmentation_size = result.heap_size - no_frag_result.heap_size;
 
   // Copy the debug trace we collected to the final result.
@@ -2804,7 +2805,7 @@ ConstrainedGlobalDecreasingSizeBestFitHeap::FinishFastMerge() {
   do {
     FreeChunksManager chunks_manager(
         [this](int64_t addr) { return ComputeAlignedChunkEnd(addr); });
-    TF_RETURN_IF_ERROR(AllocateBuffersSortedByTimeInSingleHeap(
+    RETURN_IF_ERROR(AllocateBuffersSortedByTimeInSingleHeap(
         remaining_sorted_buffers, chunks_manager));
     // Collect the result from the currently processed heap and reset the heap
     // states.
@@ -2875,7 +2876,7 @@ ConstrainedGlobalDecreasingSizeBestFitHeap::FinishFastSplit() {
     chunks_manager.Allocate(0, max_end_in_phase_one);
 
     // Second phase: process the rest of the buffers.
-    TF_RETURN_IF_ERROR(AllocateBuffersSortedByTimeInSingleHeap(
+    RETURN_IF_ERROR(AllocateBuffersSortedByTimeInSingleHeap(
         remaining_fast_pass_sorted_buffers, chunks_manager));
 
     // Collect the result from the currently processed heap and reset the heap
@@ -3001,7 +3002,7 @@ ChooseBestHeapAlgorithm<BufferType>::Finish() {
   int64_t min_size = INT64_MAX;
   int min_size_index = -1;
   for (int i = 0; i < algorithms_.size(); ++i) {
-    TF_ASSIGN_OR_RETURN(results[i], algorithms_[i]->Finish());
+    ASSIGN_OR_RETURN(results[i], algorithms_[i]->Finish());
     if (results[i].heap_size < min_size) {
       min_size = results[i].heap_size;
       min_size_index = i;

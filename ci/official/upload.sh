@@ -14,7 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 # This script uploads all staged artifacts from all previous builds in the same
-# job chain to GCS and PyPI.
+# job chain to GCS, GAR, and PyPI.
 source "${BASH_SOURCE%/*}/utilities/setup.sh"
 
 # Calculate the version number for choosing the final directory name. This adds
@@ -25,14 +25,14 @@ else
   export TF_VER_FULL="$(tfrun bazel run //tensorflow/tools/ci_build:calculate_full_version -- --wheel-type release)"
 fi
 
-# Note on gsutil commands:
-# "gsutil cp" always "copies into". It cannot act on the contents of a directory
+# Note on gcloud storage commands:
+# "gcloud storage cp" always "copies into". It cannot act on the contents of a directory
 # and it does not seem possible to e.g. copy "gs://foo/bar" as anything other than
-# "/path/bar". This script uses "gsutil rsync" instead, which acts on directory
-# contents. About arguments to gsutil:
-# "gsutil -m rsync" runs in parallel.
-# "gsutil rsync -r" is recursive and makes directories work.
-# "gsutil rsync -d" is "sync and delete files from destination if not present in source"
+# "/path/bar". This script uses "gcloud storage rsync" instead, which acts on directory
+# contents. About arguments to gcloud storage:
+# "gcloud storage rsync" runs in parallel.
+# "gcloud storage rsync --recursive" is recursive and makes directories work.
+# "gcloud storage rsync --delete-unmatched-destination-objects" is "sync and delete files from destination if not present in source"
 
 DOWNLOADS="$(mktemp -d)"
 mkdir -p "$DOWNLOADS"
@@ -56,5 +56,7 @@ if [[ "$TFCI_ARTIFACT_FINAL_GCS_ENABLE" == 1 ]]; then
 fi
 
 if [[ "$TFCI_ARTIFACT_FINAL_PYPI_ENABLE" == 1 ]]; then
+  pip install --upgrade twine keyring keyrings.google-artifactregistry-auth
+  twine upload $TFCI_ARTIFACT_FINAL_GAR_ARGS "$DOWNLOADS"/*.whl
   twine upload $TFCI_ARTIFACT_FINAL_PYPI_ARGS "$DOWNLOADS"/*.whl
 fi

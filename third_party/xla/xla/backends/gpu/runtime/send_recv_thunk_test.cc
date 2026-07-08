@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
@@ -48,7 +49,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
-#include "xla/tests/hlo_test_base_legacy.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
@@ -94,7 +95,7 @@ ENTRY computation {
       module->entry_computation()->root_instruction()->operand(0);
   ASSERT_EQ(root2_instr->opcode(), HloOpcode::kSend);
   const HloSendInstruction* send_instr =
-      tensorflow::down_cast<const HloSendInstruction*>(root2_instr);
+      absl::down_cast<const HloSendInstruction*>(root2_instr);
   ASSERT_NE(send_instr, nullptr);
 
   // Buffer and Allocation Setup
@@ -187,7 +188,7 @@ ENTRY computation {
       module->entry_computation()->root_instruction()->operand(0);
   ASSERT_EQ(root2_instr->opcode(), HloOpcode::kRecv);
   const HloRecvInstruction* recv_instr =
-      tensorflow::down_cast<const HloRecvInstruction*>(root2_instr);
+      absl::down_cast<const HloRecvInstruction*>(root2_instr);
   ASSERT_NE(recv_instr, nullptr);
 
   // Buffer and Allocation Setup
@@ -308,7 +309,7 @@ ENTRY computation {
 
   // Downcast to the specific CommandBufferThunk type for inspection.
   CommandBufferThunk* cmd_buffer_thunk =
-      tensorflow::down_cast<CommandBufferThunk*>(thunk.get());
+      absl::down_cast<CommandBufferThunk*>(thunk.get());
   ASSERT_NE(cmd_buffer_thunk, nullptr);
 
   // Inspect the Thunk kinds

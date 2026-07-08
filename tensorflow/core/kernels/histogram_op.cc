@@ -19,6 +19,9 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/histogram_op.h"
 
+#include <cmath>
+#include <limits>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
@@ -56,6 +59,9 @@ struct HistogramFixedWidthFunctor<CPUDevice, T, Tout> {
     const double step =
         static_cast<double>(value_range(1)) / static_cast<double>(nbins) -
         static_cast<double>(value_range(0)) / static_cast<double>(nbins);
+    if (!std::isfinite(step)) {
+      return absl::InvalidArgumentError("Step is not finite");
+    }
     const double nbins_minus_1 = static_cast<double>(nbins - 1);
 
     // We cannot handle NANs in the algorithm below (due to the cast to int32)
@@ -87,7 +93,13 @@ struct HistogramFixedWidthFunctor<CPUDevice, T, Tout> {
 
     out.setZero();
     for (int32_t i = 0; i < index_to_bin.size(); i++) {
-      out(index_to_bin(i)) += Tout(1);
+      int32_t bin_index = index_to_bin(i);
+      if (bin_index >= 0 && bin_index < nbins) {
+        out(bin_index) += Tout(1);
+      } else {
+        return absl::InvalidArgumentError(
+            "Histogram value generated an out-of-bound bin index");
+      }
     }
     return absl::OkStatus();
   }
@@ -126,6 +138,9 @@ class HistogramFixedWidthOp : public OpKernel {
         ctx, nbins > 0,
         absl::InvalidArgumentError(absl::StrCat(
             "nbins should be a positive number, but got '", nbins, "'")));
+    OP_REQUIRES(ctx, nbins < std::numeric_limits<int32_t>::max(),
+                absl::InvalidArgumentError(
+                    "nbins + 1 must not exceed the maximum value of int32_t"));
 
     Tensor* out_tensor;
     OP_REQUIRES_OK(ctx,

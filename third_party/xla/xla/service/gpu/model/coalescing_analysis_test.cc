@@ -65,8 +65,7 @@ class CoalescingTest : public HloHardwareIndependentTestBase {
   std::vector<bool> IsReadCoalescedPerOperand(const HloInstruction* root) {
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
     auto analysis = HloFusionAnalysis::Create(*root, device_info_);
-    auto emitter = GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis},
-                                    &mlir_context_);
+    auto emitter = GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis});
     auto fusion = dynamic_cast<KernelFusionInterface*>(emitter.get());
     EXPECT_NE(fusion, nullptr);
 
@@ -608,9 +607,10 @@ class CoalescingForTiledHloTest : public CoalescingTest,
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
 
     if (use_experimental_tiling()) {
-      std::unique_ptr<experimental::TilingSpace> tiling_space =
+      auto tiling_space_or =
           experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_);
-
+      CHECK_OK(tiling_space_or);
+      auto tiling_space = std::move(tiling_space_or.value());
       CHECK_OK(tiling_space->AssignTileSizes(tile_sizes));
 
       absl::StatusOr<experimental::TiledHloComputation> tiled_hlo_computation =
@@ -637,6 +637,14 @@ class CoalescingForTiledHloTest : public CoalescingTest,
     return EffectiveBandwidthUtilizationRatePerOperandImpl(
         tiled_hlo_computation->roots()[0]);
   }
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(
+        use_experimental_tiling());
+    return debug_options;
+  }
 };
 
 INSTANTIATE_TEST_SUITE_P(CoalescingForTiledHloTest, CoalescingForTiledHloTest,
@@ -645,7 +653,7 @@ INSTANTIATE_TEST_SUITE_P(CoalescingForTiledHloTest, CoalescingForTiledHloTest,
 TEST_P(
     CoalescingForTiledHloTest,
     EffectiveBandwidthUtilizationRateIsComputedCorrectlyForTiledMemoryAccess) {  // NOLINT(whitespace/line_length)
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 ENTRY main {

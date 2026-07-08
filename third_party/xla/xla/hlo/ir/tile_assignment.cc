@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/array.h"
 #include "xla/printer.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -223,6 +225,15 @@ DecanonicalizationInfo FullyDecanonicalize(
     perm_span = absl::MakeSpan(canonicalized_perm.data(), 1);
   }
   return IotaTileAssignment(dims, dims_span, perm_span);
+}
+
+/*static*/ IotaTileAssignment IotaTileAssignment::Create(
+    absl::Span<const int64_t> dims, const MeshProto::IotaTransform& transform) {
+  // This is an extra copy, but the array will typically be quite small since
+  // it scales with the number of dimensions.
+  absl::InlinedVector<int, 6> int_perm(transform.transpose_perm().begin(),
+                                       transform.transpose_perm().end());
+  return Create(dims, transform.reshape_dims(), absl::MakeSpan(int_perm));
 }
 
 // Materializes array representation of IotaTileAssignment.
@@ -844,8 +855,10 @@ std::optional<AnalyzeTileAssignmentResult> AnalyzeTileAssignment(
             }
           });
       if (is_iota) {
-        std::vector<int64_t> mesh(tile_assignment.dimensions().begin(),
-                                  tile_assignment.dimensions().end());
+        std::vector<int64_t> mesh;
+        mesh.reserve(sub_dims->size());
+        absl::c_transform(*sub_dims, std::back_inserter(mesh),
+                          [](const SubDimInfo& info) { return info.size; });
         return AnalyzeTileAssignmentResult{
             /* .sub_dims = */ std::move(*sub_dims),
             /* .local_mesh = */ std::move(mesh),

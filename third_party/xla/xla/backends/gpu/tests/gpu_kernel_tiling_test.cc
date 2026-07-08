@@ -24,13 +24,14 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
 class GpuKernelTilingTest
-    : public HloPjRtInterpreterReferenceMixin<GpuPjRtCodegenTest> {
+    : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuPjRtCodegenTest::GetDebugOptionsForTest();

@@ -116,6 +116,16 @@ TEST(CudaCoreInfoTableTest, CalculatePeakOpsPerNsB200) {
                     xla::PrimitiveType::F64, 37.0);
 }
 
+TEST(CudaCoreInfoTableTest, B300UsesBlackwellTable) {
+  DeviceDescription b300_device_info;
+  FillExecutionUnitDesc(CudaComputeCapability{10, 3}, 1.965, b300_device_info);
+
+  const ExecutionUnitDescription* matrix_unit_desc =
+      b300_device_info.matrix_unit_description();
+  ASSERT_NE(matrix_unit_desc, nullptr);
+  EXPECT_EQ(matrix_unit_desc->GetRateInfo(xla::BF16).value().units_per_core, 4);
+}
+
 TEST(CudaCoreInfoTableTest, GetFpusPerCore) {
   EXPECT_EQ(GetFpusPerCore(CudaComputeCapability::Hopper()), 128);
   EXPECT_EQ(GetFpusPerCore(CudaComputeCapability::Ampere()), 64);

@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/lib/io/random_inputstream.h"
 
 namespace tsl {
@@ -172,7 +173,7 @@ absl::Status BufferedInputStream::Seek(int64_t position) {
   const int64_t buf_lower_limit = input_stream_->Tell() - limit_;
   if (position < buf_lower_limit) {
     // Seek before buffer, reset input stream and skip 'position' bytes.
-    TF_RETURN_IF_ERROR(Reset());
+    RETURN_IF_ERROR(Reset());
     return SkipNBytes(position);
   }
 
@@ -211,7 +212,7 @@ template absl::Status BufferedInputStream::ReadAll<std::string>(
 template absl::Status BufferedInputStream::ReadAll<tstring>(tstring* result);
 
 absl::Status BufferedInputStream::Reset() {
-  TF_RETURN_IF_ERROR(input_stream_->Reset());
+  RETURN_IF_ERROR(input_stream_->Reset());
   pos_ = 0;
   limit_ = 0;
   file_status_ = absl::OkStatus();

@@ -31,12 +31,6 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& config,
   return std::make_unique<MatmulPlan>(config, epilogue);
 }
 
-absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetGroupedMatmulPlan(
-    gpu::GroupedGemmConfig& config, Epilogue epilogue) const {
-  return absl::UnimplementedError(
-      "Grouped GEMM is not supported for Sycl BlasLt");
-}
-
 absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
     Stream* stream, const gpu::BlasLt::MemoryArgs& args,
     blas::ProfileResult* profile_result) const {
@@ -44,8 +38,7 @@ absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
       "SyclBlasLt MatmulPlan::ExecuteOnStream not implemented");
 }
 
-auto BlasLt::MatmulPlan::GetAlgorithms(const Stream* stream,
-                                       size_t max_algorithm_count,
+auto BlasLt::MatmulPlan::GetAlgorithms(size_t max_algorithm_count,
                                        size_t max_workspace_size) const
     -> absl::StatusOr<std::vector<MatmulAlgorithm>> {
   absl::MutexLock lock(&mu_);

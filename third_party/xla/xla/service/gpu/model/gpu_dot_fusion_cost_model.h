@@ -46,6 +46,13 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
 
 namespace detail {
 
+// This tax models the static, fixed overhead incurred during each iteration of
+// the memory loop. The value 1300ns was measured using a small skinny GEMM
+// example with no pipelining. There is a deeper explanation in
+// b/503201785#comment21. TODO(b/529341369): Account for A100, TMA, and other
+// memory instruction pathways.
+inline constexpr absl::Duration kLoopLatencyTax = absl::Nanoseconds(1300);
+
 struct DotProblemInfo {
   int64_t b = 0;
   int64_t m = 0;
@@ -56,6 +63,7 @@ struct DotProblemInfo {
   xla::PrimitiveType output_element_type =
       PrimitiveType::PRIMITIVE_TYPE_INVALID;
 
+  DotProblemInfo() = default;
   explicit DotProblemInfo(const HloDotInstruction& dot);
 };
 
@@ -80,15 +88,26 @@ struct HbmEstimates {
   int64_t bytes_read = 0;
   int64_t bytes_written = 0;
 
-  absl::Duration total_time() { return read_time + write_time; }
+  absl::Duration total_time() const { return read_time + write_time; }
 };
 HbmEstimates CalculateHbmTime(const DotProblemInfo& dot,
                               const se::DeviceDescription& device_info);
 
+// Estimates the execution time of the main loop and epilogue, accounting for
+// pipelining between memory and compute.
+absl::Duration CalculatePipelinedLoopTime(int64_t num_stages,
+                                          int64_t k_loop_iterations,
+                                          absl::Duration compute_time,
+                                          const HbmEstimates& hbm_timing);
+
+// Calculates the bytes read from HBM for one inner loop iteration.
+int64_t CalculateLoopIterBytes(const DotProblemInfo& dot,
+                               const DotTileSize& dot_tile);
+
 // Calculates the L2 time for a GPU DOT operation.
 absl::StatusOr<absl::Duration> CalculateL2Time(
-    const DotProblemInfo& dot, const DotTileSize& dot_tile,
-    const se::DeviceDescription& device_info, bool is_tma_allowed);
+    int64_t dot_k, int64_t tile_k, const se::DeviceDescription& device_info,
+    int64_t l2_bytes, bool is_tma_allowed);
 
 // Calculates the compute time for a GPU DOT operation with tile and wave
 // quantization effects taken into account.

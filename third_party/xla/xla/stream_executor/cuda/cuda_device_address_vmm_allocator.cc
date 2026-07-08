@@ -28,18 +28,19 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/activate_context.h"
+#include "xla/stream_executor/cuda/cuda_device_allocator.h"
 #include "xla/stream_executor/cuda/cuda_memory_reservation.h"
 #include "xla/stream_executor/cuda/cuda_raw_memory_allocation.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
+#include "xla/stream_executor/device_address_vmm_allocator.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_reservation.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/vmm_device_address_allocator.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
 
@@ -47,12 +48,20 @@ CudaDeviceAddressVmmAllocator::CudaDeviceAddressVmmAllocator(
     const Platform* platform)
     : DeviceAddressVmmAllocator(platform) {}
 
+CudaDeviceAddressVmmAllocator::~CudaDeviceAddressVmmAllocator() {
+  absl::Status status = SynchronizeAllPendingOperations();
+  if (!status.ok()) {
+    LOG(FATAL) << "Failed to synchronize pending CUDA VMM deallocations: "
+               << status;
+  }
+}
+
 absl::StatusOr<std::unique_ptr<CudaDeviceAddressVmmAllocator>>
 CudaDeviceAddressVmmAllocator::Create(const Platform* platform,
                                       absl::Span<const DeviceConfig> devices) {
   auto allocator =
       absl::WrapUnique(new CudaDeviceAddressVmmAllocator(platform));
-  TF_RETURN_IF_ERROR(PopulateDevices(allocator.get(), devices));
+  RETURN_IF_ERROR(PopulateDevices(allocator.get(), devices));
   return allocator;
 }
 
@@ -68,7 +77,7 @@ CudaDeviceAddressVmmAllocator::Create(
     const Platform* platform, double memory_fraction,
     std::optional<int64_t> gpu_system_memory_size,
     absl::Span<const std::pair<StreamExecutor*, Stream*>> devices) {
-  LOG(INFO) << "Using VMM (Virtual Memory Management) allocator.";
+  LOG(INFO) << "Using VMM device-address allocator.";
   std::vector<DeviceConfig> device_configs;
   device_configs.reserve(devices.size());
   for (const auto& [executor, stream] : devices) {
@@ -85,7 +94,7 @@ CudaDeviceAddressVmmAllocator::Create(
     if (gpu_system_memory_size.has_value()) {
       pa_budget = gpu_system_memory_size.value();
     }
-    LOG(INFO) << "VMM allocator pa_budget for device "
+    LOG(INFO) << "VMM device-address allocator pa_budget for device "
               << executor->device_ordinal() << ": " << pa_budget << " bytes.";
     device_configs.push_back({executor, stream, pa_budget});
   }
@@ -99,10 +108,10 @@ absl::Status CudaDeviceAddressVmmAllocator::InitializeDeviceState(
   // Verify that the device supports 64-bit stream memory operations
   // (cuStreamWriteValue64), which requires compute capability >= 7.0.
   CUdevice cu_device;
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       cuda::ToStatus(cuDeviceGet(&cu_device, ordinal), "cuDeviceGet"));
   int supported = 0;
-  TF_RETURN_IF_ERROR(cuda::ToStatus(
+  RETURN_IF_ERROR(cuda::ToStatus(
       cuDeviceGetAttribute(&supported,
                            CU_DEVICE_ATTRIBUTE_CAN_USE_64_BIT_STREAM_MEM_OPS,
                            cu_device),
@@ -124,7 +133,7 @@ absl::Status CudaDeviceAddressVmmAllocator::InitializeDeviceState(
   CUdeviceptr dev_ptr = 0;
   {
     std::unique_ptr<ActivateContext> activation = state.executor->Activate();
-    TF_RETURN_IF_ERROR(cuda::ToStatus(
+    RETURN_IF_ERROR(cuda::ToStatus(
         cuMemHostAlloc(&host_ptr, sizeof(uint64_t), CU_MEMHOSTALLOC_PORTABLE),
         "cuMemHostAlloc for timeline counter"));
     *static_cast<volatile uint64_t*>(host_ptr) = 0;
@@ -138,12 +147,10 @@ absl::Status CudaDeviceAddressVmmAllocator::InitializeDeviceState(
     }
   }
 
-  CUmemAllocationProp alloc_props = {};
-  alloc_props.type = CU_MEM_ALLOCATION_TYPE_PINNED;
-  alloc_props.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
-  alloc_props.location.id = cu_device;
-  alloc_props.requestedHandleTypes =
-      static_cast<CUmemAllocationHandleType>(CU_MEM_HANDLE_TYPE_NONE);
+  ASSIGN_OR_RETURN(CudaDeviceAllocator::Options device_allocator_options,
+                   QueryDeviceAllocatorOptions(cu_device));
+  CUmemAllocationProp alloc_props =
+      BuildVmmAllocationProp(cu_device, device_allocator_options);
   size_t granularity = 0;
   if (auto s = cuda::ToStatus(
           cuMemGetAllocationGranularity(&granularity, &alloc_props,

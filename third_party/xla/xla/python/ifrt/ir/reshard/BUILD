@@ -28,8 +28,10 @@ cc_library(
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/python/ifrt/ir:utils",
         "//xla/service:hlo_proto_cc",
+        "//xla/tsl/lib/strings:proto_serialization",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
@@ -41,5 +43,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@tsl//tsl/platform:fingerprint",
     ],
 )

@@ -101,8 +101,6 @@ class CopyInsertion : public HloModulePass {
   absl::Status AddSpecialCaseCopies(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads = {},
-      std::function<bool(const HloValue* value)>
-          should_add_target_specific_copies = nullptr,
       CustomBufferAnalysisFn custom_buffer_analysis = nullptr);
 
  protected:
@@ -110,10 +108,7 @@ class CopyInsertion : public HloModulePass {
   virtual absl::Status AddSpecialCaseCopies(
       const CallGraph& call_graph,
       const absl::flat_hash_set<absl::string_view>& execution_threads,
-      HloModule* module,
-      std::function<bool(const HloValue* value)>
-          should_add_target_specific_copies,
-      CustomBufferAnalysisFn custom_buffer_analysis);
+      HloModule* module, CustomBufferAnalysisFn custom_buffer_analysis);
 
   // Add copies for conditional instructions.
   virtual absl::Status AddCopiesForConditional(

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/LLVMContext.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/backends/gpu/transforms/collectives/all_gather_optimizer.h"
@@ -36,7 +38,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/dot_operand_converter.h"
 #include "xla/backends/gpu/transforms/gemm_broadcast_folding_rewriter.h"
 #include "xla/backends/gpu/transforms/gemm_fusion.h"
-#include "xla/backends/gpu/transforms/gemv_rewriter.h"
 #include "xla/backends/gpu/transforms/reduce_scatter_creator.h"
 #include "xla/backends/gpu/transforms/reduction_degenerate_dim_remover.h"
 #include "xla/backends/gpu/transforms/reduction_dimension_grouper.h"
@@ -48,6 +49,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/tools/hlo_opt/opt_lib.h"
 #include "xla/hlo/transforms/host_offloader.h"
+#include "xla/hlo/transforms/simplifiers/gemv_rewriter.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/layout.h"
 #include "xla/service/buffer_value.h"
@@ -74,6 +76,18 @@ limitations under the License.
 
 namespace xla {
 namespace {
+std::string GetAlphaSmallestFunctionName(const llvm::Module& module) {
+  std::string name;
+  for (const llvm::Function& func : module.functions()) {
+    if (!func.isDeclaration() &&
+        func.getLinkage() == llvm::GlobalValue::LinkageTypes::ExternalLinkage) {
+      if (name.empty() || name > func.getName().str()) {
+        name = func.getName().str();
+      }
+    }
+  }
+  return name;
+}
 
 class GpuOptProvider : public CompiledOptProvider {
  public:
@@ -98,8 +112,7 @@ class GpuOptProvider : public CompiledOptProvider {
       ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                        GetExecutable(std::move(module)));
       auto gpu_executable = static_cast<gpu::GpuExecutable*>(executable.get());
-      return gpu_executable->buffer_assignment()->ToVerboseString(
-          gpu_executable->alias_info(), 9999);
+      return gpu_executable->buffer_allocations_debug_summary();
     }
     {
       // Delegate to base class.
@@ -155,6 +168,7 @@ class GpuOptProvider : public CompiledOptProvider {
         });
     // go/keep-sorted start
     RegisterPass<CopyInsertion>(alias_info_.get());
+    RegisterPass<GemvRewriter>();
     RegisterPass<HloMemoryScheduler>(alias_info_.get(), kSizeFunction);
     RegisterPass<HostOffloader>(alias_info_.get());
     RegisterPass<gpu::AllGatherOptimizer>();
@@ -165,7 +179,6 @@ class GpuOptProvider : public CompiledOptProvider {
     RegisterPass<gpu::DotOperandConverter>();
     RegisterPass<gpu::GemmBroadcastFoldingRewriter>();
     RegisterPass<gpu::GemmFusion>(gpu_compute_capability);
-    RegisterPass<gpu::GemvRewriter>();
     RegisterPass<gpu::ReduceScatterCreator>();
     RegisterPass<gpu::ReductionDegenerateDimRemover>();
     RegisterPass<gpu::ReductionDimensionGrouper>();
@@ -219,6 +232,13 @@ class GpuOptProvider : public CompiledOptProvider {
     ASSIGN_OR_RETURN(
         std::unique_ptr<Executable> executable,
         compiler->RunBackend(std::move(optimized_module), executor, opts));
+
+    std::sort(modules.begin(), modules.end(),
+              [](const std::unique_ptr<llvm::Module>& m1,
+                 const std::unique_ptr<llvm::Module>& m2) {
+                return GetAlphaSmallestFunctionName(*m1) >
+                       GetAlphaSmallestFunctionName(*m2);
+              });
 
     gpu::LinkLlvmModulesInPlace(modules);
 

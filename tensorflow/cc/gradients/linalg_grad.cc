@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -53,21 +54,21 @@ constexpr absl::string_view kEllipsis = "...";
 // Parameters:
 //   subscripts: A string denoting the einsum subscript (e.g. `ab...cd`)
 //   label: The single character axis label.
-absl::optional<int> EinsumGetAxisFromLabel(absl::string_view subscripts,
-                                           char label) {
+std::optional<int> EinsumGetAxisFromLabel(absl::string_view subscripts,
+                                          char label) {
   std::vector<absl::string_view> splits = absl::StrSplit(subscripts, kEllipsis);
   auto index = splits[0].find(label);
   if (index != splits[0].npos) {
     return index;
   }
   if (splits.size() < 2) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   index = splits[1].find(label);
   if (index != splits[1].npos) {
     return index - splits[1].length();
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 // Returns a tuple denoting the slice mapping to ellipsis.
@@ -83,18 +84,18 @@ absl::optional<int> EinsumGetAxisFromLabel(absl::string_view subscripts,
 //   subscripts: A string denoting the einsum subscript.
 //   start: Output for the start index
 //   end: Output for the end index (or nullopt to go to the end).
-std::tuple<int, absl::optional<int>> EinsumGetBcastSubshape(
+std::tuple<int, std::optional<int>> EinsumGetBcastSubshape(
     absl::string_view subscripts) {
   int start = subscripts.find(kEllipsis);
   if (start == subscripts.npos) {
     return std::make_tuple(0, 0);
   }
   int remaining = subscripts.length() - (start + kEllipsis.length());
-  absl::optional<int> end;
+  std::optional<int> end;
   if (remaining > 0) {
     end = -remaining;
   } else {
-    end = absl::nullopt;
+    end = std::nullopt;
   }
   return std::make_tuple(start, end);
 }
@@ -105,7 +106,7 @@ std::tuple<int, absl::optional<int>> EinsumGetBcastSubshape(
 // This attempts to give the same result as tenspr[start:end] would give in
 // Python.
 Output Slice1dHelper(const Scope& scope, Output tensor, int start,
-                     absl::optional<int> end) {
+                     std::optional<int> end) {
   if (end.has_value() && *end > 0) {
     return Slice(scope, tensor, Const(scope, start, TensorShape({1})),
                  Const(scope, *end - start, TensorShape({1})));
@@ -456,7 +457,7 @@ absl::Status EinsumGrad(const Scope& scope, const Operation& op,
   // 'ab...c' and shape of rank 10; the range [3:-1] denotes the broadcasted
   // axes.
   int bx_start, by_start;
-  absl::optional<int> bx_end, by_end;
+  std::optional<int> bx_end, by_end;
   std::tie(bx_start, bx_end) = EinsumGetBcastSubshape(x_subs);
   std::tie(by_start, by_end) = EinsumGetBcastSubshape(y_subs);
 

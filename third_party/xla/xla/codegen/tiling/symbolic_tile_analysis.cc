@@ -37,13 +37,13 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/die_if_null.h"
 #include "absl/log/log.h"
-#include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
@@ -53,6 +53,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/codegen/tiling/constraint_expression.h"
+#include "xla/codegen/tiling/experimental/tiling_space_utils.h"
 #include "xla/codegen/tiling/symbolic_tile.h"
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
@@ -232,9 +233,9 @@ absl::StatusOr<OutputTilingInfo> ComputeOutputTilingInfo(
       dim_vars, /*range_vars=*/{}, /*rt_vars=*/root_indexing.GetRTVars(),
       constraints};
 
-  TF_ASSIGN_OR_RETURN(IndexingMap program_id_to_tile_offsets,
-                      schedule.Schedule(output_tile_offset_indexing,
-                                        iteration_space, mlir_context));
+  ASSIGN_OR_RETURN(IndexingMap program_id_to_tile_offsets,
+                   schedule.Schedule(output_tile_offset_indexing,
+                                     iteration_space, mlir_context));
   return OutputTilingInfo{outer_loop_bounds,
                           output_tile_offset_indexing,
                           {major_to_minor_active_tiling_parameters.begin(),
@@ -708,8 +709,7 @@ ParameterMappingFromFusionAdaptor(const HloFusionAdaptor& fusion_adaptor,
   int64_t num_tile_sizes = real_root.shape().dimensions().size();
   parameter_mapping.push_back({&real_root, num_tile_sizes});
 
-  TF_RETURN_IF_ERROR(
-      PopulateNestedParameters(fusion_adaptor, parameter_mapping));
+  RETURN_IF_ERROR(PopulateNestedParameters(fusion_adaptor, parameter_mapping));
 
   return parameter_mapping;
 }
@@ -872,8 +872,8 @@ absl::StatusOr<IndexingMap> IndexingMapForRootInstruction(
     MLIRContext* mlir_context) {
   auto fusion_adaptor_roots = fusion.GetRoots();
 
-  TF_ASSIGN_OR_RETURN(int64_t real_root_index,
-                      GetRealRootIndex(fusion_adaptor_roots));
+  ASSIGN_OR_RETURN(int64_t real_root_index,
+                   GetRealRootIndex(fusion_adaptor_roots));
 
   // Keep track of the roots separately. If there is just a single root, we
   // don't need that, as it will necessarily appear last in def-before-use
@@ -882,7 +882,7 @@ absl::StatusOr<IndexingMap> IndexingMapForRootInstruction(
   absl::InlinedVector<const HloInstruction*, 2> roots =
       ToInstructions(fusion_adaptor_roots);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       IndexingMap indexing_map,
       IndexingMapForRootInstruction(*roots[real_root_index], parameter_mapping,
                                     mlir_context));
@@ -1399,6 +1399,14 @@ SymbolicTileAnalysis::AnalyzeFromInstruction(
 /*static*/ SymbolicTileAnalysisOrError SymbolicTileAnalysis::AnalyzeFusion(
     const HloFusionAdaptor& fusion, MLIRContext* mlir_context,
     EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder) {
+  CHECK(!fusion.GetRoots()
+             .front()
+             .instruction()
+             .GetModule()
+             ->config()
+             .debug_options()
+             .xla_gpu_experimental_enable_tiling_propagation());
+  RegisterSymbolicExprStorage(mlir_context);
   auto real_root_index_or = GetRealRootIndex(fusion.GetRoots());
   if (!real_root_index_or.ok()) {
     return FusionDecision(real_root_index_or.status());
@@ -1432,11 +1440,11 @@ absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
   const ConstraintExpression& constraints = tiling_specification_.constraints();
   CHECK(constraints.is_satisfiable());  // Crash OK
 
-  TF_ASSIGN_OR_RETURN(FlatTiling flat_tiling_parameters,
-                      tiling.Flatten(tiling_specification_));
+  ASSIGN_OR_RETURN(FlatTiling flat_tiling_parameters,
+                   tiling.Flatten(tiling_specification_));
 
   if (emitter_specific_constraints_ != nullptr) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         bool constraints_are_satisfied,
         emitter_specific_constraints_->ParametersSatisfyConstraints(
             flat_tiling_parameters));
@@ -1524,7 +1532,7 @@ absl::StatusOr<bool> IsSafeForBufferSharing(const TiledHloInstruction& output,
   auto iota = llvm::seq<int64_t>(0, output.hlo()->shape().dimensions().size());
   std::vector<int64_t> major_to_minor_active_tiling_parameters(iota.begin(),
                                                                iota.end());
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto tiling_info,
       ComputeOutputTilingInfo(identity_indexing_map, output.tile_sizes(),
                               major_to_minor_active_tiling_parameters, schedule,
@@ -1576,11 +1584,11 @@ absl::StatusOr<std::vector<const TiledHloInstruction*>> InitializeTiledRoots(
     // We potentially allow sharing an input buffer with an output buffer.
     // Therefore we need to make sure that we use an input tile only in the
     // iteration in which we overwrite it.
-    TF_ASSIGN_OR_RETURN(
-        bool valid, IsSafeForBufferSharing(*tiled_hlo_instr,
-                                           /*reference_num_output_tiles=*/
-                                           Product(num_output_tiles_per_dim),
-                                           schedule, mlir_context));
+    ASSIGN_OR_RETURN(bool valid,
+                     IsSafeForBufferSharing(*tiled_hlo_instr,
+                                            /*reference_num_output_tiles=*/
+                                            Product(num_output_tiles_per_dim),
+                                            schedule, mlir_context));
     if (!valid) {
       continue;
     }
@@ -1735,7 +1743,7 @@ absl::StatusOr<TiledHloComputation> ComputeTiledComputationImpl(
   CHECK_EQ(0, real_root_indexing.GetRangeVarsCount())
       << "Range variables for real_root_indexing must be converted to "
          "dimensions";
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       OutputTilingInfo output_tiling_info,
       ComputeOutputTilingInfo(real_root_indexing, flat_tiling_parameters,
                               major_to_minor_active_tiling_parameters,
@@ -1744,7 +1752,7 @@ absl::StatusOr<TiledHloComputation> ComputeTiledComputationImpl(
 
   VLOG(3) << "output_tiling_info: " << output_tiling_info.ToString("; ");
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<TiledHloInstruction>> tiled_hlo_instructions,
       ComputeTiledInstructions(
           analysis.GetSymbolicTiledHloComputation(), flat_tiling_parameters,
@@ -1752,7 +1760,7 @@ absl::StatusOr<TiledHloComputation> ComputeTiledComputationImpl(
           compute_all_tile_offset_indexing_maps, mlir_context,
           output_tiling_info, tile_sizes_map, parameters_with_offset_indexing,
           symbolic_to_tiled_hlo_map, parent_output_tile_dim_bounds));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<const TiledHloInstruction*> tiled_roots,
       InitializeTiledRoots(
           analysis.GetRoots(), tiled_hlo_instructions, tiled_hlo_schedule,
@@ -1801,12 +1809,11 @@ absl::StatusOr<std::unique_ptr<TiledHloInstruction>> ComputeTiledHloInstruction(
         output_tiling_info.linear_output_tile_offset_indexing.GetRTVarsCount(),
         0)
         << "runtime variables for output tiling are not supported";
-    TF_ASSIGN_OR_RETURN(
-        tile_offset_indexing,
-        ComputeTileOffsetIndexing(
-            *symbolic_tiled_hlo,
-            output_tiling_info.linear_output_tile_offset_indexing,
-            mlir_context));
+    ASSIGN_OR_RETURN(tile_offset_indexing,
+                     ComputeTileOffsetIndexing(
+                         *symbolic_tiled_hlo,
+                         output_tiling_info.linear_output_tile_offset_indexing,
+                         mlir_context));
     runtime_variables = MapToTiledInstructions(
         symbolic_tiled_hlo->runtime_variables(), symbolic_to_tiled_hlo_map);
     // Symbols here can only be runtime variables.
@@ -1851,13 +1858,13 @@ absl::StatusOr<std::unique_ptr<TiledHloInstruction>> ComputeTiledHloInstruction(
       TF_RET_CHECK(!region.empty())
           << " instruction " << symbolic_tiled_hlo->ToString()
           << " region is empty";
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           const OutputTilingInfo region_output_tiling_info,
           ComputeOutputTilingInfo(region.back()->indexing_map(),
                                   flat_tiling_parameters,
                                   region_tiling_parameters, tiled_hlo_schedule,
                                   mlir_context, region_tile_dim_bounds));
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           std::vector<std::unique_ptr<TiledHloInstruction>> tiled_region,
           ComputeTiledInstructions(
               region, flat_tiling_parameters, tiled_hlo_schedule,
@@ -1909,7 +1916,7 @@ ComputeTiledInstructions(
   tiled_hlo_instructions_set.Reserve(instructions.size());
   for (const std::unique_ptr<SymbolicTiledHloInstruction>& instruction :
        instructions) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         std::unique_ptr<TiledHloInstruction> tiled_instruction,
         ComputeTiledHloInstruction(
             instruction.get(), flat_tiling_parameters, tiled_hlo_schedule,
@@ -1971,18 +1978,18 @@ SymbolicTileAnalysis::ComputeTiledComputation(
   // because the latter is called recursively, and we don't want to perform
   // this check multiple times.
   if (!constraints_are_known_satisfied) {
-    TF_ASSIGN_OR_RETURN(bool parameters_satisfy_constraints,
-                        ParametersSatisfyConstraints(tiling));
+    ASSIGN_OR_RETURN(bool parameters_satisfy_constraints,
+                     ParametersSatisfyConstraints(tiling));
     if (!parameters_satisfy_constraints) {
       return absl::InvalidArgumentError("Tiling does not satisfy constraints.");
     }
   }
 
-  TF_ASSIGN_OR_RETURN(FlatTiling flat_tiling_parameters,
-                      tiling.Flatten(GetTilingSpecification()));
+  ASSIGN_OR_RETURN(FlatTiling flat_tiling_parameters,
+                   tiling.Flatten(GetTilingSpecification()));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<TiledHloSchedule> tiled_hlo_schedule,
-                      schedule_builder(GetTilingSpecification()));
+  ASSIGN_OR_RETURN(std::unique_ptr<TiledHloSchedule> tiled_hlo_schedule,
+                   schedule_builder(GetTilingSpecification()));
 
   return ComputeTiledComputationImpl(
       *this, flat_tiling_parameters, *tiled_hlo_schedule,
@@ -2000,52 +2007,11 @@ std::string SymbolicTileAnalysis::ToString() const {
                                       name_uniquer, tile_names);
 }
 
-namespace {
-
-// The possible tiles sizes for one dimension.
-absl::StatusOr<std::vector<int64_t>> PossibleTileSizesForOneDimension(
-    int64_t dim_size) {
-  if (dim_size < 0) {
-    return absl::InvalidArgumentError("Dimension size must be non-negative.");
-  }
-  std::vector<int64_t> result;
-  if (dim_size == 0) {
-    result.push_back(0);
-    return result;
-  }
-
-  result.reserve(absl::bit_width(static_cast<uint64_t>(dim_size)));
-  for (int64_t tile_size = 1; tile_size < dim_size; tile_size *= 2) {
-    result.push_back(tile_size);
-  }
-  result.push_back(dim_size);
-  return result;
-}
-
-}  // namespace
-
 namespace detail {
 
 absl::StatusOr<std::vector<FlatTiling>> GetFlatTilingsForInputSpace(
     absl::Span<const int64_t> input_space) {
-  std::vector<FlatTiling> flat_tilings;
-  flat_tilings.push_back({});
-  for (int64_t parameter_size : input_space) {
-    TF_ASSIGN_OR_RETURN(std::vector<int64_t> possible_tile_sizes,
-                        PossibleTileSizesForOneDimension(parameter_size));
-    std::vector<FlatTiling> extended_tilings;
-    extended_tilings.reserve(flat_tilings.size() * possible_tile_sizes.size());
-    for (const FlatTiling& flat_tile_sizes : flat_tilings) {
-      for (int64_t tile_size : possible_tile_sizes) {
-        FlatTiling extended_tiling = flat_tile_sizes;
-        extended_tiling.push_back(tile_size);
-        extended_tilings.push_back(extended_tiling);
-      }
-    }
-    flat_tilings = std::move(extended_tilings);
-  }
-
-  return flat_tilings;
+  return xla::GetFlatTilingsForInputSpace(input_space);
 }
 
 }  // namespace detail
@@ -2056,15 +2022,14 @@ absl::StatusOr<std::vector<Tiling>> SymbolicTileAnalysis::GetValidTilings()
       tiling_specification_.parameter_mapping();
 
   std::vector<Tiling> tilings;
-  TF_ASSIGN_OR_RETURN(std::vector<FlatTiling> flat_tilings,
-                      detail::GetFlatTilingsForInputSpace(
-                          InputSpaceForParameterMapping(parameter_mapping)));
+  ASSIGN_OR_RETURN(std::vector<FlatTiling> flat_tilings,
+                   detail::GetFlatTilingsForInputSpace(
+                       InputSpaceForParameterMapping(parameter_mapping)));
   for (const FlatTiling& flat_tile_sizes : flat_tilings) {
-    TF_ASSIGN_OR_RETURN(
-        Tiling tiling,
-        Tiling::Unflatten(flat_tile_sizes, tiling_specification_));
-    TF_ASSIGN_OR_RETURN(bool parameters_satisfy_constraints,
-                        ParametersSatisfyConstraints(tiling));
+    ASSIGN_OR_RETURN(Tiling tiling,
+                     Tiling::Unflatten(flat_tile_sizes, tiling_specification_));
+    ASSIGN_OR_RETURN(bool parameters_satisfy_constraints,
+                     ParametersSatisfyConstraints(tiling));
     if (parameters_satisfy_constraints) {
       tilings.push_back(tiling);
     }

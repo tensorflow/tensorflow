@@ -199,6 +199,7 @@ tf_cuda_library(
         "//tensorflow/core/common_runtime:device_id_utils",
         "//tensorflow/core/common_runtime:node_file_writer",
         "//tensorflow/core/framework:device_attributes_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core/platform:tensor_float_32_utils",
         "//tensorflow/core/profiler/lib:annotated_traceme",
@@ -233,8 +234,6 @@ tf_cuda_library(
                 "//tensorflow/compiler/tf2xla:layout_util",
                 "//tensorflow/compiler/jit:flags",
                 "//tensorflow/compiler/jit:pjrt_device_context",
-                "@xla//xla/pjrt/gpu:gpu_helpers",
-                "@xla//xla/pjrt/gpu:se_gpu_pjrt_client",
                 "@xla//xla/stream_executor/integrations:tf_allocator_adapter",
                 "//tensorflow/core/tfrt/common:pjrt_util",
             ],
@@ -244,6 +243,8 @@ tf_cuda_library(
         ]),
     ) + if_cuda_or_rocm([
         "@tsl//tsl/platform:dso_loader",
+        "@xla//xla/pjrt/gpu:gpu_helpers",
+        "@xla//xla/pjrt/gpu:se_gpu_pjrt_client",
     ]) + if_cuda([
         "@xla//xla/stream_executor/cuda:all_runtime",
     ]) + if_rocm([

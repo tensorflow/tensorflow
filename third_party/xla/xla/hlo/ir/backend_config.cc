@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/message.h"
 #include "re2/re2.h"
 #include "xla/tsl/platform/errors.h"
@@ -106,7 +107,7 @@ absl::Status BackendConfigWrapper::GetProto(
     return copy_from_cache();
   }
 
-  TF_RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(raw_string_, output_proto));
+  RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(raw_string_, output_proto));
   // Cache the proto into the empty proto_.
   proto_ = CloneBackendConfigProto(output_proto);
   return absl::OkStatus();
@@ -132,25 +133,14 @@ BackendConfigWrapper& BackendConfigWrapper::operator=(
 }
 
 bool BackendConfigWrapper::operator==(const BackendConfigWrapper& other) const {
-  tsl::protobuf::Message* this_proto = nullptr;
-
-  // Do not hold two mutexes at the same time to avoid deadlocks.
-  {
-    absl::MutexLock this_lock{mutex_};
-    this_proto = proto_.get();
-  }
-
   const std::string* other_raw_string = nullptr;
   {
+    // Make sure to drop the lock on this mutex before calling GetRawString()
+    // to avoid deadlock.
     absl::MutexLock other_lock{other.mutex_};
-    if (this_proto != nullptr && other.proto_ != nullptr) {
-      using ::tsl::protobuf::util::MessageDifferencer;
-      return MessageDifferencer::Equals(*this_proto, *other.proto_);
-    }
     other_raw_string = &other.GetRawStringWithoutMutex();
   }
 
   return GetRawString() == *other_raw_string;
 }
-
 }  // namespace xla

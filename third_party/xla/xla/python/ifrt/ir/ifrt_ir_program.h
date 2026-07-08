@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -87,7 +88,7 @@ struct SerializeIfrtIRProgramOptions
     : llvm::RTTIExtends<SerializeIfrtIRProgramOptions, SerializeOptions> {
   explicit SerializeIfrtIRProgramOptions(
       std::string ifrt_version, std::string atom_program_version,
-      bool version_in_place = true,
+      std::string atom_program_sdy_version, bool version_in_place = true,
       // Using a parameter name `serdes_version` avoids shadowing the base class
       // member variable `version`.
       SerDesVersion serdes_version = SerDesDefaultVersionAccessor::Get())
@@ -95,6 +96,7 @@ struct SerializeIfrtIRProgramOptions
             /*version=*/serdes_version),
         ifrt_version(std::move(ifrt_version)),
         atom_program_version(std::move(atom_program_version)),
+        atom_program_sdy_version(std::move(atom_program_sdy_version)),
         version_in_place(version_in_place) {}
 
   static char ID;  // NOLINT
@@ -105,6 +107,9 @@ struct SerializeIfrtIRProgramOptions
   // String of the form "major.minor.patch", representing the atom program
   // version (currently VHLO version).
   std::string atom_program_version;
+  // String of the form "major.minor.patch", representing the SDY version within
+  // the atom program version.
+  std::string atom_program_sdy_version;
   // Whether to version the IFRT IR ModuleOp in-place.
   bool version_in_place;
 };
@@ -196,7 +201,7 @@ struct IfrtIRCompileOptions
   absl::StatusOr<IfrtIrCompileOptionsProto> ToProto(
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
     IfrtIrCompileOptionsProto proto;
-    TF_RETURN_IF_ERROR(ToProto(proto, version));
+    RETURN_IF_ERROR(ToProto(proto, version));
     return proto;
   }
 

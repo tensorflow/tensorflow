@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/plugin/plugin_names.h"
+#include "xla/pjrt/proto/pjrt_abi_version.pb.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/pjrt_ifrt/gpu_xla_executable_abi_version.h"
 #include "xla/python/pjrt_ifrt/xla_executable_abi_version.h"

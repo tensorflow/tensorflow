@@ -15,10 +15,8 @@ limitations under the License.
 
 #include "xla/hlo/ir/replica_group.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -111,13 +109,12 @@ void HandleMultiAxisRefPerDimension(std::vector<AxisRef>& axes,
   // sub_axis_info()->pre_size. This allows us to maintain user specified order
   // of AxisRef while still building the reshape and aggregate axes.
   std::vector<int> original_order(axes.size());
-  std::iota(original_order.begin(), original_order.end(), 0);
-  std::sort(original_order.begin(), original_order.end(),
-            [&axes](int i, int j) {
-              return axes[i].sub_axis_info()->pre_size <
-                     axes[j].sub_axis_info()->pre_size;
-            });
-  std::sort(axes.begin(), axes.end(), [](const AxisRef& a, const AxisRef& b) {
+  absl::c_iota(original_order, 0);
+  absl::c_sort(original_order, [&axes](int i, int j) {
+    return axes[i].sub_axis_info()->pre_size <
+           axes[j].sub_axis_info()->pre_size;
+  });
+  absl::c_sort(axes, [](const AxisRef& a, const AxisRef& b) {
     return a.sub_axis_info()->pre_size < b.sub_axis_info()->pre_size;
   });
 

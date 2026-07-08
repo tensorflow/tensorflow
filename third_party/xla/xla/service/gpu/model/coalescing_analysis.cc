@@ -498,8 +498,8 @@ std::optional<CoalescingMap> ComputeCoalescingForAllOperands(
     const HloFusionAnalysis& fusion_analysis,
     absl::Span<const HloInstruction* const> operands,
     MLIRContext* mlir_context) {
-  auto emitter = GetFusionEmitter(
-      PreBufferAssignmentFusionInfo{fusion_analysis}, mlir_context);
+  auto emitter =
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{fusion_analysis});
   const auto* fusion_interface =
       dynamic_cast<const MlirKernelFusion*>(emitter.get());
 

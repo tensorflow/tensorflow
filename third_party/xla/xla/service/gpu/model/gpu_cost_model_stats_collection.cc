@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -54,8 +55,8 @@ absl::StatusOr<EstimateRunTimeData> MaybeGetGemmCostModelForGemmTritonFusion(
     return absl::FailedPreconditionError("Not a custom fusion.");
   }
 
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig config,
-                      fusion->backend_config<GpuBackendConfig>());
+  ASSIGN_OR_RETURN(GpuBackendConfig config,
+                   fusion->backend_config<GpuBackendConfig>());
   if (config.fusion_backend_config().kind() != kTritonNestedGemmFusionKind) {
     return absl::FailedPreconditionError("Not a Triton GeMM fusion.");
   }
@@ -93,7 +94,7 @@ absl::StatusOr<EstimateRunTimeData> MaybeGetGemmCostModelForGemmTritonFusion(
 // with non-trivial operations on dot operands might not be fully accounted for.
 absl::Status RecordGemmCostModelEstimateIfApplicable(
     const se::DeviceDescription& device_info, HloInstruction& instruction) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       EstimateRunTimeData runtime,
       MaybeGetGemmCostModelForGemmTritonFusion(device_info, instruction));
 
@@ -103,8 +104,8 @@ absl::Status RecordGemmCostModelEstimateIfApplicable(
 
   VLOG(1) << "Adding GeMM fusion cost model estimate: " << cost.DebugString();
 
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                      instruction.backend_config<GpuBackendConfig>());
+  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                   instruction.backend_config<GpuBackendConfig>());
   *gpu_config.add_reification_cost() = cost;
   return instruction.set_backend_config(gpu_config);
 }
@@ -119,16 +120,23 @@ absl::StatusOr<EstimateRunTimeData> MaybeGetIndexingCostModelForFusion(
     return absl::FailedPreconditionError("Not a custom fusion.");
   }
 
-  TF_ASSIGN_OR_RETURN(EstimateRunTimeData runtime,
-                      perf_model.EstimateRunTimeForTriton(&instruction));
+  ASSIGN_OR_RETURN(GpuBackendConfig config,
+                   fusion->backend_config<GpuBackendConfig>());
 
-  return runtime;
+  if (config.fusion_backend_config().has_block_level_fusion_config()) {
+    const BlockLevelParameters block_params =
+        BlockLevelParameters::FromBlockLevelFusionConfig(
+            config.fusion_backend_config().block_level_fusion_config());
+    return perf_model.EstimateRunTimeForTriton(&instruction, &block_params);
+  }
+
+  return perf_model.EstimateRunTimeForTriton(&instruction);
 }
 
 absl::Status RecordIndexingPerformanceModelEstimateIfApplicable(
     GpuPerformanceModelWithIndexingAnalysis& perf_model,
     const se::DeviceDescription& device_info, HloInstruction& instruction) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       EstimateRunTimeData runtime,
       MaybeGetIndexingCostModelForFusion(perf_model, device_info, instruction));
 
@@ -139,8 +147,8 @@ absl::Status RecordIndexingPerformanceModelEstimateIfApplicable(
   VLOG(1) << "Adding indexing performance model estimate: "
           << cost.DebugString();
 
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                      instruction.backend_config<GpuBackendConfig>());
+  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                   instruction.backend_config<GpuBackendConfig>());
   *gpu_config.add_reification_cost() = cost;
   return instruction.set_backend_config(gpu_config);
 }
@@ -152,7 +160,7 @@ absl::StatusOr<bool> GpuCostModelStatsCollection::RunImpl(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Scan all computations for fusion instructions.
 
-  GpuPerformanceModelOwning gpu_performance_model{device_info_, mlir_context_};
+  GpuPerformanceModelOwning gpu_performance_model{device_info_};
   for (auto* computation : module->MakeComputationPostOrder()) {
     CHECK_OK(computation->Accept(&cost_analysis_));
 

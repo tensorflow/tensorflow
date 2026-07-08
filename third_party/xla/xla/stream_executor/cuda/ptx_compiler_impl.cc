@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/nvPTXCompiler.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/kernel_stats.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -89,9 +89,9 @@ static absl::string_view ToString(nvPTXCompileResult status) {
   } while (false)
 
 absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingLibNvPtxCompiler(
-    const CudaComputeCapability& cc, const std::string& ptx_contents,
+    const CudaComputeCapability& cc, absl::string_view ptx_contents,
     GpuAsmOpts options, bool cancel_if_reg_spill, bool dump_compilation_log) {
-  TF_ASSIGN_OR_RETURN(auto version, GetLibNvPtxCompilerVersion());
+  ASSIGN_OR_RETURN(auto version, GetLibNvPtxCompilerVersion());
   WarnIfBadPtxasVersion("nvPTXCompiler", cc, version);
 
   nvPTXCompilerHandle compiler_handle{};
@@ -176,7 +176,7 @@ absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingLibNvPtxCompiler(
             std::min(ptx_contents.length(),
                      VLOG_IS_ON(3) ? ptx_contents.length() : 4096);
         VLOG(2) << "The following ptx produced a warning during compilation: \n"
-                << absl::string_view(ptx_contents).substr(0, ptxLogLength)
+                << ptx_contents.substr(0, ptxLogLength)
                 << (ptx_contents.size() > ptxLogLength ? "..." : "");
       }
       if (cancel_if_reg_spill &&
@@ -225,7 +225,7 @@ absl::StatusOr<int> GetLatestPtxIsaVersionForNvptxCompiler() {
   };
 
   std::optional<absl::LeakCheckDisabler> disabler;
-  TF_ASSIGN_OR_RETURN(SemanticVersion version, GetLibNvPtxCompilerVersion());
+  ASSIGN_OR_RETURN(SemanticVersion version, GetLibNvPtxCompilerVersion());
   if (version < SemanticVersion(13, 0, 0)) {
     // libNvptxCompiler prior to CUDA 13 has a memory leak when calling
     // nvPTXCompilerCompile when the input PTX is invalid.

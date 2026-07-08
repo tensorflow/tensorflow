@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/service/call_graph.h"
 
-#include <algorithm>
-#include <cstdint>
 #include <deque>
 #include <memory>
 #include <queue>
@@ -34,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -113,19 +112,13 @@ CallGraph::CallGraph(
 
 const CallGraphNode& CallGraph::GetNode(
     const HloComputation* computation) const {
-  const int64_t computation_unique_id = computation->unique_id();
-  DCHECK(computation_unique_id >= 0 &&
-         computation_unique_id < node_indices_.size() &&
-         node_indices_[computation_unique_id] != kComputationIdAbsent);
-  return nodes_[node_indices_[computation_unique_id]];
+  DCHECK(node_indices_.contains(computation));
+  return nodes_[node_indices_.find(computation)->second];
 }
 
 CallGraphNode& CallGraph::GetNode(const HloComputation* computation) {
-  const int64_t computation_unique_id = computation->unique_id();
-  DCHECK(computation_unique_id >= 0 &&
-         computation_unique_id < node_indices_.size() &&
-         node_indices_[computation_unique_id] != kComputationIdAbsent);
-  return nodes_[node_indices_[computation_unique_id]];
+  DCHECK(node_indices_.contains(computation));
+  return nodes_[node_indices_.find(computation)->second];
 }
 
 bool CallGraph::DominatesHelper(
@@ -293,28 +286,14 @@ std::unique_ptr<CallGraph> CallGraph::Build(
 
   VLOG(3) << "Building call graph for:";
   XLA_VLOG_LINES(3, module->ToString());
-  int64_t max_computation_unique_id = -1;
-  int64_t num_computations = 0;
-  for (HloComputation* computation : module->computations(execution_threads)) {
-    ++num_computations;
-    max_computation_unique_id =
-        std::max(max_computation_unique_id, computation->unique_id());
-  }
-  // HloComputation::unique_id() is always sequential with possible gaps for
-  // removed computations, but can eat the overhead of that.
-  call_graph->node_indices_.resize(max_computation_unique_id + 1,
-                                   kComputationIdAbsent);
-  call_graph->nodes_.reserve(num_computations);
 
   // Construct nodes of the call graph and populate the callsites.
   for (HloComputation* computation : module->computations(execution_threads)) {
-    const int64_t computation_unique_id = computation->unique_id();
-    CHECK_EQ(call_graph->node_indices_[computation_unique_id],
-             kComputationIdAbsent);
-    call_graph->node_indices_[computation_unique_id] =
-        call_graph->nodes_.size();
+    auto it_added = call_graph->node_indices_.insert(
+        {computation, call_graph->nodes_.size()});
     // All computations should be unique, so the computation should not already
     // exist in the map.
+    CHECK(it_added.second);
     call_graph->nodes_.emplace_back(computation);
 
     // Add all callsites in this computation.
@@ -358,7 +337,7 @@ absl::Status CallGraph::VisitNodesInternal(
   }
 
   for (const HloComputation* computation : node.callees()) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         VisitNodesInternal(visitor_func, GetNode(computation), visited));
   }
 
@@ -376,13 +355,13 @@ absl::StatusOr<bool> CallGraph::VisitNodesInternal(
 
   bool changed = false;
   for (const HloComputation* computation : node.callees()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         bool node_changed,
         VisitNodesInternal(visitor_func, GetNode(computation), visited));
     changed |= node_changed;
   }
 
-  TF_ASSIGN_OR_RETURN(bool node_changed, visitor_func(node));
+  ASSIGN_OR_RETURN(bool node_changed, visitor_func(node));
   changed |= node_changed;
   return changed;
 }
@@ -394,12 +373,12 @@ absl::Status CallGraph::VisitNodes(VisitorFunction visitor_func,
     // Traverse from all roots in the call graph.
     for (const CallGraphNode& node : nodes()) {
       if (node.callers().empty()) {
-        TF_RETURN_IF_ERROR(VisitNodesInternal(visitor_func, node, &visited));
+        RETURN_IF_ERROR(VisitNodesInternal(visitor_func, node, &visited));
       }
     }
   } else {
     // Traverse only from the entry computation.
-    TF_RETURN_IF_ERROR(VisitNodesInternal(
+    RETURN_IF_ERROR(VisitNodesInternal(
         visitor_func, GetNode(module_->entry_computation()), &visited));
   }
 
@@ -414,14 +393,14 @@ absl::StatusOr<bool> CallGraph::VisitNodesWithReturn(
     // Traverse from all roots in the call graph.
     for (const CallGraphNode& node : nodes()) {
       if (node.callers().empty()) {
-        TF_ASSIGN_OR_RETURN(bool node_changed,
-                            VisitNodesInternal(visitor_func, node, &visited));
+        ASSIGN_OR_RETURN(bool node_changed,
+                         VisitNodesInternal(visitor_func, node, &visited));
         changed |= node_changed;
       }
     }
   } else {
     // Traverse only from the entry computation.
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         changed,
         VisitNodesInternal(visitor_func, GetNode(module_->entry_computation()),
                            &visited));
@@ -453,16 +432,15 @@ std::vector<HloInstruction*> CallGraph::GetComputationCallers(
   return callers;
 }
 
-std::pair<const HloInstruction*, const HloInstruction*>
-CallGraph::NearestAncestorsInSameComputation(const HloInstruction* a,
-                                             const HloInstruction* b) const {
+std::pair<HloInstruction*, HloInstruction*>
+CallGraph::NearestAncestorsInSameComputation(HloInstruction* a,
+                                             HloInstruction* b) const {
   // Lambda which returns the next instruction in the callee->caller chain in
   // the call graph. This is the unique instruction which calls the computation
   // containing 'instruction'. If more than one instruction calls the
   // computation containing 'instruction' or no instructions call the
   // computation then nullptr is returned.
-  auto next_caller =
-      [this](const HloInstruction* instruction) -> const HloInstruction* {
+  auto next_caller = [this](HloInstruction* instruction) -> HloInstruction* {
     const CallGraphNode& node = GetNode(instruction->parent());
     if (node.caller_callsites().size() != 1) {
       if (instruction->parent()->IsAsyncComputation()) {
@@ -475,8 +453,8 @@ CallGraph::NearestAncestorsInSameComputation(const HloInstruction* a,
 
   // Iterate through the callee->caller chains and find the earliest common
   // element.
-  const HloInstruction* a_ancestor = a;
-  const HloInstruction* b_ancestor = b;
+  HloInstruction* a_ancestor = a;
+  HloInstruction* b_ancestor = b;
   int a_depth = GetNode(a->parent()).depth();
   int b_depth = GetNode(b->parent()).depth();
 

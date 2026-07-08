@@ -33,9 +33,8 @@ int FindId(absl::string_view key, std::map<absl::string_view, int>& index) {
   auto entry_iterator = index.find(key);
   if (entry_iterator == index.end()) {
     return 0;
-  } else {
-    return entry_iterator->second;
   }
+  return entry_iterator->second;
 }
 
 int StackFrameIndexBuilder::AddStackFrameLocation(

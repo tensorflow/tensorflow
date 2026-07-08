@@ -29,15 +29,18 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
@@ -358,8 +361,9 @@ absl::Status MemorySpaceAssignment::VerifyAllocations() const {
   // Verify that all alternate memory allocations are free of overlapping
   // Allocations in time and space, and add them to interval_tree one by one.
   for (const auto& allocation : allocations_) {
-    if (allocation->memory_space() == MemorySpace::kAlternate) {
-      TF_RETURN_IF_ERROR(add_allocation_and_verify(allocation.get()));
+    if (allocation->memory_space() == MemorySpace::kAlternate &&
+        !allocation->is_mirrored_allocation()) {
+      RETURN_IF_ERROR(add_allocation_and_verify(allocation.get()));
     }
   }
   return absl::OkStatus();
@@ -379,7 +383,7 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
         << "TODO(b/167392593): Support split shapes for window "
            "prefetches.";
   }
-  TF_RETURN_IF_ERROR(FindAllocationSequence(hlo_live_range, alias_analysis));
+  RETURN_IF_ERROR(FindAllocationSequence(hlo_live_range, alias_analysis));
 
   std::optional<RuntimeSimulator> runtime_simulator = std::nullopt;
   if (options_.cost_analysis) {
@@ -394,9 +398,9 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
     }
   }
 
-  TF_RETURN_IF_ERROR(Process(hlo_live_range, alias_analysis));
+  RETURN_IF_ERROR(Process(hlo_live_range, alias_analysis));
   if (options_.verify) {
-    TF_RETURN_IF_ERROR(VerifyAllocations());
+    RETURN_IF_ERROR(VerifyAllocations());
   }
 
   // DEBUG_LOG_ALLOCATIONS_AT
@@ -407,15 +411,15 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   // AllocationSequenceDebugging::LogAltMemAllocationsAt(
   //     allocations_, /*time*/1);
   ScheduleAsynchronousCopies();
-  TF_RETURN_IF_ERROR(SimplifyGraph());
-  TF_RETURN_IF_ERROR(SetSchedule());
-  TF_ASSIGN_OR_RETURN(auto alias, HloAliasAnalysis::Run(module_, alias_info_));
-  TF_RETURN_IF_ERROR(ExportAndColorBuffers(*alias));
+  RETURN_IF_ERROR(SimplifyGraph());
+  RETURN_IF_ERROR(SetSchedule());
+  ASSIGN_OR_RETURN(auto alias, HloAliasAnalysis::Run(module_, alias_info_));
+  RETURN_IF_ERROR(ExportAndColorBuffers(*alias));
   std::vector<int64_t> alt_mem_bytes_occupied;
   // alt_mem_bytes_occupied is used for logging in the RuntimeSimulator below.
   // We only populate it in VerifyAndExportHeapSimulatorTrace if the
   // RuntimeSimulator is present.
-  TF_RETURN_IF_ERROR(VerifyAndExportHeapSimulatorTrace(
+  RETURN_IF_ERROR(VerifyAndExportHeapSimulatorTrace(
       *alias,
       runtime_simulator.has_value() ? &alt_mem_bytes_occupied : nullptr));
   if (VLOG_IS_ON(2) && runtime_simulator.has_value()) {
@@ -430,8 +434,8 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   }
   CHECK_OK(module_->schedule().Verify());
   if (VLOG_IS_ON(1)) {
-    TF_ASSIGN_OR_RETURN(AsyncCopyStats stats,
-                        CalculateAsyncCopyStats(alias->dataflow_analysis()));
+    ASSIGN_OR_RETURN(AsyncCopyStats stats,
+                     CalculateAsyncCopyStats(alias->dataflow_analysis()));
     LOG(INFO) << "Maximum number of outstanding async copies/slices: "
               << stats.max_outstanding_async_copies;
     LOG(INFO) << "Number of prefetches: " << stats.num_prefetches
@@ -502,8 +506,8 @@ absl::Status MemorySpaceAssignment::Process(
       VLOG(3) << "Allocation not needed.";
       continue;
     }
-    TF_RETURN_IF_ERROR(allocation->Process(options_.bitcast_split_fn,
-                                           hlo_live_range, alias_analysis));
+    RETURN_IF_ERROR(allocation->Process(options_.bitcast_split_fn,
+                                        hlo_live_range, alias_analysis));
     // Add the offset and size of the allocation in the alternate memory to
     // the output map.
     if (allocation->is_scoped_allocation()) {
@@ -549,7 +553,7 @@ absl::Status MemorySpaceAssignment::Process(
         }
       }
       if (allocation->cross_program_prefetch_index().has_value()) {
-        TF_RETURN_IF_ERROR(module_->SetCrossProgramPrefetchOffset(
+        RETURN_IF_ERROR(module_->SetCrossProgramPrefetchOffset(
             *allocation->cross_program_prefetch_index(),
             allocation->chunk().offset));
       }
@@ -563,7 +567,7 @@ absl::Status MemorySpaceAssignment::Process(
   for (auto& allocation : allocations_) {
     if (needed_allocations.contains(allocation.get())) {
       VLOG(3) << "Post-Processing: " << allocation->ToString();
-      TF_RETURN_IF_ERROR(allocation->PostProcess());
+      RETURN_IF_ERROR(allocation->PostProcess());
       if (allocation->is_pinned_allocation() &&
           !allocation->is_scoped_allocation()) {
         auto [it, inserted] =
@@ -722,7 +726,7 @@ absl::Status ProcessDeadComputation(
     }
   }
   VLOG(2) << "Removing dead computation: " << computation->name();
-  TF_RETURN_IF_ERROR(module->RemoveEmbeddedComputation(computation));
+  RETURN_IF_ERROR(module->RemoveEmbeddedComputation(computation));
   return absl::OkStatus();
 }
 
@@ -741,8 +745,8 @@ absl::Status CleanupDeadFusionComputations(
   while (!worklist.empty()) {
     HloComputation* computation = worklist.back();
     worklist.pop_back();
-    TF_RETURN_IF_ERROR(ProcessDeadComputation(module, computation,
-                                              removed_instructions, worklist));
+    RETURN_IF_ERROR(ProcessDeadComputation(module, computation,
+                                           removed_instructions, worklist));
   }
   return absl::OkStatus();
 }
@@ -779,7 +783,7 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
     // control dependencies).
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
-      TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
+      RETURN_IF_ERROR(instruction->DropAllControlDeps());
     }
     // We perform limited DCE and forward the tuple operand in patterns like
     // GetTupleElement(Tuple(a, b), 0). This is mostly because memory space
@@ -807,7 +811,7 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
                 [instruction_to_flattened_instructions_idx[instruction]] =
                     nullptr;
           }
-          TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
+          RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
           computation_modified = true;
         } else if (instruction->opcode() == HloOpcode::kGetTupleElement) {
           HloInstruction* operand = instruction->mutable_operand(0);
@@ -816,7 +820,7 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
                 operand->mutable_operand(instruction->tuple_index());
             VLOG(4) << "Replacing uses of " << instruction->ToString()
                     << " with " << forwarded_instruction->ToString();
-            TF_RETURN_IF_ERROR(
+            RETURN_IF_ERROR(
                 instruction->ReplaceAllUsesWith(forwarded_instruction));
             computation_modified = true;
           }
@@ -848,7 +852,7 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
                 instruction->mutable_operand(0)->mutable_operand(0);
             VLOG(4) << "Replacing uses of " << instruction->ToString()
                     << " with " << forwarded_instruction->ToString();
-            TF_RETURN_IF_ERROR(
+            RETURN_IF_ERROR(
                 instruction->ReplaceAllUsesWith(forwarded_instruction));
             computation_modified = true;
           }
@@ -857,8 +861,7 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
     }
   }
 
-  TF_RETURN_IF_ERROR(
-      CleanupDeadFusionComputations(module_, removed_instructions));
+  RETURN_IF_ERROR(CleanupDeadFusionComputations(module_, removed_instructions));
 
   RemoveAlternateMemoryAssignments(removed_instructions);
   RemoveScopedMemoryAssignments(removed_instructions);
@@ -1307,7 +1310,7 @@ absl::Status MemorySpaceAssignment::SetSchedule() {
     schedule.set_sequence(computation, stats.sequence);
   }
 
-  TF_RETURN_IF_ERROR(schedule.Update());
+  RETURN_IF_ERROR(schedule.Update());
 
   return absl::OkStatus();
 }
@@ -1372,9 +1375,9 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
     const HloAliasAnalysis& alias_analysis,
     std::vector<int64_t>* alt_mem_bytes_occupied) {
   VLOG(1) << "Verifying...";
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
-                      HloLiveRange::Run(module_->schedule(), alias_analysis,
-                                        module_->entry_computation()));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
+                   HloLiveRange::Run(module_->schedule(), alias_analysis,
+                                     module_->entry_computation()));
 
   BufferIntervalTree interval_tree;
   absl::flat_hash_set<int64_t> seen_buffers;
@@ -1469,9 +1472,10 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
       std::function<absl::Status(const HloInstruction*, int64_t, int64_t,
                                  absl::string_view)>
           split_conditional_buffer;
-      split_conditional_buffer = [&](const HloInstruction* use_instruction,
-                                     int64_t start_time, int64_t end_time,
-                                     absl::string_view indent_string) {
+      split_conditional_buffer =
+          [&](const HloInstruction* use_instruction, int64_t start_time,
+              int64_t end_time,
+              absl::string_view indent_string) -> absl::Status {
         // Special case when verifying conditional: we internally split the use
         // of alternate memory in conditionals, so fish them out from the
         // conditionals.
@@ -1511,11 +1515,11 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
             if (last_use_instruction->opcode() == HloOpcode::kConditional) {
               // The last use is another (nested) conditional. Call this
               // function recursively.
-              TF_RETURN_IF_ERROR(split_conditional_buffer(
+              RETURN_IF_ERROR(split_conditional_buffer(
                   last_use_instruction, computation_start_time, last_use_time,
                   absl::StrCat(indent_string, "  ")));
             } else {
-              TF_RETURN_IF_ERROR(add_allocation_and_verify(
+              RETURN_IF_ERROR(add_allocation_and_verify(
                   computation_start_time, last_use_time, chunk, value));
             }
           }
@@ -1523,14 +1527,14 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
         VLOG(3) << indent_string << " from beginning until first computation: ("
                 << start_time << ", " << (earliest_computation_start_time - 1)
                 << ")";
-        TF_RETURN_IF_ERROR(add_allocation_and_verify(
+        RETURN_IF_ERROR(add_allocation_and_verify(
             start_time, earliest_computation_start_time - 1, chunk, value));
         return absl::OkStatus();
       };
 
       if (last_use_instruction &&
           last_use_instruction->opcode() == HloOpcode::kConditional) {
-        TF_RETURN_IF_ERROR(split_conditional_buffer(
+        RETURN_IF_ERROR(split_conditional_buffer(
             last_use_instruction, time_bound.start, time_bound.end, " "));
       } else if (!value->GetUses().empty()) {
         last_use_time = std::min(last_use_time, time_bound.end);
@@ -1538,8 +1542,8 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
                 << " value: " << value->ToShortString() << ": ("
                 << time_bound.start << ", " << last_use_time
                 << ") off: " << chunk.offset << ", size: " << chunk.size;
-        TF_RETURN_IF_ERROR(add_allocation_and_verify(
-            time_bound.start, last_use_time, chunk, value));
+        RETURN_IF_ERROR(add_allocation_and_verify(time_bound.start,
+                                                  last_use_time, chunk, value));
       }
     }
   }

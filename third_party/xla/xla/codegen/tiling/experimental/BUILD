@@ -1,6 +1,6 @@
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
-load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_binary", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -26,13 +26,17 @@ cc_library(
         "tiling_space.h",
     ],
     deps = [
+        ":tiling_space_utils",
         "//xla:shape_util",
+        "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla/codegen/tiling:constraint_expression",
+        "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/analysis:interval",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -71,6 +75,7 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -125,6 +130,7 @@ xla_cc_test(
         ":tile",
         ":tile_propagation",
         "//xla:shape_util",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:indexing_test_utils",
         "//xla/hlo/analysis:symbolic_map",
@@ -132,11 +138,13 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/hlo/utils:hlo_traversal",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -220,9 +228,9 @@ cc_library(
         "//xla/hlo/analysis:interval",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
-        "//xla/service:instruction_fusion",
         "//xla/service:name_uniquer",
         "//xla/service/gpu:backend_configs_cc",
+        "//xla/tsl/lib/gtl:iterator_range",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -273,12 +281,68 @@ cc_library(
     hdrs = ["test_utils.h"],
     deps = [
         ":tile",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:indexing_test_utils",
         "//xla/hlo/analysis:symbolic_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_for_library",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_binary(
+    name = "validate_reshape_propagation",
+    testonly = True,
+    srcs = ["validate_reshape_propagation.cc"],
+    deps = [
+        ":test_utils",
+        ":tile",
+        ":tile_propagation",
+        "//xla:shape_util",
+        "//xla/hlo/analysis:symbolic_map",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_traversal",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@tsl//tsl/platform:platform_port",
+    ],
+)
+
+cc_library(
+    name = "tiling_space_utils",
+    srcs = ["tiling_space_utils.cc"],
+    hdrs = ["tiling_space_utils.h"],
+    deps = [
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/numeric:bits",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "tiling_space_utils_test",
+    srcs = ["tiling_space_utils_test.cc"],
+    deps = [
+        ":tiling_space_utils",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
     ],
 )

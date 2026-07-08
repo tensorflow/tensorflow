@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
@@ -59,6 +60,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
@@ -84,8 +86,8 @@ absl::StatusOr<std::string> LLVMToPTX(mlir::ModuleOp module,
     return absl::InternalError("Failed to emit LLVM IR");
   }
 
-  TF_ASSIGN_OR_RETURN(auto cuda_cc,
-                      se::CudaComputeCapability::FromString(arch_name));
+  ASSIGN_OR_RETURN(auto cuda_cc,
+                   se::CudaComputeCapability::FromString(arch_name));
   // Hopper and Blackwell require accelerated features ("a" suffix) for TMA and
   // other advanced instructions.
   if (cuda_cc.major >= 9) {
@@ -141,8 +143,8 @@ absl::StatusOr<CompilationResult> Compile(absl::string_view module,
 
   mlir::PassManager pm(&context);
   pm.enableVerifier();
-  TF_ASSIGN_OR_RETURN(auto cuda_cc,
-                      se::CudaComputeCapability::FromString(arch_name));
+  ASSIGN_OR_RETURN(auto cuda_cc,
+                   se::CudaComputeCapability::FromString(arch_name));
 
   gpu::CreateTritonPipeline(&pm, se::GpuComputeCapability(cuda_cc), num_warps,
                             num_ctas, num_stages);
@@ -180,7 +182,7 @@ absl::StatusOr<CompilationResult> Compile(absl::string_view module,
     cluster_dim_x = attr.getInt();
   }
 
-  TF_ASSIGN_OR_RETURN(auto ptx, LLVMToPTX(*module_op, arch_name));
+  ASSIGN_OR_RETURN(auto ptx, LLVMToPTX(*module_op, arch_name));
 
   return CompilationResult{
       AsmText{ptx},  shared_mem_bytes, global_scratch_size,

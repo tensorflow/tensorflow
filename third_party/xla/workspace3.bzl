@@ -6,12 +6,13 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 # buildifier: disable=unnamed-macro
 def workspace():
     tf_http_archive(
-        name = "io_bazel_rules_closure",
-        sha256 = "5b00383d08dd71f28503736db0500b6fb4dda47489ff5fc6bed42557c07c6ba9",
-        strip_prefix = "rules_closure-308b05b2419edb5c8ee0471b67a40403df940149",
+        name = "rules_proto",
+        sha256 = "20b240eba17a36be4b0b22635aca63053913d5c1ee36e16be36499d167a2f533",
+        strip_prefix = "rules_proto-11bf7c25e666dd7ddacbcd4d4c4a9de7a25175f8",
         urls = tf_mirror_urls(
-            "https://github.com/bazelbuild/rules_closure/archive/308b05b2419edb5c8ee0471b67a40403df940149.tar.gz",  # 2019-06-13
+            "https://github.com/bazelbuild/rules_proto/archive/11bf7c25e666dd7ddacbcd4d4c4a9de7a25175f8.tar.gz",
         ),
+        patch_file = ["//third_party:rules_proto.patch"],
     )
 
     # https://github.com/bazelbuild/bazel-skylib/releases
@@ -46,14 +47,24 @@ def workspace():
         urls = tf_mirror_urls("https://github.com/bazel-contrib/bazel_features/releases/download/v1.25.0/bazel_features-v1.25.0.tar.gz"),
     )
 
+    tf_http_archive(
+        name = "rules_cc",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_cc/releases/download/0.2.0/rules_cc-0.2.0.tar.gz"),
+        strip_prefix = "rules_cc-0.2.0",
+        sha256 = "ae244f400218f4a12ee81658ff246c0be5cb02c5ca2de5519ed505a6795431e9",
+        patch_file = [
+            "@xla//third_party/py:rules_cc_protobuf.patch",
+        ],
+    )
+
     # Toolchains for ML projects hermetic builds.
     # Details: https://github.com/google-ml-infra/rules_ml_toolchain
     tf_http_archive(
         name = "rules_ml_toolchain",
-        sha256 = "0b42f693a60c6050d87db1e0a0eaeb84ab3f54191fce094d86334faedc807da0",
-        strip_prefix = "rules_ml_toolchain-398d613aea7a4c294da49b79a6d6f3f8732bd84c",
+        sha256 = "939f53559fa05c4f13b7e5c7c2818da9a1159a3dde16ffbaedc37485897aefb2",
+        strip_prefix = "rules_ml_toolchain-f7f29df47a1c2244526e22f0578afae7b966f35f",
         urls = tf_mirror_urls(
-            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/398d613aea7a4c294da49b79a6d6f3f8732bd84c.tar.gz",
+            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/f7f29df47a1c2244526e22f0578afae7b966f35f.tar.gz",
         ),
     )
 

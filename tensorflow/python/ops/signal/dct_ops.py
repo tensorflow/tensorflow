@@ -212,7 +212,7 @@ def _dct_internal(input, type=2, n=None, axis=-1, norm=None, name=None):  # pyli
       return dct4
 
 
-# TODO(rjryan): Implement `axis` parameter.
+# TODO(rjryan): Implement `n` and `axis` parameters.
 @tf_export("signal.idct", v1=["signal.idct", "spectral.idct"])
 @dispatch.add_dispatch_support
 def idct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disable=redefined-builtin
@@ -235,12 +235,13 @@ def idct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disab
 
   Args:
     input: A `[..., samples]` `float32`/`float64` `Tensor` containing the
-      signals to take the DCT of.
+      signals to take the IDCT of.
     type: The IDCT type to perform. Must be 1, 2, 3 or 4.
     n: The length of the transform. If `n` is less than the sequence length,
       only the first `n` elements of the sequence are considered for the IDCT.
-      If `n` is greater than the sequence length, zeros are padded and then
-      the IDCT is computed as usual.
+      If `n` is greater than the sequence length, zeros are padded and then the
+      IDCT is computed as usual. If `None` (the default), the sequence length is
+      used unchanged.
     axis: For future expansion. The axis to compute the DCT along. Must be `-1`.
     norm: The normalization to apply. `None` for no normalization or `'ortho'`
       for orthonormal normalization.
@@ -251,15 +252,19 @@ def idct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disab
     `input`.
 
   Raises:
-    ValueError: If `type` is not `1`, `2`, `3` or `4`, `axis` is not `-1`,
-      `n` is not `None` or greater than 0, or `norm` is not `None` or
-      `'ortho'`.
-    ValueError: If `type` is `1` and `norm` is `ortho`, or `type` is `1`
+    ValueError: If `type` is not `1`, `2`, `3` or `4`, `axis` is
+      not `-1`, `n` is not `None` or greater than 0,
+      or `norm` is not `None` or `'ortho'`.
+    ValueError: If `type` is `1` and `norm` is `'ortho'`, or `type` is `1`
       and `n` is less than 2.
 
   [idct]:
   https://en.wikipedia.org/wiki/Discrete_cosine_transform#Inverse_transforms
   """
+  # The actual implementation routes through `_dct_internal`, which
+  # already supports an arbitrary positive `n` (truncate / zero-pad on
+  # the last axis); the docstring previously claimed `n` had to be
+  # `None`. See https://github.com/tensorflow/tensorflow/issues/102418.
   _validate_dct_arguments(input, type, n, axis, norm)
   inverse_type = {1: 1, 2: 3, 3: 2, 4: 4}[type]
   return _dct_internal(

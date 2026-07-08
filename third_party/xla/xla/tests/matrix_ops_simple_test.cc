@@ -47,8 +47,8 @@ namespace {
 
 using TypesF16F32 = ::testing::Types<Eigen::half, float>;
 
-using MatOpsSimpleTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using MatOpsSimpleTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 template <typename T>
 class MatOpsSimpleTest_F16F32 : public MatOpsSimpleTest {};
@@ -177,7 +177,7 @@ INSTANTIATE_TEST_CASE_P(
 
 class MatOpsDotAddTest
     : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
+          HloPjRtInterpreterReferenceMixin<HloTestBase>>,
       public ::testing::WithParamInterface<std::tuple<bool, bool, bool>> {
  public:
   template <typename T>

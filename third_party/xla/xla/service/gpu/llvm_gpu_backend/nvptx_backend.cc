@@ -20,7 +20,6 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
-#include <variant>
 #include <vector>
 
 #include "absl/base/call_once.h"
@@ -29,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
@@ -126,7 +126,7 @@ absl::Status NVPTXTargetModuleLinker(llvm::Module* module,
                                      const std::string& device_bitcode_path) {
   // Link the input module with libdevice, to pull in implementations of some
   // builtins.
-  TF_RETURN_IF_ERROR(LinkLibdeviceIfNecessary(module, device_bitcode_path));
+  RETURN_IF_ERROR(LinkLibdeviceIfNecessary(module, device_bitcode_path));
 
   // Set the flush-denormals-to-zero flag on the module so the NVVM reflect pass
   // can access it.
@@ -238,7 +238,13 @@ std::vector<std::string> GetNVPTXBackendOptions(
   return backend_llvm_opts;
 }
 
-std::string GetSmName(se::CudaComputeCapability compute_capability) {
+constexpr se::CudaComputeCapability kSupportedVersions[] = {
+    {12, 1}, {12, 0}, {11, 0}, {10, 3}, {10, 0}, {9, 0}, {8, 9}, {8, 7},
+    {8, 6},  {8, 0},  {7, 5},  {7, 2},  {7, 0},  {6, 2}, {6, 1}, {6, 0},
+    {5, 3},  {5, 2},  {5, 0},  {3, 7},  {3, 5},  {3, 2}, {3, 0}};
+
+se::CudaComputeCapability ResolveSupportedComputeCapability(
+    se::CudaComputeCapability compute_capability) {
   using CudaComputeCapabilities =
       se::CudaComputeCapability::CudaComputeCapabilities;
 
@@ -247,10 +253,6 @@ std::string GetSmName(se::CudaComputeCapability compute_capability) {
       se::CudaComputeCapability::FeatureExtension::kNone;
   // If the current compute capability isn't known, fallback to the
   // most recent version before it.
-  constexpr stream_executor::CudaComputeCapability kSupportedVersions[] = {
-      {12, 1}, {12, 0}, {11, 0}, {10, 3}, {10, 0}, {9, 0}, {8, 9}, {8, 7},
-      {8, 6},  {8, 0},  {7, 5},  {7, 2},  {7, 0},  {6, 2}, {6, 1}, {6, 0},
-      {5, 3},  {5, 2},  {5, 0},  {3, 7},  {3, 5},  {3, 2}, {3, 0}};
   // Initialize to the least supported version, which acts as a safe fallback
   auto target_compute_capability =
       kSupportedVersions[std::size(kSupportedVersions) - 1];
@@ -282,6 +284,13 @@ std::string GetSmName(se::CudaComputeCapability compute_capability) {
     target_compute_capability.feature_extension =
         se::CudaComputeCapability::FeatureExtension::kFamilyCompatibleFeatures;
   }
+
+  return target_compute_capability;
+}
+
+std::string GetSmName(se::CudaComputeCapability compute_capability) {
+  se::CudaComputeCapability target_compute_capability =
+      ResolveSupportedComputeCapability(compute_capability);
 
   // If the current CC isn't supported by LLVM and it is newer then
   // the max supported LLVM version, do not warn about it. The end
@@ -343,7 +352,7 @@ absl::StatusOr<std::string> CompileToPtx(
     uint64_t start_usecs = tsl::Env::Default()->NowMicros();
 
     // Link with libdevice, and optimize the LLVM module.
-    TF_RETURN_IF_ERROR(LinkAndOptimizeModule(
+    RETURN_IF_ERROR(LinkAndOptimizeModule(
         module, gpu_version, debug_options,
         LibDevicePath(debug_options.xla_gpu_cuda_data_dir()),
         NVPTXTargetModuleLinker, default_target_triple, target_machine.get(),

@@ -188,8 +188,8 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
           max = 7.f;
           break;
         case TensorType_INT2:
-          min = -2.f;
-          max = 2.f;
+          min = -1.f;
+          max = 1.f;
           break;
         case TensorType_INT8:
           min = -63.5f;

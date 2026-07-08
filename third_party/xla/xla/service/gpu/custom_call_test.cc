@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/array.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/ffi/execution_context.h"
@@ -95,7 +96,7 @@ using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 
 class CustomCallTest : public ClientLibraryTestRunnerMixin<
-                           HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+                           HloInterpreterReferenceMixin<HloTestBase>> {
  public:
   std::string PlatformName() {
     if (test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuCuda)) {
@@ -395,9 +396,6 @@ TEST_F(CustomCallTest, ExportedFfiUnknownTarget) {
           HasSubstr(
               "No FFI handler registered for __xla_test$$unknown_target")));
 }
-
-// Memcpy and SubBuffers tests are already ported in
-// fusions/address_computation_fusion_test.cc
 
 std::string& kExpectedOpaque = *new std::string("abc\0def", 7);
 
@@ -1008,14 +1006,14 @@ static absl::Status AddOne(se::Stream* stream, ffi::AnyBuffer src,
 
   int32_t data[2];
   se::DeviceAddressBase buffer_mem = ret->device_memory();
-  TF_RETURN_IF_ERROR(stream->Memcpy(data, buffer_mem, sizeof(data)));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  RETURN_IF_ERROR(stream->Memcpy(data, buffer_mem, sizeof(data)));
+  RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   data[0] += 1;
   data[1] += 1;
 
-  TF_RETURN_IF_ERROR(stream->Memcpy(&buffer_mem, data, sizeof(data)));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  RETURN_IF_ERROR(stream->Memcpy(&buffer_mem, data, sizeof(data)));
+  RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   return absl::OkStatus();
 }
@@ -1136,14 +1134,14 @@ absl::Status UpdateBufferImpl(se::Stream* stream, ffi::AnyBuffer src,
   }
   int32_t data[4];
   se::DeviceAddressBase buffer_mem = ret->device_memory();
-  TF_RETURN_IF_ERROR(stream->Memcpy(data, buffer_mem, sizeof(data)));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  RETURN_IF_ERROR(stream->Memcpy(data, buffer_mem, sizeof(data)));
+  RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   data[offset] += 1;
   data[offset + 1] += 1;
 
-  TF_RETURN_IF_ERROR(stream->Memcpy(&buffer_mem, data, sizeof(data)));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  RETURN_IF_ERROR(stream->Memcpy(&buffer_mem, data, sizeof(data)));
+  RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   return absl::OkStatus();
 }

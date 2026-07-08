@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/device_id.h"
@@ -82,7 +83,7 @@ absl::StatusOr<int32_t> LogicalIdThunk<logical_id_kind>::GetIdForDevice(
 template <LogicalIdKind logical_id_kind>
 tsl::AsyncValueRef<typename LogicalIdThunk<logical_id_kind>::ExecuteEvent>
 LogicalIdThunk<logical_id_kind>::Execute(const ExecuteParams& params) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       se::DeviceAddressBase logical_id_data,
       params.buffer_allocations->GetDeviceAddress(logical_id_buffer_));
 
@@ -92,10 +93,9 @@ LogicalIdThunk<logical_id_kind>::Execute(const ExecuteParams& params) {
   TF_RET_CHECK(params.collective_params)
       << ToString<logical_id_kind>() << " id requires collective params";
 
-  TF_ASSIGN_OR_RETURN(
-      int32_t logical_id,
-      GetIdForDevice(params.collective_params->device_assignment,
-                     params.collective_params->global_device_id));
+  ASSIGN_OR_RETURN(int32_t logical_id,
+                   GetIdForDevice(params.collective_params->device_assignment,
+                                  params.collective_params->global_device_id));
 
   VLOG(3) << absl::StreamFormat("%s id: %d", ToString<logical_id_kind>(),
                                 logical_id);

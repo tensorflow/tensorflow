@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/collective_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/ffi/ffi.h"
-#include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -74,11 +74,10 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
         symbol_resolver = std::nullopt) {
   ThunkSequenceProto thunk_sequence_proto;
   *thunk_sequence_proto.add_thunks() = thunk_proto;
-  TF_ASSIGN_OR_RETURN(
-      ThunkSequence sequence,
-      DeserializeThunkSequenceProto(thunk_sequence_proto, buffer_allocations,
-                                    hlo_module, platform_name,
-                                    gpu_compute_capability, symbol_resolver));
+  ASSIGN_OR_RETURN(ThunkSequence sequence,
+                   DeserializeThunkSequenceProto(
+                       thunk_sequence_proto, buffer_allocations, hlo_module,
+                       platform_name, gpu_compute_capability, symbol_resolver));
   return std::move(sequence.front());
 }
 
@@ -309,6 +308,98 @@ TEST(ThunkProtoDeserializationTest, DeviceToDeviceCopyThunk) {
   ASSERT_NE(copy_thunk, nullptr);  // Check the cast succeeded
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, copy_thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
+}
+
+TEST(ThunkProtoDeserializationTest, DynamicSliceFusionThunk) {
+  constexpr int64_t kBufferSize = 1024;
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
+      R"pb(
+        thunk_info { profile_annotation: "profile_annotation" }
+        dynamic_slice_fusion_thunk {
+          parameters {
+            parameter_number: 0
+            parameter_shape {
+              dimensions: 256
+              element_type: F32
+              is_dynamic_dimension: false
+              layout { minor_to_major: 0 tail_padding_alignment_in_elements: 1 }
+            }
+            slice_shape {
+              dimensions: 256
+              element_type: F32
+              is_dynamic_dimension: false
+              layout { minor_to_major: 0 tail_padding_alignment_in_elements: 1 }
+            }
+          }
+          results {
+            result_number: 0
+            result_shape {
+              dimensions: 256
+              element_type: F32
+              is_dynamic_dimension: false
+              layout { minor_to_major: 0 tail_padding_alignment_in_elements: 1 }
+            }
+            update_shape {
+              dimensions: 256
+              element_type: F32
+              is_dynamic_dimension: false
+              layout { minor_to_major: 0 tail_padding_alignment_in_elements: 1 }
+            }
+          }
+          parameter_buffers {
+            buffer_allocation_index: 0
+            size: 1024
+            element_type: F32
+          }
+          result_buffers {
+            buffer_allocation_index: 1
+            size: 1024
+            element_type: F32
+          }
+          slice_allocations { index: 0 size: 1024 color: 0 }
+          embedded_thunks {
+            thunks {
+              thunk_info { profile_annotation: "embedded" }
+              memzero_thunk {
+                dest_buffer {
+                  slice {
+                    buffer_allocation_index: 0
+                    size: 1024
+                    element_type: F32
+                  }
+                  shape {
+                    dimensions: 256
+                    element_type: F32
+                    is_dynamic_dimension: false
+                    layout {
+                      minor_to_major: 0
+                      tail_padding_alignment_in_elements: 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      )pb");
+
+  std::vector<BufferAllocation> buffer_allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/kBufferSize, /*color=*/0),
+      BufferAllocation(/*index=*/1, /*size=*/kBufferSize, /*color=*/0)};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Thunk> thunk,
+      DeserializeThunkProto(proto, buffer_allocations, /*hlo_module=*/nullptr,
+                            kTestPlatformName, se::GpuComputeCapability()));
+
+  EXPECT_EQ(thunk->kind(), Kind::kDynamicSliceFusion);
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  EXPECT_TRUE(round_trip_proto.has_dynamic_slice_fusion_thunk());
+  EXPECT_EQ(round_trip_proto.dynamic_slice_fusion_thunk()
+                .embedded_thunks()
+                .thunks()
+                .size(),
+            1);
 }
 
 TEST(ThunkProtoDeserializationTest, WhileThunk) {
@@ -1238,17 +1329,11 @@ TEST(ThunkProtoDeserializationTest, AsyncStartAndDoneThunk) {
   EXPECT_EQ(deserialized_start->async_execution().get(),
             deserialized_done->async_execution().get());
 
-  // Verify the round-trip by re-serializing and comparing protos. The
-  // async_execution_id is derived from the shared_ptr address, so it changes
-  // across serialization boundaries. Overwrite it to match the original.
+  // Verify the round-trip by re-serializing and comparing protos.
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_start,
                           deserialized_start->ToProto());
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_done,
                           deserialized_done->ToProto());
-
-  uint64_t new_id = round_trip_start.async_start_thunk().async_execution_id();
-  start_proto.mutable_async_start_thunk()->set_async_execution_id(new_id);
-  done_proto.mutable_async_done_thunk()->set_async_execution_id(new_id);
 
   EXPECT_THAT(round_trip_start, EqualsProto(start_proto));
   EXPECT_THAT(round_trip_done, EqualsProto(done_proto));
@@ -1376,7 +1461,44 @@ TEST(ThunkProtoDeserializationTest, CollectiveKernelThunk) {
             replica_groups { replica_ids: 0 replica_ids: 1 }
             group_mode: COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA
           }
-          reduction_kind: REDUCTION_KIND_SUM
+          kernel_spec {
+            input_buffer_specs {
+              requires_multimem: false
+              symmetric_memory_type: SYMMETRIC_MEMORY_TYPE_NONE
+            }
+            output_buffer_specs {
+              requires_multimem: false
+              symmetric_memory_type: SYMMETRIC_MEMORY_TYPE_NONE
+            }
+            scratch_buffers {
+              size_bytes: 1024
+              requires_multimem: false
+              symmetric_memory_type: SYMMETRIC_MEMORY_TYPE_XLA_RENDEZVOUS
+              should_memzero: true
+              should_double_buffer: true
+            }
+            scratch_buffers {
+              size_bytes: 1024
+              requires_multimem: false
+              symmetric_memory_type: SYMMETRIC_MEMORY_TYPE_XLA_RENDEZVOUS
+              should_memzero: false
+              should_double_buffer: true
+            }
+            argument_descriptors { type: KERNEL_ARG_TYPE_INPUT_BUFFER index: 0 }
+            argument_descriptors {
+              type: KERNEL_ARG_TYPE_OUTPUT_BUFFER
+              index: 0
+            }
+            argument_descriptors {
+              type: KERNEL_ARG_TYPE_SCRATCH_BUFFER
+              index: 0
+            }
+            argument_descriptors {
+              type: KERNEL_ARG_TYPE_SCRATCH_BUFFER
+              index: 1
+            }
+            invocation_count_increment: 1
+          }
           is_async: false
           buffers {
             element_count: 64
@@ -1393,7 +1515,7 @@ TEST(ThunkProtoDeserializationTest, CollectiveKernelThunk) {
               }
             }
             destination_buffer {
-              slice { offset: 0 size: 256 buffer_allocation_index: 1 }
+              slice { offset: 0 size: 256 buffer_allocation_index: 0 }
               shape {
                 dimensions: 64
                 element_type: S32
@@ -1404,6 +1526,8 @@ TEST(ThunkProtoDeserializationTest, CollectiveKernelThunk) {
                 }
               }
             }
+            source_memory_space: 0
+            destination_memory_space: 0
           }
           collective_kernel_enabled: true
           kernel_name: "my_kernel"
@@ -1412,7 +1536,6 @@ TEST(ThunkProtoDeserializationTest, CollectiveKernelThunk) {
             thread_counts_per_block { coordinates { x: 4 y: 5 z: 6 } }
           }
           shmem_bytes: 1024
-          is_multimem_enabled: false
           cubin: "my_cubin"
           use_pdl: false
         }
@@ -1422,14 +1545,36 @@ TEST(ThunkProtoDeserializationTest, CollectiveKernelThunk) {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Thunk> thunk,
       DeserializeThunkProto(proto, buffer_allocations, /*hlo_module=*/nullptr,
                             kTestPlatformName, se::GpuComputeCapability()));
   auto* kernel_thunk = dynamic_cast<CollectiveKernelThunk*>(thunk.get());
   ASSERT_NE(kernel_thunk, nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, kernel_thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, kernel_thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
+}
+
+TEST(ThunkProtoDeserializationTest, ConcurrentRegionIdPreserved) {
+  Thunk::ThunkInfo thunk_info{};
+  thunk_info.profile_annotation = "profile_annotation";
+  thunk_info.concurrent_region_id = 42;
+
+  SequentialThunk thunk(thunk_info, ThunkSequence{});
+  EXPECT_EQ(thunk.concurrent_region_id(), 42);
+
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
+  EXPECT_TRUE(proto.thunk_info().has_concurrent_region_id());
+  EXPECT_EQ(proto.thunk_info().concurrent_region_id(), 42);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Thunk> deserialized,
+      DeserializeThunkProto(proto, /*buffer_allocations=*/{},
+                            /*hlo_module=*/nullptr, kTestPlatformName,
+                            /*gpu_compute_capability=*/{}));
+
+  EXPECT_TRUE(deserialized->concurrent_region_id().has_value());
+  EXPECT_EQ(*deserialized->concurrent_region_id(), 42);
 }
 
 }  // namespace

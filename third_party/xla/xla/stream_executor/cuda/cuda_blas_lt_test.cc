@@ -42,8 +42,7 @@ class CudaBlasLtTest : public ::testing::Test {
     ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
     LOG(INFO) << "Device name: " << executor_->GetDeviceDescription().name();
     ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream());
-    blas_lt_ = gpu::BlasLt::Get(stream_.get());
-    ASSERT_NE(blas_lt_, nullptr);
+    ASSERT_OK_AND_ASSIGN(blas_lt_, gpu::BlasLt::Get(executor_));
   }
 
   template <typename OutputT>
@@ -102,9 +101,8 @@ class CudaBlasLtTest : public ::testing::Test {
                                         cfg, gpu::BlasLt::Epilogue::kDefault));
 
     uint32_t workspace_size = 32 * 1024 * 1024;  // 32 MB
-    ASSERT_OK_AND_ASSIGN(
-        auto algorithms,
-        plan->GetAlgorithms(stream_.get(), 128, workspace_size));
+    ASSERT_OK_AND_ASSIGN(auto algorithms,
+                         plan->GetAlgorithms(128, workspace_size));
     ASSERT_FALSE(algorithms.empty());
     ASSERT_OK(plan->SetAlgorithm(algorithms[0]));
 

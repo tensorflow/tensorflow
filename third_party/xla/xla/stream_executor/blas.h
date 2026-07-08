@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/blas.pb.h"
 #include "xla/stream_executor/data_type.h"
 #include "xla/stream_executor/device_address.h"
@@ -225,7 +226,7 @@ constexpr bool is_any_of() {
 // behavior at the current time; see b/13176597
 class BlasSupport {
  public:
-  virtual ~BlasSupport() {}
+  virtual ~BlasSupport() = default;
 
   virtual gpu::BlasLt *GetBlasLt() = 0;
 
@@ -414,9 +415,9 @@ class BlasSupport {
       int64_t stride_c, int batch_count, blas::ComputationType computation_type,
       blas::AlgorithmType algorithm, const EngineOptions& engine_options,
       blas::ProfileResult* output_profile_result, blas::CallContext context) {
-    TF_RETURN_IF_ERROR(
-        CheckTypesForExtendedBlas<InputType, OutputType, ConstantType>(
-            computation_type));
+    RETURN_IF_ERROR(
+        (CheckTypesForExtendedBlas<InputType, OutputType, ConstantType>(
+            computation_type)));
 
     void *alpha_ptr = &alpha;
     void *beta_ptr = &beta;
@@ -496,9 +497,9 @@ class BlasSupport {
       blas::ComputationType computation_type, blas::AlgorithmType algorithm,
       const EngineOptions& engine_options,
       blas::ProfileResult* output_profile_result, blas::CallContext context) {
-    TF_RETURN_IF_ERROR(
-        CheckTypesForExtendedBlas<InputType, OutputType, ConstantType>(
-            computation_type));
+    RETURN_IF_ERROR(
+        (CheckTypesForExtendedBlas<InputType, OutputType, ConstantType>(
+            computation_type)));
 
     void *alpha_ptr = &alpha;
     void *beta_ptr = &beta;
@@ -654,7 +655,7 @@ class BlasSupport {
  protected:
   DeviceAddressBase* GetWorkspace();
 
-  BlasSupport() {}
+  BlasSupport() = default;
 
  private:
   // Workspace memory pointer is thread local, once it is set all Blas
@@ -718,14 +719,14 @@ class BlasSupport {
   template <typename T>
   void UpcastHalfToFloat(void **alpha_ptr, void **beta_ptr,
                          float *alpha_storage, float *beta_storage) {
-    if (std::is_same<T, Eigen::half>::value) {
+    if (std::is_same_v<T, Eigen::half>) {
       *alpha_storage =
           static_cast<float>(*reinterpret_cast<Eigen::half *>(*alpha_ptr));
       *beta_storage =
           static_cast<float>(*reinterpret_cast<Eigen::half *>(*beta_ptr));
       *alpha_ptr = alpha_storage;
       *beta_ptr = beta_storage;
-    } else if (std::is_same<T, Eigen::bfloat16>::value) {
+    } else if (std::is_same_v<T, Eigen::bfloat16>) {
       *alpha_storage =
           static_cast<float>(*reinterpret_cast<Eigen::bfloat16 *>(*alpha_ptr));
       *beta_storage =

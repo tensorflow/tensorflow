@@ -60,6 +60,9 @@ void ReadDynamicShape(PjRtRawBufferRef raw_buffer,
                       tsl::AsyncValueRef<xla::Shape> output_shape,
                       xla::Shape shape, PjRtDynamicShapeKind kind);
 
+// Strips any metadata to give a logical shape.
+void StripMetadataForLogicalShape(xla::Shape& shape);
+
 }  // namespace xla
 
 #endif  // XLA_PJRT_DYNAMIC_SHAPES_H_

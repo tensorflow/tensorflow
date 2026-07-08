@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/Any.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
@@ -257,7 +258,7 @@ absl::Status LinkAndOptimizeModule(
     return absl::StrFormat("XlaOptimizeLlvmIr:#module=%s#",
                            module->getName().str());
   });
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       module_linker(module, gpu_version, debug_options, device_bitcode_path));
 
   llvm::LoopAnalysisManager lam;

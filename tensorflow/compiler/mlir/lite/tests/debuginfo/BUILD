@@ -48,7 +48,7 @@ py_binary(
     exec_properties = if_oss(
         None,
         select({
-            "//tools/cpp:asan_build": {"cpp_link.mem": "20g"},
+            "@bazel_tools//tools/cpp:asan_build": {"cpp_link.mem": "20g"},
             "//conditions:default": None,
         }),
     ),
@@ -66,7 +66,7 @@ py_binary(
     exec_properties = if_oss(
         None,
         select({
-            "//tools/cpp:asan_build": {"cpp_link.mem": "20g"},
+            "@bazel_tools//tools/cpp:asan_build": {"cpp_link.mem": "20g"},
             "//conditions:default": None,
         }),
     ),

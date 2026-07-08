@@ -16,22 +16,43 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/runtime/collective_clique_requests.h"
+#include "xla/backends/gpu/runtime/collective_memory_requests.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/future.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_slice.h"
@@ -41,10 +62,10 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/stream_executor/trace_command_buffer_factory.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
@@ -73,6 +94,63 @@ static bool IsAtLeastCuda12900(const se::StreamExecutor* executor) {
          se::SemanticVersion(12, 9, 0);
 }
 
+class FailingCommunicator : public Communicator {
+ public:
+  Future<> AllReduce(se::DeviceAddressBase, se::DeviceAddressBase,
+                     PrimitiveType, size_t, ReductionKind,
+                     const Executor&) override {
+    return Failed();
+  }
+
+  Future<> Broadcast(se::DeviceAddressBase, se::DeviceAddressBase,
+                     PrimitiveType, size_t, RankId, const Executor&) override {
+    return Failed();
+  }
+
+  Future<> ReduceScatter(se::DeviceAddressBase, se::DeviceAddressBase,
+                         PrimitiveType, size_t, ReductionKind,
+                         const Executor&) override {
+    return Failed();
+  }
+
+  Future<> AllGather(se::DeviceAddressBase, se::DeviceAddressBase,
+                     PrimitiveType, size_t, const Executor&) override {
+    return Failed();
+  }
+
+  Future<> CollectivePermute(se::DeviceAddressBase, se::DeviceAddressBase,
+                             PrimitiveType, size_t, std::optional<RankId>,
+                             absl::Span<const RankId>,
+                             const Executor&) override {
+    return Failed();
+  }
+
+  Future<> AllToAll(absl::InlinedVector<se::DeviceAddressBase, 4>,
+                    absl::InlinedVector<se::DeviceAddressBase, 4>,
+                    PrimitiveType, size_t, const Executor&) override {
+    return Failed();
+  }
+
+  Future<> Send(se::DeviceAddressBase, PrimitiveType, size_t, RankId,
+                const Executor&) override {
+    return Failed();
+  }
+
+  Future<> Recv(se::DeviceAddressBase, PrimitiveType, size_t, RankId,
+                const Executor&) override {
+    return Failed();
+  }
+
+  absl::StatusOr<size_t> NumRanks() const override { return 1; }
+  std::string ToString() const override { return "FailingCommunicator"; }
+
+ private:
+  static Future<> Failed() {
+    return Future<>(absl::InternalError(
+        "FailingCommunicator should not be used by collective kernel tests"));
+  }
+};
+
 // Test-only subclass whose ExecuteOnStream and Record both bypass NCCL so the
 // command-buffer wiring can be exercised without a live communicator. Record
 // traces a trivial memset into a nested command buffer and attaches it as a
@@ -81,7 +159,7 @@ static absl::StatusOr<const se::CommandBuffer::Command*> RecordNoOpCollective(
     const CollectiveThunk& thunk, const Thunk::ExecuteParams& execute_params,
     const Command::RecordParams&, Command::RecordAction record_action,
     se::CommandBuffer* command_buffer) {
-  se::DeviceMemoryBase dst =
+  stream_executor::DeviceAddressBase dst =
       execute_params.buffer_allocations->GetDeviceAddress(
           thunk.buffers()[0].destination_buffer.slice);
   ASSIGN_OR_RETURN(

@@ -167,9 +167,4 @@ class ExpandFloatOpsPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass() {
-  return std::make_unique<ExpandFloatOpsPass>();
-}
-
 }  // namespace xla::cpu
