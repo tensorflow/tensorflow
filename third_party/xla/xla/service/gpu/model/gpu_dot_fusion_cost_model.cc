@@ -375,6 +375,19 @@ int64_t CalculateLoopIterBytes(const DotProblemInfo& dot,
   return lhs_iter_bytes + rhs_iter_bytes;
 }
 
+int64_t CalculateSharedMemoryPerBlockBytes(const DotProblemInfo& dot_info,
+                                           const DotTileSize& dot_tile,
+                                           int64_t num_stages) {
+  const int64_t lhs_tile_bytes =
+      dot_tile.m * dot_tile.k *
+      primitive_util::BitWidth(dot_info.lhs_element_type) / 8;
+  const int64_t rhs_tile_bytes =
+      dot_tile.n * dot_tile.k *
+      primitive_util::BitWidth(dot_info.rhs_element_type) / 8;
+
+  return (lhs_tile_bytes + rhs_tile_bytes) * num_stages;
+}
+
 }  // namespace detail
 
 absl::Status IsSupported(const HloDotInstruction* dot) {
@@ -497,6 +510,10 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
       detail::CalculateNumThreadblocks(dot_info, dot_tile);
   estimates.l2_bytes_read =
       detail::CalculateL2Bytes(dot_info, dot_tile, threadblock_count);
+
+  estimates.shared_memory_per_block_bytes =
+      detail::CalculateSharedMemoryPerBlockBytes(dot_info, dot_tile,
+                                                 num_stages);
 
   // Calculate L2 time.
   ASSIGN_OR_RETURN(absl::Duration l2_time,

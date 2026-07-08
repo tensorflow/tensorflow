@@ -348,6 +348,43 @@ TEST_F(GpuDotFusionCostModelTest, CalculateIterBytes) {
   EXPECT_EQ(iter_bytes, 24576);
 }
 
+TEST_F(GpuDotFusionCostModelTest, CalculateSharedMemoryPerBlockBytes) {
+  gpu_dot_fusion_cost_model::detail::DotProblemInfo dot_info_f32;
+  dot_info_f32.lhs_element_type = PrimitiveType::F32;
+  dot_info_f32.rhs_element_type = PrimitiveType::F32;
+
+  // Tile size: (64*16*4) + (64*16*4) = 8192 bytes.
+  // stages=3 -> 8192 * 3 = 24576 bytes.
+  gpu_dot_fusion_cost_model::detail::DotTileSize dot_tile_16{/*m=*/64, /*n=*/64,
+                                                             /*k=*/16, /*b=*/1};
+  EXPECT_EQ(
+      24576,
+      gpu_dot_fusion_cost_model::detail::CalculateSharedMemoryPerBlockBytes(
+          dot_info_f32, dot_tile_16, /*num_stages=*/3));
+
+  // Tile size: (64*64*4) + (16*64*4) = 20480 bytes.
+  // stages=4 -> 20480 * 4 = 81920 bytes.
+  gpu_dot_fusion_cost_model::detail::DotTileSize dot_tile_64{/*m=*/64, /*n=*/16,
+                                                             /*k=*/64, /*b=*/1};
+  EXPECT_EQ(
+      81920,
+      gpu_dot_fusion_cost_model::detail::CalculateSharedMemoryPerBlockBytes(
+          dot_info_f32, dot_tile_64, /*num_stages=*/4));
+
+  gpu_dot_fusion_cost_model::detail::DotProblemInfo dot_info_f64;
+  dot_info_f64.lhs_element_type = PrimitiveType::F64;
+  dot_info_f64.rhs_element_type = PrimitiveType::F64;
+
+  // Tile size: (64*16*8) + (64*16*8) = 16384 bytes.
+  // stages=1 -> 16384 * 1 = 16384 bytes.
+  gpu_dot_fusion_cost_model::detail::DotTileSize dot_tile_f64_16{
+      /*m=*/64, /*n=*/64, /*k=*/16, /*b=*/1};
+  EXPECT_EQ(
+      16384,
+      gpu_dot_fusion_cost_model::detail::CalculateSharedMemoryPerBlockBytes(
+          dot_info_f64, dot_tile_f64_16, /*num_stages=*/1));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

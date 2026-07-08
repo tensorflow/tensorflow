@@ -104,6 +104,11 @@ absl::Duration CalculatePipelinedLoopTime(int64_t num_stages,
 int64_t CalculateLoopIterBytes(const DotProblemInfo& dot,
                                const DotTileSize& dot_tile);
 
+// Calculates the shared memory per block in bytes.
+int64_t CalculateSharedMemoryPerBlockBytes(const DotProblemInfo& dot_info,
+                                           const DotTileSize& dot_tile,
+                                           int64_t num_stages);
+
 // Calculates the L2 time for a GPU DOT operation.
 absl::StatusOr<absl::Duration> CalculateL2Time(
     int64_t dot_k, int64_t tile_k, const se::DeviceDescription& device_info,
