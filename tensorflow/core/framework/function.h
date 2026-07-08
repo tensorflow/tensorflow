@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_FUNCTION_H_
 #define TENSORFLOW_CORE_FRAMEWORK_FUNCTION_H_
 
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -31,6 +32,9 @@ limitations under the License.
 // clang-format on
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
@@ -290,10 +294,105 @@ std::string DebugStringWhole(const GraphDef& gdef);
 // of NodeDefs doesn't matter.
 bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2);
 
+// Compact representations to reduce steady-state RAM usage of function
+// definitions.
+struct CompactNodeDef {
+  std::string name;
+  absl::string_view op;
+  std::vector<std::string> input;
+  std::string device;
+  absl::flat_hash_map<absl::string_view, AttrValue> attr;
+
+  bool operator==(const CompactNodeDef& other) const;
+  bool operator!=(const CompactNodeDef& other) const {
+    return !(*this == other);
+  }
+};
+
+struct CompactArgAttrs {
+  absl::flat_hash_map<absl::string_view, AttrValue> attr;
+
+  bool operator==(const CompactArgAttrs& other) const;
+  bool operator!=(const CompactArgAttrs& other) const {
+    return !(*this == other);
+  }
+};
+
+class CompactFunctionDef {
+ public:
+  CompactFunctionDef() = default;
+  explicit CompactFunctionDef(const FunctionDef& fdef);
+  CompactFunctionDef(const CompactFunctionDef& other) = default;
+  CompactFunctionDef(CompactFunctionDef&& other) noexcept = default;
+  CompactFunctionDef& operator=(const CompactFunctionDef& other) = default;
+  CompactFunctionDef& operator=(CompactFunctionDef&& other) noexcept = default;
+
+  // Convert from and to protobuf FunctionDef representation.
+  static CompactFunctionDef FromProto(const FunctionDef& fdef);
+  static CompactFunctionDef FromProto(FunctionDef&& fdef);
+  FunctionDef ToProto() const;
+
+  // Returns the signature of this function.
+  const OpDef& signature() const { return signature_; }
+  OpDef* mutable_signature() { return &signature_; }
+
+  // Interns a string in the shared function library string pool.
+  static absl::string_view Intern(absl::string_view s);
+
+  // Accessors for compact fields.
+  const std::vector<CompactNodeDef>& node_def() const { return node_def_; }
+  std::vector<CompactNodeDef>* mutable_node_def() { return &node_def_; }
+  const absl::flat_hash_map<absl::string_view, AttrValue>& attr() const {
+    return attr_;
+  }
+  absl::flat_hash_map<absl::string_view, AttrValue>* mutable_attr() {
+    return &attr_;
+  }
+  const absl::flat_hash_map<std::string, std::string>& ret() const {
+    return ret_;
+  }
+  absl::flat_hash_map<std::string, std::string>* mutable_ret() { return &ret_; }
+  const absl::flat_hash_map<std::string, std::string>& control_ret() const {
+    return control_ret_;
+  }
+  absl::flat_hash_map<std::string, std::string>* mutable_control_ret() {
+    return &control_ret_;
+  }
+  const absl::flat_hash_map<uint32_t, CompactArgAttrs>& arg_attr() const {
+    return arg_attr_;
+  }
+  absl::flat_hash_map<uint32_t, CompactArgAttrs>* mutable_arg_attr() {
+    return &arg_attr_;
+  }
+  const absl::flat_hash_map<uint32_t, uint32_t>& resource_arg_unique_id()
+      const {
+    return resource_arg_unique_id_;
+  }
+  absl::flat_hash_map<uint32_t, uint32_t>* mutable_resource_arg_unique_id() {
+    return &resource_arg_unique_id_;
+  }
+
+ private:
+  OpDef signature_;
+  absl::flat_hash_map<absl::string_view, AttrValue> attr_;
+  absl::flat_hash_map<uint32_t, CompactArgAttrs> arg_attr_;
+  absl::flat_hash_map<uint32_t, uint32_t> resource_arg_unique_id_;
+  std::vector<CompactNodeDef> node_def_;
+  absl::flat_hash_map<std::string, std::string> ret_;
+  absl::flat_hash_map<std::string, std::string> control_ret_;
+};
+
+// Equality helpers and hashing for CompactFunctionDef and FunctionDef forms.
+bool FunctionDefsEqual(const CompactFunctionDef& f1,
+                       const CompactFunctionDef& f2);
+bool FunctionDefsEqual(const CompactFunctionDef& f1, const FunctionDef& f2);
+bool FunctionDefsEqual(const FunctionDef& f1, const CompactFunctionDef& f2);
+
 // Return a hash of `fdef` that is consistent with FunctionDefsEqual method.
 // In other words, if two fdefs compare equal, their hash values will be the
 // same.
 uint64_t FunctionDefHash(const FunctionDef& fdef);
+uint64_t FunctionDefHash(const CompactFunctionDef& fdef);
 
 class CallFrameInterface {
  public:
@@ -386,10 +485,18 @@ class FunctionRecord : public core::RefCounted {
   const OpRegistrationData& op_registration_data() const;
   const bool finalized() const;
 
- private:
-  bool finalized_ = false;
+  // Access the compact representation directly without triggering proto
+  // generation.
+  const CompactFunctionDef& compact_fdef() const;
 
-  FunctionDef fdef_;
+ private:
+  mutable absl::Mutex mu_;
+  std::atomic<bool> finalized_{false};
+
+  CompactFunctionDef compact_fdef_ TF_GUARDED_BY(mu_);
+  FunctionDef unfinalized_fdef_ TF_GUARDED_BY(mu_);
+  mutable std::unique_ptr<FunctionDef> cached_fdef_ TF_GUARDED_BY(mu_);
+
   const StackTracesMap stack_traces_;
   const OpRegistrationData op_registration_data_;
 };

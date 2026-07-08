@@ -927,6 +927,140 @@ std::map<std::string, AttrValue> GetSetAttrs(const FunctionDef& fdef) {
 
 }  // end namespace
 
+bool CompactNodeDef::operator==(const CompactNodeDef& other) const {
+  if (name != other.name || op != other.op || device != other.device ||
+      input != other.input || attr.size() != other.attr.size()) {
+    return false;
+  }
+  for (const auto& pair : attr) {
+    auto it = other.attr.find(pair.first);
+    if (it == other.attr.end() ||
+        !AreAttrValuesEqual(pair.second, it->second)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool CompactArgAttrs::operator==(const CompactArgAttrs& other) const {
+  if (attr.size() != other.attr.size()) {
+    return false;
+  }
+  for (const auto& pair : attr) {
+    auto it = other.attr.find(pair.first);
+    if (it == other.attr.end() ||
+        !AreAttrValuesEqual(pair.second, it->second)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+absl::string_view CompactFunctionDef::Intern(absl::string_view s) {
+  if (s.empty()) {
+    return absl::string_view();
+  }
+  static absl::Mutex* mu = new absl::Mutex();
+  using MapType =
+      absl::flat_hash_map<absl::string_view, std::unique_ptr<std::string>>;
+  static auto* pool = new MapType();
+  absl::MutexLock l(mu);
+  auto str = std::make_unique<std::string>(s);
+  absl::string_view sv(str->data(), str->size());
+  auto [it, inserted] = pool->insert({sv, std::move(str)});
+  return it->first;
+}
+
+CompactFunctionDef::CompactFunctionDef(const FunctionDef& fdef) {
+  *this = FromProto(fdef);
+}
+
+CompactFunctionDef CompactFunctionDef::FromProto(const FunctionDef& fdef) {
+  return FromProto(FunctionDef(fdef));
+}
+
+CompactFunctionDef CompactFunctionDef::FromProto(FunctionDef&& fdef) {
+  CompactFunctionDef compact;
+  compact.signature_ = std::move(*fdef.mutable_signature());
+  for (const auto& pair : fdef.attr()) {
+    compact.attr_[Intern(pair.first)] = pair.second;
+  }
+  for (const auto& pair : fdef.arg_attr()) {
+    CompactArgAttrs c_arg_attrs;
+    for (const auto& attr_pair : pair.second.attr()) {
+      c_arg_attrs.attr[Intern(attr_pair.first)] = attr_pair.second;
+    }
+    compact.arg_attr_[pair.first] = std::move(c_arg_attrs);
+  }
+  compact.resource_arg_unique_id_.insert(fdef.resource_arg_unique_id().begin(),
+                                         fdef.resource_arg_unique_id().end());
+  compact.node_def_.reserve(fdef.node_def_size());
+  for (int i = 0; i < fdef.node_def_size(); ++i) {
+    NodeDef* node_proto = fdef.mutable_node_def(i);
+    CompactNodeDef cnode;
+    if (node_proto != nullptr) {
+      cnode.name = std::move(*node_proto->mutable_name());
+      cnode.op = Intern(node_proto->op());
+      cnode.input.reserve(node_proto->input_size());
+      for (int j = 0; j < node_proto->input_size(); ++j) {
+        cnode.input.push_back(std::move(*node_proto->mutable_input(j)));
+      }
+      cnode.device = std::move(*node_proto->mutable_device());
+      for (const auto& attr_pair : node_proto->attr()) {
+        cnode.attr[Intern(attr_pair.first)] = attr_pair.second;
+      }
+    }
+    compact.node_def_.push_back(std::move(cnode));
+  }
+  compact.ret_.insert(fdef.ret().begin(), fdef.ret().end());
+  compact.control_ret_.insert(fdef.control_ret().begin(),
+                              fdef.control_ret().end());
+  fdef.Clear();
+  return compact;
+}
+
+FunctionDef CompactFunctionDef::ToProto() const {
+  FunctionDef fdef;
+  *fdef.mutable_signature() = signature_;
+  for (const auto& pair : attr_) {
+    (*fdef.mutable_attr())[std::string(pair.first)] = pair.second;
+  }
+  FunctionDef::ArgAttrs arg_attrs_proto;
+  for (const auto& pair : arg_attr_) {
+    arg_attrs_proto.Clear();
+    for (const auto& attr_pair : pair.second.attr) {
+      (*arg_attrs_proto.mutable_attr())[std::string(attr_pair.first)] =
+          attr_pair.second;
+    }
+    (*fdef.mutable_arg_attr())[pair.first] = std::move(arg_attrs_proto);
+  }
+  for (const auto& pair : resource_arg_unique_id_) {
+    (*fdef.mutable_resource_arg_unique_id())[pair.first] = pair.second;
+  }
+  for (const CompactNodeDef& cnode : node_def_) {
+    NodeDef* node_proto = fdef.add_node_def();
+    if (node_proto != nullptr) {
+      node_proto->set_name(cnode.name);
+      node_proto->set_op(std::string(cnode.op));
+      for (const std::string& inp : cnode.input) {
+        node_proto->add_input(inp);
+      }
+      node_proto->set_device(cnode.device);
+      for (const auto& attr_pair : cnode.attr) {
+        (*node_proto->mutable_attr())[std::string(attr_pair.first)] =
+            attr_pair.second;
+      }
+    }
+  }
+  for (const auto& pair : ret_) {
+    (*fdef.mutable_ret())[pair.first] = pair.second;
+  }
+  for (const auto& pair : control_ret_) {
+    (*fdef.mutable_control_ret())[pair.first] = pair.second;
+  }
+  return fdef;
+}
+
 bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2) {
   if (!OpDefEqual(f1.signature(), f2.signature())) return false;
 
@@ -986,6 +1120,49 @@ uint64_t FunctionDefHash(const FunctionDef& fdef) {
   }
 
   return h;
+}
+
+bool FunctionDefsEqual(const CompactFunctionDef& f1,
+                       const CompactFunctionDef& f2) {
+  if (!OpDefEqual(f1.signature(), f2.signature())) return false;
+
+  if (f1.attr().size() != f2.attr().size()) return false;
+  for (const auto& iter1 : f1.attr()) {
+    auto iter2 = f2.attr().find(iter1.first);
+    if (iter2 == f2.attr().end()) return false;
+    if (!AreAttrValuesEqual(iter1.second, iter2->second)) return false;
+  }
+
+  if (f1.node_def().size() != f2.node_def().size()) return false;
+  for (size_t i = 0; i < f1.node_def().size(); ++i) {
+    if (f1.node_def()[i] != f2.node_def()[i]) return false;
+  }
+
+  if (f1.ret() != f2.ret()) return false;
+  if (f1.control_ret() != f2.control_ret()) return false;
+
+  if (f1.arg_attr().size() != f2.arg_attr().size()) return false;
+  for (const auto& aa1 : f1.arg_attr()) {
+    auto aa2 = f2.arg_attr().find(aa1.first);
+    if (aa2 == f2.arg_attr().end()) return false;
+    if (aa1.second != aa2->second) return false;
+  }
+
+  if (f1.resource_arg_unique_id() != f2.resource_arg_unique_id()) return false;
+
+  return true;
+}
+
+bool FunctionDefsEqual(const CompactFunctionDef& f1, const FunctionDef& f2) {
+  return FunctionDefsEqual(f1, CompactFunctionDef::FromProto(f2));
+}
+
+bool FunctionDefsEqual(const FunctionDef& f1, const CompactFunctionDef& f2) {
+  return FunctionDefsEqual(CompactFunctionDef::FromProto(f1), f2);
+}
+
+uint64_t FunctionDefHash(const CompactFunctionDef& fdef) {
+  return FunctionDefHash(fdef.ToProto());
 }
 
 static constexpr const char* const kExecutorAttr = "_executor";
@@ -1253,35 +1430,59 @@ absl::Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
 FunctionRecord::FunctionRecord(const FunctionDef& fdef,
                                const StackTracesMap& stack_traces,
                                bool finalized)
-    : FunctionRecord(FunctionDef(fdef), StackTracesMap(stack_traces),
-                     finalized) {}
+    : finalized_(finalized),
+      compact_fdef_(finalized ? CompactFunctionDef::FromProto(fdef)
+                              : CompactFunctionDef()),
+      unfinalized_fdef_(finalized ? FunctionDef() : fdef),
+      stack_traces_(stack_traces),
+      op_registration_data_(
+          finalized ? compact_fdef_.signature() : unfinalized_fdef_.signature(),
+          shape_inference::UnknownShape, true /* is_function */) {}
 
 FunctionRecord::FunctionRecord(FunctionDef&& fdef,
                                StackTracesMap&& stack_traces, bool finalized)
     : finalized_(finalized),
-      fdef_(std::move(fdef)),
+      compact_fdef_(finalized ? CompactFunctionDef::FromProto(std::move(fdef))
+                              : CompactFunctionDef()),
+      unfinalized_fdef_(finalized ? FunctionDef() : std::move(fdef)),
       stack_traces_(std::move(stack_traces)),
-      // Exact shape inference for functions is handled by ShapeRefiner.
-      // Here we pass a dummy shape inference function for legacy code paths.
-      op_registration_data_(fdef_.signature(), shape_inference::UnknownShape,
-                            true /* is_function */) {}
+      op_registration_data_(
+          finalized ? compact_fdef_.signature() : unfinalized_fdef_.signature(),
+          shape_inference::UnknownShape, true /* is_function */) {}
 
 void FunctionRecord::finalize() {
-  if (!finalized_) {
-    finalized_ = true;
+  if (!finalized_.load(std::memory_order_acquire)) {
+    absl::MutexLock l(&mu_);
+    if (!finalized_.load(std::memory_order_relaxed)) {
+      compact_fdef_ =
+          CompactFunctionDef::FromProto(std::move(unfinalized_fdef_));
+      unfinalized_fdef_.Clear();
+      finalized_.store(true, std::memory_order_release);
+    }
   }
 }
 
 absl::StatusOr<FunctionDef*> FunctionRecord::mutable_fdef() {
-  if (finalized_) {
+  absl::MutexLock l(&mu_);
+  if (finalized_.load(std::memory_order_relaxed)) {
     return absl::Status(absl::StatusCode::kPermissionDenied,
                         "Can not mutate FunctionDef after finalization.");
   }
 
-  return &fdef_;
+  return &unfinalized_fdef_;
 }
 
-const FunctionDef& FunctionRecord::fdef() const { return fdef_; }
+const FunctionDef& FunctionRecord::fdef() const {
+  if (!finalized_.load(std::memory_order_acquire)) {
+    absl::MutexLock l(&mu_);
+    return unfinalized_fdef_;
+  }
+  absl::MutexLock l(&mu_);
+  if (cached_fdef_ == nullptr) {
+    cached_fdef_ = std::make_unique<FunctionDef>(compact_fdef_.ToProto());
+  }
+  return *cached_fdef_;
+}
 
 const StackTracesMap& FunctionRecord::stack_traces() const {
   return stack_traces_;
@@ -1291,7 +1492,18 @@ const OpRegistrationData& FunctionRecord::op_registration_data() const {
   return op_registration_data_;
 }
 
-const bool FunctionRecord::finalized() const { return finalized_; }
+const bool FunctionRecord::finalized() const {
+  return finalized_.load(std::memory_order_acquire);
+}
+
+const CompactFunctionDef& FunctionRecord::compact_fdef() const {
+  if (!finalized_.load(std::memory_order_acquire)) {
+    absl::MutexLock l(&mu_);
+    const_cast<CompactFunctionDef&>(compact_fdef_) =
+        CompactFunctionDef::FromProto(unfinalized_fdef_);
+  }
+  return compact_fdef_;
+}
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
     const FunctionLibraryDefinition& other)
@@ -1500,11 +1712,13 @@ absl::Status FunctionLibraryDefinition::AddFunctionRecord(
 absl::Status FunctionLibraryDefinition::AddHelper(FunctionRecord* registration,
                                                   bool* added) {
   *added = false;
-  auto iter = records_.find(registration->fdef().signature().name());
+  const std::string& name = registration->op_registration_data().op_def.name();
+  auto iter = records_.find(name);
   if (iter != records_.end()) {
-    if (!FunctionDefsEqual(iter->second->fdef(), registration->fdef())) {
+    if (!FunctionDefsEqual(iter->second->compact_fdef(),
+                           registration->compact_fdef())) {
       return absl::InvalidArgumentError(absl::StrCat(
-          "Cannot add function '", registration->fdef().signature().name(),
+          "Cannot add function '", name,
           "' because a different function with the same name already "
           "exists."));
     }
@@ -1512,16 +1726,14 @@ absl::Status FunctionLibraryDefinition::AddHelper(FunctionRecord* registration,
     return absl::OkStatus();
   }
   const OpDef* op_def;
-  if (default_registry_
-          ->LookUpOpDef(registration->fdef().signature().name(), &op_def)
-          .ok()) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Cannot add function '", registration->fdef().signature().name(),
-        "' because an op with the same name already exists."));
+  if (default_registry_->LookUpOpDef(name, &op_def).ok()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Cannot add function '", name,
+                     "' because an op with the same name already exists."));
   }
   registration->Ref();
   registration->finalize();
-  records_.insert({registration->fdef().signature().name(), registration});
+  records_.insert({name, registration});
   *added = true;
   return absl::OkStatus();
 }
@@ -1542,7 +1754,8 @@ absl::Status FunctionLibraryDefinition::CopyFunctionDefFrom(
   }
   core::RefCountPtr<FunctionRecord> self_record = FindRecord(name);
   if (self_record) {
-    if (!FunctionDefsEqual(self_record->fdef(), other_record->fdef())) {
+    if (!FunctionDefsEqual(self_record->compact_fdef(),
+                           other_record->compact_fdef())) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Cannot copy function '", name,
           "' because a different function with the same name already "

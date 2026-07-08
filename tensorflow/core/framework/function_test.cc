@@ -1900,5 +1900,41 @@ TEST(FrozenStackTrace, ToStringWithDropInternalFrames) {
             "File \"some/path/beta.cc\", line 30, in fox");
 }
 
+TEST(CompactFunctionDefTest, BasicRoundTripAndStringInterning) {
+  FunctionDef fdef = test::function::XTimesTwo();
+  CompactFunctionDef compact = CompactFunctionDef::FromProto(fdef);
+  EXPECT_TRUE(FunctionDefsEqual(compact, fdef));
+  EXPECT_TRUE(FunctionDefsEqual(fdef, compact));
+  EXPECT_EQ(FunctionDefHash(fdef), FunctionDefHash(compact));
+
+  FunctionDef round_trip = compact.ToProto();
+  EXPECT_TRUE(FunctionDefsEqual(fdef, round_trip));
+
+  // Test string interning exactly matches stable pointer
+  absl::string_view op1 = CompactFunctionDef::Intern("MatMul");
+  absl::string_view op2 = CompactFunctionDef::Intern("MatMul");
+  EXPECT_EQ(op1.data(), op2.data());
+}
+
+TEST(CompactFunctionDefTest, FunctionRecordBehavior) {
+  FunctionDef fdef = test::function::XTimesFour();
+  core::RefCountPtr<FunctionRecord> record(
+      new FunctionRecord(fdef, StackTracesMap(), true));
+  EXPECT_TRUE(record->finalized());
+
+  // Accessing compact representation directly.
+  const CompactFunctionDef& compact = record->compact_fdef();
+  EXPECT_EQ(compact.signature().name(), fdef.signature().name());
+
+  // Check lazy conversion back to const FunctionDef&.
+  const FunctionDef& lazy_fdef = record->fdef();
+  EXPECT_TRUE(FunctionDefsEqual(lazy_fdef, fdef));
+
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
+  TF_EXPECT_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
+  TF_EXPECT_OK(lib_def.AddFunctionDef(test::function::XTimesFour()));
+  EXPECT_NE(lib_def.Find("XTimesTwo"), nullptr);
+}
+
 }  // end namespace
 }  // end namespace tensorflow
