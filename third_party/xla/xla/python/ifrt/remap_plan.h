@@ -181,7 +181,8 @@ class RemapPlan {
 
   bool operator==(const RemapPlan& other) const {
     return rep_ == other.rep_ ||
-           (rep_->input_specs == other.rep_->input_specs &&
+           (absl::HashOf(*this) == absl::HashOf(other) &&
+            rep_->input_specs == other.rep_->input_specs &&
             rep_->output_specs == other.rep_->output_specs &&
             rep_->mappings == other.rep_->mappings &&
             rep_->input_devices_for_output_map ==
@@ -240,6 +241,10 @@ class RemapPlan {
           mappings(std::move(mappings)),
           input_devices_for_output_map(
               std::move(input_devices_for_output_map)) {}
+
+    // `operator==` is more efficient with shallow copies.
+    Rep(const Rep&) = delete;
+    Rep& operator=(const Rep&) = delete;
   };
 
   absl_nonnull std::shared_ptr<const Rep> rep_;
