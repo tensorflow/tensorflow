@@ -139,6 +139,7 @@ xla_cc_test(
         ":symbolic_tile_analysis",
         ":tiled_hlo_schedule",
         ":tiling_specification",
+        "//xla:xla_proto_cc",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/analysis:interval",
         "//xla/hlo/analysis:symbolic_map",
