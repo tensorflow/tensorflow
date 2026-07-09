@@ -1452,8 +1452,9 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   }
 
   if (proto.has_original_value()) {
-    instruction->set_original_value(
-        OriginalValue::FromProto(proto.original_value()));
+    ASSIGN_OR_RETURN(auto original_value,
+                     OriginalValue::FromProto(proto.original_value()));
+    instruction->set_original_value(original_value);
   }
 
   return instruction;

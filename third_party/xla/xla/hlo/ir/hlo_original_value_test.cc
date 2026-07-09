@@ -111,33 +111,52 @@ TEST(OriginalValueTest, ProtoSerde) {
                                    Node::Leaf(OriginalArray{"inst2", {2}})}));
 
   OriginalValueProto proto = value.ToProto();
-  std::shared_ptr<OriginalValue> value_from_proto =
-      OriginalValue::FromProto(proto);
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<OriginalValue> value_from_proto,
+                          OriginalValue::FromProto(proto));
   EXPECT_EQ(*value_from_proto, value);
 
   // Test with nullopt
   OriginalValue value_with_null(Node::Tuple(
       {Node::Leaf(OriginalArray{"inst1", {1}}), Node::Leaf(std::nullopt)}));
   OriginalValueProto proto_with_null = value_with_null.ToProto();
-  std::shared_ptr<OriginalValue> value_with_null_from_proto =
-      OriginalValue::FromProto(proto_with_null);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<OriginalValue> value_with_null_from_proto,
+      OriginalValue::FromProto(proto_with_null));
   EXPECT_EQ(value_with_null_from_proto->ToString(), value_with_null.ToString());
   EXPECT_EQ(*value_with_null_from_proto, value_with_null);
 
   // Test with synthetic call.
   OriginalValue value_synthetic = OriginalValue::SyntheticCall();
   OriginalValueProto proto_synthetic = value_synthetic.ToProto();
-  std::shared_ptr<OriginalValue> value_synthetic_from_proto =
-      OriginalValue::FromProto(proto_synthetic);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<OriginalValue> value_synthetic_from_proto,
+      OriginalValue::FromProto(proto_synthetic));
   EXPECT_TRUE(value_synthetic_from_proto->is_synthetic_call());
   EXPECT_EQ(*value_synthetic_from_proto, value_synthetic);
 
   // Test with empty tuple.
   OriginalValue value_empty = OriginalValue(Node::Tuple());
   OriginalValueProto proto_empty = value_empty.ToProto();
-  std::shared_ptr<OriginalValue> value_empty_from_proto =
-      OriginalValue::FromProto(proto_empty);
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<OriginalValue> value_empty_from_proto,
+                          OriginalValue::FromProto(proto_empty));
   EXPECT_EQ(*value_empty_from_proto, value_empty);
+}
+
+TEST(OriginalValueTest, ProtoValidation) {
+  // Test with negative index in elements.
+  OriginalValueProto invalid_proto1;
+  auto* element1 = invalid_proto1.add_elements();
+  element1->add_shape_index(-1);
+  EXPECT_FALSE(OriginalValue::FromProto(invalid_proto1).ok());
+
+  // Test with negative index in original array.
+  OriginalValueProto invalid_proto2;
+  auto* element2 = invalid_proto2.add_elements();
+  element2->add_shape_index(1);
+  auto* array2 = element2->mutable_original_array();
+  array2->set_instruction_name("inst");
+  array2->add_shape_index(-2);
+  EXPECT_FALSE(OriginalValue::FromProto(invalid_proto2).ok());
 }
 
 TEST(OriginalValueTest, ElementAccess) {
@@ -488,3 +507,4 @@ TEST_F(OriginalValueHloTest, CopyOriginalValueWithMap) {
 
 }  // namespace
 }  // namespace xla
+// Harmless test comment.

@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/base/no_destructor.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -171,15 +172,27 @@ OriginalValueProto OriginalValue::ToProto() const {
   return original_value_proto;
 }
 
-std::shared_ptr<OriginalValue> OriginalValue::FromProto(
+absl::StatusOr<std::shared_ptr<OriginalValue>> OriginalValue::FromProto(
     const xla::OriginalValueProto& original_value_proto) {
   if (original_value_proto.is_synthetic_call()) {
     return std::make_shared<OriginalValue>(OriginalValue::SyntheticCall());
   }
   std::vector<std::pair<ShapeIndex, std::optional<OriginalArray>>> nodes;
   for (const auto& leaf : original_value_proto.elements()) {
+    for (int64_t idx : leaf.shape_index()) {
+      if (idx < 0) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Negative index in original value elements: ", idx));
+      }
+    }
     ShapeIndex index(leaf.shape_index());
     if (leaf.has_original_array()) {
+      for (int64_t idx : leaf.original_array().shape_index()) {
+        if (idx < 0) {
+          return absl::InvalidArgumentError(
+              absl::StrCat("Negative index in original array: ", idx));
+        }
+      }
       nodes.emplace_back(index,
                          OriginalArray::FromProto(leaf.original_array()));
     } else {
