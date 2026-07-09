@@ -1140,6 +1140,7 @@ xla_cc_test(
     srcs = ["triton_tiling_propagation_test.cc"],
     deps = [
         ":triton_tiling_propagation",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest",

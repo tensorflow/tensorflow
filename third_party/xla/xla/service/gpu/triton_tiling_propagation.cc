@@ -1046,9 +1046,17 @@ bool IsInputWorthFusing(const HloInstruction& hlo) {
   //   the slice can be fused into the producer instead of here.
   // * AllUsersAreSlicesWithSameShape - slices of the same shape can be
   //   fused into the producer by the multi output fusion pass.
-  if (hlo.opcode() == HloOpcode::kSlice && hlo.operand(0)->user_count() > 1 &&
-      !AllUsersAreSlicesWithSameShape(*hlo.operand(0), hlo.shape())) {
-    return true;
+  if (hlo.opcode() == HloOpcode::kSlice) {
+    const HloInstruction* operand = hlo.operand(0);
+    while (HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kTranspose,
+                            HloOpcode::kReshape>(operand) &&
+           operand->user_count() == 1) {
+      operand = operand->operand(0);
+    }
+    if (operand->user_count() > 1 &&
+        !AllUsersAreSlicesWithSameShape(*operand, hlo.shape())) {
+      return true;
+    }
   }
 
   const bool enable_subchannel_dequantisation_fusion =
