@@ -289,6 +289,15 @@ absl::Status NcclCollectives::GroupLaunch(
   return absl::OkStatus();
 }
 
+size_t NcclCollectives::SymmetricMemoryAlignment() const {
+  // Multicast memory requires buffers aligned to
+  // CU_MULTICAST_GRANULARITY_MINIMUM which is 2MB on Hopper. Since both
+  // symmetric and multicast buffers share the same kCollective memory space
+  // color, we use the larger alignment.
+  // TODO(ezhulenev): Query this from CUDA at runtime.
+  return 2 * 1024 * 1024;
+}
+
 static absl::StatusOr<ncclConfig_t> AsNcclConfig(
     const GpuCollectives::Config& config,
     const se::StreamExecutor* stream_executor) {

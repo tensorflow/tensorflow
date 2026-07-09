@@ -328,11 +328,5 @@ TEST(CudaExecutorMultiGpuTest, GetGpuInterconnectStatus) {
   }
 }
 
-TEST(CudaExecutorMultiGpuTest, GetCollectiveMemoryGranularity) {
-  CudaExecutor* executor = static_cast<CudaExecutor*>(GetGpuExecutor(0));
-  EXPECT_THAT(executor->GetCollectiveMemoryGranularity(),
-              IsOkAndHolds(2 * 1024 * 1024));
-}
-
 }  // namespace
 }  // namespace stream_executor::gpu
