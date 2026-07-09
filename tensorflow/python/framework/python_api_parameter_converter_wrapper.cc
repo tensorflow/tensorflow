@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/python/framework/python_api_parameter_converter.h"
 #include "tensorflow/python/framework/python_tensor_converter.h"
 
+#define PyList_ITEMS(o) (((PyListObject*)(o))->ob_item)
+
 namespace py = pybind11;
 
 namespace tensorflow {
@@ -33,30 +35,40 @@ PythonAPIInfo::InferredAttributes Convert(
     const PythonTensorConverter& tensor_converter, py::handle arg_list) {
   PythonAPIInfo::InferredAttributes inferred_attrs;
 
-  if (!PyList_Check(arg_list.ptr())) {
-    PyErr_SetString(PyExc_TypeError, "Expected a list");
-    throw py::error_already_set();
+  PyObject* args_list = nullptr;
+  bool is_list = PyList_Check(arg_list.ptr());
+  if (is_list) {
+    args_list = arg_list.ptr();
+    Py_INCREF(args_list);
+  } else {
+    args_list = PySequence_List(arg_list.ptr());
+    if (!args_list) {
+      throw py::error_already_set();
+    }
   }
 
-  PyObject* args_fast = PySequence_Fast(arg_list.ptr(), "Expected a list");
-  if (!args_fast) {
+  absl::Span<PyObject*> args_raw(PyList_ITEMS(args_list),
+                                 PyList_GET_SIZE(args_list));
+
+  int max_index = GetPythonAPIMaxIndex(api_info);
+  if (static_cast<int>(args_raw.size()) <= max_index) {
+    PyErr_SetString(PyExc_ValueError,
+                    "Parameters list size is smaller than expected");
+    Py_DECREF(args_list);
     throw py::error_already_set();
   }
-
-  absl::Span<PyObject*> args_raw(PySequence_Fast_ITEMS(args_fast),
-                                 PySequence_Fast_GET_SIZE(args_fast));
 
   if (!CopyPythonAPITensorLists(api_info, args_raw)) {
-    Py_DECREF(args_fast);
+    Py_DECREF(args_list);
     throw py::error_already_set();
   }
   if (!ConvertPythonAPIParameters(api_info, tensor_converter, args_raw,
                                   &inferred_attrs)) {
-    Py_DECREF(args_fast);
+    Py_DECREF(args_list);
     throw py::error_already_set();
   }
 
-  Py_DECREF(args_fast);
+  Py_DECREF(args_list);
 
   return inferred_attrs;
 }

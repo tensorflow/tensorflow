@@ -57,6 +57,9 @@ bool ConvertPythonAPIParameters(
     const PythonTensorConverter& tensor_converter, absl::Span<PyObject*> params,
     PythonAPIInfo::InferredAttributes* inferred_attrs);
 
+// Returns the maximum parameter index accessed by the API.
+int GetPythonAPIMaxIndex(const PythonAPIInfo& api_info);
+
 // Copies any parameters that expect a list of tensors to a new list.
 // This ensures that any iterable value can be used, and also ensures that
 // `ConvertPythonAPIParameters` can safely convert tensors in-place.
