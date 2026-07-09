@@ -50,7 +50,7 @@ Edge::DataType GetEdgeDataTypeFromTfLiteType(TfLiteType type) {
 }
 
 TfLiteStatus TfliteIntArrayToRepeatedField(
-    const TfLiteIntArray* array, google::protobuf::RepeatedField<int32_t>* repeated_field,
+    const TfLiteIntArray* array, proto2::RepeatedField<int32_t>* repeated_field,
     bool check_for_null = false) {
   if (array == nullptr) {
     return check_for_null ? kTfLiteError : kTfLiteOk;

@@ -713,7 +713,7 @@ void CreateOp::Invoke() {
   tensorflow::NodeDef node_def;
   // TODO(182876485): Remove the conditional selection after protobuf version
   // is bumped up.
-  if (!google::protobuf::TextFormat::ParseFromString(
+  if (!proto2::TextFormat::ParseFromString(
 #if defined(PLATFORM_GOOGLE)
           node_def_text(),
 #else

@@ -66,7 +66,7 @@ namespace eager {
 namespace {
 absl::Status GetNumRetvals(
     FunctionLibraryDefinition* func_lib_def, const std::string& op_name,
-    const google::protobuf::Map<std::string, tensorflow::AttrValue>& attrs,
+    const proto2::Map<std::string, tensorflow::AttrValue>& attrs,
     int* num_retvals) {
   const OpDef* op_def = nullptr;
   TF_RETURN_IF_ERROR(func_lib_def->LookUpOpDef(op_name, &op_def));

@@ -89,13 +89,13 @@ class GetInputValuesTest : public ::testing::Test {
   }
 
   SignatureDef sig_;
-  google::protobuf::Map<std::string, TensorProto> request_;
+  proto2::Map<std::string, TensorProto> request_;
   std::map<std::string, TensorProto> unaliased_request_;
   TensorProto input_x_, input_y_, default_x_, default_y_;
 };
 
 TEST_F(GetInputValuesTest, RequestContainsInvalidInputs) {
-  google::protobuf::Map<std::string, TensorProto> local_request = request_;
+  proto2::Map<std::string, TensorProto> local_request = request_;
   local_request["xx"] = CreateTensorProto(2);
 
   std::vector<std::pair<string, Tensor>> inputs;
@@ -116,7 +116,7 @@ TEST_F(GetInputValuesTest, RequestContainsAllTheInputs) {
 }
 
 TEST_F(GetInputValuesTest, RequestContainsNoInputs) {
-  google::protobuf::Map<std::string, TensorProto> local_request = request_;
+  proto2::Map<std::string, TensorProto> local_request = request_;
   local_request.erase("x");
   local_request.erase("y");
 
@@ -132,7 +132,7 @@ TEST_F(GetInputValuesTest, RequestContainsNoInputs) {
 }
 
 TEST_F(GetInputValuesTest, RequestContainsPartialInputs) {
-  google::protobuf::Map<std::string, TensorProto> local_request = request_;
+  proto2::Map<std::string, TensorProto> local_request = request_;
   local_request.erase("y");
 
   std::vector<std::pair<string, Tensor>> inputs;

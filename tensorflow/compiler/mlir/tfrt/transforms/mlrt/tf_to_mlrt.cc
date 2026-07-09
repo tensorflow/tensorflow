@@ -557,7 +557,7 @@ class ExecuteOpConversion final : public mlir::ConversionPattern {
     CanonicalizeFunctionNameInNodeDef(symbol_table_, node_def);
 
     std::string node_def_text;
-    google::protobuf::TextFormat::PrintToString(node_def, &node_def_text);
+    proto2::TextFormat::PrintToString(node_def, &node_def_text);
 
     mlir::Value device;
     if (auto custom_device =
@@ -902,7 +902,7 @@ class BatchFunctionOpConversion
     const auto &node_def = **statusor_node_def;
 
     std::string node_def_text;
-    google::protobuf::TextFormat::PrintToString(node_def, &node_def_text);
+    proto2::TextFormat::PrintToString(node_def, &node_def_text);
 
     llvm::SmallVector<mlir::Type, 4> result_types(
         op->getNumResults(), rewriter.getType<mlrt::compiler::FutureType>());

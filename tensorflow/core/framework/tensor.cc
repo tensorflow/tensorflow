@@ -524,7 +524,7 @@ struct ProtoHelper<qint32> {
 template <>
 struct ProtoHelper<bfloat16> {
   static void Fill(const bfloat16* data, size_t n, TensorProto* proto) {
-    google::protobuf::RepeatedField<int32_t>* half_val = proto->mutable_half_val();
+    proto2::RepeatedField<int32_t>* half_val = proto->mutable_half_val();
     half_val->Reserve(half_val->size() + n);
     int32_t* dst = half_val->AddNAlreadyReserved(n);
     for (size_t i = 0; i < n; ++i) {
@@ -536,7 +536,7 @@ struct ProtoHelper<bfloat16> {
 template <>
 struct ProtoHelper<Eigen::half> {
   static void Fill(const Eigen::half* data, size_t n, TensorProto* proto) {
-    google::protobuf::RepeatedField<int32_t>* half_val = proto->mutable_half_val();
+    proto2::RepeatedField<int32_t>* half_val = proto->mutable_half_val();
     half_val->Reserve(half_val->size() + n);
     int32_t* dst = half_val->AddNAlreadyReserved(n);
     for (size_t i = 0; i < n; ++i) {

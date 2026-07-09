@@ -40,14 +40,14 @@ std::string GetWriteVersion(const SavedModel& saved_model);
 
 // Get view of string keys of a map.
 std::set<std::string> GetMapKeys(
-    const ::google::protobuf::Map<std::string, ::tensorflow::TensorProto>& map);
+    const ::proto2::Map<std::string, ::tensorflow::TensorProto>& map);
 
 // Get the default input value from signature if it's missing in the request
 // inputs. If `is_alias` is set to true, the keys of the `request_inputs` are
 // alias names rather than the feed names in the graph.
 absl::Status GetInputValues(
     const SignatureDef& signature,
-    const ::google::protobuf::Map<std::string, ::tensorflow::TensorProto>& request_inputs,
+    const ::proto2::Map<std::string, ::tensorflow::TensorProto>& request_inputs,
     std::vector<std::pair<string, Tensor>>& inputs);
 
 }  // namespace saved_model

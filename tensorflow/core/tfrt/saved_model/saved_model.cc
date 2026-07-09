@@ -457,7 +457,7 @@ namespace {
 // Gets the signatures from `signature_defs` and inserts them into `signatures`.
 void GetSignaturesFromSignatureDef(
     SignatureMap& signatures,
-    const google::protobuf::Map<std::string, tensorflow::SignatureDef>& signature_defs,
+    const proto2::Map<std::string, tensorflow::SignatureDef>& signature_defs,
     const SavedModel::Options& options) {
   for (const auto& p : signature_defs) {
     const std::string& signature_name = p.first;
@@ -492,7 +492,7 @@ void GetSignaturesFromSignatureDef(
 }
 
 void GetDefaultInputValue(
-    const google::protobuf::Map<std::string, tensorflow::SignatureDef>& signature_defs,
+    const proto2::Map<std::string, tensorflow::SignatureDef>& signature_defs,
     ModelRuntimeContext& context, SignatureMap& signatures) {
   bool load_from_signature_def = false;
   for (const auto& [name, signature_def] : signature_defs) {

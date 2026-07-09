@@ -264,7 +264,7 @@ void TacFilterPass::runOnOperation() {
   TacFilters test_tac_filters;
   if (use_test_setting_) {
     // Sets up the test config used in the mlir LIT test.
-    google::protobuf::TextFormat::ParseFromString(R"(
+    proto2::TextFormat::ParseFromString(R"(
       tac_filters {
         function_filter {
           function_name_pattern: "^testFunction"

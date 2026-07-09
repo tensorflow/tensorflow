@@ -466,7 +466,7 @@ Status FreezeGraph(SavedModelBundle& bundle, MetaGraphDef* frozen_meta_graph) {
 
 // Returns the name of nodes listed in the signature definition.
 std::vector<std::string> GetNodeNames(
-    const google::protobuf::Map<std::string, tensorflow::TensorInfo>& signature) {
+    const proto2::Map<std::string, tensorflow::TensorInfo>& signature) {
   std::vector<std::string> names;
   for (auto const& item : signature) {
     absl::string_view name = item.second.name();
