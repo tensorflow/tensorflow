@@ -1438,6 +1438,7 @@ cc_test(
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/types:half",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -2244,6 +2245,7 @@ cc_test(
         "//tensorflow/lite:string",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/types:half",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_googletest//:gtest",
     ],
