@@ -351,6 +351,11 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   absl::Status GatherBuffersDefinedByInstruction(
       const HloInstruction* instruction, BufferDefinitionVector* buffers);
 
+  // Applies deferred aliases from async-start to the current instruction's
+  // points-to set.
+  void ApplyDeferredAliases(HloInstruction* current_instruction,
+                            PointsToSet& points_to_set);
+
   // Print points-to set for 'instruction' to 'output'.
   void InstructionToString(const HloInstruction* instruction,
                            std::string* output) const;
