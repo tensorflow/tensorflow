@@ -28,6 +28,10 @@ absl::Status DoSetTpuProfilerApiFns(void* library_handle) {
   TFTPU_SET_FN(&profiler_api_fn, TpuProfiler_Start);
   TFTPU_SET_FN(&profiler_api_fn, TpuProfiler_Stop);
   TFTPU_SET_FN(&profiler_api_fn, TpuProfiler_CollectData);
+  TFTPU_SET_FN(&profiler_api_fn, TpuProfiler_Consume);
+  TFTPU_SET_FN(&profiler_api_fn, TpuProfiler_ConsumeResult_Destroy);
+  TFTPU_SET_FN(&profiler_api_fn, TpuProfiler_ConsumeResult_GetByteSize);
+  TFTPU_SET_FN(&profiler_api_fn, TpuProfiler_Serialize);
 
   TFTPU_SET_FN(&profiler_api_fn, TpuStatus_New);
   TFTPU_SET_FN(&profiler_api_fn, TpuStatus_Free);

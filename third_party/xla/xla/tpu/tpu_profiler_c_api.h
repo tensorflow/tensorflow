@@ -19,12 +19,14 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "xla/backends/profiler/plugin/profiler_c_api.h"
 #include "xla/tpu/c_api_decl.h"
 #include "xla/tpu/libtftpu.h"
 
 extern "C" {
 
 typedef struct TpuProfiler TpuProfiler;
+typedef struct TpuProfilerConsumeResult TpuProfilerConsumeResult;
 
 // Creates a TPU profiler that is ready to start profiling.
 TFTPU_CAPI_EXPORT void TpuProfiler_Create(TpuProfiler** tpu_profiler,
@@ -61,6 +63,24 @@ TFTPU_CAPI_EXPORT void TpuProfiler_CollectData(TpuProfiler* tpu_profiler,
                                                uint8_t* buffer,
                                                size_t* size_in_bytes);
 
+// Consumes collected profile data and returns an opaque handle.
+TFTPU_CAPI_EXPORT void TpuProfiler_Consume(
+    struct PLUGIN_Profiler_Consume_Args* args);
+
+// Destroys the opaque consume result.
+TFTPU_CAPI_EXPORT void TpuProfiler_ConsumeResult_Destroy(
+    struct PLUGIN_Profiler_ConsumeResult* consume_result);
+
+// Returns the byte size of the serialized data in the consume result.
+// Note: Kept for backward compatibility, though serialization returns size.
+TFTPU_CAPI_EXPORT size_t TpuProfiler_ConsumeResult_GetByteSize(
+    struct PLUGIN_Profiler_ConsumeResult* consume_result);
+
+// Serializes the consumed data from the opaque handle into a user-provided
+// buffer.
+TFTPU_CAPI_EXPORT void TpuProfiler_Serialize(
+    struct PLUGIN_Profiler_Serialize_Args* args);
+
 // absl::Status helpers to create TFStatus for Profiler.
 TF_Status* TpuStatus_New();
 void TpuStatus_Free(TF_Status* status);
@@ -73,6 +93,10 @@ struct TfTpu_ProfilerApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Start);
   TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Stop);
   TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_CollectData);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Consume);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_ConsumeResult_Destroy);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_ConsumeResult_GetByteSize);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Serialize);
   TFTPU_ADD_FN_IN_STRUCT(TpuStatus_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Free);
   TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Message);

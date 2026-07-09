@@ -128,6 +128,25 @@ PROFILER_DEFINE_STRUCT_TRAITS(PLUGIN_Profiler_CollectData_Args,
 typedef PLUGIN_Profiler_Error* PLUGIN_Profiler_CollectData(
     PLUGIN_Profiler_CollectData_Args* args);
 
+typedef struct PLUGIN_Profiler_ConsumeResult PLUGIN_Profiler_ConsumeResult;
+
+struct PLUGIN_Profiler_Consume_Args {
+  size_t struct_size;
+  PLUGIN_Profiler* profiler;  // Input: Profiler instance
+  PLUGIN_Profiler_ConsumeResult*
+      result;  // Output: Opaque handle allocated by plugin
+};
+PROFILER_DEFINE_STRUCT_TRAITS(PLUGIN_Profiler_Consume_Args, result);
+
+struct PLUGIN_Profiler_Serialize_Args {
+  size_t struct_size;
+  PLUGIN_Profiler* profiler;                      // Input: Profiler instance
+  PLUGIN_Profiler_ConsumeResult* consume_result;  // Input: Opaque handle
+  const char* serialized_bytes;  // Output: Pointer to XSpace bytes
+  size_t serialized_size;        // Output: Size of XSpace bytes
+};
+PROFILER_DEFINE_STRUCT_TRAITS(PLUGIN_Profiler_Serialize_Args, serialized_size);
+
 typedef struct PLUGIN_Profiler_Api {
   size_t struct_size;
   void* priv;
@@ -139,8 +158,12 @@ typedef struct PLUGIN_Profiler_Api {
   PLUGIN_Profiler_Start* start;
   PLUGIN_Profiler_Stop* stop;
   PLUGIN_Profiler_CollectData* collect_data;
+  PLUGIN_Profiler_Error* (*consume)(struct PLUGIN_Profiler_Consume_Args* args);
+  PLUGIN_Profiler_Error* (*serialize)(
+      struct PLUGIN_Profiler_Serialize_Args* args);
+  void (*consume_result_destroy)(struct PLUGIN_Profiler_ConsumeResult* result);
 } PLUGIN_Profiler_Api;
-PROFILER_DEFINE_STRUCT_TRAITS(PLUGIN_Profiler_Api, collect_data);
+PROFILER_DEFINE_STRUCT_TRAITS(PLUGIN_Profiler_Api, consume_result_destroy);
 
 #ifdef __cplusplus
 }
