@@ -345,7 +345,8 @@ TfLiteStatus IsFullyConnectedSupported(const TfLiteRegistration* registration,
   TF_LITE_ENSURE(context, IsTensorSupported(output));
   if (has_bias) {
     const TfLiteTensor& bias = context->tensors[node->inputs->data[2]];
-    TF_LITE_ENSURE(context, IsTensorSupported(bias));
+    TF_LITE_ENSURE(context,
+                   IsTensorSupported(bias, /*allow_per_channel=*/true));
   }
 
   auto is_float_type = [](TfLiteType type) {
@@ -539,7 +540,7 @@ TfLiteStatus IsConvSupported(const TfLiteRegistration* registration,
   TF_LITE_ENSURE(context,
                  IsTensorSupported(filter, /*allow_per_channel=*/true));
   TF_LITE_ENSURE(context, IsTensorSupported(output));
-  TF_LITE_ENSURE(context, IsTensorSupported(bias));
+  TF_LITE_ENSURE(context, IsTensorSupported(bias, /*allow_per_channel=*/true));
 
   auto is_float_type = [](TfLiteType type) {
     return type == kTfLiteFloat32 || type == kTfLiteFloat16 ||
