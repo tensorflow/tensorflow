@@ -315,9 +315,8 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
       commands_, params.persistent_alloc_indices);
   bool is_first_record =
       cmd_buffer->command_buffer->state() == se::CommandBuffer::State::kCreate;
-  bool needs_update =
-      has_dynamic_allocations &&
-      (commands_.requires_update_on_execute() || !updated_allocs.empty());
+  bool needs_update = commands_.requires_update_on_execute() ||
+                      (has_dynamic_allocations && !updated_allocs.empty());
 
   if (is_first_record || needs_update) {
     XLA_VLOG_DEVICE(3, executor->device_ordinal())

@@ -69,6 +69,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -138,6 +139,31 @@ bool IsAtLeastCuda12300(const se::StreamExecutor* stream_executor) {
 // Give a short alias to synchronization mode.
 static constexpr auto serialize =
     CommandExecutor::SynchronizationMode::kSerialize;
+
+class RequiresUpdateOnExecuteMemsetThunk : public Memset32BitValueThunk {
+ public:
+  RequiresUpdateOnExecuteMemsetThunk(Thunk::ThunkInfo thunk_info,
+                                     uint32_t value,
+                                     const BufferAllocation::Slice& destination,
+                                     int* record_count)
+      : Memset32BitValueThunk(std::move(thunk_info), value, destination),
+        record_count_(record_count) {}
+
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override {
+    ++*record_count_;
+    return Memset32BitValueThunk::Record(execute_params, record_params,
+                                         std::move(record_action),
+                                         command_buffer);
+  }
+
+  bool requires_update_on_execute() const override { return true; }
+
+ private:
+  int* record_count_;
+};
 
 }  // namespace
 
@@ -293,6 +319,45 @@ TEST(CommandBufferThunkTest, UpdatePolicyIgnoresVaRemappedAllocations) {
   std::fill(dst.begin(), dst.end(), 0);
   ASSERT_OK(stream->Memcpy(dst.data(), d, byte_length));
   ASSERT_EQ(dst, std::vector<int32_t>(4, 7));
+}
+
+TEST(CommandBufferThunkTest,
+     RequiresUpdateOnExecuteWithAllAllocationsPersistent) {
+  se::StreamExecutor* stream_executor = GpuExecutor();
+  ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
+
+  constexpr int64_t kByteLength = sizeof(uint32_t);
+  se::DeviceAddress<uint32_t> destination =
+      stream_executor->AllocateArray<uint32_t>(1, 0);
+  BufferAllocation allocation(/*index=*/0, kByteLength, /*color=*/0);
+  BufferAllocation::Slice slice(&allocation, /*offset=*/0, kByteLength);
+
+  int record_count = 0;
+  CommandSequence commands;
+  commands.Emplace<RequiresUpdateOnExecuteMemsetThunk>(
+      Thunk::ThunkInfo(), /*value=*/42, slice, &record_count);
+  ASSERT_OK_AND_ASSIGN(CommandExecutor executor,
+                       CommandExecutor::Create(std::move(commands), serialize));
+  CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
+
+  std::vector<BufferAllocation::Index> persistent_alloc_indices = {0};
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
+  ServiceExecutableRunOptions run_options;
+  BufferAllocations allocations({destination}, /*device_ordinal=*/0,
+                                &allocator);
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr,
+      nullptr, /*additional_compute_streams=*/{},
+      /*execution_scoped_state=*/nullptr,
+      absl::MakeConstSpan(persistent_alloc_indices));
+
+  ASSERT_OK(thunk.ExecuteOnStream(params));
+  ASSERT_OK(stream->BlockHostUntilDone());
+  EXPECT_EQ(record_count, 1);
+
+  ASSERT_OK(thunk.ExecuteOnStream(params));
+  ASSERT_OK(stream->BlockHostUntilDone());
+  EXPECT_EQ(record_count, 2);
 }
 
 TEST(CommandBufferThunkTest, MemzeroThunk) {
