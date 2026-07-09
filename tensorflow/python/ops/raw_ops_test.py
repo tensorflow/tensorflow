@@ -82,17 +82,29 @@ class RawOpsTest(test.TestCase, parameterized.TestCase):
   )
   def testStringNGramsRejectsNonVectorInputs(
       self, data, data_splits, expected_error):
-    with self.assertRaisesRegex(errors.InvalidArgumentError, expected_error):
-      self.evaluate(
-          gen_string_ops.string_n_grams(
-              data=data,
-              data_splits=data_splits,
-              separator="",
-              ngram_widths=[1],
-              left_pad="",
-              right_pad="",
-              pad_width=0,
-              preserve_short_sequences=False))
+    if context.executing_eagerly():
+      with self.assertRaisesRegex(errors.InvalidArgumentError, expected_error):
+        self.evaluate(
+            gen_string_ops.string_n_grams(
+                data=data,
+                data_splits=data_splits,
+                separator="",
+                ngram_widths=[1],
+                left_pad="",
+                right_pad="",
+                pad_width=0,
+                preserve_short_sequences=False))
+    else:
+      with self.assertRaisesRegex(ValueError, "Shape must be rank 1"):
+        gen_string_ops.string_n_grams(
+            data=data,
+            data_splits=data_splits,
+            separator="",
+            ngram_widths=[1],
+            left_pad="",
+            right_pad="",
+            pad_width=0,
+            preserve_short_sequences=False)
 
   def testStringSplit(self):
     data = ["123456"]
