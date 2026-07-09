@@ -76,15 +76,13 @@ TfLiteStatus GetSizeImpl(TfLiteContext* context, T start, T limit, T delta,
 template <typename T>
 TfLiteStatus GetSizeImpl(TfLiteContext* context, T start, T limit, T delta,
                          int* size, std::false_type) {
-  const double range_size =
-      std::ceil(std::abs((static_cast<double>(limit) -
-                          static_cast<double>(start)) /
-                         static_cast<double>(delta)));
+  const T range_size =
+      std::ceil(std::abs((limit - start) / delta));
   TF_LITE_ENSURE(context, std::isfinite(range_size));
   TF_LITE_ENSURE(context, range_size >= 0);
   TF_LITE_ENSURE(
       context,
-      range_size <= static_cast<double>(std::numeric_limits<int>::max()));
+      range_size <= static_cast<T>(std::numeric_limits<int>::max()));
   *size = static_cast<int>(range_size);
   return kTfLiteOk;
 }
