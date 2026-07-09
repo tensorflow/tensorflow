@@ -422,3 +422,34 @@ func.func private @chlo.scan.impl(%arg0: tensor<2xf64>, %arg1: tensor<3xf64>, %a
   %0 = stablehlo.add %arg2, %arg2 : tensor<4xf64>
   func.return %cst, %0 : tensor<f64>, tensor<4xf64>
 }
+
+// -----
+
+// The custom_call encoding hlo-legalize-to-stablehlo produces for mhlo.scan
+// recomposes to chlo.scan as well (the body function uses a stablehlo.return
+// terminator on this path).
+// CHECK-LABEL: @scan_recompose_cc_mhlo
+func.func @scan_recompose_cc_mhlo(%arg0: tensor<10xf32>, %arg1: tensor<f32>) -> (tensor<10xf32>, tensor<f32>) {
+  // CHECK: chlo.scan(%arg0) inits (%arg1) dimension=0
+  // CHECK-SAME: is_associative = true, is_reverse = true, scan_dim_size = 10
+  // CHECK: stablehlo.add
+  // CHECK: stablehlo.return
+  %0:2 = stablehlo.custom_call @mhlo.scan(%arg0, %arg1) {
+    called_computations = [@scan],
+    mhlo.attributes = {
+      dimension = 0 : i64,
+      is_associative = true,
+      is_reverse = true,
+      operandSegmentSizes = array<i32: 1, 1>,
+      resultSegmentSizes = array<i32: 1, 1>,
+      scan_dim_size = 10 : i64
+    },
+    mhlo.version = 1 : i64
+  } : (tensor<10xf32>, tensor<f32>) -> (tensor<10xf32>, tensor<f32>)
+  return %0#0, %0#1 : tensor<10xf32>, tensor<f32>
+}
+// CHECK-NOT: @scan
+func.func private @scan(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
+  %0 = stablehlo.add %arg0, %arg1 : tensor<f32>
+  stablehlo.return %0, %0 : tensor<f32>, tensor<f32>
+}

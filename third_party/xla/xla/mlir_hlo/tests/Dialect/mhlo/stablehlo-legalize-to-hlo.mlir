@@ -2643,6 +2643,35 @@ func.func @topk_unstable(%arg0: tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<
 
 // -----
 
+// CHECK-LABEL: "op_scan_mhlo_v1"
+func.func @op_scan_mhlo_v1(%arg0: tensor<10xf32>, %arg1: tensor<f32>) -> (tensor<10xf32>, tensor<f32>) {
+  //      CHECK: "mhlo.scan"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) <{dimension = 0 : i64, is_associative = true, is_reverse = true, operandSegmentSizes = array<i32: 1, 1>, resultSegmentSizes = array<i32: 1, 1>, scan_dim_size = 10 : i64}> ({
+  // CHECK-NEXT: ^bb0(%[[ARG2:.*]]: tensor<f32>, %[[ARG3:.*]]: tensor<f32>):
+  // CHECK-NEXT:   %[[ADD:.*]] = "mhlo.add"(%[[ARG2]], %[[ARG3]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK-NEXT:   "mhlo.return"(%[[ADD]], %[[ADD]]) : (tensor<f32>, tensor<f32>) -> ()
+  // CHECK-NEXT: }) : (tensor<10xf32>, tensor<f32>) -> (tensor<10xf32>, tensor<f32>)
+  %0:2 = "stablehlo.custom_call"(%arg0, %arg1) {
+    call_target_name = "mhlo.scan",
+    called_computations = [@scan],
+    mhlo.attributes = {
+      dimension = 0 : i64,
+      is_associative = true,
+      is_reverse = true,
+      operandSegmentSizes = array<i32: 1, 1>,
+      resultSegmentSizes = array<i32: 1, 1>,
+      scan_dim_size = 10 : i64
+    },
+    mhlo.version = 1 : i64
+  } : (tensor<10xf32>, tensor<f32>) -> (tensor<10xf32>, tensor<f32>)
+  func.return %0#0, %0#1 : tensor<10xf32>, tensor<f32>
+}
+func.func private @scan(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
+  %0 = stablehlo.add %arg0, %arg1 : tensor<f32>
+  stablehlo.return %0, %0 : tensor<f32>, tensor<f32>
+}
+
+// -----
+
 func.func @op_unary_einsum_deprecated(%arg0: tensor<8x16xf32>) -> tensor<8xf32> {
   // expected-error@+2 {{failed to legalize operation 'stablehlo.unary_einsum' that was explicitly marked illegal}}
   // expected-error@+1 {{UnaryEinsumOp is deprecated and not supported in MHLO}}
