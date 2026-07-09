@@ -624,9 +624,8 @@ CodegenDecision IsTritonSupportedScaledDot(
   }
   PrimitiveType lhs_scale_type = dot.operand(2)->shape().element_type();
   PrimitiveType rhs_scale_type = dot.operand(3)->shape().element_type();
-  std::vector<PrimitiveType> supported_scale_types = {
-      BF16, F16, F32, F64, F8E4M3FN, F8E5M2, F8E8M0FNU,
-      S8,   S16, S32, S64, U8,       U32,    U64};
+  std::vector<PrimitiveType> supported_scale_types = {F8E4M3FN, F8E5M2,
+                                                      F8E8M0FNU, S8};
   if (!absl::c_linear_search(supported_scale_types, lhs_scale_type)) {
     return CodegenDecision::Forbid(absl::StrCat(
         "Unsupported LHS scale type: ", PrimitiveType_Name(lhs_scale_type)));

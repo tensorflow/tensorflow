@@ -357,6 +357,8 @@ def DotScaledOp : XTile_Op<"dot_scaled", [Pure, AttrSizedOperandSegments]> {
       $lhs (`scale` $lhs_scale^)? `,` $rhs (`scale` $rhs_scale^)? attr-dict
       `:` type($lhs) (`,` type($lhs_scale)^)? `*` type($rhs) (`,` type($rhs_scale)^)? `->` type($result)
     }];
+
+    let hasVerifier = 1;
 }
 
 #endif // XLA_CODEGEN_XTILE_IR_XTILE_OPS

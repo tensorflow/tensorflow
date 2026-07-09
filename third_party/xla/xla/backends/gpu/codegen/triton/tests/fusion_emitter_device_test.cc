@@ -2764,6 +2764,133 @@ ENTRY e {
       std::move(optimized_module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+TEST_P(TritonScaledDotTest, ScaledDotWithE8m0Scale) {
+  if (!GetCudaComputeCapability().IsAtLeastHopper()) {
+    GTEST_SKIP()
+        << "ScaledDot with Triton requires Hopper or newer architecture.";
+  }
+  constexpr absl::string_view kHloText = R"hlo(
+HloModule E8m0ScaledDot
+
+ENTRY e {
+  lhs = f8e4m3fn[128,128] parameter(0)
+  rhs = f8e4m3fn[128,256] parameter(2)
+  lhs_scale = f8e8m0fnu[128,4] parameter(1)
+  rhs_scale = f8e8m0fnu[4,256] parameter(3)
+  ROOT _ = bf16[128,256]{1,0} scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+    lhs_contracting_dims={1},
+    rhs_contracting_dims={0}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto optimized_module, GetOptimizedModule(kHloText));
+
+  // Verify HLO fusion
+  constexpr absl::string_view kExpectedOptimizedHLO = R"(
+    CHECK: fusion
+    CHECK: ROOT {{.*}} scaled-dot
+    CHECK: ENTRY
+    CHECK: __triton_nested_gemm_fusion
+  )";
+  EXPECT_THAT(RunFileCheck(optimized_module->ToString(), kExpectedOptimizedHLO),
+              absl_testing::IsOkAndHolds(true));
+
+  // Verify Triton IR
+  HloComputation* scaled_dot_computation = GetFirstComputationWithInstruction(
+      *optimized_module, HloOpcode::kScaledDot);
+  constexpr absl::string_view kExpectedTritonIr = R"(
+      CHECK: tt.dot_scaled
+      CHECK: tensor<128x4xi8>
+  )";
+  EXPECT_THAT(CreateTritonIrAndFileCheckForDot(*scaled_dot_computation,
+                                               kExpectedTritonIr),
+              IsOk());
+
+  // Execute on GPU hardware and compare with reference
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(optimized_module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_P(TritonScaledDotTest, ScaledDotWithE4m3Scale) {
+  if (!GetCudaComputeCapability().IsAtLeastHopper()) {
+    GTEST_SKIP()
+        << "ScaledDot with Triton requires Hopper or newer architecture.";
+  }
+  constexpr absl::string_view kHloText = R"hlo(
+HloModule E4m3ScaledDot
+
+ENTRY e {
+  lhs = f8e4m3fn[128,128] parameter(0)
+  rhs = f8e4m3fn[128,256] parameter(2)
+  lhs_scale = f8e4m3fn[128,4] parameter(1)
+  rhs_scale = f8e4m3fn[4,256] parameter(3)
+  ROOT _ = bf16[128,256]{1,0} scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+    lhs_contracting_dims={1},
+    rhs_contracting_dims={0}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto optimized_module, GetOptimizedModule(kHloText));
+
+  // Verify Triton IR contains tt.dot_scaled with f8e4m3fn scale tensors
+  HloComputation* scaled_dot_computation = GetFirstComputationWithInstruction(
+      *optimized_module, HloOpcode::kScaledDot);
+  constexpr absl::string_view kExpectedTritonIr = R"(
+      CHECK: tt.dot_scaled
+      CHECK: tensor<128x4xf8E4M3FN>
+  )";
+  EXPECT_THAT(CreateTritonIrAndFileCheckForDot(*scaled_dot_computation,
+                                               kExpectedTritonIr),
+              IsOk());
+
+  // Execute on GPU hardware and compare with reference (Hopper only; Blackwell
+  // TMEM scale expects E8M0 scale).
+  if (!GetCudaComputeCapability().IsAtLeastBlackwell()) {
+    EXPECT_TRUE(RunAndCompareNoHloPasses(
+        std::move(optimized_module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  }
+}
+
+TEST_P(TritonScaledDotTest, ScaledDotWithE5m2Scale) {
+  if (!GetCudaComputeCapability().IsAtLeastHopper()) {
+    GTEST_SKIP()
+        << "ScaledDot with Triton requires Hopper or newer architecture.";
+  }
+  constexpr absl::string_view kHloText = R"hlo(
+HloModule E5m2ScaledDot
+
+ENTRY e {
+  lhs = f8e4m3fn[128,128] parameter(0)
+  rhs = f8e4m3fn[128,256] parameter(2)
+  lhs_scale = f8e5m2[128,4] parameter(1)
+  rhs_scale = f8e5m2[4,256] parameter(3)
+  ROOT _ = bf16[128,256]{1,0} scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+    lhs_contracting_dims={1},
+    rhs_contracting_dims={0}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto optimized_module, GetOptimizedModule(kHloText));
+
+  // Verify Triton IR contains tt.dot_scaled with f8e5m2 scale tensors
+  HloComputation* scaled_dot_computation = GetFirstComputationWithInstruction(
+      *optimized_module, HloOpcode::kScaledDot);
+  constexpr absl::string_view kExpectedTritonIr = R"(
+      CHECK: tt.dot_scaled
+      CHECK: tensor<128x4xf8E5M2>
+  )";
+  EXPECT_THAT(CreateTritonIrAndFileCheckForDot(*scaled_dot_computation,
+                                               kExpectedTritonIr),
+              IsOk());
+
+  // Execute on GPU hardware and compare with reference (Hopper only; Blackwell
+  // TMEM scale expects E8M0 scale).
+  if (!GetCudaComputeCapability().IsAtLeastBlackwell()) {
+    EXPECT_TRUE(RunAndCompareNoHloPasses(
+        std::move(optimized_module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  }
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
