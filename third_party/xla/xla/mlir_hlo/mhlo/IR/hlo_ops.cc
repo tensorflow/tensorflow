@@ -3506,6 +3506,7 @@ struct DynamicSliceToSlice : public OpRewritePattern<DynamicSliceOp> {
         rewriter.getI64TensorAttr(SmallVector<int64_t, 4>(inputRank, 1));
     auto result = SliceOp::create(rewriter, loc, input, sliceStartIndices,
                                   sliceLimits, sliceStrides);
+    result->setDiscardableAttrs(dynamicSlice->getDiscardableAttrDictionary());
     rewriter.replaceOp(dynamicSlice, result);
     return success();
   }
@@ -3544,6 +3545,36 @@ LogicalResult RealDynamicSliceOp::verify() {
 }
 
 namespace {
+struct RealDSliceToSlice : public OpRewritePattern<RealDynamicSliceOp> {
+  using OpRewritePattern<RealDynamicSliceOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(RealDynamicSliceOp op,
+                                PatternRewriter& rewriter) const override {
+    DenseIntElementsAttr startIndices, limitIndices, strides;
+    if (!matchPattern(op.getStartIndices(), m_Constant(&startIndices)) ||
+        !matchPattern(op.getLimitIndices(), m_Constant(&limitIndices)) ||
+        !matchPattern(op.getStrides(), m_Constant(&strides))) {
+      return failure();
+    }
+
+    auto i64Type = rewriter.getI64Type();
+    auto sextFn = [](const llvm::APInt& x) { return x.sext(64); };
+    auto startIndicesI64 =
+        cast<DenseIntElementsAttr>(startIndices.mapValues(i64Type, sextFn));
+    auto limitIndicesI64 =
+        cast<DenseIntElementsAttr>(limitIndices.mapValues(i64Type, sextFn));
+    auto stridesI64 =
+        cast<DenseIntElementsAttr>(strides.mapValues(i64Type, sextFn));
+
+    auto sliceOp =
+        mhlo::SliceOp::create(rewriter, op.getLoc(), op.getOperand(),
+                              startIndicesI64, limitIndicesI64, stridesI64);
+    sliceOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
+    rewriter.replaceOp(op, sliceOp);
+    return success();
+  }
+};
+
 struct RealDSliceToDSlice : public OpRewritePattern<RealDynamicSliceOp> {
   using OpRewritePattern<RealDynamicSliceOp>::OpRewritePattern;
 
@@ -3596,9 +3627,11 @@ struct RealDSliceToDSlice : public OpRewritePattern<RealDynamicSliceOp> {
       startIndices.push_back(startIndex0D);
     }
 
-    rewriter.replaceOpWithNewOp<mhlo::DynamicSliceOp>(
-        op, op.getOperand(), startIndices,
+    auto dynamicSliceOp = mhlo::DynamicSliceOp::create(
+        rewriter, op.getLoc(), op.getOperand(), startIndices,
         rewriter.getI64TensorAttr(sliceSizes));
+    dynamicSliceOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
+    rewriter.replaceOp(op, dynamicSliceOp);
     return success();
   }
 };
