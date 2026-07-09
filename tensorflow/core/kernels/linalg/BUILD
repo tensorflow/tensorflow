@@ -119,7 +119,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "matrix_diag_op",
     prefix = "matrix_diag_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -168,7 +171,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "self_adjoint_eig_op",
     prefix = "self_adjoint_eig_op",
-    deps = LINALG_DEPS + ["//tensorflow/core:lib_internal"],
+    deps = LINALG_DEPS + [
+        "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 tf_kernel_library(
