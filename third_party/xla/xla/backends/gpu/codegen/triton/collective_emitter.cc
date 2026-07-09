@@ -237,11 +237,11 @@ GetBlockLevelFusionConfigForAllReduce(
   ASSIGN_OR_RETURN(AllReduceInfo all_reduce_info,
                    std::move(maybe_all_reduce_info));
   const Shape& output_shape = all_reduce->shape();
-  const LaunchDimensions launch_dims = AllReduceLaunchDimensions(
-      all_reduce_info.num_elements, all_reduce_info.num_devices,
-      all_reduce_info.all_reduce_strategy);
   const se::DeviceDescription& device_info =
       gpu_topology.gpu_target_config().device_description;
+  const LaunchDimensions launch_dims = AllReduceLaunchDimensions(
+      all_reduce_info.num_elements, all_reduce_info.num_devices,
+      all_reduce_info.all_reduce_strategy, device_info);
   BlockLevelFusionConfig block_level_config;
   block_level_config.set_num_warps(xla::CeilOfRatio(
       static_cast<int64_t>(launch_dims.num_threads_per_block()),
