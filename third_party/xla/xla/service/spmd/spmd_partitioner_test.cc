@@ -9611,6 +9611,44 @@ ENTRY entry {
   }
 }
 
+TEST_P(SpmdPartitioningTest, IndexPassthroughScatterConflictFallback) {
+  // Verifies we fall back to replicated scatter when the sharding of the
+  // implicit batching dims (parallel dims) of the updates and the sharding of
+  // the operand conflict by sharing the same mesh axis.
+  // This prevents incorrect collective ordering (slice before reduce).
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  %operand = f32[256,128] parameter(0), sharding={devices=[2,1]<=[2]}
+  %indices = s32[32,1] parameter(1), sharding={devices=[2,1]<=[2]}
+  %updates = f32[32,128] parameter(2), sharding={devices=[2,1]<=[2]}
+  ROOT %scatter = f32[256,128] scatter(%operand, %indices, %updates),
+      to_apply=add,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1, sharding={devices=[2,1]<=[2]}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  // Expect that indices and updates are replicated via AllGather,
+  // and scatter is performed locally on the sharded operand.
+  EXPECT_THAT(
+      root, AllOf(op::Shape("f32[128,128]"),
+                  op::Scatter(op::Parameter(0),
+                              op::Subtract(op::AllGather(op::Parameter(1)), _),
+                              op::AllGather(op::Parameter(2)))));
+}
+
 TEST_P(SpmdPartitioningTest, ScatterExplicitBatchDims) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -9645,6 +9683,61 @@ ENTRY entry {
         AllOf(op::Shape("f32[5,6,7,4]"), op::Scatter(input, indices, updates));
     EXPECT_THAT(module->entry_computation()->root_instruction(), scatter);
   }
+}
+
+TEST_P(SpmdPartitioningTest, ScatterConflictWithReplicatedIndicesFallback) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  %input = f32[256,128] parameter(0), sharding={devices=[2,2]<=[4]}
+  %indices = s32[32,16,1] parameter(1), sharding={devices=[2,2,1]<=[4]}
+  %updates = f32[32,16,128] parameter(2), sharding={devices=[2,2,1]<=[4]}
+  ROOT %scatter = f32[256,128] scatter(%input, %indices, %updates),
+      to_apply=add,
+      update_window_dims={2},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=2, sharding={devices=[2,2]<=[4]}
+})";
+  SpmdPartitionerOptions options;
+  options.need_resolve_conflicts = true;
+  ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(hlo_string, /*num_devices=*/4, options));
+  VLOG(1) << module->ToString();
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  auto input = AllOf(op::Shape("f32[128,64]"), op::Parameter(0));
+  auto indices = AllOf(op::Shape("s32[16,8,1]"), op::Parameter(1));
+
+  auto collective_permute_indices =
+      AllOf(op::Shape("s32[16,8,1]"), op::CollectivePermute(indices));
+  auto all_gather_indices = AllOf(op::Shape("s32[32,8,1]"),
+                                  op::AllGather(collective_permute_indices));
+
+  auto updates_sliced =
+      AllOf(op::Shape("f32[32,8,64]"),
+            op::DynamicSlice(AllOf(op::Shape("f32[32,16,64]"), op::Reshape(_)),
+                             _, _, _));
+
+  auto all_gather_input = AllOf(op::Shape("f32[256,64]"), op::AllGather(input));
+  auto select =
+      AllOf(op::Shape("f32[256,64]"), op::Select(_, _, all_gather_input));
+
+  auto scatter = AllOf(op::Shape("f32[256,64]"),
+                       op::Scatter(select, all_gather_indices, updates_sliced));
+
+  auto all_reduce = AllOf(op::Shape("f32[256,64]"), op::AllReduce(scatter));
+
+  EXPECT_THAT(root, AllOf(op::Shape("f32[128,64]"),
+                          op::DynamicSlice(all_reduce, _, _)));
 }
 
 TEST_P(SpmdPartitioningTest, ScatterExplicitBatchAndOperandPassthroughDims) {
