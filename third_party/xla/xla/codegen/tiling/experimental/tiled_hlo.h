@@ -67,7 +67,7 @@ class TiledHloInstruction {
   llvm::ArrayRef<const TiledHloInstruction*> operands() const {
     return operands_;
   }
-  void AddOperand(TiledHloInstruction* operand) {
+  void AddOperand(const TiledHloInstruction* operand) {
     operands_.push_back(operand);
   }
 
