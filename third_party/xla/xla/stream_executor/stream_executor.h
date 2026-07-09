@@ -204,10 +204,6 @@ class StreamExecutor {
     return absl::UnimplementedError("Not implemented for this executor.");
   }
 
-  virtual absl::StatusOr<uint64_t> GetCollectiveMemoryGranularity() const {
-    return absl::UnimplementedError("Not implemented for this executor.");
-  }
-
   virtual bool HostMemoryUnregister(void* location) { return false; };
   virtual bool HostMemoryRegister(void* location, uint64_t size) {
     return false;
