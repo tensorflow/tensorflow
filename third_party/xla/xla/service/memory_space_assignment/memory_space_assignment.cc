@@ -320,6 +320,7 @@ MemorySpaceAssignment::Run(HloModule* module,
                            const HloAliasAnalysis& alias_analysis,
                            const AliasInfo* alias_info,
                            const Options& options) {
+  LOG(ERROR) << "Jetski: MemorySpaceAssignment::Run started";
   CHECK(module->has_schedule());
   if (VLOG_IS_ON(3)) {
     LOG(INFO) << "memory_space_assignment_options::Options:\n";
@@ -337,6 +338,10 @@ MemorySpaceAssignment::Run(HloModule* module,
                                                           alias_analysis);
 }
 
+bool AreAllocationsAliased(const Allocation* a, const Allocation* b) {
+  return a->GetRootAllocation() == b->GetRootAllocation();
+}
+
 absl::Status MemorySpaceAssignment::VerifyAllocations() const {
   BufferIntervalTree interval_tree;
   // Checks the chunks that overlap with a given allocation in time do not
@@ -348,11 +353,24 @@ absl::Status MemorySpaceAssignment::VerifyAllocations() const {
     for (const HeapSimulator::Chunk& overlapping_chunk :
          interval_tree.ChunksOverlappingInTime(allocation->start_time(),
                                                allocation->end_time() - 1)) {
-      CHECK(!allocation->chunk().OverlapsWith(overlapping_chunk))
-          << "Chunks are overlapping at Allocation level (before fixing the "
-             "schedule): "
-          << allocation->ToString()
-          << " overlaps with allocated chunk: " << overlapping_chunk.ToString();
+      if (allocation->chunk().OverlapsWith(overlapping_chunk)) {
+        bool has_conflict = false;
+        for (const auto& other_alloc : allocations_) {
+          if (other_alloc->memory_space() == MemorySpace::kAlternate &&
+              other_alloc->chunk() == overlapping_chunk &&
+              other_alloc->start_time() <= allocation->end_time() - 1 &&
+              allocation->start_time() <= other_alloc->end_time() - 1 &&
+              !AreAllocationsAliased(allocation, other_alloc.get())) {
+            has_conflict = true;
+            break;
+          }
+        }
+        CHECK(!has_conflict)
+            << "Chunks are overlapping at Allocation level (before fixing the "
+               "schedule): "
+            << allocation->ToString() << " overlaps with allocated chunk: "
+            << overlapping_chunk.ToString();
+      }
     }
     interval_tree.Add(allocation->start_time(), allocation->end_time() - 1,
                       allocation->chunk());
@@ -361,8 +379,7 @@ absl::Status MemorySpaceAssignment::VerifyAllocations() const {
   // Verify that all alternate memory allocations are free of overlapping
   // Allocations in time and space, and add them to interval_tree one by one.
   for (const auto& allocation : allocations_) {
-    if (allocation->memory_space() == MemorySpace::kAlternate &&
-        !allocation->is_mirrored_allocation()) {
+    if (allocation->memory_space() == MemorySpace::kAlternate) {
       RETURN_IF_ERROR(add_allocation_and_verify(allocation.get()));
     }
   }
