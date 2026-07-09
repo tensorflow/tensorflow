@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
@@ -727,6 +728,44 @@ int64_t GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
   return EstimateNumWarpsImpl(tiled_hlo_computation);
 }
 
+namespace {
+
+// A tile dimension is considered oversized if the it is strictly
+// larger than the next power of 2 of the corresponding input dimension.
+uint64_t CountOversizedDimensions(
+    const HloFusionAdaptor& fusion,
+    const BlockLevelParameters& block_level_parameters) {
+  CHECK_EQ(fusion.GetRoots().size(),
+           block_level_parameters.output_tile_sizes.size());
+
+  uint64_t num_oversized_dimensions = 0;
+  for (const auto& [root, tile] :
+       llvm::zip(fusion.GetRoots(), block_level_parameters.output_tile_sizes)) {
+    for (const auto& [dim, tile_dim] :
+         llvm::zip(root.shape().dimensions(), tile)) {
+      if (tile_dim > absl::bit_ceil(static_cast<uint64_t>(dim))) {
+        num_oversized_dimensions++;
+      }
+    }
+  }
+  return num_oversized_dimensions;
+}
+
+uint64_t CountTilesElements(
+    const BlockLevelParameters& block_level_parameters) {
+  uint64_t total = 0;
+  for (const auto& tile : block_level_parameters.output_tile_sizes) {
+    uint64_t num_tile_elements = 1;
+    for (const auto& dim : tile) {
+      num_tile_elements *= dim;
+    }
+    total += num_tile_elements;
+  }
+  return total;
+}
+
+}  // namespace
+
 absl::StatusOr<TopKTiledRunTimeDataOrError>
 GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
     const HloFusionAdaptor& fusion_adaptor, int top_k) {
@@ -837,9 +876,39 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
 
   VLOG(1) << absl::StrCat("TryFindTopKBestTilingsForFusion found ",
                           candidates.size(), " valid tiling candidates.");
+
   absl::c_stable_sort(
-      candidates, [](const TiledRunTimeData& a, const TiledRunTimeData& b) {
-        return a.runtime_data.exec_time < b.runtime_data.exec_time;
+      candidates, [&](const TiledRunTimeData& a, const TiledRunTimeData& b) {
+        // Execution time is the primary sorting criterion. Lower is better.
+        if (a.runtime_data.exec_time != b.runtime_data.exec_time) {
+          return a.runtime_data.exec_time < b.runtime_data.exec_time;
+        }
+
+        // For small inputs (tile size >= dimension size), prefer tile sizes
+        // whose dimensions will consist in <50% of padding elements. This
+        // rejects tilings that are unnecessarily large, and frees up GPU
+        // resources to run more blocks in parallel.
+        const uint64_t a_oversized =
+            CountOversizedDimensions(fusion_adaptor, a.block_level_parameters);
+        const uint64_t b_oversized =
+            CountOversizedDimensions(fusion_adaptor, b.block_level_parameters);
+        if (a_oversized != b_oversized) {
+          return a_oversized < b_oversized;
+        }
+
+        // Prefer tiles with more elements. This reduces the block launch
+        // overhead for the same amount of work.
+        const uint64_t a_tile_elements =
+            CountTilesElements(a.block_level_parameters);
+        const uint64_t b_tile_elements =
+            CountTilesElements(b.block_level_parameters);
+        if (a_tile_elements != b_tile_elements) {
+          return a_tile_elements > b_tile_elements;
+        }
+
+        // Break ties by comparing the tile sizes lexicographically.
+        return a.block_level_parameters.output_tile_sizes <
+               b.block_level_parameters.output_tile_sizes;
       });
 
   if (candidates.size() > top_k) {
