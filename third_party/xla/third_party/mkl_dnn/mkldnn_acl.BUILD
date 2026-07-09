@@ -7,6 +7,7 @@ _DNNL_COPTS_THREADPOOL = [
     "-fexceptions",
     "-UUSE_MKL",
     "-UUSE_CBLAS",
+    "-std=c++20",
 ]
 
 _DNNL_RUNTIME_THREADPOOL = {
@@ -21,6 +22,7 @@ _DNNL_RUNTIME_THREADPOOL = {
     "#cmakedefine DNNL_ENABLE_STACK_CHECKER": "#undef DNNL_ENABLE_STACK_CHECKER",
     "#cmakedefine DNNL_EXPERIMENTAL_SPARSE": "#define DNNL_EXPERIMENTAL_SPARSE",
     "#cmakedefine DNNL_EXPERIMENTAL": "#undef DNNL_EXPERIMENTAL",
+    "#cmakedefine DNNL_SAFE_RBP": "#undef DNNL_SAFE_RBP",
     "#cmakedefine ONEDNN_BUILD_GRAPH": "#define ONEDNN_BUILD_GRAPH",
     "#cmakedefine01 BUILD_TRAINING": "#define BUILD_TRAINING 1",
     "#cmakedefine01 BUILD_INFERENCE": "#define BUILD_INFERENCE 0",
@@ -62,7 +64,7 @@ _DNNL_RUNTIME_THREADPOOL = {
     "#cmakedefine01 BUILD_GEMM_SSE41": "#define BUILD_GEMM_SSE41 0",
     "#cmakedefine01 BUILD_GEMM_AVX2": "#define BUILD_GEMM_AVX2 0",
     "#cmakedefine01 BUILD_GEMM_AVX512": "#define BUILD_GEMM_AVX512 0",
-    "#cmakedefine DNNL_GPU_VENDOR": "#define DNNL_GPU_VENDOR INTEL",
+    "#cmakedefine DNNL_GPU_VENDOR DNNL_VENDOR_${DNNL_GPU_VENDOR}": "#define DNNL_GPU_VENDOR DNNL_VENDOR_NONE",
     "#cmakedefine DNNL_SYCL_GENERIC": "#undef DNNL_SYCL_GENERIC",
     "#cmakedefine DNNL_DISABLE_GPU_REF_KERNELS": "#undef DNNL_DISABLE_GPU_REF_KERNELS",
     "#cmakedefine01 BUILD_SDPA": "#define BUILD_SDPA 0",
@@ -84,8 +86,8 @@ expand_template(
     out = "include/oneapi/dnnl/dnnl_version.h",
     substitutions = {
         "@DNNL_VERSION_MAJOR@": "3",
-        "@DNNL_VERSION_MINOR@": "7",
-        "@DNNL_VERSION_PATCH@": "0",
+        "@DNNL_VERSION_MINOR@": "11",
+        "@DNNL_VERSION_PATCH@": "3",
     },
     template = "include/oneapi/dnnl/dnnl_version.h.in",
 )
@@ -110,16 +112,20 @@ cc_library(
             "src/graph/interface/*.cpp",
             "src/graph/backend/*.cpp",
             "src/graph/backend/dnnl/*.cpp",
+            "src/graph/backend/dnnl/executables/*.cpp",
             "src/graph/backend/fake/*.cpp",
             "src/graph/backend/dnnl/passes/*.cpp",
             "src/graph/backend/dnnl/patterns/*.cpp",
             "src/graph/backend/dnnl/kernels/*.cpp",
             "src/graph/utils/*.cpp",
             "src/graph/utils/pm/*.cpp",
+            "third_party/xbyak_aarch64/src/*.cpp",
         ],
         exclude = [
             "src/cpu/x64/**",
+            "src/cpu/ppc64/**",
             "src/cpu/rv64/**",
+            "src/cpu/s390x/**",
             "src/cpu/sycl/**",
             "src/xpu/**",
         ],
@@ -136,6 +142,9 @@ cc_library(
         "src/cpu/aarch64/xbyak_aarch64/src",
         "src/cpu/aarch64/xbyak_aarch64/xbyak_aarch64",
         "src/cpu/gemm",
+        "third_party",
+        "third_party/xbyak_aarch64/src",
+        "third_party/xbyak_aarch64/xbyak_aarch64",
     ],
     textual_hdrs = glob(
         [
@@ -147,6 +156,7 @@ cc_library(
             "src/cpu/*.hpp",
             "src/cpu/aarch64/xbyak_aarch64/**/*.h",
             "src/graph/**/*.hpp",
+            "third_party/xbyak_aarch64/**/*.h",
         ],
     ) + [
         ":dnnl_config_h",
