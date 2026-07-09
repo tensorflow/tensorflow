@@ -288,6 +288,17 @@ absl::Status IsAllReduceKernelSupported(
     return absl::UnimplementedError(
         "Replica groups must be explicitly provided for collective kernels.");
   }
+  // The kernel bakes world_size (from the first replica group) at codegen and
+  // sizes its buffers the same way, so it cannot serve cliques of different
+  // sizes. Fall back to the library collective for non-uniform replica groups.
+  for (const ReplicaGroup& group : replica_groups) {
+    if (group.replica_ids_size() != num_devices) {
+      return absl::UnimplementedError(absl::StrCat(
+          "Collective kernel requires all replica groups to have the same "
+          "size. Got a group of size ",
+          group.replica_ids_size(), " but expected ", num_devices, "."));
+    }
+  }
   if (!reduction_kind.has_value()) {
     return absl::UnimplementedError("Could not match reduction computation.");
   }
