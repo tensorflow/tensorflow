@@ -251,6 +251,11 @@ bool IsStablehloOp(int builtin_code) {
 }
 
 bool IsQuantized(const TfLiteTensor& tensor) {
+  if (tensor.type == kTfLiteFloat32 || tensor.type == kTfLiteFloat16 ||
+      tensor.type == kTfLiteBFloat16 || tensor.type == kTfLiteFloat64 ||
+      tensor.type == kTfLiteFloat8E4M3FN || tensor.type == kTfLiteFloat8E5M2) {
+    return false;
+  }
   return tensor.quantization.type != kTfLiteNoQuantization ||
          tensor.params.scale != 0.0f;
 }
