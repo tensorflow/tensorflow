@@ -1363,12 +1363,13 @@ GetStreamExecutorGpuDeviceAllocator(
             {bfc_allocator, ordinal_and_device.second->compute_stream(),
              /*memory_space=*/(int)xla::gpu::MemorySpaceColor::kDefault});
         if (shared_collective_pool) {
-          size_t collective_memory_alignment =
+          uint64_t collective_memory_alignment =
               tsl::Allocator::kAllocatorAlignment;
-          if (auto* collectives =
-                  gpu::GpuCollectives::Default(platform->Name())) {
-            collective_memory_alignment =
-                collectives->SymmetricMemoryAlignment();
+          absl::StatusOr<uint64_t> granularity =
+              ordinal_and_device.second->executor()
+                  ->GetCollectiveMemoryGranularity();
+          if (granularity.ok()) {
+            collective_memory_alignment = *granularity;
           }
           allocators.push_back(
               {std::move(bfc_allocator),

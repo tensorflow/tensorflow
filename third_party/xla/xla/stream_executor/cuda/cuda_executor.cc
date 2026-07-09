@@ -756,7 +756,6 @@ CudaExecutor::~CudaExecutor() {
   CHECK(gpu_binary_to_module_.empty()) << "CudaExecutor has loaded modules.";
 }
 
-
 CudaExecutor::VmmMemoryHandle::~VmmMemoryHandle() { CHECK_OK(Release()); }
 
 absl::Status CudaExecutor::VmmMemoryHandle::Release() {
@@ -800,7 +799,6 @@ absl::StatusOr<size_t> CudaExecutor::GetVmmGranularity() const {
       &granularity, &properties, CU_MEM_ALLOC_GRANULARITY_RECOMMENDED)));
   return granularity;
 }
-
 
 absl::StatusOr<std::unique_ptr<MemoryAllocator>>
 CudaExecutor::CreateMemoryAllocator(MemorySpace type) {
@@ -1694,7 +1692,35 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
       cc.ToString(), device_memory_size, core_count, sm_clock_khz,
       value_or(mem_clock_khz, 0), l2_cache_bytes));
 
+  {
+    CUmulticastObjectProp prop = {};
+    prop.handleTypes =
+        CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR | CU_MEM_HANDLE_TYPE_FABRIC;
+    size_t multicast_granularity = 0;
+    if (absl::Status status = cuda::ToStatus(cuMulticastGetGranularity(
+            &multicast_granularity, &prop, CU_MULTICAST_GRANULARITY_MINIMUM));
+        status.ok()) {
+      desc.set_collective_memory_granularity(multicast_granularity);
+      VLOG(1) << "Collective memory granularity: " << multicast_granularity;
+    } else {
+      constexpr uint64_t kDefaultCollectiveMemoryGranularity =
+          2 * 1024 * 1024;  // 2 MiB
+      LOG(INFO) << "Falling back to default granularity value of "
+                << kDefaultCollectiveMemoryGranularity
+                << " MiB. This "
+                   "isn't a production error. Failed "
+                   "to get multicast minimum granularity with status: "
+                << status;
+      desc.set_collective_memory_granularity(
+          kDefaultCollectiveMemoryGranularity);
+    }
+  }
+
   return std::make_unique<DeviceDescription>(std::move(desc));
+}
+
+absl::StatusOr<uint64_t> CudaExecutor::GetCollectiveMemoryGranularity() const {
+  return GetDeviceDescription().collective_memory_granularity();
 }
 
 absl::StatusOr<std::string> CudaExecutor::GetInterconnectStatus() const {

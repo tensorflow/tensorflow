@@ -464,6 +464,10 @@ class DeviceDescription {
     return interconnect_info_;
   }
 
+  uint64_t collective_memory_granularity() const {
+    return collective_memory_granularity_;
+  }
+
   ABSL_DEPRECATE_AND_INLINE() GpuDeviceInfoProto ToGpuProto() const {
     return ToProto();
   }
@@ -578,6 +582,9 @@ class DeviceDescription {
   void set_core_count(int value) { core_count_ = value; }
   void set_fpus_per_core(int value) { fpus_per_core_ = value; }
   void set_ecc_enabled(bool value) { ecc_enabled_ = value; }
+  void set_collective_memory_granularity(uint64_t value) {
+    collective_memory_granularity_ = value;
+  }
 
   void set_device_interconnect_info(DeviceInterconnectInfo info) {
     interconnect_info_ = std::move(info);
@@ -666,6 +673,7 @@ class DeviceDescription {
   SemanticVersion cub_version_{0, 0, 0};
 
   DeviceInterconnectInfo interconnect_info_;
+  uint64_t collective_memory_granularity_ = 0;
 
   // Please keep the fields in sync with the proto.
   // LINT.ThenChange(//tensorflow/compiler/xla/stream_executor/device_description.proto)
