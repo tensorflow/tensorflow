@@ -271,6 +271,7 @@ enum StatType {
   kDeduplicatedName,
   kHloCategory,
   kHloModule,
+  kStableHloOpId,
   kProgramId,
   kEquation,
   kIsEager,
