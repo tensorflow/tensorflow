@@ -1354,18 +1354,18 @@ func.func @concat_v2_with_bool_type(%arg0: tensor<?x1xi1>, %arg1: tensor<?x1xi1>
 // CHECK: "tfl.concatenation"(%arg0, %arg1) <{axis = -1 : i32, fused_activation_function = "NONE"}> : (tensor<?x1xi1>, tensor<?x1xi1>) -> tensor<?x2xi1>
 }
 
-func.func @resize_with_bilinear(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<4xi32>) -> tensor<?xf32> {
-  %0 = "tf.ResizeBilinear"(%arg0, %arg1) {align_corners = true} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+func.func @resize_with_bilinear(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<2xi32>) -> tensor<?xf32> {
+  %0 = "tf.ResizeBilinear"(%arg0, %arg1) {align_corners = true} : (tensor<1x100x100x3xf32>, tensor<2xi32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
   // CHECK-LABEL: resize_with_bilinear
-  // CHECK: "tfl.resize_bilinear"(%arg0, %arg1) <{align_corners = true, half_pixel_centers = false}> : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  // CHECK: "tfl.resize_bilinear"(%arg0, %arg1) <{align_corners = true, half_pixel_centers = false}> : (tensor<1x100x100x3xf32>, tensor<2xi32>) -> tensor<?xf32>
 }
 
-func.func @resize_with_bilinear_with_half_pixel_centers(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<4xi32>) -> tensor<?xf32> {
-  %0 = "tf.ResizeBilinear"(%arg0, %arg1) {align_corners = false, half_pixel_centers = true} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+func.func @resize_with_bilinear_with_half_pixel_centers(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<2xi32>) -> tensor<?xf32> {
+  %0 = "tf.ResizeBilinear"(%arg0, %arg1) {align_corners = false, half_pixel_centers = true} : (tensor<1x100x100x3xf32>, tensor<2xi32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
   // CHECK-LABEL: resize_with_bilinear_with_half_pixel_centers
-  // CHECK: "tfl.resize_bilinear"(%arg0, %arg1) <{align_corners = false, half_pixel_centers = true}> : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  // CHECK: "tfl.resize_bilinear"(%arg0, %arg1) <{align_corners = false, half_pixel_centers = true}> : (tensor<1x100x100x3xf32>, tensor<2xi32>) -> tensor<?xf32>
 }
 
 func.func @strided_slice(%arg0: tensor<12x2x2x5xf32>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<1x2x2x5xf32> {
@@ -1592,18 +1592,18 @@ func.func @round(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
   // CHECK: return %[[RESULT]] : tensor<8x16xf32>
 }
 
-func.func @resize_nearest_neighbor(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<4xi32>) -> tensor<?xf32> {
-  %0 = "tf.ResizeNearestNeighbor"(%arg0, %arg1) {align_corners = true} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+func.func @resize_nearest_neighbor(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<2xi32>) -> tensor<?xf32> {
+  %0 = "tf.ResizeNearestNeighbor"(%arg0, %arg1) {align_corners = true} : (tensor<1x100x100x3xf32>, tensor<2xi32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
   // CHECK-LABEL: resize_nearest_neighbor
-  // CHECK: "tfl.resize_nearest_neighbor"(%arg0, %arg1) <{align_corners = true, half_pixel_centers = false}> : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  // CHECK: "tfl.resize_nearest_neighbor"(%arg0, %arg1) <{align_corners = true, half_pixel_centers = false}> : (tensor<1x100x100x3xf32>, tensor<2xi32>) -> tensor<?xf32>
 }
 
-func.func @resize_nearest_neighbor_with_half_pixel_centers(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<4xi32>) -> tensor<?xf32> {
-  %0 = "tf.ResizeNearestNeighbor"(%arg0, %arg1) {align_corners = false, half_pixel_centers = true} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+func.func @resize_nearest_neighbor_with_half_pixel_centers(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<2xi32>) -> tensor<?xf32> {
+  %0 = "tf.ResizeNearestNeighbor"(%arg0, %arg1) {align_corners = false, half_pixel_centers = true} : (tensor<1x100x100x3xf32>, tensor<2xi32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
   // CHECK-LABEL: resize_nearest_neighbor_with_half_pixel_centers
-  // CHECK: "tfl.resize_nearest_neighbor"(%arg0, %arg1) <{align_corners = false, half_pixel_centers = true}> : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  // CHECK: "tfl.resize_nearest_neighbor"(%arg0, %arg1) <{align_corners = false, half_pixel_centers = true}> : (tensor<1x100x100x3xf32>, tensor<2xi32>) -> tensor<?xf32>
 }
 
 func.func @sparse_to_dense_with_scalar_sparse_indices(%arg0: tensor<i32>, %arg1: tensor<3xi32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<?x?x?xf32> {

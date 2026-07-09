@@ -192,6 +192,18 @@ class TFL_OperandDimIsAtMost<int n, int dim, int size> : And<[
   CPred<"llvm::cast<ShapedType>($_op.getOperand(" # n # ").getType())"
       ".getShape()[" # dim # " ] <= " # size>]>;
 
+// Returns true if the n-th operand has unknown rank, or is ranked and has a
+// dynamic dimension or dimension length = size at the rank dim.
+class TFL_OperandDimIsDynamicOrEquals<int n, int dim, int size> :
+  PredOpTrait<"operand " # n # "'s dimension " # dim #
+      " is dynamic or equals " # size,
+    Or<[TFL_OperandIsUnrankedPred<n>,
+        And<[TFL_OperandIsRankedAndHasDimPred<n, dim>,
+          CPred<"ShapedType::isDynamic(llvm::cast<ShapedType>($_op.getOperand("
+              # n # ").getType()).getShape()[" # dim # "]) || "
+              "llvm::cast<ShapedType>($_op.getOperand(" # n #
+              ").getType()).getShape()[" # dim # "] == " # size>]>]>>;
+
 // Returns true if the n-th operand has unknown rank or at least rank m.
 class TFL_OperandHasAtleastRank<int n, int m> :
   PredOpTrait<"operand " # n # " is " # m # "-D",
@@ -3935,6 +3947,7 @@ def TFL_ResizeBilinearOp: TFL_Op<"resize_bilinear", [
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     TFL_OperandHasRank<0, 4>,
     TFL_OperandHasRank<1, 1>,
+    TFL_OperandDimIsDynamicOrEquals<1, 0, 2>,
     SameOperandsAndResultsScale]> {
   let summary = "ResizeBilinear Op";
 
@@ -3963,6 +3976,7 @@ def TFL_ResizeNearestNeighborOp : TFL_Op<"resize_nearest_neighbor", [
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     TFL_OperandHasRank<0, 4>,
     TFL_OperandHasRank<1, 1>,
+    TFL_OperandDimIsDynamicOrEquals<1, 0, 2>,
     SameOperandsAndResultsScale]> {
   let summary = "ResizeNearestNeighbor Op";
 
