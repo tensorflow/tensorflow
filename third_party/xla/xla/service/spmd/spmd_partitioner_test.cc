@@ -15814,6 +15814,35 @@ TEST_P(SpmdPartitioningTest, DusOfSliceWithEnzymeOptNotSinglePartition) {
                     op::Shape("f32[20,40,50]")));
 }
 
+TEST_P(SpmdPartitioningTest, DusOfNestedDusOverPadWithEnzymeOpt) {
+  absl::string_view hlo_string = R"hlo(
+  HloModule module
+
+  ENTRY entry {
+    %base = f32[48,32] parameter(0), sharding={devices=[2,1]<=[2]}
+    %interior = f32[31,32] slice(%base), slice={[9:40], [0:32]}, sharding={devices=[2,1]<=[2]}
+    %zero = f32[] constant(0)
+    %padded = f32[33,32] pad(%interior, %zero), padding=1_1x0_0, sharding={devices=[2,1]<=[2]}
+    %zero_row = f32[1,32] broadcast(%zero), dimensions={}, sharding={devices=[2,1]<=[2]}
+    c0 = s32[] constant(0)
+    c32 = s32[] constant(32)
+    %dus0 = f32[33,32] dynamic-update-slice(%padded, %zero_row, c0, c0), sharding={devices=[2,1]<=[2]}
+    %dus1 = f32[33,32] dynamic-update-slice(%dus0, %zero_row, c32, c0), sharding={devices=[2,1]<=[2]}
+    c8 = s32[] constant(8)
+    ROOT %dus2 = f32[48,32] dynamic-update-slice(%base, %dus1, c8, c0), sharding={devices=[2,1]<=[2]}
+  }
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2,
+                                            SpmdPartitionerOptions(),
+                                            /*enable_enzyme_opt=*/true));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Select(_, op::Parameter(0), op::Select(_, _, _)),
+                          op::Shape("f32[24,32]")));
+}
+
 TEST_P(SpmdPartitioningTest, AddBroadcastWithEnzymeOpt) {
   absl::string_view hlo_string = R"hlo(
   HloModule module
