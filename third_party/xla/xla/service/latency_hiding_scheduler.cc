@@ -1560,6 +1560,33 @@ std::pair<int64_t, int64_t> ReadySetLt::GetMemoryPressureChanges(
   return {p.first, p.second};
 }
 
+int64_t ReadySetLt::ComputeConsumerPressureReduction(
+    const SchedulingState& sched_state, ScheduleCandidate& cand,
+    const HloGraphNode* node) const {
+  if (cand.has_consumer_pressure) {
+    return cand.consumer_pressure;
+  }
+  int64_t total = 0;
+  const BufferInfoTracker& buffer_tracker =
+      core_->GetModulePressureState()->buffer_tracker();
+  for (HloBuffer::Id id :
+       sched_state.memory_pressure_tracker->allocated_buffer_ids(
+           &node->GetInstr())) {
+    if (id >=
+        static_cast<int64_t>(sched_state.buffer_remaining_consumers.size())) {
+      continue;
+    }
+    int32_t remaining = sched_state.buffer_remaining_consumers[id];
+    if (remaining <= 0) continue;
+    int64_t buf_size = buffer_tracker.GetBufferInfo(id).buffer_size;
+    if (buf_size < sched_state.config.eager_free_threshold_bytes) continue;
+    total += buf_size / remaining;
+  }
+  cand.consumer_pressure = total;
+  cand.has_consumer_pressure = true;
+  return total;
+}
+
 int64_t ReadySetLt::GetNumConflictingSerialResources(
     const SchedulingState& sched_state, ScheduleCandidate& cand,
     const HloGraphNode* cand_node) const {
@@ -1661,6 +1688,23 @@ bool ReadySetLt::AIsBetterThanB(DefaultSchedulerCore::ScheduleCandidate& a,
     if (auto value = MemoryPressurePolicy(sched_state, an, a_increase, bn,
                                           b_increase, reason)) {
       return *value;
+    }
+  }
+
+  // Consumer-aware memory pressure: prefer the candidate that makes more
+  // progress toward freeing large multi-consumer buffers. Positioned
+  // immediately after kMemoryPressure so it takes priority over all
+  // async scheduling heuristics. This trades latency hiding for a flat
+  // memory profile when multi-consumer buffers dominate peak usage.
+  if (config.eager_free_threshold_bytes > 0 &&
+      !sched_state.buffer_remaining_consumers.empty()) {
+    int64_t a_cpr = ComputeConsumerPressureReduction(sched_state, a, an);
+    int64_t b_cpr = ComputeConsumerPressureReduction(sched_state, b, bn);
+    if (a_cpr != b_cpr) {
+      if (auto res = CmpExplicit(a_cpr > b_cpr, b_cpr > a_cpr,
+                                 "kConsumerPressure", reason)) {
+        return *res;
+      }
     }
   }
 
@@ -2881,6 +2925,27 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
 
   VLOG(10) << "Memory pressure after schedule: " << memory_after;
   VLOG(10) << "Memory peak after schedule: " << memory_peak;
+
+  // Update remaining consumer counts for buffer urgency tracking.
+  // The counts are read by ComputeConsumerPressureReduction during the
+  // next AIsBetterThanB comparison to produce the kConsumerPressure signal.
+  if (config_.eager_free_threshold_bytes > 0 &&
+      !sched_state->buffer_remaining_consumers.empty()) {
+    for (HloBuffer::Id id :
+         sched_state->memory_pressure_tracker->allocated_buffer_ids(
+             &n->GetInstr())) {
+      if (id >= static_cast<int64_t>(
+                    sched_state->buffer_remaining_consumers.size())) {
+        continue;
+      }
+      int32_t& remaining = sched_state->buffer_remaining_consumers[id];
+      if (remaining <= 0) {
+        continue;
+      }
+      remaining--;
+    }
+  }
+
   return current_time;
 }
 
@@ -3741,6 +3806,8 @@ void DefaultSchedulerCore::SchedulingState::Reset() {
   ready_annotations.clear();
   ongoing_annotation = kInvalidAnnotation;
   nodes_holding_annotations.clear();
+  buffer_remaining_consumers.clear();
+  buffer_consumers.clear();
 }
 
 absl::StatusOr<std::vector<HloInstruction*>>
@@ -3823,6 +3890,43 @@ DefaultSchedulerCore::ScheduleComputation(
   }
   VLOG(5) << "Initial memory pressure for " << computation->name() << ": "
           << memory_pressure_tracker.memory_usage();
+
+  // Initialize buffer urgency tracking for co-consumer scheduling.
+  // For each buffer, count how many instructions consume it. When all but one
+  // consumer have been scheduled, the remaining consumer becomes "urgent" and
+  // is boosted to highest priority to minimize the buffer's live range.
+  if (config_.eager_free_threshold_bytes > 0) {
+    const BufferInfoTracker& buffer_tracker =
+        module_pressure_state_->buffer_tracker();
+    // Count consumers per buffer by iterating over all instructions.
+    // allocated_buffer_ids(I) returns the operand buffers that I consumes
+    // (in bottom-up scheduling mode).
+    absl::flat_hash_map<HloBuffer::Id, int32_t> consumer_counts;
+    absl::flat_hash_map<HloBuffer::Id, std::vector<const HloInstruction*>>
+        consumer_lists;
+    for (const HloInstruction* instr : computation->instructions()) {
+      for (HloBuffer::Id id :
+           memory_pressure_tracker.allocated_buffer_ids(instr)) {
+        consumer_counts[id]++;
+        consumer_lists[id].push_back(instr);
+      }
+    }
+    // Only keep entries for large multi-consumer buffers.
+    int64_t num_buffers = memory_pressure_tracker.live_buffers_count();
+    sched_state->buffer_remaining_consumers.assign(num_buffers, 0);
+    for (auto& [id, count] : consumer_counts) {
+      if (count > 1) {
+        int64_t buf_size = buffer_tracker.GetBufferInfo(id).buffer_size;
+        if (buf_size >= config_.eager_free_threshold_bytes) {
+          sched_state->buffer_remaining_consumers[id] = count;
+          sched_state->buffer_consumers[id] = std::move(consumer_lists[id]);
+          VLOG(2) << "Buffer urgency: tracking buffer " << id << " ("
+                  << buf_size << " bytes, " << count << " consumers)";
+        }
+      }
+    }
+  }
+
   //  Schedule in either top down or bottom up order.
   while (!sched_state->ready_set.empty() || !sched_state->nop_set.empty()) {
     VLOG(10) << "Current ready time: " << sched_state->current_time;
