@@ -132,13 +132,4 @@ class GenericHostToLLVMPass
 };
 
 }  // namespace
-
-namespace hlo {
-
-std::unique_ptr<OperationPass<ModuleOp>> createGenericHostToLLVMPass(
-    const GenericHostToLLVMPassOptions& options) {
-  return std::make_unique<GenericHostToLLVMPass>(options);
-}
-
-}  // namespace hlo
 }  // namespace mlir

@@ -194,10 +194,5 @@ void populateEinsumToDotGeneralPatterns(mlir::MLIRContext *context,
   patterns->add<EinsumToDotGeneralPattern>(context);
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>>
-createLegalizeEinsumToDotGeneralPass() {
-  return std::make_unique<LegalizeEinsumToDotGeneralPass>();
-}
-
 }  // namespace mhlo
 }  // namespace mlir
