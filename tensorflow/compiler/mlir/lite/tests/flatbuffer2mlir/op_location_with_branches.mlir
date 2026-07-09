@@ -31,12 +31,12 @@ func.func @cond_false(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf3
 }
 
 // CHECK-DAG: #[[ADD_TENSOR:.*]] = loc("tfl.add"(#[[STDIN_LOC]]))
-// CHECK-DAG: #[[ADD_LOC]] = loc("tflite.subgraph=0.op=0:ADD_fused_RELU6"(#[[ADD_TENSOR]]))
+// CHECK-DAG: #[[ADD_LOC]] = loc(fused<"tflite.subgraph=0.op=0:ADD_fused_RELU6">[#[[ADD_TENSOR]]])
 // CHECK-DAG: #[[LESS_TENSOR:.*]] = loc("tfl.less"(#[[STDIN_LOC]]))
-// CHECK-DAG: #[[LESS_LOC]] = loc("tflite.subgraph=0.op=1:LESS"(#[[LESS_TENSOR]]))
+// CHECK-DAG: #[[LESS_LOC]] = loc(fused<"tflite.subgraph=0.op=1:LESS">[#[[LESS_TENSOR]]])
 // CHECK-DAG: #[[IF_TENSOR:.*]] = loc("tf.If"(#[[STDIN_LOC]]))
-// CHECK-DAG: #[[IF_LOC]] = loc("tflite.subgraph=0.op=2:IF"(#[[IF_TENSOR]]))
+// CHECK-DAG: #[[IF_LOC]] = loc(fused<"tflite.subgraph=0.op=2:IF">[#[[IF_TENSOR]]])
 // CHECK-DAG: #[[ADD_TRUE_TENSOR:.*]] = loc("tfl.add1"(#[[STDIN_LOC]]))
-// CHECK-DAG: #[[ADD_TRUE_LOC]] = loc("tflite.subgraph=1.op=0:ADD"(#[[ADD_TRUE_TENSOR]]))
+// CHECK-DAG: #[[ADD_TRUE_LOC]] = loc(fused<"tflite.subgraph=1.op=0:ADD">[#[[ADD_TRUE_TENSOR]]])
 // CHECK-DAG: #[[MUL_FALSE_TENSOR:.*]] = loc("tfl.mul"(#[[STDIN_LOC]]))
-// CHECK-DAG: #[[MUL_FALSE_LOC]] = loc("tflite.subgraph=2.op=0:MUL"(#[[MUL_FALSE_TENSOR]]))
+// CHECK-DAG: #[[MUL_FALSE_LOC]] = loc(fused<"tflite.subgraph=2.op=0:MUL">[#[[MUL_FALSE_TENSOR]]])

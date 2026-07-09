@@ -40,11 +40,11 @@ module @jit_relu attributes {jax.uses_shape_polymorphism = false, mhlo.num_parti
 
 // CHECK-DAG: #[[LOC1:.*]] = loc("tfl.less")
 // CHECK-DAG: #[[LESS_WRAP:.*]] = loc(fused<"tflite.importer_wrapper">[#[[LOC1]]])
-// CHECK-DAG: #[[LESS_LOC]] = loc("tflite.subgraph=0.op=0:LESS"(#[[LESS_WRAP]]))
+// CHECK-DAG: #[[LESS_LOC]] = loc(fused<"tflite.subgraph=0.op=0:LESS">[#[[LESS_WRAP]]])
 
 // CHECK-DAG: #[[LOC2:.*]] = loc("tf.If")
 // CHECK-DAG: #[[IF_WRAP:.*]] = loc(fused<"tflite.importer_wrapper">[#[[LOC2]]])
-// CHECK-DAG: #[[IF_LOC]] = loc("tflite.subgraph=0.op=1:IF"(#[[IF_WRAP]]))
+// CHECK-DAG: #[[IF_LOC]] = loc(fused<"tflite.subgraph=0.op=1:IF">[#[[IF_WRAP]]])
 
 // CHECK-DAG: #[[IPY_LOC:.*]] = loc("<ipython-input-7-340b9abeb7a8>":1:4)
 // CHECK-DAG: #[[SHELL_LOC:.*]] = loc("third_party/py/IPython/v3_2_3/core/interactiveshell.py":3066:16)
@@ -52,9 +52,9 @@ module @jit_relu attributes {jax.uses_shape_polymorphism = false, mhlo.num_parti
 // CHECK-DAG: #[[MAX_LOC1:.*]] = loc("jit(relu)/jit(main)/max"(#[[CALLSITE_LOC]]))
 // CHECK-DAG: #[[MAX_LOC2:.*]] = loc("jit(relu)/jit(main)/max"(#[[MAX_LOC1]]))
 // CHECK-DAG: #[[ADD_WRAP:.*]] = loc(fused<"tflite.importer_wrapper">[#[[MAX_LOC2]]])
-// CHECK-DAG: #[[ADD_LOC]] = loc("tflite.subgraph=1.op=0:ADD"(#[[ADD_WRAP]]))
+// CHECK-DAG: #[[ADD_LOC]] = loc(fused<"tflite.subgraph=1.op=0:ADD">[#[[ADD_WRAP]]])
 
 // CHECK-DAG: #[[FUSED_EMPTY:.*]] = loc(fused<"">[#[[IPY_LOC]], #[[SHELL_LOC]]])
 // CHECK-DAG: #[[MUL_NAME:.*]] = loc("tfl.mul"(#[[FUSED_EMPTY]]))
 // CHECK-DAG: #[[MUL_WRAP:.*]] = loc(fused<"tflite.importer_wrapper">[#[[MUL_NAME]]])
-// CHECK-DAG: #[[MUL_LOC]] = loc("tflite.subgraph=2.op=0:MUL"(#[[MUL_WRAP]]))
+// CHECK-DAG: #[[MUL_LOC]] = loc(fused<"tflite.subgraph=2.op=0:MUL">[#[[MUL_WRAP]]])

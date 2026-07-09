@@ -6,7 +6,7 @@
 // CHECK: #[[LOC1:.*]] = loc("output0"(#[[LOC0]]))
 // CHECK: #[[LOC2:.*]] = loc("output1"(#[[LOC0]]))
 // CHECK: #[[SPLIT_VAL:.*]] = loc(fused[#[[LOC1]], #[[LOC2]]])
-// CHECK: #[[SPLIT_LOC]] = loc("tflite.subgraph=0.op=0:SPLIT"(#[[SPLIT_VAL]]))
+// CHECK: #[[SPLIT_LOC]] = loc(fused<"tflite.subgraph=0.op=0:SPLIT">[#[[SPLIT_VAL]]])
 
 {
   "version": 3,

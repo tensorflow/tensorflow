@@ -418,14 +418,19 @@ Location AttachTfliteOpLoc(Builder builder, int subgraph_index, int op_index,
   std::string op_name = GetTfliteOpNameForLoc(op_code);
   std::string loc_name = absl::StrCat("tflite.subgraph=", subgraph_index,
                                      ".op=", op_index, ":", op_name);
-  return mlir::NameLoc::get(builder.getStringAttr(loc_name), child_loc);
+  // Attach as FusedLoc metadata so name extractors (e.g. GetNameFromLoc used
+  // by the exporter to derive tensor names) keep resolving names from the
+  // original child location.
+  return mlir::FusedLoc::get(child_loc.getContext(), {child_loc},
+                             builder.getStringAttr(loc_name));
 }
 
 Location AttachTfliteTensorLoc(Builder builder, int subgraph_index,
                                int tensor_index, Location child_loc) {
   std::string loc_name = absl::StrCat("tflite.subgraph=", subgraph_index,
                                      ".tensor=", tensor_index, ":CONST");
-  return mlir::NameLoc::get(builder.getStringAttr(loc_name), child_loc);
+  return mlir::FusedLoc::get(child_loc.getContext(), {child_loc},
+                             builder.getStringAttr(loc_name));
 }
 
 Location MaybeAttachFusedActivationLoc(Location loc, Builder builder,
@@ -444,7 +449,8 @@ Location MaybeAttachFusedActivationLoc(Location loc, Builder builder,
   std::string loc_name = absl::StrCat("tflite.subgraph=", subgraph_index,
                                      ".op=", op_index, ":", op_name,
                                      "_fused_", fused_name);
-  return mlir::NameLoc::get(builder.getStringAttr(loc_name), child_loc);
+  return mlir::FusedLoc::get(child_loc.getContext(), {child_loc},
+                             builder.getStringAttr(loc_name));
 }
 
 // Return MLIR location if it exists in the debug metadata. Otherwise, create a
