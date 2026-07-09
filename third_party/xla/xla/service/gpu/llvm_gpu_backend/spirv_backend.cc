@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LegacyPassManager.h"
+#include "llvm/Support/CodeGen.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
 #include "llvm/Transforms/Scalar.h"
@@ -80,6 +81,13 @@ std::string EmitModuleToSPIRV(llvm::Module* module,
       llvm::Triple(module->getTargetTriple())));
   std::unique_ptr<llvm::MachineModuleInfoWrapperPass> mmiwp(
       new llvm::MachineModuleInfoWrapperPass(target_machine));
+  // Force CodeGen opt level to None to match the previously used
+  // SPIRVTranslateModule API (see llvm/lib/Target/SPIRV/SPIRVAPI.cpp), which
+  // defaulted to None. The current default is O2, which triggered accuracy
+  // regressions in the SPIR-V backend, so we pin it back to None here.
+  // TODO(intel-tf): Revisit this once the SPIR-V backend is fixed to support
+  // O2.
+  target_machine->setOptLevel(llvm::CodeGenOptLevel::None);
   target_machine->getObjFileLowering()->Initialize(mmiwp->getMMI().getContext(),
                                                    *target_machine);
   target_machine->addPassesToEmitFile(pm, buffered_stream, nullptr,
