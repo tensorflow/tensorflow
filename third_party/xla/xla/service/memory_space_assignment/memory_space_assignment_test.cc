@@ -18202,6 +18202,7 @@ ENTRY entry {
                 .memory_space(),
             kDefaultMemorySpace);
 
+  // Check output tuple element 0 of async-done.
   // TODO(b/538345137): Update this to check for alternate memory.
   HloInstruction* async_done =
       module->entry_computation()->GetInstructionWithName("async-done");
