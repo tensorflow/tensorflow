@@ -12198,6 +12198,34 @@ ENTRY entry {
                           op::Shape("c64[1,1,3]")));
 }
 
+TEST_P(SpmdPartitioningTest, Fft3DSmallShardFallsBack) {
+  // The last FFT dimension is sharded down to a per-shard size of 1, so halo
+  // exchange (which establishes the divisibility that the per-partition shuffle
+  // requires) is impossible. This previously proceeded with an un-padded
+  // operand and hit a CHECK failure; it must fall back to the default
+  // partitioning instead.
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  constant = c64[1,1,2] constant({{{(0,0),(1,1)}}}),
+    sharding={devices=[1,1,2]<=[2]}
+  ROOT fft = c64[1,1,2] fft(c64[1,1,2] constant), fft_type=FFT, fft_length={2},
+    sharding={devices=[1,1,2]<=[2]}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  // Partitioning must succeed (no CHECK failure) and preserve the FFT.
+  bool has_fft = false;
+  for (const HloInstruction* instr :
+       module->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kFft) has_fft = true;
+  }
+  EXPECT_TRUE(has_fft);
+}
+
 TEST_P(SpmdPartitioningTest, DotInputsAreIdentical) {
   absl::string_view hlo_string = R"(
 HloModule module
