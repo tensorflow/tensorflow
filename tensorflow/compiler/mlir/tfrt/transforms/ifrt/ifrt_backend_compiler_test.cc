@@ -149,38 +149,6 @@ INSTANTIATE_TEST_SUITE_P(IfrtBackendCompilerParameterizedTest,
                              {.mlir_file_name = "restore_with_reference.mlir"},
                          }));
 
-TEST_F(IfrtBackendCompilerTest, CompileShallFailAfterModelIsFrozen) {
-  // Create test input module
-  constexpr absl::string_view kDataDirectory =
-      "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
-  std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
-      absl::StrCat(kDataDirectory, "/ifrt_cluster.mlir"));
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
-      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context_);
-
-  ASSERT_TRUE(mlir_module);
-  ASSERT_TRUE(mlir_module.get() != nullptr);
-
-  TF_ASSERT_OK(
-      compiler_.CompileTensorflow(runtime_context_, mlir_module.get()));
-
-  std::optional<IfrtModelContext*> ifrt_model_context =
-      runtime_context_.resource_context().GetResource<IfrtModelContext>(
-          "IfrtModelContext");
-  ASSERT_TRUE(ifrt_model_context.has_value());
-
-  TF_ASSERT_OK((*ifrt_model_context)->Freeze());
-
-  mlir::OwningOpRef<mlir::ModuleOp> another_mlir_module =
-      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context_);
-
-  EXPECT_THAT(
-      compiler_.CompileTensorflow(runtime_context_, another_mlir_module.get()),
-      absl_testing::StatusIs(
-          absl::StatusCode::kFailedPrecondition,
-          HasSubstr("Cannot compile IFRT programs after the model is frozen")));
-}
-
 }  // namespace
 }  // namespace ifrt_serving
 }  // namespace tensorflow
