@@ -336,5 +336,77 @@ ENTRY main {
       << triton_mlir;
 }
 
+TEST_F(TritonEmitterDevicelessTest, UnsignedIntegerOpsTest) {
+  const std::string kHloText = R"(
+fusion_computation {
+  p0 = u32[1024]{0} parameter(0)
+  p1 = u32[1024]{0} parameter(1)
+  add = u32[1024]{0} add(p0, p1)
+  mul = u32[1024]{0} multiply(add, p1)
+  div = u32[1024]{0} divide(mul, p0)
+  rem = u32[1024]{0} remainder(div, p1)
+  max = u32[1024]{0} maximum(rem, p0)
+  min = u32[1024]{0} minimum(max, p1)
+  and = u32[1024]{0} and(min, p0)
+  or  = u32[1024]{0} or(and, p1)
+  ROOT xor = u32[1024]{0} xor(or, p0)
+}
+
+ENTRY main {
+  p0 = u32[1024]{0} parameter(0)
+  p1 = u32[1024]{0} parameter(1)
+  ROOT triton_fusion = u32[1024]{0} fusion(p0, p1), kind=kCustom, calls=fusion_computation, backend_config={
+    "fusion_backend_config": {
+      "kind": "__triton_nested_gemm_fusion",
+      "block_level_fusion_config": {
+        "output_tiles": [{"sizes": ["1024"]}],
+        "num_warps": 4,
+        "num_ctas": 1,
+        "num_stages": 1
+      }
+    }
+  }
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  const HloFusionInstruction* triton_fusion = Cast<HloFusionInstruction>(
+      hlo_module->entry_computation()->root_instruction());
+  const se::DeviceDescription dev_info =
+      TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  mlir::MLIRContext mlir_context;
+  RegisterSymbolicExprStorage(&mlir_context);
+  ASSERT_OK_AND_ASSIGN(auto backend_config,
+                       triton_fusion->backend_config<GpuBackendConfig>());
+
+  ASSERT_OK_AND_ASSIGN(
+      TritonKernelSource triton_source,
+      CreateTritonModule("test_fn", *triton_fusion, dev_info,
+                         BlockLevelParameters::FromBlockLevelFusionConfig(
+                             backend_config.fusion_backend_config()
+                                 .block_level_fusion_config()),
+                         mlir_context));
+
+  std::string triton_mlir = triton_source.ToString();
+
+  constexpr absl::string_view kPattern = R"(
+// CHECK-LABEL: @test_fn
+// CHECK: arith.addi
+// CHECK: arith.muli
+// CHECK: arith.divui
+// CHECK: arith.remui
+// CHECK: arith.maxui
+// CHECK: arith.minui
+// CHECK: arith.andi
+// CHECK: arith.ori
+// CHECK: arith.xori
+)";
+
+  EXPECT_THAT(RunFileCheck(triton_mlir, kPattern),
+              absl_testing::IsOkAndHolds(true))
+      << triton_mlir;
+}
+
 }  // namespace
 }  // namespace xla::gpu

@@ -181,7 +181,7 @@ absl::StatusOr<Type> GetAlgUnsetAccumulatorType(mlir::ImplicitLocOpBuilder& b,
   CHECK(lhs_type == rhs_type);
 
   // Currently allowing 8x8-bit ints -> i32.
-  if (lhs_type == b.getIntegerType(8) && accumulator_type.isInteger(32)) {
+  if (lhs_type.isInteger(8) && accumulator_type.isInteger(32)) {
     return b.getI32Type();
   }
   return (accumulator_type.isF64() && lhs_type.isF64()) ? b.getF64Type()

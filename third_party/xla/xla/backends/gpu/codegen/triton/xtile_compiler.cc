@@ -684,6 +684,8 @@ absl::Status LowerXTileToTriton(
     pm.addPass(xtile::createStablehloLowerToXtilePass());
     pm.addPass(xtile::createConvertElementwise0DTensorToScalarPass());
     pm.addPass(mlir::triton::xla::createArithFP8ConversionToTritonPass());
+    pm.addPass(xtile::createLegalizeUnsignedIntegersAsSignlessPass());
+    pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::triton::xla::createXTileLowerToTritonPass());
     pm.addPass(
         mlir::triton::xla::createTritonXLAFoldReshapeAroundForLoopPass());

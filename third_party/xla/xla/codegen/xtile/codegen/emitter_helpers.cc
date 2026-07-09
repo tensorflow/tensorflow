@@ -528,6 +528,10 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
       }
       return ma::NegFOp::create(b, inputs[0]);
     case HloOpcode::kConvert: {
+      if (hlo.operand(0)->shape().element_type() == PRED &&
+          hlo.shape().element_type() == U8) {
+        return absl::InvalidArgumentError("Unsupported PRED to U8 conversion.");
+      }
       ASSIGN_OR_RETURN(Type dst_ty,
                        PrimitiveTypeToMlirType(b, hlo.shape().element_type()));
       return Cast(b, inputs[0], dst_ty);

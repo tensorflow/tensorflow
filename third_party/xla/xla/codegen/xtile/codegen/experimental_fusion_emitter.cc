@@ -405,6 +405,17 @@ absl::StatusOr<TensorValue> EmitDot(EmitterContext& emitter_ctx,
 
   auto& b = emitter_ctx.b();
   const auto& dot = *::xla::Cast<HloDotInstruction>(tiled_dot.hlo());
+  PrimitiveType lhs_type = dot.operand(0)->shape().element_type();
+  PrimitiveType rhs_type = dot.operand(1)->shape().element_type();
+  const bool mixed_fp8_ok =
+      (lhs_type == F8E5M2 && rhs_type == F8E4M3FN) ||
+      (lhs_type == F8E4M3FN && rhs_type == F8E5M2) ||
+      (lhs_type == F8E5M2FNUZ && rhs_type == F8E4M3FNUZ) ||
+      (lhs_type == F8E4M3FNUZ && rhs_type == F8E5M2FNUZ);
+  if (lhs_type != rhs_type && !mixed_fp8_ok) {
+    return absl::InvalidArgumentError(
+        "Dot operation only supports same types for lhs and rhs.");
+  }
   // The specific accumulator type to use may not correspond to the output type
   // of the dot. In particular, that is the case when an algorithm is specified
   // and the dot's output type does not match its expectations.

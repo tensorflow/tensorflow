@@ -162,6 +162,7 @@ cc_library(
         "//xla/backends/gpu/codegen/triton/transforms:passes",
         "//xla/backends/gpu/codegen/triton/transforms:triton_xla_implement_extern_element_wise_pass",
         "//xla/codegen/emitters/transforms:passes",
+        "//xla/codegen/xtile/ir/transforms:passes",
         "//xla/service:hlo_module_config",
         "//xla/service/gpu:matmul_utils",
         "//xla/stream_executor:device_description",
