@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -23,9 +23,15 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/hash/hash.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "include/dlpack/dlpack.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "mlir/Support/LLVM.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/ndarray.h"
 #include "nanobind/stl/optional.h"  // IWYU pragma: keep
@@ -33,28 +39,34 @@ limitations under the License.
 #include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
+#include "xla/array.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/dlpack_types.h"
 #include "xla/python/nb_absl_span.h"
+#include "xla/python/nb_numpy.h"
 #include "xla/python/types.h"
 #include "xla/service/hlo_graph_dumper.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_import.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/python/lib/core/numpy.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -772,6 +784,17 @@ NB_MODULE(_hlo, m) {
       const_cast<HloInstruction*>(inst_)->set_frontend_attributes(
           std::move(proto));
     }
+    void set_core_assignment(std::vector<int64_t> core_ids) {
+      xla::ThrowIfError(
+          xla::SetCoreAssignment(const_cast<HloInstruction*>(inst_), core_ids));
+    }
+    std::vector<int64_t> core_assignment() const {
+      auto cores = xla::GetCoreAssignment(inst_);
+      if (!cores.ok()) {
+        return {};
+      }
+      return *cores;
+    }
     Py_hash_t hash() const { return AbslHashToPythonHash(absl::HashOf(inst_)); }
     bool operator==(const InstructionWrapper& other) const {
       return inst_ == other.inst_;
@@ -794,6 +817,9 @@ NB_MODULE(_hlo, m) {
       .def("set_frontend_attribute",
            &InstructionWrapper::set_frontend_attribute, nb::arg("key"),
            nb::arg("value"))
+      .def("set_core_assignment", &InstructionWrapper::set_core_assignment,
+           nb::arg("core_ids"))
+      .def("core_assignment", &InstructionWrapper::core_assignment)
       .def("__hash__", &InstructionWrapper::hash)
       .def("__eq__", &InstructionWrapper::operator==);
 
