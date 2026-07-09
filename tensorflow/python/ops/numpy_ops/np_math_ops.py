@@ -442,6 +442,9 @@ def kron(a, b):  # pylint: disable=missing-function-docstring
   a_rank = a.shape.rank
   b_rank = b.shape.rank
 
+  if a_rank == 0 or b_rank == 0:
+    return a * b
+
   # rank Normalization (Static vs Dynamic Routing)
   if a_rank is not None and b_rank is not None:
     # static path: XLA and Graph Compiler optimization

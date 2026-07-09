@@ -426,16 +426,17 @@ class MathTest(test.TestCase, parameterized.TestCase):
           np.zeros((0, 3, 4), dtype=np.int32)
       ),
       # scalar (Rank 0) vs Empty Tensor
-      (5, np.zeros((0, 3), dtype=np.float32)),
+      (5, np.zeros((0, 3))),
       # Rank 0 vs Rank 0
-      (5, 3.5)
+      (5, np.array(3.5))
     ]
 
     return self._testBinaryOp(
         np_math_ops.kron, 
         np.kron, 
         'kron', 
-        operands=operands)
+        operands=operands,
+      )
 
 if __name__ == '__main__':
   tensor.enable_tensor_equality()
