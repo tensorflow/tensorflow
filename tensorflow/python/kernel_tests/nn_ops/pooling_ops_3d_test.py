@@ -192,7 +192,7 @@ class PoolingTest(test.TestCase):
   def testAvgPool3dGradOutputWithZeroDim(self):
     orig_input_shape = constant_op.constant(
         [1, 10, 7, 1, 9], dtype=dtypes.int32)
-    grad_data = np.full((1, 10, 7, 1, 9), 0.1, dtype=np.float32)
+    grad_data = np.full((1, 9, 6, 0, 9), 0.1, dtype=np.float32)
     grad = constant_op.constant(grad_data, dtype=dtypes.float32)
     t = gen_nn_ops.AvgPool3DGrad(
       orig_input_shape=orig_input_shape,

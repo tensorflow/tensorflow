@@ -21,6 +21,7 @@
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/mkl/mkl_pooling_ops_common.h"
+#include "third_party/absl/algorithm/container.h"
 
 using dnnl::algorithm;
 using dnnl::engine;
