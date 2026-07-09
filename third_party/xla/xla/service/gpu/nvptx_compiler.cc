@@ -213,6 +213,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
             .debug_options()
             .xla_gpu_experimental_enable_conv_fusion()) {
       pipeline.AddPass<ConvKindAssignment>(gpu_version, dnn_version);
+      pipeline.AddPass<ConvPaddingLegalization>();
     } else {
       // TODO(b/487265446): Remove ConvRewriter, CudnnFusedConvRewriter, and
       // ConvPaddingLegalization once ConvFusionRewriter is the default.
