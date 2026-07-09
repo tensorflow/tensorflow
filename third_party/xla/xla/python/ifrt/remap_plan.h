@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_REMAP_PLAN_H_
 #define XLA_PYTHON_IFRT_REMAP_PLAN_H_
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -24,6 +25,7 @@ limitations under the License.
 
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -65,6 +67,12 @@ class RemapPlan {
       return start == other.start && end == other.end && step == other.step;
     }
 
+    template <typename H>
+    friend H AbslHashValue(H h, const Interval& interval) {
+      return H::combine(std::move(h), interval.start, interval.end,
+                        interval.step);
+    }
+
     std::string DebugString() const;
   };
 
@@ -84,6 +92,12 @@ class RemapPlan {
              from == other.from && to == other.to;
     }
 
+    template <typename H>
+    friend H AbslHashValue(H h, const Mapping& mapping) {
+      return H::combine(std::move(h), mapping.in_array, mapping.out_array,
+                        mapping.from, mapping.to);
+    }
+
     std::string DebugString() const;
   };
 
@@ -92,6 +106,16 @@ class RemapPlan {
   struct InputDeviceRange {
     int in_array;
     DeviceListRef input_devices;
+
+    bool operator==(const InputDeviceRange& other) const {
+      return in_array == other.in_array && input_devices == other.input_devices;
+    }
+
+    template <typename H>
+    friend H AbslHashValue(H h, const InputDeviceRange& input_device_range) {
+      return H::combine(std::move(h), input_device_range.in_array,
+                        input_device_range.input_devices);
+    }
   };
 
   RemapPlan() : rep_(std::make_shared<Rep>()) {}
@@ -100,13 +124,9 @@ class RemapPlan {
             std::vector<ArraySpec> output_specs, std::vector<Mapping> mappings,
             absl::flat_hash_map<int, std::vector<InputDeviceRange>>
                 input_devices_for_output_map = {})
-      : rep_(std::make_shared<Rep>(Rep{
-            /*.input_specs=*/std::move(input_specs),
-            /*.output_specs=*/std::move(output_specs),
-            /*.mappings=*/std::move(mappings),
-            /*.input_devices_for_output_map=*/
-            std::move(input_devices_for_output_map),
-        })) {}
+      : rep_(std::make_shared<Rep>(std::move(input_specs),
+                                   std::move(output_specs), std::move(mappings),
+                                   std::move(input_devices_for_output_map))) {}
 
   // A convenience method that calculates `input_devices_for_output_map`,
   // creates a `RemapPlan`, and validates it. Users who create remap plans with
@@ -159,7 +179,24 @@ class RemapPlan {
   absl::Status CheckArrayCopySemantics(
       xla::ifrt::ArrayCopySemantics semantics) const;
 
+  bool operator==(const RemapPlan& other) const {
+    return rep_ == other.rep_ ||
+           (rep_->input_specs == other.rep_->input_specs &&
+            rep_->output_specs == other.rep_->output_specs &&
+            rep_->mappings == other.rep_->mappings &&
+            rep_->input_devices_for_output_map ==
+                other.rep_->input_devices_for_output_map);
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const RemapPlan& plan) {
+    plan.Hash(absl::HashState::Create(&h));
+    return std::move(h);
+  }
+
  private:
+  void Hash(absl::HashState state) const;
+
   struct Rep {
     // Specification of inputs.
     std::vector<ArraySpec> input_specs;
@@ -186,6 +223,23 @@ class RemapPlan {
     // the implementation need not construct the device lists at execution time.
     absl::flat_hash_map<int, std::vector<InputDeviceRange>>
         input_devices_for_output_map;
+
+    // Cached hash. 0 indicates the hash needs to be computed and cached. May be
+    // written multiple times with the same non-zero value.
+    static constexpr uint64_t kUnsetHash = 0;
+    mutable std::atomic<uint64_t> hash = kUnsetHash;
+
+    Rep() = default;
+
+    Rep(std::vector<ArraySpec> input_specs, std::vector<ArraySpec> output_specs,
+        std::vector<Mapping> mappings,
+        absl::flat_hash_map<int, std::vector<InputDeviceRange>>
+            input_devices_for_output_map)
+        : input_specs(std::move(input_specs)),
+          output_specs(std::move(output_specs)),
+          mappings(std::move(mappings)),
+          input_devices_for_output_map(
+              std::move(input_devices_for_output_map)) {}
   };
 
   absl_nonnull std::shared_ptr<const Rep> rep_;

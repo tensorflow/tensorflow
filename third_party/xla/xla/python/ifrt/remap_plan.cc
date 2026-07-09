@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/ifrt/remap_plan.h"
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -22,9 +23,11 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/hash/hash.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -698,6 +701,19 @@ absl::Status RemapPlan::CheckArrayCopySemantics(
     }
   }
   return absl::OkStatus();
+}
+
+void RemapPlan::Hash(absl::HashState state) const {
+  uint64_t hash = rep_->hash.load(std::memory_order_relaxed);
+  if (hash == Rep::kUnsetHash) {
+    hash = absl::HashOf(rep_->input_specs, rep_->output_specs, rep_->mappings,
+                        rep_->input_devices_for_output_map);
+    if (ABSL_PREDICT_FALSE(hash == Rep::kUnsetHash)) {
+      ++hash;
+    }
+    rep_->hash.store(hash, std::memory_order_relaxed);
+  }
+  absl::HashState::combine(std::move(state), hash);
 }
 
 }  // namespace ifrt
