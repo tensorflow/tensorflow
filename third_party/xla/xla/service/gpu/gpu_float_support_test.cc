@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
@@ -667,20 +668,21 @@ ENTRY main {
       ROOT r = bf16[4] $0(p0)
 })";
 
-  for (absl::string_view op : {"exponential", "sqrt", "rsqrt", "tanh"}) {
-    TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                             absl::Substitute(kHloModule, op)));
+  for (absl::string_view op : {"exponential", "log", "sqrt", "rsqrt", "tanh"}) {
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                          absl::Substitute(kHloModule, op)));
     EXPECT_FALSE(
         Normalize(module.get(), se::GpuComputeCapability{cc}, BF16, F32))
         << "bf16 " << op << " should not be normalized on gfx1250";
   }
 
-  // log has no native bf16 instruction wired up, so it is still normalized.
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module_log,
-      ParseAndReturnVerifiedModule(absl::Substitute(kHloModule, "log")));
+  // sine has a native bf16 hardware instruction (v_sin_bf16) but is not yet
+  // wired up in XLA (no lowering / gate), so it is still normalized to f32.
+  ASSERT_OK_AND_ASSIGN(
+      auto module_sin,
+      ParseAndReturnVerifiedModule(absl::Substitute(kHloModule, "sine")));
   EXPECT_TRUE(
-      Normalize(module_log.get(), se::GpuComputeCapability{cc}, BF16, F32));
+      Normalize(module_sin.get(), se::GpuComputeCapability{cc}, BF16, F32));
 }
 
 TEST_F(FloatSupportTest, ScaledDotIsIgnored) {
