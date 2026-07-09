@@ -16,9 +16,11 @@
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import linalg_ops
@@ -177,6 +179,162 @@ def _GetBandedTriangularSolveGradientTest(
     self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
 
   return Test
+
+
+class DetGradSingularMatrixTest(test_lib.TestCase):
+  """Gradients of det and slogdet remain defined for singular matrices.
+
+  The holomorphic derivative of det(A) is the cofactor matrix, so the
+  reverse-mode gradient is its elementwise conjugate, conj(det(A)) * A^{-H}
+  for invertible A. For real A this is the transpose of the classical
+  adjugate, which extends continuously to singular A. These tests compare the
+  analytic gradient against the numerical one via gradient_checker_v2 for
+  real and complex, singular and invertible, and near-singular inputs, check
+  values against the closed-form adjugate, and confirm that slogdet's
+  backward pass stays finite for a singular matrix instead of raising.
+  """
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testDetGradSingular2x2(self):
+    # det([[1, 2], [2, 4]]) == 0; its adjugate is [[4, -2], [-2, 1]].
+    m = np.array([[1.0, 2.0], [2.0, 4.0]], dtype=np.float64)
+    theoretical, _ = gradient_checker_v2.compute_gradient(
+        linalg_ops.matrix_determinant, [m])
+    self.assertAllClose([[4.0, -2.0, -2.0, 1.0]], theoretical[0])
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testDetGradInvertible2x2(self):
+    # The adjugate of the invertible A = [[1, 2], [3, 4]] is [[4, -3], [-2, 1]].
+    m = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+    theoretical, numerical = gradient_checker_v2.compute_gradient(
+        linalg_ops.matrix_determinant, [m])
+    self.assertAllClose([[4.0, -3.0, -2.0, 1.0]], theoretical[0])
+    self.assertAllClose(theoretical[0], numerical[0], atol=1e-6)
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testDetGradSingularFloat32(self):
+    m = np.array([[1.0, 2.0], [2.0, 4.0]], dtype=np.float32)
+    theoretical, _ = gradient_checker_v2.compute_gradient(
+        linalg_ops.matrix_determinant, [m])
+    self.assertAllClose([[4.0, -2.0, -2.0, 1.0]], theoretical[0], atol=1e-5)
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testDetGradNearSingular(self):
+    # A = [[1, 1], [1, 1 + eps]] has det = eps and condition number ~4/eps.
+    # The gradient (adjugate transpose) is [[1 + eps, -1], [-1, 1]], which the
+    # SVD-based evaluation must reproduce without the loss of accuracy that
+    # forming eps * A^{-1} would incur at these condition numbers.
+    for eps in (1e-6, 1e-9, 1e-12):
+      m = constant_op.constant(
+          [[1.0, 1.0], [1.0, 1.0 + eps]], dtype=np.float64)
+      with backprop.GradientTape() as tape:
+        tape.watch(m)
+        d = linalg_ops.matrix_determinant(m)
+      grad = tape.gradient(d, m)
+      self.assertAllClose(
+          self.evaluate(grad), [[1.0 + eps, -1.0], [-1.0, 1.0]], atol=1e-9)
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testDetGradNearSingularNumerical(self):
+    # The analytic gradient must also agree with the numerical one for a
+    # near-singular matrix (det = 1e-6, condition number ~4e6).
+    m = np.array([[1.0, 1.0], [1.0, 1.0 + 1e-6]], dtype=np.float64)
+    theoretical, numerical = gradient_checker_v2.compute_gradient(
+        linalg_ops.matrix_determinant, [m])
+    self.assertAllClose(theoretical[0], numerical[0], atol=1e-6)
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testDetGradBatchWithSingular(self):
+    # A batch mixing a singular and an invertible matrix must produce the
+    # per-matrix adjugate for both entries.
+    m = constant_op.constant(
+        [[[1.0, 2.0], [2.0, 4.0]], [[1.0, 2.0], [3.0, 4.0]]], dtype=np.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(m)
+      d = linalg_ops.matrix_determinant(m)
+      total = math_ops.reduce_sum(d)
+    grad = tape.gradient(total, m)
+    self.assertIsNotNone(grad)
+    self.assertAllClose(
+        self.evaluate(grad),
+        [[[4.0, -2.0], [-2.0, 1.0]], [[4.0, -3.0], [-2.0, 1.0]]],
+        atol=1e-10)
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testDetGradComplexInvertible(self):
+    # The reverse-mode gradient of det is conj(det(A)) * A^{-H}; compare the
+    # analytic gradient against both that closed form and the numerical
+    # Jacobian for complex64 and complex128.
+    for dtype, tol in ((np.complex64, 2e-2), (np.complex128, 1e-6)):
+      a = np.array(
+          [[1.0 + 1.0j, 2.0 - 1.0j], [3.0 + 0.5j, 4.0 + 2.0j]], dtype=dtype)
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          linalg_ops.matrix_determinant, [a])
+      self.assertAllClose(theoretical[0], numerical[0], atol=tol)
+      m = constant_op.constant(a)
+      with backprop.GradientTape() as tape:
+        tape.watch(m)
+        d = linalg_ops.matrix_determinant(m)
+      grad = tape.gradient(d, m)
+      expected = math_ops.conj(d) * linalg_ops.matrix_inverse(m, adjoint=True)
+      self.assertAllClose(
+          self.evaluate(grad), self.evaluate(expected), atol=tol)
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testDetGradComplexSingular(self):
+    # [[1+i, 2+2i], [2-i, 4-2i]] has det 0 (second row is conj-scaled first);
+    # the analytic gradient must match the numerical one instead of raising.
+    for dtype, tol in ((np.complex64, 2e-2), (np.complex128, 1e-6)):
+      a = np.array(
+          [[1.0 + 1.0j, 2.0 + 2.0j], [2.0 - 1.0j, 4.0 - 2.0j]], dtype=dtype)
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          linalg_ops.matrix_determinant, [a])
+      self.assertAllClose(theoretical[0], numerical[0], atol=tol)
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testSlogdetGradSingularDoesNotCrash(self):
+    # log|det(A)| is -inf for a singular A, so its gradient is undefined, but
+    # the backward pass must stay finite instead of raising.
+    m = constant_op.constant([[1.0, 2.0], [2.0, 4.0]], dtype=np.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(m)
+      _, log_abs_det = gen_linalg_ops.log_matrix_determinant(m)
+    grad = tape.gradient(log_abs_det, m)
+    self.assertIsNotNone(grad)
+    self.assertAllEqual(self.evaluate(math_ops.is_finite(grad)),
+                        [[True, True], [True, True]])
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testSlogdetGradInvertibleUnchanged(self):
+    # For invertible A the gradient of log|det(A)| is A^{-H}; the
+    # pseudoinverse-based path must reproduce it for real and complex inputs.
+    a_real = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+    a_complex = np.array(
+        [[1.0 + 1.0j, 2.0 - 1.0j], [3.0 + 0.5j, 4.0 + 2.0j]],
+        dtype=np.complex128)
+    for a in (a_real, a_complex):
+      m = constant_op.constant(a)
+      with backprop.GradientTape() as tape:
+        tape.watch(m)
+        _, log_abs_det = gen_linalg_ops.log_matrix_determinant(m)
+      grad = tape.gradient(log_abs_det, m)
+      expected = linalg_ops.matrix_inverse(m, adjoint=True)
+      self.assertAllClose(
+          self.evaluate(grad), self.evaluate(expected), atol=1e-10)
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testSlogdetGradComplexSingularDoesNotCrash(self):
+    m = constant_op.constant(
+        [[1.0 + 1.0j, 2.0 + 2.0j], [2.0 - 1.0j, 4.0 - 2.0j]],
+        dtype=np.complex128)
+    with backprop.GradientTape() as tape:
+      tape.watch(m)
+      _, log_abs_det = gen_linalg_ops.log_matrix_determinant(m)
+    grad = tape.gradient(log_abs_det, m)
+    self.assertIsNotNone(grad)
+    self.assertAllEqual(
+        self.evaluate(math_ops.is_finite(math_ops.abs(grad))),
+        [[True, True], [True, True]])
 
 
 if __name__ == '__main__':

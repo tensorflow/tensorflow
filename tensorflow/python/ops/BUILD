@@ -1888,6 +1888,7 @@ py_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops/linalg:linalg_impl",
+        "//third_party/py/numpy",
     ],
 )
 
