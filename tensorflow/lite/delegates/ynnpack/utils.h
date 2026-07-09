@@ -90,6 +90,11 @@ TfLiteStatus ApplyActivation(TfLiteContext* context, ynn_subgraph_t subgraph,
                              uint32_t input_id, uint32_t& output_id,
                              int output_tensor_index, ynn_type internal_type);
 
+TfLiteStatus ApplyClamp(TfLiteContext* context, ynn_subgraph_t subgraph,
+                        double min_val, double max_val, uint32_t input_id,
+                        uint32_t& output_id, int output_tensor_index,
+                        ynn_type internal_type);
+
 TfLiteStatus DequantizeIfNeeded(TfLiteContext* context, ynn_subgraph_t subgraph,
                                 TensorToValueIdMap& tensor_to_value_id,
                                 int tensor_index, uint32_t val_id,
