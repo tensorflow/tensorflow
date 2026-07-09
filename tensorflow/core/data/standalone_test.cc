@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/data/standalone.h"
 
+#include <cstdint>
 #include <memory>
-#include <optional>
+#include <string>
 #include <vector>
 
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
+#include "third_party/protobuf/text_format.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/graph.pb.h"
