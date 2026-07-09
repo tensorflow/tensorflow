@@ -525,12 +525,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_pdl_launch(true);
   opts.set_xla_gpu_command_buffer_update_mode(DebugOptions::ALWAYS_UPDATE);
 
-  // ROCm-only VMM command-buffer remapping tuning; gated to ROCm in the
-  // allocator. Skip-remap defaults on (no effect on other platforms);
-  // copy-into-shadow defaults disabled (0).
-  opts.set_xla_gpu_experimental_command_buffer_vmm_skip_remap(true);
-  opts.set_xla_gpu_experimental_command_buffer_vmm_copy_threshold_bytes(0);
-
   opts.set_xla_gpu_experimental_aot_compiled_thunks(true);
   opts.set_xla_gpu_deviceless_cub_mode(
       DebugOptions::DEVICELESS_CUB_WITH_FALLBACK);
@@ -2509,27 +2503,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_command_buffer_unroll_loops(),
       "During command buffer lowering, unroll the loop command if loop has "
       "known loop count."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_command_buffer_vmm_skip_remap",
-      bool_setter_for(
-          &DebugOptions::
-              set_xla_gpu_experimental_command_buffer_vmm_skip_remap),
-      debug_options->xla_gpu_experimental_command_buffer_vmm_skip_remap(),
-      "ROCm-only. In the VMM command-buffer VA-remapping path, only remap the "
-      "command-buffer slots whose backing buffer moved since the previous step "
-      "instead of remapping the entire reservation. No effect on non-ROCm "
-      "platforms. Set false to force the legacy full-remap path."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_command_buffer_vmm_copy_threshold_bytes",
-      int64_setter_for(
-          &DebugOptions::
-              set_xla_gpu_experimental_command_buffer_vmm_copy_threshold_bytes),
-      debug_options
-          ->xla_gpu_experimental_command_buffer_vmm_copy_threshold_bytes(),
-      "ROCm-only. Threshold in bytes for the VMM command-buffer "
-      "copy-into-shadow path: command-buffer slices at or below this size are "
-      "given a stable shadow buffer refreshed with a device-to-device copy "
-      "instead of a per-step remap. 0 disables the path (default)."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_copy_insertion_use_region_analysis",
       bool_setter_for(

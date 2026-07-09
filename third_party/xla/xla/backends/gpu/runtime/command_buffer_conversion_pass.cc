@@ -411,30 +411,6 @@ bool IsConvertible(const Thunk& thunk, const CommandBufferConfig& config) {
   }
 
   if (*cmd_type == DebugOptions::COLLECTIVES) {
-    // ROCm correctness gate: under the VMM VA-remapping update modes
-    // (NEVER_UPDATE / CAPTURE_CMD_NEVER_UPDATE) a collective is traced into the
-    // command buffer exactly once and then replayed. The traced RCCL collective
-    // binds its buffers at trace time and does NOT follow the per-step physical
-    // remap (or copy-into-shadow refresh) that keeps ordinary kernels correct,
-    // so on every replayed step it reads STALE buffer contents. This silently
-    // corrupts results whenever the collective's buffers churn across steps
-    // (e.g. TP training). Ordinary (non-traced) kernels dereference the fixed
-    // VA and the MMU redirects to the current physical page, so they are safe;
-    // only traced collectives are affected. Keep collectives out of command
-    // buffers on ROCm in these modes and run them eagerly. ALWAYS_UPDATE
-    // re-records the collective each step and is unaffected. NVIDIA/CUDA
-    // behaviour is unchanged.
-    if (config.device_description.gpu_compute_capability().IsRocm() &&
-        (config.update_mode == DebugOptions::NEVER_UPDATE ||
-         config.update_mode == DebugOptions::CAPTURE_CMD_NEVER_UPDATE)) {
-      VLOG(1)
-          << "ROCm: not converting collective thunk "
-          << Thunk::KindToString(thunk.kind())
-          << " to a command buffer under VMM update mode "
-          << DebugOptions::CommandBufferUpdateMode_Name(config.update_mode)
-          << " (captured collectives replay stale buffers); running eagerly";
-      return false;
-    }
     if (!config.enabled_collectives.test(DebugOptions::ALLCOLLECTIVES)) {
       auto op_type = GetCollectiveOpType(thunk.kind());
       if (op_type.has_value() && !config.enabled_collectives.test(*op_type)) {
