@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -42,7 +41,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
@@ -1566,107 +1564,6 @@ HloInstruction* SelectOperandForScatterIndexPassthroughDimensions(
       per_group_operand.hlo()));
 }
 
-// Returns true if partition a and partition b are independent, meaning every
-// group in partition a has at least one device in common with every group in
-// partition b.
-static bool ArePartitionsIndependent(
-    const hlo_sharding_util::DeviceGroupTileAssignment& a,
-    const hlo_sharding_util::DeviceGroupTileAssignment& b) {
-  std::vector<std::vector<int64_t>> groups_a = a.flattened_device_groups();
-  std::vector<std::vector<int64_t>> groups_b = b.flattened_device_groups();
-
-  auto groups_intersect = [](const std::vector<int64_t>& g_a,
-                             const std::vector<int64_t>& g_b) {
-    return absl::c_any_of(
-        g_a, [&](int64_t dev_a) { return absl::c_linear_search(g_b, dev_a); });
-  };
-
-  for (const auto& group_a : groups_a) {
-    for (const auto& group_b : groups_b) {
-      if (!groups_intersect(group_a, group_b)) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
-// Returns true if updates are sharded on a reduction dimension and the operand
-// is sharded on a scatter dimension using the same mesh axis (non-independent
-// partitions). Partitioning in this case causes a conflict where dynamic-slice
-// (indexing) is incorrectly ordered before all-reduce (reduction).
-static bool HasScatterOperandReductionConflict(const HloInstruction* scatter,
-                                               const HloInstruction* operand,
-                                               const HloInstruction* updates,
-                                               const CallGraph& call_graph) {
-  auto is_tiled = [](const HloInstruction* inst) {
-    return inst->has_sharding() && inst->sharding().IsTiled();
-  };
-
-  if (!is_tiled(scatter) || !is_tiled(operand) || !is_tiled(updates)) {
-    return false;
-  }
-
-  const auto& dnums = scatter->scatter_dimension_numbers();
-  std::optional<hlo_sharding_util::GatherScatterDims> parallel_dims =
-      hlo_sharding_util::GetScatterParallelBatchDims(*scatter, call_graph);
-
-  // Get parallel dimensions of updates (those not in update_window_dims).
-  std::vector<int64_t> reduction_update_dims;
-  for (int64_t i = 0; i < updates->shape().dimensions().size(); ++i) {
-    if (absl::c_linear_search(dnums.update_window_dims(), i)) {
-      continue;
-    }
-    if (parallel_dims.has_value() &&
-        absl::c_linear_search(parallel_dims->output_dims, i)) {
-      continue;
-    }
-    reduction_update_dims.push_back(i);
-  }
-
-  // Get scatter dimensions of operand.
-  const auto& scatter_dims_to_operand_dims =
-      dnums.scatter_dims_to_operand_dims();
-  std::vector<int64_t> scatter_operand_dims;
-  for (int64_t op_dim : scatter_dims_to_operand_dims) {
-    if (parallel_dims.has_value() &&
-        absl::c_linear_search(parallel_dims->operand_dims, op_dim)) {
-      continue;
-    }
-    scatter_operand_dims.push_back(op_dim);
-  }
-
-  if (reduction_update_dims.empty() || scatter_operand_dims.empty()) {
-    return false;
-  }
-
-  // Group shardings to compare device groups.
-  hlo_sharding_util::GroupedSharding operand_grouped =
-      hlo_sharding_util::GroupShardingOnDims(operand->sharding(),
-                                             scatter_operand_dims);
-  hlo_sharding_util::GroupedSharding updates_grouped =
-      hlo_sharding_util::GroupShardingOnDims(updates->sharding(),
-                                             reduction_update_dims);
-
-  return !ArePartitionsIndependent(operand_grouped.device_groups,
-                                   updates_grouped.device_groups);
-}
-
-// Returns true if any operand/update pair has a scatter operand reduction
-// conflict.
-static bool HasAnyScatterOperandReductionConflict(
-    const HloScatterInstruction* scatter,
-    absl::Span<const PartitionedHlo> operands,
-    absl::Span<const PartitionedHlo> updates, const CallGraph& call_graph) {
-  for (size_t i = 0; i < operands.size(); ++i) {
-    if (HasScatterOperandReductionConflict(scatter, operands[i].hlo(),
-                                           updates[i].hlo(), call_graph)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 // Perform partitioning of Scatter when the indices are partitioned on the
 // non-index vector dimension.
 absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
@@ -1684,14 +1581,6 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
   };
 
   SpmdBuilder* b = visitor->builder();
-  // Skip checking conflicts during cost evaluation (allow_recursive=false)
-  // because the cloned call graph may not correctly identify parallel batch
-  // dimensions, which could lead to false positive conflict detections.
-  if (allow_recursive &&
-      HasAnyScatterOperandReductionConflict(scatter, operands, updates,
-                                            visitor->call_graph())) {
-    return nullptr;
-  }
   // Parse non-variadic computation only. Variadic case will be replicated.
   const hlo_sharding_util::GatherScatterDims index_passthrough_dims =
       hlo_sharding_util::GetGatherScatterIndexPassThroughDims(
@@ -1794,7 +1683,6 @@ absl::StatusOr<HloInstruction*> PartitionScatterTrivialSlicedOperandDimensions(
 
   SpmdBuilder* b = visitor->builder();
   const auto& dnums = scatter->scatter_dimension_numbers();
-
   if (std::optional<std::vector<int64_t>> trivial_slice_dims =
           GatherScatterOperandPartitionedOnTrivialSliceDims(
               operands[0], dnums.scatter_dims_to_operand_dims(), slice_sizes)) {
