@@ -1,6 +1,6 @@
 --- a/python/test/gsan/test_allocator.py
 +++ b/python/test/gsan/test_allocator.py
-@@ -424,12 +424,18 @@
+@@ -424,12 +424,18 @@ def test_export_import_allocation_handles_maps_real_and_shadow(_direct_allocator
      ],
  )
  def test_export_import_fabric_handles(explicit_config, allocator_config):
@@ -31,7 +31,7 @@
 
 --- a/python/triton/experimental/gsan/src/GSanAllocator.cc
 +++ b/python/triton/experimental/gsan/src/GSanAllocator.cc
-@@ -372,8 +372,14 @@
+@@ -372,8 +372,14 @@ CUresult ensureContext(int device) {
    CUresult res = cuCtxGetCurrent(&ctx);
    if (res != CUDA_SUCCESS)
      return res;
