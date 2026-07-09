@@ -669,6 +669,92 @@ ENTRY entry {
                          "(compute capability 8.0) and up, but got")));
 }
 
+TEST_F(TritonDevicelessTest, RejectsPackedFp4OddMinorOffset) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+triton_dot {
+  lhs_param = f4e2m1fn[128,258]{1,0:E(4)} parameter(0)
+  lhs = f4e2m1fn[128,256]{1,0:E(4)} slice(lhs_param), slice={[0:128], [1:257]}
+  rhs = f4e2m1fn[256,128]{1,0:E(4)} parameter(1)
+  lhs_scale = f8e8m0fnu[128,8]{1,0} parameter(2)
+  rhs_scale = f8e8m0fnu[8,128]{1,0} parameter(3)
+  ROOT _ = bf16[128,128]{1,0} scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[128]}
+}
+
+ENTRY e {
+  lhs = f4e2m1fn[128,258]{1,0:E(4)} parameter(0)
+  rhs = f4e2m1fn[256,128]{1,0:E(4)} parameter(1)
+  lhs_scale = f8e8m0fnu[128,8]{1,0} parameter(2)
+  rhs_scale = f8e8m0fnu[8,128]{1,0} parameter(3)
+  ROOT fusion = bf16[128,128]{1,0} fusion(lhs, rhs, lhs_scale, rhs_scale),
+    kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["128","128"]}],
+        "num_warps":"4","num_ctas":"1","num_stages":"1"}}}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  EXPECT_THAT(
+      CreateXTileIrAndFileCheck(std::move(module), "triton_dot", ""),
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          ::testing::HasSubstr("Packed storage requires offset in dimension 1 "
+                               "to be divisible by 2")));
+}
+
+TEST_F(TritonDevicelessTest, EmitsPackedFp4StorageForEvenMinorOffset) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+triton_dot {
+  lhs_param = f4e2m1fn[128,260]{1,0:E(4)} parameter(0)
+  lhs = f4e2m1fn[128,256]{1,0:E(4)} slice(lhs_param), slice={[0:128], [2:258]}
+  rhs = f4e2m1fn[256,128]{1,0:E(4)} parameter(1)
+  lhs_scale = f8e8m0fnu[128,8]{1,0} parameter(2)
+  rhs_scale = f8e8m0fnu[8,128]{1,0} parameter(3)
+  ROOT _ = bf16[128,128]{1,0} scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[128]}
+}
+
+ENTRY e {
+  lhs = f4e2m1fn[128,260]{1,0:E(4)} parameter(0)
+  rhs = f4e2m1fn[256,128]{1,0:E(4)} parameter(1)
+  lhs_scale = f8e8m0fnu[128,8]{1,0} parameter(2)
+  rhs_scale = f8e8m0fnu[8,128]{1,0} parameter(3)
+  ROOT fusion = bf16[128,128]{1,0} fusion(lhs, rhs, lhs_scale, rhs_scale),
+    kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["128","128"]}],
+        "num_warps":"4","num_ctas":"1","num_stages":"1"}}}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  EXPECT_THAT(CreateXTileIrAndFileCheck(std::move(module), "triton_dot", R"(
+CHECK: #[[$LHS_OFFSET_MAP:.*]] = #xla.indexing_map<"(pid_0) -> (pid_0 * 128 + 2), domain: pid_0 in [0, 1]">
+CHECK: xtile.entry_func @xtile_dialect_fn(%[[LHS_ARG:[A-Za-z0-9_]*]]: memref<128x130xi8>
+CHECK-SAME: %[[RHS_ARG:[A-Za-z0-9_]*]]: memref<256x64xi8>
+CHECK: %[[LHS_LOGICAL_OFFSET:.*]] = xla.apply_indexing #[[$LHS_OFFSET_MAP]](%{{.*}})
+CHECK: %[[C2:.*]] = arith.constant 2 : index
+CHECK: %[[LHS_STORAGE_OFFSET:.*]] = arith.divsi %[[LHS_LOGICAL_OFFSET]], %[[C2]] : index
+CHECK: %[[LHS:.*]] = xtile.extract %[[LHS_ARG]][%{{.*}}, %[[LHS_STORAGE_OFFSET]]] [128, 64] [1, 1] : memref<128x130xi8> -> tensor<128x64xi8>
+CHECK: %[[RHS:.*]] = xtile.extract %[[RHS_ARG]][%{{.*}}, %{{.*}}] [128, 64] [1, 1] : memref<256x64xi8> -> tensor<128x64xi8>
+CHECK: xtile.dot_scaled %[[LHS]]
+CHECK-SAME: %[[RHS]]
+CHECK-SAME: lhs_elem_type = i8, rhs_elem_type = i8
+)"),
+              absl_testing::IsOk());
+}
+
 // TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
 // moved to deviceless test file.
 TEST_P(TritonDevicelessTest,
