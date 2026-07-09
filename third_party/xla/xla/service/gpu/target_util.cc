@@ -409,7 +409,7 @@ std::string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
       LOG(FATAL) << "Unexpected type while getting device function name: "
                  << primitive_util::LowercasePrimitiveTypeName(output_type);
     }
-  } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
+  } else if (target_triple.getArch() == llvm::Triple::amdgpu) {
     // TODO(b/370452608): Are there approximate functions we can use for BF16
     // and F16 types?
     if (output_type == F16 && HasF16Implementation(func_id, target_triple)) {
@@ -463,7 +463,7 @@ llvm::CallInst* EmitCallToTargetIntrinsic(
   llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
   if (target_triple.isNVPTX()) {
     llvm_intrinsic_or_function = gpu_intrinsic_id.nvptx_intrinsic_or_function;
-  } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
+  } else if (target_triple.getArch() == llvm::Triple::amdgpu) {
     llvm_intrinsic_or_function = gpu_intrinsic_id.amdgpu_intrinsic_or_function;
   } else if (target_triple.isSPIROrSPIRV()) {
     llvm_intrinsic_or_function = gpu_intrinsic_id.spir_intrinsic_or_function;
@@ -491,7 +491,7 @@ void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,
     // Attach information so NVPTX can recognize function as a CUDA kernel.
     func->setCallingConv(llvm::CallingConv::PTX_Kernel);
 
-  } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
+  } else if (target_triple.getArch() == llvm::Triple::amdgpu) {
     // Attach information so AMDGPU can recognize function as a AMDGPU kernel.
     func->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
     func->addFnAttr("uniform-work-group-size", "true");
