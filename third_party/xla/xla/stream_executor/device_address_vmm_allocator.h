@@ -348,7 +348,7 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
 
     AllocationRecord(
         Kind kind, DeviceAddressBase allocator_address,
-        std::shared_ptr<MemoryAllocation> raw_allocation,
+        std::unique_ptr<MemoryAllocation> raw_allocation,
         std::unique_ptr<MemoryReservation> allocator_address_reservation,
         MemoryReservation::ScopedMapping allocator_address_mapping,
         bool multi_device);
@@ -417,7 +417,7 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
    private:
     Kind kind_;
     DeviceAddressBase allocator_address_;
-    std::shared_ptr<MemoryAllocation> raw_allocation_;
+    std::unique_ptr<MemoryAllocation> raw_allocation_;
     bool multi_device_;
 
     // Present for Allocate() and
@@ -448,9 +448,9 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
     // Allocator address for allocation deallocations; reservation address for
     // kMap.
     DeviceAddressBase addr;
-    // Rounded physical-allocation bytes that become reclaimable when this
-    // pending operation completes. kMap entries do not own physical memory and
-    // therefore use zero.
+    // Physical-allocation bytes charged to the PA budget that become
+    // reclaimable when this pending operation completes. kMap entries do not
+    // own physical memory and therefore use zero.
     uint64_t reclaimable_bytes = 0;
   };
 
@@ -555,17 +555,27 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
 
   // Allocate helpers.
 
+  // Checks the PA budget for `size`, creates a physical allocation, and
+  // re-checks the budget against the actual (granularity-padded) size the
+  // driver returned, which is the size charged to pa_allocated. Returns the
+  // allocation and reports that size via `physical_size`.
+  absl::StatusOr<std::unique_ptr<MemoryAllocation>>
+  AllocatePhysicalWithinBudget(PerDeviceState& state, uint64_t size,
+                               uint64_t& physical_size)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
+
   // Records a raw allocation mapped at an owning allocator address. Takes
   // ownership of `reservation` when the allocator address was allocator-owned;
-  // reservation-backed returned addresses pass nullptr here. Charges
-  // `allocated_size` to the PA budget and returns the allocator VA pointer.
+  // reservation-backed returned addresses pass nullptr here. Charges the raw
+  // allocation's committed size to the PA budget and returns the allocator VA
+  // pointer.
   void* TrackAllocatorAddressMappedAllocation(
       PerDeviceState& state, AllocationRecord::Kind kind,
       DeviceAddressBase allocator_address,
-      std::shared_ptr<MemoryAllocation> raw_allocation,
+      std::unique_ptr<MemoryAllocation> raw_allocation,
       std::unique_ptr<MemoryReservation> reservation,
-      MemoryReservation::ScopedMapping mapping, uint64_t allocated_size,
-      bool multi_device) ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
+      MemoryReservation::ScopedMapping mapping, bool multi_device)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
 
   struct MappedAllocateRequest {
     MemoryReservation* reservation;
@@ -635,6 +645,10 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
     bool is_active = false;
   };
 
+  enum class AddressRole { kAllocator, kReservation, kBoth };
+  enum class RecordState { kActive, kStale, kBoth };
+  enum class OverlapKind { kExact, kPartial };
+
   // Immutable inputs shared by the Map() preparation and installation
   // helpers.
   struct MapRequest {
@@ -667,12 +681,9 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   };
 
   // Finds a tracked allocator or reservation range that overlaps `address`.
-  // `exact_only` returns only identical ranges; `partial_only` returns only
-  // non-identical overlapping ranges; both false returns any overlap.
   std::optional<OverlappingRecord> FindOverlappingRecord(
-      PerDeviceState& state, DeviceAddressBase address, bool include_allocator,
-      bool include_reservation, bool include_active, bool include_stale,
-      bool exact_only, bool partial_only) const
+      PerDeviceState& state, DeviceAddressBase address, AddressRole role,
+      RecordState record_state, OverlapKind overlap_kind) const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
 
   // Resolves an active allocator address to its allocation record.
