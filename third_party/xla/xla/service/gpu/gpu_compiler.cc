@@ -245,6 +245,7 @@ limitations under the License.
 #include "xla/service/compilation_stats.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/conditional_simplifier.h"
 #include "xla/service/copy_insertion.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
@@ -2839,6 +2840,14 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   }};
 
   RecordGpuCompilerStacktrace();
+  if (module->config().has_static_device_assignment()) {
+    const DeviceAssignment& da = module->config().static_device_assignment();
+    if (!da.IsIota()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("XLA:GPU only supports IOTA device assignment. Got: ",
+                       da.ToString()));
+    }
+  }
 
   const DebugOptions& debug_opts = module->config().debug_options();
   XLA_SCOPED_LOGGING_TIMER_IF(

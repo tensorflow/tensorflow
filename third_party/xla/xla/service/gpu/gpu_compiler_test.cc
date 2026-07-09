@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/autotuner_cache.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -2718,6 +2719,38 @@ TEST_P(FrontendAttributesMemorySpaceTest, LoopUsage) {
                                                  .set_print_metadata(false)),
                   expected_check),
               absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(GpuCompilerTest, RejectNonIotaStaticDeviceAssignment) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule test
+    ENTRY main {
+      p = f32[2] parameter(0)
+      ROOT res = f32[2] copy(p)
+    }
+  )";
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.set_replica_count(1);
+  config.set_num_partitions(2);
+
+  DeviceAssignment device_assignment(/*replica_count=*/1,
+                                     /*computation_count=*/2);
+  device_assignment(0, 0) = 1;
+  device_assignment(0, 1) = 0;
+  config.set_static_device_assignment(device_assignment);
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo, config));
+
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology =
+      GpuTopology(/*platform_version=*/"", 2, 1, 1, gpu_target_config());
+
+  auto executable_or_status =
+      compiler()->RunBackend(std::move(module), nullptr, compile_options);
+
+  EXPECT_FALSE(executable_or_status.ok());
+  EXPECT_THAT(executable_or_status.status().message(),
+              HasSubstr("XLA:GPU only supports IOTA device assignment"));
 }
 
 INSTANTIATE_TEST_SUITE_P(FrontendAttributesMemorySpace,

@@ -91,6 +91,20 @@ DeviceAssignment::GetDeviceToLogicalIdMap() const {
   return device_to_logical_id;
 }
 
+bool DeviceAssignment::IsIota() const {
+  if (num_elements() == 0) {
+    return true;
+  }
+
+  int64_t offset = data()[0];
+  for (int i = 0; i < num_elements(); ++i) {
+    if (data()[i] != i + offset) {
+      return false;
+    }
+  }
+  return true;
+}
+
 void DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
   proto->set_replica_count(replica_count());
   proto->set_computation_count(computation_count());
