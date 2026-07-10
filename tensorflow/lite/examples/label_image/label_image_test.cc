@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/examples/label_image/label_image.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <fstream>
 #include <limits>
@@ -45,7 +46,8 @@ std::string WriteTestBmp(const std::vector<uint8_t>& bytes,
 
 std::vector<uint8_t> ValidBmpHeader(int32_t pixel_offset, int32_t width,
                                     int32_t height, uint16_t bpp) {
-  std::vector<uint8_t> bytes(pixel_offset, 0);
+  std::vector<uint8_t> bytes(
+      std::max<size_t>(pixel_offset < 0 ? 30 : pixel_offset, 30), 0);
   bytes[0] = 'B';
   bytes[1] = 'M';
   auto write_le16 = [&bytes](size_t offset, uint16_t value) {

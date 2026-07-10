@@ -51,6 +51,12 @@ int32_t ReadLe32(const std::vector<uint8_t>& bytes, size_t offset) {
 bool ValidateBmpAndGetPixelOffset(const std::vector<uint8_t>& img_bytes,
                                   int* width, int* height, int* channels,
                                   int* row_size, size_t* pixel_offset) {
+  if (width == nullptr || height == nullptr || channels == nullptr ||
+      row_size == nullptr || pixel_offset == nullptr) {
+    LOG(ERROR)
+        << "Null pointer argument passed to ValidateBmpAndGetPixelOffset";
+    return false;
+  }
   *width = 0;
   *height = 0;
   *channels = 0;
@@ -68,12 +74,13 @@ bool ValidateBmpAndGetPixelOffset(const std::vector<uint8_t>& img_bytes,
   const int32_t parsed_height = ReadLe32(img_bytes, 22);
   const uint16_t bpp = ReadLe16(img_bytes, 28);
 
-  if (parsed_pixel_offset < 0 ||
+  if (parsed_pixel_offset < static_cast<int32_t>(kBmpHeaderMinSize) ||
       static_cast<size_t>(parsed_pixel_offset) > img_bytes.size()) {
-    LOG(ERROR) << "BMP pixel data offset is outside the file";
+    LOG(ERROR) << "BMP pixel data offset is invalid or outside the file";
     return false;
   }
-  if (parsed_width <= 0 || parsed_height == 0 || parsed_height == std::numeric_limits<int>::min()) {
+  if (parsed_width <= 0 || parsed_height == 0 ||
+      parsed_height == std::numeric_limits<int32_t>::min()) {
     LOG(ERROR) << "Invalid BMP dimensions";
     return false;
   }
