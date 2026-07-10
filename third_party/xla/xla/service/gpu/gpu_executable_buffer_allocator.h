@@ -35,7 +35,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/logical_buffer.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -49,8 +48,7 @@ namespace stream_executor {
 class DeviceAddressVmmAllocator;
 }  // namespace stream_executor
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 class ThunkExecutor;
 
@@ -102,9 +100,8 @@ class GpuExecutableBufferAllocator {
 
     // Builds the BufferAllocations for an execution. Entry-computation
     // parameter buffers are obtained from `get_parameter_buffer`; all other
-    // allocations are resolved internally, including collective-memory
-    // granularity rounding, alignment checking, and command-buffer VA remapping
-    // when enabled for this execution.
+    // allocations are resolved internally, including alignment checking and
+    // command-buffer VA remapping when enabled for this execution.
     absl::StatusOr<BufferAllocations> GenerateBufferAllocations(
         const ServiceExecutableRunOptions* run_options,
         ParameterBufferResolver get_parameter_buffer,
@@ -139,9 +136,7 @@ class GpuExecutableBufferAllocator {
                    std::unique_ptr<absl::MutexLock> remap_lock);
 
     absl::Status PrepareReservation(
-        const ServiceExecutableRunOptions* run_options, int device_ordinal,
-        const absl::flat_hash_map<LogicalBuffer::Color, int64_t>&
-            allocate_granularity);
+        const ServiceExecutableRunOptions* run_options, int device_ordinal);
     bool ShouldRemapAllocation(BufferAllocation::Index index) const;
     absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> AllocateBuffer(
         int device_ordinal, const BufferAllocation& allocation,
@@ -151,9 +146,7 @@ class GpuExecutableBufferAllocator {
         const BufferAllocToDeviceMemoryMap* globals,
         const BufferAllocation& allocation,
         se::DeviceAddressAllocator* memory_allocator, int device_ordinal,
-        int64_t arg_idx,
-        const absl::flat_hash_map<LogicalBuffer::Color, int64_t>&
-            allocate_granularity);
+        int64_t arg_idx);
     GpuExecutableBufferAllocator* owner_ = nullptr;
     Remapping* remapping_ = nullptr;
     se::DeviceAddressVmmAllocator* vmm_allocator_ = nullptr;
@@ -210,7 +203,6 @@ class GpuExecutableBufferAllocator {
       ABSL_GUARDED_BY(remappings_mutex_);
 };
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_GPU_EXECUTABLE_BUFFER_ALLOCATOR_H_

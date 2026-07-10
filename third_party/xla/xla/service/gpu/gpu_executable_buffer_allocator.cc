@@ -23,7 +23,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
@@ -35,17 +34,12 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
-#include "xla/core/collectives/collectives.h"
-#include "xla/core/collectives/collectives_registry.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_constants.h"
-#include "xla/service/gpu/gpu_executable_run_options.h"
-#include "xla/service/logical_buffer.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -57,8 +51,7 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "tsl/profiler/lib/traceme.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 namespace {
 
 uint64_t RoundUpToGranularity(uint64_t size, uint64_t granularity) {
@@ -157,9 +150,7 @@ GpuExecutableBufferAllocator::ExecutionScope::ExecutionScope(
       remap_lock_(std::move(remap_lock)) {}
 
 absl::Status GpuExecutableBufferAllocator::ExecutionScope::PrepareReservation(
-    const ServiceExecutableRunOptions* run_options, int device_ordinal,
-    const absl::flat_hash_map<LogicalBuffer::Color, int64_t>&
-        allocate_granularity) {
+    const ServiceExecutableRunOptions* run_options, int device_ordinal) {
   if (!va_remap_enabled()) {
     return absl::OkStatus();
   }
@@ -185,11 +176,6 @@ absl::Status GpuExecutableBufferAllocator::ExecutionScope::PrepareReservation(
   for (BufferAllocation::Index idx : owner_->va_remapped_alloc_indices_) {
     const BufferAllocation& allocation = *owner_->allocations_[idx];
     uint64_t buffer_size = allocation.size();
-    if (auto it = allocate_granularity.find(allocation.color());
-        it != allocate_granularity.end()) {
-      buffer_size =
-          RoundUpToGranularity(buffer_size, static_cast<uint64_t>(it->second));
-    }
     remapping_->allocation_to_reservation_offset[idx] = remapping_->total_size;
     remapping_->total_size =
         remapping_->total_size +
@@ -233,9 +219,7 @@ GpuExecutableBufferAllocator::ExecutionScope::BufferForAllocation(
     const BufferAllocToDeviceMemoryMap* globals,
     const BufferAllocation& allocation,
     se::DeviceAddressAllocator* const memory_allocator, int device_ordinal,
-    int64_t arg_idx,
-    const absl::flat_hash_map<LogicalBuffer::Color, int64_t>&
-        allocate_granularity) {
+    int64_t arg_idx) {
   if (allocation.is_thread_local()) {
     return se::DeviceAddressBase{};
   }
@@ -267,11 +251,6 @@ GpuExecutableBufferAllocator::ExecutionScope::BufferForAllocation(
   int64_t buffer_size = allocation.size();
   se::DeviceAddressBase buffer_address;
   if (buffer_size > 0) {
-    // Maybe round up buffer allocation size to the requested granularity.
-    if (auto it = allocate_granularity.find(allocation.color());
-        it != allocate_granularity.end()) {
-      buffer_size = RoundUpTo(buffer_size, it->second);
-    }
     absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> buffer;
     if (ShouldRemapAllocation(allocation.index())) {
       buffer = AllocateBuffer(device_ordinal, allocation, buffer_size);
@@ -297,30 +276,13 @@ GpuExecutableBufferAllocator::ExecutionScope::GenerateBufferAllocations(
       [&] { return std::string("Build buffer allocations"); },
       tsl::profiler::TraceMeLevel::kInfo);
 
-  absl::flat_hash_map<LogicalBuffer::Color, int64_t> allocate_granularity;
-  if (run_options && run_options->stream()) {
-    absl::StatusOr<uint64_t> collective_memory_granularity =
-        run_options->stream()->parent()->GetCollectiveMemoryGranularity();
-    if (collective_memory_granularity.ok()) {
-      // BFC allocator ignores memory alignment and always allocates 256 byte
-      // aligned buffers, however for collective memory underlying libraries
-      // require larger alignment. We conservatively round up all allocation
-      // sizes to the alignment requirement. Proper fix must be done in BFC
-      // allocator and all the other allocator adaptors that we have in XLA.
-      static constexpr int64_t kCollectiveMemoryColor = 1;
-      allocate_granularity[kCollectiveMemoryColor] =
-          *collective_memory_granularity;
-    }
-  }
-
   // Tag allocations made in this invocation as multi-device for VMM reuse.
   se::DeviceAddressVmmAllocator::DeviceAssignmentScope
       vmm_device_assignment_scope(
           run_options->run_options().device_assignment());
 
   const int64_t num_buffers = owner_->allocations_.size();
-  RETURN_IF_ERROR(
-      PrepareReservation(run_options, device_ordinal, allocate_granularity));
+  RETURN_IF_ERROR(PrepareReservation(run_options, device_ordinal));
 
   std::vector<se::DeviceAddressBase> buffers;
   buffers.reserve(num_buffers);
@@ -329,8 +291,7 @@ GpuExecutableBufferAllocator::ExecutionScope::GenerateBufferAllocations(
     ASSIGN_OR_RETURN(
         buffers.emplace_back(),
         BufferForAllocation(get_parameter_buffer, globals, allocation,
-                            memory_allocator, device_ordinal, i,
-                            allocate_granularity));
+                            memory_allocator, device_ordinal, i));
     RETURN_IF_ERROR(CheckAlignment(allocation, buffers.back(), i));
   }
   return BufferAllocations(buffers, device_ordinal, memory_allocator);
@@ -382,10 +343,9 @@ GpuExecutableBufferAllocator::ExecutionScope::ExecuteWithBufferAllocations(
         owner_->module_name_, owner_->va_remapped_alloc_indices_.size());
     return execute(owning_buffer_allocations,
                    absl::MakeConstSpan(owner_->persistent_alloc_indices_));
-  } else {
-    return execute(owning_buffer_allocations,
-                   absl::MakeConstSpan(owner_->constant_alloc_indices_));
   }
+  return execute(owning_buffer_allocations,
+                 absl::MakeConstSpan(owner_->constant_alloc_indices_));
 }
 
 GpuExecutableBufferAllocator::GpuExecutableBufferAllocator(
@@ -472,7 +432,7 @@ GpuExecutableBufferAllocator::CreateExecutionScope(
     remapping = &remappings_[executor];
   }
 
-  auto remap_lock = std::make_unique<absl::MutexLock>(&remapping->mutex);
+  auto remap_lock = std::make_unique<absl::MutexLock>(remapping->mutex);
   if (remapping->vmm_allocator != nullptr &&
       remapping->vmm_allocator != vmm_allocator) {
     return Internal(
@@ -491,5 +451,4 @@ GpuExecutableBufferAllocator::CreateExecutionScope(
   return ExecutionScope(this, remapping, vmm_allocator, std::move(remap_lock));
 }
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
