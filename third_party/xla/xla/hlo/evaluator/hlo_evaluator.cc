@@ -1420,8 +1420,11 @@ absl::Status HloEvaluator::HandleSetDimensionSize(
          operand_literal.total_size_bytes());
   const Literal& size_literal =
       GetEvaluatedLiteralFor(set_dimension_size->operand(1));
-  result.SetDynamicSize(set_dimension_size->dimension(),
-                        size_literal.Get<int32_t>({}));
+  if (set_dimension_size->shape().is_dynamic_dimension(
+          set_dimension_size->dimension())) {
+    result.SetDynamicSize(set_dimension_size->dimension(),
+                          size_literal.Get<int32_t>({}));
+  }
   SetEvaluatedLiteralFor(set_dimension_size, std::move(result));
   return absl::OkStatus();
 }
