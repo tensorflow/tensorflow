@@ -42,6 +42,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -1788,11 +1789,13 @@ std::string HloModule::OriginalValueRecoveryTable::ToString(
     const std::string tab(2 * (options.indent_amount()), ' ');
     std::string recovery_module_string;
     if (recovery_module) {
-      absl::StrAppend(
-          &recovery_module_string, ",\n", tab, "\"\n",
-          recovery_module->ToString(
-              HloPrintOptions().set_indent_amount(options.indent_amount() + 1)),
-          "\n", tab, "\"");
+      std::string recovery_module_text = recovery_module->ToString(
+          HloPrintOptions().set_indent_amount(options.indent_amount() + 1));
+      // Escape the double quotes and backslashes in the recovery module text.
+      absl::StrReplaceAll({{"\\", "\\\\"}, {"\"", "\\\""}},
+                          &recovery_module_text);
+      absl::StrAppend(&recovery_module_string, ",\n", tab, "\"\n",
+                      recovery_module_text, "\n", tab, "\"");
     }
     absl::StrAppend(&result, tab, "{", old_original_array.ToString(), "} : {",
                     new_original_array.ToString(), "}", recovery_module_string,

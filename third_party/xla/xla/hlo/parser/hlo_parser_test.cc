@@ -1647,6 +1647,34 @@ ENTRY %entry_spmd () -> s32[1,3] {
 )"
 },
 {
+"OriginalValueRecoveryTableWithNestedQuotes",
+R"(HloModule module, entry_computation_layout={()->s32[1,3]{1,0}}, num_partitions=2, origin_recovery_table={
+  {"constant"} : {"constant__ovp0"},
+  "
+    HloModule recovery_module, entry_computation_layout={(s32[2,3]{1,0})->s32[2,3]{1,0}}, frontend_attributes={foo=\"bar\"}
+
+    %add (x: s32[], y: s32[]) -> s32[] {
+      %x = s32[] parameter(0)
+      %y = s32[] parameter(1)
+      ROOT %add = s32[] add(%x, %y)
+    }
+
+    ENTRY %recovery_computation (param: s32[2,3]) -> s32[2,3] {
+      ROOT %param = s32[2,3]{1,0} parameter(0)
+    }
+
+
+  "
+}
+
+
+ENTRY %entry_spmd () -> s32[1,3] {
+  ROOT %constant.1 = s32[1,3]{1,0} constant({ { 1, 1, 1 } }), origin={{"constant__ovp0"}}
+}
+
+)"
+},
+{
   "StackFrameIndex",
 R"(HloModule m, entry_computation_layout={()->pred[]}
 
