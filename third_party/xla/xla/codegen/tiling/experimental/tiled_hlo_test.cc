@@ -581,12 +581,9 @@ TEST_F(TileAnalysisTest, CollectiveDotBasic) {
   EXPECT_THAT(tiled_computation, HasValidRoots());
 }
 
-// TODO: b/502910372 - there is a bug (likely use after free) in multi-output
-// fusions processing (only without -c opt).
-TEST_F(TileAnalysisTest, DISABLED_DuplicateFusionRoots) {
-  EXPECT_DEATH(
-      {
-        auto result = ParseAndTile(R"hlo(
+TEST_F(TileAnalysisTest, DuplicateFusionRoots) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"hlo(
     fusion {
       p0 = f32[128] parameter(0)
       add0 = f32[128] add(p0, p0)
@@ -597,9 +594,22 @@ TEST_F(TileAnalysisTest, DISABLED_DuplicateFusionRoots) {
       p0 = f32[128] parameter(0)
       ROOT call = (f32[128], f32[128]) fusion(p0), kind=kLoop, calls=fusion
     })hlo",
-                                   {128, 128});
-      },
-      "xla::gpu::experimental::SortTiledHloInstructionsInPostOrder()");
+                                    {128, 128}));
+
+  EXPECT_THAT(tiled_computation, MatchString(R"(
+    Dimensions:
+      0 type: parallel size: 128 tile size: 128 dim ID:0 hlo: %add0 = f32[128]{0} add(%p0, %p0)
+      1 type: parallel size: 128 tile size: 128 dim ID:0 hlo: %add0 = f32[128]{0} add(%p0, %p0)
+    Root tiles:
+      0 root tile:  offsets [0] sizes [128] strides [1] upper bounds [128]
+      1 root tile:  offsets [0] sizes [128] strides [1] upper bounds [128]
+
+    Tiled HLO:
+      p0.1.tile_0 = parameter(0)  offsets [0] sizes [128] strides [1] upper bounds [128]
+      add0.tile_0 = add(p0.1.tile_0, p0.1.tile_0)  offsets [0] sizes [128] strides [1] upper bounds [128]
+  )"));
+
+  EXPECT_THAT(tiled_computation, HasValidRoots());
 }
 
 // TODO(b/422676780): Port the remaining tests.
