@@ -18,8 +18,8 @@ limitations under the License.
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <functional>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
 #include "absl/base/casts.h"
 #include "absl/base/nullability.h"
@@ -56,6 +57,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
+#include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/c/pjrt_c_api_device_event.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/device_event_utils.h"
@@ -65,6 +67,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/pjrt/staging_buffer.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
 #include "xla/primitive_util.h"
@@ -75,10 +78,8 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
 #include "tsl/platform/context.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
@@ -1623,18 +1624,68 @@ absl::Status CommonPjRtLoadedExecutable::CheckBufferCompatibilities(
         "buffers",
         input_buffers.size(), input_buffer_sizes_in_bytes_.size());
   }
+  const CommonPjRtClient* common_client = this->client();
+
   for (int i = 0; i < input_buffers.size(); ++i) {
     const auto& expected_shape = parameter_device_shapes_[i];
+    const auto& actual_shape = argument_handles[i]->on_device_shape();
 
-    size_t buffer_size = input_buffers[i]->GetOnDeviceSizeInBytes();
-    if (input_buffer_sizes_in_bytes_[i] != buffer_size) {
-      const auto& actual_shape = argument_handles[i]->on_device_shape();
-      return error::RuntimeProgramInputMismatch(
-          "Executable(%s) expected parameter %d of size %lld (%s) but got "
-          "buffer with incompatible size %lld (%s)",
-          name(), i, input_buffer_sizes_in_bytes_[i],
-          expected_shape.ToString(true), buffer_size,
-          actual_shape.ToString(true));
+    PjRtDynamicShapeKind ds_kind = common_client->GetDynamicShapeKind(
+        argument_handles[i]->memory_space()->kind_id());
+
+    bool both_are_dynamic =
+        !expected_shape.is_static() && !actual_shape.is_static();
+
+    if (both_are_dynamic && ds_kind == PjRtDynamicShapeKind::kPrefix) {
+      // Both shapes dynamic of kPrefix kind.
+      // Element type check
+      if (expected_shape.element_type() != actual_shape.element_type()) {
+        return error::RuntimeProgramInputMismatch(
+            "Executable(%s) expected parameter %d to have element type %s but "
+            "got buffer with element type %s",
+            name(), i, PrimitiveType_Name(expected_shape.element_type()),
+            PrimitiveType_Name(actual_shape.element_type()));
+      }
+      // Rank check
+      if (expected_shape.dimensions().size() !=
+          actual_shape.dimensions().size()) {
+        return error::RuntimeProgramInputMismatch(
+            "Executable(%s) expected parameter %d to have rank %d but "
+            "got buffer with rank %d",
+            name(), i, expected_shape.dimensions().size(),
+            actual_shape.dimensions().size());
+      }
+      // Layout check
+      if (!xla::LayoutUtil::LayoutsInShapesEqual(expected_shape,
+                                                 actual_shape)) {
+        return error::RuntimeProgramInputMismatch(
+            "Executable(%s) expected parameter %d to have layout %s but "
+            "got buffer with layout %s",
+            name(), i, expected_shape.layout().ToString(),
+            actual_shape.layout().ToString());
+      }
+      // Bounds check
+      ASSIGN_OR_RETURN(Shape actual_logical_shape,
+                       argument_handles[i]->logical_on_device_shape());
+      for (int d = 0; d < expected_shape.dimensions().size(); ++d) {
+        if (actual_logical_shape.dimensions(d) > expected_shape.dimensions(d)) {
+          return error::RuntimeProgramInputMismatch(
+              "Executable(%s) expected parameter %d dimension %d runtime size "
+              "<= %lld, but got buffer with size %lld",
+              name(), i, d, expected_shape.dimensions(d),
+              actual_logical_shape.dimensions(d));
+        }
+      }
+    } else {
+      size_t buffer_size = input_buffers[i]->GetOnDeviceSizeInBytes();
+      if (input_buffer_sizes_in_bytes_[i] != buffer_size) {
+        return error::RuntimeProgramInputMismatch(
+            "Executable(%s) expected parameter %d of size %lld (%s) but got "
+            "buffer with incompatible size %lld (%s)",
+            name(), i, input_buffer_sizes_in_bytes_[i],
+            expected_shape.ToString(true), buffer_size,
+            actual_shape.ToString(true));
+      }
     }
 
     if (!parameter_memory_space_kind_ids_.empty()) {
