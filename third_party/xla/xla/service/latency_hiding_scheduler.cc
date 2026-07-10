@@ -1620,6 +1620,11 @@ bool ReadySetLt::AIsBetterThanB(DefaultSchedulerCore::ScheduleCandidate& a,
                                "kPreference", reason)) {
       return *res;
     }
+    bool a_is_nop = IsNopInstruction(an->GetInstr().opcode(), an->GetInstr());
+    bool b_is_nop = IsNopInstruction(bn->GetInstr().opcode(), bn->GetInstr());
+    if (auto res = CmpExplicit(a_is_nop, b_is_nop, "kNop", reason)) {
+      return *res;
+    }
   }
 
   // Update the resource_constrained of the candidate before any
