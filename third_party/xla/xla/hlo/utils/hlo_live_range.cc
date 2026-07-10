@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_stack_trace.h"
@@ -110,16 +111,25 @@ void HloLiveRange::FlattenSchedule(const HloComputation& computation,
       // Recurse into sub computations if running with module scoped analysis
       // mode.
       if (instruction->opcode() == HloOpcode::kCall ||
-          instruction->opcode() == HloOpcode::kConditional ||
-          instruction->opcode() == HloOpcode::kAsyncStart) {
+          instruction->opcode() == HloOpcode::kConditional) {
         for (const HloComputation* called_computation :
              instruction->called_computations()) {
-          // AsyncStart starts an async context. Other ops that call
-          // computations just propagate the existing one, if any.
-          FlattenSchedule(*called_computation,
-                          instruction->opcode() == HloOpcode::kAsyncStart
-                              ? called_computation
-                              : async_context);
+          FlattenSchedule(*called_computation, async_context);
+        }
+      } else if (instruction->IsAsynchronous()) {
+        auto first_fully_bound_status =
+            hlo_instruction_utils::async::IsFirstFullyBound(instruction);
+        if (!first_fully_bound_status.ok()) {
+          LOG(ERROR) << "Skipping async instruction " << instruction->name()
+                     << " because IsFirstFullyBound returned error: "
+                     << first_fully_bound_status.status();
+        } else if (first_fully_bound_status.value()) {
+          // For async operations, the async wrapped computation is flattened
+          // before the first async instruction that has its operands and output
+          // fully bound.
+          const HloComputation* called_computation =
+              instruction->async_wrapped_computation();
+          FlattenSchedule(*called_computation, called_computation);
         }
       } else if (instruction->opcode() == HloOpcode::kWhile) {
         // Order of flattening matters here: for while loops, the condition
