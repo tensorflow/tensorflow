@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_orchestrator.h"
 #include "xla/backends/autotuner/config_assigner.h"
 #include "xla/backends/autotuner/directory_cache.h"
+#include "xla/backends/autotuner/hlo_extractor.h"
 #include "xla/backends/autotuner/local_cache.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/autotuner/tiered_cache.h"
@@ -321,6 +322,34 @@ ProfileOptions GetProfileOptions(
   return profile_options;
 }
 
+InstructionFilterFn GetShouldAutotuneInstructionFn(
+    const DebugOptions& debug_options,
+    const se::GpuComputeCapability& gpu_version) {
+  bool do_not_autotune_cublas =
+      debug_options.xla_gpu_experimental_disable_binary_libraries() ||
+      debug_options.xla_gpu_autotune_level() == 0;
+  bool do_not_autotune_cudnn =
+      debug_options.xla_gpu_experimental_disable_binary_libraries() ||
+      (do_not_autotune_cublas && !gpu_version.IsRocm());
+
+  bool enable_fusion_autotuner =
+      debug_options.xla_gpu_autotune_level() != 0 &&
+      !debug_options.xla_gpu_exclude_nondeterministic_ops() &&
+      debug_options.xla_gpu_experimental_enable_fusion_autotuner();
+
+  return [do_not_autotune_cublas, do_not_autotune_cudnn,
+          enable_fusion_autotuner](const HloInstruction& instruction) -> bool {
+    AutotuneDecision decision =
+        ShouldAutotuneInstruction(do_not_autotune_cublas, do_not_autotune_cudnn,
+                                  enable_fusion_autotuner, instruction);
+    if (!decision) {
+      VLOG(3) << "Not autotuning " << instruction.name() << ": "
+              << decision.Explain();
+    }
+    return decision.IsAllowed();
+  };
+}
+
 absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
 AutotunerPass::GetGpuAutotunerBackends(
     se::StreamExecutor* stream_exec,
@@ -388,32 +417,8 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
   ASSIGN_OR_RETURN(std::vector<std::unique_ptr<CodegenBackend>> backends,
                    get_backends_fn());
 
-  // 1. Assessing whether to autotune custom calls.
-  bool do_not_autotune_cublas =
-      debug_options.xla_gpu_experimental_disable_binary_libraries() ||
-      debug_options.xla_gpu_autotune_level() == 0;
-  bool do_not_autotune_cudnn =
-      debug_options.xla_gpu_experimental_disable_binary_libraries() ||
-      (do_not_autotune_cublas && !gpu_version.IsRocm());
-
-  // 3. Assessing whether to autotune generic fusions.
-  bool enable_fusion_autotuner =
-      debug_options.xla_gpu_autotune_level() != 0 &&
-      !debug_options.xla_gpu_exclude_nondeterministic_ops() &&
-      debug_options.xla_gpu_experimental_enable_fusion_autotuner();
-
-  auto should_autotune =
-      [do_not_autotune_cublas, do_not_autotune_cudnn,
-       enable_fusion_autotuner](const HloInstruction& instruction) -> bool {
-    AutotuneDecision decision =
-        ShouldAutotuneInstruction(do_not_autotune_cublas, do_not_autotune_cudnn,
-                                  enable_fusion_autotuner, instruction);
-    if (!decision) {
-      VLOG(3) << "Not autotuning " << instruction.name() << ": "
-              << decision.Explain();
-    }
-    return decision.IsAllowed();
-  };
+  InstructionFilterFn should_autotune =
+      GetShouldAutotuneInstructionFn(debug_options, gpu_version);
 
   bool is_deviceless = stream_executor == nullptr;
   ConfigAssigner::Options assigner_options =
