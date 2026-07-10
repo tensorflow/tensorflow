@@ -480,6 +480,41 @@ TEST_P(IfrtServingExecutableTest, NoReturn) {
   ASSERT_EQ(result.size(), 0);
 }
 
+TEST_P(IfrtServingExecutableTest, CompilationFailureFulfillsPromise) {
+  int64_t program_id = 999999;
+  SetUpMockDeviceReservation(selector_, program_id, helper_->num_cores());
+  auto executable =
+      helper_->MakeExecutable(program_id, GetMlirModulePath("executable.mlir"));
+
+  EXPECT_EQ(executable->num_executables(), 0);
+
+  // Pass FLOAT tensors to an MLIR module expecting INT32 (executable.mlir has
+  // %arg0: tensor<*xi32>, %arg1: tensor<*xi32>), causing compilation
+  // (UpdateCompileMetadata inside LookUpOrCreateExecutable) to fail cleanly.
+  auto x = AsTensor<float>({1.0f, 2.0f, 3.0f}, tensorflow::TensorShape({1, 3}));
+  auto y = AsTensor<float>({1.0f, 2.0f, 3.0f}, tensorflow::TensorShape({3, 1}));
+  std::vector<tensorflow::Tensor> inputs{x, y};
+
+  auto result = Execute(executable.get(), absl::MakeSpan(inputs), {});
+
+  // 1. Verify that the compilation error status is returned cleanly (and NOT
+  // "Promise destroyed without being set").
+  EXPECT_THAT(result, absl_testing::StatusIs(
+                          absl::StatusCode::kInternal,
+                          ::testing::HasSubstr("Dtype mismatched!")));
+
+  // 2. Verify that the failed compilation future remains cached.
+  EXPECT_EQ(executable->num_executables(), 1);
+
+  // 3. Verify that subsequent execution attempts immediately return the cleanly
+  // cached error status (and NOT "Promise destroyed without being set").
+  auto second_result = Execute(executable.get(), absl::MakeSpan(inputs), {});
+  EXPECT_THAT(second_result, absl_testing::StatusIs(
+                                 absl::StatusCode::kInternal,
+                                 ::testing::HasSubstr("Dtype mismatched!")));
+  EXPECT_EQ(executable->num_executables(), 1);
+}
+
 TEST_P(IfrtServingExecutableTest, StaticShape) {
   absl::SetVLogLevel("tpu_h2d_transfer_executor", 2);
   int64_t program_id = 789012;
