@@ -85,6 +85,7 @@ cuda_py_strict_test(
     name = "collective_ops_test",
     size = "medium",
     srcs = ["collective_ops_test.py"],
+    env = {"NCCL_IGNORE_DISABLED_P2P": "1"},
     shard_count = 4,
     tags = [
         # "multi_and_single_gpu", # TODO(b/287692888): re-enable once the 2gpu test passes.

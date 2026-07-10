@@ -2210,6 +2210,7 @@ xla_test(
         "gpu": ["multi_gpu"],
     },
     backends = ["gpu"],
+    env = {"NCCL_IGNORE_DISABLED_P2P": "1"},
     deps = [
         ":all_to_all_thunk",
         ":collective_thunk",
@@ -2461,6 +2462,7 @@ xla_test(
         "gpu": ["multi_gpu"],
     },
     backends = ["gpu"],
+    env = {"NCCL_IGNORE_DISABLED_P2P": "1"},
     deps = [
         ":collective_thunk",
         ":collective_thunk_multigpu_test_utils",
@@ -3205,6 +3207,7 @@ xla_test(
         "gpu": ["multi_gpu"],
     },
     backends = ["gpu"],
+    env = {"NCCL_IGNORE_DISABLED_P2P": "1"},
     deps = [
         ":collective_thunk",
         ":collective_thunk_multigpu_test_utils",

@@ -1094,7 +1094,10 @@ cuda_py_strict_test(
     name = "compiled_collective_ops_gpu_test",
     size = "small",
     srcs = ["compiled_collective_ops_gpu_test.py"],
-    env = {"TF_FORCE_GPU_ALLOW_GROWTH": "true"},
+    env = {
+        "NCCL_IGNORE_DISABLED_P2P": "1",
+        "TF_FORCE_GPU_ALLOW_GROWTH": "true",
+    },
     main = "compiled_collective_ops_gpu_test.py",
     tags = [
         "guitar",
@@ -1888,6 +1891,7 @@ py_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops/linalg:linalg_impl",
+        "//third_party/py/numpy",
     ],
 )
 
