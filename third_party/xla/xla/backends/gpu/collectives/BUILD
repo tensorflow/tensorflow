@@ -440,6 +440,7 @@ cc_library(
     name = "gpu_communicator",
     hdrs = ["gpu_communicator.h"],
     deps = [
+        ":gxl_communicator",
         "//xla:future",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -782,27 +783,10 @@ cc_library(
         ":gpu_clique_key",
         ":gpu_collectives",
         ":gpu_communicator",
+        ":gxl_collectives",
         ":nccl_communicator",
         ":nccl_errors",
         ":nccl_group",
-        "//xla:debug_options_flags",
-        "//xla:future",
-        "//xla:status_macros",
-        "//xla:util",
-        "//xla/core/collectives",
-        "//xla/core/collectives:clique_id",
-        "//xla/core/collectives:clique_key",
-        "//xla/core/collectives:collectives_registry",
-        "//xla/core/collectives:communicator",
-        "//xla/core/collectives:rank_id",
-        "//xla/pjrt/distributed:key_value_store_interface",
-        "//xla/runtime:device_id",
-        "//xla/runtime:process_id",
-        "//xla/stream_executor:stream_executor_h",
-        "//xla/tsl/cuda:nccl",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -817,6 +801,27 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
+        "//xla/tsl/platform:status_macros",
+        "//xla:debug_options_flags",
+        "//xla:future",
+        "//xla:status_macros",
+        "//xla:util",
+        # copybara:uncomment_begin(google-only)
+        # "//xla/backends/gpu/runtime/gxl:gxl_collectives",  # buildcleaner: keep
+        # copybara:uncomment_end
+        "//xla/core/collectives",
+        "//xla/core/collectives:clique_id",
+        "//xla/core/collectives:clique_key",
+        "//xla/core/collectives:collectives_registry",
+        "//xla/core/collectives:communicator",
+        "//xla/core/collectives:rank_id",
+        "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/runtime:device_id",
+        "//xla/runtime:process_id",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/cuda:nccl",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:logging",
         "@tsl//tsl/platform:numbers",
         "@tsl//tsl/profiler/lib:traceme",
     ],
@@ -843,6 +848,40 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@local_config_rocm//rocm:rccl",  # buildcleaner: keep
         "@local_config_rocm//rocm:rocm_headers",
+    ],
+)
+
+cc_library(
+    name = "gxl_communicator",
+    hdrs = ["gxl_communicator.h"],
+    visibility = [
+        "//xla/backends/gpu:__subpackages__",
+    ],
+    deps = [
+        "//xla:xla_data_proto_cc",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:stream",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
+    name = "gxl_collectives",
+    srcs = [
+        # copybara:comment_begin(oss-only)
+        "gxl_collectives.cc",
+        # copybara:comment_end
+    ],
+    hdrs = ["gxl_collectives.h"],
+    visibility = [
+        "//xla/backends/gpu:__subpackages__",
+    ],
+    deps = [
+        "//xla/core/collectives",
+        "//xla/core/collectives:clique_key",
+        "//xla/core/collectives:communicator",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -940,12 +979,14 @@ cc_library(
         ":cancellation_token",
         ":gpu_collectives",
         ":gpu_communicator",
+        ":gxl_communicator",
         ":nccl_errors",
         ":nccl_group",
         ":nccl_registered_memory",
         ":nccl_symmetric_memory",
         ":nccl_types",
         ":single_threaded_executor",
+        "//xla:debug_options_flags",
         "//xla:future",
         "//xla:shape_util",
         "//xla:util",

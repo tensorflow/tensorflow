@@ -510,6 +510,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(false);
   opts.set_xla_gpu_experimental_enable_buffer_saver_on_thunks(false);
   opts.set_xla_gpu_experimental_thunk_buffer_debug_module_outputs(false);
+  opts.set_xla_gpu_enable_gxl_ragged_all_to_all(false);
+  opts.set_xla_gpu_gxl_scratch_size_bytes(64 * 1024 * 1024);
 
   // Disable float checks.
   opts.set_xla_gpu_detect_nan(DebugOptions::DETECTION_MODE_NONE);
@@ -3220,6 +3222,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 "Memory mode for ragged-all-to-all: private, symmetric, peer. "
                 "In symmetric mode, the put/signal path is used. "
                 "See CollectivesMode for details."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_gxl_ragged_all_to_all",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_gxl_ragged_all_to_all),
+      debug_options->xla_gpu_enable_gxl_ragged_all_to_all(),
+      "If true, enable the GXL library for NCCL collectives."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_gxl_scratch_size_bytes",
+      int64_setter_for(&DebugOptions::set_xla_gpu_gxl_scratch_size_bytes),
+      debug_options->xla_gpu_gxl_scratch_size_bytes(),
+      "Size in bytes of the scratch buffer for GXL collectives."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_use_ragged_dot_grouped_gemm",
       bool_setter_for(

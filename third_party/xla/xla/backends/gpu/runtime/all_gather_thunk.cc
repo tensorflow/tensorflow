@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -29,6 +30,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
+#include "xla/backends/gpu/collectives/gxl_communicator.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
@@ -50,6 +52,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/casts.h"
 
 namespace xla::gpu {
 
@@ -119,7 +122,6 @@ CollectiveOpGroupMode AllGatherThunk::GetGroupMode(
     const HloAllGatherInstruction* inst) {
   return GetAllGatherConfig(inst).config.group_mode;
 }
-
 absl::Status AllGatherThunk::PrepareCollective(const PrepareParams& params,
                                                const GpuCliqueKey& clique_key) {
   if (use_symmetric_memory() && clique_key.is_local()) {
@@ -175,7 +177,6 @@ absl::Status AllGatherThunk::RunCollective(const ExecuteParams& params,
   ASSIGN_OR_RETURN(std::vector<DeviceBufferPair> device_buffers,
                    ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
                                           config_.config.operand_element_type));
-
   if (use_symmetric_memory() && clique_key.is_local()) {
     XLA_VLOG_DEVICE(3, device_ordinal)
         << "AllGather: using one-sided mode (Put+Signal)";
@@ -184,6 +185,20 @@ absl::Status AllGatherThunk::RunCollective(const ExecuteParams& params,
   }
 
   XLA_VLOG_DEVICE(3, device_ordinal) << "AllGather: using host-initiated mode";
+  if (device_buffers.size() == 1) {
+    auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
+    if (gpu_comm->gxl_communicator() != nullptr) {
+      GxlCommunicator* gxl_nccl_comm = gpu_comm->gxl_communicator();
+
+      const std::optional<RankId> rank =
+          clique_key.rank(params.collective_params->global_device_id);
+
+      return gxl_nccl_comm->RunAllGatherGxl(
+          &stream, device_buffers[0].element_type,
+          device_buffers[0].source_buffer, device_buffers[0].destination_buffer,
+          device_buffers[0].element_count, rank.value().value());
+    }
+  }
   return xla::gpu::RunAllGather(device_buffers, stream, comm,
                                 config_.config.use_symmetric_buffer);
 }
