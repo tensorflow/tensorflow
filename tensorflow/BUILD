@@ -2,6 +2,8 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
+# Quick test-only change that will be reverted before submission.
+
 load("@rules_cc//cc:cc_import.bzl", "cc_import")
 
 # buildifier: disable=out-of-order-load

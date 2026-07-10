@@ -13,6 +13,8 @@ load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts
 load("//tensorflow/lite:special_rules.bzl", "SPECIAL_RULES_DEPS", "internal_visibility_allowlist", "tflite_internal_cc_3p_api_deps_src_all_visibility_allowlist", "tflite_portable_test_suite")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "alias_with_tflite", "cc_library_with_tflite", "cc_test_with_tflite")
 
+# Quick test-only change that will be reverted before submission.
+
 package_group(
     name = "tf_lite_runtime",
     packages = ["//tensorflow/lite/..."],
