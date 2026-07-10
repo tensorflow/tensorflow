@@ -10,6 +10,7 @@ load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
+load("//xla/tsl/util:cc_embed_data.bzl", "cc_embed_data")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -1191,20 +1192,13 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "collective_interpolator_data",
-    hdrs = ["collective_interpolator_data.h"],
-    compatible_with = get_compatible_with_portable(),
-)
-
-cc_library(
     name = "collective_interpolator",
     srcs = ["collective_interpolator.cc"],
     hdrs = [
         "collective_interpolator.h",
-        "collective_interpolator_data.h",
     ],
     deps = [
-        ":collective_interpolator_data",
+        ":default_collective_perf_table",
         ":gpu_hlo_cost_analysis",
         ":hlo_op_profile_proto_cc",
         ":hlo_op_profiles",
@@ -1217,9 +1211,7 @@ cc_library(
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/stream_executor:device_description",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:overload",
         "@com_google_absl//absl/log",
@@ -1318,9 +1310,9 @@ cc_library(
     srcs = ["matmul_interpolator.cc"],
     hdrs = [
         "matmul_interpolator.h",
-        "matmul_interpolator_data.h",
     ],
     deps = [
+        ":default_matmul_perf_table",
         ":hlo_op_profile_proto_cc",
         ":hlo_op_profiles",
         ":interpolator",
@@ -1334,7 +1326,6 @@ cc_library(
         "//xla/service/gpu:cublas_cudnn",
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -1434,4 +1425,26 @@ xla_cc_test(
         "@com_google_protobuf//:protobuf",
         "@tsl//tsl/platform:path",
     ],
+)
+
+cc_embed_data(
+    name = "default_matmul_perf_table",
+    srcs = ["default_matmul_perf_table.txtpb"],
+    outs = [
+        "default_matmul_perf_table.cc",
+        "default_matmul_perf_table.h",
+    ],
+    embedopts = ["--namespace=xla::gpu::config"],
+    flatten = True,
+)
+
+cc_embed_data(
+    name = "default_collective_perf_table",
+    srcs = ["default_collective_perf_table.txtpb"],
+    outs = [
+        "default_collective_perf_table.cc",
+        "default_collective_perf_table.h",
+    ],
+    embedopts = ["--namespace=xla::gpu::config"],
+    flatten = True,
 )

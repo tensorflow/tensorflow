@@ -858,10 +858,9 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "collective_perf_table_gen_main_lib",
+xla_cc_binary(
+    name = "collective_perf_table_gen_main",
     srcs = ["collective_perf_table_gen_main.cc"],
-    compatible_with = None,
     tags = [
         "no_mac",
     ],
@@ -872,7 +871,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
-        "//xla/service/gpu/model:collective_interpolator_data",
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
@@ -896,7 +894,6 @@ cc_library(
         "//xla/service:gpu_plugin",
         "//xla/stream_executor:rocm_platform",
     ]),
-    alwayslink = True,
 )
 
 cc_library(
@@ -960,16 +957,6 @@ xla_test(
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
         "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-xla_cc_binary(
-    name = "collective_perf_table_gen_main",
-    tags = [
-        "no_mac",
-    ],
-    deps = [
-        ":collective_perf_table_gen_main_lib",
     ],
 )
 
