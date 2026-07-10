@@ -1012,3 +1012,78 @@ module attributes {} {
 // CHECK: %[[ZP:.*]] = "tf.Add"(%[[ARG0_ZP]], %[[ARG1_ZP]])
 }
 
+
+// -----
+
+module attributes {} {
+  func.func @einsum_with_spaces(%arg0: tensor<2x3xf32>) -> (tensor<2x4xf32>) {
+    %cst = "tf.Const"() {device = "", value = dense<1.4049983> : tensor<f32>} : () -> tensor<f32>
+    %cst_0 = "tf.Const"() {device = "", value = dense<2.62249741E-5> : tensor<f32>} : () -> tensor<f32>
+    %cst_1 = "tf.Const"() {device = "", value = dense<-1.280000e+02> : tensor<f32>} : () -> tensor<f32>
+    %cst_2 = "tf.Const"() {device = "", value = dense<[[69, 56, 29, 41], [106, 108, 118, 127], [51, 52, 50, 30]]> : tensor<3x4xi8>} : () -> tensor<3x4xi8>
+    %cst_3 = "tf.Const"() {device = "", value = dense<0.0037096194> : tensor<f32>} : () -> tensor<f32>
+    %cst_4 = "tf.Const"() {device = "", value = dense<-128> : tensor<i32>} : () -> tensor<i32>
+    %cst_5 = "tf.Const"() {device = "", value = dense<1.270000e+02> : tensor<f32>} : () -> tensor<f32>
+    %0 = "tf.Div"(%arg0, %cst_3) {device = ""} : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+    %1 = "tf.AddV2"(%0, %cst_1) {device = ""} : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+    %2 = "tf.Maximum"(%1, %cst_1) {device = ""} : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+    %3 = "tf.Minimum"(%2, %cst_5) {device = ""} : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+    %4 = "tf.Round"(%3) {device = ""} : (tensor<2x3xf32>) -> tensor<2x3xf32>
+    %5 = "tf.Cast"(%4) {Truncate = false, device = ""} : (tensor<2x3xf32>) -> tensor<2x3xi8>
+    %6 = "tf.Identity"(%5) {device = ""} : (tensor<2x3xi8>) -> tensor<2x3xi8>
+    %7 = "tf.Cast"(%6) {Truncate = false, device = ""} : (tensor<2x3xi8>) -> tensor<2x3xi32>
+    %8 = "tf.Sub"(%7, %cst_4) {device = ""} : (tensor<2x3xi32>, tensor<i32>) -> tensor<2x3xi32>
+    %9 = "tf.Identity"(%cst_2) {device = ""} : (tensor<3x4xi8>) -> tensor<3x4xi8>
+    %10 = "tf.Cast"(%9) {Truncate = false, device = ""} : (tensor<3x4xi8>) -> tensor<3x4xi32>
+    %11 = "tf.Einsum"(%8, %10) {device = "", equation = "ab , bc -> ac"} : (tensor<2x3xi32>, tensor<3x4xi32>) -> tensor<2x4xi32>
+    %12 = "tf.Cast"(%11) {Truncate = false, device = ""} : (tensor<2x4xi32>) -> tensor<2x4xf32>
+    %13 = "tf.Mul"(%12, %cst_0) {device = ""} : (tensor<2x4xf32>, tensor<f32>) -> tensor<2x4xf32>
+    %14 = "tf.Relu"(%13) {device = ""} : (tensor<2x4xf32>) -> tensor<2x4xf32>
+    %15 = "tf.Minimum"(%14, %cst) {device = ""} : (tensor<2x4xf32>, tensor<f32>) -> tensor<2x4xf32>
+    %16 = "tf.Identity"(%15) {device = ""} : (tensor<2x4xf32>) -> tensor<2x4xf32>
+    %17 = "tf.Identity"(%16) {device = ""} : (tensor<2x4xf32>) -> tensor<2x4xf32>
+    func.return %17 : tensor<2x4xf32>
+  }
+
+// CHECK-LABEL: func @einsum_with_spaces
+// CHECK: %[[CAST:.*]] = "tf.Cast"(
+// CHECK: %[[XLADOTV2_0:.*]] = "tf.XlaDotV2"(%[[CAST]],
+// CHECK: %[[SUB_0:.*]] = "tf.Sub"(%[[XLADOTV2_0]],
+}
+
+// -----
+
+module attributes {} {
+  func.func @einsum_with_ellipses(%arg0: tensor<2x3xf32>) -> (tensor<2x4xf32>) {
+    %cst = "tf.Const"() {device = "", value = dense<1.4049983> : tensor<f32>} : () -> tensor<f32>
+    %cst_0 = "tf.Const"() {device = "", value = dense<2.62249741E-5> : tensor<f32>} : () -> tensor<f32>
+    %cst_1 = "tf.Const"() {device = "", value = dense<-1.280000e+02> : tensor<f32>} : () -> tensor<f32>
+    %cst_2 = "tf.Const"() {device = "", value = dense<[[69, 56, 29, 41], [106, 108, 118, 127], [51, 52, 50, 30]]> : tensor<3x4xi8>} : () -> tensor<3x4xi8>
+    %cst_3 = "tf.Const"() {device = "", value = dense<0.0037096194> : tensor<f32>} : () -> tensor<f32>
+    %cst_4 = "tf.Const"() {device = "", value = dense<-128> : tensor<i32>} : () -> tensor<i32>
+    %cst_5 = "tf.Const"() {device = "", value = dense<1.270000e+02> : tensor<f32>} : () -> tensor<f32>
+    %0 = "tf.Div"(%arg0, %cst_3) {device = ""} : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+    %1 = "tf.AddV2"(%0, %cst_1) {device = ""} : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+    %2 = "tf.Maximum"(%1, %cst_1) {device = ""} : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+    %3 = "tf.Minimum"(%2, %cst_5) {device = ""} : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+    %4 = "tf.Round"(%3) {device = ""} : (tensor<2x3xf32>) -> tensor<2x3xf32>
+    %5 = "tf.Cast"(%4) {Truncate = false, device = ""} : (tensor<2x3xf32>) -> tensor<2x3xi8>
+    %6 = "tf.Identity"(%5) {device = ""} : (tensor<2x3xi8>) -> tensor<2x3xi8>
+    %7 = "tf.Cast"(%6) {Truncate = false, device = ""} : (tensor<2x3xi8>) -> tensor<2x3xi32>
+    %8 = "tf.Sub"(%7, %cst_4) {device = ""} : (tensor<2x3xi32>, tensor<i32>) -> tensor<2x3xi32>
+    %9 = "tf.Identity"(%cst_2) {device = ""} : (tensor<3x4xi8>) -> tensor<3x4xi8>
+    %10 = "tf.Cast"(%9) {Truncate = false, device = ""} : (tensor<3x4xi8>) -> tensor<3x4xi32>
+    %11 = "tf.Einsum"(%8, %10) {device = "", equation = "...ab, ...bc -> ...ac"} : (tensor<2x3xi32>, tensor<3x4xi32>) -> tensor<2x4xi32>
+    %12 = "tf.Cast"(%11) {Truncate = false, device = ""} : (tensor<2x4xi32>) -> tensor<2x4xf32>
+    %13 = "tf.Mul"(%12, %cst_0) {device = ""} : (tensor<2x4xf32>, tensor<f32>) -> tensor<2x4xf32>
+    %14 = "tf.Relu"(%13) {device = ""} : (tensor<2x4xf32>) -> tensor<2x4xf32>
+    %15 = "tf.Minimum"(%14, %cst) {device = ""} : (tensor<2x4xf32>, tensor<f32>) -> tensor<2x4xf32>
+    %16 = "tf.Identity"(%15) {device = ""} : (tensor<2x4xf32>) -> tensor<2x4xf32>
+    %17 = "tf.Identity"(%16) {device = ""} : (tensor<2x4xf32>) -> tensor<2x4xf32>
+    func.return %17 : tensor<2x4xf32>
+  }
+
+// CHECK-LABEL: func @einsum_with_ellipses
+// CHECK: "tf.Einsum"
+// CHECK-NOT: "tf.XlaDotV2"
+}
