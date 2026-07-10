@@ -1079,6 +1079,35 @@ func.func @concat_v2_non_const_axis(%arg0: tensor<3x3xf32>, %arg1: tensor<3x3xf3
 }
 
 //===----------------------------------------------------------------------===//
+// Cross op legalizations.
+//===----------------------------------------------------------------------===//
+
+// -----
+
+// CHECK-LABEL: func @cross
+func.func @cross(%arg0: tensor<4x3xf32>, %arg1: tensor<4x3xf32>) -> tensor<4x3xf32> {
+  // CHECK-DAG: %[[U1:.*]] = stablehlo.slice %arg0 [0:4, 0:1] : (tensor<4x3xf32>) -> tensor<4x1xf32>
+  // CHECK-DAG: %[[V1:.*]] = stablehlo.slice %arg1 [0:4, 0:1] : (tensor<4x3xf32>) -> tensor<4x1xf32>
+  // CHECK-DAG: %[[U2:.*]] = stablehlo.slice %arg0 [0:4, 1:2] : (tensor<4x3xf32>) -> tensor<4x1xf32>
+  // CHECK-DAG: %[[V2:.*]] = stablehlo.slice %arg1 [0:4, 1:2] : (tensor<4x3xf32>) -> tensor<4x1xf32>
+  // CHECK-DAG: %[[U3:.*]] = stablehlo.slice %arg0 [0:4, 2:3] : (tensor<4x3xf32>) -> tensor<4x1xf32>
+  // CHECK-DAG: %[[V3:.*]] = stablehlo.slice %arg1 [0:4, 2:3] : (tensor<4x3xf32>) -> tensor<4x1xf32>
+  // CHECK-DAG: %[[MUL1:.*]] = stablehlo.multiply %[[U2]], %[[V3]] : tensor<4x1xf32>
+  // CHECK-DAG: %[[MUL2:.*]] = stablehlo.multiply %[[U3]], %[[V2]] : tensor<4x1xf32>
+  // CHECK-DAG: %[[S1:.*]] = stablehlo.subtract %[[MUL1]], %[[MUL2]] : tensor<4x1xf32>
+  // CHECK-DAG: %[[MUL3:.*]] = stablehlo.multiply %[[U3]], %[[V1]] : tensor<4x1xf32>
+  // CHECK-DAG: %[[MUL4:.*]] = stablehlo.multiply %[[U1]], %[[V3]] : tensor<4x1xf32>
+  // CHECK-DAG: %[[S2:.*]] = stablehlo.subtract %[[MUL3]], %[[MUL4]] : tensor<4x1xf32>
+  // CHECK-DAG: %[[MUL5:.*]] = stablehlo.multiply %[[U1]], %[[V2]] : tensor<4x1xf32>
+  // CHECK-DAG: %[[MUL6:.*]] = stablehlo.multiply %[[U2]], %[[V1]] : tensor<4x1xf32>
+  // CHECK-DAG: %[[S3:.*]] = stablehlo.subtract %[[MUL5]], %[[MUL6]] : tensor<4x1xf32>
+  // CHECK: %[[RESULT:.*]] = stablehlo.concatenate %[[S1]], %[[S2]], %[[S3]], dim = 1 : (tensor<4x1xf32>, tensor<4x1xf32>, tensor<4x1xf32>) -> tensor<4x3xf32>
+  // CHECK: return %[[RESULT]] : tensor<4x3xf32>
+  %0 = "tf.Cross"(%arg0, %arg1) : (tensor<4x3xf32>, tensor<4x3xf32>) -> tensor<4x3xf32>
+  func.return %0 : tensor<4x3xf32>
+}
+
+//===----------------------------------------------------------------------===//
 // Pad op legalizations.
 //===----------------------------------------------------------------------===//
 
