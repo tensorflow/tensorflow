@@ -66,11 +66,12 @@ class EmitterContext {
  public:
   EmitterContext(
       mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
-      mlir::Value pid, gpu::experimental::Schedule schedule,
+      mlir::Value pid, mlir::Value tid, gpu::experimental::Schedule schedule,
       xtile::EntryFuncOp entry_func,
       const gpu::experimental::TiledHloComputation& tiled_computation)
       : b_(b),
         pid_(pid),
+        tid_(tid),
         schedule_(std::move(schedule)),
         fusion_(fusion),
         entry_func_(entry_func),
@@ -78,6 +79,7 @@ class EmitterContext {
 
   mlir::ImplicitLocOpBuilder& b() { return b_; }
   mlir::Value pid() const { return pid_; }
+  mlir::Value tid() const { return tid_; }
   const HloFusionInstruction& fusion() const { return *fusion_; }
   xtile::EntryFuncOp entry_func() const { return entry_func_; }
 
@@ -117,6 +119,7 @@ class EmitterContext {
  private:
   mlir::ImplicitLocOpBuilder& b_;
   mlir::Value pid_;
+  mlir::Value tid_;
   absl::flat_hash_map<const gpu::experimental::TiledHloInstruction*,
                       TensorValue>
       tiled_hlo_to_tensor_;

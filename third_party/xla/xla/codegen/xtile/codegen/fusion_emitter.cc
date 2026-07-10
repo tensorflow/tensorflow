@@ -1191,7 +1191,7 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
   VLOG(3) << "EmitGeneric: tiled HLO computation:\n"
           << tiled_hlo_computation.ToString();
 
-  Value tile_id = fn.getTileId();
+  Value tile_id = fn.getProgramId();
   absl::flat_hash_map<const TiledHloInstruction*, TensorValue> values;
   ASSIGN_OR_RETURN(auto results,
                    EmitTiledComputation(b, fusion, tiled_hlo_computation, fn,

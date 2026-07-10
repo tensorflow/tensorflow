@@ -128,7 +128,7 @@ def EntryFuncOp : XTile_Op<"entry_func", [
           .drop_back();
     }
 
-    mlir::Value getTileId() {
+    mlir::Value getProgramId() {
       return getBody().getArguments().back();
     }
 
