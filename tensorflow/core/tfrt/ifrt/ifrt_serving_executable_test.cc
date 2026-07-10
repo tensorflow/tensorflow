@@ -500,7 +500,7 @@ TEST_P(IfrtServingExecutableTest, CompilationFailureFulfillsPromise) {
   // 1. Verify that the compilation error status is returned cleanly (and NOT
   // "Promise destroyed without being set").
   EXPECT_THAT(result, absl_testing::StatusIs(
-                          absl::StatusCode::kInternal,
+                          absl::StatusCode::kInvalidArgument,
                           ::testing::HasSubstr("Dtype mismatched!")));
 
   // 2. Verify that the failed compilation future remains cached.
@@ -510,7 +510,7 @@ TEST_P(IfrtServingExecutableTest, CompilationFailureFulfillsPromise) {
   // cached error status (and NOT "Promise destroyed without being set").
   auto second_result = Execute(executable.get(), absl::MakeSpan(inputs), {});
   EXPECT_THAT(second_result, absl_testing::StatusIs(
-                                 absl::StatusCode::kInternal,
+                                 absl::StatusCode::kInvalidArgument,
                                  ::testing::HasSubstr("Dtype mismatched!")));
   EXPECT_EQ(executable->num_executables(), 1);
 }
