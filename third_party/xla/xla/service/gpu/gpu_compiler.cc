@@ -2340,14 +2340,12 @@ bool DefinesCollectiveMemorySpaceFrontendAttr(const HloValue* value) {
 }
 
 bool RequiresCollectiveInput(const HloUse& use, const DebugOptions& opts) {
-  const bool is_nccl_buffers_used =
-      opts.xla_gpu_enable_nccl_user_buffers() ||
-      opts.xla_gpu_experimental_enable_nccl_symmetric_buffers();
-
   HloInstruction* user = use.instruction;
 
   // Handle standard non-fusion/fusion collectives under NCCL user buffers
-  if (is_nccl_buffers_used && IsCollective(user)) {
+  if (IsCollective(user) &&
+      (opts.xla_gpu_enable_nccl_user_buffers() ||
+       IsNcclSymmetricBuffersEnabledForCollective(user, opts))) {
     return true;
   }
   // Handle one-shot RaggedAllToAll with NCCL enabled.
@@ -2380,12 +2378,11 @@ bool RequiresCollectiveInput(const HloUse& use, const DebugOptions& opts) {
 
 bool RequiresCollectiveOutput(const HloValue* value, const DebugOptions& opts) {
   HloInstruction* def = value->defining_instruction();
-  const bool is_nccl_buffers_used =
-      opts.xla_gpu_enable_nccl_user_buffers() ||
-      opts.xla_gpu_experimental_enable_nccl_symmetric_buffers();
 
   // Handle standard non-fusion/fusion collectives under NCCL user buffers
-  if (is_nccl_buffers_used && IsCollective(def)) {
+  if (IsCollective(def) &&
+      (opts.xla_gpu_enable_nccl_user_buffers() ||
+       IsNcclSymmetricBuffersEnabledForCollective(def, opts))) {
     return true;
   }
   // Handle one-shot RaggedAllToAll with NCCL enabled.

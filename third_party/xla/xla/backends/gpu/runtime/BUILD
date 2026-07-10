@@ -2625,6 +2625,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/runtime:device_id",
         "//xla/service:buffer_assignment",
+        "//xla/service:collective_ops_utils",
         "//xla/service:computation_placer",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:stream",

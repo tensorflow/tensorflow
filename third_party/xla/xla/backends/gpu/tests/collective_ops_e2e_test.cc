@@ -3288,7 +3288,9 @@ class SymmetricBufferCollectiveOpsTest : public CollectiveOpsTestE2E {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions options = CollectiveOpsTestE2E::GetDebugOptionsForTest();
     options.set_xla_gpu_enable_nccl_user_buffers(true);
-    options.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(true);
+    auto* filter =
+        options.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+    filter->set_collective(DebugOptions::ALLCOLLECTIVES);
     return options;
   }
 };

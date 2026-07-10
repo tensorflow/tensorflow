@@ -141,6 +141,7 @@ xla_cc_test(
     srcs = ["gpu_memory_space_assignment_test.cc"],
     deps = [
         ":gpu_memory_space_assignment",
+        "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_alias_analysis",
