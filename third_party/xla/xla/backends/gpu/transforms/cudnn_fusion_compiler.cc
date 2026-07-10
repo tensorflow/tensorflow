@@ -570,6 +570,8 @@ HandleConstantHloToCudnnGraph(const HloInstruction& hlo, graph::Graph& graph,
       return LiteralToCudnnTensor<F32, float>(hlo, graph, rank);
     case S32:
       return LiteralToCudnnTensor<S32, int>(hlo, graph, rank);
+    case S8:
+      return LiteralToCudnnTensor<S8, int8_t>(hlo, graph, rank);
     default:
       VLOG(3) << "Unsupported constant type: "
               << PrimitiveType_Name(constant_type);

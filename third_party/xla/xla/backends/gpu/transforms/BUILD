@@ -986,6 +986,29 @@ cc_library(
     ],
 )
 
+xla_test(
+    name = "cudnn_fusion_compiler_test",
+    srcs = ["cudnn_fusion_compiler_test.cc"],
+    backends = [
+        "a100",
+        "h100",
+        "b200",
+    ],
+    tags = [
+        "cuda-only",
+        "no_mac",
+    ],
+    deps = [
+        ":cudnn_fusion_compiler",
+        "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
+        "//xla/hlo/ir:hlo",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/log:check",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "cudnn_norm_rewriter",
     srcs = ["cudnn_norm_rewriter.cc"],
