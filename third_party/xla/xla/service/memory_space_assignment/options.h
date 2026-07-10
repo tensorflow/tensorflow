@@ -99,14 +99,13 @@ struct PostAllocationTransformationUpdate {
   std::string ToString() const;
 };
 
-// The different modes for window prefetch. kWindowExposure is currently the
-// default mode, where the window buffer is exposed from the reserved scoped
-// memory. kWindowPrefetch is a mode where the window buffer is not only exposed
-// from the reserved scoped memory, but also has the content prefetched into
-// alternate memory.
+// The different modes for window prefetch. kAllocation exposes the window
+// buffer from reserved scoped memory. kPrefetch not only exposes the window
+// buffer, but also prefetches its content into alternate memory.
 enum class WindowPrefetchMode {
-  kWindowExposure,
-  kWindowPrefetch,
+  kNone,
+  kAllocationOnly,
+  kPrefetch,
 };
 
 // A struct to specify the memory space coloring of a buffer position or use.
@@ -128,6 +127,16 @@ struct CustomCallPrefetchDetails {
 
 // The different options to be passed to the Run() API.
 struct Options {
+  std::string ToString() const;
+
+  // Returns true if op span exposure is enabled.
+  bool IsOpSpanExposureEnabled() const;
+
+  // Returns true if window prefetching is enabled.
+  bool IsWindowPrefetchingEnabled() const;
+
+  std::string WindowPrefetchModeToString() const;
+
   // The backend-specific integer value that describes the default memory.
   int64_t default_memory_space = 0;
 
@@ -396,13 +405,6 @@ struct Options {
   // and prefetching back to alternate memory(if needed) just in time for use.
   bool always_spill_to_default_memory = false;
 
-  // If true, enables window prefetching. Window prefetching is a mechanism
-  // where we prefetch windows of data into the alternate memory before the
-  // first use of the buffer. This allows large tensors to be prefetched as well
-  // and gives MSA more flexibility in choosing the prefetch time and how much
-  // data to prefetch.
-  bool enable_window_prefetch = false;
-
   // Max number of window prefetch operands allowed.
   int64_t window_prefetch_max_operands = 1024;
 
@@ -413,10 +415,13 @@ struct Options {
   // for window prefetching. If not provided (nullptr), the default logic is
   // used: output fusions and loop fusions not on sparsecore are eligible.
   IsWindowPrefetchableInstructionFunction
-      is_window_prefetchable_instruction_fn = nullptr;
+      is_window_prefetchable_instruction_fn =
+          [](const HloInstruction* instruction) {
+            return instruction->IsOutputFusion() || instruction->IsLoopFusion();
+          };
 
   // The mode to use for window prefetching.
-  WindowPrefetchMode window_prefetch_mode = WindowPrefetchMode::kWindowExposure;
+  WindowPrefetchMode window_prefetch_mode = WindowPrefetchMode::kNone;
 
   MsaSortOrderOverrides msa_sort_order_overrides;
 
@@ -461,8 +466,6 @@ struct Options {
   // assignment algorithm.
   absl::flat_hash_map<HloPosition, std::vector<CustomCallPrefetchDetails>>
       hlo_position_to_custom_call_prefetch_details;
-
-  std::string ToString() const;
 };
 
 }  // namespace memory_space_assignment

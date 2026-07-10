@@ -10040,7 +10040,11 @@ TEST_F(MemorySpaceAssignmentTest,
   ASSERT_EQ(cross_program_prefetches.size(), 1);
 }
 
-TEST_F(MemorySpaceAssignmentTest, WindowPrefetch) {
+// The test verifies the allocation of exposed operand span buffers (window
+// prefetch mode set to kAllocationOnly). It ensures that the buffers are
+// allocated at the use time and the fusion instruction operands are updated,
+// without scheduling prefetches ahead of time.
+TEST_F(MemorySpaceAssignmentTest, OpSpanExposureAllocationOnly) {
   absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
@@ -10064,7 +10068,7 @@ entry {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   Options options = DefaultMemorySpaceOptions();
-  options.enable_window_prefetch = true;
+  options.window_prefetch_mode = WindowPrefetchMode::kAllocationOnly;
   options.op_span_size_fn =
       [&](HloInstruction* original_hlo, HloInstruction* cloned_hlo,
           int64_t operand_index) -> int64_t { return 32; };
@@ -10074,7 +10078,7 @@ entry {
                     /*min_prefetch_interval=*/0);
   const HloInstruction* fusion = FindInstruction(module.get(), "fusion");
   // The fusion instruction should have 9 operands: the 3 original operands
-  // plus 3 window prefetch buffers, plus 3 sync flags.
+  // plus 3 exposed operand span buffers, plus 3 sync flags.
   EXPECT_EQ(fusion->operand_count(), 9);
 
   // The added operands are GetTupleElements of WindowPrefetch custom calls.
@@ -10138,7 +10142,7 @@ entry {
       };
 
   Options options = DefaultMemorySpaceOptions();
-  options.enable_window_prefetch = true;
+  options.window_prefetch_mode = WindowPrefetchMode::kPrefetch;
   options.op_span_size_fn = op_span_size_fn;
   options.window_prefetch_min_span_size = 2;
   options.reserved_scoped_memory_fn = reserved_scoped_memory_fn;
@@ -14557,9 +14561,7 @@ ENTRY %main.13 (Arg_0.1: f32[8,128]) -> (f32[8,128], f32[8,128]) {
   memory_space_options.extend_async_copies_limit_for_sync_mem_op_conversion = 0;
   memory_space_options.inefficient_use_to_copy_ratio = 0.5;
   memory_space_options.always_spill_to_default_memory = false;
-  memory_space_options.enable_window_prefetch = false;
-  memory_space_options.window_prefetch_mode =
-      WindowPrefetchMode::kWindowExposure;
+  memory_space_options.window_prefetch_mode = WindowPrefetchMode::kNone;
   memory_space_options.expanded_scoped_alternate_memory_mode =
       ExpandedScopedAlternateMemoryMode::DISABLED;
   memory_space_options.post_module_scoped_alternate_memory_size_in_bytes = 0;
@@ -14686,9 +14688,7 @@ ENTRY %main.28_spmd (param.1: bf16[1024,512], param.2: bf16[2,512,4096], param: 
   memory_space_options.extend_async_copies_limit_for_sync_mem_op_conversion = 0;
   memory_space_options.inefficient_use_to_copy_ratio = 0.5;
   memory_space_options.always_spill_to_default_memory = false;
-  memory_space_options.enable_window_prefetch = false;
-  memory_space_options.window_prefetch_mode =
-      WindowPrefetchMode::kWindowExposure;
+  memory_space_options.window_prefetch_mode = WindowPrefetchMode::kNone;
   memory_space_options.expanded_scoped_alternate_memory_mode =
       ExpandedScopedAlternateMemoryMode::DISABLED;
   memory_space_options.post_module_scoped_alternate_memory_size_in_bytes = 0;
