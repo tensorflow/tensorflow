@@ -1856,6 +1856,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
         mlir_context, ShapeSizeBytesFunction(), options.key_value_store));
 
     RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+    mlir_context_pool_.Clear();
   }
 
   {
