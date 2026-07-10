@@ -111,6 +111,7 @@ xla_test(
     deps = [
         ":block_level_emitter",
         "//xla:autotuning_proto_cc",
+        "//xla:debug_options_flags",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/hlo/ir:hlo",
