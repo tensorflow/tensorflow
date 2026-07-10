@@ -87,6 +87,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:IR",
+        "@triton//:triton_version",
     ],
 )
 
@@ -127,7 +128,6 @@ xla_test(
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -335,6 +335,7 @@ cc_library(
         "@com_google_protobuf//:any_cc_proto",
         "@com_google_protobuf//:protobuf",
         "@llvm-project//mlir:IR",
+        "@triton//:triton_version",
     ],
 )
 

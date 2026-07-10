@@ -283,5 +283,9 @@ ENTRY %main {
   EXPECT_THAT(executable, absl_testing::IsOk());
 }
 
+TEST_F(TritonBlockLevelFusionEmitterBackendTest, Version) {
+  EXPECT_NE(backend_.version(), "");
+}
+
 }  // namespace gpu
 }  // namespace xla
