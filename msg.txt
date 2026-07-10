@@ -1,0 +1,13 @@
+Add regression test for integer while-loop trip count fix
+
+Adds NonDivisibleStepDoesNotUndercount covering the kLt/kLe cases that the
+previous logic miscounted (often to zero), which made simplify-while-loops
+fold an integer tf.while_loop to its initial value.
+
+Verified against the reference CalculateTripCount oracle; several cases
+(e.g. i<1 with step 2/3/5) returned 0 under the old code and now return the
+correct count.
+
+Fixes #123067.
+
+
