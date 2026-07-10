@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -835,6 +836,47 @@ TEST_F(HloDceTest,
                                 m::Fusion(&fusion))));
   EXPECT_EQ(add2->control_predecessors().size(), 1);
   EXPECT_EQ(add2->control_predecessors()[0], fusion);
+}
+
+TEST_F(HloDceTest, MultiOutputFusionPreserveUnusedSideEffectingOutput) {
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  fused_comp {
+    p0 = f32[32,32]{1,0} parameter(0)
+    p1 = f32[32,32]{1,0} parameter(1)
+    add = f32[32,32]{1,0} add(p0, p1)
+    cc = f32[32,32]{1,0} custom-call(p0), custom_call_target="foo", custom_call_has_side_effect=true
+    neg = f32[32,32]{1,0} negate(add)
+    ROOT res = (f32[32,32]{1,0}, f32[32,32]{1,0}, f32[32,32]{1,0}) tuple(add, cc, neg)
+  }
+
+  ENTRY reduce {
+    param0 = f32[32,32]{1,0} parameter(0)
+    param1 = f32[32,32]{1,0} parameter(1)
+    fusion = (f32[32,32]{1,0}, f32[32,32]{1,0}, f32[32,32]{1,0}) fusion(param0, param1), kind=kLoop, calls=fused_comp
+    gte.2 = f32[32,32]{1,0} get-tuple-element(fusion), index=2
+    ROOT root = f32[32,32]{1,0} add(gte.2, gte.2)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+  HloDCE dce;
+  ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+  ASSERT_NE(fusion, nullptr);
+  EXPECT_TRUE(fusion->shape().IsTuple());
+  EXPECT_EQ(fusion->shape().tuple_shapes().size(), 2);
+
+  HloInstruction* gte_2 = FindInstruction(module.get(), "gte.2");
+  ASSERT_NE(gte_2, nullptr);
+  EXPECT_EQ(static_cast<HloGetTupleElementInstruction*>(gte_2)->tuple_index(),
+            1);
+
+  Shape shape = ShapeUtil::MakeShape(F32, {32, 32});
+  Shape expected_shape = ShapeUtil::MakeTupleShape({shape, shape});
+  EXPECT_THAT(fusion->fused_expression_root(),
+              GmockMatch(m::Tuple(m::CustomCall(), m::Negate())
+                             .WithShapeEqualTo(&expected_shape)));
 }
 
 TEST_F(HloDceTest, UnusedCalledParameter) {
