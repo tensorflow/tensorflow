@@ -332,6 +332,7 @@ cc_library(
         ":pjrt_ifrt",
         "//xla:literal",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt:test_util",
         "//xla/tsl/concurrency:ref_count",

@@ -131,7 +131,7 @@ absl::Status WrapCallWithCustomCall(HloInstruction* instruction) {
 
   // Replace the operands of the original call with the get-tuple-element
   // instructions from the custom call.
-  for (int i = 0; i < call_before->shape().tuple_shapes_size(); ++i) {
+  for (int i = 0; i < call_before->shape().tuple_shapes().size(); ++i) {
     HloInstruction* gte = instruction->parent()->AddInstruction(
         HloInstruction::CreateGetTupleElement(
             call_before->shape().tuple_shapes(i), call_before, i));

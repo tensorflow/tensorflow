@@ -47,6 +47,7 @@ swift_library(
         ],
         "//conditions:default": [],
     }),
+    library_evolution = True,
     linkopts = select({
         ":use_coreml_delegate": [
             "-Wl,-weak_framework,CoreML",

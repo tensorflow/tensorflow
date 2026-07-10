@@ -575,6 +575,47 @@ TEST_F(BufferAssignmentTest, Basic) {
   GetAssignedOutputAllocation(*buffers, sub);
 }
 
+TEST_F(BufferAssignmentTest, TakeAllocations) {
+  auto builder = HloComputation::Builder(TestName());
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32vec100_, "p1"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, f32vec100_, "p2"));
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_, HloOpcode::kAdd, param0, param1));
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  auto buffers = RunBufferAssignment(module.get());
+
+  // Verify that we have some allocations and they have assigned buffers and
+  // peak memory logical buffers.
+  ASSERT_FALSE(buffers->Allocations().empty());
+  bool has_assigned_buffers = false;
+  bool has_peak_buffers = false;
+  for (const auto& allocation : buffers->Allocations()) {
+    if (!allocation.assigned_buffers().empty()) {
+      has_assigned_buffers = true;
+    }
+    if (!allocation.PeakMemoryLogicalBuffers().empty()) {
+      has_peak_buffers = true;
+    }
+  }
+  EXPECT_TRUE(has_assigned_buffers);
+  EXPECT_TRUE(has_peak_buffers);
+
+  // Consume the buffer assignment.
+  std::vector<BufferAllocation> allocations =
+      std::move(*buffers).TakeAllocations();
+
+  // Verify that the moved allocations have their buffer collections cleared.
+  for (const auto& allocation : allocations) {
+    EXPECT_TRUE(allocation.assigned_buffers().empty());
+    EXPECT_TRUE(allocation.PeakMemoryLogicalBuffers().empty());
+    EXPECT_TRUE(allocation.CrossColorBuffers().empty());
+  }
+}
+
 // Verifies the fallback mechanism for FAST_MERGE on potential OOM.
 // Constructs a graph with sequentially growing buffers.
 // FAST_MERGE allocates sequentially by time, resulting in more fragmentation.

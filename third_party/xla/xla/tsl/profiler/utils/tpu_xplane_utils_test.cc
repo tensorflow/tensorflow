@@ -76,7 +76,7 @@ TEST(TpuXplaneUtilsTest, GetSparseCorePlanesFromXSpace) {
   XPlane* p4 = FindOrAddMutablePlaneWithName(
       &space, absl::StrCat(TpuPlaneName(0), " SparseCore 1"));
   XPlane* p5 = FindOrAddMutablePlaneWithName(
-      &space, absl::StrCat(TpuPlaneName(0), " SparseCore CAE 0"));
+      &space, absl::StrCat(TpuPlaneName(0), " SparseCore Test 0"));
 
   EXPECT_THAT(FindTensorCorePlanes(space), UnorderedElementsAre(p1, p2));
   EXPECT_THAT(FindPlanesWithPrefix(space, kTpuPlanePrefix),

@@ -186,9 +186,17 @@ mlir::Value OnesLike(mlir::ImplicitLocOpBuilder& b, mlir::Type type) {
   mlir::Type element_type = mlir::getElementTypeOrSelf(type);
   CHECK(element_type.isInteger()) << "OnesLike only supports integer types.";
 
+  mlir::Type const_type = GetSignlessType(type);
+
   int64_t width = element_type.getIntOrFloatBitWidth();
   mlir::APInt all_ones = mlir::APInt::getAllOnes(width);
-  return mlir::createScalarOrSplatConstant(b, b.getLoc(), type, all_ones);
+  mlir::Value cst =
+      mlir::createScalarOrSplatConstant(b, b.getLoc(), const_type, all_ones);
+  if (element_type.isUnsignedInteger()) {
+    cst = mlir::UnrealizedConversionCastOp::create(b, b.getLoc(), type, cst)
+              .getResult(0);
+  }
+  return cst;
 }
 
 }  // namespace
@@ -392,6 +400,22 @@ absl::StatusOr<PrimitiveType> GetPrimitiveType(Type t) {
 Type StorageType(Type t) {
   if (auto i = mlir::dyn_cast<mlir::IntegerType>(t); i && i.getWidth() == 1) {
     return i.get(i.getContext(), 8, i.getSignedness());
+  }
+  return t;
+}
+
+Type GetSignlessType(Type t) {
+  Type elem_type = mlir::getElementTypeOrSelf(t);
+  if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(elem_type)) {
+    if (int_type.isUnsignedInteger()) {
+      Type signless_elem = mlir::IntegerType::get(
+          t.getContext(), int_type.getWidth(),
+          mlir::IntegerType::SignednessSemantics::Signless);
+      if (auto shaped_type = mlir::dyn_cast<mlir::ShapedType>(t)) {
+        return shaped_type.clone(signless_elem);
+      }
+      return signless_elem;
+    }
   }
   return t;
 }
@@ -891,9 +915,6 @@ mlir::MemRefType GetMemRefType(const Shape& shape, mlir::Type element_type) {
 absl::StatusOr<Type> GetMlirType(
     mlir::ImplicitLocOpBuilder& b, PrimitiveType type,
     const std::optional<GpuComputeCapability>& gpu_cc) {
-  if (type == U16) {
-    return b.getI16Type();
-  }
   if (type == S4) {
     return b.getI4Type();
   }

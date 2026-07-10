@@ -37,13 +37,21 @@ class Chipset;
 // 'gpu.launc_func' ops during the fusion rewrite pass above.
 ArrayAttr getWrittenOperandsAttribute(Operation* op);
 
-/// Pass that transforms gpu modules in standard dialect to NNVM.
-std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>
-createGpuKernelToNvvmPass(bool useBarePtrCallConv = false);
+/// Pass that transforms gpu modules in standard dialect to NVVM.
+inline std::unique_ptr<mlir::Pass> createGpuKernelToNvvmPass(
+    bool useBarePtrCallConv = false) {
+  GpuKernelToNVVMPassOptions options;
+  options.useBarePtrCallConv = useBarePtrCallConv;
+  return createGpuKernelToNVVMPass(options);
+}
 
 /// Pass that transforms gpu modules in standard dialect to ROCDL.
-std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>
-createGpuKernelToRocdlPass(const std::string& chipset = "gfx000");
+inline std::unique_ptr<mlir::Pass> createGpuKernelToRocdlPass(
+    const std::string& chipset = "gfx000") {
+  GpuKernelToROCDLPassOptions options;
+  options.chipset = chipset;
+  return createGpuKernelToROCDLPass(options);
+}
 
 #define GEN_PASS_REGISTRATION
 #include "transforms/gpu_passes.h.inc"

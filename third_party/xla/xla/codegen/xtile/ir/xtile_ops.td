@@ -277,6 +277,18 @@ def MaskOp : XTile_Op<"mask",
   let hasFolder = 1;
 }
 
+def YieldOp : XTile_Op<"yield", [Pure, ReturnLike, Terminator,
+                                   HasParent<"ScanOp">]> {
+  let summary = "Yield values from an xtile region";
+  let description = [{
+    This operation yields values from an xtile region, such as the body of
+    an xtile.scan operation. It can yield values of any type, including
+    scalars and tensors.
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$results);
+  let assemblyFormat = "attr-dict ($results^ `:` type($results))?";
+}
 
 def ScanOp : XTile_Op<"scan", [Pure, AttrSizedOperandSegments, AttrSizedResultSegments]> {
   let summary = "scan operation";
@@ -345,6 +357,8 @@ def DotScaledOp : XTile_Op<"dot_scaled", [Pure, AttrSizedOperandSegments]> {
       $lhs (`scale` $lhs_scale^)? `,` $rhs (`scale` $rhs_scale^)? attr-dict
       `:` type($lhs) (`,` type($lhs_scale)^)? `*` type($rhs) (`,` type($rhs_scale)^)? `->` type($result)
     }];
+
+    let hasVerifier = 1;
 }
 
 #endif // XLA_CODEGEN_XTILE_IR_XTILE_OPS

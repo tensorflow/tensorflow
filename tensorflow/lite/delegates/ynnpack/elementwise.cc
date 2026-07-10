@@ -41,10 +41,10 @@ TfLiteStatus IsUnaryOpSupported(const TfLiteRegistration* registration,
   const TfLiteTensor& input = context->tensors[node->inputs->data[0]];
   const TfLiteTensor& output = context->tensors[node->outputs->data[0]];
 
-  ynn_type input_ynn_type = GetYnnType(input.type);
-  ynn_type output_ynn_type = GetYnnType(output.type);
-  TF_LITE_ENSURE(context, input_ynn_type != ynn_type_invalid);
-  TF_LITE_ENSURE(context, output_ynn_type != ynn_type_invalid);
+  TF_LITE_ENSURE(context, IsTensorSupported(input));
+  TF_LITE_ENSURE(context, IsTensorSupported(output));
+  TF_LITE_ENSURE(context, YnnTypeElementCount(GetYnnType(input.type)) == 1);
+  TF_LITE_ENSURE(context, YnnTypeElementCount(GetYnnType(output.type)) == 1);
 
   int builtin_code = registration->builtin_code;
   ynn_unary_operator op = GetYnnUnaryOperator(builtin_code);
@@ -54,7 +54,8 @@ TfLiteStatus IsUnaryOpSupported(const TfLiteRegistration* registration,
                         builtin_code == kTfLiteBuiltinHardSwish ||
                         builtin_code == kTfLiteBuiltinRelu ||
                         builtin_code == kTfLiteBuiltinRelu6 ||
-                        builtin_code == kTfLiteBuiltinReluN1To1);
+                        builtin_code == kTfLiteBuiltinReluN1To1 ||
+                        builtin_code == kTfLiteBuiltinRelu0To1);
   TF_LITE_ENSURE(context, op != ynn_unary_invalid || is_decomposed);
 
   if (op != ynn_unary_convert) {
@@ -82,9 +83,6 @@ TfLiteStatus IsUnaryOpSupported(const TfLiteRegistration* registration,
                        input.quantization.type == kTfLiteNoQuantization,
                        "Quantized Sqrt/Rsqrt is not supported");
   }
-
-  TF_LITE_ENSURE(context, IsSupportedQuantization(input));
-  TF_LITE_ENSURE(context, IsSupportedQuantization(output));
 
   // Check for fused activation.
   TfLiteFusedActivation activation = GetFusedActivation(registration, node);
@@ -145,6 +143,9 @@ TfLiteStatus DefineUnaryNode(TfLiteContext* context, ynn_subgraph_t subgraph,
             TF_LITE_ENSURE_YNN_STATUS(
                 ynn::define_hardswish(subgraph, input_id, output_id));
             return kTfLiteOk;
+          case kTfLiteBuiltinRelu0To1:
+            return ApplyClamp(context, subgraph, 0.0, 1.0, input_id, output_id,
+                              node.outputs[0], ynn_type_fp32);
           case kTfLiteBuiltinRelu:
           case kTfLiteBuiltinRelu6:
           case kTfLiteBuiltinReluN1To1: {
@@ -179,37 +180,22 @@ TfLiteStatus IsBinaryOpSupported(const TfLiteRegistration* registration,
   const TfLiteTensor& input2 = context->tensors[node->inputs->data[1]];
   const TfLiteTensor& output = context->tensors[node->outputs->data[0]];
 
-  ynn_type input1_ynn_type = GetYnnType(input1.type);
-  ynn_type input2_ynn_type = GetYnnType(input2.type);
-  ynn_type output_ynn_type = GetYnnType(output.type);
+  TF_LITE_ENSURE(context, IsTensorSupported(input1));
+  TF_LITE_ENSURE(context, IsTensorSupported(input2));
+  TF_LITE_ENSURE(context, IsTensorSupported(output));
+  TF_LITE_ENSURE(context, YnnTypeElementCount(GetYnnType(input1.type)) == 1);
+  TF_LITE_ENSURE(context, YnnTypeElementCount(GetYnnType(input2.type)) == 1);
+  TF_LITE_ENSURE(context, YnnTypeElementCount(GetYnnType(output.type)) == 1);
 
-  switch (input1_ynn_type) {
-    case ynn_type_int8:
-    case ynn_type_uint8:
-    case ynn_type_int32:
-      return kTfLiteError;
-    default:
-      break;
-  }
-
-  TF_LITE_ENSURE(context, input1_ynn_type != ynn_type_invalid);
-  TF_LITE_ENSURE(context, input2_ynn_type != ynn_type_invalid);
-  TF_LITE_ENSURE(context, output_ynn_type != ynn_type_invalid);
-
-  TF_LITE_ENSURE_EQ(context, input1.type, output.type);
-  TF_LITE_ENSURE_EQ(context, input2.type, output.type);
-
-  TF_LITE_ENSURE(context, IsSupportedQuantization(input1));
-  TF_LITE_ENSURE(context, IsSupportedQuantization(input2));
-  TF_LITE_ENSURE(context, IsSupportedQuantization(output));
-
-  // YNNPACK integer division is floor division, but TFLite expects truncation.
+  // YNNPACK division is floating point division only. Integer and quantized
+  // division are not supported.
   if ((registration->builtin_code == kTfLiteBuiltinDiv ||
        registration->builtin_code == kTfLiteBuiltinStablehloDivide) &&
-      output.type == kTfLiteInt32) {
+      output.type != kTfLiteFloat32 && output.type != kTfLiteFloat16 &&
+      output.type != kTfLiteBFloat16) {
     TF_LITE_ENSURE_MSG(
         context, false,
-        "Integer division is not supported (truncation mismatch)");
+        "Non-floating point division is not supported by YNNPACK");
   }
 
   // Check for fused activation.
@@ -315,11 +301,12 @@ TfLiteStatus IsStablehloClampSupported(const TfLiteRegistration* registration,
   const TfLiteTensor& max_tensor = context->tensors[node->inputs->data[2]];
   const TfLiteTensor& output = context->tensors[node->outputs->data[0]];
 
-  ynn_type min_ynn_type = GetYnnType(min_tensor.type);
-  ynn_type operand_ynn_type = GetYnnType(operand_tensor.type);
-  ynn_type max_ynn_type = GetYnnType(max_tensor.type);
-  ynn_type output_ynn_type = GetYnnType(output.type);
+  TF_LITE_ENSURE(context, IsTensorSupported(min_tensor));
+  TF_LITE_ENSURE(context, IsTensorSupported(operand_tensor));
+  TF_LITE_ENSURE(context, IsTensorSupported(max_tensor));
+  TF_LITE_ENSURE(context, IsTensorSupported(output));
 
+  ynn_type operand_ynn_type = GetYnnType(operand_tensor.type);
   switch (operand_ynn_type) {
     case ynn_type_int8:
     case ynn_type_uint8:
@@ -331,19 +318,9 @@ TfLiteStatus IsStablehloClampSupported(const TfLiteRegistration* registration,
       break;
   }
 
-  TF_LITE_ENSURE(context, min_ynn_type != ynn_type_invalid);
-  TF_LITE_ENSURE(context, operand_ynn_type != ynn_type_invalid);
-  TF_LITE_ENSURE(context, max_ynn_type != ynn_type_invalid);
-  TF_LITE_ENSURE(context, output_ynn_type != ynn_type_invalid);
-
   TF_LITE_ENSURE_EQ(context, min_tensor.type, output.type);
   TF_LITE_ENSURE_EQ(context, operand_tensor.type, output.type);
   TF_LITE_ENSURE_EQ(context, max_tensor.type, output.type);
-
-  TF_LITE_ENSURE(context, IsSupportedQuantization(min_tensor));
-  TF_LITE_ENSURE(context, IsSupportedQuantization(operand_tensor));
-  TF_LITE_ENSURE(context, IsSupportedQuantization(max_tensor));
-  TF_LITE_ENSURE(context, IsSupportedQuantization(output));
 
   // Fused activation is not supported for StableHLO Clamp.
   TfLiteFusedActivation activation = GetFusedActivation(registration, node);
@@ -432,8 +409,10 @@ TfLiteStatus IsQuantizeSupported(const TfLiteRegistration* registration,
   const TfLiteTensor& input = context->tensors[node->inputs->data[0]];
   const TfLiteTensor& output = context->tensors[node->outputs->data[0]];
 
+  TF_LITE_ENSURE(context, IsTensorSupported(input));
+  TF_LITE_ENSURE(context, IsTensorSupported(output));
   TF_LITE_ENSURE(context, !IsQuantized(input));
-  TF_LITE_ENSURE(context, IsSupportedQuantization(output));
+  TF_LITE_ENSURE(context, YnnTypeElementCount(GetYnnType(output.type)) == 1);
 
   return kTfLiteOk;
 }
@@ -473,8 +452,10 @@ TfLiteStatus IsDequantizeSupported(const TfLiteRegistration* registration,
   const TfLiteTensor& input = context->tensors[node->inputs->data[0]];
   const TfLiteTensor& output = context->tensors[node->outputs->data[0]];
 
-  TF_LITE_ENSURE(context, IsSupportedQuantization(input));
+  TF_LITE_ENSURE(context, IsTensorSupported(input));
+  TF_LITE_ENSURE(context, IsTensorSupported(output));
   TF_LITE_ENSURE(context, !IsQuantized(output));
+  TF_LITE_ENSURE(context, YnnTypeElementCount(GetYnnType(input.type)) == 1);
 
   return kTfLiteOk;
 }

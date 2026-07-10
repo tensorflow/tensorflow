@@ -551,7 +551,12 @@ rocm_tag_filter = (
 Build(
     type_=BuildType.XLA_LINUX_X86_GPU_HERMETIC_ROCM_GITHUB_ACTIONS,
     repo="openxla/xla",
-    configs=("warnings", "rbe_linux_cpu", "rocm_clang_hermetic"),
+    configs=(
+        "warnings",
+        "rbe_linux_cpu",
+        "rocm_clang_hermetic",
+        "rocm_ci_hermetic",
+    ),
     target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
     build_tag_filters=rocm_tag_filter,
     test_tag_filters=rocm_tag_filter,
@@ -810,6 +815,9 @@ Build(
     ),
     override_module={
         "xla": f"{_GITHUB_WORKSPACE}/openxla/xla",
+        # TODO(alekstheod): remove when jax is migrated to
+        # latest the rules_ml_toolchain
+        "rules_ml_toolchain": f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
     },
     options=_DEFAULT_BAZEL_OPTIONS,
     repo_env={"HERMETIC_PYTHON_VERSION": "3.12"},

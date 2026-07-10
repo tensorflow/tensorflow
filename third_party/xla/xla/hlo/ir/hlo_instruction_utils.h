@@ -21,7 +21,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 namespace hlo_instruction_utils {
@@ -42,6 +45,41 @@ void AddOrUpdateVectorOfPairsAsAttribute(
 // Returns the nesting depth in computations from the top-level computation of
 // `hlo`. i.e. 0 = in the top-level computation, ...
 int32_t NestingDepth(const HloInstruction* hlo);
+
+namespace async {
+
+// Utilities for async instructions.
+
+// Determines if the operands and output of the async
+// instruction is fully bound at the given shape
+// index, which is empty by default.
+// Returns an error if the index is invalid, or index does not start with 0 or
+// 1.
+absl::StatusOr<bool> AreOperandsAndOutputFullyBound(
+    const HloInstruction* async_op, const ShapeIndex& index = {});
+
+// Returns true if the async-op is the first fully bound instruction in the
+// async chain.
+absl::StatusOr<bool> IsFirstFullyBound(const HloInstruction* async_inst);
+
+// Returns all data operands accumulated in the async chain up to and including
+// `async_op`.
+// For `async-update` and `async-done`, the first operand (the chaining operand)
+// is skipped.
+//
+// Example:
+//   as = async-start(p0)
+//   au1 = async-update(as, p1)
+//   au2 = async-update(au1, p2)
+//   ad = async-done(au2)
+//
+//   For `as`, it returns {p0}
+//   For `au1`, it returns {p0, p1}
+//   For `au2`, it returns {p0, p1, p2}
+//   For `ad`, it returns {p0, p1, p2}
+std::vector<const HloInstruction*> GetAsyncBoundOperands(
+    const HloAsyncInstruction* async_op);
+}  // namespace async
 
 }  // namespace hlo_instruction_utils
 }  // namespace xla

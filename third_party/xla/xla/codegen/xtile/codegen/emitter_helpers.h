@@ -220,8 +220,9 @@ absl::StatusOr<mlir::Type> PrimitiveTypeToMlirType(
 absl::StatusOr<PrimitiveType> GetPrimitiveType(mlir::Type t);
 
 mlir::Type StorageType(mlir::Type t);
+mlir::Type GetSignlessType(mlir::Type t);
 
-// Get the value of the scalar constant's literal in a C++ ty˝pe.
+// Get the value of the scalar constant's literal in a C++ type.
 template <typename T>
 T ScalarConstantValue(const HloInstruction& instr, PrimitiveType dst_type) {
   CHECK_EQ(instr.opcode(), HloOpcode::kConstant);
@@ -235,7 +236,14 @@ T ScalarConstantValue(const HloInstruction& instr, PrimitiveType dst_type) {
 template <typename T>
 mlir::Value CreateConst(mlir::ImplicitLocOpBuilder& b, mlir::Type type,
                         T value) {
-  if (mlir::isa<mlir::IntegerType>(type)) {
+  if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(type)) {
+    if (int_type.isUnsignedInteger()) {
+      mlir::Type signless_type = GetSignlessType(type);
+      mlir::Value cst = b.create<mlir::arith::ConstantOp>(
+          b.getIntegerAttr(signless_type, value));
+      return mlir::UnrealizedConversionCastOp::create(b, b.getLoc(), type, cst)
+          .getResult(0);
+    }
     return b.create<mlir::arith::ConstantOp>(b.getIntegerAttr(type, value));
   }
 
@@ -257,6 +265,19 @@ mlir::TypedValue<mlir::RankedTensorType> CreateConst(
     llvm::ArrayRef<int64_t> shape) {
   auto tensor_type = mlir::RankedTensorType::get(shape, type);
   if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(type)) {
+    if (int_type.isUnsignedInteger()) {
+      auto signless_tensor_type =
+          mlir::cast<mlir::ShapedType>(GetSignlessType(tensor_type));
+      mlir::Value cst =
+          b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
+              signless_tensor_type,
+              mlir::APInt(int_type.getIntOrFloatBitWidth(), value,
+                          /*isSigned=*/false, /*implicitTrunc=*/true)));
+      mlir::Value cast_res = mlir::UnrealizedConversionCastOp::create(
+                                 b, b.getLoc(), tensor_type, cst)
+                                 .getResult(0);
+      return mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(cast_res);
+    }
     mlir::Value result =
         b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
             tensor_type,

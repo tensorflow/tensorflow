@@ -491,7 +491,14 @@ class BufferAssignment {
   }
 
   // Moves out the allocations, consuming the BufferAssignment.
+  // Note that this also clears references from the allocations to this
+  // BufferAssignment, since they are no longer valid.
   std::vector<BufferAllocation> TakeAllocations() && {
+    for (auto& allocation : allocations_) {
+      allocation.assigned_buffers_.clear();
+      allocation.peak_buffers_.clear();
+      allocation.cross_color_buffers_.clear();
+    }
     return std::move(allocations_);
   }
 

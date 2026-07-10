@@ -883,7 +883,7 @@ std::optional<std::string> DumpNonDefaultDebugOptions(
   const DebugOptions& debug_options = module.config().debug_options();
   std::string filename = FilenameFor(module, "", suffix);
   std::string nonDefaultDebugOptions = GetNonDefaultDebugOptions(debug_options);
-  // Options steering where the dump is actually written to can be overriden
+  // Options steering where the dump is actually written to can be overridden
   DumpOptions opts = GetDumpOptions(module, dump_options);
   return DumpToFileInDirImpl(filename, nonDefaultDebugOptions, opts);
 }

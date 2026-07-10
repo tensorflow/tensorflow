@@ -889,6 +889,14 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   opts.use_major_to_minor_data_layout_for_callbacks = true;
   opts.non_donatable_input_indices = options.non_donatable_input_indices;
   opts.execution_stream_id = options.execution_stream_id;
+  opts.use_output_arena = false;
+  if (options.custom_options.has_value()) {
+    if (auto use_output_arena =
+            options.custom_options->Get<bool>("use_output_arena");
+        use_output_arena.ok()) {
+      opts.use_output_arena = *use_output_arena;
+    }
+  }
   absl::StatusOr<absl::flat_hash_map<int, IncarnationId>> incarnations =
       client()->Incarnations();
   if (incarnations.ok()) {

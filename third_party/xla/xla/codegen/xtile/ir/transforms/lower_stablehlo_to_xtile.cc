@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/codegen/emitters/transforms/lowering_utils.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/ir/transforms/passes.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -186,85 +187,66 @@ class LowerConvertOp
                                      IntegerType src_element_ty,
                                      IntegerType dst_element_ty,
                                      Type dst_ty) const {
+    bool is_src_unsigned = src_element_ty.isUnsignedInteger();
+    if (is_src_unsigned) {
+      value = UnsignedIntegerToSignlessInteger(builder, value);
+    }
+
+    Type signless_dst_ty = dst_ty;
+    if (dst_element_ty.isUnsignedInteger()) {
+      Type signless_elem_ty = IntegerType::get(
+          builder.getContext(), dst_element_ty.getIntOrFloatBitWidth(),
+          IntegerType::SignednessSemantics::Signless);
+      if (auto shaped_ty = mlir::dyn_cast<ShapedType>(dst_ty)) {
+        signless_dst_ty = shaped_ty.clone(signless_elem_ty);
+      } else {
+        signless_dst_ty = signless_elem_ty;
+      }
+    }
+
+    Value result;
     if (src_element_ty.getIntOrFloatBitWidth() <
         dst_element_ty.getIntOrFloatBitWidth()) {
-      if (src_element_ty.isUnsignedInteger()) {
-        Value signless_integer_value =
-            UnsignedIntegerToSignlessInteger(builder, value);
-        Type signless_dst_integer_type = IntegerType::get(
-            builder.getContext(), dst_element_ty.getIntOrFloatBitWidth(),
-            IntegerType::SignednessSemantics::Signless);
-
-        if (auto dst_shaped_ty = mlir::dyn_cast<ShapedType>(dst_ty)) {
-          signless_dst_integer_type = dst_shaped_ty.clone(
-              dst_shaped_ty.getShape(), signless_dst_integer_type);
-        }
-
-        auto ext_op = mlir::arith::ExtUIOp::create(
-            builder, loc, signless_dst_integer_type, signless_integer_value);
-
-        return UnrealizedConversionCastOp::create(builder, loc, dst_ty,
-                                                  ext_op.getResult())
-            .getResult(0);
+      if (is_src_unsigned || src_element_ty.isInteger(1)) {
+        result =
+            mlir::arith::ExtUIOp::create(builder, loc, signless_dst_ty, value);
+      } else {
+        result =
+            mlir::arith::ExtSIOp::create(builder, loc, signless_dst_ty, value);
       }
-
-      if (src_element_ty.isInteger(1)) {
-        return mlir::arith::ExtUIOp::create(builder, loc, dst_ty, value);
-      }
-
-      return mlir::arith::ExtSIOp::create(builder, loc, dst_ty, value);
-    }
-    // int => bool is always value != 0.
-    if (dst_element_ty.isInteger(1)) {
-      return mlir::arith::CmpIOp::create(
+    } else if (dst_element_ty.isInteger(1)) {
+      // int => bool is always value != 0.
+      result = mlir::arith::CmpIOp::create(
           builder, loc, mlir::arith::CmpIPredicate::ne, value,
           ::xla::xtile::ZerosLike(builder, value));
+    } else {
+      result =
+          mlir::arith::TruncIOp::create(builder, loc, signless_dst_ty, value);
     }
-    return mlir::arith::TruncIOp::create(builder, loc, dst_ty, value);
+
+    if (dst_element_ty.isUnsignedInteger() && !dst_element_ty.isInteger(1)) {
+      result = UnrealizedConversionCastOp::create(builder, loc, dst_ty, result)
+                   .getResult(0);
+    }
+    return result;
   }
 
   Value LowerFloatToIntConvert(ImplicitLocOpBuilder& builder, Location loc,
                                Value value, FloatType src_fp_element_ty,
                                IntegerType dst_element_ty, Type src_ty,
                                Type dst_ty) const {
-    if (dst_element_ty.isInteger(1)) {
-      return mlir::arith::CmpFOp::create(
-          builder, loc, mlir::arith::CmpFPredicate::UNE, value,
-          ::xla::xtile::ZerosLike(builder, value));
-    }
-    // The current logic handles signed integer types only. Additional
-    // handling is needed for unsigned integer types.
-    Value fptosi = mlir::arith::FPToSIOp::create(builder, loc, dst_ty, value);
-    int64_t min = llvm::minIntN(dst_element_ty.getIntOrFloatBitWidth());
-    int64_t max = llvm::maxIntN(dst_element_ty.getIntOrFloatBitWidth());
-
-    // value <= static_cast<float>(INT_MIN) ? INT_MIN : ...
-    Value clamped = mlir::arith::SelectOp::create(
-        builder, loc,
-        mlir::arith::CmpFOp::create(
-            builder, loc, mlir::arith::CmpFPredicate::OLE, value,
-            GetConstant(builder, src_ty, src_fp_element_ty, min)),
-        GetConstant(builder, src_ty, dst_element_ty, min), fptosi);
-    // value >= static_cast<float>(INT_MAX) ? INT_MAX : ...
-    clamped = mlir::arith::SelectOp::create(
-        builder, loc,
-        mlir::arith::CmpFOp::create(
-            builder, loc, mlir::arith::CmpFPredicate::OGE, value,
-            GetConstant(builder, src_ty, src_fp_element_ty, max)),
-        GetConstant(builder, src_ty, dst_element_ty, max), clamped);
-    // isnan(value) ? 0 : ...
-    return mlir::arith::SelectOp::create(
-        builder, loc,
-        mlir::arith::CmpFOp::create(
-            builder, loc, mlir::arith::CmpFPredicate::UNO, value, value),
-        GetConstant(builder, src_ty, dst_element_ty, 0), clamped);
+    return ::xla::emitters::EmitFloatToIntConvertWithClamping(
+        builder, value, src_fp_element_ty, dst_element_ty, src_ty, dst_ty);
   }
 
   Value LowerIntegerToFloatConvert(ImplicitLocOpBuilder& builder, Location loc,
                                    Value value, IntegerType src_element_ty,
                                    Type dst_ty) const {
-    // The current logic handles signed integer types only.
     if (src_element_ty.isInteger(1)) {
+      return mlir::arith::UIToFPOp::create(builder, loc, dst_ty, value);
+    }
+    if (src_element_ty.isUnsignedInteger()) {
+      value = UnsignedIntegerToSignlessInteger(builder, value);
       return mlir::arith::UIToFPOp::create(builder, loc, dst_ty, value);
     }
     return mlir::arith::SIToFPOp::create(builder, loc, dst_ty, value);

@@ -56,7 +56,7 @@ std::string GetCodegenOptionsFingerprint(const HloInstruction& instr) {
 }
 }  // namespace
 
-PersistentCache::PersistentCache(AutotuneScope context, CacheMode mode,
+PersistentCache::PersistentCache(AutotuneCacheContext context, CacheMode mode,
                                  KeyMatchingMode matching_mode)
     : context_(std::move(context)),
       mode_(mode),
@@ -66,15 +66,15 @@ std::optional<AutotunerCacheInterface::Config> PersistentCache::Lookup(
     const HloInstruction* instr) {
   CHECK(instr != nullptr) << "Instruction cannot be null.";
   autotuner::AutotuneTargetKey target_key;
-  target_key.set_device(context_.device);
-  target_key.set_explicit_version(context_.explicit_version);
+  target_key.set_device(context_.device());
+  target_key.set_explicit_version(context_.explicit_version());
   target_key.set_hlo_fingerprint(ToString(GetHloFingerprint(*instr)));
 
   if (matching_mode_ == KeyMatchingMode::kStrict) {
     std::string codegen_options_fp = GetCodegenOptionsFingerprint(*instr);
     autotuner::AutotuneKey key;
     *key.mutable_target() = std::move(target_key);
-    key.mutable_environment()->set_codegen_version(context_.codegen_version);
+    key.mutable_environment()->set_codegen_version(context_.codegen_version());
     key.mutable_environment()->set_codegen_options_fingerprint(
         std::move(codegen_options_fp));
 
@@ -104,8 +104,8 @@ std::optional<AutotunerCacheInterface::Config> PersistentCache::Lookup(
     for (const autotuner::AutotuneEntry& entry : *entries) {
       autotuner::Backend backend = entry.value().optimal_config().backend();
       absl::flat_hash_map<autotuner::Backend, std::string>::const_iterator it =
-          context_.per_backend_versions.find(backend);
-      if (it != context_.per_backend_versions.end() &&
+          context_.per_backend_versions().find(backend);
+      if (it != context_.per_backend_versions().end() &&
           it->second == entry.value().optimal_backend_version()) {
         {
           absl::MutexLock lock(stats_mutex_);
@@ -128,15 +128,15 @@ absl::Status PersistentCache::Insert(const HloInstruction* instr,
   }
 
   autotuner::AutotuneTargetKey target_key;
-  target_key.set_device(context_.device);
-  target_key.set_explicit_version(context_.explicit_version);
+  target_key.set_device(context_.device());
+  target_key.set_explicit_version(context_.explicit_version());
   target_key.set_hlo_fingerprint(ToString(GetHloFingerprint(*instr)));
 
   std::string codegen_options_fp = GetCodegenOptionsFingerprint(*instr);
 
   autotuner::AutotuneKey key;
   *key.mutable_target() = std::move(target_key);
-  key.mutable_environment()->set_codegen_version(context_.codegen_version);
+  key.mutable_environment()->set_codegen_version(context_.codegen_version());
   key.mutable_environment()->set_codegen_options_fingerprint(
       codegen_options_fp);
 
@@ -154,8 +154,8 @@ absl::Status PersistentCache::Insert(const HloInstruction* instr,
       config.backend_config;
 
   absl::flat_hash_map<autotuner::Backend, std::string>::const_iterator it =
-      context_.per_backend_versions.find(config.codegen_backend);
-  if (it != context_.per_backend_versions.end()) {
+      context_.per_backend_versions().find(config.codegen_backend);
+  if (it != context_.per_backend_versions().end()) {
     val.set_optimal_backend_version(it->second);
   } else {
     LOG(WARNING) << "Backend version not found in context for backend: "

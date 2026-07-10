@@ -320,6 +320,52 @@ HbmEstimates CalculateHbmTime(const DotProblemInfo& dot,
   return result;
 }
 
+absl::Duration CalculatePipelinedLoopTime(int64_t num_stages,
+                                          int64_t k_loop_iterations,
+                                          absl::Duration compute_time,
+                                          const HbmEstimates& hbm_timing) {
+  if (num_stages <= 1 || k_loop_iterations <= 1) {
+    // Serial execution: Memory and compute are not overlapped.
+    return hbm_timing.total_time() + compute_time +
+           k_loop_iterations * kLoopLatencyTax;
+  }
+  // Pipelined execution: Calculate the compute and memory per loop iteration.
+  const absl::Duration iter_compute_time = compute_time / k_loop_iterations;
+  const absl::Duration iter_raw_mem_time =
+      hbm_timing.read_time / k_loop_iterations;
+  const absl::Duration iter_mem_time = iter_raw_mem_time + kLoopLatencyTax;
+
+  // In a perfect pipeline with infinite stages, the latency tax should
+  // disappear completely.
+  const absl::Duration theoretical_iter_time =
+      std::max(iter_raw_mem_time, iter_compute_time);
+  const absl::Duration iter_time_including_latency =
+      std::max(iter_mem_time, iter_compute_time);
+  // TODO(b/529318599): Perfect overlap between compute and memory is not
+  // always possible in practice. Here we should consider a deeper formula
+  // that takes into account num_warps, num_stages and possibly other
+  // parameters. I will investigate this further in a follow-up, but this
+  // formula works well in practice and is a good starting point.
+  const absl::Duration iter_time = std::max(
+      theoretical_iter_time, iter_time_including_latency / (num_stages - 1));
+
+  // During the first num_stages-1 iterations, only memory operations are
+  // executed.
+  const int64_t prologue_loops = std::min(num_stages - 1, k_loop_iterations);
+  const absl::Duration prologue_time = prologue_loops * iter_mem_time;
+
+  // During the overlap iterations, both compute and memory operations are
+  // executed.
+  const int64_t overlap_loops = k_loop_iterations - prologue_loops;
+  const absl::Duration overlap_time = overlap_loops * iter_time;
+
+  // During the last num_stages-1 iterations, only compute operations are
+  // executed.
+  const absl::Duration epilogue_time = prologue_loops * iter_compute_time;
+
+  return prologue_time + overlap_time + epilogue_time + hbm_timing.write_time;
+}
+
 int64_t CalculateLoopIterBytes(const DotProblemInfo& dot,
                                const DotTileSize& dot_tile) {
   int64_t lhs_iter_bytes = CeilOfRatio<int64_t>(
@@ -327,6 +373,19 @@ int64_t CalculateLoopIterBytes(const DotProblemInfo& dot,
   int64_t rhs_iter_bytes = CeilOfRatio<int64_t>(
       dot_tile.b * dot_tile.k * dot_tile.n * BitWidth(dot.rhs_element_type), 8);
   return lhs_iter_bytes + rhs_iter_bytes;
+}
+
+int64_t CalculateSharedMemoryPerBlockBytes(const DotProblemInfo& dot_info,
+                                           const DotTileSize& dot_tile,
+                                           int64_t num_stages) {
+  const int64_t lhs_tile_bytes =
+      dot_tile.m * dot_tile.k *
+      primitive_util::BitWidth(dot_info.lhs_element_type) / 8;
+  const int64_t rhs_tile_bytes =
+      dot_tile.n * dot_tile.k *
+      primitive_util::BitWidth(dot_info.rhs_element_type) / 8;
+
+  return (lhs_tile_bytes + rhs_tile_bytes) * num_stages;
 }
 
 }  // namespace detail
@@ -359,7 +418,7 @@ absl::Status IsSupported(const HloDotInstruction* dot) {
         absl::StrJoin(dim_numbers.rhs_contracting_dimensions(), ","), "]"));
   }
 
-  // TODO: b/501002656 - Support downstream transposes by fixing dimension
+  // TODO(b/501002656): Support downstream transposes by fixing dimension
   // mapping.
   std::vector<const HloInstruction*> stack;
   absl::flat_hash_set<const HloInstruction*> visited;
@@ -445,11 +504,16 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   estimates.write_time = hbm_timing.write_time;
   estimates.bytes_read = hbm_timing.bytes_read;
   estimates.bytes_written = hbm_timing.bytes_written;
+  const int64_t num_stages = block_params.num_stages;
 
   int64_t threadblock_count =
       detail::CalculateNumThreadblocks(dot_info, dot_tile);
   estimates.l2_bytes_read =
       detail::CalculateL2Bytes(dot_info, dot_tile, threadblock_count);
+
+  estimates.shared_memory_per_block_bytes =
+      detail::CalculateSharedMemoryPerBlockBytes(dot_info, dot_tile,
+                                                 num_stages);
 
   // Calculate L2 time.
   ASSIGN_OR_RETURN(absl::Duration l2_time,
@@ -457,9 +521,20 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
                                            estimates.l2_bytes_read,
                                            block_params.is_tma_allowed));
 
-  // Assuming perfect overlap between compute and memory.
-  estimates.exec_time = std::max(
-      {compute_and_flops.compute_time, hbm_timing.total_time(), l2_time});
+  TF_RET_CHECK(block_k_val > 0)
+      << "block_k_val must be strictly positive, got " << block_k_val;
+  TF_RET_CHECK(dot_info.k > 0)
+      << "dot_info.k must be strictly positive, got " << dot_info.k;
+  const int64_t k_loop_iterations =
+      CeilOfRatio<int64_t>(dot_info.k, block_k_val);
+
+  absl::Duration pipelined_loop_time = detail::CalculatePipelinedLoopTime(
+      num_stages, k_loop_iterations, compute_and_flops.compute_time,
+      hbm_timing);
+
+  // Assuming perfect overlap between compute and memory for the rest,
+  // but main loop is now modeled precisely.
+  estimates.exec_time = std::max({pipelined_loop_time, l2_time});
 
   return estimates;
 }

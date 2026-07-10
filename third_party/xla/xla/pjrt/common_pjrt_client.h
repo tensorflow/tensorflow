@@ -398,7 +398,8 @@ class CommonPjRtClient : public PjRtClient {
       const Shape& output_device_shape,
       absl::Span<const CommonPjRtBuffer::ScopedHold> input_device_buffer_holds,
       const HloInputOutputAliasConfig& alias_config, PjRtDevice* device,
-      absl::Span<const int> output_memory_space_kind_ids);
+      absl::Span<const int> output_memory_space_kind_ids,
+      const ExecuteOptions& options);
 
   std::vector<std::unique_ptr<PjRtBuffer>> CreateOutputs(
       const std::shared_ptr<const Shape>& output_device_shape,
@@ -430,6 +431,12 @@ class CommonPjRtClient : public PjRtClient {
                                     std::intptr_t stream);
 
  protected:
+  // Returns the required alignment for device memory addresses when slicing.
+  virtual absl::StatusOr<size_t> GetDeviceAddressAlignment() const {
+    return absl::UnimplementedError(
+        "GetDeviceAddressAlignment is not implemented.");
+  }
+
   absl::Status DelinearizeHostBuffer(absl::Span<const uint8_t> input_data,
                                      const Shape& shape,
                                      MutableLiteralBase* literal);

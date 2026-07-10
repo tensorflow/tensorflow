@@ -6,12 +6,10 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         # copybara:uncomment "//learning/brain/tfrt:__subpackages__",
-        # TODO(b/476497239): Remove the old JSV codebase once the migration is done.
-        # copybara:uncomment "//learning/infra/mira/experimental/orbax_model:__subpackages__",
+        # copybara:uncomment "//third_party/neptune:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
         "//tensorflow/core/tfrt:__subpackages__",
         "//tensorflow/core/tfrt/mlrt:__subpackages__",
-        # copybara:uncomment "//third_party/neptune:__subpackages__",
     ],
 )
 
@@ -164,7 +162,6 @@ cc_library(
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/ir:hlo",
         "@xla//xla/hlo/translate:stablehlo",
-        "@xla//xla/pjrt:common_pjrt_client",
         "@xla//xla/pjrt:host_callback",
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt:pjrt_compiler",

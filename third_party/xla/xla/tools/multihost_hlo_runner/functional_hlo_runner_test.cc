@@ -640,7 +640,7 @@ absl::StatusOr<std::string> GetExpectedBackendFingerprint() {
   ASSIGN_OR_RETURN(std::string platform_name,
                    PlatformUtil::CanonicalPlatformName("gpu"));
   if (platform_name == "rocm") {
-    return "2971291867";
+    return "3128633344";
   }
   return "286644258";
 }

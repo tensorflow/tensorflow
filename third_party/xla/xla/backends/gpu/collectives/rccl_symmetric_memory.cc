@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/backends/gpu/collectives/rccl_errors.h"

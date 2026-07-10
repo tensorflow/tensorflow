@@ -311,3 +311,9 @@ def LegalizeCompositeMeanDynamicShaped3 : Pat<
           (Arith_ConstantOp (GetI32DenseAttr (GetAsVectorAttr<"axis"> $attrs))),
           (GetCompositeAttributeAs<"keep_dims", "BoolAttr"> $attrs))>;
 
+def LegalizeSoftmax : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $input),
+          ConstantStrAttr<StrAttr, "odml.softmax">, $attrs, $_, $_),
+        (TFL_SoftmaxOp $input, ConstF32Attr<"1.0">)>;
+

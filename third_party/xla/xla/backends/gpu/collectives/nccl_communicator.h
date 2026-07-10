@@ -33,12 +33,14 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
+#include "xla/backends/gpu/collectives/gxl_communicator.h"
 #include "xla/backends/gpu/collectives/nccl_types.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/core/collectives/registered_memory.h"
 #include "xla/core/collectives/symmetric_memory.h"
+#include "xla/debug_options_flags.h"
 #include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args.h"
@@ -104,6 +106,15 @@ class NcclCommunicator : public GpuCommunicator {
   }
 
   bool SupportsDeviceComm() const final;
+
+  GxlCommunicator* gxl_communicator() const final {
+    return gxl_communicator_.get();
+  }
+
+  void set_gxl_communicator(
+      std::unique_ptr<GxlCommunicator> gxl_communicator) final {
+    gxl_communicator_ = std::move(gxl_communicator);
+  }
 
   absl::StatusOr<std::unique_ptr<GpuDeviceCommunicator>> CreateDeviceComm(
       const GpuDeviceCommunicator::Requirements& requirements) final;
@@ -287,6 +298,8 @@ class NcclCommunicator : public GpuCommunicator {
   bool aborted_ = false;
 
   NcclCapabilities capabilities_;
+
+  std::unique_ptr<GxlCommunicator> gxl_communicator_;
 };
 
 //===----------------------------------------------------------------------===//

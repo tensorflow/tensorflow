@@ -386,6 +386,16 @@ absl::StatusOr<int64_t> GetMaxSharedMemoryPerBlockOptin(CUdevice device) {
       device, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN);
 }
 
+absl::StatusOr<int64_t> GetReservedSharedMemoryPerBlock(CUdevice device) {
+  return GetSimpleAttribute<int64_t>(
+      device, CU_DEVICE_ATTRIBUTE_RESERVED_SHARED_MEMORY_PER_BLOCK);
+}
+
+absl::StatusOr<int64_t> GetMaxBlocksPerMultiprocessor(CUdevice device) {
+  return GetSimpleAttribute<int64_t>(
+      device, CU_DEVICE_ATTRIBUTE_MAX_BLOCKS_PER_MULTIPROCESSOR);
+}
+
 absl::StatusOr<int64_t> GetMaxThreadsPerMultiprocessor(CUdevice device) {
   return GetSimpleAttribute<int64_t>(
       device, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_MULTIPROCESSOR);
@@ -746,7 +756,6 @@ CudaExecutor::~CudaExecutor() {
   CHECK(gpu_binary_to_module_.empty()) << "CudaExecutor has loaded modules.";
 }
 
-
 CudaExecutor::VmmMemoryHandle::~VmmMemoryHandle() { CHECK_OK(Release()); }
 
 absl::Status CudaExecutor::VmmMemoryHandle::Release() {
@@ -790,7 +799,6 @@ absl::StatusOr<size_t> CudaExecutor::GetVmmGranularity() const {
       &granularity, &properties, CU_MEM_ALLOC_GRANULARITY_RECOMMENDED)));
   return granularity;
 }
-
 
 absl::StatusOr<std::unique_ptr<MemoryAllocator>>
 CudaExecutor::CreateMemoryAllocator(MemorySpace type) {
@@ -1584,6 +1592,7 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
     // lane.
     desc.set_memory_bandwidth(2 * int64_t{mem_clock_khz.value()} * 1000 *
                               int64_t{mem_bus_width_bits.value()} / 8);
+    desc.set_mem_clock_ghz(static_cast<float>(mem_clock_khz.value()) / 1e6);
   }
 
   if (absl::StatusOr<nvmlDevice_t> device = GetNvmlDevice(pci_bus_id);
@@ -1645,6 +1654,10 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
   desc.set_shared_memory_per_block(GetMaxSharedMemoryPerBlock(device).value());
   desc.set_shared_memory_per_block_optin(
       GetMaxSharedMemoryPerBlockOptin(device).value());
+  desc.set_reserved_shared_memory_per_block(
+      GetReservedSharedMemoryPerBlock(device).value());
+  desc.set_max_blocks_per_multiprocessor(
+      GetMaxBlocksPerMultiprocessor(device).value());
   int core_count = GetMultiprocessorCount(device).value();
   desc.set_core_count(core_count);
   desc.set_fpus_per_core(GetFpusPerCore(cc));
@@ -1679,7 +1692,35 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
       cc.ToString(), device_memory_size, core_count, sm_clock_khz,
       value_or(mem_clock_khz, 0), l2_cache_bytes));
 
+  {
+    CUmulticastObjectProp prop = {};
+    prop.handleTypes =
+        CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR | CU_MEM_HANDLE_TYPE_FABRIC;
+    size_t multicast_granularity = 0;
+    if (absl::Status status = cuda::ToStatus(cuMulticastGetGranularity(
+            &multicast_granularity, &prop, CU_MULTICAST_GRANULARITY_MINIMUM));
+        status.ok()) {
+      desc.set_collective_memory_granularity(multicast_granularity);
+      VLOG(1) << "Collective memory granularity: " << multicast_granularity;
+    } else {
+      constexpr uint64_t kDefaultCollectiveMemoryGranularity =
+          2 * 1024 * 1024;  // 2 MiB
+      LOG(INFO) << "Falling back to default granularity value of "
+                << kDefaultCollectiveMemoryGranularity
+                << " MiB. This "
+                   "isn't a production error. Failed "
+                   "to get multicast minimum granularity with status: "
+                << status;
+      desc.set_collective_memory_granularity(
+          kDefaultCollectiveMemoryGranularity);
+    }
+  }
+
   return std::make_unique<DeviceDescription>(std::move(desc));
+}
+
+absl::StatusOr<uint64_t> CudaExecutor::GetCollectiveMemoryGranularity() const {
+  return GetDeviceDescription().collective_memory_granularity();
 }
 
 absl::StatusOr<std::string> CudaExecutor::GetInterconnectStatus() const {

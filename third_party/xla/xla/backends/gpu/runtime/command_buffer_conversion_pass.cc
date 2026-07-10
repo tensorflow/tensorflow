@@ -121,12 +121,8 @@ CommandBufferConfig GetCommandBufferConfig(
   }
 
   CommandBufferConfig config{
-      std::move(commands),
-      std::move(enabled_collectives),
-      device_info,
-      debug_options.xla_gpu_command_buffer_update_mode(),
-      debug_options.xla_gpu_command_buffer_unroll_loops(),
-      num_local_devices};
+      std::move(commands), std::move(enabled_collectives), device_info,
+      debug_options.xla_gpu_command_buffer_unroll_loops(), num_local_devices};
 
   // Erase command buffer cmd types that are not supported by the gpu runtime.
   static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONAL,
@@ -367,13 +363,6 @@ static bool IsConvertible(
                "buffers because runtime offset verification is enabled";
     return false;
   }
-  if (config.update_mode == DebugOptions::NEVER_UPDATE &&
-      dynamic_slice_fusion_thunk.HasLoopDependentOffsets()) {
-    VLOG(2) << "DynamicSliceFusionV2Thunk is not convertible in NEVER_UPDATE "
-               "command-buffer mode because its offsets depend on loop "
-               "iteration";
-    return false;
-  }
   return ThunkSequenceIsConvertible(dynamic_slice_fusion_thunk.thunks(),
                                     config);
 }
@@ -555,13 +544,11 @@ ConvertThunksToCommandBuffer(
     CommandExecutor::SynchronizationMode synchronization_mode,
     const DebugOptions& debug_options) {
   bool enable_loop_unroll = debug_options.xla_gpu_command_buffer_unroll_loops();
-  DebugOptions::CommandBufferUpdateMode update_mode =
-      debug_options.xla_gpu_command_buffer_update_mode();
-  ASSIGN_OR_RETURN(CommandExecutor cmd_executor,
-                   ConvertToCommands(thunks_to_convert,
-                                     ConvertToCommandsOptions{
-                                         synchronization_mode,
-                                         enable_loop_unroll, update_mode}));
+  ASSIGN_OR_RETURN(
+      CommandExecutor cmd_executor,
+      ConvertToCommands(
+          thunks_to_convert,
+          ConvertToCommandsOptions{synchronization_mode, enable_loop_unroll}));
 
   std::string command_buffer_profile_annotation = absl::StrCat(
       "command_buffer",
@@ -592,7 +579,7 @@ ConvertThunksToCommandBuffer(
       std::move(cmd_executor), std::move(thunk_info),
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
                                         std::move(thunks_to_convert)),
-      debug_options.xla_enable_command_buffers_during_profiling(), update_mode);
+      debug_options.xla_enable_command_buffers_during_profiling());
 }
 
 absl::Status FlushCommandBuffer(

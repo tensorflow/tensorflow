@@ -50,6 +50,7 @@ default_visibility = [
     #internal library 2,
     #internal library 1,
     #internal library 3,
+    #internal library 4,
 ]
 
 package(

@@ -1484,6 +1484,11 @@ TEST_F(PriorityFusionWithTritonEnabledTest, LimitNumberOfParameters) {
 
 TEST_F(PriorityFusionWithTritonEnabledTest,
        MultipleMultiOutputFusionCandidates) {
+  if (GetDebugOptionsForTest()
+          .xla_gpu_experimental_enable_tiling_propagation()) {
+    // TODO: b/502910372 - Support Triton multi-output fusions under new tiling.
+    GTEST_SKIP() << "New tiling is not supported yet.";
+  }
   auto module = *ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 

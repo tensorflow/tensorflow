@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <tuple>
 #include <utility>
-#include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/base/thread_annotations.h"

@@ -16,13 +16,13 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/public/saved_model_api.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
 
 #include "absl/base/casts.h"
 #include "absl/status/status.h"
-#include "absl/types/optional.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/experimental/saved_model/core/saved_model_api.h"
 #include "tensorflow/c/experimental/saved_model/core/tf_saved_model_api.h"

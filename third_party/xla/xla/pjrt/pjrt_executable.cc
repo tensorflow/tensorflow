@@ -216,6 +216,7 @@ absl::StatusOr<ExecuteOptionsProto> ExecuteOptions::ToProto() const {
   }
 
   proto.set_seed(seed);
+  proto.set_use_output_arena(use_output_arena);
 
   return proto;
 }
@@ -248,6 +249,7 @@ absl::StatusOr<ExecuteOptions> ExecuteOptions::FromProto(
       proto.non_donatable_input_indices().begin(),
       proto.non_donatable_input_indices().end());
   options.seed = proto.seed();
+  options.use_output_arena = proto.use_output_arena();
 
   return options;
 }

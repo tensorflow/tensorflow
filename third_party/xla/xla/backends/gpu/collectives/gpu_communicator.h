@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gxl_communicator.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
@@ -142,6 +143,13 @@ class GpuCommunicator : public Communicator {
   virtual stream_executor::StreamExecutor* stream_executor() const {
     return nullptr;
   }
+
+  // Returns GXL communicator if supported.
+  virtual GxlCommunicator* gxl_communicator() const { return nullptr; }
+
+  // Sets GXL communicator.
+  virtual void set_gxl_communicator(
+      std::unique_ptr<GxlCommunicator> gxl_communicator) {}
 
   // Creates a new device communicator linked to *this GPU communicator object.
   virtual absl::StatusOr<std::unique_ptr<GpuDeviceCommunicator>>

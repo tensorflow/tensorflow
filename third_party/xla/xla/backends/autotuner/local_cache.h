@@ -44,8 +44,8 @@ class LocalCacheStorage {
   LocalCacheStorage(const LocalCacheStorage&) = delete;
   LocalCacheStorage& operator=(const LocalCacheStorage&) = delete;
 
-  // Returns the process-wide scope-specific instance of LocalCacheStorage.
-  static LocalCacheStorage& GetInstance(const AutotuneScope& scope);
+  // Returns the process-wide context-specific instance of LocalCacheStorage.
+  static LocalCacheStorage& GetInstance(const AutotuneCacheContext& ctx);
 
   friend class LocalCache;
 

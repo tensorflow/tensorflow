@@ -38,12 +38,11 @@ namespace stream_executor::gpu {
 
 template <>
 __device__ constexpr hip_bfloat16 kInfinity<hip_bfloat16> =
-    absl::bit_cast<hip_bfloat16>(static_cast<uint16_t>(
-        absl::bit_cast<uint32_t>(kInfinity<float>) >> 16));
+    __builtin_bit_cast(hip_bfloat16, uint16_t{0x7F80});
 
 template <>
 __device__ constexpr _Float16 kInfinity<_Float16> =
-    absl::bit_cast<_Float16>(uint16_t{0x7C00});
+    __builtin_bit_cast(_Float16, uint16_t{0x7C00});
 
 template <>
 __device__ inline bool IsNan(hip_bfloat16 v) {
@@ -72,8 +71,9 @@ __device__ inline bool IsZero(_Float16 v) {
 
 template <>
 __device__ _Float16 WarpShuffleDown(_Float16 value, unsigned int offset) {
-  return absl::bit_cast<_Float16>(static_cast<uint16_t>(
-      __shfl_down(absl::bit_cast<uint16_t>(value), offset)));
+  return __builtin_bit_cast(
+      _Float16, static_cast<uint16_t>(
+                    __shfl_down(__builtin_bit_cast(uint16_t, value), offset)));
 }
 
 template <typename T>

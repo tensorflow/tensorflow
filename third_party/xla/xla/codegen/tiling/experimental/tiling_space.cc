@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/shape.h"
+#include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu::experimental {
@@ -310,7 +311,7 @@ absl::StatusOr<std::unique_ptr<TilingSpace>> TilingSpace::Create(
   auto tiling_space = std::make_unique<TilingSpace>();
   tiling_space->mlir_context_ = ctx;
   auto roots = fusion.GetRoots();
-  CHECK(!roots.empty()) << "Fusion has no roots";
+  TF_RET_CHECK(!roots.empty()) << "Fusion has no roots";
 
   // TODO: b/502910372 - Support multi-output fusions. The option name is
   // misleading as it is not GPU specific.
@@ -321,7 +322,7 @@ absl::StatusOr<std::unique_ptr<TilingSpace>> TilingSpace::Create(
            ->config()
            .debug_options()
            .xla_gpu_unsupported_enable_triton_multi_output_fusion()) {
-    return absl::InvalidArgumentError(
+    return absl::UnimplementedError(
         "TilingSpace does not support fusions with multiple roots");
   }
 

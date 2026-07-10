@@ -2442,7 +2442,8 @@ PjRtCApiExecutable::GetSerializedExecutableMetadata() const {
   PJRT_ExecutableMetadata_GetExecutableMetadata_Args args;
   args.executable = c_executable();
   args.metadata = nullptr;
-  executable_metadata_extension->get_executable_metadata(&args);
+  RETURN_STATUS_IF_PJRT_ERROR(
+      executable_metadata_extension->get_executable_metadata(&args), c_api_);
   absl::Cleanup cleanup = [&args, &executable_metadata_extension] {
     if (args.metadata != nullptr) {
       PJRT_ExecutableMetadata_DestroySerializedMetadata_Args free_args;
@@ -4257,7 +4258,7 @@ void PjRtCApiBuffer::CopyToRemoteDevice(
           pjrt::StatusCodeToPjrtErrorCode(descriptor.status().code());
       event_set_args.error_message = descriptor.status().message().data();
       event_set_args.error_message_size = descriptor.status().message().size();
-      c_api->PJRT_Event_Set(&event_set_args);
+      pjrt::LogFatalIfPjrtError(c_api->PJRT_Event_Set(&event_set_args), c_api);
     });
   }
 #endif
