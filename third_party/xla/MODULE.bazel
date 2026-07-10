@@ -129,6 +129,7 @@ use_repo(
     "nvtx_archive",
     "onednn",
     "onednn_async",
+    "org_sqlite",
     "pthreadpool",
     "raft",
     "rapids_logger",

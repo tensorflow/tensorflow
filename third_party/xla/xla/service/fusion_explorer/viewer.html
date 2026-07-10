@@ -2,6 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
+  <title>Fusion Explorer</title>
   <style>
     html, body {height: 100%; text-align: center;}
     #rendered {height: 70%; width: 80%; border:1px solid black; margin: auto; }
@@ -10,7 +11,7 @@
     #frames_list {
       list-style: none; text-align: left; height: 20%; overflow: scroll;
     }
-    #frames_list   li { padding: 0.2em; margin: 0.2em; }
+    #frames_list li { padding: 0.2em; margin: 0.2em; }
     .selected { background-color: #e0e0e0; }
     .selected a { color: black; text-decoration: none; }
     #rendered svg { height: 100% !important; width: 100% !important; }
@@ -23,15 +24,14 @@
   <script src="https://www.gstatic.com/external_hosted/svg_pan_zoom/svg-pan-zoom.js">
   </script>
 
-  <title>Fusion Explorer: $TITLE</title>
   <div id='rendered'><center>Loading...</center></div>
   <ul id='frames_list'></ul>
   <p>Use j/k for keyboard navigation.</p>
-  <p id='performance_note'>Loading data...</p>
+  <p id='performance_note'>Initializing...</p>
+
   <script>
   <!--
   const renderCache = {};
-
   const cssregex = new RegExp('stylesheet=<([^]*)\n>\n', 'gm');
   const hpccWasm = window["@hpcc-js/wasm"];
 
@@ -43,49 +43,67 @@
     return parseInt(window.location.hash.substring('#frame'.length, window.location.hash.length));
   }
 
+  window.frames = [];
+  window.graphs = {};
+  const pendingGraphRequests = new Map();
+  const getGraph = (graphId) => {
+    if (window.graphs[graphId]) {
+      return Promise.resolve(window.graphs[graphId]);
+    }
+    if (pendingGraphRequests.has(graphId)) {
+      return pendingGraphRequests.get(graphId);
+    }
+
+    const promise = fetch(`/api/graph?id=${graphId}`)
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP error! status: ${r.status}`);
+        return r.text();
+      })
+      .then(graph => {
+        window.graphs[graphId] = graph;
+        pendingGraphRequests.delete(graphId);
+        return graph;
+      })
+      .catch(err => {
+        pendingGraphRequests.delete(graphId);
+        throw err;
+      });
+
+    pendingGraphRequests.set(graphId, promise);
+    return promise;
+  };
+
   const renderCurrentFrame = () => {
-    if (!window.loaded) { return; }
+    if (window.frames.length === 0) return;
+
     const frames_list = document.getElementById('frames_list');
     const currId = getIdFromHash();
 
     for (let selected of frames_list.getElementsByClassName('selected')) {
         selected.classList.remove('selected');
     }
-
-    const selected = frames_list.children[currId];
-    selected.classList.add('selected');
-    selected.scrollIntoView();
-
-    const frame = frames[currId];
-    const dot_ptr = frame[0];
-    let dot_txt = window.dots[dot_ptr];
-    const label = frame[1];
-    document.getElementById('performance_note').innerText = "Rendering...";
-    const results = cssregex.exec(dot_txt)
-    let css_data = ''
-    if (results !== null) {
-        css_data = results[1].replace(/\s*data:.*\s*,/,''); // Strip content-type field.
-        // CSS inside DOT is URL-escaped, so we must unescape it
-        // before we can insert it into SVG.
-        css_data = unescape(css_data);
-        dot_txt = dot_txt.replace(cssregex, ''); // Remove the stylesheet
+    if (frames_list.children.length > currId) {
+      const items = frames_list.getElementsByTagName('li');
+      for (let item of items) {
+        const link = item.getElementsByTagName('a')[0];
+        if (link && link.getAttribute('href') === `#frame${currId}`) {
+          item.classList.add('selected');
+          item.scrollIntoView({ block: 'nearest' });
+          break;
+        }
+      }
     }
 
-    let render_start = performance.now();
-    const render_callback = svg => {
-      renderCache[dot_ptr] = svg;
-      var area = document.getElementById('rendered');
-      area.innerHTML = `${svg}<style>${css_data}</style>`;
-      var panzoom = svgPanZoom(area.children[0], {
-          zoomEnabled: true, controlIconsEnabled: true, maxZoom: 200, });
-      var to_highlight = frame[2].length ?
-        document.querySelector(`${frame[2]}`) : null;
-      if (to_highlight) {
-        to_highlight.style.setProperty('fill', 'red');
-      }
-      document.getElementById('performance_note').innerText =
-        `Rendering took ${(performance.now() - render_start).toFixed(2)}ms`;
+    const frame = window.frames[currId];
+    if (!frame) return;
+    const graphId = frame.graph_id;
 
+    const setupInteractiveFeatures = (cssData) => {
+      const toHighlight = frame.to_highlight.length ?
+        document.querySelector(`${frame.to_highlight}`) : null;
+      if (toHighlight) {
+        toHighlight.style.setProperty('fill', 'red');
+      }
       // Change cursor.
       let text_nodes = document.getElementsByTagName("text");
       for (var el of text_nodes) {
@@ -94,11 +112,61 @@
         }
       }
     };
-    if (renderCache[dot_ptr]) {
-      render_callback(renderCache[dot_ptr]);
-    } else {
-      hpccWasm.graphviz.layout(dot_txt, "svg", "dot").then(render_callback);
+
+    if (renderCache[graphId]) {
+      const cached = renderCache[graphId];
+      var area = document.getElementById('rendered');
+      area.innerHTML = `${cached.svg}<style>${cached.cssData}</style>`;
+      svgPanZoom(area.children[0], {
+          zoomEnabled: true, controlIconsEnabled: true, maxZoom: 200, });
+      setupInteractiveFeatures(cached.cssData);
+      document.getElementById('performance_note').textContent = "Rendered from cache";
+      return;
     }
+
+    document.getElementById('performance_note').textContent = "Retrieving data...";
+
+    getGraph(graphId).then(graph_txt => {
+      const latestCurrId = getIdFromHash();
+      if (!window.frames[latestCurrId] || window.frames[latestCurrId].graph_id !== graphId) {
+        console.log("Main: resolved graph is no longer current, ignoring rendering.");
+        return;
+      }
+
+      let renderStart = performance.now();
+      document.getElementById('performance_note').textContent = "Rendering...";
+
+      const results = cssregex.exec(graph_txt)
+      let cssData = ''
+      if (results !== null) {
+          cssData = results[1].replace(/\s*data:.*\s*,/,'');
+          cssData = unescape(cssData);
+          graph_txt = graph_txt.replace(cssregex, '');
+      }
+
+      hpccWasm.graphviz.layout(graph_txt, "svg", "dot").then(svg => {
+        renderCache[graphId] = { svg, cssData };
+        const nowCurrId = getIdFromHash();
+        if (!window.frames[nowCurrId] || window.frames[nowCurrId].graph_id !== graphId) {
+          console.log("Main: layout finished, but graph is no longer current. Ignoring rendering.");
+          return;
+        }
+        var area = document.getElementById('rendered');
+        area.innerHTML = `${svg}<style>${cssData}</style>`;
+        svgPanZoom(area.children[0], {
+            zoomEnabled: true, controlIconsEnabled: true, maxZoom: 200, });
+        setupInteractiveFeatures(cssData);
+        document.getElementById('performance_note').textContent =
+          `Rendering took ${(performance.now() - renderStart).toFixed(2)}ms`;
+      });
+    }).catch(err => {
+      const latestCurrId = getIdFromHash();
+      if (window.frames[latestCurrId] && window.frames[latestCurrId].graph_id === graphId) {
+        document.getElementById('performance_note').textContent = `Error: ${err.message}`;
+      } else {
+        console.log("Main: ignored error for non-current frame:", graphId, "error:", err.message);
+      }
+    });
   };
 
   const update = (delta) => {
@@ -110,33 +178,18 @@
   const renderFrameList = () => {
     const currId = getIdFromHash();
     const frames_list = document.getElementById('frames_list');
-    for (let i=0; i<frames.length; i++) {
-      const f = frames[i];
-      let frame_descr = f[1];
+    frames_list.innerHTML = ''; // Clear if re-rendering
+    for (let i = 0; i < window.frames.length; i++) {
+      const f = window.frames[i];
+      let frameDescr = f.label || "Unnamed state";
       const rendered = document.createElement("li");
-      if (frame_descr == "") {
-        frame_descr = "Unnamed state";
-      }
-      rendered.innerHTML = `<a href="#frame${i}">${frame_descr}</a>`;
+      rendered.innerHTML = `<a href="#frame${i}">${frameDescr}</a>`;
       if (i == currId) {
         rendered.classList.add('selected');
       }
       frames_list.appendChild(rendered);
     }
   };
-
-  const decompress = async function(compressed) {
-    const ds = new DecompressionStream('gzip');
-    const in_fetch = await fetch(`data:application/octet-stream;base64,${compressed}`);
-    const in_blob = await in_fetch.blob();
-    const out_stream = in_blob.stream().pipeThrough(ds);
-    const out_blob = await new Response(out_stream).blob();
-    return await out_blob.text();
-  }
-
-  const dots_compressed = "$DOTS";
-  const frames = [$FRAMES];
-  let loaded = false;
 
   window.addEventListener('hashchange', () => {
     renderCurrentFrame();
@@ -156,18 +209,36 @@
     event.preventDefault();
   }, true);
 
-  document.addEventListener("DOMContentLoaded", () => {
-    decompress(dots_compressed).then(text => {
-      window.dots = JSON.parse(text);
-      window.loaded = true;
-      renderFrameList();
-      renderCurrentFrame();
-    });
+  const init = () => {
+    document.getElementById('performance_note').textContent = "Loading metadata...";
+    fetch('/api/metadata')
+      .then(r => {
+        if (!r.ok) throw new Error(`Failed to load metadata: ${r.status}`);
+        return r.json();
+      })
+      .then(data => {
+        document.title = data.title;
 
-    window.title_to_id = new Map();
-    for (let i=0; i < frames.length; i++) {
-       title_to_id.set(frames[i][1], i);
-     }
+        window.frames = data.frames;
+        window.graphs = {};
+
+        window.title_to_id = new Map();
+        for (let i=0; i < window.frames.length; i++) {
+           title_to_id.set(window.frames[i].label, i);
+         }
+
+        renderFrameList();
+        renderCurrentFrame();
+
+        document.getElementById('performance_note').textContent = "Metadata loaded";
+      })
+      .catch(err => {
+        document.getElementById('performance_note').textContent = `Error: ${err.message}`;
+      });
+  };
+
+  document.addEventListener("DOMContentLoaded", () => {
+    init();
 
     // Navigate to next elements on click.
     document.addEventListener("click", (event) => {
