@@ -104,13 +104,6 @@ SpecialCaseCopyPolicy GetSpecialCaseCopyPolicy(const CallGraphNode& node,
   if (computation == module->entry_computation()) {
     policy.copy_parameters_and_constants = true;
     policy.copy_root_replicated_buffers = true;
-  } else {
-    for (const CallSite& caller_callsite : node.caller_callsites()) {
-      if (caller_callsite.instruction()->opcode() == HloOpcode::kConditional) {
-        policy.copy_root_replicated_buffers = true;
-        break;
-      }
-    }
   }
   return policy;
 }

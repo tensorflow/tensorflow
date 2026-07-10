@@ -37,13 +37,11 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
-#include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal_util.h"
-#include "xla/service/buffer_value.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -4818,102 +4816,6 @@ ENTRY main {
   // A copy of the pin-d0 operand.
   HloInstruction* pin_d0 = FindInstruction(module.get(), "pin-d0");
   EXPECT_EQ(pin_d0->operand(0)->opcode(), HloOpcode::kCopy);
-}
-
-TEST_F(CopyInsertionTest, ConditionalBranchRootReplicatedBuffers) {
-  // (b/515404581): This test verifies that we do not unsoundly elide copies for
-  // conditional branches returning the same buffers for two different tuple
-  // elements.
-  const std::string& hlo_string = R"(
-HloModule TestModule
-
-rw_branch_1 {
-  p0 = (f32[4]) parameter(0)
-  val = f32[4] get-tuple-element(p0), index=0
-  c_upd = f32[4] constant({0,0,0,0})
-  y = f32[4] custom-call(val, c_upd), custom_call_target="InplaceOp",
-    output_to_operand_aliasing={{}:(0, {})}
-  y_bitcast = f32[4] bitcast(y)
-  ROOT t = (f32[4], f32[4]) tuple(y, y_bitcast)
-}
-
-ro_branch_1 {
-  p0 = (f32[4]) parameter(0)
-  val = f32[4] get-tuple-element(p0), index=0
-  c1 = f32[4] constant({1,1,1,1})
-  c2 = f32[4] constant({2,2,2,2})
-  add1 = f32[4] add(val, c1)
-  add2 = f32[4] add(val, c2)
-  ROOT t = (f32[4], f32[4]) tuple(add1, add2)
-}
-
-rw_branch_2 {
-  p0 = (f32[4]) parameter(0)
-  val = f32[4] get-tuple-element(p0), index=0
-  c_upd = f32[4] constant({0,0,0,0})
-  y = f32[4] custom-call(val, c_upd), custom_call_target="InplaceOp",
-    output_to_operand_aliasing={{}:(0, {})}
-  y_bitcast = f32[4] bitcast(y)
-  ROOT t = (f32[4], f32[4]) tuple(y, y_bitcast)
-}
-
-ro_branch_2 {
-  p0 = (f32[4]) parameter(0)
-  val = f32[4] get-tuple-element(p0), index=0
-  c1 = f32[4] constant({1,1,1,1})
-  c2 = f32[4] constant({2,2,2,2})
-  add1 = f32[4] add(val, c1)
-  add2 = f32[4] add(val, c2)
-  ROOT t = (f32[4], f32[4]) tuple(add1, add2)
-}
-
-ENTRY entry {
-  p0 = f32[4] parameter(0)
-  cond_pred = pred[] parameter(1)
-  cond_input = (f32[4]) tuple(p0)
-
-  cond1 = (f32[4], f32[4]) conditional(cond_pred, cond_input, cond_input),
-    true_computation=rw_branch_1, false_computation=ro_branch_1
-
-  out1_0 = f32[4] get-tuple-element(cond1), index=0 // y
-  out1_1 = f32[4] get-tuple-element(cond1), index=1 // y_bitcast
-
-  barrier_input = (f32[4]) tuple(out1_1)
-  barrier = (f32[4]) opt-barrier(barrier_input)
-  barrier_0 = f32[4] get-tuple-element(barrier), index=0
-
-  cond2_input = (f32[4]) tuple(out1_0) // uses out1_0 directly!
-  cond2 = (f32[4], f32[4]) conditional(cond_pred, cond2_input, cond2_input),
-    true_computation=rw_branch_2, false_computation=ro_branch_2
-
-  out2_0 = f32[4] get-tuple-element(cond2), index=0
-  out2_1 = f32[4] get-tuple-element(cond2), index=1
-
-  add = f32[4] add(barrier_0, out2_1) // uses barrier output
-
-  ROOT root = (f32[4], f32[4]) tuple(out2_0, add)
-}
-)";
-
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                       ParseAndReturnVerifiedModule(hlo_string));
-  auto size_fn = [](const BufferValue& buffer) {
-    return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
-  };
-  HloMemoryScheduler scheduler(&alias_info_, size_fn);
-  ASSERT_OK(scheduler.Run(module.get()).status());
-  CopyInsertion copy_insertion(
-      &alias_info_, /*use_region_based_live_range_analysis=*/1000000);
-  ASSERT_OK(copy_insertion.Run(module.get()).status());
-  LOG(ERROR) << "HLO MODULE AFTER INSERT COPIES:\n" << module->ToString();
-
-  HloComputation* rw_branch_1 = module->GetComputationWithName("rw_branch_1");
-  ASSERT_THAT(rw_branch_1, NotNull());
-  EXPECT_EQ(CountCopies(*rw_branch_1), 1);
-
-  HloComputation* rw_branch_2 = module->GetComputationWithName("rw_branch_2");
-  ASSERT_THAT(rw_branch_2, NotNull());
-  EXPECT_EQ(CountCopies(*rw_branch_2), 1);
 }
 
 }  // namespace
