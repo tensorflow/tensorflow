@@ -493,6 +493,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_early_exit_with_layouts(false);
   opts.set_xla_gpu_experimental_all_fusions_with_triton(false);
   opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier(true);
+  opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(true);
   opts.set_xla_gpu_ragged_all_to_all_mode(
       DebugOptions::COLLECTIVES_PRIVATE_MEMORY);
   opts.set_xla_gpu_experimental_use_ragged_dot_grouped_gemm(true);
