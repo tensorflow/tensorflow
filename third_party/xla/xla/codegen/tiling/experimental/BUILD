@@ -311,6 +311,7 @@ cc_binary(
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
@@ -31,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
@@ -109,9 +111,10 @@ std::vector<int64_t> GetUpperBounds(int64_t limit) {
 
 struct ValidationStats {
   int64_t total_tested = 0;
+  int64_t true_positives = 0;
+  int64_t true_negatives = 0;
   int64_t false_positives = 0;
   int64_t false_negatives = 0;
-  int64_t total_unsupported = 0;
 };
 
 struct TileConfig {
@@ -121,131 +124,109 @@ struct TileConfig {
   std::vector<int64_t> upper_bounds;
 };
 
-void ValidateConfig(const Shape& input_shape, const Shape& output_shape,
-                    const HloInstruction* reshape, const HloInstruction* p0,
-                    TilingSpace* tiling_space_sym,
-                    mlir::MLIRContext* mlir_context, const TileConfig& config,
-                    ValidationStats& stats) {
+absl::Status ValidateConfig(const Shape& from_shape, const Shape& to_shape,
+                            const HloInstruction* reshape,
+                            mlir::MLIRContext* mlir_context,
+                            const TileConfig& config, ValidationStats& stats) {
+  // To understand if concrete tile propagation is correct or produces
+  // false positive or negative we propagate the tile symbolically and
+  // see if this tiling passes VerifyTileEquivalence.
+  // Then we propagate tile with sizes set. If both results matches (both are OK
+  // or both reject the tiling) then we declare a success.
   stats.total_tested++;
-  int64_t rank = tiling_space_sym->num_dimensions();
+  int64_t rank = from_shape.dimensions().size();
 
-  // Propagate symbolically - that does not trigger checks.
-  llvm::SmallVector<DimTile> input_dim_tiles_sym;
-  input_dim_tiles_sym.reserve(rank);
+  ASSIGN_OR_RETURN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(reshape),
+                          mlir_context));
+
+  llvm::SmallVector<DimTile> output_tiles;
+  output_tiles.reserve(rank);
   for (int i = 0; i < rank; ++i) {
     SymbolicExpr tid = CreateDimExpr(i, mlir_context);
-    SymbolicExpr ts = CreateSymbolExpr(i, rank, mlir_context);
-    input_dim_tiles_sym.push_back(DimTile{
-        /* offset= */ tid * ts, /* size= */ ts,
-        /* stride= */
-        CreateSymbolicConstant(config.strides[i], mlir_context),
-        /* upper_bound= */
-        CreateSymbolicConstant(input_shape.dimensions(i), mlir_context)});
-  }
-  Tile input_tile_sym(*tiling_space_sym, std::move(input_dim_tiles_sym));
-  absl::StatusOr<Tiles> output_tiles_sym =
-      PropagateTileToOutput(*tiling_space_sym, *reshape, input_tile_sym, 0);
-
-  if (!output_tiles_sym.ok()) {
-    VLOG(2) << "Unsupported reshape configuration" << output_tiles_sym.status();
-    stats.total_unsupported++;
-    return;
-  }
-
-  // 2. Concrete propagation
-  absl::StatusOr<std::unique_ptr<TilingSpace>> tiling_space_conc_or =
-      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(p0), mlir_context);
-  CHECK_OK(tiling_space_conc_or.status());
-  std::unique_ptr<TilingSpace> tiling_space_conc =
-      std::move(tiling_space_conc_or.value());
-  CHECK_OK(tiling_space_conc->AssignTileSizes(config.sizes));
-
-  llvm::SmallVector<DimTile> input_dim_tiles_conc;
-  input_dim_tiles_conc.reserve(rank);
-  for (int i = 0; i < rank; ++i) {
-    SymbolicExpr tid = CreateDimExpr(i, mlir_context);
-    SymbolicExpr ts = CreateSymbolicConstant(config.sizes[i], mlir_context);
-    input_dim_tiles_conc.push_back(DimTile{
+    SymbolicExpr tile_size = CreateSymbolExpr(i, rank, mlir_context);
+    output_tiles.push_back(DimTile{
         /* offset= */
-        CreateSymbolicConstant(config.offsets[i], mlir_context) + tid * ts,
-        /* size= */ ts, /* stride= */
+        CreateSymbolicConstant(config.offsets[i], mlir_context) +
+            tid * tile_size,
+        /* size= */ tile_size,
+        /* stride= */
         CreateSymbolicConstant(config.strides[i], mlir_context),
         /* upper_bound= */
         CreateSymbolicConstant(config.upper_bounds[i], mlir_context)});
   }
-  Tile input_tile_conc(*tiling_space_conc, std::move(input_dim_tiles_conc));
-  absl::StatusOr<Tiles> output_tiles_conc =
-      PropagateTileToOutput(*tiling_space_conc, *reshape, input_tile_conc, 0);
+  Tile output_tile(*tiling_space, std::move(output_tiles));
+  ASSIGN_OR_RETURN(
+      Tiles input_tiles,
+      PropagateTileToInput(*tiling_space, *reshape, output_tile, 0));
+  CHECK_EQ(input_tiles.size(), 1);
+  Tile input_tile = input_tiles[0];
+  llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacement_map =
+      GetTileSizeReplacementMap(*tiling_space, config.sizes);
+  RETURN_IF_ERROR(tiling_space->AssignTileSizes(config.sizes));
 
-  // 3. Evaluate happy case
-  llvm::ArrayRef<DimTile> dim_tiles_ref =
-      output_tiles_sym.value()[0].dim_tiles();
-  llvm::SmallVector<DimTile> output_dim_tiles_sym(dim_tiles_ref.begin(),
-                                                  dim_tiles_ref.end());
-  Tile eval_output_tile(*tiling_space_conc, std::move(output_dim_tiles_sym));
-  VLOG(1) << "Before Replace: " << eval_output_tile.ToString();
-  llvm::DenseMap<SymbolicExpr, SymbolicExpr> ts_replacements;
-  for (int i = 0; i < rank; ++i) {
-    SymbolicExpr ts = CreateSymbolExpr(i, rank, mlir_context);
-    ts_replacements[ts] = CreateSymbolicConstant(config.sizes[i], mlir_context);
+  input_tile.Replace(replacement_map);
+  input_tile.Simplify();
+  output_tile.Replace(replacement_map);
+  output_tile.Simplify();
+
+  absl::Status equivalent = VerifyTileEquivalence(
+      output_tile, from_shape, input_tile, to_shape, tiling_space.get());
+  absl::StatusOr<Tiles> concrete_propagation_result =
+      PropagateTileToInput(*tiling_space, *reshape, output_tile, 0);
+  if (equivalent.ok() == concrete_propagation_result.ok()) {
+    if (equivalent.ok()) {
+      stats.true_positives++;
+    } else {
+      stats.true_negatives++;
+    }
+    return absl::OkStatus();
   }
-  eval_output_tile.Replace(ts_replacements);
-  VLOG(1) << "After Replace: " << eval_output_tile.ToString();
-  eval_output_tile.Simplify();
-  VLOG(1) << "After Simplify: " << eval_output_tile.ToString();
-  absl::Status equiv_status =
-      VerifyTileEquivalence(input_tile_conc, input_shape, eval_output_tile,
-                            output_shape, tiling_space_conc.get());
-  bool happy_case_correct = equiv_status.ok();
-  bool concrete_accepted = output_tiles_conc.ok();
 
-  if (happy_case_correct && !concrete_accepted) {
-    VLOG(2) << absl::StrCat(
-        "\nFalse negative:\n", "Config: sizes=[",
-        absl::StrJoin(config.sizes, ","), "] strides=[",
-        absl::StrJoin(config.strides, ","), "] offsets=[",
-        absl::StrJoin(config.offsets, ","), "] upper_bounds=[",
-        absl::StrJoin(config.upper_bounds, ","), "]\n",
-        "Input Tile (Before Prop): \n", input_tile_conc.ToString(), "\n",
-        "Output Tile (After Prop): \n", eval_output_tile.ToString(), "\n",
-        output_tiles_conc.status().message(), "\n");
+  if (!concrete_propagation_result.ok()) {
+    // False negatives are not that interesting.
+    LOG(INFO) << absl::StrCat(
+        "\nFalse negative:\n", "Config: tile sizes=[",
+        absl::StrJoin(config.sizes, ", "), "] strides=[",
+        absl::StrJoin(config.strides, ", "), "] static offsets=[",
+        absl::StrJoin(config.offsets, ", "), "] upper_bounds=[",
+        absl::StrJoin(config.upper_bounds, ", "), "]\n", "From Tile:\n",
+        output_tile.ToString(), "\n", "To Tile:\n", input_tile.ToString(), "\n",
+        concrete_propagation_result.status().message(), "\n");
     stats.false_negatives++;
-  } else if (!happy_case_correct && concrete_accepted) {
+  }
+  if (!equivalent.ok()) {
     std::cout << absl::StrCat(
         "\nFalse positive:\n", "Config: sizes=[",
-        absl::StrJoin(config.sizes, ","), "] strides=[",
-        absl::StrJoin(config.strides, ","), "] offsets=[",
-        absl::StrJoin(config.offsets, ","), "] upper_bounds=[",
-        absl::StrJoin(config.upper_bounds, ","), "]\n",
-        "Input Tile (Before Prop): \n", input_tile_conc.ToString(), "\n",
-        "Output Tile (After Prop): \n", eval_output_tile.ToString(), "\n",
-        equiv_status.message(), "\n");
+        absl::StrJoin(config.sizes, ", "), "] strides=[",
+        absl::StrJoin(config.strides, ", "), "] offsets=[",
+        absl::StrJoin(config.offsets, ", "), "] upper_bounds=[",
+        absl::StrJoin(config.upper_bounds, ", "), "]\n", "From Tile:\n",
+        output_tile.ToString(), "\n", "To Tile: \n", input_tile.ToString(),
+        "\n", equivalent.message(), "\n");
     stats.false_positives++;
   }
+  return absl::OkStatus();
 }
 
-void ProcessReshape(const Shape& input_shape, const Shape& output_shape,
+void ProcessReshape(const Shape& from_shape, const Shape& to_shape,
                     bool bypass_limit) {
   std::cout << "\n==========================================================="
                "=======\n";
-  std::cout << "Validating reshape: " << input_shape.ToString() << " -> "
-            << output_shape.ToString() << "\n";
+  std::cout << "Validating reshape: " << from_shape.ToString() << " -> "
+            << to_shape.ToString() << "\n";
   std::cout << "============================================================="
                "=====\n";
 
   mlir::MLIRContext mlir_context;
   HloComputation::Builder builder("entry");
   HloInstruction* p0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, input_shape, "p0"));
+      HloInstruction::CreateParameter(0, to_shape, "p0"));
   HloInstruction* reshape =
-      builder.AddInstruction(HloInstruction::CreateReshape(output_shape, p0));
+      builder.AddInstruction(HloInstruction::CreateReshape(from_shape, p0));
 
-  absl::StatusOr<std::unique_ptr<TilingSpace>> tiling_space_sym_or =
-      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(p0), &mlir_context);
-  CHECK_OK(tiling_space_sym_or.status());
-  std::unique_ptr<TilingSpace> tiling_space_sym =
-      std::move(tiling_space_sym_or.value());
-  int64_t rank = tiling_space_sym->num_dimensions();
+  int64_t rank = from_shape.dimensions().size();
 
   // Generate Cartesian products
   std::vector<std::vector<int64_t>> size_configs(rank);
@@ -255,7 +236,7 @@ void ProcessReshape(const Shape& input_shape, const Shape& output_shape,
 
   int64_t num_configs = 1;
   for (int i = 0; i < rank; ++i) {
-    int64_t dim = input_shape.dimensions(i);
+    int64_t dim = from_shape.dimensions(i);
     size_configs[i] = GetPowersOf2And(dim, {dim});
     stride_configs[i] = GetPowersOf2And(dim, {dim});
     offset_configs[i] = GetOffsets(dim);
@@ -265,7 +246,8 @@ void ProcessReshape(const Shape& input_shape, const Shape& output_shape,
                    offset_configs[i].size() * upper_bound_configs[i].size();
   }
 
-  std::cout << "Number of configs for this reshape: " << num_configs << "\n";
+  std::cout << "Estimated number of configs for this reshape: " << num_configs
+            << "\n";
   if (num_configs > 100000 && !bypass_limit) {
     std::cout << "Skipping reshape because it has too many configs ("
               << num_configs << "). Use --bypass_limit to run it.\n";
@@ -281,8 +263,11 @@ void ProcessReshape(const Shape& input_shape, const Shape& output_shape,
 
   auto run_loops = [&](auto self, int dim_idx) -> void {
     if (dim_idx == rank) {
-      ValidateConfig(input_shape, output_shape, reshape, p0,
-                     tiling_space_sym.get(), &mlir_context, config, stats);
+      absl::Status status = ValidateConfig(from_shape, to_shape, reshape,
+                                           &mlir_context, config, stats);
+      if (!status.ok()) {
+        LOG(ERROR) << status.message() << "\n";
+      }
       return;
     }
     for (int64_t size : size_configs[dim_idx]) {
@@ -292,6 +277,9 @@ void ProcessReshape(const Shape& input_shape, const Shape& output_shape,
         for (int64_t offset : offset_configs[dim_idx]) {
           config.offsets[dim_idx] = offset;
           for (int64_t ub : upper_bound_configs[dim_idx]) {
+            if (offset + (size - 1) * stride >= ub) {
+              continue;
+            }
             config.upper_bounds[dim_idx] = ub;
             self(self, dim_idx + 1);
           }
@@ -304,17 +292,19 @@ void ProcessReshape(const Shape& input_shape, const Shape& output_shape,
 
   std::cout << absl::StrCat(
       "Total configs tested: ", stats.total_tested, "\n",
-      "False Positives: ", stats.false_positives, " (",
-      (stats.total_tested ? (stats.false_positives * 100.0 / stats.total_tested)
+      "Supported: ", stats.true_positives, " (",
+      (stats.total_tested ? (stats.true_positives * 100 / stats.total_tested)
                           : 0),
-      " %)\n", "False Negatives: ", stats.false_negatives, " (",
-      (stats.total_tested ? (stats.false_negatives * 100.0 / stats.total_tested)
+      "%)\n", "Unsupported: ", stats.true_negatives, " (",
+      (stats.total_tested ? (stats.true_negatives * 100 / stats.total_tested)
                           : 0),
-      " %)\n", "Total Unsupported: ", stats.total_unsupported, " (",
-      (stats.total_tested
-           ? (stats.total_unsupported * 100.0 / stats.total_tested)
-           : 0),
-      " %)\n");
+      "%)\n", "False Positives: ", stats.false_positives, " (",
+      (stats.total_tested ? (stats.false_positives * 100 / stats.total_tested)
+                          : 0),
+      "%)\n", "False Negatives: ", stats.false_negatives, " (",
+      (stats.total_tested ? (stats.false_negatives * 100 / stats.total_tested)
+                          : 0),
+      "%)\n");
 }
 
 void RunValidation(const std::vector<std::pair<Shape, Shape>>& reshapes,
@@ -333,7 +323,7 @@ int main(int argc, char** argv) {
 
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("reshapes", &reshapes_str,
-                "List of reshapes, e.g. '[4] [2,2] [12,1] [1,3,4]'"),
+                "List of reshapes, e.g. '[1, 4] [4]; [14] [2, 7]'"),
       tsl::Flag("bypass_limit", &bypass_limit,
                 "Bypass the 100,000 combinations limit")};
 
@@ -346,22 +336,31 @@ int main(int argc, char** argv) {
     return 1;
   }
 
+  reshapes_str.erase(
+      std::remove_if(reshapes_str.begin(), reshapes_str.end(),
+                     [](unsigned char c) { return std::isspace(c); }),
+      reshapes_str.end());
+
   if (reshapes_str.empty()) {
     LOG(INFO) << "No reshapes provided.";
     return 0;
   }
 
   std::vector<std::string> parts = absl::StrSplit(
-      reshapes_str, absl::ByAnyChar(" \n\r\t"), absl::SkipWhitespace());
-  if (parts.size() % 2 != 0) {
-    LOG(FATAL) << "Expected pairs of reshapes.";
-  }
+      reshapes_str, absl::ByAnyChar(";"), absl::SkipWhitespace());
 
   std::vector<std::pair<xla::Shape, xla::Shape>> reshapes;
-  for (size_t i = 0; i < parts.size(); i += 2) {
-    std::vector<int64_t> in_dims = xla::gpu::experimental::ParseShape(parts[i]);
-    std::vector<int64_t> out_dims =
-        xla::gpu::experimental::ParseShape(parts[i + 1]);
+  for (const std::string& part : parts) {
+    size_t split_pos = part.find("][");
+    if (split_pos == std::string::npos) {
+      LOG(FATAL) << "Expected two shapes for each reshape, e.g. [1,4][4], got: "
+                 << part;
+    }
+    std::string str1 = part.substr(0, split_pos + 1);
+    std::string str2 = part.substr(split_pos + 1);
+
+    std::vector<int64_t> in_dims = xla::gpu::experimental::ParseShape(str1);
+    std::vector<int64_t> out_dims = xla::gpu::experimental::ParseShape(str2);
     reshapes.push_back({xla::ShapeUtil::MakeShape(xla::F32, in_dims),
                         xla::ShapeUtil::MakeShape(xla::F32, out_dims)});
   }
