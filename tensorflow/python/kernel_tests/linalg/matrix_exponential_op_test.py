@@ -29,6 +29,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.linalg import linalg_impl
 from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
+from tensorflow.python.framework import dtypes
 
 
 def np_expm(x):  # pylint: disable=invalid-name
@@ -60,10 +61,20 @@ class ExponentialOpTest(test.TestCase):
         else:
           np_ans = np_expm(inp)
       out = self.evaluate(tf_ans)
-      self.assertAllClose(np_ans, out, rtol=1e-3, atol=1e-3)
+
+      if np_type in (np.float16, dtypes.bfloat16.as_numpy_dtype):
+        rtol = atol = 1e-2
+      else:
+        rtol = atol = 1e-3
+      self.assertAllClose(np_ans, out, rtol=rtol, atol=atol)
 
   def _verifyExponentialReal(self, x):
-    for np_type in [np.float32, np.float64]:
+    for np_type in [
+          np.float16,
+          dtypes.bfloat16.as_numpy_dtype,
+          np.float32, 
+          np.float64
+    ]:
       self._verifyExponential(x, np_type)
 
   def _verifyExponentialComplex(self, x):
@@ -139,22 +150,6 @@ class ExponentialOpTest(test.TestCase):
     in_tensor = [[np.inf, 1.], [1., 1.]]
     result = self.evaluate(linalg_impl.matrix_exponential(in_tensor))
     self.assertTrue(np.all(np.isnan(result)))
-
-  def testFloat16AndBfloat16(self):
-    for dtype in [np.float16, dtypes.bfloat16.as_numpy_dtype]:
-      matrix = np.array([[1.]], dtype=dtype)
-
-      result = self.evaluate(linalg_impl.matrix_exponential(matrix))
-
-      expected = self.evaluate(
-          linalg_impl.matrix_exponential(matrix.astype(np.float32)))
-
-      self.assertEqual(result.dtype, dtype)
-      self.assertAllClose(
-          result,
-          expected.astype(dtype),
-          rtol=1e-2,
-          atol=1e-2)
 
   def testEmpty(self):
     self._verifyExponentialReal(np.empty([0, 2, 2]))
@@ -257,7 +252,14 @@ def _TestL1Norms(dtype, shape, scale):
 
 
 if __name__ == "__main__":
-  for dtype_ in [np.float32, np.float64, np.complex64, np.complex128]:
+  for dtype_ in [
+      np.float16,
+      dtypes.bfloat16.as_numpy_dtype,
+      np.float32, 
+      np.float64, 
+      np.complex64, 
+      np.complex128
+  ]:
     for batch_ in [(), (2,), (2, 2)]:
       for size_ in [4, 7]:
         name = "%s_%d_%d" % (dtype_.__name__, len(batch_), size_)

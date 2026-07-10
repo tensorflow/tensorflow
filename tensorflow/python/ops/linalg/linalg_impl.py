@@ -115,7 +115,7 @@ def adjoint(matrix, name=None):
   ```
 
   Args:
-    matrix:  A `Tensor`. Must be `float16`, `float32`, `float64`, `complex64`,
+    matrix:  A `Tensor`. Must be `bfloat16`, `float16`, `float32`, `float64`, `complex64`,
       or `complex128` with shape `[..., M, M]`.
     name:  A name to give this `Op` (optional).
 
@@ -246,7 +246,7 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
   containing the exponential for all input submatrices `[..., :, :]`.
 
   Args:
-    input: A `Tensor`. Must be `float16`, `float32`, `float64`, `complex64`, or
+    input: A `Tensor`. Must be `bfloat16`, `float16`, `float32`, `float64`,`complex64`, or
       `complex128` with shape `[..., M, M]`.
     name:  A name to give this `Op` (optional).
 
