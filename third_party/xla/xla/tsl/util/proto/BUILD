@@ -31,6 +31,7 @@ cc_library(
     srcs = ["proto_matchers.cc"],
     hdrs = ["proto_matchers.h"],
     visibility = [
+        # copybara:uncomment "//learning/brain:__subpackages__",
         "//pathways:__subpackages__",  # For OSS
         "//xla:__subpackages__",
     ],
