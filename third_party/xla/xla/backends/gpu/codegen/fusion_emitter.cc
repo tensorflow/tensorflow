@@ -137,7 +137,7 @@ absl::Status AnnotateKernelLaunchDimensions(
     kernel->addFnAttr("nvvm.reqntid", attr);
     // Maybe we want to set "reqnctapercluster" here, but not sure if needed or
     // if LLVM supports that yet. Let's do that later when needed.
-  } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
+  } else if (target_triple.getArch() == llvm::Triple::amdgpu) {
     kernel->addFnAttr("amdgpu-flat-work-group-size",
                       absl::StrJoin({launch_dims.num_threads_per_block(),
                                      launch_dims.num_threads_per_block()},
