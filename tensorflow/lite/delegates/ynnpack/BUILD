@@ -42,6 +42,7 @@ cc_library(
         "@XNNPACK//ynnpack/composites",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:span",
+        "@slinky//slinky/base:thread_pool",
         "@slinky//slinky/base:thread_pool_impl",
     ],
 )
