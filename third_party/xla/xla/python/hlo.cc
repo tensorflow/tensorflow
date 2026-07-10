@@ -737,6 +737,9 @@ NB_MODULE(_hlo, m) {
     absl::string_view name() const { return inst_->name(); }
     std::string to_string() const { return inst_->ToString(); }
     xla::HloOpcode opcode() const { return inst_->opcode(); }
+    std::string opcode_name() const {
+      return std::string(xla::HloOpcodeString(inst_->opcode()));
+    }
     std::vector<std::shared_ptr<InstructionWrapper>> users() const {
       std::vector<std::shared_ptr<InstructionWrapper>> users;
       for (const HloInstruction* user : inst_->users()) {
@@ -752,6 +755,55 @@ NB_MODULE(_hlo, m) {
       }
       return operands;
     }
+    std::vector<int64_t> operand_ids() const {
+      std::vector<int64_t> ids;
+      for (const HloInstruction* operand : inst_->operands()) {
+        ids.push_back(operand->unique_id());
+      }
+      return ids;
+    }
+    std::vector<std::string> called_computation_names() const {
+      std::vector<std::string> names;
+      for (const HloComputation* comp : inst_->called_computations()) {
+        names.push_back(std::string(comp->name()));
+      }
+      return names;
+    }
+    std::vector<int64_t> called_computation_ids() const {
+      std::vector<int64_t> ids;
+      for (const HloComputation* comp : inst_->called_computations()) {
+        ids.push_back(comp->unique_id());
+      }
+      return ids;
+    }
+    std::vector<int64_t> user_ids() const {
+      std::vector<int64_t> ids;
+      for (const HloInstruction* user : inst_->users()) {
+        ids.push_back(user->unique_id());
+      }
+      return ids;
+    }
+    std::optional<int64_t> tuple_index() const {
+      if (inst_->opcode() == xla::HloOpcode::kGetTupleElement) {
+        return inst_->tuple_index();
+      }
+      return std::nullopt;
+    }
+    std::optional<std::string> custom_call_target() const {
+      if (inst_->opcode() == xla::HloOpcode::kCustomCall) {
+        return inst_->custom_call_target();
+      }
+      return std::nullopt;
+    }
+    const xla::Shape& shape() const { return inst_->shape(); }
+    std::string shape_string() const { return inst_->shape().ToString(); }
+    std::optional<int64_t> parameter_number() const {
+      if (inst_->opcode() == xla::HloOpcode::kParameter) {
+        return inst_->parameter_number();
+      }
+      return std::nullopt;
+    }
+    int64_t unique_id() const { return inst_->unique_id(); }
 
     const HloInstruction* inst() const { return inst_; }
     std::shared_ptr<InstructionWrapper> async_wrapped_root() const {
@@ -811,8 +863,23 @@ NB_MODULE(_hlo, m) {
   hlo_instruction_class.def_prop_ro("name", &InstructionWrapper::name)
       .def("to_string", &InstructionWrapper::to_string)
       .def_prop_ro("opcode", &InstructionWrapper::opcode)
+      .def_prop_ro("opcode_name", &InstructionWrapper::opcode_name)
       .def("users", &InstructionWrapper::users)
       .def("operands", &InstructionWrapper::operands)
+      .def_prop_ro("called_computation_names",
+                   &InstructionWrapper::called_computation_names)
+      .def_prop_ro("user_ids", &InstructionWrapper::user_ids)
+      .def_prop_ro("tuple_index", &InstructionWrapper::tuple_index)
+
+      .def_prop_ro("called_computation_ids",
+                   &InstructionWrapper::called_computation_ids)
+      .def_prop_ro("operand_ids", &InstructionWrapper::operand_ids)
+      .def_prop_ro("custom_call_target",
+                   &InstructionWrapper::custom_call_target)
+      .def_prop_ro("shape", &InstructionWrapper::shape)
+      .def_prop_ro("shape_string", &InstructionWrapper::shape_string)
+      .def_prop_ro("parameter_number", &InstructionWrapper::parameter_number)
+      .def_prop_ro("id", &InstructionWrapper::unique_id)
       .def("async_wrapped_root", &InstructionWrapper::async_wrapped_root)
       .def("get_frontend_attribute",
            &InstructionWrapper::get_frontend_attribute, nb::arg("key"))
@@ -844,6 +911,8 @@ NB_MODULE(_hlo, m) {
     }
     const HloComputation* comp() const { return comp_; }
     const std::shared_ptr<HloModule> module() const { return module_; }
+    int64_t unique_id() const { return comp_->unique_id(); }
+    int64_t root_id() const { return comp_->root_instruction()->unique_id(); }
 
    private:
     const HloComputation* comp_;
@@ -857,6 +926,8 @@ NB_MODULE(_hlo, m) {
 
   nb::class_<ComputationWrapper> hlo_computation_class(m, "HloComputation");
   hlo_computation_class.def_prop_ro("name", &ComputationWrapper::name)
+      .def_prop_ro("id", &ComputationWrapper::unique_id)
+      .def_prop_ro("root_id", &ComputationWrapper::root_id)
       .def("render_html", &ComputationWrapper::render_html)
       .def("instructions",
            [](const std::shared_ptr<ComputationWrapper> c)
