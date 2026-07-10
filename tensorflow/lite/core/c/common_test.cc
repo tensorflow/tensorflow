@@ -54,6 +54,8 @@ TEST(IntArray, TestIntArrayCreate) {
 TEST(IntArray, GetSizeInBytesRejectsNegativeSize) {
   EXPECT_EQ(TfLiteIntArrayGetSizeInBytes(-1), 0);
   EXPECT_EQ(TfLiteIntArrayCreate(-1), nullptr);
+  // Zero-sized arrays must keep working (0-D scalar tensors, empty lists).
+  EXPECT_GT(TfLiteIntArrayGetSizeInBytes(0), 0);
 }
 
 TEST(IntArray, TestIntArrayCopy) {

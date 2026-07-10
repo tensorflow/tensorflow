@@ -253,3 +253,16 @@ tf_cc_fuzz_test(
         "@xla//xla/tsl/platform:env",
     ],
 )
+
+tf_cc_fuzz_test(
+    name = "tflite_intarray_fuzz",
+    srcs = ["tflite_intarray_fuzz.cc"],
+    data = ["//tensorflow/lite:testdata/add.bin"],
+    tags = ["no_oss"],
+    deps = [
+        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite/c:c_api",
+        "//tensorflow/lite/c:c_api_experimental",
+        "//tensorflow/lite/c:common",
+    ],
+)
