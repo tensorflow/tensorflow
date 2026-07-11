@@ -1069,6 +1069,15 @@ class UnaryOpsTest(xla_test.XLATestCase):
           expected=np.array(True),
       )
 
+  def testSqueezeBoundedDynamicDimension(self):
+    with self.session() as sess:
+      with self.test_scope():
+        x = array_ops.placeholder(dtypes.int32, shape=[2])
+        where_op = array_ops.where(math_ops.not_equal(x, 6))
+        squeezed = array_ops.squeeze(where_op)
+        result = sess.run(squeezed, feed_dict={x: [0, 6]})
+        self.assertAllEqual(result, [0])
+
 
 if __name__ == "__main__":
   googletest.main()
