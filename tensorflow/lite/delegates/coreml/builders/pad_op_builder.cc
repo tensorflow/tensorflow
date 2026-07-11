@@ -103,9 +103,11 @@ bool IsPadOpSupported(const TfLiteRegistration* registration,
   // padding is d x 2 tensor, where d is the dimension of input.
   const TfLiteTensor* padding;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 1, &padding));
-  // Tensor names may be null in TFLite; use a safe placeholder for logging.
+  // `padding` and its name may be null in TFLite; use a safe placeholder for
+  // logging so neither is dereferenced before the checks below.
   const char* padding_name =
-      padding->name != nullptr ? padding->name : "(unnamed)";
+      (padding != nullptr && padding->name != nullptr) ? padding->name
+                                                       : "(unnamed)";
   if (!IsConstantTensor(padding)) {
     TF_LITE_KERNEL_LOG(context,
                        "%s: Only constant padding is supported for PAD.",
