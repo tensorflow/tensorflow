@@ -223,8 +223,8 @@ absl::Status RewriteEntryShape(const std::string& prefix,
     std::unique_ptr<table::Table> table_deleter(table);
     std::unique_ptr<table::Iterator> iter(table->NewIterator());
 
-    builder.reset(
-        new table::TableBuilder(table::Options(), metadata_file.get()));
+    builder = std::make_unique<table::TableBuilder>(table::Options(),
+                                                    metadata_file.get());
     for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
       if (iter->key() == key) {
         BundleEntryProto entry;
@@ -237,8 +237,9 @@ absl::Status RewriteEntryShape(const std::string& prefix,
     }
   }
   TF_RETURN_IF_ERROR(builder->Finish());
-  TF_RETURN_IF_ERROR(env->RenameFile(metadata_tmp_path, MetaFilename(prefix)));
-  return metadata_file->Close();
+  builder.reset();
+  TF_RETURN_IF_ERROR(metadata_file->Close());
+  return env->RenameFile(metadata_tmp_path, MetaFilename(prefix));
 }
 
 template <typename T>
