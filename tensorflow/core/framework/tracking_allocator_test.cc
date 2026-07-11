@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tracking_allocator.h"
 
+#include <cstddef>
+#include <optional>
+#include <string>
+#include <tuple>
 #include <unordered_map>
 
 #include "tensorflow/core/framework/allocator.h"
