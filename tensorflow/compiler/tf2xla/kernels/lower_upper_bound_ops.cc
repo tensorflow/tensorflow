@@ -33,8 +33,7 @@ namespace {
 // Note that this is an O(MN) algorithm: all entries in each sorted_inputs row
 // are considered, and their sorted nature is not fully exploited.
 void BuildLowerUpperBoundOp(XlaOpKernelContext* ctx, DataType out_dtype,
-                            xla::ComparisonDirection comparison_direction,
-                            bool nan_values_compare_greater = false) {
+                            xla::ComparisonDirection comparison_direction) {
   const TensorShape sorted_inputs_shape = ctx->InputShape("sorted_inputs");
   const TensorShape values_shape = ctx->InputShape("values");
   const xla::XlaOp sorted_inputs = ctx->Input("sorted_inputs");
@@ -111,8 +110,7 @@ class UpperBoundOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    BuildLowerUpperBoundOp(ctx, out_dtype_, xla::ComparisonDirection::kGe,
-                           /*nan_values_compare_greater=*/true);
+    BuildLowerUpperBoundOp(ctx, out_dtype_, xla::ComparisonDirection::kGe);
   }
 
  private:

@@ -47,12 +47,17 @@ class SearchSorteddOpTest(xla_test.XLATestCase):
       sorted_sequence = np.array([[1, 3, 5, 7, 9]], dtype)
       values = np.array([[np.nan]], dtype)
 
+      expected_left = np.searchsorted(
+          sorted_sequence[0], values[0], side="left")
+      expected_right = np.searchsorted(
+          sorted_sequence[0], values[0], side="right")
+
       self._test2DExample(
           dtype,
           'left',
           sorted_sequence,
           values,
-          np.array([[0]], dtype=np.int32),
+          expected_left.reshape(1, -1).astype(np.int32),
       )
 
       self._test2DExample(
@@ -60,7 +65,7 @@ class SearchSorteddOpTest(xla_test.XLATestCase):
           'right',
           sorted_sequence,
           values,
-          np.array([[5]], dtype=np.int32),
+          expected_right.reshape(1, -1).astype(np.int32),
       )
 
   def _test2DExample(self, dtype, side, sorted_sequence, values, correct_ans):
