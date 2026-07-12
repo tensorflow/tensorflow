@@ -574,7 +574,7 @@ def _rfft_grad_helper(rank, irfft_fn):
         _maybe_pad_for_rfft(
             0.5 * (the_irfft * input_size + _math_ops.real(extra_terms)),
             rank,
-            original_input_shape,
+            original_input_shape[-rank:],
         ),
         None,
     )
@@ -625,7 +625,7 @@ def _irfft_grad_helper(rank, rfft_fn):
             the_rfft
             * _math_ops.cast(rsize * mask, complex_dtype),
             rank,
-            original_input_shape,
+            original_input_shape[-rank:],
         ),
         None,
     )

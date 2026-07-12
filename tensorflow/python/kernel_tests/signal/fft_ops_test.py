@@ -21,9 +21,13 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_spectral_ops
@@ -555,6 +559,39 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     else:
       return c2r.astype(np_ctype)
 
+  def _assert_dynamic_grad_matches_static(self, transform_fn, input_value,
+                                          fft_length, rtol, atol):
+    input_tensor = constant_op.constant(input_value)
+    static_shape = input_value.shape
+    dynamic_shape = (None,) + input_value.shape[1:]
+
+    def loss_fn(x):
+      y = transform_fn(x, fft_length)
+      return math_ops.reduce_sum(math_ops.real(y * math_ops.conj(y)))
+
+    def make_grad_fn(input_shape):
+      @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(input_shape, dtype=input_tensor.dtype)
+        ])
+      def grad_fn(x):
+        with backprop.GradientTape() as tape:
+          tape.watch(x)
+          loss = loss_fn(x)
+        return tape.gradient(loss, x)
+      return grad_fn
+
+    static_grad_fn = make_grad_fn(static_shape)
+    dynamic_grad_fn = make_grad_fn(dynamic_shape)
+
+    expected_grad = static_grad_fn(input_tensor)
+    actual_grad = dynamic_grad_fn(input_tensor)
+
+    expected_grad, actual_grad = self.evaluate([expected_grad, actual_grad])
+
+    self.assertEqual(actual_grad.shape, input_value.shape)
+    self.assertAllClose(actual_grad, expected_grad, rtol=rtol, atol=atol)
+
   @parameterized.parameters(itertools.product(
       VALID_FFT_RANKS, range(3), (np.float32, np.float64)))
 
@@ -939,6 +976,31 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     self._check_grad_complex(
         self._tf_ifft_for_rank(rank), re, im, fft_length,
         result_is_complex=False, rtol=tol, atol=tol)
+
+  @parameterized.parameters(itertools.product(
+    VALID_FFT_RANKS, range(2), (5, 6), (-2, 0, 2), (np.float32, np.float64)))
+  def test_grad_batched_truncate(self, rank, extra_dims, size, dsize, np_rtype):
+    if rank == 3:
+      return
+
+    dims = rank + extra_dims
+    tol = 1e-3 if np_rtype == np.float32 else 1e-10
+    re = np.ones(shape=(size,) * dims, dtype=np_rtype)
+    im = -np.ones(shape=(size,) * dims, dtype=np_rtype)
+    fft_length = (size + dsize,) * rank
+
+    self._assert_dynamic_grad_matches_static(
+      self._tf_fft_for_rank(rank),
+      re, fft_length, rtol=tol, atol=tol)
+
+    if test.is_built_with_rocm():
+      # Fails on ROCm because of irfft peculiarity
+      return
+
+    np_ctype = np.complex64 if np_rtype == np.float32 else np.complex128
+    self._assert_dynamic_grad_matches_static(
+      self._tf_ifft_for_rank(rank),
+      (re + im).astype(np_ctype), fft_length, rtol=tol, atol=tol)
 
   def test_invalid_args(self):
     # Test case for GitHub issue 55263
