@@ -60,7 +60,7 @@ using KernelArg = std::variant<DeviceAddressBase, TensorMap, int64_t>;
 class KernelArgs {
  public:
   template <typename T>
-  using IsKernelArgs = std::enable_if_t<std::is_base_of<KernelArgs, T>::value>;
+  using IsKernelArgs = std::enable_if_t<std::is_base_of_v<KernelArgs, T>>;
 
   enum class Kind {
     // A list of type-erased DeviceAddressBase pointers to on-device memory.
