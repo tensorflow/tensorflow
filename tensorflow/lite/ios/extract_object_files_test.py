@@ -17,11 +17,35 @@
 import io
 import os
 import pathlib
+import struct
 from typing import List
 from absl.testing import parameterized
 from tensorflow.lite.ios import extract_object_files
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
+
+
+def _build_archive(entries):
+  """Builds a BSD variant ar archive in memory from (name, content) pairs."""
+  buf = io.BytesIO()
+  buf.write(b'!<arch>\n')
+  for name, content in entries:
+    name_field = name.encode('ascii').ljust(16)
+    size_field = str(len(content)).encode('ascii').ljust(10)
+    header = struct.pack(
+        '=16s12s6s6s8s10s2s',
+        name_field,
+        b'0           ',
+        b'0     ',
+        b'0     ',
+        b'100664  ',
+        size_field,
+        b'`\n')
+    buf.write(header)
+    buf.write(content)
+    if len(content) % 2 == 1:
+      buf.write(b'\n')
+  return buf.getvalue()
 
 
 class ExtractObjectFilesTest(parameterized.TestCase):
@@ -72,6 +96,36 @@ class ExtractObjectFilesTest(parameterized.TestCase):
         extract_object_files.extract_object_files(
             archive_file,
             self.create_tempdir().full_path)
+
+  def test_sha256_deduplication_skips_identical_content(self):
+    dest_dir = self.create_tempdir().full_path
+    identical_content = b'sha256 dedup test content'
+    archive_data = _build_archive([
+        ('foo.o', identical_content),
+        ('foo.o', identical_content),
+    ])
+    with io.BytesIO(archive_data) as archive_file:
+      extract_object_files.extract_object_files(archive_file, dest_dir)
+    self.assertCountEqual(['foo.o'], os.listdir(dest_dir))
+    actual_content = pathlib.Path(os.path.join(dest_dir, 'foo.o')).read_bytes()
+    self.assertEqual(identical_content, actual_content)
+
+  def test_sha256_deduplication_keeps_different_content(self):
+    dest_dir = self.create_tempdir().full_path
+    content_a = b'first version of foo'
+    content_b = b'second version of foo'
+    archive_data = _build_archive([
+        ('foo.o', content_a),
+        ('foo.o', content_b),
+    ])
+    with io.BytesIO(archive_data) as archive_file:
+      extract_object_files.extract_object_files(archive_file, dest_dir)
+    self.assertCountEqual(['foo.o', 'foo_1.o'], os.listdir(dest_dir))
+    self.assertEqual(content_a,
+                     pathlib.Path(os.path.join(dest_dir, 'foo.o')).read_bytes())
+    self.assertEqual(content_b,
+                     pathlib.Path(
+                         os.path.join(dest_dir, 'foo_1.o')).read_bytes())
 
 
 if __name__ == '__main__':
