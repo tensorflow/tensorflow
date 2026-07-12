@@ -639,6 +639,34 @@ class ArrayMethodsTest(test.TestCase):
     got = def_function.function(f, jit_compile=True)(x)
     self.assertAllEqual(got, expected)
 
+  def testCompressDynamicShape(self):
+    # #122563: under `@tf.function` with dynamic (`None`) dimensions,
+    # `condition.shape[0]` / `a.shape[axis]` are `None` and cannot be compared
+    # in Python. Tracing with an unknown-length signature must succeed (no
+    # `None` comparison error) and, from a single trace, match `np.compress`
+    # across equal, shorter, and longer condition lengths.
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=[None], dtype=dtypes.bool),
+        tensor_spec.TensorSpec(shape=[None], dtype=dtypes.float32),
+    ])
+    def f(condition, a):
+      return np_array_ops.compress(condition, a)
+
+    a = np.array([1., 2., 3., 4.], np.float32)
+    # Equal length.
+    self.assertAllEqual(
+        f(np.array([True, False, True, False]), a),
+        np.compress([True, False, True, False], a))
+    # Condition shorter than `a`: trailing entries of `a` are dropped.
+    self.assertAllEqual(
+        f(np.array([True, False]), a), np.compress([True, False], a))
+    # Condition longer than `a` (extra entry is False, so still valid in numpy):
+    # the old code hit `boolean_mask`'s "Dimensions must be equal" error here.
+    a3 = np.array([1., 2., 3.], np.float32)
+    self.assertAllEqual(
+        f(np.array([True, False, True, False]), a3),
+        np.compress([True, False, True, False], a3))
+
   def testCopy(self):
 
     def run_test(arr, *args, **kwargs):
