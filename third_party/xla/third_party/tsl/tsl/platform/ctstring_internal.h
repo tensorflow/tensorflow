@@ -433,6 +433,8 @@ static inline void TF_TString_AppendN(TF_TString *dst, const char *src,
 
   size_t dst_size = TF_TString_GetSize(dst);
 
+  if (src_size > SIZE_MAX - dst_size) return;
+
   // For append use cases, we want to ensure amortized growth.
   TF_TString_ReserveAmortized(dst, dst_size + src_size);
   char *dst_c = TF_TString_ResizeUninitialized(dst, dst_size + src_size);

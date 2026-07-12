@@ -405,3 +405,17 @@ TEST(TF_CTStringTest, OffsetType) {
     EXPECT_EQ(0, ::memcmp(str, TF_TString_GetDataPointer(offsets), str_size));
   }
 }
+
+TEST(TF_CTStringTest, AppendNOverflowGuard) {
+  TF_TString dst;
+  TF_TString_Init(&dst);
+  TF_TString_AppendN(&dst, "hello", 5);
+
+  // SIZE_MAX as src_size: 5 + SIZE_MAX wraps to 4 — guard must reject this.
+  TF_TString_AppendN(&dst, "x", SIZE_MAX);
+
+  EXPECT_EQ(5, TF_TString_GetSize(&dst));
+  EXPECT_STREQ("hello", TF_TString_GetDataPointer(&dst));
+
+  TF_TString_Dealloc(&dst);
+}
