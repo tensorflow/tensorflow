@@ -860,24 +860,19 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
             << while_cond_root->ToString();
     optional<int64_t> trips =
         CheckedSubtract(*while_cond_bound_val, *indvar_init_val);
-    if (trips) {
-      const int64_t remainder = std::remainder(*trips, trip_count_step);
-      const int64_t div = std::floor(*trips / trip_count_step);
-      if (remainder == 0) {
-        return std::max(int64_t{0}, div);
-      }
-      trips = CheckedAdd(div, 1);
-      if (!trips) {
-        VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX.";
-        return nullopt;
-      }
-      if (*trips < *while_cond_bound_val) {
-        return std::max(int64_t{0}, *trips);
-      }
-      return std::max(int64_t{0}, div);
+    if (!trips) {
+      VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX.";
+      return nullopt;
     }
-    VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX.";
-    return nullopt;
+    if (*trips <= 0) {
+      return 0;
+    }
+    trips = CheckedAdd(*trips, trip_count_step - 1);
+    if (!trips) {
+      VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX.";
+      return nullopt;
+    }
+    return *trips / trip_count_step;
   }
 
   // Handle `i = init; i <= N; i+=k`.
@@ -893,12 +888,10 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
       VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX";
       return nullopt;
     }
-    trips = CheckedAdd(std::floor(*trips / trip_count_step), 1);
-    if (!trips) {
-      VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX";
-      return nullopt;
+    if (*trips < 0) {
+      return 0;
     }
-    return std::max<int64_t>(0, *trips);
+    return *trips / trip_count_step + 1;
   }
 
   VLOG(2) << "Pattern-match failed: while condition follows unknown pattern: "
