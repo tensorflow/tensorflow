@@ -603,14 +603,6 @@ def _irfft_grad_helper(rank, rfft_fn):
       complex_dtype = _dtypes.complex128
     is_odd = _math_ops.mod(fft_length[-1], 2)
     original_input_shape = _array_ops.shape(op.inputs[0])
-    input_last_dimension = _math_ops.minimum(
-        original_input_shape[-1],
-        fft_length[-1]//2 + 1
-    )
-    mask = _array_ops.concat(
-        [[1.0], 2.0 * _array_ops.ones(
-            [input_last_dimension - 2 + is_odd], real_dtype),
-         _array_ops.ones([1 - is_odd], real_dtype)], 0)
 
     rsize = _math_ops.reciprocal(_math_ops.cast(
         _fft_size_for_grad(grad, rank), real_dtype))
@@ -620,6 +612,11 @@ def _irfft_grad_helper(rank, rfft_fn):
     # symmetric components of the RFFT by a factor of two, since these
     # components are de-duplicated in the RFFT.
     the_rfft = rfft_fn(grad, fft_length)
+    rfft_last_dimension = _array_ops.shape(the_rfft)[-1]
+    mask = _array_ops.concat(
+        [[1.0], 2.0 * _array_ops.ones(
+            [rfft_last_dimension - 2 + is_odd], real_dtype),
+         _array_ops.ones([1 - is_odd], real_dtype)], 0)
     return (
         _maybe_pad_for_rfft(
             the_rfft
