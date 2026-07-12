@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -45,8 +46,6 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace stream_executor::gpu {
@@ -138,7 +137,8 @@ absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateEmptyCmd(
 
 absl::StatusOr<const CommandBuffer::Command*>
 GpuCommandBuffer::CreateLaunchWithPackedArgs(
-    const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
+    const ThreadDim& threads, const BlockDim& blocks,
+    const std::optional<ClusterDim>& cluster_dims, const Kernel& kernel,
     const KernelArgsPackedArrayBase& packed_args,
     absl::Span<const Command* const> dependencies, StreamPriority priority) {
   RETURN_IF_ERROR(CheckInState(State::kCreate));
@@ -147,30 +147,32 @@ GpuCommandBuffer::CreateLaunchWithPackedArgs(
   ASSIGN_OR_RETURN(
       GraphNodeHandle handle,
       CreateKernelNode(ToGraphNodeDependencies(dependencies), priority, threads,
-                       blocks, kernel, packed_args));
+                       blocks, cluster_dims, kernel, packed_args));
 
   return AppendCommand(GpuCommand{handle});
 }
 
 absl::Status GpuCommandBuffer::UpdateLaunchWithPackedArgs(
     const Command* command, const ThreadDim& threads, const BlockDim& blocks,
-    const Kernel& kernel, const KernelArgsPackedArrayBase& packed_args) {
+    const std::optional<ClusterDim>& cluster_dims, const Kernel& kernel,
+    const KernelArgsPackedArrayBase& packed_args) {
   RETURN_IF_ERROR(CheckInState(State::kUpdate));
   auto* gpu_command = absl::down_cast<const GpuCommand*>(command);
-  return UpdateKernelNode(gpu_command->handle, threads, blocks, kernel,
-                          packed_args);
+  return UpdateKernelNode(gpu_command->handle, threads, blocks, cluster_dims,
+                          kernel, packed_args);
 }
 
 absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateLaunch(
-    const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
+    const ThreadDim& threads, const BlockDim& blocks,
+    const std::optional<ClusterDim>& cluster_dims, const Kernel& kernel,
     const KernelArgs& args, absl::Span<const Command* const> dependencies,
     StreamPriority priority) {
   RETURN_IF_ERROR(CheckInState(State::kCreate));
 
   // If arguments are already packed we can just launch the kernel.
   if (auto* packed = DynCast<KernelArgsPackedArrayBase>(&args)) {
-    return CreateLaunchWithPackedArgs(threads, blocks, kernel, *packed,
-                                      dependencies, priority);
+    return CreateLaunchWithPackedArgs(threads, blocks, cluster_dims, kernel,
+                                      *packed, dependencies, priority);
   }
 
   // For device memory array we rely on a custom kernel arguments packing.
@@ -183,24 +185,23 @@ absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateLaunch(
     }
 
     ASSIGN_OR_RETURN(auto packed, pack(kernel, *device_mem));
-    return CreateLaunchWithPackedArgs(threads, blocks, kernel, *packed,
-                                      dependencies, priority);
+    return CreateLaunchWithPackedArgs(threads, blocks, cluster_dims, kernel,
+                                      *packed, dependencies, priority);
   }
 
   return absl::InternalError("Unsupported kernel arguments type");
 }
 
-absl::Status GpuCommandBuffer::UpdateLaunch(const Command* command,
-                                            const ThreadDim& threads,
-                                            const BlockDim& blocks,
-                                            const Kernel& kernel,
-                                            const KernelArgs& args) {
+absl::Status GpuCommandBuffer::UpdateLaunch(
+    const Command* command, const ThreadDim& threads, const BlockDim& blocks,
+    const std::optional<ClusterDim>& cluster_dims, const Kernel& kernel,
+    const KernelArgs& args) {
   RETURN_IF_ERROR(CheckInState(State::kUpdate));
 
   // If arguments are already packed we can just launch the kernel.
   if (auto* packed = DynCast<KernelArgsPackedArrayBase>(&args)) {
-    return UpdateLaunchWithPackedArgs(command, threads, blocks, kernel,
-                                      *packed);
+    return UpdateLaunchWithPackedArgs(command, threads, blocks, cluster_dims,
+                                      kernel, *packed);
   }
 
   // For device memory array we rely on a custom kernel arguments packing.
@@ -213,8 +214,8 @@ absl::Status GpuCommandBuffer::UpdateLaunch(const Command* command,
     }
 
     ASSIGN_OR_RETURN(auto packed, pack(kernel, *device_mem));
-    return UpdateLaunchWithPackedArgs(command, threads, blocks, kernel,
-                                      *packed);
+    return UpdateLaunchWithPackedArgs(command, threads, blocks, cluster_dims,
+                                      kernel, *packed);
   }
 
   return absl::InternalError("Unsupported kernel arguments type");

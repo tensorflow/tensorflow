@@ -1200,6 +1200,10 @@ cc_library(
 cc_library(
     name = "tensor_map",
     hdrs = ["tensor_map.h"],
+    visibility = internal_visibility([
+        "//third_party/py/jax:__subpackages__",
+        ":friends",
+    ]),
 )
 
 cc_library(

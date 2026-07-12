@@ -16,9 +16,11 @@ limitations under the License.
 #include "xla/ffi/invoke.h"
 
 #include <exception>
+#include <utility>
 #include <variant>
 
 #include "absl/base/optimization.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -31,7 +33,6 @@ limitations under the License.
 #include "xla/ffi/ffi_structs.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla::ffi {
@@ -86,14 +87,17 @@ static XLA_FFI_ExecutionContext CreateExecutionContext(
 }
 
 template <typename Handler>
-static absl::StatusOr<XLA_FFI_Future*> Invoke(const XLA_FFI_Api* api,
-                                              Handler& handler,
-                                              CallFrame& call_frame,
-                                              const InvokeContext& context,
-                                              ExecutionStage stage) {
+static absl::StatusOr<XLA_FFI_Future*> Invoke(
+    const XLA_FFI_Api* api, Handler& handler, CallFrame& call_frame,
+    const InvokeContext& context, ExecutionStage stage,
+    absl::AnyInvocable<void(XLA_FFI_CallFrame*) &&> configure_call_frame) {
   XLA_FFI_ExecutionContext ctx = CreateExecutionContext(context);
   XLA_FFI_CallFrame ffi_call_frame =
       call_frame.Build(api, &ctx, static_cast<XLA_FFI_ExecutionStage>(stage));
+
+  if (configure_call_frame) {
+    std::move(configure_call_frame)(&ffi_call_frame);
+  }
 
   XLA_FFI_Error* error = nullptr;
 
@@ -132,41 +136,45 @@ static absl::Status BlockUntilReady(XLA_FFI_Future* future) {
   return ABSL_PREDICT_FALSE(av.IsError()) ? av.GetError() : absl::OkStatus();
 }
 
-absl::Status Invoke(const XLA_FFI_Api* api, Ffi& handler, CallFrame& call_frame,
-                    const InvokeContext& context, ExecutionStage stage) {
+absl::Status Invoke(
+    const XLA_FFI_Api* api, Ffi& handler, CallFrame& call_frame,
+    const InvokeContext& context, ExecutionStage stage,
+    absl::AnyInvocable<void(XLA_FFI_CallFrame*) &&> configure_call_frame) {
   ASSIGN_OR_RETURN(XLA_FFI_Future * future,
-                   Invoke<Ffi>(api, handler, call_frame, context, stage));
+                   Invoke<Ffi>(api, handler, call_frame, context, stage,
+                               std::move(configure_call_frame)));
   return BlockUntilReady(future);
 }
 
-absl::Status Invoke(const XLA_FFI_Api* api, XLA_FFI_Handler* handler,
-                    CallFrame& call_frame, const InvokeContext& context,
-                    XLA_FFI_ExecutionStage stage) {
-  ASSIGN_OR_RETURN(
-      XLA_FFI_Future * future,
-      Invoke<XLA_FFI_Handler*>(api, handler, call_frame, context,
-                               static_cast<ExecutionStage>(stage)));
+absl::Status Invoke(
+    const XLA_FFI_Api* api, XLA_FFI_Handler* handler, CallFrame& call_frame,
+    const InvokeContext& context, XLA_FFI_ExecutionStage stage,
+    absl::AnyInvocable<void(XLA_FFI_CallFrame*) &&> configure_call_frame) {
+  ASSIGN_OR_RETURN(XLA_FFI_Future * future,
+                   Invoke<XLA_FFI_Handler*>(api, handler, call_frame, context,
+                                            static_cast<ExecutionStage>(stage),
+                                            std::move(configure_call_frame)));
   return BlockUntilReady(future);
 }
 
-tsl::AsyncValueRef<tsl::Chain> InvokeAsync(const XLA_FFI_Api* api, Ffi& handler,
-                                           CallFrame& call_frame,
-                                           const InvokeContext& context,
-                                           ExecutionStage stage) {
+tsl::AsyncValueRef<tsl::Chain> InvokeAsync(
+    const XLA_FFI_Api* api, Ffi& handler, CallFrame& call_frame,
+    const InvokeContext& context, ExecutionStage stage,
+    absl::AnyInvocable<void(XLA_FFI_CallFrame*) &&> configure_call_frame) {
   ASSIGN_OR_RETURN(XLA_FFI_Future * future,
-                   Invoke<Ffi>(api, handler, call_frame, context, stage));
+                   Invoke<Ffi>(api, handler, call_frame, context, stage,
+                               std::move(configure_call_frame)));
   return TakeFuture(future);
 }
 
-tsl::AsyncValueRef<tsl::Chain> InvokeAsync(const XLA_FFI_Api* api,
-                                           XLA_FFI_Handler* handler,
-                                           CallFrame& call_frame,
-                                           const InvokeContext& context,
-                                           XLA_FFI_ExecutionStage stage) {
-  ASSIGN_OR_RETURN(
-      XLA_FFI_Future * future,
-      Invoke<XLA_FFI_Handler*>(api, handler, call_frame, context,
-                               static_cast<ExecutionStage>(stage)));
+tsl::AsyncValueRef<tsl::Chain> InvokeAsync(
+    const XLA_FFI_Api* api, XLA_FFI_Handler* handler, CallFrame& call_frame,
+    const InvokeContext& context, XLA_FFI_ExecutionStage stage,
+    absl::AnyInvocable<void(XLA_FFI_CallFrame*) &&> configure_call_frame) {
+  ASSIGN_OR_RETURN(XLA_FFI_Future * future,
+                   Invoke<XLA_FFI_Handler*>(api, handler, call_frame, context,
+                                            static_cast<ExecutionStage>(stage),
+                                            std::move(configure_call_frame)));
   return TakeFuture(future);
 }
 

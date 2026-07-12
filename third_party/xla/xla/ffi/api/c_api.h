@@ -47,6 +47,7 @@ typedef struct XLA_FFI_InternalApi XLA_FFI_InternalApi;  // Forward declare
 
 typedef enum {
   XLA_FFI_Extension_Metadata = 1,
+  XLA_FFI_Extension_RecordFrame = 2,
 } XLA_FFI_Extension_Type;
 
 typedef struct XLA_FFI_Extension_Base {
@@ -91,7 +92,7 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Extension_Base, next);
 // Minor changes include:
 // * Adding a new field to the XLA_FFI_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define XLA_FFI_API_MINOR 3
+#define XLA_FFI_API_MINOR 5
 
 struct XLA_FFI_Api_Version {
   size_t struct_size;
@@ -378,7 +379,13 @@ typedef XLA_FFI_Error* XLA_FFI_Future_SetError(
 // (3) Initialize - called before the execution after acquiring all the
 //     resources requested in the prepare stage.
 //
-// (4) Execute - called when FFI handler is executed. Note that FFI handler
+// (4) Record - called when FFI handler is called as a part of command buffer
+//     capture (e.g. CUDA graph capture on GPU backend). FFI handler should not
+//     have any side effects on the arguments as they might contain
+//     uninitialized values. Can be called multiple times to create or update
+//     the state attached to the FFI handler instance.
+//
+// (5) Execute - called when FFI handler is executed. Note that FFI handler
 //     can be called as a part of command buffer capture (CUDA graph capture
 //     on GPU backend) and argument buffers might contain uninitialized
 //     values in this case.
@@ -398,6 +405,7 @@ typedef enum {
   XLA_FFI_ExecutionStage_PREPARE = 1,
   XLA_FFI_ExecutionStage_INITIALIZE = 2,
   XLA_FFI_ExecutionStage_EXECUTE = 3,
+  XLA_FFI_ExecutionStage_RECORD = 4,
 } XLA_FFI_ExecutionStage;
 
 struct XLA_FFI_Args {
@@ -468,6 +476,7 @@ typedef struct XLA_FFI_Handler_Bundle {
   XLA_FFI_Handler* prepare;      // optional
   XLA_FFI_Handler* initialize;   // optional
   XLA_FFI_Handler* execute;      // required
+  XLA_FFI_Handler* record;       // optional
 } XLA_FFI_Handler_Bundle;
 
 enum XLA_FFI_Handler_TraitsBits {
@@ -741,6 +750,93 @@ struct XLA_FFI_Metadata_Extension {
 };
 
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Metadata_Extension, metadata);
+
+//===----------------------------------------------------------------------===//
+// Command Buffer Recording API (FFI Record)
+//===----------------------------------------------------------------------===//
+
+typedef struct XLA_FFI_RecordContext XLA_FFI_RecordContext;
+typedef struct XLA_FFI_Command XLA_FFI_Command;
+
+typedef enum XLA_FFI_RecordAction {
+  XLA_FFI_RecordAction_Create = 0,
+  XLA_FFI_RecordAction_Update = 1,
+} XLA_FFI_RecordAction;
+
+typedef enum XLA_FFI_SourceFormat {
+  XLA_FFI_SourceFormat_PTX = 0,
+  XLA_FFI_SourceFormat_CUBIN = 1,
+} XLA_FFI_SourceFormat;
+
+typedef struct XLA_FFI_Dim3 {
+  int32_t x;
+  int32_t y;
+  int32_t z;
+} XLA_FFI_Dim3;
+
+typedef struct XLA_FFI_LaunchDims {
+  XLA_FFI_Dim3 grid;
+  XLA_FFI_Dim3 block;
+  // Cluster dims are optional, if not supported by the platform, this field
+  // should be set to nullptr.
+  XLA_FFI_Dim3* cluster;
+} XLA_FFI_LaunchDims;
+
+typedef struct XLA_FFI_KernelArg {
+  const void* arg_address;
+  size_t size;
+} XLA_FFI_KernelArg;
+
+typedef struct XLA_FFI_KernelArgs {
+  const XLA_FFI_KernelArg* args;
+  size_t num_args;
+} XLA_FFI_KernelArgs;
+
+typedef struct XLA_FFI_RecordApi {
+  XLA_FFI_Error* (*create_launch)(
+      XLA_FFI_RecordContext* ctx, const char* kernel_name,
+      const void* kernel_data, size_t kernel_size, XLA_FFI_SourceFormat format,
+      XLA_FFI_LaunchDims launch_dims, uint32_t shared_mem_bytes,
+      const XLA_FFI_KernelArgs* args,
+      const XLA_FFI_Command* const* dependencies, uint32_t num_dependencies,
+      const XLA_FFI_Command** out_command);
+
+  XLA_FFI_Error* (*update_launch)(XLA_FFI_RecordContext* ctx,
+                                  const XLA_FFI_Command* command,
+                                  const XLA_FFI_KernelArgs* args);
+
+  XLA_FFI_Error* (*create_memcpy_d2d)(
+      XLA_FFI_RecordContext* ctx, void* dst, void* src, size_t size,
+      const XLA_FFI_Command* const* dependencies, uint32_t num_dependencies,
+      const XLA_FFI_Command** out_command);
+
+  XLA_FFI_Error* (*update_memcpy_d2d)(XLA_FFI_RecordContext* ctx,
+                                      const XLA_FFI_Command* command, void* dst,
+                                      void* src, size_t size);
+
+  XLA_FFI_Error* (*request_stream_capture)(XLA_FFI_RecordContext* ctx);
+
+  XLA_FFI_Error* (*create_empty_command)(
+      XLA_FFI_RecordContext* ctx, const XLA_FFI_Command* const* dependencies,
+      uint32_t num_dependencies, const XLA_FFI_Command** out_command);
+} XLA_FFI_RecordApi;
+
+typedef struct XLA_FFI_RecordFrame {
+  XLA_FFI_CallFrame* call_frame;
+  XLA_FFI_RecordContext* record_ctx;
+  const XLA_FFI_RecordApi* api;
+  XLA_FFI_RecordAction action;
+  const XLA_FFI_Command** commands;
+  size_t* num_commands;
+  size_t max_commands;
+} XLA_FFI_RecordFrame;
+
+typedef struct XLA_FFI_RecordFrame_Extension {
+  XLA_FFI_Extension_Base extension_base;
+  XLA_FFI_RecordFrame* record_frame;
+} XLA_FFI_RecordFrame_Extension;
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_RecordFrame_Extension, record_frame);
 
 //===----------------------------------------------------------------------===//
 // API access
