@@ -891,7 +891,12 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
     if (*trips < 0) {
       return 0;
     }
-    return *trips / trip_count_step + 1;
+    optional<int64_t> trip_count = CheckedAdd(*trips / trip_count_step, 1);
+    if (!trip_count) {
+      VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX";
+      return nullopt;
+    }
+    return *trip_count;
   }
 
   VLOG(2) << "Pattern-match failed: while condition follows unknown pattern: "
