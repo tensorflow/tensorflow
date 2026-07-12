@@ -84,13 +84,13 @@ sparse matrices efficiently typically using three arrays:
 
 Consider an input sparse matrix representing batches of IDs:
 
-    
+
     [
         [id_A],                 // Sample 0
         [id_A, id_B, id_C],     // Sample 1
         [id_B, id_B, id_D],     // Sample 2 (note duplicate id_B)
     ]
-    
+
 
 After conversion to COO format (and potentially after deduplicating IDs within
 the same sample):

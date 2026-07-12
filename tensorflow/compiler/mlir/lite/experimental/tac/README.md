@@ -90,12 +90,12 @@ class MyCustomHardware : public TargetHardware {
   mlir::TypeID GetTypeId() const override {
     return mlir::TypeID::get<MyCustomHardware>();
   }
-  
+
   bool IsOpSupported(mlir::Operation* op) const override {
     // check whether the op is supported, if the user has they own dialect,
     // this can be target dialect legalization process.
   }
-  
+
  double GetHardwareSwitchingCost(const TargetHardware* from,
                                  size_t buffer_size) const override {
     // Get the hardware switching cost from the source hardware.
@@ -104,7 +104,7 @@ class MyCustomHardware : public TargetHardware {
   double GetOpCost(mlir::Operation* op) const override {
     // call customized cost model.
   }
-  
+
   mlir::RewritePatternSet GetTransformations(
       MLIRContext* context) const override {
     // customized transformations patterns: ops lowering/fusion, layout
@@ -128,12 +128,12 @@ supported by "GPU". So we will end up with 3 subgraphs as shown in the diagram.
     different hardware backends. As shown in the below diagram, the red & the
     yellow subgraph will be duplicated as "alternative subgraph view" for "CPU".
     "C" op can be lowered into "G" + "H" op which can be supported by "GPU".
-    
+
 ![Target Optimization](g3doc/images/target_optimization.png)
 
 3  Estimate the costs for each subgraph (and their alternative views)
     based on the hardware cost model. See the following diagram.
-    
+
 ![Estimate costs](g3doc/images/compute_cost.png)
 
 4 Pick the proper subgraphs from the alternative views for execution based on

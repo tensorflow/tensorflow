@@ -24,7 +24,7 @@ The model submitted for the OVIC and full implementation code for training, eval
 
 ## Requirements
 <!--
-• Provide description of the model 
+• Provide description of the model
 • Provide brief information of the algorithms used
 -->
 
@@ -78,7 +78,7 @@ The model tar file contains the followings:
 
 ## Training
 <!--
-• Provide detailed training information (preprocessing, hyperparameters, random seeds, and environment) 
+• Provide detailed training information (preprocessing, hyperparameters, random seeds, and environment)
 • Provide a command line example for training.
 -->
 

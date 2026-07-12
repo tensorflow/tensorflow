@@ -433,7 +433,7 @@ For each `ChunkedField` in a `ChunkedMessage`:
    message A {
      ...
    }
-   
+
    chunked_message = {
      chunked_fields {  // empty field_tag, belongs to the parent chunked_message
        field_tag { }

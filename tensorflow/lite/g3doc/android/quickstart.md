@@ -79,7 +79,7 @@ in TensorFlow Lite format look for objects in a live video stream from an
 Android device's camera. The code for this feature is primarily in these files:
 
 *   [ObjectDetectorHelper.kt](https://github.com/tensorflow/examples/blob/master/lite/examples/object_detection/android_play_services/app/src/main/java/org/tensorflow/lite/examples/objectdetection/ObjectDetectorHelper.kt) -
-    Initializes the runtime environment, enables hardware acceleration, and 
+    Initializes the runtime environment, enables hardware acceleration, and
     runs the object detection ML model.
 *   [CameraFragment.kt](https://github.com/tensorflow/examples/blob/master/lite/examples/object_detection/android_play_services/app/src/main/java/org/tensorflow/lite/examples/objectdetection/fragments/CameraFragment.kt) -
     Builds the camera image data stream, prepares data for the model, and
@@ -272,7 +272,7 @@ To prepare data for processing by the model:
         image.use { bitmapBuffer.copyPixelsFromBuffer(image.planes[0].buffer) }
         val imageRotation = image.imageInfo.rotationDegrees
         objectDetectorHelper.detect(bitmapBuffer, imageRotation)
-    }    
+    }
     ```
 1.  Complete any final data transformations and add the image data to a
     `TensorImage` object, as shown in the `ObjectDetectorHelper.detect()`
@@ -321,7 +321,7 @@ To handle model prediction results:
         tensorImage.height,
         tensorImage.width)
     ```
-1.  Act on the results, such as displaying the prediction to the user. The 
+1.  Act on the results, such as displaying the prediction to the user. The
     example app draws an overlay on the `CameraPreview` object to show the result:
     ```
     override fun onResults(

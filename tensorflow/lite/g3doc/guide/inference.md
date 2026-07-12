@@ -628,11 +628,11 @@ Python example:
 ```python
 # Load the TFLite model in TFLite Interpreter
 interpreter = tf.lite.Interpreter(model_path=TFLITE_FILE_PATH)
-  
+
 # Resize input shape for dynamic shape model and allocate tensor
 interpreter.resize_tensor_input(interpreter.get_input_details()[0]['index'], [3, 10])
 interpreter.allocate_tensors()
-  
+
 # Get input and output tensors.
 input_details = interpreter.get_input_details()
 output_details = interpreter.get_output_details()

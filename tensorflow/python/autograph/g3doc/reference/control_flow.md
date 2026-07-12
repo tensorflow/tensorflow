@@ -252,7 +252,7 @@ For example, the following loop is unrolled, even though the list contains
 ```
 l = [tf.constant(1), tf.constant(2), tf.constant(3)]
 for i in l:
-  tf.print(i)  # This is unrolled - three `tf.print`s are built in the graph. 
+  tf.print(i)  # This is unrolled - three `tf.print`s are built in the graph.
 ```
 
 If you wish for the loop to run as a TensorFlow loop, stack the loop:

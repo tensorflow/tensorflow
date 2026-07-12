@@ -1,6 +1,6 @@
 ## SavedModel Fingerprinting
 
-This document describes the implementation details of SavedModel fingerprinting. 
+This document describes the implementation details of SavedModel fingerprinting.
 The design document (RFC) can be found [here](https://github.com/tensorflow/community/pull/415).
 
 ### Implementation

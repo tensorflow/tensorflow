@@ -194,7 +194,7 @@ To change to a release build:
     ![setting up metal options](../../../images/lite/ios/iosmetal.png)
 1.  Make sure to select Release-only builds on 64-bit architecture. Under
     **Project navigator > tflite_camera_example > PROJECT > your_project_name >
-    Build Settings** set **Build Active Architecture Only > Release** to 
+    Build Settings** set **Build Active Architecture Only > Release** to
     **Yes**.
     ![setting up release options](../../../images/lite/ios/iosrelease.png)
 

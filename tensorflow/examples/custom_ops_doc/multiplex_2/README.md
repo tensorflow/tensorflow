@@ -106,7 +106,7 @@ Note that:
     binary ops) and has error checking to ensure that the two inputs have the
     same shape. Since `multiplex_2` has three inputs, two calls to `Merge` are
     used to assert that all three inputs are the same shape.
-    
+
 ### Step 2 - Register the op implementation (kernel)
 
 This example registers the kernel for both CPU and GPU. You can register the
