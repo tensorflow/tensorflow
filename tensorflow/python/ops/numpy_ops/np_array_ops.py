@@ -452,15 +452,27 @@ def compress(condition, a, axis=None):  # pylint: disable=redefined-outer-name,m
 
   assert axis >= 0 and axis < a.ndim
 
-  # `tf.boolean_mask` requires `a`'s size along `axis` to match `condition`'s
-  # length. `np.compress` ignores the entries of `a` beyond `len(condition)`, so
-  # we slice `a` down to `condition`'s length rather than padding `condition` up
-  # to `a`'s size with `False`. Both are equivalent, but slicing keeps the
-  # result bounded by `len(condition)` instead of `a.shape[axis]`; under XLA the
-  # padded version yields a looser dynamic bound that fails to compile when the
-  # result feeds an op requiring a smaller static extent (see #122055).
-  if condition.shape[0] < a.shape[axis]:
-    a = array_ops.gather(a, math_ops.range(condition.shape[0]), axis=axis)
+  # `tf.boolean_mask` requires `a`'s size along `axis` to equal `condition`'s
+  # length. `np.compress` instead pairs `condition[k]` with `a[k]` along `axis`
+  # and drops any entries of `a` past `len(condition)`. Slice both down to their
+  # overlap so the mask always matches and the result stays bounded by
+  # `len(condition)` rather than `a.shape[axis]`: padding `condition` up to
+  # `a`'s size gives XLA a looser dynamic bound that fails to compile downstream
+  # (see #122055). Slicing to the overlap also avoids the `boolean_mask`
+  # "Dimensions must be equal" error when `condition` is longer than `a`.
+  cond_len = condition.shape[0]
+  a_len = a.shape[axis]
+  if cond_len is not None and a_len is not None:
+    # Static shapes: keep the slice lengths as Python ints so downstream shape
+    # inference (and XLA's static bound) sees the tight `len(condition)` extent.
+    overlap = min(cond_len, a_len)
+  else:
+    # Dynamic (`@tf.function` with `None` dims): `condition.shape[0]` /
+    # `a.shape[axis]` are `None`, so fall back to symbolic tensor shapes.
+    overlap = math_ops.minimum(
+        array_ops.shape(condition)[0], array_ops.shape(a)[axis])
+  condition = condition[:overlap]
+  a = a[tuple([slice(None)] * axis + [slice(0, overlap)])]
   return array_ops.boolean_mask(tensor=a, mask=condition, axis=axis)
 
 
