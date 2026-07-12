@@ -389,7 +389,9 @@ module {
 }
 
 // CHECK-LABEL: tt.func @apply_mask_to_unaligned_offset_with_perfect_total_size
-// CHECK: %[[MASK:.*]] = arith.cmpi slt
+// CHECK: %[[RIGHT_MASK:.*]] = arith.cmpi slt
+// CHECK: %[[LEFT_MASK:.*]] = arith.cmpi sge
+// CHECK: %[[MASK:.*]] = arith.andi %[[RIGHT_MASK]], %[[LEFT_MASK]]
 // CHECK: tt.load {{.*}}, %[[MASK]], {{.*}}
 
 // CHECK-TDM-LABEL: tt.func @apply_mask_to_unaligned_offset_with_perfect_total_size
@@ -421,7 +423,9 @@ module {
 }
 
 // CHECK-LABEL: tt.func @apply_mask_to_aligned_offset_with_out_of_bounds_reads_at_end
-// CHECK: %[[MASK:.*]] = arith.cmpi slt
+// CHECK: %[[RIGHT_MASK:.*]] = arith.cmpi slt
+// CHECK: %[[LEFT_MASK:.*]] = arith.cmpi sge
+// CHECK: %[[MASK:.*]] = arith.andi %[[RIGHT_MASK]], %[[LEFT_MASK]]
 // CHECK: tt.load {{.*}}, %[[MASK]], {{.*}}
 
 // CHECK-TDM-LABEL: tt.func @apply_mask_to_aligned_offset_with_out_of_bounds_reads_at_end
