@@ -135,8 +135,7 @@ def _if_spawn_run_and_exit():
   # the process is spawned. Examples of x are "forkserver" or
   # "semaphore_tracker".
   is_spawned = ('-c' in sys.argv[1:] and
-                sys.argv[sys.argv.index('-c') +
-                         1].startswith('from multiprocessing.'))
+                'from multiprocessing.' in sys.argv[sys.argv.index('-c') + 1])
 
   if not is_spawned:
     return
