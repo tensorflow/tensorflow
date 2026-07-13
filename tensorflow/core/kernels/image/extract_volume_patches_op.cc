@@ -49,11 +49,12 @@ static inline void ParseAttributeVec5(OpKernelConstruction* context,
                                       const std::string& attr_name,
                                       std::vector<int32_t>* attr) {
   OP_REQUIRES_OK(context, context->GetAttr(attr_name, attr));
+  OP_REQUIRES(context, (*attr)[0] == 1 && (*attr)[4] == 1,
+              absl::UnimplementedError(
+                  absl::StrCat("Only support ", attr_name, " across space.")));
   OP_REQUIRES(
-      context, (*attr)[0] == 1 && (*attr)[4] == 1,
-      errors::Unimplemented("Only support ", attr_name, " across space."));
-  OP_REQUIRES(context, (*attr)[1] >= 1 && (*attr)[2] >= 1 && (*attr)[3] >= 1,
-              errors::OutOfRange(attr_name, " is out of range."));
+      context, (*attr)[1] >= 1 && (*attr)[2] >= 1 && (*attr)[3] >= 1,
+      absl::OutOfRangeError(absl::StrCat(attr_name, " is out of range.")));
 }
 
 template <typename Device, typename T>
@@ -71,9 +72,10 @@ class ExtractVolumePatchesOp : public UnaryOp<T> {
     // Input tensor is of the following dimensions:
     // [ batch, in_planes, in_rows, in_cols, channels ]
     const Tensor& input = context->input(0);
-    OP_REQUIRES(context, input.dims() == 5,
-                errors::InvalidArgument("input must be 5-dimensional",
-                                        input.shape().DebugString()));
+    OP_REQUIRES(
+        context, input.dims() == 5,
+        absl::InvalidArgumentError(absl::StrCat("input must be 5-dimensional",
+                                                input.shape().DebugString())));
 
     const int batch = input.dim_size(0);
     const int in_planes = input.dim_size(1);

@@ -89,8 +89,8 @@ struct IfrtIrProgramMemoryStats {
 class ProgramMemoryTracer {
  public:
   static absl::StatusOr<std::unique_ptr<ProgramMemoryTracer>> Create(
-      std::shared_ptr<CompiledIfrtIrProgram> program, xla::ifrt::Client* client,
-      xla::ifrt::DeviceListRef devices);
+      std::shared_ptr<CompiledIfrtIrProgram> program, Client* client,
+      DeviceListRef devices);
 
   // Gets the predicted memory states of the given IFRT IR program.
   absl::StatusOr<IfrtIrProgramMemoryStats> GetMemoryStats();
@@ -107,9 +107,8 @@ class ProgramMemoryTracer {
 
  private:
   ProgramMemoryTracer(std::shared_ptr<CompiledIfrtIrProgram> program,
-                      xla::ifrt::Client* client,
-                      xla::ifrt::DeviceListRef devices, std::string dump_dir,
-                      mlir::Liveness liveness)
+                      Client* client, DeviceListRef devices,
+                      std::string dump_dir, mlir::Liveness liveness)
       : program_(std::move(program)),
         client_(client),
         devices_(std::move(devices)),
@@ -117,16 +116,17 @@ class ProgramMemoryTracer {
         liveness_(std::move(liveness)) {}
 
   absl::Status GenerateEvents();
-  absl::Status GenerateEvents(xla::ifrt::CallLoadedExecutableOp call_loaded_op);
-  absl::Status GenerateEvents(xla::ifrt::RemapArraysOp remap_op);
-  absl::Status GenerateEvents(xla::ifrt::CopyArraysOp copy_arrays_op);
+  absl::Status GenerateEvents(CallLoadedExecutableOp call_loaded_op);
+  absl::Status GenerateEvents(RemapArraysOp remap_op);
+  absl::Status GenerateEvents(BitcastArraysOp bitcast_op);
+  absl::Status GenerateEvents(CopyArraysOp copy_arrays_op);
   absl::Status GenerateEvents(mlir::func::ReturnOp return_op);
 
   // Gets the per-device size of the array in bytes.
   // This function assumes that the size per device does not differ. This is a
   // fine assumption for now since all IFRT IR shardings have this limitation.
-  absl::StatusOr<int64_t> PerDeviceByteSize(xla::ifrt::IfrtArrayType array);
-  absl::StatusOr<int64_t> PerHostByteSize(xla::ifrt::IfrtArrayType array);
+  absl::StatusOr<int64_t> PerDeviceByteSize(IfrtArrayType array);
+  absl::StatusOr<int64_t> PerHostByteSize(IfrtArrayType array);
 
   absl::Status AllocateArray(mlir::Value value, absl::string_view created_by);
   absl::Status FreeArray(mlir::Value value);
@@ -134,8 +134,8 @@ class ProgramMemoryTracer {
   mlir::SymbolTableCollection symbol_table_;
   // The program for which the memory trace is being generated.
   std::shared_ptr<CompiledIfrtIrProgram> program_;
-  xla::ifrt::Client* client_;
-  xla::ifrt::DeviceListRef devices_;
+  Client* client_;
+  DeviceListRef devices_;
 
   // Directory where to dump the memory trace for the traced devices.
   std::string dump_dir_;

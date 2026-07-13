@@ -33,6 +33,7 @@ py_library(
         "saving_utils.py",
     ],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/checkpoint:graph_view",
         "//tensorflow/python/eager:def_function",

@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -118,6 +119,35 @@ TEST(SnapshotUtilTest, MetadataFileDoesntExist) {
   TF_ASSERT_OK(ReadMetadataFile(Env::Default(), LocalTempFilename(), &metadata,
                                 &file_exists));
   EXPECT_FALSE(file_exists);
+}
+
+TEST(SnapshotUtilTest, SnappyTensorSizeMismatch) {
+  // Generate ground-truth tensors for writing and reading.
+  std::vector<Tensor> tensors;
+  tensorflow::DataTypeVector dtypes;
+  GenerateTensorVector(dtypes, tensors);
+
+  std::string filename;
+  EXPECT_TRUE(Env::Default()->LocalTempFilename(&filename));
+
+  std::unique_ptr<Writer> writer;
+  TF_ASSERT_OK(Writer::Create(tensorflow::Env::Default(), filename,
+                              io::compression::kSnappy, 1, dtypes, &writer));
+
+  TF_ASSERT_OK(writer->WriteTensors(tensors));
+  TF_ASSERT_OK(writer->Close());
+
+  std::unique_ptr<Reader> reader;
+  tensorflow::DataTypeVector wrong_dtypes = dtypes;
+  wrong_dtypes.push_back(DT_INT64);
+  TF_ASSERT_OK(Reader::Create(Env::Default(), filename,
+                              io::compression::kSnappy, 1, wrong_dtypes,
+                              &reader));
+
+  std::vector<Tensor> read_tensors;
+  EXPECT_TRUE(absl::IsDataLoss(reader->ReadTensors(&read_tensors)));
+
+  TF_ASSERT_OK(Env::Default()->DeleteFile(filename));
 }
 
 void SnapshotReaderBenchmarkLoop(::testing::benchmark::State& state,

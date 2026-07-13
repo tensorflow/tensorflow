@@ -29,7 +29,7 @@ namespace xla {
 namespace {
 
 class SliceTest : public ClientLibraryTestRunnerMixin<
-                      HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {};
+                      HloPjRtInterpreterReferenceMixin<HloTestBase>> {};
 
 TEST_F(SliceTest, Slice2D) {
   XlaBuilder builder("slice_2d");

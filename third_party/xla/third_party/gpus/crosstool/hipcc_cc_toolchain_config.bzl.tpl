@@ -2,6 +2,8 @@
 
 load(
     "@bazel_tools//tools/cpp:cc_toolchain_config_lib.bzl",
+    "env_entry",
+    "env_set",
     "feature",
     "feature_set",
     "flag_group",
@@ -91,6 +93,23 @@ def _impl(ctx):
     supports_start_end_lib_feature = feature(
         name = "supports_start_end_lib",
         enabled = True,
+    )
+
+    # Set environment variables from action_env dict
+    env_entries = []
+    if ctx.attr.action_env:
+        for key, value in ctx.attr.action_env.items():
+            env_entries.append(env_entry(key = key, value = value))
+
+    compiler_env_feature = feature(
+        name = "compiler_env",
+        enabled = True,
+        env_sets = [
+            env_set(
+                actions = all_compile_actions + all_link_actions,
+                env_entries = env_entries,
+            ),
+        ] if env_entries else [],
     )
 
     default_compile_flags_feature = feature(
@@ -1072,6 +1091,22 @@ def _impl(ctx):
         ],
     )
 
+    clang_compiler_path_feature = feature(
+        name = "clang-compiler-path",
+        enabled = ctx.attr.clang_compiler_path != "",
+        env_sets = [
+            env_set(
+                actions = all_compile_actions + all_link_actions,
+                env_entries = [
+                    env_entry(
+                        key = "HOST_COMPILER",
+                        value = ctx.attr.clang_compiler_path,
+                    ),
+                ],
+            ),
+        ] if ctx.attr.clang_compiler_path else [],
+    )
+
     features = [
         dependency_file_feature,
         random_seed_feature,
@@ -1100,6 +1135,8 @@ def _impl(ctx):
         strip_debug_symbols_feature,
         coverage_feature,
         supports_pic_feature,
+        compiler_env_feature,
+        clang_compiler_path_feature,
     ] + (
         [
             supports_start_end_lib_feature,
@@ -1164,6 +1201,8 @@ cc_toolchain_config = rule(
         "host_compiler_path": attr.string(),
         "host_compiler_prefix": attr.string(),
         "linker_bin_path": attr.string(),
+        "action_env": attr.string_dict(),
+        "clang_compiler_path": attr.string(),
     },
     provides = [CcToolchainConfigInfo],
 )

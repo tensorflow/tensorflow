@@ -29,5 +29,5 @@ GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
           absl::bit_cast<void*>(
               &stream_executor::gpu::RedzoneAllocatorKernelImpl),
 
-          "repeat_buffer_kernel", arity);
+          "redzone_allocator_kernel", arity);
     }));

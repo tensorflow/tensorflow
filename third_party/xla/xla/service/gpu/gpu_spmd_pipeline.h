@@ -16,12 +16,14 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_SPMD_PIPELINE_H_
 #define XLA_SERVICE_GPU_GPU_SPMD_PIPELINE_H_
 
+#include <cstdint>
 #include <optional>
 
 #include "absl/functional/function_ref.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {

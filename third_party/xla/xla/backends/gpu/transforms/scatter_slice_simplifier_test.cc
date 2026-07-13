@@ -42,10 +42,10 @@ HloModule test_module
 }
 
 ENTRY main {
-  %indices = s32[4] parameter(0)
-  %updates = f32[4] parameter(1)
+  %indices = s32[4,1] parameter(0)
+  %updates = f32[4,1] parameter(1)
   %operands = f32[9] constant(0)
-  %scatter = f32[9] scatter(%operands, %indices, %updates), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32
+  %scatter = f32[9] scatter(%operands, %indices, %updates), update_window_dims={1}, inserted_window_dims={}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32
   ROOT %slice = f32[8] slice(%scatter), slice={[0:8]}
 }
   )")
@@ -69,10 +69,10 @@ HloModule test_module
 }
 
 ENTRY main {
-  %indices = s32[2] parameter(0)
-  %updates = f32[2,4,4] parameter(1)
+  %indices = s32[2,1] parameter(0)
+  %updates = f32[2,1,4,4] parameter(1)
   %operands = f32[5,4,4] constant(0)
-  %scatter = f32[5,4,4] scatter(%operands, %indices, %updates), update_window_dims={1,2}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32
+  %scatter = f32[5,4,4] scatter(%operands, %indices, %updates), update_window_dims={1,2,3}, inserted_window_dims={}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32
   ROOT %slice = f32[4,4,4] slice(%scatter), slice={[0:4], [0:4], [0:4]}
 }
   )")
@@ -100,12 +100,12 @@ HloModule test_module
 }
 
 ENTRY main {
-  %indices = s32[4] parameter(0)
-  %updates.0 = f32[4] parameter(1)
-  %updates.1 = f16[4] parameter(2)
+  %indices = s32[4,1] parameter(0)
+  %updates.0 = f32[4,1] parameter(1)
+  %updates.1 = f16[4,1] parameter(2)
   %operands.0 = f32[9] constant(0)
   %operands.1 = f16[9] constant(0)
-  %scatter = (f32[9], f16[9]) scatter(%operands.0, %operands.1, %indices, %updates.0, %updates.1), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32_add_F16
+  %scatter = (f32[9], f16[9]) scatter(%operands.0, %operands.1, %indices, %updates.0, %updates.1), update_window_dims={1}, inserted_window_dims={}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32_add_F16
   %gte.0 = f32[9] get-tuple-element(%scatter), index=0
   %slice.0 = f32[8] slice(%gte.0), slice={[0:8]}
   %gte.1 = f16[9] get-tuple-element(%scatter), index=1
@@ -139,50 +139,50 @@ HloModule test_module
 }
 
 slice_not_truncation {
-  %indices = s32[4] parameter(0)
-  %updates = f32[4] parameter(1)
+  %indices = s32[4,1] parameter(0)
+  %updates = f32[4,1] parameter(1)
   %operands = f32[9] constant(0)
-  %scatter = f32[9] scatter(%operands, %indices, %updates), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32
+  %scatter = f32[9] scatter(%operands, %indices, %updates), update_window_dims={1}, inserted_window_dims={}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32
   ROOT %slice = f32[8] slice(%scatter), slice={[1:9]}
 }
 
 slice_with_stride {
-  %indices = s32[4] parameter(0)
-  %updates = f32[4] parameter(1)
+  %indices = s32[4,1] parameter(0)
+  %updates = f32[4,1] parameter(1)
   %operands = f32[9] constant(0)
-  %scatter = f32[9] scatter(%operands, %indices, %updates), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32
+  %scatter = f32[9] scatter(%operands, %indices, %updates), update_window_dims={1}, inserted_window_dims={}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32
   ROOT %slice = f32[4] slice(%scatter), slice={[0:8:2]}
 }
 
 scatter_multiple_users {
-  %indices = s32[4] parameter(0)
-  %updates = f32[4] parameter(1)
+  %indices = s32[4,1] parameter(0)
+  %updates = f32[4,1] parameter(1)
   %operands = f32[9] constant(0)
-  %scatter = f32[9] scatter(%operands, %indices, %updates), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32
+  %scatter = f32[9] scatter(%operands, %indices, %updates), update_window_dims={1}, inserted_window_dims={}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32
   %slice = f32[8] slice(%scatter), slice={[0:8]}
   ROOT %tuple = (f32[9], f32[8]) tuple(%scatter, %slice)
 }
 
 scatter_incompatible_slices {
-  %indices = s32[2] parameter(0)
-  %updates = f32[2,4] parameter(1)
+  %indices = s32[2,1] parameter(0)
+  %updates = f32[2,1,4] parameter(1)
   %operands = f32[4,4] constant(0)
-  %scatter = f32[4,4] scatter(%operands, %indices, %updates), update_window_dims={1}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32
+  %scatter = f32[4,4] scatter(%operands, %indices, %updates), update_window_dims={1,2}, inserted_window_dims={}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32
   %slice.0 = f32[3,4] slice(%scatter), slice={[0:3], [0:4]}
   %slice.1 = f32[4,3] slice(%scatter), slice={[0:4], [0:3]}
   ROOT %tuple = (f32[3,4], f32[4,3]) tuple(%slice.0, %slice.1)
 }
 
 slice_not_found {
-  %indices = s32[4] parameter(0)
-  %updates = f32[4] parameter(1)
+  %indices = s32[4,1] parameter(0)
+  %updates = f32[4,1] parameter(1)
   %operands = f32[8] constant(0)
-  %scatter = f32[8] scatter(%operands, %indices, %updates), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32
+  %scatter = f32[8] scatter(%operands, %indices, %updates), update_window_dims={1}, inserted_window_dims={}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32
   ROOT %exp = f32[8] exponential(%scatter)
 }
 
 slice_update_dimensions {
-  %indices = s32[10] parameter(0)
+  %indices = s32[10,1] parameter(0)
   %updates = f32[10,1,128] parameter(1)
   %operands = f32[100,128] constant(0)
   %scatter = f32[100,128] scatter(%operands, %indices, %updates), update_window_dims={1,2}, inserted_window_dims={}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32
@@ -205,10 +205,10 @@ HloModule test_module
 }
 
 ENTRY main {
-  %indices = s32[4] parameter(0)
-  %updates = f32[4] parameter(1)
+  %indices = s32[4,1] parameter(0)
+  %updates = f32[4,1] parameter(1)
   %operands = f32[9] constant(0)
-  %scatter = f32[9] scatter(%operands, %indices, %updates), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32
+  %scatter = f32[9] scatter(%operands, %indices, %updates), update_window_dims={1}, inserted_window_dims={}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32
   %unary = f32[9] abs(%scatter)
   %slice.0 = f32[8] slice(%unary), slice={[0:8]}
   %binary = f32[9] maximum(%scatter, %operands)
@@ -242,10 +242,10 @@ HloModule test_module
 }
 
 ENTRY main {
-  %indices = s32[4] parameter(0)
-  %updates = f32[4] parameter(1)
+  %indices = s32[4,1] parameter(0)
+  %updates = f32[4,1] parameter(1)
   %operands = f32[9] constant(0)
-  %scatter = f32[9] scatter(%operands, %indices, %updates), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32
+  %scatter = f32[9] scatter(%operands, %indices, %updates), update_window_dims={1}, inserted_window_dims={}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32
   %elementwise.0 = f32[9] abs(%scatter)
   %elementwise.1 = f32[9] exponential(%elementwise.0)
   %elementwise.2 = f32[9] add(%elementwise.0, %elementwise.1)
@@ -278,12 +278,12 @@ HloModule test_module
 }
 
 ENTRY main {
-  %indices = s32[4] parameter(0)
-  %updates.0 = f32[4] parameter(1)
-  %updates.1 = f32[4] parameter(2)
+  %indices = s32[4,1] parameter(0)
+  %updates.0 = f32[4,1] parameter(1)
+  %updates.1 = f32[4,1] parameter(2)
   %operands.0 = f32[9] constant(0)
   %operands.1 = f32[9] constant(0)
-  %scatter = (f32[9], f32[9]) scatter(%operands.0, %operands.1, %indices, %updates.0, %updates.1), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32_mul_F32
+  %scatter = (f32[9], f32[9]) scatter(%operands.0, %operands.1, %indices, %updates.0, %updates.1), update_window_dims={1}, inserted_window_dims={}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32_mul_F32
   %gte.0 = f32[9] get-tuple-element(%scatter), index=0
   %gte.1 = f32[9] get-tuple-element(%scatter), index=1
   %consumer = f32[9] add(%gte.0, %gte.1)
@@ -313,10 +313,10 @@ HloModule test_module
 }
 
 ENTRY main {
-  %indices = s32[4] parameter(0)
-  %updates = f32[4] parameter(1)
+  %indices = s32[4,1] parameter(0)
+  %updates = f32[4,1] parameter(1)
   %operands = f32[9] constant(0)
-  %scatter = f32[9] scatter(%operands, %indices, %updates), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32
+  %scatter = f32[9] scatter(%operands, %indices, %updates), update_window_dims={1}, inserted_window_dims={}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32
   %pred_ = pred[9] parameter(2)
   %select = f32[9] select(%pred_, %scatter, %operands)
   ROOT %slice = f32[8] slice(%select), slice={[0:8]}

@@ -15,30 +15,20 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_OP_UTIL_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_OP_UTIL_H_
 
+#include <cstdint>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "xla/xla_data.pb.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
-#include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
 
 namespace tensorflow {
 namespace tpu {
+
 // Creates a fingerprint given the name and the vector of shapes.
 uint64_t CreateFingerprintWithNameAndShapes(
     uint64_t name, const std::vector<tensorflow::TensorShape>& shapes);
 
-// Creates a unique compilation cache `key`.
-TpuCompilationCacheKey CreateCompilationCacheKey(
-    absl::string_view function_name, uint64_t function_library_fingerprint,
-    uint64_t mlir_module_fingerprint, const OpInputList& guaranteed_constants,
-    const std::vector<TensorShape>& dynamic_shapes,
-    const TPUCompileMetadataProto& metadata,
-    const TpuMeshStateInterface& mesh_state, uint64_t session_id = 0,
-    ResourceMgr* resource_mgr = nullptr);
 }  // namespace tpu
 }  // namespace tensorflow
 

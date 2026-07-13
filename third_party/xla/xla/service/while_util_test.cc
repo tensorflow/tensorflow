@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -63,7 +64,7 @@ ENTRY entry {
 }
 )";
 
-    TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+    ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
     *entry_computation = module->entry_computation();
     *param0 = (*entry_computation)->parameter_instruction(0);

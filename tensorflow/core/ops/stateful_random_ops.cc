@@ -63,15 +63,15 @@ REGISTER_OP("StatefulUniformInt")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       absl::Status s = c->WithRank(c->input(3), 0, &unused);
       if (!s.ok()) {
-        return errors::InvalidArgument(
-            "minval must be a scalar; got a tensor of shape ",
-            c->DebugString(c->input(3)));
+        return absl::InvalidArgumentError(
+            absl::StrCat("minval must be a scalar; got a tensor of shape ",
+                         c->DebugString(c->input(3))));
       }
       s = c->WithRank(c->input(4), 0, &unused);
       if (!s.ok()) {
-        return errors::InvalidArgument(
-            "maxval must be a scalar; got a tensor of shape ",
-            c->DebugString(c->input(4)));
+        return absl::InvalidArgumentError(
+            absl::StrCat("maxval must be a scalar; got a tensor of shape ",
+                         c->DebugString(c->input(4))));
       }
       // Set output
       ShapeHandle out;

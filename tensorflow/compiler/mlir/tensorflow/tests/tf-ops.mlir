@@ -1,3 +1,17 @@
+// Copyright 2026 Google Inc. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: tf-opt %s -split-input-file -verify-diagnostics | FileCheck %s
 
 // Tests for TensorFlow ops with custom verifiers.
@@ -1317,7 +1331,7 @@ func.func @testIfRegionElseTerminator(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -
 
 // tf.Region yield number of results should match op number of results
 func.func @testIfRegionThenResultCount(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
-  // expected-error @+1 {{'tf.IfRegion' op along control flow edge from Operation tf.Yield to parent: region branch point has 2 operands, but region successor needs 1 inputs}}
+  // expected-error @+1 {{'tf.IfRegion' op along control flow edge from Operation tf.Yield to Operation tf.IfRegion: region branch point has 2 operands, but region successor needs 1 inputs}}
   %0 = "tf.IfRegion"(%arg0) ({
      %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      // expected-note @+1 {{region branch point}}
@@ -1333,7 +1347,7 @@ func.func @testIfRegionThenResultCount(%arg0: tensor<i1>, %arg1: tensor<2xf32>) 
 // -----
 
 func.func @testIfRegionElseResultCount(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
-  // expected-error @+1 {{'tf.IfRegion' op along control flow edge from Operation tf.Yield to parent: region branch point has 2 operands, but region successor needs 1 inputs}}
+  // expected-error @+1 {{'tf.IfRegion' op along control flow edge from Operation tf.Yield to Operation tf.IfRegion: region branch point has 2 operands, but region successor needs 1 inputs}}
   %0 = "tf.IfRegion"(%arg0) ({
      %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      "tf.Yield"(%t) : (tensor<2xf32>) -> ()

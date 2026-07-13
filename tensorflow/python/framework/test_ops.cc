@@ -55,7 +55,7 @@ REGISTER_OP("RequiresOlderGraphVersion")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       if (c->graph_def_version() != TF_GRAPH_DEF_VERSION - 1) {
-        return errors::InvalidArgument("Wrong graph version for shape");
+        return absl::InvalidArgumentError("Wrong graph version for shape");
       }
       return shape_inference::ScalarShape(c);
     });
@@ -202,7 +202,7 @@ class GetDeadlineOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     if (!ctx->deadline()) {
-      ctx->SetStatus(errors::InvalidArgument("Deadline has not ben set."));
+      ctx->SetStatus(absl::InvalidArgumentError("Deadline has not ben set."));
       return;
     }
     Tensor* output;
@@ -218,10 +218,10 @@ class SleepOp : public OpKernel {
   explicit SleepOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
-        errors::InvalidArgument("Expected argument 0 to be a scalar. Received",
-                                ctx->input(0).DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Expected argument 0 to be a scalar. Received",
+                                 ctx->input(0).DebugString())));
     absl::SleepFor(absl::Seconds(ctx->input(0).scalar<int>()()));
   }
 };
@@ -247,10 +247,10 @@ class SleepIdentityOp : public OpKernel {
   explicit SleepIdentityOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
-        errors::InvalidArgument("Expected argument 0 to be a scalar. Received",
-                                ctx->input(0).DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Expected argument 0 to be a scalar. Received",
+                                 ctx->input(0).DebugString())));
     absl::SleepFor(absl::Seconds(ctx->input(0).scalar<int>()()));
     ctx->set_output(0, ctx->input(1));
   }

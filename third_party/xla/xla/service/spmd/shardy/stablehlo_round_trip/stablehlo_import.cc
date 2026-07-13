@@ -63,8 +63,9 @@ limitations under the License.
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/service/spmd/shardy/constants.h"
-#include "xla/service/spmd/shardy/round_trip_common/pipeline_passes.h"
-#include "xla/service/spmd/shardy/stablehlo_round_trip/shard_map_import.h"
+#include "xla/service/spmd/shardy/round_trip_common/import_sdy_custom_calls.h"
+#include "xla/service/spmd/shardy/round_trip_common/open_while_free_vars_sharding.h"
+#include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -171,7 +172,7 @@ MeshAxesAndIds findMeshAxesAndIds(
   for (const xla::HloSharding& hloSharding : oldShardings) {
     // If the sharding is a maximal sharding, we do not need to find common
     // axes but add the device id to `deviceIdsForMaximalMesh`.
-    if (hloSharding.HasUniqueDevice()) {
+    if (hloSharding.IsSingleDevice()) {
       maximalDeviceIdSet.insert(hloSharding.GetUniqueDevice());
       continue;
     }
@@ -294,7 +295,7 @@ TensorShardingAttr convertToSdySharding(
   // If the sharding is a maximal sharding, return a fully closed sharding.
   // The exact sharding does not matter since the tensor can only exist on one
   // device.
-  if (hloSharding.HasUniqueDevice()) {
+  if (hloSharding.IsSingleDevice()) {
     if (inlineMesh) {
       return TensorShardingAttr::getFullyClosed(
           ctx, /*rank=*/0,
@@ -427,13 +428,6 @@ bool shouldOpenDims(ArrayRef<bool> allowPropagationToTensors, int64_t index) {
   return allowPropagationToTensors[index];
 }
 
-// TODO(bixia): Use the function getTensorRank() from sdy/utils/utils.h.
-int64_t getRank(mlir::Type type) {
-  if (auto tensorType = llvm::dyn_cast<mlir::ShapedType>(type)) {
-    return tensorType.getRank();
-  }
-  return 0;
-}
 
 // Convert the shardings in `funcOp` from kXlaShardingAttr into kShardingAttr.
 LogicalResult importShardings(
@@ -446,10 +440,10 @@ LogicalResult importShardings(
             funcOp.getArgAttrOfType<StringAttr>(argNum, kXlaShardingAttr)) {
       funcOp.setArgAttr(
           argNum, kShardingAttr,
-          convertToSdySharding(parseShardingFromString(oldSharding), globalMesh,
-                               deviceIdToMaximalMeshName, getRank(argType),
-                               shouldOpenDims(allowPropagationToArgs, argNum),
-                               inlineMesh));
+          convertToSdySharding(
+              parseShardingFromString(oldSharding), globalMesh,
+              deviceIdToMaximalMeshName, mlir::sdy::getTensorRank(argType),
+              shouldOpenDims(allowPropagationToArgs, argNum), inlineMesh));
       funcOp.removeArgAttr(argNum, kXlaShardingAttr);
     }
   }
@@ -461,7 +455,7 @@ LogicalResult importShardings(
           resNum, kShardingAttr,
           convertToSdySharding(
               parseShardingFromString(oldSharding), globalMesh,
-              deviceIdToMaximalMeshName, getRank(resType),
+              deviceIdToMaximalMeshName, mlir::sdy::getTensorRank(resType),
               shouldOpenDims(allowPropagationToResults, resNum), inlineMesh));
       funcOp.removeResultAttr(
           resNum, StringAttr::get(funcOp.getContext(), kXlaShardingAttr));
@@ -479,10 +473,10 @@ LogicalResult importShardings(
       newShardings.reserve(op->getNumResults());
       for (const auto& [resHloSharding, resType] :
            llvm::zip_equal(flatHloSharding, op->getResultTypes())) {
-        newShardings.push_back(
-            convertToSdySharding(resHloSharding, globalMesh,
-                                 deviceIdToMaximalMeshName, getRank(resType),
-                                 /*openDims=*/false, inlineMesh));
+        newShardings.push_back(convertToSdySharding(
+            resHloSharding, globalMesh, deviceIdToMaximalMeshName,
+            mlir::sdy::getTensorRank(resType),
+            /*openDims=*/false, inlineMesh));
       }
       mlir::sdy::setShardings(op, newShardings);
       op->removeAttr(kXlaShardingAttr);
@@ -581,16 +575,15 @@ void registerStablehloImportShardingsPass() {
   });
 }
 
+// NOTE: Keep it as a wrapper of SDY import pipeline that first converts from
+// mhlo shardings to Shardy dialect shardings and calls SDY import pipeline.
+// This way Shardy XLA Pass tests run the logic that actually runs in prod.
 void addStablehloImportPipeline(mlir::OpPassManager& pm,
                                 ArrayRef<bool> allowPropagationToArgs,
-                                ArrayRef<bool> allowPropagationToResults,
-                                bool enableStablehloCanonicalizeFromHloImport) {
-  addCommonPreImportPasses(pm, /*enableConstantImport=*/true,
-                           enableStablehloCanonicalizeFromHloImport);
+                                ArrayRef<bool> allowPropagationToResults) {
   pm.addPass(createImportShardingsPass(allowPropagationToArgs,
                                        allowPropagationToResults));
-  pm.addPass(createStablehloRoundTripShardMapImportPass());
-  addCommonPostImportPasses(pm);
+  addSdyRoundTripImportPipeline(pm);
 }
 
 void registerStablehloImportPipeline() {
@@ -599,9 +592,7 @@ void registerStablehloImportPipeline() {
       "Run passes to import a StableHLO module with `mhlo.shardings` into the "
       "SDY (Shardy) dialect.",
       [](mlir::OpPassManager& pm) {
-        addStablehloImportPipeline(
-            pm, ArrayRef<bool>(), ArrayRef<bool>(),
-            /*enableStablehloCanonicalizeFromHloImport=*/true);
+        addStablehloImportPipeline(pm, ArrayRef<bool>(), ArrayRef<bool>());
       });
 }
 

@@ -15,12 +15,10 @@ limitations under the License.
 
 #include "xla/service/gpu/ir_emission_utils.h"
 
-#include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
-#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -34,19 +32,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/literal.h"
-#include "xla/literal_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/ir_emission_utils.pb.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
-#include "xla/types.h"
 
 namespace xla {
 namespace gpu {
 
 using ::testing::ElementsAre;
-using ::testing::ElementsAreArray;
 using ::testing::SizeIs;
 
 class IrEmissionUtilsTest : public HloHardwareIndependentTestBase {
@@ -697,44 +690,6 @@ ENTRY entry {
   EXPECT_TRUE(IsContiguousSlice(*slice12));
 }
 
-TEST_F(IrEmissionUtilsTest, LiteralToAttrToXlaFormat) {
-  // int16, should be aliased.
-  {
-    Literal literal = LiteralUtil::CreateR2<int16_t>({{0, 1, 2}, {3, 4, 5}});
-
-    TF_ASSERT_OK_AND_ASSIGN(DenseDataIntermediate data,
-                            LiteralToXlaFormat(literal));
-    EXPECT_EQ(data.span().size(), literal.size_bytes());
-    EXPECT_EQ(reinterpret_cast<const char*>(data.span().data()),
-              literal.untyped_data());
-  }
-
-  // int4, even, should be a new (unaliased) packed array.
-  {
-    Literal literal = LiteralUtil::CreateR2<s4>(
-        {{s4(0), s4(1), s4(2)}, {s4(3), s4(4), s4(5)}});
-
-    TF_ASSERT_OK_AND_ASSIGN(DenseDataIntermediate data,
-                            LiteralToXlaFormat(literal));
-    EXPECT_EQ(data.span(), std::vector<uint8_t>({0x10, 0x32, 0x54}));
-    EXPECT_NE(reinterpret_cast<const void*>(data.span().data()),
-              literal.untyped_data());
-  }
-
-  // int4, odd, should be a new (unaliased) packed array.
-  {
-    Literal literal = LiteralUtil::CreateR2<u4>(
-        {{u4(0), u4(1), u4(2)}, {u4(3), u4(4), u4(5)}, {u4(6), u4(7), u4(8)}});
-
-    TF_ASSERT_OK_AND_ASSIGN(DenseDataIntermediate data,
-                            LiteralToXlaFormat(literal));
-    EXPECT_EQ(data.span(),
-              std::vector<uint8_t>({0x10, 0x32, 0x54, 0x76, 0x08}));
-    EXPECT_NE(reinterpret_cast<const void*>(data.span().data()),
-              literal.untyped_data());
-  }
-}
-
 gpu::GpuBackendConfig CreateTestProto() {
   gpu::GpuBackendConfig proto;
   auto& knobs = *proto.mutable_cudnn_fmha_backend_config()
@@ -900,6 +855,86 @@ TEST_F(IrEmissionUtilsTest, ResolveWhileLoopDependencySideEffect) {
   ASSERT_FALSE(result.has_value());
 }
 
+TEST_F(IrEmissionUtilsTest, ResolveWhileLoopDependencyPartitionId) {
+  constexpr absl::string_view kHlo = R"(
+      while_body {
+        p0 = (s32[], s32[]) parameter(0)
+        ivar = s32[] get-tuple-element(p0), index=0
+        partition_id = u32[] partition-id()
+        partition_id_s32 = s32[] convert(partition_id)
+        offset = s32[] add(ivar, partition_id_s32)
+
+        c1 = s32[] constant(1)
+        next_ivar = s32[] add(ivar, c1)
+
+        ROOT result = (s32[], s32[]) tuple(next_ivar, offset)
+      }
+
+      condition {
+        p0 = (s32[], s32[]) parameter(0)
+        ivar = s32[] get-tuple-element(p0), index=0
+        c5 = s32[] constant(5)
+        ROOT cmp = pred[] compare(ivar, c5), direction=LT
+      }
+
+      ENTRY main {
+        c0 = s32[] constant(0)
+        tuple = (s32[], s32[]) tuple(c0, c0)
+        ROOT while = (s32[], s32[]) while(tuple),
+            condition=condition, body=while_body,
+            backend_config={"known_induction_variable":{"tuple_index":"0"}}
+      }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  HloComputation* while_body = module->GetComputationWithName("while_body");
+
+  ASSERT_FALSE(ResolveFunctionalDependencyOnInductionVariable(
+                   while_body->GetInstructionWithName("offset"))
+                   .has_value());
+}
+
+TEST_F(IrEmissionUtilsTest, ResolveWhileLoopDependencyReplicaId) {
+  constexpr absl::string_view kHlo = R"(
+      while_body {
+        p0 = (s32[], s32[]) parameter(0)
+        ivar = s32[] get-tuple-element(p0), index=0
+        replica_id = u32[] replica-id()
+        replica_id_s32 = s32[] convert(replica_id)
+        offset = s32[] add(ivar, replica_id_s32)
+
+        c1 = s32[] constant(1)
+        next_ivar = s32[] add(ivar, c1)
+
+        ROOT result = (s32[], s32[]) tuple(next_ivar, offset)
+      }
+
+      condition {
+        p0 = (s32[], s32[]) parameter(0)
+        ivar = s32[] get-tuple-element(p0), index=0
+        c5 = s32[] constant(5)
+        ROOT cmp = pred[] compare(ivar, c5), direction=LT
+      }
+
+      ENTRY main {
+        c0 = s32[] constant(0)
+        tuple = (s32[], s32[]) tuple(c0, c0)
+        ROOT while = (s32[], s32[]) while(tuple),
+            condition=condition, body=while_body,
+            backend_config={"known_induction_variable":{"tuple_index":"0"}}
+      }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  HloComputation* while_body = module->GetComputationWithName("while_body");
+
+  ASSERT_FALSE(ResolveFunctionalDependencyOnInductionVariable(
+                   while_body->GetInstructionWithName("offset"))
+                   .has_value());
+}
+
 TEST_F(IrEmissionUtilsTest, InternalTuple) {
   // Verifies that we can resolve dependencies that involve internal tuples.
   constexpr absl::string_view kHlo = R"(
@@ -1044,7 +1079,7 @@ TEST_F(IrEmissionUtilsTest, DynamicVariableLoopCarriedVariable) {
         tuple = (s32[], s32[], s32[]) tuple(c0, c0, c0)
         ROOT while = (s32[], s32[], s32[]) while(tuple),
             condition=condition, body=while_body,
-            backend_config={"known_induction_variable":{"tuple_index":"0"},"dynamic_variable_tuple_indices":[1]}
+            backend_config={"known_induction_variable":{"tuple_index":"0"},"dynamic_variables":[{"tuple_index":"1"}]}
       }
   )";
 
@@ -1076,11 +1111,11 @@ TEST_F(IrEmissionUtilsTest, DynamicVariableWithIrrelevantGTE) {
 
         c1 = s32[] constant(1)
         next_ivar = s32[] add(ivar, c1)
-        
+
         dynamic_computation = s32[] add(ivar, c1)
-        
+
         irrelevant_computation = s32[] add(irrelevant_var, c1)
-        
+
         next_other = s32[] add(other_var, c1)
 
         ROOT result = (s32[], s32[], s32[], s32[]) tuple(next_ivar, dynamic_computation, irrelevant_computation, next_other)
@@ -1098,7 +1133,7 @@ TEST_F(IrEmissionUtilsTest, DynamicVariableWithIrrelevantGTE) {
         tuple = (s32[], s32[], s32[], s32[]) tuple(c0, c0, c0, c0)
         ROOT while = (s32[], s32[], s32[], s32[]) while(tuple),
             condition=condition, body=while_body,
-            backend_config={"known_induction_variable":{"tuple_index":"0"},"dynamic_variable_tuple_indices":[1, 2]}
+            backend_config={"known_induction_variable":{"tuple_index":"0"},"dynamic_variables":[{"tuple_index":"1"},{"tuple_index":"2"}]}
       }
   )";
 
@@ -1134,7 +1169,7 @@ TEST_F(IrEmissionUtilsTest, MultipleDynamicVariables) {
 
         c1 = s32[] constant(1)
         next_ivar = s32[] add(ivar, c1)
-        
+
         compute1 = s32[] add(dynamic_var1, c1)
         compute2 = s32[] add(dynamic_var2, c1)
         compute_regular = s32[] add(regular_var, c1)
@@ -1154,7 +1189,7 @@ TEST_F(IrEmissionUtilsTest, MultipleDynamicVariables) {
         tuple = (s32[], s32[], s32[], s32[]) tuple(c0, c0, c0, c0)
         ROOT while = (s32[], s32[], s32[], s32[]) while(tuple),
             condition=condition, body=while_body,
-            backend_config={"known_induction_variable":{"tuple_index":"0"},"dynamic_variable_tuple_indices":[1, 2]}
+            backend_config={"known_induction_variable":{"tuple_index":"0"},"dynamic_variables":[{"tuple_index":"1"},{"tuple_index":"2"}]}
       }
   )";
 
@@ -1268,30 +1303,6 @@ TEST_F(IrEmissionUtilsTest, PackedTransposeDescriptionUsesProvidedDims_102) {
   EXPECT_THAT(spec.canonical_output_shape, ElementsAre(6, 32, 2, 7, 8, 1));
   EXPECT_THAT(spec.canonical_permutation, ElementsAre(4, 2, 1, 3, 0, 5));
   EXPECT_THAT(spec.canonical_inv_permutation, ElementsAre(4, 2, 1, 3, 0, 5));
-}
-
-TEST(DenseDataIntermediateTest, OwnedDataToProto) {
-  const std::vector<uint8_t> data = {1, 2, 3, 4};
-  DenseDataIntermediate constant = DenseDataIntermediate::Own(data);
-
-  DenseDataIntermediateProto proto = constant.ToProto();
-  EXPECT_THAT(proto.data(), ElementsAreArray(data));
-}
-
-TEST(DenseDataIntermediateTest, BorrowedDataToProto) {
-  constexpr std::array<uint8_t, 4> kData = {5, 6, 7, 8};
-  DenseDataIntermediate constant = DenseDataIntermediate::Alias(kData);
-  DenseDataIntermediateProto proto = constant.ToProto();
-  EXPECT_THAT(proto.data(), ElementsAreArray(kData));
-}
-
-TEST(DenseDataIntermediateTest, FromProto) {
-  constexpr std::array<uint8_t, 4> kData = {1, 2, 3, 4};
-  DenseDataIntermediateProto proto;
-  proto.mutable_data()->assign(kData.begin(), kData.end());
-
-  DenseDataIntermediate constant = DenseDataIntermediate::FromProto(proto);
-  EXPECT_THAT(constant.span(), ElementsAreArray(kData));
 }
 
 TEST_F(IrEmissionUtilsTest, OrdinaryMatmul) {

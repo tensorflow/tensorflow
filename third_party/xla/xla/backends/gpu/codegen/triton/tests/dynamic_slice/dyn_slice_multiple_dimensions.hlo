@@ -1,0 +1,44 @@
+// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %s
+
+// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+
+// CHECK-DAG: #[[MAP:.*]] = #xla.indexing_map<"(pid{{.*}}, d1) -> (pid{{.*}} * 8 + d1), domain: pid{{.*}} in [0, 1], d1 in [0, 22]">
+// CHECK-DAG: #[[MAP1:.*]] = #xla.indexing_map<"(pid{{.*}}) -> (pid{{.*}} * 8), domain: pid{{.*}} in [0, 1]">
+// CHECK: xtile.entry_func @triton_fn(
+// CHECK-SAME:    %[[ARG0:.*]]: memref<64x32x16xi32>,
+// CHECK-SAME:    %[[ARG1:.*]]: memref<i32>,
+// CHECK-SAME:    %[[ARG2:.*]]: memref<10x10x8xi32>,
+// CHECK-SAME:    %[[ARG3:.*]]: index)
+// CHECK-DAG:     %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:     %[[C50:.*]] = arith.constant 50 : index
+// CHECK-DAG:     %[[C22:.*]] = arith.constant 22 : i32
+// CHECK-DAG:     %[[C0_I32:.*]] = arith.constant 0 : i32
+// CHECK:         %[[EXTRACT:.*]] = xtile.extract %[[ARG1]][] [] [] : memref<i32> -> tensor<i32>
+// CHECK:         %[[SCALAR:.*]] = tensor.extract %[[EXTRACT]][] : tensor<i32>
+// CHECK:         %[[MAX:.*]] = arith.maxsi %[[SCALAR]], %[[C0_I32]] : i32
+// CHECK:         %[[MIN:.*]] = arith.minsi %[[MAX]], %[[C22]] : i32
+// CHECK:         %[[CAST:.*]] = arith.index_cast %[[MIN]] : i32 to index
+// CHECK:         %[[IDX0:.*]] = xla.apply_indexing #[[MAP]](%[[ARG3]], %[[CAST]])
+// CHECK:         %[[TILE:.*]] = xtile.extract %[[ARG0]][%[[C50]], %[[IDX0]], %[[C0]]] [32, 8, 8] [1, 1, 1] : memref<64x32x16xi32> -> tensor<32x8x8xi32>
+// CHECK:         %[[IDX1:.*]] = xla.apply_indexing #[[MAP1]](%[[ARG3]])
+// CHECK:         xtile.insert %[[TILE]] into %[[ARG2]][%[[C0]], %[[IDX1]], %[[C0]]] [32, 8, 8] [1, 1, 1] : tensor<32x8x8xi32> -> memref<10x10x8xi32>
+// CHECK:         xtile.return
+
+f {
+  p0 = s32[64,32,16] parameter(0)
+  c50 = s32[] constant(50)
+  p1 = s32[] parameter(1)
+  c0 = s32[] constant(0)
+  ROOT r = s32[10,10,8] dynamic-slice(p0, c50, p1, c0), dynamic_slice_sizes={10,10,8}
+}
+
+ENTRY entry_computation {
+  p0.1 = s32[64,32,16] parameter(0)
+  p1.1 = s32[] parameter(1)
+  ROOT fusion = s32[10,10,8] fusion(p0.1, p1.1), kind=kCustom, calls=f, backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{
+      "output_tiles":[{"sizes":["32", "8", "8"]}],
+        "num_warps":1,"num_ctas":1,"num_stages":1}}}
+}

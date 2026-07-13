@@ -1,0 +1,52 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
+syntax = "proto3";
+
+package tensorflow.tf2xla;
+
+import "xla/xla_data.proto";
+import "tensorflow/core/framework/tensor.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+
+option cc_enable_arenas = true;
+option java_outer_classname = "Tf2XlaProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.tf2xla";
+
+message XlaArgumentProto {
+  int32 kind = 1;
+  DataType type = 2;
+  message Shape {
+    oneof shape {
+      TensorShapeProto tensor_shape = 1;
+      xla.ShapeProto xla_shape = 2;
+    }
+  }
+  optional Shape shape = 3;
+  TensorProto constant_value = 4;
+  optional TensorProto value_bound = 5;
+  optional TensorProto value_dynamism = 6;
+  string name = 7;
+  string node_name = 8;
+  int32 resource_kind = 9;
+  bool initialized = 10;
+  bool fast_mem = 11;
+  int64 max_array_size = 12;
+  repeated string tensor_array_gradients = 13;
+  bool is_same_data_across_replicas = 14;
+  bool requires_broadcast = 15;
+}

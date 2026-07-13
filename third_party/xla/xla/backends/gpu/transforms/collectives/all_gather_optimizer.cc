@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -96,7 +97,7 @@ absl::StatusOr<bool> AllGatherOptimizer::RunImpl(
           Cast<HloAllGatherInstruction>(left_all_gather)
               ->use_global_device_ids());
 
-      TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
+      RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
           instruction, std::move(combined)));
       changed = true;
     }

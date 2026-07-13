@@ -95,6 +95,10 @@ class I4ToI8Converter : public TypeConverter {
 
     std::vector<int64_t> new_shape = shape;
     if (!shape.empty()) {
+      if (new_shape[packed_dimension()] % 2 != 0) {
+        VLOG(5) << "  ->  I4ToI8Converter: Packed dimension is not even.";
+        return nullptr;
+      }
       new_shape[packed_dimension()] /= 2;
     }
 
@@ -209,8 +213,11 @@ class TritonXlaExtractOpConversionPattern
       mtx::ExtractOp op, OpConversionPattern<mtx::ExtractOp>::OpAdaptor adaptor,
       ConversionPatternRewriter& r) const override {
     // Convert the tensor type using the TypeConverter
-    auto new_result_type = mlir::cast<mlir::RankedTensorType>(
-        getTypeConverter()->convertType(op.getType()));
+    auto converted_type = getTypeConverter()->convertType(op.getType());
+    if (!converted_type) {
+      return r.notifyMatchFailure(op, "Result type conversion failed.");
+    }
+    auto new_result_type = mlir::cast<mlir::RankedTensorType>(converted_type);
 
     ImplicitLocOpBuilder builder(op.getLoc(), r);
 
@@ -373,6 +380,9 @@ class ExtSIInt4ToInt8Pattern : public OpConversionPattern<ma::ExtSIOp> {
       return r.notifyMatchFailure(ext_si_op, "not a ranked tensor");
     }
     auto packed_type = converter_.convertType(input_type);
+    if (!packed_type) {
+      return r.notifyMatchFailure(ext_si_op, "type conversion failed");
+    }
     if (input_type == packed_type) {
       return r.notifyMatchFailure(ext_si_op, "no conversion needed");
     }
@@ -649,9 +659,5 @@ class LoadInt4RewritePass
     }
   }
 };
-
-std::unique_ptr<Pass> CreateInt4ToPackedInt4RewritePass(bool enable_bf16x2) {
-  return createLoadInt4RewritePass(LoadInt4RewritePassOptions{enable_bf16x2});
-}
 
 }  // namespace mlir::triton::xla

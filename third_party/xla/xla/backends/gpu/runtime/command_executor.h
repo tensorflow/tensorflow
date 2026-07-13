@@ -68,6 +68,10 @@ class CommandExecutor {
     // Uses the same latency hidden scheduling results used in the thunk
     // scheduling.
     kLHS,
+
+    // Hybrid of kSerialize and kConcurrent. Builds a DAG for concurrent
+    // regions and serializes between them.
+    kConcurrentRegions,
   };
 
   template <typename Sink>
@@ -82,13 +86,19 @@ class CommandExecutor {
       case SynchronizationMode::kLHS:
         sink.Append("lhs");
         break;
+      case SynchronizationMode::kConcurrentRegions:
+        sink.Append("concurrent_regions");
+        break;
     }
   }
 
   // Creates a command executor from a sequence of commands using given
-  // synchronization mode.
+  // synchronization mode. `extra_resources` provides per-command additional
+  // resource uses (e.g. control-dependency tokens from the emitter); if empty,
+  // no extra resource uses are added.
   static absl::StatusOr<CommandExecutor> Create(
-      CommandSequence commands, SynchronizationMode synchronization_mode);
+      CommandSequence commands, SynchronizationMode synchronization_mode,
+      std::vector<Command::ResourceUses> extra_resources = {});
 
   // Prepares all commands added to a sequence.
   absl::Status Prepare(const Thunk::PrepareParams& params);
@@ -144,20 +154,20 @@ class CommandExecutor {
   bool empty() const { return commands_.empty(); }
   size_t size() const { return commands_.size(); }
 
-  bool requires_initialization() const {
-    bool requires_initialization = false;
-    commands_.Walk([&](const Command* command) {
-      requires_initialization |= command->requires_initialization();
-    });
-    return requires_initialization;
+  bool requires_update_on_initialize() const {
+    return requires_update_on_initialize_;
   }
 
-  bool force_update() const {
-    bool force_update = false;
+  bool requires_warmup() const {
+    bool requires_warmup = false;
     commands_.Walk([&](const Command* command) {
-      force_update |= command->force_update();
+      requires_warmup |= command->requires_warmup();
     });
-    return force_update;
+    return requires_warmup;
+  }
+
+  bool requires_update_on_execute() const {
+    return requires_update_on_execute_;
   }
 
   bool support_loop_unroll() const {
@@ -170,7 +180,7 @@ class CommandExecutor {
 
   // Renders the execution graph using default renderer. Returns url of the
   // rendered graph, or an error if rendering failed.
-  absl::StatusOr<std::string> RenderExecutionGraph();
+  absl::StatusOr<std::string> RenderExecutionGraph() const;
 
   // Recursively traverses all commands in the executor and nested executors.
   absl::Status Walk(
@@ -180,6 +190,10 @@ class CommandExecutor {
 
   absl::Status Walk(absl::FunctionRef<absl::Status(Command*)> callback) {
     return commands_.Walk(callback);
+  }
+
+  std::optional<const ExecutionGraph> execution_graph() const {
+    return execution_graph_;
   }
 
  private:
@@ -206,7 +220,8 @@ class CommandExecutor {
 
   CommandExecutor(SynchronizationMode synchronization_mode,
                   CommandSequence commands,
-                  std::optional<ExecutionGraph> execution_graph);
+                  std::optional<ExecutionGraph> execution_graph,
+                  std::vector<Command::ResourceUses> extra_resources);
 
   absl::Status CheckCommandBufferState(
       se::CommandBuffer* command_buffer,
@@ -238,9 +253,22 @@ class CommandExecutor {
   // sequence (sorted by the buffer allocation index).
   std::vector<BufferAllocation::Index> allocs_indices_;
 
+  // Whether any command in this sequence requires an update during
+  // initialization.
+  bool requires_update_on_initialize_ = false;
+
+  // Whether any command in this sequence requires an update on every
+  // execution.
+  bool requires_update_on_execute_ = false;
+
   // A mapping from command id to unique buffer allocations indices referenced
   // by the command (sorted by the buffer allocation index).
   std::vector<std::vector<BufferAllocation::Index>> cmd_allocs_indices_;
+
+  // Per-command extra resource uses passed at construction time (e.g.
+  // control-dependency tokens from the emitter). Stored so that
+  // RenderExecutionGraph() can reproduce the same dependency graph.
+  std::vector<Command::ResourceUses> extra_resources_;
 };
 
 using CommandBufferCmdExecutor ABSL_DEPRECATE_AND_INLINE() = CommandExecutor;

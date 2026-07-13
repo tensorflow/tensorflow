@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 
 package(
@@ -6,10 +6,11 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "fake_summary_writer",
     testonly = 1,
     srcs = ["fake_summary_writer.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":writer",
@@ -19,9 +20,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "writer",
     srcs = ["writer.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":event_file_writer",
@@ -37,9 +39,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "event_file_writer",
     srcs = ["event_file_writer.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/client:_pywrap_events_writer",
@@ -49,9 +52,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "writer_cache",
     srcs = ["writer_cache.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":writer",
@@ -60,9 +64,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "event_file_writer_v2",
     srcs = ["event_file_writer_v2.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/framework:constant_op",

@@ -3634,6 +3634,24 @@ def matmul(
     a_shape = a._shape_tuple()  # pylint: disable=protected-access
     b_shape = b._shape_tuple()  # pylint: disable=protected-access
 
+    if a_shape is not None and len(a_shape) < 2:
+      raise ValueError(
+          "Argument `a` passed to `tf.linalg.matmul` must be at least rank 2."
+          f" Received `a` with shape {a_shape} (rank {len(a_shape)})."
+          " To fix this, consider using `tf.expand_dims(a, axis=0)` to add a"
+          " batch dimension, or `tf.reshape(a, [...])` to reshape it into a"
+          " 2-D (or higher-rank) matrix before calling `tf.linalg.matmul`."
+      )
+    if b_shape is not None and len(b_shape) < 2:
+      raise ValueError(
+          "Argument `b` passed to `tf.linalg.matmul` must be at least rank 2."
+          f" Received `b` with shape {b_shape} (rank {len(b_shape)})."
+          " For matrix-vector multiplication, use `tf.linalg.matvec`."
+          " Alternatively, consider using `tf.expand_dims(b, axis=-1)` to add a"
+          " column dimension, or `tf.reshape(b, [...])` to reshape it into a"
+          " 2-D (or higher-rank) matrix before calling `tf.linalg.matmul`."
+      )
+
     output_may_have_non_empty_batch_shape = (
         (a_shape is None or len(a_shape) > 2) or
         (b_shape is None or len(b_shape) > 2))

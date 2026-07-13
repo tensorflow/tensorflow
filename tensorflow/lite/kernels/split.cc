@@ -128,40 +128,30 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // calculating it in Prepare, unless we defer shape calculation.
   // We can improve the optimized_ops version to handle other
   // cases too.
-#define TF_LITE_SPLIT(scalar)                                       \
-  VectorOfTensors<scalar> all_outputs(*context, *node->outputs);    \
-  tflite::SplitParams op_params;                                    \
-  op_params.num_split = NumOutputs(node);                           \
-  op_params.axis = axis_value;                                      \
-  reference_ops::Split(op_params, GetTensorShape(op_context.input), \
-                       GetTensorData<scalar>(op_context.input),     \
-                       all_outputs.shapes(), all_outputs.data());
+#define TF_LITE_SPLIT(scalar)                                         \
+  {                                                                   \
+    VectorOfTensors<scalar> all_outputs(*context, *node->outputs);    \
+    tflite::SplitParams op_params;                                    \
+    op_params.num_split = NumOutputs(node);                           \
+    op_params.axis = axis_value;                                      \
+    reference_ops::Split(op_params, GetTensorShape(op_context.input), \
+                         GetTensorData<scalar>(op_context.input),     \
+                         all_outputs.shapes(), all_outputs.data());   \
+  }
 
-  switch (op_context.input->type) {
-    case kTfLiteFloat32: {
-      TF_LITE_SPLIT(float);
-      break;
-    }
-    case kTfLiteUInt8: {
-      TF_LITE_SPLIT(uint8_t);
-      break;
-    }
-    case kTfLiteInt8: {
+  switch (TfLiteTypeGetSizeBits(op_context.input->type)) {
+    case 8:
       TF_LITE_SPLIT(int8_t);
       break;
-    }
-    case kTfLiteInt16: {
+    case 16:
       TF_LITE_SPLIT(int16_t);
       break;
-    }
-    case kTfLiteInt32: {
+    case 32:
       TF_LITE_SPLIT(int32_t);
       break;
-    }
-    case kTfLiteInt64: {
+    case 64:
       TF_LITE_SPLIT(int64_t);
       break;
-    }
     default:
       TF_LITE_KERNEL_LOG(context, "Type %s currently not supported.",
                          TfLiteTypeGetName(op_context.input->type));

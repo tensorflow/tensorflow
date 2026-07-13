@@ -52,9 +52,10 @@ class ResizeNearestNeighborOp : public OpKernel {
 
     if (!context->status().ok()) return;
 
-    OP_REQUIRES(context, st.in_height < (1 << 24) && st.in_width < (1 << 24),
-                errors::InvalidArgument("nearest neighbor requires max height "
-                                        "& width of 2^24"));
+    OP_REQUIRES(
+        context, st.in_height < (1 << 24) && st.in_width < (1 << 24),
+        absl::InvalidArgumentError("nearest neighbor requires max height "
+                                   "& width of 2^24"));
 
     // Return if the output is empty.
     if (st.output->NumElements() == 0) return;
@@ -95,7 +96,7 @@ class ResizeNearestNeighborOp : public OpKernel {
     }
     if (!status) {
       context->SetStatus(
-          errors::Internal("Failed launching ResizeNearestNeighbor"));
+          absl::InternalError("Failed launching ResizeNearestNeighbor"));
     }
   }
 
@@ -223,27 +224,31 @@ class ResizeNearestNeighborOpGrad : public OpKernel {
   void Compute(OpKernelContext* context) override {
     // Grab and validate the input:
     const Tensor& input = context->input(0);
-    OP_REQUIRES(context, input.dims() == 4,
-                errors::InvalidArgument("input must be 4-dimensional",
-                                        input.shape().DebugString()));
+    OP_REQUIRES(
+        context, input.dims() == 4,
+        absl::InvalidArgumentError(absl::StrCat("input must be 4-dimensional",
+                                                input.shape().DebugString())));
 
     // Grab and validate the output shape:
     const Tensor& shape_t = context->input(1);
-    OP_REQUIRES(context, shape_t.dims() == 1,
-                errors::InvalidArgument("shape_t must be 1-dimensional",
-                                        shape_t.shape().DebugString()));
-    OP_REQUIRES(context, shape_t.NumElements() == 2,
-                errors::InvalidArgument("shape_t must have two elements",
-                                        shape_t.shape().DebugString()));
+    OP_REQUIRES(
+        context, shape_t.dims() == 1,
+        absl::InvalidArgumentError(absl::StrCat(
+            "shape_t must be 1-dimensional", shape_t.shape().DebugString())));
+    OP_REQUIRES(
+        context, shape_t.NumElements() == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "shape_t must have two elements", shape_t.shape().DebugString())));
 
     auto sizes = shape_t.vec<int32_t>();
-    OP_REQUIRES(context, sizes(0) > 0 && sizes(1) > 0,
-                errors::InvalidArgument("shape_t's elements must be positive"));
+    OP_REQUIRES(
+        context, sizes(0) > 0 && sizes(1) > 0,
+        absl::InvalidArgumentError("shape_t's elements must be positive"));
 
     if (std::is_same<Device, GPUDevice>::value) {
       OP_REQUIRES(
           context, !OpDeterminismRequired(),
-          errors::Unimplemented(
+          absl::UnimplementedError(
               "A deterministic GPU implementation of ResizeNearestNeighborGrad"
               " is not currently available."));
     }
@@ -308,7 +313,7 @@ class ResizeNearestNeighborOpGrad : public OpKernel {
     }
     if (!status) {
       context->SetStatus(
-          errors::Internal("Failed launching ResizeNearestNeighborGrad"));
+          absl::InternalError("Failed launching ResizeNearestNeighborGrad"));
     }
   }
 

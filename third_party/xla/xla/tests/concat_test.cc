@@ -38,9 +38,9 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ConcatTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
-using ConcatTestHlo = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
+using ConcatTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+using ConcatTestHlo = HloPjRtInterpreterReferenceMixin<HloTestBase>;
 using ::testing::HasSubstr;
 
 // Concatenate expects at least one argument.

@@ -68,19 +68,20 @@ StatusOr<mlir::Value> EmitAllGather(
   if (src_layout.IsEquivalent(tgt_layout)) return input;
 
   if (src_layout.rank() != tgt_layout.rank()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Expected source and target layout to have the same rank, got ",
-        src_layout.rank(), " vs ", tgt_layout.rank());
+        src_layout.rank(), " vs ", tgt_layout.rank()));
   }
 
   // Check that the tgt_layout is less sharded then src_layout.
   for (int i = 0; i < src_layout.rank(); ++i) {
     if (src_layout.sharding_spec(i) != tgt_layout.sharding_spec(i) &&
         Layout::IsShardedDimension(tgt_layout.sharding_spec(i))) {
-      return errors::InvalidArgument("source layout (", src_layout.ToString(),
-                                     ") for all gather is not less sharded "
-                                     "than the target layout (",
-                                     tgt_layout.ToString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("source layout (", src_layout.ToString(),
+                       ") for all gather is not less sharded "
+                       "than the target layout (",
+                       tgt_layout.ToString()));
     }
   }
 
@@ -89,7 +90,7 @@ StatusOr<mlir::Value> EmitAllGather(
   const mlir::TensorType input_type =
       mlir::dyn_cast<mlir::TensorType>(input.getType());
   if (!input_type) {
-    return errors::Internal(
+    return absl::InternalError(
         llvm::formatv(
             "Cannot cast input_type : {0} to TensorType. Shape must be "
             " statically known before emitting AllGather. This should not "
@@ -125,25 +126,25 @@ StatusOr<const mlir::Value> EmitAllScatter(
   // Have an early return if desired layout is not more sharded then the
   // original_layout.
   if (original_layout.rank() != desired_layout.rank()) {
-    return errors::InvalidArgument(absl::StrCat(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Rank mismatch for original layout (", original_layout.ToString(),
         ") and desired layout (", desired_layout.ToString(), ")"));
   }
   for (int i = 0; i < original_layout.rank(); ++i) {
     if (original_layout.sharding_spec(i) != desired_layout.sharding_spec(i) &&
         Layout::IsShardedDimension(original_layout.sharding_spec(i))) {
-      return errors::InvalidArgument(
-          "EmitAllScatter was passed a desired_layout ",
-          desired_layout.ToString(),
-          " which was not more sharded than the original_layout ",
-          original_layout.ToString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("EmitAllScatter was passed a desired_layout ",
+                       desired_layout.ToString(),
+                       " which was not more sharded than the original_layout ",
+                       original_layout.ToString()));
     }
   }
 
   const mlir::TensorType input_type =
       mlir::dyn_cast<mlir::TensorType>(original_value.getType());
   if (!input_type)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "input to EmitAllScatter does not have a TensorType");
 
   TF_ASSIGN_OR_RETURN(const mlir::TensorType global_type,
@@ -198,9 +199,9 @@ StatusOr<mlir::Value> EmitAllToAll(
   if (src_layout.IsEquivalent(tgt_layout)) return input;
 
   if (src_layout.rank() != tgt_layout.rank()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Expected source and target layout to have the same rank, got ",
-        src_layout.rank(), " vs ", tgt_layout.rank());
+        src_layout.rank(), " vs ", tgt_layout.rank()));
   }
   // Assume valid because CanUseAllToAll returned true.
 
@@ -209,7 +210,7 @@ StatusOr<mlir::Value> EmitAllToAll(
   const mlir::TensorType input_type =
       mlir::dyn_cast<mlir::TensorType>(input.getType());
   if (!input_type) {
-    return errors::Internal(
+    return absl::InternalError(
         llvm::formatv(
             "Cannot cast input_type : {0} to TensorType. Shape must be "
             " statically known before emitting AllToAll. This should not "
@@ -320,19 +321,19 @@ StatusOr<mlir::Value> EmitRelayout(
   // emit a DenseToSparse and a SparseToDense op.
   bool is_sparse = IsSparseValue(input);
   if (!mlir::isa<mlir::RankedTensorType>(input.getType()))
-    return errors::Internal(
+    return absl::InternalError(
         "attempting to relayout a tensor that does not "
         "have a rank");
 
   if (src_layout.mesh() != tgt_layout.mesh()) {
-    return errors::Internal(
+    return absl::InternalError(
         absl::StrCat("Attempted to relayout to a different "
                      " mesh. Source Mesh = (",
                      src_layout.mesh().ToString(),
                      "). Target Mesh = ", tgt_layout.mesh().ToString(), ")."));
   }
   if (src_layout.rank() != tgt_layout.rank()) {
-    return errors::Internal(
+    return absl::InternalError(
         "Attempted to relayout to a different global shape.");
   }
 
@@ -451,7 +452,7 @@ StatusOr<mlir::Operation*> EmitAllReduce(
   std::vector<int32_t> partitions_flat;
   for (auto& p : partitions) {
     if (p.second.size() != partitions.begin()->second.size()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "AllReduce partitions had different sizes -- this is not supported "
           "in MLIR.");
     }
@@ -592,17 +593,18 @@ StatusOr<mlir::Value> EmitHaloExchange(mlir::OpBuilder& builder, int halo_size,
 
   // Check mesh dimension requirements for halo exchange.
   if (!mesh.IsMeshDim(mesh_dim))
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Requested halo exchange on unknown mesh dim");
 
   // TODO(b/261485237): Add support for halo exchange for GPU/CPU.
   if (!mesh.is_tpu_mesh())
-    return errors::InvalidArgument("Halo exchange is only supported on TPU.");
+    return absl::InvalidArgumentError(
+        "Halo exchange is only supported on TPU.");
 
   auto input_tensor_type =
       mlir::dyn_cast<mlir::RankedTensorType>(tensor.getType());
   if (!input_tensor_type || !input_tensor_type.hasStaticShape())
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Static shape of input tensor must be known for halo exchange.");
 
   llvm::ArrayRef<int64_t> input_tensor_shape = input_tensor_type.getShape();
@@ -611,7 +613,7 @@ StatusOr<mlir::Value> EmitHaloExchange(mlir::OpBuilder& builder, int halo_size,
       sharding_specs.begin(), llvm::find(sharding_specs, mesh_dim));
 
   if (input_tensor_shape[split_dim_index] < halo_size)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "For halo exhange, input shard tensor size of each processor must be "
         "greater than halo size");
 

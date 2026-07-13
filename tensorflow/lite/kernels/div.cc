@@ -238,8 +238,28 @@ template <typename T>
 TfLiteStatus CheckNonZero(TfLiteContext* context, const TfLiteTensor* tensor) {
   const auto* data = GetTensorData<T>(tensor);
   const size_t number_elements = tensor->bytes / sizeof(T);
+
+  int32_t zero_point = 0;
+  if (tensor->quantization.type == kTfLiteAffineQuantization) {
+    const auto* quantization_params =
+        reinterpret_cast<TfLiteAffineQuantization*>(
+            tensor->quantization.params);
+    if (quantization_params && quantization_params->zero_point) {
+      if (quantization_params->zero_point->size != 1) {
+        TF_LITE_KERNEL_LOG(context,
+                           "Div only supports per-tensor quantization. "
+                           "Got per-channel quantization with size %d.",
+                           quantization_params->zero_point->size);
+        return kTfLiteError;
+      }
+      zero_point = quantization_params->zero_point->data[0];
+    }
+  } else {
+    zero_point = tensor->params.zero_point;
+  }
+
   for (size_t i = 0; i < number_elements; i++) {
-    TF_LITE_ENSURE(context, data[i] != 0);
+    TF_LITE_ENSURE(context, data[i] != zero_point);
   }
   return kTfLiteOk;
 }

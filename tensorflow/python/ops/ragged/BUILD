@@ -1,4 +1,5 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
 load("//tensorflow/tools/test:performance.bzl", "tf_py_logged_benchmark")
 
@@ -12,9 +13,10 @@ package(
 # RaggedTensor
 #-------------------------------------------------------------------------------
 
-py_strict_library(
+py_library(
     name = "ragged",
     srcs = ["__init__.py"],
+    strict_deps = True,
     tags = ["nofixdeps"],
     deps = [
         ":dynamic_ragged_shape",
@@ -46,9 +48,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_array_ops",
     srcs = ["ragged_array_ops.py"],
+    strict_deps = True,
     deps = [
         ":dynamic_ragged_shape",
         ":ragged_functional_ops",
@@ -76,9 +79,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_autograph",
     srcs = ["ragged_autograph.py"],
+    strict_deps = True,
     deps = [
         ":ragged_tensor",
         "//tensorflow/python/autograph/operators:control_flow",
@@ -86,9 +90,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_check_ops",
     srcs = ["ragged_check_ops.py"],
+    strict_deps = True,
     deps = [
         ":ragged_tensor",
         "//tensorflow/python/ops:check_ops",
@@ -96,9 +101,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_batch_gather_ops",
     srcs = ["ragged_batch_gather_ops.py"],
+    strict_deps = True,
     deps = [
         ":ragged_gather_ops",
         ":ragged_tensor",
@@ -107,11 +113,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_batch_gather_with_default_op",
     srcs = [
         "ragged_batch_gather_with_default_op.py",
     ],
+    strict_deps = True,
     deps = [
         ":ragged_array_ops",
         ":ragged_dispatch",
@@ -127,9 +134,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_bincount_ops",
     srcs = ["ragged_bincount_ops.py"],
+    strict_deps = True,
     deps = [
         ":ragged_tensor",
         "//tensorflow/python/framework:dtypes",
@@ -163,9 +171,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_concat_ops",
     srcs = ["ragged_concat_ops.py"],
+    strict_deps = True,
     deps = [
         ":ragged_gather_ops",
         ":ragged_tensor",
@@ -181,9 +190,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_conversion_ops",
     srcs = ["ragged_conversion_ops.py"],
+    strict_deps = True,
     deps = [
         ":ragged_tensor",
         "//tensorflow/python/framework:dtypes",
@@ -195,9 +205,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_embedding_ops",
     srcs = ["ragged_embedding_ops.py"],
+    strict_deps = True,
     deps = [
         ":ragged_array_ops",
         ":ragged_functional_ops",
@@ -214,9 +225,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_factory_ops",
     srcs = ["ragged_factory_ops.py"],
+    strict_deps = True,
     deps = [
         ":ragged_tensor",
         ":ragged_tensor_value",
@@ -232,9 +244,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_functional_ops",
     srcs = ["ragged_functional_ops.py"],
+    strict_deps = True,
     deps = [
         ":ragged_config",
         ":ragged_tensor",
@@ -245,9 +258,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_gather_ops",
     srcs = ["ragged_gather_ops.py"],
+    strict_deps = True,
     deps = [
         ":ragged_array_ops",
         ":ragged_math_ops",
@@ -257,16 +271,16 @@ py_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops:array_ops",
-        "//tensorflow/python/ops:array_ops_gen",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:ragged_array_ops_gen",
         "//tensorflow/python/util:dispatch",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_getitem",
     srcs = ["ragged_getitem.py"],
+    strict_deps = True,
     deps = [
         ":ragged_gather_ops",
         ":ragged_math_ops",
@@ -286,9 +300,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_math_ops",
     srcs = ["ragged_math_ops.py"],
+    strict_deps = True,
     deps = [
         ":ragged_functional_ops",
         ":ragged_tensor",
@@ -310,9 +325,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_operators",
     srcs = ["ragged_operators.py"],
+    strict_deps = True,
     deps = [
         ":ragged_getitem",
         ":ragged_tensor",
@@ -323,9 +339,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_ops",
     srcs = ["ragged_ops.py"],
+    strict_deps = True,
     deps = [
         ":ragged_array_ops",
         ":ragged_autograph",
@@ -356,9 +373,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_string_ops",
     srcs = ["ragged_string_ops.py"],
+    strict_deps = True,
     deps = [
         ":ragged_array_ops",
         ":ragged_functional_ops",
@@ -382,9 +400,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_squeeze_op",
     srcs = ["ragged_squeeze_op.py"],
+    strict_deps = True,
     deps = [
         ":ragged_tensor",
         "//tensorflow/python/framework:constant_op",
@@ -400,14 +419,16 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_config",
     srcs = ["ragged_config.py"],
+    strict_deps = True,
 )
 
-py_strict_library(
+py_library(
     name = "row_partition",
     srcs = ["row_partition.py"],
+    strict_deps = True,
     deps = [
         ":segment_id_ops",
         "//tensorflow/core:protos_all_py",
@@ -433,7 +454,7 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_tensor",
     # RaggedTensor must import ragged_ops to ensure that all dispatched
     # ragged ops are registered.
@@ -467,6 +488,7 @@ py_strict_library(
         "ragged_tensor_shape.py",
         "ragged_where_op.py",
     ],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":ragged_config",
@@ -536,9 +558,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_tensor_shape",
     srcs = ["ragged_tensor_shape.py"],
+    strict_deps = True,
     deps = [
         ":ragged_array_ops",
         ":ragged_config",
@@ -556,9 +579,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "dynamic_ragged_shape",
     srcs = ["dynamic_ragged_shape.py"],
+    strict_deps = True,
     deps = [
         ":ragged_tensor",
         ":row_partition",
@@ -582,9 +606,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_tensor_value",
     srcs = ["ragged_tensor_value.py"],
+    strict_deps = True,
     deps = [
         ":row_partition",
         "//tensorflow/python/util:dispatch",
@@ -593,9 +618,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_util",
     srcs = ["ragged_util.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:check_ops",
@@ -605,9 +631,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_where_op",
     srcs = ["ragged_where_op.py"],
+    strict_deps = True,
     deps = [
         ":ragged_concat_ops",
         ":ragged_functional_ops",
@@ -621,9 +648,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "segment_id_ops",
     srcs = ["segment_id_ops.py"],
+    strict_deps = True,
     deps = [
         ":ragged_util",
         "//tensorflow/python/framework:dtypes",
@@ -639,9 +667,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_image_ops",
     srcs = ["ragged_image_ops.py"],
+    strict_deps = True,
     deps = [
         ":ragged_tensor",
         "//tensorflow/python/framework:dtypes",
@@ -658,9 +687,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_map_ops",
     srcs = ["ragged_map_ops.py"],
+    strict_deps = True,
     deps = [
         ":ragged_tensor",
         "//tensorflow/python/ops:map_fn",
@@ -668,9 +698,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_dispatch",
     srcs = ["ragged_dispatch.py"],
+    strict_deps = True,
     deps = [
         ":dynamic_ragged_shape",  # fixdeps: keep
         ":ragged_array_ops",  # fixdeps: keep
@@ -702,9 +733,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ragged_tensor_test_ops",
     srcs = ["ragged_tensor_test_ops.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:bitwise_ops_gen",
@@ -722,10 +754,11 @@ py_strict_library(
 # RaggedTensor Tests
 #-------------------------------------------------------------------------------
 
-py_strict_test(
+py_test(
     name = "ragged_tensor_test",
     srcs = ["ragged_tensor_test.py"],
     shard_count = 8,
+    strict_deps = True,
     tags = [
         "no_windows",
     ],
@@ -769,10 +802,11 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_math_ops_test",
     size = "medium",
     srcs = ["ragged_math_ops_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged",  # fixdeps: keep
         ":ragged_factory_ops",
@@ -790,12 +824,13 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_getitem_test",
     size = "medium",
     timeout = "long",
     srcs = ["ragged_getitem_test.py"],
     shard_count = 4,
+    strict_deps = True,
     tags = [
         "no_windows",
     ],
@@ -814,9 +849,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "row_partition_test",
     srcs = ["row_partition_test.py"],
+    strict_deps = True,
     tags = [
         "no_windows",
     ],
@@ -838,10 +874,11 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_eager_test",
     size = "medium",
     srcs = ["ragged_eager_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_factory_ops",
         "//tensorflow/python/framework:ops",
@@ -852,9 +889,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_range_op_test",
     srcs = ["ragged_range_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_math_ops",
         "//tensorflow/python/framework:dtypes",
@@ -866,9 +904,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_tensor_bounding_shape_op_test",
     srcs = ["ragged_tensor_bounding_shape_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_factory_ops",
         "//tensorflow/python/framework:constant_op",
@@ -879,9 +918,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_row_lengths_op_test",
     srcs = ["ragged_row_lengths_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_factory_ops",
         ":ragged_tensor",
@@ -892,10 +932,11 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_gather_op_test",
     srcs = ["ragged_gather_op_test.py"],
     shard_count = 4,
+    strict_deps = True,
     deps = [
         ":ragged_factory_ops",
         ":ragged_gather_ops",
@@ -915,9 +956,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_batch_gather_op_test",
     srcs = ["ragged_batch_gather_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_batch_gather_ops",
         ":ragged_batch_gather_with_default_op",
@@ -934,9 +976,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_gather_nd_op_test",
     srcs = ["ragged_gather_nd_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_factory_ops",
         ":ragged_gather_ops",
@@ -951,9 +994,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_row_splits_to_segment_ids_op_test",
     srcs = ["ragged_row_splits_to_segment_ids_op_test.py"],
+    strict_deps = True,
     deps = [
         ":segment_id_ops",
         "//tensorflow/python/framework:constant_op",
@@ -962,9 +1006,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_segment_ids_to_row_splits_op_test",
     srcs = ["ragged_segment_ids_to_row_splits_op_test.py"],
+    strict_deps = True,
     deps = [
         ":segment_id_ops",
         "//tensorflow/python/framework:constant_op",
@@ -973,9 +1018,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_from_tensor_op_test",
     srcs = ["ragged_from_tensor_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_tensor",
         "//tensorflow/python/eager:context",
@@ -989,9 +1035,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_to_sparse_op_test",
     srcs = ["ragged_to_sparse_op_test.py"],
+    strict_deps = True,
     tags = [
         "no_windows",
     ],
@@ -1011,9 +1058,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_from_sparse_op_test",
     srcs = ["ragged_from_sparse_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_tensor",
         "//tensorflow/python/eager:context",
@@ -1026,9 +1074,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_to_tensor_op_test",
     srcs = ["ragged_to_tensor_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_factory_ops",
         ":ragged_tensor",
@@ -1056,9 +1105,10 @@ tf_py_logged_benchmark(
     target = "//tensorflow/python/ops/ragged:ragged_to_tensor_op_test",
 )
 
-py_strict_test(
+py_test(
     name = "ragged_segment_op_test",
     srcs = ["ragged_segment_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_factory_ops",
         ":ragged_math_ops",
@@ -1072,9 +1122,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_reduce_op_test",
     srcs = ["ragged_reduce_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_factory_ops",
         ":ragged_math_ops",
@@ -1089,9 +1140,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_map_flat_values_op_test",
     srcs = ["ragged_map_flat_values_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_factory_ops",
         ":ragged_functional_ops",
@@ -1106,9 +1158,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_const_op_test",
     srcs = ["ragged_const_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged",
         ":ragged_factory_ops",
@@ -1121,9 +1174,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "strings_reduce_join_op_test",
     srcs = ["strings_reduce_join_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_factory_ops",
         ":ragged_string_ops",
@@ -1134,9 +1188,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_constant_value_op_test",
     srcs = ["ragged_constant_value_op_test.py"],
+    strict_deps = True,
     tags = [
         "no_windows",
     ],
@@ -1151,9 +1206,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "convert_to_tensor_or_ragged_tensor_op_test",
     srcs = ["convert_to_tensor_or_ragged_tensor_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_factory_ops",
         ":ragged_tensor",
@@ -1166,9 +1222,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_boolean_mask_op_test",
     srcs = ["ragged_boolean_mask_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_array_ops",
         ":ragged_factory_ops",
@@ -1182,9 +1239,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_concat_op_test",
     srcs = ["ragged_concat_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_concat_ops",
         ":ragged_factory_ops",
@@ -1199,9 +1257,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_stack_op_test",
     srcs = ["ragged_stack_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_concat_ops",
         ":ragged_factory_ops",
@@ -1212,9 +1271,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_rank_op_test",
     srcs = ["ragged_rank_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_array_ops",
         ":ragged_factory_ops",
@@ -1224,9 +1284,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_tile_op_test",
     srcs = ["ragged_tile_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_array_ops",
         ":ragged_factory_ops",
@@ -1239,9 +1300,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_util_test",
     srcs = ["ragged_util_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_util",
         "//tensorflow/python/framework:constant_op",
@@ -1254,9 +1316,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_expand_dims_op_test",
     srcs = ["ragged_expand_dims_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_array_ops",
         ":ragged_factory_ops",
@@ -1266,9 +1329,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_where_op_test",
     srcs = ["ragged_where_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_factory_ops",
         ":ragged_where_op",
@@ -1280,9 +1344,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_dispatch_test",
     srcs = ["ragged_dispatch_test.py"],
+    strict_deps = True,
     deps = [
         ":dynamic_ragged_shape",
         ":ragged",  # fixdeps: keep
@@ -1318,9 +1383,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_operators_test",
     srcs = ["ragged_operators_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged",  # fixdeps: keep
         ":ragged_factory_ops",
@@ -1331,9 +1397,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_resize_image_op_test",
     srcs = ["ragged_resize_image_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged",  # fixdeps: keep
         ":ragged_concat_ops",
@@ -1350,10 +1417,11 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_map_fn_op_test",
     size = "small",
     srcs = ["ragged_map_fn_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged",  # fixdeps: keep
         ":ragged_factory_ops",
@@ -1376,9 +1444,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_tensor_shape_test",
     srcs = ["ragged_tensor_shape_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged",  # fixdeps: keep
         ":ragged_factory_ops",
@@ -1392,11 +1461,12 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "dynamic_ragged_shape_test",
     size = "medium",
     srcs = ["dynamic_ragged_shape_test.py"],
     shard_count = 8,
+    strict_deps = True,
     deps = [
         ":dynamic_ragged_shape",
         ":ragged",  # fixdeps: keep
@@ -1429,9 +1499,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_size_op_test",
     srcs = ["ragged_size_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_array_ops",
         ":ragged_factory_ops",
@@ -1441,9 +1512,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_placeholder_op_test",
     srcs = ["ragged_placeholder_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_factory_ops",
         "//tensorflow/python/eager:context",
@@ -1455,9 +1527,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_squeeze_op_test",
     srcs = ["ragged_squeeze_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_conversion_ops",
         ":ragged_factory_ops",
@@ -1489,9 +1562,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_merge_dims_op_test",
     srcs = ["ragged_merge_dims_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_factory_ops",
         "//tensorflow/python/eager:context",
@@ -1503,10 +1577,11 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "string_ngrams_op_test",
     size = "small",
     srcs = ["string_ngrams_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_factory_ops",
         ":ragged_string_ops",
@@ -1520,9 +1595,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_reverse_op_test",
     srcs = ["ragged_reverse_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_array_ops",
         ":ragged_factory_ops",
@@ -1532,9 +1608,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_cross_op_test",
     srcs = ["ragged_cross_op_test.py"],
+    strict_deps = True,
     tags = [
         "no_windows",  # TODO(b/150702952): Reenable windows test once fixed.
     ],
@@ -1559,9 +1636,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_one_hot_op_test",
     srcs = ["ragged_one_hot_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_array_ops",
         ":ragged_factory_ops",
@@ -1577,9 +1655,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_print_op_test",
     srcs = ["ragged_print_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged",  # fixdeps: keep
         ":ragged_factory_ops",
@@ -1596,10 +1675,11 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_tensor_supported_values_test",
     srcs = ["ragged_tensor_supported_values_test.py"],
     shard_count = 10,
+    strict_deps = True,
     deps = [
         ":ragged_factory_ops",
         ":ragged_tensor",
@@ -1624,9 +1704,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_matmul_op_test",
     srcs = ["ragged_matmul_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_concat_ops",
         ":ragged_factory_ops",
@@ -1645,9 +1726,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_split_op_test",
     srcs = ["ragged_split_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_array_ops",
         ":ragged_tensor",
@@ -1684,9 +1766,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_bitcast_op_test",
     srcs = ["ragged_bitcast_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_array_ops",
         ":ragged_factory_ops",
@@ -1697,9 +1780,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ragged_fill_empty_rows_op_test",
     srcs = ["ragged_fill_empty_rows_op_test.py"],
+    strict_deps = True,
     deps = [
         ":ragged_array_ops",
         ":ragged_factory_ops",

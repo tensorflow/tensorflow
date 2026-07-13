@@ -267,9 +267,9 @@ class ArithmeticOptimizerStage : public GraphOptimizerStage<std::string> {
           if (new_tensor.index() < 0 && input_tensor.index() >= 0) {
             // Overwriting a data input with a control input will make the graph
             // invalid.
-            return errors::InvalidArgument(
+            return absl::InvalidArgumentError(absl::StrCat(
                 "Cannot override data input ", input_tensor.ToString(),
-                " with control input ", new_tensor.ToString());
+                " with control input ", new_tensor.ToString()));
           }
           consumer->set_input(i, input_tensor.index() < 0
                                      ? absl::StrCat("^", new_tensor.node())
@@ -1268,8 +1268,8 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
     if (ValuesFromConstNode(node_perm, perm64)) {
       return absl::OkStatus();
     }
-    return errors::InvalidArgument("Couldn't extract permutation from ",
-                                   node_perm.name());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Couldn't extract permutation from ", node_perm.name()));
   }
 
   bool AreInversePermutations(const std::vector<int64_t>& a,
@@ -1686,15 +1686,15 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
       const int start = node.op() == "Concat" ? 1 : 0;
       const int end = start + n;
       if (end > node.input_size()) {
-        return errors::FailedPrecondition("Got attr N=", n,
-                                          " without enough inputs.");
+        return absl::FailedPreconditionError(
+            absl::StrCat("Got attr N=", n, " without enough inputs."));
       }
       // Set up tail pointers to point to the immediate inputs to Concat.
       for (int input_port = start; input_port < end; ++input_port) {
         if (IsControlInput(node.input(input_port))) {
-          return errors::FailedPrecondition(
-              "Got control input ", node.input(input_port),
-              " where normal input was expected.");
+          return absl::FailedPreconditionError(
+              absl::StrCat("Got control input ", node.input(input_port),
+                           " where normal input was expected."));
         }
         NodeDef* tail;
         TF_RETURN_IF_ERROR(GetInputNode(node.input(input_port), &tail));
@@ -2233,9 +2233,9 @@ class ReorderCastLikeAndValuePreserving : public ArithmeticOptimizerStage {
     const std::string& type_attr_name = input_arg.type_attr();
     if (type_attr_name.empty()) {
       if (input_arg.type() == DT_INVALID || input_arg.type() != dtype) {
-        return errors::InvalidArgument("Could not set input type of ",
-                                       node->op(), " op to ",
-                                       DataTypeString(dtype));
+        return absl::InvalidArgumentError(
+            absl::StrCat("Could not set input type of ", node->op(), " op to ",
+                         DataTypeString(dtype)));
       } else {
         // Op has fixed input type that already matches dtype.
         return absl::OkStatus();
@@ -3175,8 +3175,8 @@ class SimplifyAggregation : public ArithmeticOptimizerStage {
     Tensor t(type, TensorShape({}));
     absl::Status status = SetTensorValue(type, num_inputs, &t);
     if (!status.ok()) {
-      return errors::Internal("Failed to create const node: ",
-                              status.message());
+      return absl::InternalError(
+          absl::StrCat("Failed to create const node: ", status.message()));
     }
 
     TensorValue value(&t);
@@ -3184,8 +3184,8 @@ class SimplifyAggregation : public ArithmeticOptimizerStage {
     status = ConstantFolding::CreateNodeDef(new_const_node->name(), value,
                                             new_const_node);
     if (!status.ok()) {
-      return errors::Internal("Failed to create const node: ",
-                              status.message());
+      return absl::InternalError(
+          absl::StrCat("Failed to create const node: ", status.message()));
     }
     new_const_node->set_device(node->device());
     MaybeAddControlInput(NodeName(node->input(0)), new_const_node,
@@ -3340,7 +3340,8 @@ class ConvertPowStage : public ArithmeticOptimizerStage {
         t->flat<complex128>()(i) = complex128(1);
         return absl::OkStatus();
       default:
-        return errors::InvalidArgument("Invalid data type: ", t->dtype());
+        return absl::InvalidArgumentError(
+            absl::StrCat("Invalid data type: ", t->dtype()));
     }
   }
 };
@@ -3840,9 +3841,9 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
       *pack_axis += pack_output_rank;
     }
     if (*pack_axis < 0 || *pack_axis >= pack_output_rank) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Pack node (", pack->name(),
-          ") axis attribute is out of bounds: ", pack->attr().at("axis").i());
+          ") axis attribute is out of bounds: ", pack->attr().at("axis").i()));
     }
     *return_early = false;
     return absl::OkStatus();
@@ -3895,9 +3896,9 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
             auto t_flat = t.flat<int64_t>();
             vec->assign(&t_flat(0), &t_flat(t.NumElements()));
           } else {
-            return errors::InvalidArgument("Node ", node->name(),
-                                           " has invalid type for Index attr: ",
-                                           DataTypeString(t.dtype()));
+            return absl::InvalidArgumentError(absl::StrCat(
+                "Node ", node->name(), " has invalid type for Index attr: ",
+                DataTypeString(t.dtype())));
           }
           return absl::OkStatus();
         };
@@ -3910,10 +3911,10 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
         copy_tensor_values_to_vector(slice_size_t, &slice_size_vec));
 
     if (slice_begin_vec.size() != slice_size_vec.size()) {
-      return errors::InvalidArgument("Node ", node->name(),
-                                     " has mismatched lengths for begin (",
-                                     slice_begin_vec.size(), ") and size (",
-                                     slice_size_vec.size(), ") vectors.");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Node ", node->name(), " has mismatched lengths for begin (",
+          slice_begin_vec.size(), ") and size (", slice_size_vec.size(),
+          ") vectors."));
     }
     int slice_begin_vec_size = slice_begin_vec.size();
     if (!pack_output_shape.unknown_rank() &&
@@ -3921,9 +3922,9 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
       return absl::OkStatus();
     }
     if (pack_axis >= slice_begin_vec_size) {
-      return errors::InvalidArgument(
-          "Input to node ", node->name(), " had pack_axis ", pack_axis,
-          " but rank was ", slice_begin_vec_size, ".");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Input to node ", node->name(), " had pack_axis ",
+                       pack_axis, " but rank was ", slice_begin_vec_size, "."));
     }
 
     *slice_start_value = slice_begin_vec[pack_axis];
@@ -3944,10 +3945,10 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
     }
 
     if (*slice_start_value < 0 || *slice_start_value >= pack->input_size()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Node ", node->name(), " requested invalid slice index ",
           *slice_start_value, " on axis ", pack_axis,
-          " from tensor of shape: ", pack_output_shape.DebugString());
+          " from tensor of shape: ", pack_output_shape.DebugString()));
     }
 
     *found = true;  // slice_start_value is valid.
@@ -4065,10 +4066,10 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
     }
 
     if (*slice_start_value < 0 || *slice_start_value >= pack->input_size()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Node ", node->name(), " requested invalid slice index ",
           *slice_start_value, " on axis ", slice_axis,
-          " from tensor of shape: ", pack_output_shape.DebugString());
+          " from tensor of shape: ", pack_output_shape.DebugString()));
     }
 
     if (shrink_axis_mask == 0) {

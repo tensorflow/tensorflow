@@ -21,8 +21,6 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_interface.h"
 #include "xla/backends/profiler/gpu/cupti_wrapper.h"
 #include "xla/tsl/util/env_var.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/stringpiece.h"
 
 namespace xla {
 namespace profiler {

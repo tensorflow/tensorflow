@@ -29,9 +29,9 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/lock_free_queue.h"
 #include "xla/tsl/profiler/utils/per_thread.h"
+#include "xla/tsl/profiler/utils/traceme_global_flags.h"
 
 namespace tsl {
 namespace profiler {
@@ -181,9 +181,16 @@ class ThreadLocalRecorder {
 }
 
 /* static */ bool TraceMeRecorder::Start(int level, uint64_t filter_masks) {
+  return Start(level, filter_masks, /*enable_source_location=*/true);
+}
+
+/* static */ bool TraceMeRecorder::Start(int level, uint64_t filter_masks,
+                                         bool enable_source_location) {
   level = std::max(0, level);
   internal::g_trace_filter_bitmap.store(filter_masks,
                                         std::memory_order_relaxed);
+  tsl::profiler::g_enable_source_location.store(enable_source_location,
+                                                std::memory_order_relaxed);
 
   int expected = kTracingDisabled;
   bool started = internal::g_trace_level.compare_exchange_strong(
@@ -208,6 +215,9 @@ class ThreadLocalRecorder {
   // Clear the filter bitmap.
   internal::g_trace_filter_bitmap.store(std::numeric_limits<uint64_t>::max(),
                                         std::memory_order_relaxed);
+  // Reset the source location flag to true.
+  tsl::profiler::g_enable_source_location.store(true,
+                                                std::memory_order_relaxed);
   return events;
 }
 

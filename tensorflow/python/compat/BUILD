@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 
 package(
@@ -6,13 +6,11 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "v2_compat",
     srcs = ["v2_compat.py"],
-    visibility = [
-        "//smartass/brain/ops:__subpackages__",
-        "//tensorflow:internal",
-    ],
+    strict_deps = True,
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:tf2",
         "//tensorflow/python/eager:monitoring",
@@ -26,9 +24,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "compat",
     srcs = ["compat.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/platform:tf_logging",

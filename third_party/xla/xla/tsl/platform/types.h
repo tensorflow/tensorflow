@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/base/macros.h"
 #include "tsl/platform/bfloat16.h"  // IWYU pragma: export
 #include "tsl/platform/ml_dtypes.h"  // IWYU pragma: export
-#include "tsl/platform/tstring.h"
+#include "tsl/platform/tstring.h"  // IWYU pragma: export
 
 namespace tsl {
 

@@ -37,10 +37,7 @@ TEST(TriangularSolveThunkTest, ProtoRoundTrip) {
   ThunkProto proto;
   CHECK(tsl::protobuf::TextFormat::ParseFromString(
       R"pb(
-        thunk_info {
-          profile_annotation: "profile_annotation"
-          execution_stream_id: 8
-        }
+        thunk_info { profile_annotation: "profile_annotation" }
         triangular_solve_thunk {
           options {
             lower: true
@@ -76,9 +73,6 @@ TEST(TriangularSolveThunkTest, ProtoRoundTrip) {
 
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = proto.thunk_info().profile_annotation();
-  thunk_info.execution_stream_id = xla::gpu::ExecutionStreamId{
-      static_cast<xla::gpu::ExecutionStreamId::ValueType>(
-          proto.thunk_info().execution_stream_id())};
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<TriangularSolveThunk> thunk,
       TriangularSolveThunk::FromProto(

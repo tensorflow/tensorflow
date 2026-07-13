@@ -59,10 +59,6 @@ struct FuncInfo : llvm::DenseMapInfo<mlir::func::FuncOp> {
     if (lhs == rhs) {
       return true;
     }
-    if (lhs == getEmptyKey() || lhs == getTombstoneKey() ||
-        rhs == getEmptyKey() || rhs == getTombstoneKey()) {
-      return false;
-    }
     if (lhs.getFunctionType() != rhs.getFunctionType()) {
       return false;
     }
@@ -89,7 +85,7 @@ void IfrtDuplicatedCalleeEliminationPass::runOnOperation() {
   mlir::SymbolTableCollection symbol_table;
   mlir::DenseMap<mlir::func::FuncOp, mlir::SymbolRefAttr, FuncInfo>
       unique_funcs;
-  getOperation().walk([&](xla::ifrt::CallOp call_op) {
+  getOperation().walk([&](CallOp call_op) {
     mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
     auto [it, inserted] =
         unique_funcs.insert({callee, call_op.getCalleeAttr()});

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cassert>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
@@ -52,9 +53,8 @@ namespace {
 class GpuKernelToNVVMPass
     : public impl::GpuKernelToNVVMPassBase<GpuKernelToNVVMPass> {
  public:
-  explicit GpuKernelToNVVMPass(bool useBarePtrCallConv) {
-    this->useBarePtrCallConv = useBarePtrCallConv;
-  }
+  using impl::GpuKernelToNVVMPassBase<
+      GpuKernelToNVVMPass>::GpuKernelToNVVMPassBase;
   void runOnOperation() override;
 };
 
@@ -63,12 +63,11 @@ class GpuKernelToNVVMPass
 class GpuKernelToROCDLPass
     : public impl::GpuKernelToROCDLPassBase<GpuKernelToROCDLPass> {
  public:
-  GpuKernelToROCDLPass(const std::string& chipset) : chipset_(chipset) {}
+  using impl::GpuKernelToROCDLPassBase<
+      GpuKernelToROCDLPass>::GpuKernelToROCDLPassBase;
 
  private:
   void runOnOperation() override;
-
-  std::string chipset_;
 };
 
 }  // namespace
@@ -118,14 +117,16 @@ void GpuKernelToNVVMPass::runOnOperation() {
       converter, [](gpu::AddressSpace space) {
         switch (space) {
           case gpu::AddressSpace::Global:
-            return 1;
+            return static_cast<unsigned>(NVVM::NVVMMemorySpace::Global);
           case gpu::AddressSpace::Workgroup:
-            return 3;
+            return static_cast<unsigned>(NVVM::NVVMMemorySpace::Shared);
           case gpu::AddressSpace::Private:
-            return 5;
+            return static_cast<unsigned>(NVVM::NVVMMemorySpace::Local);
+          case gpu::AddressSpace::Constant:
+            return static_cast<unsigned>(NVVM::NVVMMemorySpace::Constant);
         }
         assert(false && "unknown address space enum value");
-        return 0;
+        return 0u;
       });
 
   ConversionTarget target(getContext());
@@ -138,10 +139,10 @@ void GpuKernelToNVVMPass::runOnOperation() {
 
 void GpuKernelToROCDLPass::runOnOperation() {
   llvm::FailureOr<mlir::amdgpu::Chipset> maybeChipset =
-      mlir::amdgpu::Chipset::parse(chipset_);
+      mlir::amdgpu::Chipset::parse(chipset);
   if (failed(maybeChipset)) {
     mlir::emitError(mlir::UnknownLoc::get(&getContext()),
-                    "Invalid chipset name: " + chipset_);
+                    "Invalid chipset name: " + chipset);
     return signalPassFailure();
   }
 
@@ -156,16 +157,6 @@ void GpuKernelToROCDLPass::runOnOperation() {
           applyFullConversion(getOperation(), target, std::move(patterns)))) {
     signalPassFailure();
   }
-}
-
-std::unique_ptr<OperationPass<gpu::GPUModuleOp>> createGpuKernelToNvvmPass(
-    bool useBarePtrCallConv) {
-  return std::make_unique<GpuKernelToNVVMPass>(useBarePtrCallConv);
-}
-
-std::unique_ptr<OperationPass<gpu::GPUModuleOp>> createGpuKernelToRocdlPass(
-    const std::string& chipset) {
-  return std::make_unique<GpuKernelToROCDLPass>(chipset);
 }
 
 }  // namespace mlir

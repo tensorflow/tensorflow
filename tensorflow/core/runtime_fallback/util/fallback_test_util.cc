@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
@@ -54,7 +55,7 @@ tfrt::ExecutionContext CreateFallbackTestExecutionContext(
       /*attr def=*/{},
       /*node_def=*/{});
   absl::Status status = eager_context->AddFunctionDef(dummy_function_def);
-  TF_DCHECK_OK(status);
+  DCHECK_OK(status);
 
   auto request_id = id.fetch_add(1);
   tfrt::RequestContextBuilder request_context_builder(host, resource_context,
@@ -74,9 +75,9 @@ tfrt::ExecutionContext CreateFallbackTestExecutionContext(
       /*client_graph_resource_context=*/resource_context,
       /*cancellation_manager=*/nullptr,
       /*runtime_config=*/nullptr);
-  TF_DCHECK_OK(status);
+  DCHECK_OK(status);
 
-  TF_DCHECK_OK(status);
+  DCHECK_OK(status);
 
   auto request_context = std::move(request_context_builder).build();
   assert(request_context);

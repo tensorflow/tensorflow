@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 load("//tensorflow/core/platform:distribute.bzl", "distribute_py_strict_test")
 
@@ -8,9 +8,10 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "cluster_coordinator",
     srcs = ["cluster_coordinator.py"],
+    strict_deps = True,
     deps = [
         ":coordinator_context",
         ":metric_utils",
@@ -33,11 +34,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "coordinator_context",
     srcs = [
         "coordinator_context.py",
     ],
+    strict_deps = True,
     deps = [
         ":remote_value",
         "//tensorflow/core:protos_all_py",
@@ -49,15 +51,17 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "remote_value",
     srcs = ["remote_value.py"],
+    strict_deps = True,
     deps = ["//tensorflow/python/util:tf_export"],
 )
 
-py_strict_library(
+py_library(
     name = "values",
     srcs = ["values.py"],
+    strict_deps = True,
     deps = [
         ":remote_value",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -132,9 +136,10 @@ distribute_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "fault_tolerance_test_base",
     srcs = ["fault_tolerance_test_base.py"],
+    strict_deps = True,
     deps = [
         ":cluster_coordinator",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -205,9 +210,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "metric_utils",
     srcs = ["metric_utils.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/util:tf_contextlib",
@@ -235,23 +241,26 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "utils",
     srcs = ["utils.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/training:server_lib",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "remote_eager_lib",
+    strict_deps = True,
     visibility = ["//visibility:public"],
 )
 
-py_strict_library(
+py_library(
     name = "watchdog",
     srcs = ["watchdog.py"],
+    strict_deps = True,
     deps = ["@absl_py//absl/logging"],
 )
 

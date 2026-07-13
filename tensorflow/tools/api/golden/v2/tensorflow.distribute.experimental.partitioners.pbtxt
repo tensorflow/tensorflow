@@ -2,18 +2,18 @@ path: "tensorflow.distribute.experimental.partitioners"
 tf_module {
   member {
     name: "FixedShardsPartitioner"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "MaxSizePartitioner"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "MinSizePartitioner"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "Partitioner"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
 }

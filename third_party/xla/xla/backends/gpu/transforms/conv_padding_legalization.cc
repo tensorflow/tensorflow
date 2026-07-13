@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -434,7 +435,7 @@ absl::StatusOr<bool> ConvPaddingLegalization::RunOnComputation(
     }
   }
   for (HloCustomCallInstruction* instruction : convs) {
-    TF_ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(instruction));
+    ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(instruction));
     changed |= [&] {
       switch (kind) {
         case CudnnConvKind::kForward:
@@ -457,7 +458,7 @@ absl::StatusOr<bool> ConvPaddingLegalization::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
+    ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
     changed |= result;
   }
   return changed;

@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
@@ -204,6 +205,14 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
                 .set_int64_value(value);
           },
           options.mutable_profiler_options());
+    } else if (key == "use_system_hostname") {
+      SetOption<bool>(
+          key, kw.second,
+          [](tensorflow::ProfileOptions* options, bool value) {
+            (*options->mutable_advanced_configuration())["use_system_hostname"]
+                .set_bool_value(value);
+          },
+          options.mutable_profiler_options());
     } else if (absl::StartsWith(key, "tpu_")) {
       std::visit(
           SetAdvancedOption{options.mutable_profiler_options(), kw.first},
@@ -276,7 +285,7 @@ absl::Status ValidateRemoteProfilerSessionManagerOptions(
   }
 
   for (absl::string_view host_port : options.service_addresses()) {
-    TF_RETURN_IF_ERROR(ValidateHostPortPair(host_port));
+    RETURN_IF_ERROR(ValidateHostPortPair(host_port));
   }
 
   if (options.max_session_duration_ms() <

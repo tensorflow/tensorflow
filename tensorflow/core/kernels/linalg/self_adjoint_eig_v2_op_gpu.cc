@@ -48,16 +48,16 @@ class SelfAdjointEigV2OpGpu : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* context, DoneCallback done) final {
     const Tensor& input = context->input(0);
     const int ndims = input.dims();
-    OP_REQUIRES_ASYNC(
-        context, ndims >= 2,
-        errors::InvalidArgument("Input must have rank >= 2, got ", ndims),
-        done);
+    OP_REQUIRES_ASYNC(context, ndims >= 2,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "Input must have rank >= 2, got ", ndims)),
+                      done);
     const int64_t n = input.dim_size(ndims - 1);
-    OP_REQUIRES_ASYNC(
-        context, input.dim_size(ndims - 2) == n,
-        errors::InvalidArgument("Input matrices must be squares, got",
-                                input.dim_size(ndims - 2), " != ", n),
-        done);
+    OP_REQUIRES_ASYNC(context, input.dim_size(ndims - 2) == n,
+                      absl::InvalidArgumentError(
+                          absl::StrCat("Input matrices must be squares, got",
+                                       input.dim_size(ndims - 2), " != ", n)),
+                      done);
     const int64_t batch_size =
         input.template flat_inner_dims<Scalar, 3>().dimension(0);
 

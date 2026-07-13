@@ -1,7 +1,7 @@
 path: "tensorflow.profiler.Profiler"
 tf_class {
   is_instance: "<class \'tensorflow.python.profiler.model_analyzer.Profiler\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'graph\', \'op_log\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "

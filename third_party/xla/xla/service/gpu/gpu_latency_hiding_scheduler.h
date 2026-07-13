@@ -64,7 +64,7 @@ enum class GpuResourceType {
   kGpuAsyncStreamRecv1,        // Another resource for P2P Recv operation.
   kGpuAsyncStreamCollectives,  // The resource for collective operations.
   kGpuAsyncStreamComputes,     // The resource for async compute operations.
-  kGpuAsyncStreamMemcpy,       // The resource for host offloading operations.
+  kGpuAsyncStreamMemcpy,       // The resource for async memcpy operations.
   kGpuResourceTypeEnd,
 };
 
@@ -156,6 +156,9 @@ class GPUProfileStatisticsAggregator : public ProfileStatisticsAggregator {
   void HandleFoundInstructionLatency(const HloInstruction& from,
                                      const HloInstruction& to) override;
 };
+
+// Checks if the async instruction is a custom collective call.
+bool IsCustomCollectiveOp(const HloInstruction* instr);
 
 }  // namespace gpu
 }  // namespace xla

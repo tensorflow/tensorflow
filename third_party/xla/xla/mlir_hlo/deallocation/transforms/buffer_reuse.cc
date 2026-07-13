@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cassert>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <utility>
@@ -38,6 +40,10 @@ limitations under the License.
 
 namespace mlir {
 namespace deallocation {
+
+#define GEN_PASS_DEF_BUFFERREUSEPASS
+#include "deallocation/transforms/passes.h.inc"
+
 namespace {
 
 template <typename T>
@@ -526,9 +532,6 @@ void promoteBuffers(Block& block) {
   }
 }
 
-#define GEN_PASS_DEF_BUFFERREUSEPASS
-#include "deallocation/transforms/passes.h.inc"
-
 struct BufferReusePass : public impl::BufferReusePassBase<BufferReusePass> {
   void runOnOperation() override {
     bool result;
@@ -554,11 +557,5 @@ struct BufferReusePass : public impl::BufferReusePassBase<BufferReusePass> {
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createBufferReusePass() {
-  return std::make_unique<BufferReusePass>();
-}
-
 }  // namespace deallocation
 }  // namespace mlir

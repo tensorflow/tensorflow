@@ -320,6 +320,15 @@ else:
       dtypes.float8_e4m3fn.as_numpy_dtype: (
           SlowAppendFloat8e4m3fnArrayToTensorProto
       ),
+      dtypes.float8_e4m3fnuz.as_numpy_dtype: (
+          SlowAppendFloat8e4m3fnuzArrayToTensorProto
+      ),
+      dtypes.float8_e4m3b11fnuz.as_numpy_dtype: (
+          SlowAppendFloat8e4m3b11fnuzArrayToTensorProto
+      ),
+      dtypes.float8_e5m2fnuz.as_numpy_dtype: (
+          SlowAppendFloat8e5m2fnuzArrayToTensorProto
+      ),
       dtypes.float4_e2m1fn.as_numpy_dtype: (
           SlowAppendFloat4e2m1fnArrayToTensorProto
       ),
@@ -677,6 +686,11 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
     raise TypeError(f"`dtype` {dtype} is not compatible with {values} of "
                     f"dtype {nparray.dtype}.")
 
+  # Normalize byte order to native so that tobytes() and element access
+  # produce values in the host's expected representation.
+  if not nparray.dtype.isnative:
+    nparray = nparray.astype(nparray.dtype.newbyteorder("="))
+
   # If shape is not given, get the shape from the numpy array.
   if shape is None:
     shape = nparray.shape
@@ -806,14 +820,17 @@ def MakeNdarray(tensor):
   elif tensor_dtype in [
       dtypes.float8_e5m2,
       dtypes.float8_e4m3fn,
-      dtypes.float4_e2m1fn
+      dtypes.float8_e4m3fnuz,
+      dtypes.float8_e4m3b11fnuz,
+      dtypes.float8_e5m2fnuz,
+      dtypes.float4_e2m1fn,
   ]:
     values = np.fromiter(tensor.float8_val, dtype=np.uint8)
     values.dtype = dtype
   elif tensor_dtype == dtypes.float32:
-    values = np.fromiter(tensor.float_val, dtype=dtype)
+    values = np.array(tensor.float_val, dtype=dtype)
   elif tensor_dtype == dtypes.float64:
-    values = np.fromiter(tensor.double_val, dtype=dtype)
+    values = np.array(tensor.double_val, dtype=dtype)
   elif tensor_dtype in [
       dtypes.int32,
       dtypes.uint8,
@@ -830,13 +847,13 @@ def MakeNdarray(tensor):
       dtypes.int2,
       dtypes.uint2,
   ]:
-    values = np.fromiter(tensor.int_val, dtype=dtype)
+    values = np.array(tensor.int_val, dtype=dtype)
   elif tensor_dtype == dtypes.int64:
-    values = np.fromiter(tensor.int64_val, dtype=dtype)
+    values = np.array(tensor.int64_val, dtype=dtype)
   elif tensor_dtype == dtypes.uint32:
-    values = np.fromiter(tensor.uint32_val, dtype=dtype)
+    values = np.array(tensor.uint32_val, dtype=dtype)
   elif tensor_dtype == dtypes.uint64:
-    values = np.fromiter(tensor.uint64_val, dtype=dtype)
+    values = np.array(tensor.uint64_val, dtype=dtype)
   elif tensor_dtype == dtypes.complex64:
     it = iter(tensor.scomplex_val)
     values = np.array([complex(x[0], x[1]) for x in zip(it, it)], dtype=dtype)
@@ -844,7 +861,7 @@ def MakeNdarray(tensor):
     it = iter(tensor.dcomplex_val)
     values = np.array([complex(x[0], x[1]) for x in zip(it, it)], dtype=dtype)
   elif tensor_dtype == dtypes.bool:
-    values = np.fromiter(tensor.bool_val, dtype=dtype)
+    values = np.array(tensor.bool_val, dtype=dtype)
   else:
     raise TypeError(f"Unsupported tensor type: {tensor.dtype}. See "
                     "https://www.tensorflow.org/api_docs/python/tf/dtypes "

@@ -201,12 +201,14 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
   __batch_encoder__ = _DynamicRaggedShapeBatchEncoder()
   __name__ = "tf.DynamicRaggedShape"
 
-  def __init__(self,
-               row_partitions: Sequence[RowPartition],
-               inner_shape: core.TensorLike,
-               dtype: Optional[dtypes.DType] = None,
-               validate: bool = False,
-               static_inner_shape: ... = None):
+  def __init__(
+      self,
+      row_partitions: Sequence[RowPartition],
+      inner_shape: core.TensorLike,
+      dtype: Optional[dtypes.DType] = None,
+      validate: bool = False,
+      static_inner_shape=None,
+  ):
     """Core constructor for a DynamicRaggedShape.
 
     Create a DynamicRaggedShape. This can be used to construct a

@@ -24,16 +24,15 @@ namespace cpu {
 
 constexpr auto kOnednnConvConfig = BackendConfigOneofCase::kOnednnConvConfig;
 
-void ExecuteOneDnnConvolution(absl::Span<MemrefInfoHandler> arguments,
-                              absl::Span<MemrefInfoHandler> results,
-                              OneDnnConvolutionConfig conv_config,
+void ExecuteOneDnnConvolution(OneDnnConvolutionConfig conv_config,
                               const dnnl::engine& cpu_engine,
                               dnnl::stream& onednn_stream,
-                              OneDnnResources& resources);
+                              OneDnnPrimResources& resources);
 
 template <>
 struct PrimitiveTrait<kOnednnConvConfig> {
   using pointer_type = xla::cpu::OneDnnConvolutionConfig*;
+  using primitive_desc = dnnl::convolution_forward::primitive_desc;
   static const BackendConfigOneofCase kConfigVal = kOnednnConvConfig;
 };
 

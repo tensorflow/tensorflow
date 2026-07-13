@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -60,7 +60,7 @@ class TopkTest : public HloPjRtGpuTestBase, public ParameterizedInterface {
  protected:
   TopkTest()
       : HloPjRtGpuTestBase(
-            HloPjRtTestBaseOptions{.verifier_layout_sensitive = true}) {}
+            HloTestBaseOptions{.verifier_layout_sensitive = true}) {}
 
   absl::StatusOr<std::unique_ptr<HloModule>> TopkHlo(
       int n, int k, int batch_size, absl::string_view dtype) const {
@@ -131,6 +131,11 @@ void ToSortAndSlice(HloModule* module) {
 }
 
 TEST_P(TopkTest, ProducesCorrectResult) {
+  // TODO(intel-tf): Remove this check once specialization for SYCL/oneAPI
+  // backend is added.
+  if (device_description().gpu_compute_capability().IsOneAPI()) {
+    GTEST_SKIP() << "OneAPI does not support TopK custom call.";
+  }
   const auto [n_kb, k, batch_size, dtype] = GetParam();
   const size_t n = n_kb * 1024;
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> topk_module,
