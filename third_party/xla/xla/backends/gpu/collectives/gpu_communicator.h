@@ -37,6 +37,8 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args.h"
+#include "xla/stream_executor/memory_allocation.h"
+#include "xla/tsl/util/tied_ref.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -244,6 +246,17 @@ class GpuCommunicator : public Communicator {
                                         const Executor& executor) {
     return Unimplemented("LaunchWaitSignal is not implemented");
   }
+
+  virtual absl::Status LaunchMultiGpuBarrier(const Executor& executor) {
+    return Unimplemented("LaunchMultiGpuBarrier is not implemented");
+  }
+
+  virtual void InitializeCrossDeviceBarrier(
+      tsl::TiedRef<se::MemoryAllocation> tied_signal_value,
+      tsl::TiedRef<se::MemoryAllocation> tied_signal,
+      tsl::TiedRef<SymmetricMemory> tied_symmetric_memory) {}
+
+  virtual bool IsCrossDeviceBarrierInitiated() const { return false; }
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const GpuCommunicator& comm) {
