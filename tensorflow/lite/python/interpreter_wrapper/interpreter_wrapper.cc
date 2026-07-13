@@ -1133,7 +1133,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
     bool force_delegate_node_profiling) {
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
   std::unique_ptr<InterpreterWrapper::Model> model =
-      Model::BuildFromFile(model_path, error_reporter.get());
+      Model::VerifyAndBuildFromFile(model_path, /*extra_verifier=*/nullptr,
+                                    error_reporter.get());
   return CreateInterpreterWrapper(
       std::move(model), op_resolver_id, std::move(error_reporter),
       registerers_by_name, registerers_by_func, error_msg, preserve_all_tensors,
