@@ -26,7 +26,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/autotuner/autotune_fingerprint.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
@@ -187,6 +189,42 @@ absl::StatusOr<std::optional<autotuner::AutotuneValue>> PersistentCache::Read(
 AutotunerCacheInterface::CacheStats PersistentCache::GetCacheStats() const {
   absl::MutexLock lock(stats_mutex_);
   return stats_;
+}
+
+absl::StatusOr<std::string> PersistentCache::Serialize(
+    absl::Span<const HloInstruction* const> instructions_to_serialize) {
+  autotuner::AutotuneCache cache;
+  cache.set_device_scope(context_.device());
+  cache.set_explicit_version_scope(context_.explicit_version());
+
+  autotuner::AutotuneTargetKey target_key;
+  target_key.set_device(context_.device());
+  target_key.set_explicit_version(context_.explicit_version());
+
+  for (const HloInstruction* instr : instructions_to_serialize) {
+    target_key.set_hlo_fingerprint(ToString(GetHloFingerprint(*instr)));
+
+    absl::StatusOr<std::vector<autotuner::AutotuneEntry>> entries =
+        Read(target_key);
+    if (!entries.ok()) {
+      continue;
+    }
+    for (const auto& entry : *entries) {
+      *cache.add_entries() = entry;
+    }
+  }
+  return cache.SerializeAsString();
+}
+
+absl::Status PersistentCache::Deserialize(absl::string_view serialized_cache) {
+  autotuner::AutotuneCache cache;
+  if (!cache.ParseFromString(serialized_cache)) {
+    return absl::InvalidArgumentError("Failed to parse AutotuneCache.");
+  }
+  for (const auto& entry : cache.entries()) {
+    RETURN_IF_ERROR(Write(entry));
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace xla
