@@ -1526,7 +1526,7 @@ diff --git b/python/test/BUILD b/python/test/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/python/test/BUILD
-@@ -0,0 +1,434 @@
+@@ -0,0 +1,459 @@
 +load("//third_party/py/pytest:pytest_defs.bzl", "pytest_multi_tests", "pytest_test")
 +
 +package(
@@ -1608,6 +1608,8 @@ new file mode 100644
 +    # device and thus suite fails with go/forge-accel-or-fail. We run it as a
 +    # single shard to avoid this.
 +    "unit/runtime/test_cache_determinism.py",  # Only 2 test cases, so sharding causes go/forge-accel-or-fail on empty shards. We run it as a single shard.
++    # Exclude from Zapfhahn.
++    "gsan/test_allocator.py",
 +] + DEVICELESS_TARGETS  # targets that don't require a GPU to run
 +
 +B200_FULL_GPU_ONLY_TESTS = [
@@ -1620,6 +1622,7 @@ new file mode 100644
 +    name = "a100_tests",
 +    tests = [
 +        ":ampere",
++        ":gsan/test_allocator_a100",
 +        ":unit/language/test_core_a100",
 +        ":unit/runtime/test_cache_determinism_a100",
 +        ":unit/runtime/test_driver_a100",
@@ -1629,6 +1632,7 @@ new file mode 100644
 +test_suite(
 +    name = "h100_tests",
 +    tests = [
++        ":gsan/test_allocator_h100",
 +        ":hopper",
 +        ":unit/language/test_core_h100",
 +        ":unit/runtime/test_cache_determinism_h100",
@@ -1642,6 +1646,7 @@ new file mode 100644
 +    tests = [
 +        ":blackwell",
 +        ":blackwell_full",
++        ":gsan/test_allocator_b200",
 +        ":unit/language/test_core_b200",
 +        ":unit/runtime/test_cache_determinism_b200",
 +        ":unit/runtime/test_driver_b200",
@@ -1796,7 +1801,7 @@ new file mode 100644
 +    srcs = ["conftest.py"],
 +    exec_properties = _asan_needs_extra_link_memory,
 +    shard_count = 1,
-+    tags = _requires_gpu_sm80,
++    tags = _requires_gpu_sm80 + ["nozapfhahn"],
 +    target_compatible_with = _requires_config_cuda,
 +    tests = ["unit/runtime/test_cache_determinism.py"],
 +    deps = [
@@ -1811,7 +1816,7 @@ new file mode 100644
 +    srcs = ["conftest.py"],
 +    exec_properties = _asan_needs_extra_link_memory,
 +    shard_count = 1,
-+    tags = _requires_gpu_sm90,
++    tags = _requires_gpu_sm90 + ["nozapfhahn"],
 +    target_compatible_with = _requires_config_cuda,
 +    tests = ["unit/runtime/test_cache_determinism.py"],
 +    deps = [
@@ -1826,7 +1831,7 @@ new file mode 100644
 +    srcs = ["conftest.py"],
 +    exec_properties = _asan_needs_extra_link_memory,
 +    shard_count = 1,
-+    tags = _requires_gpu_sm100,
++    tags = _requires_gpu_sm100 + ["nozapfhahn"],
 +    target_compatible_with = _requires_config_cuda,
 +    tests = ["unit/runtime/test_cache_determinism.py"],
 +    deps = [
@@ -1894,11 +1899,31 @@ new file mode 100644
 +    tests = glob(
 +        include = B200_FULL_GPU_ONLY_TESTS,
 +    ),
-+    deps = [
-+        "//third_party/py/torch:pytorch",
-+        "//third_party/py/triton",
-+    ],
 +)
++
++[
++    pytest_test(
++        name = "gsan/test_allocator_%s" % suffix,
++        size = "large",
++        srcs = ["conftest.py"],
++        exec_properties = _asan_needs_extra_link_memory,
++        g3_multiprocessing = True,
++        tags = tags + ["nozapfhahn"],
++        target_compatible_with = _requires_config_cuda,
++        tests = ["gsan/test_allocator.py"],
++        deps = [
++            "@llvm-project//llvm:FileCheck",
++            "//third_party/py/expecttest",
++            "//third_party/py/torch:pytorch",
++            "//third_party/py/triton",
++        ],
++    )
++    for suffix, tags in [
++        ("a100", _requires_gpu_sm80),
++        ("h100", _requires_gpu_sm90),
++        ("b200", _requires_gpu_sm100),
++    ]
++]
 +
 +# Shard test_core more on B200, as it is otherwise very slow to run.
 +pytest_test(
