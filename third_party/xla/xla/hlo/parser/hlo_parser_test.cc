@@ -7275,8 +7275,8 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   HloInstruction* async_done = module->entry_computation()->root_instruction();
   HloComputation* called_computation = async_done->async_wrapped_computation();
-  EXPECT_EQ(called_computation->num_parameters(), 1);
-  EXPECT_EQ(called_computation->root_instruction()->operand_count(), 1);
+  EXPECT_EQ(called_computation->num_parameters(), 2);
+  EXPECT_EQ(called_computation->root_instruction()->operand_count(), 2);
 }
 
 TEST_F(HloParserTest, DeeplyNestedOperandsExceedsRecursionLimit) {

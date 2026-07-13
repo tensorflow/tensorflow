@@ -207,6 +207,8 @@ cc_library(
         ":hlo_operand_index",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_instruction_utils",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
     ],
