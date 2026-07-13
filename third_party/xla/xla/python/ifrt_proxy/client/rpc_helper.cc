@@ -463,6 +463,7 @@ RPC(AssembleArrayFromSingleDeviceArrays,
     assemble_array_from_single_device_arrays);
 RPC(RemapArrays, remap_arrays);
 RPC(ReshardArrays, reshard_arrays);
+RPC(BitcastArrays, bitcast_arrays);
 RPC(DisassembleIntoSingleDeviceArrays, disassemble_into_single_device_arrays);
 RPC(CopyToHostBuffer, copy_to_host_buffer);
 RPC(IsArrayDeleted, is_array_deleted);

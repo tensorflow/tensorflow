@@ -56,6 +56,13 @@ enum {
   // MakeArrayFromHostBuffer supports a layout argument.
   kMakeArrayFromHostBufferWithLayout = 23,
 
+  // kBitcastArrays adds support for `Client::BitcastArrays`.
+  kBitcastArrays = 24,
+
+  // kLoadedExecutableDeleteOptions adds support for
+  // `LoadedExecutable::SetDeleteOptions`.
+  kLoadedExecutableDeleteOptions = 25,
+
   // kSentiel is used to derive kCurrent below. Keep this as the last value of
   // the enum.
   kSentiel,

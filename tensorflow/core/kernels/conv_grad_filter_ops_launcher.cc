@@ -218,10 +218,10 @@ void LaunchConv2DBackpropFilterOpImpl(
   DCHECK_EQ(dims.spatial_dims[1].output_size, expected_out_cols);
 
   auto* stream = ctx->op_device_context()->stream();
-  OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
+  OP_REQUIRES(ctx, stream, absl::InternalError("No GPU stream available."));
 
   if (!use_cudnn) {
-    ctx->SetStatus(errors::Unimplemented(
+    ctx->SetStatus(absl::UnimplementedError(
         "Conv2DBackprop for GPU is not currently supported "
         "without cudnn"));
     return;

@@ -18,20 +18,25 @@ limitations under the License.
 
 #include <array>
 #include <memory>
+#include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/future.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
 
@@ -39,90 +44,111 @@ namespace xla {
 
 class AbstractTrackedDeviceBuffer {
  public:
-  virtual ~AbstractTrackedDeviceBuffer() = default;
-  explicit AbstractTrackedDeviceBuffer(
-      tsl::RCReference<CommonPjRtRawBuffer> raw_buffer)
-      : raw_buffer_(std::move(raw_buffer)) {}
+  ~AbstractTrackedDeviceBuffer() = default;
+  AbstractTrackedDeviceBuffer(
+      PjRtRawBufferRef raw_buffer,
+      absl::InlinedVector<PjRtDeviceEventRef, 2> definition_events,
+      bool use_stream_based_compaction = false);
+
+  absl::Span<const PjRtDeviceEventRef> definition_events() const {
+    return definition_events_;
+  }
 
   // Construct (or return) a vector of tsl::AsyncValue events which
   // will become ready when this buffer is ready.
-  virtual std::vector<tsl::RCReference<tsl::AsyncValue>>
-  GetAsyncValueDefinitionEvents() = 0;
+  std::vector<tsl::RCReference<tsl::AsyncValue>>
+  GetAsyncValueDefinitionEvents() {
+    std::vector<tsl::RCReference<tsl::AsyncValue>> result;
+    result.reserve(definition_events_.size());
+    for (const auto& ev : definition_events_) {
+      if (ev) {
+        result.push_back(tsl::FormRef(ev.async_value()));
+      }
+    }
+    return result;
+  }
 
-  // Construct (or return) a vector of tsl::AsyncValue events which
+  // Construct (or return) a vector of PjRtDeviceEventRef events which
   // will become ready when this buffer is ok to mutate.
-  virtual std::vector<tsl::RCReference<tsl::AsyncValue>>
-  GetAsyncValueDefinitionAndUsageEvents() = 0;
+  PjRtDeviceEventRefVector GetAsyncValueDefinitionAndUsageDeviceEvents() {
+    PjRtDeviceEventRefVector result;
+    result.reserve(definition_events_.size() + usage_events_.size());
+    for (const auto& ev : definition_events_) {
+      if (ev) {
+        result.push_back(ev);
+      }
+    }
+    for (const auto& ev : usage_events_) {
+      result.push_back(ev);
+    }
+    return result;
+  }
 
   // Returns a raw buffer which aliases the same
   // underlying memory as this AbstractTrackedDeviceBuffer.
-  const tsl::RCReference<CommonPjRtRawBuffer>& raw_buffer() const {
-    return raw_buffer_;
-  }
+  const PjRtRawBufferRef& raw_buffer() const { return raw_buffer_; }
 
   // Only to be called via the result of
   // CommonPjRtBuffer::ScopedHold::ConvertUsageHold with an optional device
   // event to add to the usage events.
-  virtual void AddUsageEvent(tsl::RCReference<PjRtDeviceEvent> event) = 0;
+  void AddUsageEvent(PjRtDeviceEventRef event);
 
-  // Only to be called by ScopedHold to mark a successful donation.
-  virtual void ConfirmDonation() = 0;
+  void ConfirmDonation() {
+    CHECK(!usage_events_locked_);
+    usage_events_locked_ = true;
+    usage_events_.clear();
+    ReleaseDeviceMemory();
+  }
 
   // Asynchronously frees all memory.
-  virtual void Delete(PjRtMemorySpace* memory_space) = 0;
+  void Delete(PjRtMemorySpace* memory_space);
 
-  // Clones an abstract buffer with an additional control dependency.
-  virtual absl::StatusOr<std::unique_ptr<AbstractTrackedDeviceBuffer>>
-  CloneWithControlDependency(PjRtMemorySpace* memory_space,
-                             Future<> dependency) {
-    return Unimplemented("DonateWithControlDependency is not supported.");
-  }
+  // Prepends a definition event. Unsafe because it assumes unique ownership
+  // of this buffer object (e.g. after donation).
+  void UnsafePrependDefinitionEvent(PjRtDeviceEventRef extra_definition_event);
 
   // Returns a future that becomes available when all definition events are
   // complete.
-  virtual Future<> GetReadyFuture(PjRtMemorySpace* memory_space) {
-    return Future<>(Unimplemented("GetReadyFuture not supported for %s",
-                                  memory_space->DebugString()));
-  }
+  Future<> GetReadyFuture(PjRtMemorySpace* memory_space);
 
   // Waits for all usage and definition events to complete synchronously
   // and returns the status.
-  virtual absl::Status BlockForOperationsToComplete(
+  absl::Status BlockForOperationsToComplete(PjRtMemorySpace* memory_space);
+
+  absl::StatusOr<PjRtDeviceEventRef> GetDefinitionEvent(
       PjRtMemorySpace* memory_space) {
-    return Unimplemented("BlockForOperationsToComplete not supported for %s",
-                         memory_space->DebugString());
+    if (definition_events().size() != 1) {
+      return absl::InternalError(
+          "GetMergedDefinitionEvent only supported on TPU for buffers with "
+          "exactly 1 definition event.");
+    }
+    return definition_events_[0];
   }
 
-  virtual absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> GetDefinitionEvent(
-      PjRtMemorySpace* memory_space) {
-    return Unimplemented("GetDefinitionEvent is not supported for %s",
-                         memory_space->ToString());
-  }
+  absl::Status WaitUntilBufferReadyOnStream(PjRtMemorySpace* memory_space,
+                                            std::intptr_t stream);
 
-  virtual absl::Status WaitUntilBufferReadyOnStream(std::intptr_t stream) {
-    return absl::UnimplementedError(
-        "WaitUntilBufferReadyOnStream is only implemented for GPU.");
-  }
-
-  // TODO(parkers): definition events are fixed, so we should just store them
-  // directly.
   // Returns true if there is an error in any of the events.
-  virtual bool AddDefinitionEventsToSet(PjRtDeviceEventSet& events) {
-    LOG(FATAL) << "TODO IMPLEMENT: AddDefinitionEventsToSet.";
-    return false;
+  absl::Span<const PjRtDeviceEventRef> usage_events() const {
+    return usage_events_;
   }
 
-  virtual void AddUsageEventsToSet(PjRtDeviceEventSet& events) {
-    LOG(FATAL) << "TODO IMPLEMENT: AddUsageEventsToSet.";
-  }
+  // Locks the usage events. After LockUsageEvents is called, it is illegal to
+  // AddUsageEvent.
+  void LockUsageEvents();
 
  protected:
   void ReleaseDeviceMemory() {
-    raw_buffer_ = tsl::RCReference<CommonPjRtRawBuffer>();
+    raw_buffer_ = PjRtRawBufferRef();
+    definition_events_.clear();
   }
 
  private:
-  tsl::RCReference<CommonPjRtRawBuffer> raw_buffer_;
+  PjRtRawBufferRef raw_buffer_;
+  absl::InlinedVector<PjRtDeviceEventRef, 2> definition_events_;
+  absl::InlinedVector<PjRtDeviceEventRef, 4> usage_events_;
+  bool use_stream_based_compaction_;
+  bool usage_events_locked_ = false;
 };
 
 class CommonPjRtBuffer : public PjRtBuffer {
@@ -215,7 +241,7 @@ class CommonPjRtBuffer : public PjRtBuffer {
 
     // Converts the hold into a usage event. Only valid for holds of type
     // kUsage.
-    void ConvertUsageHold(tsl::RCReference<PjRtDeviceEvent> event);
+    void ConvertUsageHold(PjRtDeviceEventRef event);
 
    protected:
     ScopedHold(CommonPjRtBuffer* parent, Type type)
@@ -259,11 +285,28 @@ class CommonPjRtBuffer : public PjRtBuffer {
   bool IsDeleted() const override;
 
   absl::Status AcquireScopedRawBuffer(
-      absl::AnyInvocable<absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>(
-          tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
-          std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events) &&>
+      absl::AnyInvocable<absl::StatusOr<PjRtDeviceEventRef>(
+          PjRtRawBufferRef raw_buffer,
+          PjRtDeviceEventRefVector definition_events) &&>
           scoped_acquire,
       const char* caller_name = "AcquireScopedRawBuffer");
+
+  struct RawBufferForUsage {
+    PjRtRawBufferRef raw_buffer;
+
+    // The caller must call this after they have finished accessing
+    // `raw_buffer`.
+    absl::AnyInvocable<void() &&> usage_done_cb;
+
+    // A future that is satisfied when the buffer's definition events
+    // become ready.
+    Future<> definition_future;
+  };
+  // A convenience version of `AcquireScopedRawBuffer` that returns a
+  // raw buffer and a usage done promise that the caller should complete
+  // when they are done using the buffer.
+  absl::StatusOr<RawBufferForUsage> GetRawBufferForUsage(
+      const char* caller_name = "GetRawBufferForUsage");
 
   ScopedHold GetBufferWithHold(ScopedHold::Type type);
 
@@ -285,6 +328,9 @@ class CommonPjRtBuffer : public PjRtBuffer {
   // must be called first.)
   absl::StatusOr<std::unique_ptr<AbstractTrackedDeviceBuffer>>
   GetBufferForDonationHoldLocked() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  absl::StatusOr<std::unique_ptr<AbstractTrackedDeviceBuffer>>
+  DonateTrackedBuffer();
 
   // Adds a hold of usage or external reference and returns non-owning
   // device_buffer_. Returns an error if device_buffer_ is null.
@@ -338,6 +384,8 @@ class CommonPjRtBuffer : public PjRtBuffer {
   // Count of holds on the buffer.
   std::array<int, ScopedHold::Type::kMaxValue> holds_ ABSL_GUARDED_BY(mu_);
 };
+
+
 
 }  // namespace xla
 

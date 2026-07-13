@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/bit_cast.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/fp_util.h"
@@ -481,12 +482,11 @@ absl::StatusOr<Literal> ExhaustiveOpTestBase<T, N>::RunComputation(
   // interested in disabling constant folding.
   ExecutionOptions execution_options;
   *execution_options.mutable_debug_options() = *mutable_debug_options();
-  TF_ASSIGN_OR_RETURN(
-      HloModuleConfig config,
-      HloModule::CreateModuleConfigFromProto(computation.proto(),
-                                             execution_options.debug_options(),
-                                             &execution_options));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(HloModuleConfig config,
+                   HloModule::CreateModuleConfigFromProto(
+                       computation.proto(), execution_options.debug_options(),
+                       &execution_options));
+  ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       HloModule::CreateFromProto(computation.proto(), std::move(config)));
   return Execute(std::move(module), input_literals);

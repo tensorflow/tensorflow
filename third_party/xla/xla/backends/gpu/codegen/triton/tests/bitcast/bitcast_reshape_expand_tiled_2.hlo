@@ -1,0 +1,37 @@
+// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s --check-prefixes=CHECK
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+
+fusion {
+  p = f32[16] parameter(0)
+  ROOT bitcast = f32[1,4,4] bitcast(p)
+}
+
+// CHECK-DAG: #indexing_map = #xla.indexing_map<"(pid) -> (pid * 8), domain: pid in [0, 1]">
+// CHECK-DAG: #indexing_map1 = #xla.indexing_map<"(pid) -> (pid * 2), domain: pid in [0, 1]">
+
+// CHECK-LABEL:  xtile.entry_func @triton_fn(
+// CHECK-SAME:     %[[ARG0:.*]]: memref<16xf32>,
+// CHECK-SAME:     %[[ARG1:.*]]: memref<1x4x4xf32>,
+// CHECK-SAME:     %[[ARG2:.*]]: index)
+// CHECK:          %[[C0:.*]] = arith.constant 0 : index
+// CHECK:          %[[INDEX0:.*]] = xla.apply_indexing #indexing_map(%[[ARG2]])
+// CHECK:          %[[EXTRACT:.*]] = xtile.extract %[[ARG0]][%[[INDEX0]]] [8] [1] : memref<16xf32> -> tensor<8xf32>
+// CHECK:          %[[RESHAPE:.*]] = tt.reshape %[[EXTRACT]] : tensor<8xf32> -> tensor<2x4xf32>
+// CHECK:          %[[EXPAND:.*]] = tt.expand_dims %[[RESHAPE]] {axis = 0 : i32} : tensor<2x4xf32> -> tensor<1x2x4xf32>
+// CHECK:          %[[BROADCAST:.*]] = tt.broadcast %[[EXPAND]] : tensor<1x2x4xf32> -> tensor<2x2x4xf32>
+// CHECK:          %[[INDEX1:.*]] = xla.apply_indexing #indexing_map1(%[[ARG2]])
+// CHECK:          xtile.insert %[[BROADCAST]] into %[[ARG1]][%[[C0]], %[[INDEX1]], %[[C0]]] [2, 2, 4] [1, 1, 1] : tensor<2x2x4xf32> -> memref<1x4x4xf32>
+// CHECK:          xtile.return
+
+ENTRY main {
+  p = f32[16] parameter(0)
+  ROOT fusion = f32[1,4,4] fusion(p), kind=kCustom, calls=fusion,
+    backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":[2,2,4]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+}

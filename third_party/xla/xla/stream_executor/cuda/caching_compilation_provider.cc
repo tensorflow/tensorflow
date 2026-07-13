@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -127,7 +128,7 @@ absl::StatusOr<Assembly> CachingCompilationProvider::CompileAndLink(
     if (std::holds_alternative<RelocatableModule>(input)) {
       modules.push_back(std::get<RelocatableModule>(input));
     } else {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           RelocatableModule relocatable_module,
           CompileToRelocatableModule(cc, std::get<Ptx>(input).ptx, options));
       modules.push_back(std::move(relocatable_module));

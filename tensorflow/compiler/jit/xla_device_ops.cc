@@ -35,10 +35,10 @@ XlaAssignVariableOp::XlaAssignVariableOp(OpKernelConstruction* c)
 
 void XlaAssignVariableOp::Compute(OpKernelContext* context) {
   OP_REQUIRES(context, dtype_ == context->input(1).dtype(),
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "Variable and value dtypes don't match; respectively, ",
                   DataTypeString(dtype_), " and ",
-                  DataTypeString(context->input(1).dtype())));
+                  DataTypeString(context->input(1).dtype()))));
   core::RefCountPtr<Var> variable;
   const Tensor& value = context->input(1);
   // Note: every resource-variable-manipulating op assumes copy-on-write
@@ -61,10 +61,10 @@ void XlaAssignVariableOp::Compute(OpKernelContext* context) {
   OP_REQUIRES(
       context,
       !variable->is_initialized || variable->tensor()->dtype() == dtype_,
-      errors::InvalidArgument(
-          "Trying to assign variable with wrong dtype. Expected ",
-          DataTypeString(variable->tensor()->dtype()), " got ",
-          DataTypeString(dtype_)));
+      absl::InvalidArgumentError(
+          absl::StrCat("Trying to assign variable with wrong dtype. Expected ",
+                       DataTypeString(variable->tensor()->dtype()), " got ",
+                       DataTypeString(dtype_))));
   variable->is_initialized = true;
   *variable->tensor() = value;
 }

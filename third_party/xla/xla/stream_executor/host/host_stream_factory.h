@@ -16,28 +16,37 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_HOST_HOST_STREAM_FACTORY_H_
 #define XLA_STREAM_EXECUTOR_HOST_HOST_STREAM_FACTORY_H_
 
-#include "xla/stream_executor/host/host_stream.h"
+#include <memory>
+
+#include "absl/base/attributes.h"
 
 namespace stream_executor {
+
+class StreamExecutor;
+
 namespace host {
 
+class HostStream;
+
+// Factory interface for creating HostStream instances. Supports static
+// registration of custom factory implementations with priority ranking.
 class HostStreamFactory {
  public:
   virtual ~HostStreamFactory() = default;
+
+  // Creates a new HostStream associated with the given executor.
   virtual std::unique_ptr<HostStream> CreateStream(
       StreamExecutor* executor) const = 0;
+  // Registers a custom HostStreamFactory instance with a specified priority.
+  // Higher priority values override lower priority registrations.
   static void Register(std::unique_ptr<HostStreamFactory> factory,
                        int priority);
-  static const HostStreamFactory* GetFactory();
-};
 
-class HostStreamDefaultFactory : public HostStreamFactory {
- public:
-  ~HostStreamDefaultFactory() override = default;
-  std::unique_ptr<HostStream> CreateStream(
-      StreamExecutor* executor) const override {
-    return std::make_unique<HostStream>(executor);
-  }
+  // Returns a shared pointer to the highest-priority registered factory.
+  static std::shared_ptr<HostStreamFactory> GetFactory();
+
+  // Resets the registered factory to the default factory (for testing).
+  static void ResetForTesting();
 };
 
 template <class Factory>
@@ -55,13 +64,14 @@ class HostStreamFactoryRegistrar {
   INTERNAL_REGISTER_HOST_STREAM_FACTORY(factory, priority, __COUNTER__)
 
 #define INTERNAL_REGISTER_HOST_STREAM_FACTORY(factory, priority, ctr) \
-  static ::stream_executor::host::HostStreamFactoryRegistrar<factory> \
-  INTERNAL_REGISTER_LOCAL_HOST_STREAM_FACTORY_NAME(ctr) {             \
+  ABSL_ATTRIBUTE_UNUSED static ::stream_executor::host::              \
+      HostStreamFactoryRegistrar<factory>                             \
+      INTERNAL_REGISTER_LOCAL_HOST_STREAM_FACTORY_NAME(ctr) {         \
     priority                                                          \
   }
 
 // __COUNTER__ must go through another macro to be properly expanded
 #define INTERNAL_REGISTER_LOCAL_HOST_STREAM_FACTORY_NAME(ctr) \
-  ___##ctr##__object_
+  register_host_stream_factory_##ctr##_object_
 
 #endif  // XLA_STREAM_EXECUTOR_HOST_HOST_STREAM_FACTORY_H_

@@ -16,21 +16,34 @@ limitations under the License.
 #include "xla/tests/test_utils.h"
 
 #include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/types/span.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
+#include "xla/service/hlo_runner_interface.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/local_client_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
 // A test fixture is used because we need a client for our computation builder.
-class TestUtilsTest : public LocalClientTestBase {};
+class TestUtilsTest : public HloTestBase {};
 
 TEST_F(TestUtilsTest, UnusedParam) {
   XlaBuilder builder(TestName());
@@ -49,13 +62,17 @@ TEST_F(TestUtilsTest, UnusedParam) {
   computation_status = builder.Build();
   TF_ASSERT_OK(computation_status.status());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executables,
-                          local_client_->Compile(computation_status.value(),
-                                                 {&pair_float, &single_float},
-                                                 ExecutableBuildOptions()));
-  HloModule& module =
-      const_cast<HloModule&>(executables[0]->executable()->module());
-  TF_ASSERT_OK(MakeFakeArguments(&module).status());
+  ExecutionOptions execution_options;
+  *execution_options.mutable_debug_options() =
+      GetModuleConfigForTest().debug_options();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_ptr,
+                          HloModuleFromXlaComputation(
+                              computation_status.value(), execution_options));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<OpaqueExecutable> executable,
+                          CreateExecutable(std::move(module_ptr), true));
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* optimized_module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
+  TF_ASSERT_OK(MakeFakeArguments(optimized_module).status());
 }
 
 TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicSlices) {
@@ -145,6 +162,16 @@ ENTRY %sort.148.1589 (parameter.0: s32[1048576], parameter.1: s32[1048576]) -> (
   absl::flat_hash_set<int32_t> key_set;
   for (const int32_t& value : key_arg.data<int32_t>()) {
     EXPECT_TRUE(key_set.insert(absl::bit_cast<uint32_t>(value)).second);
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args2,
+                          MakeDataflowConstrainedArguments(module.get()));
+  ASSERT_EQ(args2.size(), 2);
+  const Literal& key_arg2 = args2[0];
+
+  absl::flat_hash_set<int32_t> key_set2;
+  for (const int32_t& value : key_arg2.data<int32_t>()) {
+    EXPECT_TRUE(key_set2.insert(absl::bit_cast<uint32_t>(value)).second);
   }
 }
 
@@ -373,6 +400,171 @@ ENTRY %main (p0: u32[], p1: u32[], data: f32[100,200]) -> f32[10,20] {
   // Dim 1: 200 - 20 = 180
   EXPECT_GE(args[1].Get<uint32_t>({}), 0);
   EXPECT_LE(args[1].Get<uint32_t>({}), 180);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args2,
+                          MakeDataflowConstrainedArguments(module.get()));
+  ASSERT_EQ(args2.size(), 3);
+
+  // Dim 0: 100 - 10 = 90
+  EXPECT_GE(args2[0].Get<uint32_t>({}), 0);
+  EXPECT_LE(args2[0].Get<uint32_t>({}), 90);
+
+  // Dim 1: 200 - 20 = 180
+  EXPECT_GE(args2[1].Get<uint32_t>({}), 0);
+  EXPECT_LE(args2[1].Get<uint32_t>({}), 180);
+}
+
+TEST_F(TestUtilsTest, MakeFakeArgumentsForDynamicSliceKnownBits) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule test_module
+
+ENTRY %main (param_1: s8[262144,2048], param_2: s32[]) -> s8[131072,2048] {
+  %param_1 = s8[262144,2048] parameter(0)
+  %param_2 = s32[] parameter(1)
+  %constant = s32[] constant(0)
+  ROOT %dynamic-slice = s8[131072,2048] dynamic-slice(%param_1, %param_2, %constant), dynamic_slice_sizes={131072,2048}
+}
+)"));
+
+  int32_t index_known_bits_zero = 131071;  // 0x1FFFF
+  GetIndexKnownZeroesFn index_known_zeroes_fn =
+      [&](const HloInstruction* use,
+          int64_t sliced_dim) -> std::optional<uint64_t> {
+    if (use->opcode() != HloOpcode::kDynamicSlice) {
+      return std::nullopt;
+    }
+    if (sliced_dim == 0) {
+      return index_known_bits_zero;
+    }
+    return std::nullopt;
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> args,
+      MakeFakeArguments(module.get(),
+                        /*pseudo_random=*/true,
+                        /*use_large_range=*/false,
+                        /*treat_gte_as_data_formatting=*/false,
+                        /*max_bits_of_precision=*/std::nullopt,
+                        /*engine=*/nullptr,
+                        /*generate_aligned_ds_indices=*/false,
+                        index_known_zeroes_fn));
+  ASSERT_EQ(args.size(), 2);
+
+  int32_t index = args[1].Get<int32_t>({});
+  EXPECT_EQ(index & index_known_bits_zero, 0);
+}
+
+TEST_F(TestUtilsTest, MakeFakeArgumentsForDynamicUpdateSliceKnownBits) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule test_module
+
+ENTRY %main (param_1: s8[262144,2048], param_2: s8[131072,2048], param_3: s32[]) -> s8[262144,2048] {
+  %param_1 = s8[262144,2048] parameter(0)
+  %param_2 = s8[131072,2048] parameter(1)
+  %param_3 = s32[] parameter(2)
+  %constant = s32[] constant(0)
+  ROOT %dynamic-update-slice = s8[262144,2048] dynamic-update-slice(%param_1, %param_2, %param_3, %constant)
+}
+)"));
+
+  GetIndexKnownZeroesFn index_known_zeroes_fn =
+      [](const HloInstruction* use,
+         int64_t sliced_dim) -> std::optional<uint64_t> {
+    if (use->opcode() != HloOpcode::kDynamicUpdateSlice) {
+      return std::nullopt;
+    }
+    if (sliced_dim == 0) {
+      return 131071;  // 0x1FFFF
+    }
+    return std::nullopt;
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> args,
+      MakeFakeArguments(module.get(),
+                        /*pseudo_random=*/true,
+                        /*use_large_range=*/false,
+                        /*treat_gte_as_data_formatting=*/false,
+                        /*max_bits_of_precision=*/std::nullopt,
+                        /*engine=*/nullptr,
+                        /*generate_aligned_ds_indices=*/false,
+                        index_known_zeroes_fn));
+  ASSERT_EQ(args.size(), 3);
+
+  int32_t index = args[2].Get<int32_t>({});
+  const int32_t index_known_bits_zero = 131071;
+  EXPECT_EQ(index & index_known_bits_zero, 0);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> args2,
+      MakeDataflowConstrainedArguments(module.get(),
+                                       /*engine=*/nullptr,
+                                       /*use_large_range=*/false,
+                                       /*max_bits_of_precision=*/std::nullopt,
+                                       /*generate_aligned_ds_indices=*/false,
+                                       index_known_zeroes_fn));
+  ASSERT_EQ(args2.size(), 3);
+  int32_t index2 = args2[2].Get<int32_t>({});
+  EXPECT_EQ(index2 & index_known_bits_zero, 0);
+}
+
+TEST_F(TestUtilsTest, MakeDataflowConstrainedArgumentsForRsqrtAdd) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[4,2] parameter(0)
+  constant_1 = f32[] constant(0.00390625)
+  broadcast_1 = f32[4,2] broadcast(constant_1), dimensions={}
+  mul = f32[4,2] multiply(param_0, broadcast_1)
+  constant_2 = f32[] constant(1e-06)
+  broadcast_2 = f32[4,2] broadcast(constant_2), dimensions={}
+  add = f32[4,2] add(mul, broadcast_2)
+  ROOT rsqrt = f32[4,2] rsqrt(add)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> args,
+      MakeDataflowConstrainedArguments(module.get(),
+                                       /*engine=*/nullptr,
+                                       /*use_large_range=*/false));
+  ASSERT_EQ(args.size(), 1);
+  args[0].EachCell<float>([](absl::Span<int64_t const> indices, float value) {
+    EXPECT_GT(value, 0.0f);
+  });
+}
+
+// Probabilistic test to verify that we are randomly sampling the whole
+// range for small bitwidth floats like f4e2m1. The chance of not getting
+// all 16 possible values in 1024 trials is astronomically small.
+TEST_F(TestUtilsTest, MakeFakeArgumentsSmallBitwidthFloat) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule Test
+
+ENTRY %module (param: f4e2m1fn[1024]) -> f4e2m1fn[1024] {
+  ROOT %param = f4e2m1fn[1024]{0} parameter(0)
+}
+  )"));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                          MakeFakeArguments(module.get()));
+  ASSERT_EQ(args.size(), 1);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(args[0].shape(), ShapeUtil::MakeShape(F4E2M1FN, {1024})))
+      << ShapeUtil::HumanString(args[0].shape());
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal f32_arg, args[0].Convert(F32));
+
+  absl::flat_hash_set<uint32_t> values;
+  f32_arg.EachCell<float>(
+      [&](absl::Span<const int64_t> /*indices*/, float val) {
+        values.insert(absl::bit_cast<uint32_t>(val));
+      });
+
+  const int64_t num_possible_values = 16;
+  EXPECT_EQ(values.size(), num_possible_values);
 }
 
 }  // namespace

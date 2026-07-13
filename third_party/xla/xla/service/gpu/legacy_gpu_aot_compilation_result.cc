@@ -18,22 +18,25 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/hlo/analysis/alias_info.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/buffer_value.h"
 #include "xla/service/compiler.h"
+#include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
-#include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -41,14 +44,16 @@ namespace gpu {
 
 absl::StatusOr<std::unique_ptr<LegacyGpuAotCompilationResult>>
 LegacyGpuAotCompilationResult::FromModule(
-    const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
-    absl::string_view asm_text, absl::Span<const uint8_t> binary,
-    const BinaryMap& dnn_compiled_graphs, int pointer_size,
-    Compiler* compiler) {
+    const HloModule* hlo_module, BufferAssignmentProto buffer_assignment_proto,
+    std::string buffer_allocations_debug_summary, absl::string_view asm_text,
+    absl::Span<const uint8_t> binary, const BinaryMap& dnn_compiled_graphs,
+    int pointer_size, Compiler* compiler) {
   tsl::profiler::TraceMe traceme("ResultFromModule");
   GpuExecutableProto proto;
   *proto.mutable_hlo_module_with_config() = hlo_module->ToProtoWithConfig();
-  *proto.mutable_buffer_assignment() = buffer_assignment->ToProto();
+  *proto.mutable_buffer_assignment() = std::move(buffer_assignment_proto);
+  proto.set_buffer_allocations_debug_summary(
+      std::move(buffer_allocations_debug_summary));
   proto.set_asm_text(asm_text);
   proto.set_binary(binary.data(), binary.size());
   proto.mutable_dnn_compiled_graphs()->insert(dnn_compiled_graphs.cbegin(),
@@ -76,7 +81,7 @@ absl::StatusOr<std::unique_ptr<LegacyGpuAotCompilationResult>>
 LegacyGpuAotCompilationResult::FromProto(const GpuExecutableProto& proto,
                                          int pointer_size, Compiler* compiler) {
   tsl::profiler::TraceMe traceme("ResultFromProto");
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       HloModule::CreateFromProtoWithConfig(proto.hlo_module_with_config()));
   return std::unique_ptr<LegacyGpuAotCompilationResult>(
@@ -86,52 +91,52 @@ LegacyGpuAotCompilationResult::FromProto(const GpuExecutableProto& proto,
 
 absl::StatusOr<std::string> LegacyGpuAotCompilationResult::SerializeAsString()
     const {
-  return proto_.SerializeAsString();
+  std::string serialized;
+  if (!tsl::SerializeToStringDeterministic(proto_, &serialized)) {
+    return Internal(
+        "Failed to serialize LegacyGpuAotCompilationResult deterministically.");
+  }
+  return serialized;
 }
 
 absl::StatusOr<std::unique_ptr<Executable>>
 LegacyGpuAotCompilationResult::LoadExecutable(
     se::Platform::Id platform_id,
-    const se::DeviceDescription& device_description) && {
-  return compiler_->LoadExecutableFromAotResult(*this, device_description);
+    const se::DeviceDescription& device_description,
+    const DebugOptions& debug_options) && {
+  return compiler_->LoadExecutableFromLegacyAotResult(*this,
+                                                      device_description);
 }
 
-absl::StatusOr<std::unique_ptr<BufferAssignment>>
-LegacyGpuAotCompilationResult::buffer_assignment() const {
-  auto buffer_size_bytes_function =
-      [pointer_size = pointer_size_](const BufferValue& buffer) {
-        return gpu::ShapeSizeBytesFunction(pointer_size)(buffer.shape());
-      };
+absl::StatusOr<CompiledMemoryStats>
+LegacyGpuAotCompilationResult::GetCompiledMemoryStats() const {
+  CompiledMemoryStats memory_stats;
+  memory_stats.serialized_buffer_assignment =
+      proto_.buffer_assignment().SerializeAsString();
 
-  // Recreate BufferAssignment from proto.
-  // Technically, we should pass the proper GpuAliasInfo, but the FromProto()
-  // method does not actually make use of the MayAlias function. And for now, we
-  // don't have backend-specific MustAlias rules.
-  // TODO(b/424109294): This needs to be fixed when we implement
-  // backend-specific MustAlias rules.
-  AliasInfo alias_info;
-  return BufferAssignment::FromProto(proto_.buffer_assignment(), module_.get(),
-                                     buffer_size_bytes_function, &alias_info);
-}
-
-absl::StatusOr<std::string> EarlyExitCompilationResult::SerializeAsString()
-    const {
-  return Unavailable(
-      "SerializeAsString() is not supported by EarlyExitCompilationResult.");
-}
-
-absl::StatusOr<std::unique_ptr<Executable>>
-EarlyExitCompilationResult::LoadExecutable(
-    se::Platform::Id platform_id,
-    const se::DeviceDescription& device_description) && {
-  return Unavailable(
-      "LoadExecutable() is not supported by EarlyExitCompilationResult.");
-}
-
-absl::StatusOr<std::unique_ptr<BufferAssignment>>
-EarlyExitCompilationResult::buffer_assignment() const {
-  return Unavailable(
-      "buffer_assignment() is not supported by EarlyExitCompilationResult.");
+  std::vector<BufferAllocation> allocations;
+  allocations.reserve(proto_.buffer_assignment().buffer_allocations_size());
+  for (const BufferAllocationProto& allocation :
+       proto_.buffer_assignment().buffer_allocations()) {
+    allocations.push_back(BufferAllocation::FromProto(allocation));
+  }
+  std::vector<const BufferAllocation*> alloc_ptrs;
+  alloc_ptrs.reserve(allocations.size());
+  for (const BufferAllocation& alloc : allocations) {
+    alloc_ptrs.push_back(&alloc);
+  }
+  memory_stats.PopulateBufferStatsFromAllocations(alloc_ptrs);
+  ASSIGN_OR_RETURN(
+      auto peak_memories,
+      ComputePeakMemorySizes(proto_.buffer_assignment(),
+                             proto_.hlo_module_with_config().hlo_module()));
+  memory_stats.peak_memory_in_bytes = peak_memories.padded;
+  memory_stats.peak_unpadded_heap_bytes = peak_memories.unpadded;
+  memory_stats.total_allocation_bytes = ComputeTotalAllocationBytes(
+      proto_.buffer_assignment(), /*memory_color=*/0);
+  memory_stats.indefinite_allocations = ComputeIndefiniteAllocationsInBytes(
+      proto_.buffer_assignment(), /*memory_color=*/0);
+  return memory_stats;
 }
 
 }  // namespace gpu

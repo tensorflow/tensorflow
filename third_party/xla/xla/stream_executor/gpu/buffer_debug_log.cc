@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
@@ -54,16 +55,15 @@ absl::StatusOr<DeviceAddress<uint8_t>> BufferDebugLogBase::CreateOnDevice(
       /*write_idx=*/0,
       /*capacity=*/max_entries,
   };
-  TF_RETURN_IF_ERROR(
-      stream.Memcpy(&memory, &empty_header, sizeof(empty_header)));
+  RETURN_IF_ERROR(stream.Memcpy(&memory, &empty_header, sizeof(empty_header)));
   return memory;
 }
 
 absl::StatusOr<BufferDebugLogHeader> BufferDebugLogBase::ReadHeaderFromDevice(
     Stream& stream, DeviceAddress<uint8_t> memory) const {
   BufferDebugLogHeader header;
-  TF_RETURN_IF_ERROR(stream.Memcpy(&header, memory, sizeof(header)));
-  TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
+  RETURN_IF_ERROR(stream.Memcpy(&header, memory, sizeof(header)));
+  RETURN_IF_ERROR(stream.BlockHostUntilDone());
   return header;
 }
 
@@ -71,8 +71,8 @@ absl::StatusOr<size_t> BufferDebugLogBase::ReadFromDevice(
     Stream& stream, DeviceAddress<uint8_t> memory, size_t entry_size,
     void* entries_data) const {
   std::vector<uint8_t> buffer(memory.size());
-  TF_RETURN_IF_ERROR(stream.Memcpy(buffer.data(), memory, memory.size()));
-  TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
+  RETURN_IF_ERROR(stream.Memcpy(buffer.data(), memory, memory.size()));
+  RETURN_IF_ERROR(stream.BlockHostUntilDone());
 
   BufferDebugLogHeader header;
   memcpy(&header, buffer.data(), sizeof(header));

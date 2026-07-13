@@ -24,7 +24,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -39,6 +38,7 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -118,22 +118,13 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // `on_done_with_host_buffer` will be called iff OK is returned.
   //
   // TODO(hyeontaek): Consider changing `on_done_with_host_buffer` into a
-  // returned `tsl::Future<absl::Status>` for consistency with other IFRT APIs.
+  // returned `tsl::Future<>` for consistency with other IFRT APIs.
   virtual absl::StatusOr<ArrayRef> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
       ShardingRef sharding, LayoutRef layout, HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer) = 0;
-  ABSL_DEPRECATE_AND_INLINE()
-  absl::StatusOr<ArrayRef> MakeArrayFromHostBuffer(
-      const void* data, DType dtype, Shape shape,
-      std::optional<absl::Span<const int64_t>> byte_strides,
-      ShardingRef sharding, HostBufferSemantics semantics,
-      std::function<void()> on_done_with_host_buffer) {
-    return MakeArrayFromHostBuffer(
-        data, dtype, std::move(shape), byte_strides, std::move(sharding),
-        /*layout=*/nullptr, semantics, std::move(on_done_with_host_buffer));
-  }
+
   // Represents a host buffer.
   //
   // TODO(hyeontaek): Consider evolving this structure to `Literal` once it is
@@ -266,10 +257,40 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // may impose additional constraints. For example, bitcasting to a smaller
   // dtype or changing `layout` may not be allowed on some platforms.
   //
-  // NOTE: `ArrayCopySemantics::kAlwaysCopy` is not allowed.
+  // NOTE: `ArrayCopySemantics::kAlwaysCopy` is not allowed. Typically, only
+  // `ArrayCopySemantics::kDonateInput` is supported on most runtimes that
+  // impose strict device buffer aliasing rules.
   virtual absl::StatusOr<std::vector<ArrayRef>> BitcastArrays(
       absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
       ArrayCopySemantics semantics) = 0;
+
+  enum class HashMode : int {
+    // Hashes a value based on its physical representation. The hash value will
+    // be sensitive to the sharding and layout of values. This is typically fast
+    // to compute. Can be used to check the integrity of values across shard
+    // shape and layout preserving transformations.
+    kPhysical,
+    // Hashes a value based on its logical representation. The hash value will
+    // be invariant to the sharding and layout of values. This can be slower or
+    // more resource demanding to compute. Can be used to check the integrity of
+    // values across shard shape and layout changing transformations.
+    kLogical,
+  };
+
+  // Hashes the given values and returns one hash per value.
+  //
+  // The implementation of hashing depends on the runtime. The hash values are
+  // not guaranteed to be consistent across different runtimes. The computed
+  // hash values are expected to stay reasonably stable on the same runtime to
+  // allow integrity checks (e.g., the same hash values for the same runtime
+  // binary), but the actual stability may vary by runtimes.
+  //
+  // Some hashing implementations may execute an SPMD program on accelerator
+  // devices. Thus, for the maximum safety and portability, the caller should
+  // ensure that `HashValues()` calls and other execution calls are consistently
+  // ordered across multiple controllers.
+  virtual tsl::Future<std::vector<uint64_t>> HashValues(
+      absl::Span<const ValueRef> values, HashMode mode) = 0;
 
   // Reshards arrays to new arrays according to the given specs.
   //
@@ -297,9 +318,24 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // instead to reflect its read-only semantics.
   virtual tsl::Future<> GetReadyFuture(absl::Span<const ValueRef> values) = 0;
 
+  // Deletes the given values. See `Value::Delete()` for the semantics.
+  virtual tsl::Future<> DeleteValues(absl::Span<ValueRef> values) = 0;
+
   // Builds a tuple from a sequence of values.
   virtual absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
       absl::Span<ValueRef> values) = 0;
+
+  // Makes a `BundleRef` from `ValueRef`s.
+  //
+  // `semantics` must not be `kAlwaysCopy`.
+  virtual absl::StatusOr<BundleRef> Bundle(absl::Span<ValueRef> values,
+                                           ArrayCopySemantics semantics) = 0;
+
+  // Concatenates `Bundle`s into a single `Bundle`.
+  //
+  // `semantics` must not be `kAlwaysCopy`.
+  virtual absl::StatusOr<BundleRef> ConcatBundles(
+      absl::Span<BundleRef> bundles, ArrayCopySemantics semantics) = 0;
 
   // Attempts to cancel the execution that returned `cancellation_handle` in its
   // `ExecuteResult` when enqueued.

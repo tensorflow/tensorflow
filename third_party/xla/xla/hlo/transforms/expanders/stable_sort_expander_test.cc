@@ -18,14 +18,18 @@ limitations under the License.
 #include <cstdint>
 
 #include <gtest/gtest.h>
+#include "xla/comparison_util.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
-#include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -110,8 +114,11 @@ TEST_F(StableSortExpanderTest, StabilizeSortReuseIotaOperand) {
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::GetTupleElement(
                         m::Sort(m::Parameter(0), m::Iota()), 0)));
-  CheckComputationHasTieBreaker(
-      root->operand(0)->to_apply()->root_instruction(), /*iota_parameter=*/1);
+  const HloInstruction* sort_instr = root->operand(0);
+  ASSERT_EQ(sort_instr->opcode(), HloOpcode::kSort);
+  EXPECT_FALSE(Cast<const HloSortInstruction>(sort_instr)->is_stable());
+  CheckComputationHasTieBreaker(sort_instr->to_apply()->root_instruction(),
+                                /*iota_parameter=*/1);
 }
 
 TEST_F(StableSortExpanderTest,
@@ -190,9 +197,11 @@ TEST_F(StableSortExpanderTest, StabilizeSortAddIotaOperandAndChangeRoot) {
                     m::Sort(m::Parameter(0), m::Parameter(1), m::Iota()), 0),
                 m::GetTupleElement(
                     m::Sort(m::Parameter(0), m::Parameter(1), m::Iota()), 1))));
-  CheckComputationHasTieBreaker(
-      root->operand(0)->operand(0)->to_apply()->root_instruction(),
-      /*iota_parameter=*/2);
+  const HloInstruction* sort_instr = root->operand(0)->operand(0);
+  ASSERT_EQ(sort_instr->opcode(), HloOpcode::kSort);
+  EXPECT_FALSE(Cast<const HloSortInstruction>(sort_instr)->is_stable());
+  CheckComputationHasTieBreaker(sort_instr->to_apply()->root_instruction(),
+                                /*iota_parameter=*/2);
 }
 
 TEST_F(StableSortExpanderTest, HonorIsStableFlag) {

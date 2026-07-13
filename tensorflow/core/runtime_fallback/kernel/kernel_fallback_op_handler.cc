@@ -186,7 +186,7 @@ Expected<CoreRuntimeOp> KernelFallbackOpHandler::MakeOp(string_view op_name) {
                 ->GetDataIfExists<KernelFallbackCompatRequestState>();
 
         if (!fallback_op_entry.fallback_request_state) {
-          propagate_error(tensorflow::errors::NotFound(
+          propagate_error(absl::NotFoundError(
               "KernelFallbackCompatRequestState not found in RequestContext."));
           return;
         }
@@ -208,7 +208,7 @@ Expected<CoreRuntimeOp> KernelFallbackOpHandler::MakeOp(string_view op_name) {
                 tensorflow::AttrValueMap* attr_value_map) {
               if (auto error =
                       tfd::FillAttrValueMap(attrs, host, attr_value_map))
-                return tensorflow::errors::InvalidArgument(tfrt::StrCat(error));
+                return absl::InvalidArgumentError(tfrt::StrCat(error));
               return absl::OkStatus();
             },
             fallback_op_entry.fallback_request_state->device_manager(),

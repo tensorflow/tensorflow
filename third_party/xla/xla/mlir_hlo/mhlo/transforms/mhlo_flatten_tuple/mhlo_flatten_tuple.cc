@@ -139,13 +139,6 @@ class FlattenTuplePass : public impl::FlattenTuplePassBase<FlattenTuplePass> {
     }
   }
 };
-}  // end namespace
-
-static PassRegistration<FlattenTuplePass> pass;
-
-std::unique_ptr<OperationPass<func::FuncOp>> createFlattenTuplePass() {
-  return std::make_unique<FlattenTuplePass>();
-}
-
-}  // end namespace mhlo
-}  // end namespace mlir
+}  // namespace
+}  // namespace mhlo
+}  // namespace mlir

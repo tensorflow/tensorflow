@@ -96,6 +96,7 @@ tf_cc_test(
         "//tensorflow/dtensor/cc:dstatus",
         "//tensorflow/dtensor/cc:tensor_layout",
         "//tensorflow/dtensor/mlir:spmd_expander",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

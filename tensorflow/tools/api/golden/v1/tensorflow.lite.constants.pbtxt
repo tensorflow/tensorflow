@@ -10,7 +10,7 @@ tf_module {
   }
   member {
     name: "GRAPHVIZ_DOT"
-    mtype: "<type \'int\'>"
+    mtype: "<class \'int\'>"
   }
   member {
     name: "INT16"
@@ -38,6 +38,6 @@ tf_module {
   }
   member {
     name: "TFLITE"
-    mtype: "<type \'int\'>"
+    mtype: "<class \'int\'>"
   }
 }

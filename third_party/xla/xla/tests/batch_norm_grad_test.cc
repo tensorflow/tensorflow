@@ -38,7 +38,7 @@ const char* const kModuleStr = R"(
     }
   )";
 
-class BatchNormGradTest : public HloPjRtTestBase {};
+class BatchNormGradTest : public HloTestBase {};
 
 TEST_F(BatchNormGradTest, CorrectComputation) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,

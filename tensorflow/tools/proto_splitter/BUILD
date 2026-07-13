@@ -4,10 +4,10 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_test")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_oss",
+    "py_test",
     "tf_cc_test",
 )
 load(
@@ -84,9 +84,10 @@ pytype_strict_library(
     srcs = ["version.py"],
 )
 
-py_strict_test(
+py_test(
     name = "split_test",
     srcs = ["split_test.py"],
+    strict_deps = True,
     tags = [
         "no_mac",  # b/291933687
         "no_windows",  # b/291001524
@@ -121,9 +122,10 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "split_graph_def_test",
     srcs = ["split_graph_def_test.py"],
+    strict_deps = True,
     tags = [
         "no_mac",  # b/291933687
         "no_windows",  # b/291001524
@@ -146,9 +148,10 @@ pytype_strict_library(
     deps = [":chunk_proto_py"],
 )
 
-py_strict_test(
+py_test(
     name = "util_test",
     srcs = ["util_test.py"],
+    strict_deps = True,
     deps = [
         ":util",
         #internal proto upb dep
@@ -185,11 +188,9 @@ cc_library(
     name = "merge",
     hdrs = ["merge.h"],
     visibility = [
-        "//platforms/darwinn/contrib/waymo:__subpackages__",
         "//tensorflow:internal",
         "//tensorflow/cc/experimental/tf2:__subpackages__",
         "//tensorflow/cc/saved_model/image_format:__subpackages__",
-        "//waymo/onboard/ml/chauffeur_net/utils:__subpackages__",
     ],
     deps = [
         ":chunk_proto_cc",

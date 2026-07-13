@@ -1,6 +1,6 @@
 # Cloud TPU Client.
 
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 
 package(
@@ -11,20 +11,22 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "client",
     srcs = [
         "client.py",
         "version.py",
     ],
+    strict_deps = True,
     deps = ["@absl_py//absl/flags"],
 )
 
-py_strict_library(
+py_library(
     name = "client_lib",
     srcs = [
         "__init__.py",
     ],
+    strict_deps = True,
     deps = [":client"],
 )
 

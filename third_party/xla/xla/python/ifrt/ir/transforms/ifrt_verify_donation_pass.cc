@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/WalkResult.h"
 #include "xla/python/ifrt/ir/constants.h"
+#include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"  // IWYU pragma: keep
 
@@ -109,8 +110,9 @@ mlir::LogicalResult verifyCallOpAliasesAndDonations(
   return mlir::success();
 }
 
+// Verifies inputs are donated for ops that require all inputs to be donated.
 template <typename T>
-mlir::LogicalResult verifyCopyRemapAndReshardOpsDonation(
+mlir::LogicalResult verifyOpRequiringAllDonated(
     T op, llvm::DenseMap<mlir::Value, mlir::Operation*>& donated_value_to_op) {
   // Verify that no inputs have already been donated.
   for (const auto [idx, input] : llvm::enumerate(op.getInputs())) {
@@ -147,8 +149,7 @@ class IfrtVerifyDonationPass
 void IfrtVerifyDonationPass::runOnOperation() {
   mlir::func::FuncOp func_op = getOperation();
   // We only need to run this pass on IFRT functions.
-  if (!func_op->hasAttr(kIfrtFunctionAttrName) &&
-      !func_op->hasAttr(kIfrtReshardFunctionAttrName)) {
+  if (!IsIfrtFunction(func_op)) {
     return;
   }
   llvm::DenseMap<mlir::Value, mlir::Operation*> donated_value_to_op;
@@ -159,10 +160,10 @@ void IfrtVerifyDonationPass::runOnOperation() {
             .Case<CallOp, CallLoadedExecutableOp>([&](auto& op) {
               return verifyCallOpAliasesAndDonations(op, donated_value_to_op);
             })
-            .Case<CopyArraysOp, RemapArraysOp, ReshardOp>([&](auto& op) {
-              return verifyCopyRemapAndReshardOpsDonation(op,
-                                                          donated_value_to_op);
-            })
+            .Case<BitcastArraysOp, CopyArraysOp, RemapArraysOp, ReshardOp>(
+                [&](auto& op) {
+                  return verifyOpRequiringAllDonated(op, donated_value_to_op);
+                })
             .Case<mlir::func::ReturnOp>([&](mlir::func::ReturnOp return_op) {
               for (const auto& [idx, result] :
                    llvm::enumerate(return_op.getOperands())) {

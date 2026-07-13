@@ -26,6 +26,7 @@ py_library(
         "variable_scope_shim.py",
     ],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:dtypes",
@@ -46,6 +47,7 @@ py_library(
     name = "convolutional",
     srcs = ["convolutional.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":layers_base",
         "//tensorflow/python/keras/layers",
@@ -58,6 +60,7 @@ py_library(
     name = "core",
     srcs = ["core.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":layers_base",
         "//tensorflow/python/keras/layers",
@@ -70,6 +73,7 @@ py_library(
     name = "pooling",
     srcs = ["pooling.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":layers_base",
         "//tensorflow/python/keras/layers",

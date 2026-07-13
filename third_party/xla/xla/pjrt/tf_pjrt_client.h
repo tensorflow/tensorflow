@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -156,6 +156,10 @@ class TfPjRtExecutable : public PjRtLoadedExecutable {
     return wrapped_->GetHloModules();
   }
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const override {
+    return wrapped_->GetParameterMemoryKinds();
+  }
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override {
     return wrapped_->GetOutputMemoryKinds();
   }
@@ -256,10 +260,6 @@ class TfPjRtClient : public PjRtClient {
     return WrapExecutable(wrapped_->CompileAndLoad(computation, options));
   }
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
-      mlir::ModuleOp module, CompileOptions options) override {
-    return CompileAndLoad(MaybeOwningMlirModule(std::move(module)), options);
-  }
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       MaybeOwningMlirModule module, CompileOptions options) override {
     return WrapExecutable(wrapped_->CompileAndLoad(std::move(module), options));
   }
@@ -340,14 +340,13 @@ class TfPjRtClient : public PjRtClient {
  private:
   // Unwraps a TfPjRtBuffer.
   PjRtBuffer* UnwrapBuffer(PjRtBuffer* buffer) const {
-    return tensorflow::down_cast<TfPjRtBuffer*>(buffer)->wrapped();
+    return absl::down_cast<TfPjRtBuffer*>(buffer)->wrapped();
   }
 
   // Unwraps a TfPjRtExecutable.
   const PjRtLoadedExecutable& UnwrapExecutable(
       const PjRtLoadedExecutable& executable) const {
-    return *tensorflow::down_cast<const TfPjRtExecutable*>(&executable)
-                ->wrapped();
+    return *absl::down_cast<const TfPjRtExecutable*>(&executable)->wrapped();
   }
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> WrapExecutable(

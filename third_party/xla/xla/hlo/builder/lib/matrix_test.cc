@@ -46,7 +46,7 @@ namespace xla {
 namespace {
 
 class MatrixTest : public ClientLibraryTestRunnerMixin<
-                       HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+                       HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  protected:
   template <typename T>
   void TestMatrixDiagonal();

@@ -46,7 +46,7 @@ jobs:
       contains(github.event.pull_request.body, 'FORCE_TEST_ACTIONS')
     steps:
       - name: "Checking out repository"
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: "Fetch HEAD of main branch"
@@ -70,6 +70,12 @@ jobs:
 
         if: always() # We want to run all checks, not just til first failure
         run: "python3 build_tools/lint/check_contents.py --path_regex_exclusion '.github/workflows/check_contents\\.yml' --prohibited_regex '\\b(gtl::FlatMap|gtl::FlatSet|gtl::InlinedVector|gtl::optional|strings::Appendf|strings::Printf|strings::safe_strto64|strings::safe_strtof|strings::StrAppend|strings::StrCat|str_util::|tensorflow::StringPiece)\\b' --suppression_regex '(?i)non-absl ok' --failure_message 'Use Abseil types and functions instead of those in Tensorflow/TSL.'"
+      - name: "Check for Header Guards"
+        if: always()
+        run: "python3 build_tools/lint/check_header_guards.py"
+      - name: "Check for TF Status Macros"
+        if: always()
+        run: "python3 build_tools/lint/check_contents.py --path_regex '.*\\.(h|cc|cpp)' --path_regex_exclusion 'xla/tsl/.*' 'xla/python/.*' 'xla/pjrt/.*' --prohibited_regex '\\bTF_(RETURN_IF_ERROR|ASSIGN_OR_RETURN)\\b' --failure_message 'Within XLA, you can now use RETURN_IF_ERROR/ASSIGN_OR_RETURN from xla/tsl/platform/status_macros.h rather than their TSL TF_ equivalents.'"
       # ----------------Python checks----------------
       - name: "Check for python print()"
         if: always() # We want to run all checks, not just til first failure
@@ -78,10 +84,6 @@ jobs:
       - name: "Check for mock.patch"
         if: always() # We want to run all checks, not just til first failure
         run: "python3 build_tools/lint/check_contents.py --path_regex '.*\\.py' --prohibited_regex 'mock\\.patch\\(' --failure_message 'Please use match.patch.object instead of mock.patch.'"
-
-
-
-
 
 
 

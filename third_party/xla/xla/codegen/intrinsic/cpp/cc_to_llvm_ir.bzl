@@ -110,6 +110,9 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
         "-std=c++17",
         "-fno-experimental-sanitize-metadata=all",
         "-fno-sanitize=all",
+        "-fno-profile-instr-generate",
+        "-fno-coverage-mapping",
+        "-fno-profile-generate",
     ] + copts
 
     # Disabled features to avoid instrumentations in the IR. ALL sanitizers must be disabled.
@@ -127,6 +130,7 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
         "msan",
         "tsan",
         "ubsan",
+        "coverage",
     ]
 
     # Prefix features with '-'
@@ -205,7 +209,7 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
             "//conditions:default": [":" + out_o],
         }),
         hdrs = [":" + out_header],
-        deps = deps + [
+        deps = [
             "//xla/util:embedded_constant_buffers",
             "@com_google_absl//absl/strings:string_view",
         ],

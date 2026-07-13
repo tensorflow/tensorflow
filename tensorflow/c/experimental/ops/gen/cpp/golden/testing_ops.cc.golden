@@ -17,11 +17,15 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/ops/gen/cpp/golden/testing_ops.h"
 
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
+#include "tensorflow/core/framework/types.h"  // NOLINT
+#include <cstring>  // NOLINT
+#include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/tracing_utils.h"
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/errors.h"  // NOLINT
 
 using tensorflow::tracing::MaybeSetOpName;
 
@@ -32,7 +36,7 @@ namespace ops {
 // Summary:
 //
 // Description:
-Status Neg(AbstractContext* ctx, AbstractTensorHandle* const x, AbstractTensorHandle** y, const char* name, const char* raw_device_name) {
+absl::Status Neg(AbstractContext* ctx, AbstractTensorHandle* const x, AbstractTensorHandle** y, const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("Neg", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -45,7 +49,7 @@ Status Neg(AbstractContext* ctx, AbstractTensorHandle* const x, AbstractTensorHa
 // Summary:
 //
 // Description:
-Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a, AbstractTensorHandle* const b, AbstractTensorHandle** product, bool transpose_a, bool transpose_b, bool grad_a, bool grad_b, const char* name, const char* raw_device_name) {
+absl::Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a, AbstractTensorHandle* const b, AbstractTensorHandle** product, bool transpose_a, bool transpose_b, bool grad_a, bool grad_b, const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("MatMul", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -63,7 +67,7 @@ Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a, AbstractTenso
 // Summary:
 //
 // Description:
-Status IdentityN(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> input, absl::Span<AbstractTensorHandle*> output, const char* name, const char* raw_device_name) {
+absl::Status IdentityN(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> input, absl::Span<AbstractTensorHandle*> output, const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("IdentityN", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -76,17 +80,19 @@ Status IdentityN(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> i
 // Summary:
 //
 // Description:
-Status SparseSoftmaxCrossEntropyWithLogits(AbstractContext* ctx, AbstractTensorHandle* const features, AbstractTensorHandle* const labels, AbstractTensorHandle** loss, AbstractTensorHandle** backprop, const char* name, const char* raw_device_name) {
+absl::Status SparseSoftmaxCrossEntropyWithLogits(AbstractContext* ctx, AbstractTensorHandle* const features, AbstractTensorHandle* const labels, AbstractTensorHandle** loss, AbstractTensorHandle** backprop, const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("SparseSoftmaxCrossEntropyWithLogits", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(features));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(labels));
   int num_retvals = 2;
-  AbstractTensorHandle* temp_outputs[2];
-  Status status = op_ptr->Execute(temp_outputs, &num_retvals);
-  *loss = temp_outputs[0];
-  *backprop = temp_outputs[1];
+  AbstractTensorHandle* temp_outputs[2] = {nullptr};
+  absl::Status status = op_ptr->Execute(temp_outputs, &num_retvals);
+  if (status.ok()) {
+    *loss = temp_outputs[0];
+    *backprop = temp_outputs[1];
+  }
   return status;
 }
 
@@ -94,7 +100,7 @@ Status SparseSoftmaxCrossEntropyWithLogits(AbstractContext* ctx, AbstractTensorH
 // Summary:
 //
 // Description:
-Status AccumulatorApplyGradient(AbstractContext* ctx, AbstractTensorHandle** handle, AbstractTensorHandle* const local_step, AbstractTensorHandle* const gradient, const char* name, const char* raw_device_name) {
+absl::Status AccumulatorApplyGradient(AbstractContext* ctx, AbstractTensorHandle** handle, AbstractTensorHandle* const local_step, AbstractTensorHandle* const gradient, const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("AccumulatorApplyGradient", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -110,7 +116,7 @@ Status AccumulatorApplyGradient(AbstractContext* ctx, AbstractTensorHandle** han
 // Summary:
 //
 // Description:
-Status VarHandleOp(AbstractContext* ctx, AbstractTensorHandle** resource, DataType dtype, const PartialTensorShape shape, const char* container, const char* shared_name, const char* debug_name, absl::Span<string const> allowed_devices, const char* name, const char* raw_device_name) {
+absl::Status VarHandleOp(AbstractContext* ctx, AbstractTensorHandle** resource, DataType dtype, const PartialTensorShape shape, const char* container, const char* shared_name, const char* debug_name, absl::Span<std::string const> allowed_devices, const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("VarHandleOp", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -128,7 +134,7 @@ Status VarHandleOp(AbstractContext* ctx, AbstractTensorHandle** resource, DataTy
 // Summary:
 //
 // Description:
-Status RestoreV2(AbstractContext* ctx, AbstractTensorHandle* const prefix, AbstractTensorHandle* const tensor_names, AbstractTensorHandle* const shape_and_slices, absl::Span<AbstractTensorHandle*> tensors, absl::Span<DataType> dtypes, const char* name, const char* raw_device_name) {
+absl::Status RestoreV2(AbstractContext* ctx, AbstractTensorHandle* const prefix, AbstractTensorHandle* const tensor_names, AbstractTensorHandle* const shape_and_slices, absl::Span<AbstractTensorHandle*> tensors, absl::Span<DataType> dtypes, const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("RestoreV2", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));

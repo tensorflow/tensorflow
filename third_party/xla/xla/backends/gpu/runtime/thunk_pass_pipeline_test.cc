@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_description.h"
@@ -64,7 +65,7 @@ TEST(ThunkPassPipelineTest, PipelineRunsPass) {
   ThunkSequence thunk_sequence;
   EXPECT_EQ(thunk_sequence.size(), 0);
 
-  DebugOptions debug_options;
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
   se::DeviceDescription device_info;
   FakeThunkPassBufferAllocator allocator;
 

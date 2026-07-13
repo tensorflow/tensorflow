@@ -20,7 +20,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/mock_stream_executor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace stream_executor {
 namespace {

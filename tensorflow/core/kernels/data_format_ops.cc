@@ -74,19 +74,20 @@ class DataFormatDimMapOp : public OpKernel {
     std::string dst_format;
     OP_REQUIRES_OK(context, context->GetAttr("dst_format", &dst_format));
     OP_REQUIRES(context, src_format.size() == 4 || src_format.size() == 5,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Source format must be of length 4 or 5, received "
                     "src_format = ",
-                    src_format));
+                    src_format)));
     OP_REQUIRES(context, dst_format.size() == 4 || dst_format.size() == 5,
-                errors::InvalidArgument("Destination format must be of length "
-                                        "4 or 5, received dst_format = ",
-                                        dst_format));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Destination format must be of length "
+                                 "4 or 5, received dst_format = ",
+                                 dst_format)));
     OP_REQUIRES(
         context, IsValidPermutation(src_format, dst_format),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Destination and source format must determine a permutation, got ",
-            src_format, " and ", dst_format));
+            src_format, " and ", dst_format)));
     dst_idx_ = Tensor(DT_INT32, {static_cast<int64_t>(src_format.size())});
     for (int i = 0; i < src_format.size(); ++i) {
       for (int j = 0; j < dst_format.size(); ++j) {
@@ -119,21 +120,22 @@ class DataFormatVecPermuteOp : public OpKernel {
     std::string src_format;
     OP_REQUIRES_OK(context, context->GetAttr("src_format", &src_format));
     OP_REQUIRES(context, src_format.size() == 4 || src_format.size() == 5,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Source format must be of length 4 or 5, received "
                     "src_format = ",
-                    src_format));
+                    src_format)));
     std::string dst_format;
     OP_REQUIRES_OK(context, context->GetAttr("dst_format", &dst_format));
     OP_REQUIRES(context, dst_format.size() == 4 || dst_format.size() == 5,
-                errors::InvalidArgument("Destination format must be of length "
-                                        "4 or 5, received dst_format = ",
-                                        dst_format));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Destination format must be of length "
+                                 "4 or 5, received dst_format = ",
+                                 dst_format)));
     OP_REQUIRES(
         context, IsValidPermutation(src_format, dst_format),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Destination and source format must determine a permutation, got ",
-            src_format, " and ", dst_format));
+            src_format, " and ", dst_format)));
     src_format_ = src_format;
     dst_format_ = dst_format;
   }
@@ -141,9 +143,9 @@ class DataFormatVecPermuteOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
     OP_REQUIRES(context, input.dims() == 1 || input.dims() == 2,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "input must be a vector or 2D tensor, but got shape ",
-                    input.shape().DebugString()));
+                    input.shape().DebugString())));
 
     const int full_dim_count = src_format_.size();
     const int spatial_dim_count = full_dim_count - 2;
@@ -152,24 +154,24 @@ class DataFormatVecPermuteOp : public OpKernel {
       OP_REQUIRES(context,
                   input.NumElements() == spatial_dim_count ||
                       input.NumElements() == full_dim_count,
-                  errors::InvalidArgument("1D input must be of size ",
-                                          spatial_dim_count, " or ",
-                                          full_dim_count, ", but got shape ",
-                                          input.shape().DebugString()));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "1D input must be of size ", spatial_dim_count, " or ",
+                      full_dim_count, ", but got shape ",
+                      input.shape().DebugString())));
     } else if (input.dims() == 2) {
       OP_REQUIRES(context,
                   input.dim_size(0) == spatial_dim_count ||
                       input.dim_size(0) == full_dim_count,
-                  errors::InvalidArgument("First dimension of 2D input must be "
-                                          "of size ",
-                                          spatial_dim_count, " or ",
-                                          full_dim_count, ", but got shape ",
-                                          input.shape().DebugString()));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "First dimension of 2D input must be "
+                      "of size ",
+                      spatial_dim_count, " or ", full_dim_count,
+                      ", but got shape ", input.shape().DebugString())));
       OP_REQUIRES(
           context, input.dim_size(1) == 2,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Second dimension of 2D input must be of size 2, but got shape ",
-              input.shape().DebugString()));
+              input.shape().DebugString())));
     }
 
     Tensor* output = nullptr;
@@ -197,13 +199,13 @@ class DataFormatVecPermuteOp : public OpKernel {
       if (spatial_dim_count == 3) {
         OP_REQUIRES(
             context, src_format_str.size() == 3 && dst_format_str.size() == 3,
-            errors::InvalidArgument(
+            absl::InvalidArgumentError(
                 "Format specifier must contain D, H and W for 2D case"));
       } else {
         DCHECK(spatial_dim_count == 2);
         OP_REQUIRES(context,
                     src_format_str.size() == 2 && dst_format_str.size() == 2,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(
                         "Format specifier must contain H and W for 2D case"));
       }
     }

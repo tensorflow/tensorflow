@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/ascii.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/sycl/oneapi_compute_capability.pb.h"
 
@@ -43,7 +42,9 @@ OneAPIComputeCapabilityProto OneAPIComputeCapability::ToProto() const {
 }
 
 std::string OneAPIComputeCapability::ToString() const {
-  return absl::StrCat(generation_, ".", version_);
+  // TODO(intel-tf): Remove proto conversion and expose utility methods to get
+  // device architecture.
+  return ToProto().architecture();
 }
 
 std::pair<uint32_t, uint32_t> OneAPIComputeCapability::BaseVersionTupleFor(

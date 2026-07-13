@@ -226,7 +226,7 @@ class AudioProcessor(object):
 
       try:
         filepath, _ = urllib.request.urlretrieve(data_url, filepath, _progress)
-      except:
+      except Exception:
         tf.compat.v1.logging.error(
             'Failed to download URL: {0} to folder: {1}. Please make sure you '
             'have enough free space and an internet connection'.format(

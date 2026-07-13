@@ -1,4 +1,18 @@
- // RUN: dtensor-opt %s -split-input-file -dtensor-multi-device-expansion -verify-diagnostics | FileCheck %s
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+// RUN: dtensor-opt %s -split-input-file -dtensor-multi-device-expansion -verify-diagnostics | FileCheck %s
 
 module attributes {
   tf._default_mesh = "|x=2,y=4|0,1,2,3,4,5,6,7|0,1,2,3,4,5,6,7|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1,/job:localhost/replica:0/task:0/device:CPU:2,/job:localhost/replica:0/task:0/device:CPU:3,/job:localhost/replica:0/task:0/device:CPU:4,/job:localhost/replica:0/task:0/device:CPU:5,/job:localhost/replica:0/task:0/device:CPU:6,/job:localhost/replica:0/task:0/device:CPU:7", tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:CPU:1", "/job:localhost/replica:0/task:0/device:CPU:2", "/job:localhost/replica:0/task:0/device:CPU:3", "/job:localhost/replica:0/task:0/device:CPU:4", "/job:localhost/replica:0/task:0/device:CPU:5", "/job:localhost/replica:0/task:0/device:CPU:6", "/job:localhost/replica:0/task:0/device:CPU:7"},
@@ -24,11 +38,11 @@ module attributes {
   // CHECK: %arg7: tensor<8xi32> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:7"}
   // CHECK: tf.entry_function = {inputs = "input_0,input_1,input_2,input_3,input_4,input_5,input_6,input_7", outputs = "output_0,output_1,output_2,output_3,output_4,output_5,output_6,output_7"
   // CHECK: %[[RES:.*]]:8 = "tf.StatefulPartitionedCall"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7)
-  // CHECK-SAME: f = @_multi_device_func_5372333290171538790_8525065017853554746
+  // CHECK-SAME: f = @_multi_device_func_16526499781244736596_7754837423929193503
   // CHECK-SAME: _layout = ["sharding_specs:unsharded, mesh:|x=2,y=4|0,1,2,3,4,5,6,7|0,1,2,3,4,5,6,7|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1,/job:localhost/replica:0/task:0/device:CPU:2,/job:localhost/replica:0/task:0/device:CPU:3,/job:localhost/replica:0/task:0/device:CPU:4,/job:localhost/replica:0/task:0/device:CPU:5,/job:localhost/replica:0/task:0/device:CPU:6,/job:localhost/replica:0/task:0/device:CPU:7"]
   // CHECK: return %[[RES]]#0, %[[RES]]#1, %[[RES]]#2, %[[RES]]#3, %[[RES]]#4, %[[RES]]#5, %[[RES]]#6, %[[RES]]#7
 
-  // CHECK-LABEL: func.func private @_multi_device_func_5372333290171538790_8525065017853554746(
+  // CHECK-LABEL: func.func private @_multi_device_func_16526499781244736596_7754837423929193503(
   // CHECK: %arg0: tensor<8xi32> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:0"}
   // CHECK: %arg1: tensor<8xi32> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:1"}
   // CHECK: %arg2: tensor<8xi32> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:2"}

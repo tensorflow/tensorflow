@@ -17,6 +17,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/SCF/Transforms/Patterns.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -38,6 +39,16 @@ namespace mlir::triton::xla {
 
 namespace {
 
+bool FindScaledDotOp(const ModuleOp& module) {
+  auto walk_result = module->walk([&](Operation* op) {
+    if (auto extSI = dyn_cast<triton::DotScaledOp>(op)) {
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+  return walk_result.wasInterrupted();
+}
+
 template <typename OpType>
 struct GenericOpConversionPattern final : public OpConversionPattern<OpType> {
   using OpConversionPattern<OpType>::OpConversionPattern;
@@ -52,6 +63,29 @@ struct GenericOpConversionPattern final : public OpConversionPattern<OpType> {
       result.setType(converter->convertType(result.getType()));
     }
     rewriter.replaceOp(op, replacement);
+    return success();
+  }
+};
+
+struct ConstantOpConversionPattern final
+    : public OpConversionPattern<arith::ConstantOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      arith::ConstantOp op, arith::ConstantOp::Adaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    Type new_type = getTypeConverter()->convertType(op.getType());
+    if (new_type == op.getType()) {
+      return failure();
+    }
+    auto dense_attr = llvm::dyn_cast<DenseElementsAttr>(op.getValue());
+    if (!dense_attr) {
+      return failure();
+    }
+    auto new_shaped_type = llvm::cast<ShapedType>(new_type);
+    auto new_attr = DenseElementsAttr::getFromRawBuffer(
+        new_shaped_type, dense_attr.getRawData());
+    rewriter.replaceOpWithNewOp<arith::ConstantOp>(op, new_attr);
     return success();
   }
 };
@@ -87,6 +121,9 @@ class TritonXLAConvertUnsupportedTypesPass
 
  private:
   void runOnOperation() override {
+    if (!FindScaledDotOp(getOperation())) {
+      return;
+    }
     TypeConverter converter;
     converter.addConversion([](Type type) { return type; });
     converter.addConversion([&](Float8E8M0FNUType type) {
@@ -127,14 +164,18 @@ class TritonXLAConvertUnsupportedTypesPass
     RewritePatternSet patterns(ctx);
     patterns.add<
         // go/keep-sorted start
+        ConstantOpConversionPattern,
         GenericOpConversionPattern<::xla::xtile::ExtractTileOp>,
         GenericOpConversionPattern<::xla::xtile::InsertTileOp>,
         GenericOpConversionPattern<BroadcastOp>,
         GenericOpConversionPattern<DotScaledOp>,
         GenericOpConversionPattern<ExpandDimsOp>,
         GenericOpConversionPattern<ReshapeOp>,
+        GenericOpConversionPattern<SplatOp>,
         GenericOpConversionPattern<TransOp>,
-        GenericOpConversionPattern<arith::BitcastOp>
+        GenericOpConversionPattern<arith::BitcastOp>,
+        GenericOpConversionPattern<arith::SelectOp>,
+        GenericOpConversionPattern<tensor::ExtractOp>
         // go/keep-sorted end
         >(converter, ctx);
     scf::populateSCFStructuralTypeConversions(converter, patterns);
@@ -148,9 +189,5 @@ class TritonXLAConvertUnsupportedTypesPass
 };
 
 }  // namespace
-
-std::unique_ptr<Pass> CreateTritonXLAConvertUnsupportedTypesPass() {
-  return std::make_unique<TritonXLAConvertUnsupportedTypesPass>();
-}
 
 }  // namespace mlir::triton::xla

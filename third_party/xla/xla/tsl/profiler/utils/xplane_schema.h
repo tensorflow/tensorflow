@@ -156,6 +156,8 @@ enum HostEventType {
   kScheduleWithSplit,
   kScheduleWithEagerSplit,
   kASBSQueueSchedule,
+  kOrbaxConcatInputBuffers,
+  kOrbaxProcessBatch,
   // TFRT related.
   kTfrtModelRun,
   // Serving related.
@@ -269,6 +271,7 @@ enum StatType {
   kDeduplicatedName,
   kHloCategory,
   kHloModule,
+  kUniqueHloOpId,
   kProgramId,
   kEquation,
   kIsEager,
@@ -397,11 +400,19 @@ enum StatType {
   kHbmEnergy,
   // Number of HBM power events.
   kHbmPowerEvents,
+  // Stats for subprocess trace collection.
+  kConsumerPid,
+  kProcessId,
+  // Transaction ID for DMA transfers with
+  kTransactionWithChipCoreId,
+  // Program Counter in Oci Descriptors, etc
+  kProgramCounter,
+  kUsesIci,
   // LINT.ThenChange(:last_stat_type)
 
   // LINT.IfChange(last_stat_type)
   // Change this to point to the last stat type when adding a new one.
-  kLastStatType = kHbmPowerEvents,
+  kLastStatType = kUsesIci,
   // LINT.ThenChange(:stat_type_enum)
 };
 
@@ -434,7 +445,8 @@ enum MegaScaleStatType : uint8_t {
   kMegaScaleDelayBudgetUs,
   kMegaScaleHloModule,
   kMegaScaleMultiSliceTopology,
-  kLastMegaScaleStatType = kMegaScaleMultiSliceTopology,
+  kMegaScaleActivationToNetworkReceiveDurationUs,
+  kLastMegaScaleStatType = kMegaScaleActivationToNetworkReceiveDurationUs,
 };
 
 enum TaskEnvStatType {

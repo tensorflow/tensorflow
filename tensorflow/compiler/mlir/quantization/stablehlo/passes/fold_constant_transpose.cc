@@ -77,7 +77,7 @@ class DenseElementsTransposer {
   }
 
   // Returns the shape after permutation.
-  SmallVector<int64_t> GetTargetShape() const { return target_shape_; }
+  llvm::ArrayRef<int64_t> GetTargetShape() const { return target_shape_; }
 
  private:
   // Helper function that performs transposition recursively by mapping each set
@@ -101,15 +101,15 @@ class DenseElementsTransposer {
     }
 
     // Recursively iterate by selecting the index of the next dimension.
-    const int next_shape_idx = current_indices.size();
-    for (int i = 0; i < original_shape_[next_shape_idx]; ++i) {
+    const int64_t next_shape_idx = current_indices.size();
+    for (int64_t i = 0; i < original_shape_[next_shape_idx]; ++i) {
       current_indices.push_back(i);
       TransposeRecursively(original_values, target_values, current_indices);
       current_indices.pop_back();
     }
   }
 
-  int rank_;                             // Rank of the input values.
+  int64_t rank_;                         // Rank of the input values.
   SmallVector<int64_t> original_shape_;  // Shape of the original tensor.
   SmallVector<int64_t> target_shape_;    // Shape of the target tensor.
   SmallVector<int64_t> permutation_;
@@ -128,17 +128,16 @@ class FoldTransposedConstantOp
     if (!const_op) return failure();
 
     // Only support float tensors.
-    auto tensor_type = mlir::dyn_cast_or_null<TensorType>(const_op.getType());
+    auto tensor_type = mlir::dyn_cast<TensorType>(const_op.getType());
     if (!tensor_type || !tensor_type.getElementType().isF32()) {
       return failure();
     }
 
-    if (!mlir::isa_and_nonnull<DenseFPElementsAttr>(const_op.getValue())) {
+    const auto value_attr =
+        mlir::dyn_cast_or_null<DenseFPElementsAttr>(const_op.getValue());
+    if (!value_attr) {
       return failure();
     }
-
-    const auto value_attr =
-        mlir::cast<DenseFPElementsAttr>(const_op.getValue());
     const ArrayRef<int64_t> original_shape =
         value_attr.getShapedType().getShape();
 
@@ -155,15 +154,16 @@ class FoldTransposedConstantOp
     // Create a new constant op with the transposed values.
     const Location combined_loc =
         rewriter.getFusedLoc({const_op.getLoc(), op.getLoc()});
-    auto new_value_type =
+    RankedTensorType new_value_type =
         RankedTensorType::getChecked(combined_loc, transposer.GetTargetShape(),
                                      /*elementType=*/rewriter.getF32Type());
-    auto new_value_attr =
+    DenseFPElementsAttr new_value_attr =
         DenseFPElementsAttr::get(new_value_type, std::move(transposed_values));
-    auto new_const_op = mlir::stablehlo::ConstantOp::create(
-        rewriter, combined_loc, new_value_attr);
+    mlir::stablehlo::ConstantOp new_const_op =
+        mlir::stablehlo::ConstantOp::create(rewriter, combined_loc,
+                                            new_value_attr);
 
-    rewriter.replaceAllUsesWith(op, new_const_op);
+    rewriter.replaceOp(op, new_const_op);
     return success();
   }
 };

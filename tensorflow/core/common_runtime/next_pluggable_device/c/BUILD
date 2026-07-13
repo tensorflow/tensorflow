@@ -17,7 +17,7 @@ cc_library(
         "//tensorflow/c:tf_tensor_hdrs",
         "@xla//xla/c:c_api_decl",
         "@xla//xla/pjrt/c:pjrt_c_api_hdrs",
-        "@xla//xla/stream_executor/tpu:c_api_decl",
+        "@xla//xla/tpu:c_api_decl",
     ],
 )
 
@@ -78,7 +78,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tf_rendezvous_c_api",
-        "@xla//xla/stream_executor/tpu:c_api_decl",
+        "@xla//xla/tpu:c_api_decl",
     ],
 )
 
@@ -108,11 +108,9 @@ cc_library(
     hdrs = ["tf_rendezvous_c_api_helper.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":outside_compilation_params",
         ":tf_device_context_c_api",
         ":tf_device_context_c_api_helper",
         ":tf_rendezvous_c_api",
-        ":tf_rendezvous_c_api_defn",
         ":tf_tensor_utils",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_status_helper",
@@ -125,9 +123,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@tsl//tsl/platform:logging",
-        "@tsl//tsl/platform:status",
-        "@xla//xla/stream_executor/tpu:c_api_decl",
     ],
 )
 

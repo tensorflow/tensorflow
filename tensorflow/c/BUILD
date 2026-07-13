@@ -1,3 +1,4 @@
+# Harmless comment to trigger format check
 # Description:
 # C API for TensorFlow, for use by client language bindings.
 
@@ -81,22 +82,36 @@ filegroup(
     srcs = glob(
         [
             "*.cc",
-            "*.h",
         ],
         exclude = [
             "c_api_experimental.cc",
-            "c_api_experimental.h",
             "python_api.cc",
+            "*test*",
+        ],
+    ) + [
+        "@xla//xla/tsl/c:srcs",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = glob(
+        [
+            "*.h",
+        ],
+        exclude = [
+            "c_api_experimental.h",
             "python_api.h",
             "*test*",
         ],
     ) + [
-        "//tensorflow/cc:srcs_no_runtime",
+        "//tensorflow/cc:hdrs_no_runtime",
         "//tensorflow/core/distributed_runtime:server_lib.h",
-        "@tsl//tsl/platform:ctstring",
-        "@xla//xla/tsl/c:srcs",
+        "//tensorflow/core/platform:ctstring",
+        "@xla//xla/tsl/c:headers",
     ],
-    visibility = ["//visibility:public"],
+    visibility = ["//tensorflow:__subpackages__"],
 )
 
 cc_library(
@@ -522,6 +537,10 @@ cc_library(
         ":tf_status_helper",
         ":tf_tensor_internal",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@eigen_archive//:eigen3",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
@@ -585,10 +604,10 @@ cc_library(
     deps = [
         ":c_api_macros_hdrs",
         ":tf_buffer_internal",
-        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:protobuf",
-        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -620,11 +639,9 @@ tf_cuda_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":c_api",
         ":c_api_internal",
         ":c_api_macros_hdrs",
         ":checkpoint_reader",
-        ":tf_buffer",
         ":tf_buffer_internal",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_internal",
@@ -645,9 +662,9 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:blocking_counter",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@xla//xla/tsl/c:tsl_status_internal",
     ],
     alwayslink = 1,
 )
@@ -825,8 +842,10 @@ tf_cuda_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":c_api_headers",
         ":c_api_macros_hdrs",
         ":kernels",
+        ":tf_datatype_hdrs",
         ":tf_status_helper",
         ":tf_status_internal",
         ":tf_tensor_internal",
@@ -836,6 +855,16 @@ tf_cuda_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:strcat",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@tsl//tsl/platform:mutex",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:status",
     ] + if_not_mobile([
         "//tensorflow/core/kernels:tensor_list",
         "//tensorflow/core/kernels:tensor_list_util",
@@ -1082,8 +1111,10 @@ tf_cuda_cc_test(
     deps = [
         ":c_api",
         ":kernels",
+        ":kernels_experimental",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",

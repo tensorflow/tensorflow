@@ -61,18 +61,32 @@ class BaseAddOpModel : public SingleOpModel {
   int input1() { return input1_; }
   int input2() { return input2_; }
 
+  void Resize(const std::vector<int>& input1_shape,
+              const std::vector<int>& input2_shape) {
+    interpreter_->ResizeInputTensor(input1_, input1_shape);
+    interpreter_->ResizeInputTensor(input2_, input2_shape);
+    AllocateTensors();
+  }
+
  protected:
   int input1_;
   int input2_;
   int output_;
 };
 
-class FloatAddOpModel : public BaseAddOpModel {
+template <typename T>
+class AddOpModel : public BaseAddOpModel {
  public:
   using BaseAddOpModel::BaseAddOpModel;
 
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+  std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
 };
+
+template <typename T>
+class FloatAddTest : public ::testing::Test {};
+
+using FloatAddTestTypes = ::testing::Types<float, half, Eigen::bfloat16>;
+TYPED_TEST_SUITE(FloatAddTest, FloatAddTestTypes);
 
 class IntegerAddOpModel : public BaseAddOpModel {
  public:
@@ -132,110 +146,184 @@ float GetTolerance(float min, float max) {
   return kQuantizedStep;
 }
 
-TEST(FloatAddOpModel, NoActivationInplaceInput0) {
-  FloatAddOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
-  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+TYPED_TEST(FloatAddTest, NoActivationInplaceInput0) {
+  using T = TypeParam;
+  AddOpModel<T> m({GetTensorType<T>(), {1, 2, 2, 1}},
+                  {GetTensorType<T>(), {1, 2, 2, 1}}, {GetTensorType<T>(), {}},
+                  ActivationFunctionType_NONE);
+  m.template PopulateTensor<T>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
+  m.template PopulateTensor<T>(m.input2(), {0.1, 0.2, 0.3, 0.5});
   const int kInplaceInputTensorIdx = 0;
   const int kInplaceOutputTensorIdx = 0;
   const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
   TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
   output_tensor->data.data = input_tensor->data.data;
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  TFLITE_INVOKE_AND_CHECK(T, &m);
   EXPECT_THAT(m.GetOutput(),
-              Pointwise(FloatingPointEq(), {-1.9, 0.4, 1.0, 1.3}));
+              ElementsAreArray(ArrayFloatNear(
+                  {-1.9, 0.4, 1.0, 1.3},
+                  static_cast<float>(NumericLimits<T>::epsilon()) * 10)));
   EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
 }
 
-TEST(FloatAddOpModel, NoActivationInplaceInput1) {
-  FloatAddOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
-  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+TYPED_TEST(FloatAddTest, NoActivationInplaceInput1) {
+  using T = TypeParam;
+  AddOpModel<T> m({GetTensorType<T>(), {1, 2, 2, 1}},
+                  {GetTensorType<T>(), {1, 2, 2, 1}}, {GetTensorType<T>(), {}},
+                  ActivationFunctionType_NONE);
+  m.template PopulateTensor<T>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
+  m.template PopulateTensor<T>(m.input2(), {0.1, 0.2, 0.3, 0.5});
   const int kInplaceInputTensorIdx = 1;
   const int kInplaceOutputTensorIdx = 0;
   const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
   TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
   output_tensor->data.data = input_tensor->data.data;
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  TFLITE_INVOKE_AND_CHECK(T, &m);
   EXPECT_THAT(m.GetOutput(),
-              Pointwise(FloatingPointEq(), {-1.9, 0.4, 1.0, 1.3}));
+              ElementsAreArray(ArrayFloatNear(
+                  {-1.9, 0.4, 1.0, 1.3},
+                  static_cast<float>(NumericLimits<T>::epsilon()) * 10)));
   EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
 }
 
-TEST(FloatAddOpModel, NoActivation) {
-  FloatAddOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
-  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+TYPED_TEST(FloatAddTest, NoActivation) {
+  using T = TypeParam;
+  AddOpModel<T> m({GetTensorType<T>(), {1, 2, 2, 1}},
+                  {GetTensorType<T>(), {1, 2, 2, 1}}, {GetTensorType<T>(), {}},
+                  ActivationFunctionType_NONE);
+  m.template PopulateTensor<T>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
+  m.template PopulateTensor<T>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+  TFLITE_INVOKE_AND_CHECK(T, &m);
   EXPECT_THAT(m.GetOutput(),
-              Pointwise(FloatingPointEq(), {-1.9, 0.4, 1.0, 1.3}));
+              ElementsAreArray(ArrayFloatNear(
+                  {-1.9, 0.4, 1.0, 1.3},
+                  static_cast<float>(NumericLimits<T>::epsilon()) * 10)));
 }
 
-TEST(FloatAddOpModel, ActivationRELU_N1_TO_1) {
-  FloatAddOpModel m(
-      {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {1, 2, 2, 1}},
-      {TensorType_FLOAT32, {}}, ActivationFunctionType_RELU_N1_TO_1);
-  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
-  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+TYPED_TEST(FloatAddTest, ActivationRELU_N1_TO_1) {
+  using T = TypeParam;
+  AddOpModel<T> m({GetTensorType<T>(), {1, 2, 2, 1}},
+                  {GetTensorType<T>(), {1, 2, 2, 1}}, {GetTensorType<T>(), {}},
+                  ActivationFunctionType_RELU_N1_TO_1);
+  m.template PopulateTensor<T>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
+  m.template PopulateTensor<T>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+  TFLITE_INVOKE_AND_CHECK(T, &m);
   EXPECT_THAT(m.GetOutput(),
-              Pointwise(FloatingPointEq(), {-1.0, 0.4, 1.0, 1.0}));
+              ElementsAreArray(ArrayFloatNear(
+                  {-1.0, 0.4, 1.0, 1.0},
+                  static_cast<float>(NumericLimits<T>::epsilon()) * 10)));
 }
 
-TEST(FloatAddOpModel, VariousInputShapes) {
+TYPED_TEST(FloatAddTest, VariousInputShapes) {
+  using T = TypeParam;
   std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (size_t i = 0; i < test_shapes.size(); ++i) {
-    FloatAddOpModel m({TensorType_FLOAT32, test_shapes[i]},
-                      {TensorType_FLOAT32, test_shapes[i]},
-                      {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-    m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0});
-    m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5, 1.1, 0.1});
-    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    AddOpModel<T> m({GetTensorType<T>(), test_shapes[i]},
+                    {GetTensorType<T>(), test_shapes[i]},
+                    {GetTensorType<T>(), {}}, ActivationFunctionType_NONE);
+    m.template PopulateTensor<T>(m.input1(), {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0});
+    m.template PopulateTensor<T>(m.input2(), {0.1, 0.2, 0.3, 0.5, 1.1, 0.1});
+    TFLITE_INVOKE_AND_CHECK(T, &m);
     EXPECT_THAT(m.GetOutput(),
-                Pointwise(FloatingPointEq(), {-1.9, 0.4, 1.0, 1.3, 2.2, 2.1}))
+                ElementsAreArray(ArrayFloatNear(
+                    {-1.9, 0.4, 1.0, 1.3, 2.2, 2.1},
+                    static_cast<float>(NumericLimits<T>::epsilon()) * 10)))
+
         << "With shape number " << i;
   }
 }
 
-TEST(FloatAddOpModel, WithBroadcast) {
+TYPED_TEST(FloatAddTest, WithBroadcast) {
+  using T = TypeParam;
   std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (size_t i = 0; i < test_shapes.size(); ++i) {
-    FloatAddOpModel m({TensorType_FLOAT32, test_shapes[i]},
-                      {TensorType_FLOAT32, {}},  // always a scalar
-                      {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-    m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0});
-    m.PopulateTensor<float>(m.input2(), {0.1});
-    ASSERT_EQ(m.Invoke(), kTfLiteOk);
-    EXPECT_THAT(
-        m.GetOutput(),
-        ElementsAreArray(ArrayFloatNear({-1.9, 0.3, 0.8, 0.9, 1.2, 2.1})))
+    AddOpModel<T> m({GetTensorType<T>(), test_shapes[i]},
+                    {GetTensorType<T>(), {}},  // always a scalar
+                    {GetTensorType<T>(), {}}, ActivationFunctionType_NONE);
+    m.template PopulateTensor<T>(m.input1(), {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0});
+    m.template PopulateTensor<T>(m.input2(), {0.1});
+    TFLITE_INVOKE_AND_CHECK(T, &m);
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreArray(ArrayFloatNear(
+                    {-1.9, 0.3, 0.8, 0.9, 1.2, 2.1},
+                    static_cast<float>(NumericLimits<T>::epsilon()) * 10)))
         << "With shape number " << i;
   }
 }
 
-TEST(FloatAddOpModel, WithBroadcastGeneric) {
+TYPED_TEST(FloatAddTest, WithBroadcastGeneric) {
+  using T = TypeParam;
   std::vector<int> test_shape1 = {1, 3, 1};
   std::vector<int> test_shape2 = {2, 1, 2};
-  FloatAddOpModel m({TensorType_FLOAT32, test_shape1},
-                    {TensorType_FLOAT32, test_shape2}, {TensorType_FLOAT32, {}},
-                    ActivationFunctionType_NONE);
-  m.PopulateTensor<float>(m.input1(), {0.1, 0.2, 0.3});
-  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.4});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  AddOpModel<T> m({GetTensorType<T>(), test_shape1},
+                  {GetTensorType<T>(), test_shape2}, {GetTensorType<T>(), {}},
+                  ActivationFunctionType_NONE);
+  m.template PopulateTensor<T>(m.input1(), {0.1, 0.2, 0.3});
+  m.template PopulateTensor<T>(m.input2(), {0.1, 0.2, 0.3, 0.4});
+  TFLITE_INVOKE_AND_CHECK(T, &m);
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray(ArrayFloatNear({0.2, 0.3, 0.3, 0.4, 0.4, 0.5,
-                                               0.4, 0.5, 0.5, 0.6, 0.6, 0.7})));
+              ElementsAreArray(ArrayFloatNear(
+                  {0.2, 0.3, 0.3, 0.4, 0.4, 0.5, 0.4, 0.5, 0.5, 0.6, 0.6, 0.7},
+                  static_cast<float>(NumericLimits<T>::epsilon()) * 10)));
 }
 
-TEST(FloatAddOpModel, MixedBroadcast) {
+TYPED_TEST(FloatAddTest, WithBroadcastRankSeven) {
+  using T = TypeParam;
+  const std::vector<int> input1_shape = {2, 1, 2, 1, 2, 1, 2};
+  const std::vector<int> input2_shape = {1, 2, 1, 2, 1, 2, 1};
+  const std::vector<int> output_shape = {2, 2, 2, 2, 2, 2, 2};
+  AddOpModel<T> m({GetTensorType<T>(), input1_shape},
+                  {GetTensorType<T>(), input2_shape}, {GetTensorType<T>(), {}},
+                  ActivationFunctionType_NONE);
+
+  std::vector<float> input1(16);
+  std::vector<float> input2(8);
+  std::iota(input1.begin(), input1.end(), 1.0f);
+  std::iota(input2.begin(), input2.end(), 0.25f);
+  m.template PopulateTensor<T>(m.input1(), ToVector<T>(input1));
+  m.template PopulateTensor<T>(m.input2(), ToVector<T>(input2));
+  TFLITE_INVOKE_AND_CHECK(T, &m);
+
+  auto strides_for = [](const std::vector<int>& shape) {
+    std::vector<int> strides(shape.size());
+    int stride = 1;
+    for (int i = shape.size() - 1; i >= 0; --i) {
+      strides[i] = stride;
+      stride *= shape[i];
+    }
+    return strides;
+  };
+  const std::vector<int> input1_strides = strides_for(input1_shape);
+  const std::vector<int> input2_strides = strides_for(input2_shape);
+  const std::vector<int> output_strides = strides_for(output_shape);
+  std::vector<float> expected(128);
+  for (int output_index = 0; output_index < expected.size(); ++output_index) {
+    int remaining_index = output_index;
+    int input1_index = 0;
+    int input2_index = 0;
+    for (int dim = 0; dim < output_shape.size(); ++dim) {
+      const int coordinate = remaining_index / output_strides[dim];
+      remaining_index %= output_strides[dim];
+      if (input1_shape[dim] != 1) {
+        input1_index += coordinate * input1_strides[dim];
+      }
+      if (input2_shape[dim] != 1) {
+        input2_index += coordinate * input2_strides[dim];
+      }
+    }
+    expected[output_index] = input1[input1_index] + input2[input2_index];
+  }
+
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          expected, static_cast<float>(NumericLimits<T>::epsilon()) * 10)));
+}
+
+TYPED_TEST(FloatAddTest, MixedBroadcast) {
+  using T = TypeParam;
   const std::vector<int> base_shape = {2, 3, 1, 2};
   std::vector<std::vector<int>> test_shapes = {
       {1, 1, 3, 2}, {1, 3, 1, 2}, {2, 1, 3, 1}, {2, 3, 1, 1}};
@@ -253,32 +341,36 @@ TEST(FloatAddOpModel, MixedBroadcast) {
       {-0.1f, 2.5f, 1.2f, 0.8f, 0.4f, -1.5f, 1.7f, 3.3f, -0.6f, 1.0f, 1.6f,
        -1.3f}};
   for (size_t i = 0; i < test_shapes.size(); ++i) {
-    FloatAddOpModel model_fixture(
-        {TensorType_FLOAT32, base_shape}, {TensorType_FLOAT32, test_shapes[i]},
-        {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-    model_fixture.PopulateTensor<float>(
+    AddOpModel<T> model_fixture(
+        {GetTensorType<T>(), base_shape}, {GetTensorType<T>(), test_shapes[i]},
+        {GetTensorType<T>(), {}}, ActivationFunctionType_NONE);
+    model_fixture.template PopulateTensor<T>(
         model_fixture.input1(), {-0.3f, 2.3f, 0.9f, 0.5f, 0.8f, -1.1f, 1.2f,
                                  2.8f, -1.6f, 0.0f, 0.7f, -2.2f});
-    model_fixture.PopulateTensor<float>(model_fixture.input2(),
-                                        {0.2f, 0.3f, -0.4f, 0.5f, 1.0f, 0.9f});
-    ASSERT_EQ(model_fixture.Invoke(), kTfLiteOk);
+    model_fixture.template PopulateTensor<T>(
+        model_fixture.input2(), {0.2f, 0.3f, -0.4f, 0.5f, 1.0f, 0.9f});
+    TFLITE_INVOKE_AND_CHECK(T, &model_fixture);
     EXPECT_THAT(model_fixture.GetOutput(),
-                ElementsAreArray(ArrayFloatNear(test_outputs[i], 0.0001f)))
+                ElementsAreArray(ArrayFloatNear(
+                    test_outputs[i],
+                    static_cast<float>(NumericLimits<T>::epsilon()) * 10)))
         << "With shape number " << i;
   }
   // Re-run with exchanged inputs.
   for (size_t i = 0; i < test_shapes.size(); ++i) {
-    FloatAddOpModel model_fixture(
-        {TensorType_FLOAT32, test_shapes[i]}, {TensorType_FLOAT32, base_shape},
-        {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-    model_fixture.PopulateTensor<float>(model_fixture.input1(),
-                                        {0.2f, 0.3f, -0.4f, 0.5f, 1.0f, 0.9f});
-    model_fixture.PopulateTensor<float>(
+    AddOpModel<T> model_fixture(
+        {GetTensorType<T>(), test_shapes[i]}, {GetTensorType<T>(), base_shape},
+        {GetTensorType<T>(), {}}, ActivationFunctionType_NONE);
+    model_fixture.template PopulateTensor<T>(
+        model_fixture.input1(), {0.2f, 0.3f, -0.4f, 0.5f, 1.0f, 0.9f});
+    model_fixture.template PopulateTensor<T>(
         model_fixture.input2(), {-0.3f, 2.3f, 0.9f, 0.5f, 0.8f, -1.1f, 1.2f,
                                  2.8f, -1.6f, 0.0f, 0.7f, -2.2f});
-    ASSERT_EQ(model_fixture.Invoke(), kTfLiteOk);
+    TFLITE_INVOKE_AND_CHECK(T, &model_fixture);
     EXPECT_THAT(model_fixture.GetOutput(),
-                ElementsAreArray(ArrayFloatNear(test_outputs[i], 0.0001f)))
+                ElementsAreArray(ArrayFloatNear(
+                    test_outputs[i],
+                    static_cast<float>(NumericLimits<T>::epsilon()) * 10)))
         << "With shape number " << i;
   }
 }
@@ -290,8 +382,9 @@ constexpr int kDim4 = 5;
 constexpr int kDim5 = 6;
 constexpr int kDim6 = 7;
 
-void TestFloatBroadcast(std::vector<int> input1_shape,
-                        std::vector<int> input2_shape) {
+template <typename T>
+void TestFloatBroadcast(AddOpModel<T>& m, const std::vector<int>& input1_shape,
+                        const std::vector<int>& input2_shape) {
   std::array<int, 6> input1_dims;
   std::array<int, 6> input2_dims;
   std::array<int, 6> output_dims;
@@ -328,16 +421,18 @@ void TestFloatBroadcast(std::vector<int> input1_shape,
       input2_dims.begin(), input2_dims.end(), 1, std::multiplies<int>());
   const int num_output_elements = std::accumulate(
       output_dims.begin(), output_dims.end(), 1, std::multiplies<int>());
-  std::vector<float> input1(num_input1_elements);
-  std::vector<float> input2(num_input2_elements);
-  std::vector<float> output_ref(num_output_elements);
+  std::vector<T> input1(num_input1_elements);
+  std::vector<T> input2(num_input2_elements);
+  std::vector<T> output_ref(num_output_elements);
 
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   std::uniform_real_distribution<float> f32dist(0.01f, 1.0f);
 
-  std::generate(input1.begin(), input1.end(), [&]() { return f32dist(rng); });
-  std::generate(input2.begin(), input2.end(), [&]() { return f32dist(rng); });
+  std::generate(input1.begin(), input1.end(),
+                [&]() { return static_cast<T>(f32dist(rng)); });
+  std::generate(input2.begin(), input2.end(),
+                [&]() { return static_cast<T>(f32dist(rng)); });
 
   // Compute reference results.
   for (size_t i = 0; i < output_dims[0]; i++) {
@@ -349,12 +444,17 @@ void TestFloatBroadcast(std::vector<int> input1_shape,
               output_ref[i * output_strides[0] + j * output_strides[1] +
                          k * output_strides[2] + l * output_strides[3] +
                          m * output_strides[4] + n * output_strides[5]] =
-                  input1[i * input1_strides[0] + j * input1_strides[1] +
-                         k * input1_strides[2] + l * input1_strides[3] +
-                         m * input1_strides[4] + n * input1_strides[5]] +
-                  input2[i * input2_strides[0] + j * input2_strides[1] +
-                         k * input2_strides[2] + l * input2_strides[3] +
-                         m * input2_strides[4] + n * input2_strides[5]];
+                  static_cast<T>(
+                      static_cast<float>(
+                          input1[i * input1_strides[0] + j * input1_strides[1] +
+                                 k * input1_strides[2] + l * input1_strides[3] +
+                                 m * input1_strides[4] +
+                                 n * input1_strides[5]]) +
+                      static_cast<float>(
+                          input2[i * input2_strides[0] + j * input2_strides[1] +
+                                 k * input2_strides[2] + l * input2_strides[3] +
+                                 m * input2_strides[4] +
+                                 n * input2_strides[5]]));
             }
           }
         }
@@ -362,18 +462,20 @@ void TestFloatBroadcast(std::vector<int> input1_shape,
     }
   }
 
-  FloatAddOpModel m({TensorType_FLOAT32, input1_shape},
-                    {TensorType_FLOAT32, input2_shape},
-                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-  m.PopulateTensor<float>(m.input1(), input1);
-  m.PopulateTensor<float>(m.input2(), input2);
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), output_ref));
+  m.Resize(input1_shape, input2_shape);
+  m.template PopulateTensor<T>(m.input1(), input1);
+  m.template PopulateTensor<T>(m.input2(), input2);
+  TFLITE_INVOKE_AND_CHECK(T, &m);
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          output_ref, static_cast<float>(NumericLimits<T>::epsilon()) * 10)));
 }
 
 template <typename IntegerType>
-void TestIntegerBroadcast(std::vector<int> input1_shape,
-                          std::vector<int> input2_shape) {
+void TestIntegerBroadcast(IntegerAddOpModel& m,
+                          const std::vector<int>& input1_shape,
+                          const std::vector<int>& input2_shape) {
   std::array<int, 6> input1_dims;
   std::array<int, 6> input2_dims;
   std::array<int, 6> output_dims;
@@ -444,10 +546,7 @@ void TestIntegerBroadcast(std::vector<int> input1_shape,
     }
   }
 
-  IntegerAddOpModel m({GetTensorType<IntegerType>(), input1_shape},
-                      {GetTensorType<IntegerType>(), input2_shape},
-                      {GetTensorType<IntegerType>(), {}},
-                      ActivationFunctionType_NONE);
+  m.Resize(input1_shape, input2_shape);
   m.PopulateTensor<IntegerType>(m.input1(), input1);
   m.PopulateTensor<IntegerType>(m.input2(), input2);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
@@ -462,92 +561,57 @@ void TestIntegerBroadcast(std::vector<int> input1_shape,
 // single shard.  So we split it into a few "subshards" and have a separate
 // TYPED_TEST macro invocation for each subshard.
 
-void TestFloat32MultiDimBroadcast(int selected_subshard, int subshard_count) {
-  int iteration = 0;
-  for (uint32_t bm1 = 0; bm1 < (static_cast<uint32_t>(1) << 6); bm1++) {
-    for (uint32_t bm2 = 0; bm2 < (static_cast<uint32_t>(1) << 6); bm2++) {
-      if (iteration++ % subshard_count != selected_subshard) {
-        continue;  // This iteration of the loop is not part of this subshard.
+template <typename T>
+void RunFloatMultiDimBroadcastTest(int d1, int d2) {
+  const int dims_constants[] = {kDim1, kDim2, kDim3, kDim4, kDim5, kDim6};
+  std::vector<int> initial_shape1(d1, 1);
+  std::vector<int> initial_shape2(d2, 1);
+  AddOpModel<T> m({GetTensorType<T>(), initial_shape1},
+                  {GetTensorType<T>(), initial_shape2},
+                  {GetTensorType<T>(), {}}, ActivationFunctionType_NONE);
+
+  for (uint32_t bm1 = 0; bm1 < (static_cast<uint32_t>(1) << d1); bm1++) {
+    for (uint32_t bm2 = 0; bm2 < (static_cast<uint32_t>(1) << d2); bm2++) {
+      std::vector<int> input1_shape(d1);
+      std::vector<int> input2_shape(d2);
+      for (int i = 0; i < d1; ++i) {
+        bool broadcast = bm1 & (1 << i);
+        input1_shape[i] = broadcast ? 1 : dims_constants[6 - d1 + i];
       }
-      const bool input1_broadcast_dim1 = bm1 & (static_cast<uint32_t>(1) << 0);
-      const bool input1_broadcast_dim2 = bm1 & (static_cast<uint32_t>(1) << 1);
-      const bool input1_broadcast_dim3 = bm1 & (static_cast<uint32_t>(1) << 2);
-      const bool input1_broadcast_dim4 = bm1 & (static_cast<uint32_t>(1) << 3);
-      const bool input1_broadcast_dim5 = bm1 & (static_cast<uint32_t>(1) << 4);
-      const bool input1_broadcast_dim6 = bm1 & (static_cast<uint32_t>(1) << 5);
-      const bool input2_broadcast_dim1 = bm2 & (static_cast<uint32_t>(1) << 0);
-      const bool input2_broadcast_dim2 = bm2 & (static_cast<uint32_t>(1) << 1);
-      const bool input2_broadcast_dim3 = bm2 & (static_cast<uint32_t>(1) << 2);
-      const bool input2_broadcast_dim4 = bm2 & (static_cast<uint32_t>(1) << 3);
-      const bool input2_broadcast_dim5 = bm2 & (static_cast<uint32_t>(1) << 4);
-      const bool input2_broadcast_dim6 = bm2 & (static_cast<uint32_t>(1) << 5);
-      const int input1_dim1 = input1_broadcast_dim1 ? 1 : kDim1;
-      const int input1_dim2 = input1_broadcast_dim2 ? 1 : kDim2;
-      const int input1_dim3 = input1_broadcast_dim3 ? 1 : kDim3;
-      const int input1_dim4 = input1_broadcast_dim4 ? 1 : kDim4;
-      const int input1_dim5 = input1_broadcast_dim5 ? 1 : kDim5;
-      const int input1_dim6 = input1_broadcast_dim6 ? 1 : kDim6;
-      const int input2_dim1 = input2_broadcast_dim1 ? 1 : kDim1;
-      const int input2_dim2 = input2_broadcast_dim2 ? 1 : kDim2;
-      const int input2_dim3 = input2_broadcast_dim3 ? 1 : kDim3;
-      const int input2_dim4 = input2_broadcast_dim4 ? 1 : kDim4;
-      const int input2_dim5 = input2_broadcast_dim5 ? 1 : kDim5;
-      const int input2_dim6 = input2_broadcast_dim6 ? 1 : kDim6;
-      std::vector<int> input1_full_shape{input1_dim1, input1_dim2, input1_dim3,
-                                         input1_dim4, input1_dim5, input1_dim6};
-      std::vector<int> input2_full_shape{input2_dim1, input2_dim2, input2_dim3,
-                                         input2_dim4, input2_dim5, input2_dim6};
-      for (int input1_dims = 1; input1_dims <= 6; ++input1_dims) {
-        for (int input2_dims = 1; input2_dims <= 6; ++input2_dims) {
-          std::vector<int> input1_shape(input1_dims), input2_shape(input2_dims);
-          std::copy(input1_full_shape.end() - input1_dims,
-                    input1_full_shape.end(), input1_shape.data());
-          std::copy(input2_full_shape.end() - input2_dims,
-                    input2_full_shape.end(), input2_shape.data());
-          TestFloatBroadcast(input1_shape, input2_shape);
-        }
+      for (int i = 0; i < d2; ++i) {
+        bool broadcast = bm2 & (1 << i);
+        input2_shape[i] = broadcast ? 1 : dims_constants[6 - d2 + i];
+      }
+      TestFloatBroadcast<T>(m, input1_shape, input2_shape);
+      if (testing::Test::IsSkipped()) {
+        return;
       }
     }
   }
 }
 
-// Should match the number of TEST or TYPED_TEST invoations for each of
-// Float32MultiDimBroadcastSubshard*,
-// IntegerMultiDimBroadcastSubshard*,
-// Int8QuantizedMultiDimBroadcastSubshard*, and
-// Uint8QuantizedMultiDimBroadcastSubshard* below.
-constexpr int kMultiDimBroadcastSubshardCount = 10;
+#define INSTANTIATE_FLOAT_ADD_MULTI_DIM_BROADCAST_TEST(d1, d2) \
+  TYPED_TEST(FloatAddTest, MultiDimBroadcast_##d1##_##d2) {    \
+    RunFloatMultiDimBroadcastTest<TypeParam>(d1, d2);          \
+  }
 
-TEST(FloatAddOpModel, Float32MultiDimBroadcastSubshard0) {
-  TestFloat32MultiDimBroadcast(0, kMultiDimBroadcastSubshardCount);
-}
-TEST(FloatAddOpModel, Float32MultiDimBroadcastSubshard1) {
-  TestFloat32MultiDimBroadcast(1, kMultiDimBroadcastSubshardCount);
-}
-TEST(FloatAddOpModel, Float32MultiDimBroadcastSubshard2) {
-  TestFloat32MultiDimBroadcast(2, kMultiDimBroadcastSubshardCount);
-}
-TEST(FloatAddOpModel, Float32MultiDimBroadcastSubshard3) {
-  TestFloat32MultiDimBroadcast(3, kMultiDimBroadcastSubshardCount);
-}
-TEST(FloatAddOpModel, Float32MultiDimBroadcastSubshard4) {
-  TestFloat32MultiDimBroadcast(4, kMultiDimBroadcastSubshardCount);
-}
-TEST(FloatAddOpModel, Float32MultiDimBroadcastSubshard5) {
-  TestFloat32MultiDimBroadcast(5, kMultiDimBroadcastSubshardCount);
-}
-TEST(FloatAddOpModel, Float32MultiDimBroadcastSubshard6) {
-  TestFloat32MultiDimBroadcast(6, kMultiDimBroadcastSubshardCount);
-}
-TEST(FloatAddOpModel, Float32MultiDimBroadcastSubshard7) {
-  TestFloat32MultiDimBroadcast(7, kMultiDimBroadcastSubshardCount);
-}
-TEST(FloatAddOpModel, Float32MultiDimBroadcastSubshard8) {
-  TestFloat32MultiDimBroadcast(8, kMultiDimBroadcastSubshardCount);
-}
-TEST(FloatAddOpModel, Float32MultiDimBroadcastSubshard9) {
-  TestFloat32MultiDimBroadcast(9, kMultiDimBroadcastSubshardCount);
-}
+#define INSTANTIATE_FLOAT_ADD_MULTI_DIM_BROADCAST_TEST_D2(d1) \
+  INSTANTIATE_FLOAT_ADD_MULTI_DIM_BROADCAST_TEST(d1, 1)       \
+  INSTANTIATE_FLOAT_ADD_MULTI_DIM_BROADCAST_TEST(d1, 2)       \
+  INSTANTIATE_FLOAT_ADD_MULTI_DIM_BROADCAST_TEST(d1, 3)       \
+  INSTANTIATE_FLOAT_ADD_MULTI_DIM_BROADCAST_TEST(d1, 4)       \
+  INSTANTIATE_FLOAT_ADD_MULTI_DIM_BROADCAST_TEST(d1, 5)       \
+  INSTANTIATE_FLOAT_ADD_MULTI_DIM_BROADCAST_TEST(d1, 6)
+
+#define INSTANTIATE_FLOAT_ADD_MULTI_DIM_BROADCAST_TESTS() \
+  INSTANTIATE_FLOAT_ADD_MULTI_DIM_BROADCAST_TEST_D2(1)    \
+  INSTANTIATE_FLOAT_ADD_MULTI_DIM_BROADCAST_TEST_D2(2)    \
+  INSTANTIATE_FLOAT_ADD_MULTI_DIM_BROADCAST_TEST_D2(3)    \
+  INSTANTIATE_FLOAT_ADD_MULTI_DIM_BROADCAST_TEST_D2(4)    \
+  INSTANTIATE_FLOAT_ADD_MULTI_DIM_BROADCAST_TEST_D2(5)    \
+  INSTANTIATE_FLOAT_ADD_MULTI_DIM_BROADCAST_TEST_D2(6)
+
+INSTANTIATE_FLOAT_ADD_MULTI_DIM_BROADCAST_TESTS()
 
 template <typename T>
 class IntegerAddOpTest : public ::testing::Test {};
@@ -563,87 +627,56 @@ TYPED_TEST_SUITE(IntegerAddOpTest, Int16OrInt32Or64Types);
 // single shard.  So we split it into a few "subshards" and have a separate
 // TYPED_TEST macro invocation for each subshard.
 
-template <class TypeParam>
-void TestIntegerMultiDimBroadcast(int selected_subshard, int subshard_count) {
-  ASSERT_LT(selected_subshard, subshard_count);
-  int iteration = 0;
-  for (uint32_t bm1 = 0; bm1 < (static_cast<uint32_t>(1) << 6); bm1++) {
-    for (uint32_t bm2 = 0; bm2 < (static_cast<uint32_t>(1) << 6); bm2++) {
-      if (iteration++ % subshard_count != selected_subshard) {
-        continue;  // This iteration of the loop is not part of this subshard.
+template <typename TypeParam>
+void RunIntegerMultiDimBroadcastTest(int d1, int d2) {
+  const int dims_constants[] = {kDim1, kDim2, kDim3, kDim4, kDim5, kDim6};
+  std::vector<int> initial_shape1(d1, 1);
+  std::vector<int> initial_shape2(d2, 1);
+  IntegerAddOpModel m(GetTensorType<TypeParam>(), initial_shape1,
+                      initial_shape2, ActivationFunctionType_NONE);
+
+  for (uint32_t bm1 = 0; bm1 < (static_cast<uint32_t>(1) << d1); bm1++) {
+    for (uint32_t bm2 = 0; bm2 < (static_cast<uint32_t>(1) << d2); bm2++) {
+      std::vector<int> input1_shape(d1);
+      std::vector<int> input2_shape(d2);
+      for (int i = 0; i < d1; ++i) {
+        bool broadcast = bm1 & (1 << i);
+        input1_shape[i] = broadcast ? 1 : dims_constants[6 - d1 + i];
       }
-      const bool input1_broadcast_dim1 = bm1 & (static_cast<uint32_t>(1) << 0);
-      const bool input1_broadcast_dim2 = bm1 & (static_cast<uint32_t>(1) << 1);
-      const bool input1_broadcast_dim3 = bm1 & (static_cast<uint32_t>(1) << 2);
-      const bool input1_broadcast_dim4 = bm1 & (static_cast<uint32_t>(1) << 3);
-      const bool input1_broadcast_dim5 = bm1 & (static_cast<uint32_t>(1) << 4);
-      const bool input1_broadcast_dim6 = bm1 & (static_cast<uint32_t>(1) << 5);
-      const bool input2_broadcast_dim1 = bm2 & (static_cast<uint32_t>(1) << 0);
-      const bool input2_broadcast_dim2 = bm2 & (static_cast<uint32_t>(1) << 1);
-      const bool input2_broadcast_dim3 = bm2 & (static_cast<uint32_t>(1) << 2);
-      const bool input2_broadcast_dim4 = bm2 & (static_cast<uint32_t>(1) << 3);
-      const bool input2_broadcast_dim5 = bm2 & (static_cast<uint32_t>(1) << 4);
-      const bool input2_broadcast_dim6 = bm2 & (static_cast<uint32_t>(1) << 5);
-      const int input1_dim1 = input1_broadcast_dim1 ? 1 : kDim1;
-      const int input1_dim2 = input1_broadcast_dim2 ? 1 : kDim2;
-      const int input1_dim3 = input1_broadcast_dim3 ? 1 : kDim3;
-      const int input1_dim4 = input1_broadcast_dim4 ? 1 : kDim4;
-      const int input1_dim5 = input1_broadcast_dim5 ? 1 : kDim5;
-      const int input1_dim6 = input1_broadcast_dim6 ? 1 : kDim6;
-      const int input2_dim1 = input2_broadcast_dim1 ? 1 : kDim1;
-      const int input2_dim2 = input2_broadcast_dim2 ? 1 : kDim2;
-      const int input2_dim3 = input2_broadcast_dim3 ? 1 : kDim3;
-      const int input2_dim4 = input2_broadcast_dim4 ? 1 : kDim4;
-      const int input2_dim5 = input2_broadcast_dim5 ? 1 : kDim5;
-      const int input2_dim6 = input2_broadcast_dim6 ? 1 : kDim6;
-      std::vector<int> input1_full_shape{input1_dim1, input1_dim2, input1_dim3,
-                                         input1_dim4, input1_dim5, input1_dim6};
-      std::vector<int> input2_full_shape{input2_dim1, input2_dim2, input2_dim3,
-                                         input2_dim4, input2_dim5, input2_dim6};
-      for (int input1_dims = 1; input1_dims <= 6; ++input1_dims) {
-        for (int input2_dims = 1; input2_dims <= 6; ++input2_dims) {
-          std::vector<int> input1_shape(input1_dims), input2_shape(input2_dims);
-          std::copy(input1_full_shape.end() - input1_dims,
-                    input1_full_shape.end(), input1_shape.data());
-          std::copy(input2_full_shape.end() - input2_dims,
-                    input2_full_shape.end(), input2_shape.data());
-          TestIntegerBroadcast<TypeParam>(input1_shape, input2_shape);
-        }
+      for (int i = 0; i < d2; ++i) {
+        bool broadcast = bm2 & (1 << i);
+        input2_shape[i] = broadcast ? 1 : dims_constants[6 - d2 + i];
+      }
+      TestIntegerBroadcast<TypeParam>(m, input1_shape, input2_shape);
+      if (testing::Test::IsSkipped()) {
+        return;
       }
     }
   }
 }
 
-TYPED_TEST(IntegerAddOpTest, IntegerMultiDimBroadcastSubshard0) {
-  TestIntegerMultiDimBroadcast<TypeParam>(0, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(IntegerAddOpTest, IntegerMultiDimBroadcastSubshard1) {
-  TestIntegerMultiDimBroadcast<TypeParam>(1, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(IntegerAddOpTest, IntegerMultiDimBroadcastSubshard2) {
-  TestIntegerMultiDimBroadcast<TypeParam>(2, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(IntegerAddOpTest, IntegerMultiDimBroadcastSubshard3) {
-  TestIntegerMultiDimBroadcast<TypeParam>(3, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(IntegerAddOpTest, IntegerMultiDimBroadcastSubshard4) {
-  TestIntegerMultiDimBroadcast<TypeParam>(4, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(IntegerAddOpTest, IntegerMultiDimBroadcastSubshard5) {
-  TestIntegerMultiDimBroadcast<TypeParam>(5, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(IntegerAddOpTest, IntegerMultiDimBroadcastSubshard6) {
-  TestIntegerMultiDimBroadcast<TypeParam>(6, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(IntegerAddOpTest, IntegerMultiDimBroadcastSubshard7) {
-  TestIntegerMultiDimBroadcast<TypeParam>(7, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(IntegerAddOpTest, IntegerMultiDimBroadcastSubshard8) {
-  TestIntegerMultiDimBroadcast<TypeParam>(8, kMultiDimBroadcastSubshardCount);
-}
-TYPED_TEST(IntegerAddOpTest, IntegerMultiDimBroadcastSubshard9) {
-  TestIntegerMultiDimBroadcast<TypeParam>(9, kMultiDimBroadcastSubshardCount);
-}
+#define INSTANTIATE_INTEGER_ADD_MULTI_DIM_BROADCAST_TEST(d1, d2) \
+  TYPED_TEST(IntegerAddOpTest, MultiDimBroadcast_##d1##_##d2) {  \
+    RunIntegerMultiDimBroadcastTest<TypeParam>(d1, d2);          \
+  }
+
+#define INSTANTIATE_INTEGER_ADD_MULTI_DIM_BROADCAST_TEST_D2(d1) \
+  INSTANTIATE_INTEGER_ADD_MULTI_DIM_BROADCAST_TEST(d1, 1)       \
+  INSTANTIATE_INTEGER_ADD_MULTI_DIM_BROADCAST_TEST(d1, 2)       \
+  INSTANTIATE_INTEGER_ADD_MULTI_DIM_BROADCAST_TEST(d1, 3)       \
+  INSTANTIATE_INTEGER_ADD_MULTI_DIM_BROADCAST_TEST(d1, 4)       \
+  INSTANTIATE_INTEGER_ADD_MULTI_DIM_BROADCAST_TEST(d1, 5)       \
+  INSTANTIATE_INTEGER_ADD_MULTI_DIM_BROADCAST_TEST(d1, 6)
+
+#define INSTANTIATE_INTEGER_ADD_MULTI_DIM_BROADCAST_TESTS() \
+  INSTANTIATE_INTEGER_ADD_MULTI_DIM_BROADCAST_TEST_D2(1)    \
+  INSTANTIATE_INTEGER_ADD_MULTI_DIM_BROADCAST_TEST_D2(2)    \
+  INSTANTIATE_INTEGER_ADD_MULTI_DIM_BROADCAST_TEST_D2(3)    \
+  INSTANTIATE_INTEGER_ADD_MULTI_DIM_BROADCAST_TEST_D2(4)    \
+  INSTANTIATE_INTEGER_ADD_MULTI_DIM_BROADCAST_TEST_D2(5)    \
+  INSTANTIATE_INTEGER_ADD_MULTI_DIM_BROADCAST_TEST_D2(6)
+
+INSTANTIATE_INTEGER_ADD_MULTI_DIM_BROADCAST_TESTS()
 
 TYPED_TEST(IntegerAddOpTest, NoActivation) {
   IntegerAddOpModel m(GetTensorType<TypeParam>(), {1, 2, 2, 1}, {1, 2, 2, 1},
@@ -704,8 +737,9 @@ TYPED_TEST(IntegerAddOpTest, Int32MultiDimBroadcast) {
 }
 
 template <typename QuantizedType>
-void TestQuantizedBroadcast(std::vector<int> input1_shape,
-                            std::vector<int> input2_shape) {
+void TestQuantizedBroadcast(QuantizedAddOpModel& m,
+                            const std::vector<int>& input1_shape,
+                            const std::vector<int>& input2_shape) {
   std::array<int, 6> input1_dims;
   std::array<int, 6> input2_dims;
   std::array<int, 6> output_dims;
@@ -754,11 +788,7 @@ void TestQuantizedBroadcast(std::vector<int> input1_shape,
   std::generate(input1.begin(), input1.end(), [&]() { return dist(rng); });
   std::generate(input2.begin(), input2.end(), [&]() { return dist(rng); });
 
-  QuantizedAddOpModel m(
-      {GetTensorType<QuantizedType>(), input1_shape, -0.5f, 0.5f},
-      {GetTensorType<QuantizedType>(), input2_shape, -0.5f, 0.5f},
-      {GetTensorType<QuantizedType>(), {}, -1.f, 1.f},
-      ActivationFunctionType_NONE);
+  m.Resize(input1_shape, input2_shape);
   m.QuantizeAndPopulate<QuantizedType>(m.input1(), input1);
   m.QuantizeAndPopulate<QuantizedType>(m.input2(), input2);
   // Compute reference results.
@@ -820,118 +850,61 @@ void TestQuantizedBroadcast(std::vector<int> input1_shape,
 // single shard.  So we split it into a few "subshards" and have a separate
 // TEST macro invocation for each subshard.
 
-template <class T>
-void TestQuantizedMultiDimBroadcast(int selected_subshard, int subshard_count) {
-  ASSERT_LT(selected_subshard, subshard_count);
-  int iteration = 0;
-  for (uint32_t bm1 = 0; bm1 < (static_cast<uint32_t>(1) << 6); bm1++) {
-    for (uint32_t bm2 = 0; bm2 < (static_cast<int32_t>(1) << 6); bm2++) {
-      if (iteration++ % subshard_count != selected_subshard) {
-        continue;  // This iteration of the loop is not part of this subshard.
+template <typename T>
+void RunQuantizedMultiDimBroadcastTest(int d1, int d2) {
+  const int dims_constants[] = {kDim1, kDim2, kDim3, kDim4, kDim5, kDim6};
+  std::vector<int> initial_shape1(d1, 1);
+  std::vector<int> initial_shape2(d2, 1);
+  QuantizedAddOpModel m({GetTensorType<T>(), initial_shape1, -0.5f, 0.5f},
+                        {GetTensorType<T>(), initial_shape2, -0.5f, 0.5f},
+                        {GetTensorType<T>(), {}, -1.f, 1.f},
+                        ActivationFunctionType_NONE);
+
+  for (uint32_t bm1 = 0; bm1 < (static_cast<uint32_t>(1) << d1); bm1++) {
+    for (uint32_t bm2 = 0; bm2 < (static_cast<uint32_t>(1) << d2); bm2++) {
+      std::vector<int> input1_shape(d1);
+      std::vector<int> input2_shape(d2);
+      for (int i = 0; i < d1; ++i) {
+        bool broadcast = bm1 & (1 << i);
+        input1_shape[i] = broadcast ? 1 : dims_constants[6 - d1 + i];
       }
-      const bool input1_broadcast_dim1 = bm1 & (static_cast<uint32_t>(1) << 0);
-      const bool input1_broadcast_dim2 = bm1 & (static_cast<uint32_t>(1) << 1);
-      const bool input1_broadcast_dim3 = bm1 & (static_cast<uint32_t>(1) << 2);
-      const bool input1_broadcast_dim4 = bm1 & (static_cast<uint32_t>(1) << 3);
-      const bool input1_broadcast_dim5 = bm1 & (static_cast<uint32_t>(1) << 4);
-      const bool input1_broadcast_dim6 = bm1 & (static_cast<uint32_t>(1) << 5);
-      const bool input2_broadcast_dim1 = bm2 & (static_cast<uint32_t>(1) << 0);
-      const bool input2_broadcast_dim2 = bm2 & (static_cast<uint32_t>(1) << 1);
-      const bool input2_broadcast_dim3 = bm2 & (static_cast<uint32_t>(1) << 2);
-      const bool input2_broadcast_dim4 = bm2 & (static_cast<uint32_t>(1) << 3);
-      const bool input2_broadcast_dim5 = bm2 & (static_cast<uint32_t>(1) << 4);
-      const bool input2_broadcast_dim6 = bm2 & (static_cast<uint32_t>(1) << 5);
-      const int input1_dim1 = input1_broadcast_dim1 ? 1 : kDim1;
-      const int input1_dim2 = input1_broadcast_dim2 ? 1 : kDim2;
-      const int input1_dim3 = input1_broadcast_dim3 ? 1 : kDim3;
-      const int input1_dim4 = input1_broadcast_dim4 ? 1 : kDim4;
-      const int input1_dim5 = input1_broadcast_dim5 ? 1 : kDim5;
-      const int input1_dim6 = input1_broadcast_dim6 ? 1 : kDim6;
-      const int input2_dim1 = input2_broadcast_dim1 ? 1 : kDim1;
-      const int input2_dim2 = input2_broadcast_dim2 ? 1 : kDim2;
-      const int input2_dim3 = input2_broadcast_dim3 ? 1 : kDim3;
-      const int input2_dim4 = input2_broadcast_dim4 ? 1 : kDim4;
-      const int input2_dim5 = input2_broadcast_dim5 ? 1 : kDim5;
-      const int input2_dim6 = input2_broadcast_dim6 ? 1 : kDim6;
-      std::vector<int> input1_full_shape{input1_dim1, input1_dim2, input1_dim3,
-                                         input1_dim4, input1_dim5, input1_dim6};
-      std::vector<int> input2_full_shape{input2_dim1, input2_dim2, input2_dim3,
-                                         input2_dim4, input2_dim5, input2_dim6};
-      for (int input1_dims = 1; input1_dims <= 6; ++input1_dims) {
-        for (int input2_dims = 1; input2_dims <= 6; ++input2_dims) {
-          std::vector<int> input1_shape(input1_dims), input2_shape(input2_dims);
-          std::copy(input1_full_shape.end() - input1_dims,
-                    input1_full_shape.end(), input1_shape.data());
-          std::copy(input2_full_shape.end() - input2_dims,
-                    input2_full_shape.end(), input2_shape.data());
-          TestQuantizedBroadcast<T>(input1_shape, input2_shape);
-        }
+      for (int i = 0; i < d2; ++i) {
+        bool broadcast = bm2 & (1 << i);
+        input2_shape[i] = broadcast ? 1 : dims_constants[6 - d2 + i];
+      }
+      TestQuantizedBroadcast<T>(m, input1_shape, input2_shape);
+      if (testing::Test::IsSkipped()) {
+        return;
       }
     }
   }
 }
 
-TEST(QuantizedAddOpModel, Int8QuantizedMultiDimBroadcastSubshard0) {
-  TestQuantizedMultiDimBroadcast<int8_t>(0, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedAddOpModel, Int8QuantizedMultiDimBroadcastSubshard1) {
-  TestQuantizedMultiDimBroadcast<int8_t>(1, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedAddOpModel, Int8QuantizedMultiDimBroadcastSubshard2) {
-  TestQuantizedMultiDimBroadcast<int8_t>(2, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedAddOpModel, Int8QuantizedMultiDimBroadcastSubshard3) {
-  TestQuantizedMultiDimBroadcast<int8_t>(3, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedAddOpModel, Int8QuantizedMultiDimBroadcastSubshard4) {
-  TestQuantizedMultiDimBroadcast<int8_t>(4, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedAddOpModel, Int8QuantizedMultiDimBroadcastSubshard5) {
-  TestQuantizedMultiDimBroadcast<int8_t>(5, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedAddOpModel, Int8QuantizedMultiDimBroadcastSubshard6) {
-  TestQuantizedMultiDimBroadcast<int8_t>(6, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedAddOpModel, Int8QuantizedMultiDimBroadcastSubshard7) {
-  TestQuantizedMultiDimBroadcast<int8_t>(7, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedAddOpModel, Int8QuantizedMultiDimBroadcastSubshard8) {
-  TestQuantizedMultiDimBroadcast<int8_t>(8, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedAddOpModel, Int8QuantizedMultiDimBroadcastSubshard9) {
-  TestQuantizedMultiDimBroadcast<int8_t>(9, kMultiDimBroadcastSubshardCount);
-}
+#define INSTANTIATE_QUANTIZED_ADD_MULTI_DIM_BROADCAST_TEST(T, TypeName, d1, \
+                                                           d2)              \
+  TEST(QuantizedAddOpModel,                                                 \
+       TypeName##QuantizedMultiDimBroadcast_##d1##_##d2) {                  \
+    RunQuantizedMultiDimBroadcastTest<T>(d1, d2);                           \
+  }
 
-TEST(QuantizedAddOpModel, Uint8QuantizedMultiDimBroadcastSubshard0) {
-  TestQuantizedMultiDimBroadcast<uint8_t>(0, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedAddOpModel, Uint8QuantizedMultiDimBroadcastSubshard1) {
-  TestQuantizedMultiDimBroadcast<uint8_t>(1, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedAddOpModel, Uint8QuantizedMultiDimBroadcastSubshard2) {
-  TestQuantizedMultiDimBroadcast<uint8_t>(2, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedAddOpModel, Uint8QuantizedMultiDimBroadcastSubshard3) {
-  TestQuantizedMultiDimBroadcast<uint8_t>(3, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedAddOpModel, Uint8QuantizedMultiDimBroadcastSubshard4) {
-  TestQuantizedMultiDimBroadcast<uint8_t>(4, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedAddOpModel, Uint8QuantizedMultiDimBroadcastSubshard5) {
-  TestQuantizedMultiDimBroadcast<uint8_t>(5, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedAddOpModel, Uint8QuantizedMultiDimBroadcastSubshard6) {
-  TestQuantizedMultiDimBroadcast<uint8_t>(6, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedAddOpModel, Uint8QuantizedMultiDimBroadcastSubshard7) {
-  TestQuantizedMultiDimBroadcast<uint8_t>(7, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedAddOpModel, Uint8QuantizedMultiDimBroadcastSubshard8) {
-  TestQuantizedMultiDimBroadcast<uint8_t>(8, kMultiDimBroadcastSubshardCount);
-}
-TEST(QuantizedAddOpModel, Uint8QuantizedMultiDimBroadcastSubshard9) {
-  TestQuantizedMultiDimBroadcast<uint8_t>(9, kMultiDimBroadcastSubshardCount);
-}
+#define INSTANTIATE_QUANTIZED_ADD_MULTI_DIM_BROADCAST_TEST_D2(T, TypeName, d1) \
+  INSTANTIATE_QUANTIZED_ADD_MULTI_DIM_BROADCAST_TEST(T, TypeName, d1, 1)       \
+  INSTANTIATE_QUANTIZED_ADD_MULTI_DIM_BROADCAST_TEST(T, TypeName, d1, 2)       \
+  INSTANTIATE_QUANTIZED_ADD_MULTI_DIM_BROADCAST_TEST(T, TypeName, d1, 3)       \
+  INSTANTIATE_QUANTIZED_ADD_MULTI_DIM_BROADCAST_TEST(T, TypeName, d1, 4)       \
+  INSTANTIATE_QUANTIZED_ADD_MULTI_DIM_BROADCAST_TEST(T, TypeName, d1, 5)       \
+  INSTANTIATE_QUANTIZED_ADD_MULTI_DIM_BROADCAST_TEST(T, TypeName, d1, 6)
+
+#define INSTANTIATE_QUANTIZED_ADD_MULTI_DIM_BROADCAST_TESTS(T, TypeName) \
+  INSTANTIATE_QUANTIZED_ADD_MULTI_DIM_BROADCAST_TEST_D2(T, TypeName, 1)  \
+  INSTANTIATE_QUANTIZED_ADD_MULTI_DIM_BROADCAST_TEST_D2(T, TypeName, 2)  \
+  INSTANTIATE_QUANTIZED_ADD_MULTI_DIM_BROADCAST_TEST_D2(T, TypeName, 3)  \
+  INSTANTIATE_QUANTIZED_ADD_MULTI_DIM_BROADCAST_TEST_D2(T, TypeName, 4)  \
+  INSTANTIATE_QUANTIZED_ADD_MULTI_DIM_BROADCAST_TEST_D2(T, TypeName, 5)  \
+  INSTANTIATE_QUANTIZED_ADD_MULTI_DIM_BROADCAST_TEST_D2(T, TypeName, 6)
+
+INSTANTIATE_QUANTIZED_ADD_MULTI_DIM_BROADCAST_TESTS(int8_t, Int8)
+INSTANTIATE_QUANTIZED_ADD_MULTI_DIM_BROADCAST_TESTS(uint8_t, Uint8)
 
 template <TensorType tensor_type, typename integer_dtype>
 void QuantizedTestsNoActivation() {

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -51,10 +52,10 @@ absl::StatusOr<HloInstructionProfileList> CollectProfiles(
     const se::DeviceDescription& device_info) {
   DeviceHloInstructionProfiles profile;
 
-  TF_RETURN_IF_ERROR(tsl::Env::Default()->FileExists(perf_table_path));
-  TF_RETURN_IF_ERROR(tsl::ReadTextOrBinaryProto(tsl::Env::Default(),
-                                                perf_table_path, &profile));
-  std::string key = HloOpProfiles::GetProfileName(device_info);
+  RETURN_IF_ERROR(tsl::Env::Default()->FileExists(perf_table_path));
+  RETURN_IF_ERROR(tsl::ReadTextOrBinaryProto(tsl::Env::Default(),
+                                             perf_table_path, &profile));
+  std::string key = HloOpProfiles::GetDeviceSpecificProfileName(device_info);
 
   if (!profile.entries().contains(key)) {
     return absl::NotFoundError(absl::StrCat("Cannot find key: ", key));
@@ -67,9 +68,9 @@ absl::StatusOr<HloInstructionProfileList> CollectProfiles(
 absl::StatusOr<bool> CollectivePerfTableStatsCollection::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  TF_ASSIGN_OR_RETURN(HloInstructionProfileList profiles,
-                      CollectProfiles(perf_table_path_, device_info_));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(HloInstructionProfileList profiles,
+                   CollectProfiles(perf_table_path_, device_info_));
+  ASSIGN_OR_RETURN(
       std::unique_ptr<CollectiveInterpolator> interpolator,
       CollectiveInterpolator::Create(
           SolGPUCostModel::GetConfig(module, device_info_).gpus_per_node,

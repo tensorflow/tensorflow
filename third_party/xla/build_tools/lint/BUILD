@@ -13,7 +13,7 @@
 # limitations under the License.
 # ============================================================================
 
-load("@rules_python//python:py_test.bzl", "py_test")
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 load("//xla:pytype.bzl", "pytype_strict_binary", "pytype_strict_library")
 
 package(
@@ -25,6 +25,11 @@ pytype_strict_library(
     name = "check_contents",
     srcs = ["check_contents.py"],
     deps = [":diff_parser"],
+)
+
+pytype_strict_library(
+    name = "check_header_guards",
+    srcs = ["check_header_guards.py"],
 )
 
 pytype_strict_library(
@@ -73,6 +78,15 @@ py_test(
     srcs = ["generate_compile_commands_test.py"],
     deps = [
         ":generate_compile_commands",
+        "@absl_py//absl/testing:absltest",
+    ],
+)
+
+py_test(
+    name = "check_header_guards_test",
+    srcs = ["check_header_guards_test.py"],
+    deps = [
+        ":check_header_guards",
         "@absl_py//absl/testing:absltest",
     ],
 )

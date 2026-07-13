@@ -32,8 +32,6 @@ def ConvertIndexTypePass : Pass<"xla-gpu-convert-index-type", "mlir::ModuleOp"> 
   let dependentDialects = [
     "mlir::arith::ArithDialect",
   ];
-
-  let constructor = "CreateConvertIndexTypePass()";
 }
 
 def ConvertFloatNvidiaPass : Pass<"xla-gpu-convert-float-nvidia", "mlir::ModuleOp"> {
@@ -53,7 +51,6 @@ def ConvertFloatNvidiaPass : Pass<"xla-gpu-convert-float-nvidia", "mlir::ModuleO
     Option<"ptx_version_minor_", "ptx_version_minor", "int", /*default=*/"0",
            "PTX version minor.">
   ];
-  let constructor = "CreateConvertFloatNvidiaPass()";
 }
 
 def ConvertFloatAMDPass : Pass<"xla-gpu-convert-float-amd", "mlir::ModuleOp"> {
@@ -67,7 +64,6 @@ def ConvertFloatAMDPass : Pass<"xla-gpu-convert-float-amd", "mlir::ModuleOp"> {
     Option<"gpu_device_info_", "gpu_device_info", "std::string", /*default=*/"",
            "Serialized stream_executor::GPUDeviceInfo proto.">,
   ];
-  let constructor = "CreateConvertFloatAMDPass()";
 }
 def RecoverExp2Pass : Pass<"xla-gpu-recover-exp2", "mlir::ModuleOp"> {
   let summary = "Recovers exp2(x) from exp(x*log(2))";
@@ -77,7 +73,6 @@ def RecoverExp2Pass : Pass<"xla-gpu-recover-exp2", "mlir::ModuleOp"> {
     "mlir::arith::ArithDialect",
     "mlir::math::MathDialect",
   ];
-  let constructor = "CreateRecoverExp2Pass()";
 }
 
 def PeelLoopsPass : Pass<"xla-gpu-peel-loops", "mlir::func::FuncOp"> {
@@ -88,7 +83,6 @@ def PeelLoopsPass : Pass<"xla-gpu-peel-loops", "mlir::func::FuncOp"> {
       if it removes a constraint.
   }];
   let dependentDialects = ["xla::gpu::XlaGpuDialect", "xla::XlaDialect"];
-  let constructor = "CreatePeelLoopsPass()";
 }
 
 def OptimizeLoopsPass :
@@ -106,7 +100,10 @@ def OptimizeLoopsPass :
     "xla::XlaDialect",
   ];
 
-  let constructor = "CreateOptimizeLoopsPass()";
+  let options = [
+    Option<"max_unroll_factor_", "max_unroll_factor", "int", /*default=*/"0",
+           "Maximum unroll factor.">
+  ];
 }
 
 
@@ -123,8 +120,50 @@ def LowerXlaSharedPass :
     "mlir::gpu::GPUDialect",
     "mlir::scf::SCFDialect",
   ];
+}
 
-  let constructor = "CreateLowerXlaSharedPass()";
+def InsertPDLPass : Pass<"xla-gpu-insert-pdl", "mlir::ModuleOp"> {
+  let summary = "Inserts programmatic dependent launch (PDL) ops.";
+  let description = [{
+    Inserts `xla_gpu.pdl_wait` op to guard global memory operations.
+  }];
+  let dependentDialects = [
+    "xla::gpu::XlaGpuDialect",
+    "mlir::func::FuncDialect",
+    "mlir::scf::SCFDialect",
+    "mlir::cf::ControlFlowDialect",
+  ];
+}
+
+def PromoteShuffleToDPPPass
+    : Pass<"xla-gpu-promote-shuffle-to-dpp", "mlir::ModuleOp"> {
+  let summary = "Promotes gpu.shuffle down to DPP/swizzle on AMD GPUs.";
+
+  let description = [{
+    Replaces gpu.shuffle ops with ShuffleMode::DOWN with faster AMD-specific
+    instructions, chosen by offset:
+
+      Offsets 1-15:  amdgpu.dpp row_shr  (register-to-register, ALU-fusible)
+      Offset 16:     amdgpu.swizzle_bitmode with XOR semantics (ds_swizzle)
+      Offset 32:     left as gpu.shuffle (falls through to ds_bpermute)
+
+    DPP row_shr operates within 16-lane rows. For offset 16, ds_swizzle is
+    used instead: it operates within 32-lane groups using bitwise lane-ID
+    transforms. The shuffle-down is re-expressed as XOR, which is valid for
+    the reduction use case because lane+d == lane^d for all lanes where
+    bit log2(d) is zero -- exactly the lanes whose results matter in a
+    tree reduction.
+
+    The transformation is applied only when the validity predicate (second
+    result of gpu.shuffle) has no users, which is always the case in XLA's
+    shuffle-reduce lowering.
+  }];
+
+  let dependentDialects = [
+    "mlir::gpu::GPUDialect",
+    "mlir::arith::ArithDialect",
+    "mlir::amdgpu::AMDGPUDialect",
+  ];
 }
 
 #endif  // XLA_SERVICE_GPU_FUSIONS_TRANSFORMS_PASSES_TD_

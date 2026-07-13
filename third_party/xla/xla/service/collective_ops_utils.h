@@ -38,17 +38,23 @@ limitations under the License.
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/literal.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/collective_permute_cycle.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/pattern_matcher.h"
 #include "xla/service/source_target_pairs.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
 absl::StatusOr<ReductionKind> StringToReductionKind(
     absl::string_view reduction_kind);
 
-// Attempts to match instruction to one of the possible cases for ReductionKind.
+// Returns the ReductionKind corresponding to the given HloOpcode and
+// PrimitiveType.
+// Returns std::nullopt if the HloOpcode cannot be mapped to a ReductionKind.
+std::optional<ReductionKind> OpcodeToReductionKind(HloOpcode hlo_opcode,
+                                                   PrimitiveType type);
+
+// Attempts to match instruction to one of the possible cases for
+// ReductionKind.
 std::optional<ReductionKind> MatchReductionInstruction(
     const HloInstruction* hlo);
 
@@ -61,7 +67,11 @@ std::unique_ptr<HloComputation> MakeReductionComputation(
     ReductionKind reduction_kind, PrimitiveType element_type);
 
 // Returns the HloOpcode corresponding to the given ReductionKind.
-std::optional<HloOpcode> ReductionKindToOpcode(ReductionKind reduction_kind);
+// Certain reduction kinds can map to different opcodes depending on the
+// element type (e.g. ReductionKind::MIN maps to kMinimum for numeric types and
+// kAnd for PRED).
+HloOpcode ReductionKindToOpcode(ReductionKind reduction_kind,
+                                PrimitiveType element_type);
 
 // Returns the reduction identity value for a certain ReductionKind and
 // PrimitiveType.
@@ -75,17 +85,16 @@ std::optional<Literal> GetReductionIdentity(ReductionKind kind,
 absl::StatusOr<std::vector<int>> GetParticipatingIDs(
     CollectiveOpGroupMode group_mode, int current_id,
     std::optional<int> total_participant_count,
-    absl::Span<const ReplicaGroup> groups);
+    absl::Span<const ReplicaGroup> replica_groups);
+
+absl::StatusOr<std::vector<int>> GetParticipatingIDs(
+    CollectiveOpGroupMode group_mode, int current_id,
+    std::optional<int> total_participant_count,
+    const CollectiveDeviceListBase& groups);
 
 // Returns the replica groups for the given async collective instruction.
-absl::StatusOr<std::vector<std::vector<int64_t>>> GetAsyncReplicaGroups(
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>> GetAsyncReplicaGroups(
     const HloInstruction* instruction);
-
-const CollectiveDeviceListBase& GetCollectiveDeviceList(
-    const HloInstruction* hlo);
-
-const std::vector<ReplicaGroup>& GetCollectiveReplicaGroups(
-    const HloInstruction* hlo);
 
 // Returns the group formation mode of instr, assuming that instr is, or is
 // derived from on the following instructions:
@@ -203,6 +212,19 @@ bool IsCollective(const HloInstruction* instruction);
 // Returns true if instruction is an async collective op.
 absl::StatusOr<bool> IsAsyncCollective(const HloInstruction* instruction);
 
+// Returns true if instruction is a RaggedAllToAll op or an async-start that
+// wraps a RaggedAllToAll op.
+bool IsRaggedAllToAllOrAsyncStartRaggedAllToAll(
+    const HloInstruction* instruction);
+
+// Returns true if instruction is a RaggedAllToAll op or an async-done that
+// wraps a RaggedAllToAll op.
+bool IsRaggedAllToAllOrAsyncDoneRaggedAllToAll(
+    const HloInstruction* instruction);
+
+// Returns true if the one-shot RaggedAllToAll with NCCL feature is enabled.
+bool IsOneShotRaggedAllToAllWithNcclEnabled(const DebugOptions& opts);
+
 // Returns the collective instruction if argument is a collective op (or a
 // collective fusion) with channel_id.
 HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction);
@@ -306,6 +328,24 @@ inline constexpr absl::string_view kCollectiveStreamP2P = "p2p";
 
 int64_t GetSubgroupSize(const HloCollectiveInstruction* hlo,
                         CollectiveOpGroupMode group_mode);
+
+class NcclSymmetricBuffersSpec {
+ public:
+  explicit NcclSymmetricBuffersSpec(const DebugOptions& debug_options);
+
+  bool IsEnabled(const HloInstruction& inst) const;
+
+ private:
+  struct Filter {
+    DebugOptions::CollectiveOpType collective;
+    std::optional<int64_t> max_size_bytes;
+    std::optional<PrimitiveType> op_type;
+  };
+  std::vector<Filter> filters_;
+};
+
+bool IsNcclSymmetricBuffersEnabledForCollective(
+    const HloInstruction* instruction, const DebugOptions& opts);
 
 }  // end namespace xla
 

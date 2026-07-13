@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
-#include "xla/backends/gpu/transforms/estimate_cub_scratch_size.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -80,11 +79,10 @@ std::string GetNumpyOrderComparator(
                       absl::Substitute(kBody, type_name, direction), "}");
 }
 
-class SortRewriterTestBase
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+class SortRewriterTestBase : public HloInterpreterReferenceMixin<HloTestBase> {
  public:
   void SetUp() override {
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>::SetUp();
+    HloInterpreterReferenceMixin<HloTestBase>::SetUp();
     SortRewriter::SetSortModeForTestingOnly(SortRewriter::Mode::kAlways);
   }
 
@@ -225,7 +223,34 @@ ENTRY %main {
 }
 
 // Sort a pair of S32 tensors, keys go first.
-TEST_F(SortRewriterTest, SortS32Pairs) {
+TEST_F(SortRewriterTest, SortS32_16Pairs) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+%compare {
+  %lhs_key = s32[] parameter(0)
+  %rhs_key = s32[] parameter(1)
+  %lhs_value = s16[] parameter(2)
+  %rhs_value = s16[] parameter(3)
+  ROOT %lt = pred[] compare(%lhs_key, %rhs_key), direction=LT
+}
+
+ENTRY %main {
+  %input_keys = s32[1000] parameter(0)
+  %input_values = s16[1000] parameter(1)
+  ROOT %sort = (s32[1000], s16[1000]) sort(%input_keys, %input_values),
+      dimensions={0}, is_stable=true, to_apply=%compare
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_TRUE(RunModuleAndPass(module.get()));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(m::GetTupleElement(m::CustomCall(), 0),
+                                  m::GetTupleElement(m::CustomCall(), 1))));
+}
+
+// Sort a pair of S32 tensors, keys go first.
+TEST_F(SortRewriterTest, SortS32_S32Pairs) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -603,7 +628,10 @@ ENTRY %main {
       dimensions={0}, to_apply=%compare, metadata={op_type="sort" op_name="sort" source_file="path/to/test.cc" source_line=68}
 })";
   constexpr char kExpectedPattern[] = R"(
-    // CHECK: %[[CC:.*]] = (u16[1000]{0}, u8[{{[0-9]+}}]{0}) custom-call({{.*}}), custom_call_target="__cub$DeviceRadixSortUnassignedScratchSize", metadata={op_type="sort" op_name="sort" source_file="path/to/test.cc" source_line=68}, backend_config={"descending":true}
+    // CHECK: %[[CC:.*]] = {{.*}} custom-call({{.*}})
+    // CHECK-SAME: custom_call_target="xla.gpu.ext.cub_sort_unassigned_scratch_size"
+    // CHECK-SAME: metadata={op_type="sort" op_name="sort" source_file="path/to/test.cc" source_line=68}
+    // CHECK-SAME: backend_config={"descending":true}
   )";
 
   bool is_cuda = test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuCuda);

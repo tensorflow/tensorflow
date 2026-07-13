@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -25,11 +24,13 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "google/protobuf/descriptor.h"
+#include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -103,19 +104,19 @@ absl::Status CreateTritonIrAndFileCheck(
     const HloComputation& computation,
     const BlockLevelParameters& block_level_parameters,
     absl::string_view filecheck_pattern) {
-  auto* fusion = Cast<HloFusionInstruction>(computation.FusionInstruction());
+  HloFusionInstruction* fusion =
+      Cast<HloFusionInstruction>(computation.FusionInstruction());
 
   mlir::MLIRContext mlir_context;
-  TF_ASSIGN_OR_RETURN(
-      mlir::OwningOpRef<mlir::ModuleOp> triton_module,
-      CreateTritonModule("triton_fn", fusion,
-                         TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-                         block_level_parameters, mlir_context));
+  ASSIGN_OR_RETURN(TritonKernelSource triton_source,
+                   CreateTritonModule("triton_fn", *fusion,
+                                      TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+                                      block_level_parameters, mlir_context));
 
   std::string out;
   llvm::raw_string_ostream os(out);
-  triton_module->print(os);
-  TF_ASSIGN_OR_RETURN(bool succeeded, RunFileCheck(out, filecheck_pattern));
+  triton_source.module()->print(os);
+  ASSIGN_OR_RETURN(bool succeeded, RunFileCheck(out, filecheck_pattern));
   if (!succeeded) {
     return absl::InternalError("FileCheck failed.");
   }

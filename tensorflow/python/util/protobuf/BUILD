@@ -1,14 +1,12 @@
 # Tensorflow protobuf utility package
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_py_strict_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")  # @unused
 
 visibility = [
-    "//engedu/ml/tf_from_scratch:__pkg__",
     "//third_party/cloud_tpu/convergence_tools:__subpackages__",
-    "//third_party/mlperf:__subpackages__",
     "//tensorflow:internal",
     "//tensorflow/lite/toco/python:__pkg__",
     "//tensorflow_models:__subpackages__",
@@ -62,13 +60,14 @@ filegroup(
 # )
 # copybara:uncomment_end
 
-py_strict_library(
+py_library(
     name = "protobuf",
     srcs = glob(
         ["*.py"],
         exclude = ["*_test.py"],
     ),
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = visibility + [
         "//tensorflow:__pkg__",
         "//third_party/py/tensorflow_core:__subpackages__",

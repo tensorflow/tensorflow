@@ -121,7 +121,7 @@ class BufferUse {
     // Returns true if any of the buffer use(s) has a conflict with tracked
     // buffer slice reads or writes.
     bool HasConflicts(const BufferUse& use) const;
-    bool HasConflicts(const ReadWriteSet& other);
+    bool HasConflicts(const ReadWriteSet& other) const;
 
    private:
     std::vector<BufferUse> read_;

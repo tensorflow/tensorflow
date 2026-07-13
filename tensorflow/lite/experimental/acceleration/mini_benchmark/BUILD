@@ -16,7 +16,7 @@
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
-load("//tensorflow:strict.default.bzl", "py_strict_binary")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 load("//tensorflow:tensorflow.bzl", "clean_dep")
 
 # Mini benchmarking helps in validating HW acceleration across Android and iOS.
@@ -70,9 +70,10 @@ cc_test(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "copy_associated_files",
     srcs = ["copy_associated_files.py"],
+    strict_deps = True,
 )
 
 cc_library(

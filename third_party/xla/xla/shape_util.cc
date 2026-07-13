@@ -43,6 +43,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/index_util.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -138,8 +139,8 @@ absl::StatusOr<Shape> MakeValidatedShapeWithLayoutInternal(
     return InvalidArgument("Unsupported element type: %s",
                            PrimitiveType_Name(element_type));
   }
-  TF_ASSIGN_OR_RETURN(Shape shape,
-                      ShapeUtil::MakeValidatedShape(element_type, dimensions));
+  ASSIGN_OR_RETURN(Shape shape,
+                   ShapeUtil::MakeValidatedShape(element_type, dimensions));
   if (element_size_in_bits ==
       ShapeUtil::ByteSizeOfPrimitiveType(element_type) * 8) {
     // Only set element_size_in_bits if it's different from the default value.
@@ -149,7 +150,7 @@ absl::StatusOr<Shape> MakeValidatedShapeWithLayoutInternal(
       minor_to_major, tiles, tail_padding_alignment_in_elements,
       index_primitive_type, pointer_primitive_type, element_size_in_bits,
       memory_space, split_configs, std::move(physical_shape));
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
+  RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
   return shape;
 }
 
@@ -172,7 +173,7 @@ absl::StatusOr<Shape> MakeValidatedTupleShapeImpl(
   for (const auto& shape : shapes) {
     ShapeUtil::AppendShapeToTuple(Deref(shape), &result);
   }
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(result));
+  RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(result));
   return result;
 }
 
@@ -279,8 +280,8 @@ static std::vector<bool> MakeDynamicDimensions(
 
 /* static */ absl::StatusOr<Shape> ShapeUtil::MakeValidatedBufferShape(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions) {
-  TF_ASSIGN_OR_RETURN(Shape shape,
-                      ShapeUtil::MakeValidatedShape(element_type, dimensions));
+  ASSIGN_OR_RETURN(Shape shape,
+                   ShapeUtil::MakeValidatedShape(element_type, dimensions));
   return ShapeUtil::MakeValidatedBufferShape(shape);
 }
 
@@ -306,10 +307,17 @@ static std::vector<bool> MakeDynamicDimensions(
         dynamic_dimensions.size(), dimensions.size());
   }
 
+  if (!primitive_util::IsArrayType(element_type)) {
+    if (!dimensions.empty()) {
+      return InvalidArgument(
+          "Invalid dimensions size %d for non-array shape of type %s",
+          dimensions.size(), PrimitiveType_Name(element_type));
+    }
+    return Shape(element_type);
+  }
+
   Shape shape;
-  int64_t dense_shape_size = primitive_util::IsArrayType(element_type)
-                                 ? primitive_util::ByteWidth(element_type)
-                                 : -1;
+  int64_t dense_shape_size = primitive_util::ByteWidth(element_type);
 
   // Verify that array-based lookup is consistent with public API.
   DCHECK_EQ(dense_shape_size, ByteSizeOfPrimitiveType(element_type))
@@ -419,10 +427,10 @@ ShapeUtil::MakeValidatedShapeWithDescendingLayoutAndSamePhysicalLayout(
     }
     dims[i] = shape.dimensions(dim);
   }
-  TF_ASSIGN_OR_RETURN(Shape new_shape, MakeValidatedShapeWithDescendingLayout(
-                                           shape.element_type(), dims));
+  ASSIGN_OR_RETURN(Shape new_shape, MakeValidatedShapeWithDescendingLayout(
+                                        shape.element_type(), dims));
   if (shape.IsBuffer()) {
-    TF_ASSIGN_OR_RETURN(new_shape, MakeValidatedBufferShape(new_shape));
+    ASSIGN_OR_RETURN(new_shape, MakeValidatedBufferShape(new_shape));
   }
   // Since the physical layout is kept the same, the tiles and element size are
   // the same also.
@@ -1007,6 +1015,9 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 
 /* static */ int64_t ShapeUtil::ByteSizeOfElementsRecursive(
     const Shape& shape) {
+  if (shape.IsToken()) {
+    return 0;
+  }
   CHECK(shape.IsArray() || shape.IsTuple());
   if (shape.IsArray()) {
     return ByteSizeOfElements(shape);
@@ -1028,10 +1039,10 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
   // The size computed here must be kept in sync with the serialized format as
   // described in the comments for LiteralBase::SerializeWithShapeProto in
   // literal.h.
-  TF_RETURN_IF_ERROR(ValidateShapeWithOptionalLayout(shape));
+  RETURN_IF_ERROR(ValidateShapeWithOptionalLayout(shape));
   int64_t size = sizeof(int64_t) + proto.ByteSizeLong();
 
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+  RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       shape,
       [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
         if (subshape.IsTuple()) {
@@ -1122,7 +1133,7 @@ absl::Status ValidateNonLayoutProperties(const Shape& shape) {
       return ShapeError(shape, "This type must have a tuple state.");
     }
     for (auto& element_shape : shape.tuple_shapes()) {
-      TF_RETURN_IF_ERROR(ValidateNonLayoutProperties(element_shape));
+      RETURN_IF_ERROR(ValidateNonLayoutProperties(element_shape));
     }
     return absl::OkStatus();
   }
@@ -1155,8 +1166,8 @@ absl::Status ValidateNonLayoutProperties(const Shape& shape) {
     if (!shape.if_array_state()) {
       return ShapeError(shape, "This type must have an array state.");
     }
-    TF_RETURN_IF_ERROR(ValidateDimensions(shape));
-    TF_RETURN_IF_ERROR(ValidateShapeSize(shape));
+    RETURN_IF_ERROR(ValidateDimensions(shape));
+    RETURN_IF_ERROR(ValidateShapeSize(shape));
     return absl::OkStatus();
   }
 
@@ -1165,14 +1176,14 @@ absl::Status ValidateNonLayoutProperties(const Shape& shape) {
 
 /* static */ absl::Status ShapeUtil::ValidateShapeWithOptionalLayout(
     const Shape& shape) {
-  TF_RETURN_IF_ERROR(ValidateNonLayoutProperties(shape));
+  RETURN_IF_ERROR(ValidateNonLayoutProperties(shape));
 
   return LayoutUtil::ValidateLayoutInShape(shape,
                                            /*allow_missing_layouts=*/true);
 }
 
 /* static */ absl::Status ShapeUtil::ValidateShape(const Shape& shape) {
-  TF_RETURN_IF_ERROR(ValidateNonLayoutProperties(shape));
+  RETURN_IF_ERROR(ValidateNonLayoutProperties(shape));
 
   return LayoutUtil::ValidateLayoutInShape(shape);
 }
@@ -1896,8 +1907,9 @@ ShapeUtil::DecomposeBitcastToTrt(const Shape& input_shape,
                                                dynamic_dimensions.end()));
   if (shape.has_layout()) {
     *new_shape.mutable_layout() = shape.layout();
+    std::vector<int64_t> inverse_permutation = InversePermutation(permutation);
     for (int64_t& dim : *new_shape.mutable_layout()->mutable_minor_to_major()) {
-      dim = permutation[dim];
+      dim = inverse_permutation[dim];
     }
   }
   return new_shape;
@@ -2022,7 +2034,7 @@ ShapeUtil::DecomposeBitcastToTrt(const Shape& input_shape,
   int64_t n = -1;
   int64_t rank = s.rank;
   while (n < rank) {
-    TF_ASSIGN_OR_RETURN(bool should_continue, visitor_function(s.indexes_span));
+    ASSIGN_OR_RETURN(bool should_continue, visitor_function(s.indexes_span));
     if (TF_PREDICT_FALSE(!should_continue)) {
       break;
     }

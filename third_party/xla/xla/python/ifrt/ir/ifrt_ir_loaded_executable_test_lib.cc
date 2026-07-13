@@ -21,44 +21,42 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/strings/substitute.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/array.h"
-#include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
-#include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_ir_executable_version.h"
+#include "xla/python/ifrt/ir/ifrt_ir_loaded_executable_test_base.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
-#include "xla/python/ifrt/ir/sharding_param.h"
-#include "xla/python/ifrt/ir/tests/executable_impl_test_base.h"
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/shape.h"
-#include "xla/python/ifrt/support/module_parsing.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/ifrt/topology.h"
+#include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/service/computation_placer.h"
-#include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/env.h"
 
@@ -66,113 +64,59 @@ namespace xla {
 namespace ifrt {
 namespace {
 
+using ::absl_testing::IsOk;
+using ::absl_testing::StatusIs;
+using ::testing::AnyOf;
+using ::testing::HasSubstr;
+using ::testing::Not;
 using ::xla::ifrt::test_util::AssertPerShardData;
 
-xla::ifrt::ExecuteOptions ExecuteOptionsWithFillStatus() {
-  xla::ifrt::ExecuteOptions opts;
+ExecuteOptions ExecuteOptionsWithFillStatus() {
+  ExecuteOptions opts;
   opts.fill_status = true;
   return opts;
 }
 
 class IfrtIrLoadedExecutableTest
-    : public xla::ifrt::test_util::IfrtIrExecutableImplTestBase {
+    : public xla::ifrt::test_util::IfrtIrLoadedExecutableTestBase {
  public:
-  IfrtIrLoadedExecutableTest() {
-    xla::ifrt::support::RegisterMlirDialects(mlir_context_);
-  }
-
-  void SetUp() override {
-    ASSERT_OK_AND_ASSIGN(client_, xla::ifrt::test_util::GetClient());
-
-    if (client_->platform_name() == xla::TpuName()) {
-      // Verify that the test runs on the expected TPU platform since some test
-      // cases are sensitive to the HBM capacity of the platform.
-      ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef devices, PickDevices(1));
-      ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Topology> topology,
-                           client_->GetTopologyForDevices(devices));
-      ASSERT_EQ(topology->DeviceDescriptions().front()->device_kind(),
-                "TPU v4");
-    }
+  // Returns true if the test runs on TPU v4. This is a helper method called
+  // from tests that require TPU v4.
+  absl::StatusOr<bool> IsUsingTpuV4() {
+    ASSIGN_OR_RETURN(DeviceListRef devices, PickDevices(1));
+    ASSIGN_OR_RETURN(std::shared_ptr<Topology> topology,
+                     client_->GetTopologyForDevices(devices));
+    return topology->DeviceDescriptions().front()->device_kind() == "TPU v4";
   }
 
  protected:
-  std::unique_ptr<xla::ifrt::IfrtIRCompileOptions> CreateCompileOptions(
-      const xla::ifrt::DeviceListRef& devices) {
-    std::vector<xla::ifrt::DeviceId> device_assignments;
-    device_assignments.reserve(devices->size());
-    for (const auto& device : devices->devices()) {
-      device_assignments.push_back(device->Id());
-    }
-    return std::make_unique<xla::ifrt::IfrtIRCompileOptions>(
-        std::move(device_assignments), xla::ifrt::AtomExecutableMap(),
-        std::make_shared<absl::flat_hash_map<
-            std::string, std::unique_ptr<xla::ifrt::CompileOptions>>>());
-  }
-
-  absl::StatusOr<xla::ifrt::DeviceListRef> PickDevices(
-      int count,
-      std::optional<absl::string_view> platform_name = std::nullopt) {
-    if (!platform_name.has_value()) {
-      absl::Span<xla::ifrt::Device* const> devices = client_->devices();
-      TF_RET_CHECK(count <= devices.size())
-          << "Requested " << count << " devices. Only have " << devices.size();
-      return client_->MakeDeviceList(devices.first(count));
-    }
-
-    if (*platform_name == "host") {
-      absl::InlinedVector<xla::ifrt::Device*, 1> host_devices;
-      host_devices.reserve(count);
-      for (xla::ifrt::Device* const device : client_->GetAllDevices()) {
-        auto platform_name =
-            device->Attributes().Get<std::string>("platform_name");
-        if (!platform_name.ok()) {
-          continue;
-        }
-        if (*platform_name == "host") {
-          host_devices.push_back(device);
-          if (host_devices.size() == count) {
-            break;
-          }
-        }
-      }
-      TF_RET_CHECK(count <= host_devices.size())
-          << "Requested " << count << " devices. Only have "
-          << host_devices.size();
-      return client_->MakeDeviceList(host_devices);
-    }
-
-    return absl::InvalidArgumentError(
-        absl::Substitute("Unsupported device type $0.", *platform_name));
-  }
-
-  absl::StatusOr<std::unique_ptr<xla::ifrt::DeserializeIfrtIRProgramOptions>>
-  GetDeserializeOptions(xla::ifrt::DeviceListRef device_list) {
-    std::vector<xla::ifrt::Device*> device_assignments;
+  absl::StatusOr<std::unique_ptr<DeserializeIfrtIRProgramOptions>>
+  GetDeserializeOptions(DeviceListRef device_list) {
+    std::vector<Device*> device_assignments;
     for (auto device : device_list->devices()) {
       device_assignments.push_back(device);
     }
-    return std::make_unique<xla::ifrt::DeserializeIfrtIRProgramOptions>(
+    return std::make_unique<DeserializeIfrtIRProgramOptions>(
         nullptr, std::nullopt, device_assignments);
   }
 
-  absl::StatusOr<std::unique_ptr<xla::ifrt::IfrtIrExecutableVersion>>
+  absl::StatusOr<std::unique_ptr<IfrtIrExecutableVersion>>
   DeserializeExecutableVersion(std::string serialized_executable_version_str,
-                               xla::ifrt::DeviceListRef devices) {
-    std::vector<xla::ifrt::DeviceId> device_assignments;
+                               DeviceListRef devices) {
+    std::vector<DeviceId> device_assignments;
     for (auto device : devices->devices()) {
       device_assignments.push_back(device->Id());
     }
     auto deserialize_options =
-        std::make_unique<xla::ifrt::IfrtIrExecutableVersionDeserializeOptions>(
+        std::make_unique<IfrtIrExecutableVersionDeserializeOptions>(
             client_.get(), device_assignments);
 
-    xla::ifrt::Serialized serialized_executable_version;
+    Serialized serialized_executable_version;
     serialized_executable_version.ParseFromString(
         serialized_executable_version_str);
-    absl::StatusOr<std::unique_ptr<xla::ifrt::ExecutableVersion>>
-        deserialized_executable_version =
-            xla::ifrt::Deserialize<xla::ifrt::ExecutableVersion>(
-                serialized_executable_version, std::move(deserialize_options));
+    absl::StatusOr<std::unique_ptr<ExecutableVersion>>
+        deserialized_executable_version = Deserialize<ExecutableVersion>(
+            serialized_executable_version, std::move(deserialize_options));
     if (!deserialized_executable_version.ok()) {
       return deserialized_executable_version.status();
     }
@@ -182,13 +126,870 @@ class IfrtIrLoadedExecutableTest
   }
 };
 
+TEST_F(IfrtIrLoadedExecutableTest, CallXla) {
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                     [0,1]>
+module {
+  func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1]
+        : (!array) -> !array
+    return %0 : !array
+  }
+
+  func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
+    %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
+    return %1 : tensor<2x2xi32>
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_exec,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data0 = {0, 1};
+  std::vector<int> data1 = {2, 3};
+  Shape shard_shape({1, 2});
+  DType dtype(DType::kS32);
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                   shard_shape, dtype, devices));
+
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       loaded_exec->Execute(absl::MakeSpan(&input, 1),
+                                            ExecuteOptionsWithFillStatus(),
+                                            /*devices=*/std::nullopt));
+
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 1);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, shard_shape, {{1, 2}, {3, 4}}, devices));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, ControlDepXla) {
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                     [0,1]>
+module {
+  func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1]
+        : (!array) -> !array
+    %1, %ctrl_1 = ifrt.Call @add_one(%arg0) after %ctrl_0 on devices [0,1]
+        : (!array) -> !array
+    return %1 : !array
+  }
+
+  func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
+    %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
+    return %1 : tensor<2x2xi32>
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_exec,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data_shard0 = {0, 1};
+  std::vector<int> data_shard1 = {2, 3};
+  DType dtype(DType::kS32);
+  Shape shard_shape({1, 2});
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data_shard0.data(), data_shard1.data()},
+                                   Shape({2, 2}), shard_shape, dtype, devices));
+
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutable::ExecuteResult result,
+      loaded_exec->Execute(absl::MakeSpan(&input, 1),
+                           ExecuteOptionsWithFillStatus(), devices));
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 1);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, shard_shape, {{1, 2}, {3, 4}}, devices));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, AliasingOutputs) {
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                     [0,1]>
+module {
+  func.func @main(%arg0: !array) -> (!array, !array) attributes {ifrt.function} {
+    return %arg0, %arg0 : !array, !array
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_exec,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data0 = {0, 1};
+  std::vector<int> data1 = {2, 3};
+  Shape shard_shape({1, 2});
+  DType dtype(DType::kS32);
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                   shard_shape, dtype, devices));
+
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       loaded_exec->Execute(absl::MakeSpan(&input, 1),
+                                            ExecuteOptionsWithFillStatus(),
+                                            /*devices=*/std::nullopt));
+
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 2);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, shard_shape, {{0, 1}, {2, 3}}, devices));
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[1], dtype, shard_shape, {{0, 1}, {2, 3}}, devices));
+  // Check that deleting the input does not delete the outputs.
+  ASSERT_OK(input->Delete().Await());
+  ASSERT_TRUE(input->IsDeleted());
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, shard_shape, {{0, 1}, {2, 3}}, devices));
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[1], dtype, shard_shape, {{0, 1}, {2, 3}}, devices));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, DonatedInputsAreDeleted) {
+  std::string source = R"(
+!array0 = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
+!array1 = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [1]>
+module {
+  func.func @main(
+      %arg0: !array0 {ifrt.donated},
+      %arg1: !array1 {ifrt.donated},
+      %arg2: !array0 {ifrt.donated})
+      -> (!array0, !array1) attributes {ifrt.function} {
+    return %arg0, %arg1 : !array0, !array1
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_exec,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data0 = {0, 1};
+  std::vector<int> data1 = {2, 3};
+  Shape shape({2});
+  DType dtype(DType::kS32);
+  // Create the donated arrays on different devices to ensure donation is
+  // handled correctly when the input arrays are on different devices.
+  ASSERT_OK_AND_ASSIGN(DeviceListRef first_device,
+                       client_->MakeDeviceList({devices->devices()[0]}));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef second_device,
+                       client_->MakeDeviceList({devices->devices()[1]}));
+  ASSERT_OK_AND_ASSIGN(ArrayRef input0,
+                       CreateArray({data0.data()}, shape,
+                                   /*shard_shape=*/shape, dtype, first_device));
+  ASSERT_OK_AND_ASSIGN(ArrayRef input1, CreateArray({data1.data()}, shape,
+                                                    /*shard_shape=*/shape,
+                                                    dtype, second_device));
+  ASSERT_OK_AND_ASSIGN(ArrayRef input2,
+                       CreateArray({data0.data()}, shape,
+                                   /*shard_shape=*/shape, dtype, first_device));
+  std::vector<ArrayRef> inputs = {input0, input1, input2};
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       loaded_exec->Execute(absl::MakeSpan(inputs),
+                                            ExecuteOptionsWithFillStatus(),
+                                            /*devices=*/std::nullopt));
+
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 2);
+  ASSERT_TRUE(input0->IsDeleted());
+  ASSERT_TRUE(input1->IsDeleted());
+  ASSERT_TRUE(input2->IsDeleted());
+  // Check that the outputs are not deleted.
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype,
+      /*expected_per_shard_shape=*/shape, {{0, 1}}, first_device));
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[1], dtype,
+      /*expected_per_shard_shape=*/shape, {{2, 3}}, second_device));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, CopyArrays) {
+  std::string source = R"(
+!array0 = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
+!array1 = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [1]>
+module {
+  func.func @main(%arg0: !array0) -> !array1 attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.CopyArrays(%arg0) : (!array0) -> !array1
+    return %0 : !array1
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_exec,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data = {1, 2};
+  DType dtype(DType::kS32);
+  Shape shape({2});
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
+                       client_->MakeDeviceList({devices->devices()[0]}));
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data.data()}, shape, /*shard_shape=*/shape,
+                                   dtype, std::move(device_list0)));
+
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       loaded_exec->Execute(absl::MakeSpan(&input, 1),
+                                            ExecuteOptionsWithFillStatus(),
+                                            /*devices=*/std::nullopt));
+
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 1);
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list1,
+                       client_->MakeDeviceList({devices->devices()[1]}));
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, shape, {{1, 2}}, std::move(device_list1)));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, Reshard) {
+  std::string source = R"(
+!array0 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
+!array1 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+!array2 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [1]>
+module {
+  func.func @main(%arg0: !array0) -> (!array1, !array2)
+      attributes {ifrt.function} {
+    %0, %1, %ctrl_0 = ifrt.Reshard(%arg0, %arg0)
+      : (!array0, !array0) -> (!array1, !array2)
+    return %0, %1 : !array1, !array2
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_exec,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data = {0, 1, 2, 3};
+  DType dtype(DType::kS32);
+  Shape shape({2, 2});
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
+                       client_->MakeDeviceList({devices->devices()[0]}));
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data.data()}, shape, /*shard_shape=*/shape,
+                                   dtype, std::move(device_list0)));
+
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       loaded_exec->Execute(absl::MakeSpan(&input, 1),
+                                            ExecuteOptionsWithFillStatus(),
+                                            /*devices=*/std::nullopt));
+
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 2);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, Shape({1, 2}), {{0, 1}, {2, 3}}, devices));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list1,
+                       client_->MakeDeviceList({devices->devices()[1]}));
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(result.outputs[1], dtype,
+                                                  shape, {{0, 1, 2, 3}},
+                                                  std::move(device_list1)));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, ZeroInput) {
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+module {
+  func.func @main() -> !array attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @one() on devices [0,1] : () -> !array
+    return %0 : !array
+  }
+
+  func.func private @one() -> tensor<2x2xi32> {
+    %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
+    return %0 : tensor<2x2xi32>
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_exec,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutable::ExecuteResult result,
+      loaded_exec->Execute(/*args=*/{}, ExecuteOptionsWithFillStatus(),
+                           /*devices=*/std::nullopt));
+
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 1);
+  ASSERT_NO_FATAL_FAILURE(
+      AssertPerShardData<int>(result.outputs[0], DType(DType::kS32),
+                              Shape({1, 2}), {{1, 1}, {1, 1}}, devices));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, ZeroOutput) {
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+module {
+  func.func @main(%arg0: !array) attributes {ifrt.function} {
+    %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1] : (!array) -> ()
+    return
+  }
+
+  func.func private @add_one(%arg0: tensor<2x2xi32>) {
+    %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
+    %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
+    return
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_exec,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data0 = {0, 1};
+  std::vector<int> data1 = {2, 3};
+  Shape shard_shape({1, 2});
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                   shard_shape, DType(DType::kS32), devices));
+
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       loaded_exec->Execute(absl::MakeSpan(&input, 1),
+                                            ExecuteOptionsWithFillStatus(),
+                                            /*devices=*/std::nullopt));
+
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 0);
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, BufferDonation) {
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+module {
+  func.func @main(%arg0: !array {ifrt.donated}) -> !array
+      attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1]
+        {io_aliases=[array<i32: 0, 0>]} : (!array) -> !array
+    return %0 : !array
+  }
+
+  func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
+    %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
+    return %1 : tensor<2x2xi32>
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_exec,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data0 = {0, 1};
+  std::vector<int> data1 = {2, 3};
+  DType dtype(DType::kS32);
+  Shape shard_shape({1, 2});
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                   shard_shape, dtype, devices));
+
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       loaded_exec->Execute(absl::MakeSpan(&input, 1),
+                                            ExecuteOptionsWithFillStatus(),
+                                            /*devices=*/std::nullopt));
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 1);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, shard_shape, {{1, 2}, {3, 4}}, devices));
+
+  std::vector<int> data(input->shape().num_elements());
+  EXPECT_THAT(input
+                  ->CopyToHostBuffer(data.data(), std::nullopt,
+                                     ArrayCopySemantics::kAlwaysCopy)
+                  .Await(),
+              Not(IsOk()));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, CallLoadedExecutableOpDonationOverride) {
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+module {
+  func.func @main(%arg0: !array {ifrt.donated}) -> !array
+      attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1]
+        {io_aliases=[array<i32: 0, 0>]} : (!array) -> !array
+    return %0 : !array
+  }
+
+  func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
+    %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
+    return %1 : tensor<2x2xi32>
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_exec,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data0 = {0, 1};
+  std::vector<int> data1 = {2, 3};
+  DType dtype(DType::kS32);
+  Shape shard_shape({1, 2});
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                   shard_shape, dtype, devices));
+
+  ExecuteOptions options;
+  options.fill_status = true;
+  options.non_donatable_input_indices.insert(0);
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       loaded_exec->Execute(absl::MakeSpan(&input, 1), options,
+                                            /*devices=*/std::nullopt));
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 1);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, shard_shape, {{1, 2}, {3, 4}}, devices));
+  ASSERT_FALSE(input->IsDeleted());
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(input, dtype, shard_shape,
+                                                  {{0, 1}, {2, 3}}, devices));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, CopyArraysOpDonationOverride) {
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+module {
+  func.func @main(%arg0: !array {ifrt.donated}) -> !array
+      attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.CopyArrays(%arg0) {donated=true} : (!array) -> !array
+    return %0 : !array
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_exec,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data0 = {0, 1};
+  std::vector<int> data1 = {2, 3};
+  DType dtype(DType::kS32);
+  Shape shard_shape({1, 2});
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                   shard_shape, dtype, devices));
+
+  ExecuteOptions options;
+  options.fill_status = true;
+  options.non_donatable_input_indices.insert(0);
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       loaded_exec->Execute(absl::MakeSpan(&input, 1), options,
+                                            /*devices=*/std::nullopt));
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 1);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, shard_shape, {{0, 1}, {2, 3}}, devices));
+  ASSERT_FALSE(input->IsDeleted());
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(input, dtype, shard_shape,
+                                                  {{0, 1}, {2, 3}}, devices));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, RemapArraysOpDonationOverride) {
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+!array0 = !ifrt.array<tensor<1x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
+!array1 = !ifrt.array<tensor<1x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [1]>
+module {
+  func.func @main(%arg0: !array {ifrt.donated}) -> (!array0, !array1)
+      attributes {ifrt.function} {
+    %0, %1, %ctrl_0 = ifrt.RemapArrays(%arg0)
+      mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>,
+                #ifrt.array_mapping<0, 1, [#ifrt.mapping<[1:2:1] to [0:1:1]>]>]
+      {donated=true}
+      : (!array) -> (!array0, !array1)
+    return %0, %1 : !array0, !array1
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_exec,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data_shard0 = {0, 1};
+  std::vector<int> data_shard1 = {2, 3};
+  DType dtype(DType::kS32);
+  Shape shard_shape({1, 2});
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data_shard0.data(), data_shard1.data()},
+                                   Shape({2, 2}), shard_shape, dtype, devices));
+
+  ExecuteOptions options;
+  options.fill_status = true;
+  options.non_donatable_input_indices.insert(0);
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutable::ExecuteResult result,
+      loaded_exec->Execute(absl::MakeSpan(&input, 1), options, devices));
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 2);
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
+                       client_->MakeDeviceList({devices->devices()[0]}));
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(result.outputs[0], dtype,
+                                                  shard_shape, {{0, 1}},
+                                                  std::move(device_list0)));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list1,
+                       client_->MakeDeviceList({devices->devices()[1]}));
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(result.outputs[1], dtype,
+                                                  shard_shape, {{2, 3}},
+                                                  std::move(device_list1)));
+  ASSERT_FALSE(input->IsDeleted());
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(input, dtype, shard_shape,
+                                                  {{0, 1}, {2, 3}}, devices));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest,
+       RemapArraysOpMultipleInputsDonationOverrideIntroducesCopyArrayOp) {
+  // RemapArrays with multiple inputs requires arguments to be donated.
+  // If inputs to the program are not donated at runtime, then a CopyArrays op
+  // will be inserted for non-donated inputs.
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+!array0 = !ifrt.array<tensor<1x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
+!array1 = !ifrt.array<tensor<1x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [1]>
+module {
+  func.func @main(%arg0: !array0 {ifrt.donated}, %arg1: !array1 {ifrt.donated})
+      -> !array attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.RemapArrays(%arg0, %arg1)
+      mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>,
+                #ifrt.array_mapping<1, 0, [#ifrt.mapping<[0:1:1] to [1:2:1]>]>]
+      {donated=true}
+      : (!array0, !array1) -> (!array)
+    return %0 : !array
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_exec,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data0 = {0, 1};
+  std::vector<int> data1 = {2, 3};
+  DType dtype(DType::kS32);
+  Shape shard_shape({1, 2});
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
+                       client_->MakeDeviceList({devices->devices()[0]}));
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef input0,
+      CreateArray({data0.data()},
+                  /*shape=*/shard_shape, shard_shape, dtype, device_list0));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list1,
+                       client_->MakeDeviceList({devices->devices()[1]}));
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef input1,
+      CreateArray({data1.data()},
+                  /*shape=*/shard_shape, shard_shape, dtype, device_list1));
+
+  ExecuteOptions options;
+  options.fill_status = true;
+  options.non_donatable_input_indices.insert(1);
+  std::vector<ArrayRef> inputs = {input0, input1};
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutable::ExecuteResult result,
+      loaded_exec->Execute(absl::MakeSpan(inputs), options, devices));
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 1);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, shard_shape, {{0, 1}, {2, 3}}, devices));
+  ASSERT_TRUE(input0->IsDeleted());
+  ASSERT_FALSE(input1->IsDeleted());
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(input1, dtype, shard_shape,
+                                                  {{2, 3}}, device_list1));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, DonateOutputOfCall) {
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                     [0,1]>
+module {
+  func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1]
+        : (!array) -> !array
+    %1, %ctrl_1 = ifrt.Call @add_one(%0) on devices [0,1]
+        {io_aliases=[array<i32: 0, 0>]} : (!array) -> !array
+    return %1 : !array
+  }
+
+  func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
+    %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
+    return %1 : tensor<2x2xi32>
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_exec,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data_shard0 = {0, 1};
+  std::vector<int> data_shard1 = {2, 3};
+  DType dtype(DType::kS32);
+  Shape shard_shape({1, 2});
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data_shard0.data(), data_shard1.data()},
+                                   Shape({2, 2}), shard_shape, dtype, devices));
+
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutable::ExecuteResult result,
+      loaded_exec->Execute(absl::MakeSpan(&input, 1),
+                           ExecuteOptionsWithFillStatus(), devices));
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 1);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, shard_shape, {{2, 3}, {4, 5}}, devices));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, RemapFromOneToTwoArrays) {
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+!array0 = !ifrt.array<tensor<1x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
+!array1 = !ifrt.array<tensor<1x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [1]>
+module {
+  func.func @main(%arg0: !array) -> (!array0, !array1)
+      attributes {ifrt.function} {
+    %0, %1, %ctrl_0 = ifrt.RemapArrays(%arg0)
+      mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>,
+                #ifrt.array_mapping<0, 1, [#ifrt.mapping<[1:2:1] to [0:1:1]>]>]
+      : (!array) -> (!array0, !array1)
+    return %0, %1 : !array0, !array1
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_exec,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data_shard0 = {0, 1};
+  std::vector<int> data_shard1 = {2, 3};
+  DType dtype(DType::kS32);
+  Shape shard_shape({1, 2});
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data_shard0.data(), data_shard1.data()},
+                                   Shape({2, 2}), shard_shape, dtype, devices));
+
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutable::ExecuteResult result,
+      loaded_exec->Execute(absl::MakeSpan(&input, 1),
+                           ExecuteOptionsWithFillStatus(), devices));
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 2);
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
+                       client_->MakeDeviceList({devices->devices()[0]}));
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(result.outputs[0], dtype,
+                                                  shard_shape, {{0, 1}},
+                                                  std::move(device_list0)));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list1,
+                       client_->MakeDeviceList({devices->devices()[1]}));
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(result.outputs[1], dtype,
+                                                  shard_shape, {{2, 3}},
+                                                  std::move(device_list1)));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, LoadedExecBinding) {
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  std::string mhlo_source = R"(
+module {
+  func.func @main(
+      %arg0: tensor<2x2xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"})
+      -> (tensor<2x2xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"}) {
+    %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
+    %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
+    return %1 : tensor<2x2xi32>
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mhlo_module,
+                       LoadFromSource(mhlo_source));
+  xla::CompileOptions xla_options;
+  {
+    auto& exec_build_options = xla_options.executable_build_options;
+    exec_build_options.set_num_replicas(1);
+    exec_build_options.set_num_partitions(2);
+    exec_build_options.set_use_spmd_partitioning(true);
+    xla::DeviceAssignment device_assignment(1, 2);
+    for (auto [logical, device_id] : llvm::enumerate(GetDeviceIds(devices))) {
+      device_assignment(0, logical) = device_id.value();
+    }
+    exec_build_options.set_device_assignment(device_assignment);
+  }
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef child_exec,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(std::make_unique<HloProgram>(*mhlo_module),
+                           std::make_unique<XlaCompileOptions>(
+                               std::move(xla_options), devices))
+          .Await());
+
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+module {
+  func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.CallLoadedExecutable @add_one(%arg0) : (!array) -> !array
+    return %0 : !array
+  }
+
+  ifrt.LoadedExecutable @add_one on devices [0,1] : (!array) -> !array
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  auto options = std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices));
+  options->loaded_exec_binding["add_one"] = std::move(child_exec);
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_exec,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(std::make_unique<IfrtIRProgram>(*mlir_module),
+                           std::move(options))
+          .Await());
+
+  std::vector<int> data0 = {0, 1};
+  std::vector<int> data1 = {2, 3};
+  DType dtype(DType::kS32);
+  Shape shard_shape({1, 2});
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                   shard_shape, dtype, devices));
+
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       loaded_exec->Execute(absl::MakeSpan(&input, 1),
+                                            ExecuteOptionsWithFillStatus(),
+                                            /*devices=*/std::nullopt));
+
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 1);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, shard_shape, {{1, 2}, {3, 4}}, devices));
+}
+
 TEST_F(IfrtIrLoadedExecutableTest, ConcurrentCompilation) {
   constexpr absl::string_view source = R"(
 !input = !ifrt.array<tensor<1x1xi32>,
                      #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
-!array0 = !ifrt.array<tensor<1024x1024x5120xi32>,
+!array0 = !ifrt.array<tensor<1024x1024x512xi32>,
                       #ifrt.sharding_param<1x1x1 to [0] on 1>, [0]>
-!array1 = !ifrt.array<tensor<1024x1024x5120xi32>,
+!array1 = !ifrt.array<tensor<1024x1024x512xi32>,
                       #ifrt.sharding_param<1x1x1 to [0] on 1>, [1]>
 module {
   func.func @main(%arg0: !input) -> (!array0) attributes {ifrt.function} {
@@ -206,21 +1007,21 @@ module {
   }
 
   func.func private @generate_data(%arg0: tensor<1x1xi32>)
-      -> (tensor<1024x1024x5120xi32>) {
+      -> (tensor<1024x1024x512xi32>) {
     %1 = stablehlo.reshape %arg0 : (tensor<1x1xi32>) -> tensor<1x1x1xi32>
     %2 = "stablehlo.broadcast_in_dim"(%1)
       { broadcast_dimensions = array<i64: 0, 1, 2> }
-      : (tensor<1x1x1xi32>) -> tensor<1024x1024x5120xi32>
-    return %2 : tensor<1024x1024x5120xi32>
+      : (tensor<1x1x1xi32>) -> tensor<1024x1024x512xi32>
+    return %2 : tensor<1024x1024x512xi32>
   }
 
-  func.func private @identity(%arg0: tensor<1024x1024x5120xi32>)
-      -> tensor<1024x1024x5120xi32> {
-    return %arg0 : tensor<1024x1024x5120xi32>
+  func.func private @identity(%arg0: tensor<1024x1024x512xi32>)
+      -> tensor<1024x1024x512xi32> {
+    return %arg0 : tensor<1024x1024x512xi32>
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
 
   std::vector<std::unique_ptr<tsl::Thread>> threads;
   for (int i = 0; i < 100; ++i) {
@@ -232,98 +1033,18 @@ module {
               CHECK_OK(mlir_module);
               CHECK_OK(client_->GetDefaultCompiler()
                            ->CompileAndLoad(
-                               std::make_unique<xla::ifrt::IfrtIRProgram>(
-                                   **mlir_module),
-                               CreateCompileOptions(devices))
+                               std::make_unique<IfrtIRProgram>(**mlir_module),
+                               std::make_unique<IfrtIRCompileOptions>(
+                                   GetDeviceIds(devices)))
                            .Await());
             }));
     threads.push_back(std::move(thread));
   }
 }
 
-TEST_F(IfrtIrLoadedExecutableTest, VerifyDeletesDispatchedInOrder) {
-  // The test creates the following behavior:
-  // Device 0: generate_data() -> 20GB                    identity() -> 20GB
-  //                                  \                  /
-  // Device 1:                         identity() -> 20GB
-  // The test verifies that the output of the first Execute() on device 0 is
-  // deleted before the second Execute() on device 0. If this does not hold,
-  // then the test will OOM.
-  if (client_->platform_name() != xla::TpuName()) {
-    GTEST_SKIP() << "Do not run on GPU because it allocates too much memory.";
-  }
-  std::string source = R"(
-!input = !ifrt.array<tensor<1x1xi32>,
-                     #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
-!array0 = !ifrt.array<tensor<1024x1024x5120xi32>,
-                      #ifrt.sharding_param<1x1x1 to [0] on 1>, [0]>
-!array1 = !ifrt.array<tensor<1024x1024x5120xi32>,
-                      #ifrt.sharding_param<1x1x1 to [0] on 1>, [1]>
-module {
-  func.func @main(%arg0: !input) -> (!array0) attributes {ifrt.function} {
-    %out, %ctrl = ifrt.Call @generate_data(%arg0) on devices [0]
-      : (!input) -> !array0
-    %out_0, %ctrl_1 = ifrt.CopyArrays(%out) {donated=true}
-      : (!array0) -> !array1
-    %out_2, %ctrl_3 = ifrt.Call @identity(%out_0) on devices [1]
-      {io_aliases = [array<i32: 0, 0>]} : (!array1) -> !array1
-    %out_4, %ctrl_5 = ifrt.CopyArrays(%out_2) {donated=true}
-      : (!array1) -> !array0
-    %out_6, %ctrl_7 = ifrt.Call @identity(%out_4) on devices [0]
-      {io_aliases = [array<i32: 0, 0>]} : (!array0) -> !array0
-    return %out_6 : !array0
-  }
-
-  func.func private @generate_data(%arg0: tensor<1x1xi32>)
-      -> (tensor<1024x1024x5120xi32>) {
-    %1 = stablehlo.reshape %arg0 : (tensor<1x1xi32>) -> tensor<1x1x1xi32>
-    %2 = "stablehlo.broadcast_in_dim"(%1)
-      { broadcast_dimensions = array<i64: 0, 1, 2> }
-      : (tensor<1x1x1xi32>) -> tensor<1024x1024x5120xi32>
-    return %2 : tensor<1024x1024x5120xi32>
-  }
-
-  func.func private @identity(%arg0: tensor<1024x1024x5120xi32>)
-      -> tensor<1024x1024x5120xi32> {
-    return %arg0 : tensor<1024x1024x5120xi32>
-  }
-}
-  )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
-  auto program = std::make_unique<xla::ifrt::IfrtIRProgram>(*mlir_module);
-  ASSERT_OK_AND_ASSIGN(
-      program,
-      SerDeRoundTrip(std::move(program),
-                     xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      auto ifrt_ir_executable,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(std::move(program), CreateCompileOptions(devices))
-          .Await());
-  std::vector<int> input_data = {1};
-  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
-                       client_->MakeDeviceList({devices->devices().front()}));
-  ASSERT_OK_AND_ASSIGN(
-      xla::ifrt::ArrayRef input,
-      CreateArray({input_data.data()}, xla::ifrt::Shape({1, 1}),
-                  xla::ifrt::DType(xla::ifrt::DType::kS32),
-                  xla::ifrt::ShardingParam({1, 1}, {{0}, {1}}),
-                  std::move(device_list)));
-
-  ASSERT_OK_AND_ASSIGN(
-      xla::ifrt::LoadedExecutable::ExecuteResult result,
-      ifrt_ir_executable->Execute(absl::MakeSpan(&input, 1),
-                                  ExecuteOptionsWithFillStatus(), devices));
-  ASSERT_OK(result.status.Await());
-  ASSERT_EQ(result.outputs.size(), 1);
-  ASSERT_OK(result.outputs[0]->GetReadyFuture().Await());
-}
-
 TEST_F(IfrtIrLoadedExecutableTest, RoundTripExecutableSerialization) {
-  if (client_->platform_name() != xla::TpuName()) {
-    GTEST_SKIP() << "Do not run on GPU because it is not supported.";
+  if (GetNumDevices() < 4) {
+    GTEST_SKIP() << "Insufficient devices to run this test.";
   }
   std::string source = R"(
 !array1 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
@@ -351,26 +1072,27 @@ module {
   )";
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                        LoadFromSource(source));
-  auto program = std::make_unique<xla::ifrt::IfrtIRProgram>(*mlir_module);
+  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
   ASSERT_OK_AND_ASSIGN(
       program,
       SerDeRoundTrip(std::move(program),
                      xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef devices, PickDevices(4));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(4));
   ASSERT_OK_AND_ASSIGN(
       auto ifrt_ir_executable,
       client_->GetDefaultCompiler()
-          ->CompileAndLoad(std::move(program), CreateCompileOptions(devices))
+          ->CompileAndLoad(
+              std::move(program),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
           .Await());
 
   ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
                        ifrt_ir_executable->Serialize());
 
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<DeserializeIfrtIRProgramOptions> options,
+                       GetDeserializeOptions(devices));
   ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<xla::ifrt::DeserializeIfrtIRProgramOptions> options,
-      GetDeserializeOptions(devices));
-  ASSERT_OK_AND_ASSIGN(
-      std::shared_ptr<xla::ifrt::LoadedExecutable> deserialized_executable,
+      std::shared_ptr<LoadedExecutable> deserialized_executable,
       client_->GetDefaultCompiler()
           ->DeserializeLoadedExecutable(serialized_executable,
                                         std::move(options))
@@ -378,8 +1100,8 @@ module {
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, RoundTripExecutableVersionSerialization) {
-  if (client_->platform_name() != xla::TpuName()) {
-    GTEST_SKIP() << "Do not run on GPU because it is not supported.";
+  if (GetNumDevices() < 4) {
+    GTEST_SKIP() << "Insufficient devices to run this test.";
   }
   std::string source = R"(
 !array1 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
@@ -407,31 +1129,31 @@ module {
   )";
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                        LoadFromSource(source));
-  auto program = std::make_unique<xla::ifrt::IfrtIRProgram>(*mlir_module);
+  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
   ASSERT_OK_AND_ASSIGN(
       program,
       SerDeRoundTrip(std::move(program),
                      xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef devices, PickDevices(4));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(4));
   ASSERT_OK_AND_ASSIGN(
       auto ifrt_ir_executable,
       client_->GetDefaultCompiler()
-          ->CompileAndLoad(std::move(program), CreateCompileOptions(devices))
+          ->CompileAndLoad(
+              std::move(program),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
           .Await());
 
   ASSERT_OK_AND_ASSIGN(
-      std::shared_ptr<const xla::ifrt::ExecutableVersion> executable_version,
+      std::shared_ptr<const ExecutableVersion> executable_version,
       ifrt_ir_executable->executable_version());
   ASSERT_OK_AND_ASSIGN(
-      xla::ifrt::Serialized serialized_executable_version,
-      xla::ifrt::Serialize(*executable_version,
-                           std::make_unique<xla::ifrt::SerializeOptions>()));
+      Serialized serialized_executable_version,
+      Serialize(*executable_version, std::make_unique<SerializeOptions>()));
   std::string serialized_executable_version_str =
       serialized_executable_version.SerializeAsString();
 
   ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<xla::ifrt::IfrtIrExecutableVersion>
-          deserialized_executable_version,
+      std::unique_ptr<IfrtIrExecutableVersion> deserialized_executable_version,
       DeserializeExecutableVersion(serialized_executable_version_str, devices));
 
   ASSERT_OK(deserialized_executable_version->IsCompatibleWith(
@@ -439,8 +1161,8 @@ module {
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, CallXlaWithDifferentDevices) {
-  if (client_->platform_name() != xla::TpuName()) {
-    GTEST_SKIP() << "Do not run on GPU because it requires too many devices.";
+  if (GetNumDevices() < 4) {
+    GTEST_SKIP() << "Insufficient devices to run this test.";
   }
   std::string source = R"(
 !array1 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
@@ -468,54 +1190,55 @@ module {
   )";
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                        LoadFromSource(source));
-  auto program = std::make_unique<xla::ifrt::IfrtIRProgram>(*mlir_module);
+  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
   ASSERT_OK_AND_ASSIGN(
       program,
       SerDeRoundTrip(std::move(program),
                      xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef devices, PickDevices(4));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(4));
   ASSERT_OK_AND_ASSIGN(
       auto ifrt_ir_executable,
       client_->GetDefaultCompiler()
-          ->CompileAndLoad(std::move(program), CreateCompileOptions(devices))
+          ->CompileAndLoad(
+              std::move(program),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
           .Await());
 
   std::vector<int> data1_shard0 = {0, 1};
   std::vector<int> data1_shard1 = {2, 3};
+  DType dtype(DType::kS32);
+  Shape shape({2, 2});
+  Shape shard_shape({1, 2});
   ASSERT_OK_AND_ASSIGN(
-      xla::ifrt::DeviceListRef first_two_devices,
+      DeviceListRef first_two_devices,
       client_->MakeDeviceList({devices->devices()[0], devices->devices()[1]}));
   ASSERT_OK_AND_ASSIGN(
-      xla::ifrt::DeviceListRef last_two_devices,
+      DeviceListRef last_two_devices,
       client_->MakeDeviceList({devices->devices()[2], devices->devices()[3]}));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::ArrayRef input1,
-                       CreateArray({data1_shard0.data(), data1_shard1.data()},
-                                   xla::ifrt::Shape({2, 2}),
-                                   xla::ifrt::DType(xla::ifrt::DType::kS32),
-                                   xla::ifrt::ShardingParam({2, 1}, {{0}, {2}}),
-                                   first_two_devices));
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef input1,
+      CreateArray({data1_shard0.data(), data1_shard1.data()}, shape,
+                  shard_shape, dtype, first_two_devices));
   std::vector<int> data2_shard0 = {10, 11};
   std::vector<int> data2_shard1 = {12, 13};
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::ArrayRef input2,
-                       CreateArray({data2_shard0.data(), data2_shard1.data()},
-                                   xla::ifrt::Shape({2, 2}),
-                                   xla::ifrt::DType(xla::ifrt::DType::kS32),
-                                   xla::ifrt::ShardingParam({2, 1}, {{0}, {2}}),
-                                   last_two_devices));
-
-  std::vector<xla::ifrt::ArrayRef> inputs = {input1, input2};
   ASSERT_OK_AND_ASSIGN(
-      xla::ifrt::LoadedExecutable::ExecuteResult result,
+      ArrayRef input2,
+      CreateArray({data2_shard0.data(), data2_shard1.data()}, shape,
+                  shard_shape, dtype, last_two_devices));
+
+  std::vector<ArrayRef> inputs = {input1, input2};
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutable::ExecuteResult result,
       ifrt_ir_executable->Execute(absl::MakeSpan(inputs),
                                   ExecuteOptionsWithFillStatus(), devices));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 2);
-  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
-      result.outputs[0], xla::ifrt::DType(xla::ifrt::DType::kS32),
-      xla::ifrt::Shape({1, 2}), {{1, 2}, {3, 4}}, first_two_devices));
-  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
-      result.outputs[1], xla::ifrt::DType(xla::ifrt::DType::kS32),
-      xla::ifrt::Shape({1, 2}), {{12, 13}, {14, 15}}, last_two_devices));
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(result.outputs[0], dtype,
+                                                  shard_shape, {{1, 2}, {3, 4}},
+                                                  first_two_devices));
+  ASSERT_NO_FATAL_FAILURE(
+      AssertPerShardData<int>(result.outputs[1], dtype, shard_shape,
+                              {{12, 13}, {14, 15}}, last_two_devices));
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, CallStableHlo) {
@@ -546,17 +1269,18 @@ module @mjit_f {
   )";
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                        LoadFromSource(source));
-  auto program = std::make_unique<xla::ifrt::IfrtIRProgram>(*mlir_module);
+  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
   ASSERT_OK_AND_ASSIGN(
       program,
       SerDeRoundTrip(std::move(program),
                      xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef devices, PickDevices(2));
-  ASSERT_OK(
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(std::move(program), CreateCompileOptions(devices))
-          .Await()
-          .status());
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK(client_->GetDefaultCompiler()
+                ->CompileAndLoad(std::move(program),
+                                 std::make_unique<IfrtIRCompileOptions>(
+                                     GetDeviceIds(devices)))
+                .Await()
+                .status());
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, CopyArraysTpuToTpu) {
@@ -580,45 +1304,46 @@ module {
   )";
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                        LoadFromSource(source));
-  auto program = std::make_unique<xla::ifrt::IfrtIRProgram>(*mlir_module);
+  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
   ASSERT_OK_AND_ASSIGN(
       program,
       SerDeRoundTrip(std::move(program),
                      xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
   ASSERT_OK_AND_ASSIGN(
       auto ifrt_ir_executable,
       client_->GetDefaultCompiler()
-          ->CompileAndLoad(std::move(program), CreateCompileOptions(devices))
+          ->CompileAndLoad(
+              std::move(program),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
           .Await());
 
   std::vector<int> data = {1, 2};
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef first_device,
+  DType dtype(DType::kS32);
+  Shape shape({2});
+  ASSERT_OK_AND_ASSIGN(DeviceListRef first_device,
                        client_->MakeDeviceList({devices->devices()[0]}));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef second_device,
+  ASSERT_OK_AND_ASSIGN(DeviceListRef second_device,
                        client_->MakeDeviceList({devices->devices()[1]}));
-  ASSERT_OK_AND_ASSIGN(
-      xla::ifrt::ArrayRef input,
-      CreateArray({data.data()}, xla::ifrt::Shape({2}),
-                  xla::ifrt::DType(xla::ifrt::DType::kS32),
-                  xla::ifrt::ShardingParam({1}, {{0}, {1}}), first_device));
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data.data()}, shape, /*shard_shape=*/shape,
+                                   dtype, first_device));
 
   ASSERT_OK_AND_ASSIGN(
-      xla::ifrt::LoadedExecutable::ExecuteResult result,
+      LoadedExecutable::ExecuteResult result,
       ifrt_ir_executable->Execute(absl::MakeSpan(&input, 1),
                                   ExecuteOptionsWithFillStatus(), devices));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 2);
   for (int i = 0; i < result.outputs.size(); ++i) {
     ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
-        result.outputs[i], xla::ifrt::DType(xla::ifrt::DType::kS32),
-        xla::ifrt::Shape({2}), {{1, 2}}, second_device));
+        result.outputs[i], dtype, shape, {{1, 2}}, second_device));
   }
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, CopyArraysCpuToTpu) {
-  if (!PickDevices(1, "host").ok()) {
-    GTEST_SKIP() << "Test requires at least one host device";
+  if (!PickDevices(1, "cpu").ok()) {
+    GTEST_SKIP() << "Test requires at least one cpu device";
   }
 
   std::string source = R"(
@@ -638,43 +1363,43 @@ module {
   )";
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                        LoadFromSource(source));
-  auto program = std::make_unique<xla::ifrt::IfrtIRProgram>(*mlir_module);
+  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
   ASSERT_OK_AND_ASSIGN(
       program,
       SerDeRoundTrip(std::move(program),
                      xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef device, PickDevices(1));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef host_device,
-                       PickDevices(1, "host"));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef devices,
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device, PickDevices(1));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef cpu_device, PickDevices(1, "cpu"));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices,
                        client_->MakeDeviceList(
-                           {device->devices()[0], host_device->devices()[0]}));
+                           {device->devices()[0], cpu_device->devices()[0]}));
   ASSERT_OK_AND_ASSIGN(
       auto ifrt_ir_executable,
       client_->GetDefaultCompiler()
-          ->CompileAndLoad(std::move(program), CreateCompileOptions(devices))
+          ->CompileAndLoad(
+              std::move(program),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
           .Await());
 
   std::vector<int> data = {0, 1};
-  ASSERT_OK_AND_ASSIGN(
-      xla::ifrt::ArrayRef input,
-      CreateArray({data.data()}, xla::ifrt::Shape({2, 1}),
-                  xla::ifrt::DType(xla::ifrt::DType::kS32),
-                  xla::ifrt::ShardingParam({1, 1}, {{0}, {1}}), host_device));
+  DType dtype(DType::kS32);
+  Shape shape({2, 1});
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data.data()}, shape, /*shard_shape=*/shape,
+                                   dtype, cpu_device));
 
   ASSERT_OK_AND_ASSIGN(
-      xla::ifrt::LoadedExecutable::ExecuteResult result,
+      LoadedExecutable::ExecuteResult result,
       ifrt_ir_executable->Execute(absl::MakeSpan(&input, 1),
                                   ExecuteOptionsWithFillStatus(), devices));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
-  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
-      result.outputs[0], xla::ifrt::DType(xla::ifrt::DType::kS32),
-      xla::ifrt::Shape({2, 1}), {{0, 1}}, device));
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(result.outputs[0], dtype,
+                                                  shape, {{0, 1}}, device));
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, LoadedExecBindingWithDiffNumInputsErrors) {
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
   std::string stablehlo_source = R"(
 module {
   func.func @main(
@@ -688,8 +1413,8 @@ module {
   )";
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> stablehlo_module,
                        LoadFromSource(stablehlo_source));
-  auto xla_options = std::make_unique<xla::ifrt::XlaCompileOptions>(
-      xla::CompileOptions(), devices);
+  auto xla_options =
+      std::make_unique<XlaCompileOptions>(xla::CompileOptions(), devices);
   {
     auto& exec_build_options =
         xla_options->compile_options.executable_build_options;
@@ -706,9 +1431,8 @@ module {
   ASSERT_OK_AND_ASSIGN(
       auto executable,
       client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<xla::ifrt::HloProgram>(*stablehlo_module),
-              std::move(xla_options))
+          ->CompileAndLoad(std::make_unique<HloProgram>(*stablehlo_module),
+                           std::move(xla_options))
           .Await());
 
   std::string source = R"(
@@ -726,12 +1450,13 @@ module {
   )";
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                        LoadFromSource(source));
-  auto program = std::make_unique<xla::ifrt::IfrtIRProgram>(*mlir_module);
+  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
   ASSERT_OK_AND_ASSIGN(
       program,
       SerDeRoundTrip(std::move(program),
                      xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
-  auto compile_options = CreateCompileOptions(devices);
+  auto compile_options =
+      std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices));
   ASSERT_TRUE(compile_options->loaded_exec_binding
                   .try_emplace("add_args", std::move(executable))
                   .second);
@@ -739,14 +1464,13 @@ module {
       client_->GetDefaultCompiler()
           ->CompileAndLoad(std::move(program), std::move(compile_options))
           .Await(),
-      absl_testing::StatusIs(
-          absl::StatusCode::kUnknown,
-          testing::HasSubstr("expects an executable with 2 inputs, but was "
-                             "bound to an executable with 1 input")));
+      StatusIs(absl::StatusCode::kUnknown,
+               HasSubstr("expects an executable with 2 inputs, but was "
+                         "bound to an executable with 1 input")));
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, LoadedExecBindingWithDiffShardingErrors) {
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
   std::string stablehlo_source = R"(
 module {
   func.func @main(
@@ -760,8 +1484,8 @@ module {
   )";
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> stablehlo_module,
                        LoadFromSource(stablehlo_source));
-  auto xla_options = std::make_unique<xla::ifrt::XlaCompileOptions>(
-      xla::CompileOptions(), devices);
+  auto xla_options =
+      std::make_unique<XlaCompileOptions>(xla::CompileOptions(), devices);
   {
     auto& exec_build_options =
         xla_options->compile_options.executable_build_options;
@@ -778,9 +1502,8 @@ module {
   ASSERT_OK_AND_ASSIGN(
       auto executable,
       client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<xla::ifrt::HloProgram>(*stablehlo_module),
-              std::move(xla_options))
+          ->CompileAndLoad(std::make_unique<HloProgram>(*stablehlo_module),
+                           std::move(xla_options))
           .Await());
 
   std::string source = R"(
@@ -801,89 +1524,20 @@ module {
   )";
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                        LoadFromSource(source));
-  auto compile_options = CreateCompileOptions(devices);
+  auto compile_options =
+      std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices));
   ASSERT_TRUE(compile_options->loaded_exec_binding
                   .try_emplace("add_one", std::move(executable))
                   .second);
   EXPECT_THAT(
       client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<xla::ifrt::IfrtIRProgram>(*mlir_module),
-              std::move(compile_options))
+          ->CompileAndLoad(std::make_unique<IfrtIRProgram>(*mlir_module),
+                           std::move(compile_options))
           .Await(),
-      absl_testing::StatusIs(
-          absl::StatusCode::kUnknown,
-          testing::HasSubstr("expects an executable with output #0 sharding "
-                             "{devices=[2,1]<=[2]}, but was bound to an "
-                             "executable with sharding {replicated}")));
-}
-
-TEST_F(IfrtIrLoadedExecutableTest, RemapFromTwoToOneArray) {
-  std::string source = R"(
-!array0 = !ifrt.array<tensor<1x2xi32>,
-                      #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
-!array1 = !ifrt.array<tensor<1x2xi32>,
-                      #ifrt.sharding_param<1x1 to [0] on 1>, [1]>
-!array2 = !ifrt.array<tensor<2x2xi32>,
-                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
-module {
-  func.func @main(%arg0: !array0 {ifrt.donated}, %arg1: !array1 {ifrt.donated})
-      -> !array2 attributes {ifrt.function} {
-    %0 = ifrt.RemapArrays(%arg0, %arg1)
-      mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>,
-                #ifrt.array_mapping<1, 0, [#ifrt.mapping<[0:1:1] to [1:2:1]>]>]
-      {donated=true} : (!array0, !array1) -> (!array2)
-    return %0 : !array2
-  }
-}
-  )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
-  auto program = std::make_unique<xla::ifrt::IfrtIRProgram>(*mlir_module);
-  ASSERT_OK_AND_ASSIGN(
-      program,
-      SerDeRoundTrip(std::move(program),
-                     xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      auto ifrt_ir_executable,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(std::move(program), CreateCompileOptions(devices))
-          .Await());
-
-  std::vector<int> array_0_data = {0, 1};
-  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
-                       client_->MakeDeviceList({devices->devices()[0]}));
-  ASSERT_OK_AND_ASSIGN(
-      xla::ifrt::ArrayRef input0,
-      CreateArray({array_0_data.data()}, xla::ifrt::Shape({1, 2}),
-                  xla::ifrt::DType(xla::ifrt::DType::kS32),
-                  xla::ifrt::ShardingParam({1, 1}, {{0}, {1}}),
-                  std::move(device_list0)));
-  std::vector<int> array_1_data = {2, 3};
-  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list1,
-                       client_->MakeDeviceList({devices->devices()[1]}));
-  ASSERT_OK_AND_ASSIGN(
-      xla::ifrt::ArrayRef input1,
-      CreateArray({array_1_data.data()}, xla::ifrt::Shape({1, 2}),
-                  xla::ifrt::DType(xla::ifrt::DType::kS32),
-                  xla::ifrt::ShardingParam({1, 1}, {{0}, {1}}),
-                  std::move(device_list1)));
-
-  std::vector<xla::ifrt::ArrayRef> inputs = {input0, input1};
-  ASSERT_OK_AND_ASSIGN(
-      xla::ifrt::LoadedExecutable::ExecuteResult result,
-      ifrt_ir_executable->Execute(absl::MakeSpan(inputs),
-                                  ExecuteOptionsWithFillStatus(), devices));
-  ASSERT_OK(result.status.Await());
-  ASSERT_EQ(result.outputs.size(), 1);
-  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
-      result.outputs[0], xla::ifrt::DType(xla::ifrt::DType::kS32),
-      xla::ifrt::Shape({1, 2}), {{0, 1}, {2, 3}}, devices));
-
-  // Check that the inputs got donated.
-  EXPECT_TRUE(input0->IsDeleted());
-  EXPECT_TRUE(input1->IsDeleted());
+      StatusIs(absl::StatusCode::kUnknown,
+               HasSubstr("expects an executable with output #0 sharding "
+                         "{devices=[2,1]<=[2]}, but was bound to an "
+                         "executable with sharding {replicated}")));
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, UsingPartiallyDonatedArgThrowsError) {
@@ -900,7 +1554,7 @@ TEST_F(IfrtIrLoadedExecutableTest, UsingPartiallyDonatedArgThrowsError) {
 module {
   func.func @main(%arg0: !array {ifrt.donated}) -> !array
       attributes {ifrt.function} {
-    %0 = ifrt.RemapArrays(%arg0)
+    %0, %ctrl_0 = ifrt.RemapArrays(%arg0)
       mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>]
       : (!array) -> !array0
     %2, %ctrl_2 = ifrt.Call @add_two(%0) on devices [0]
@@ -925,39 +1579,36 @@ module {
   )";
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                        LoadFromSource(source));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
   ASSERT_OK_AND_ASSIGN(
       auto ifrt_ir_executable,
       client_->GetDefaultCompiler()
           ->CompileAndLoad(
-              std::make_unique<xla::ifrt::IfrtIRProgram>(*mlir_module),
-              CreateCompileOptions(devices))
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
           .Await());
 
   std::vector<int> data_shard0 = {0, 1};
   std::vector<int> data_shard1 = {2, 3};
+  Shape shard_shape({1, 2});
   ASSERT_OK_AND_ASSIGN(
-      xla::ifrt::ArrayRef input,
-      CreateArray({data_shard0.data(), data_shard1.data()},
-                  xla::ifrt::Shape({2, 2}),
-                  xla::ifrt::DType(xla::ifrt::DType::kS32),
-                  xla::ifrt::ShardingParam({2, 1}, {{0}, {2}}), devices));
+      ArrayRef input,
+      CreateArray({data_shard0.data(), data_shard1.data()}, Shape({2, 2}),
+                  shard_shape, DType(DType::kS32), devices));
 
   ASSERT_OK_AND_ASSIGN(
-      xla::ifrt::LoadedExecutable::ExecuteResult result,
+      LoadedExecutable::ExecuteResult result,
       ifrt_ir_executable->Execute(absl::MakeSpan(&input, 1),
                                   ExecuteOptionsWithFillStatus(), devices));
-  EXPECT_THAT(result.status.Await(),
-              absl_testing::StatusIs(
-                  absl::StatusCode::kInvalidArgument,
-                  testing::HasSubstr(
-                      "Invalid buffer passed to Execute() as argument 0")));
+  EXPECT_THAT(
+      result.status.Await(),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Invalid buffer passed to Execute() as argument 0")));
   ASSERT_EQ(result.outputs.size(), 1);
-  EXPECT_THAT(result.outputs[0]->GetReadyFuture().Await(),
-              absl_testing::StatusIs(
-                  absl::StatusCode::kInvalidArgument,
-                  testing::HasSubstr(
-                      "Invalid buffer passed to Execute() as argument 0")));
+  EXPECT_THAT(
+      result.outputs[0]->GetReadyFuture().Await(),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Invalid buffer passed to Execute() as argument 0")));
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, DonatingTwiceAliasedBufferThrowsError) {
@@ -969,10 +1620,10 @@ TEST_F(IfrtIrLoadedExecutableTest, DonatingTwiceAliasedBufferThrowsError) {
 module {
   func.func @main(%arg0: !array {ifrt.donated}) -> (!array0, !array0)
       attributes {ifrt.function} {
-    %0 = ifrt.RemapArrays(%arg0)
+    %0, %ctrl_0 = ifrt.RemapArrays(%arg0)
       mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>]
       : (!array) -> !array0
-    %1 = ifrt.RemapArrays(%arg0)
+    %1, %ctrl_1 = ifrt.RemapArrays(%arg0)
       mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>]
       : (!array) -> !array0
     %2, %3, %ctrl_2 = ifrt.Call @callee(%0, %1) on devices [0]
@@ -991,51 +1642,556 @@ module {
   )";
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                        LoadFromSource(source));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
   ASSERT_OK_AND_ASSIGN(
       auto ifrt_ir_executable,
       client_->GetDefaultCompiler()
           ->CompileAndLoad(
-              std::make_unique<xla::ifrt::IfrtIRProgram>(*mlir_module),
-              CreateCompileOptions(devices))
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
           .Await());
 
   std::vector<int> data_shard0 = {0, 1};
   std::vector<int> data_shard1 = {2, 3};
+  Shape shard_shape({1, 2});
   ASSERT_OK_AND_ASSIGN(
-      xla::ifrt::ArrayRef input,
-      CreateArray({data_shard0.data(), data_shard1.data()},
-                  xla::ifrt::Shape({2, 2}),
-                  xla::ifrt::DType(xla::ifrt::DType::kS32),
-                  xla::ifrt::ShardingParam({2, 1}, {{0}, {2}}), devices));
+      ArrayRef input,
+      CreateArray({data_shard0.data(), data_shard1.data()}, Shape({2, 2}),
+                  shard_shape, DType(DType::kS32), devices));
 
   ASSERT_OK_AND_ASSIGN(
-      xla::ifrt::LoadedExecutable::ExecuteResult result,
+      LoadedExecutable::ExecuteResult result,
       ifrt_ir_executable->Execute(absl::MakeSpan(&input, 1),
                                   ExecuteOptionsWithFillStatus(), devices));
   EXPECT_THAT(
       result.status.Await(),
-      testing::AnyOf(
-          absl_testing::StatusIs(
-              absl::StatusCode::kInvalidArgument,
-              testing::HasSubstr(
-                  "Attempt to donate the same buffer twice in Execute()")),
-          absl_testing::StatusIs(
+      AnyOf(
+          StatusIs(absl::StatusCode::kInvalidArgument,
+                   HasSubstr(
+                       "Attempt to donate the same buffer twice in Execute()")),
+          StatusIs(
               absl::StatusCode::kNotFound,
-              testing::HasSubstr(
+              HasSubstr(
                   "The buffer was likely previously donated or deleted"))));
   ASSERT_EQ(result.outputs.size(), 2);
   EXPECT_THAT(
       result.outputs[0]->GetReadyFuture().Await(),
-      testing::AnyOf(
-          absl_testing::StatusIs(
-              absl::StatusCode::kInvalidArgument,
-              testing::HasSubstr(
-                  "Attempt to donate the same buffer twice in Execute()")),
-          absl_testing::StatusIs(
+      AnyOf(
+          StatusIs(absl::StatusCode::kInvalidArgument,
+                   HasSubstr(
+                       "Attempt to donate the same buffer twice in Execute()")),
+          StatusIs(
               absl::StatusCode::kNotFound,
-              testing::HasSubstr(
+              HasSubstr(
                   "The buffer was likely previously donated or deleted"))));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, RemapFromTwoToOneArray) {
+  std::string source = R"(
+!array0 = !ifrt.array<tensor<1x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
+!array1 = !ifrt.array<tensor<1x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [1]>
+!array2 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+module {
+  func.func @main(%arg0: !array0 {ifrt.donated}, %arg1: !array1 {ifrt.donated})
+      -> !array2 attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.RemapArrays(%arg0, %arg1)
+      mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>,
+                #ifrt.array_mapping<1, 0, [#ifrt.mapping<[0:1:1] to [1:2:1]>]>]
+      {donated=true} : (!array0, !array1) -> (!array2)
+    return %0 : !array2
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
+  ASSERT_OK_AND_ASSIGN(
+      program,
+      SerDeRoundTrip(std::move(program),
+                     xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
+      auto ifrt_ir_executable,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::move(program),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> array_0_data = {0, 1};
+  DType dtype(DType::kS32);
+  Shape shape({1, 2});
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
+                       client_->MakeDeviceList({devices->devices()[0]}));
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef input0,
+      CreateArray({array_0_data.data()}, shape, /*shard_shape=*/shape, dtype,
+                  std::move(device_list0)));
+  std::vector<int> array_1_data = {2, 3};
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list1,
+                       client_->MakeDeviceList({devices->devices()[1]}));
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef input1,
+      CreateArray({array_1_data.data()}, shape, /*shard_shape=*/shape, dtype,
+                  std::move(device_list1)));
+
+  std::vector<ArrayRef> inputs = {input0, input1};
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutable::ExecuteResult result,
+      ifrt_ir_executable->Execute(absl::MakeSpan(inputs),
+                                  ExecuteOptionsWithFillStatus(), devices));
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 1);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, shape, {{0, 1}, {2, 3}}, devices));
+
+  // Check that the inputs got donated.
+  EXPECT_TRUE(input0->IsDeleted());
+  EXPECT_TRUE(input1->IsDeleted());
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, BitcastArraysAddDimension) {
+  std::string source = R"(
+!array0 = !ifrt.array<tensor<2xi32>,
+                      #ifrt.sharding_param<2 to [0] on 2>, [0,1]>
+!array1 = !ifrt.array<tensor<1x2xi32>,
+                      #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
+module {
+  func.func @main(%arg0: !array0 {ifrt.donated}) -> !array1
+      attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.BitcastArrays(%arg0)
+      {donated=true} : (!array0) -> !array1
+    return %0 : !array1
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef executable,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data0 = {1};
+  std::vector<int> data1 = {2};
+  DType dtype(DType::kS32);
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef input,
+      CreateArray({data0.data(), data1.data()}, /*shape=*/Shape({2}),
+                  /*shard_shape=*/Shape({1}), dtype, devices));
+
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       executable->Execute(absl::MakeSpan(&input, 1),
+                                           ExecuteOptionsWithFillStatus(),
+                                           /*devices=*/std::nullopt));
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 1);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, Shape({1, 1}), {{1}, {2}}, devices));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, BitcastArraysRemoveDimension) {
+  std::string source = R"(
+!array0 = !ifrt.array<tensor<1x2xi32>,
+                      #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
+!array1 = !ifrt.array<tensor<2xi32>,
+                      #ifrt.sharding_param<2 to [0] on 2>, [0,1]>
+module {
+  func.func @main(%arg0: !array0 {ifrt.donated}) -> !array1
+      attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.BitcastArrays(%arg0)
+      {donated=true} : (!array0) -> !array1
+    return %0 : !array1
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef executable,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data0 = {1};
+  std::vector<int> data1 = {2};
+  DType dtype(DType::kS32);
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef input,
+      CreateArray({data0.data(), data1.data()}, /*shape=*/Shape({1, 2}),
+                  /*shard_shape=*/Shape({1, 1}), dtype, devices));
+
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       executable->Execute(absl::MakeSpan(&input, 1),
+                                           ExecuteOptionsWithFillStatus(),
+                                           /*devices=*/std::nullopt));
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 1);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, Shape({1}), {{1}, {2}}, devices));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, NonDonatableBitcastArrays) {
+  // The test passes two arrays on different device to BitcastArrays on purpose.
+  // This is required to test that multiple CopyArrays (one per device list) are
+  // inserted to make sure the donation semantics are correct.
+  std::string source = R"(
+!array0 = !ifrt.array<tensor<1x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
+!array1 = !ifrt.array<tensor<1x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [1]>
+!array2 = !ifrt.array<tensor<2xi32>,
+                      #ifrt.sharding_param<1 to [0] on 1>, [0]>
+!array3 = !ifrt.array<tensor<2xi32>,
+                      #ifrt.sharding_param<1 to [0] on 1>, [1]>
+module {
+  func.func @main(%arg0: !array0 {ifrt.donated}, %arg1: !array1 {ifrt.donated})
+      -> (!array2, !array3) attributes {ifrt.function} {
+    %0, %1, %ctrl_0 = ifrt.BitcastArrays(%arg0, %arg1)
+      {donated=true} : (!array0, !array1) -> (!array2, !array3)
+    return %0, %1 : !array2, !array3
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef executable,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data = {1, 2};
+  DType dtype(DType::kS32);
+  Shape in_shape({1, 2});
+  Shape out_shape({2});
+
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
+                       client_->MakeDeviceList({devices->devices()[0]}));
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef input0,
+      CreateArray({data.data()}, /*shape=*/in_shape,
+                  /*shard_shape=*/in_shape, dtype, device_list0));
+
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list1,
+                       client_->MakeDeviceList({devices->devices()[1]}));
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef input1,
+      CreateArray({data.data()}, /*shape=*/in_shape,
+                  /*shard_shape=*/in_shape, dtype, device_list1));
+
+  ExecuteOptions options;
+  options.fill_status = true;
+  options.non_donatable_input_indices.insert(0);
+  options.non_donatable_input_indices.insert(1);
+  std::vector<ArrayRef> inputs = {input0, input1};
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       executable->Execute(absl::MakeSpan(inputs), options,
+                                           /*devices=*/std::nullopt));
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 2);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, out_shape, {{1, 2}}, device_list0));
+  ASSERT_FALSE(input0->IsDeleted());
+  ASSERT_NO_FATAL_FAILURE(
+      AssertPerShardData<int>(input0, dtype, in_shape, {{1, 2}}, device_list0));
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[1], dtype, out_shape, {{1, 2}}, device_list1));
+  ASSERT_FALSE(input1->IsDeleted());
+  ASSERT_NO_FATAL_FAILURE(
+      AssertPerShardData<int>(input1, dtype, in_shape, {{1, 2}}, device_list1));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, BitcastArraysCanBeUsedByCallOp) {
+  std::string source = R"(
+!array0 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+!array1 = !ifrt.array<tensor<1x2x2xi32>,
+                      #ifrt.sharding_param<1x2x1 to [0] on 2>, [0,1]>
+module {
+  func.func @main(%arg0: !array0 {ifrt.donated}) -> !array0
+      attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.BitcastArrays(%arg0)
+      {donated=true} : (!array0) -> !array1
+    %1, %ctrl_1 = ifrt.Call @add_one(%0) on devices [0,1] : (!array1) -> !array1
+    %2, %ctrl_2 = ifrt.BitcastArrays(%1) {donated=true} : (!array1) -> !array0
+    return %2 : !array0
+  }
+
+  func.func private @add_one(%arg0: tensor<1x2x2xi32>) -> tensor<1x2x2xi32> {
+    %0 = stablehlo.constant dense<1> : tensor<1x2x2xi32>
+    %1 = stablehlo.add %arg0, %0 : tensor<1x2x2xi32>
+    return %1 : tensor<1x2x2xi32>
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef executable,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data0 = {0, 1};
+  std::vector<int> data1 = {2, 3};
+  Shape shard_shape({1, 2});
+  DType dtype(DType::kS32);
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                   shard_shape, dtype, devices));
+
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       executable->Execute(absl::MakeSpan(&input, 1),
+                                           ExecuteOptionsWithFillStatus(),
+                                           /*devices=*/std::nullopt));
+
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 1);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, shard_shape, {{1, 2}, {3, 4}}, devices));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, GetParameterAndOutputLayouts) {
+  if (GetNumDevices() < 4) {
+    GTEST_SKIP() << "Insufficient devices to run this test.";
+  }
+  // Verifies that the layouts of the parameters and outputs are correctly
+  // populated. The test verifies the following scenarios:
+  // 1. Atom program with auto layout for both the input and output.
+  // 2. Atom program with a custom layout.
+  // 3. IFRT IR program argument that is just returned.
+  // 4. Unused IFRT IR program argument.
+  // 5. Atom program output that is returned multiple times.
+
+  // TODO(b/382761415): Update test when layouts are populated in IFRT IR
+  // array type.
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x2 to [0] on 4>, [0, 1, 2, 3]>
+module @auto_layout {
+  func.func public @main(%arg0: !array, %arg1: !array, %arg2: !array)
+      -> (!array, !array, !array, !array) attributes {ifrt.function} {
+    %out_0, %ctrl_0 = ifrt.Call @transpose::@main(%arg0) on devices [0, 1, 2, 3]
+      : (!array) -> !array
+    %out_1, %ctrl_1 = ifrt.Call @transpose_w_custom_layout::@main(%arg0)
+      on devices [0, 1, 2, 3] : (!array) -> !array
+    return %out_0, %out_0, %out_1, %arg1 : !array, !array, !array, !array
+  }
+  module @transpose attributes {sym_visibility = "private"} {
+    func.func @main(%arg0: tensor<2x2xi32> {mhlo.layout_mode = "auto"})
+        -> (tensor<2x2xi32> {mhlo.layout_mode = "auto"}) {
+      %0 = stablehlo.transpose %arg0, dims = [1, 0]
+        : (tensor<2x2xi32>) -> tensor<2x2xi32>
+      return %0 : tensor<2x2xi32>
+    }
+  }
+  module @transpose_w_custom_layout attributes {sym_visibility = "private"} {
+    func.func public @main(%arg0: tensor<2x2xi32>
+        {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dim_replicate}"})
+        -> (tensor<2x2xi32> {mhlo.layout_mode = "auto"}) {
+      %0 = stablehlo.transpose %arg0, dims = [1, 0] : (tensor<2x2xi32>)
+        -> tensor<2x2xi32>
+      %1 = stablehlo.custom_call @Sharding(%0) {
+        backend_config = "",
+        mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dim_replicate}"}
+        : (tensor<2x2xi32>) -> tensor<2x2xi32>
+      %2 = stablehlo.custom_call @LayoutConstraint(%1) {
+        backend_config = "",
+        operand_layouts = [dense<[1, 0]> : tensor<2xindex>],
+        result_layouts = [dense<[0, 1]> : tensor<2xindex>]}
+        : (tensor<2x2xi32>) -> tensor<2x2xi32>
+      return %2 : tensor<2x2xi32>
+    }
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
+  ASSERT_OK_AND_ASSIGN(
+      program,
+      SerDeRoundTrip(std::move(program),
+                     xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(4));
+  ASSERT_OK_AND_ASSIGN(
+      auto ifrt_ir_executable,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::move(program),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+  ASSERT_OK_AND_ASSIGN(auto parameter_layouts,
+                       ifrt_ir_executable->GetParameterLayouts());
+  // Note `GetDefaultPjRtLayout` takes a sharded shape.
+  ASSERT_OK_AND_ASSIGN(
+      auto default_layout,
+      client_->GetDefaultPjRtLayout(DType(DType::kS32), {1, 1},
+                                    devices->devices()[0], MemoryKind()));
+  ASSERT_EQ(parameter_layouts.size(), 3);
+  ASSERT_EQ(*default_layout, *parameter_layouts[0]);
+  ASSERT_EQ(*default_layout, *parameter_layouts[1]);
+  ASSERT_EQ(*default_layout, *parameter_layouts[2]);
+  ASSERT_OK_AND_ASSIGN(auto output_layouts,
+                       ifrt_ir_executable->GetOutputLayouts());
+  ASSERT_EQ(output_layouts.size(), 4);
+  ASSERT_EQ(*default_layout, *output_layouts[0]);
+  ASSERT_EQ(*default_layout, *output_layouts[1]);
+  ASSERT_EQ("{0,1:T(1,128)}", output_layouts[2]->ToString());
+  ASSERT_EQ(*default_layout, *output_layouts[3]);
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, NonDonatablePinnedHostInput) {
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x1 to [0] on 2>, [0,1],
+                     memory_kind = "pinned_host">
+module {
+  func.func @main(%arg0: !array {ifrt.donated}) -> !array
+      attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1]
+        {io_aliases=[array<i32: 0, 0>]} : (!array) -> !array
+    return %0 : !array
+  }
+
+  func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
+    %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
+    return %1 : tensor<2x2xi32>
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_exec,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data0 = {0, 1};
+  std::vector<int> data1 = {2, 3};
+  DType dtype(DType::kS32);
+  Shape shard_shape({1, 2});
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef input,
+      CreateArray({data0.data(), data1.data()}, Shape({2, 2}), shard_shape,
+                  dtype, devices, MemoryKind("pinned_host")));
+  ExecuteOptions options;
+  options.fill_status = true;
+  options.non_donatable_input_indices.insert(0);
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       loaded_exec->Execute(absl::MakeSpan(&input, 1), options,
+                                            /*devices=*/std::nullopt));
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 1);
+
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, shard_shape, {{1, 2}, {3, 4}}, devices));
+  // Verify that the input was not donated, and that it has the same data as
+  // initially set.
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(input, dtype, shard_shape,
+                                                  {{0, 1}, {2, 3}}, devices));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, VerifyDeletesDispatchedInOrder) {
+  // The test creates the following behavior:
+  // Device 0: generate_data() -> 20GB                    identity() -> 20GB
+  //                                  \                  /
+  // Device 1:                         identity() -> 20GB
+  // The test verifies that the output of the first Execute() on device 0 is
+  // deleted before the second Execute() on device 0. If this does not hold,
+  // then the test will OOM.
+  if (!IsUsingTpuV4().value_or(false)) {
+    GTEST_SKIP() << "Test requires TPU v4.";
+  }
+  std::string source = R"(
+!input = !ifrt.array<tensor<1x1xi32>,
+                     #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
+!array0 = !ifrt.array<tensor<1024x1024x5120xi32>,
+                      #ifrt.sharding_param<1x1x1 to [0] on 1>, [0]>
+!array1 = !ifrt.array<tensor<1024x1024x5120xi32>,
+                      #ifrt.sharding_param<1x1x1 to [0] on 1>, [1]>
+module {
+  func.func @main(%arg0: !input) -> (!array0) attributes {ifrt.function} {
+    %out, %ctrl = ifrt.Call @generate_data(%arg0) on devices [0]
+      : (!input) -> !array0
+    %out_0, %ctrl_1 = ifrt.CopyArrays(%out) {donated=true}
+      : (!array0) -> !array1
+    %out_2, %ctrl_3 = ifrt.Call @identity(%out_0) on devices [1]
+      {io_aliases = [array<i32: 0, 0>]} : (!array1) -> !array1
+    %out_4, %ctrl_5 = ifrt.CopyArrays(%out_2) {donated=true}
+      : (!array1) -> !array0
+    %out_6, %ctrl_7 = ifrt.Call @identity(%out_4) on devices [0]
+      {io_aliases = [array<i32: 0, 0>]} : (!array0) -> !array0
+    return %out_6 : !array0
+  }
+
+  func.func private @generate_data(%arg0: tensor<1x1xi32>)
+      -> (tensor<1024x1024x5120xi32>) {
+    %1 = stablehlo.reshape %arg0 : (tensor<1x1xi32>) -> tensor<1x1x1xi32>
+    %2 = "stablehlo.broadcast_in_dim"(%1)
+      { broadcast_dimensions = array<i64: 0, 1, 2> }
+      : (tensor<1x1x1xi32>) -> tensor<1024x1024x5120xi32>
+    return %2 : tensor<1024x1024x5120xi32>
+  }
+
+  func.func private @identity(%arg0: tensor<1024x1024x5120xi32>)
+      -> tensor<1024x1024x5120xi32> {
+    return %arg0 : tensor<1024x1024x5120xi32>
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
+  ASSERT_OK_AND_ASSIGN(
+      program,
+      SerDeRoundTrip(std::move(program),
+                     xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(
+      auto ifrt_ir_executable,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::move(program),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+  std::vector<int> input_data = {1};
+  Shape shape({1, 1});
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                       client_->MakeDeviceList({devices->devices().front()}));
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef input,
+      CreateArray({input_data.data()}, shape, /*shard_shape=*/shape,
+                  DType(DType::kS32), std::move(device_list)));
+
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutable::ExecuteResult result,
+      ifrt_ir_executable->Execute(absl::MakeSpan(&input, 1),
+                                  ExecuteOptionsWithFillStatus(), devices));
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 1);
+  ASSERT_OK(result.outputs[0]->GetReadyFuture().Await());
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, VerifyUnusedArraysDeleteInOrder) {
@@ -1051,8 +2207,8 @@ TEST_F(IfrtIrLoadedExecutableTest, VerifyUnusedArraysDeleteInOrder) {
   // Note: This test expects the test target to set the flag
   // `--xla_tpu_alloc_buffer_vdelay` to the frequency of the hardware used s.t.
   // each AllocateBuffer call introduces a delay of 1 second.
-  if (client_->platform_name() != xla::TpuName()) {
-    GTEST_SKIP() << "Do not run on GPU because it allocates too much memory.";
+  if (!IsUsingTpuV4().value_or(false)) {
+    GTEST_SKIP() << "Test requires TPU v4.";
   }
 
   std::string source = R"(
@@ -1102,26 +2258,27 @@ module {
   )";
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                        LoadFromSource(source));
-  auto program = std::make_unique<xla::ifrt::IfrtIRProgram>(*mlir_module);
+  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
   ASSERT_OK_AND_ASSIGN(
       program,
       SerDeRoundTrip(std::move(program),
                      xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef devices, PickDevices(1));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(1));
   ASSERT_OK_AND_ASSIGN(
       auto ifrt_ir_executable,
       client_->GetDefaultCompiler()
-          ->CompileAndLoad(std::move(program), CreateCompileOptions(devices))
+          ->CompileAndLoad(
+              std::move(program),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
           .Await());
 
   std::vector<int> data = {42};
+  Shape shape({1, 1});
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data.data()}, shape, /*shard_shape=*/shape,
+                                   DType(DType::kS32), devices));
   ASSERT_OK_AND_ASSIGN(
-      xla::ifrt::ArrayRef input,
-      CreateArray({data.data()}, xla::ifrt::Shape({1, 1}),
-                  xla::ifrt::DType(xla::ifrt::DType::kS32),
-                  xla::ifrt::ShardingParam({1, 1}, {{0}, {1}}), devices));
-  ASSERT_OK_AND_ASSIGN(
-      xla::ifrt::LoadedExecutable::ExecuteResult result,
+      LoadedExecutable::ExecuteResult result,
       ifrt_ir_executable->Execute(absl::MakeSpan(&input, 1),
                                   ExecuteOptionsWithFillStatus(), devices));
   ASSERT_OK(result.status.Await());
@@ -1139,8 +2296,8 @@ TEST_F(IfrtIrLoadedExecutableTest, VerifyRunaheadWithAliasingDoesntOOM) {
   // Note: This test expects the test target to set the flag
   // `--xla_tpu_alloc_buffer_vdelay` to the frequency of the hardware used s.t.
   // each AllocateBuffer call introduces a delay of 1 second.
-  if (client_->platform_name() != xla::TpuName()) {
-    GTEST_SKIP() << "Do not run on GPU because it allocates too much memory.";
+  if (!IsUsingTpuV4().value_or(false)) {
+    GTEST_SKIP() << "Test requires TPU v4.";
   }
 
   std::string source = R"(
@@ -1201,26 +2358,27 @@ module {
   )";
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                        LoadFromSource(source));
-  auto program = std::make_unique<xla::ifrt::IfrtIRProgram>(*mlir_module);
+  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
   ASSERT_OK_AND_ASSIGN(
       program,
       SerDeRoundTrip(std::move(program),
                      xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef devices, PickDevices(1));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(1));
   ASSERT_OK_AND_ASSIGN(
       auto ifrt_ir_executable,
       client_->GetDefaultCompiler()
-          ->CompileAndLoad(std::move(program), CreateCompileOptions(devices))
+          ->CompileAndLoad(
+              std::move(program),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
           .Await());
 
   std::vector<int> data = {42};
+  Shape shape({1, 1});
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data.data()}, shape, /*shard_shape=*/shape,
+                                   DType(DType::kS32), devices));
   ASSERT_OK_AND_ASSIGN(
-      xla::ifrt::ArrayRef input,
-      CreateArray({data.data()}, xla::ifrt::Shape({1, 1}),
-                  xla::ifrt::DType(xla::ifrt::DType::kS32),
-                  xla::ifrt::ShardingParam({1, 1}, {{0}, {1}}), devices));
-  ASSERT_OK_AND_ASSIGN(
-      xla::ifrt::LoadedExecutable::ExecuteResult result,
+      LoadedExecutable::ExecuteResult result,
       ifrt_ir_executable->Execute(absl::MakeSpan(&input, 1),
                                   ExecuteOptionsWithFillStatus(), devices));
   ASSERT_OK(result.status.Await());
@@ -1239,8 +2397,8 @@ TEST_F(IfrtIrLoadedExecutableTest, VerifyRunaheadWithoutAliasingDoesntOOM) {
   // Note: This test expects the test target to set the flag
   // `--xla_tpu_alloc_buffer_vdelay` to the frequency of the hardware used s.t.
   // each AllocateBuffer call introduces a delay of 1 second.
-  if (client_->platform_name() != xla::TpuName()) {
-    GTEST_SKIP() << "Do not run on GPU because it allocates too much memory.";
+  if (!IsUsingTpuV4().value_or(false)) {
+    GTEST_SKIP() << "Test requires TPU v4.";
   }
 
   std::string source = R"(
@@ -1300,26 +2458,27 @@ module {
   )";
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                        LoadFromSource(source));
-  auto program = std::make_unique<xla::ifrt::IfrtIRProgram>(*mlir_module);
+  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
   ASSERT_OK_AND_ASSIGN(
       program,
       SerDeRoundTrip(std::move(program),
                      xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef devices, PickDevices(1));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(1));
   ASSERT_OK_AND_ASSIGN(
       auto ifrt_ir_executable,
       client_->GetDefaultCompiler()
-          ->CompileAndLoad(std::move(program), CreateCompileOptions(devices))
+          ->CompileAndLoad(
+              std::move(program),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
           .Await());
 
   std::vector<int> data = {42};
+  Shape shape({1, 1});
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data.data()}, shape, /*shard_shape=*/shape,
+                                   DType(DType::kS32), devices));
   ASSERT_OK_AND_ASSIGN(
-      xla::ifrt::ArrayRef input,
-      CreateArray({data.data()}, xla::ifrt::Shape({1, 1}),
-                  xla::ifrt::DType(xla::ifrt::DType::kS32),
-                  xla::ifrt::ShardingParam({1, 1}, {{0}, {1}}), devices));
-  ASSERT_OK_AND_ASSIGN(
-      xla::ifrt::LoadedExecutable::ExecuteResult result,
+      LoadedExecutable::ExecuteResult result,
       ifrt_ir_executable->Execute(absl::MakeSpan(&input, 1),
                                   ExecuteOptionsWithFillStatus(), devices));
   ASSERT_OK(result.status.Await());
@@ -1327,91 +2486,252 @@ module {
   ASSERT_OK(result.outputs[1]->GetReadyFuture().Await());
 }
 
-TEST_F(IfrtIrLoadedExecutableTest, GetParameterAndOutputLayouts) {
-  if (client_->platform_name() != xla::TpuName()) {
-    GTEST_SKIP() << "Do not run on GPU because it requires 4 devices.";
-  }
-  // Verifies that the layouts of the parameters and outputs are correctly
-  // populated. The test verifies the following scenarios:
-  // 1. Atom program with auto layout for both the input and output.
-  // 2. Atom program with a custom layout.
-  // 3. IFRT IR program argument that is just returned.
-  // 4. Unused IFRT IR program argument.
-  // 5. Atom program output that is returned multiple times.
-
-  // TODO(b/382761415): Update test when layouts are populated in IFRT IR
-  // array type.
+TEST_F(IfrtIrLoadedExecutableTest, AtomCallsWithTokens) {
   std::string source = R"(
-!array = !ifrt.array<tensor<2x2xi32>,
-                     #ifrt.sharding_param<2x2 to [0] on 4>, [0, 1, 2, 3]>
-module @auto_layout {
-  func.func public @main(%arg0: !array, %arg1: !array, %arg2: !array)
-      -> (!array, !array, !array, !array) attributes {ifrt.function} {
-    %out_0, %ctrl_0 = ifrt.Call @transpose::@main(%arg0) on devices [0, 1, 2, 3]
-      : (!array) -> !array
-    %out_1, %ctrl_1 = ifrt.Call @transpose_w_custom_layout::@main(%arg0)
-      on devices [0, 1, 2, 3] : (!array) -> !array
-    return %out_0, %out_0, %out_1, %arg1 : !array, !array, !array, !array
+!array = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                     [0,1]>
+!token = !ifrt.array<tensor<!ifrt.token>, #ifrt.sharding_param< to [0] on 2>,
+                     [0, 1]>
+module {
+  func.func @main(%arg0: !array) -> (!array, !token)
+      attributes {ifrt.function} {
+    %0, %1, %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1]
+        : (!array) -> (!array, !token)
+    %2, %3, %ctrl_1 = ifrt.Call @add_one_with_token(%0, %1) on devices [0,1]
+        : (!array, !token) -> (!array, !token)
+    return %2, %3 : !array, !token
   }
-  module @transpose attributes {sym_visibility = "private"} {
-    func.func @main(%arg0: tensor<2x2xi32> {mhlo.layout_mode = "auto"})
-        -> (tensor<2x2xi32> {mhlo.layout_mode = "auto"}) {
-      %0 = stablehlo.transpose %arg0, dims = [1, 0]
-        : (tensor<2x2xi32>) -> tensor<2x2xi32>
-      return %0 : tensor<2x2xi32>
-    }
+
+  func.func private @add_one(%arg0: tensor<2x2xi32>)
+      -> (tensor<2x2xi32>, !stablehlo.token) {
+    %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
+    %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
+    %2 = "stablehlo.create_token"() : () -> !stablehlo.token
+    return %1, %2 : tensor<2x2xi32>, !stablehlo.token
   }
-  module @transpose_w_custom_layout attributes {sym_visibility = "private"} {
-    func.func public @main(%arg0: tensor<2x2xi32>
-        {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dim_replicate}"})
-        -> (tensor<2x2xi32> {mhlo.layout_mode = "auto"}) {
-      %0 = stablehlo.transpose %arg0, dims = [1, 0] : (tensor<2x2xi32>)
-        -> tensor<2x2xi32>
-      %1 = stablehlo.custom_call @Sharding(%0) {
-        backend_config = "",
-        mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dim_replicate}"}
-        : (tensor<2x2xi32>) -> tensor<2x2xi32>
-      %2 = stablehlo.custom_call @LayoutConstraint(%1) {
-        backend_config = "",
-        operand_layouts = [dense<[1, 0]> : tensor<2xindex>],
-        result_layouts = [dense<[0, 1]> : tensor<2xindex>]}
-        : (tensor<2x2xi32>) -> tensor<2x2xi32>
-      return %2 : tensor<2x2xi32>
-    }
+
+  func.func private @add_one_with_token(
+      %arg0: tensor<2x2xi32>, %arg1: !stablehlo.token)
+      -> (tensor<2x2xi32>, !stablehlo.token) {
+    %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
+    %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
+    return %1, %arg1 : tensor<2x2xi32>, !stablehlo.token
   }
 }
   )";
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                        LoadFromSource(source));
-  auto program = std::make_unique<xla::ifrt::IfrtIRProgram>(*mlir_module);
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
   ASSERT_OK_AND_ASSIGN(
-      program,
-      SerDeRoundTrip(std::move(program),
-                     xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef devices, PickDevices(4));
-  ASSERT_OK_AND_ASSIGN(
-      auto ifrt_ir_executable,
+      LoadedExecutableRef loaded_exec,
       client_->GetDefaultCompiler()
-          ->CompileAndLoad(std::move(program), CreateCompileOptions(devices))
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
           .Await());
-  ASSERT_OK_AND_ASSIGN(auto parameter_layouts,
-                       ifrt_ir_executable->GetParameterLayouts());
-  // Note `GetDefaultPjRtLayout` takes a sharded shape.
-  ASSERT_OK_AND_ASSIGN(auto default_layout,
-                       client_->GetDefaultPjRtLayout(
-                           xla::ifrt::DType(xla::ifrt::DType::kS32), {1, 1},
-                           devices->devices()[0], xla::ifrt::MemoryKind()));
-  ASSERT_EQ(parameter_layouts.size(), 3);
-  ASSERT_EQ(*default_layout, *parameter_layouts[0]);
-  ASSERT_EQ(*default_layout, *parameter_layouts[1]);
-  ASSERT_EQ(*default_layout, *parameter_layouts[2]);
-  ASSERT_OK_AND_ASSIGN(auto output_layouts,
-                       ifrt_ir_executable->GetOutputLayouts());
-  ASSERT_EQ(output_layouts.size(), 4);
-  ASSERT_EQ(*default_layout, *output_layouts[0]);
-  ASSERT_EQ(*default_layout, *output_layouts[1]);
-  ASSERT_EQ("{0,1:T(1,128)}", output_layouts[2]->ToString());
-  ASSERT_EQ(*default_layout, *output_layouts[3]);
+
+  std::vector<int> data0 = {0, 1};
+  std::vector<int> data1 = {2, 3};
+  Shape shard_shape({1, 2});
+  DType dtype(DType::kS32);
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                   shard_shape, dtype, devices));
+
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       loaded_exec->Execute(absl::MakeSpan(&input, 1),
+                                            ExecuteOptionsWithFillStatus(),
+                                            /*devices=*/std::nullopt));
+
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 2);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, shard_shape, {{2, 3}, {4, 5}}, devices));
+  ASSERT_EQ(result.outputs[1]->dtype(), DType(DType::kToken));
+  ASSERT_EQ(result.outputs[1]->shape(), Shape({}));
+  ASSERT_TRUE(result.outputs[1]->sharding().IsFullyReplicated());
+}
+
+TEST_F(IfrtIrLoadedExecutableTest,
+       CompileAndExecuteBundleThreeInputsOutputsSplitBundle) {
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x3xf32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                     [0,1]>
+module {
+  func.func @main(%arg0: !array, %arg1: !array, %arg2: !array)
+      -> (!array, !array, !array) attributes {ifrt.function} {
+    %0, %1, %2, %ctrl_0 = ifrt.Call @add_stuff(%arg0, %arg1, %arg2) on devices [0,1]
+        : (!array, !array, !array) -> (!array, !array, !array)
+    return %0, %1, %2 : !array, !array, !array
+  }
+
+  func.func private @add_stuff(%arg0: tensor<2x3xf32>, %arg1: tensor<2x3xf32>,
+                               %arg2: tensor<2x3xf32>)
+      -> (tensor<2x3xf32>, tensor<2x3xf32>, tensor<2x3xf32>) {
+    %c100 = stablehlo.constant dense<1.000000e+02> : tensor<2x3xf32>
+    %c200 = stablehlo.constant dense<2.000000e+02> : tensor<2x3xf32>
+    %c300 = stablehlo.constant dense<3.000000e+02> : tensor<2x3xf32>
+    %out0 = stablehlo.add %arg0, %c100 : tensor<2x3xf32>
+    %out1 = stablehlo.add %arg1, %c200 : tensor<2x3xf32>
+    %out2 = stablehlo.add %arg2, %c300 : tensor<2x3xf32>
+    return %out0, %out1, %out2 : tensor<2x3xf32>, tensor<2x3xf32>, tensor<2x3xf32>
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+
+  // Output bundle split: 2 bundles of sizes 2 and 1.
+  auto compile_options =
+      std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices));
+  compile_options->outputs_bundle_slice_sizes = {2, 1};
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_exec,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(std::make_unique<IfrtIRProgram>(*mlir_module),
+                           std::move(compile_options))
+          .Await());
+
+  DType dtype(DType::kF32);
+  Shape shard_shape({1, 3});
+  Shape shape({2, 3});
+
+  std::vector<ArrayRef> input_arrays;
+  input_arrays.reserve(3);
+  const float kPerArrayIncrement = 10.0f;
+  for (int i = 0; i < 3; ++i) {
+    std::vector<float> data0(3);
+    absl::c_iota(data0, i * kPerArrayIncrement);
+    std::vector<float> data1(3);
+    absl::c_iota(data1, i * kPerArrayIncrement + 3);
+    ASSERT_OK_AND_ASSIGN(ArrayRef array,
+                         CreateArray({data0.data(), data1.data()}, shape,
+                                     shard_shape, dtype, devices));
+    input_arrays.push_back(array);
+  }
+
+  // 2 input bundles: sizes 1 and 2.
+  std::vector<ValueRef> values1 = {input_arrays[0]};
+  ASSERT_OK_AND_ASSIGN(BundleRef input_bundle1,
+                       client_->Bundle(absl::MakeSpan(values1),
+                                       ArrayCopySemantics::kReuseInput));
+
+  std::vector<ValueRef> values2 = {input_arrays[1], input_arrays[2]};
+  ASSERT_OK_AND_ASSIGN(BundleRef input_bundle2,
+                       client_->Bundle(absl::MakeSpan(values2),
+                                       ArrayCopySemantics::kReuseInput));
+
+  std::vector<BundleRef> input_bundles = {input_bundle1, input_bundle2};
+
+  ExecuteOptions execute_options;
+  execute_options.fill_status = true;
+
+  {
+    ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteBundleResult result,
+                         loaded_exec->ExecuteBundle(
+                             absl::MakeSpan(input_bundles), execute_options));
+    ASSERT_OK(result.status.Await());
+    ASSERT_EQ(result.outputs.size(), 2);
+    EXPECT_EQ(result.outputs[0]->num_values(), 2);
+    EXPECT_EQ(result.outputs[1]->num_values(), 1);
+
+    ASSERT_OK_AND_ASSIGN(
+        std::vector<ValueRef> retrieved_outputs0,
+        result.outputs[0]->GetValues(ArrayCopySemantics::kReuseInput));
+    ASSERT_EQ(retrieved_outputs0.size(), 2);
+
+    ASSERT_OK_AND_ASSIGN(
+        std::vector<ValueRef> retrieved_outputs1,
+        result.outputs[1]->GetValues(ArrayCopySemantics::kReuseInput));
+    ASSERT_EQ(retrieved_outputs1.size(), 1);
+
+    std::vector<ValueRef> all_outputs;
+    all_outputs.reserve(3);
+    all_outputs.insert(all_outputs.end(), retrieved_outputs0.begin(),
+                       retrieved_outputs0.end());
+    all_outputs.insert(all_outputs.end(), retrieved_outputs1.begin(),
+                       retrieved_outputs1.end());
+
+    for (int i = 0; i < 3; ++i) {
+      auto* out_array = llvm::dyn_cast<Array>(all_outputs[i].get());
+      ASSERT_NE(out_array, nullptr);
+      ArrayRef out_array_ref = tsl::FormRef(out_array);
+
+      std::vector<float> expected_data0 = {
+          i * kPerArrayIncrement + (i + 1) * 100 + 0,
+          i * kPerArrayIncrement + (i + 1) * 100 + 1,
+          i * kPerArrayIncrement + (i + 1) * 100 + 2};
+      std::vector<float> expected_data1 = {
+          i * kPerArrayIncrement + (i + 1) * 100 + 3,
+          i * kPerArrayIncrement + (i + 1) * 100 + 4,
+          i * kPerArrayIncrement + (i + 1) * 100 + 5};
+
+      ASSERT_NO_FATAL_FAILURE(
+          AssertPerShardData<float>(out_array_ref, dtype, shard_shape,
+                                    {expected_data0, expected_data1}, devices));
+    }
+  }
+
+  // Test the execution after serialization and deserialization to verify that
+  // `outputs_bundle_slice_sizes` is correctly applied across the roundtrip.
+  {
+    ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
+                         loaded_exec->Serialize());
+
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<DeserializeIfrtIRProgramOptions> options,
+        GetDeserializeOptions(devices));
+    ASSERT_OK_AND_ASSIGN(std::shared_ptr<LoadedExecutable> deserialized_exec,
+                         client_->GetDefaultCompiler()
+                             ->DeserializeLoadedExecutable(
+                                 serialized_executable, std::move(options))
+                             .Await());
+
+    ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteBundleResult result,
+                         deserialized_exec->ExecuteBundle(
+                             absl::MakeSpan(input_bundles), execute_options));
+    ASSERT_OK(result.status.Await());
+    ASSERT_EQ(result.outputs.size(), 2);
+    EXPECT_EQ(result.outputs[0]->num_values(), 2);
+    EXPECT_EQ(result.outputs[1]->num_values(), 1);
+
+    ASSERT_OK_AND_ASSIGN(
+        std::vector<ValueRef> retrieved_outputs0,
+        result.outputs[0]->GetValues(ArrayCopySemantics::kReuseInput));
+    ASSERT_EQ(retrieved_outputs0.size(), 2);
+
+    ASSERT_OK_AND_ASSIGN(
+        std::vector<ValueRef> retrieved_outputs1,
+        result.outputs[1]->GetValues(ArrayCopySemantics::kReuseInput));
+    ASSERT_EQ(retrieved_outputs1.size(), 1);
+
+    std::vector<ValueRef> all_outputs;
+    all_outputs.reserve(3);
+    all_outputs.insert(all_outputs.end(), retrieved_outputs0.begin(),
+                       retrieved_outputs0.end());
+    all_outputs.insert(all_outputs.end(), retrieved_outputs1.begin(),
+                       retrieved_outputs1.end());
+
+    for (int i = 0; i < 3; ++i) {
+      auto* out_array = llvm::dyn_cast<Array>(all_outputs[i].get());
+      ASSERT_NE(out_array, nullptr);
+      ArrayRef out_array_ref = tsl::FormRef(out_array);
+
+      std::vector<float> expected_data0 = {
+          i * kPerArrayIncrement + (i + 1) * 100 + 0,
+          i * kPerArrayIncrement + (i + 1) * 100 + 1,
+          i * kPerArrayIncrement + (i + 1) * 100 + 2};
+      std::vector<float> expected_data1 = {
+          i * kPerArrayIncrement + (i + 1) * 100 + 3,
+          i * kPerArrayIncrement + (i + 1) * 100 + 4,
+          i * kPerArrayIncrement + (i + 1) * 100 + 5};
+
+      ASSERT_NO_FATAL_FAILURE(
+          AssertPerShardData<float>(out_array_ref, dtype, shard_shape,
+                                    {expected_data0, expected_data1}, devices));
+    }
+  }
 }
 
 }  // namespace

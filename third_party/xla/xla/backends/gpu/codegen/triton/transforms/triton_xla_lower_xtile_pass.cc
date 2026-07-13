@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -59,11 +60,12 @@ namespace {
 
 namespace ttir = ::mlir::triton;
 namespace ma = ::mlir::arith;
+namespace xtile = ::xla::xtile;
 
 // Get the new arg types of the lowered function by translating memrefs to the
 // corresponding pointer types.
 llvm::SmallVector<mlir::Type> GetTransformedArgTypes(
-    ::xla::xtile::EntryFuncOp& entry_op) {
+    xtile::EntryFuncOp& entry_op) {
   llvm::SmallVector<mlir::Type> arg_types;
   // Tile id is not carried over hence -1.
   arg_types.reserve(entry_op.getNumArguments() - 1U);
@@ -86,13 +88,12 @@ MemrefToPtrOp CreateMemrefToPtr(mlir::OpBuilder& builder,
 
 // Rewrite a xtile entry to a func.func with the same body, but with memref
 // arguments replaced by pointers.
-class XTileEntryToTriton
-    : public mlir::OpRewritePattern<::xla::xtile::EntryFuncOp> {
+class XTileEntryToTriton : public mlir::OpRewritePattern<xtile::EntryFuncOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
   mlir::LogicalResult matchAndRewrite(
-      ::xla::xtile::EntryFuncOp entry_op,
+      xtile::EntryFuncOp entry_op,
       mlir::PatternRewriter& rewriter) const override {
     mlir::ModuleOp module = entry_op->getParentOfType<mlir::ModuleOp>();
     mlir::ImplicitLocOpBuilder builder(module->getLoc(), module);
@@ -156,14 +157,56 @@ class XTileEntryToTriton
   }
 };
 
-// Rewrite a xtile extract to a triton_xla extract.
-class XTileExtractToTriton
-    : public mlir::OpRewritePattern<::xla::xtile::ExtractTileOp> {
+class XTileSelectBufferToTriton
+    : public mlir::OpRewritePattern<xtile::SelectBufferOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
   mlir::LogicalResult matchAndRewrite(
-      ::xla::xtile::ExtractTileOp extract_op,
+      xtile::SelectBufferOp op,
+      mlir::PatternRewriter& rewriter) const override {
+    mlir::TypedValue<mlir::MemRefType> buffer = op.getSource();
+    mlir::Value replica_id = op.getReplicaId();
+    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    // Make it a triton pointer.
+    // -> !tt.ptr<i64>
+    mlir::Value memref_to_ptr = CreateMemrefToPtr(rewriter, buffer);
+    mlir::Value replica_id_i64 =
+        mlir::arith::IndexCastOp::create(b, b.getI64Type(), replica_id);
+    // Add the replica id to the pointer.
+    auto ptr_addr = mlir::triton::AddPtrOp::create(
+        b, memref_to_ptr.getType(), memref_to_ptr, replica_id_i64);
+    // Dereference the outer pointer.
+    auto addr_i64 =
+        mlir::triton::LoadOp::create(b, b.getI64Type(), ptr_addr.getResult(),
+                                     /*mask=*/mlir::Value(),
+                                     /*other=*/mlir::Value(),               //
+                                     mlir::triton::CacheModifier::NONE,     //
+                                     mlir::triton::EvictionPolicy::NORMAL,  //
+                                     /*isVolatile=*/false);
+    auto result_memref_type = mlir::cast<mlir::MemRefType>(op.getType());
+    mlir::Type target_ptr_type =
+        ttir::getPointerTypeToElement(result_memref_type.getElementType());
+    mlir::NamedAttribute divisibility_attr = xtile::GetDivisibilityAttr(b);
+    // The ptr ->i64 -> memref dance.
+    mlir::Value final_ptr = mlir::triton::IntToPtrOp::create(
+        b, target_ptr_type, addr_i64.getResult(),
+        llvm::ArrayRef<mlir::NamedAttribute>{divisibility_attr});
+    mlir::Value ptr_to_memref =
+        PtrToMemrefOp::create(b, op.getType(), final_ptr);
+    rewriter.replaceOp(op, ptr_to_memref);
+    return mlir::success();
+  }
+};
+
+// Rewrite a xtile extract to a triton_xla extract.
+class XTileExtractToTriton
+    : public mlir::OpRewritePattern<xtile::ExtractTileOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      xtile::ExtractTileOp extract_op,
       mlir::PatternRewriter& rewriter) const override {
     mlir::MemRefType source_type = extract_op.getSource().getType();
     mlir::RankedTensorType result_type = extract_op.getType();
@@ -183,7 +226,7 @@ class XTileExtractToTriton
     }
 
     absl::StatusOr<SmallVector<int64_t>> minor_to_major_or =
-        ::xla::xtile::GetPermutationMinorToMajor(source_type);
+        xtile::GetPermutationMinorToMajor(source_type);
     if (!minor_to_major_or.ok()) {
       return rewriter.notifyMatchFailure(extract_op,
                                          minor_to_major_or.status().ToString());
@@ -201,13 +244,12 @@ class XTileExtractToTriton
 };
 
 // Rewrite a xtile insert to a triton_xla insert.
-class XTileInsertToTriton
-    : public mlir::OpRewritePattern<::xla::xtile::InsertTileOp> {
+class XTileInsertToTriton : public mlir::OpRewritePattern<xtile::InsertTileOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
   mlir::LogicalResult matchAndRewrite(
-      ::xla::xtile::InsertTileOp insert_op,
+      xtile::InsertTileOp insert_op,
       mlir::PatternRewriter& rewriter) const override {
     mlir::MemRefType destination_type = insert_op.getDestination().getType();
 
@@ -224,7 +266,7 @@ class XTileInsertToTriton
     }
 
     absl::StatusOr<SmallVector<int64_t>> minor_to_major_or =
-        ::xla::xtile::GetPermutationMinorToMajor(destination_type);
+        xtile::GetPermutationMinorToMajor(destination_type);
     if (!minor_to_major_or.ok()) {
       return rewriter.notifyMatchFailure(insert_op,
                                          minor_to_major_or.status().ToString());
@@ -241,16 +283,16 @@ class XTileInsertToTriton
   }
 };
 
-class XTileMaskToTriton : public mlir::OpRewritePattern<::xla::xtile::MaskOp> {
+class XTileMaskToTriton : public mlir::OpRewritePattern<xtile::MaskOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
   mlir::LogicalResult matchAndRewrite(
-      ::xla::xtile::MaskOp op, mlir::PatternRewriter& rewriter) const override {
+      xtile::MaskOp op, mlir::PatternRewriter& rewriter) const override {
     llvm::SmallVector<int64_t> masked_dimensions = op.getMaskedDimensions();
     if (masked_dimensions.size() != 1) {
-      return rewriter.notifyMatchFailure(
-          op, "triton masking only supports masking over a single dimension");
+      return op.emitOpError(
+          "triton masking only supports masking over a single dimension");
     }
 
     int64_t mask_dimension = masked_dimensions.front();
@@ -315,8 +357,9 @@ class TritonXLALowerXTilePass
 
     mlir::RewritePatternSet patterns(context);
 
-    patterns.add<XTileEntryToTriton, XTileExtractToTriton, XTileInsertToTriton,
-                 XTileMaskToTriton, FoldIntoMemrefToPtr>(context);
+    patterns.add<XTileEntryToTriton, XTileSelectBufferToTriton,
+                 XTileExtractToTriton, XTileInsertToTriton, XTileMaskToTriton,
+                 FoldIntoMemrefToPtr>(context);
     if (mlir::failed(
             mlir::applyPatternsGreedily(module, std::move(patterns)))) {
       signalPassFailure();
@@ -326,9 +369,5 @@ class TritonXLALowerXTilePass
 };
 
 }  // namespace
-
-std::unique_ptr<Pass> CreateTritonXLALowerXTilePass() {
-  return std::make_unique<TritonXLALowerXTilePass>();
-}
 
 }  // namespace mlir::triton::xla

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -103,14 +104,14 @@ absl::Status SwapDotOperandsInFusion(HloComputation* computation) {
   HloDotInstruction* new_dot = MakeDotWithSwappedOperands(dot);
   HloInstruction* new_bitcast = computation->AddInstruction(
       HloInstruction::CreateBitcast(dot->shape(), new_dot), &dot->metadata());
-  TF_RETURN_IF_ERROR(dot->ReplaceAllUsesWith(new_bitcast));
-  TF_RETURN_IF_ERROR(computation->RemoveInstruction(dot));
+  RETURN_IF_ERROR(dot->ReplaceAllUsesWith(new_bitcast));
+  RETURN_IF_ERROR(computation->RemoveInstruction(dot));
   return absl::OkStatus();
 }
 
 bool HasCodeGeneratingInstructions(const HloInstruction* instruction) {
   while (!instruction->operands().empty()) {
-    // Skip instruction that are likely to just affect the address computation
+    // Skip instructions that are likely to just affect indexing or layout
     // rather than result in actual computation.
     switch (instruction->opcode()) {
       case HloOpcode::kBitcast:
@@ -141,7 +142,7 @@ absl::StatusOr<int64_t> GetNonContractingDimsNumElements(
       operand_index == 0 ? dot_dims.lhs_contracting_dimensions()
                          : dot_dims.rhs_contracting_dimensions();
   const DimensionVector noncontracting_dim_indices = GetNonContractingDims(
-      shape.dimensions().size(), batch_dim_indices, contracting_dim_indices);
+      shape.dimensions().size(), contracting_dim_indices, batch_dim_indices);
   return absl::c_accumulate(
       noncontracting_dim_indices, int64_t{1},
       [&](int64_t acc, int64_t dim) { return acc * shape.dimensions(dim); });
@@ -162,10 +163,10 @@ absl::StatusOr<bool> ShouldSwapOperands(const HloInstruction* instr) {
   }
   const bool lhs_has_code = HasCodeGeneratingInstructions(dot->operand(0));
   const bool rhs_has_code = HasCodeGeneratingInstructions(dot->operand(1));
-  TF_ASSIGN_OR_RETURN(const int64_t lhs_size, GetNonContractingDimsNumElements(
-                                                  dot, /*operand_index=*/0));
-  TF_ASSIGN_OR_RETURN(const int64_t rhs_size, GetNonContractingDimsNumElements(
-                                                  dot, /*operand_index=*/1));
+  ASSIGN_OR_RETURN(const int64_t lhs_size,
+                   GetNonContractingDimsNumElements(dot, /*operand_index=*/0));
+  ASSIGN_OR_RETURN(const int64_t rhs_size,
+                   GetNonContractingDimsNumElements(dot, /*operand_index=*/1));
   if (lhs_size < 64 && rhs_size >= 64) {
     return true;
   }
@@ -184,7 +185,9 @@ absl::StatusOr<bool> EmitterCanHandleSwappedOperands(
   HloCloneContext clone_context(&tmp_module);
   HloComputation* cloned_computation = tmp_module.AddEntryComputation(
       dot->parent()->CloneInContext(clone_context));
-  TF_RETURN_IF_ERROR(SwapDotOperandsInFusion(cloned_computation));
+  RETURN_IF_ERROR(SwapDotOperandsInFusion(cloned_computation));
+  // If we fail to create a TritonFusionAnalysis, then the emitter can't handle
+  // the fusion and choose not to make any changes.
   return TritonFusionAnalysis::Execute(*cloned_computation).ok();
 }
 
@@ -194,16 +197,16 @@ absl::StatusOr<bool> MaybeSwapOperands(HloComputation* computation) {
   if (dot == nullptr) {
     return false;
   }
-  TF_ASSIGN_OR_RETURN(const bool should_swap_operands, ShouldSwapOperands(dot));
+  ASSIGN_OR_RETURN(const bool should_swap_operands, ShouldSwapOperands(dot));
   if (!should_swap_operands) {
     return false;
   }
-  TF_ASSIGN_OR_RETURN(const bool can_handle_swapped_operands,
-                      EmitterCanHandleSwappedOperands(dot));
+  ASSIGN_OR_RETURN(const bool can_handle_swapped_operands,
+                   EmitterCanHandleSwappedOperands(dot));
   if (!can_handle_swapped_operands) {
     return false;
   }
-  TF_RETURN_IF_ERROR(SwapDotOperandsInFusion(computation));
+  RETURN_IF_ERROR(SwapDotOperandsInFusion(computation));
   return true;
 }
 
@@ -218,7 +221,7 @@ absl::StatusOr<bool> GemmFusionSwapOperands::RunImpl(
     if (!IsTritonFusedComputation(*computation)) {
       continue;
     }
-    TF_ASSIGN_OR_RETURN(const bool changed, MaybeSwapOperands(computation));
+    ASSIGN_OR_RETURN(const bool changed, MaybeSwapOperands(computation));
     any_changed |= changed;
   }
   return any_changed;

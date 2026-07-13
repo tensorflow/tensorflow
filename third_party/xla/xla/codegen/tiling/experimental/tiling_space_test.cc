@@ -24,6 +24,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
+#include "xla/hlo/analysis/symbolic_map_serialization.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -42,6 +45,8 @@ MATCHER_P(MatchString, tiling_space_string, "") {
 
 class TilingSpaceTest : public HloHardwareIndependentTestBase {
  public:
+  TilingSpaceTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+
   HloInstruction* ParseAndGetRoot(absl::string_view hlo_string) {
     auto module_or = ParseAndReturnVerifiedModule(hlo_string);
     CHECK_OK(module_or);
@@ -62,7 +67,8 @@ TEST_F(TilingSpaceTest, SingleOutputParallelDim) {
       }
   )");
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-  auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
   EXPECT_THAT(*tiling_space, MatchString(R"(
     Dimensions:
         0 type: parallel size: 1000 dim ID:0
@@ -88,7 +94,8 @@ TEST_F(TilingSpaceTest, SingleOutputContractionDim) {
     }
   )");
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-  auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
   EXPECT_THAT(*tiling_space, MatchString(R"(
     Dimensions:
       0 type: parallel size: 16 dim ID:0
@@ -127,7 +134,8 @@ TEST_F(TilingSpaceTest, SingleOutputReductionDim) {
     }
   )");
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-  auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
   EXPECT_THAT(*tiling_space, MatchString(R"(
     Dimensions:
       0 type: parallel size: 150 dim ID:0
@@ -146,6 +154,42 @@ TEST_F(TilingSpaceTest, SingleOutputReductionDim) {
       0 root tile:
            offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
            strides [1, 1] upper bounds [150, 10]
+  )"));
+}
+
+TEST_F(TilingSpaceTest, SingleOutputScanDim) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      add = f32[] add(p0, p1)
+      ROOT tuple = (f32[], f32[]) tuple(add, add)
+    }
+    fused_computation {
+      p0 = f32[150] parameter(0)
+      p1 = f32[] constant(0.0)
+      scan = (f32[150], f32[]) scan(p0, p1), dimensions={0}, num_carries=1, is_associative=false, to_apply=add
+      ROOT get-tuple-element = f32[150] get-tuple-element(scan), index=0
+    }
+    ENTRY e {
+      p0 = f32[150] parameter(0)
+      ROOT fusion = f32[150] fusion(p0), kind=kLoop, calls=fused_computation
+    }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  EXPECT_THAT(*tiling_space, MatchString(R"(
+    Dimensions:
+      0 type: parallel size: 150 dim ID:0
+        hlo: %get-tuple-element = f32[150]{0} get-tuple-element(%scan), index=0
+    Root tiles:
+      0 root tile:
+           offsets [tid_0 * ts_0] sizes [ts_0]
+           strides [1] upper bounds [150]
+    Constraints:
+      -v0 + 150 in [0, 0]
   )"));
 }
 
@@ -174,7 +218,8 @@ TEST_F(TilingSpaceTest, VariadicReduce) {
   )");
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
 
-  auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
   EXPECT_THAT(*tiling_space, MatchString(R"(
     Dimensions:
       0 type: parallel size: 10 dim ID:0 hlo:
@@ -206,7 +251,8 @@ TEST_F(TilingSpaceTest, DynamicSlice) {
   )");
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
 
-  auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
   EXPECT_THAT(*tiling_space, MatchString(R"(
     Dimensions:
         0 type: parallel size: 1 dim ID:0
@@ -230,7 +276,7 @@ TEST_F(TilingSpaceTest, DynamicSlice) {
 }
 
 TEST_F(TilingSpaceTest, TwoOutputsParallelDims) {
-  auto root = ParseAndGetRoot(R"(
+  HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
     f {
       p0 = f32[10,8] parameter(0)
@@ -251,8 +297,13 @@ TEST_F(TilingSpaceTest, TwoOutputsParallelDims) {
         kind=kLoop, calls=f
     }
   )");
+  root->GetModule()
+      ->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_unsupported_enable_triton_multi_output_fusion(true);
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-  auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
   EXPECT_THAT(*tiling_space, MatchString(R"(
     Dimensions:
         0 type: parallel size: 10 dim ID:0
@@ -264,14 +315,72 @@ TEST_F(TilingSpaceTest, TwoOutputsParallelDims) {
         3 type: parallel size: 9 dim ID:1
           hlo: %mul = f32[11,9]{1,0} multiply(%p2, %p3)
     Root tiles:
-        0 root tile:
-             offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
-             strides [1, 1] upper bounds [10, 8]
-        1 root tile:
-             offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
-             strides [1, 1] upper bounds [11, 9]
+      0 root tile:
+           offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
+           strides [1, 1] upper bounds [10, 8]
+      1 root tile:
+           offsets [tid_0 * ts_2, tid_1 * ts_3] sizes [ts_2, ts_3]
+           strides [1, 1] upper bounds [11, 9]
   )"));
 }
 
+class TilingSpaceSimplifyExpressionTest : public TilingSpaceTest {
+ public:
+  void SetUp() override {
+    TilingSpaceTest::SetUp();
+    HloInstruction* root = ParseAndGetRoot(R"(
+        HloModule m
+        ENTRY e {
+          p0 = f32[100, 10] parameter(0)
+          ROOT a0 = f32[100, 10] exponential(p0)
+        }
+    )");
+
+    auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+    ASSERT_OK_AND_ASSIGN(tiling_space_,
+                         TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+
+    // Assign concrete tile sizes of [16, 2].
+    // Dimension 0 (100) / 16 = 7 blocks (tid_0 in [0, 6]).
+    // Dimension 1 (10) / 2 = 5 blocks (tid_1 in [0, 4]).
+    CHECK_OK(tiling_space_->AssignTileSizes({16, 2}));
+  }
+
+  std::unique_ptr<TilingSpace> tiling_space_;
+};
+
+TEST_F(TilingSpaceSimplifyExpressionTest, ModRemovedIfLessThanDivisor) {
+  SymbolicExpr tid_0 = CreateDimExpr(0, &mlir_context_);
+  EXPECT_EQ(tiling_space_->SimplifyExpression((tid_0 * 8) % 96), tid_0 * 8);
+}
+
+TEST_F(TilingSpaceSimplifyExpressionTest, FloorDivFactorsDivisor) {
+  SymbolicExpr tid_1 = CreateDimExpr(1, &mlir_context_);
+  EXPECT_EQ(tiling_space_->SimplifyExpression((tid_1 * 2).floorDiv(10)),
+            tid_1.floorDiv(5));
+}
+
+TEST_F(TilingSpaceSimplifyExpressionTest,
+       ExpressionUnchangedIfNotAlgebraicallyFolds) {
+  SymbolicExpr tid_0 = CreateDimExpr(0, &mlir_context_);
+  EXPECT_EQ(tiling_space_->SimplifyExpression(tid_0 * 16 + 500),
+            tid_0 * 16 + 500);
+}
+
+TEST_F(TilingSpaceSimplifyExpressionTest, NestedFloorDivFactorsDivisor) {
+  auto expr = ParseSymbolicExpr("(d0 * 16 + d1 * 2) / 200", &mlir_context_,
+                                /*num_dims=*/2);
+  EXPECT_EQ(tiling_space_->SimplifyExpression(expr),
+            ParseSymbolicExpr("(d0 * 8 + d1) / 100", &mlir_context_,
+                              /*num_dims=*/2));
+}
+
+TEST_F(TilingSpaceSimplifyExpressionTest, NestedModRemovedIfLessThanDivisor) {
+  auto expr = ParseSymbolicExpr("(d0 * 16 + d1 * 2) mod 200", &mlir_context_,
+                                /*num_dims=*/2);
+  EXPECT_EQ(
+      tiling_space_->SimplifyExpression(expr),
+      ParseSymbolicExpr("d0 * 16 + d1 * 2", &mlir_context_, /*num_dims=*/2));
+}
 }  // namespace
 }  // namespace xla::gpu::experimental

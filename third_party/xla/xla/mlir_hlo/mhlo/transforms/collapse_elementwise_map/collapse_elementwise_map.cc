@@ -98,10 +98,5 @@ struct CollapseElementwiseMapPass
 };
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>>
-createCollapseElementwiseMapPass() {
-  return std::make_unique<CollapseElementwiseMapPass>();
-}
-
 }  // namespace mhlo
 }  // namespace mlir

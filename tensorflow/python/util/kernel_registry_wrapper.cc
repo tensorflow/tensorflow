@@ -20,7 +20,7 @@ limitations under the License.
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(_pywrap_kernel_registry, m) {
+PYBIND11_MODULE(_pywrap_kernel_registry, m, pybind11::mod_gil_not_used()) {
   m.def("TryFindKernelClass", [](const std::string& serialized_node_def) {
     return py::bytes(tensorflow::swig::TryFindKernelClass(serialized_node_def));
   });
