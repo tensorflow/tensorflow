@@ -82,8 +82,10 @@ TEST_F(CudnnFusionCompilerTest,
       hlo_module->entry_computation()->root_instruction();
   auto* fusion = Cast<HloFusionInstruction>(root);
 
-  int plan_count = CuDnnFusionCompiler::GetAvailablePlanCount(
-      stream_executor(), stream_executor()->GetDeviceDescription(), *fusion);
+  ASSERT_OK_AND_ASSIGN(int plan_count,
+                       CuDnnFusionCompiler::GetAvailablePlanCount(
+                           stream_executor(),
+                           stream_executor()->GetDeviceDescription(), *fusion));
   EXPECT_GT(plan_count, 0);
 }
 
