@@ -64,6 +64,83 @@ diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialec
  
  #endif  // STABLEHLO_DIALECT_CHLO_OPS
 -
+diff --ruN a/stablehlo/stablehlo/dialect/Serialization.cpp b/stablehlo/stablehlo/dialect/Serialization.cpp
+--- stablehlo/stablehlo/dialect/Serialization.cpp
++++ stablehlo/stablehlo/dialect/Serialization.cpp
+@@ -15,8 +15,11 @@
+ 
+ #include "stablehlo/dialect/Serialization.h"
+ 
++#include <utility>
++
+ #include "llvm/Support/Debug.h"
+ #include "llvm/Support/MemoryBuffer.h"
++#include "llvm/Support/SourceMgr.h"
+ #include "mlir/Bytecode/BytecodeReader.h"
+ #include "mlir/Bytecode/BytecodeWriter.h"
+ #include "mlir/IR/BuiltinOps.h"
+@@ -78,10 +81,10 @@
+   return writeBytecodeToFile(module, os, writerConfig);
+ }
+ 
+-OwningOpRef<ModuleOp> deserializePortableArtifact(StringRef sourceStr,
++OwningOpRef<ModuleOp> deserializePortableArtifact(llvm::SourceMgr& sourceMgr,
+                                                   MLIRContext* context) {
+   context->loadDialect<vhlo::VhloDialect>();
+-  auto module = parseSourceString<ModuleOp>(sourceStr, context);
++  auto module = parseSourceFile<ModuleOp>(sourceMgr, context);
+   if (!module) {
+     emitError(UnknownLoc::get(context))
+         << "failed to deserialize portable artifact using StableHLO_v"
+@@ -97,6 +100,22 @@
+   }
+ 
+   return module;
++}
++
++OwningOpRef<ModuleOp> deserializePortableArtifact(StringRef sourceStr,
++                                                  MLIRContext* context) {
++  auto memBuffer =
++      llvm::MemoryBuffer::getMemBuffer(sourceStr, /*BufferName=*/"",
++                                       /*RequiresNullTerminator=*/false);
++  if (!memBuffer) {
++    emitError(UnknownLoc::get(context))
++        << "failed to get memory buffer for portable artifact";
++    return nullptr;
++  }
++
++  llvm::SourceMgr sourceMgr;
++  sourceMgr.AddNewSourceBuffer(std::move(memBuffer), SMLoc());
++  return deserializePortableArtifact(sourceMgr, context);
+ }
+ 
+ FailureOr<vhlo::Version> getPortableArtifactVersion(llvm::StringRef bytecode) {
+diff --ruN a/stablehlo/stablehlo/dialect/Serialization.h b/stablehlo/stablehlo/dialect/Serialization.h
+--- stablehlo/stablehlo/dialect/Serialization.h
++++ stablehlo/stablehlo/dialect/Serialization.h
+@@ -16,6 +16,7 @@
+ #ifndef STABLEHLO_DIALECT_SERIALIZATION_H
+ #define STABLEHLO_DIALECT_SERIALIZATION_H
+ 
++#include "llvm/Support/SourceMgr.h"
+ #include "mlir/IR/BuiltinOps.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/Support/LogicalResult.h"
+@@ -36,6 +37,14 @@
+                                         StringRef targetVersion,
+                                         raw_ostream& os,
+                                         bool allowOtherDialects = false);
++
++// Read StableHLO portable artifact
++//
++// Can fail if `sourceMgr` cannot be expressed in the current version of
++// StableHLO, e.g. if it's using incompatible features. Returns nullptr if
++// `sourceMgr` is invalid or fails to deserialize.
++OwningOpRef<ModuleOp> deserializePortableArtifact(llvm::SourceMgr& sourceMgr,
++                                                  MLIRContext* context);
+ 
+ // Read StableHLO portable artifact
+ //
 diff --ruN a/stablehlo/stablehlo/dialect/Version.cpp b/stablehlo/stablehlo/dialect/Version.cpp
 --- stablehlo/stablehlo/dialect/Version.cpp
 +++ stablehlo/stablehlo/dialect/Version.cpp
