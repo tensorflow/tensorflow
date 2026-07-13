@@ -1577,6 +1577,17 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
     check_dtypes(dtypes.int64, dtypes.int32)
     check_dtypes(dtypes.int64, dtypes.int64)
 
+  def testJitCompileWithFloat16Lengths(self):
+
+    @def_function.function(jit_compile=True)
+    def sequence_mask_fn(lengths):
+      return array_ops.sequence_mask(lengths)
+
+    lengths = constant_op.constant([3, 2], dtype=dtypes.float16)
+    self.assertAllEqual(
+        self.evaluate(sequence_mask_fn(lengths)),
+        [[True, True, True], [True, True, False]])
+
   def testOutputDtype(self):
 
     def check_output_dtype(output_dtype):
