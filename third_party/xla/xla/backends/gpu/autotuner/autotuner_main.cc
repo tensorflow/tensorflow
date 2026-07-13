@@ -72,7 +72,8 @@ This tool autotunes a list of HLO modules and prints the results to stdout.
 
 Usage:
 
-  bazel run autotuner_main -- --hlo_files=path/to/*.hlo,path/to/hlo_module2.hlo
+  bazel run autotuner_main -- --hlo_files=path/to/*.hlo,path/to/hlo_module2.hlo \
+    [--cache_dir=path/to/cache]
 )";
 }  // namespace
 
@@ -248,20 +249,19 @@ absl::Status RunAutotuning(const std::vector<std::string>& hlo_files,
   ASSIGN_OR_RETURN(AutotunerEnvironment env,
                    CreateAutotunerEnvironment(debug_options));
 
-  std::unique_ptr<AutotunerCacheInterface> autotuner_cache;
-
+  std::unique_ptr<AutotunerCacheInterface> l2_cache;
   if (!cache_dir.empty()) {
-    auto dir_cache = std::make_unique<DirectoryCache>(
+    l2_cache = std::make_unique<DirectoryCache>(
         env.cache_ctx, std::string(cache_dir), CacheMode::kReadWrite,
         KeyMatchingMode::kLoose);
-    auto local_cache = std::make_unique<LocalCache>(
-        dir_cache->GetKeyMatchingMode(),
-        &LocalCacheStorage::GetInstance(env.cache_ctx));
-    autotuner_cache = std::make_unique<TieredCache>(std::move(local_cache),
-                                                    std::move(dir_cache));
   } else {
-    autotuner_cache = std::make_unique<PrintingAutotunerCache>();
+    l2_cache = std::make_unique<PrintingAutotunerCache>();
   }
+  auto local_cache = std::make_unique<LocalCache>(
+      l2_cache->GetKeyMatchingMode(),
+      &LocalCacheStorage::GetInstance(env.cache_ctx));
+  auto autotuner_cache = std::make_unique<TieredCache>(std::move(local_cache),
+                                                       std::move(l2_cache));
 
   InstructionFilterFn should_autotune_instr = GetShouldAutotuneInstructionFn(
       debug_options,
