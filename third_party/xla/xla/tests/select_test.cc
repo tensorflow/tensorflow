@@ -31,7 +31,7 @@ namespace {
 constexpr ErrorSpec kErrorSpec{0.0001};
 
 using SelectTest =
-    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(SelectTest, SelectScalarF32True) {
   XlaBuilder builder(TestName());

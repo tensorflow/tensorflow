@@ -32,7 +32,7 @@ namespace xla {
 namespace {
 
 class UnaryOpTest : public ClientLibraryTestRunnerMixin<
-                        HloPjRtInterpreterReferenceMixin<HloTestBase>> {
+                        HloInterpreterReferenceMixin<HloTestBase>> {
  protected:
   template <typename T>
   T inf() {

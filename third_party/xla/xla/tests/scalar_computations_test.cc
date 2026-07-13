@@ -43,9 +43,8 @@ namespace {
 
 constexpr ErrorSpec kErrorSpec{0.0001};
 
-class ScalarComputationsTest
-    : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloTestBase>> {
+class ScalarComputationsTest : public ClientLibraryTestRunnerMixin<
+                                   HloInterpreterReferenceMixin<HloTestBase>> {
  protected:
   // A template for building and running a binary comparison test.
   template <typename NativeT>
@@ -282,7 +281,7 @@ void PrintTo(const DivS32Params& p, std::ostream* os) {
 }
 
 class DivS32Test : public ClientLibraryTestRunnerMixin<
-                       HloPjRtInterpreterReferenceMixin<HloTestBase>>,
+                       HloInterpreterReferenceMixin<HloTestBase>>,
                    public ::testing::WithParamInterface<DivS32Params> {};
 
 TEST_P(DivS32Test, DivideTwoScalarsS32) {

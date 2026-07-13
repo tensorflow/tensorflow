@@ -68,7 +68,7 @@ namespace {
 using ::testing::SizeIs;
 
 class WhileTest : public ClientLibraryTestRunnerMixin<
-                      HloPjRtInterpreterReferenceMixin<HloTestBase>> {};
+                      HloInterpreterReferenceMixin<HloTestBase>> {};
 
 // Tests a while node when the result type T is S32.
 //

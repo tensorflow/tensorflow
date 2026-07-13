@@ -39,7 +39,7 @@ namespace xla {
 namespace {
 
 using TwoPlusTwoSimpleTest =
-    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(TwoPlusTwoSimpleTest, TwoPlusTwoVector) {
   XlaBuilder builder("two_plus_two");

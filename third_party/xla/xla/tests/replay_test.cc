@@ -39,7 +39,7 @@ namespace {
 using ::tsl::proto_testing::EqualsProto;
 
 class ReplayTest : public ClientLibraryTestRunnerMixin<
-                       HloPjRtInterpreterReferenceMixin<HloTestBase>> {};
+                       HloInterpreterReferenceMixin<HloTestBase>> {};
 
 TEST_F(ReplayTest, TwoPlusTwoReplay) {
   // Make 2+2 computation.
