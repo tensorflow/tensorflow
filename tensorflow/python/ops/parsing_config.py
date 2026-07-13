@@ -394,11 +394,7 @@ class FixedLenSequenceFeature(collections.namedtuple(
     except Exception as e:
       raise ValueError(f"Invalid shape: {shape}. Error: {e}") from e
     for i, dim in enumerate(feature_shape.dims):
-      if dim.value is None:
-        raise ValueError(
-            f"All shape dimensions must be fully defined and positive, but "
-            f"dimension {i} is unknown (None). Got shape={shape}")
-      elif dim.value < 1:
+      if dim.value is not None and dim.value < 1:
         raise ValueError(
             f"All shape dimensions must be positive, but "
             f"dimension {i} is {dim.value}. Got shape={shape}")
