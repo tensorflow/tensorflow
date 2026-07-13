@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/strings/cord.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -69,7 +68,7 @@ void IfrtAtomProgramsFromVhloPass::runOnOperation() {
   mlir::MLIRContext& context = getContext();
   for (const auto& atom_program_proto : atom_programs_) {
     auto atom_program_module = mlir::stablehlo::deserializePortableArtifact(
-        absl::Cord(atom_program_proto.program()).Flatten(), &context);
+        atom_program_proto.program(), &context);
     if (!atom_program_module) {
       module->emitOpError()
           << "Failed to deserialize atom program `" << atom_program_proto.name()
