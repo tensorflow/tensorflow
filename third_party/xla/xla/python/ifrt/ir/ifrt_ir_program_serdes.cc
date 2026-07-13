@@ -182,8 +182,10 @@ class IfrtIRProgramSerDes
     if (!program_proto.ParseFromString(serialized)) {
       return absl::InvalidArgumentError("Failed to parse IfrtIrProgramProto");
     }
-    ASSIGN_OR_RETURN(auto module, support::ParseMlirModuleString(
-                                      program_proto.ifrt_program(), *context));
+    ASSIGN_OR_RETURN(
+        auto module,
+        support::ParseMlirModuleString(
+            absl::Cord(program_proto.ifrt_program()).Flatten(), *context));
 
     if (program_proto.ifrt_version().empty()) {
       // The program was not versioned on serialization. The whole IFRT IR
