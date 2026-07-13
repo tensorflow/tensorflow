@@ -13,27 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PJRT_CPU_TRACKED_CPU_DEVICE_BUFFER_H_
-#define XLA_PJRT_CPU_TRACKED_CPU_DEVICE_BUFFER_H_
+#ifndef XLA_PJRT_CPU_CPU_DEVICE_MEMORY_H_
+#define XLA_PJRT_CPU_CPU_DEVICE_MEMORY_H_
 
 #include <cstddef>
 #include <cstdlib>
 #include <memory>
-#include <vector>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
-#include "xla/future.h"
-#include "xla/pjrt/abstract_tracked_device_buffer.h"
-#include "xla/pjrt/cpu/cpu_event.h"
-#include "xla/pjrt/device_event.h"
-#include "xla/pjrt/raw_buffer.h"
-#include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 
@@ -140,4 +130,4 @@ class CpuDeviceMemory {
 
 }  // namespace xla
 
-#endif  // XLA_PJRT_CPU_TRACKED_CPU_DEVICE_BUFFER_H_
+#endif  // XLA_PJRT_CPU_CPU_DEVICE_MEMORY_H_

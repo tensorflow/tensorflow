@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
+#include "xla/pjrt/cpu/cpu_device_memory.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -27,21 +27,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/alignment.h"
-#include "xla/future.h"
-#include "xla/pjrt/abstract_tracked_device_buffer.h"
-#include "xla/pjrt/common_pjrt_client.h"
-#include "xla/pjrt/cpu/cpu_event.h"
-#include "xla/pjrt/cpu/raw_buffer.h"
-#include "xla/pjrt/device_event.h"
-#include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/raw_buffer.h"
-#include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/concurrency/ref_count.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/casts.h"
 #include "tsl/platform/mem.h"
 
 namespace xla {

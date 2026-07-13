@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/pjrt/abstract_tracked_device_buffer.h"
+#include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/cpu/abstract_cpu_buffer.h"
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/cpu/cpu_event.h"
@@ -47,11 +47,10 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ::tsl::BlockUntilReady;
 using ::tsl::MakeConstructedAsyncValueRef;
 using ::tsl::thread::ThreadPool;
 
-TEST(TrackedCpuDeviceBufferTest, Basic) {
+TEST(CpuDeviceMemoryTest, Basic) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   PjRtMemorySpace* memory_space = client->memory_spaces()[0];
   std::string expected = "tracked_cpu_device_buffer_test";
@@ -69,22 +68,16 @@ TEST(TrackedCpuDeviceBufferTest, Basic) {
     definition_event.SetStateConcrete();
   });
 
-  absl::InlinedVector<PjRtDeviceEventRef, 2> definition_events;
-  definition_events.push_back(PjRtDeviceEventRef(definition_event));
-  AbstractTrackedDeviceBuffer tracked_buffer(
-      buffer, std::move(definition_events), true);
+  BlockUntilReady(definition_event);
 
-  ABSL_ASSERT_OK(tracked_buffer.BlockForOperationsToComplete(memory_space));
-
-  auto result =
-      tracked_buffer.raw_buffer()->down_cast<CpuRawBuffer>()->buffer();
+  auto result = buffer->buffer();
   ASSERT_TRUE(result.IsAvailable());
   EXPECT_EQ(std::string(static_cast<const char*>(result->untyped_data()),
                         result->size_bytes()),
             expected);
 }
 
-TEST(TrackedCpuDeviceBufferTest, BasicError) {
+TEST(CpuDeviceMemoryTest, BasicError) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   PjRtMemorySpace* memory_space = client->memory_spaces()[0];
   TF_ASSERT_OK_AND_ASSIGN(auto buffer,
@@ -102,17 +95,15 @@ TEST(TrackedCpuDeviceBufferTest, BasicError) {
 
   absl::InlinedVector<PjRtDeviceEventRef, 2> definition_events;
   definition_events.push_back(PjRtDeviceEventRef(definition_event));
-  AbstractTrackedDeviceBuffer tracked_buffer(
-      buffer, std::move(definition_events), true);
 
-  EXPECT_FALSE(tracked_buffer.BlockForOperationsToComplete(memory_space).ok());
+  BlockUntilReady(definition_event);
 
   ASSERT_TRUE(definition_event.IsError());
   EXPECT_EQ(definition_event.GetError().message(),
             "tracked_cpu_device_buffer_test error.");
 }
 
-TEST(TrackedCpuDeviceBufferTest, DelayedAllocation) {
+TEST(CpuDeviceMemoryTest, DelayedAllocation) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   PjRtMemorySpace* memory_space = client->memory_spaces()[0];
   std::string expected = "tracked_cpu_device_buffer_test";
@@ -126,16 +117,14 @@ TEST(TrackedCpuDeviceBufferTest, DelayedAllocation) {
   auto definition_event = MakeConstructedAsyncValueRef<CpuEvent>();
   absl::InlinedVector<PjRtDeviceEventRef, 2> definition_events;
   definition_events.push_back(PjRtDeviceEventRef(definition_event));
-  AbstractTrackedDeviceBuffer tracked_buffer(
-      tsl::MakeRef<CpuRawBuffer>(memory_space, buffer, expected.size(),
-                                 /*is_mutable=*/true),
-      std::move(definition_events), true);
 
-  auto result =
-      tracked_buffer.raw_buffer()->down_cast<CpuRawBuffer>()->buffer();
+  auto raw_buffer = tsl::MakeRef<CpuRawBuffer>(memory_space, buffer,
+                                               /*buffer_size=*/expected.size(),
+                                               /*is_mutable=*/true);
+  auto result = raw_buffer->buffer();
+
   ASSERT_FALSE(result.IsAvailable());
-  ASSERT_EQ(tracked_buffer.raw_buffer()->GetOnDeviceSizeInBytes(),
-            expected.size());
+  ASSERT_EQ(raw_buffer->GetOnDeviceSizeInBytes(), expected.size());
 
   ThreadPool thread_pool(tsl::Env::Default(), "tracked_buffer_test",
                          /*num_threads=*/4);
@@ -146,14 +135,14 @@ TEST(TrackedCpuDeviceBufferTest, DelayedAllocation) {
     definition_event.SetStateConcrete();
   });
 
-  ABSL_ASSERT_OK(tracked_buffer.BlockForOperationsToComplete(memory_space));
+  BlockUntilReady(definition_event);
 
   EXPECT_EQ(std::string(static_cast<const char*>(result->untyped_data()),
                         result->size_bytes()),
             expected);
 }
 
-TEST(TrackedCpuDeviceBufferTest, PackOrCopyOobWrite) {
+TEST(CpuDeviceMemoryTest, PackOrCopyOobWrite) {
   Shape shape_large = ShapeUtil::MakeShape(S4, {16});
   std::vector<s4> data(16, s4(1));
   Literal literal = LiteralUtil::CreateR1<s4>(data);
