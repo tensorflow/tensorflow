@@ -253,3 +253,12 @@ tf_cc_fuzz_test(
         "@xla//xla/tsl/platform:env",
     ],
 )
+
+tf_cc_fuzz_test(
+    name = "tflite_interp_overflow_fuzz",
+    srcs = ["tflite_interp_overflow_fuzz.cc"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:builtin_ops",
+    ],
+)
