@@ -57,6 +57,6 @@ fi
 
 if [[ "$TFCI_ARTIFACT_FINAL_PYPI_ENABLE" == 1 ]]; then
   pip install --upgrade twine keyring keyrings.google-artifactregistry-auth
-  twine upload $TFCI_ARTIFACT_FINAL_GAR_ARGS "$DOWNLOADS"/*.whl
   twine upload $TFCI_ARTIFACT_FINAL_PYPI_ARGS "$DOWNLOADS"/*.whl
+  twine upload $TFCI_ARTIFACT_FINAL_GAR_ARGS "$DOWNLOADS"/*.whl
 fi
