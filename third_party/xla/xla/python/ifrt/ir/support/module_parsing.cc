@@ -17,8 +17,12 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/SMLoc.h"
+#include "llvm/Support/SourceMgr.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
@@ -60,6 +64,27 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(&context);
   mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::parseSourceString<mlir::ModuleOp>(mlir_module_str, &context);
+  if (!module) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Failed to parse IFRT IR module string: %s",
+                        diagnostic_handler.ConsumeStatus().message()));
+  }
+  return module;
+}
+
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
+    const absl::Cord& mlir_module_str, mlir::MLIRContext& context) {
+  RegisterMlirDialects(context);
+  mlir::BaseScopedDiagnosticHandler diagnostic_handler(&context);
+  llvm::SourceMgr source_mgr;
+  for (const auto& chunk : mlir_module_str.Chunks()) {
+    source_mgr.AddNewSourceBuffer(
+        llvm::MemoryBuffer::getMemBuffer(chunk, /*BufferName=*/"",
+                                         /*RequiresNullTerminator=*/false),
+        llvm::SMLoc());
+  }
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceFile<mlir::ModuleOp>(source_mgr, &context);
   if (!module) {
     return absl::InvalidArgumentError(
         absl::StrFormat("Failed to parse IFRT IR module string: %s",

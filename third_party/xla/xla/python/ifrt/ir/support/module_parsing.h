@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_IR_SUPPORT_MODULE_PARSING_H_
 
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -36,6 +37,8 @@ void RegisterMlirDialects(mlir::MLIRContext& context);
 // Converts an IFRT IR module string to an mlir::Module.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
     absl::string_view mlir_module_str, mlir::MLIRContext& context);
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
+    const absl::Cord& mlir_module_str, mlir::MLIRContext& context);
 
 }  // namespace support
 }  // namespace ifrt

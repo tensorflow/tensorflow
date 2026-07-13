@@ -84,8 +84,8 @@ class IfrtIRProgramSerDes
     }
 
     IfrtIrProgramProto program_proto;
-    llvm::raw_string_ostream ifrt_ir_program_stream(
-        *program_proto.mutable_ifrt_program());
+    std::string program_string;
+    llvm::raw_string_ostream ifrt_ir_program_stream(program_string);
     mlir::BaseScopedDiagnosticHandler diagnostic_handler(
         program.mlir_module->getContext());
 
@@ -144,6 +144,9 @@ class IfrtIRProgramSerDes
             diagnostic_handler.ConsumeStatus().message()));
       }
     }
+    // OSS requires explicit string conversion
+    // NOLINTNEXTLINE(*-redundant-string-conversions)
+    program_proto.set_ifrt_program(absl::Cord(std::move(program_string)));
     return program_proto.SerializeAsString();
   }
 
