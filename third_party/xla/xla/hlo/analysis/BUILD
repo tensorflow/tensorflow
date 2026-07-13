@@ -544,6 +544,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/service:call_marker",
         "//xla/service:logical_buffer",
         "//xla/tsl/lib/gtl:compactptrset",
         "//xla/tsl/platform:logging",

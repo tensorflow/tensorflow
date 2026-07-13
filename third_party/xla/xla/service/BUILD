@@ -3715,6 +3715,7 @@ cc_library(
         "//xla:window_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/service:call_marker",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
@@ -4028,6 +4029,7 @@ cc_library(
         ":computation_layout",
         ":hlo_graph_dumper",
         ":logical_buffer",
+        ":tuple_util",
         "//xla:permutation_util",
         "//xla:shape_layout",
         "//xla:shape_util",
@@ -6836,6 +6838,7 @@ cc_library(
     hdrs = ["call_outliner.h"],
     deps = [
         ":call_marker",
+        "//xla:shape_util",
         "//xla:status_macros",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
