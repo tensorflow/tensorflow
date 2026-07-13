@@ -292,6 +292,7 @@ class PoolingTest(test.TestCase):
     values = self.evaluate(max_pool_3d)
     self.assertEqual(values.shape, (0, 56, 56, 56, 64))
 
+  @test_util.run_deprecated_v1
   def testMaxPool3DOutputWithZeroDim(self):
     """Verifies the output shape of the max pooling function
     which has one 0 dimension.
