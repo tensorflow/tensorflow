@@ -33,11 +33,40 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/call_marker.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/logging.h"
 
 namespace xla {
 namespace {
+
+// Recursively casts `inst` to `target_shape`. If `inst` is a tuple, it
+// recursively applies the cast to each element.
+HloInstruction* CastToShape(HloComputation* computation, HloInstruction* inst,
+                            const Shape& target_shape) {
+  if (inst->shape().IsToken()) {
+    return inst;
+  }
+  if (inst->shape().IsArray()) {
+    if (ShapeUtil::Compatible(inst->shape(), target_shape)) {
+      return computation->AddInstruction(
+          HloInstruction::CreateUnary(target_shape, HloOpcode::kCopy, inst));
+    }
+    return computation->AddInstruction(
+        HloInstruction::CreateBitcast(target_shape, inst));
+  }
+  CHECK(inst->shape().IsTuple());
+  std::vector<HloInstruction*> elements;
+  elements.reserve(target_shape.tuple_shapes_size());
+  for (int i = 0; i < target_shape.tuple_shapes_size(); ++i) {
+    HloInstruction* gte = computation->AddInstruction(
+        HloInstruction::CreateGetTupleElement(inst, i));
+    elements.push_back(
+        CastToShape(computation, gte, target_shape.tuple_shapes(i)));
+  }
+  return computation->AddInstruction(HloInstruction::CreateTuple(elements));
+}
 
 // Extracts the original computation name from the frontend attributes.
 std::string GetMarkedComputationName(const HloInstruction* instruction) {
@@ -98,12 +127,27 @@ absl::Status RestoreMetadataAndDependencies(HloInstruction* call_instruction,
         innermost_after->raw_backend_config_string());
   }
 
+  // Restore original instruction name if present.
+  std::string instruction_name;
+  if (innermost_after->has_frontend_attributes()) {
+    auto map = innermost_after->frontend_attributes().map();
+    auto it = map.find(kCallMarkedInstructionNameAttribute.data());
+    if (it != map.end()) {
+      instruction_name = it->second;
+    }
+  }
+
   // Restore original frontend attributes from the 'after' marker (excluding the
-  // internal marker attribute).
+  // internal marker attributes).
   FrontendAttributes attributes = innermost_after->frontend_attributes();
   attributes.mutable_map()->erase(kCallMarkedComputationAttribute.data());
+  attributes.mutable_map()->erase(kCallMarkedInstructionNameAttribute.data());
   if (!attributes.map().empty()) {
     call_instruction->set_frontend_attributes(attributes);
+  }
+
+  if (!instruction_name.empty()) {
+    call_instruction->SetAndSanitizeName(instruction_name);
   }
 
   // Restore control predecessors from the 'before' marker.
@@ -246,19 +290,30 @@ absl::StatusOr<HloInstruction*> CallOutliner::OutlineAndReplaceBlock(
   std::vector<HloInstruction*> call_operands;
   ASSIGN_OR_RETURN(HloComputation * outlined_computation,
                    BuildOutlinedComputation(module, block, call_operands));
+  std::string original_computation_name = GetMarkedComputationName(block.after);
+  if (!original_computation_name.empty()) {
+    outlined_computation->SetAndSanitizeName(original_computation_name);
+  }
   outlined_computation->SetExecutionThread(computation->execution_thread());
   VLOG(2) << "CallOutliner created outlined computation "
           << outlined_computation->name() << " in module " << module->name();
 
   HloInstruction* call_instruction =
       computation->AddInstruction(HloInstruction::CreateCall(
-          innermost_after->shape(), call_operands, outlined_computation));
+          outlined_computation->root_instruction()->shape(), call_operands,
+          outlined_computation));
 
   RETURN_IF_ERROR(RestoreMetadataAndDependencies(
       call_instruction, innermost_before, innermost_after));
 
+  HloInstruction* replacement = call_instruction;
+  if (!ShapeUtil::Equal(innermost_after->shape(), call_instruction->shape())) {
+    replacement =
+        CastToShape(computation, call_instruction, innermost_after->shape());
+  }
+
   // Replace _after marker uses with the new call result.
-  RETURN_IF_ERROR(innermost_after->ReplaceAllUsesWith(call_instruction));
+  RETURN_IF_ERROR(innermost_after->ReplaceAllUsesWith(replacement));
 
   // Replace _before marker uses.
   if (innermost_before->shape().IsTuple()) {
