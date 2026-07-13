@@ -21,6 +21,7 @@ limitations under the License.
 // data, which is dereferenced during Invoke. The OSS-Fuzz tensorflow build has
 // no TFLite target that reaches this path.
 
+#include <cstring>
 #include <memory>
 #include <string>
 
