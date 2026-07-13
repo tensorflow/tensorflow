@@ -360,8 +360,10 @@ class SqueezeOp : public XlaOpKernel {
         } else {
           // This dimension is not being squeezed.
           new_shape.push_back(existing_dim);
-          output_dim_sizes.push_back(xla::GetDimensionSize(ctx->Input(0), i));
-          dims_are_dynamic.push_back(shape.is_dynamic_dimension(i));
+          if (!shape.is_static()) {
+            output_dim_sizes.push_back(xla::GetDimensionSize(ctx->Input(0), i));
+            dims_are_dynamic.push_back(shape.is_dynamic_dimension(i));
+          }
         }
       } else {
         // Copy over all dimensions that are not guaranteed to be 1.
@@ -369,8 +371,10 @@ class SqueezeOp : public XlaOpKernel {
         // so we cannot squeeze it. We must keep it.
         if (shape.is_dynamic_dimension(i) || existing_dim != 1) {
           new_shape.push_back(existing_dim);
-          output_dim_sizes.push_back(xla::GetDimensionSize(ctx->Input(0), i));
-          dims_are_dynamic.push_back(shape.is_dynamic_dimension(i));
+          if (!shape.is_static()) {
+            output_dim_sizes.push_back(xla::GetDimensionSize(ctx->Input(0), i));
+            dims_are_dynamic.push_back(shape.is_dynamic_dimension(i));
+          }
         }
       }
     }
