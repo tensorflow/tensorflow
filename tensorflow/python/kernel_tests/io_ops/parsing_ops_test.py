@@ -1452,6 +1452,14 @@ class ParseSequenceExampleTest(test.TestCase):
         }))
     value.SerializeToString()  # Smoke test
 
+  def testFixedLenSequenceFeatureInvalidShapes(self):
+    with self.assertRaisesRegex(ValueError, "dimensions must be positive"):
+      parsing_ops.FixedLenSequenceFeature(shape=[0], dtype=dtypes.float32)
+    with self.assertRaisesRegex(ValueError, "Dimension -1 must be >= 0"):
+      parsing_ops.FixedLenSequenceFeature(shape=[-1], dtype=dtypes.float32)
+    with self.assertRaisesRegex(ValueError, "dimensions must be fully defined"):
+      parsing_ops.FixedLenSequenceFeature(shape=[None], dtype=dtypes.float32)
+
   def _test(self,
             kwargs,
             expected_context_values=None,

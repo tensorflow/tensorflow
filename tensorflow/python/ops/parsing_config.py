@@ -389,12 +389,19 @@ class FixedLenSequenceFeature(collections.namedtuple(
   """
 
   def __new__(cls, shape, dtype, allow_missing=False, default_value=None):
-    shape = tuple(shape) if shape else ()
-    for i, dim in enumerate(shape):
-      if dim < 1:
+    try:
+      feature_shape = tensor_shape.as_shape(shape)
+    except Exception as e:
+      raise ValueError(f"Invalid shape: {shape}. Error: {e}") from e
+    for i, dim in enumerate(feature_shape.dims):
+      if dim.value is None:
+        raise ValueError(
+            f"All shape dimensions must be fully defined and positive, but "
+            f"dimension {i} is unknown (None). Got shape={shape}")
+      elif dim.value < 1:
         raise ValueError(
             f"All shape dimensions must be positive, but "
-            f"dimension {i} is {dim}. Got shape={shape}")
+            f"dimension {i} is {dim.value}. Got shape={shape}")
     return super(FixedLenSequenceFeature, cls).__new__(
         cls, shape, dtype, allow_missing, default_value)
 
