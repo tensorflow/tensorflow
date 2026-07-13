@@ -16,6 +16,8 @@ limitations under the License.
 // This file contains the patterns to convert arith.index_cast on tensors to
 // tensor ops and index_cast on scalars.
 
+#include <utility>
+
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
