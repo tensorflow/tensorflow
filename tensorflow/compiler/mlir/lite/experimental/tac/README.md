@@ -115,7 +115,7 @@ class MyCustomHardware : public TargetHardware {
 
 ## TAC workflow
 
-The workflow of target-aware-conversion is as followed:
+The workflow of target-aware-conversion is as follows:
 
 1 Try to break down the whole graph into several subgraphs based on hardwares'
 capabilities. See the diagram below, let's say our desired target backends are
@@ -139,7 +139,7 @@ supported by "GPU". So we will end up with 3 subgraphs as shown in the diagram.
 4 Pick the proper subgraphs from the alternative views for execution based on
 costs(computation costs, transfer costs, quant/dequant costs). As shown in the
 diagram below, since cross-device data transferring cost is high, even "G" + "H"
-running on GPU maybe less efficient than "C" running on "CPU", we will still
+running on GPU may be less efficient than "C" running on "CPU", we will still
 pick "G" + "H" subgraph.
 
 ![Pick subgraphs](g3doc/images/pick_subgraphs.png)
@@ -162,7 +162,7 @@ We have already modeled `cpu_hardware` & `gpu_hardware` as well as the
 
 #### Target Annotation Pass
 In this pass, every op will be targeted with the user specified targets based on
-the device capabilites. For example, If the user specified the desired targets
+the device capabilities. For example, If the user specified the desired targets
 are "GPU", "CPU", `conv2d` can run on both "GPU" and "CPU", we will annotate
 the op `conv2d` with "GPU" since it's preferred; `pack` can only run on "CPU",
 so we will annotate the op with "CPU" since "GPU" does not support this op.

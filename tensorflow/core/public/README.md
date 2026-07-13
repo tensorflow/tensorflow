@@ -37,7 +37,7 @@ If you are running TensorFlow locally, link your binary with
 
 //third_party/tensorflow/core
 
-and link in the operation implementations you want to supported, e.g.,
+and link in the operation implementations you want to support, e.g.,
 
 //third_party/tensorflow/core:kernels
 

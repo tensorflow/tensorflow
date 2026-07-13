@@ -172,7 +172,7 @@ bash tensorflow/lite/tools/build_aar.sh \
 
 Above script will generate the `tensorflow-lite.aar` file and optionally the
 `tensorflow-lite-select-tf-ops.aar` file if one of the models is using
-Tensorflow ops. For more details, please see the
+TensorFlow ops. For more details, please see the
 [Reduce TensorFlow Lite binary size](../guide/reduce_binary_size.md) section.
 
 #### Add AAR directly to project

@@ -43,7 +43,7 @@ a feature vector, the returned size will be 0 and the values pointer will be
 
 An example of how to use the frontend is provided in frontend_main.cc and its
 binary frontend_main. This example, expects a path to a file containing `int16`
-PCM features at a sample rate of 16KHz, and upon execution will printing out
+PCM features at a sample rate of 16KHz, and upon execution will print out
 the coefficients according to the frontend default configuration.
 
 ## Extra features

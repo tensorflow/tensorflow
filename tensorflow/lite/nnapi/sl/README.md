@@ -18,4 +18,4 @@ list of differences from the AOSP version:
 *   `SupportLibrary.h` declarations are wrapped into `tflite::nnapi` namespace.
 *   `__BEGIN_DECLS` and `__END_DECLS` are changed to explicit `extern "C"`
     blocks.
-*   Copyright notice is changed to the one used in Tensorflow project.
+*   Copyright notice is changed to the one used in TensorFlow project.

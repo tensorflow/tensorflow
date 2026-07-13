@@ -1,4 +1,4 @@
-# Tensorflow Distribute Libraries
+# TensorFlow Distribute Libraries
 
 ## Overview
 
@@ -68,8 +68,8 @@ def train_step(iterator):
   return tpu_strategy.run(
       step_fn, args=(next(iterator),))
 
-# Run the loop body once on at dataset.
-dataset = tf.data.Dataset.from_tensors(([1.], [1.])).repeat(100).batch(10
+# Run the loop body once on a dataset.
+dataset = tf.data.Dataset.from_tensors(([1.], [1.])).repeat(100).batch(10)
 input_iterator = iter(tpu_strategy.experimental_distribute_dataset(dataset))
 train_step(input_iterator)
 ```

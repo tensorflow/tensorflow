@@ -1,6 +1,6 @@
-# Composable Tensorflow
+# Composable TensorFlow
 
-## Composable Tensorflow
+## Composable TensorFlow
 
 Composable TensorFlow (TF) is the framework for defining portable TF ops with
 composition in the authoring language.
@@ -124,7 +124,7 @@ for eager execution.
 
 Like the op kernels, the op composition can be pre-compiled to the backend IR
 so the decomposition can be invoked at runtime. A Python [define_op_template.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/tfr/define_op_template.py)
-file is provided as an example to build composite ops in the users project
+file is provided as an example to build composite ops in the user's project
 directory. All the targets required to build the new ops are created by the
 following target:
 

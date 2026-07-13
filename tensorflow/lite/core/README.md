@@ -16,7 +16,7 @@ categories.
 
     For example:
     - `tensorflow/lite/core/interpreter.h` is a private header file that is
-      included from the public "shim" header file `tensorflow/lite/interpeter.h`.
+      included from the public "shim" header file `tensorflow/lite/interpreter.h`.
 
     These private header files should be used as follows: `#include`s from `.cc`
     files in TF Lite itself that are _implementing_ the TF Lite APIs should

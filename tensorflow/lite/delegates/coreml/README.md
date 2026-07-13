@@ -1,4 +1,4 @@
-# Tensorflow Lite Core ML Delegate
+# TensorFlow Lite Core ML Delegate
 
 TensorFlow Lite Core ML Delegate enables running TensorFlow Lite models on
 [Core ML framework](https://developer.apple.com/documentation/coreml),

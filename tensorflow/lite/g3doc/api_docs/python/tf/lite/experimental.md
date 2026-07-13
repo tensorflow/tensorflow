@@ -33,7 +33,7 @@ Public API for tf.lite.experimental namespace.
 
 [`class Analyzer`](../../tf/lite/experimental/Analyzer): Provides a collection of TFLite model analyzer tools.
 
-[`class OpResolverType`](../../tf/lite/experimental/OpResolverType): Different types of op resolvers for Tensorflow Lite.
+[`class OpResolverType`](../../tf/lite/experimental/OpResolverType): Different types of op resolvers for TensorFlow Lite.
 
 [`class QuantizationDebugOptions`](../../tf/lite/experimental/QuantizationDebugOptions): Debug options to set up a given QuantizationDebugger.
 

@@ -42,11 +42,11 @@ See the instruction below about how to populate, visualize, and read metadata.
 
 ## Setup the metadata tools
 
-Before adding metadata to your model, you will need to a Python programming
+Before adding metadata to your model, you will need a Python programming
 environment setup for running TensorFlow. There is a detailed guide on how to
 set this up [here](https://www.tensorflow.org/install).
 
-After setup the Python programming environment, you will need to install
+After setting up the Python programming environment, you will need to install
 additional tooling:
 
 ```sh
@@ -76,7 +76,7 @@ There are three parts to the model metadata in the
     [SubGraphMetadata.output_tensor_metadata](https://github.com/tensorflow/tflite-support/blob/4cd0551658b6e26030e0ba7fc4d3127152e0d4ae/tensorflow_lite_support/metadata/metadata_schema.fbs#L599).
 
 Since TensorFlow Lite only supports single subgraph at this point, the
-[TensorFlow Lite code generator](../../inference_with_metadata/codegen..md#generate-model-interfaces-with-tensorflow-lite-code-generator-codegen)
+[TensorFlow Lite code generator](../../inference_with_metadata/codegen.md#generate-model-interfaces-with-tensorflow-lite-code-generator-codegen)
 and the
 [Android Studio ML Binding feature](../../inference_with_metadata/codegen.md#use-android-studio-ml-model-binding-mlbinding)
 will use `ModelMetadata.name` and `ModelMetadata.description`, instead of

@@ -28,11 +28,11 @@ layers).
 On the other hand, most modern mobile phones contain chips that are better at
 handling these heavy operations. Utilizing them for neural network operations
 provides huge benefits in terms of latency and power efficiency. For example,
-GPUs can provide upto a
+GPUs can provide up to a
 [5x speedup](https://blog.tensorflow.org/2020/08/faster-mobile-gpu-inference-with-opencl.html)
 in latency, while the
 [Qualcomm® Hexagon DSP](https://developer.qualcomm.com/software/hexagon-dsp-sdk/dsp-processor)
-has shown to reduce power consumption upto 75% in our experiments.
+has shown to reduce power consumption up to 75% in our experiments.
 
 Each of these accelerators have associated APIs that enable custom computations,
 such as [OpenCL](https://www.khronos.org/opencl/) or

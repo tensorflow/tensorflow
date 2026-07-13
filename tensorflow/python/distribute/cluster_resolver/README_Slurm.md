@@ -7,7 +7,7 @@ per node and task are the same. This means on nodes with 4 GPUs each it will be
 possible to allocate 4 processes on node A and only 2 on node B. The resolution
 is done by determining job configuration through a number of Slurm variables and
 can be overwritten by user input. By default everything is determined from the
-Slurm environment, hence for most uses case no manual setting of parameters is
+Slurm environment, hence for most use cases no manual setting of parameters is
 required.
 
 ## How it works
@@ -27,10 +27,10 @@ distributions. However setting this is **NOT** recommended as there is a chance
 it makes `SLURM_PROCID` be wrong.
 
 A base port can be specified by user and in case there are more than one task
-launched per node the port number will be incremented for each additional tasks
+launched per node the port number will be incremented for each additional task
 on that node. However a reasonable default is used.
 
-The number of GPUs present on each node and number of GPUs for each tasks are
+The number of GPUs present on each node and number of GPUs for each task are
 automatically detected. This is done by checking for `CUDA_VISIBLE_DEVICES`
 first (which is set by Slurm to a list of GPUs for the current node) and has a
 fallback to using `nvidia-smi`. If this doesn't work or non-NVIDIA GPUs are used

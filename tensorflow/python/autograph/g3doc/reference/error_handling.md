@@ -192,7 +192,7 @@ InvalidArgumentError:  assertion failed: [example error]
 Within `@tf.function`, when AutoGraph fails to convert a function, it displays
 a warning message and attempts to run the function without conversion.
 
-For example, the code below make a call to a Python
+For example, the code below makes a call to a Python
 [generator](https://wiki.python.org/moin/Generators) function, which is not
 supported by AutoGraph:
 

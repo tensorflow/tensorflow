@@ -50,7 +50,7 @@ will need to update your [dependencies](https://www.tensorflow.org/lite/android/
 ## How to use the Acceleration Service API
 
 To use Acceleration Service, start by creating the acceleration configuration
-you want to evaluate for you model (e.g GPU with OpenGL). Then create a
+you want to evaluate for your model (e.g GPU with OpenGL). Then create a
 validation configuration with your model, some sample data and the expected
 model output. Finally call `validateConfig()` in passing both your
 acceleration configuration and validation configuration.
@@ -75,7 +75,7 @@ future.
 
 #### GPU acceleration configuration
 
-Create a GPU acceleration configuration as follow:
+Create a GPU acceleration configuration as follows:
 
 ```
 AccelerationConfig accelerationConfig = new GpuAccelerationConfig.Builder()
@@ -88,7 +88,7 @@ You must specify whether or not your model is using quantization with
 
 #### CPU acceleration configuration
 
-Create the CPU acceleration as follow:
+Create the CPU acceleration as follows:
 
 ```
 AccelerationConfig accelerationConfig = new CpuAccelerationConfig.Builder()
@@ -117,7 +117,7 @@ Create a
 [`ValidationConfig`](https://developers.google.com/android/reference/com/google/android/gms/tflite/acceleration/ValidationConfig)
 with
 [`CustomValidationConfig.Builder`](https://developers.google.com/android/reference/com/google/android/gms/tflite/acceleration/CustomValidationConfig.Builder)
-as follow:
+as follows:
 
 ```
 ValidationConfig validationConfig = new CustomValidationConfig.Builder()
@@ -141,7 +141,7 @@ https://developers.google.com/android/reference/com/google/android/gms/tflite/ac
 the configuration will be rejected.
 
 Optionally, you can also create a custom [`AccuracyValidator`](https://developers.google.com/android/reference/com/google/android/gms/tflite/acceleration/CustomValidationConfig.AccuracyValidator)
-as follow:
+as follows:
 
 ```
 class MyCustomAccuracyValidator implements AccuracyValidator {
