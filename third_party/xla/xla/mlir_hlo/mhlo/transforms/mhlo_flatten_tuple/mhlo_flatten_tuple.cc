@@ -16,7 +16,6 @@ limitations under the License.
 // This file implements logic for flattening tuples in HLO ops.
 
 #include <cassert>
-#include <memory>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
