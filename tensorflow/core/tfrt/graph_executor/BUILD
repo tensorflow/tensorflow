@@ -65,7 +65,6 @@ cc_library(
     hdrs = ["graph_executor.h"],
     deps = [
         ":executable_context",
-        ":export_mlir",
         ":graph_execution_options",
         ":sync_resource_state",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -258,10 +257,4 @@ cc_library(
         "//tensorflow/core/tfrt/utils:any_ptr",
         "@tf_runtime//:tensor",
     ],
-)
-
-cc_library(
-    name = "export_mlir",
-    hdrs = ["export_mlir.h"],
-    deps = ["@llvm-project//mlir:IR"],
 )
