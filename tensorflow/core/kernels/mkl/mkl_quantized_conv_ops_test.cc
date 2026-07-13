@@ -656,6 +656,39 @@ TEST_F(QuantizedConv2DTest, DepthwiseConv2DWithBiasNewAPI) {
   TestDepthwiseConv2DWithBias(false);
 }
 
+TEST_F(QuantizedConv2DTest,
+       DepthwiseConv2DWithBiasRejectsNonScalarInputRanges) {
+  TF_ASSERT_OK(NodeDefBuilder("quantized_depthwise_conv_op",
+                              "_MklQuantizedDepthwiseConv2DWithBias")
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("Tinput", DataTypeToEnum<quint8>::v())
+                   .Attr("Tfilter", DataTypeToEnum<qint8>::v())
+                   .Attr("out_type", DataTypeToEnum<qint32>::v())
+                   .Attr("strides", {1, 1, 1, 1})
+                   .Attr("padding", "SAME")
+                   .Attr("_kernel", "QuantizedMklOp")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+
+  AddInputFromArray<quint8>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
+  AddInputFromArray<qint8>(TensorShape({2, 2, 1, 1}), {1, 2, 3, 4});
+  AddInputFromArray<float>(TensorShape({1}), {0.5f});
+  AddInputFromArray<float>(TensorShape({2}), {0.0f, 0.0f});
+  AddInputFromArray<float>(TensorShape({2}), {5.0f, 5.0f});
+  AddInputFromArray<float>(TensorShape({}), {-127.0f});
+  AddInputFromArray<float>(TensorShape({}), {127.0f});
+
+  const Status status = RunOpKernel();
+  EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
+  EXPECT_THAT(status.message(), HasSubstr("`min_input` must be rank 0"));
+}
+
 TEST_F(QuantizedConv2DTest, DepthwiseConv2DWithBiasAndReluOldAPI) {
   TestDepthwiseConv2DWithBiasAndRelu(true);
 }
