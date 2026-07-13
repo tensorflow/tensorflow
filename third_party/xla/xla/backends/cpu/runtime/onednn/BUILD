@@ -40,6 +40,7 @@ onednn_graph_cc_library(
     name = "onednn_interop",
     hdrs = ["onednn_interop.h"],
     compatible_with = get_compatible_with_portable(),
+    copts = tsl_copts(),
     deps = [
         "//xla:util",
         "//xla/tsl/mkl:onednn",
@@ -99,6 +100,7 @@ cc_library(
     name = "onednn_threadpool",
     hdrs = ["onednn_threadpool.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    copts = tsl_copts(),
     deps = [
         "//xla/backends/cpu/runtime:work_queue",
         "//xla/tsl/concurrency:async_value",
