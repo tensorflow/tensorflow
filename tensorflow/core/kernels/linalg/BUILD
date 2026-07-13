@@ -150,7 +150,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "determinant_op",
     prefix = "determinant_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -329,6 +332,8 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
 )
