@@ -198,6 +198,13 @@ void DnnPooling3dGradImpl(
     return;
   }
 
+  // If output size has 0, we can skip as well to avoid CUDNN errors.
+  for (int64_t dim : output_size) {
+    if (dim == 0) {
+      return;
+    }
+  }
+
   const int64_t in_batch = GetTensorDim(tensor_in_shape, data_format, 'N');
   const int64_t in_features = GetTensorDim(tensor_in_shape, data_format, 'C');
 
