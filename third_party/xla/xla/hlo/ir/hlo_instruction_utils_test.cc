@@ -506,7 +506,6 @@ ENTRY main {
       StatusIs(absl::StatusCode::kInvalidArgument,
                ::testing::HasSubstr("has no valid wrapped computation")));
 }
-
 TEST_F(HloInstructionUtilsTest, GetAsyncBoundOperandsTest) {
   const char* const hlo = R"(
 HloModule test
