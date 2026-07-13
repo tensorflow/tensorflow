@@ -37,6 +37,7 @@ py_library(
         "unexported_constants.py",
     ],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",

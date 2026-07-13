@@ -31,8 +31,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
@@ -124,7 +124,7 @@ class DynamicSliceThunk : public Thunk {
   DynamicSliceThunk(const DynamicSliceThunk&) = delete;
   DynamicSliceThunk& operator=(const DynamicSliceThunk&) = delete;
 
-  const Thunk* embedded_thunk() const { return embedded_thunk_.get(); }
+  const ThunkExecutor& embedded_executor() const { return embedded_executor_; }
 
   absl::Status Prepare(const PrepareParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
@@ -141,8 +141,8 @@ class DynamicSliceThunk : public Thunk {
     std::string ToString() const;
   };
 
-  const SequentialThunk* get_embedded_thunk() const {
-    return embedded_thunk_.get();
+  const ThunkExecutor& get_embedded_executor() const {
+    return embedded_executor_;
   }
 
   std::vector<std::optional<BufferAllocation::Slice>> get_arguments() const {
@@ -194,7 +194,7 @@ class DynamicSliceThunk : public Thunk {
   }
 
  private:
-  std::unique_ptr<SequentialThunk> embedded_thunk_;
+  ThunkExecutor embedded_executor_;
   std::vector<std::optional<BufferAllocation::Slice>> arguments_;
   std::vector<BufferAllocation> fake_allocations_;
   std::vector<std::optional<std::vector<Offset>>> offsets_;

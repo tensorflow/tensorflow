@@ -129,8 +129,8 @@ struct CanonicalizeDynamicTopKOpPattern
           "expected value of k to match the values last dimension size of "
           "static values type (result #0)");
 
-    rewriter.replaceOpWithNewOp<chlo::TopKOp>(op, op->getResultTypes(),
-                                              op.getOperand(), k[0]);
+    rewriter.replaceOpWithNewOp<chlo::TopKOp>(
+        op, op->getResultTypes(), op.getOperand(), k[0], op.getIsStable());
     return success();
   }
 };

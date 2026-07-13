@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -77,6 +78,22 @@ class XlaAotFunction {
 
     arguments_[index] =
         NanoRtExecutable::Argument(data, argument_sizes_[index]);
+  }
+
+  size_t num_args() const { return argument_sizes_.size(); }
+  size_t num_results() const { return results_.size(); }
+
+  std::optional<size_t> arg_index(absl::string_view arg_name) const {
+    auto it = name_to_argument_index_.find(arg_name);
+    if (it == name_to_argument_index_.end()) return std::nullopt;
+    return it->second;
+  }
+
+  std::optional<std::string> arg_name(size_t index) const {
+    for (const auto& [name, idx] : name_to_argument_index_) {
+      if (idx == index) return name;
+    }
+    return std::nullopt;
   }
 
   int64_t arg_size(size_t index) const {

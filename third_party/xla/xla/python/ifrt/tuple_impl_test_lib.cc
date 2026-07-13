@@ -50,7 +50,7 @@ absl::StatusOr<ArrayRef> MakeArray(Client* client) {
   return client->MakeArrayFromHostBuffer(
       data.data(), dtype, shape,
       /*byte_strides=*/std::nullopt, sharding,
-      Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+      /*layout=*/nullptr, Client::HostBufferSemantics::kImmutableOnlyDuringCall,
       /*on_done_with_host_buffer=*/{});
 }
 

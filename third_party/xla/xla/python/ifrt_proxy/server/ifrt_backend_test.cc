@@ -39,6 +39,7 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "google/protobuf/text_format.h"
@@ -340,7 +341,7 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
     auto ifrt_request = NewIfrtRequest(NewOpId());
     {
       const uint64_t host_buffer_handle = NewHostBufferHandle();
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           host_buffer_store_->Store(host_buffer_handle, "01234567"));
 
       auto* make_array =
@@ -349,16 +350,15 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
       make_array->mutable_shape()->add_dims(2);
       make_array->set_host_buffer_handle(host_buffer_handle);
 
-      TF_ASSIGN_OR_RETURN(auto* device,
-                          mock_client_->LookupDevice(DeviceId(1)));
-      TF_RETURN_IF_ERROR(SingleDeviceSharding::Create(device, MemoryKind())
-                             ->ToProto(*make_array->mutable_sharding(),
-                                       ifrt_serdes_version()));
+      ASSIGN_OR_RETURN(auto* device, mock_client_->LookupDevice(DeviceId(1)));
+      RETURN_IF_ERROR(SingleDeviceSharding::Create(device, MemoryKind())
+                          ->ToProto(*make_array->mutable_sharding(),
+                                    ifrt_serdes_version()));
     }
-    TF_ASSIGN_OR_RETURN(auto make_array_response,
-                        CallBackend(std::move(ifrt_request)));
+    ASSIGN_OR_RETURN(auto make_array_response,
+                     CallBackend(std::move(ifrt_request)));
 
-    TF_RETURN_IF_ERROR(tsl::StatusFromProto(
+    RETURN_IF_ERROR(tsl::StatusFromProto(
         make_array_response->response_metadata().status()));
     return make_array_response->make_array_from_host_buffer_response()
         .array_handle();
@@ -372,14 +372,14 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
     {
       auto serialize_options =
           std::make_unique<SerializeOptions>(ifrt_serdes_version());
-      TF_ASSIGN_OR_RETURN(*compile_request->mutable_program(),
-                          Serialize(program, std::move(serialize_options)));
+      ASSIGN_OR_RETURN(*compile_request->mutable_program(),
+                       Serialize(program, std::move(serialize_options)));
     }
     {
       TestCompileOptions compile_options;
       auto serialize_options =
           std::make_unique<SerializeOptions>(ifrt_serdes_version());
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           *compile_request->mutable_compile_options(),
           Serialize(compile_options, std::move(serialize_options)));
     }
@@ -388,8 +388,8 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
         .WillOnce(Return(tsl::Future<xla::ifrt::LoadedExecutableRef>(
             std::move(loaded_executable))));
 
-    TF_ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
-                        CallBackend(std::move(request)));
+    ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
+                     CallBackend(std::move(request)));
 
     TF_RET_CHECK(response->has_compile_response());
     return response->compile_response();
@@ -401,8 +401,8 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
     }
     auto request = NewIfrtRequest(NewOpId());
     request->mutable_check_future_request()->set_future_handle(handle);
-    TF_ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
-                        CallBackend(std::move(request)));
+    ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
+                     CallBackend(std::move(request)));
     return tsl::StatusFromProto(response->response_metadata().status());
   }
 
@@ -412,8 +412,8 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
     }
     auto request = NewIfrtRequest(NewOpId());
     request->mutable_check_value_ready_request()->add_value_handles(handle);
-    TF_ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
-                        CallBackend(std::move(request)));
+    ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
+                     CallBackend(std::move(request)));
     return tsl::StatusFromProto(response->response_metadata().status());
   }
 
@@ -918,6 +918,67 @@ TEST_P(IfrtBackendHandlerTest, CopyArrays) {
               SizeIs(copied_arrays.size()));
 }
 
+TEST_P(IfrtBackendHandlerTest, BitcastArrays) {
+  if (Version().protocol_version() < protocol_version::kBitcastArrays) {
+    GTEST_SKIP() << "BitcastArrays is not supported in protocol version "
+                 << Version().protocol_version();
+  }
+
+  Shape shape1({});
+  auto layout1 = std::make_shared<const xla::PjRtLayout>(
+      xla::LayoutUtil::MakeDescendingLayout(0));
+
+  Shape shape2({1});
+  auto layout2 = std::make_shared<const xla::PjRtLayout>(
+      xla::LayoutUtil::MakeDescendingLayout(1));
+
+  auto src_array = tsl::MakeRef<xla::ifrt::MockArray>();
+  ON_CALL(*src_array, dtype()).WillByDefault(Return(DType(DType::Kind::kF32)));
+  ON_CALL(*src_array, shape()).WillByDefault(ReturnRef(shape1));
+  ON_CALL(*src_array, pjrt_layout()).WillByDefault(Return(layout1));
+  const std::vector<xla::ifrt::ArrayRef> src_arrays{{src_array}};
+
+  auto bitcast_array = tsl::MakeRef<xla::ifrt::MockArray>();
+  ON_CALL(*bitcast_array, dtype())
+      .WillByDefault(Return(DType(DType::Kind::kF32)));
+  ON_CALL(*bitcast_array, shape()).WillByDefault(ReturnRef(shape2));
+  ON_CALL(*bitcast_array, pjrt_layout()).WillByDefault(Return(layout2));
+  const std::vector<xla::ifrt::ArrayRef> result_arrays({bitcast_array});
+
+  TF_ASSERT_OK_AND_ASSIGN(Device * device,
+                          mock_client_->LookupDevice(DeviceId(0)));
+  ShardingRef sharding(SingleDeviceSharding::Create(device, MemoryKind()));
+
+  std::vector<ArraySpec> specs{
+      {DType(DType::Kind::kF32), shape2, sharding, layout2}};
+
+  EXPECT_CALL(*mock_client_, BitcastArrays(ElementsAreArray(src_arrays), _,
+                                           ArrayCopySemantics::kDonateInput))
+      .WillOnce(Return(result_arrays));
+
+  auto ifrt_request = NewIfrtRequest(NewOpId());
+  BitcastArraysRequest* bitcast_arrays_request =
+      ifrt_request->mutable_bitcast_arrays_request();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto src_array_handle, MakeTestArray(src_array));
+  bitcast_arrays_request->add_array_handles(src_array_handle);
+
+  for (const auto& spec : specs) {
+    TF_ASSERT_OK(spec.ToProto(*bitcast_arrays_request->add_array_specs(),
+                              ifrt_serdes_version()));
+  }
+  bitcast_arrays_request->set_copy_semantics(
+      proto::ARRAY_COPY_SEMANTICS_DONATE_INPUT);
+  bitcast_arrays_request->add_result_handles(1);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto response, CallBackend(std::move(ifrt_request)));
+
+  ASSERT_THAT(tsl::StatusFromProto(response->response_metadata().status()),
+              absl_testing::IsOk());
+  EXPECT_THAT(response->bitcast_arrays_response().array_handles(),
+              SizeIs(result_arrays.size()));
+}
+
 TEST_P(IfrtBackendHandlerTest, ReshardArrays) {
   auto layout1 = std::make_shared<const xla::PjRtLayout>(
       xla::LayoutUtil::MakeDescendingLayout(1));
@@ -1067,10 +1128,9 @@ TEST_P(IfrtBackendHandlerTest,
 
 TEST_P(IfrtBackendHandlerTest, DeleteArraySuccess) {
   auto mock_array1 = tsl::MakeRef<xla::ifrt::MockArray>();
-  EXPECT_CALL(*mock_array1, Delete())
-      .WillOnce(Return(tsl::Future<>(absl::OkStatus())));
   auto mock_array2 = tsl::MakeRef<xla::ifrt::MockArray>();
-  EXPECT_CALL(*mock_array2, Delete())
+  EXPECT_CALL(*mock_client_,
+              DeleteValues(ElementsAre(mock_array1, mock_array2)))
       .WillOnce(Return(tsl::Future<>(absl::OkStatus())));
 
   TF_ASSERT_OK_AND_ASSIGN(auto array_handle1,
@@ -1093,7 +1153,7 @@ TEST_P(IfrtBackendHandlerTest,
        DeleteArrayReturnsFutureWithNonExistentArrayHandle) {
   // Create one existing array.
   auto mock_array1 = tsl::MakeRef<xla::ifrt::MockArray>();
-  EXPECT_CALL(*mock_array1, Delete())
+  EXPECT_CALL(*mock_client_, DeleteValues(ElementsAre(mock_array1)))
       .WillOnce(Return(tsl::Future<>(absl::OkStatus())));
   TF_ASSERT_OK_AND_ASSIGN(auto real_handle,
                           MakeTestArray(std::move(mock_array1)));
@@ -1406,8 +1466,8 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecute) {
       auto request = NewIfrtRequest(NewOpId());
       request->mutable_loaded_executable_fetch_execute_result_request()
           ->set_result_status_handle(handle);
-      TF_ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
-                          CallBackend(std::move(request)));
+      ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
+                       CallBackend(std::move(request)));
       return tsl::StatusFromProto(response->response_metadata().status());
     } else {
       return CheckFuture(handle);

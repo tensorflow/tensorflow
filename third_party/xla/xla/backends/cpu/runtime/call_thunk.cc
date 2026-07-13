@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -32,8 +33,8 @@ namespace xla::cpu {
 
 absl::StatusOr<std::unique_ptr<CallThunk>> CallThunk::Create(
     Info info, ThunkSequence called_sequence) {
-  TF_ASSIGN_OR_RETURN(auto called_executor,
-                      ThunkExecutor::Create(std::move(called_sequence)));
+  ASSIGN_OR_RETURN(auto called_executor,
+                   ThunkExecutor::Create(std::move(called_sequence)));
   return absl::WrapUnique(
       new CallThunk(std::move(info), std::move(called_executor)));
 }

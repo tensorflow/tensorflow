@@ -44,22 +44,22 @@ class Operation {
   Operation() : node_(nullptr) {}
   explicit Operation(Node* n);
 
-  int32 num_inputs() const { return node_->num_inputs(); }
+  int32_t num_inputs() const { return node_->num_inputs(); }
   DataType input_type(int32_t o) const { return node_->input_type(o); }
   Output input(int32_t i) const;
 
-  int32 num_outputs() const { return node_->num_outputs(); }
+  int32_t num_outputs() const { return node_->num_outputs(); }
   DataType output_type(int32_t o) const { return node_->output_type(o); }
   Output output(int32_t i) const;
 
   Node* node() const { return node_; }
 
-  uint64 hash(int32_t index) const;
+  uint64_t hash(int32_t index) const;
 
   bool operator==(const Operation& other) const { return node_ == other.node_; }
 
  private:
-  typedef std::vector<std::pair<Node*, int32>> Inputs;
+  typedef std::vector<std::pair<Node*, int32_t>> Inputs;
   static Inputs GetInputs(Node* node);
 
   Inputs inputs_;
@@ -76,7 +76,7 @@ class Output {
 
   Operation op() const { return op_; }
   Node* node() const { return op().node(); }
-  int32 index() const { return index_; }
+  int32_t index() const { return index_; }
   DataType type() const { return op_.output_type(index_); }
   std::string name() const {
     return absl::StrCat(node()->name(), ":", index());
@@ -85,18 +85,18 @@ class Output {
     return op_ == other.op_ && index_ == other.index_;
   }
 
-  uint64 hash() const { return op_.hash(index_); }
+  uint64_t hash() const { return op_.hash(index_); }
 
  private:
   Operation op_ = Operation(nullptr);
-  int32 index_ = 0;
+  int32_t index_ = 0;
 };
 
 /// Hash class that can be used for e.g. storing Outputs in an unordered_map
 struct OutputHash {
   std::size_t operator()(const Output& output) const {
     return Hash64Combine(std::hash<Node*>()(output.node()),
-                         std::hash<int32>()(output.index()));
+                         std::hash<int32_t>()(output.index()));
   }
 };
 
@@ -241,7 +241,9 @@ class Input {
 
   Node* node() const { return output_.node(); }
   std::string node_name() const { return node_name_; }
-  int32 index() const { return node_name_.empty() ? output_.index() : index_; }
+  int32_t index() const {
+    return node_name_.empty() ? output_.index() : index_;
+  }
   DataType data_type() const { return data_type_; }
   absl::Status status() const { return status_; }
   const Tensor& tensor() const { return tensor_; }
@@ -251,7 +253,7 @@ class Input {
   Output output_ = Output(Operation(nullptr), 0);
   Tensor tensor_;
   const std::string node_name_ = "";
-  int32 index_ = 0;
+  int32_t index_ = 0;
   DataType data_type_ = DT_INVALID;
 };
 

@@ -115,17 +115,17 @@ TensorSliceReader::TensorSliceReader(const std::string& filepattern,
   VLOG(1) << "TensorSliceReader for " << filepattern;
   absl::Status s = Env::Default()->GetMatchingPaths(filepattern, &fnames_);
   if (!s.ok()) {
-    status_ = errors::InvalidArgument(
-        "Unsuccessful TensorSliceReader constructor: "
-        "Failed to get matching files on ",
-        filepattern, ": ", s.ToString());
+    status_ = absl::InvalidArgumentError(
+        absl::StrCat("Unsuccessful TensorSliceReader constructor: "
+                     "Failed to get matching files on ",
+                     filepattern, ": ", s.ToString()));
     return;
   }
   if (fnames_.empty()) {
-    status_ = errors::NotFound(
-        "Unsuccessful TensorSliceReader constructor: "
-        "Failed to find any matching files for ",
-        filepattern);
+    status_ = absl::NotFoundError(
+        absl::StrCat("Unsuccessful TensorSliceReader constructor: "
+                     "Failed to find any matching files for ",
+                     filepattern));
     return;
   }
   sss_.resize(fnames_.size());
@@ -153,17 +153,17 @@ void TensorSliceReader::LoadShard(int shard) const {
   Table* table;
   absl::Status s = open_function_(fname, &table);
   if (!s.ok()) {
-    status_ = errors::DataLoss("Unable to open table file ", fname, ": ",
-                               s.ToString());
+    status_ = absl::DataLossError(
+        absl::StrCat("Unable to open table file ", fname, ": ", s.ToString()));
     return;
   }
   sss_[shard].reset(table);
   if (!(table->Get(kSavedTensorSlicesKey, &value) &&
         ParseProtoUnlimited(&sts, value))) {
-    status_ = errors::Internal(
+    status_ = absl::InternalError(absl::StrCat(
         "Failed to find the saved tensor slices at the beginning of the "
         "checkpoint file: ",
-        fname);
+        fname));
     return;
   }
   status_ = CheckVersions(sts.meta().versions(), TF_CHECKPOINT_VERSION,
@@ -243,12 +243,13 @@ absl::Status TensorSliceReader::GetTensor(
     mutex_lock l(mu_);
     const TensorSliceSet* tss = gtl::FindPtrOrNull(tensors_, name);
     if (tss == nullptr) {
-      return errors::NotFound(name, " not found in checkpoint file");
+      return absl::NotFoundError(
+          absl::StrCat(name, " not found in checkpoint file"));
     }
 
     if (tss->Slices().size() > 1) {
       // TODO(sherrym): Support multi-slice checkpoints.
-      return errors::Unimplemented("Sliced checkpoints are not supported");
+      return absl::UnimplementedError("Sliced checkpoints are not supported");
     }
 
     type = tss->type();
@@ -262,9 +263,9 @@ absl::Status TensorSliceReader::GetTensor(
 
   for (const auto d : shape.dim_sizes()) {
     if (d == LLONG_MAX) {
-      return errors::InvalidArgument("Unable to read dimensions of size ",
-                                     LLONG_MAX,
-                                     ". Got shape: ", shape.DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unable to read dimensions of size ", LLONG_MAX,
+                       ". Got shape: ", shape.DebugString()));
     }
   }
 
@@ -287,12 +288,13 @@ absl::Status TensorSliceReader::GetTensor(
     READER_COPY(DT_STRING);
     READER_COPY(DT_BOOL);
     default:
-      return errors::Unimplemented("Data type not supported");
+      return absl::UnimplementedError("Data type not supported");
   }
 #undef READER_COPY
 
   if (!success) {
-    return errors::NotFound(name, " not found in checkpoint file");
+    return absl::NotFoundError(
+        absl::StrCat(name, " not found in checkpoint file"));
   }
   std::swap(*out_tensor, t);
 

@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_PJRT_MLIR_TO_HLO_H_
 #define XLA_PJRT_MLIR_TO_HLO_H_
 
-#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -78,10 +77,21 @@ std::optional<mlir::StringRef> FindPotentiallyUnstableDialects(
 // plugins on a quarterly update cycle.
 std::string GetDefaultStablehloVersion();
 
+// Returns a version of Shardy ~12w old, for forward compatibility with PJRT
+// plugins on a quarterly update cycle.
+std::string GetDefaultSdyVersion();
+
 // Serialize using MLIR Bytecode Format. This is as stable as the dialects used
 // in the module. I.e. if only StableHLO & SDY are used, will serialize them
 // using VHLO & SDY. If compatibility must be guaranteed for all dialects, use
 // SerializeUsingVersionedStablehlo and FindPotentiallyUnstableDialects.
+absl::StatusOr<std::string> Serialize(mlir::ModuleOp mlir_module,
+                                      absl::string_view target,
+                                      absl::string_view sdy_version,
+                                      bool inplace = false);
+
+// Temporary legacy version of Serialize. Will use the default SDY version.
+// TODO(hyeontaek): Delete once all users are migrated.
 absl::StatusOr<std::string> Serialize(mlir::ModuleOp mlir_module,
                                       absl::string_view target,
                                       bool inplace = false);
@@ -100,10 +110,25 @@ absl::StatusOr<std::string> Serialize(mlir::ModuleOp mlir_module,
 // to serialize. If program contains dialects that aren't supported in StableHLO
 // portable artifacts, use SerializeUsingNativeBytecode.
 //
+// `sdy_version` is a Shardy version string ("0.0.1"), which can be used for
+// forward compatibility to specify the target downgrade version of Shardy if
+// `allow_mixed_serialization` is true. It follows the same convention as the
+// StableHLO except that it uses Shardy's versioning scheme, i.e.
+// `mlir::sdy::SdyDialectVersion`. It is strongly recommended to use a version
+// that is aligned with `requested_target`.
+//
 // If `allow_mixed_serialization` is true, the serialization will be done
 // using the versioned StableHLO bytecode format as long as the module doesn't
 // contain any unknown dialects (see implementation for details). Else, native
 // MLIR bytecode format will be used.
+absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
+    mlir::ModuleOp mlir_module, absl::string_view requested_target,
+    absl::string_view sdy_version, bool inplace = false,
+    bool allow_mixed_serialization = false);
+
+// Temporary legacy version of SerializeUsingVersionedStablehlo. Will use
+// the default SDY version.
+// TODO(hyeontaek): Delete once all users are migrated.
 absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
     mlir::ModuleOp mlir_module, absl::string_view requested_target,
     bool inplace = false, bool allow_mixed_serialization = false);

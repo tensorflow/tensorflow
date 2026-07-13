@@ -103,10 +103,10 @@ tf_cc_test(
     ],
     deps = [
         ":gcs_filesystem_impl",
-        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/platform:test",
+        "@com_github_googlecloudplatform_google_cloud_cpp//google/cloud:google_cloud_cpp_common",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],

@@ -19,9 +19,9 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <ostream>
 #include <string>
 
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseMapInfo.h"
@@ -30,7 +30,6 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
-#include "mlir/Support/StorageUniquer.h"
 
 namespace xla {
 
@@ -48,7 +47,7 @@ enum class SymbolicExprType {
   kMin,
   kVariable,
   kConstant,  // Constant should be the last type for the comparator.
-  // TODO(karupayun): Add kIn operator.
+  // TODO: b/459357586 - Add kIn operator.
   // kIn,  // 'var in [a, b]' .
 };
 
@@ -77,6 +76,9 @@ class SymbolicExpr {
   std::string ToString(absl::Span<const std::string> dim_names,
                        absl::Span<const std::string> sym_names) const;
   int64_t Evaluate(absl::Span<const int64_t> variable_values) const;
+
+  // Safely evaluates the given expression, returning nullopt if the result is
+  // undefined (due to undefined behavior, e.g. division by zero or overflow).
   SymbolicExpr ReplaceVariables(
       absl::Span<const SymbolicExpr> substitutions) const;
   // TODO: b/459357586 - These methods are needed for IndexingMap, but
@@ -85,6 +87,9 @@ class SymbolicExpr {
   // assuming that dimensions are the first (0...num_dims-1) variables and
   // symbols are the rest.
   SymbolicExpr ReplaceDims(absl::Span<const SymbolicExpr> replacements) const;
+  SymbolicExpr ReplaceDims(absl::Span<const SymbolicExpr> replacements,
+                           int64_t current_num_dims, int64_t new_num_dims,
+                           int64_t num_symbols) const;
   SymbolicExpr ReplaceSymbols(absl::Span<const SymbolicExpr> replacements,
                               int64_t num_dims) const;
   SymbolicExpr ReplaceDimsAndSymbols(
@@ -150,6 +155,11 @@ class SymbolicExpr {
     return os;
   }
 
+  friend std::ostream& operator<<(std::ostream& os, const SymbolicExpr expr) {
+    os << expr.ToString();
+    return os;
+  }
+
  private:
   const ImplType* impl_ = nullptr;
 };
@@ -182,6 +192,13 @@ SymbolicExpr CreateSymbolicBinaryOp(SymbolicExprType type, SymbolicExpr lhs,
 llvm::SmallVector<SymbolicExpr> CreateSymbolicConstantExprs(
     llvm::ArrayRef<int64_t> constants, mlir::MLIRContext* mlir_context);
 
+// TODO: b/459357586 - This method is needed for IndexingMap, but
+// dimensions and symbols are SymbolicMap specific. We should refactor it and
+// include it as a method inside the class.
+std::optional<int64_t> SafeEvaluateSymbolicExpr(SymbolicExpr expr,
+                                                absl::Span<int64_t const> dims,
+                                                absl::Span<int64_t const> syms);
+
 }  // namespace xla
 
 namespace llvm {
@@ -189,14 +206,6 @@ namespace llvm {
 // SymbolicExpr hash just like pointers
 template <>
 struct DenseMapInfo<xla::SymbolicExpr> {
-  static xla::SymbolicExpr getEmptyKey() {
-    auto* pointer = llvm::DenseMapInfo<void*>::getEmptyKey();
-    return xla::SymbolicExpr(static_cast<xla::SymbolicExprStorage*>(pointer));
-  }
-  static xla::SymbolicExpr getTombstoneKey() {
-    auto* pointer = llvm::DenseMapInfo<void*>::getTombstoneKey();
-    return xla::SymbolicExpr(static_cast<xla::SymbolicExprStorage*>(pointer));
-  }
   static unsigned getHashValue(xla::SymbolicExpr val) {
     return hash_value(val);
   }

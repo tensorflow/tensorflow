@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <cstdint>
 
-#include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"

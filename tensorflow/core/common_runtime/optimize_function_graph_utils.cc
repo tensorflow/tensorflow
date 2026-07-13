@@ -65,12 +65,12 @@ absl::Status ValidateNoListArguments(
     const std::string& function_name) {
   for (const OpDef::ArgDef& arg : args) {
     if (!arg.number_attr().empty() || !arg.type_list_attr().empty()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Function ", function_name, " has an ", arg_type, " named \"",
           arg.name(),
           "\" that is a list of tensors."
           " Multi-device functions support only single-tensor inputs "
-          " and outputs");
+          " and outputs"));
     }
   }
   return absl::OkStatus();
@@ -87,26 +87,26 @@ absl::Status ValidateMultiDeviceOptions(
                                              signature.name()));
   if (fdef.attr().count(FunctionLibraryDefinition::kIntsOnDeviceAttr) != 0 &&
       fdef.attr().at(FunctionLibraryDefinition::kIntsOnDeviceAttr).b()) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(absl::StrCat(
         "Function '", signature.name(), "' has `",
         FunctionLibraryDefinition::kIntsOnDeviceAttr,
         "` attribute set. This attribute is not currently supported by "
-        "multi-device functions.");
+        "multi-device functions."));
   }
   if (options.input_devices.size() != signature.input_arg_size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "InstantiateOptions.input_devices must have the same length "
         "as the number of arguments: input_devices length = ",
         options.input_devices.size(),
-        " number of arguments = ", signature.input_arg_size());
+        " number of arguments = ", signature.input_arg_size()));
   }
   if (!options.output_devices.empty() &&
       options.output_devices.size() != signature.output_arg_size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "InstantiateOptions.output_devices must either be empty or have the "
         "same length as the number of arguments: output_devices length = ",
         options.output_devices.size(),
-        " number of arguments = ", signature.output_arg_size());
+        " number of arguments = ", signature.output_arg_size()));
   }
   return absl::OkStatus();
 }
@@ -275,8 +275,8 @@ absl::Status GetGraphAndArgRets(
       FunctionDefToBodyHelper(std::move(fdef), attrs, lib_def, &fbody));
   if (!fbody) {
     LOG(ERROR) << "Failed to get FunctionBody for \"" << function_name << "\"";
-    return errors::Internal("Failed to construct FunctionBody for ",
-                            function_name);
+    return absl::InternalError(
+        absl::StrCat("Failed to construct FunctionBody for ", function_name));
   }
   *graph = std::unique_ptr<Graph>(fbody->graph);
   arg_nodes->reserve(fbody->arg_nodes.size());
@@ -384,8 +384,8 @@ absl::Status PinArgsAndRets(const std::vector<std::string>& input_devices,
           // matching device in the device_set.
           DeviceNameUtils::ParsedName parsed;
           if (!DeviceNameUtils::ParseFullName(*src_device, &parsed)) {
-            return errors::InvalidArgument(
-                "Failed to parse explicit device specification ", *src_device);
+            return absl::InvalidArgumentError(absl::StrCat(
+                "Failed to parse explicit device specification ", *src_device));
           }
           std::vector<Device*> matching_devices;
           device_set.FindMatchingDevices(parsed, &matching_devices);
@@ -393,8 +393,8 @@ absl::Status PinArgsAndRets(const std::vector<std::string>& input_devices,
             if (default_device != nullptr) {
               matching_devices.push_back(default_device);
             } else {
-              return errors::InvalidArgument(
-                  "Unable to find any devices for spec ", *src_device);
+              return absl::InvalidArgumentError(absl::StrCat(
+                  "Unable to find any devices for spec ", *src_device));
             }
           } else if (matching_devices.size() != 1) {
             bool on_same_task = true;
@@ -440,13 +440,13 @@ absl::Status PinArgsAndRets(const std::vector<std::string>& input_devices,
             }
             devices.append("]");
 
-            return errors::InvalidArgument(
+            return absl::InvalidArgumentError(absl::StrCat(
                 *src_device,
                 "When FunctionLibraryRuntime::Options.output_devices are "
                 "not specified for a multi-device function, the device "
                 "specification on the output node must match exactly one "
                 "device. Matched devices are ",
-                devices);
+                devices));
           }
           VLOG(3) << "Setting output device to " << matching_devices[0]->name()
                   << " for node " << SummarizeNode(*node);

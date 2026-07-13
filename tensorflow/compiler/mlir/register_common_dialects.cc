@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
-#include "xla/mlir/framework/ir/xla_framework.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "tensorflow/core/ir/types/dialect.h"
 
@@ -43,8 +42,7 @@ void RegisterCommonToolingDialects(mlir::DialectRegistry& registry) {
   registry.insert<mlir::shape::ShapeDialect>();
   registry.insert<mlir::tensor::TensorDialect>();
   registry.insert<mlir::tosa::TosaDialect>();
-  registry.insert<mlir::xla_framework::XLAFrameworkDialect,
-                  mlir::TF::TensorFlowDialect, mlir::tf_type::TFTypeDialect>();
+  registry.insert<mlir::TF::TensorFlowDialect, mlir::tf_type::TFTypeDialect>();
 }
 
 };  // namespace mlir

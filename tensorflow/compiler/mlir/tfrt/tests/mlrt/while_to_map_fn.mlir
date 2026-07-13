@@ -1,3 +1,17 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: tf-tfrt-opt -split-input-file -tf-mlrt-while-to-map-fn %s | FileCheck %s
 
 // Test a while to map_fn conversion in which the max iteration is hard coded inside the predicate body.
@@ -749,4 +763,67 @@ func.func @main(%arg0: tensor<1x?x?x11xf32>) -> tensor<11x!tf_type.string> {
   %96 = "tf.StopGradient"(%95#3)  : (tensor<!tf_type.variant<tensor<*x!tf_type.string>>>) -> tensor<!tf_type.variant<tensor<*x!tf_type.string>>>
   %97 = "tf.TensorListStack"(%96, %cst_14) <{num_elements = 11 : i64}>  : (tensor<!tf_type.variant<tensor<*x!tf_type.string>>>, tensor<0xi32>) -> tensor<11x!tf_type.string>
   return %97 : tensor<11x!tf_type.string>
+}
+
+// -----
+
+// Test a while to map_fn conversion where constants are hoisted to resources.
+
+// CHECK-LABEL: hoisted_constants_map_while_cond
+func.func private @hoisted_constants_map_while_cond(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>, %arg2: tensor<!tf_type.variant<tensor<*xf32>>>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = "tf.Less"(%arg0, %arg3) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi1>
+  %1 = "tf.Less"(%arg1, %arg3) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi1>
+  %2 = "tf.LogicalAnd"(%0, %1) : (tensor<*xi1>, tensor<*xi1>) -> tensor<*xi1>
+  %3 = "tf.ToBool"(%2) : (tensor<*xi1>) -> tensor<i1>
+  return %3 : tensor<i1>
+}
+
+// CHECK-LABEL: hoisted_constants_map_while_body
+func.func private @hoisted_constants_map_while_body(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>, %arg2: tensor<!tf_type.variant<tensor<*xf32>>>, %arg3: tensor<i32>) -> (tensor<*xi32>, tensor<*xi32>, tensor<!tf_type.variant<tensor<*xf32>>>, tensor<i32>) {
+  // Resource 1 is constant 1
+  %c1 = "tf._TfrtGetResource"() <{container = [""], indices = [1 : i64], shared_name = [""]}> : () -> tensor<i32>
+  %0 = "tf.AddV2"(%arg0, %c1) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+  %1 = "tf.AddV2"(%arg1, %c1) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+  
+  // Dummy work
+  %dummy = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
+  %2 = "tf.TensorListSetItem"(%arg2, %arg1, %dummy) {resize_if_index_out_of_bounds = false} : (tensor<!tf_type.variant<tensor<*xf32>>>, tensor<*xi32>, tensor<f32>) -> tensor<!tf_type.variant<tensor<*xf32>>>
+  
+  return %0, %1, %2, %arg3 : tensor<*xi32>, tensor<*xi32>, tensor<!tf_type.variant<tensor<*xf32>>>, tensor<i32>
+}
+
+// CHECK-LABEL: @hoisted_constants_main
+// CHECK:       tf.TensorListReserve
+// CHECK-NEXT:  tf_mlrt.tf_map_fn
+// CHECK-SAME:   {body_fn = @"hoisted_constants_map_while_body/MapFnBody", num_tensor_list_or_flow_in = 1 : i32}
+// CHECK-NEXT:  tf.Const
+// CHECK-NEXT:  tf.TensorListStack
+// CHECK-NOT:   tf.While
+func.func @hoisted_constants_main() -> tensor<3xf32> {
+  // Resource 0 is constant 0
+  %c0 = "tf._TfrtGetResource"() <{container = [""], indices = [0 : i64], shared_name = [""]}> : () -> tensor<i32>
+  // Resource 2 is constant 3 (max iterations)
+  %c3 = "tf._TfrtGetResource"() <{container = [""], indices = [2 : i64], shared_name = [""]}> : () -> tensor<i32>
+
+  %c_neg1 = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
+  %tensor_list = "tf.TensorListReserve"(%c_neg1, %c3) : (tensor<i32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<*xf32>>>
+
+  %0:4 = "tf.While"(%c0, %c0, %tensor_list, %c3) {body = @hoisted_constants_map_while_body, cond = @hoisted_constants_map_while_cond, is_stateless = true, parallel_iterations = 10 : i64, shape_invariant} : (tensor<i32>, tensor<i32>, tensor<!tf_type.variant<tensor<*xf32>>>, tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<!tf_type.variant<tensor<*xf32>>>, tensor<i32>)
+  %cst_shape = "tf.Const"() {value = dense<[3]> : tensor<1xi32>} : () -> tensor<1xi32>
+  %stacked = "tf.TensorListStack"(%0#2, %cst_shape) {num_elements = 3 : i64} : (tensor<!tf_type.variant<tensor<*xf32>>>, tensor<1xi32>) -> tensor<3xf32>
+  return %stacked : tensor<3xf32>
+}
+
+// This function defines the resources.
+func.func private @_tfrt_resource_init() {
+  %c0 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  "tf._TfrtSetResource"(%c0) {index = 0 : i64} : (tensor<i32>) -> ()
+
+  %c1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  "tf._TfrtSetResource"(%c1) {index = 1 : i64} : (tensor<i32>) -> ()
+
+  %c3 = "tf.Const"() {value = dense<3> : tensor<i32>} : () -> tensor<i32>
+  "tf._TfrtSetResource"(%c3) {index = 2 : i64} : (tensor<i32>) -> ()
+
+  return
 }

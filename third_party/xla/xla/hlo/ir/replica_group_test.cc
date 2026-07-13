@@ -45,10 +45,6 @@ CollectiveDeviceListProto CreateDeviceListProto(
 TEST(MeshAxesReplicaGroupListTest, MaterializedReplicaGroups) {
   Mesh mesh_xy({2, 2}, {"x", "y"});
 
-  EXPECT_DEATH(
-      { MeshAxesReplicaGroupList replica_group_none(mesh_xy, {}); },
-      "has only one device per replica group");
-
   MeshAxesReplicaGroupList replica_group_x(mesh_xy, {AxisRef(0)});
   std::vector<std::vector<int64_t>> expected_replica_groups_x = {{0, 2},
                                                                  {1, 3}};

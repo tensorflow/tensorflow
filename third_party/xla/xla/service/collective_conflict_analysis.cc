@@ -114,7 +114,7 @@ void GetAbstractReplicaGroups(HloInstruction* instr,
   }
 
   // Convert normal replica groups to abstract replica groups.
-  for (auto& replica_group : GetCollectiveReplicaGroups(instr)) {
+  for (auto& replica_group : instr->replica_groups()) {
     add_replica_group(replica_group);
   }
 }

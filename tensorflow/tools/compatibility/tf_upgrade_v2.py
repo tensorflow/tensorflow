@@ -2288,7 +2288,7 @@ def _contrib_layers_l2_regularizer_transformer(
   """
   def _replace_scale_node(parent, old_value):
     """Replaces old_value with 0.5*(old_value)."""
-    half = ast.Num(n=0.5)
+    half = ast.Constant(value=0.5)
     half.lineno = 0
     half.col_offset = 0
     new_value = ast.BinOp(left=half, op=ast.Mult(),

@@ -1,8 +1,9 @@
 # Description:
 #   Doc generator
 
-load("@xla//third_party/rules_python/python:defs.bzl", "py_library")
-load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -33,9 +34,10 @@ distribute_module = [
     "distribute.",
 ]
 
-py_strict_library(
+py_library(
     name = "tf_doctest_lib",
     srcs = ["tf_doctest_lib.py"],
+    strict_deps = True,
     visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow_text/google:__pkg__",
@@ -45,11 +47,12 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "tf_doctest",
     srcs = ["tf_doctest.py"],
     args = ["--module_prefix_skip=" + ",".join(tpu_module + distribute_module + keras_module)],
     shard_count = 4,
+    strict_deps = True,
     tags = [
         "no_oss",  # b/275546007
         "no_pip",
@@ -88,7 +91,7 @@ tpu_py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "tf_doctest_gpu",
     srcs = ["tf_doctest.py"],
     args = [
@@ -97,6 +100,7 @@ py_strict_test(
         "--required_gpus=2",
     ],
     main = "tf_doctest.py",
+    strict_deps = True,
     tags = [
         "no_pip",
         "no_rocm",
@@ -116,9 +120,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "tf_doctest_test",
     srcs = ["tf_doctest_test.py"],
+    strict_deps = True,
     tags = ["no_pip"],
     deps = [
         ":tf_doctest_lib",
@@ -127,18 +132,20 @@ py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "fenced_doctest_lib",
     srcs = ["fenced_doctest_lib.py"],
+    strict_deps = True,
     deps = [
         ":tf_doctest_lib",
         "@pypi//astor",
     ],
 )
 
-py_strict_test(
+py_test(
     name = "fenced_doctest_test",
     srcs = ["fenced_doctest_test.py"],
+    strict_deps = True,
     tags = [
         "no_oss",
         "no_pip",
@@ -150,17 +157,19 @@ py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "doc_controls",
     srcs = ["doc_controls.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = ["//visibility:public"],
 )
 
-py_strict_test(
+py_test(
     name = "generate2_test",
     size = "medium",
     srcs = ["generate2_test.py"],
+    strict_deps = True,
     tags = [
         "manual",
         "optonly",
@@ -173,9 +182,10 @@ py_strict_test(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "generate2",
     srcs = ["generate2.py"],
+    strict_deps = True,
     deps = [
         ":generate2_lib",
     ],
@@ -185,12 +195,14 @@ py_library(
     # Opensource only
     name = "base_dir_oss",
     srcs = ["base_dir.py"],
+    strict_deps = False,
     deps = [],
 )
 
-py_strict_library(
+py_library(
     name = "generate2_lib",
     srcs = ["generate2.py"],
+    strict_deps = True,
     deps = [
         ":base_dir_oss",
         "//tensorflow:tensorflow_py_no_contrib",
@@ -204,18 +216,20 @@ py_strict_library(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "build_cc_api_headers",
     srcs = ["build_cc_api_headers.py"],
+    strict_deps = True,
     deps = [
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "build_java_api_docs",
     srcs = ["build_java_api_docs.py"],
+    strict_deps = True,
     deps = [
         "@absl_py//absl:app",
         "@absl_py//absl/flags",

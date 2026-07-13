@@ -84,11 +84,11 @@ cc_library(
     hdrs = ["fallback_test_util.h"],
     tags = ["no_oss"],
     deps = [
-        "//tensorflow/c:tf_tensor",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:threadpool_interface",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_execute_compat",
         "//tensorflow/core/runtime_fallback/runtime:kernel_utils",
+        "@com_google_absl//absl/log:check",
         "@tf_runtime//:hostcontext",
     ],
 )

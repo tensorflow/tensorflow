@@ -136,6 +136,7 @@ def generate_cc_impl(ctx):
             ]
 
     ctx.actions.run(
+        mnemonic = "GenerateCc",
         inputs = protos + includes + well_known_proto_files,
         tools = tools,
         outputs = out_files,

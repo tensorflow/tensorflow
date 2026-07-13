@@ -52,21 +52,23 @@ bool DecodeWebPHeader(absl::string_view webp_string, int* width, int* height,
 
 // Decode the first image from `webp_string` into the output buffer
 // `output`. `output` is assumed to be width * height * channels *
-// sizeof(uint8_t) or larger.
+// sizeof(uint8_t) or larger. If `use_threads` is true, multi-threaded
+// decoding will be enabled.
 bool DecodeWebPImage(absl::string_view webp_string, uint8_t* output, int width,
-                     int height, int channels);
+                     int height, int channels, bool use_threads);
 
 // Decode a sequence of images in the animation from `webp_string` into a
 // dynamically allocated output buffer via `allocate_output`. `allocate_output`
 // takes the arguments as (num_frames, width, height, channels). The channels is
-// (currently) always 4 (RGBA).
+// (currently) always 4 (RGBA). If `use_threads` is true, multi-threaded
+// decoding will be enabled.
 //
 // Note: Decoding a WebP animation, even to get the number of frames, reads the
 // entire image into memory, hence this callback mechanism.
 uint8_t* DecodeWebPAnimation(
     absl::string_view webp_string,
     const std::function<uint8_t*(int, int, int, int)>& allocate_output,
-    std::string* error_string, bool expand_animations);
+    std::string* error_string, bool expand_animations, bool use_threads);
 
 }  // namespace webp
 }  // namespace tensorflow

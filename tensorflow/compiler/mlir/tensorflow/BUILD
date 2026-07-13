@@ -1,7 +1,7 @@
 # buildifier: disable=out-of-order-load
 
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 
 # copybara:uncomment_begin(google-only)
 # load("//learning/brain/experimental/mlir/tensorflow/dialectgen:dialectgen.bzl", "dialectgen")
@@ -1102,7 +1102,7 @@ tf_gen_op_wrapper_py(
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
-    py_lib_rule = py_strict_library,
+    py_lib_rule = py_library,
     deps = [":mlir_passthrough_op"],
 )
 

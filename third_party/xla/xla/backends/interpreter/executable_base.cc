@@ -23,9 +23,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/layout_util.h"
@@ -120,8 +122,8 @@ absl::StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(TransferManager * transfer_manager,
-                      TransferManager::GetForPlatform(platform));
+  ASSIGN_OR_RETURN(TransferManager * transfer_manager,
+                   TransferManager::GetForPlatform(platform));
 
   // Transform the ShapedBuffer arguments into literals which the evaluator
   // consumes.
@@ -129,9 +131,9 @@ absl::StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
   const int64_t num_parameters = computation->num_parameters();
   arg_literals.reserve(num_parameters);
   for (int64_t p = 0; p < num_parameters; ++p) {
-    TF_ASSIGN_OR_RETURN(Literal arg_literal,
-                        transfer_manager->TransferLiteralFromDevice(
-                            run_options->stream(), argument_buffers[p]));
+    ASSIGN_OR_RETURN(Literal arg_literal,
+                     transfer_manager->TransferLiteralFromDevice(
+                         run_options->stream(), argument_buffers[p]));
     const auto& expected_shape = computation->parameter_instruction(p)->shape();
     if (expected_shape.is_dynamic()) {
       // Expand the input literal to expected shape.
@@ -140,8 +142,8 @@ absl::StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
     arg_literals.push_back(std::move(arg_literal));
   }
 
-  TF_ASSIGN_OR_RETURN(Literal result_literal,
-                      Evaluate(run_options, *computation, arg_literals));
+  ASSIGN_OR_RETURN(Literal result_literal,
+                   Evaluate(run_options, *computation, arg_literals));
   // Shrink the generated dynamic shape into static shape.
   result_literal = result_literal.ToStatic();
 
@@ -149,12 +151,12 @@ absl::StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
   const HloInputOutputAliasConfig& alias_config =
       has_module() ? module().input_output_alias_config()
                    : HloInputOutputAliasConfig();
-  TF_ASSIGN_OR_RETURN(ExecutionOutput result,
-                      AllocateOutputMemoryWithInputReuse(
-                          result_literal.shape(), alias_config,
-                          run_options->allocator(), &arguments, stream));
+  ASSIGN_OR_RETURN(ExecutionOutput result,
+                   AllocateOutputMemoryWithInputReuse(
+                       result_literal.shape(), alias_config,
+                       run_options->allocator(), &arguments, stream));
 
-  TF_RETURN_IF_ERROR(transfer_manager->TransferLiteralToDevice(
+  RETURN_IF_ERROR(transfer_manager->TransferLiteralToDevice(
       run_options->stream(), result_literal, result.Result()));
 
   uint64_t end_micros = tsl::Env::Default()->NowMicros();
@@ -173,7 +175,7 @@ InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
     const Shape& shape, const HloInputOutputAliasConfig& alias_config,
     se::DeviceAddressAllocator* allocator,
     std::vector<ExecutionInput>* arguments, se::Stream* stream) {
-  TF_RETURN_IF_ERROR(alias_config.ForEachAliasWithStatus(
+  RETURN_IF_ERROR(alias_config.ForEachAliasWithStatus(
       [&](const ShapeIndex& output_index,
           std::optional<HloInputOutputAliasConfig::Alias> alias)
           -> absl::Status {
@@ -194,8 +196,8 @@ InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
 
   se::StreamExecutor* executor = stream->parent();
   const se::Platform* platform = executor->GetPlatform();
-  TF_ASSIGN_OR_RETURN(TransferManager * transfer_manager,
-                      TransferManager::GetForPlatform(platform));
+  ASSIGN_OR_RETURN(TransferManager * transfer_manager,
+                   TransferManager::GetForPlatform(platform));
 
   ExecutionOutput result(shape, allocator, executor->device_ordinal());
   for (auto& pair : result.MutableResult()->buffers()) {
@@ -231,7 +233,7 @@ InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
       const Shape& on_device_shape = result.Result().on_device_shape();
       const Shape& on_device_subshape =
           ShapeUtil::GetSubshape(on_device_shape, result_index);
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           auto allocated_buffer,
           allocator->Allocate(executor->device_ordinal(), allocation_bytes,
                               /*retry_on_failure=*/true,
@@ -241,7 +243,7 @@ InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
     TF_RET_CHECK(allocation_bytes == 0 || result_buffer != nullptr);
   }
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       transfer_manager->WriteTupleIndexTables(stream, result.Result()));
   return std::move(result);
 }

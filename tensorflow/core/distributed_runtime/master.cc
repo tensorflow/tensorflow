@@ -395,22 +395,22 @@ void Master::CreateSession(const CreateSessionRequest* req,
         for (auto&& task : job.tasks()) {
           if (task.second == normalized_string) {
             if (!worker_cache_factory_options.job_name.empty()) {
-              status = errors::InvalidArgument(
+              status = absl::InvalidArgumentError(absl::StrCat(
                   "Found multiple matching tasks that correspond to "
                   "to the master. Master target: '",
                   req->target(),
-                  "'. ClusterDef: ", cluster_def.ShortDebugString());
+                  "'. ClusterDef: ", cluster_def.ShortDebugString()));
               LOG(ERROR) << status;
               return;
             }
             if (env_->local_devices[0]->parsed_name().job == job.name() &&
                 env_->local_devices[0]->parsed_name().task == task.first) {
               // TODO(b/37868888): Remove this limitation when resolved
-              status = errors::InvalidArgument(
+              status = absl::InvalidArgumentError(absl::StrCat(
                   "The ClusterSpec names the job and task index to be the same "
                   "names that were provided when the server booted. This is "
                   "currently not allowed. Job: ",
-                  job.name(), ", task index: ", task.first);
+                  job.name(), ", task index: ", task.first));
               return;
             }
             worker_cache_factory_options.job_name = job.name();
@@ -503,7 +503,8 @@ void Master::ExtendSession(const ExtendSessionRequest* req,
                            ExtendSessionResponse* resp, MyClosure done) {
   auto session = FindMasterSession(req->session_handle());
   if (session == nullptr) {
-    done(errors::Aborted("Session ", req->session_handle(), " is not found."));
+    done(absl::AbortedError(
+        absl::StrCat("Session ", req->session_handle(), " is not found.")));
     return;
   }
 
@@ -527,7 +528,8 @@ void Master::PartialRunSetup(const PartialRunSetupRequest* req,
   }
   auto session = FindMasterSession(req->session_handle());
   if (session == nullptr) {
-    done(errors::Aborted("Session ", req->session_handle(), " is not found."));
+    done(absl::AbortedError(
+        absl::StrCat("Session ", req->session_handle(), " is not found.")));
     return;
   }
 
@@ -549,7 +551,8 @@ void Master::RunStep(CallOptions* opts, const RunStepRequestWrapper* req,
   auto start_time = env_->env->NowMicros();
   auto session = FindMasterSession(req->session_handle());
   if (session == nullptr) {
-    done(errors::Aborted("Session ", req->session_handle(), " is not found."));
+    done(absl::AbortedError(
+        absl::StrCat("Session ", req->session_handle(), " is not found.")));
     return;
   }
 
@@ -572,9 +575,9 @@ void Master::CloseSession(const CloseSessionRequest* req,
     auto iter = sessions_.find(req->session_handle());
     if (iter == sessions_.end()) {
       mu_.unlock();
-      done(errors::Aborted(
-          "Session ", req->session_handle(),
-          " is not found. Possibly, this master has restarted."));
+      done(absl::AbortedError(
+          absl::StrCat("Session ", req->session_handle(),
+                       " is not found. Possibly, this master has restarted.")));
       return;
     }
     // NOTE(mrry): One reference to the session is transferred from
@@ -599,9 +602,9 @@ void Master::ListDevices(const ListDevicesRequest* req,
     if (!req->session_handle().empty()) {
       auto session = FindMasterSession(req->session_handle());
       if (session == nullptr) {
-        done(errors::InvalidArgument(
+        done(absl::InvalidArgumentError(absl::StrCat(
             "Session ", req->session_handle(),
-            " is not found. Possibly, this master has restarted."));
+            " is not found. Possibly, this master has restarted.")));
         return;
       }
       core::ScopedUnref ref(session);
@@ -695,7 +698,8 @@ void Master::MakeCallable(const MakeCallableRequest* req,
   }
   auto session = FindMasterSession(req->session_handle());
   if (session == nullptr) {
-    done(errors::Aborted("Session ", req->session_handle(), " is not found."));
+    done(absl::AbortedError(
+        absl::StrCat("Session ", req->session_handle(), " is not found.")));
     return;
   }
 
@@ -716,7 +720,8 @@ void Master::RunCallable(CallOptions* opts, const RunCallableRequest* req,
   }
   auto session = FindMasterSession(req->session_handle());
   if (session == nullptr) {
-    done(errors::Aborted("Session ", req->session_handle(), " is not found."));
+    done(absl::AbortedError(
+        absl::StrCat("Session ", req->session_handle(), " is not found.")));
     return;
   }
 
@@ -731,7 +736,8 @@ void Master::ReleaseCallable(const ReleaseCallableRequest* req,
                              ReleaseCallableResponse* resp, MyClosure done) {
   auto session = FindMasterSession(req->session_handle());
   if (session == nullptr) {
-    done(errors::Aborted("Session ", req->session_handle(), " is not found."));
+    done(absl::AbortedError(
+        absl::StrCat("Session ", req->session_handle(), " is not found.")));
     return;
   }
 

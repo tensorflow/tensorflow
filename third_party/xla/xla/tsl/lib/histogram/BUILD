@@ -35,6 +35,13 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "histogram.cc",
+    ],
+    visibility = internal_visibility(["//tensorflow/core/lib/histogram:__pkg__"]),
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
         "histogram.h",
     ],
     visibility = internal_visibility(["//tensorflow/core/lib/histogram:__pkg__"]),

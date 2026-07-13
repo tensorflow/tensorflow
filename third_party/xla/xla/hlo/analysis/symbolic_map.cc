@@ -74,6 +74,12 @@ SymbolicMap::SymbolicMap(mlir::MLIRContext* ctx, int64_t num_dimensions,
   return SymbolicMap(ctx, num_dimensions, num_symbols, std::move(exprs));
 }
 
+/*static*/ SymbolicMap SymbolicMap::GetMultiDimIdentityMap(
+    int64_t num_dimensions, mlir::MLIRContext* ctx) {
+  return SymbolicMap(ctx, num_dimensions, /*num_symbols=*/0,
+                     CreateVariableRange(ctx, num_dimensions));
+}
+
 std::string SymbolicMap::ToString() const {
   std::string s;
   llvm::raw_string_ostream os(s);
@@ -131,6 +137,25 @@ llvm::SmallVector<int64_t> SymbolicMap::GetConstantResults() const {
   return constants;
 }
 
+llvm::SmallVector<int64_t> SymbolicMap::Evaluate(
+    absl::Span<int64_t const> dim_values,
+    absl::Span<int64_t const> symbol_values) const {
+  CHECK_EQ(GetNumDims(), dim_values.size());
+  CHECK_EQ(GetNumSymbols(), symbol_values.size());
+
+  llvm::SmallVector<int64_t> variable_values;
+  variable_values.reserve(dim_values.size() + symbol_values.size());
+  variable_values.append(dim_values.begin(), dim_values.end());
+  variable_values.append(symbol_values.begin(), symbol_values.end());
+
+  llvm::SmallVector<int64_t> results;
+  results.reserve(GetNumResults());
+  for (SymbolicExpr expr : exprs_) {
+    results.push_back(expr.Evaluate(variable_values));
+  }
+  return results;
+}
+
 SymbolicMap SymbolicMap::ReplaceDimsAndSymbols(
     absl::Span<const SymbolicExpr> dim_replacements,
     absl::Span<const SymbolicExpr> sym_replacements, int64_t num_result_dims,
@@ -154,7 +179,7 @@ SymbolicMap SymbolicMap::ReplaceDimsAndSymbols(
   } else {
     for (int i = 0; i < num_symbols_; ++i) {
       all_replacements.push_back(
-          CreateSymbolicVariable(num_dimensions_ + i, ctx_));
+          CreateSymbolicVariable(num_result_dims + i, ctx_));
     }
   }
 
@@ -203,6 +228,14 @@ SymbolicMap SymbolicMap::GetSubMap(
   return SymbolicMap(ctx_, num_dimensions_, num_symbols_, std::move(sub_exprs));
 }
 
+SymbolicMap SymbolicMap::GetSliceMap(size_t start, size_t length) const {
+  CHECK_LE(start, exprs_.size()) << "Slice start out of bounds";
+  CHECK_LE(length, exprs_.size() - start) << "Slice length out of bounds";
+  llvm::SmallVector<SymbolicExpr> sub_exprs(exprs_.begin() + start,
+                                            exprs_.begin() + start + length);
+  return SymbolicMap(ctx_, num_dimensions_, num_symbols_, std::move(sub_exprs));
+}
+
 SymbolicMap SymbolicMap::Replace(SymbolicExpr expr,
                                  SymbolicExpr replacement) const {
   llvm::SmallVector<SymbolicExpr> new_exprs;
@@ -221,14 +254,36 @@ SymbolicMap SymbolicMap::Replace(SymbolicExpr expr,
 }
 
 SymbolicMap SymbolicMap::Replace(
-    const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& map,
-    int64_t numResultDims, int64_t numResultSyms) const {
+    const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& map) const {
   llvm::SmallVector<SymbolicExpr> new_exprs;
   new_exprs.reserve(exprs_.size());
   for (const auto& expr : exprs_) {
     new_exprs.push_back(expr.Replace(map));
   }
-  return SymbolicMap(ctx_, numResultDims, numResultSyms, std::move(new_exprs));
+  return SymbolicMap(ctx_, GetNumDims(), GetNumSymbols(), std::move(new_exprs));
+}
+
+SymbolicMap SymbolicMap::SetNumDimensions(int num_new_dims) const {
+  auto unused_dims = GetUnusedDimensionsBitVector(*this);
+  for (int i = num_new_dims; i < GetNumDims(); ++i) {
+    CHECK(unused_dims[i]) << "Cannot decrease num_dims to " << num_new_dims
+                          << " if dimension " << i << " is used.";
+  }
+
+  // SymbolicMap takes responsibility for its own internal state by shifting its
+  // own symbols to preserve the invariance that their id ranges start from
+  // num_dims to num_dims + num_symbols.
+  llvm::DenseMap<SymbolicExpr, SymbolicExpr> sym_replacements;
+  for (int i = 0; i < GetNumSymbols(); ++i) {
+    auto old_sym = CreateSymbolExpr(i, /*num_dims=*/num_dimensions_, ctx_);
+    auto new_sym = CreateSymbolExpr(i, /*num_dims=*/num_new_dims, ctx_);
+    sym_replacements[old_sym] = new_sym;
+  }
+
+  SymbolicMap replaced_map = this->Replace(sym_replacements);
+  return SymbolicMap::Get(
+      ctx_, num_new_dims, GetNumSymbols(),
+      llvm::SmallVector<SymbolicExpr>(replaced_map.GetResults()));
 }
 
 bool SymbolicMap::operator==(const SymbolicMap& other) const {

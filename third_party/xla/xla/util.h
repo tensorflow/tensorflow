@@ -38,8 +38,10 @@ limitations under the License.
 #include "absl/base/macros.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/numeric/bits.h"
+#include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -116,10 +118,13 @@ using DimLevelTypeVector = absl::InlinedVector<DimLevelType, InlineRank()>;
   XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter, (condition))
 
 // Helper for macros above.  Don't use directly.
-#define XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter, condition)     \
-  static ::xla::TimerStats XLA_TimerStats##counter;                            \
-  ::xla::ScopedLoggingTimer XLA_ScopedLoggingTimerInstance##counter(           \
-      label, /*enabled=*/VLOG_IS_ON(level) && (condition), __FILE__, __LINE__, \
+#define XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter, condition) \
+  static ::xla::TimerStats XLA_TimerStats##counter;                        \
+  const bool XLA_TimerEnabled##counter = VLOG_IS_ON(level) && (condition); \
+  ::xla::ScopedLoggingTimer XLA_ScopedLoggingTimerInstance##counter(       \
+      XLA_TimerEnabled##counter ? ::absl::string_view(label)               \
+                                : ::absl::string_view(""),                 \
+      XLA_TimerEnabled##counter, __FILE__, __LINE__,                       \
       &XLA_TimerStats##counter);
 
 struct TimerStats {
@@ -460,6 +465,12 @@ std::string RoundTripFpToString(tsl::float8_e3m4 value);
 // Returns a string which can losslessly round trip to a float8 E8M0FNU.
 std::string RoundTripFpToString(tsl::float8_e8m0fnu value);
 
+// Returns a string which can losslessly round trip to a float6 E3M2FN.
+std::string RoundTripFpToString(tsl::float6_e3m2fn value);
+
+// Returns a string which can losslessly round trip to a float6 E2M3FN.
+std::string RoundTripFpToString(tsl::float6_e2m3fn value);
+
 // Returns a string which can losslessly round trip to a bfloat.
 std::string RoundTripFpToString(tsl::bfloat16 value);
 
@@ -538,27 +549,6 @@ std::string HumanReadableNumFlops(double flops, double nanoseconds);
 // a string that represents the throughput;
 // e.g. HumanReadableNumTranscendentalOps(1e9, 1e9) => 1.00GTROP/s.
 std::string HumanReadableNumTranscendentalOps(double trops, double nanoseconds);
-
-// Split the text into multiple lines and log each line with the given
-// severity, filename, and line number.
-void LogLines(absl::LogSeverity sev, absl::string_view text, const char* fname,
-              int lineno);
-inline void LogLinesINFO(absl::string_view text, const char* fname,
-                         int lineno) {
-  return LogLines(absl::LogSeverity::kInfo, text, fname, lineno);
-}
-inline void LogLinesWARNING(absl::string_view text, const char* fname,
-                            int lineno) {
-  return LogLines(absl::LogSeverity::kWarning, text, fname, lineno);
-}
-inline void LogLinesERROR(absl::string_view text, const char* fname,
-                          int lineno) {
-  return LogLines(absl::LogSeverity::kError, text, fname, lineno);
-}
-inline void LogLinesFATAL(absl::string_view text, const char* fname,
-                          int lineno) {
-  return LogLines(absl::LogSeverity::kFatal, text, fname, lineno);
-}
 
 // Returns a mask with "width" number of least significant bits set.
 template <typename T>
@@ -663,13 +653,18 @@ struct UnsignedIntegerTypeForSize<8> {
   using type = uint64_t;
 };
 
+template <>
+struct UnsignedIntegerTypeForSize<16> {
+  using type = absl::uint128;
+};
+
 template <size_t kBytes>
 using UnsignedIntegerTypeForSizeType =
     typename UnsignedIntegerTypeForSize<kBytes>::type;
 
 template <size_t kBytes>
 using SignedIntegerTypeForSizeType =
-    std::make_signed_t<UnsignedIntegerTypeForSizeType<kBytes>>;
+    make_specialized_signed_t<UnsignedIntegerTypeForSizeType<kBytes>>;
 
 template <typename T>
 auto SignAndMagnitude(T x) {
@@ -883,7 +878,12 @@ template <size_t kBitsPerElement>
 void PackIntN(absl::Span<const char> input, absl::Span<char> output) {
   static_assert(1 <= kBitsPerElement);
   static_assert(kBitsPerElement <= 7);
-  constexpr auto kElementsPerByte = 8 / kBitsPerElement;
+  constexpr size_t kElementsPerByte = 8 / kBitsPerElement;
+  const size_t required_output_size =
+      CeilOfRatio(input.size(), kElementsPerByte);
+  ABSL_CHECK_GE(output.size(), required_output_size)
+      << "Output span too small for packed elements: " << output.size() << " < "
+      << required_output_size;
   const size_t aligned_inputs = input.size() / kElementsPerByte;
   for (size_t i = 0; i < aligned_inputs; ++i) {
     char byte = 0;
@@ -921,20 +921,6 @@ inline void PackIntN(int bits_per_element, absl::Span<const char> input,
   }
 }
 
-// Same as above, but takes the number of bits per element, a pointer to the
-// source data, and the size of the data in bytes. Returns a unique pointer to
-// the packed data.
-inline std::unique_ptr<char[]> PackIntN(int bits_per_element, const char* data,
-                                        size_t size) {
-  size_t packed_size = size * bits_per_element / 8;
-  // Note: we can use `std::make_unique_for_overwrite` once C++20 is supported.
-  std::unique_ptr<char[]> buffer(new char[packed_size]);
-  auto src = absl::MakeSpan(data, size);
-  auto dst = absl::MakeSpan(buffer.get(), packed_size);
-  PackIntN(bits_per_element, src, dst);
-  return buffer;
-}
-
 // Takes a sequence of packed values, such that every byte stores multiple
 // values, and unpacks them so every byte stores one value in the low-order
 // bits. `input` should have
@@ -945,6 +931,11 @@ void UnpackIntN(absl::Span<const char> input, absl::Span<char> output) {
   static_assert(1 <= kBitsPerElement);
   static_assert(kBitsPerElement <= 7);
   constexpr auto kElementsPerByte = 8 / kBitsPerElement;
+  const size_t required_input_size =
+      CeilOfRatio(output.size(), kElementsPerByte);
+  ABSL_CHECK_GE(input.size(), required_input_size)
+      << "Input span too small for unpacked elements: " << input.size() << " < "
+      << required_input_size;
   const size_t aligned_outputs = output.size() / kElementsPerByte;
   for (size_t i = 0; i < aligned_outputs; ++i) {
     const char byte = input[i];
@@ -975,20 +966,6 @@ inline void UnpackIntN(int bits_per_element, absl::Span<const char> input,
   } else {
     LOG(FATAL) << "Invalid bits_per_element: " << bits_per_element;
   }
-}
-
-// Same as above, but takes the number of bits per element, a pointer to the
-// source data, and the size of the data in bytes. Returns a unique pointer to
-// the unpacked data.
-inline std::unique_ptr<char[]> UnpackIntN(int bits_per_element,
-                                          const char* data, size_t size) {
-  size_t unpacked_size = size * 8 / bits_per_element;
-  // Note: we can use `std::make_unique_for_overwrite` once C++20 is supported.
-  std::unique_ptr<char[]> buffer(new char[unpacked_size]);
-  auto src = absl::MakeSpan(data, size);
-  auto dst = absl::MakeSpan(buffer.get(), unpacked_size);
-  UnpackIntN(bits_per_element, src, dst);
-  return buffer;
 }
 
 // Returns a container with `sorted_ids_to_remove` elements removed.
@@ -1028,17 +1005,6 @@ constexpr bool IsPowerOf2(size_t x) {
   // Checks that x is non-zero and has only a single bit set.
   return absl::has_single_bit(x);
 }
-
-// Note that STRING is evaluated regardless of whether it will be logged.
-#define XLA_LOG_LINES(SEV, STRING) \
-  ::xla::LogLines##SEV(STRING, __FILE__, __LINE__)
-
-// Like LOG_LINES, but only logs if VLOG is enabled for the given level.
-// STRING is evaluated only if it will be logged.
-#define XLA_VLOG_LINES(LEVEL, STRING)                   \
-  do {                                                  \
-    if (VLOG_IS_ON(LEVEL)) XLA_LOG_LINES(INFO, STRING); \
-  } while (false)
 
 // Implementation details only below here
 

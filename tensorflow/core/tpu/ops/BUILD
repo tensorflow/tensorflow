@@ -18,7 +18,6 @@ cc_library(
         ":tpu_copy_with_dynamic_shape_op",
         ":tpu_embedding_ops",
         ":tpu_execute_op",
-        ":tpu_handle_to_key_op",
         ":tpu_partitioned_ops",
         ":tpu_reshard_variables_op",
         ":tpu_round_robin_op",
@@ -95,20 +94,6 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "tpu_handle_to_key_op",
-    srcs = [
-        "tpu_handle_to_key_op.cc",
-    ],
-    linkstatic = 1,
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/status",
     ],
     alwayslink = 1,
 )

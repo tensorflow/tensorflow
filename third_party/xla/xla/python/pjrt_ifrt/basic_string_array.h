@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/user_context.h"
+#include "xla/python/ifrt/value.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
@@ -111,6 +112,8 @@ class BasicStringArray final
   LayoutRef layout() const override;
 
   UserContextRef user_context() const override { return user_context_; }
+
+  absl::StatusOr<std::optional<int64_t>> ByteSize() const override;
 
   absl::StatusOr<std::vector<ArrayRef>> DisassembleIntoSingleDeviceArrays(
       ArrayCopySemantics array_copy_semantics,

@@ -1,5 +1,5 @@
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("@xla//xla/tsl/platform:build_config_root.bzl", "if_pywrap")
-load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
@@ -154,11 +154,12 @@ cc_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "wrap_converter",
     srcs = [
         "wrap_converter.py",
     ],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_converter_api",

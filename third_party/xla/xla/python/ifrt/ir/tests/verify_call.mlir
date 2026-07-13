@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: ifrt-opt %s -split-input-file -verify-diagnostics
 
 func.func @good_call(
@@ -57,6 +71,37 @@ func.func @callee(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
 
 // -----
 
+!token = !ifrt.array<tensor<!ifrt.token>,
+                     #ifrt.sharding_param< to [0] on 2>, [0, 1]>
+func.func @good_call_with_token_type(%arg0: !token) attributes {ifrt.function} {
+  %0, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0,1]
+    : (!token) -> !token
+  return
+}
+
+
+func.func @callee(%arg0: !stablehlo.token) -> !stablehlo.token {
+  return %arg0 : !stablehlo.token
+}
+
+// -----
+
+!token = !ifrt.array<tensor<!ifrt.token>,
+                     #ifrt.sharding_param< to [0] on 2>, [0, 1]>
+func.func @good_call_with_token_type(%arg0: !token) attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Call' op requires the same global shape. Input #0 'tensor<!ifrt.token>' vs Callee 'tensor<i32>'}}
+  %0, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0,1]
+    : (!token) -> !token
+  return
+}
+
+
+func.func @callee(%arg0: tensor<i32>) -> tensor<i32> {
+  return %arg0 : tensor<i32>
+}
+
+
+// -----
 
 func.func @call_requires_in_ifrt_function(
     %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
@@ -380,7 +425,8 @@ func.func @io_aliases_should_alias_arrays_with_same_per_shard_shape(
     %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
                        [0,1]>)
     attributes {ifrt.function} {
-  // expected-error@+1 {{'ifrt.Call' op can't alias input #0 to output #0 with different per-shard shapes: '!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>, [0, 1]>' vs '!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>'}}
+  // expected-error@+2 {{'ifrt.Call' op Arrays have different per-shard shapes:}}
+  // expected-error@+1 {{'ifrt.Call' op can't alias input #0 to output #0}}
   %0, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0,1]
     {io_aliases=[array<i32: 0, 0>]}
     : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,

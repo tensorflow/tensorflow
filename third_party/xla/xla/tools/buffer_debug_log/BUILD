@@ -1,6 +1,6 @@
 # Tools and utilities for analyzing the BufferDebugLogProto dumps.
 
-load("//xla:py_strict.bzl", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 load("//xla:pytype.bzl", "pytype_strict_binary", "pytype_strict_library")
 
 package(
@@ -17,9 +17,10 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "checksum_mismatch_report_test",
     srcs = ["checksum_mismatch_report_test.py"],
+    strict_deps = True,
     deps = [
         ":checksum_mismatch_report",
         "//xla/backends/gpu/runtime:buffer_debug_log_proto_py",

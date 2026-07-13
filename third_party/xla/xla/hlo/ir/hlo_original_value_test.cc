@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_original_value.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -22,6 +23,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash_testing.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_original_value_util.h"
@@ -129,6 +131,27 @@ TEST(OriginalValueTest, ProtoSerde) {
       OriginalValue::FromProto(proto_synthetic);
   EXPECT_TRUE(value_synthetic_from_proto->is_synthetic_call());
   EXPECT_EQ(*value_synthetic_from_proto, value_synthetic);
+
+  // Test with empty tuple.
+  OriginalValue value_empty = OriginalValue(Node::Tuple());
+  OriginalValueProto proto_empty = value_empty.ToProto();
+  std::shared_ptr<OriginalValue> value_empty_from_proto =
+      OriginalValue::FromProto(proto_empty);
+  EXPECT_EQ(*value_empty_from_proto, value_empty);
+}
+
+TEST(OriginalValueTest, FromProtoWithNegativeShapeIndexReturnsNull) {
+  OriginalValueProto proto;
+  auto* element = proto.add_elements();
+  element->add_shape_index(-1);
+  EXPECT_EQ(OriginalValue::FromProto(proto), nullptr);
+
+  OriginalValueProto proto_array;
+  auto* element_array = proto_array.add_elements();
+  element_array->add_shape_index(0);
+  element_array->mutable_original_array()->set_instruction_name("foo");
+  element_array->mutable_original_array()->add_shape_index(-1);
+  EXPECT_EQ(OriginalValue::FromProto(proto_array), nullptr);
 }
 
 TEST(OriginalValueTest, ElementAccess) {
@@ -453,6 +476,28 @@ ENTRY main {
 
   EXPECT_NE(gte->original_value(), nullptr);
   EXPECT_EQ(gte->original_value()->ToString(), R"({"p0"})");
+}
+
+TEST_F(OriginalValueHloTest, CopyOriginalValueWithMap) {
+  auto src_original_value = std::make_shared<OriginalValue>(Node::Tuple({
+      Node::Leaf(OriginalArray{"instA", {0}}),
+      Node::Leaf(OriginalArray{"instB", {1}}),
+      Node::Leaf(OriginalArray{"instC", {2}}),
+  }));
+
+  auto dest_original_value =
+      std::make_shared<OriginalValue>(ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(F32, {}), ShapeUtil::MakeShape(F32, {})}));
+
+  absl::flat_hash_map<int64_t, int64_t> old_to_new_tuple_idx = {{2, 0}, {0, 1}};
+
+  CopyOriginalValue(src_original_value, dest_original_value,
+                    old_to_new_tuple_idx);
+
+  EXPECT_THAT(dest_original_value->original_array({0}),
+              Optional(Eq(OriginalArray{"instC", {2}})));
+  EXPECT_THAT(dest_original_value->original_array({1}),
+              Optional(Eq(OriginalArray{"instA", {0}})));
 }
 
 }  // namespace

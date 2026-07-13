@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Hashing.h"
@@ -228,7 +229,7 @@ void ShardingParam::PrintV2(mlir::AsmPrinter& ods_printer,
 }
 
 absl::Status ShardingParam::verify() const {
-  TF_RETURN_IF_ERROR(minor_to_major().verify());
+  RETURN_IF_ERROR(minor_to_major().verify());
   const int axis_size = minor_to_major().axis_sizes.size();
   absl::flat_hash_set<int> unreduced_set;
   for (const int unreduced : unreduced_axes()) {
@@ -243,32 +244,13 @@ absl::Status ShardingParam::verify() const {
                        axis_size, "). Saw: ", unreduced));
     }
   }
-  int dim_index = 0;
-  int cum_size = 1;
-  for (int i = 0; i < minor_to_major().permutation.size(); ++i) {
-    const int perm_index = minor_to_major().permutation[i];
-    while (dim_index < dim_shards().size() && dim_shards()[dim_index] == 1) {
-      dim_index++;
-    }
-    if (dim_index == dim_shards().size()) {
-      break;
-    }
-    cum_size *= minor_to_major().axis_sizes[perm_index];
-    while (dim_index < dim_shards().size() &&
-           cum_size % dim_shards()[dim_index] == 0) {
-      cum_size /= dim_shards()[dim_index];
-      if (dim_shards()[dim_index] != 1 && unreduced_set.contains(i)) {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "`unreduced_axes` contains an axis (=", i,
-            ") with more than one shard (=", dim_shards()[dim_index], ")"));
-      }
-      dim_index++;
-    }
+  // TODO(b/491122256): Improve validation logic to check if `dim_shards` can be
+  // distributed over the device mesh.
+  int total_dim_shards_size = 1;
+  for (const int dim_shard : dim_shards()) {
+    total_dim_shards_size *= dim_shard;
   }
-  while (dim_index < dim_shards().size() && dim_shards()[dim_index] == 1) {
-    dim_index++;
-  }
-  if (dim_index != dim_shards().size()) {
+  if (NumDevices() % total_dim_shards_size != 0) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Can't shard the dims ", absl::StrJoin(dim_shards(), "x"),
         " to the mesh of [", absl::StrJoin(minor_to_major().permutation, ","),
@@ -376,7 +358,10 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, ShardingParam sharding) {
 absl::StatusOr<ShardingParam> ShardingParam::FromProto(
     const ShardingParamProto& proto) {
   const SerDesVersionNumber version_number(proto.version_number());
-  if (version_number > SerDesVersionNumber(1)) {
+  // We should only accept <= SerDesVersionNumber(1), but we accidentally used
+  // version 2 instead of 1. Since there is no `ShardingParam` serialization
+  // format change at version 2, we gracefully accept this version number.
+  if (version_number > SerDesVersionNumber(2)) {
     return absl::FailedPreconditionError(absl::StrCat(
         "Unsupported ", version_number, " for ShardingParam deserialization"));
   }
@@ -399,25 +384,32 @@ absl::StatusOr<ShardingParam> ShardingParam::FromProto(
 
 absl::Status ShardingParam::ToProto(ShardingParamProto& proto,
                                     SerDesVersion version) const {
-  if (version.version_number() > SerDesVersionNumber(1)) {
+  if (version.version_number() < SerDesVersionNumber(0)) {
     return absl::FailedPreconditionError(
         absl::StrCat("Unsupported ", version.version_number(),
                      " for ShardingParam serialization"));
   }
+  if (version.version_number() < SerDesVersionNumber(1) &&
+      !unreduced_axes().empty()) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("ShardingParamProto with ", version.version_number(),
+                     " does not support `unreduced_axes`"));
+  }
 
   proto.Clear();
-  proto.set_version_number(version.version_number().value());
+  if (unreduced_axes().empty()) {
+    // If the SerDes minimum supported version becomes 1 or larger, we can use
+    // the new minimum version here without breaking version compatibility.
+    proto.set_version_number(SerDesVersionNumber(0).value());
+  } else {
+    proto.set_version_number(SerDesVersionNumber(1).value());
+  }
   proto.mutable_dim_shards()->Add(dim_shards().begin(), dim_shards().end());
   proto.mutable_permutation()->Add(minor_to_major().permutation.begin(),
                                    minor_to_major().permutation.end());
   proto.mutable_axis_sizes()->Add(minor_to_major().axis_sizes.begin(),
                                   minor_to_major().axis_sizes.end());
   if (!unreduced_axes().empty()) {
-    if (version.version_number() == SerDesVersionNumber(0)) {
-      return absl::FailedPreconditionError(
-          absl::StrCat("ShardingParamProto with ", version.version_number(),
-                       " does not support `unreduced_axes`"));
-    }
     proto.mutable_unreduced_axes()->Add(unreduced_axes().begin(),
                                         unreduced_axes().end());
   }

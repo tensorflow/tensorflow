@@ -2,7 +2,7 @@ path: "tensorflow.lookup"
 tf_module {
   member {
     name: "KeyValueTensorInitializer"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "StaticHashTable"
@@ -14,14 +14,14 @@ tf_module {
   }
   member {
     name: "TextFileIndex"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "TextFileInitializer"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "experimental"
-    mtype: "<type \'module\'>"
+    mtype: "<class \'module\'>"
   }
 }

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/lib/comparators.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/lib/loops.h"
@@ -36,7 +37,7 @@ namespace xla {
 XlaOp TopK(XlaOp input, int64_t k, PrimitiveType index_type) {
   XlaBuilder* const builder = input.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
+    ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
     int last_dim = input_shape.dimensions().size() - 1;
     int64_t last_dim_size = input_shape.dimensions(last_dim);
     // TODO(b/148796364): tune these constants for better performance.
@@ -164,7 +165,7 @@ XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions,
                          PrimitiveType index_type) {
   XlaBuilder* const builder = input.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
+    ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
     int last_dim = input_shape.dimensions().size() - 1;
     // Calculate per partition size.
     auto input_dims = input_shape.dimensions();
@@ -253,11 +254,10 @@ XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions,
 
     // Pass the result of the first TopK to the while loop and do
     // num_partition - 1 iterations.
-    TF_ASSIGN_OR_RETURN(
-        auto values_and_indices,
-        ForEachIndex(num_partitions - 1, index_type, topk_body_fn,
-                     {values, indices, input, iota}, "topk_with_partition",
-                     builder));
+    ASSIGN_OR_RETURN(auto values_and_indices,
+                     ForEachIndex(num_partitions - 1, index_type, topk_body_fn,
+                                  {values, indices, input, iota},
+                                  "topk_with_partition", builder));
     return Tuple(builder, {values_and_indices[0], values_and_indices[1]});
   });
 }

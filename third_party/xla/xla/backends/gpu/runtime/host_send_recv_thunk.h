@@ -27,6 +27,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/host_async_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/runtime/buffer_use.h"
@@ -91,7 +93,7 @@ using HostSendRecvAsyncEventsMap =
 // HostSendThunk
 //===----------------------------------------------------------------------===//
 
-class HostSendThunk : public Thunk {
+class HostSendThunk : public HostAsyncThunk {
  public:
   static absl::StatusOr<std::unique_ptr<HostSendThunk>> FromProto(
       ThunkInfo thunk_info, const HostSendThunkProto& proto,
@@ -133,7 +135,7 @@ class HostSendThunk : public Thunk {
 // HostSendDoneThunk
 //===----------------------------------------------------------------------===//
 
-class HostSendDoneThunk : public Thunk {
+class HostSendDoneThunk : public HostAsyncThunk {
  public:
   static absl::StatusOr<std::unique_ptr<HostSendDoneThunk>> FromProto(
       ThunkInfo thunk_info, const HostSendDoneThunkProto& proto,
@@ -145,6 +147,10 @@ class HostSendDoneThunk : public Thunk {
                     std::optional<GlobalDeviceId> device_constraint);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  // TODO(b/527907619): Implement this properly once we have figured out how
+  // buffer uses should look like for async thunks.
+  BufferUses buffer_uses() const override { return {}; }
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
@@ -163,7 +169,7 @@ class HostSendDoneThunk : public Thunk {
 // HostRecvThunk
 //===----------------------------------------------------------------------===//
 
-class HostRecvThunk : public Thunk {
+class HostRecvThunk : public HostAsyncThunk {
  public:
   static absl::StatusOr<std::unique_ptr<HostRecvThunk>> FromProto(
       ThunkInfo thunk_info, const HostRecvThunkProto& proto,
@@ -205,7 +211,7 @@ class HostRecvThunk : public Thunk {
 // HostRecvDoneThunk
 //===----------------------------------------------------------------------===//
 
-class HostRecvDoneThunk : public Thunk {
+class HostRecvDoneThunk : public HostAsyncThunk {
  public:
   static absl::StatusOr<std::unique_ptr<HostRecvDoneThunk>> FromProto(
       ThunkInfo thunk_info, const HostRecvDoneThunkProto& proto,
@@ -217,6 +223,10 @@ class HostRecvDoneThunk : public Thunk {
                     std::optional<GlobalDeviceId> device_constraint);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  // TODO(b/527907619): Implement this properly once we have figured out how
+  // buffer uses should look like for async thunks.
+  BufferUses buffer_uses() const override { return {}; }
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 

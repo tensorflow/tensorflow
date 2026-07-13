@@ -17,12 +17,15 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -34,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/data/flat_map_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"

@@ -92,11 +92,11 @@ REGISTER_OP("DTensorRestoreV2")
       TF_RETURN_IF_ERROR(c->GetAttr("input_layouts", &input_layouts));
 
       if (input_shapes.size() != input_layouts.size()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Size of input_shapes and input_layouts is expected to match, but "
             "got ",
             input_shapes.size(), " for input_shapes and ", input_layouts.size(),
-            " for input_layouts");
+            " for input_layouts"));
       }
 
       // TODO(hthu): We should be able to infer from layout and global_shape

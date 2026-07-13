@@ -53,3 +53,225 @@ ENTRY main {
   ROOT add = f32[] add(param, call), frontend_attributes={
     _xla_compute_type="host", _dummy_frontend_attribute="xyz"}
 }
+
+// -----
+
+HloModule frontend_attributes_iota
+
+// CHECK-LABEL: func.func @main
+ENTRY main {
+  // CHECK:      mhlo.iota
+  // CHECK:      mhlo.frontend_attributes = {
+  // CHECK-DAG:    test_attr = "yes"
+  // CHECK:      }
+  ROOT iota = f32[10] iota(), iota_dimension=0, frontend_attributes={test_attr="yes"}
+}
+
+// -----
+
+HloModule frontend_attributes_pad
+
+// CHECK-LABEL: func.func @main
+ENTRY main {
+  operand = f32[4] parameter(0)
+  padding_val = f32[] parameter(1)
+  // CHECK:      mhlo.pad
+  // CHECK:      mhlo.frontend_attributes = {
+  // CHECK-DAG:    test_attr = "yes"
+  // CHECK:      }
+  ROOT pad = f32[6] pad(operand, padding_val), padding=1_1_0, frontend_attributes={test_attr="yes"}
+}
+
+// -----
+
+HloModule frontend_attributes_scan
+
+add_comp {
+  param0 = f32[] parameter(0)
+  param1 = f32[] parameter(1)
+  add = f32[] add(param0, param1)
+  ROOT t = (f32[], f32[]) tuple(add, add)
+}
+
+// CHECK-LABEL: func.func @main
+ENTRY main {
+  operand = f32[10] parameter(0)
+  init = f32[] parameter(1)
+  // CHECK:      mhlo.scan
+  // CHECK:      mhlo.frontend_attributes = {
+  // CHECK-DAG:    test_attr = "yes"
+  // CHECK:      }
+  ROOT scan = (f32[10], f32[]) scan(operand, init), dimensions={0}, num_carries=1, is_associative=true, to_apply=add_comp, frontend_attributes={test_attr="yes"}
+}
+
+// -----
+
+HloModule frontend_attributes_slice
+
+// CHECK-LABEL: func.func @main
+ENTRY main {
+  operand = f32[10] parameter(0)
+  // CHECK:      mhlo.slice
+  // CHECK:      mhlo.frontend_attributes = {
+  // CHECK-DAG:    test_attr = "yes"
+  // CHECK:      }
+  ROOT slice = f32[4] slice(operand), slice={[0:4:1]}, frontend_attributes={test_attr="yes"}
+}
+
+// -----
+
+HloModule frontend_attributes_sort
+
+compare {
+  param0 = f32[] parameter(0)
+  param1 = f32[] parameter(1)
+  ROOT cmp = pred[] compare(param0, param1), direction=LT
+}
+
+// CHECK-LABEL: func.func @main
+ENTRY main {
+  operand = f32[10] parameter(0)
+  // CHECK:      mhlo.sort
+  // CHECK:      mhlo.frontend_attributes = {
+  // CHECK-DAG:    test_attr = "yes"
+  // CHECK:      }
+  ROOT sort = f32[10] sort(operand), dimensions={0}, is_stable=true, to_apply=compare, frontend_attributes={test_attr="yes"}
+}
+
+// -----
+
+HloModule frontend_attributes_topk
+
+// CHECK-LABEL: func.func @main
+ENTRY main {
+  operand = f32[4,4] parameter(0)
+  // CHECK:      mhlo.topk
+  // CHECK:      mhlo.frontend_attributes = {
+  // CHECK-DAG:    test_attr = "yes"
+  // CHECK:      }
+  ROOT topk = (f32[4,2], s32[4,2]) topk(operand), k=2, largest=true, frontend_attributes={test_attr="yes"}
+}
+
+// -----
+
+HloModule frontend_attributes_concatenate
+
+// CHECK-LABEL: func.func @main
+ENTRY main {
+  operand0 = f32[4,1] parameter(0)
+  operand1 = f32[4,2] parameter(1)
+  // CHECK:      mhlo.concatenate
+  // CHECK:      mhlo.frontend_attributes = {
+  // CHECK-DAG:    test_attr = "yes"
+  // CHECK:      }
+  ROOT concatenate = f32[4,3] concatenate(operand0, operand1), dimensions={1}, frontend_attributes={test_attr="yes"}
+}
+
+// -----
+
+HloModule frontend_attributes_all_to_all
+
+// CHECK-LABEL: func.func @main
+ENTRY main {
+  operand = s32[2,2] parameter(0)
+  // CHECK:      mhlo.all_to_all
+  // CHECK:      mhlo.frontend_attributes = {
+  // CHECK-DAG:    test_attr = "yes"
+  // CHECK:      }
+  ROOT all_to_all = s32[2,2] all-to-all(operand), channel_id=1, replica_groups={{1,2}, {3,0}}, dimensions={1}, frontend_attributes={test_attr="yes"}
+}
+
+// -----
+
+HloModule frontend_attributes_reverse
+
+// CHECK-LABEL: func.func @main
+ENTRY main {
+  operand = f32[4] parameter(0)
+  // CHECK:      mhlo.reverse
+  // CHECK:      mhlo.frontend_attributes = {
+  // CHECK-DAG:    test_attr = "yes"
+  // CHECK:      }
+  ROOT reverse = f32[4] reverse(operand), dimensions={0}, frontend_attributes={test_attr="yes"}
+}
+
+// -----
+
+HloModule frontend_attributes_rng
+
+// CHECK-LABEL: func.func @main
+ENTRY main {
+  param0 = f32[] parameter(0)
+  param1 = f32[] parameter(1)
+  // CHECK:      mhlo.rng
+  // CHECK:      mhlo.frontend_attributes = {
+  // CHECK-DAG:    test_attr = "yes"
+  // CHECK:      }
+  ROOT rng = f32[2,3] rng(param0, param1), distribution=rng_normal, frontend_attributes={test_attr="yes"}
+}
+
+// -----
+
+HloModule frontend_attributes_rng_get_and_update_state
+
+// CHECK-LABEL: func.func @main
+ENTRY main {
+  // CHECK:      mhlo.xla.rng_get_and_update_state
+  // CHECK:      mhlo.frontend_attributes = {
+  // CHECK-DAG:    test_attr = "yes"
+  // CHECK:      }
+  ROOT rng_state = u64[2] rng-get-and-update-state(), delta=1, frontend_attributes={test_attr="yes"}
+}
+
+// -----
+
+HloModule frontend_attributes_map
+
+map_comp {
+  param0 = f32[] parameter(0)
+  param1 = s32[] parameter(1)
+  ROOT add = f32[] add(param0, param0)
+}
+
+// CHECK-LABEL: func.func @main
+ENTRY main {
+  operand0 = f32[4] parameter(0)
+  operand1 = s32[4] parameter(1)
+  // CHECK:      mhlo.map
+  // CHECK:      mhlo.frontend_attributes = {
+  // CHECK-DAG:    test_attr = "yes"
+  // CHECK:      }
+  ROOT map = f32[4] map(operand0, operand1), dimensions={0}, to_apply=map_comp, frontend_attributes={test_attr="yes"}
+}
+
+// -----
+
+HloModule frontend_attributes_dynamic_slice
+
+// CHECK-LABEL: func.func @main
+ENTRY main {
+  operand = s32[1,4] parameter(0)
+  idx0 = s32[] parameter(1)
+  idx1 = s32[] parameter(2)
+  // CHECK:      mhlo.dynamic_slice
+  // CHECK:      mhlo.frontend_attributes = {
+  // CHECK-DAG:    test_attr = "yes"
+  // CHECK:      }
+  ROOT ds = s32[1,2] dynamic-slice(operand, idx0, idx1), dynamic_slice_sizes={1,2}, frontend_attributes={test_attr="yes"}
+}
+
+// -----
+
+HloModule frontend_attributes_dynamic_update_slice
+
+// CHECK-LABEL: func.func @main
+ENTRY main {
+  operand = f32[2,2] parameter(0)
+  update = f32[1,1] parameter(1)
+  idx = s32[] parameter(2)
+  // CHECK:      mhlo.dynamic_update_slice
+  // CHECK:      mhlo.frontend_attributes = {
+  // CHECK-DAG:    test_attr = "yes"
+  // CHECK:      }
+  ROOT dus = f32[2,2] dynamic-update-slice(operand, update, idx, idx), frontend_attributes={test_attr="yes"}
+}

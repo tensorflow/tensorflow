@@ -655,6 +655,30 @@ struct AvxRectangularTransposeMicroKernelImpl {
     }
   }
 };
+
+template <typename T, int bs>
+struct SseSquareTransposeMicroKernelImpl {
+  XLA_FLATTEN static void Apply(const char* __restrict a, int64_t lda,
+                                char* __restrict b, int64_t ldb) {
+    constexpr size_t element_size = sizeof(T);
+    static_assert(element_size * bs == sizeof(__m128i));
+    std::array<__m128i, bs> last_transpose;
+    XLA_UNROLL
+    for (int i = 0; i < bs; ++i) {
+      last_transpose[i] =
+          _mm_loadu_si128(reinterpret_cast<const __m128i*>(a + lda * i));
+    }
+
+    last_transpose = UnpackSequence<element_size, /*step_size=*/1,
+                                    /*unpack_limit=*/16>(last_transpose);
+
+    XLA_UNROLL
+    for (int i = 0; i < bs; ++i) {
+      _mm_storeu_si128(reinterpret_cast<__m128i*>(b + ldb * i),
+                       last_transpose[i]);
+    }
+  }
+};
 #endif
 
 // The transpose kernel requires its input to be contiguous in one of the two
@@ -671,6 +695,12 @@ struct TransposeMicroKernel {
       if constexpr (sizeof(T) * bs == sizeof(__m256i)) {
         return AvxSquareTransposeMicroKernelImpl<T, bs>::Apply(a, lda, b, ldb);
       } else if constexpr (sizeof(T) * bs == sizeof(__m128i)) {
+        // Prefer SseSquare when gathering from memory (lda >= ldb) with small
+        // strides, rather than dealing with lo/hi packing.
+        if (lda >= ldb && lda <= 64) {
+          return SseSquareTransposeMicroKernelImpl<T, bs>::Apply(a, lda, b,
+                                                                 ldb);
+        }
         return AvxRectangularTransposeMicroKernelImpl<T, bs>::Apply(a, lda, b,
                                                                     ldb);
       }
@@ -682,6 +712,7 @@ struct TransposeMicroKernel {
       }
 #endif
     }
+
     for (int i = 0; i < bs; ++i) {
       for (int j = 0; j < bs; ++j) {
         std::memcpy(b + i * ldb + j * sizeof(T), a + j * lda + i * sizeof(T),

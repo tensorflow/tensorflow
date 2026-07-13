@@ -40,7 +40,7 @@ absl::Status ParseRfc3339Time(const std::string& time, int64_t* mtime_nsec) {
   if (sscanf(time.c_str(), "%4d-%2d-%2dT%2d:%2d:%fZ", &(parsed.tm_year),
              &(parsed.tm_mon), &(parsed.tm_mday), &(parsed.tm_hour),
              &(parsed.tm_min), &seconds) != 6) {
-    return errors::Internal(
+    return absl::InternalError(
         absl::StrCat("Unrecognized RFC 3339 time format: ", time));
   }
   const int int_seconds = std::floor(seconds);

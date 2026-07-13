@@ -39,7 +39,7 @@ class AsyncWorkRunner : public tsl::Executor {
       absl::Span<const tsl::RCReference<tsl::AsyncValue>> dependencies,
       Task task) {
     tsl::RunWhenReady(dependencies, [this, task = std::move(task)]() mutable {
-      this->Execute(std::move(task));
+      Execute(std::move(task));
     });
   }
 

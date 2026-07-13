@@ -37,6 +37,7 @@ cc_library(
     hdrs = ["heap_simulator.h"],
     deps = [
         ":allocation_block",
+        ":free_chunks_manager",
         "//xla:comparison_util",
         "//xla:union_find",
         "//xla:util",
@@ -52,6 +53,7 @@ cc_library(
         "//xla/service:logical_buffer",
         "//xla/service:time_utils",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:nullability",
@@ -64,6 +66,7 @@ cc_library(
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -119,11 +122,11 @@ cc_library(
 
 xla_cc_test(
     name = "free_chunks_manager_test",
-    size = "large",
     srcs = ["free_chunks_manager_test.cc"],
     deps = [
         ":free_chunks_manager",
         "//xla/tsl/platform:test_benchmark",
-        "@com_google_googletest//:gtest_main",
+        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest",
     ],
 )

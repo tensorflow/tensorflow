@@ -1,11 +1,12 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//xla/python/ifrt:users"],
+    default_visibility = internal_visibility(["//xla/python/ifrt/ir:internal"]),
     licenses = ["notice"],
 )
 
@@ -26,15 +27,18 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        # go/keep-sorted start
+        "ifrt_add_control_dependencies.cc",
         "ifrt_atom_programs_from_vhlo_pass.cc",
         "ifrt_atom_programs_to_vhlo_pass.cc",
         "ifrt_compile_atom_program_pass.cc",
         "ifrt_dump_atom_programs_pass.cc",
         "ifrt_duplicated_callee_elimination_pass.cc",
+        "ifrt_insert_copy_arrays_for_returned_many_times_pass.cc",
         "ifrt_legalize_to_vifrt_pass.cc",
         "ifrt_lower_atom_program_metadata_to_xla_pass.cc",
         "ifrt_lower_mpmd_reshard_to_call_pass.cc",
-        "ifrt_merge_reshards_pass.cc",
+        "ifrt_merge_copies_and_reshards_pass.cc",
         "ifrt_outline_atom_program_to_module_pass.cc",
         "ifrt_populate_atom_program_metadata_pass.cc",
         "ifrt_precompile_atom_program_preprocessing_pass.cc",
@@ -46,16 +50,13 @@ cc_library(
         "ifrt_verify_device_type_consistency_pass.cc",
         "ifrt_verify_donation_pass.cc",
         "ifrt_verify_sharding_specified_pass.cc",
-        "multi_threaded_atom_program_compiler.cc",
         "passes.cc",
-        "spmd_expandable_interface_verification_pass.cc",
-        "spmd_expansion_pass.cc",
         "vifrt_legalize_to_ifrt_pass.cc",
         "vifrt_to_version_pass.cc",
+        # go/keep-sorted end
     ],
     hdrs = [
         "map_ifrt_to_vifrt.h",
-        "multi_threaded_atom_program_compiler.h",
         "passes.h",
     ],
     compatible_with = get_compatible_with_portable(),
@@ -63,9 +64,7 @@ cc_library(
         ":debug",
         ":passes_inc_gen",
         ":utils",
-        "//xla:status_macros",
         "//xla:xla_data_proto_cc",
-        "//xla/client:executable_build_options",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
         "//xla/pjrt:mlir_to_hlo",
@@ -82,16 +81,15 @@ cc_library(
         "//xla/python/ifrt/ir:ifrt_ops_inc_gen",
         "//xla/python/ifrt/ir:version",
         "//xla/python/ifrt/ir:vifrt",
-        "//xla/python/ifrt/support:sharding_conversions",
-        "//xla/service:computation_placer_hdr",
+        "//xla/python/ifrt/ir/support:sharding_conversions",
         "//xla/service:hlo_proto_cc",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
-        "//xla/tsl/concurrency:future",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -102,7 +100,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
         "@com_google_protobuf//:protobuf_lite",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
@@ -113,6 +110,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:UBDialect",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:register",
         "@stablehlo//:stablehlo_ops",
@@ -127,37 +125,35 @@ cc_library(
 )
 
 cc_library(
-    name = "built_in_spmd_expansions",
-    srcs = ["built_in_spmd_expansions.cc"],
-    hdrs = ["built_in_spmd_expansions.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//xla/python/ifrt/ir/transforms/spmd_expanders:spmd_expander",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
     compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([
+        "//xla/python/ifrt/ir:friends",
+    ]),
     deps = [
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo_sharding",
         "//xla/mlir/utils:type_util",
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
         "//xla/python/ifrt/ir",
-        "//xla/python/ifrt/support:module_parsing",
+        "//xla/python/ifrt/ir/support:module_parsing",
+        "//xla/python/ifrt/ir/support:sharding_conversions",
         "//xla/python/pjrt_ifrt:pjrt_dtype",
         "//xla/python/pjrt_ifrt:xla_ifrt",
+        "//xla/service:computation_placer_hdr",
+        "//xla/service/spmd/shardy:utils",
+        "//xla/tsl/platform:status_macros",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:BytecodeWriter",
         "@llvm-project//mlir:FuncDialect",
@@ -175,6 +171,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//xla/tsl/platform:env",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -196,9 +193,10 @@ xla_cc_test(
     srcs = ["debug_test.cc"],
     deps = [
         ":debug",
-        "//xla/python/ifrt/support:module_parsing",
+        "//xla/python/ifrt/ir/support:module_parsing",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",

@@ -17,9 +17,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
 
+#include "absl/base/no_destructor.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -35,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/pjrt/layout_mode.h"
@@ -80,12 +84,17 @@ void IfrtDialect::initialize() {
 
 IfrtAsmDialectInterface::AliasResult IfrtAsmDialectInterface::getAlias(
     mlir::Attribute attr, llvm::raw_ostream& os) const {
+  if (llvm::isa<IfrtShardingParamAttr>(attr)) {
+    os << "sp";
+    return AliasResult::FinalAlias;
+  }
   if (auto devices = llvm::dyn_cast<IfrtDevicesAttr>(attr);
       devices != nullptr && devices.getIds().size() > 4) {
     os << "devices";
     return AliasResult::FinalAlias;
-  } else if (auto mapping = llvm::dyn_cast<IfrtArrayMappingAttr>(attr);
-             mapping != nullptr && mapping.getMappings().size() > 2) {
+  }
+  if (auto mapping = llvm::dyn_cast<IfrtArrayMappingAttr>(attr);
+      mapping != nullptr && mapping.getMappings().size() > 2) {
     os << "array_mapping";
     return AliasResult::FinalAlias;
   }
@@ -206,6 +215,11 @@ mlir::LogicalResult IfrtArrayType::verify(
     mlir::RankedTensorType shape, IfrtShardingAttrInterface sharding_attr,
     IfrtDevicesAttr devices_attr, mlir::StringAttr memory_kind_attr,
     mlir::StringAttr layout_attr) {
+  if (llvm::isa<IfrtTokenType>(shape.getElementType())) {
+    if (!shape.getShape().empty()) {
+      return emitError() << "Token type cannot have non-empty shape";
+    }
+  }
   if (layout_attr) {
     auto layout_mode = xla::LayoutMode::FromString(layout_attr.str());
     if (!layout_mode.ok()) {
@@ -217,18 +231,23 @@ mlir::LogicalResult IfrtArrayType::verify(
 }
 
 xla::ifrt::MemoryKind IfrtArrayType::MemoryKind() const {
-  return getMemoryKindAttr() == nullptr
+  static const absl::NoDestructor<std::string> default_memory_kind(
+      absl::StrCat(xla::ifrt::MemoryKind()));
+  mlir::StringAttr memory_kind_attr = getMemoryKindAttr();
+  return memory_kind_attr == nullptr ||
+                 memory_kind_attr.getValue() == *default_memory_kind
              ? xla::ifrt::MemoryKind()
-             : xla::ifrt::MemoryKind(getMemoryKindAttr().str());
+             : xla::ifrt::MemoryKind(memory_kind_attr.str());
 };
 
-std::optional<xla::LayoutMode> IfrtArrayType::LayoutMode() const {
+// TODO(icgog): Migrate to xla::ifrt::Layout.
+xla::LayoutMode IfrtArrayType::LayoutMode() const {
   if (auto layout_attr = getLayoutAttr()) {
     auto layout_mode = xla::LayoutMode::FromString(layout_attr.str());
     CHECK_OK(layout_mode) << "Invalid layout mode: " << layout_attr.str();
     return *layout_mode;
   }
-  return std::nullopt;
+  return xla::LayoutMode(xla::LayoutMode::Mode::kDefault);
 }
 
 void IfrtArrayType::print(mlir::AsmPrinter& odsPrinter) const {
@@ -409,6 +428,39 @@ mlir::LogicalResult IfrtMappingAttr::verify(
                        << ", but they must have the same number of shards.";
   }
   return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
+// Utility functions
+//===----------------------------------------------------------------------===//
+
+bool IsIfrtFunction(mlir::Operation* op) {
+  return op->hasAttr(kIfrtFunctionAttrName) ||
+         op->hasAttr(kIfrtReshardFunctionAttrName);
+}
+
+IfrtArrayType GetArrayType(mlir::Type type) {
+  auto ifrt_array_type = mlir::dyn_cast<IfrtArrayType>(type);
+  CHECK(ifrt_array_type != nullptr)
+      << "Expecte 'IfrtArrayType', but got `" << mlir::debugString(type) << "`";
+  return ifrt_array_type;
+}
+
+IfrtArrayType GetArrayType(mlir::Value value) {
+  return GetArrayType(value.getType());
+}
+
+IfrtShardingParamAttr GetShardingParamAttr(IfrtArrayType array_type) {
+  auto sharding_attr =
+      mlir::dyn_cast<IfrtShardingParamAttr>(array_type.getShardingAttr());
+  CHECK(sharding_attr != nullptr)
+      << "Array type sharding attribute: " << mlir::debugString(array_type)
+      << " if not of type `IfrtShardingParamAttr`";
+  return sharding_attr;
+}
+
+bool IsUnspecifiedSharding(IfrtShardingAttrInterface sharding_attr) {
+  return mlir::isa<IfrtUnspecifiedShardingAttr>(sharding_attr);
 }
 
 }  // namespace ifrt

@@ -117,16 +117,16 @@ absl::Status CheckUserSpecifiedRanks(
 
   auto received_ranks = absl::StrJoin(members, ",", RankFormatter());
   if (at_least_one_member_with_no_rank && at_least_one_member_with_user_rank) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Only part of the group members have user given rank specified.",
-        "Received ranks: ", received_ranks);
+        "Received ranks: ", received_ranks));
   }
 
   if (at_least_one_member_with_user_rank &&
       user_ranks.size() < members.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Duplicate ranks specified for group members. Received ranks: ",
-        received_ranks);
+        received_ranks));
   }
   return absl::OkStatus();
 }
@@ -179,7 +179,7 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
         token, std::bind(&CollectiveParamResolverLocal::CancelGroup, this,
                          group_params->group_key));
     if (is_cancelled) {
-      done(errors::Cancelled("CompleteGroup is cancelled before it starts"));
+      done(absl::CancelledError("CompleteGroup is cancelled before it starts"));
       return;
     }
     done = [cancel_mgr, token,
@@ -200,16 +200,16 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
     if (gr->status.ok()) {
       // Check for consistency with existing GroupRec.
       if (group_params->device_type != gr->group.device_type) {
-        gr->status = errors::Internal(
-            "Device ", device.name(),
-            " is joining a group with incompatible device type",
-            gr->group.device_type.type_string(),
-            " (group_key=", gr->group.group_key, ")");
+        gr->status = absl::InternalError(
+            absl::StrCat("Device ", device.name(),
+                         " is joining a group with incompatible device type",
+                         gr->group.device_type.type_string(),
+                         " (group_key=", gr->group.group_key, ")"));
       } else if (group_params->group_size != gr->group.group_size) {
-        gr->status = errors::Internal(
+        gr->status = absl::InternalError(absl::StrCat(
             "Device ", device.name(), " is joining a group with size",
             group_params->group_size, ", but that group has size ",
-            gr->group.group_size, " (group_key=", gr->group.group_key, ")");
+            gr->group.group_size, " (group_key=", gr->group.group_key, ")"));
       }
     }
     bool new_device = false;
@@ -219,10 +219,10 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
       if (it == gr->incarnations_by_device_name.end()) {
         if (gr->group.members.size() == gr->group.group_size) {
           // The group is already full.
-          gr->status =
-              errors::Internal("Device ", device.name(),
-                               " is joining a group that is already full",
-                               " (group_key=", gr->group.group_key, ")");
+          gr->status = absl::InternalError(
+              absl::StrCat("Device ", device.name(),
+                           " is joining a group that is already full",
+                           " (group_key=", gr->group.group_key, ")"));
         } else {
           // This is a new device that has not yet joined the group.
           gr->incarnations_by_device_name[device.name()] = device.incarnation();
@@ -233,7 +233,7 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
                group_params->user_specified_rank < gr->group.group_size)) {
             member.rank = group_params->user_specified_rank;
           } else {
-            gr->status = errors::InvalidArgument(
+            gr->status = absl::InvalidArgumentError(
                 "User Provided rank is invalid. It should be between [0, "
                 "group_size)");
           }
@@ -254,11 +254,11 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
       } else {
         // If the device already exists, check if the incarnation matches.
         if (it->second != device.incarnation()) {
-          gr->status = errors::FailedPrecondition(
+          gr->status = absl::FailedPreconditionError(absl::StrCat(
               "Device ", device.name(),
               " current incarnation doesn't match with one in the group. This "
               "usually means this worker has restarted but the collective "
-              "leader hasn't, or this worker connects to a wrong cluster.");
+              "leader hasn't, or this worker connects to a wrong cluster."));
         }
       }
     }
@@ -521,12 +521,12 @@ void CollectiveParamResolverLocal::CancelGroup(int32_t group_key) {
       // The group is already complete. There's no need to cancel.
       return;
     }
-    gr->status = errors::Cancelled("group is cancelled");
+    gr->status = absl::CancelledError("group is cancelled");
     pending_done.swap(gr->pending_done);
     gr->pending_params.clear();
   }
   for (const StatusCallback& done : pending_done) {
-    done(errors::Cancelled("group is cancelled"));
+    done(absl::CancelledError("group is cancelled"));
   }
 }
 
@@ -630,19 +630,20 @@ absl::Status CollectiveParamResolverLocal::LookupGroup(int32_t group_key,
   mutex_lock l(group_mu_);
   auto group_rec = group_table_.find(group_key);
   if (group_rec == group_table_.end()) {
-    return errors::InvalidArgument("Group ", group_key,
-                                   " is not "
-                                   "initialized. Please call group "
-                                   "initialization op first before invoking "
-                                   "collective op.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Group ", group_key,
+                     " is not "
+                     "initialized. Please call group "
+                     "initialization op first before invoking "
+                     "collective op."));
   }
   mutex_lock lock(group_rec->second->mu);
   if (!group_rec->second->status.ok()) {
-    return errors::FailedPrecondition(
-        "Failed to run collective due to "
-        "unsuccessful group initialization. "
-        "Group initialization failed with error ",
-        group_rec->second->status.ToString());
+    return absl::FailedPreconditionError(
+        absl::StrCat("Failed to run collective due to "
+                     "unsuccessful group initialization. "
+                     "Group initialization failed with error ",
+                     group_rec->second->status.ToString()));
   }
   *group = group_rec->second->group;
   return absl::OkStatus();
@@ -678,9 +679,9 @@ void CollectiveParamResolverLocal::CompleteInstanceAsync(
     const CompleteInstanceRequest* request, CompleteInstanceResponse* response,
     CancellationManager* cancel_mgr, const StatusCallback& done) {
   done(
-      errors::Internal("CompleteInstance is not implemented by "
-                       "CollectiveParamResolverLocal which is "
-                       "intended only for non-distributed deployment."));
+      absl::InternalError("CompleteInstance is not implemented by "
+                          "CollectiveParamResolverLocal which is "
+                          "intended only for non-distributed deployment."));
 }
 
 // TODO(b/111897089): we need a better way to pick the collective
@@ -718,11 +719,11 @@ void CollectiveParamResolverLocal::CompleteInstanceLocal(
     // this invocation.
     if (ir->shared->instance.type != cp->instance.type ||
         ir->shared->instance.data_type != cp->instance.data_type) {
-      done(errors::Internal("Collective instance ", cp->instance.instance_key,
-                            " expected type ", ir->shared->instance.type,
-                            " and data_type ", ir->shared->instance.data_type,
-                            " but got type ", cp->instance.type,
-                            " and data_type ", cp->instance.data_type));
+      done(absl::InternalError(absl::StrCat(
+          "Collective instance ", cp->instance.instance_key, " expected type ",
+          ir->shared->instance.type, " and data_type ",
+          ir->shared->instance.data_type, " but got type ", cp->instance.type,
+          " and data_type ", cp->instance.data_type)));
       return;
     }
   }
@@ -809,10 +810,10 @@ void CollectiveParamResolverLocal::WaitForGroup(InstanceRec* ir,
       if (cp->is_source) {
         // Initialize source rank.
         if (ir->source_rank >= 0) {
-          ir->status = errors::Internal("Instance ", cp->instance.instance_key,
-                                        " already has source ", ir->source_rank,
-                                        ", received second claim from ",
-                                        cp->default_rank);
+          ir->status = absl::InternalError(
+              absl::StrCat("Instance ", cp->instance.instance_key,
+                           " already has source ", ir->source_rank,
+                           ", received second claim from ", cp->default_rank));
         } else {
           ir->source_rank = cp->default_rank;
         }
@@ -827,11 +828,11 @@ void CollectiveParamResolverLocal::WaitForGroup(InstanceRec* ir,
       // NOTE(ayushd): changing the error message below would also require
       // updating CompleteParamsBroadcastForgotSend test in
       // CollectiveParamResolverLocalTest.
-      ir->status =
-          errors::Internal("Instance ", cp->instance.instance_key,
-                           " found no source for broadcast.  This "
-                           "could mean that there were group_size=",
-                           ir->known_count, " BcastRecvs but no BcastSend.");
+      ir->status = absl::InternalError(
+          absl::StrCat("Instance ", cp->instance.instance_key,
+                       " found no source for broadcast.  This "
+                       "could mean that there were group_size=",
+                       ir->known_count, " BcastRecvs but no BcastSend."));
     }
     if (!ir->known_waiters.empty()) {
       ready_waiters = std::move(ir->known_waiters);

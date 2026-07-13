@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -35,8 +37,8 @@ limitations under the License.
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/all_reduce_key.h"
+#include "xla/service/collective_combiner_utils.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace {
@@ -48,7 +50,7 @@ std::optional<std::vector<ReplicaGroup>> FoldReplicaGroups(
   // For a valid all-reduce with non-empty replica groups, the groups should
   // list each replica exactly once.
   int64_t num_replicas = 0;
-  for (const ReplicaGroup &rg : replica_groups0) {
+  for (const ReplicaGroup& rg : replica_groups0) {
     for (int64_t id : rg.replica_ids()) {
       num_replicas = std::max(num_replicas, id);
     }
@@ -81,7 +83,7 @@ std::optional<std::vector<ReplicaGroup>> FoldReplicaGroups(
   std::vector<int64_t> contributing_replicas_set_id(num_replicas, 0);
 
   int64_t next_id = 1;
-  for (const ReplicaGroup &rg : replica_groups1) {
+  for (const ReplicaGroup& rg : replica_groups1) {
     std::vector<bool> contributors(num_replicas, false);
     for (int64_t id : rg.replica_ids()) {
       int64_t group_no = replica_group_no[id];
@@ -121,11 +123,11 @@ std::optional<std::vector<ReplicaGroup>> FoldReplicaGroups(
   std::vector<ReplicaGroup> new_replica_groups;
   new_replica_groups.reserve(contributor_set_id.size());
 
-  for (const auto &it : contributor_set_id) {
-    const std::vector<bool> &contributors = it.first;
+  for (const auto& it : contributor_set_id) {
+    const std::vector<bool>& contributors = it.first;
     const int64_t set_id = it.second;
     new_replica_groups.emplace_back();
-    ReplicaGroup &group = new_replica_groups.back();
+    ReplicaGroup& group = new_replica_groups.back();
     for (int64_t replica = 0; replica < num_replicas; ++replica) {
       if (contributors[replica]) {
         if (contributing_replicas_set_id[replica] != set_id) {
@@ -140,7 +142,7 @@ std::optional<std::vector<ReplicaGroup>> FoldReplicaGroups(
   // groups are formed according to the order in the contributor_set_id map,
   // which is not stable.
   absl::c_sort(new_replica_groups,
-               [](const ReplicaGroup &a, const ReplicaGroup &b) {
+               [](const ReplicaGroup& a, const ReplicaGroup& b) {
                  return a.replica_ids(0) < b.replica_ids(0);
                });
   return new_replica_groups;
@@ -161,14 +163,14 @@ absl::StatusOr<bool> AllReduceFolder::RunImpl(
 
   bool changed = false;
   for (auto computation : module->computations(execution_threads)) {
-    for (HloInstruction *inst : computation->MakeInstructionPostOrder()) {
+    for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
       if (inst->opcode() != HloOpcode::kAllReduce ||
           inst->operand(0)->opcode() != HloOpcode::kAllReduce) {
         continue;
       }
 
-      auto *ar0 = Cast<HloAllReduceInstruction>(inst->mutable_operand(0));
-      auto *ar1 = Cast<HloAllReduceInstruction>(inst);
+      auto* ar0 = Cast<HloAllReduceInstruction>(inst->mutable_operand(0));
+      auto* ar1 = Cast<HloAllReduceInstruction>(inst);
 
       if (ar0->user_count() != 1) {
         continue;
@@ -209,15 +211,21 @@ absl::StatusOr<bool> AllReduceFolder::RunImpl(
       }
 
       // Create new all-reduce and delete the 2 existing ones.
-      HloInstruction *new_ar =
+      HloInstruction* new_ar =
           computation->AddInstruction(HloInstruction::CreateAllReduce(
               ar0->shape(), ar0->operands(), ar0->to_apply(),
-              CollectiveDeviceList(*new_replica_groups),
+              std::make_shared<CollectiveDeviceList>(*new_replica_groups),
               /*constrain_layout=*/false, channel_id,
               ar0->use_global_device_ids()));
-      TF_RETURN_IF_ERROR(ar1->ReplaceAllUsesWith(new_ar));
-      TF_RETURN_IF_ERROR(computation->RemoveInstruction(ar1));
-      TF_RETURN_IF_ERROR(computation->RemoveInstruction(ar0));
+
+      // Forward frontend attributes from folded instructions.
+      std::vector<HloInstruction*> folded_all_reduces = {ar0, ar1};
+      new_ar->set_frontend_attributes(
+          MergeFrontendAttributes(folded_all_reduces));
+
+      RETURN_IF_ERROR(ar1->ReplaceAllUsesWith(new_ar));
+      RETURN_IF_ERROR(computation->RemoveInstruction(ar1));
+      RETURN_IF_ERROR(computation->RemoveInstruction(ar0));
       changed = true;
     }
   }

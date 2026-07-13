@@ -37,7 +37,6 @@ def LowerToLLVMGPUPass :
     Option<"gpu_device_info_", "gpu_device_info", "std::string", /*default=*/"",
            "Serialized stream_executor::GPUDeviceInfo proto.">,
   ];
-  let constructor = "CreateLowerToLLVMGPUPass()";
 }
 
 #endif  // XLA_CODEGEN_EMITTERS_TRANSFORMS_LOWER_TO_LLVM_GPU_TD_

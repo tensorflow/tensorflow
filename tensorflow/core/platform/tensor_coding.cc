@@ -27,6 +27,7 @@ limitations under the License.
 
 #if defined(TENSORFLOW_PROTOBUF_USES_CORD)
 #include "strings/cord_varint.h"
+#include "third_party/gloop/strings/cord_bytestream.h"
 #include "util/gtl/stl_util.h"
 #endif  // defined(TENSORFLOW_PROTOBUF_USES_CORD)
 
@@ -162,7 +163,7 @@ void EncodeStringList(const tstring* strings, int64_t n, absl::Cord* out) {
 
 bool DecodeStringList(const absl::Cord& src, std::string* strings, int64_t n) {
   std::vector<uint32_t> sizes(n);
-  CordReader reader(src);
+  ::strings::CordReader reader(src);
   int64_t tot = 0;
   for (auto& v : sizes) {
     if (!::strings::CordReaderReadVarint(&reader, &v)) return false;
@@ -185,7 +186,7 @@ bool DecodeStringList(const absl::Cord& src, std::string* strings, int64_t n) {
 
 bool DecodeStringList(const absl::Cord& src, tstring* strings, int64_t n) {
   std::vector<uint32_t> sizes(n);
-  CordReader reader(src);
+  ::strings::CordReader reader(src);
   int64_t tot = 0;
   for (auto& v : sizes) {
     if (!::strings::CordReaderReadVarint(&reader, &v)) return false;
@@ -251,12 +252,14 @@ class CordStringListDecoderImpl : public StringListDecoder {
 
   const char* Data(uint32_t size) override {
     tmp_.resize(size);
-    reader_.ReadN(size, tmp_.data());
+    if (size > 0) {
+      reader_.ReadN(size, tmp_.data());
+    }
     return tmp_.data();
   }
 
  private:
-  CordReader reader_;
+  ::strings::CordReader reader_;
   std::vector<char> tmp_;
 };
 

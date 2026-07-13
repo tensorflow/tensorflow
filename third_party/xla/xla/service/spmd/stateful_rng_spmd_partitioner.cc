@@ -35,7 +35,7 @@ namespace spmd {
 
 absl::Status StatefulRngSpmdPartitioningVisitor::HandleRngGetAndUpdateState(
     HloInstruction* hlo) {
-  if (hlo->sharding().HasUniqueDevice()) {
+  if (hlo->sharding().IsSingleDevice()) {
     return HandleSingleDevice(hlo);
   }
 
