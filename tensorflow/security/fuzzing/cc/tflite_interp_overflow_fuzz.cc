@@ -46,6 +46,14 @@ void FuzzModelBuildAndInvoke(const std::string& model_bytes) {
   if (interpreter == nullptr) return;
   if (interpreter->AllocateTensors() != kTfLiteOk) return;
 
+  // Zero-initialize runtime inputs so MSan does not flag uninitialized reads.
+  for (int input_index : interpreter->inputs()) {
+    TfLiteTensor* tensor = interpreter->tensor(input_index);
+    if (tensor != nullptr && tensor->data.raw != nullptr) {
+      std::memset(tensor->data.raw, 0, tensor->bytes);
+    }
+  }
+
   // The unchecked external-offset arithmetic sets a wild read-only tensor
   // pointer that is dereferenced here.
   interpreter->Invoke();
