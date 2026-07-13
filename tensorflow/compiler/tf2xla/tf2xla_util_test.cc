@@ -559,8 +559,8 @@ TEST(PropagateConstIntoFunctionalNodes, RepeatedWhileLoops) {
   TF_ASSERT_OK(scope.ToGraph(&graph));
 
   FunctionLibraryDefinition lookup_fld(fld);
-  TF_EXPECT_OK(PropagateConstIntoFunctionalNodes(&graph, &lookup_fld, &fld));
-  TF_EXPECT_OK(PropagateConstIntoFunctionalNodes(&graph, &lookup_fld, &fld));
+  TF_EXPECT_OK(PropagateConstIntoFunctionalNodes(&graph, &fld, &lookup_fld));
+  TF_EXPECT_OK(PropagateConstIntoFunctionalNodes(&graph, &fld, &lookup_fld));
 }
 
 }  // namespace
