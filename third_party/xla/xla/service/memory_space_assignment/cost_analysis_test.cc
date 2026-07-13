@@ -260,5 +260,42 @@ TEST_F(MemorySpaceAssignmentCostAnalysisTest, LatencyBoundCompute) {
   EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToCompute(*add), 1.0f);
 }
 
+TEST_F(MemorySpaceAssignmentCostAnalysisTest, ExcludeNonMainThreadComputation) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  async_computation {
+    param0.1 = f32[2,4] parameter(0)
+    param1.1 = f32[2,4] parameter(1)
+    ROOT add.1 = f32[2,4] add(param0.1, param1.1)
+  }, execution_thread="sparse"
+
+  ENTRY Entry {
+    param0 = f32[2,4] parameter(0)
+    param1 = f32[2,4] parameter(1)
+    ROOT add = f32[2,4] add(param0, param1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK(Initialize(module.get()));
+
+  const HloInstruction* main_add =
+      module->entry_computation()->root_instruction();
+  EXPECT_GT(cost_analysis_->GetInstructionElapsedDueToCompute(*main_add), 0.0f);
+
+  const HloComputation* async_comp =
+      module->GetComputationWithName("async_computation");
+  ASSERT_NE(async_comp, nullptr);
+  const HloInstruction* async_add = async_comp->root_instruction();
+  EXPECT_FALSE(async_add->parent()->IsMainThread());
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsed(*async_add), 0.0f);
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToCompute(*async_add),
+            0.0f);
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToMemory(
+                *async_add, {{0, {}}, {1, {}}}, {{}}),
+            0.0f);
+}
+
 }  // namespace
 }  // namespace xla
