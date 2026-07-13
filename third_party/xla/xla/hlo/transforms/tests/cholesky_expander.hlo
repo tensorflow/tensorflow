@@ -3,82 +3,70 @@
 
 // CHECK-LABEL: HloModule CholeskyExpanderTest, entry_computation_layout={(f16[32,4,4]{2,1,0})->f16[32,4,4]{2,1,0}}
 
-// CHECK:       %[[$unblocked_body_15:[^ ]+]]
-// CHECK-NEXT:  %[[parameter_16:[^ ]+]] = (s32[], f16[32,4,4]{2,1,0}, f16[32,4,4]{2,1,0}, pred[32,1,1]{2,1,0}) parameter(0)
-// CHECK-NEXT:  %[[get_tuple_element_17:[^ ]+]] = s32[] get-tuple-element(%[[parameter_16]]), index=0
-// CHECK-NEXT:  %[[constant_21:[^ ]+]] = s32[] constant(1)
-// CHECK-NEXT:  %[[add_22:[^ ]+]] = s32[] add(%[[get_tuple_element_17]], %[[constant_21]])
-// CHECK-NEXT:  %[[get_tuple_element_18:[^ ]+]] = f16[32,4,4]{2,1,0} get-tuple-element(%[[parameter_16]]), index=1
-// CHECK-NEXT:  %[[iota_24:[^ ]+]] = s32[32,4,4]{2,1,0} iota(), iota_dimension=1
-// CHECK-NEXT:  %[[iota_23:[^ ]+]] = s32[32,4,4]{2,1,0} iota(), iota_dimension=2
-// CHECK-NEXT:  %[[compare_25:[^ ]+]] = pred[32,4,4]{2,1,0} compare(%[[iota_24]], %[[iota_23]]), direction=GE
-// CHECK-NEXT:  %[[broadcast_26:[^ ]+]] = s32[32,4,4]{2,1,0} broadcast(%[[get_tuple_element_17]]), dimensions={}
-// CHECK-NEXT:  %[[compare_27:[^ ]+]] = pred[32,4,4]{2,1,0} compare(%[[iota_23]], %[[broadcast_26]]), direction=EQ
-// CHECK-NEXT:  %[[and_28:[^ ]+]] = pred[32,4,4]{2,1,0} and(%[[compare_25]], %[[compare_27]])
-// CHECK-NEXT:  %[[get_tuple_element_19:[^ ]+]] = f16[32,4,4]{2,1,0} get-tuple-element(%[[parameter_16]]), index=2
-// CHECK-NEXT:  %[[dot_31:[^ ]+]] = f16[32,4,4]{2,1,0} dot(%[[get_tuple_element_19]], %[[get_tuple_element_19]]), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={2}, operand_precision={highest,highest}, frontend_attributes={grad_x="false",grad_y="false"}
-// CHECK-NEXT:  %[[transpose_32:[^ ]+]] = f16[32,4,4]{2,1,0} transpose(%[[dot_31]]), dimensions={0,1,2}
-// CHECK-NEXT:  %[[subtract_33:[^ ]+]] = f16[32,4,4]{2,1,0} subtract(%[[get_tuple_element_18]], %[[transpose_32]])
-// CHECK-NEXT:  %[[constant_34:[^ ]+]] = s32[] constant(0)
-// CHECK-NEXT:  %[[dynamic_slice_35:[^ ]+]] = f16[32,1,1]{2,1,0} dynamic-slice(%[[subtract_33]], %[[constant_34]], %[[get_tuple_element_17]], %[[get_tuple_element_17]]), dynamic_slice_sizes={32,1,1}
-// CHECK-NEXT:  %[[sqrt_36:[^ ]+]] = f16[32,1,1]{2,1,0} sqrt(%[[dynamic_slice_35]])
-// CHECK-NEXT:  %[[reshape_39:[^ ]+]] = f16[32]{0} reshape(%[[sqrt_36]])
-// CHECK-NEXT:  %[[broadcast_40:[^ ]+]] = f16[32,4,4]{2,1,0} broadcast(%[[reshape_39]]), dimensions={0}
-// CHECK-NEXT:  %[[divide_41:[^ ]+]] = f16[32,4,4]{2,1,0} divide(%[[subtract_33]], %[[broadcast_40]])
-// CHECK-NEXT:  %[[constant_29:[^ ]+]] = f16[] constant(0)
-// CHECK-NEXT:  %[[broadcast_30:[^ ]+]] = f16[32,4,4]{2,1,0} broadcast(%[[constant_29]]), dimensions={}
-// CHECK-NEXT:  %[[select_42:[^ ]+]] = f16[32,4,4]{2,1,0} select(%[[and_28]], %[[divide_41]], %[[broadcast_30]])
-// CHECK-NEXT:  %[[add_43:[^ ]+]] = f16[32,4,4]{2,1,0} add(%[[select_42]], %[[get_tuple_element_19]])
-// CHECK-NEXT:  %[[get_tuple_element_20:[^ ]+]] = pred[32,1,1]{2,1,0} get-tuple-element(%[[parameter_16]]), index=3
-// CHECK-NEXT:  %[[compare_37:[^ ]+]] = pred[32,1,1]{2,1,0} compare(%[[sqrt_36]], %[[sqrt_36]]), direction=NE
-// CHECK-NEXT:  %[[or_38:[^ ]+]] = pred[32,1,1]{2,1,0} or(%[[get_tuple_element_20]], %[[compare_37]])
-// CHECK-NEXT:  ROOT %[[tuple_44:[^ ]+]] = (s32[], f16[32,4,4]{2,1,0}, f16[32,4,4]{2,1,0}, pred[32,1,1]{2,1,0}) tuple(%[[add_22]], %[[get_tuple_element_18]], %[[add_43]], %[[or_38]])
+// CHECK:       %[[$unblocked_body_4:[^ ]+]]
+// CHECK-NEXT:  %[[parameter_5:[^ ]+]] = (s32[], f16[32,4,4]{2,1,0}, f16[32,4,4]{2,1,0}, pred[32,1,1]{2,1,0}) parameter(0)
+// CHECK-NEXT:  %[[constant_14:[^ ]+]] = s32[] constant(1)
+// CHECK-NEXT:  %[[add_4:[^ ]+]] = s32[] add(%[[parameter_5]]#0, %[[constant_14]])
+// CHECK-NEXT:  %[[iota_5:[^ ]+]] = s32[32,4,4]{2,1,0} iota(), iota_dimension=1
+// CHECK-NEXT:  %[[iota_4:[^ ]+]] = s32[32,4,4]{2,1,0} iota(), iota_dimension=2
+// CHECK-NEXT:  %[[compare_9:[^ ]+]] = pred[32,4,4]{2,1,0} compare(%[[iota_5]], %[[iota_4]]), direction=GE
+// CHECK-NEXT:  %[[broadcast_10:[^ ]+]] = s32[32,4,4]{2,1,0} broadcast(%[[parameter_5]]#0), dimensions={}
+// CHECK-NEXT:  %[[compare_10:[^ ]+]] = pred[32,4,4]{2,1,0} compare(%[[iota_4]], %[[broadcast_10]]), direction=EQ
+// CHECK-NEXT:  %[[and_2:[^ ]+]] = pred[32,4,4]{2,1,0} and(%[[compare_9]], %[[compare_10]])
+// CHECK-NEXT:  %[[dot_2:[^ ]+]] = f16[32,4,4]{2,1,0} dot(%[[parameter_5]]#2, %[[parameter_5]]#2), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={2}, operand_precision={highest,highest}, frontend_attributes={grad_x="false",grad_y="false"}
+// CHECK-NEXT:  %[[transpose_3:[^ ]+]] = f16[32,4,4]{2,1,0} transpose(%[[dot_2]]), dimensions={0,1,2}
+// CHECK-NEXT:  %[[subtract_2:[^ ]+]] = f16[32,4,4]{2,1,0} subtract(%[[parameter_5]]#1, %[[transpose_3]])
+// CHECK-NEXT:  %[[constant_16:[^ ]+]] = s32[] constant(0)
+// CHECK-NEXT:  %[[dynamic_slice_2:[^ ]+]] = f16[32,1,1]{2,1,0} dynamic-slice(%[[subtract_2]], %[[constant_16]], %[[parameter_5]]#0, %[[parameter_5]]#0), dynamic_slice_sizes={32,1,1}
+// CHECK-NEXT:  %[[sqrt_2:[^ ]+]] = f16[32,1,1]{2,1,0} sqrt(%[[dynamic_slice_2]])
+// CHECK-NEXT:  %[[reshape_2:[^ ]+]] = f16[32]{0} reshape(%[[sqrt_2]])
+// CHECK-NEXT:  %[[broadcast_12:[^ ]+]] = f16[32,4,4]{2,1,0} broadcast(%[[reshape_2]]), dimensions={0}
+// CHECK-NEXT:  %[[divide_2:[^ ]+]] = f16[32,4,4]{2,1,0} divide(%[[subtract_2]], %[[broadcast_12]])
+// CHECK-NEXT:  %[[constant_15:[^ ]+]] = f16[] constant(0)
+// CHECK-NEXT:  %[[broadcast_11:[^ ]+]] = f16[32,4,4]{2,1,0} broadcast(%[[constant_15]]), dimensions={}
+// CHECK-NEXT:  %[[select_2:[^ ]+]] = f16[32,4,4]{2,1,0} select(%[[and_2]], %[[divide_2]], %[[broadcast_11]])
+// CHECK-NEXT:  %[[add_5:[^ ]+]] = f16[32,4,4]{2,1,0} add(%[[select_2]], %[[parameter_5]]#2)
+// CHECK-NEXT:  %[[compare_11:[^ ]+]] = pred[32,1,1]{2,1,0} compare(%[[sqrt_2]], %[[sqrt_2]]), direction=NE
+// CHECK-NEXT:  %[[or_2:[^ ]+]] = pred[32,1,1]{2,1,0} or(%[[parameter_5]]#3, %[[compare_11]])
+// CHECK-NEXT:  ROOT %[[tuple_3:[^ ]+]] = (s32[], f16[32,4,4]{2,1,0}, f16[32,4,4]{2,1,0}, pred[32,1,1]{2,1,0}) tuple(%[[add_4]], %[[parameter_5]]#1, %[[add_5]], %[[or_2]])
 
-// CHECK:       %[[$unblocked_condition_45:[^ ]+]]
-// CHECK-NEXT:  %[[parameter_46:[^ ]+]] = (s32[], f16[32,4,4]{2,1,0}, f16[32,4,4]{2,1,0}, pred[32,1,1]{2,1,0}) parameter(0)
-// CHECK-NEXT:  %[[get_tuple_element_48:[^ ]+]] = f16[32,4,4]{2,1,0} get-tuple-element(%[[parameter_46]]), index=1
-// CHECK-NEXT:  %[[get_tuple_element_49:[^ ]+]] = f16[32,4,4]{2,1,0} get-tuple-element(%[[parameter_46]]), index=2
-// CHECK-NEXT:  %[[get_tuple_element_50:[^ ]+]] = pred[32,1,1]{2,1,0} get-tuple-element(%[[parameter_46]]), index=3
-// CHECK-NEXT:  %[[get_tuple_element_47:[^ ]+]] = s32[] get-tuple-element(%[[parameter_46]]), index=0
-// CHECK-NEXT:  %[[constant_51:[^ ]+]] = s32[] constant(4)
-// CHECK-NEXT:  ROOT %[[compare_52:[^ ]+]] = pred[] compare(%[[get_tuple_element_47]], %[[constant_51]]), direction=LT
+// CHECK:       %[[$unblocked_condition_3:[^ ]+]]
+// CHECK-NEXT:  %[[parameter_4:[^ ]+]] = (s32[], f16[32,4,4]{2,1,0}, f16[32,4,4]{2,1,0}, pred[32,1,1]{2,1,0}) parameter(0)
+// CHECK-NEXT:  %[[constant_13:[^ ]+]] = s32[] constant(4)
+// CHECK-NEXT:  ROOT %[[compare_8:[^ ]+]] = pred[] compare(%[[parameter_4]]#0, %[[constant_13]]), direction=LT
 
-// CHECK:       %[[$xla_cholesky_f16_32_4_4__upper_70:[^ ]+]]
-// CHECK-NEXT:  %[[constant_13:[^ ]+]] = s32[] constant(0)
+// CHECK:       %[[$xla_cholesky_f16_32_4_4__upper_5:[^ ]+]]
+// CHECK-NEXT:  %[[constant_25:[^ ]+]] = s32[] constant(0)
 // CHECK-NEXT:  %[[a_1:[^ ]+]] = f16[32,4,4]{2,1,0} parameter(0)
-// CHECK-NEXT:  %[[transpose_2:[^ ]+]] = f16[32,4,4]{1,2,0} transpose(%[[a_1]]), dimensions={0,2,1}
-// CHECK-NEXT:  %[[slice_7:[^ ]+]] = f16[32,4,4]{2,1,0} slice(%[[transpose_2]]), slice={[0:32], [0:4], [0:4]}
-// CHECK-NEXT:  %[[slice_8:[^ ]+]] = f16[32,4,4]{2,1,0} slice(%[[slice_7]]), slice={[0:32], [0:4], [0:4]}
-// CHECK-NEXT:  %[[constant_9:[^ ]+]] = f16[] constant(0)
-// CHECK-NEXT:  %[[broadcast_10:[^ ]+]] = f16[32,4,4]{2,1,0} broadcast(%[[constant_9]]), dimensions={}
-// CHECK-NEXT:  %[[constant_11:[^ ]+]] = pred[] constant(false)
-// CHECK-NEXT:  %[[broadcast_12:[^ ]+]] = pred[32,1,1]{2,1,0} broadcast(%[[constant_11]]), dimensions={}
-// CHECK-NEXT:  %[[tuple_14:[^ ]+]] = (s32[], f16[32,4,4]{2,1,0}, f16[32,4,4]{2,1,0}, pred[32,1,1]{2,1,0}) tuple(%[[constant_13]], %[[slice_8]], %[[broadcast_10]], %[[broadcast_12]])
-// CHECK-NEXT:  %[[while_53:[^ ]+]] = (s32[], f16[32,4,4]{2,1,0}, f16[32,4,4]{2,1,0}, pred[32,1,1]{2,1,0}) while(%[[tuple_14]]), condition=%[[$unblocked_condition_45]], body=%[[$unblocked_body_15]]
-// CHECK-NEXT:  %[[get_tuple_element_54:[^ ]+]] = s32[] get-tuple-element(%[[while_53]]), index=0
-// CHECK-NEXT:  %[[get_tuple_element_55:[^ ]+]] = f16[32,4,4]{2,1,0} get-tuple-element(%[[while_53]]), index=1
-// CHECK-NEXT:  %[[constant_5:[^ ]+]] = pred[] constant(false)
-// CHECK-NEXT:  %[[broadcast_6:[^ ]+]] = pred[32,1,1]{2,1,0} broadcast(%[[constant_5]]), dimensions={}
-// CHECK-NEXT:  %[[get_tuple_element_57:[^ ]+]] = pred[32,1,1]{2,1,0} get-tuple-element(%[[while_53]]), index=3
-// CHECK-NEXT:  %[[or_58:[^ ]+]] = pred[32,1,1]{2,1,0} or(%[[broadcast_6]], %[[get_tuple_element_57]])
-// CHECK-NEXT:  %[[broadcast_63:[^ ]+]] = pred[32,1,1]{2,1,0} broadcast(%[[or_58]]), dimensions={0,1,2}
-// CHECK-NEXT:  %[[reshape_64:[^ ]+]] = pred[32]{0} reshape(%[[broadcast_63]])
-// CHECK-NEXT:  %[[broadcast_65:[^ ]+]] = pred[32,4,4]{2,1,0} broadcast(%[[reshape_64]]), dimensions={0}
-// CHECK-NEXT:  %[[constant_66:[^ ]+]] = f16[] constant(nan)
-// CHECK-NEXT:  %[[broadcast_67:[^ ]+]] = f16[32,4,4]{2,1,0} broadcast(%[[constant_66]]), dimensions={}
-// CHECK-NEXT:  %[[constant_3:[^ ]+]] = f16[] constant(0)
-// CHECK-NEXT:  %[[broadcast_4:[^ ]+]] = f16[32,4,4]{2,1,0} broadcast(%[[constant_3]]), dimensions={}
-// CHECK-NEXT:  %[[get_tuple_element_56:[^ ]+]] = f16[32,4,4]{2,1,0} get-tuple-element(%[[while_53]]), index=2
-// CHECK-NEXT:  %[[constant_59:[^ ]+]] = s32[] constant(0)
-// CHECK-NEXT:  %[[constant_60:[^ ]+]] = s32[] constant(0)
-// CHECK-NEXT:  %[[constant_61:[^ ]+]] = s32[] constant(0)
-// CHECK-NEXT:  %[[dynamic_update_slice_62:[^ ]+]] = f16[32,4,4]{2,1,0} dynamic-update-slice(%[[broadcast_4]], %[[get_tuple_element_56]], %[[constant_59]], %[[constant_60]], %[[constant_61]])
-// CHECK-NEXT:  %[[select_68:[^ ]+]] = f16[32,4,4]{2,1,0} select(%[[broadcast_65]], %[[broadcast_67]], %[[dynamic_update_slice_62]])
-// CHECK-NEXT:  ROOT %[[transpose_69:[^ ]+]] = f16[32,4,4]{1,2,0} transpose(%[[select_68]]), dimensions={0,2,1}
+// CHECK-NEXT:  %[[transpose_5:[^ ]+]] = f16[32,4,4]{1,2,0} transpose(%[[a_1]]), dimensions={0,2,1}
+// CHECK-NEXT:  %[[slice_2:[^ ]+]] = f16[32,4,4]{2,1,0} slice(%[[transpose_5]]), slice={[0:32], [0:4], [0:4]}
+// CHECK-NEXT:  %[[slice_3:[^ ]+]] = f16[32,4,4]{2,1,0} slice(%[[slice_2]]), slice={[0:32], [0:4], [0:4]}
+// CHECK-NEXT:  %[[constant_23:[^ ]+]] = f16[] constant(0)
+// CHECK-NEXT:  %[[broadcast_18:[^ ]+]] = f16[32,4,4]{2,1,0} broadcast(%[[constant_23]]), dimensions={}
+// CHECK-NEXT:  %[[constant_24:[^ ]+]] = pred[] constant(false)
+// CHECK-NEXT:  %[[broadcast_19:[^ ]+]] = pred[32,1,1]{2,1,0} broadcast(%[[constant_24]]), dimensions={}
+// CHECK-NEXT:  %[[tuple_4:[^ ]+]] = (s32[], f16[32,4,4]{2,1,0}, f16[32,4,4]{2,1,0}, pred[32,1,1]{2,1,0}) tuple(%[[constant_25]], %[[slice_3]], %[[broadcast_18]], %[[broadcast_19]])
+// CHECK-NEXT:  %[[while_1:[^ ]+]] = (s32[], f16[32,4,4]{2,1,0}, f16[32,4,4]{2,1,0}, pred[32,1,1]{2,1,0}) while(%[[tuple_4]]), condition=%[[$unblocked_condition_3]], body=%[[$unblocked_body_4]]
+// CHECK-NEXT:  %[[constant_22:[^ ]+]] = pred[] constant(false)
+// CHECK-NEXT:  %[[broadcast_17:[^ ]+]] = pred[32,1,1]{2,1,0} broadcast(%[[constant_22]]), dimensions={}
+// CHECK-NEXT:  %[[or_4:[^ ]+]] = pred[32,1,1]{2,1,0} or(%[[broadcast_17]], %[[while_1]]#3)
+// CHECK-NEXT:  %[[broadcast_20:[^ ]+]] = pred[32,1,1]{2,1,0} broadcast(%[[or_4]]), dimensions={0,1,2}
+// CHECK-NEXT:  %[[reshape_4:[^ ]+]] = pred[32]{0} reshape(%[[broadcast_20]])
+// CHECK-NEXT:  %[[broadcast_21:[^ ]+]] = pred[32,4,4]{2,1,0} broadcast(%[[reshape_4]]), dimensions={0}
+// CHECK-NEXT:  %[[constant_29:[^ ]+]] = f16[] constant(nan)
+// CHECK-NEXT:  %[[broadcast_22:[^ ]+]] = f16[32,4,4]{2,1,0} broadcast(%[[constant_29]]), dimensions={}
+// CHECK-NEXT:  %[[constant_21:[^ ]+]] = f16[] constant(0)
+// CHECK-NEXT:  %[[broadcast_16:[^ ]+]] = f16[32,4,4]{2,1,0} broadcast(%[[constant_21]]), dimensions={}
+// CHECK-NEXT:  %[[constant_26:[^ ]+]] = s32[] constant(0)
+// CHECK-NEXT:  %[[constant_27:[^ ]+]] = s32[] constant(0)
+// CHECK-NEXT:  %[[constant_28:[^ ]+]] = s32[] constant(0)
+// CHECK-NEXT:  %[[dynamic_update_slice_1:[^ ]+]] = f16[32,4,4]{2,1,0} dynamic-update-slice(%[[broadcast_16]], %[[while_1]]#2, %[[constant_26]], %[[constant_27]], %[[constant_28]])
+// CHECK-NEXT:  %[[select_4:[^ ]+]] = f16[32,4,4]{2,1,0} select(%[[broadcast_21]], %[[broadcast_22]], %[[dynamic_update_slice_1]])
+// CHECK-NEXT:  ROOT %[[transpose_6:[^ ]+]] = f16[32,4,4]{1,2,0} transpose(%[[select_4]]), dimensions={0,2,1}
 
 // CHECK-LABEL: ENTRY %test
 // CHECK-NEXT:  %[[input:[^ ]+]] = f16[32,4,4]{2,1,0} parameter(0)
-// CHECK-NEXT:  ROOT %[[call:[^ ]+]] = f16[32,4,4]{2,1,0} call(%[[input]]), to_apply=%[[$xla_cholesky_f16_32_4_4__upper_70]]
+// CHECK-NEXT:  ROOT %[[call:[^ ]+]] = f16[32,4,4]{2,1,0} call(%[[input]]), to_apply=%[[$xla_cholesky_f16_32_4_4__upper_5]]
 
 HloModule CholeskyExpanderTest
 
@@ -91,90 +79,78 @@ ENTRY test {
 
 // CHECK-LABEL: HloModule CholeskyExpanderTest, entry_computation_layout={(c64[4,8,8]{2,1,0})->c64[4,8,8]{2,1,0}}
 
-// CHECK:       %[[$unblocked_body_15:[^ ]+]]
-// CHECK-NEXT:  %[[parameter_16:[^ ]+]] = (s32[], c64[4,8,8]{2,1,0}, c64[4,8,8]{2,1,0}, pred[4,1,1]{2,1,0}) parameter(0)
-// CHECK-NEXT:  %[[get_tuple_element_17:[^ ]+]] = s32[] get-tuple-element(%[[parameter_16]]), index=0
-// CHECK-NEXT:  %[[constant_21:[^ ]+]] = s32[] constant(1)
-// CHECK-NEXT:  %[[add_22:[^ ]+]] = s32[] add(%[[get_tuple_element_17]], %[[constant_21]])
-// CHECK-NEXT:  %[[get_tuple_element_18:[^ ]+]] = c64[4,8,8]{2,1,0} get-tuple-element(%[[parameter_16]]), index=1
-// CHECK-NEXT:  %[[iota_24:[^ ]+]] = s32[4,8,8]{2,1,0} iota(), iota_dimension=1
-// CHECK-NEXT:  %[[iota_23:[^ ]+]] = s32[4,8,8]{2,1,0} iota(), iota_dimension=2
-// CHECK-NEXT:  %[[compare_25:[^ ]+]] = pred[4,8,8]{2,1,0} compare(%[[iota_24]], %[[iota_23]]), direction=GE
-// CHECK-NEXT:  %[[broadcast_26:[^ ]+]] = s32[4,8,8]{2,1,0} broadcast(%[[get_tuple_element_17]]), dimensions={}
-// CHECK-NEXT:  %[[compare_27:[^ ]+]] = pred[4,8,8]{2,1,0} compare(%[[iota_23]], %[[broadcast_26]]), direction=EQ
-// CHECK-NEXT:  %[[and_28:[^ ]+]] = pred[4,8,8]{2,1,0} and(%[[compare_25]], %[[compare_27]])
-// CHECK-NEXT:  %[[get_tuple_element_19:[^ ]+]] = c64[4,8,8]{2,1,0} get-tuple-element(%[[parameter_16]]), index=2
-// CHECK-NEXT:  %[[real_31:[^ ]+]] = f32[4,8,8]{2,1,0} real(%[[get_tuple_element_19]])
-// CHECK-NEXT:  %[[imag_32:[^ ]+]] = f32[4,8,8]{2,1,0} imag(%[[get_tuple_element_19]])
-// CHECK-NEXT:  %[[negate_33:[^ ]+]] = f32[4,8,8]{2,1,0} negate(%[[imag_32]])
-// CHECK-NEXT:  %[[complex_34:[^ ]+]] = c64[4,8,8]{2,1,0} complex(%[[real_31]], %[[negate_33]])
-// CHECK-NEXT:  %[[dot_35:[^ ]+]] = c64[4,8,8]{2,1,0} dot(%[[get_tuple_element_19]], %[[complex_34]]), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={2}, operand_precision={highest,highest}, frontend_attributes={grad_x="false",grad_y="false"}
-// CHECK-NEXT:  %[[transpose_36:[^ ]+]] = c64[4,8,8]{2,1,0} transpose(%[[dot_35]]), dimensions={0,1,2}
-// CHECK-NEXT:  %[[subtract_37:[^ ]+]] = c64[4,8,8]{2,1,0} subtract(%[[get_tuple_element_18]], %[[transpose_36]])
-// CHECK-NEXT:  %[[constant_38:[^ ]+]] = s32[] constant(0)
-// CHECK-NEXT:  %[[dynamic_slice_39:[^ ]+]] = c64[4,1,1]{2,1,0} dynamic-slice(%[[subtract_37]], %[[constant_38]], %[[get_tuple_element_17]], %[[get_tuple_element_17]]), dynamic_slice_sizes={4,1,1}
-// CHECK-NEXT:  %[[real_40:[^ ]+]] = f32[4,1,1]{2,1,0} real(%[[dynamic_slice_39]])
-// CHECK-NEXT:  %[[sqrt_41:[^ ]+]] = f32[4,1,1]{2,1,0} sqrt(%[[real_40]])
-// CHECK-NEXT:  %[[constant_42:[^ ]+]] = f32[] constant(0)
-// CHECK-NEXT:  %[[broadcast_43:[^ ]+]] = f32[4,1,1]{2,1,0} broadcast(%[[constant_42]]), dimensions={}
-// CHECK-NEXT:  %[[complex_44:[^ ]+]] = c64[4,1,1]{2,1,0} complex(%[[sqrt_41]], %[[broadcast_43]])
-// CHECK-NEXT:  %[[reshape_47:[^ ]+]] = c64[4]{0} reshape(%[[complex_44]])
-// CHECK-NEXT:  %[[broadcast_48:[^ ]+]] = c64[4,8,8]{2,1,0} broadcast(%[[reshape_47]]), dimensions={0}
-// CHECK-NEXT:  %[[divide_49:[^ ]+]] = c64[4,8,8]{2,1,0} divide(%[[subtract_37]], %[[broadcast_48]])
-// CHECK-NEXT:  %[[constant_29:[^ ]+]] = c64[] constant((0, 0))
-// CHECK-NEXT:  %[[broadcast_30:[^ ]+]] = c64[4,8,8]{2,1,0} broadcast(%[[constant_29]]), dimensions={}
-// CHECK-NEXT:  %[[select_50:[^ ]+]] = c64[4,8,8]{2,1,0} select(%[[and_28]], %[[divide_49]], %[[broadcast_30]])
-// CHECK-NEXT:  %[[add_51:[^ ]+]] = c64[4,8,8]{2,1,0} add(%[[select_50]], %[[get_tuple_element_19]])
-// CHECK-NEXT:  %[[get_tuple_element_20:[^ ]+]] = pred[4,1,1]{2,1,0} get-tuple-element(%[[parameter_16]]), index=3
-// CHECK-NEXT:  %[[compare_45:[^ ]+]] = pred[4,1,1]{2,1,0} compare(%[[sqrt_41]], %[[sqrt_41]]), direction=NE
-// CHECK-NEXT:  %[[or_46:[^ ]+]] = pred[4,1,1]{2,1,0} or(%[[get_tuple_element_20]], %[[compare_45]])
-// CHECK-NEXT:  ROOT %[[tuple_52:[^ ]+]] = (s32[], c64[4,8,8]{2,1,0}, c64[4,8,8]{2,1,0}, pred[4,1,1]{2,1,0}) tuple(%[[add_22]], %[[get_tuple_element_18]], %[[add_51]], %[[or_46]])
+// CHECK:       %[[$unblocked_body_4:[^ ]+]]
+// CHECK-NEXT:  %[[parameter_5:[^ ]+]] = (s32[], c64[4,8,8]{2,1,0}, c64[4,8,8]{2,1,0}, pred[4,1,1]{2,1,0}) parameter(0)
+// CHECK-NEXT:  %[[constant_16:[^ ]+]] = s32[] constant(1)
+// CHECK-NEXT:  %[[add_4:[^ ]+]] = s32[] add(%[[parameter_5]]#0, %[[constant_16]])
+// CHECK-NEXT:  %[[iota_5:[^ ]+]] = s32[4,8,8]{2,1,0} iota(), iota_dimension=1
+// CHECK-NEXT:  %[[iota_4:[^ ]+]] = s32[4,8,8]{2,1,0} iota(), iota_dimension=2
+// CHECK-NEXT:  %[[compare_9:[^ ]+]] = pred[4,8,8]{2,1,0} compare(%[[iota_5]], %[[iota_4]]), direction=GE
+// CHECK-NEXT:  %[[broadcast_12:[^ ]+]] = s32[4,8,8]{2,1,0} broadcast(%[[parameter_5]]#0), dimensions={}
+// CHECK-NEXT:  %[[compare_10:[^ ]+]] = pred[4,8,8]{2,1,0} compare(%[[iota_4]], %[[broadcast_12]]), direction=EQ
+// CHECK-NEXT:  %[[and_2:[^ ]+]] = pred[4,8,8]{2,1,0} and(%[[compare_9]], %[[compare_10]])
+// CHECK-NEXT:  %[[real_4:[^ ]+]] = f32[4,8,8]{2,1,0} real(%[[parameter_5]]#2)
+// CHECK-NEXT:  %[[imag_2:[^ ]+]] = f32[4,8,8]{2,1,0} imag(%[[parameter_5]]#2)
+// CHECK-NEXT:  %[[negate_2:[^ ]+]] = f32[4,8,8]{2,1,0} negate(%[[imag_2]])
+// CHECK-NEXT:  %[[complex_4:[^ ]+]] = c64[4,8,8]{2,1,0} complex(%[[real_4]], %[[negate_2]])
+// CHECK-NEXT:  %[[dot_2:[^ ]+]] = c64[4,8,8]{2,1,0} dot(%[[parameter_5]]#2, %[[complex_4]]), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={2}, operand_precision={highest,highest}, frontend_attributes={grad_x="false",grad_y="false"}
+// CHECK-NEXT:  %[[transpose_3:[^ ]+]] = c64[4,8,8]{2,1,0} transpose(%[[dot_2]]), dimensions={0,1,2}
+// CHECK-NEXT:  %[[subtract_2:[^ ]+]] = c64[4,8,8]{2,1,0} subtract(%[[parameter_5]]#1, %[[transpose_3]])
+// CHECK-NEXT:  %[[constant_18:[^ ]+]] = s32[] constant(0)
+// CHECK-NEXT:  %[[dynamic_slice_2:[^ ]+]] = c64[4,1,1]{2,1,0} dynamic-slice(%[[subtract_2]], %[[constant_18]], %[[parameter_5]]#0, %[[parameter_5]]#0), dynamic_slice_sizes={4,1,1}
+// CHECK-NEXT:  %[[real_5:[^ ]+]] = f32[4,1,1]{2,1,0} real(%[[dynamic_slice_2]])
+// CHECK-NEXT:  %[[sqrt_2:[^ ]+]] = f32[4,1,1]{2,1,0} sqrt(%[[real_5]])
+// CHECK-NEXT:  %[[constant_19:[^ ]+]] = f32[] constant(0)
+// CHECK-NEXT:  %[[broadcast_14:[^ ]+]] = f32[4,1,1]{2,1,0} broadcast(%[[constant_19]]), dimensions={}
+// CHECK-NEXT:  %[[complex_5:[^ ]+]] = c64[4,1,1]{2,1,0} complex(%[[sqrt_2]], %[[broadcast_14]])
+// CHECK-NEXT:  %[[reshape_2:[^ ]+]] = c64[4]{0} reshape(%[[complex_5]])
+// CHECK-NEXT:  %[[broadcast_15:[^ ]+]] = c64[4,8,8]{2,1,0} broadcast(%[[reshape_2]]), dimensions={0}
+// CHECK-NEXT:  %[[divide_2:[^ ]+]] = c64[4,8,8]{2,1,0} divide(%[[subtract_2]], %[[broadcast_15]])
+// CHECK-NEXT:  %[[constant_17:[^ ]+]] = c64[] constant((0, 0))
+// CHECK-NEXT:  %[[broadcast_13:[^ ]+]] = c64[4,8,8]{2,1,0} broadcast(%[[constant_17]]), dimensions={}
+// CHECK-NEXT:  %[[select_2:[^ ]+]] = c64[4,8,8]{2,1,0} select(%[[and_2]], %[[divide_2]], %[[broadcast_13]])
+// CHECK-NEXT:  %[[add_5:[^ ]+]] = c64[4,8,8]{2,1,0} add(%[[select_2]], %[[parameter_5]]#2)
+// CHECK-NEXT:  %[[compare_11:[^ ]+]] = pred[4,1,1]{2,1,0} compare(%[[sqrt_2]], %[[sqrt_2]]), direction=NE
+// CHECK-NEXT:  %[[or_2:[^ ]+]] = pred[4,1,1]{2,1,0} or(%[[parameter_5]]#3, %[[compare_11]])
+// CHECK-NEXT:  ROOT %[[tuple_3:[^ ]+]] = (s32[], c64[4,8,8]{2,1,0}, c64[4,8,8]{2,1,0}, pred[4,1,1]{2,1,0}) tuple(%[[add_4]], %[[parameter_5]]#1, %[[add_5]], %[[or_2]])
 
-// CHECK:       %[[$unblocked_condition_53:[^ ]+]]
-// CHECK-NEXT:  %[[parameter_54:[^ ]+]] = (s32[], c64[4,8,8]{2,1,0}, c64[4,8,8]{2,1,0}, pred[4,1,1]{2,1,0}) parameter(0)
-// CHECK-NEXT:  %[[get_tuple_element_56:[^ ]+]] = c64[4,8,8]{2,1,0} get-tuple-element(%[[parameter_54]]), index=1
-// CHECK-NEXT:  %[[get_tuple_element_57:[^ ]+]] = c64[4,8,8]{2,1,0} get-tuple-element(%[[parameter_54]]), index=2
-// CHECK-NEXT:  %[[get_tuple_element_58:[^ ]+]] = pred[4,1,1]{2,1,0} get-tuple-element(%[[parameter_54]]), index=3
-// CHECK-NEXT:  %[[get_tuple_element_55:[^ ]+]] = s32[] get-tuple-element(%[[parameter_54]]), index=0
-// CHECK-NEXT:  %[[constant_59:[^ ]+]] = s32[] constant(8)
-// CHECK-NEXT:  ROOT %[[compare_60:[^ ]+]] = pred[] compare(%[[get_tuple_element_55]], %[[constant_59]]), direction=LT
+// CHECK:       %[[$unblocked_condition_3:[^ ]+]]
+// CHECK-NEXT:  %[[parameter_4:[^ ]+]] = (s32[], c64[4,8,8]{2,1,0}, c64[4,8,8]{2,1,0}, pred[4,1,1]{2,1,0}) parameter(0)
+// CHECK-NEXT:  %[[constant_15:[^ ]+]] = s32[] constant(8)
+// CHECK-NEXT:  ROOT %[[compare_8:[^ ]+]] = pred[] compare(%[[parameter_4]]#0, %[[constant_15]]), direction=LT
 
-// CHECK:       %[[$xla_cholesky_c64_4_8_8__upper_78:[^ ]+]]
-// CHECK-NEXT:  %[[constant_13:[^ ]+]] = s32[] constant(0)
+// CHECK:       %[[$xla_cholesky_c64_4_8_8__upper_5:[^ ]+]]
+// CHECK-NEXT:  %[[constant_28:[^ ]+]] = s32[] constant(0)
 // CHECK-NEXT:  %[[a_1:[^ ]+]] = c64[4,8,8]{2,1,0} parameter(0)
-// CHECK-NEXT:  %[[transpose_2:[^ ]+]] = c64[4,8,8]{1,2,0} transpose(%[[a_1]]), dimensions={0,2,1}
-// CHECK-NEXT:  %[[slice_7:[^ ]+]] = c64[4,8,8]{2,1,0} slice(%[[transpose_2]]), slice={[0:4], [0:8], [0:8]}
-// CHECK-NEXT:  %[[slice_8:[^ ]+]] = c64[4,8,8]{2,1,0} slice(%[[slice_7]]), slice={[0:4], [0:8], [0:8]}
-// CHECK-NEXT:  %[[constant_9:[^ ]+]] = c64[] constant((0, 0))
-// CHECK-NEXT:  %[[broadcast_10:[^ ]+]] = c64[4,8,8]{2,1,0} broadcast(%[[constant_9]]), dimensions={}
-// CHECK-NEXT:  %[[constant_11:[^ ]+]] = pred[] constant(false)
-// CHECK-NEXT:  %[[broadcast_12:[^ ]+]] = pred[4,1,1]{2,1,0} broadcast(%[[constant_11]]), dimensions={}
-// CHECK-NEXT:  %[[tuple_14:[^ ]+]] = (s32[], c64[4,8,8]{2,1,0}, c64[4,8,8]{2,1,0}, pred[4,1,1]{2,1,0}) tuple(%[[constant_13]], %[[slice_8]], %[[broadcast_10]], %[[broadcast_12]])
-// CHECK-NEXT:  %[[while_61:[^ ]+]] = (s32[], c64[4,8,8]{2,1,0}, c64[4,8,8]{2,1,0}, pred[4,1,1]{2,1,0}) while(%[[tuple_14]]), condition=%[[$unblocked_condition_53]], body=%[[$unblocked_body_15]]
-// CHECK-NEXT:  %[[get_tuple_element_62:[^ ]+]] = s32[] get-tuple-element(%[[while_61]]), index=0
-// CHECK-NEXT:  %[[get_tuple_element_63:[^ ]+]] = c64[4,8,8]{2,1,0} get-tuple-element(%[[while_61]]), index=1
-// CHECK-NEXT:  %[[constant_5:[^ ]+]] = pred[] constant(false)
-// CHECK-NEXT:  %[[broadcast_6:[^ ]+]] = pred[4,1,1]{2,1,0} broadcast(%[[constant_5]]), dimensions={}
-// CHECK-NEXT:  %[[get_tuple_element_65:[^ ]+]] = pred[4,1,1]{2,1,0} get-tuple-element(%[[while_61]]), index=3
-// CHECK-NEXT:  %[[or_66:[^ ]+]] = pred[4,1,1]{2,1,0} or(%[[broadcast_6]], %[[get_tuple_element_65]])
-// CHECK-NEXT:  %[[broadcast_71:[^ ]+]] = pred[4,1,1]{2,1,0} broadcast(%[[or_66]]), dimensions={0,1,2}
-// CHECK-NEXT:  %[[reshape_72:[^ ]+]] = pred[4]{0} reshape(%[[broadcast_71]])
-// CHECK-NEXT:  %[[broadcast_73:[^ ]+]] = pred[4,8,8]{2,1,0} broadcast(%[[reshape_72]]), dimensions={0}
-// CHECK-NEXT:  %[[constant_74:[^ ]+]] = c64[] constant((nan, 0))
-// CHECK-NEXT:  %[[broadcast_75:[^ ]+]] = c64[4,8,8]{2,1,0} broadcast(%[[constant_74]]), dimensions={}
-// CHECK-NEXT:  %[[constant_3:[^ ]+]] = c64[] constant((0, 0))
-// CHECK-NEXT:  %[[broadcast_4:[^ ]+]] = c64[4,8,8]{2,1,0} broadcast(%[[constant_3]]), dimensions={}
-// CHECK-NEXT:  %[[get_tuple_element_64:[^ ]+]] = c64[4,8,8]{2,1,0} get-tuple-element(%[[while_61]]), index=2
-// CHECK-NEXT:  %[[constant_67:[^ ]+]] = s32[] constant(0)
-// CHECK-NEXT:  %[[constant_68:[^ ]+]] = s32[] constant(0)
-// CHECK-NEXT:  %[[constant_69:[^ ]+]] = s32[] constant(0)
-// CHECK-NEXT:  %[[dynamic_update_slice_70:[^ ]+]] = c64[4,8,8]{2,1,0} dynamic-update-slice(%[[broadcast_4]], %[[get_tuple_element_64]], %[[constant_67]], %[[constant_68]], %[[constant_69]])
-// CHECK-NEXT:  %[[select_76:[^ ]+]] = c64[4,8,8]{2,1,0} select(%[[broadcast_73]], %[[broadcast_75]], %[[dynamic_update_slice_70]])
-// CHECK-NEXT:  ROOT %[[transpose_77:[^ ]+]] = c64[4,8,8]{1,2,0} transpose(%[[select_76]]), dimensions={0,2,1}
+// CHECK-NEXT:  %[[transpose_5:[^ ]+]] = c64[4,8,8]{1,2,0} transpose(%[[a_1]]), dimensions={0,2,1}
+// CHECK-NEXT:  %[[slice_2:[^ ]+]] = c64[4,8,8]{2,1,0} slice(%[[transpose_5]]), slice={[0:4], [0:8], [0:8]}
+// CHECK-NEXT:  %[[slice_3:[^ ]+]] = c64[4,8,8]{2,1,0} slice(%[[slice_2]]), slice={[0:4], [0:8], [0:8]}
+// CHECK-NEXT:  %[[constant_26:[^ ]+]] = c64[] constant((0, 0))
+// CHECK-NEXT:  %[[broadcast_21:[^ ]+]] = c64[4,8,8]{2,1,0} broadcast(%[[constant_26]]), dimensions={}
+// CHECK-NEXT:  %[[constant_27:[^ ]+]] = pred[] constant(false)
+// CHECK-NEXT:  %[[broadcast_22:[^ ]+]] = pred[4,1,1]{2,1,0} broadcast(%[[constant_27]]), dimensions={}
+// CHECK-NEXT:  %[[tuple_4:[^ ]+]] = (s32[], c64[4,8,8]{2,1,0}, c64[4,8,8]{2,1,0}, pred[4,1,1]{2,1,0}) tuple(%[[constant_28]], %[[slice_3]], %[[broadcast_21]], %[[broadcast_22]])
+// CHECK-NEXT:  %[[while_1:[^ ]+]] = (s32[], c64[4,8,8]{2,1,0}, c64[4,8,8]{2,1,0}, pred[4,1,1]{2,1,0}) while(%[[tuple_4]]), condition=%[[$unblocked_condition_3]], body=%[[$unblocked_body_4]]
+// CHECK-NEXT:  %[[constant_25:[^ ]+]] = pred[] constant(false)
+// CHECK-NEXT:  %[[broadcast_20:[^ ]+]] = pred[4,1,1]{2,1,0} broadcast(%[[constant_25]]), dimensions={}
+// CHECK-NEXT:  %[[or_4:[^ ]+]] = pred[4,1,1]{2,1,0} or(%[[broadcast_20]], %[[while_1]]#3)
+// CHECK-NEXT:  %[[broadcast_23:[^ ]+]] = pred[4,1,1]{2,1,0} broadcast(%[[or_4]]), dimensions={0,1,2}
+// CHECK-NEXT:  %[[reshape_4:[^ ]+]] = pred[4]{0} reshape(%[[broadcast_23]])
+// CHECK-NEXT:  %[[broadcast_24:[^ ]+]] = pred[4,8,8]{2,1,0} broadcast(%[[reshape_4]]), dimensions={0}
+// CHECK-NEXT:  %[[constant_32:[^ ]+]] = c64[] constant((nan, 0))
+// CHECK-NEXT:  %[[broadcast_25:[^ ]+]] = c64[4,8,8]{2,1,0} broadcast(%[[constant_32]]), dimensions={}
+// CHECK-NEXT:  %[[constant_24:[^ ]+]] = c64[] constant((0, 0))
+// CHECK-NEXT:  %[[broadcast_19:[^ ]+]] = c64[4,8,8]{2,1,0} broadcast(%[[constant_24]]), dimensions={}
+// CHECK-NEXT:  %[[constant_29:[^ ]+]] = s32[] constant(0)
+// CHECK-NEXT:  %[[constant_30:[^ ]+]] = s32[] constant(0)
+// CHECK-NEXT:  %[[constant_31:[^ ]+]] = s32[] constant(0)
+// CHECK-NEXT:  %[[dynamic_update_slice_1:[^ ]+]] = c64[4,8,8]{2,1,0} dynamic-update-slice(%[[broadcast_19]], %[[while_1]]#2, %[[constant_29]], %[[constant_30]], %[[constant_31]])
+// CHECK-NEXT:  %[[select_4:[^ ]+]] = c64[4,8,8]{2,1,0} select(%[[broadcast_24]], %[[broadcast_25]], %[[dynamic_update_slice_1]])
+// CHECK-NEXT:  ROOT %[[transpose_6:[^ ]+]] = c64[4,8,8]{1,2,0} transpose(%[[select_4]]), dimensions={0,2,1}
 
 // CHECK-LABEL: ENTRY %test
 // CHECK-NEXT:  %[[input:[^ ]+]] = c64[4,8,8]{2,1,0} parameter(0)
-// CHECK-NEXT:  ROOT %[[call:[^ ]+]] = c64[4,8,8]{2,1,0} call(%[[input]]), to_apply=%[[$xla_cholesky_c64_4_8_8__upper_78]]
+// CHECK-NEXT:  ROOT %[[call:[^ ]+]] = c64[4,8,8]{2,1,0} call(%[[input]]), to_apply=%[[$xla_cholesky_c64_4_8_8__upper_5]]
 
 HloModule CholeskyExpanderTest
 
@@ -187,151 +163,127 @@ ENTRY test {
 
 // CHECK-LABEL: HloModule CholeskyExpanderTest, entry_computation_layout={(f32[1,256,256]{2,1,0})->f32[1,256,256]{2,1,0}}
 
-// CHECK:       %[[$unblocked_body_15:[^ ]+]]
-// CHECK-NEXT:  %[[parameter_16:[^ ]+]] = (s32[], f32[1,128,128]{2,1,0}, f32[1,128,128]{2,1,0}, pred[1,1,1]{2,1,0}) parameter(0)
-// CHECK-NEXT:  %[[get_tuple_element_17:[^ ]+]] = s32[] get-tuple-element(%[[parameter_16]]), index=0
-// CHECK-NEXT:  %[[constant_21:[^ ]+]] = s32[] constant(1)
-// CHECK-NEXT:  %[[add_22:[^ ]+]] = s32[] add(%[[get_tuple_element_17]], %[[constant_21]])
-// CHECK-NEXT:  %[[get_tuple_element_18:[^ ]+]] = f32[1,128,128]{2,1,0} get-tuple-element(%[[parameter_16]]), index=1
-// CHECK-NEXT:  %[[iota_24:[^ ]+]] = s32[1,128,128]{2,1,0} iota(), iota_dimension=1
-// CHECK-NEXT:  %[[iota_23:[^ ]+]] = s32[1,128,128]{2,1,0} iota(), iota_dimension=2
-// CHECK-NEXT:  %[[compare_25:[^ ]+]] = pred[1,128,128]{2,1,0} compare(%[[iota_24]], %[[iota_23]]), direction=GE
-// CHECK-NEXT:  %[[broadcast_26:[^ ]+]] = s32[1,128,128]{2,1,0} broadcast(%[[get_tuple_element_17]]), dimensions={}
-// CHECK-NEXT:  %[[compare_27:[^ ]+]] = pred[1,128,128]{2,1,0} compare(%[[iota_23]], %[[broadcast_26]]), direction=EQ
-// CHECK-NEXT:  %[[and_28:[^ ]+]] = pred[1,128,128]{2,1,0} and(%[[compare_25]], %[[compare_27]])
-// CHECK-NEXT:  %[[get_tuple_element_19:[^ ]+]] = f32[1,128,128]{2,1,0} get-tuple-element(%[[parameter_16]]), index=2
-// CHECK-NEXT:  %[[dot_31:[^ ]+]] = f32[1,128,128]{2,1,0} dot(%[[get_tuple_element_19]], %[[get_tuple_element_19]]), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={2}, operand_precision={highest,highest}, frontend_attributes={grad_x="false",grad_y="false"}
-// CHECK-NEXT:  %[[transpose_32:[^ ]+]] = f32[1,128,128]{2,1,0} transpose(%[[dot_31]]), dimensions={0,1,2}
-// CHECK-NEXT:  %[[subtract_33:[^ ]+]] = f32[1,128,128]{2,1,0} subtract(%[[get_tuple_element_18]], %[[transpose_32]])
-// CHECK-NEXT:  %[[constant_34:[^ ]+]] = s32[] constant(0)
-// CHECK-NEXT:  %[[dynamic_slice_35:[^ ]+]] = f32[1,1,1]{2,1,0} dynamic-slice(%[[subtract_33]], %[[constant_34]], %[[get_tuple_element_17]], %[[get_tuple_element_17]]), dynamic_slice_sizes={1,1,1}
-// CHECK-NEXT:  %[[sqrt_36:[^ ]+]] = f32[1,1,1]{2,1,0} sqrt(%[[dynamic_slice_35]])
-// CHECK-NEXT:  %[[reshape_39:[^ ]+]] = f32[1]{0} reshape(%[[sqrt_36]])
-// CHECK-NEXT:  %[[broadcast_40:[^ ]+]] = f32[1,128,128]{2,1,0} broadcast(%[[reshape_39]]), dimensions={0}
-// CHECK-NEXT:  %[[divide_41:[^ ]+]] = f32[1,128,128]{2,1,0} divide(%[[subtract_33]], %[[broadcast_40]])
-// CHECK-NEXT:  %[[constant_29:[^ ]+]] = f32[] constant(0)
-// CHECK-NEXT:  %[[broadcast_30:[^ ]+]] = f32[1,128,128]{2,1,0} broadcast(%[[constant_29]]), dimensions={}
-// CHECK-NEXT:  %[[select_42:[^ ]+]] = f32[1,128,128]{2,1,0} select(%[[and_28]], %[[divide_41]], %[[broadcast_30]])
-// CHECK-NEXT:  %[[add_43:[^ ]+]] = f32[1,128,128]{2,1,0} add(%[[select_42]], %[[get_tuple_element_19]])
-// CHECK-NEXT:  %[[get_tuple_element_20:[^ ]+]] = pred[1,1,1]{2,1,0} get-tuple-element(%[[parameter_16]]), index=3
-// CHECK-NEXT:  %[[compare_37:[^ ]+]] = pred[1,1,1]{2,1,0} compare(%[[sqrt_36]], %[[sqrt_36]]), direction=NE
-// CHECK-NEXT:  %[[or_38:[^ ]+]] = pred[1,1,1]{2,1,0} or(%[[get_tuple_element_20]], %[[compare_37]])
-// CHECK-NEXT:  ROOT %[[tuple_44:[^ ]+]] = (s32[], f32[1,128,128]{2,1,0}, f32[1,128,128]{2,1,0}, pred[1,1,1]{2,1,0}) tuple(%[[add_22]], %[[get_tuple_element_18]], %[[add_43]], %[[or_38]])
+// CHECK:       %[[$unblocked_body_4:[^ ]+]]
+// CHECK-NEXT:  %[[parameter_5:[^ ]+]] = (s32[], f32[1,128,128]{2,1,0}, f32[1,128,128]{2,1,0}, pred[1,1,1]{2,1,0}) parameter(0)
+// CHECK-NEXT:  %[[constant_14:[^ ]+]] = s32[] constant(1)
+// CHECK-NEXT:  %[[add_4:[^ ]+]] = s32[] add(%[[parameter_5]]#0, %[[constant_14]])
+// CHECK-NEXT:  %[[iota_5:[^ ]+]] = s32[1,128,128]{2,1,0} iota(), iota_dimension=1
+// CHECK-NEXT:  %[[iota_4:[^ ]+]] = s32[1,128,128]{2,1,0} iota(), iota_dimension=2
+// CHECK-NEXT:  %[[compare_9:[^ ]+]] = pred[1,128,128]{2,1,0} compare(%[[iota_5]], %[[iota_4]]), direction=GE
+// CHECK-NEXT:  %[[broadcast_10:[^ ]+]] = s32[1,128,128]{2,1,0} broadcast(%[[parameter_5]]#0), dimensions={}
+// CHECK-NEXT:  %[[compare_10:[^ ]+]] = pred[1,128,128]{2,1,0} compare(%[[iota_4]], %[[broadcast_10]]), direction=EQ
+// CHECK-NEXT:  %[[and_2:[^ ]+]] = pred[1,128,128]{2,1,0} and(%[[compare_9]], %[[compare_10]])
+// CHECK-NEXT:  %[[dot_2:[^ ]+]] = f32[1,128,128]{2,1,0} dot(%[[parameter_5]]#2, %[[parameter_5]]#2), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={2}, operand_precision={highest,highest}, frontend_attributes={grad_x="false",grad_y="false"}
+// CHECK-NEXT:  %[[transpose_3:[^ ]+]] = f32[1,128,128]{2,1,0} transpose(%[[dot_2]]), dimensions={0,1,2}
+// CHECK-NEXT:  %[[subtract_2:[^ ]+]] = f32[1,128,128]{2,1,0} subtract(%[[parameter_5]]#1, %[[transpose_3]])
+// CHECK-NEXT:  %[[constant_16:[^ ]+]] = s32[] constant(0)
+// CHECK-NEXT:  %[[dynamic_slice_2:[^ ]+]] = f32[1,1,1]{2,1,0} dynamic-slice(%[[subtract_2]], %[[constant_16]], %[[parameter_5]]#0, %[[parameter_5]]#0), dynamic_slice_sizes={1,1,1}
+// CHECK-NEXT:  %[[sqrt_2:[^ ]+]] = f32[1,1,1]{2,1,0} sqrt(%[[dynamic_slice_2]])
+// CHECK-NEXT:  %[[reshape_2:[^ ]+]] = f32[1]{0} reshape(%[[sqrt_2]])
+// CHECK-NEXT:  %[[broadcast_12:[^ ]+]] = f32[1,128,128]{2,1,0} broadcast(%[[reshape_2]]), dimensions={0}
+// CHECK-NEXT:  %[[divide_2:[^ ]+]] = f32[1,128,128]{2,1,0} divide(%[[subtract_2]], %[[broadcast_12]])
+// CHECK-NEXT:  %[[constant_15:[^ ]+]] = f32[] constant(0)
+// CHECK-NEXT:  %[[broadcast_11:[^ ]+]] = f32[1,128,128]{2,1,0} broadcast(%[[constant_15]]), dimensions={}
+// CHECK-NEXT:  %[[select_2:[^ ]+]] = f32[1,128,128]{2,1,0} select(%[[and_2]], %[[divide_2]], %[[broadcast_11]])
+// CHECK-NEXT:  %[[add_5:[^ ]+]] = f32[1,128,128]{2,1,0} add(%[[select_2]], %[[parameter_5]]#2)
+// CHECK-NEXT:  %[[compare_11:[^ ]+]] = pred[1,1,1]{2,1,0} compare(%[[sqrt_2]], %[[sqrt_2]]), direction=NE
+// CHECK-NEXT:  %[[or_2:[^ ]+]] = pred[1,1,1]{2,1,0} or(%[[parameter_5]]#3, %[[compare_11]])
+// CHECK-NEXT:  ROOT %[[tuple_3:[^ ]+]] = (s32[], f32[1,128,128]{2,1,0}, f32[1,128,128]{2,1,0}, pred[1,1,1]{2,1,0}) tuple(%[[add_4]], %[[parameter_5]]#1, %[[add_5]], %[[or_2]])
 
-// CHECK:       %[[$unblocked_condition_45:[^ ]+]]
-// CHECK-NEXT:  %[[parameter_46:[^ ]+]] = (s32[], f32[1,128,128]{2,1,0}, f32[1,128,128]{2,1,0}, pred[1,1,1]{2,1,0}) parameter(0)
-// CHECK-NEXT:  %[[get_tuple_element_48:[^ ]+]] = f32[1,128,128]{2,1,0} get-tuple-element(%[[parameter_46]]), index=1
-// CHECK-NEXT:  %[[get_tuple_element_49:[^ ]+]] = f32[1,128,128]{2,1,0} get-tuple-element(%[[parameter_46]]), index=2
-// CHECK-NEXT:  %[[get_tuple_element_50:[^ ]+]] = pred[1,1,1]{2,1,0} get-tuple-element(%[[parameter_46]]), index=3
-// CHECK-NEXT:  %[[get_tuple_element_47:[^ ]+]] = s32[] get-tuple-element(%[[parameter_46]]), index=0
-// CHECK-NEXT:  %[[constant_51:[^ ]+]] = s32[] constant(128)
-// CHECK-NEXT:  ROOT %[[compare_52:[^ ]+]] = pred[] compare(%[[get_tuple_element_47]], %[[constant_51]]), direction=LT
+// CHECK:       %[[$unblocked_condition_3:[^ ]+]]
+// CHECK-NEXT:  %[[parameter_4:[^ ]+]] = (s32[], f32[1,128,128]{2,1,0}, f32[1,128,128]{2,1,0}, pred[1,1,1]{2,1,0}) parameter(0)
+// CHECK-NEXT:  %[[constant_13:[^ ]+]] = s32[] constant(128)
+// CHECK-NEXT:  ROOT %[[compare_8:[^ ]+]] = pred[] compare(%[[parameter_4]]#0, %[[constant_13]]), direction=LT
 
-// CHECK:       %[[$unblocked_body_82:[^ ]+]]
-// CHECK-NEXT:  %[[parameter_83:[^ ]+]] = (s32[], f32[1,128,128]{2,1,0}, f32[1,128,128]{2,1,0}, pred[1,1,1]{2,1,0}) parameter(0)
-// CHECK-NEXT:  %[[get_tuple_element_84:[^ ]+]] = s32[] get-tuple-element(%[[parameter_83]]), index=0
-// CHECK-NEXT:  %[[constant_88:[^ ]+]] = s32[] constant(1)
-// CHECK-NEXT:  %[[add_89:[^ ]+]] = s32[] add(%[[get_tuple_element_84]], %[[constant_88]])
-// CHECK-NEXT:  %[[get_tuple_element_85:[^ ]+]] = f32[1,128,128]{2,1,0} get-tuple-element(%[[parameter_83]]), index=1
-// CHECK-NEXT:  %[[iota_91:[^ ]+]] = s32[1,128,128]{2,1,0} iota(), iota_dimension=1
-// CHECK-NEXT:  %[[iota_90:[^ ]+]] = s32[1,128,128]{2,1,0} iota(), iota_dimension=2
-// CHECK-NEXT:  %[[compare_92:[^ ]+]] = pred[1,128,128]{2,1,0} compare(%[[iota_91]], %[[iota_90]]), direction=GE
-// CHECK-NEXT:  %[[broadcast_93:[^ ]+]] = s32[1,128,128]{2,1,0} broadcast(%[[get_tuple_element_84]]), dimensions={}
-// CHECK-NEXT:  %[[compare_94:[^ ]+]] = pred[1,128,128]{2,1,0} compare(%[[iota_90]], %[[broadcast_93]]), direction=EQ
-// CHECK-NEXT:  %[[and_95:[^ ]+]] = pred[1,128,128]{2,1,0} and(%[[compare_92]], %[[compare_94]])
-// CHECK-NEXT:  %[[get_tuple_element_86:[^ ]+]] = f32[1,128,128]{2,1,0} get-tuple-element(%[[parameter_83]]), index=2
-// CHECK-NEXT:  %[[dot_98:[^ ]+]] = f32[1,128,128]{2,1,0} dot(%[[get_tuple_element_86]], %[[get_tuple_element_86]]), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={2}, operand_precision={highest,highest}, frontend_attributes={grad_x="false",grad_y="false"}
-// CHECK-NEXT:  %[[transpose_99:[^ ]+]] = f32[1,128,128]{2,1,0} transpose(%[[dot_98]]), dimensions={0,1,2}
-// CHECK-NEXT:  %[[subtract_100:[^ ]+]] = f32[1,128,128]{2,1,0} subtract(%[[get_tuple_element_85]], %[[transpose_99]])
-// CHECK-NEXT:  %[[constant_101:[^ ]+]] = s32[] constant(0)
-// CHECK-NEXT:  %[[dynamic_slice_102:[^ ]+]] = f32[1,1,1]{2,1,0} dynamic-slice(%[[subtract_100]], %[[constant_101]], %[[get_tuple_element_84]], %[[get_tuple_element_84]]), dynamic_slice_sizes={1,1,1}
-// CHECK-NEXT:  %[[sqrt_103:[^ ]+]] = f32[1,1,1]{2,1,0} sqrt(%[[dynamic_slice_102]])
-// CHECK-NEXT:  %[[reshape_106:[^ ]+]] = f32[1]{0} reshape(%[[sqrt_103]])
-// CHECK-NEXT:  %[[broadcast_107:[^ ]+]] = f32[1,128,128]{2,1,0} broadcast(%[[reshape_106]]), dimensions={0}
-// CHECK-NEXT:  %[[divide_108:[^ ]+]] = f32[1,128,128]{2,1,0} divide(%[[subtract_100]], %[[broadcast_107]])
-// CHECK-NEXT:  %[[constant_96:[^ ]+]] = f32[] constant(0)
-// CHECK-NEXT:  %[[broadcast_97:[^ ]+]] = f32[1,128,128]{2,1,0} broadcast(%[[constant_96]]), dimensions={}
-// CHECK-NEXT:  %[[select_109:[^ ]+]] = f32[1,128,128]{2,1,0} select(%[[and_95]], %[[divide_108]], %[[broadcast_97]])
-// CHECK-NEXT:  %[[add_110:[^ ]+]] = f32[1,128,128]{2,1,0} add(%[[select_109]], %[[get_tuple_element_86]])
-// CHECK-NEXT:  %[[get_tuple_element_87:[^ ]+]] = pred[1,1,1]{2,1,0} get-tuple-element(%[[parameter_83]]), index=3
-// CHECK-NEXT:  %[[compare_104:[^ ]+]] = pred[1,1,1]{2,1,0} compare(%[[sqrt_103]], %[[sqrt_103]]), direction=NE
-// CHECK-NEXT:  %[[or_105:[^ ]+]] = pred[1,1,1]{2,1,0} or(%[[get_tuple_element_87]], %[[compare_104]])
-// CHECK-NEXT:  ROOT %[[tuple_111:[^ ]+]] = (s32[], f32[1,128,128]{2,1,0}, f32[1,128,128]{2,1,0}, pred[1,1,1]{2,1,0}) tuple(%[[add_89]], %[[get_tuple_element_85]], %[[add_110]], %[[or_105]])
+// CHECK:       %[[$unblocked_body_8:[^ ]+]]
+// CHECK-NEXT:  %[[parameter_11:[^ ]+]] = (s32[], f32[1,128,128]{2,1,0}, f32[1,128,128]{2,1,0}, pred[1,1,1]{2,1,0}) parameter(0)
+// CHECK-NEXT:  %[[constant_35:[^ ]+]] = s32[] constant(1)
+// CHECK-NEXT:  %[[add_10:[^ ]+]] = s32[] add(%[[parameter_11]]#0, %[[constant_35]])
+// CHECK-NEXT:  %[[iota_11:[^ ]+]] = s32[1,128,128]{2,1,0} iota(), iota_dimension=1
+// CHECK-NEXT:  %[[iota_10:[^ ]+]] = s32[1,128,128]{2,1,0} iota(), iota_dimension=2
+// CHECK-NEXT:  %[[compare_21:[^ ]+]] = pred[1,128,128]{2,1,0} compare(%[[iota_11]], %[[iota_10]]), direction=GE
+// CHECK-NEXT:  %[[broadcast_21:[^ ]+]] = s32[1,128,128]{2,1,0} broadcast(%[[parameter_11]]#0), dimensions={}
+// CHECK-NEXT:  %[[compare_22:[^ ]+]] = pred[1,128,128]{2,1,0} compare(%[[iota_10]], %[[broadcast_21]]), direction=EQ
+// CHECK-NEXT:  %[[and_5:[^ ]+]] = pred[1,128,128]{2,1,0} and(%[[compare_21]], %[[compare_22]])
+// CHECK-NEXT:  %[[dot_6:[^ ]+]] = f32[1,128,128]{2,1,0} dot(%[[parameter_11]]#2, %[[parameter_11]]#2), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={2}, operand_precision={highest,highest}, frontend_attributes={grad_x="false",grad_y="false"}
+// CHECK-NEXT:  %[[transpose_7:[^ ]+]] = f32[1,128,128]{2,1,0} transpose(%[[dot_6]]), dimensions={0,1,2}
+// CHECK-NEXT:  %[[subtract_6:[^ ]+]] = f32[1,128,128]{2,1,0} subtract(%[[parameter_11]]#1, %[[transpose_7]])
+// CHECK-NEXT:  %[[constant_37:[^ ]+]] = s32[] constant(0)
+// CHECK-NEXT:  %[[dynamic_slice_5:[^ ]+]] = f32[1,1,1]{2,1,0} dynamic-slice(%[[subtract_6]], %[[constant_37]], %[[parameter_11]]#0, %[[parameter_11]]#0), dynamic_slice_sizes={1,1,1}
+// CHECK-NEXT:  %[[sqrt_5:[^ ]+]] = f32[1,1,1]{2,1,0} sqrt(%[[dynamic_slice_5]])
+// CHECK-NEXT:  %[[reshape_5:[^ ]+]] = f32[1]{0} reshape(%[[sqrt_5]])
+// CHECK-NEXT:  %[[broadcast_23:[^ ]+]] = f32[1,128,128]{2,1,0} broadcast(%[[reshape_5]]), dimensions={0}
+// CHECK-NEXT:  %[[divide_5:[^ ]+]] = f32[1,128,128]{2,1,0} divide(%[[subtract_6]], %[[broadcast_23]])
+// CHECK-NEXT:  %[[constant_36:[^ ]+]] = f32[] constant(0)
+// CHECK-NEXT:  %[[broadcast_22:[^ ]+]] = f32[1,128,128]{2,1,0} broadcast(%[[constant_36]]), dimensions={}
+// CHECK-NEXT:  %[[select_5:[^ ]+]] = f32[1,128,128]{2,1,0} select(%[[and_5]], %[[divide_5]], %[[broadcast_22]])
+// CHECK-NEXT:  %[[add_11:[^ ]+]] = f32[1,128,128]{2,1,0} add(%[[select_5]], %[[parameter_11]]#2)
+// CHECK-NEXT:  %[[compare_23:[^ ]+]] = pred[1,1,1]{2,1,0} compare(%[[sqrt_5]], %[[sqrt_5]]), direction=NE
+// CHECK-NEXT:  %[[or_6:[^ ]+]] = pred[1,1,1]{2,1,0} or(%[[parameter_11]]#3, %[[compare_23]])
+// CHECK-NEXT:  ROOT %[[tuple_7:[^ ]+]] = (s32[], f32[1,128,128]{2,1,0}, f32[1,128,128]{2,1,0}, pred[1,1,1]{2,1,0}) tuple(%[[add_10]], %[[parameter_11]]#1, %[[add_11]], %[[or_6]])
 
-// CHECK:       %[[$unblocked_condition_112:[^ ]+]]
-// CHECK-NEXT:  %[[parameter_113:[^ ]+]] = (s32[], f32[1,128,128]{2,1,0}, f32[1,128,128]{2,1,0}, pred[1,1,1]{2,1,0}) parameter(0)
-// CHECK-NEXT:  %[[get_tuple_element_115:[^ ]+]] = f32[1,128,128]{2,1,0} get-tuple-element(%[[parameter_113]]), index=1
-// CHECK-NEXT:  %[[get_tuple_element_116:[^ ]+]] = f32[1,128,128]{2,1,0} get-tuple-element(%[[parameter_113]]), index=2
-// CHECK-NEXT:  %[[get_tuple_element_117:[^ ]+]] = pred[1,1,1]{2,1,0} get-tuple-element(%[[parameter_113]]), index=3
-// CHECK-NEXT:  %[[get_tuple_element_114:[^ ]+]] = s32[] get-tuple-element(%[[parameter_113]]), index=0
-// CHECK-NEXT:  %[[constant_118:[^ ]+]] = s32[] constant(128)
-// CHECK-NEXT:  ROOT %[[compare_119:[^ ]+]] = pred[] compare(%[[get_tuple_element_114]], %[[constant_118]]), direction=LT
+// CHECK:       %[[$unblocked_condition_7:[^ ]+]]
+// CHECK-NEXT:  %[[parameter_10:[^ ]+]] = (s32[], f32[1,128,128]{2,1,0}, f32[1,128,128]{2,1,0}, pred[1,1,1]{2,1,0}) parameter(0)
+// CHECK-NEXT:  %[[constant_34:[^ ]+]] = s32[] constant(128)
+// CHECK-NEXT:  ROOT %[[compare_20:[^ ]+]] = pred[] compare(%[[parameter_10]]#0, %[[constant_34]]), direction=LT
 
-// CHECK:       %[[$xla_cholesky_f32_1_256_256__upper_137:[^ ]+]]
-// CHECK-NEXT:  %[[constant_13:[^ ]+]] = s32[] constant(0)
+// CHECK:       %[[$xla_cholesky_f32_1_256_256__upper_9:[^ ]+]]
+// CHECK-NEXT:  %[[constant_46:[^ ]+]] = s32[] constant(0)
 // CHECK-NEXT:  %[[a_1:[^ ]+]] = f32[1,256,256]{2,1,0} parameter(0)
-// CHECK-NEXT:  %[[transpose_2:[^ ]+]] = f32[1,256,256]{1,2,0} transpose(%[[a_1]]), dimensions={0,2,1}
-// CHECK-NEXT:  %[[slice_7:[^ ]+]] = f32[1,256,128]{2,1,0} slice(%[[transpose_2]]), slice={[0:1], [0:256], [0:128]}
+// CHECK-NEXT:  %[[transpose_9:[^ ]+]] = f32[1,256,256]{1,2,0} transpose(%[[a_1]]), dimensions={0,2,1}
+// CHECK-NEXT:  %[[slice_7:[^ ]+]] = f32[1,256,128]{2,1,0} slice(%[[transpose_9]]), slice={[0:1], [0:256], [0:128]}
 // CHECK-NEXT:  %[[slice_8:[^ ]+]] = f32[1,128,128]{2,1,0} slice(%[[slice_7]]), slice={[0:1], [0:128], [0:128]}
-// CHECK-NEXT:  %[[constant_9:[^ ]+]] = f32[] constant(0)
-// CHECK-NEXT:  %[[broadcast_10:[^ ]+]] = f32[1,128,128]{2,1,0} broadcast(%[[constant_9]]), dimensions={}
-// CHECK-NEXT:  %[[constant_11:[^ ]+]] = pred[] constant(false)
-// CHECK-NEXT:  %[[broadcast_12:[^ ]+]] = pred[1,1,1]{2,1,0} broadcast(%[[constant_11]]), dimensions={}
-// CHECK-NEXT:  %[[tuple_14:[^ ]+]] = (s32[], f32[1,128,128]{2,1,0}, f32[1,128,128]{2,1,0}, pred[1,1,1]{2,1,0}) tuple(%[[constant_13]], %[[slice_8]], %[[broadcast_10]], %[[broadcast_12]])
-// CHECK-NEXT:  %[[while_53:[^ ]+]] = (s32[], f32[1,128,128]{2,1,0}, f32[1,128,128]{2,1,0}, pred[1,1,1]{2,1,0}) while(%[[tuple_14]]), condition=%[[$unblocked_condition_45]], body=%[[$unblocked_body_15]]
-// CHECK-NEXT:  %[[get_tuple_element_54:[^ ]+]] = s32[] get-tuple-element(%[[while_53]]), index=0
-// CHECK-NEXT:  %[[get_tuple_element_55:[^ ]+]] = f32[1,128,128]{2,1,0} get-tuple-element(%[[while_53]]), index=1
-// CHECK-NEXT:  %[[constant_80:[^ ]+]] = s32[] constant(0)
-// CHECK-NEXT:  %[[slice_69:[^ ]+]] = f32[1,128,128]{2,1,0} slice(%[[transpose_2]]), slice={[0:1], [128:256], [128:256]}
-// CHECK-NEXT:  %[[constant_3:[^ ]+]] = f32[] constant(0)
-// CHECK-NEXT:  %[[broadcast_4:[^ ]+]] = f32[1,256,256]{2,1,0} broadcast(%[[constant_3]]), dimensions={}
-// CHECK-NEXT:  %[[get_tuple_element_56:[^ ]+]] = f32[1,128,128]{2,1,0} get-tuple-element(%[[while_53]]), index=2
-// CHECK-NEXT:  %[[constant_59:[^ ]+]] = s32[] constant(0)
-// CHECK-NEXT:  %[[constant_60:[^ ]+]] = s32[] constant(0)
-// CHECK-NEXT:  %[[constant_61:[^ ]+]] = s32[] constant(0)
-// CHECK-NEXT:  %[[dynamic_update_slice_62:[^ ]+]] = f32[1,256,256]{2,1,0} dynamic-update-slice(%[[broadcast_4]], %[[get_tuple_element_56]], %[[constant_59]], %[[constant_60]], %[[constant_61]])
-// CHECK-NEXT:  %[[slice_63:[^ ]+]] = f32[1,128,128]{2,1,0} slice(%[[slice_7]]), slice={[0:1], [128:256], [0:128]}
-// CHECK-NEXT:  %[[triangular_solve_64:[^ ]+]] = f32[1,128,128]{2,1,0} triangular-solve(%[[get_tuple_element_56]], %[[slice_63]]), lower=true, transpose_a=ADJOINT
-// CHECK-NEXT:  %[[constant_65:[^ ]+]] = s32[] constant(0)
-// CHECK-NEXT:  %[[constant_66:[^ ]+]] = s32[] constant(128)
-// CHECK-NEXT:  %[[constant_67:[^ ]+]] = s32[] constant(0)
-// CHECK-NEXT:  %[[dynamic_update_slice_68:[^ ]+]] = f32[1,256,256]{2,1,0} dynamic-update-slice(%[[dynamic_update_slice_62]], %[[triangular_solve_64]], %[[constant_65]], %[[constant_66]], %[[constant_67]])
-// CHECK-NEXT:  %[[slice_70:[^ ]+]] = f32[1,128,128]{2,1,0} slice(%[[dynamic_update_slice_68]]), slice={[0:1], [128:256], [0:128]}
-// CHECK-NEXT:  %[[slice_71:[^ ]+]] = f32[1,128,128]{2,1,0} slice(%[[dynamic_update_slice_68]]), slice={[0:1], [128:256], [0:128]}
-// CHECK-NEXT:  %[[dot_72:[^ ]+]] = f32[1,128,128]{2,1,0} dot(%[[slice_70]], %[[slice_71]]), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={2}, operand_precision={highest,highest}, frontend_attributes={grad_x="false",grad_y="false"}
-// CHECK-NEXT:  %[[transpose_73:[^ ]+]] = f32[1,128,128]{2,1,0} transpose(%[[dot_72]]), dimensions={0,1,2}
-// CHECK-NEXT:  %[[subtract_74:[^ ]+]] = f32[1,128,128]{2,1,0} subtract(%[[slice_69]], %[[transpose_73]])
-// CHECK-NEXT:  %[[slice_75:[^ ]+]] = f32[1,128,128]{2,1,0} slice(%[[subtract_74]]), slice={[0:1], [0:128], [0:128]}
-// CHECK-NEXT:  %[[constant_76:[^ ]+]] = f32[] constant(0)
-// CHECK-NEXT:  %[[broadcast_77:[^ ]+]] = f32[1,128,128]{2,1,0} broadcast(%[[constant_76]]), dimensions={}
-// CHECK-NEXT:  %[[constant_78:[^ ]+]] = pred[] constant(false)
-// CHECK-NEXT:  %[[broadcast_79:[^ ]+]] = pred[1,1,1]{2,1,0} broadcast(%[[constant_78]]), dimensions={}
-// CHECK-NEXT:  %[[tuple_81:[^ ]+]] = (s32[], f32[1,128,128]{2,1,0}, f32[1,128,128]{2,1,0}, pred[1,1,1]{2,1,0}) tuple(%[[constant_80]], %[[slice_75]], %[[broadcast_77]], %[[broadcast_79]])
-// CHECK-NEXT:  %[[while_120:[^ ]+]] = (s32[], f32[1,128,128]{2,1,0}, f32[1,128,128]{2,1,0}, pred[1,1,1]{2,1,0}) while(%[[tuple_81]]), condition=%[[$unblocked_condition_112]], body=%[[$unblocked_body_82]]
-// CHECK-NEXT:  %[[get_tuple_element_121:[^ ]+]] = s32[] get-tuple-element(%[[while_120]]), index=0
-// CHECK-NEXT:  %[[get_tuple_element_122:[^ ]+]] = f32[1,128,128]{2,1,0} get-tuple-element(%[[while_120]]), index=1
-// CHECK-NEXT:  %[[constant_5:[^ ]+]] = pred[] constant(false)
-// CHECK-NEXT:  %[[broadcast_6:[^ ]+]] = pred[1,1,1]{2,1,0} broadcast(%[[constant_5]]), dimensions={}
-// CHECK-NEXT:  %[[get_tuple_element_57:[^ ]+]] = pred[1,1,1]{2,1,0} get-tuple-element(%[[while_53]]), index=3
-// CHECK-NEXT:  %[[or_58:[^ ]+]] = pred[1,1,1]{2,1,0} or(%[[broadcast_6]], %[[get_tuple_element_57]])
-// CHECK-NEXT:  %[[get_tuple_element_124:[^ ]+]] = pred[1,1,1]{2,1,0} get-tuple-element(%[[while_120]]), index=3
-// CHECK-NEXT:  %[[or_125:[^ ]+]] = pred[1,1,1]{2,1,0} or(%[[or_58]], %[[get_tuple_element_124]])
-// CHECK-NEXT:  %[[broadcast_130:[^ ]+]] = pred[1,1,1]{2,1,0} broadcast(%[[or_125]]), dimensions={0,1,2}
-// CHECK-NEXT:  %[[reshape_131:[^ ]+]] = pred[1]{0} reshape(%[[broadcast_130]])
-// CHECK-NEXT:  %[[broadcast_132:[^ ]+]] = pred[1,256,256]{2,1,0} broadcast(%[[reshape_131]]), dimensions={0}
-// CHECK-NEXT:  %[[constant_133:[^ ]+]] = f32[] constant(nan)
-// CHECK-NEXT:  %[[broadcast_134:[^ ]+]] = f32[1,256,256]{2,1,0} broadcast(%[[constant_133]]), dimensions={}
-// CHECK-NEXT:  %[[get_tuple_element_123:[^ ]+]] = f32[1,128,128]{2,1,0} get-tuple-element(%[[while_120]]), index=2
-// CHECK-NEXT:  %[[constant_126:[^ ]+]] = s32[] constant(0)
-// CHECK-NEXT:  %[[constant_127:[^ ]+]] = s32[] constant(128)
-// CHECK-NEXT:  %[[constant_128:[^ ]+]] = s32[] constant(128)
-// CHECK-NEXT:  %[[dynamic_update_slice_129:[^ ]+]] = f32[1,256,256]{2,1,0} dynamic-update-slice(%[[dynamic_update_slice_68]], %[[get_tuple_element_123]], %[[constant_126]], %[[constant_127]], %[[constant_128]])
-// CHECK-NEXT:  %[[select_135:[^ ]+]] = f32[1,256,256]{2,1,0} select(%[[broadcast_132]], %[[broadcast_134]], %[[dynamic_update_slice_129]])
-// CHECK-NEXT:  ROOT %[[transpose_136:[^ ]+]] = f32[1,256,256]{1,2,0} transpose(%[[select_135]]), dimensions={0,2,1}
+// CHECK-NEXT:  %[[constant_44:[^ ]+]] = f32[] constant(0)
+// CHECK-NEXT:  %[[broadcast_29:[^ ]+]] = f32[1,128,128]{2,1,0} broadcast(%[[constant_44]]), dimensions={}
+// CHECK-NEXT:  %[[constant_45:[^ ]+]] = pred[] constant(false)
+// CHECK-NEXT:  %[[broadcast_30:[^ ]+]] = pred[1,1,1]{2,1,0} broadcast(%[[constant_45]]), dimensions={}
+// CHECK-NEXT:  %[[tuple_8:[^ ]+]] = (s32[], f32[1,128,128]{2,1,0}, f32[1,128,128]{2,1,0}, pred[1,1,1]{2,1,0}) tuple(%[[constant_46]], %[[slice_8]], %[[broadcast_29]], %[[broadcast_30]])
+// CHECK-NEXT:  %[[while_2:[^ ]+]] = (s32[], f32[1,128,128]{2,1,0}, f32[1,128,128]{2,1,0}, pred[1,1,1]{2,1,0}) while(%[[tuple_8]]), condition=%[[$unblocked_condition_3]], body=%[[$unblocked_body_4]]
+// CHECK-NEXT:  %[[constant_55:[^ ]+]] = s32[] constant(0)
+// CHECK-NEXT:  %[[slice_10:[^ ]+]] = f32[1,128,128]{2,1,0} slice(%[[transpose_9]]), slice={[0:1], [128:256], [128:256]}
+// CHECK-NEXT:  %[[constant_42:[^ ]+]] = f32[] constant(0)
+// CHECK-NEXT:  %[[broadcast_27:[^ ]+]] = f32[1,256,256]{2,1,0} broadcast(%[[constant_42]]), dimensions={}
+// CHECK-NEXT:  %[[constant_47:[^ ]+]] = s32[] constant(0)
+// CHECK-NEXT:  %[[constant_48:[^ ]+]] = s32[] constant(0)
+// CHECK-NEXT:  %[[constant_49:[^ ]+]] = s32[] constant(0)
+// CHECK-NEXT:  %[[dynamic_update_slice_3:[^ ]+]] = f32[1,256,256]{2,1,0} dynamic-update-slice(%[[broadcast_27]], %[[while_2]]#2, %[[constant_47]], %[[constant_48]], %[[constant_49]])
+// CHECK-NEXT:  %[[slice_9:[^ ]+]] = f32[1,128,128]{2,1,0} slice(%[[slice_7]]), slice={[0:1], [128:256], [0:128]}
+// CHECK-NEXT:  %[[triangular_solve_1:[^ ]+]] = f32[1,128,128]{2,1,0} triangular-solve(%[[while_2]]#2, %[[slice_9]]), lower=true, transpose_a=ADJOINT
+// CHECK-NEXT:  %[[constant_50:[^ ]+]] = s32[] constant(0)
+// CHECK-NEXT:  %[[constant_51:[^ ]+]] = s32[] constant(128)
+// CHECK-NEXT:  %[[constant_52:[^ ]+]] = s32[] constant(0)
+// CHECK-NEXT:  %[[dynamic_update_slice_4:[^ ]+]] = f32[1,256,256]{2,1,0} dynamic-update-slice(%[[dynamic_update_slice_3]], %[[triangular_solve_1]], %[[constant_50]], %[[constant_51]], %[[constant_52]])
+// CHECK-NEXT:  %[[slice_11:[^ ]+]] = f32[1,128,128]{2,1,0} slice(%[[dynamic_update_slice_4]]), slice={[0:1], [128:256], [0:128]}
+// CHECK-NEXT:  %[[slice_12:[^ ]+]] = f32[1,128,128]{2,1,0} slice(%[[dynamic_update_slice_4]]), slice={[0:1], [128:256], [0:128]}
+// CHECK-NEXT:  %[[dot_7:[^ ]+]] = f32[1,128,128]{2,1,0} dot(%[[slice_11]], %[[slice_12]]), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={2}, operand_precision={highest,highest}, frontend_attributes={grad_x="false",grad_y="false"}
+// CHECK-NEXT:  %[[transpose_10:[^ ]+]] = f32[1,128,128]{2,1,0} transpose(%[[dot_7]]), dimensions={0,1,2}
+// CHECK-NEXT:  %[[subtract_7:[^ ]+]] = f32[1,128,128]{2,1,0} subtract(%[[slice_10]], %[[transpose_10]])
+// CHECK-NEXT:  %[[slice_13:[^ ]+]] = f32[1,128,128]{2,1,0} slice(%[[subtract_7]]), slice={[0:1], [0:128], [0:128]}
+// CHECK-NEXT:  %[[constant_53:[^ ]+]] = f32[] constant(0)
+// CHECK-NEXT:  %[[broadcast_31:[^ ]+]] = f32[1,128,128]{2,1,0} broadcast(%[[constant_53]]), dimensions={}
+// CHECK-NEXT:  %[[constant_54:[^ ]+]] = pred[] constant(false)
+// CHECK-NEXT:  %[[broadcast_32:[^ ]+]] = pred[1,1,1]{2,1,0} broadcast(%[[constant_54]]), dimensions={}
+// CHECK-NEXT:  %[[tuple_9:[^ ]+]] = (s32[], f32[1,128,128]{2,1,0}, f32[1,128,128]{2,1,0}, pred[1,1,1]{2,1,0}) tuple(%[[constant_55]], %[[slice_13]], %[[broadcast_31]], %[[broadcast_32]])
+// CHECK-NEXT:  %[[while_3:[^ ]+]] = (s32[], f32[1,128,128]{2,1,0}, f32[1,128,128]{2,1,0}, pred[1,1,1]{2,1,0}) while(%[[tuple_9]]), condition=%[[$unblocked_condition_7]], body=%[[$unblocked_body_8]]
+// CHECK-NEXT:  %[[constant_43:[^ ]+]] = pred[] constant(false)
+// CHECK-NEXT:  %[[broadcast_28:[^ ]+]] = pred[1,1,1]{2,1,0} broadcast(%[[constant_43]]), dimensions={}
+// CHECK-NEXT:  %[[or_8:[^ ]+]] = pred[1,1,1]{2,1,0} or(%[[broadcast_28]], %[[while_2]]#3)
+// CHECK-NEXT:  %[[or_9:[^ ]+]] = pred[1,1,1]{2,1,0} or(%[[or_8]], %[[while_3]]#3)
+// CHECK-NEXT:  %[[broadcast_33:[^ ]+]] = pred[1,1,1]{2,1,0} broadcast(%[[or_9]]), dimensions={0,1,2}
+// CHECK-NEXT:  %[[reshape_7:[^ ]+]] = pred[1]{0} reshape(%[[broadcast_33]])
+// CHECK-NEXT:  %[[broadcast_34:[^ ]+]] = pred[1,256,256]{2,1,0} broadcast(%[[reshape_7]]), dimensions={0}
+// CHECK-NEXT:  %[[constant_59:[^ ]+]] = f32[] constant(nan)
+// CHECK-NEXT:  %[[broadcast_35:[^ ]+]] = f32[1,256,256]{2,1,0} broadcast(%[[constant_59]]), dimensions={}
+// CHECK-NEXT:  %[[constant_56:[^ ]+]] = s32[] constant(0)
+// CHECK-NEXT:  %[[constant_57:[^ ]+]] = s32[] constant(128)
+// CHECK-NEXT:  %[[constant_58:[^ ]+]] = s32[] constant(128)
+// CHECK-NEXT:  %[[dynamic_update_slice_5:[^ ]+]] = f32[1,256,256]{2,1,0} dynamic-update-slice(%[[dynamic_update_slice_4]], %[[while_3]]#2, %[[constant_56]], %[[constant_57]], %[[constant_58]])
+// CHECK-NEXT:  %[[select_7:[^ ]+]] = f32[1,256,256]{2,1,0} select(%[[broadcast_34]], %[[broadcast_35]], %[[dynamic_update_slice_5]])
+// CHECK-NEXT:  ROOT %[[transpose_11:[^ ]+]] = f32[1,256,256]{1,2,0} transpose(%[[select_7]]), dimensions={0,2,1}
 
 // CHECK-LABEL: ENTRY %test
 // CHECK-NEXT:  %[[input:[^ ]+]] = f32[1,256,256]{2,1,0} parameter(0)
-// CHECK-NEXT:  ROOT %[[call:[^ ]+]] = f32[1,256,256]{2,1,0} call(%[[input]]), to_apply=%[[$xla_cholesky_f32_1_256_256__upper_137]]
+// CHECK-NEXT:  ROOT %[[call:[^ ]+]] = f32[1,256,256]{2,1,0} call(%[[input]]), to_apply=%[[$xla_cholesky_f32_1_256_256__upper_9]]
 
 HloModule CholeskyExpanderTest
 

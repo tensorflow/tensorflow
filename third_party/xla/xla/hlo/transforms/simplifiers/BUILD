@@ -132,6 +132,7 @@ xla_cc_test(
     srcs = ["computation_canonicalizers_test.cc"],
     deps = [
         ":computation_canonicalizers",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",

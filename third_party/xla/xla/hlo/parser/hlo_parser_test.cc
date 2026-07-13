@@ -3285,7 +3285,7 @@ ENTRY %test {
   ROOT %root = f32[10]{0} add(f32[10]{0} %p0#0, f32[10]{0} %p0#0)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(original));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(original));
   HloPrintOptions options = HloPrintOptions::ShortParsable();
   options.set_compact_gte(true);
   options.set_print_operand_shape(true);
@@ -3305,7 +3305,7 @@ ENTRY %test {
   ROOT %root = ((f32[20]{0}, f32[30]{0}), f32[20]{0}) tuple((f32[20]{0}, f32[30]{0}) %p0#1, f32[20]{0} %p0#1#0)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(original));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(original));
   HloPrintOptions options = HloPrintOptions::ShortParsable();
   options.set_compact_gte(true);
   options.set_print_operand_shape(true);
@@ -3327,7 +3327,7 @@ ENTRY %test {
   ROOT %root = f32[10]{0} negate(f32[10]{0} %t#0)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(original));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(original));
   HloPrintOptions options = HloPrintOptions::ShortParsable();
   options.set_compact_gte(true);
   options.set_print_operand_shape(true);

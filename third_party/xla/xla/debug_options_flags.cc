@@ -209,7 +209,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_enable_mlir_pretty_form(true);
   opts.set_xla_dump_full_hlo_config(true);
   opts.set_xla_dump_buffer_assignment_analysis(true);
-  opts.set_xla_dump_compact_gte(false);
+  opts.set_xla_dump_compact_gte(true);
   opts.set_xla_debug_buffer_assignment_show_max(15);
   opts.set_xla_cpu_use_onednn(false);
   opts.set_xla_cpu_experimental_onednn_custom_call(false);
