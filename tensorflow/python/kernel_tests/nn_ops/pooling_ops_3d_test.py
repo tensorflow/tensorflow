@@ -192,7 +192,7 @@ class PoolingTest(test.TestCase):
   # This test is for CPU only.
   def testAvgPool3dGradInvalidGrad(self):
     for data_format, use_gpu in GetTestConfigs():
-      if use_gpu == True:
+      if use_gpu:
         continue
       with self.cached_session(use_gpu=False):
         orig_input_shape = constant_op.constant(
