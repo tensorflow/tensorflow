@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "grpcpp/channel.h"
 #include "xla/pjrt/distributed/coordination/coordination_client.h"
 #include "xla/pjrt/distributed/coordination/coordination_service.h"
@@ -181,7 +182,7 @@ DistributedRuntimeCoordinationServiceClient::KeyValueIncrement(
 absl::StatusOr<std::vector<std::pair<std::string, std::string>>>
 DistributedRuntimeCoordinationServiceClient::KeyValueDirGet(
     absl::string_view key) {
-  TF_ASSIGN_OR_RETURN(const auto results, coord_agent_->GetKeyValueDir(key));
+  ASSIGN_OR_RETURN(const auto results, coord_agent_->GetKeyValueDir(key));
 
   std::vector<std::pair<std::string, std::string>> kvs;
   kvs.reserve(results.size());
@@ -238,7 +239,7 @@ DistributedRuntimeCoordinationServiceClient::GetLiveNodesWithIncarnations(
   }
 
   // Get the set of live tasks.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       const std::vector<CoordinationServiceAgent::AliveTask> live_tasks,
       coord_agent_->GetAliveTasks(tasks));
 

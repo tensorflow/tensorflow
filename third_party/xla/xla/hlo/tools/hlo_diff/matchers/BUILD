@@ -252,6 +252,7 @@ cc_library(
     hdrs = ["bipartite_matching.h"],
     deps = [
         ":similarity",
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/tools/hlo_diff:hlo_gumgraph_mappings",
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph",
@@ -268,6 +269,7 @@ xla_cc_test(
     srcs = ["bipartite_matching_test.cc"],
     deps = [
         ":bipartite_matching",
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
@@ -276,6 +278,7 @@ xla_cc_test(
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
         "//xla/hlo/tools/hlo_diff/utils:test_util",
         "//xla/service:call_graph",
+        "//xla/service:hlo_module_config",
         "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
     ],

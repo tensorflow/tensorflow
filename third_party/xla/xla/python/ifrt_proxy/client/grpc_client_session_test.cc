@@ -37,6 +37,7 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "grpc/support/time.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/create_channel.h"
@@ -237,7 +238,7 @@ class ClientAndServer {
     Queue* q = owned_queues_.back().get();
 
     auto req = std::make_unique<IfrtRequest>();
-    TF_RETURN_IF_ERROR(client_session_->Enqueue(
+    RETURN_IF_ERROR(client_session_->Enqueue(
         std::move(req), [q](absl::StatusOr<GrpcClientSession::Response> resp) {
           q->Push(resp.status());
         }));

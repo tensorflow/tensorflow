@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: mlir-hlo-opt --stablehlo-ext-canonicalize-dynamism --split-input-file --verify-diagnostics %s | FileCheck %s
 
 // CHECK-LABEL: func @dynamic_reduce_window_success_static_result_type
@@ -209,6 +223,17 @@ func.func @dynamic_top_k_success(%arg0: tensor<16xf32>) -> (tensor<3xf32>, tenso
   // CHECK: chlo.top_k
   %k = stablehlo.constant dense<3> : tensor<ui64>
   %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) : (tensor<16xf32>, tensor<ui64>) -> (tensor<3xf32>, tensor<3xi32>)
+  return %1#0, %1#1 : tensor<3xf32>, tensor<3xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @dynamic_top_k_is_stable_false
+func.func @dynamic_top_k_is_stable_false(%arg0: tensor<16xf32>) -> (tensor<3xf32>, tensor<3xi32>) {
+  // CHECK: chlo.top_k
+  // CHECK-SAME: is_stable = false
+  %k = stablehlo.constant dense<3> : tensor<ui64>
+  %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) {is_stable = false} : (tensor<16xf32>, tensor<ui64>) -> (tensor<3xf32>, tensor<3xi32>)
   return %1#0, %1#1 : tensor<3xf32>, tensor<3xi32>
 }
 

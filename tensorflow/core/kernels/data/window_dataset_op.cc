@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -266,9 +267,21 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         // Build the output tuple component by copying one slice
         // from each input element in the window.
         for (size_t i = 0; i < num_window_elements; ++i) {
+          if (window_elements[i].size() != num_tuple_components) {
+            return errors::Internal(
+                "Malformed checkpoint: window elements have inconsistent "
+                "number of components. Expected: ",
+                num_tuple_components, " but got: ", window_elements[i].size());
+          }
           std::vector<Tensor> component_element;
           component_element.push_back(std::move(window_elements[i][idx]));
           window_component_elements.push_back(component_element);
+        }
+        if (idx >= dataset()->input_->output_dtypes().size() ||
+            idx >= dataset()->input_->output_shapes().size()) {
+          return errors::Internal(
+              "Malformed checkpoint: window elements do not match the dataset "
+              "output types or shapes.");
         }
         DataTypeVector output_types({dataset()->input_->output_dtypes()[idx]});
         std::vector<PartialTensorShape> output_shapes(

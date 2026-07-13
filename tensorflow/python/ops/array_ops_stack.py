@@ -32,8 +32,8 @@ def stack(values, axis=0, name="stack"):
   each tensor in `values`, by packing them along the `axis` dimension.
   Given a list of length `N` of tensors of shape `(A, B, C)`;
 
-  if `axis == 0` then the `output` tensor will have the shape `(N, A, B, C)`.
-  if `axis == 1` then the `output` tensor will have the shape `(A, N, B, C)`.
+  If `axis == 0` then the `output` tensor will have the shape `(N, A, B, C)`.
+  If `axis == 1` then the `output` tensor will have the shape `(A, N, B, C)`.
   Etc.
 
   For example:

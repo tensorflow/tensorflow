@@ -1,0 +1,51 @@
+// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s --check-prefixes=CHECK-OLD
+// We do not run this test with the current emitter, because it generates incorrect code.
+
+// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s --check-prefixes=CHECK-NEW
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+
+fusion {
+  p0 = s32[64] parameter(0)
+  slice1 = s32[1] slice(p0), slice={[0:1]}
+  off = s32[] reshape(slice1)
+  d1 = s32[20] dynamic-slice(p0, off), dynamic_slice_sizes={20}
+  slice2 = s32[1] slice(d1), slice={[1:2]}
+  off2 = s32[] reshape(slice2)
+  ROOT d2 = s32[10] dynamic-slice(d1, off2), dynamic_slice_sizes={10}
+}
+// CHECK-NEW-DAG: #[[MAP:.*]] = #xla.indexing_map<"(d0{{.*}}) -> (d0{{.*}} + 1), domain: d0{{.*}} in [0, 44]">
+// CHECK-NEW-DAG: #[[MAP1:.*]] = #xla.indexing_map<"(d0{{.*}}, d1{{.*}}) -> (d0{{.*}} + d1{{.*}}), domain: d0{{.*}} in [0, 10], d1{{.*}} in [0, 44]">
+// CHECK-NEW: xtile.entry_func @triton_fn(
+// CHECK-NEW-SAME:    %[[ARG0:.*]]: memref<64xi32>,
+// CHECK-NEW-SAME:    %[[ARG1:.*]]: memref<10xi32>,
+// CHECK-NEW-SAME:    %[[ARG2:.*]]: index)
+// CHECK-NEW-DAG:     %[[C10:.*]] = arith.constant 10 : i32
+// CHECK-NEW-DAG:     %[[C44:.*]] = arith.constant 44 : i32
+// CHECK-NEW-DAG:     %[[C0_I32:.*]] = arith.constant 0 : i32
+// CHECK-NEW-DAG:     %[[C0:.*]] = arith.constant 0 : index
+// CHECK-NEW:         %[[EXTRACT0:.*]] = xtile.extract %[[ARG0]][%[[C0]]] [1] [{{.*}}] : memref<64xi32> -> tensor<1xi32>
+// CHECK-NEW:         %[[UNSPLAT0:.*]] = tt.unsplat %[[EXTRACT0]] : tensor<1xi32>
+// CHECK-NEW:         %[[MAX0:.*]] = arith.maxsi %[[UNSPLAT0]], %[[C0_I32]] : i32
+// CHECK-NEW:         %[[MIN0:.*]] = arith.minsi %[[MAX0]], %[[C44]] : i32
+// CHECK-NEW:         %[[CAST0:.*]] = arith.index_cast %[[MIN0]] : i32 to index
+// CHECK-NEW:         %[[IDX0:.*]] = xla.apply_indexing #[[MAP]](%[[CAST0]])
+// CHECK-NEW:         %[[EXTRACT1:.*]] = xtile.extract %[[ARG0]][%[[IDX0]]] [1] [{{.*}}] : memref<64xi32> -> tensor<1xi32>
+// CHECK-NEW:         %[[UNSPLAT1:.*]] = tt.unsplat %[[EXTRACT1]] : tensor<1xi32>
+// CHECK-NEW:         %[[MAX1:.*]] = arith.maxsi %[[UNSPLAT1]], %[[C0_I32]] : i32
+// CHECK-NEW:         %[[MIN1:.*]] = arith.minsi %[[MAX1]], %[[C10]] : i32
+// CHECK-NEW:         %[[CAST1:.*]] = arith.index_cast %[[MIN1]] : i32 to index
+// CHECK-NEW:         %[[IDX1:.*]] = xla.apply_indexing #[[MAP1]](%[[CAST1]], %[[CAST0]])
+// CHECK-NEW:         %[[EXTRACT2:.*]] = xtile.extract %[[ARG0]][%[[IDX1]]] [32] [{{.*}}] : memref<64xi32> -> tensor<32xi32>
+// CHECK-NEW:         xtile.insert %[[EXTRACT2]] into %[[ARG1]][%[[C0]]] [32] [{{.*}}] : tensor<32xi32> -> memref<10xi32>
+// CHECK-NEW:         xtile.return
+//
+// CHECK-OLD-COUNT-3: arith.minsi
+
+ENTRY main {
+  p0 = s32[64] parameter(0)
+  ROOT fusion = s32[10] fusion(p0), kind=kCustom, calls=fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{
+      "output_tiles":[{"sizes":["32"]}],
+        "num_warps":1,"num_ctas":1,"num_stages":1}}}
+}

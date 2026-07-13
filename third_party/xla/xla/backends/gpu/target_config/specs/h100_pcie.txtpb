@@ -197,7 +197,27 @@ gpu_device_info {
         ops_per_clock: 1024
       }
     }
+    rate_infos {
+      key: 35
+      value {
+        clock_rate_ghz: 1.62162
+        units_per_core: 4
+        ops_per_clock: 1024
+      }
+    }
+    rate_infos {
+      key: 36
+      value {
+        clock_rate_ghz: 1.62162
+        units_per_core: 4
+        ops_per_clock: 1024
+      }
+    }
   }
+  thread_dim_limit_x: 1024
+  thread_dim_limit_y: 1024
+  thread_dim_limit_z: 64
+  collective_memory_granularity: 2097152
 }
 platform_name: "CUDA"
 dnn_version_info {

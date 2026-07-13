@@ -194,9 +194,4 @@ class InitializeAllocsPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateInitializeAllocsPass() {
-  return std::make_unique<InitializeAllocsPass>();
-}
-
 }  // namespace xla::cpu

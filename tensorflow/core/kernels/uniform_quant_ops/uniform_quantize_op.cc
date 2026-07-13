@@ -78,12 +78,12 @@ class UniformQuantizeOp : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("Tin", &tin_));
     OP_REQUIRES(context, tin_ == DataType::DT_FLOAT,
-                InvalidArgument("Unsupported input type."));
+                absl::InvalidArgumentError("Unsupported input type."));
     OP_REQUIRES_OK(context, context->GetAttr("Tout", &tout_));
     OP_REQUIRES(context,
                 tout_ == DataType::DT_QINT8 || tout_ == DataType::DT_QUINT8 ||
                     tout_ == DataType::DT_QINT32,
-                InvalidArgument("Unsupported output type."));
+                absl::InvalidArgumentError("Unsupported output type."));
 
     OP_REQUIRES_OK(context, context->GetAttr("quantization_min_val",
                                              &quantization_min_val_));
@@ -92,9 +92,10 @@ class UniformQuantizeOp : public OpKernel {
 
     OP_REQUIRES_OK(context,
                    context->GetAttr("quantization_axis", &quantization_axis_));
-    OP_REQUIRES(context, (quantization_axis_ >= -1),
-                InvalidArgument("quantization_axis must be >= -1, given: ",
-                                quantization_axis_));
+    OP_REQUIRES(
+        context, (quantization_axis_ >= -1),
+        absl::InvalidArgumentError(absl::StrCat(
+            "quantization_axis must be >= -1, given: ", quantization_axis_)));
   }
 
   void Compute(OpKernelContext* context) override {

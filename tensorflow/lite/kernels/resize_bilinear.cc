@@ -74,6 +74,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // TODO(ahentz): Our current implementations rely on the inputs being 4D.
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
   TF_LITE_ENSURE_EQ(context, NumDimensions(size), 1);
+  TF_LITE_ENSURE_EQ(context, size->dims->data[0], 2);
 
   TF_LITE_ENSURE_EQ(context, size->type, kTfLiteInt32);
   // ResizeBilinear creates a float tensor even when the input is made of

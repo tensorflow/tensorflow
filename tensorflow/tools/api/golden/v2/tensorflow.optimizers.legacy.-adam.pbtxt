@@ -3,26 +3,26 @@ tf_class {
   is_instance: "<class \'tf_keras.optimizers.legacy.adam.Adam\'>"
   is_instance: "<class \'tf_keras.optimizers.legacy.optimizer_v2.OptimizerV2\'>"
   is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "clipnorm"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "clipvalue"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "global_clipnorm"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "iterations"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "weights"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

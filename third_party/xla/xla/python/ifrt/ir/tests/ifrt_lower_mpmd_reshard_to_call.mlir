@@ -1,9 +1,25 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: ifrt-opt %s -ifrt-lower-mpmd-reshard-to-call -split-input-file -verify-diagnostics | FileCheck %s
 
 !array0 = !ifrt.array<tensor<2x2xi32>,
                       #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
 !array1 = !ifrt.array<tensor<2x2xi32>,
                       #ifrt.sharding_param<1x1 to [0] on 1>, [2]>
+// CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
+// CHECK: #sp1 = #ifrt.sharding_param<1x1 to [0] on 1>
 // CHECK-LABEL: @reshard_without_donation
 module @reshard_without_donation {
   func.func public @main(%arg0: !array0) -> (!array1)
@@ -19,8 +35,8 @@ module @reshard_without_donation {
   // CHECK-DAG:    sym_visibility = "private"
   // CHECK-SAME: }
   // CHECK: func.func @main(
-  // CHECK: %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
-  // CHECK: -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 1>, [2]>
+  // CHECK: %arg0: !ifrt.array<tensor<2x2xi32>, #sp, [0, 1]>
+  // CHECK: -> !ifrt.array<tensor<2x2xi32>, #sp1, [2]>
 }
 
 // -----
@@ -29,6 +45,8 @@ module @reshard_without_donation {
                       #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
 !array1 = !ifrt.array<tensor<2x2xi32>,
                       #ifrt.sharding_param<1x1 to [0] on 1>, [2]>
+// CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
+// CHECK: #sp1 = #ifrt.sharding_param<1x1 to [0] on 1>
 // CHECK-LABEL: @reshard_with_donation
 module @reshard_with_donation {
   func.func public @main(%arg0: !array0) -> (!array1)
@@ -48,8 +66,8 @@ module @reshard_with_donation {
   // CHECK-DAG:    sym_visibility = "private"
   // CHECK-SAME: }
   // CHECK: func.func @main(
-  // CHECK: %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
-  // CHECK: -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 1>, [2]>
+  // CHECK: %arg0: !ifrt.array<tensor<2x2xi32>, #sp, [0, 1]>
+  // CHECK: -> !ifrt.array<tensor<2x2xi32>, #sp1, [2]>
 }
 
 // -----
@@ -75,6 +93,8 @@ module @reshard_is_not_converted_to_call {
                       #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
 !array1 = !ifrt.array<tensor<2x2xi32>,
                       #ifrt.sharding_param<1x1 to [0] on 1>, [2]>
+// CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
+// CHECK: #sp1 = #ifrt.sharding_param<1x1 to [0] on 1>
 // CHECK-LABEL: @reshard_after_call_to_module
 module @reshard_after_call_to_module {
   func.func public @main(%arg0: !array0) -> (!array1)
@@ -100,8 +120,8 @@ module @reshard_after_call_to_module {
   // CHECK-DAG:    sym_visibility = "private"
   // CHECK-SAME: }
   // CHECK: func.func @main(
-  // CHECK: %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
-  // CHECK: -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 1>, [2]>
+  // CHECK: %arg0: !ifrt.array<tensor<2x2xi32>, #sp, [0, 1]>
+  // CHECK: -> !ifrt.array<tensor<2x2xi32>, #sp1, [2]>
 }
 
 // -----
@@ -110,6 +130,8 @@ module @reshard_after_call_to_module {
                       #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
 !array1 = !ifrt.array<tensor<2x2xi32>,
                       #ifrt.sharding_param<1x1 to [0] on 1>, [2]>
+// CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
+// CHECK: #sp1 = #ifrt.sharding_param<1x1 to [0] on 1>
 // CHECK-LABEL: @reshard_before_call_to_module
 module @reshard_before_call_to_module {
   func.func public @main(%arg0: !array0) -> (!array1)
@@ -134,8 +156,8 @@ module @reshard_before_call_to_module {
   // CHECK-DAG:    sym_visibility = "private"
   // CHECK-SAME: }
   // CHECK: func.func @main(
-  // CHECK: %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
-  // CHECK: -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 1>, [2]>
+  // CHECK: %arg0: !ifrt.array<tensor<2x2xi32>, #sp, [0, 1]>
+  // CHECK: -> !ifrt.array<tensor<2x2xi32>, #sp1, [2]>
 }
 
 // -----
@@ -144,6 +166,8 @@ module @reshard_before_call_to_module {
                       #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
 !array1 = !ifrt.array<tensor<2x2xi32>,
                       #ifrt.sharding_param<1x1 to [0] on 1>, [2]>
+// CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
+// CHECK: #sp1 = #ifrt.sharding_param<1x1 to [0] on 1>
 // CHECK-LABEL: @two_identical_reshards_single_module
 module @two_identical_reshards_single_module {
   func.func public @main(%arg0: !array0, %arg1: !array0) -> (!array1, !array1)
@@ -161,8 +185,8 @@ module @two_identical_reshards_single_module {
   // CHECK-DAG:    sym_visibility = "private"
   // CHECK-SAME: }
   // CHECK: func.func @main(
-  // CHECK: %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
-  // CHECK: -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 1>, [2]>
+  // CHECK: %arg0: !ifrt.array<tensor<2x2xi32>, #sp, [0, 1]>
+  // CHECK: -> !ifrt.array<tensor<2x2xi32>, #sp1, [2]>
 }
 
 // -----
@@ -171,6 +195,8 @@ module @two_identical_reshards_single_module {
                       #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
 !array1 = !ifrt.array<tensor<2x2xi32>,
                       #ifrt.sharding_param<1x1 to [0] on 1>, [2]>
+// CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
+// CHECK: #sp1 = #ifrt.sharding_param<1x1 to [0] on 1>
 // CHECK-LABEL: @two_reshards_two_modules
 module @two_reshards_two_modules {
   func.func public @main(%arg0: !array0) -> (!array0)
@@ -188,8 +214,8 @@ module @two_reshards_two_modules {
   // CHECK-DAG:    sym_visibility = "private"
   // CHECK-SAME: }
   // CHECK: func.func @main(
-  // CHECK: %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
-  // CHECK: -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 1>, [2]>
+  // CHECK: %arg0: !ifrt.array<tensor<2x2xi32>, #sp, [0, 1]>
+  // CHECK: -> !ifrt.array<tensor<2x2xi32>, #sp1, [2]>
 
   // CHECK: module @reshard_17322361279023763284
   // CHECK-SAME: attributes {
@@ -197,8 +223,8 @@ module @two_reshards_two_modules {
   // CHECK-DAG:    sym_visibility = "private"
   // CHECK-SAME: }
   // CHECK: func.func @main(
-  // CHECK: %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 1>, [2]>
-  // CHECK: -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
+  // CHECK: %arg0: !ifrt.array<tensor<2x2xi32>, #sp1, [2]>
+  // CHECK: -> !ifrt.array<tensor<2x2xi32>, #sp, [0, 1]>
 }
 
 // -----
@@ -208,6 +234,8 @@ module @two_reshards_two_modules {
 !array1 = !ifrt.array<tensor<2x2xi32>,
                       #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
 // Tests if the module for the MPMD reshard has unique devices.
+// CHECK: #sp = #ifrt.sharding_param<1x1 to [0] on 1>
+// CHECK: #sp1 = #ifrt.sharding_param<2x1 to [0] on 2>
 // CHECK-LABEL: @check_reshard_module_has_unique_devices
 module @check_reshard_module_has_unique_devices {
   func.func @main(%arg0: !array0) -> !array1 attributes {ifrt.function} {
@@ -222,6 +250,6 @@ module @check_reshard_module_has_unique_devices {
   // CHECK-DAG:    sym_visibility = "private"
   // CHECK-SAME: }
   // CHECK: func.func @main(
-  // CHECK: %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
-  // CHECK: -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
+  // CHECK: %arg0: !ifrt.array<tensor<2x2xi32>, #sp, [0]>
+  // CHECK: -> !ifrt.array<tensor<2x2xi32>, #sp1, [0, 1]>
 }

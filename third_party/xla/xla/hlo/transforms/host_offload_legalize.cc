@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -244,13 +245,13 @@ absl::StatusOr<std::vector<InstructionAndIndex>> WalkDownMemoryOffload(
                             absl::StrAppend(out, instr->name());
                           })));
       }
-      TF_RETURN_IF_ERROR(add_gte_for_idx(callers[0], current_value.index));
+      RETURN_IF_ERROR(add_gte_for_idx(callers[0], current_value.index));
       return results;
     }
   }
   if (current_value.instruction->opcode() == HloOpcode::kParameter &&
       current_value.instruction->shape().IsTuple()) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         add_gte_for_idx(current_value.instruction, current_value.index));
     return results;
   }
@@ -606,10 +607,9 @@ absl::Status MoveCopyDown(
       const int index = instruction_and_index.index;
       if (instruction->opcode() == HloOpcode::kBitcast) {
         std::pair<Shape, Shape> new_shapes;
-        TF_ASSIGN_OR_RETURN(
-            new_shapes,
-            GetNewShapesAfterBitcast(instruction, copy_to_move,
-                                     shape_before_copy, shape_after_copy));
+        ASSIGN_OR_RETURN(new_shapes, GetNewShapesAfterBitcast(
+                                         instruction, copy_to_move,
+                                         shape_before_copy, shape_after_copy));
         shape_before_copy = new_shapes.first;
         shape_after_copy = new_shapes.second;
       } else if (instruction->opcode() == HloOpcode::kSlice ||
@@ -677,12 +677,12 @@ absl::Status MoveCopyDown(
           if (use == new_copy || use == new_annotation) {
             continue;
           }
-          TF_RETURN_IF_ERROR(
+          RETURN_IF_ERROR(
               instruction->ReplaceUseWithDifferentShape(use, new_copy));
         }
         // Move the copy here.
         if (new_annotation != annotation) {
-          TF_RETURN_IF_ERROR(annotation->ReplaceAllUsesWithDifferentShape(
+          RETURN_IF_ERROR(annotation->ReplaceAllUsesWithDifferentShape(
               annotation->mutable_operand(0)));
           to_remove.insert(annotation);
         }
@@ -701,8 +701,8 @@ absl::Status MoveCopyDown(
             instruction->AddInstruction(annotation->CloneWithNewOperands(
                 instruction->operand(1)->shape(),
                 {instruction->mutable_operand(1)}));
-        TF_RETURN_IF_ERROR(instruction->ReplaceOperandWith(1, new_annotation));
-        TF_RETURN_IF_ERROR(
+        RETURN_IF_ERROR(instruction->ReplaceOperandWith(1, new_annotation));
+        RETURN_IF_ERROR(
             annotation->ReplaceAllUsesWith(annotation->mutable_operand(0)));
         processed_annotations.insert(annotation);
         processed_annotations.insert(new_annotation);
@@ -721,7 +721,7 @@ absl::Status MoveCopyDown(
               update_slice->AddInstruction(HloInstruction::CreateUnary(
                   update_slice->shape(), HloOpcode::kCopy,
                   update_slice->mutable_operand(0)));
-          TF_RETURN_IF_ERROR(update_slice->ReplaceOperandWith(0, new_copy));
+          RETURN_IF_ERROR(update_slice->ReplaceOperandWith(0, new_copy));
         }
       }
       stack.emplace_back(instruction_and_index, shape_before_copy,
@@ -730,9 +730,9 @@ absl::Status MoveCopyDown(
   }
   VLOG(2) << absl::StreamFormat("Removing copy \"%s\"",
                                 copy_to_move->ToString());
-  TF_RETURN_IF_ERROR(copy_to_move->ReplaceAllUsesWithDifferentShape(
+  RETURN_IF_ERROR(copy_to_move->ReplaceAllUsesWithDifferentShape(
       copy_to_move->mutable_operand(0)));
-  TF_RETURN_IF_ERROR(copy_to_move->parent()->RemoveInstruction(copy_to_move));
+  RETURN_IF_ERROR(copy_to_move->parent()->RemoveInstruction(copy_to_move));
   return absl::OkStatus();
 }
 
@@ -944,8 +944,8 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
     InstructionAndIndex& copy_to_move_and_index = *it;
     HloInstruction* copy_to_move = copy_to_move_and_index.instruction;
     if (ShouldMoveCopyDown(copy_to_move)) {
-      TF_RETURN_IF_ERROR(MoveCopyDown(copy_to_move_and_index, call_graph,
-                                      processed_annotations, to_remove));
+      RETURN_IF_ERROR(MoveCopyDown(copy_to_move_and_index, call_graph,
+                                   processed_annotations, to_remove));
       changed = true;
     } else {
       // We should not move this copy down; maybe we can move it up. For now, we
@@ -954,10 +954,10 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
       if (copy_to_move->operand(0)->IsCustomCall(
               memory_annotations::kMoveToHostCustomCallTarget)) {
         HloInstruction* custom_call = copy_to_move->mutable_operand(0);
-        TF_RETURN_IF_ERROR(copy_to_move->ReplaceAllUsesWith(custom_call));
-        TF_RETURN_IF_ERROR(copy_to_move->ReplaceOperandWith(
+        RETURN_IF_ERROR(copy_to_move->ReplaceAllUsesWith(custom_call));
+        RETURN_IF_ERROR(copy_to_move->ReplaceOperandWith(
             0, custom_call->mutable_operand(0)));
-        TF_RETURN_IF_ERROR(custom_call->ReplaceOperandWith(0, copy_to_move));
+        RETURN_IF_ERROR(custom_call->ReplaceOperandWith(0, copy_to_move));
         copy_to_move->mutable_shape()->mutable_layout()->set_memory_space(
             Layout::kDefaultMemorySpace);
         *custom_call->mutable_shape()->mutable_layout() =
@@ -980,14 +980,14 @@ absl::StatusOr<bool> FixupInterveningCopies(
     if (processed_annotations.contains(instruction)) {
       continue;
     }
-    TF_ASSIGN_OR_RETURN(bool changed_annotation_for_copy_movement,
-                        ProcessAnnotationForCopyMovement(
-                            instruction, call_graph, processed_annotations,
-                            annotations_to_remove));
+    ASSIGN_OR_RETURN(bool changed_annotation_for_copy_movement,
+                     ProcessAnnotationForCopyMovement(instruction, call_graph,
+                                                      processed_annotations,
+                                                      annotations_to_remove));
     changed |= changed_annotation_for_copy_movement;
   }
   for (HloInstruction* instruction : annotations_to_remove) {
-    TF_RETURN_IF_ERROR(instruction->parent()->RemoveInstruction(instruction));
+    RETURN_IF_ERROR(instruction->parent()->RemoveInstruction(instruction));
   }
   return changed;
 }
@@ -1040,7 +1040,7 @@ absl::StatusOr<bool> HostOffloadLegalize::RunImpl(
                       return absl::StrAppend(out, instruction->name());
                     }));
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       bool changed_intervening_copies,
       FixupInterveningCopies(starting_instructions, call_graph.get()));
   changed |= changed_intervening_copies;

@@ -32,6 +32,10 @@ limitations under the License.
 namespace tflite {
 namespace {
 
+void StatefulNnApiDelegateDelete(TfLiteDelegate* delegate) {
+  delete static_cast<StatefulNnApiDelegate*>(delegate);
+}
+
 struct NnApiFailureHandlingTest
     : ::tflite::delegate::nnapi::NnApiDelegateMockTest {};
 
@@ -55,13 +59,11 @@ class AddSubOpsAcceleratedModel : public MultiOpModel {
       : MultiOpModel() {
     StatefulNnApiDelegate::Options options;
     options.accelerator_name = accelerator_name.c_str();
-    stateful_delegate_ =
-        std::make_unique<StatefulNnApiDelegate>(nnapi, options);
-    SetDelegate(stateful_delegate_.get());
+    SetDelegate({new StatefulNnApiDelegate(nnapi, options),
+                 StatefulNnApiDelegateDelete});
     Init(input1, input2, input3, output, activation_type,
          allow_fp32_relax_to_fp16);
   }
-  ~AddSubOpsAcceleratedModel() { stateful_delegate_.reset(); }
 
   int input1() { return input1_; }
   int input2() { return input2_; }
@@ -76,8 +78,6 @@ class AddSubOpsAcceleratedModel : public MultiOpModel {
   int output_;
 
  private:
-  std::unique_ptr<StatefulNnApiDelegate> stateful_delegate_;
-
   // Performs initialization logic shared across all constructors.
   void Init(const TensorData& input1, const TensorData& input2,
             const TensorData& input3, const TensorData& output,

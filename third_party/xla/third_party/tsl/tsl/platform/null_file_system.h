@@ -20,6 +20,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/file_system_helper.h"
@@ -36,75 +38,68 @@ class NullFileSystem : public FileSystem {
 
   ~NullFileSystem() override = default;
 
-  TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
-
   absl::Status NewRandomAccessFile(
-      const string& fname, TransactionToken* token,
+      const std::string& fname,
       std::unique_ptr<RandomAccessFile>* result) override {
-    return errors::Unimplemented("NewRandomAccessFile unimplemented");
+    return absl::UnimplementedError("NewRandomAccessFile unimplemented");
   }
 
-  absl::Status NewWritableFile(const string& fname, TransactionToken* token,
+  absl::Status NewWritableFile(const std::string& fname,
                                std::unique_ptr<WritableFile>* result) override {
-    return errors::Unimplemented("NewWritableFile unimplemented");
+    return absl::UnimplementedError("NewWritableFile unimplemented");
   }
 
   absl::Status NewAppendableFile(
-      const string& fname, TransactionToken* token,
+      const std::string& fname,
       std::unique_ptr<WritableFile>* result) override {
-    return errors::Unimplemented("NewAppendableFile unimplemented");
+    return absl::UnimplementedError("NewAppendableFile unimplemented");
   }
 
   absl::Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname, TransactionToken* token,
+      const std::string& fname,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "NewReadOnlyMemoryRegionFromFile unimplemented");
   }
 
-  absl::Status FileExists(const string& fname,
-                          TransactionToken* token) override {
-    return errors::Unimplemented("FileExists unimplemented");
+  absl::Status FileExists(absl::string_view fname) override {
+    return absl::UnimplementedError("FileExists unimplemented");
   }
 
-  absl::Status GetChildren(const string& dir, TransactionToken* token,
-                           std::vector<string>* result) override {
-    return errors::Unimplemented("GetChildren unimplemented");
+  absl::Status GetChildren(const std::string& dir,
+                           std::vector<std::string>* result) override {
+    return absl::UnimplementedError("GetChildren unimplemented");
   }
 
-  absl::Status GetMatchingPaths(const string& pattern, TransactionToken* token,
-                                std::vector<string>* results) override {
+  absl::Status GetMatchingPaths(const std::string& pattern,
+                                std::vector<std::string>* results) override {
     return internal::GetMatchingPaths(this, Env::Default(), pattern, results);
   }
 
-  absl::Status DeleteFile(const string& fname,
-                          TransactionToken* token) override {
-    return errors::Unimplemented("DeleteFile unimplemented");
+  absl::Status DeleteFile(const std::string& fname) override {
+    return absl::UnimplementedError("DeleteFile unimplemented");
   }
 
-  absl::Status CreateDir(const string& dirname,
-                         TransactionToken* token) override {
-    return errors::Unimplemented("CreateDir unimplemented");
+  absl::Status CreateDir(const std::string& dirname) override {
+    return absl::UnimplementedError("CreateDir unimplemented");
   }
 
-  absl::Status DeleteDir(const string& dirname,
-                         TransactionToken* token) override {
-    return errors::Unimplemented("DeleteDir unimplemented");
+  absl::Status DeleteDir(const std::string& dirname) override {
+    return absl::UnimplementedError("DeleteDir unimplemented");
   }
 
-  absl::Status GetFileSize(const string& fname, TransactionToken* token,
-                           uint64* file_size) override {
-    return errors::Unimplemented("GetFileSize unimplemented");
+  absl::Status GetFileSize(const std::string& fname,
+                           uint64_t* file_size) override {
+    return absl::UnimplementedError("GetFileSize unimplemented");
   }
 
-  absl::Status RenameFile(const string& src, const string& target,
-                          TransactionToken* token) override {
-    return errors::Unimplemented("RenameFile unimplemented");
+  absl::Status RenameFile(const std::string& src,
+                          const std::string& target) override {
+    return absl::UnimplementedError("RenameFile unimplemented");
   }
 
-  absl::Status Stat(const string& fname, TransactionToken* token,
-                    FileStatistics* stat) override {
-    return errors::Unimplemented("Stat unimplemented");
+  absl::Status Stat(const std::string& fname, FileStatistics* stat) override {
+    return absl::UnimplementedError("Stat unimplemented");
   }
 };
 #endif

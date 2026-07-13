@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_extension.h"
@@ -71,13 +70,6 @@ class PjRtCApiPhaseCompiler : public PjRtPhaseCompiler {
   }
 
   // Variant of `Compile` that accepts an MLIR module.
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      CompileOptions options, mlir::ModuleOp module,
-      const PjRtTopologyDescription& topology, PjRtClient* client) override {
-    return Compile(options, MaybeOwningMlirModule(std::move(module)), topology,
-                   client);
-  }
-
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, MaybeOwningMlirModule module,
       const PjRtTopologyDescription& topology, PjRtClient* client) override {

@@ -124,7 +124,7 @@ class TracingContext : public AbstractContext {
 
 typedef TracingContext* (*FactoryFunction)(const char* fn_name, TF_Status*);
 absl::Status SetDefaultTracingEngine(const char* name);
-void RegisterTracingEngineFactory(const ::tensorflow::string& name,
+void RegisterTracingEngineFactory(const std::string& name,
                                   FactoryFunction factory);
 }  // namespace tracing
 

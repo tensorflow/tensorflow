@@ -1,7 +1,7 @@
 # DTensor Python API and libraries.
 
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 
 default_visibility = [
@@ -18,9 +18,10 @@ package(
 # -----------------------------------------------------------------------------
 # A list of all modules linked into TensorFlow.
 
-py_strict_library(
+py_library(
     name = "dtensor",
     srcs = ["__init__.py"],
+    strict_deps = True,
     visibility = [
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/tools/api/generator:__pkg__",
@@ -77,7 +78,7 @@ tf_gen_op_wrapper_py(
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
-    py_lib_rule = py_strict_library,
+    py_lib_rule = py_library,
     deps = [
         "//tensorflow/dtensor/cc:dtensor_ops",
         "//tensorflow/dtensor/cc:dtensor_tpu_ops",
@@ -270,7 +271,7 @@ pytype_strict_library(
         ":dtensor_device",
         ":gen_dtensor_ops",
         ":layout",
-        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/protobuf:for_core_protos_py_proto",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:config",

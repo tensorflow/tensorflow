@@ -48,7 +48,10 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "xla/comparison_util.h"
+#include "xla/error_util.h"
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -62,6 +65,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_original_value_util.h"
+#include "xla/hlo/ir/hlo_payload_deduplicator.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
@@ -86,7 +90,6 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 
@@ -293,7 +296,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     const HloInstructionProto& proto,
     const absl::flat_hash_map<int64_t, HloInstruction*>& instruction_map,
     const absl::flat_hash_map<int64_t, HloComputation*>& computation_map,
-    bool prohibit_empty_literal) {
+    bool prohibit_empty_literal,
+    absl::Span<const std::shared_ptr<BackendConfigWrapper>> backend_configs) {
   TF_RET_CHECK(!proto.opcode().empty());
   HloOpcode opcode;
   auto opcode_or = StringToHloOpcode(proto.opcode());
@@ -428,8 +432,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kAsyncUpdate: {
-      TF_RET_CHECK(proto.operand_ids_size() == 1)
-          << "Async update requires one singular operand";
+      TF_RET_CHECK(proto.operand_ids_size() >= 1)
+          << "Async update requires at least one operand";
       HloInstruction* prev_op = operands(0);
       TF_RET_CHECK(prev_op->IsAsynchronous())
           << "Async update requires its operand to be an asynchronous op";
@@ -447,7 +451,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             << " async_wrapped_computation, but sees "
             << computations(0)->name();
       }
-      instruction = CreateAsyncUpdate(shape, prev_op);
+      instruction = CreateAsyncUpdate(shape, all_operands());
       break;
     }
     case HloOpcode::kAsyncDone: {
@@ -614,8 +618,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       TF_RET_CHECK(proto.operand_ids_size() == 1)
           << "TopK instruction should have exactly 1 operand but has "
           << proto.operand_ids_size();
-      instruction =
-          CreateTopK(shape, all_operands()[0], proto.k(), proto.largest());
+      instruction = CreateTopK(shape, all_operands()[0], proto.k(),
+                               proto.largest(), proto.is_stable());
       break;
     }
     case HloOpcode::kTranspose:
@@ -766,13 +770,13 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (opcode == HloOpcode::kAllGather) {
         instruction =
             CreateAllGather(shape, all_operands(), all_gather_dimension,
-                            *device_list, proto.constrain_layout(), channel_id,
-                            proto.use_global_device_ids());
+                            std::move(device_list), proto.constrain_layout(),
+                            channel_id, proto.use_global_device_ids());
       } else {
-        instruction =
-            CreateAllGatherStart(shape, all_operands(), all_gather_dimension,
-                                 *device_list, proto.constrain_layout(),
-                                 channel_id, proto.use_global_device_ids());
+        instruction = CreateAllGatherStart(
+            shape, all_operands(), all_gather_dimension, std::move(device_list),
+            proto.constrain_layout(), channel_id,
+            proto.use_global_device_ids());
       }
       break;
     }
@@ -791,26 +795,25 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (proto.all_reduce_id() > 0) {
         channel_id = proto.all_reduce_id();
       }
-      std::unique_ptr<CollectiveDeviceListBase> device_list =
-          CollectiveDeviceListBase::DeviceListFromProto(proto);
+      auto device_list = CollectiveDeviceListBase::DeviceListFromProto(proto);
       if (opcode == HloOpcode::kAllReduce) {
         instruction =
             CreateAllReduce(shape, all_operands(), computations(0),
-                            *device_list, proto.constrain_layout(), channel_id,
-                            proto.use_global_device_ids());
+                            std::move(device_list), proto.constrain_layout(),
+                            channel_id, proto.use_global_device_ids());
       } else if (opcode == HloOpcode::kReduceScatter) {
         TF_RET_CHECK(proto.dimensions().size() == 1)
             << "ReduceScatter cannot have more than 1 scatter dimensions";
         int64_t scatter_dimension = proto.dimensions(0);
         instruction = CreateReduceScatter(
-            shape, all_operands(), computations(0), *device_list,
+            shape, all_operands(), computations(0), std::move(device_list),
             proto.constrain_layout(), channel_id, proto.use_global_device_ids(),
             scatter_dimension);
       } else {
-        instruction =
-            CreateAllReduceStart(shape, all_operands(), computations(0),
-                                 *device_list, proto.constrain_layout(),
-                                 channel_id, proto.use_global_device_ids());
+        instruction = CreateAllReduceStart(
+            shape, all_operands(), computations(0), std::move(device_list),
+            proto.constrain_layout(), channel_id,
+            proto.use_global_device_ids());
       }
       break;
     }
@@ -828,9 +831,9 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                "is specified";
         split_dimension = proto.dimensions(0);
       }
+      auto device_list = CollectiveDeviceListBase::DeviceListFromProto(proto);
       instruction =
-          CreateAllToAll(shape, all_operands(),
-                         *CollectiveDeviceListBase::DeviceListFromProto(proto),
+          CreateAllToAll(shape, all_operands(), std::move(device_list),
                          proto.constrain_layout(), channel_id, split_dimension);
       break;
     }
@@ -841,9 +844,9 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       }
       TF_RET_CHECK(all_operands().size() == 6)
           << "RaggedAllToAll must have 6 operands";
-      instruction = CreateRaggedAllToAll(
-          shape, all_operands(),
-          *CollectiveDeviceListBase::DeviceListFromProto(proto), channel_id);
+      auto device_list = CollectiveDeviceListBase::DeviceListFromProto(proto);
+      instruction = CreateRaggedAllToAll(shape, all_operands(),
+                                         std::move(device_list), channel_id);
       break;
     }
     case HloOpcode::kCollectiveBroadcast: {
@@ -851,10 +854,11 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (proto.channel_id() > 0) {
         channel_id = proto.channel_id();
       }
-      instruction = CreateCollectiveBroadcast(
-          shape, all_operands(),
-          *CollectiveDeviceListBase::DeviceListFromProto(proto), false,
-          channel_id);
+      auto device_list = CollectiveDeviceListBase::DeviceListFromProto(proto);
+      bool has_dynamic_root = proto.has_dynamic_root();
+      instruction = CreateCollectiveBroadcast(shape, all_operands(),
+                                              std::move(device_list), false,
+                                              channel_id, has_dynamic_root);
       break;
     }
     case HloOpcode::kCollectivePermute:
@@ -986,31 +990,12 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       PrecisionConfig precision_config = proto.precision_config();
       precision_config.mutable_operand_precision()->Resize(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
-      instruction =
-          CreateConvolve(shape, operands(0), operands(1),
-                         std::max<int64_t>(proto.feature_group_count(), 1),
-                         std::max<int64_t>(proto.batch_group_count(), 1),
-                         proto.window(), proto.convolution_dimension_numbers(),
-                         precision_config, proto.sparsity_config());
-      if (proto.conv_kind() != CONVOLUTION_KIND_UNSET) {
-        HloConvolutionInstruction::ConvKind conv_kind =
-            HloConvolutionInstruction::ConvKind::UNSET;
-        switch (proto.conv_kind()) {
-          case CONVOLUTION_KIND_FPROP:
-            conv_kind = HloConvolutionInstruction::ConvKind::FPROP;
-            break;
-          case CONVOLUTION_KIND_WGRAD:
-            conv_kind = HloConvolutionInstruction::ConvKind::WGRAD;
-            break;
-          case CONVOLUTION_KIND_DGRAD:
-            conv_kind = HloConvolutionInstruction::ConvKind::DGRAD;
-            break;
-          default:
-            break;
-        }
-        Cast<HloConvolutionInstruction>(instruction.get())
-            ->set_conv_kind(conv_kind);
-      }
+      instruction = CreateConvolve(
+          shape, operands(0), operands(1),
+          std::max<int64_t>(proto.feature_group_count(), 1),
+          std::max<int64_t>(proto.batch_group_count(), 1), proto.window(),
+          proto.convolution_dimension_numbers(), precision_config,
+          proto.sparsity_config(), proto.conv_kind());
       break;
     }
     case HloOpcode::kReduceWindow:
@@ -1427,7 +1412,22 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                                        *kEmptyMetadata)) {
     instruction->mutable_metadata() = proto.metadata();
   }
-  instruction->backend_config_ = BackendConfigWrapper(proto.backend_config());
+  if (proto.has_backend_config_payload()) {
+    if (proto.backend_config_payload().has_id()) {
+      const int id = proto.backend_config_payload().id();
+      if (id < 0 || id >= backend_configs.size()) {
+        return Internal("Backend config id %d is out of range [0, %d)", id,
+                        backend_configs.size());
+      }
+      instruction->backend_config_ = backend_configs[id];
+    } else {
+      instruction->backend_config_ = std::make_shared<BackendConfigWrapper>(
+          proto.backend_config_payload().value());
+    }
+  } else {
+    instruction->backend_config_ =
+        std::make_shared<BackendConfigWrapper>(proto.backend_config());
+  }
 
   TF_RET_CHECK(proto.id() >= 0)
       << "Instruction with negative id: " << proto.id();
@@ -1476,8 +1476,10 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTopK(
-    const Shape& shape, HloInstruction* input, int64_t k, bool largest) {
-  return std::make_unique<HloTopKInstruction>(shape, input, k, largest);
+    const Shape& shape, HloInstruction* input, int64_t k, bool largest,
+    bool is_stable) {
+  return std::make_unique<HloTopKInstruction>(shape, input, k, largest,
+                                              is_stable);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1599,6 +1601,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
+    case HloOpcode::kMulhi:
     case HloOpcode::kPower:
     case HloOpcode::kRemainder:
     case HloOpcode::kSubtract:
@@ -1650,10 +1653,10 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     int64_t feature_group_count, int64_t batch_group_count,
     const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config,
-    const SparsityConfig& sparsity_config) {
+    const SparsityConfig& sparsity_config, ConvolutionKind convolution_kind) {
   return std::make_unique<HloConvolutionInstruction>(
       shape, lhs, rhs, feature_group_count, batch_group_count, window,
-      dimension_numbers, precision_config, sparsity_config);
+      dimension_numbers, precision_config, sparsity_config, convolution_kind);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFft(
@@ -1674,14 +1677,23 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncUpdate(
     const Shape& shape, HloInstruction* operand) {
-  return std::make_unique<HloAsyncInstruction>(HloOpcode::kAsyncUpdate, shape,
-                                               operand);
+  return absl::WrapUnique(
+      new HloAsyncInstruction(HloOpcode::kAsyncUpdate, shape, operand));
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncUpdate(
+    const Shape& shape, absl::Span<HloInstruction* const> operands) {
+  CHECK_GE(operands.size(), 1);
+  HloInstruction* prev_async = operands[0];
+  return absl::WrapUnique(new HloAsyncInstruction(
+      HloOpcode::kAsyncUpdate, shape, operands,
+      Cast<HloAsyncInstruction>(prev_async)->async_wrapped_opcode()));
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncDone(
     const Shape& shape, HloInstruction* operand) {
-  return std::make_unique<HloAsyncInstruction>(HloOpcode::kAsyncDone, shape,
-                                               operand);
+  return absl::WrapUnique(
+      new HloAsyncInstruction(HloOpcode::kAsyncDone, shape, operand));
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCopyStart(
@@ -1748,12 +1760,14 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllGather(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    int64_t all_gather_dimension, const CollectiveDeviceListBase& device_list,
+    int64_t all_gather_dimension,
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
     bool constrain_layout, const std::optional<int64_t>& channel_id,
     bool use_global_device_ids) {
   return std::make_unique<HloAllGatherInstruction>(
-      HloOpcode::kAllGather, shape, operands, all_gather_dimension, device_list,
-      constrain_layout, channel_id, use_global_device_ids);
+      HloOpcode::kAllGather, shape, operands, all_gather_dimension,
+      std::move(device_list), constrain_layout, channel_id,
+      use_global_device_ids);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllGather(
@@ -1762,19 +1776,21 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
     bool constrain_layout, const std::optional<int64_t>& channel_id,
     bool use_global_device_ids) {
   return CreateAllGather(shape, operands, all_gather_dimension,
-                         CollectiveDeviceList(replica_groups), constrain_layout,
-                         channel_id, use_global_device_ids);
+                         std::make_shared<CollectiveDeviceList>(replica_groups),
+                         constrain_layout, channel_id, use_global_device_ids);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateAllGatherStart(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    int64_t all_gather_dimension, const CollectiveDeviceListBase& device_list,
+    int64_t all_gather_dimension,
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
     bool constrain_layout, const std::optional<int64_t>& channel_id,
     bool use_global_device_ids) {
   return std::make_unique<HloAllGatherInstruction>(
       HloOpcode::kAllGatherStart, shape, operands, all_gather_dimension,
-      device_list, constrain_layout, channel_id, use_global_device_ids);
+      std::move(device_list), constrain_layout, channel_id,
+      use_global_device_ids);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1783,20 +1799,22 @@ HloInstruction::CreateAllGatherStart(
     int64_t all_gather_dimension, absl::Span<const ReplicaGroup> replica_groups,
     bool constrain_layout, const std::optional<int64_t>& channel_id,
     bool use_global_device_ids) {
-  return CreateAllGatherStart(shape, operands, all_gather_dimension,
-                              CollectiveDeviceList(replica_groups),
-                              constrain_layout, channel_id,
-                              use_global_device_ids);
+  return CreateAllGatherStart(
+      shape, operands, all_gather_dimension,
+      std::make_shared<CollectiveDeviceList>(replica_groups), constrain_layout,
+      channel_id, use_global_device_ids);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllReduce(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
-    const CollectiveDeviceListBase& device_list, bool constrain_layout,
-    const std::optional<int64_t>& channel_id, bool use_global_device_ids) {
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
+    bool constrain_layout, const std::optional<int64_t>& channel_id,
+    bool use_global_device_ids) {
   return std::make_unique<HloAllReduceInstruction>(
-      HloOpcode::kAllReduce, shape, operands, reduce_computation, device_list,
-      constrain_layout, channel_id, use_global_device_ids);
+      HloOpcode::kAllReduce, shape, operands, reduce_computation,
+      std::move(device_list), constrain_layout, channel_id,
+      use_global_device_ids);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllReduce(
@@ -1805,22 +1823,20 @@ HloInstruction::CreateAllGatherStart(
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
     const std::optional<int64_t>& channel_id, bool use_global_device_ids) {
   return CreateAllReduce(shape, operands, reduce_computation,
-                         CollectiveDeviceList(replica_groups), constrain_layout,
-                         channel_id, use_global_device_ids);
+                         std::make_shared<CollectiveDeviceList>(replica_groups),
+                         constrain_layout, channel_id, use_global_device_ids);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
-HloInstruction::CreateReduceScatter(const Shape& shape,
-                                    absl::Span<HloInstruction* const> operands,
-                                    HloComputation* reduce_computation,
-                                    const CollectiveDeviceListBase& device_list,
-                                    bool constrain_layout,
-                                    const std::optional<int64_t>& channel_id,
-                                    bool use_global_device_ids,
-                                    int64_t scatter_dimension) {
+HloInstruction::CreateReduceScatter(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloComputation* reduce_computation,
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
+    bool constrain_layout, const std::optional<int64_t>& channel_id,
+    bool use_global_device_ids, int64_t scatter_dimension) {
   return std::make_unique<HloReduceScatterInstruction>(
-      shape, operands, reduce_computation, device_list, constrain_layout,
-      channel_id, use_global_device_ids, scatter_dimension);
+      shape, operands, reduce_computation, std::move(device_list),
+      constrain_layout, channel_id, use_global_device_ids, scatter_dimension);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1831,19 +1847,22 @@ HloInstruction::CreateReduceScatter(
     const std::optional<int64_t>& channel_id, bool use_global_device_ids,
     int64_t scatter_dimension) {
   return CreateReduceScatter(
-      shape, operands, reduce_computation, CollectiveDeviceList(replica_groups),
-      constrain_layout, channel_id, use_global_device_ids, scatter_dimension);
+      shape, operands, reduce_computation,
+      std::make_shared<CollectiveDeviceList>(replica_groups), constrain_layout,
+      channel_id, use_global_device_ids, scatter_dimension);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateAllReduceStart(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
-    const CollectiveDeviceListBase& device_list, bool constrain_layout,
-    const std::optional<int64_t>& channel_id, bool use_global_device_ids) {
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
+    bool constrain_layout, const std::optional<int64_t>& channel_id,
+    bool use_global_device_ids) {
   return std::make_unique<HloAllReduceInstruction>(
       HloOpcode::kAllReduceStart, shape, operands, reduce_computation,
-      device_list, constrain_layout, channel_id, use_global_device_ids);
+      std::move(device_list), constrain_layout, channel_id,
+      use_global_device_ids);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1853,18 +1872,19 @@ HloInstruction::CreateAllReduceStart(
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
     const std::optional<int64_t>& channel_id, bool use_global_device_ids) {
   return CreateAllReduceStart(
-      shape, operands, reduce_computation, CollectiveDeviceList(replica_groups),
-      constrain_layout, channel_id, use_global_device_ids);
+      shape, operands, reduce_computation,
+      std::make_shared<CollectiveDeviceList>(replica_groups), constrain_layout,
+      channel_id, use_global_device_ids);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllToAll(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    const CollectiveDeviceListBase& device_list, bool constrain_layout,
-    const std::optional<int64_t>& channel_id,
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
+    bool constrain_layout, const std::optional<int64_t>& channel_id,
     const std::optional<int64_t>& split_dimension) {
-  return std::make_unique<HloAllToAllInstruction>(shape, operands, device_list,
-                                                  constrain_layout, channel_id,
-                                                  split_dimension);
+  return std::make_unique<HloAllToAllInstruction>(
+      shape, operands, std::move(device_list), constrain_layout, channel_id,
+      split_dimension);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllToAll(
@@ -1872,17 +1892,18 @@ HloInstruction::CreateAllReduceStart(
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
     const std::optional<int64_t>& channel_id,
     const std::optional<int64_t>& split_dimension) {
-  return CreateAllToAll(shape, operands, CollectiveDeviceList(replica_groups),
+  return CreateAllToAll(shape, operands,
+                        std::make_shared<CollectiveDeviceList>(replica_groups),
                         constrain_layout, channel_id, split_dimension);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateRaggedAllToAll(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    const CollectiveDeviceListBase& device_list,
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
     const std::optional<int64_t>& channel_id) {
   return std::make_unique<HloRaggedAllToAllInstruction>(
-      shape, operands, device_list, channel_id);
+      shape, operands, std::move(device_list), channel_id);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1890,28 +1911,30 @@ HloInstruction::CreateRaggedAllToAll(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::Span<const ReplicaGroup> replica_groups,
     const std::optional<int64_t>& channel_id) {
-  return CreateRaggedAllToAll(shape, operands,
-                              CollectiveDeviceList(replica_groups), channel_id);
+  return CreateRaggedAllToAll(
+      shape, operands, std::make_shared<CollectiveDeviceList>(replica_groups),
+      channel_id);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateCollectiveBroadcast(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    const CollectiveDeviceListBase& device_list, bool constrain_layout,
-    const std::optional<int64_t>& channel_id) {
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
+    bool constrain_layout, const std::optional<int64_t>& channel_id,
+    bool has_dynamic_root) {
   return std::make_unique<HloCollectiveBroadcastInstruction>(
-      HloOpcode::kCollectiveBroadcast, shape, operands, device_list,
-      constrain_layout, channel_id);
+      HloOpcode::kCollectiveBroadcast, shape, operands, std::move(device_list),
+      constrain_layout, channel_id, has_dynamic_root);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateCollectiveBroadcast(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-    const std::optional<int64_t>& channel_id) {
-  return CreateCollectiveBroadcast(shape, operands,
-                                   CollectiveDeviceList(replica_groups),
-                                   constrain_layout, channel_id);
+    const std::optional<int64_t>& channel_id, bool has_dynamic_root) {
+  return CreateCollectiveBroadcast(
+      shape, operands, std::make_shared<CollectiveDeviceList>(replica_groups),
+      constrain_layout, channel_id, has_dynamic_root);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -2772,6 +2795,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kPad:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kSort:
+    case HloOpcode::kScan:
     case HloOpcode::kGather:
     case HloOpcode::kScatter:
     case HloOpcode::kIota:
@@ -2836,6 +2860,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kComplex:
     case HloOpcode::kDivide:
     case HloOpcode::kMultiply:
+    case HloOpcode::kMulhi:
     case HloOpcode::kSubtract:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
@@ -2916,7 +2941,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   }
   // SetupDerivedInstruction will setup the precision_config_ field.
   SetupDerivedInstruction(clone.get());
-  clone->backend_config_ = BackendConfigWrapper(backend_config_);
+  clone->backend_config_ = backend_config_;
   clone->set_frontend_attributes(frontend_attributes());
   // The new instruction's name will be uniquified when it's added to a
   // computation.
@@ -2995,7 +3020,7 @@ HloInstruction::LatestNonGteAncestorAndIndex() const {
   }
 
   // We built up index in the reverse order from what we want.
-  std::reverse(index.begin(), index.end());
+  absl::c_reverse(index);
 
   return {hlo, index};
 }
@@ -3226,7 +3251,7 @@ bool HloInstruction::IdenticalInternal(
     }
   }
 
-  if (backend_config_ != other.backend_config_) {
+  if (*backend_config_ != *other.backend_config_) {
     return false;
   }
 
@@ -3336,6 +3361,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
+    case HloOpcode::kMulhi:
     case HloOpcode::kNegate:
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kPartitionId:
@@ -4003,6 +4029,7 @@ bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
+    case HloOpcode::kMulhi:
     case HloOpcode::kPower:
     case HloOpcode::kRemainder:
     case HloOpcode::kSubtract:
@@ -4138,7 +4165,8 @@ void HloInstruction::PrintWithCanonicalNameMap(
        (!metadata_->op_type().empty() || !metadata_->op_name().empty() ||
         !metadata_->source_file().empty() ||
         !metadata_->scheduling_name().empty() ||
-        metadata_->stack_frame_id() != 0))) {
+        metadata_->stack_frame_id() != 0 ||
+        metadata_->has_metadata_payload()))) {
     printer->Append(", metadata={");
     if (options.print_inline_stack_frames() &&
         metadata_->stack_frame_id() != 0 && GetModule() != nullptr) {
@@ -4159,8 +4187,8 @@ void HloInstruction::PrintWithCanonicalNameMap(
     }
     printer->Append("}");
   }
-  if (options.print_backend_config() && !backend_config_.empty()) {
-    absl::string_view config = backend_config_.GetRawString();
+  if (options.print_backend_config() && !backend_config_->empty()) {
+    absl::string_view config = backend_config_->GetRawString();
     std::string sorted_config;
     if (options.sort_backend_config()) {
       // Use `value_or` below, because the backend config string isn't
@@ -4212,22 +4240,38 @@ void HloInstruction::PrintOperandsWithCanonicalNameMap(
       }
       add_space = true;
     }
+
+    bool should_print_name = false;
     if (options.canonicalize_instruction_names()) {
-      if (options.is_in_nested_computation()) {
-        // In a top-level HloInstruction::ToString() call, the operand name is
-        // not part of the canonical string.
-        DCHECK(!options.print_percent());  // no need to call PrintNameInternal
-        if (add_space) {
-          printer->Append(" ");
-        }
-        printer->Append(
-            canonical_name_map->LookupOrInsert(operand->unique_id()));
-      }
-    } else if (options.print_operand_names()) {
+      should_print_name = options.is_in_nested_computation();
+    } else {
+      should_print_name = options.print_operand_names();
+    }
+
+    if (should_print_name) {
       if (add_space) {
         printer->Append(" ");
       }
-      PrintNameInternal(printer, operand->name(), options);
+      if (options.compact_gte() &&
+          operand->opcode() == HloOpcode::kGetTupleElement) {
+        auto [ancestor, index] = operand->LatestNonGteAncestorAndIndex();
+        if (options.canonicalize_instruction_names()) {
+          printer->Append(
+              canonical_name_map->LookupOrInsert(ancestor->unique_id()));
+        } else {
+          PrintNameInternal(printer, ancestor->name(), options);
+        }
+        for (int64_t i : index) {
+          printer->Append(absl::StrCat("#", i));
+        }
+      } else {
+        if (options.canonicalize_instruction_names()) {
+          printer->Append(
+              canonical_name_map->LookupOrInsert(operand->unique_id()));
+        } else {
+          PrintNameInternal(printer, operand->name(), options);
+        }
+      }
     }
   };
   print_one(slice[0]);
@@ -4428,6 +4472,19 @@ void HloInstruction::PrintExtraAttributes(
               [](Printer* printer) { printer->Append("is_composite=true"); });
         }
         break;
+      case HloOpcode::kCustomCall:
+        if (!called_computations().empty()) {
+          printer.Next([this, &new_options](Printer* printer) {
+            printer->Append("called_computations={\n");
+            AppendJoin(
+                printer, called_computations(), ",\n",
+                [&](Printer* printer, const HloComputation* computation) {
+                  computation->Print(printer, new_options);
+                });
+            printer->Append("\n}");
+          });
+        }
+        break;
       default:
         if (!called_computations().empty()) {
           printer.Next([this, &new_options](Printer* printer) {
@@ -4449,7 +4506,8 @@ void HloInstruction::PrintExtraAttributes(
       sharding().Print(printer, options.print_metadata());
     });
   }
-  if (!frontend_attributes().map().empty()) {
+  if (options.print_frontend_attributes() &&
+      !frontend_attributes().map().empty()) {
     printer.Next([this](Printer* printer) {
       AppendCat(printer, "frontend_attributes=",
                 FrontendAttributesToString(frontend_attributes()));
@@ -4563,7 +4621,9 @@ void HloInstruction::ToProto(HloInstructionProto* proto) const {
   }
 
   *proto->mutable_metadata() = metadata();
-  proto->set_backend_config(backend_config_.GetRawString());
+  proto->set_backend_config(backend_config_->GetRawString());
+  proto->clear_backend_config_payload();
+
   if (opcode() != HloOpcode::kFusion) {
     for (const HloComputation* computation : called_computations()) {
       proto->add_called_computation_ids(computation->unique_id());
@@ -4585,6 +4645,42 @@ void HloInstruction::ToProto(HloInstructionProto* proto) const {
 
   if (has_result_accuracy()) {
     *proto->mutable_result_accuracy() = result_accuracy();
+  }
+}
+
+void HloInstruction::ToProto(HloInstructionProto* proto,
+                             HloProtoOptions options) const {
+  ToProto(proto);
+  if (options.deduplicate_backend_config && !backend_config_->empty()) {
+    if (options.payload_deduplicator == nullptr) {
+      LOG_FIRST_N(WARNING, 1)
+          << "Backend config deduplication requested without a payload "
+             "deduplicator. Falling back to non-deduplicated serialization.";
+    } else {
+      proto->mutable_backend_config_payload()->set_id(
+          options.payload_deduplicator->Deduplicate(backend_config_.get()));
+      proto->clear_backend_config();
+    }
+  }
+  if (metadata().has_metadata_payload()) {
+    const Payload& payload = metadata().metadata_payload();
+    if (!payload.has_value()) {
+      return;
+    }
+    const std::string& value = payload.value();
+    if (options.deduplicate_metadata) {
+      if (options.payload_deduplicator == nullptr) {
+        LOG_FIRST_N(WARNING, 1)
+            << "Metadata deduplication requested without a payload "
+               "deduplicator. Falling back to non-deduplicated serialization.";
+        proto->mutable_metadata()->mutable_metadata_payload()->set_value(value);
+      } else {
+        proto->mutable_metadata()->mutable_metadata_payload()->set_id(
+            options.payload_deduplicator->Deduplicate(value));
+      }
+    } else {
+      proto->mutable_metadata()->mutable_metadata_payload()->set_value(value);
+    }
   }
 }
 
@@ -4672,277 +4768,288 @@ HloInstruction::HloInstruction(HloOpcode opcode, const Shape& shape)
 template <typename HloInstructionPtr>
 absl::Status HloInstruction::Visit(
     DfsHloVisitorBase<HloInstructionPtr>* visitor) {
-  switch (opcode_) {
-    case HloOpcode::kAbs:
-      return visitor->HandleAbs(this);
-    case HloOpcode::kAcos:
-      return visitor->HandleAcos(this);
-    case HloOpcode::kAcosh:
-      return visitor->HandleAcosh(this);
-    case HloOpcode::kAsin:
-      return visitor->HandleAsin(this);
-    case HloOpcode::kAsinh:
-      return visitor->HandleAsinh(this);
-    case HloOpcode::kAtan2:
-      return visitor->HandleAtan2(this);
-    case HloOpcode::kAtanh:
-      return visitor->HandleAtanh(this);
-    case HloOpcode::kRoundNearestAfz:
-      return visitor->HandleRound(this);
-    case HloOpcode::kRoundNearestEven:
-      return visitor->HandleRoundNearestEven(this);
-    case HloOpcode::kBatchNormTraining:
-      return visitor->HandleBatchNormTraining(this);
-    case HloOpcode::kBatchNormInference:
-      return visitor->HandleBatchNormInference(this);
-    case HloOpcode::kBatchNormGrad:
-      return visitor->HandleBatchNormGrad(this);
-    case HloOpcode::kErf:
-      return visitor->HandleErf(this);
-    case HloOpcode::kLogistic:
-      return visitor->HandleLogistic(this);
-    case HloOpcode::kSign:
-      return visitor->HandleSign(this);
-    case HloOpcode::kConstant:
-      return visitor->HandleConstant(this);
-    case HloOpcode::kGetTupleElement:
-      return visitor->HandleGetTupleElement(this);
-    case HloOpcode::kParameter:
-      return visitor->HandleParameter(this);
-    case HloOpcode::kCompare:
-      return visitor->HandleCompare(this);
-    case HloOpcode::kComplex:
-      return visitor->HandleComplex(this);
-    case HloOpcode::kAdd:
-      return visitor->HandleAdd(this);
-    case HloOpcode::kDivide:
-      return visitor->HandleDivide(this);
-    case HloOpcode::kSubtract:
-      return visitor->HandleSubtract(this);
-    case HloOpcode::kMaximum:
-      return visitor->HandleMaximum(this);
-    case HloOpcode::kMinimum:
-      return visitor->HandleMinimum(this);
-    case HloOpcode::kAnd:
-      return visitor->HandleAnd(this);
-    case HloOpcode::kOr:
-      return visitor->HandleOr(this);
-    case HloOpcode::kXor:
-      return visitor->HandleXor(this);
-    case HloOpcode::kShiftLeft:
-      return visitor->HandleShiftLeft(this);
-    case HloOpcode::kShiftRightArithmetic:
-      return visitor->HandleShiftRightArithmetic(this);
-    case HloOpcode::kShiftRightLogical:
-      return visitor->HandleShiftRightLogical(this);
-    case HloOpcode::kConcatenate:
-      return visitor->HandleConcatenate(this);
-    case HloOpcode::kConvert:
-      return visitor->HandleConvert(this);
-    case HloOpcode::kBitcastConvert:
-      return visitor->HandleBitcastConvert(this);
-    case HloOpcode::kStochasticConvert:
-      return visitor->HandleStochasticConvert(this);
-    case HloOpcode::kCopy:
-      return visitor->HandleCopy(this);
-    case HloOpcode::kMultiply:
-      return visitor->HandleMultiply(this);
-    case HloOpcode::kDot:
-      return visitor->HandleDot(this);
-    case HloOpcode::kRaggedDot:
-      return visitor->HandleRaggedDot(this);
-    case HloOpcode::kScaledDot:
-      return visitor->HandleScaledDot(this);
-    case HloOpcode::kPower:
-      return visitor->HandlePower(this);
-    case HloOpcode::kRemainder:
-      return visitor->HandleRemainder(this);
-    case HloOpcode::kSelect:
-      return visitor->HandleSelect(this);
-    case HloOpcode::kConvolution:
-      return visitor->HandleConvolution(this);
-    case HloOpcode::kFft:
-      return visitor->HandleFft(this);
-    case HloOpcode::kAllGather:
-      return visitor->HandleAllGather(this);
-    case HloOpcode::kAllGatherStart:
-      return visitor->HandleAllGatherStart(this);
-    case HloOpcode::kAllGatherDone:
-      return visitor->HandleAllGatherDone(this);
-    case HloOpcode::kAllReduce:
-      return visitor->HandleAllReduce(this);
-    case HloOpcode::kReduceScatter:
-      return visitor->HandleReduceScatter(this);
-    case HloOpcode::kAllReduceStart:
-      return visitor->HandleAllReduceStart(this);
-    case HloOpcode::kAllReduceDone:
-      return visitor->HandleAllReduceDone(this);
-    case HloOpcode::kAllToAll:
-      return visitor->HandleAllToAll(this);
-    case HloOpcode::kRaggedAllToAll:
-      return visitor->HandleRaggedAllToAll(this);
-    case HloOpcode::kCollectiveBroadcast:
-      return visitor->HandleCollectiveBroadcast(this);
-    case HloOpcode::kCollectivePermute:
-      return visitor->HandleCollectivePermute(this);
-    case HloOpcode::kCollectivePermuteStart:
-      return visitor->HandleCollectivePermuteStart(this);
-    case HloOpcode::kCollectivePermuteDone:
-      return visitor->HandleCollectivePermuteDone(this);
-    case HloOpcode::kReplicaId:
-      return visitor->HandleReplicaId(this);
-    case HloOpcode::kPartitionId:
-      return visitor->HandlePartitionId(this);
-    case HloOpcode::kTuple:
-      return visitor->HandleTuple(this);
-    case HloOpcode::kMap:
-      return visitor->HandleMap(this);
-    case HloOpcode::kClamp:
-      return visitor->HandleClamp(this);
-    case HloOpcode::kReduce:
-      return visitor->HandleReduce(this);
-    case HloOpcode::kScan:
-      return visitor->HandleScan(this);
-    case HloOpcode::kReduceWindow:
-      return visitor->HandleReduceWindow(this);
-    case HloOpcode::kSelectAndScatter:
-      return visitor->HandleSelectAndScatter(this);
-    case HloOpcode::kNegate:
-      return visitor->HandleNegate(this);
-    case HloOpcode::kExp:
-      return visitor->HandleExp(this);
-    case HloOpcode::kExpm1:
-      return visitor->HandleExpm1(this);
-    case HloOpcode::kFloor:
-      return visitor->HandleFloor(this);
-    case HloOpcode::kCeil:
-      return visitor->HandleCeil(this);
-    case HloOpcode::kClz:
-      return visitor->HandleClz(this);
-    case HloOpcode::kLog:
-      return visitor->HandleLog(this);
-    case HloOpcode::kLog1p:
-      return visitor->HandleLog1p(this);
-    case HloOpcode::kTan:
-      return visitor->HandleTan(this);
-    case HloOpcode::kTanh:
-      return visitor->HandleTanh(this);
-    case HloOpcode::kCos:
-      return visitor->HandleCos(this);
-    case HloOpcode::kCosh:
-      return visitor->HandleCosh(this);
-    case HloOpcode::kSin:
-      return visitor->HandleSin(this);
-    case HloOpcode::kSinh:
-      return visitor->HandleSinh(this);
-    case HloOpcode::kSqrt:
-      return visitor->HandleSqrt(this);
-    case HloOpcode::kCbrt:
-      return visitor->HandleCbrt(this);
-    case HloOpcode::kRsqrt:
-      return visitor->HandleRsqrt(this);
-    case HloOpcode::kReal:
-      return visitor->HandleReal(this);
-    case HloOpcode::kImag:
-      return visitor->HandleImag(this);
-    case HloOpcode::kIsFinite:
-      return visitor->HandleIsFinite(this);
-    case HloOpcode::kNot:
-      return visitor->HandleNot(this);
-    case HloOpcode::kPopulationCount:
-      return visitor->HandlePopulationCount(this);
-    case HloOpcode::kBitcast:
-      return visitor->HandleBitcast(this);
-    case HloOpcode::kBroadcast:
-      return visitor->HandleBroadcast(this);
-    case HloOpcode::kPad:
-      return visitor->HandlePad(this);
-    case HloOpcode::kReshape:
-      return visitor->HandleReshape(this);
-    case HloOpcode::kDynamicReshape:
-      return visitor->HandleDynamicReshape(this);
-    case HloOpcode::kTranspose:
-      return visitor->HandleTranspose(this);
-    case HloOpcode::kReverse:
-      return visitor->HandleReverse(this);
-    case HloOpcode::kReducePrecision:
-      return visitor->HandleReducePrecision(this);
-    case HloOpcode::kSlice:
-      return visitor->HandleSlice(this);
-    case HloOpcode::kDynamicSlice:
-      return visitor->HandleDynamicSlice(this);
-    case HloOpcode::kDynamicUpdateSlice:
-      return visitor->HandleDynamicUpdateSlice(this);
-    case HloOpcode::kSort:
-      return visitor->HandleSort(this);
-    case HloOpcode::kInfeed:
-      return visitor->HandleInfeed(this);
-    case HloOpcode::kOutfeed:
-      return visitor->HandleOutfeed(this);
-    case HloOpcode::kRng:
-      return visitor->HandleRng(this);
-    case HloOpcode::kRngBitGenerator:
-      return visitor->HandleRngBitGenerator(this);
-    case HloOpcode::kRngGetAndUpdateState:
-      return visitor->HandleRngGetAndUpdateState(this);
-    case HloOpcode::kWhile:
-      return visitor->HandleWhile(this);
-    case HloOpcode::kFusion:
-      return visitor->HandleFusion(this);
-    case HloOpcode::kCall:
-      return visitor->HandleCall(this);
-    case HloOpcode::kConditional:
-      return visitor->HandleConditional(this);
-    case HloOpcode::kCustomCall:
-      return visitor->HandleCustomCall(this);
-    case HloOpcode::kAsyncStart:
-      return visitor->HandleAsyncStart(this);
-    case HloOpcode::kAsyncUpdate:
-      return visitor->HandleAsyncUpdate(this);
-    case HloOpcode::kAsyncDone:
-      return visitor->HandleAsyncDone(this);
-    case HloOpcode::kCopyStart:
-      return visitor->HandleCopyStart(this);
-    case HloOpcode::kCopyDone:
-      return visitor->HandleCopyDone(this);
-    case HloOpcode::kRecv:
-      return visitor->HandleRecv(this);
-    case HloOpcode::kTopK:
-      return visitor->HandleTopK(this);
-    case HloOpcode::kRecvDone:
-      return visitor->HandleRecvDone(this);
-    case HloOpcode::kSend:
-      return visitor->HandleSend(this);
-    case HloOpcode::kSendDone:
-      return visitor->HandleSendDone(this);
-    case HloOpcode::kGather:
-      return visitor->HandleGather(this);
-    case HloOpcode::kScatter:
-      return visitor->HandleScatter(this);
-    case HloOpcode::kDomain:
-      return visitor->HandleDomain(this);
-    case HloOpcode::kAfterAll:
-      return visitor->HandleAfterAll(this);
-    case HloOpcode::kAddDependency:
-      return visitor->HandleAddDependency(this);
-    case HloOpcode::kIota:
-      return visitor->HandleIota(this);
-    case HloOpcode::kGetDimensionSize:
-      return visitor->HandleGetDimensionSize(this);
-    case HloOpcode::kSetDimensionSize:
-      return visitor->HandleSetDimensionSize(this);
-    case HloOpcode::kTriangularSolve:
-      return visitor->HandleTriangularSolve(this);
-    case HloOpcode::kCholesky:
-      return visitor->HandleCholesky(this);
-    case HloOpcode::kOptimizationBarrier:
-      return visitor->HandleOptimizationBarrier(this);
-    default:
-      return Internal(
-          "Unhandled HloOpcode for DfsHloVisitor: %s. This should not happen - "
-          "please file a bug for XLA.",
-          HloOpcodeString(opcode_));
+  auto impl = [&]() -> absl::Status {
+    switch (opcode_) {
+      case HloOpcode::kAbs:
+        return visitor->HandleAbs(this);
+      case HloOpcode::kAcos:
+        return visitor->HandleAcos(this);
+      case HloOpcode::kAcosh:
+        return visitor->HandleAcosh(this);
+      case HloOpcode::kAsin:
+        return visitor->HandleAsin(this);
+      case HloOpcode::kAsinh:
+        return visitor->HandleAsinh(this);
+      case HloOpcode::kAtan2:
+        return visitor->HandleAtan2(this);
+      case HloOpcode::kAtanh:
+        return visitor->HandleAtanh(this);
+      case HloOpcode::kRoundNearestAfz:
+        return visitor->HandleRound(this);
+      case HloOpcode::kRoundNearestEven:
+        return visitor->HandleRoundNearestEven(this);
+      case HloOpcode::kBatchNormTraining:
+        return visitor->HandleBatchNormTraining(this);
+      case HloOpcode::kBatchNormInference:
+        return visitor->HandleBatchNormInference(this);
+      case HloOpcode::kBatchNormGrad:
+        return visitor->HandleBatchNormGrad(this);
+      case HloOpcode::kErf:
+        return visitor->HandleErf(this);
+      case HloOpcode::kLogistic:
+        return visitor->HandleLogistic(this);
+      case HloOpcode::kSign:
+        return visitor->HandleSign(this);
+      case HloOpcode::kConstant:
+        return visitor->HandleConstant(this);
+      case HloOpcode::kGetTupleElement:
+        return visitor->HandleGetTupleElement(this);
+      case HloOpcode::kParameter:
+        return visitor->HandleParameter(this);
+      case HloOpcode::kCompare:
+        return visitor->HandleCompare(this);
+      case HloOpcode::kComplex:
+        return visitor->HandleComplex(this);
+      case HloOpcode::kAdd:
+        return visitor->HandleAdd(this);
+      case HloOpcode::kDivide:
+        return visitor->HandleDivide(this);
+      case HloOpcode::kSubtract:
+        return visitor->HandleSubtract(this);
+      case HloOpcode::kMaximum:
+        return visitor->HandleMaximum(this);
+      case HloOpcode::kMinimum:
+        return visitor->HandleMinimum(this);
+      case HloOpcode::kAnd:
+        return visitor->HandleAnd(this);
+      case HloOpcode::kOr:
+        return visitor->HandleOr(this);
+      case HloOpcode::kXor:
+        return visitor->HandleXor(this);
+      case HloOpcode::kShiftLeft:
+        return visitor->HandleShiftLeft(this);
+      case HloOpcode::kShiftRightArithmetic:
+        return visitor->HandleShiftRightArithmetic(this);
+      case HloOpcode::kShiftRightLogical:
+        return visitor->HandleShiftRightLogical(this);
+      case HloOpcode::kConcatenate:
+        return visitor->HandleConcatenate(this);
+      case HloOpcode::kConvert:
+        return visitor->HandleConvert(this);
+      case HloOpcode::kBitcastConvert:
+        return visitor->HandleBitcastConvert(this);
+      case HloOpcode::kStochasticConvert:
+        return visitor->HandleStochasticConvert(this);
+      case HloOpcode::kCopy:
+        return visitor->HandleCopy(this);
+      case HloOpcode::kMultiply:
+        return visitor->HandleMultiply(this);
+      case HloOpcode::kMulhi:
+        return visitor->HandleMulhi(this);
+      case HloOpcode::kDot:
+        return visitor->HandleDot(this);
+      case HloOpcode::kRaggedDot:
+        return visitor->HandleRaggedDot(this);
+      case HloOpcode::kScaledDot:
+        return visitor->HandleScaledDot(this);
+      case HloOpcode::kPower:
+        return visitor->HandlePower(this);
+      case HloOpcode::kRemainder:
+        return visitor->HandleRemainder(this);
+      case HloOpcode::kSelect:
+        return visitor->HandleSelect(this);
+      case HloOpcode::kConvolution:
+        return visitor->HandleConvolution(this);
+      case HloOpcode::kFft:
+        return visitor->HandleFft(this);
+      case HloOpcode::kAllGather:
+        return visitor->HandleAllGather(this);
+      case HloOpcode::kAllGatherStart:
+        return visitor->HandleAllGatherStart(this);
+      case HloOpcode::kAllGatherDone:
+        return visitor->HandleAllGatherDone(this);
+      case HloOpcode::kAllReduce:
+        return visitor->HandleAllReduce(this);
+      case HloOpcode::kReduceScatter:
+        return visitor->HandleReduceScatter(this);
+      case HloOpcode::kAllReduceStart:
+        return visitor->HandleAllReduceStart(this);
+      case HloOpcode::kAllReduceDone:
+        return visitor->HandleAllReduceDone(this);
+      case HloOpcode::kAllToAll:
+        return visitor->HandleAllToAll(this);
+      case HloOpcode::kRaggedAllToAll:
+        return visitor->HandleRaggedAllToAll(this);
+      case HloOpcode::kCollectiveBroadcast:
+        return visitor->HandleCollectiveBroadcast(this);
+      case HloOpcode::kCollectivePermute:
+        return visitor->HandleCollectivePermute(this);
+      case HloOpcode::kCollectivePermuteStart:
+        return visitor->HandleCollectivePermuteStart(this);
+      case HloOpcode::kCollectivePermuteDone:
+        return visitor->HandleCollectivePermuteDone(this);
+      case HloOpcode::kReplicaId:
+        return visitor->HandleReplicaId(this);
+      case HloOpcode::kPartitionId:
+        return visitor->HandlePartitionId(this);
+      case HloOpcode::kTuple:
+        return visitor->HandleTuple(this);
+      case HloOpcode::kMap:
+        return visitor->HandleMap(this);
+      case HloOpcode::kClamp:
+        return visitor->HandleClamp(this);
+      case HloOpcode::kReduce:
+        return visitor->HandleReduce(this);
+      case HloOpcode::kScan:
+        return visitor->HandleScan(this);
+      case HloOpcode::kReduceWindow:
+        return visitor->HandleReduceWindow(this);
+      case HloOpcode::kSelectAndScatter:
+        return visitor->HandleSelectAndScatter(this);
+      case HloOpcode::kNegate:
+        return visitor->HandleNegate(this);
+      case HloOpcode::kExp:
+        return visitor->HandleExp(this);
+      case HloOpcode::kExpm1:
+        return visitor->HandleExpm1(this);
+      case HloOpcode::kFloor:
+        return visitor->HandleFloor(this);
+      case HloOpcode::kCeil:
+        return visitor->HandleCeil(this);
+      case HloOpcode::kClz:
+        return visitor->HandleClz(this);
+      case HloOpcode::kLog:
+        return visitor->HandleLog(this);
+      case HloOpcode::kLog1p:
+        return visitor->HandleLog1p(this);
+      case HloOpcode::kTan:
+        return visitor->HandleTan(this);
+      case HloOpcode::kTanh:
+        return visitor->HandleTanh(this);
+      case HloOpcode::kCos:
+        return visitor->HandleCos(this);
+      case HloOpcode::kCosh:
+        return visitor->HandleCosh(this);
+      case HloOpcode::kSin:
+        return visitor->HandleSin(this);
+      case HloOpcode::kSinh:
+        return visitor->HandleSinh(this);
+      case HloOpcode::kSqrt:
+        return visitor->HandleSqrt(this);
+      case HloOpcode::kCbrt:
+        return visitor->HandleCbrt(this);
+      case HloOpcode::kRsqrt:
+        return visitor->HandleRsqrt(this);
+      case HloOpcode::kReal:
+        return visitor->HandleReal(this);
+      case HloOpcode::kImag:
+        return visitor->HandleImag(this);
+      case HloOpcode::kIsFinite:
+        return visitor->HandleIsFinite(this);
+      case HloOpcode::kNot:
+        return visitor->HandleNot(this);
+      case HloOpcode::kPopulationCount:
+        return visitor->HandlePopulationCount(this);
+      case HloOpcode::kBitcast:
+        return visitor->HandleBitcast(this);
+      case HloOpcode::kBroadcast:
+        return visitor->HandleBroadcast(this);
+      case HloOpcode::kPad:
+        return visitor->HandlePad(this);
+      case HloOpcode::kReshape:
+        return visitor->HandleReshape(this);
+      case HloOpcode::kDynamicReshape:
+        return visitor->HandleDynamicReshape(this);
+      case HloOpcode::kTranspose:
+        return visitor->HandleTranspose(this);
+      case HloOpcode::kReverse:
+        return visitor->HandleReverse(this);
+      case HloOpcode::kReducePrecision:
+        return visitor->HandleReducePrecision(this);
+      case HloOpcode::kSlice:
+        return visitor->HandleSlice(this);
+      case HloOpcode::kDynamicSlice:
+        return visitor->HandleDynamicSlice(this);
+      case HloOpcode::kDynamicUpdateSlice:
+        return visitor->HandleDynamicUpdateSlice(this);
+      case HloOpcode::kSort:
+        return visitor->HandleSort(this);
+      case HloOpcode::kInfeed:
+        return visitor->HandleInfeed(this);
+      case HloOpcode::kOutfeed:
+        return visitor->HandleOutfeed(this);
+      case HloOpcode::kRng:
+        return visitor->HandleRng(this);
+      case HloOpcode::kRngBitGenerator:
+        return visitor->HandleRngBitGenerator(this);
+      case HloOpcode::kRngGetAndUpdateState:
+        return visitor->HandleRngGetAndUpdateState(this);
+      case HloOpcode::kWhile:
+        return visitor->HandleWhile(this);
+      case HloOpcode::kFusion:
+        return visitor->HandleFusion(this);
+      case HloOpcode::kCall:
+        return visitor->HandleCall(this);
+      case HloOpcode::kConditional:
+        return visitor->HandleConditional(this);
+      case HloOpcode::kCustomCall:
+        return visitor->HandleCustomCall(this);
+      case HloOpcode::kAsyncStart:
+        return visitor->HandleAsyncStart(this);
+      case HloOpcode::kAsyncUpdate:
+        return visitor->HandleAsyncUpdate(this);
+      case HloOpcode::kAsyncDone:
+        return visitor->HandleAsyncDone(this);
+      case HloOpcode::kCopyStart:
+        return visitor->HandleCopyStart(this);
+      case HloOpcode::kCopyDone:
+        return visitor->HandleCopyDone(this);
+      case HloOpcode::kRecv:
+        return visitor->HandleRecv(this);
+      case HloOpcode::kTopK:
+        return visitor->HandleTopK(this);
+      case HloOpcode::kRecvDone:
+        return visitor->HandleRecvDone(this);
+      case HloOpcode::kSend:
+        return visitor->HandleSend(this);
+      case HloOpcode::kSendDone:
+        return visitor->HandleSendDone(this);
+      case HloOpcode::kGather:
+        return visitor->HandleGather(this);
+      case HloOpcode::kScatter:
+        return visitor->HandleScatter(this);
+      case HloOpcode::kDomain:
+        return visitor->HandleDomain(this);
+      case HloOpcode::kAfterAll:
+        return visitor->HandleAfterAll(this);
+      case HloOpcode::kAddDependency:
+        return visitor->HandleAddDependency(this);
+      case HloOpcode::kIota:
+        return visitor->HandleIota(this);
+      case HloOpcode::kGetDimensionSize:
+        return visitor->HandleGetDimensionSize(this);
+      case HloOpcode::kSetDimensionSize:
+        return visitor->HandleSetDimensionSize(this);
+      case HloOpcode::kTriangularSolve:
+        return visitor->HandleTriangularSolve(this);
+      case HloOpcode::kCholesky:
+        return visitor->HandleCholesky(this);
+      case HloOpcode::kOptimizationBarrier:
+        return visitor->HandleOptimizationBarrier(this);
+      default:
+        return Internal(
+            "Unhandled HloOpcode for DfsHloVisitor: %s. This should not happen "
+            "- "
+            "please file a bug for XLA.",
+            HloOpcodeString(opcode_));
+    }
+  };
+  auto status = impl();
+  if (!status.ok() && has_metadata()) {
+    status = WrapWithPythonStacktrace(
+        std::move(status), GetStackTraceStringFromMetadata(/*indent=*/2));
   }
+  return status;
 }
 
 // Explicit instantiations.
@@ -5645,40 +5752,55 @@ bool HloPtrComparatorInternal::operator()(
   return lhs->local_id() < rhs->local_id();
 }
 
-const PrecisionConfig& HloInstruction::precision_config() const {
-  if (auto* convolution = DynCast<HloConvolutionInstruction>(this)) {
-    return convolution->precision_config();
+bool HloInstruction::SupportsPrecisionConfig() const {
+  switch (opcode_) {
+    case HloOpcode::kConvolution:
+    case HloOpcode::kDot:
+    // In practice, the precision config value makes no sense for `scaled_dot`
+    // because it cannot produce anything better than default.
+    case HloOpcode::kScaledDot:
+    case HloOpcode::kRaggedDot:
+    case HloOpcode::kCustomCall:
+      return true;
+    default:
+      return false;
   }
-  if (auto* dot = DynCast<HloDotInstruction>(this)) {
-    return dot->precision_config();
-  }
-  if (auto* scaled_dot = DynCast<HloScaledDotInstruction>(this)) {
-    return scaled_dot->precision_config();
-  }
-  if (auto* ragged_dot = DynCast<HloRaggedDotInstruction>(this)) {
-    return ragged_dot->precision_config();
-  }
+}
 
-  if (auto* custom_call = DynCast<HloCustomCallInstruction>(this)) {
-    return custom_call->precision_config();
+const PrecisionConfig& HloInstruction::precision_config() const {
+  CHECK(SupportsPrecisionConfig());
+  switch (opcode_) {
+    case HloOpcode::kConvolution:
+      return Cast<HloConvolutionInstruction>(this)->precision_config();
+    case HloOpcode::kDot:
+      return Cast<HloDotInstruction>(this)->precision_config();
+    case HloOpcode::kScaledDot:
+      return Cast<HloScaledDotInstruction>(this)->precision_config();
+    case HloOpcode::kRaggedDot:
+      return Cast<HloRaggedDotInstruction>(this)->precision_config();
+    case HloOpcode::kCustomCall:
+      return Cast<HloCustomCallInstruction>(this)->precision_config();
+    default:
+      LOG(FATAL) << "Unimplemented method: " << opcode_;
   }
-  LOG(FATAL) << "Unimplemented method.";
 }
 
 PrecisionConfig* HloInstruction::mutable_precision_config() {
-  if (auto* convolution = DynCast<HloConvolutionInstruction>(this)) {
-    return convolution->mutable_precision_config();
+  CHECK(SupportsPrecisionConfig());
+  switch (opcode_) {
+    case HloOpcode::kConvolution:
+      return Cast<HloConvolutionInstruction>(this)->mutable_precision_config();
+    case HloOpcode::kDot:
+      return Cast<HloDotInstruction>(this)->mutable_precision_config();
+    case HloOpcode::kScaledDot:
+      return Cast<HloScaledDotInstruction>(this)->mutable_precision_config();
+    case HloOpcode::kRaggedDot:
+      return Cast<HloRaggedDotInstruction>(this)->mutable_precision_config();
+    case HloOpcode::kCustomCall:
+      return Cast<HloCustomCallInstruction>(this)->mutable_precision_config();
+    default:
+      LOG(FATAL) << "Unimplemented method: " << opcode_;
   }
-  if (auto* dot = DynCast<HloDotInstruction>(this)) {
-    return dot->mutable_precision_config();
-  }
-  if (auto* ragged_dot = DynCast<HloRaggedDotInstruction>(this)) {
-    return ragged_dot->mutable_precision_config();
-  }
-  if (auto* custom_call = DynCast<HloCustomCallInstruction>(this)) {
-    return custom_call->mutable_precision_config();
-  }
-  LOG(FATAL) << "Unimplemented method.";
 }
 
 HloModule* HloInstruction::GetModule() const {
@@ -5704,8 +5826,6 @@ int64_t HloInstruction::unique_id() const {
   // unique ID.
   return CalculateUniqueId(parent_->unique_id(), local_id_);
 }
-
-int32_t HloInstruction::local_id() const { return local_id_; }
 
 int64_t HloInstruction::CalculateUniqueId(int32_t computation_unique_id,
                                           int32_t instruction_local_id) {
@@ -5835,17 +5955,17 @@ HloInstruction* HloInstruction::AddFusionOperand(HloInstruction* new_operand) {
 
 // Delegates to HloFusionInstruction::MergeFusionInstruction.
 void HloInstruction::MergeFusionInstruction(
-    HloInstruction* instruction_to_merge) {
+    HloInstruction* instruction_to_merge, bool remove_computation) {
   return Cast<HloFusionInstruction>(this)->MergeFusionInstruction(
-      Cast<HloFusionInstruction>(instruction_to_merge));
+      Cast<HloFusionInstruction>(instruction_to_merge), remove_computation);
 }
 
 // Delegates to HloFusionInstruction::MergeFusionInstructionIntoMultiOutput.
 void HloInstruction::MergeFusionInstructionIntoMultiOutput(
-    HloInstruction* instruction_to_merge) {
+    HloInstruction* instruction_to_merge, bool remove_computation) {
   return Cast<HloFusionInstruction>(this)
       ->MergeFusionInstructionIntoMultiOutput(
-          Cast<HloFusionInstruction>(instruction_to_merge));
+          Cast<HloFusionInstruction>(instruction_to_merge), remove_computation);
 }
 
 HloInstruction* HloInstruction::FuseInstruction(
@@ -5977,12 +6097,13 @@ const std::vector<ReplicaGroup>& HloInstruction::replica_groups() const {
   return Cast<HloCollectiveInstruction>(this)->replica_groups();
 }
 
-const CollectiveDeviceListBase& HloInstruction::device_list() const {
+const std::shared_ptr<CollectiveDeviceListBase>& HloInstruction::device_list()
+    const {
   return Cast<HloCollectiveInstruction>(this)->device_list();
 }
 
 bool HloInstruction::has_replica_groups() const {
-  return device_list().num_replica_groups() > 0;
+  return device_list()->num_replica_groups() > 0;
 }
 
 const std::vector<std::pair<int64_t, int64_t>>&
@@ -6139,10 +6260,6 @@ const DomainMetadata& HloInstruction::operand_side_metadata() const {
 
 const DomainMetadata& HloInstruction::user_side_metadata() const {
   return Cast<HloDomainInstruction>(this)->user_side_metadata();
-}
-
-bool HloInstruction::IsAsynchronous() const {
-  return HloOpcodeIsAsync(opcode());
 }
 
 HloInstruction* HloInstruction::async_chain_start() const {

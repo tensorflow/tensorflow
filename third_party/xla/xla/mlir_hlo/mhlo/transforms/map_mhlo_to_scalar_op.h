@@ -663,7 +663,12 @@ inline Value mapConvertOpToStdScalarOp(Location loc, ArrayRef<Type> targetTypes,
       // There are no ops for conversions between floats of equal width, so we
       // go through the next-larger standard type.
       sourceType = dst.getWidth() == 8 ? b->getF16Type() : b->getF32Type();
-      src = mlir::arith::ExtFOp::create(*b, loc, sourceType, src).getResult();
+      mlir::Type extType = sourceType;
+      if (mlir::ShapedType shapedType =
+              mlir::dyn_cast<mlir::ShapedType>(src.getType())) {
+        extType = shapedType.clone(extType);
+      }
+      src = mlir::arith::ExtFOp::create(*b, loc, extType, src).getResult();
     }
     assert(sourceType.getIntOrFloatBitWidth() != dst.getWidth());
 

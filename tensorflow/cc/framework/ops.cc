@@ -44,7 +44,7 @@ Output Operation::output(int32_t i) const {
   return Output(node_, i);
 }
 
-uint64 Operation::hash(int32_t index) const {
+uint64_t Operation::hash(int32_t index) const {
   return ::tensorflow::Hash64(reinterpret_cast<const char*>(&node_),
                               sizeof(Node*), index);
 }
@@ -73,13 +73,13 @@ Input::Initializer::Initializer(
   // type and same shape.
   for (auto const& e : v) {
     if (e.tensor.dtype() != first.tensor.dtype()) {
-      status = errors::InvalidArgument(
+      status = absl::InvalidArgumentError(
           "Initializer list components should all have the same type");
       return;
     }
     if (!TensorShape{e.tensor.shape()}.IsSameSize(
             TensorShape{first.tensor.shape()})) {
-      status = errors::InvalidArgument(
+      status = absl::InvalidArgumentError(
           "Initializer list components should all have the same shape");
       return;
     }

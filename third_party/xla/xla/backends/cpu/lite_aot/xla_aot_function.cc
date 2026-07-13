@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/literal.h"
 #include "xla/service/cpu/executable.pb.h"
@@ -64,34 +65,33 @@ absl::StatusOr<ProgramShape> GetProgramShape(
 absl::StatusOr<ExecutableAndSupportingLiterals>
 CreateExecutableAndSupportingLiterals(
     const CompilationResultProto& compilation_result) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       ProgramShape program_shape,
       ProgramShape::FromProto(
           compilation_result.hlo_module().hlo_module().host_program_shape()));
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<NanoRtExecutable> nanort_executable,
-      NanoRtExecutable::Create(compilation_result, program_shape));
+  ASSIGN_OR_RETURN(std::unique_ptr<NanoRtExecutable> nanort_executable,
+                   NanoRtExecutable::Create(compilation_result, program_shape));
 
   std::vector<Literal> results_literals;
 
-  TF_ASSIGN_OR_RETURN(auto nanort_program_shape,
-                      GetProgramShape(*nanort_executable));
+  ASSIGN_OR_RETURN(auto nanort_program_shape,
+                   GetProgramShape(*nanort_executable));
   if (nanort_program_shape.result().IsTuple()) {
     auto tuple_shapes = nanort_program_shape.result().tuple_shapes();
     results_literals.reserve(tuple_shapes.size());
     for (const Shape& shape : tuple_shapes) {
-      TF_ASSIGN_OR_RETURN(results_literals.emplace_back(),
-                          Literal::Make(shape, /*allocate_arrays=*/true));
+      ASSIGN_OR_RETURN(results_literals.emplace_back(),
+                       Literal::Make(shape, /*allocate_arrays=*/true));
     }
 
   } else {
-    TF_ASSIGN_OR_RETURN(results_literals.emplace_back(),
-                        Literal::Make(nanort_program_shape.result(),
-                                      /*allocate_arrays=*/true));
+    ASSIGN_OR_RETURN(results_literals.emplace_back(),
+                     Literal::Make(nanort_program_shape.result(),
+                                   /*allocate_arrays=*/true));
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       Literal temp_literal,
       Literal::Make(
           ShapeUtil::MakeShape(U8, {static_cast<int64_t>(
@@ -122,11 +122,10 @@ absl::StatusOr<std::unique_ptr<XlaAotFunction>> XlaAotFunction::Create(
         "Result names must be unique. Got ", absl::StrJoin(result_names, ",")));
   }
 
-  TF_ASSIGN_OR_RETURN(
-      auto executable_and_supporting_literals,
-      CreateExecutableAndSupportingLiterals(compilation_result));
+  ASSIGN_OR_RETURN(auto executable_and_supporting_literals,
+                   CreateExecutableAndSupportingLiterals(compilation_result));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto program_shape,
       GetProgramShape(*executable_and_supporting_literals.nanort_executable));
 
@@ -158,9 +157,8 @@ absl::StatusOr<std::unique_ptr<XlaAotFunction>> XlaAotFunction::Create(
 
 absl::StatusOr<std::unique_ptr<XlaAotFunction>> XlaAotFunction::Create(
     const CompilationResultProto& compilation_result) {
-  TF_ASSIGN_OR_RETURN(
-      auto executable_and_supporting_literals,
-      CreateExecutableAndSupportingLiterals(compilation_result));
+  ASSIGN_OR_RETURN(auto executable_and_supporting_literals,
+                   CreateExecutableAndSupportingLiterals(compilation_result));
 
   auto& nanort_executable =
       executable_and_supporting_literals.nanort_executable;
@@ -182,7 +180,7 @@ absl::StatusOr<std::unique_ptr<XlaAotFunction>> XlaAotFunction::Create(
     arg_names.push_back(std::string(instr->name()));
   }
   std::vector<std::string> result_names;
-  TF_ASSIGN_OR_RETURN(auto program_shape, GetProgramShape(*nanort_executable));
+  ASSIGN_OR_RETURN(auto program_shape, GetProgramShape(*nanort_executable));
   if (program_shape.result().IsTuple()) {
     auto tuple_shapes = program_shape.result().tuple_shapes();
     absl::string_view root_name =

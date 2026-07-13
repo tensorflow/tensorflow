@@ -15,6 +15,7 @@ xla_aot_compile(
 """
 
 load("//xla:xla.default.bzl", "xla_compile_target_cpu")
+load("//xla/backends/gpu/target_config:target_config_map.bzl", gpu_target_config_map = "target_config_map")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
@@ -80,40 +81,46 @@ def xla_aot_compile_cpu(
 def xla_aot_compile_gpu(
         name,
         module,
-        gpu_target_config,
+        gpu_targets,
         autotune_results):
     """Runs xla_compile to compile an MHLO, StableHLO or HLO module into an AotCompilationResult for GPU
 
     Args:
         name: The name of the build rule.
         module: The MHLO or StableHLO file to compile.
-        gpu_target_config: The serialized GpuTargetConfigProto
+        gpu_targets: The list of gpu targets.
         autotune_results: AOT AutotuneResults
     """
 
-    # Run xla_compile to generate the file containing an AotCompilationResult.
-    native.genrule(
-        name = ("gen_" + name),
-        srcs = [module, gpu_target_config, autotune_results],
-        outs = [name],
-        cmd = (
-            "$(location " + xla_compile_tool + ")" +
-            " --module_file=$(location " + module + ")" +
-            " --output_file=$(location " + name + ")" +
-            " --platform=gpu" +
-            " --gpu_target_config=$(location " + gpu_target_config + ")" +
-            " --autotune_results=$(location " + autotune_results + ")"
-        ),
-        tools = [xla_compile_tool],
-        # copybara:comment_begin(oss-only)
-        target_compatible_with = select({
-            "@local_config_cuda//:is_cuda_enabled": [],
-            "//conditions:default": ["@platforms//:incompatible"],
-        }),
-        # copybara:comment_end
+    res = []
+    for target in gpu_targets:
+        # Run xla_compile to generate the file containing an AotCompilationResult.
+        compiled_binary = name + "_" + target
+        native.genrule(
+            name = "gen_" + name + "_" + target,
+            srcs = [module, gpu_target_config_map[target], autotune_results],
+            outs = [name + "_" + target],
+            cmd = (
+                "$(location " + xla_compile_tool + ")" +
+                " --module_file=$(location " + module + ")" +
+                " --output_file=$(location " + compiled_binary + ")" +
+                " --platform=gpu" +
+                " --gpu_target_config=$(location " + gpu_target_config_map[target] + ")" +
+                " --autotune_results=$(location " + autotune_results + ")"
+            ),
+            tools = [xla_compile_tool],
+            # copybara:comment_begin(oss-only)
+            target_compatible_with = select({
+                "@local_config_cuda//:is_cuda_enabled": [],
+                "//conditions:default": ["@platforms//:incompatible"],
+            }),
+            # copybara:comment_end
+        )
+        res.append(compiled_binary)
+    native.filegroup(
+        name = name,
+        data = res,
     )
-
-    return
 
 def xla_aot_compile_gpu_runtime_autotuning(
         name,
@@ -138,6 +145,39 @@ def xla_aot_compile_gpu_runtime_autotuning(
             " --output_file=$(location " + name + ")" +
             " --platform=gpu" +
             " --gpu_target_config=$(location " + gpu_target_config + ")"
+        ),
+        tools = [xla_compile_tool],
+        # copybara:comment_begin(oss-only)
+        target_compatible_with = select({
+            "@local_config_cuda//:is_cuda_enabled": [],
+            "//conditions:default": ["@platforms//:incompatible"],
+        }),
+        # copybara:comment_end
+    )
+
+def xla_aot_compile_gpu_for_platform(
+        name,
+        module,
+        target_platform_version):
+    """Runs xla_compile to compile an MHLO or StableHLO module into an AotCompilationResult for GPU.
+
+    Args:
+        name: The name of the build rule.
+        module: The MHLO or StableHLO file to compile.
+        target_platform_version: The name of the target platform version to compile for.
+    """
+
+    # Run xla_compile to generate the file containing an AotCompilationResult.
+    native.genrule(
+        name = ("gen_" + name),
+        srcs = [module],
+        outs = [name],
+        cmd = (
+            "$(location " + xla_compile_tool + ")" +
+            " --module_file=$(location " + module + ")" +
+            " --output_file=$(location " + name + ")" +
+            " --platform=gpu" +
+            " --target_platform_version=" + target_platform_version
         ),
         tools = [xla_compile_tool],
         # copybara:comment_begin(oss-only)

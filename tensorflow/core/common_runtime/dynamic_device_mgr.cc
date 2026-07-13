@@ -119,7 +119,7 @@ absl::Status DynamicDeviceMgr::LookupDevice(absl::string_view name,
     }
     VLOG(1) << "Unknown device: " << name
             << " all devices: " << absl::StrJoin(device_names, ", ");
-    return errors::InvalidArgument(name, " unknown device.");
+    return absl::InvalidArgumentError(absl::StrCat(name, " unknown device."));
   }
   *device = iter->second;
   return absl::OkStatus();
@@ -167,9 +167,9 @@ absl::Status DynamicDeviceMgr::AddDevices(
   mutex_lock l(devices_mu_);
   for (auto& d : devices) {
     if (device_map_.find(d->name()) != device_map_.end()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Trying to add device ", d->name(),
-          " to manager but its name conflicts with an existing device.");
+          " to manager but its name conflicts with an existing device."));
     }
     // Register under the (1) full name and (2) canonical name.
     for (const std::string& name :
@@ -194,12 +194,13 @@ absl::Status DynamicDeviceMgr::RemoveDevices(
 
   for (const auto& d : devices) {
     if (d == cpu_device_) {
-      TF_RETURN_IF_ERROR(
-          errors::InvalidArgument("Can not remove HostCPU device ", d->name()));
+      TF_RETURN_IF_ERROR(absl::InvalidArgumentError(
+          absl::StrCat("Can not remove HostCPU device ", d->name())));
     }
     const auto it = dynamic_devices_.find(d);
     if (it == dynamic_devices_.end()) {
-      return errors::InvalidArgument("Unknown device ", d->name());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unknown device ", d->name()));
     }
   }
 
@@ -219,7 +220,8 @@ absl::Status DynamicDeviceMgr::RemoveDevices(
 
     auto it = dynamic_devices_.find(d);
     if (it == dynamic_devices_.end()) {
-      return errors::InvalidArgument("Unknown device ", d->name());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unknown device ", d->name()));
     }
     // There shouldn't be unknown devices at this point.
     CHECK(it != dynamic_devices_.end());  // Crash OK

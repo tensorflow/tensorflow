@@ -38,7 +38,7 @@ void Sparsify(Tensor* t, float sparsity) {
     flat.setZero();
     return;
   }
-  static const uint32 K = 10000;
+  static const uint32_t K = 10000;
   for (int64_t i = 0; i < N; ++i) {
     if (rnd.Uniform(K) < sparsity * K) {
       flat(i) = T(0);

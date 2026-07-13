@@ -18,7 +18,10 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -27,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
+#include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -39,14 +43,153 @@ class GpuDotFusionCostModelTest : public HloHardwareIndependentTestBase {
   se::DeviceDescription ddh100_{TestGpuDeviceInfo::H100SXMDeviceInfo()};
 };
 
-TEST_F(GpuDotFusionCostModelTest, GpuDotComputeBoundBf16) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+TEST_F(GpuDotFusionCostModelTest, GpuDotComputeBoundBf16NumStages1) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 ENTRY e {
 p0 = bf16[8192,8192] parameter(0)
 p1 = bf16[8192,8192] parameter(1)
 ROOT r = bf16[8192,8192] dot(p0, p1),
-lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16
+lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16,
+backend_config={"sizes":["32"]}
+})"));
+
+  BlockLevelParameters block_params;
+  // TODO(b/510666436): Tile sizes are intentionally kept large to reduce
+  // L2 cache replication overhead modeled by threadblock_count, keeping
+  // the operation compute bound.
+  block_params.output_tile_sizes = {{256, 512}};
+  block_params.num_warps = 4;
+  block_params.num_ctas = 1;
+  block_params.num_stages = 1;
+  auto* dot =
+      Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
+  ASSERT_IS_OK(gpu_dot_fusion_cost_model::IsSupported(dot));
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData runtime_h100,
+      gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
+          dot, block_params, ddh100_));
+  ASSERT_OK_AND_ASSIGN(
+      auto expected_compute_and_flops_h100,
+      gpu_dot_fusion_cost_model::detail::
+          CalculateComputeTimeWithTileAndWaveQuantization(
+              gpu_dot_fusion_cost_model::detail::DotProblemInfo(*dot),
+              gpu_dot_fusion_cost_model::detail::DotTileSize{
+                  block_params.output_tile_sizes[0][0],
+                  block_params.output_tile_sizes[0][1]},
+              ddh100_));
+
+  // For num_stages=1, exec_time is sequentially added: compute + mem + write.
+  // We expect it to be significantly larger than just compute_time.
+  EXPECT_GT(runtime_h100.exec_time,
+            expected_compute_and_flops_h100.compute_time * 1.2);
+}
+
+TEST_F(GpuDotFusionCostModelTest, GpuDotComputeBoundBf16) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+p0 = bf16[8192,8192] parameter(0)
+p1 = bf16[8192,8192] parameter(1)
+ROOT r = bf16[8192,8192] dot(p0, p1),
+lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16,
+backend_config={"sizes":["32"]}
+})"));
+
+  BlockLevelParameters block_params;
+  // TODO(b/510666436): Tile sizes are intentionally kept large to reduce
+  // L2 cache replication overhead modeled by threadblock_count, keeping
+  // the operation compute bound.
+  block_params.output_tile_sizes = {{256, 512}};
+  block_params.num_warps = 4;
+  block_params.num_ctas = 1;
+  block_params.num_stages = 3;
+  auto* dot =
+      Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
+  ASSERT_IS_OK(gpu_dot_fusion_cost_model::IsSupported(dot));
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData runtime_h100,
+      gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
+          dot, block_params, ddh100_));
+  ASSERT_OK_AND_ASSIGN(
+      auto expected_compute_and_flops_h100,
+      gpu_dot_fusion_cost_model::detail::
+          CalculateComputeTimeWithTileAndWaveQuantization(
+              gpu_dot_fusion_cost_model::detail::DotProblemInfo(*dot),
+              gpu_dot_fusion_cost_model::detail::DotTileSize{
+                  block_params.output_tile_sizes[0][0],
+                  block_params.output_tile_sizes[0][1]},
+              ddh100_));
+  absl::Duration expected_time =
+      expected_compute_and_flops_h100.compute_time +
+      gpu_dot_fusion_cost_model::detail::kLoopLatencyTax;
+  // For pipelined loops, execution time is bounded by the dominant cost
+  // (compute in this case), but imperfect overlap or pipeline setup/teardown
+  // costs may slightly increase it. We allow up to 10% overhead.
+  EXPECT_GE(runtime_h100.exec_time, expected_time);
+  EXPECT_LE(runtime_h100.exec_time, expected_time * 1.1);
+}
+
+TEST_F(GpuDotFusionCostModelTest, GpuDotMemoryBoundBf16) {
+  // TODO(b/510666436): Backend config tuned to minimize L2 loads replication
+  // so the operation remains strictly HBM bounded.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+p0 = bf16[4,4096] parameter(0)
+p1 = bf16[4096,4096] parameter(1)
+ROOT r = bf16[4,4096] dot(p0, p1),
+lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16,
+backend_config={"sizes":["512"]}
+})"));
+
+  BlockLevelParameters block_params;
+  // TODO(b/510666436): Output tile sizes tuned to minimize L2 loads
+  // replication so the operation remains strictly HBM bounded.
+  block_params.output_tile_sizes = {{4, 128}};
+  block_params.num_warps = 4;
+  block_params.num_ctas = 1;
+  block_params.num_stages = 3;
+  auto* dot =
+      Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
+  ASSERT_IS_OK(gpu_dot_fusion_cost_model::IsSupported(dot));
+  EstimateRunTimeData runtime_h100 =
+      gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
+          dot, block_params, ddh100_)
+          .value();
+  int64_t approx_total_bytes = 2 /*BF16*/ * (4096 + 4 * 2) * 4096;
+  float approx_hbm_bandwidth =
+      gpu_dot_fusion_cost_model::detail::GetEffectiveHbmBandwidth(
+          approx_total_bytes, ddh100_);
+  absl::Duration approx_hbm_time =
+      absl::Seconds(1.0f * approx_total_bytes / approx_hbm_bandwidth) +
+      gpu_dot_fusion_cost_model::detail::kLoopLatencyTax;
+  // For pipelined loops, execution time is bounded by the dominant cost (memory
+  // in this case), but imperfect overlap or pipeline setup/teardown costs may
+  // slightly increase it. We allow up to 10% overhead.
+  EXPECT_GE(runtime_h100.exec_time, approx_hbm_time);
+  EXPECT_LE(runtime_h100.exec_time, approx_hbm_time * 1.1);
+}
+
+TEST_F(GpuDotFusionCostModelTest, DifferentContractingDimsHaveSameRuntime) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module_1_0,
+                       ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+p0 = bf16[8192,1024] parameter(0)
+p1 = bf16[1024,4096] parameter(1)
+ROOT r = bf16[8192,4096] dot(p0, p1),
+lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16,
+backend_config={"sizes":["32"]}
+})"));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module_0_1,
+                       ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+p0 = bf16[1024,8192] parameter(0)
+p1 = bf16[4096,1024] parameter(1)
+ROOT r = bf16[8192,4096] dot(p0, p1),
+lhs_contracting_dims={0}, rhs_contracting_dims={1}, algorithm=dot_bf16_bf16_bf16,
+backend_config={"sizes":["32"]}
 })"));
 
   BlockLevelParameters block_params;
@@ -54,48 +197,192 @@ lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16
   block_params.num_warps = 4;
   block_params.num_ctas = 1;
   block_params.num_stages = 1;
-  auto* dot =
-      Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
-  ASSERT_IS_OK(GpuDotFusionCostModel::IsSupported(dot));
-  absl::Duration runtime_h100 =
-      GpuDotFusionCostModel::EstimateRunTimeForDotOpWithBlockParameters(
-          dot, block_params, ddh100_)
-          .value();
-  absl::Duration expected_runtime_compute_bound_h100 =
-      detail::CalculateComputeTimeWithTileAndWaveQuantization(
-          dot, block_params.output_tile_sizes[0], ddh100_)
-          .value();
-  ASSERT_EQ(runtime_h100, expected_runtime_compute_bound_h100);
+
+  auto* dot_1_0 = Cast<HloDotInstruction>(
+      module_1_0->entry_computation()->root_instruction());
+  ASSERT_IS_OK(gpu_dot_fusion_cost_model::IsSupported(dot_1_0));
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData runtime_h100_1_0,
+      gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
+          dot_1_0, block_params, ddh100_));
+
+  auto* dot_0_1 = Cast<HloDotInstruction>(
+      module_0_1->entry_computation()->root_instruction());
+  ASSERT_IS_OK(gpu_dot_fusion_cost_model::IsSupported(dot_0_1));
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData runtime_h100_0_1,
+      gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
+          dot_0_1, block_params, ddh100_));
+
+  EXPECT_GT(absl::ToInt64Microseconds(runtime_h100_1_0.exec_time), 0);
+  EXPECT_EQ(runtime_h100_1_0.exec_time, runtime_h100_0_1.exec_time);
 }
 
-TEST_F(GpuDotFusionCostModelTest, GpuDotMemoryBoundBf16) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+TEST_F(GpuDotFusionCostModelTest, ExtractBlockKFromTileConfig) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 ENTRY e {
-p0 = bf16[4,4096] parameter(0)
-p1 = bf16[4096,4096] parameter(1)
-ROOT r = bf16[4,4096] dot(p0, p1),
+p0 = bf16[1024,2048] parameter(0)
+p1 = bf16[2048,1024] parameter(1)
+ROOT r = bf16[1024,1024] dot(p0, p1),
+lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16,
+backend_config={"sizes":["32"]}
+})"));
+
+  auto* dot =
+      Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
+  ASSERT_OK_AND_ASSIGN(int64_t block_k,
+                       gpu_dot_fusion_cost_model::ExtractBlockK(dot));
+  EXPECT_EQ(block_k, 32);
+}
+
+TEST_F(GpuDotFusionCostModelTest, ExtractBlockKNoBackendConfig) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+p0 = bf16[1024,2048] parameter(0)
+p1 = bf16[2048,1024] parameter(1)
+ROOT r = bf16[1024,1024] dot(p0, p1),
 lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16
 })"));
 
+  auto* dot =
+      Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
+  EXPECT_THAT(gpu_dot_fusion_cost_model::ExtractBlockK(dot),
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+}
+
+TEST_F(GpuDotFusionCostModelTest, GpuDot3DGemmIsSupported) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+p0 = bf16[16,1024,2048] parameter(0)
+p1 = bf16[16,2048,1024] parameter(1)
+ROOT r = bf16[16,1024,1024] dot(p0, p1),
+lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={1}, algorithm=dot_bf16_bf16_bf16,
+backend_config={"sizes":["32"]}
+})"));
+
   BlockLevelParameters block_params;
-  block_params.output_tile_sizes = {{4, 32}};
+  block_params.output_tile_sizes = {{1, 128, 256}};
   block_params.num_warps = 4;
   block_params.num_ctas = 1;
   block_params.num_stages = 1;
   auto* dot =
       Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
-  ASSERT_IS_OK(GpuDotFusionCostModel::IsSupported(dot));
-  absl::Duration runtime_h100 =
-      GpuDotFusionCostModel::EstimateRunTimeForDotOpWithBlockParameters(
-          dot, block_params, ddh100_)
-          .value();
-  int64_t approx_total_bytes = 2 /*BF16*/ * (4096 + 4 * 2) * 4096;
-  float approx_hbm_bandwidth =
-      detail::GetEffectiveHbmBandwidth(approx_total_bytes, ddh100_);
-  absl::Duration approx_hbm_time =
-      absl::Seconds(1.0f * approx_total_bytes / approx_hbm_bandwidth);
-  ASSERT_EQ(runtime_h100, approx_hbm_time);
+  ASSERT_IS_OK(gpu_dot_fusion_cost_model::IsSupported(dot));
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData runtime_h100,
+      gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
+          dot, block_params, ddh100_));
+  EXPECT_GT(absl::ToInt64Microseconds(runtime_h100.exec_time), 0);
+}
+
+// We support 4D and higher rank GEMMs to handle multi-dimensional batching
+// (such as having independent head and batch dimensions in multi-head
+// attention workloads) without requiring explicit reshape or flattening ops.
+TEST_F(GpuDotFusionCostModelTest, GpuDot4DGemm) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+p0 = bf16[2,8,1024,2048] parameter(0)
+p1 = bf16[2,8,2048,1024] parameter(1)
+ROOT r = bf16[2,8,1024,1024] dot(p0, p1),
+lhs_batch_dims={0,1}, rhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_contracting_dims={2}, algorithm=dot_bf16_bf16_bf16,
+backend_config={"sizes":["32"]}
+})"));
+
+  BlockLevelParameters block_params;
+  block_params.output_tile_sizes = {{1, 1, 128, 256}};
+  block_params.num_warps = 4;
+  block_params.num_ctas = 1;
+  block_params.num_stages = 1;
+  auto* dot =
+      Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
+  ASSERT_IS_OK(gpu_dot_fusion_cost_model::IsSupported(dot));
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData runtime_h100,
+      gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
+          dot, block_params, ddh100_));
+  EXPECT_GT(absl::ToInt64Microseconds(runtime_h100.exec_time), 0);
+}
+
+// TODO(b/501002656): Remove this test once we support transposes in the dot
+// fusion cost model.
+TEST_F(GpuDotFusionCostModelTest, GpuDotWithDownstreamTransposeIsRejected) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+p0 = bf16[1024,2048] parameter(0)
+p1 = bf16[2048,1024] parameter(1)
+d = bf16[1024,1024] dot(p0, p1),
+lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16,
+backend_config={"sizes":["32"]}
+ROOT r = bf16[1024,1024] transpose(d), dimensions={1,0}
+})"));
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto* dot = Cast<HloDotInstruction>(root->operand(0));
+  EXPECT_THAT(gpu_dot_fusion_cost_model::IsSupported(dot),
+              absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
+}
+
+TEST_F(GpuDotFusionCostModelTest, CalculateIterBytes) {
+  gpu_dot_fusion_cost_model::detail::DotProblemInfo dot_info;
+  dot_info.b = 1;
+  dot_info.m = 1024;
+  dot_info.n = 1024;
+  dot_info.k = 2048;
+  dot_info.lhs_element_type = PrimitiveType::BF16;
+  dot_info.rhs_element_type = PrimitiveType::BF16;
+
+  gpu_dot_fusion_cost_model::detail::DotTileSize dot_tile{/*m=*/128, /*n=*/256,
+                                                          /*k=*/32, /*b=*/1};
+
+  // lhs_iter_bytes = ceil(1 * 128 * 32 * 2 (bf16 - 2 bytes)) = 8192
+  // rhs_iter_bytes = ceil(1 * 32 * 256 * 2 (bf16 - 2 bytes)) = 16384
+  // total = 8192 + 16384 = 24576
+  int64_t iter_bytes =
+      gpu_dot_fusion_cost_model::detail::CalculateLoopIterBytes(dot_info,
+                                                                dot_tile);
+  EXPECT_EQ(iter_bytes, 24576);
+}
+
+TEST_F(GpuDotFusionCostModelTest, CalculateSharedMemoryPerBlockBytes) {
+  gpu_dot_fusion_cost_model::detail::DotProblemInfo dot_info_f32;
+  dot_info_f32.lhs_element_type = PrimitiveType::F32;
+  dot_info_f32.rhs_element_type = PrimitiveType::F32;
+
+  // Tile size: (64*16*4) + (64*16*4) = 8192 bytes.
+  // stages=3 -> 8192 * 3 = 24576 bytes.
+  gpu_dot_fusion_cost_model::detail::DotTileSize dot_tile_16{/*m=*/64, /*n=*/64,
+                                                             /*k=*/16, /*b=*/1};
+  EXPECT_EQ(
+      24576,
+      gpu_dot_fusion_cost_model::detail::CalculateSharedMemoryPerBlockBytes(
+          dot_info_f32, dot_tile_16, /*num_stages=*/3));
+
+  // Tile size: (64*64*4) + (16*64*4) = 20480 bytes.
+  // stages=4 -> 20480 * 4 = 81920 bytes.
+  gpu_dot_fusion_cost_model::detail::DotTileSize dot_tile_64{/*m=*/64, /*n=*/16,
+                                                             /*k=*/64, /*b=*/1};
+  EXPECT_EQ(
+      81920,
+      gpu_dot_fusion_cost_model::detail::CalculateSharedMemoryPerBlockBytes(
+          dot_info_f32, dot_tile_64, /*num_stages=*/4));
+
+  gpu_dot_fusion_cost_model::detail::DotProblemInfo dot_info_f64;
+  dot_info_f64.lhs_element_type = PrimitiveType::F64;
+  dot_info_f64.rhs_element_type = PrimitiveType::F64;
+
+  // Tile size: (64*16*8) + (64*16*8) = 16384 bytes.
+  // stages=1 -> 16384 * 1 = 16384 bytes.
+  gpu_dot_fusion_cost_model::detail::DotTileSize dot_tile_f64_16{
+      /*m=*/64, /*n=*/64, /*k=*/16, /*b=*/1};
+  EXPECT_EQ(
+      16384,
+      gpu_dot_fusion_cost_model::detail::CalculateSharedMemoryPerBlockBytes(
+          dot_info_f64, dot_tile_f64_16, /*num_stages=*/1));
 }
 
 }  // namespace

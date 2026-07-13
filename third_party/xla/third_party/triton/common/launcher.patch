@@ -4,12 +4,12 @@
 
 --- a/third_party/nvidia/backend/driver.py
 +++ b/third_party/nvidia/backend/driver.py
-@@ -63,13 +63,8 @@ class CudaUtils(object):
+@@ -98,13 +98,8 @@ class CudaUtils(object):
          return cls.instance
  
      def __init__(self):
--        mod = compile_module_from_src(
--            src=Path(os.path.join(dirname, "driver.c")).read_text(),
+-        mod = compile_module_from_file(
+-            src_path=os.path.join(dirname, "driver.c"),
 -            name="cuda_utils",
 -            library_dirs=library_dirs(),
 -            include_dirs=include_dirs,

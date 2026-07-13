@@ -410,7 +410,7 @@ absl::Status AttrValueHasType(const AttrValue& attr_value,
 #undef VALIDATE_FIELD
 
   if (attr_value.value_case() == AttrValue::kPlaceholder) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "AttrValue had value with unexpected type 'placeholder'");
   }
 
@@ -422,8 +422,8 @@ absl::Status AttrValueHasType(const AttrValue& attr_value,
   // support for GraphDef versions <= 4 is dropped.
   if (absl::StartsWith(type, "list(") && !attr_value.has_list()) {
     if (num_set) {
-      return errors::InvalidArgument(
-          "AttrValue missing value with expected type '", type, "'");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "AttrValue missing value with expected type '", type, "'"));
     } else {
       // Indicate that we have a list, but an empty one.
       ++num_set;
@@ -432,39 +432,40 @@ absl::Status AttrValueHasType(const AttrValue& attr_value,
 
   // Okay to have an empty list, but not to be missing a non-list value.
   if (num_set == 0 && !absl::StartsWith(type, "list(")) {
-    return errors::InvalidArgument(
-        "AttrValue missing value with expected type '", type, "'");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "AttrValue missing value with expected type '", type, "'"));
   }
 
   // Ref types and DT_INVALID are illegal, and DataTypes must
   // be a valid enum type.
   if (type == "type") {
     if (!DataType_IsValid(attr_value.type())) {
-      return errors::InvalidArgument("AttrValue has invalid DataType enum: ",
-                                     attr_value.type());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "AttrValue has invalid DataType enum: ", attr_value.type()));
     }
     if (IsRefType(attr_value.type())) {
-      return errors::InvalidArgument(
-          "AttrValue must not have reference type value of ",
-          DataTypeString(attr_value.type()));
+      return absl::InvalidArgumentError(
+          absl::StrCat("AttrValue must not have reference type value of ",
+                       DataTypeString(attr_value.type())));
     }
     if (attr_value.type() == DT_INVALID) {
-      return errors::InvalidArgument("AttrValue has invalid DataType");
+      return absl::InvalidArgumentError("AttrValue has invalid DataType");
     }
   } else if (type == "list(type)") {
     for (auto as_int : attr_value.list().type()) {
       const DataType dtype = static_cast<DataType>(as_int);
       if (!DataType_IsValid(dtype)) {
-        return errors::InvalidArgument("AttrValue has invalid DataType enum: ",
-                                       as_int);
+        return absl::InvalidArgumentError(
+            absl::StrCat("AttrValue has invalid DataType enum: ", as_int));
       }
       if (IsRefType(dtype)) {
-        return errors::InvalidArgument(
-            "AttrValue must not have reference type value of ",
-            DataTypeString(dtype));
+        return absl::InvalidArgumentError(
+            absl::StrCat("AttrValue must not have reference type value of ",
+                         DataTypeString(dtype)));
       }
       if (dtype == DT_INVALID) {
-        return errors::InvalidArgument("AttrValue contains invalid DataType");
+        return absl::InvalidArgumentError(
+            "AttrValue contains invalid DataType");
       }
     }
   }

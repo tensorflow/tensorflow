@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -173,10 +174,10 @@ static absl::StatusOr<bool> ResolveAndPad(
         resolve_pad_shapes) {
   std::vector<Shape> new_input_shapes;
   Shape new_result_shape;
-  TF_ASSIGN_OR_RETURN(bool result, resolve_pad_shapes(conv, &new_input_shapes,
-                                                      &new_result_shape));
+  ASSIGN_OR_RETURN(bool result, resolve_pad_shapes(conv, &new_input_shapes,
+                                                   &new_result_shape));
   if (result) {
-    TF_RETURN_IF_ERROR(PadConv(conv, new_input_shapes, new_result_shape));
+    RETURN_IF_ERROR(PadConv(conv, new_input_shapes, new_result_shape));
     return true;
   }
   return false;
@@ -198,7 +199,7 @@ static absl::StatusOr<bool> ResolveAndPad(
 static absl::StatusOr<bool> TryResolvePaddedShapesForTensorCore(
     HloCustomCallInstruction* conv, std::vector<Shape>* new_input_shapes_ptr,
     Shape* new_result_shape_ptr) {
-  TF_ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(conv));
+  ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(conv));
   const auto& dnums = conv->convolution_dimension_numbers();
   auto* lhs = conv->mutable_operand(0);
   auto* rhs = conv->mutable_operand(1);
@@ -321,7 +322,7 @@ absl::StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
     int pad_to, const se::CudaComputeCapability& compute_capability,
     HloCustomCallInstruction* conv, std::vector<Shape>* new_input_shapes_ptr,
     Shape* new_result_shape_ptr) {
-  TF_ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(conv));
+  ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(conv));
   const Shape& input_shape = conv->operand(0)->shape();
   const Shape& kernel_shape = conv->operand(1)->shape();
   const Shape& result_shape = conv->shape().tuple_shapes(0);
@@ -372,9 +373,9 @@ absl::StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
   }
 
   // Check that cudnn support our desired integer padding/vectorization.
-  TF_ASSIGN_OR_RETURN(bool cudnn_supports,
-                      CudnnSupportsOptimizedIntegerConvolution(
-                          compute_capability, *conv, pad_to));
+  ASSIGN_OR_RETURN(bool cudnn_supports,
+                   CudnnSupportsOptimizedIntegerConvolution(compute_capability,
+                                                            *conv, pad_to));
   if (!cudnn_supports) {
     return false;
   }
@@ -500,14 +501,14 @@ absl::StatusOr<bool> CudnnPadForConvolutions::RunImpl(
       // because that lets us use the fast int8x32 data type.
       bool local_changed = false;
       if (compute_capability_.IsAtLeast(7, 5)) {
-        TF_ASSIGN_OR_RETURN(
+        ASSIGN_OR_RETURN(
             local_changed,
             ResolveAndPad(conv, absl::bind_front(
                                     TryResolvePaddedShapesForIntegerConvolution,
                                     32, compute_capability_)));
       }
       if (!local_changed) {
-        TF_ASSIGN_OR_RETURN(
+        ASSIGN_OR_RETURN(
             local_changed,
             ResolveAndPad(conv, absl::bind_front(
                                     TryResolvePaddedShapesForIntegerConvolution,
@@ -517,7 +518,7 @@ absl::StatusOr<bool> CudnnPadForConvolutions::RunImpl(
     }
     if (compute_capability_.IsAtLeast(se::CudaComputeCapability::kVolta)) {
       for (HloCustomCallInstruction* conv : GetRelevantConvs(comp)) {
-        TF_ASSIGN_OR_RETURN(
+        ASSIGN_OR_RETURN(
             bool local_changed,
             ResolveAndPad(conv, TryResolvePaddedShapesForTensorCore));
         changed |= local_changed;

@@ -20,6 +20,8 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/base/nullability.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"
@@ -27,22 +29,51 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/types.h"  // IWYU pragma: keep
 
+namespace xla {
+class DeviceAssignment;
+class GpuTopology;
+}  // namespace xla
+
 namespace xla::gpu {
+
+// Flattens instructions inside a > 1D collective fusion to 1D instructions
+// inplace. For example, a 2D computation with shape [2, 3] will be flattened to
+// a 1D computation with shape [6] with surrounding bitcasts inserted in the
+// parent computation.
+// NB: This should only be used if the fused computation  only contains
+// elementwise operations (and the collective itself).
+absl::Status FlattenCollectiveFusion(
+    HloFusionInstruction* absl_nonnull fusion_instr);
+
+// Returns a tile such that each dimension is a power of two and that the total
+// number of blocks does not exceed num_blocks. Returns the tile sizes in
+// same order as the output shape. It picks tiles greedily from the most major
+// dimension to the most minor dimension. Eg:
+// - [1024, 1024] with num_blocks = 32 returns [32, 1024]
+// - [8192, 16] with num_blocks = 32 returns [256, 16].
+// - [5, 1024] with num_blocks = 32 returns [2, 128].
+// Note that it can be that the number of blocks used is less than num_blocks.
+// @pre num_blocks > 0.
+llvm::SmallVector<int64_t> GreedyPowerOfTwoTiles(const Shape& output_shape,
+                                                 int32_t num_blocks);
 
 // Returns the block level fusion config for the collective kernel.
 // For now only all-reduce is supported.
 // If an std::nullopt is returned, it implies that the collective kernel is
 // not supported and cannot be emitted.
 absl::StatusOr<std::optional<xla::gpu::BlockLevelFusionConfig>>
-GetCollectiveBlockLevelFusionConfig(const se::DeviceDescription& device_info,
-                                    const HloFusionInstruction* fusion_instr);
+GetCollectiveBlockLevelFusionConfig(
+    const GpuTopology& gpu_topology, const HloFusionInstruction* fusion_instr,
+    const DeviceAssignment* device_assignment = nullptr);
 
 // Sets the BlockLevelFusionConfig for a collective op inside the
 // GpuBackendConfig for the fusion instruction.
@@ -51,8 +82,8 @@ GetCollectiveBlockLevelFusionConfig(const se::DeviceDescription& device_info,
 // in this case.
 // Returns an error in case of an internal error or invalid arguments.
 absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
-    const se::DeviceDescription& device_info,
-    HloFusionInstruction* fusion_instr);
+    const GpuTopology& gpu_topology, HloFusionInstruction* fusion_instr,
+    const DeviceAssignment* device_assignment = nullptr);
 
 // Adds the metadata arguments to the function's argument list.
 // For collective some extra metadata arguments are needed such as rank,
@@ -71,6 +102,10 @@ absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
 // Rewrites stablehlo all-reduce op to a triton implementation.
 mlir::LogicalResult RewriteAllReduce(mlir::stablehlo::AllReduceOp op,
                                      mlir::PatternRewriter& rewriter);
+
+// Creates a CollectiveKernelSpec for a given collective or fusion instruction.
+absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
+    const HloInstruction* instr, const LaunchDimensions& launch_dimensions);
 
 }  // namespace xla::gpu
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_COLLECTIVE_EMITTER_H_

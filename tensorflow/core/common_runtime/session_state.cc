@@ -28,8 +28,8 @@ absl::Status SessionState::GetTensor(const std::string& handle,
   mutex_lock l(state_lock_);
   auto it = tensors_.find(handle);
   if (it == tensors_.end()) {
-    return errors::InvalidArgument("The tensor with handle '", handle,
-                                   "' is not in the session store.");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "The tensor with handle '", handle, "' is not in the session store."));
   }
   *tensor = it->second;
   return absl::OkStatus();
@@ -39,8 +39,9 @@ absl::Status SessionState::AddTensor(const std::string& handle,
                                      const Tensor& tensor) {
   mutex_lock l(state_lock_);
   if (!tensors_.insert({handle, tensor}).second) {
-    return errors::InvalidArgument("Failed to add a tensor with handle '",
-                                   handle, "' to the session store.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed to add a tensor with handle '", handle,
+                     "' to the session store."));
   }
   return absl::OkStatus();
 }
@@ -48,8 +49,9 @@ absl::Status SessionState::AddTensor(const std::string& handle,
 absl::Status SessionState::DeleteTensor(const std::string& handle) {
   mutex_lock l(state_lock_);
   if (tensors_.erase(handle) == 0) {
-    return errors::InvalidArgument("Failed to delete a tensor with handle '",
-                                   handle, "' in the session store.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed to delete a tensor with handle '", handle,
+                     "' in the session store."));
   }
   return absl::OkStatus();
 }
@@ -63,8 +65,8 @@ absl::Status TensorStore::AddTensor(const std::string& name,
                                     const TensorAndKey& tk) {
   mutex_lock l(lock_);
   if (!tensors_.insert({name, tk}).second) {
-    return errors::InvalidArgument("Failed to add a tensor with name '", name,
-                                   "' to the tensor store.");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Failed to add a tensor with name '", name, "' to the tensor store."));
   }
   dirty_ = true;
   return absl::OkStatus();

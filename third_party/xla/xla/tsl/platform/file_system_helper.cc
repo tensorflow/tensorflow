@@ -15,20 +15,25 @@ limitations under the License.
 
 #include "xla/tsl/platform/file_system_helper.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <deque>
+#include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/platform.h"
-#include "tsl/platform/str_util.h"
 
 namespace tsl {
 namespace internal {
@@ -273,7 +278,7 @@ absl::StatusOr<bool> FileExists(Env* env, const std::string& fname) {
   if (absl::IsNotFound(status)) {
     return false;
   }
-  TF_RETURN_IF_ERROR(status);
+  RETURN_IF_ERROR(status);
   return true;
 }
 

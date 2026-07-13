@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
 
 package(
@@ -10,9 +10,10 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "numpy",
     srcs = ["__init__.py"],
+    strict_deps = True,
     deps = [
         ":np_array_ops",
         ":np_arrays",
@@ -25,9 +26,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "np_utils",
     srcs = ["np_utils.py"],
+    strict_deps = True,
     tags = [
         "ignore_for_dep=third_party.py.requests",
     ],
@@ -49,9 +51,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "np_array_ops",
     srcs = ["np_array_ops.py"],
+    strict_deps = True,
     deps = [
         ":np_arrays",
         ":np_dtypes",
@@ -76,9 +79,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "np_config",
     srcs = ["np_config.py"],
+    strict_deps = True,
     deps = [
         ":np_dtypes",
         ":np_math_ops",
@@ -89,9 +93,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "np_dtypes",
     srcs = ["np_dtypes.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/util:tf_export",
@@ -99,9 +104,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "np_random",
     srcs = ["np_random.py"],
+    strict_deps = True,
     deps = [
         ":np_array_ops",
         ":np_dtypes",
@@ -114,9 +120,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "np_math_ops",
     srcs = ["np_math_ops.py"],
+    strict_deps = True,
     deps = [
         ":np_array_ops",
         ":np_arrays",
@@ -143,9 +150,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "np_arrays",
     srcs = ["np_arrays.py"],
+    strict_deps = True,
     deps = [
         ":np_dtypes",
         "//tensorflow/python/framework:dtypes",

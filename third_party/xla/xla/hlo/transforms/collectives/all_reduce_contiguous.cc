@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -87,7 +88,7 @@ absl::Status ReplaceWithContiguousAllReduce(
     offset = end;
   }
   // Replace original all-reduce with tuple of slices from new all-reduce.
-  TF_RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
+  RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
       all_reduce, HloInstruction::CreateTuple(outputs)));
   return absl::OkStatus();
 }
@@ -117,7 +118,7 @@ absl::StatusOr<bool> AllReduceContiguous::RunImpl(
   }
 
   for (HloAllReduceInstruction* all_reduce : all_reduces) {
-    TF_RETURN_IF_ERROR(ReplaceWithContiguousAllReduce(all_reduce));
+    RETURN_IF_ERROR(ReplaceWithContiguousAllReduce(all_reduce));
   }
 
   return !all_reduces.empty();

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <tuple>
@@ -22,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
@@ -36,29 +38,6 @@ limitations under the License.
 #include "tsl/platform/casts.h"
 
 namespace xla::gpu {
-
-bool IsP2PStreamKind(AsyncStreamKind stream_kind) {
-  switch (stream_kind) {
-    case AsyncStreamKind::ASYNC_STREAM_KIND_P2P0:
-    case AsyncStreamKind::ASYNC_STREAM_KIND_P2P1:
-      return true;
-    default:
-      return false;
-  }
-}
-
-CollectiveStreamId GetCollectiveStreamId(bool is_async,
-                                         CollectiveStreamId stream_id,
-                                         AsyncStreamKind stream_kind) {
-  if (!is_async) {
-    return CollectiveStreamId(0);
-  }
-  // TODO: Remove this fallback once AsyncStreamId is used everywhere.
-  if (stream_id.value() == 0) {
-    return CollectiveStreamId(static_cast<int64_t>(stream_kind) + 1);
-  }
-  return stream_id;
-}
 
 std::string HumanReadableDeviceGroups(
     absl::Span<const std::vector<GlobalDeviceId>> device_groups,
@@ -78,24 +57,28 @@ std::string HumanReadableDeviceGroups(
 }
 
 GpuCliqueKey::GpuCliqueKey(std::vector<GlobalDeviceId> devices,
-                           int64_t num_local_participants, bool is_p2p,
+                           int64_t num_local_participants,
+                           CommunicationId communication_id,
                            std::vector<IncarnationId> incarnations)
     : CliqueKey(std::move(devices)),
       num_local_participants_(num_local_participants),
-      is_p2p_(is_p2p),
+      communication_id_(communication_id),
       incarnations_(std::move(incarnations)) {}
 
-bool GpuCliqueKey::is_p2p() const { return is_p2p_; }
-
 bool GpuCliqueKey::IsSubsetOf(const CliqueKey& other) const {
-  auto* other_gpu = tsl::down_cast<const GpuCliqueKey*>(&other);
+  auto* other_gpu = absl::down_cast<const GpuCliqueKey*>(&other);
   if (other_gpu == nullptr) {
     return false;
   }
 
-  return is_p2p() == other_gpu->is_p2p() &&
-         absl::c_all_of(devices(), [&](GlobalDeviceId id) {
-           return absl::c_linear_search(other_gpu->devices(), id);
+  return communication_id() == other_gpu->communication_id() &&
+         absl::c_all_of(devices(),
+                        [&](GlobalDeviceId id) {
+                          return absl::c_linear_search(other_gpu->devices(),
+                                                       id);
+                        }) &&
+         absl::c_all_of(incarnations_, [&](IncarnationId id) {
+           return absl::c_linear_search(other_gpu->incarnations_, id);
          });
 }
 
@@ -124,9 +107,10 @@ std::vector<GlobalDeviceId> GpuCliqueKey::GetRootDevices(int64_t nroots) const {
 
 std::string GpuCliqueKey::ToString() const {
   return absl::StrFormat(
-      "devices=%d:[%s]; is_p2p=%v; local_participants=%lld; incarnations=[%s]",
-      devices().size(), HumanReadableDevices(devices()), is_p2p_,
-      num_local_participants_,
+      "devices=%d:[%s]; local_participants=%lld; communication_id=%v; "
+      "incarnations=[%s]",
+      devices().size(), HumanReadableDevices(devices()),
+      num_local_participants_, communication_id_,
       absl::StrJoin(incarnations_, ", ",
                     [](std::string* out, IncarnationId id) {
                       absl::StrAppend(out, id.value());
@@ -134,19 +118,26 @@ std::string GpuCliqueKey::ToString() const {
 }
 
 void GpuCliqueKey::HashValue(absl::HashState state) const {
-  absl::HashState::combine(std::move(state), devices(), incarnations_);
+  absl::HashState::combine(std::move(state), devices(), communication_id_,
+                           incarnations_);
 }
 
 bool operator==(const GpuCliqueKey& a, const GpuCliqueKey& b) {
   return a.devices() == b.devices() &&
          a.num_local_participants_ == b.num_local_participants_ &&
+         a.communication_id_ == b.communication_id_ &&
          a.incarnations_ == b.incarnations_;
+}
+
+bool operator!=(const GpuCliqueKey& a, const GpuCliqueKey& b) {
+  return !(a == b);
 }
 
 // Constructs a tuple from the clique key for comparison purposes.
 static auto CmpKey(const GpuCliqueKey& key) {
   return std::make_tuple(key.devices().size(), key.devices(),
-                         key.num_local_participants(), key.incarnations());
+                         key.num_local_participants(), key.communication_id(),
+                         key.incarnations());
 }
 
 bool operator<(const GpuCliqueKey& a, const GpuCliqueKey& b) {

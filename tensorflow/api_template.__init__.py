@@ -98,7 +98,7 @@ from tensorflow.python.lib.io import file_io as _fi
 _site_packages_dirs = []
 if _site.ENABLE_USER_SITE and _site.USER_SITE is not None:
   _site_packages_dirs += [_site.USER_SITE]
-_site_packages_dirs += [p for p in _sys.path if "site-packages" in p]
+_site_packages_dirs += [str(p) for p in _sys.path if "site-packages" in str(p)]
 if "getsitepackages" in dir(_site):
   _site_packages_dirs += _site.getsitepackages()
 

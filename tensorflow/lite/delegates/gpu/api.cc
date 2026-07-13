@@ -16,7 +16,10 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/api.h"
 
 #include <cstdint>
+#include <limits>
 #include <variant>
+
+#include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
 namespace gpu {
@@ -73,10 +76,13 @@ ObjectType GetType(const TensorObject& object) {
   return std::visit(ObjectTypeGetter{}, object);
 }
 
-bool IsValid(const TensorObjectDef& def) { return IsValid(def.object_def); }
+bool IsValid(const TensorObjectDef& def) {
+  return IsValid(def.object_def) &&
+         NumElements(def) <= std::numeric_limits<int32_t>::max();
+}
 
 bool IsValid(const TensorObjectDef& def, const TensorObject& object) {
-  return GetType(object) == def.object_def.object_type &&
+  return IsValid(def) && GetType(object) == def.object_def.object_type &&
          std::visit(ObjectValidityChecker{def.object_def.data_type}, object);
 }
 
@@ -105,7 +111,7 @@ bool IsObjectInitialized(const TensorObject& obj) {
   return GetType(obj) != ObjectType::UNKNOWN;
 }
 
-uint32_t NumElements(const TensorObjectDef& def) {
+int64_t NumElements(const TensorObjectDef& def) {
   const auto& d = def.dimensions;
   switch (def.object_def.data_layout) {
     case DataLayout::BHWC:
@@ -113,7 +119,7 @@ uint32_t NumElements(const TensorObjectDef& def) {
     case DataLayout::HWDC4:
     case DataLayout::HDWC4:
     case DataLayout::DHWC4:
-      return d.b * d.h * d.w * AlignByN(d.c, 4);
+      return static_cast<int64_t>(d.b) * d.h * d.w * AlignByN(d.c, 4);
     case DataLayout::UNKNOWN:
       return 0;
   }

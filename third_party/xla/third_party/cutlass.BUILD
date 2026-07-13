@@ -2,6 +2,8 @@
 # CUTLASS is a collection of CUDA C++ template abstractions for implementing high-performance
 # matrix-matrix multiplication (GEMM) and related computations at all levels and scales within CUDA.
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 package(
     default_visibility = ["//visibility:public"],
 )

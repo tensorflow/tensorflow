@@ -2,7 +2,7 @@ path: "tensorflow.initializers.random_normal"
 tf_class {
   is_instance: "<class \'tf_keras.initializers.initializers.RandomNormal\'>"
   is_instance: "<class \'tf_keras.initializers.initializers.Initializer\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'mean\', \'stddev\', \'seed\'], varargs=None, keywords=None, defaults=[\'0.0\', \'0.05\', \'None\'], "

@@ -20,14 +20,21 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/megascale/addresses.pb.h"
+#include "xla/megascale/c_api_client/c_api_megascale_error_aggregator.h"
 #include "xla/megascale/c_api_client/megascale_types.h"
 #include "xla/megascale/dcn_topology.pb.h"
+#include "xla/megascale/megascale_runtime_error_overlay.pb.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/tsl/platform/logging.h"
@@ -52,6 +59,9 @@ struct ProcessesInfo {
 absl::StatusOr<std::unique_ptr<xla::MultiSliceConfig>> CreateAoTMegascaleConfig(
     const xla::PjRtTopologyDescription& topology_description, int num_slices);
 
+absl::StatusOr<std::shared_ptr<CApiMegascaleErrorAggregator>>
+CreateMegascaleErrorAggregator(absl::string_view app_type);
+
 absl::StatusOr<std::unique_ptr<const xla::MultiSliceConfig>>
 CreateMultiSliceMegascaleConfig(
     const xla::PjRtTopologyDescription& topology_description, int num_slices,
@@ -71,6 +81,27 @@ CreateMegascaleCollectives(
     const CApiPjRtClientContext& megascale_client_ctx,
     ProcessesInfo&& processes_info,
     std::optional<xla::megascale::runtime::DCNTopology>&& dcn_topology);
+
+absl::Status RegisterMegascaleErrorHandler(
+    absl::string_view handler_name,
+    absl::AnyInvocable<void(const runtime::MegaScaleRuntimeErrorOverlay& error)>
+        handler);
+
+absl::Status UnregisterMegascaleErrorHandler(absl::string_view handler_name);
+
+absl::StatusOr<std::vector<runtime::HostNetworkAddress>>
+GetInterfaceAddressesHelper(absl::string_view megascale_port_name,
+                            int32_t megascale_port,
+                            const std::vector<std::string>& interface_prefixes,
+                            bool use_all_interfaces,
+                            bool limit_to_process_numa_local_interfaces);
+
+absl::StatusOr<std::tuple<runtime::MegaScaleRuntimeErrorOverlay, bool>>
+GetOrCreateRuntimeError(
+    runtime::MegaScaleRuntimeErrorOverlay::ErrorType error_type,
+    absl::Time start_time, const absl::Status& status, int32_t launch_id,
+    std::optional<runtime::MegaScaleRuntimeErrorOverlay::UnrecoverableErrorType>
+        unrecoverable_error_type = std::nullopt);
 
 }  // namespace c_api_client
 }  // namespace megascale

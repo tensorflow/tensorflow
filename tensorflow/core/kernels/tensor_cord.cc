@@ -76,8 +76,8 @@ struct ResizeUninitializedTraits {
 // __resize_default_init is provided by libc++ >= 8.0.
 template <typename string_type>
 struct ResizeUninitializedTraits<
-    string_type, absl::void_t<decltype(std::declval<string_type&>()
-                                           .__resize_default_init(237))> > {
+    string_type, std::void_t<decltype(std::declval<string_type&>()
+                                          .__resize_default_init(237))> > {
   using HasMember = std::true_type;
   static void Resize(string_type* s, size_t new_size) {
     s->__resize_default_init(new_size);

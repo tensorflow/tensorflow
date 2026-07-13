@@ -111,8 +111,7 @@ class StablehloCaseOpModel : public SingleOpModel {
                      .Union());
     BuildInterpreter({GetShape(input_)}, /*num_threads=*/-1,
                      /*allow_fp32_relax_to_fp16=*/false,
-                     /*apply_delegate=*/false, /*allocate_and_delegate=*/false,
-                     /*use_simple_allocator=*/false);
+                     /*apply_delegate=*/false, /*allocate_and_delegate=*/false);
     AddSubgraphs(params.num_branches);
   }
 
@@ -140,10 +139,11 @@ class StablehloCaseStaticOpModel : public StablehloCaseOpModel {
                              const TensorData& input2, const TensorData& output,
                              const TfLiteStablehloCaseParams& params)
       : StablehloCaseOpModel(input, input1, input2, output, params) {
-    subgraph_builder_.BuildAddSubgraph(interpreter_->subgraph(1));
-    subgraph_builder_.BuildMulSubgraph(interpreter_->subgraph(2));
-    subgraph_builder_.BuildMaximumSubgraph(interpreter_->subgraph(3));
-    subgraph_builder_.BuildMinimumSubgraph(interpreter_->subgraph(4));
+    TfLiteType type = interpreter_->tensor(subgraph_input1_)->type;
+    subgraph_builder_.BuildAddSubgraph(interpreter_->subgraph(1), type);
+    subgraph_builder_.BuildMulSubgraph(interpreter_->subgraph(2), type);
+    subgraph_builder_.BuildMaximumSubgraph(interpreter_->subgraph(3), type);
+    subgraph_builder_.BuildMinimumSubgraph(interpreter_->subgraph(4), type);
     AllocateAndDelegate(true);
   }
   int output() { return output_; }
@@ -156,7 +156,8 @@ class StablehloCaseDynamicOpModel : public StablehloCaseOpModel {
                               const TensorData& output,
                               const TfLiteStablehloCaseParams& params)
       : StablehloCaseOpModel(input, input1, input2, output, params) {
-    subgraph_builder_.BuildAddSubgraph(interpreter_->subgraph(1));
+    TfLiteType type = interpreter_->tensor(subgraph_input1_)->type;
+    subgraph_builder_.BuildAddSubgraph(interpreter_->subgraph(1), type);
     subgraph_builder_.BuildPadSubgraph(interpreter_->subgraph(2));
     AllocateAndDelegate(true);
   }

@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 
 namespace xla {
 
@@ -86,17 +86,17 @@ absl::StatusOr<std::string> KeyValueStore::IncrementBy(absl::string_view key,
   return it->second;
 }
 
-std::vector<tensorflow::KeyValueEntry> KeyValueStore::GetPrefix(
+std::vector<xla::coordination::KeyValueEntry> KeyValueStore::GetPrefix(
     absl::string_view prefix) {
   absl::MutexLock l(mu_);
 
-  std::vector<tensorflow::KeyValueEntry> entries;
+  std::vector<xla::coordination::KeyValueEntry> entries;
   for (auto it = data_.lower_bound(prefix); it != data_.end(); ++it) {
     const auto& [key, value] = *it;
     if (!absl::StartsWith(key, prefix)) {
       break;
     }
-    tensorflow::KeyValueEntry entry;
+    xla::coordination::KeyValueEntry entry;
     entry.set_key(key);
     entry.set_value(value);
     entries.push_back(std::move(entry));

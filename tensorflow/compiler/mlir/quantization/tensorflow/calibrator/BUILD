@@ -1,7 +1,7 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_contrib_test", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -161,7 +161,7 @@ tf_gen_op_wrapper_py(
     ],
     # Prevent unintentionally generating Python wrappers for all TF ops.
     op_allowlist = ["CustomAggregator"],
-    py_lib_rule = py_strict_library,
+    py_lib_rule = py_library,
     visibility = ["//visibility:private"],
     deps = [":custom_aggregator_op"],
 )

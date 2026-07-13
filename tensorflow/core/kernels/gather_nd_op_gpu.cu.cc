@@ -19,8 +19,10 @@ limitations under the License.
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/gather_nd_op.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/gpu_launch_config.h"
 
 namespace tensorflow {
 
@@ -29,13 +31,14 @@ typedef Eigen::GpuDevice GPUDevice;
 template <typename T, typename Index, int IXDIM>
 __global__ void GatherSliceOpKernel(
     const T* __restrict__ params, const Index* __restrict__ indices,
-    T* __restrict__ out, const Eigen::array<int64, IXDIM> batch_strides,
-    const Eigen::array<int64, IXDIM> batch_indices, const int64 indices_size,
-    const int64 slice_size, const int64 out_size) {
+    T* __restrict__ out, const Eigen::array<int64_t, IXDIM> batch_strides,
+    const Eigen::array<int64_t, IXDIM> batch_indices,
+    const int64_t indices_size, const int64_t slice_size,
+    const int64_t out_size) {
   // TODO(ebrevdo): reduce inner loop into two loops:
   // one over the number of locs, and one over the offsets inside the locs.
-  GPU_1D_KERNEL_LOOP(i, out_size) {
-    const Index loc = i / slice_size;
+  for (int64_t i : GpuGridRangeX(out_size)) {
+    const int64_t loc = i / slice_size;
     const auto indices_i = indices + IXDIM * loc;
     bool out_of_bounds = false;
     Index offset = 0;
@@ -70,15 +73,15 @@ namespace functor {
 template <typename T, typename Index, int IXDIM>
 struct GatherNdSlice<GPUDevice, T, Index, IXDIM> {
   Index operator()(const GPUDevice& d, const Index unused_slice_size,
-                   typename TTypes<int32>::Scalar Tscratch,
+                   typename TTypes<int32_t>::Scalar Tscratch,
                    typename TTypes<T, IXDIM + 1>::ConstTensor Tparams,
                    typename TTypes<Index>::ConstMatrix Tindices,
                    typename TTypes<T>::Matrix Tout) {
-    const int64 indices_size = Tindices.dimension(1);
-    const int64 out_size = Tout.size();
-    int64 s_size = Tout.dimension(1);
-    Eigen::array<int64, IXDIM> batch_strides;
-    Eigen::array<int64, IXDIM> batch_indices;
+    const int64_t indices_size = Tindices.dimension(1);
+    const int64_t out_size = Tout.size();
+    int64_t s_size = Tout.dimension(1);
+    Eigen::array<int64_t, IXDIM> batch_strides;
+    Eigen::array<int64_t, IXDIM> batch_indices;
     if (IXDIM > 0) {
       batch_strides[size_t(IXDIM - 1)] = s_size;
       batch_indices[size_t(IXDIM - 1)] = Tparams.dimension(IXDIM - 1);
@@ -87,13 +90,14 @@ struct GatherNdSlice<GPUDevice, T, Index, IXDIM> {
       batch_indices[i - 1] = Tparams.dimension(i - 1);
       batch_strides[i - 1] = batch_strides[i] * Tparams.dimension(i);
     }
-    GpuLaunchConfig config = GetGpuLaunchConfig(out_size, d);
-
-    TF_CHECK_OK(GpuLaunchKernel(GatherSliceOpKernel<T, Index, IXDIM>,
-                                config.block_count, config.thread_per_block, 0,
-                                d.stream(), Tparams.data(), Tindices.data(),
-                                Tout.data(), batch_strides, batch_indices,
-                                indices_size, s_size, out_size));
+    absl::StatusOr<GpuLaunchConfig64> config =
+        GetGpuLaunchConfig64(out_size, d);
+    CHECK_OK(config.status());                                      // Crash OK
+    CHECK_OK(GpuLaunchKernel(GatherSliceOpKernel<T, Index, IXDIM>,  // Crash OK
+                             config->block_count, config->thread_per_block, 0,
+                             d.stream(), Tparams.data(), Tindices.data(),
+                             Tout.data(), batch_strides, batch_indices,
+                             indices_size, s_size, out_size));
 
     // TODO(ebrevdo): enable indices validation on GPU.
     // Right now checking for indices out of bound in the kernel would

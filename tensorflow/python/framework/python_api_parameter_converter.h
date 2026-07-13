@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -68,6 +69,8 @@ bool ConvertPythonAPIParameters(
 ABSL_MUST_USE_RESULT
 bool CopyPythonAPITensorLists(const PythonAPIInfo& api_info,
                               absl::Span<PyObject*> params);
+
+int GetPythonAPIMaxIndex(const PythonAPIInfo& api_info);
 
 }  // namespace tensorflow
 

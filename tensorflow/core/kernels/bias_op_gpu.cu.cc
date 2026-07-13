@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/bias_op_gpu.h"
 
 #include <algorithm>
+#include <limits>
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/reduction_ops_common.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 
@@ -81,15 +83,28 @@ __global__ void BiasNCHWKernel(int32_t nthreads, const T* __restrict__ input,
 // Add "bias" to "input", broadcasting it on all dimensions but the bias
 // dimension.
 template <typename T>
-void BiasGPU<T>::compute(const GPUDevice& d, const T* input, const T* bias,
-                         T* output, int32_t batch, int32_t height,
-                         int32_t width, int depth, int32_t channel,
-                         TensorFormat data_format) {
+absl::Status BiasGPU<T>::compute(const GPUDevice& d, const T* input,
+                                 const T* bias, T* output, int32_t batch,
+                                 int32_t height, int32_t width, int depth,
+                                 int32_t channel, TensorFormat data_format) {
   const int32_t bias_size = channel;
-  const int32_t image_size = height * width * depth;
-  const int32_t total_count = batch * bias_size * image_size;
+  int64_t image_size_64 =
+      MultiplyWithoutOverflow(MultiplyWithoutOverflow(height, width), depth);
+  int64_t total_count_64 = MultiplyWithoutOverflow(
+      MultiplyWithoutOverflow(batch, bias_size), image_size_64);
+
+  if (total_count_64 < 0 ||
+      total_count_64 > std::numeric_limits<int32_t>::max() ||
+      image_size_64 < 0 ||
+      image_size_64 > std::numeric_limits<int32_t>::max()) {
+    return absl::InternalError("BiasGPU: dimensions exceed int32 bounds");
+  }
+
+  const int32_t image_size = image_size_64;
+  const int32_t total_count = total_count_64;
+
   if (total_count == 0) {
-    return;
+    return absl::OkStatus();
   }
   if (data_format == FORMAT_NHWC) {
     GpuLaunchConfig config =
@@ -106,6 +121,7 @@ void BiasGPU<T>::compute(const GPUDevice& d, const T* input, const T* bias,
                                 config.virtual_thread_count, input, bias,
                                 output, bias_size, image_size));
   }
+  return absl::OkStatus();
 }
 
 // A naive implementation that is functional on all cases.
@@ -219,15 +235,30 @@ __global__ void BiasGradNCHW_SharedAtomics(
 }
 
 template <typename T>
-void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
-                             T* bias_backprop, int32_t batch, int32_t height,
-                             int32_t width, int32_t depth, int32_t channel,
-                             TensorFormat data_format) {
+absl::Status BiasGradGPU<T>::compute(const GPUDevice& d,
+                                     const T* output_backprop, T* bias_backprop,
+                                     int32_t batch, int32_t height,
+                                     int32_t width, int32_t depth,
+                                     int32_t channel,
+                                     TensorFormat data_format) {
   const int32_t bias_size = channel;
-  const int32_t image_size = height * width * depth;
-  const int32_t total_count = batch * bias_size * image_size;
+  int64_t image_size_64 =
+      MultiplyWithoutOverflow(MultiplyWithoutOverflow(height, width), depth);
+  int64_t total_count_64 = MultiplyWithoutOverflow(
+      MultiplyWithoutOverflow(batch, bias_size), image_size_64);
+
+  if (total_count_64 < 0 ||
+      total_count_64 > std::numeric_limits<int32_t>::max() ||
+      image_size_64 < 0 ||
+      image_size_64 > std::numeric_limits<int32_t>::max()) {
+    return absl::InternalError("BiasGradGPU: dimensions exceed int32 bounds");
+  }
+
+  const int32_t image_size = image_size_64;
+  const int32_t total_count = total_count_64;
+
   if (total_count == 0) {
-    return;
+    return absl::OkStatus();
   }
   static constexpr int32_t kWarpSize = 32;
   GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
@@ -271,6 +302,7 @@ void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
                                   bias_size, image_size));
     }
   }
+  return absl::OkStatus();
 }
 
 template <typename T>
@@ -300,7 +332,7 @@ void BiasGradGPU<T>::DoColReduction(OpKernelContext* context, T* output,
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
 
 // No BiasGrad kernel for int32.
-template struct BiasGPU<int32>;
+template struct BiasGPU<int32_t>;
 
 }  // end namespace tensorflow
 

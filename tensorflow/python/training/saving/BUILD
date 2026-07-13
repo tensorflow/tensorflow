@@ -1,7 +1,7 @@
 # Description:
 #   Low-level utilities for reading and writing checkpoints.
 
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 
 package(
@@ -12,32 +12,36 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "checkpoint_options",
     srcs = ["checkpoint_options.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/checkpoint:checkpoint_options",
         "//tensorflow/python/util:deprecation",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "functional_saver",
     srcs = ["functional_saver.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/checkpoint:functional_saver",
         "//tensorflow/python/util:deprecation",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "saveable_object",
     srcs = ["saveable_object.py"],
+    strict_deps = True,
 )
 
-py_strict_library(
+py_library(
     name = "saveable_object_util",
     srcs = ["saveable_object_util.py"],
+    strict_deps = True,
     deps = [
         ":saveable_object",
         "//tensorflow/python/checkpoint:saveable_compat",
@@ -68,9 +72,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "trace_saveable_util",
     srcs = ["trace_saveable_util.py"],
+    strict_deps = True,
     deps = [
         ":saveable_object",
         ":saveable_object_util",

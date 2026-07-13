@@ -121,7 +121,11 @@ class CheckpointOptions(object):
   def __copy__(self):
     # Only `experimental_write_callbacks` needs special treatment to Ensure that
     # the list is deep-copied, but the callbacks are not deep-copied.
-    result = copy.copy(super())  # First invoke the non-overridden copy method.
+    cls = self.__class__
+    result = cls.__new__(cls)
+    for name in self.__slots__:
+      if hasattr(self, name):
+        setattr(result, name, getattr(self, name))
     result.experimental_write_callbacks = copy.copy(
         self.experimental_write_callbacks
     )

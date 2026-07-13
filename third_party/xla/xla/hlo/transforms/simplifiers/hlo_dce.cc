@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -94,10 +95,10 @@ absl::Status UpdateFusionUsers(HloInstruction* fusion_instruction,
     for (HloInstruction* gte : users) {
       // Replace and change control successors to be dependent on the fusion
       // instruction itself.
-      TF_ASSIGN_OR_RETURN(std::ignore, gte->parent()->ReplaceInstruction(
-                                           gte, fusion_instruction,
-                                           /*preserve_sharding=*/true,
-                                           /*relay_control_dependency=*/true));
+      ASSIGN_OR_RETURN(std::ignore, gte->parent()->ReplaceInstruction(
+                                        gte, fusion_instruction,
+                                        /*preserve_sharding=*/true,
+                                        /*relay_control_dependency=*/true));
     }
   }
   return absl::OkStatus();
@@ -115,7 +116,7 @@ absl::StatusOr<bool> RemoveMultiOutputFusionsUnusedOutputs(
       computation->root_instruction()->has_sharding() ||
       !fusion_instruction->output_operand_aliasing().empty() ||
       fusion_instruction->HasControlDependencies() ||
-      fusion_instruction->IsCustomFusion()) {
+      fusion_instruction->IsCustomFusion() || fusion_instruction->IsRoot()) {
     return false;
   }
 
@@ -154,7 +155,7 @@ absl::StatusOr<bool> RemoveMultiOutputFusionsUnusedOutputs(
   *fusion_instruction->mutable_shape() = std::move(new_shape);
 
   // Update the users of the old fusion instruction.
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       UpdateFusionUsers(fusion_instruction, used_tuple_elements, tuple_shapes));
 
   // Update the root of the fusion computation.
@@ -167,10 +168,10 @@ absl::StatusOr<bool> RemoveMultiOutputFusionsUnusedOutputs(
     }
     auto new_tuple =
         computation->AddInstruction(HloInstruction::CreateTuple(new_operands));
-    TF_RETURN_IF_ERROR(computation->ReplaceInstructionWithDifferentShape(
+    RETURN_IF_ERROR(computation->ReplaceInstructionWithDifferentShape(
         computation->root_instruction(), new_tuple));
   } else {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         computation->root_instruction()->ReplaceAllUsesWithDifferentShape(
             computation->root_instruction()->mutable_operand(
                 *used_tuple_elements.begin())));
@@ -243,7 +244,7 @@ absl::StatusOr<bool> RemoveDeadRoots(
   for (HloInstruction* dead_root : dead_roots) {
     VLOG(1) << "Removing dead root " << dead_root->ToString()
             << " and its unused operands";
-    TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
+    RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
         dead_root, /*cleanup=*/std::nullopt,
         /*ignore_control_dependencies=*/false,
         /*computation_callers=*/computation_callers));
@@ -294,7 +295,7 @@ absl::StatusOr<bool> RemoveDeadParameters(
               << " and its unused operands";
       int64_t num_parameters = computation->num_parameters();
       int64_t parameter_number = parameter->parameter_number();
-      TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
+      RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
           parameter, /*cleanup=*/std::nullopt,
           /*ignore_control_dependencies=*/false,
           /*computation_callers=*/computation_callers,
@@ -308,7 +309,7 @@ absl::StatusOr<bool> RemoveDeadParameters(
     }
   }
   if (update_entry_computation_layout) {
-    TF_RETURN_IF_ERROR(RemoveDeadParametersFromEntryComputationLayout(
+    RETURN_IF_ERROR(RemoveDeadParametersFromEntryComputationLayout(
         computation->parent(), dead_parameters));
   }
   return changed;
@@ -343,7 +344,7 @@ absl::StatusOr<bool> ProcessAgenda(
 
     if (execution_threads.empty() ||
         execution_threads.contains(computation->execution_thread())) {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           bool computation_changed,
           xla::HloDCE::RunOnComputation(
               computation, remove_cross_partition_collective_ops, call_graph,
@@ -387,7 +388,7 @@ absl::StatusOr<bool> RemoveDanglingComputations(
     if (to_remove.contains(computation)) {
       if (execution_threads.empty() ||
           execution_threads.contains(computation->execution_thread())) {
-        TF_RETURN_IF_ERROR(module->RemoveEmbeddedComputation(
+        RETURN_IF_ERROR(module->RemoveEmbeddedComputation(
             iterator.underlying_iterator().underlying_iterator()));
         changed = true;
       }
@@ -411,17 +412,17 @@ absl::StatusOr<bool> RemoveDanglingComputations(
   };
 
   bool changed = false;
-  TF_ASSIGN_OR_RETURN(bool fusion_changed,
-                      RemoveMultiOutputFusionsUnusedOutputs(computation));
+  ASSIGN_OR_RETURN(bool fusion_changed,
+                   RemoveMultiOutputFusionsUnusedOutputs(computation));
   changed |= fusion_changed;
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       bool dead_roots_changed,
       RemoveDeadRoots(computation, remove_cross_partition_collective_ops,
                       computation_callers));
   changed |= dead_roots_changed;
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       bool dead_parameters_changed,
       RemoveDeadParameters(computation, computation_callers,
                            remove_dead_parameters_from_entry_computation));
@@ -447,14 +448,14 @@ absl::StatusOr<bool> HloDCE::RunImpl(
   absl::flat_hash_set<HloComputation*> to_remove;
   PopulateAgenda(module, agenda, to_remove);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       bool agenda_changed,
       ProcessAgenda(module, agenda, to_remove, execution_threads,
                     remove_cross_partition_collective_ops_, call_graph.get(),
                     remove_dead_parameters_from_entry_computation_));
   changed |= agenda_changed;
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       bool dangling_computations_removed,
       RemoveDanglingComputations(module, to_remove, execution_threads,
                                  use_call_analysis_, call_graph));
@@ -463,7 +464,7 @@ absl::StatusOr<bool> HloDCE::RunImpl(
   if (changed) {
     // Update the schedule to reflect the removed instructions.
     if (module->has_schedule()) {
-      TF_RETURN_IF_ERROR(module->schedule().Update(execution_threads));
+      RETURN_IF_ERROR(module->schedule().Update(execution_threads));
     }
     VLOG(2) << "After dce:";
     XLA_VLOG_LINES(2, module->ToString());

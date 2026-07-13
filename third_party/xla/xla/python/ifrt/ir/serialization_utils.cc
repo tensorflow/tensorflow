@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "xla/python/ifrt/ir/serialization_utils.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,9 +29,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "google/protobuf/message_lite.h"
 #include "riegeli/bytes/cord_writer.h"
 #include "riegeli/messages/serialize_message.h"
@@ -65,31 +71,32 @@ absl::Status SerializeAndUpdateLocation(
     riegeli::CordWriter<absl::Cord*>& writer,
     SerializedObjectLocation* location, const google::protobuf::MessageLite& message) {
   location->set_offset(writer.pos());
-  TF_RETURN_IF_ERROR(riegeli::SerializeMessage(message, writer));
+  RETURN_IF_ERROR(riegeli::SerializeMessage(message, writer));
   location->set_size(writer.pos() - location->offset());
   return absl::OkStatus();
 }
 
 absl::Status SerializeIfrtIrProgram(riegeli::CordWriter<absl::Cord*>& writer,
                                     SerializedObjectLocation* location,
-                                    xla::ifrt::IfrtIRProgram* ifrt_ir_program) {
+                                    IfrtIRProgram* ifrt_ir_program) {
   auto options = std::make_unique<SerializeIfrtIRProgramOptions>(
-      Version::getCurrentVersion().toString(),
-      ::mlir::vhlo::Version::getCurrentVersion().toString(),
+      /*ifrt_version=*/Version::getCurrentVersion().toString(),
+      /*atom_program_version=*/
+      mlir::vhlo::Version::getCurrentVersion().toString(),
+      /*atom_program_sdy_version=*/
+      mlir::sdy::SdyDialectVersion::getCurrentVersion().toString(),
       /*version_in_place=*/false);
 
   Serialized serialized;
-  TF_ASSIGN_OR_RETURN(
-      serialized, xla::ifrt::Serialize(*ifrt_ir_program, std::move(options)));
+  ASSIGN_OR_RETURN(serialized, Serialize(*ifrt_ir_program, std::move(options)));
 
   return SerializeAndUpdateLocation(writer, location, serialized);
 }
 
-absl::StatusOr<std::unique_ptr<xla::ifrt::IfrtIRProgram>>
-DeserializeIfrtIrProgram(
+absl::StatusOr<std::unique_ptr<IfrtIRProgram>> DeserializeIfrtIrProgram(
     const SerializedIfrtIrExecutableMetadata& metadata,
     absl::string_view serialized_executable_payload,
-    std::unique_ptr<xla::ifrt::DeserializeIfrtIRProgramOptions> options) {
+    std::unique_ptr<DeserializeIfrtIRProgramOptions> options) {
   absl::string_view program_data = serialized_executable_payload.substr(
       metadata.ifrt_ir_program_location().offset(),
       metadata.ifrt_ir_program_location().size());
@@ -98,14 +105,12 @@ DeserializeIfrtIrProgram(
     return absl::InvalidArgumentError(
         "Failed to parse program from serialized loaded executable");
   }
-  return xla::ifrt::Deserialize<xla::ifrt::IfrtIRProgram>(serialized_program,
-                                                          std::move(options));
+  return Deserialize<IfrtIRProgram>(serialized_program, std::move(options));
 }
 
 absl::StatusOr<int> FindLogicalDeviceId(
-    const absl::flat_hash_map<xla::ifrt::DeviceId, int>&
-        device_id_to_logical_device_id,
-    xla::ifrt::Device* device) {
+    const absl::flat_hash_map<DeviceId, int>& device_id_to_logical_device_id,
+    Device* device) {
   if (!device) {
     return absl::InvalidArgumentError("Device is null");
   }
@@ -120,28 +125,26 @@ absl::StatusOr<int> FindLogicalDeviceId(
 
 absl::Status SerializeIfrtIrAtomExecutable(
     riegeli::CordWriter<absl::Cord*>& writer,
-    absl::flat_hash_map<xla::ifrt::DeviceId, int>&
-        device_id_to_logical_device_id,
+    absl::flat_hash_map<DeviceId, int>& device_id_to_logical_device_id,
     SerializedIfrtIrAtomExecutableMetadata* metadata, absl::string_view name,
     std::shared_ptr<LoadedExecutable> executable) {
   metadata->set_name(name);
-  std::optional<xla::ifrt::DeviceListRef> device_list = executable->devices();
+  std::optional<DeviceListRef> device_list = executable->devices();
   if (!device_list.has_value()) {
     return absl::InvalidArgumentError(
         "Portable executables are not supported.");
   }
-  absl::Span<xla::ifrt::Device* const> devices = (*device_list)->devices();
+  absl::Span<Device* const> devices = (*device_list)->devices();
 
   // Map used devices back to logical device ids for serialization.
   for (const auto& device : devices) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         int logical_device_id,
         FindLogicalDeviceId(device_id_to_logical_device_id, device));
     metadata->add_logical_device_ids(logical_device_id);
   }
 
-  TF_ASSIGN_OR_RETURN(std::string serialized_executable,
-                      executable->Serialize());
+  ASSIGN_OR_RETURN(std::string serialized_executable, executable->Serialize());
   SerializeAndUpdateLocation(writer, metadata->mutable_executable_location(),
                              absl::Cord(std::move(serialized_executable)));
   return absl::OkStatus();
@@ -152,10 +155,11 @@ absl::Status SerializeIfrtIrAtomExecutables(
     SerializedIfrtIrExecutableMetadata* metadata,
     std::shared_ptr<CompiledIfrtIrProgram> ifrt_ir_program) {
   // Create a map from runtime device id to logical device id.
-  absl::flat_hash_map<xla::ifrt::DeviceId, int> device_id_to_logical_device_id;
-  for (int i = 0; i < ifrt_ir_program->device_assignments.size(); ++i) {
-    const xla::ifrt::DeviceId device_id =
-        ifrt_ir_program->device_assignments[i];
+  absl::flat_hash_map<DeviceId, int> device_id_to_logical_device_id;
+  for (int i = 0;
+       i < ifrt_ir_program->compile_options->device_assignments.size(); ++i) {
+    const DeviceId device_id =
+        ifrt_ir_program->compile_options->device_assignments[i];
     auto [_, inserted] = device_id_to_logical_device_id.insert({device_id, i});
     if (!inserted) {
       return absl::InvalidArgumentError(
@@ -166,17 +170,16 @@ absl::Status SerializeIfrtIrAtomExecutables(
 
   for (const auto& [name, executable] :
        *ifrt_ir_program->atom_program_executables) {
-    TF_RETURN_IF_ERROR(SerializeIfrtIrAtomExecutable(
+    RETURN_IF_ERROR(SerializeIfrtIrAtomExecutable(
         writer, device_id_to_logical_device_id,
         metadata->add_atom_program_executables(), name, executable));
   }
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::unique_ptr<xla::ifrt::XlaDeserializeExecutableOptions>>
+absl::StatusOr<std::unique_ptr<XlaDeserializeExecutableOptions>>
 CreateXlaDeserializeExecutableOptions(
-    xla::ifrt::Client* client,
-    absl::Span<xla::ifrt::Device* const> device_assignments,
+    Client* client, absl::Span<Device* const> device_assignments,
     const SerializedIfrtIrAtomExecutableMetadata& metadata) {
   if (device_assignments.empty()) {
     return absl::InvalidArgumentError(
@@ -191,38 +194,36 @@ CreateXlaDeserializeExecutableOptions(
                        device_assignments.size()));
     }
     // Remap the atom's logical device id to the incoming device list.
-    xla::ifrt::Device* device = device_assignments[logical_device_id];
+    Device* device = device_assignments[logical_device_id];
     atom_devices.push_back(device);
   }
-  TF_ASSIGN_OR_RETURN(DeviceListRef atom_device_list,
-                      client->MakeDeviceList(std::move(atom_devices)));
+  ASSIGN_OR_RETURN(DeviceListRef atom_device_list,
+                   client->MakeDeviceList(std::move(atom_devices)));
 
-  return std::make_unique<xla::ifrt::XlaDeserializeExecutableOptions>(
-      std::nullopt, atom_device_list);
+  return std::make_unique<XlaDeserializeExecutableOptions>(std::nullopt,
+                                                           atom_device_list);
 }
 
 absl::Status DeserializeAndRegisterAtomPrograms(
-    xla::ifrt::Client* client,
-    const SerializedIfrtIrExecutableMetadata& metadata,
+    Client* client, const SerializedIfrtIrExecutableMetadata& metadata,
     absl::string_view serialized_executable_payload,
-    absl::Span<xla::ifrt::Device* const> device_assignments,
-    xla::ifrt::IfrtIRCompileOptions* compile_options) {
+    absl::Span<Device* const> device_assignments,
+    IfrtIRCompileOptions* compile_options) {
   for (const auto& atom_meta : metadata.atom_program_executables()) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<xla::ifrt::XlaDeserializeExecutableOptions> options,
-        CreateXlaDeserializeExecutableOptions(client, device_assignments,
-                                              atom_meta));
+    ASSIGN_OR_RETURN(std::unique_ptr<XlaDeserializeExecutableOptions> options,
+                     CreateXlaDeserializeExecutableOptions(
+                         client, device_assignments, atom_meta));
 
     absl::string_view serialized_atom_program =
         serialized_executable_payload.substr(
             atom_meta.executable_location().offset(),
             atom_meta.executable_location().size());
 
-    TF_ASSIGN_OR_RETURN(LoadedExecutableRef loaded_executable,
-                        client->GetDefaultCompiler()
-                            ->DeserializeLoadedExecutable(
-                                serialized_atom_program, std::move(options))
-                            .Await());
+    ASSIGN_OR_RETURN(LoadedExecutableRef loaded_executable,
+                     client->GetDefaultCompiler()
+                         ->DeserializeLoadedExecutable(serialized_atom_program,
+                                                       std::move(options))
+                         .Await());
 
     compile_options->loaded_exec_binding.emplace(atom_meta.name(),
                                                  std::move(loaded_executable));
@@ -252,14 +253,14 @@ absl::StatusOr<std::string> SerializeIfrtIrExecutable(
   absl::Cord serialized_executable_payload;
   riegeli::CordWriter writer(&serialized_executable_payload);
 
-  TF_RETURN_IF_ERROR(SerializeIfrtIrProgram(
+  RETURN_IF_ERROR(SerializeIfrtIrProgram(
       writer, metadata.mutable_ifrt_ir_program_location(),
       ifrt_ir_program->program.get()));
 
-  TF_ASSIGN_OR_RETURN(*metadata.mutable_compile_options(),
-                      ifrt_ir_program->compile_options->ToProto());
+  ASSIGN_OR_RETURN(*metadata.mutable_compile_options(),
+                   ifrt_ir_program->compile_options->ToProto());
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       SerializeIfrtIrAtomExecutables(writer, &metadata, ifrt_ir_program));
 
   writer.Close();
@@ -280,31 +281,38 @@ absl::StatusOr<std::string> SerializeIfrtIrExecutable(
 }
 
 absl::StatusOr<DeserializedIfrtIRProgram> DeserializeIfrtIrExecutable(
-    xla::ifrt::Client* client, absl::string_view serialized,
-    std::unique_ptr<xla::ifrt::DeserializeIfrtIRProgramOptions> options) {
+    Client* client, absl::string_view serialized,
+    std::unique_ptr<DeserializeIfrtIRProgramOptions> options) {
   SerializedIfrtIrExecutableMetadata metadata;
+  // Fix the stream size to max int32 to avoid overflow when parsing the
+  // metadata proto.
+  int stream_size =
+      std::min<size_t>(serialized.size(), std::numeric_limits<int>::max());
   tsl::protobuf::io::ArrayInputStream input_stream(serialized.data(),
-                                                   serialized.size());
+                                                   stream_size);
   if (!tsl::protobuf::util::ParseDelimitedFromZeroCopyStream(
           &metadata, &input_stream, nullptr)) {
-    return absl::InvalidArgumentError(
-        "Failed to parse SerializedIfrtIrExecutableMetadata");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Failed to parse SerializedIfrtIrExecutableMetadata. "
+        "serialized.size(): ",
+        serialized.size(), ", stream_size: ", stream_size, ", prefix: ",
+        absl::BytesToHexString(
+            serialized.substr(0, std::min<size_t>(serialized.size(), 16)))));
   }
 
   // Extract device_assignments from the deserialize options before the options
   // unique_ptr is moved into the IfrtIRProgram
-  std::vector<xla::ifrt::Device*> device_assignments(
+  std::vector<Device*> device_assignments(
       std::move(options->device_assignments));
   absl::string_view serialized_executable_payload =
       serialized.substr(input_stream.ByteCount());
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<xla::ifrt::IfrtIRProgram> program,
+  ASSIGN_OR_RETURN(
+      std::unique_ptr<IfrtIRProgram> program,
       DeserializeIfrtIrProgram(metadata, serialized_executable_payload,
                                std::move(options)));
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options,
-      xla::ifrt::IfrtIRCompileOptions::FromProto(metadata.compile_options()));
+  ASSIGN_OR_RETURN(std::unique_ptr<IfrtIRCompileOptions> compile_options,
+                   IfrtIRCompileOptions::FromProto(metadata.compile_options()));
 
   // Remap the de-serialized device assignments to the incoming deserialize
   // options.
@@ -314,7 +322,7 @@ absl::StatusOr<DeserializedIfrtIRProgram> DeserializeIfrtIrExecutable(
     compile_options->device_assignments.push_back(device->Id());
   }
 
-  TF_RETURN_IF_ERROR(DeserializeAndRegisterAtomPrograms(
+  RETURN_IF_ERROR(DeserializeAndRegisterAtomPrograms(
       client, metadata, serialized_executable_payload, device_assignments,
       compile_options.get()));
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/ir/named_sharding.h"
 
 #include <optional>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -31,18 +32,6 @@ namespace {
 
 using DimensionSharding = NamedSharding::DimensionSharding;
 using ::testing::ElementsAre;
-
-TEST(NamedShardingTest, CanonicalizedDimShardings) {
-  Mesh mesh_abcd({2, 4}, {"a", "b"});
-
-  DimensionSharding empty_ds;
-  NamedSharding sharding1(mesh_abcd, {empty_ds, empty_ds});
-  EXPECT_TRUE(sharding1.dim_shardings().empty());
-
-  DimensionSharding ds_a({AxisRef(0)}, /*is_closed=*/true);
-  NamedSharding sharding2(mesh_abcd, {ds_a, empty_ds});
-  EXPECT_FALSE(sharding2.dim_shardings().empty());
-}
 
 TEST(NamedShardingTest, AxisNameCtor) {
   Mesh mesh_abcde({2, 4, 3, 8, 2}, {"a", "b", "c", "d", "e"});
@@ -124,10 +113,19 @@ TEST_F(NamedShardingEqualityTest, DifferentDimShardings) {
                                              {"e"}, {"b:(1)2"}));
 }
 
-TEST_F(NamedShardingEqualityTest, DifferentReplicatedAxes) {
-  EXPECT_NE(base_, test_utils::FromAxisNames(mesh_abcde_,
+TEST_F(NamedShardingEqualityTest, IgnoresReplicatedAxes) {
+  EXPECT_EQ(base_, test_utils::FromAxisNames(mesh_abcde_,
                                              {{"a", "b:(2)2"}, {"d:(4)2", "c"}},
                                              {"d:(1)4"}, {"b:(1)2"}));
+}
+
+TEST_F(NamedShardingEqualityTest,
+       IgnoresReplicatedAxesWithImplicitAndExplicitReplication) {
+  Mesh mesh({2, 2, 2, 1}, {"d", "f", "e", "c"});
+
+  EXPECT_EQ(test_utils::FromAxisNames(mesh, {{"f"}, {}, {}}),
+            test_utils::FromAxisNames(mesh, {{"f"}, {}, {}},
+                                      /*replicated_axes=*/{"d"}));
 }
 
 TEST_F(NamedShardingEqualityTest, DifferentUnreducedAxes) {
@@ -147,6 +145,30 @@ TEST_F(NamedShardingEqualityTest, DifferentMeshShape) {
   EXPECT_NE(base_, test_utils::FromAxisNames(mesh_diff_shape,
                                              {{"a", "b:(2)2"}, {"d:(4)2", "c"}},
                                              {"e"}, {"b:(1)2"}));
+}
+
+TEST(NamedShardingTest, ReplicatedEquality) {
+  Mesh mesh1({2, 2}, {"a", "b"});
+  Mesh mesh2({4, 4}, {"x", "y"});
+
+  NamedSharding replicated_no_mesh = NamedSharding::Replicate();
+  NamedSharding replicated_mesh1(mesh1);
+  NamedSharding replicated_mesh2(mesh2);
+  NamedSharding replicated_dims1 = test_utils::FromAxisNames(mesh1, {{}, {}});
+  NamedSharding replicated_dims2 =
+      test_utils::FromAxisNames(mesh2, {{}, {}, {}});
+
+  // Replicated shardings are always equal to each other.
+  EXPECT_EQ(replicated_no_mesh, replicated_mesh1);
+  EXPECT_EQ(replicated_mesh1, replicated_mesh2);
+  EXPECT_EQ(replicated_no_mesh, replicated_dims1);
+  EXPECT_EQ(replicated_dims1, replicated_dims2);
+
+  // Ensure they are not equal to a non-replicated sharding.
+  NamedSharding sharded = test_utils::FromAxisNames(mesh1, {{"a"}});
+  EXPECT_NE(replicated_no_mesh, sharded);
+  EXPECT_NE(replicated_mesh1, sharded);
+  EXPECT_NE(replicated_dims1, sharded);
 }
 
 TEST(NamedShardingTest, ToString) {
@@ -177,35 +199,9 @@ TEST(NamedShardingTest, ToString) {
   EXPECT_EQ(sharding_dim.ToString(),
             "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{'c'}, {'a', 'b':(2)2, ?}]}");
 
-  NamedSharding sharding_fully_replicated = NamedSharding::Replicate();
-  EXPECT_EQ(sharding_fully_replicated.ToString(), "{mesh[], replicated}");
-  NamedSharding sharding_fully_replicated_with_mesh(mesh);
-  EXPECT_EQ(sharding_fully_replicated_with_mesh.ToString(),
-            "{mesh['a'=2,'b'=4,'c'=3,'d'=8], replicated}");
-  NamedSharding sharding_replicated =
-      test_utils::FromAxisNames(mesh, {}, {"c"});
-  EXPECT_EQ(sharding_replicated.ToString(),
-            "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [], replicated={'c'}}");
-
   Mesh maximal_mesh(5);
-  NamedSharding maximal_sharding(maximal_mesh);
-  EXPECT_EQ(maximal_sharding.ToString(), "{maximal_mesh[device_id=5]}");
-
-  NamedSharding sharding_fully_unreduced = NamedSharding::Unreduced(mesh);
-  EXPECT_EQ(sharding_fully_unreduced.ToString(),
-            "{mesh['a'=2,'b'=4,'c'=3,'d'=8], unreduced}");
-  NamedSharding sharding_unreduced =
-      test_utils::FromAxisNames(mesh, {}, {}, {"d:(4)2"});
-  EXPECT_EQ(sharding_unreduced.ToString(),
-            "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [], unreduced={'d':(4)2}}");
-
-  NamedSharding sharding_fully_manual = NamedSharding::Manual(mesh);
-  EXPECT_EQ(sharding_fully_manual.ToString(),
-            "{mesh['a'=2,'b'=4,'c'=3,'d'=8], manual}");
-  NamedSharding sharding_manual =
-      test_utils::FromAxisNames(mesh, {}, {}, {}, {"d:(4)2"});
-  EXPECT_EQ(sharding_manual.ToString(),
-            "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [], manual={'d':(4)2}}");
+  NamedSharding single_device_sharding(maximal_mesh);
+  EXPECT_EQ(single_device_sharding.ToString(), "{maximal_mesh[device_id=5]}");
 
   Mesh non_iota_mesh(
       TileAssignment(/*dims=*/{2, 4, 4, 2}, /*reshape_dims=*/{1, 4, 1, 16},
@@ -231,6 +227,76 @@ TEST(NamedShardingTest, ToString) {
       "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{'a'}], replicated={'c'}, "
       "unreduced={'d':(4)2}, manual={'b':(2)2}, metadata={{op_name=\"foo\"}, "
       "{op_name=\"bar\"}}}");
+}
+
+TEST(NamedShardingTest, ToStringReplicated) {
+  Mesh mesh({2, 8}, {"a", "b"});
+
+  NamedSharding sharding_fully_replicated = NamedSharding::Replicate();
+  EXPECT_EQ(sharding_fully_replicated.ToString(), "{mesh[], replicated}");
+
+  NamedSharding sharding_fully_replicated_with_dims =
+      test_utils::FromAxisNames(mesh, {{}, {}});
+  EXPECT_EQ(sharding_fully_replicated_with_dims.ToString(),
+            "{mesh['a'=2,'b'=8], [{}, {}]}");
+
+  NamedSharding sharding_fully_replicated_with_mesh(mesh);
+  EXPECT_EQ(sharding_fully_replicated_with_mesh.ToString(),
+            "{mesh['a'=2,'b'=8], replicated}");
+
+  NamedSharding sharding_replicated =
+      test_utils::FromAxisNames(mesh, {}, {"b"});
+  EXPECT_EQ(sharding_replicated.ToString(),
+            "{mesh['a'=2,'b'=8], [], replicated={'b'}}");
+}
+
+TEST(NamedShardingTest, ToStringUnreduced) {
+  Mesh mesh({2, 8}, {"a", "b"});
+
+  NamedSharding sharding_fully_unreduced = NamedSharding::Unreduced(mesh);
+  EXPECT_EQ(sharding_fully_unreduced.ToString(),
+            "{mesh['a'=2,'b'=8], unreduced}");
+
+  NamedSharding sharding_fully_unreduced_with_dims = test_utils::FromAxisNames(
+      mesh, {{}, {}}, {}, /*unreduced_axes=*/{"a", "b"});
+  EXPECT_EQ(sharding_fully_unreduced_with_dims.ToString(),
+            "{mesh['a'=2,'b'=8], [{}, {}], unreduced={'a', 'b'}}");
+
+  NamedSharding sharding_unreduced =
+      test_utils::FromAxisNames(mesh, {{}, {}}, {}, {"b:(4)2"});
+  EXPECT_EQ(sharding_unreduced.ToString(),
+            "{mesh['a'=2,'b'=8], [{}, {}], unreduced={'b':(4)2}}");
+}
+
+TEST(NamedShardingTest, ToStringUnreducedEnum) {
+  Mesh mesh({2, 8, 4}, {"a", "b", "c"});
+  std::vector<AxisRef> unreduced_axes = {AxisRef(0), AxisRef(1, {4, 2})};
+  NamedSharding sharding(mesh, {}, {}, unreduced_axes, {}, {},
+                         NamedSharding::ReductionOp::kMax);
+  EXPECT_EQ(sharding.ToString(),
+            "{mesh['a'=2,'b'=8,'c'=4], [], unreduced=max{'a', 'b':(4)2}}");
+
+  NamedShardingProto proto = sharding.ToProto();
+  NamedSharding from_proto = NamedSharding::FromProto(proto);
+  EXPECT_EQ(from_proto.ToString(),
+            "{mesh['a'=2,'b'=8,'c'=4], [], unreduced=max{'a', 'b':(4)2}}");
+}
+
+TEST(NamedShardingTest, ToStringManual) {
+  Mesh mesh({2, 8}, {"a", "b"});
+
+  NamedSharding sharding_fully_manual = NamedSharding::Manual(mesh);
+  EXPECT_EQ(sharding_fully_manual.ToString(), "{mesh['a'=2,'b'=8], manual}");
+
+  NamedSharding sharding_fully_manual_with_dims = test_utils::FromAxisNames(
+      mesh, {{}, {}}, {}, {}, /*manual_axes=*/{"a", "b"});
+  EXPECT_EQ(sharding_fully_manual_with_dims.ToString(),
+            "{mesh['a'=2,'b'=8], [{}, {}], manual={'a', 'b'}}");
+
+  NamedSharding sharding_manual =
+      test_utils::FromAxisNames(mesh, {{}}, {}, {}, {"b:(4)2"});
+  EXPECT_EQ(sharding_manual.ToString(),
+            "{mesh['a'=2,'b'=8], [{}], manual={'b':(4)2}}");
 }
 
 TEST(NamedShardingTest, DimensionShardingAppend) {
@@ -464,20 +530,6 @@ TEST(NamedShardingTest, GetShardedSize) {
   EXPECT_EQ(ds_empty.getShardedSize(mesh), 1);
 }
 
-TEST(NamedShardingTest, AxisNames) {
-  Mesh mesh({2, 4, 3, 8}, {"a", "b", "c", "d"});
-
-  AxisRef axis_a(0);
-  AxisRef axis_b(1);
-  AxisRef axis_c(2);
-
-  DimensionSharding ds_abc({axis_a, axis_b, axis_c}, /*is_closed=*/true);
-  EXPECT_THAT(ds_abc.axis_names(mesh), ElementsAre("a", "b", "c"));
-
-  DimensionSharding ds_empty({}, /*is_closed=*/true);
-  EXPECT_TRUE(ds_empty.axis_names(mesh).empty());
-}
-
 TEST(NamedShardingTest, Dimension) {
   Mesh mesh({2, 4, 3, 8}, {"a", "b", "c", "d"});
 
@@ -523,8 +575,8 @@ TEST(NamedShardingTest, NumDevices) {
   EXPECT_EQ(sharding.num_devices(), 2 * 4 * 3 * 8);
 
   Mesh maximal_mesh(5);
-  NamedSharding maximal_sharding(maximal_mesh);
-  EXPECT_EQ(maximal_sharding.num_devices(), 1);
+  NamedSharding single_device_sharding(maximal_mesh);
+  EXPECT_EQ(single_device_sharding.num_devices(), 1);
 
   Mesh empty_mesh;
   NamedSharding empty_sharding(empty_mesh);
@@ -639,18 +691,30 @@ TEST(NamedShardingPredicatesTest, IsReplicated) {
   Mesh mesh({2, 2}, {"a", "b"});
   NamedSharding sharding(mesh);
   EXPECT_TRUE(sharding.IsReplicated());
-  EXPECT_FALSE(sharding.IsMaximal());
+  EXPECT_FALSE(sharding.IsSingleDevice());
+  EXPECT_FALSE(sharding.IsManual());
+  EXPECT_FALSE(sharding.IsUnreduced());
+
+  EXPECT_TRUE(NamedSharding(Mesh()).IsReplicated());
+}
+TEST(NamedShardingPredicatesTest, IsReplicatedWithAxisOfSize1) {
+  Mesh mesh({1, 2}, {"a", "b"});
+  NamedSharding sharding = test_utils::FromAxisNames(mesh, {{"a"}});
+  EXPECT_TRUE(sharding.IsReplicated());
+  EXPECT_FALSE(sharding.IsSingleDevice());
   EXPECT_FALSE(sharding.IsManual());
   EXPECT_FALSE(sharding.IsUnreduced());
 }
 
-TEST(NamedShardingPredicatesTest, IsMaximal) {
+TEST(NamedShardingPredicatesTest, IsSingleDevice) {
   Mesh mesh(1);
   NamedSharding sharding(mesh);
-  EXPECT_TRUE(sharding.IsMaximal());
+  EXPECT_TRUE(sharding.IsSingleDevice());
   EXPECT_FALSE(sharding.IsReplicated());
   EXPECT_FALSE(sharding.IsManual());
   EXPECT_FALSE(sharding.IsUnreduced());
+
+  EXPECT_FALSE(NamedSharding(Mesh()).IsSingleDevice());
 }
 
 TEST(NamedShardingPredicatesTest, IsUnreduced) {
@@ -658,16 +722,50 @@ TEST(NamedShardingPredicatesTest, IsUnreduced) {
   NamedSharding sharding1 = test_utils::FromAxisNames(mesh, {}, {}, {"a", "b"});
   EXPECT_TRUE(sharding1.IsUnreduced());
   EXPECT_FALSE(sharding1.IsReplicated());
-  EXPECT_FALSE(sharding1.IsMaximal());
+  EXPECT_FALSE(sharding1.IsSingleDevice());
   EXPECT_FALSE(sharding1.IsManual());
+
+  EXPECT_FALSE(NamedSharding(Mesh()).IsUnreduced());
 }
 TEST(NamedShardingPredicatesTest, IsUnreducedDoesntContainAllAxes) {
   Mesh mesh({2, 2}, {"a", "b"});
   NamedSharding sharding1 = test_utils::FromAxisNames(mesh, {}, {}, {"a"});
   EXPECT_FALSE(sharding1.IsUnreduced());
   EXPECT_FALSE(sharding1.IsReplicated());
-  EXPECT_FALSE(sharding1.IsMaximal());
+  EXPECT_FALSE(sharding1.IsSingleDevice());
   EXPECT_FALSE(sharding1.IsManual());
+}
+
+TEST(NamedShardingPredicatesTest, IsUnreducedWithAxisOfSize1) {
+  Mesh mesh({2, 1, 2}, {"a", "b", "c"});
+
+  NamedSharding sharding1 = test_utils::FromAxisNames(
+      mesh, /*dim_shardings=*/{}, /*replicated_axes=*/{},
+      /*unreduced_axes=*/{"a", "c"});
+
+  EXPECT_TRUE(sharding1.IsUnreduced());
+
+  NamedSharding sharding2 = test_utils::FromAxisNames(
+      mesh, /*dim_shardings=*/{}, /*replicated_axes=*/{},
+      /*unreduced_axes=*/{"a", "b", "c"});
+
+  EXPECT_TRUE(sharding2.IsUnreduced());
+
+  NamedSharding sharding3 = test_utils::FromAxisNames(
+      mesh, /*dim_shardings=*/{}, /*replicated_axes=*/{},
+      /*unreduced_axes=*/{"a"});
+
+  EXPECT_FALSE(sharding3.IsUnreduced());
+}
+
+TEST(NamedShardingPredicatesTest, IsUnreducedOnSize1Mesh) {
+  Mesh mesh({1}, {"a"});
+  NamedSharding sharding1 = test_utils::FromAxisNames(mesh, {}, {}, {});
+  EXPECT_FALSE(sharding1.IsUnreduced());
+
+  NamedSharding sharding2 = test_utils::FromAxisNames(mesh, {}, {},
+                                                      /*unreduced_axes=*/{"a"});
+  EXPECT_TRUE(sharding2.IsUnreduced());
 }
 
 TEST(NamedShardingPredicatesTest, IsManual) {
@@ -676,16 +774,50 @@ TEST(NamedShardingPredicatesTest, IsManual) {
       test_utils::FromAxisNames(mesh, {}, {}, {}, {"a", "b"});
   EXPECT_TRUE(sharding.IsManual());
   EXPECT_FALSE(sharding.IsReplicated());
-  EXPECT_FALSE(sharding.IsMaximal());
+  EXPECT_FALSE(sharding.IsSingleDevice());
   EXPECT_FALSE(sharding.IsUnreduced());
+
+  EXPECT_FALSE(NamedSharding(Mesh()).IsManual());
 }
 TEST(NamedShardingPredicatesTest, IsManualDoesntContainAllAxes) {
   Mesh mesh({2, 2}, {"a", "b"});
   NamedSharding sharding = test_utils::FromAxisNames(mesh, {}, {}, {}, {"a"});
   EXPECT_FALSE(sharding.IsManual());
   EXPECT_FALSE(sharding.IsReplicated());
-  EXPECT_FALSE(sharding.IsMaximal());
+  EXPECT_FALSE(sharding.IsSingleDevice());
   EXPECT_FALSE(sharding.IsUnreduced());
+}
+
+TEST(NamedShardingPredicatesTest, IsManualWithAxisOfSize1) {
+  Mesh mesh({2, 1, 2}, {"a", "b", "c"});
+
+  NamedSharding sharding1 = test_utils::FromAxisNames(
+      mesh, /*dim_shardings=*/{}, /*replicated_axes=*/{}, /*unreduced_axes=*/{},
+      /*manual_axes=*/{"a", "c"});
+
+  EXPECT_TRUE(sharding1.IsManual());
+
+  NamedSharding sharding2 = test_utils::FromAxisNames(
+      mesh, /*dim_shardings=*/{}, /*replicated_axes=*/{}, /*unreduced_axes=*/{},
+      /*manual_axes=*/{"a", "b", "c"});
+
+  EXPECT_TRUE(sharding2.IsManual());
+
+  NamedSharding sharding3 = test_utils::FromAxisNames(
+      mesh, /*dim_shardings=*/{}, /*replicated_axes=*/{}, /*unreduced_axes=*/{},
+      /*manual_axes=*/{"a"});
+
+  EXPECT_FALSE(sharding3.IsManual());
+}
+
+TEST(NamedShardingPredicatesTest, IsManualOnSize1Mesh) {
+  Mesh mesh({1}, {"a"});
+  NamedSharding sharding1 = test_utils::FromAxisNames(mesh, {}, {}, {}, {});
+  EXPECT_FALSE(sharding1.IsManual());
+
+  NamedSharding sharding2 =
+      test_utils::FromAxisNames(mesh, {}, {}, {}, /*manual_axes=*/{"a"});
+  EXPECT_TRUE(sharding2.IsManual());
 }
 
 TEST(NamedShardingTest, NamedShardingProtoConversion) {
@@ -805,6 +937,60 @@ TEST(NamedShardingPredicatesTest, HasPartialReplication_UnreducedWithSubAxes) {
                                          /*replicated_axes=*/{},
                                          /*unreduced_axes=*/{"a:(1)2"})
                    .HasPartialReplication());
+}
+
+TEST(NamedShardingTest, GetImplicitlyReplicatedAxes_FullyExplicitlySharded) {
+  EXPECT_THAT(
+      test_utils::FromAxisNames(Mesh({2, 4, 3, 5}, {"a", "b", "c", "d"}),
+                                /*dim_shardings=*/{{"a", "b"}, {"c"}, {"d"}})
+          .GetImplicitlyReplicatedAxes(),
+      ElementsAre());
+}
+
+TEST(NamedShardingTest, GetImplicitlyReplicatedAxes_PartiallySharded) {
+  EXPECT_THAT(
+      test_utils::FromAxisNames(Mesh({2, 4, 3, 5}, {"a", "b", "c", "d"}),
+                                /*dim_shardings=*/{{"a"}})
+          .GetImplicitlyReplicatedAxes(),
+      ElementsAre(AxisRef(1), AxisRef(2), AxisRef(3)));
+}
+
+TEST(NamedShardingTest, GetImplicitlyReplicatedAxes_MixedWithOtherAxes) {
+  EXPECT_THAT(test_utils::FromAxisNames(
+                  Mesh({2, 4, 3, 5}, {"a", "b", "c", "d"}),
+                  /*dim_shardings=*/{{"a"}}, /*replicated_axes=*/{"b"},
+                  /*unreduced_axes=*/{"c"}, /*manual_axes=*/{"d"})
+                  .GetImplicitlyReplicatedAxes(),
+              ElementsAre());
+}
+
+TEST(NamedShardingTest,
+     GetImplicitlyReplicatedAxes_PartialShardingWithReplicated) {
+  EXPECT_THAT(test_utils::FromAxisNames(
+                  Mesh({2, 4, 3, 5}, {"a", "b", "c", "d"}),
+                  /*dim_shardings=*/{{"a"}}, /*replicated_axes=*/{"d"})
+                  .GetImplicitlyReplicatedAxes(),
+              ElementsAre(AxisRef(1), AxisRef(2)));
+}
+
+TEST(NamedShardingTest,
+     GetImplicitlyReplicatedAxes_WithSubAxes_MissingMiddleSubAxis) {
+  EXPECT_THAT(test_utils::FromAxisNames(Mesh({8, 9}, {"a", "b"}),
+                                        /*dim_shardings=*/{{"a:(1)2"}},
+                                        /*replicated_axes=*/{"a:(4)2"})
+                  .GetImplicitlyReplicatedAxes(),
+              ElementsAre(AxisRef(0, {2, 2}), AxisRef(1)));
+}
+
+TEST(NamedShardingTest,
+     GetImplicitlyReplicatedAxes_WithSubAxes_MissingOuterSubAxes) {
+  EXPECT_THAT(
+      test_utils::FromAxisNames(Mesh({8, 9}, {"a", "b"}),
+                                /*dim_shardings=*/{{"a:(2)2"}},
+                                /*replicated_axes=*/{},
+                                /*unreduced_axes=*/{"b:(3)3"})
+          .GetImplicitlyReplicatedAxes(),
+      ElementsAre(AxisRef(0, {1, 2}), AxisRef(0, {4, 2}), AxisRef(1, {1, 3})));
 }
 
 }  // namespace

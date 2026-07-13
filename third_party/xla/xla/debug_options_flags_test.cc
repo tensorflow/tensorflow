@@ -13,19 +13,124 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/debug_options_flags.h"
+
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
 #include "google/protobuf/descriptor.h"
+#include "xla/parse_flags_from_env.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
 
+using ::testing::ElementsAre;
 using ::testing::IsEmpty;
 
 namespace xla {
 namespace {
+
+TEST(DebugOptions, GetDebugOptionsFromProtoAndFlags_WithEmptyProto) {
+  int* pargc;
+  std::vector<char*>* pargv;
+  ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
+  tsl::setenv("XLA_FLAGS", "--xla_cpu_enable_fast_math=true", 1);
+
+  DebugOptions empty_options;
+  DebugOptions options = GetDebugOptionsFromProtoAndFlags(&empty_options);
+  EXPECT_TRUE(options.xla_cpu_enable_fast_math());
+}
+
+TEST(DebugOptions, GetDebugOptionsFromProtoAndFlags_WithExistingProto) {
+  int* pargc;
+  std::vector<char*>* pargv;
+  ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
+
+  DebugOptions proto_options;
+  proto_options.set_xla_cpu_enable_fast_math(false);
+  proto_options.set_xla_backend_optimization_level(1);
+
+  tsl::setenv("XLA_FLAGS", "--xla_cpu_enable_fast_math=true", 1);
+  DebugOptions options = GetDebugOptionsFromProtoAndFlags(&proto_options);
+
+  EXPECT_TRUE(options.xla_cpu_enable_fast_math());
+  EXPECT_EQ(options.xla_backend_optimization_level(), 1);
+}
+
+TEST(DebugOptions, GetDebugOptionsFromProtoAndFlags_PtxCompilerExtraFlags) {
+  int* pargc;
+  std::vector<char*>* pargv;
+  ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
+
+  // Needed to avoid using globally-set and cached flags set by other tests.
+  DebugOptions empty_options;
+  tsl::setenv("XLA_FLAGS",
+              "--xla_gpu_ptx_compiler_extra_flags='--maxntid=8,8,8 "
+              "--register-usage-level=10'",
+              1);
+
+  DebugOptions options = GetDebugOptionsFromProtoAndFlags(&empty_options);
+  EXPECT_THAT(options.xla_gpu_ptx_compiler_extra_flags(),
+              ElementsAre("--maxntid=8,8,8", "--register-usage-level=10"));
+}
+
+TEST(DebugOptions, CommandBufferUpdateModeDefaultsToAlwaysUpdate) {
+  EXPECT_EQ(
+      DefaultDebugOptionsIgnoringFlags().xla_gpu_command_buffer_update_mode(),
+      DebugOptions::ALWAYS_UPDATE);
+}
+
+TEST(DebugOptions, CommandBufferUpdateModesParseFromFlags) {
+  for (const auto& [name, expected] : std::vector<
+           std::pair<const char*, DebugOptions::CommandBufferUpdateMode>>{
+           {"ALWAYS_UPDATE", DebugOptions::ALWAYS_UPDATE},
+           {"SKIP_TEMP", DebugOptions::SKIP_TEMP}}) {
+    int* pargc;
+    std::vector<char*>* pargv;
+    ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
+    std::string flag = "--xla_gpu_command_buffer_update_mode=";
+    flag += name;
+    tsl::setenv("XLA_FLAGS", flag.c_str(), 1);
+
+    DebugOptions proto_options;
+    DebugOptions options = GetDebugOptionsFromProtoAndFlags(&proto_options);
+
+    EXPECT_EQ(options.xla_gpu_command_buffer_update_mode(), expected);
+  }
+}
+
+TEST(DebugOptions, RemovedCommandBufferUpdateModesRejectedByTextProto) {
+  for (const char* name : {"DYNAMIC_ALLOCATE", "VMM_PERSISTENT_TEMP",
+                           "NEVER_UPDATE", "CAPTURE_CMD_NEVER_UPDATE"}) {
+    DebugOptions options;
+    std::string text = "xla_gpu_command_buffer_update_mode: ";
+    text += name;
+    EXPECT_FALSE(tsl::protobuf::TextFormat::ParseFromString(text, &options));
+  }
+}
+
+TEST(DebugOptionsDeathTest, RemovedCommandBufferUpdateModesRejectedByFlags) {
+  for (const char* name : {"DYNAMIC_ALLOCATE", "VMM_PERSISTENT_TEMP",
+                           "NEVER_UPDATE", "CAPTURE_CMD_NEVER_UPDATE"}) {
+    int* pargc;
+    std::vector<char*>* pargv;
+    ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
+    std::string flag = "--xla_gpu_command_buffer_update_mode=";
+    flag += name;
+    tsl::setenv("XLA_FLAGS", flag.c_str(), 1);
+
+    DebugOptions proto_options;
+    EXPECT_DEATH((void)GetDebugOptionsFromProtoAndFlags(&proto_options),
+                 "Flag parsing failed")
+        << name;
+    tsl::unsetenv("XLA_FLAGS");
+  }
+}
 
 TEST(DebugOptions, AllFieldsHavePresence) {
   absl::flat_hash_set<std::string> fields_missing_presence;
@@ -43,6 +148,51 @@ TEST(DebugOptions, AllFieldsHavePresence) {
   EXPECT_THAT(fields_missing_presence, IsEmpty())
       << "All scalar fields in DebugOptions must have presence defined by "
          "being labeled `optional`.";
+}
+
+TEST(DebugOptions, EnableNcclSymmetricBuffersForCollectives) {
+  int* pargc;
+  std::vector<char*>* pargv;
+  ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
+
+  DebugOptions empty_options;
+  tsl::setenv("XLA_FLAGS",
+              "--xla_enable_nccl_symmetric_buffers_for_collectives="
+              "AllReduce:1024:f32,AllGather:2048:S32,ReduceScatter,all",
+              1);
+
+  DebugOptions options = GetDebugOptionsFromProtoAndFlags(&empty_options);
+  ASSERT_EQ(options.xla_enable_nccl_symmetric_buffers_for_collectives_size(),
+            4);
+
+  {
+    const auto& filter =
+        options.xla_enable_nccl_symmetric_buffers_for_collectives(0);
+    EXPECT_EQ(filter.collective(), DebugOptions::ALLREDUCE);
+    EXPECT_EQ(filter.max_size_bytes(), 1024);
+    EXPECT_EQ(filter.op_type(), xla::F32);
+  }
+  {
+    const auto& filter =
+        options.xla_enable_nccl_symmetric_buffers_for_collectives(1);
+    EXPECT_EQ(filter.collective(), DebugOptions::ALLGATHER);
+    EXPECT_EQ(filter.max_size_bytes(), 2048);
+    EXPECT_EQ(filter.op_type(), xla::S32);
+  }
+  {
+    const auto& filter =
+        options.xla_enable_nccl_symmetric_buffers_for_collectives(2);
+    EXPECT_EQ(filter.collective(), DebugOptions::REDUCESCATTER);
+    EXPECT_FALSE(filter.has_max_size_bytes());
+    EXPECT_FALSE(filter.has_op_type());
+  }
+  {
+    const auto& filter =
+        options.xla_enable_nccl_symmetric_buffers_for_collectives(3);
+    EXPECT_EQ(filter.collective(), DebugOptions::ALLCOLLECTIVES);
+    EXPECT_FALSE(filter.has_max_size_bytes());
+    EXPECT_FALSE(filter.has_op_type());
+  }
 }
 
 }  // namespace

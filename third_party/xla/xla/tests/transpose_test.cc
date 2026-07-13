@@ -38,7 +38,7 @@ namespace {
 constexpr ErrorSpec kErrorSpec{0.0001};
 
 class TransposeTest : public ClientLibraryTestRunnerMixin<
-                          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+                          HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  protected:
   void TestTransposeConstant(Vector3 sizes, Vector3 transpose_dims) {
     Array3D<int32_t> aoperand(sizes[0], sizes[1], sizes[2]);
@@ -201,7 +201,7 @@ TEST_F(TransposeTest, TransposeConstant210_DegenerateDim) {
   TestTransposeConstant({20, 30, 1}, {2, 1, 0});
 }
 
-using HloTransposeTest = HloPjRtTestBase;
+using HloTransposeTest = HloTestBase;
 
 // Disable HLO passes to verify the default behavior
 TEST_F(HloTransposeTest, HloPassesDisabled) {

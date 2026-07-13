@@ -36,6 +36,12 @@ namespace xla {
 // same documentation applies.
 class NamedSharding {
  public:
+  enum class ReductionOp {
+    kSum = 0,
+    kMax = 1,
+    kMin = 2,
+  };
+
   class DimensionSharding {
    public:
     bool operator==(const DimensionSharding& other) const {
@@ -59,10 +65,6 @@ class NamedSharding {
         : axes_(axes.begin(), axes.end()), is_closed_(is_closed) {}
 
     absl::Span<const AxisRef> axes() const { return axes_; }
-
-    // Returns the names of the axis in the dimension sharding. This should only
-    // be called for non-sub-axis.
-    std::vector<std::string> axis_names(const Mesh& mesh) const;
 
     bool is_closed() const { return is_closed_; }
 
@@ -98,11 +100,19 @@ class NamedSharding {
 
   // Shardings using mesh with similar device assignment should compare equal
   bool operator==(const NamedSharding& other) const {
+    if (IsReplicated() && other.IsReplicated()) {
+      return true;
+    }
     return mesh_.DeviceAssignmentEquals(other.mesh_) &&
            dim_shardings_ == other.dim_shardings_ &&
-           replicated_axes_ == other.replicated_axes_ &&
            unreduced_axes_ == other.unreduced_axes_ &&
+           reduction_op_ == other.reduction_op_ &&
            manual_axes_ == other.manual_axes_;
+    // We don't compare `replicated_axes`. This refers to explicitly
+    // replicated axes. Whether an axis is replicated explicitly or
+    // implicitly does not matter for the logical equivalence of the
+    // sharding. This also matches the behavior in v2 sharding where
+    // there is no concept of explicitly replicated axis.
   }
 
   bool operator!=(const NamedSharding& other) const {
@@ -119,7 +129,8 @@ class NamedSharding {
                          absl::Span<const AxisRef> replicated_axes = {},
                          absl::Span<const AxisRef> unreduced_axes = {},
                          absl::Span<const AxisRef> manual_axes = {},
-                         absl::Span<const OpMetadata> metadata = {});
+                         absl::Span<const OpMetadata> metadata = {},
+                         ReductionOp reduction_op = ReductionOp::kSum);
 
   const Mesh& mesh() const { return mesh_; }
   absl::Span<const DimensionSharding> dim_shardings() const {
@@ -130,8 +141,10 @@ class NamedSharding {
   }
   absl::Span<const AxisRef> replicated_axes() const { return replicated_axes_; }
   absl::Span<const AxisRef> unreduced_axes() const { return unreduced_axes_; }
+  ReductionOp reduction_op() const { return reduction_op_; }
   absl::Span<const AxisRef> manual_axes() const { return manual_axes_; }
   absl::Span<const OpMetadata> metadata() const { return metadata_; }
+  std::vector<OpMetadata>& mutable_metadata() { return metadata_; }
 
   // Returns number of dimensions.
   int64_t num_dimensions() const { return dim_shardings_.size(); }
@@ -150,32 +163,33 @@ class NamedSharding {
   }
 
   bool IsReplicated() const {
-    return !IsMaximal() && AllDimShardingsEmpty(dim_shardings_) &&
+    return !IsSingleDevice() &&
+           absl::c_all_of(dim_shardings_,
+                          [&](const DimensionSharding& s) {
+                            return s.getShardedSize(mesh_) == 1;
+                          }) &&
            unreduced_axes_.empty() && manual_axes_.empty();
   }
 
-  bool IsMaximal() const { return mesh_.IsMaximal(); }
+  bool IsSingleDevice() const { return mesh_.IsMaximal(); }
+
+  // This checks for replicated or single-device sharding.
+  bool IsReplicatedOrSingleDevice() const {
+    return IsReplicated() || IsSingleDevice();
+  }
 
   bool IsManual() const {
-    return !IsMaximal() && AllDimShardingsEmpty(dim_shardings_) &&
-           replicated_axes_.empty() && unreduced_axes_.empty() &&
+    return !manual_axes_.empty() &&
            mesh_.ContainsAllMeshAxesInOrder(manual_axes_);
   }
 
   bool IsUnreduced() const {
-    return !IsMaximal() && AllDimShardingsEmpty(dim_shardings_) &&
-           replicated_axes_.empty() && manual_axes_.empty() &&
+    return !unreduced_axes_.empty() &&
            mesh_.ContainsAllMeshAxesInOrder(unreduced_axes_);
   }
 
-  // Returns true if the tile size is the same as the input size.
-  //
-  // This checks for both replicated and maximal sharding, as in both cases tile
-  // size is same as input size.
-  bool IsTileMaximal() const { return IsReplicated() || IsMaximal(); }
-
   bool HasPartialReplication() const {
-    if (IsTileMaximal()) {
+    if (IsReplicatedOrSingleDevice()) {
       return false;
     }
     if (!replicated_axes().empty()) {
@@ -194,6 +208,11 @@ class NamedSharding {
     return used_elements < num_devices();
   }
 
+  // Returns the implicitly replicated axes, which are not explicitly bound to a
+  // dimension or explicitly populated in `replicated_axes()`.
+  // The returned axes are sorted by mesh axis index and sub-axis pre-size.
+  std::vector<AxisRef> GetImplicitlyReplicatedAxes() const;
+
   // Creates a sharding with empty mesh and no sharding axes depicting it is
   // replicated across all devices.
   static NamedSharding Replicate(absl::Span<const OpMetadata> metadata = {}) {
@@ -203,7 +222,7 @@ class NamedSharding {
                          /*manual_axes=*/{}, metadata);
   }
 
-  static NamedSharding MaximalSharding(
+  static NamedSharding SingleDevice(
       int64_t device_id, absl::Span<const OpMetadata> metadata = {}) {
     return NamedSharding(Mesh(device_id), /*dim_shardings=*/{},
                          /*replicated_axes=*/{},
@@ -238,22 +257,6 @@ class NamedSharding {
     }
   }
 
-  bool AllDimShardingsEmpty(
-      absl::Span<const DimensionSharding> dim_shardings) const {
-    return absl::c_all_of(dim_shardings, [](const DimensionSharding& s) {
-      return s.axes().empty();
-    });
-  }
-
-  std::vector<DimensionSharding> CanonicalizedDimShardings(
-      absl::Span<const DimensionSharding> dim_shardings) const {
-    if (AllDimShardingsEmpty(dim_shardings)) {
-      return {};
-    }
-    return std::vector<DimensionSharding>(dim_shardings.begin(),
-                                          dim_shardings.end());
-  }
-
   static std::vector<AxisRef> GetAllMeshAxes(const Mesh& mesh) {
     std::vector<AxisRef> all_axes;
     all_axes.reserve(mesh.num_axes());
@@ -271,6 +274,7 @@ class NamedSharding {
   std::vector<DimensionSharding> dim_shardings_;
   std::vector<AxisRef> replicated_axes_;
   std::vector<AxisRef> unreduced_axes_;
+  ReductionOp reduction_op_ = ReductionOp::kSum;
   std::vector<AxisRef> manual_axes_;
   std::vector<OpMetadata> metadata_;
 

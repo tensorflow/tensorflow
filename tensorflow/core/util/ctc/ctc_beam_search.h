@@ -170,11 +170,11 @@ absl::Status CTCBeamSearchDecoder<T, CTCBeamState, CTCBeamComparer>::Decode(
                   [this](const typename CTCDecoder<T>::Output& output) -> bool {
                     return output.size() < this->batch_size_;
                   })) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "output needs to be of size at least (top_n, batch_size).");
   }
   if (scores->rows() < this->batch_size_ || scores->cols() < top_n) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "scores needs to be of size at least (batch_size, top_n).");
   }
 
@@ -406,10 +406,11 @@ absl::Status CTCBeamSearchDecoder<T, CTCBeamState, CTCBeamComparer>::TopPaths(
   CHECK_NOTNULL(paths)->clear();
   CHECK_NOTNULL(log_probs)->clear();
   if (n > beam_width_) {
-    return errors::InvalidArgument("requested more paths than the beam width.");
+    return absl::InvalidArgumentError(
+        "requested more paths than the beam width.");
   }
   if (n > leaves_.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Less leaves in the beam search than requested.");
   }
 

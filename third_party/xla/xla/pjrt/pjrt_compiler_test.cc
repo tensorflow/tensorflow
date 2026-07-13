@@ -55,7 +55,7 @@ class PjRtTestTopology : public PjRtTopologyDescription {
       const override {
     LOG(FATAL) << "Unused";
   }
-  absl::StatusOr<std::string> Serialize() const override { return "test_topo"; }
+  absl::StatusOr<uint64_t> Fingerprint() const override { return 123; }
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
       const override {
     LOG(FATAL) << "Unused";
@@ -67,6 +67,18 @@ class PjRtTestTopology : public PjRtTopologyDescription {
         "TestTopology does not support GetDefaultLayout");
   }
 };
+
+// Registers a compiler to compile programs for 'platform_name' with
+// 'compiler_variant'. Takes ownership of 'compiler'.
+//
+// REQUIRES: No compiler has been registered for the platform and compiler
+// variant yet.
+void PjRtRegisterCompiler(absl::string_view platform_name,
+                          absl::string_view compiler_variant,
+                          std::unique_ptr<PjRtCompiler> compiler) {
+  CHECK_OK(PjRtCompilerRegistry::Global().RegisterCompiler(
+      platform_name, compiler_variant, std::move(compiler)));
+}
 
 TEST(PjRtCompilerTest, CompilerNotRegistered) {
   PjRtTestTopology topology;
@@ -88,9 +100,7 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
     DeviceDescriptions() const override {
       LOG(FATAL) << "Unused";
     }
-    absl::StatusOr<std::string> Serialize() const override {
-      return "test_topo";
-    }
+    absl::StatusOr<uint64_t> Fingerprint() const override { return 123; }
     const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
         const override {
       LOG(FATAL) << "Unused";
@@ -145,9 +155,7 @@ class PjRtDeserializeTopology : public PjRtTopologyDescription {
       const override {
     LOG(FATAL) << "Unused";
   }
-  absl::StatusOr<std::string> Serialize() const override {
-    return "serialized_topology";
-  }
+  absl::StatusOr<uint64_t> Fingerprint() const override { return 123; }
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
       const override {
     LOG(FATAL) << "Unused";
@@ -241,6 +249,12 @@ TEST(PjRtCompilerTest, VariantRegistryLookup) {
   // Lookup using the single-parameter overload.
   status = GetDefaultPjRtCompiler(platform);
   EXPECT_TRUE(absl::IsNotFound(status.status()));
+}
+
+TEST(PjRtTopologyDescriptionTest, DefaultMemorySpaceKindIds) {
+  PjRtTestTopology topology;
+  EXPECT_THAT(topology.GetMemorySpaceKindIds(), ::testing::ElementsAre(-1));
+  EXPECT_EQ(topology.GetDefaultMemorySpaceKindId(), -1);
 }
 
 TEST(PjRtCompilerTest, CompilerFactoryRegistered) {

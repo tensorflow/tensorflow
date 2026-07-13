@@ -16,28 +16,34 @@ limitations under the License.
 // Tests transferring literals of various shapes and values in and out of the
 // XLA service.
 
+#include <cstdint>
 #include <memory>
 #include <numeric>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
+#include "xla/array2d.h"
 #include "xla/array4d.h"
-#include "xla/client/local_client.h"
 #include "xla/literal.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/literal_util.h"
+#include "xla/service/service.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tests/local_client_test_base.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class RoundTripTransferTest : public ClientLibraryTestBase {
+class RoundTripTransferTest : public LocalClientTestBase {
  protected:
   void RoundTripTest(const Literal& original) {
-    std::unique_ptr<GlobalData> data =
-        client_->TransferToServer(original).value();
-    Literal result = client_->Transfer(*data).value();
-    EXPECT_TRUE(LiteralTestUtil::Equal(original, result));
+    absl::StatusOr<std::unique_ptr<GlobalData>> data =
+        local_client_->TransferToServer(original);
+    ASSERT_TRUE(data.ok());
+    absl::StatusOr<Literal> result = local_client_->Transfer(**data);
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(LiteralTestUtil::Equal(original, *result));
   }
 };
 

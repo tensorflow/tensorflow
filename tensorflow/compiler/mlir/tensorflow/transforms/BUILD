@@ -1,5 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_not_tflite_converter", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
@@ -18,16 +18,6 @@ gentbl_cc_library(
     td_file = "canonicalize.td",
     deps = [
         ":rewrite_util_td_files",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
-    ],
-)
-
-gentbl_cc_library(
-    name = "tensorflow_reduce_patterns_inc_gen",
-    tbl_outs = {"reducer/tf_reduce_patterns.inc": ["-gen-rewriters"]},
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "reducer/tf_mlir_reduce_patterns.td",
-    deps = [
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
     ],
 )
@@ -52,6 +42,7 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@shardy//shardy/dialect/sdy/ir:dialect",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -693,6 +684,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -893,6 +885,7 @@ cc_library(
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass_registration",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -937,7 +930,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
-        "//tensorflow/core:all_kernels",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -945,7 +937,9 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-    ],
+    ] + if_not_tflite_converter([
+        "//tensorflow/core:all_kernels",
+    ]),
     alwayslink = 1,
 )
 
@@ -1047,8 +1041,10 @@ cc_library(
         "@xla//xla:shape_util",
         "@xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "@xla//xla/mlir_hlo",
-        "@xla//xla/stream_executor/tpu:c_api_conversions",
-        "@xla//xla/stream_executor/tpu:tpu_api",
+        "@xla//xla/tpu:c_api_conversions",
+        "@xla//xla/tpu:c_api_decl",
+        "@xla//xla/tpu:tpu_executor_api",
+        "@xla//xla/tpu:tpu_executor_c_api_hdrs",
     ],
 )
 

@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: sdy_opt %s --split-input-file -xla-sdy-round-trip-export-pipeline 2>&1 | FileCheck %s --check-prefixes=CHECK,CHECK-V2
 // RUN: sdy_opt %s --split-input-file -xla-sdy-round-trip-export-pipeline='enable-hlo-sharding-v3=true' 2>&1 | FileCheck %s --check-prefixes=CHECK,CHECK-V3
 
@@ -98,7 +112,7 @@ func.func @func_result_sharding_returning_op_value(%arg0: tensor<8x16xf32>)
   // CHECK-V3-SAME: -> (tensor<8x16xf32> {mhlo.sharding = "{mesh['axis_0'=2,'axis_1'=4,'axis_2'=4], [{'axis_0', 'axis_1', ?}, {'axis_2'}]}"},
   // CHECK-V3-SAME:     tensor<8x16xf32> {mhlo.sharding = "{mesh['axis_0'=2,'axis_1'=4,'axis_2'=4], [{?}, {'axis_2'}]}"},
   // CHECK-V3-SAME:     tensor<8x16xf32> {mhlo.sharding = "{mesh['axis_0'=2,'axis_1'=4,'axis_2'=4], [{'axis_0', 'axis_1'}, {'axis_2'}]}"},
-  // CHECK-V3-SAME:     tensor<8x16xf32> {mhlo.sharding = "{mesh['axis_0'=2,'axis_1'=4,'axis_2'=4], replicated}"}) {
+  // CHECK-V3-SAME:     tensor<8x16xf32> {mhlo.sharding = "{mesh['axis_0'=2,'axis_1'=4,'axis_2'=4], [{}, {}]}"}) {
   -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{"x", ?}, {"y"}p4]>},
       tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{?}, {"y"}p4]>},
       tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{"x"}, {"y"}p1]>},
@@ -124,6 +138,7 @@ func.func @func_result_sharding_returning_op_value(%arg0: tensor<8x16xf32>)
 // CHECK-SAME:      %arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
 func.func @sharding_constraint(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
   // CHECK: stablehlo.custom_call @Sharding(%arg0)
+  // CHECK-NOT: has_side_effect
   // CHECK-V2-SAME: {mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh, [{\22axis_0\22, \22axis_1\22, ?}, {?}]>]>"}, mhlo.sharding =
   // CHECK-V3-NOT: mhlo.frontend_attributes
   // CHECK-V3-SAME: mhlo.sharding = "{mesh['axis_0'=2,'axis_1'=4,'axis_2'=4], [{'axis_0', 'axis_1', ?}, {?}]}"
@@ -259,4 +274,38 @@ func.func @named_sharding_module(%arg0: tensor<8x8xf32> {mhlo.sharding = "{mesh[
   %0 = stablehlo.add %arg0, %arg1 {mhlo.sharding = "{mesh[x=4,y=8], [{},{}]}"} : tensor<8x8xf32>
   %1 = stablehlo.dot %0, %arg2 : (tensor<8x8xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
   return %1 : tensor<8x16xf32>
+}
+
+// -----
+
+sdy.mesh @mesh_1 = <["x"=8, "y"=4]>
+
+// CHECK-LABEL: func @sharding_constraint_unreduced
+// CHECK-SAME:      %arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+func.func @sharding_constraint_unreduced(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+  // CHECK: stablehlo.custom_call @Sharding(%arg0)
+  // CHECK-V2-SAME: {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh_1, [{\22x\22, ?}, {?}], unreduced={\22y\22}>]>"}
+  // CHECK-V3-NOT: mhlo.frontend_attributes
+  // CHECK-V3-SAME: {has_side_effect = true, mhlo.sharding = "{mesh['x'=8,'y'=4], [{'x', ?}, {?}], unreduced={'y'}}"}
+  %0 = sdy.sharding_constraint %arg0 <@mesh_1, [{"x", ?}, {?}], unreduced={"y"}> :  tensor<8x8xf32>
+  return %0 : tensor<8x8xf32>
+}
+
+// -----
+
+sdy.mesh @mesh_size_1 = <["axis_0"=1]>
+
+// CHECK-LABEL: func @trivial_manual_computation
+// CHECK-SAME:      %arg0: tensor<8x16xf32>
+// CHECK-NEXT:    %[[ADD:.*]] = stablehlo.add %arg0, %arg0
+// CHECK-V2-NEXT: %[[CC:.*]] = stablehlo.custom_call @xla.sdy.FuncResultSharding(%[[ADD]])
+// CHECK-V2-NEXT: return %[[CC]] : tensor<8x16xf32>
+// CHECK-V3-NEXT: return %[[ADD]] : tensor<8x16xf32>
+// CHECK-NOT:     stablehlo.custom_call @xla.sdy.GlobalToLocalShape
+func.func @trivial_manual_computation(%arg0: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_size_1, [{"axis_0"}, {}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_size_1, [{"axis_0"}, {}]>}) {
+  %0 = sdy.manual_computation(%arg0) in_shardings=[<@mesh_size_1, [{"axis_0"}, {}]>] out_shardings=[<@mesh_size_1, [{"axis_0"}, {}]>] manual_axes={"axis_0"} (%arg1: tensor<8x16xf32>) {
+    %1 = stablehlo.add %arg1, %arg1 : tensor<8x16xf32>
+    sdy.return %1 : tensor<8x16xf32>
+  } : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
 }

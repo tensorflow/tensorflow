@@ -185,14 +185,24 @@ std::vector<T> CastVector(const std::vector<int>& input_data) {
   return casted_input;
 }
 
-#if GTEST_HAS_DEATH_TEST
-TYPED_TEST(StridedSliceOpTest, UnsupportedInputSize) {
-  EXPECT_DEATH(StridedSliceOpModel<TypeParam>({2, 2, 2, 2, 2, 2}, {5}, {5}, {5},
-                                              {TypeParam{}}, {}, {}, {}, 0, 0,
-                                              0, 0, 0, false),
-               "StridedSlice op only supports 1D-5D input arrays.");
+TYPED_TEST(StridedSliceOpTest, In6D) {
+  for (bool constant_tensors : {true, false}) {
+    if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+      // NNAPI does not support graphs with all constant inputs.
+      continue;
+    }
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({0, 1, 2, 3, 4, 5});
+    StridedSliceOpModel<TypeParam> m({2, 1, 1, 1, 1, 3}, {6}, {6}, {6},
+                                     input_data, {1, 0, 0, 0, 0, 1},
+                                     {2, 1, 1, 1, 1, 3}, {1, 1, 1, 1, 1, 1}, 0,
+                                     0, 0, 0, 0, constant_tensors);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 1, 1, 2}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({4, 5})));
+  }
 }
-#endif
 
 TYPED_TEST(StridedSliceOpTest, In1DEmpty) {
   for (bool constant_tensors : {true, false}) {
@@ -223,10 +233,12 @@ TYPED_TEST(StridedSliceOpTest, Offset) {
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
     EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
                                    CastVector<TypeParam>({1, 2, 3})));
-    if (constant_tensors) {
-      EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
-    } else {
-      EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLiteArenaRw);
+    if (m.GetNumberOfAppliedDelegates() == 0) {
+      if (constant_tensors) {
+        EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
+      } else {
+        EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLiteArenaRw);
+      }
     }
   }
 }
@@ -246,10 +258,12 @@ TYPED_TEST(StridedSliceOpTest, OffsetArray) {
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2}));
     EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
                                    CastVector<TypeParam>({1, 2, 5, 6})));
-    if (constant_tensors) {
-      EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
-    } else {
-      EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLiteArenaRw);
+    if (m.GetNumberOfAppliedDelegates() == 0) {
+      if (constant_tensors) {
+        EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
+      } else {
+        EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLiteArenaRw);
+      }
     }
   }
 }
@@ -1542,6 +1556,31 @@ TYPED_TEST(StridedSliceOpTest, NegEndMask) {
                                    CastVector<TypeParam>({3, 2, 1, 6, 5, 4})));
   }
 }
+
+TYPED_TEST(StridedSliceOpTest, StrideOverflowAndEdgeCases) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  {
+    const std::vector<TypeParam> input_data = CastVector<TypeParam>({1});
+    StridedSliceOpModel<TypeParam> m({1}, {1}, {1}, {1}, input_data, {0},
+                                     {2147483647}, {126322568}, 0, 0, 0, 0, 0,
+                                     /*constant_tensors=*/false,
+                                     /*offset=*/true);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({17}));
+  }
+  {
+    const std::vector<TypeParam> input_data = CastVector<TypeParam>({1});
+    StridedSliceOpModel<TypeParam> m({1}, {1}, {1}, {1}, input_data, {0},
+                                     {-2147483648}, {-1000000000}, 0, 0, 0, 0,
+                                     0, /*constant_tensors=*/false,
+                                     /*offset=*/true);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
+  }
+}
+
 TYPED_TEST(StridedSliceOpTest, NoopOffset) {
   const std::vector<TypeParam> input_data =
       CastVector<TypeParam>({1, 2, 3, 4, 5, 6});

@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -62,7 +63,7 @@ CpuPjRtCodegenTest::CompileToExecutable(std::unique_ptr<HloModule> hlo_module,
 void CpuPjRtCodegenTest::CompileAndVerifyIr(
     std::unique_ptr<HloModule> hlo_module, absl::string_view expected_llvm_ir,
     bool match_optimized_ir, bool run_optimization_passes) {
-  auto llvm_compiler = tensorflow::down_cast<LLVMCompiler*>(compiler());
+  auto llvm_compiler = absl::down_cast<LLVMCompiler*>(compiler());
   TF_ASSERT_OK(xla::CompileAndVerifyIr(
       llvm_compiler, compile_options_, std::move(hlo_module), expected_llvm_ir,
       match_optimized_ir, run_optimization_passes));
@@ -82,7 +83,7 @@ void CpuPjRtCodegenTest::CompileAheadOfTimeAndVerifyIr(
     std::unique_ptr<HloModule> hlo_module,
     const AotCompilationOptions& aot_options,
     absl::string_view expected_llvm_ir, bool match_optimized_ir) {
-  auto llvm_compiler = tensorflow::down_cast<LLVMCompiler*>(compiler());
+  auto llvm_compiler = absl::down_cast<LLVMCompiler*>(compiler());
   TF_ASSERT_OK(xla::CompileAheadOfTimeAndVerifyIr(
       llvm_compiler, aot_options, std::move(hlo_module), expected_llvm_ir,
       match_optimized_ir));

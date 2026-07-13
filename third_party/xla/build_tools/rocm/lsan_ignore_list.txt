@@ -1,3 +1,10 @@
 leak:libhsa-runtime64.so
 leak:libstdc++.so
 leak:libamdhip64.so
+
+# RCCL leaks in librccl (not XLA), seen by single-rank comm tests. Shipped
+# librccl is stripped (frames lack function names), so we suppress by lib name.
+#  - ncclGroupJob in ncclGroupEndInternal: fixed in ROCm 7.2.4
+#    (https://github.com/ROCm/rocm-systems/pull/3198).
+#  - lsaRankList in ncclDevrInitOnce: still present on develop (2.30.4); fix pending.
+leak:librccl.so

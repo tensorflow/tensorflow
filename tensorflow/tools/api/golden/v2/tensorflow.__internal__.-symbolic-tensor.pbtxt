@@ -6,42 +6,42 @@ tf_class {
   is_instance: "<class \'tensorflow.python.types.internal.NativeObject\'>"
   is_instance: "<class \'tensorflow.python.types.core.Symbol\'>"
   is_instance: "<class \'tensorflow.python.types.core.Tensor\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "OVERLOADABLE_OPERATORS"
-    mtype: "<type \'set\'>"
+    mtype: "<class \'set\'>"
   }
   member {
     name: "device"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "dtype"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "graph"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "name"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "ndim"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "op"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "shape"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "value_index"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"
