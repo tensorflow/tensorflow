@@ -938,6 +938,7 @@ tf_cc_test(
 tf_cc_test(
     name = "sparse_core_ops_utils_test",
     srcs = ["sparse_core_ops_utils_test.cc"],
+    tags = ["no_windows"],
     deps = [
         ":sparse_core_ops_utils",
         "@com_google_absl//absl/status:status_matchers",
