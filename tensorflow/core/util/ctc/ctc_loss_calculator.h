@@ -309,7 +309,7 @@ absl::Status CTCLossCalculator<T>::PopulateLPrimes(
   for (int b = 0; b < batch_size; b++) {
     // Assume label is in Label proto
     const std::vector<int>& label = labels[b];
-    if (label.size() == 0) {
+    if (label.empty()) {
       return absl::InvalidArgumentError(
           absl::StrCat("Labels length is zero in batch ", b));
     }
