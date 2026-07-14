@@ -148,3 +148,37 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "dynamic_bitset",
+    srcs = ["dynamic_bitset.cc"],
+    hdrs = ["dynamic_bitset.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
+    ],
+)
+
+xla_cc_test(
+    name = "dynamic_bitset_test",
+    srcs = ["dynamic_bitset_test.cc"],
+    deps = [
+        ":dynamic_bitset",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "dynamic_bitset_benchmark",
+    srcs = ["dynamic_bitset_benchmark.cc"],
+    fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
+    fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    deps = [
+        ":dynamic_bitset",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_benchmark//:benchmark",
+    ],
+)
