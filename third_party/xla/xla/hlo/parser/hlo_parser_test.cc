@@ -7364,8 +7364,34 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   HloInstruction* async_done = module->entry_computation()->root_instruction();
   HloComputation* called_computation = async_done->async_wrapped_computation();
-  EXPECT_EQ(called_computation->num_parameters(), 1);
-  EXPECT_EQ(called_computation->root_instruction()->operand_count(), 1);
+  EXPECT_EQ(called_computation->num_parameters(), 2);
+  EXPECT_EQ(called_computation->root_instruction()->operand_count(), 2);
+}
+
+TEST_F(HloParserTest,
+       DesugarParsingTest_CallStart_RootShape_CallDone_Mismatch) {
+  const char* const hlo = R"(
+HloModule main
+
+ENTRY main {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  %call-start = ((), (), s32[]) call-start(), to_apply={
+    p0 = f32[] parameter(0)
+    ROOT negate = f32[32] custom-call(p0), custom_call_target="foo"
+  }
+  %call-update = ((f32[], f32[]), (), s32[]) call-update(%call-start, p0, p1)
+  ROOT %call-done = f32[64] call-done(%call-update)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloInstruction* async_done = module->entry_computation()->root_instruction();
+  HloComputation* async_wrapped_computation =
+      async_done->async_wrapped_computation();
+  // the shape of the root of the async-wrapped computation is determined by the
+  // shape of async-done.
+  EXPECT_EQ(async_wrapped_computation->root_instruction()->shape().ToString(),
+            "f32[64]");
 }
 
 TEST_F(HloParserTest, DeeplyNestedOperandsExceedsRecursionLimit) {
