@@ -239,5 +239,37 @@ TEST_F(
   EXPECT_TRUE(matched);
 }
 
+TEST_F(GpuAlgebraicSimplifierTest, SimplifyNoOpReducePrecisionInsideFusion) {
+  const std::string& hlo_string = R"(
+    HloModule m
+
+    fused_computation {
+      p0 = bf16[10] parameter(0)
+      rp = bf16[10] reduce-precision(p0), exponent_bits=8, mantissa_bits=7
+      ROOT add = bf16[10] add(rp, p0)
+    }
+
+    ENTRY e {
+      p = bf16[10] parameter(0)
+      ROOT fusion = bf16[10] fusion(p), kind=kLoop, calls=fused_computation
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifierOptions options;
+  options.set_enable_remove_no_op_reduce_precision(true);
+
+  ASSERT_TRUE(
+      GpuAlgebraicSimplifier(options, Ampere()).Run(module.get()).value());
+
+  EXPECT_THAT(module->entry_computation()
+                  ->root_instruction()
+                  ->fused_instructions_computation()
+                  ->instructions(),
+              ::testing::UnorderedElementsAre(
+                  GmockMatch(m::Parameter()),
+                  GmockMatch(m::Add(m::Parameter(), m::Parameter()))));
+}
+
 }  // namespace
 }  // namespace xla::gpu
