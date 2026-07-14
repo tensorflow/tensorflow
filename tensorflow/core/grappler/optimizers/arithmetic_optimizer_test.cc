@@ -597,9 +597,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveInvolutionAdjacentNodes) {
   auto c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});
   auto neg1 = ops::Neg(s.WithOpName("neg1"), c);
   auto neg2 = ops::Neg(s.WithOpName("neg2"), neg1);
-  auto recip1 = ops::Reciprocal(s.WithOpName("recip1"), neg2);
-  auto recip2 = ops::Reciprocal(s.WithOpName("recip2"), recip1);
-  auto id = ops::Identity(s.WithOpName("id"), recip2);
+  auto id = ops::Identity(s.WithOpName("id"), neg2);
 
   GrapplerItem item;
   item.fetch = {"id"};
@@ -612,7 +610,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveInvolutionAdjacentNodes) {
   EnableOnlyRemoveInvolution(&optimizer);
   OptimizeAndPrune(&optimizer, &item, &output);
 
-  // Negation and Reciprocal nodes cancelled each other.
+  // The two adjacent Neg nodes cancelled each other.
   ASSERT_EQ(output.node_size(), 2);
   EXPECT_EQ(output.node(1).name(), "id");
   ASSERT_EQ(output.node(1).input_size(), 1);
@@ -627,11 +625,11 @@ TEST_F(ArithmeticOptimizerTest, RemoveInvolutionAroundValuePreservingChain) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
   auto c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});
-  auto recip1 = ops::Reciprocal(s.WithOpName("recip1"), c);
-  auto id1 = ops::Identity(s.WithOpName("id1"), recip1);
+  auto neg1 = ops::Neg(s.WithOpName("neg1"), c);
+  auto id1 = ops::Identity(s.WithOpName("id1"), neg1);
   auto squeeze = ops::Squeeze(s.WithOpName("squeeze"), id1);
-  auto recip2 = ops::Reciprocal(s.WithOpName("recip2"), squeeze);
-  auto id2 = ops::Identity(s.WithOpName("id2"), recip2);
+  auto neg2 = ops::Neg(s.WithOpName("neg2"), squeeze);
+  auto id2 = ops::Identity(s.WithOpName("id2"), neg2);
 
   std::vector<std::string> fetch = {"id2"};
 
@@ -646,7 +644,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveInvolutionAroundValuePreservingChain) {
   EnableOnlyRemoveInvolution(&optimizer);
   OptimizeTwiceAndPrune(&optimizer, &item, &output);
 
-  // Check that Reciprocal nodes were removed from the graph.
+  // Check that the Neg nodes were removed from the graph.
   EXPECT_EQ(output.node_size(), 3);
 
   // And const directly flows into squeeze.
@@ -673,12 +671,12 @@ TEST_F(ArithmeticOptimizerTest, RemoveInvolutionSkipControlDependencies) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
   auto c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});
-  auto recip1 = ops::Reciprocal(s.WithOpName("recip1"), c);
-  auto id1 = ops::Identity(s.WithOpName("id1"), recip1);
+  auto neg1 = ops::Neg(s.WithOpName("neg1"), c);
+  auto id1 = ops::Identity(s.WithOpName("id1"), neg1);
   auto squeeze = ops::Squeeze(s.WithOpName("squeeze"), id1);
-  auto recip2 = ops::Reciprocal(
-      s.WithOpName("recip2").WithControlDependencies(squeeze), c);
-  auto id2 = ops::Identity(s.WithOpName("id2"), recip2);
+  auto neg2 = ops::Neg(
+      s.WithOpName("neg2").WithControlDependencies(squeeze), c);
+  auto id2 = ops::Identity(s.WithOpName("id2"), neg2);
 
   std::vector<std::string> fetch = {"id2"};
 
@@ -698,6 +696,36 @@ TEST_F(ArithmeticOptimizerTest, RemoveInvolutionSkipControlDependencies) {
   VerifyGraphsMatch(item.graph, output, __LINE__);
 
   auto tensors = EvaluateNodes(output, fetch);
+  ASSERT_EQ(tensors.size(), 1);
+  test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
+}
+
+TEST_F(ArithmeticOptimizerTest, DoNotRemoveReciprocalInvolution) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  // reciprocal(reciprocal(x)) is not the identity in floating point: the first
+  // reciprocal is already rounded, so the second cannot recover x exactly.
+  // The two ops must therefore survive the involution removal pass.
+  auto c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f, 7.0f}, {1, 3});
+  auto recip1 = ops::Reciprocal(s.WithOpName("recip1"), c);
+  auto recip2 = ops::Reciprocal(s.WithOpName("recip2"), recip1);
+  auto id = ops::Identity(s.WithOpName("id"), recip2);
+
+  GrapplerItem item;
+  item.fetch = {"id"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  ASSERT_EQ(tensors_expected.size(), 1);
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveInvolution(&optimizer);
+  OptimizeTwice(&optimizer, &item, &output);
+
+  // Both Reciprocal nodes are preserved.
+  VerifyGraphsMatch(item.graph, output, __LINE__);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
   ASSERT_EQ(tensors.size(), 1);
   test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
 }

@@ -797,9 +797,14 @@ OPDEF_PROPERTY_HELPER(Aggregate, aggregate)
 OPDEF_PROPERTY_HELPER(Commutative, commutative)
 
 bool IsInvolution(const NodeDef& node) {
+  // An involution f satisfies f(f(x)) == x exactly, which lets a pair of them
+  // be cancelled without changing the result. Reciprocal is intentionally
+  // excluded: in floating point 1 / (1 / x) does not round-trip to x because
+  // the first reciprocal is already rounded, so eliminating the pair would
+  // alter the numerical output.
   static const gtl::FlatSet<std::string>* const kInvolutionOps =
       CHECK_NOTNULL((new gtl::FlatSet<std::string>{
-          "Conj", "Reciprocal", "Invert", "Neg", "LogicalNot"}));
+          "Conj", "Invert", "Neg", "LogicalNot"}));
   return kInvolutionOps->count(node.op()) > 0;
 }
 
