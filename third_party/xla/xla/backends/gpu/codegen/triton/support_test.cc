@@ -3546,6 +3546,7 @@ constexpr std::array kUnsupportedOps = {
     HloOpcode::kMulhi,
     HloOpcode::kRaggedDot,
     HloOpcode::kReduceWindow,
+    HloOpcode::kRotate,
     HloOpcode::kScan,
     HloOpcode::kScatter,
     HloOpcode::kSelectAndScatter,

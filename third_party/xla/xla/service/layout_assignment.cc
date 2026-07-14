@@ -2933,6 +2933,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kReduceWindow:
     case HloOpcode::kRemainder:
     case HloOpcode::kReverse:
+    case HloOpcode::kRotate:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
     case HloOpcode::kRsqrt:

@@ -188,6 +188,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kRemainder:
     case HloOpcode::kReplicaId:
     case HloOpcode::kReverse:
+    case HloOpcode::kRotate:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
     case HloOpcode::kRsqrt:
@@ -2973,6 +2974,26 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       return builder->AddInstruction(
           HloInstruction::CreateReverse(*shape, operands[0], *dimensions));
+    }
+    case HloOpcode::kRotate: {
+      optional<std::vector<int64_t>> dimensions;
+      attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                             &dimensions};
+      optional<std::vector<int64_t>> shifts;
+      attrs["shifts"] = {/*required=*/true, AttrTy::kBracedInt64List, &shifts};
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
+          !ParseAttributes(attrs, allow_attributes, shape)) {
+        return nullptr;
+      }
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferRotateShape(operands[0]->shape(),
+                                                    *dimensions, *shifts);
+          })) {
+        return nullptr;
+      }
+      return builder->AddInstruction(HloInstruction::CreateRotate(
+          *shape, operands[0], *dimensions, *shifts));
     }
     case HloOpcode::kSelectAndScatter: {
       optional<HloComputation*> select;

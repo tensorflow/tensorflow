@@ -3511,6 +3511,28 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
   return operand_shape;
 }
 
+/*static */ absl::StatusOr<Shape> ShapeInference::InferRotateShape(
+    const Shape& operand_shape, absl::Span<const int64_t> dimensions,
+    absl::Span<const int64_t> shifts) {
+  RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of rotate"));
+  if (!AllUnique(dimensions)) {
+    return InvalidArgument("a dimension number is duplicated in rotate");
+  }
+  if (dimensions.size() != shifts.size()) {
+    return InvalidArgument(
+        "dimensions and shifts must have the same size, got %d and %d",
+        dimensions.size(), shifts.size());
+  }
+  for (int64_t dimension : dimensions) {
+    if (dimension < 0 || dimension >= operand_shape.dimensions().size()) {
+      return InvalidArgument(
+          "One of the rotate dimensions (%d) is out-of-bounds in shape %s.",
+          dimension, ShapeUtil::HumanString(operand_shape));
+    }
+  }
+  return operand_shape;
+}
+
 /* static */ absl::StatusOr<Shape> ShapeInference::InferGetTupleElementShape(
     const Shape& arg, int64_t index) {
   if (!arg.IsTuple()) {

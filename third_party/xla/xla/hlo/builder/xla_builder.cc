@@ -3127,6 +3127,30 @@ absl::StatusOr<XlaOp> XlaBuilder::RevInternal(
   return AddInstruction(std::move(instr), HloOpcode::kReverse, {operand});
 }
 
+XlaOp XlaBuilder::Rotate(XlaOp operand, absl::Span<const int64_t> dimensions,
+                         absl::Span<const int64_t> shifts) {
+  return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
+    ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferRotateShape(
+                                      *operand_shape, dimensions, shifts));
+    return RotateInternal(shape, operand, dimensions, shifts);
+  });
+}
+
+absl::StatusOr<XlaOp> XlaBuilder::RotateInternal(
+    const Shape& shape, XlaOp operand, absl::Span<const int64_t> dimensions,
+    absl::Span<const int64_t> shifts) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  for (int64_t dim : dimensions) {
+    instr.add_dimensions(dim);
+  }
+  for (int64_t shift : shifts) {
+    instr.add_shifts(shift);
+  }
+  return AddInstruction(std::move(instr), HloOpcode::kRotate, {operand});
+}
+
 XlaOp XlaBuilder::Sort(absl::Span<const XlaOp> operands,
                        XlaComputationId comparator, int64_t dimension,
                        bool is_stable) {
@@ -6623,6 +6647,11 @@ XlaOp Transpose(const XlaOp operand, absl::Span<const int64_t> permutation) {
 
 XlaOp Rev(const XlaOp operand, absl::Span<const int64_t> dimensions) {
   return operand.builder()->Rev(operand, dimensions);
+}
+
+XlaOp Rotate(const XlaOp operand, absl::Span<const int64_t> dimensions,
+             absl::Span<const int64_t> shifts) {
+  return operand.builder()->Rotate(operand, dimensions, shifts);
 }
 
 XlaOp Sort(absl::Span<const XlaOp> operands, const XlaComputation& comparator,
