@@ -727,7 +727,10 @@ TEST_F(ArithmeticOptimizerTest, DoNotRemoveReciprocalInvolution) {
 
   auto tensors = EvaluateNodes(output, item.fetch);
   ASSERT_EQ(tensors.size(), 1);
-  test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
+  // The graphs are identical, so the results must match bitwise. A tolerance
+  // here (e.g. 1e-6) would be looser than the ~5e-7 rounding error for 7.0f and
+  // would fail to catch the involution being incorrectly applied.
+  test::ExpectTensorEqual<float>(tensors[0], tensors_expected[0]);
 }
 
 TEST_F(ArithmeticOptimizerTest, TrivialSumsSimple) {
