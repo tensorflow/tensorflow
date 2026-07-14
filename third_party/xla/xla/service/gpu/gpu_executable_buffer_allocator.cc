@@ -135,6 +135,52 @@ CollectedAllocationIndices CollectAllocationIndices(
   return indices;
 }
 
+struct CollectedAllocationIndices {
+  GpuExecutableBufferAllocator::AllocationIndexSet constant;
+  GpuExecutableBufferAllocator::AllocationIndexSet persistent;
+  GpuExecutableBufferAllocator::AllocationIndexSet va_remapped;
+};
+
+CollectedAllocationIndices CollectAllocationIndices(
+    absl::Span<const BufferAllocation* const> allocations,
+    const ThunkExecutor* thunk_executor, bool persist_temp_allocations) {
+  CollectedAllocationIndices indices;
+  if (thunk_executor == nullptr) {
+    return indices;
+  }
+
+  CHECK_OK(thunk_executor->thunks().WalkNested(
+      [&](const Thunk* thunk) -> absl::Status {
+        auto* command_buffer_thunk =
+            dynamic_cast<const CommandBufferThunk*>(thunk);
+        if (command_buffer_thunk == nullptr) {
+          return absl::OkStatus();
+        }
+        for (BufferAllocation::Index index :
+             command_buffer_thunk->allocs_indices()) {
+          if (index < 0 || static_cast<size_t>(index) >= allocations.size()) {
+            continue;
+          }
+          const BufferAllocation& allocation = *allocations[index];
+          if (allocation.size() == 0) {
+            continue;
+          }
+          if (allocation.is_constant()) {
+            indices.constant.insert(index);
+          } else if (persist_temp_allocations &&
+                     allocation.IsPreallocatedTempBuffer()) {
+            indices.va_remapped.insert(index);
+          }
+        }
+        return absl::OkStatus();
+      }));
+
+  indices.persistent = indices.constant;
+  indices.persistent.insert(indices.va_remapped.begin(),
+                            indices.va_remapped.end());
+  return indices;
+}
+
 }  // namespace
 
 absl::StatusOr<uint64_t>
