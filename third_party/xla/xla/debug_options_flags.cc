@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -118,12 +119,13 @@ static auto FindRepeatedFieldValue(google::protobuf::RepeatedField<int>* list, T
 
 // Returns a `DebugOptions` setter for repeated enum flag of type `T`.
 template <typename T>
-static auto SetterForRepeatedEnum(
+static std::function<bool(const std::string&)> SetterForRepeatedEnum(
     absl::string_view flag_name, absl::string_view enum_prefix,
-    bool (*enum_parser)(absl::string_view string_value, T* value),
-    google::protobuf::RepeatedField<int>* mutable_array) {
+    std::function<bool(absl::string_view, T*)> enum_parser,
+    std::function<google::protobuf::RepeatedField<int>*()> mutable_array_getter) {
   return [flag_name, enum_prefix, enum_parser,
-          mutable_array](const std::string& input) {
+          mutable_array_getter](absl::string_view input) {
+    auto* mutable_array = mutable_array_getter();
     if (input.empty()) {  // Disable all values.
       mutable_array->Clear();
       return true;
@@ -1428,8 +1430,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       SetterForRepeatedEnum<DebugOptions::LibraryFusionType>(
           "xla_cpu_experimental_onednn_fusion_type",
           /*enum_prefix=*/"LIBRARY_FUSION_TYPE_",
-          &DebugOptions::LibraryFusionType_Parse,
-          debug_options->mutable_xla_cpu_experimental_onednn_fusion_type()),
+          [](absl::string_view s, DebugOptions::LibraryFusionType* v) {
+            return DebugOptions::LibraryFusionType_Parse(s, v);
+          },
+          [debug_options]() {
+            return debug_options
+                ->mutable_xla_cpu_experimental_onednn_fusion_type();
+          }),
       "",
       "Comma-separated list of oneDNN fusion types to be enabled; "
       "no whitespace around commas. Two ways to pass values:\n"
@@ -1470,8 +1477,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       SetterForRepeatedEnum<DebugOptions::LibraryFusionType>(
           "xla_cpu_experimental_xnn_fusion_type",
           /*enum_prefix=*/"LIBRARY_FUSION_TYPE_",
-          &DebugOptions::LibraryFusionType_Parse,
-          debug_options->mutable_xla_cpu_experimental_xnn_fusion_type()),
+          [](absl::string_view s, DebugOptions::LibraryFusionType* v) {
+            return DebugOptions::LibraryFusionType_Parse(s, v);
+          },
+          [debug_options]() {
+            return debug_options
+                ->mutable_xla_cpu_experimental_xnn_fusion_type();
+          }),
       "",
       "Comma-separated list of XNN fusion types to be enabled; "
       "no whitespace around commas. Two ways to pass values:\n"
@@ -1486,8 +1498,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       SetterForRepeatedEnum<DebugOptions::LibraryFusionType>(
           "xla_cpu_experimental_ynn_fusion_type",
           /*enum_prefix=*/"LIBRARY_FUSION_TYPE_",
-          &DebugOptions::LibraryFusionType_Parse,
-          debug_options->mutable_xla_cpu_experimental_ynn_fusion_type()),
+          [](absl::string_view s, DebugOptions::LibraryFusionType* v) {
+            return DebugOptions::LibraryFusionType_Parse(s, v);
+          },
+          [debug_options]() {
+            return debug_options
+                ->mutable_xla_cpu_experimental_ynn_fusion_type();
+          }),
       "",
       "Comma-separated list of YNN fusion types to be enabled; "
       "no whitespace around commas. Two ways to pass values:\n"
@@ -2025,8 +2042,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_gpu_enable_command_buffer",
       SetterForRepeatedEnum<DebugOptions::CommandBufferCmdType>(
           "xla_gpu_enable_command_buffer",
-          /*enum_prefix=*/"", &DebugOptions::CommandBufferCmdType_Parse,
-          debug_options->mutable_xla_gpu_enable_command_buffer()),
+          /*enum_prefix=*/"",
+          [](absl::string_view s, DebugOptions::CommandBufferCmdType* v) {
+            return DebugOptions::CommandBufferCmdType_Parse(s, v);
+          },
+          [debug_options]() {
+            return debug_options->mutable_xla_gpu_enable_command_buffer();
+          }),
       command_types_to_string(debug_options->xla_gpu_enable_command_buffer()),
       "The types of the commands that are recorded into command buffers. It"
       " can either be a list of command types or a list of command types with"
@@ -2037,9 +2059,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_gpu_enable_collectives_command_buffer_filter",
       SetterForRepeatedEnum<DebugOptions::CollectiveOpType>(
           "xla_gpu_enable_collectives_command_buffer_filter",
-          /*enum_prefix=*/"", &DebugOptions::CollectiveOpType_Parse,
-          debug_options
-              ->mutable_xla_gpu_enable_collectives_command_buffer_filter()),
+          /*enum_prefix=*/"",
+          [](absl::string_view s, DebugOptions::CollectiveOpType* v) {
+            return DebugOptions::CollectiveOpType_Parse(s, v);
+          },
+          [debug_options]() {
+            return debug_options
+                ->mutable_xla_gpu_enable_collectives_command_buffer_filter();
+          }),
       collective_op_types_to_string(
           debug_options->xla_gpu_enable_collectives_command_buffer_filter()),
       "Only collectives specified in this filter will be executed in a "
@@ -2780,8 +2807,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_gpu_experimental_autotune_backends",
       SetterForRepeatedEnum<autotuner::Backend>(
           "xla_gpu_experimental_autotune_backends",
-          /*enum_prefix=*/"", &autotuner::Backend_Parse,
-          debug_options->mutable_xla_gpu_experimental_autotune_backends()),
+          /*enum_prefix=*/"",
+          [](absl::string_view s, autotuner::Backend* v) {
+            return autotuner::Backend_Parse(s, v);
+          },
+          [debug_options]() {
+            return debug_options
+                ->mutable_xla_gpu_experimental_autotune_backends();
+          }),
       autotune_backends_to_string(
           debug_options->xla_gpu_experimental_autotune_backends()),
       "Backends to enable for autotuning. Comma-separated (no spaces). "
