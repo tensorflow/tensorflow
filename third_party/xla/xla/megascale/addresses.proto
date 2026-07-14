@@ -34,6 +34,7 @@ message HostNetworkAddress {
 // host_id) and the network address it is reachable at.
 message NetworkAddressMapping {
   int32 slice_id = 1;
+  // TODO: b/534900490 - rename to task_id
   int32 host_id = 2;
   repeated HostNetworkAddress addresses = 3;
 }
