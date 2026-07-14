@@ -112,6 +112,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/device_interconnect_resource.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
@@ -161,7 +162,6 @@ limitations under the License.
 #endif
 
 #include "xla/service/gpu/gpu_executable_run_options.h"
-#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -1384,16 +1384,53 @@ GetStreamExecutorGpuDeviceAllocator(
       break;
     }
 
-    case GpuAllocatorConfig::Kind::kPlatform:
-      LOG(INFO) << "Using platform allocator.";
+    case GpuAllocatorConfig::Kind::kPlatform: {
+      LOG(INFO) << "Using platform (synchronous passthrough) allocator.";
       if (allocator_config.collective_memory_size != 0) {
         LOG(WARNING)
             << "collective_memory_size is non-zero, but allocator kind is set "
-               "to \"platform\". Collective memory will not be allocated.";
+               "to \"platform\". Collective memory will not be preallocated.";
       }
-      // Returning null will cause the client to use the default backend
-      // allocator.
-      return nullptr;
+      for (const auto& [ordinal, device] : addressable_devices) {
+        auto* executor = device->executor();
+        auto* stream = device->compute_stream();
+
+        // Default device memory space (XLA color 0 -> StreamExecutor
+        // MemorySpace::kDevice = 0)
+        auto default_allocator =
+            std::make_shared<se::StreamExecutorMemoryAllocator>(
+                executor, static_cast<int64_t>(se::MemorySpace::kDevice));
+        allocators.push_back(
+            {std::move(default_allocator), stream,
+             /*memory_space=*/(int)xla::gpu::MemorySpaceColor::kDefault});
+
+        // Collective memory space (XLA color 1 -> StreamExecutor
+        // MemorySpace::kCollective = 2)
+        auto collective_allocator =
+            std::make_shared<se::StreamExecutorMemoryAllocator>(
+                executor, static_cast<int64_t>(se::MemorySpace::kCollective));
+        allocators.push_back(
+            {std::move(collective_allocator), stream,
+             /*memory_space=*/(int)xla::gpu::MemorySpaceColor::kCollective});
+
+        // Temp buffer memory space (XLA color 2 -> StreamExecutor
+        // MemorySpace::kDevice = 0)
+        auto temp_allocator =
+            std::make_shared<se::StreamExecutorMemoryAllocator>(
+                executor, static_cast<int64_t>(se::MemorySpace::kDevice));
+        allocators.push_back(
+            {std::move(temp_allocator), stream,
+             /*memory_space=*/(int)xla::gpu::MemorySpaceColor::kTempBuffer});
+
+        // Host memory space (StreamExecutor MemorySpace::kHost = 5)
+        ASSIGN_OR_RETURN(auto host_allocator, GetGpuHostAllocator(executor));
+        allocators.push_back(
+            {std::move(host_allocator), stream,
+             /*memory_space=*/static_cast<int>(se::MemorySpace::kHost)});
+      }
+      return std::make_unique<se::MultiDeviceAdapter>(platform,
+                                                      std::move(allocators));
+    }
 
     case GpuAllocatorConfig::Kind::kVmm: {
 #if GOOGLE_CUDA
@@ -1420,26 +1457,6 @@ GetStreamExecutorGpuDeviceAllocator(
       return absl::UnimplementedError(
           "VMM allocator is only supported with CUDA or ROCm.");
 #endif  // GOOGLE_CUDA
-    }
-
-    case GpuAllocatorConfig::Kind::kAddress: {
-      // Synchronous passthrough allocator. Unlike kPlatform (which returns
-      // nullptr to share the Backend/LocalClient allocator with TF), this
-      // constructs a dedicated StreamExecutorAddressAllocator at the PJRT
-      // level and bypasses the BFC allocator entirely.
-      LOG(INFO) << "Using address (synchronous passthrough) allocator.";
-      if (allocator_config.collective_memory_size != 0) {
-        LOG(WARNING)
-            << "collective_memory_size is non-zero, but allocator kind is set "
-               "to \"address\". Collective memory will not be allocated.";
-      }
-      std::vector<se::StreamExecutor*> executors;
-      executors.reserve(addressable_devices.size());
-      for (const auto& [ordinal, device] : addressable_devices) {
-        executors.push_back(device->executor());
-      }
-      return std::make_unique<se::StreamExecutorAddressAllocator>(platform,
-                                                                  executors);
     }
   }
 

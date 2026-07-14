@@ -2307,22 +2307,18 @@ TEST(StreamExecutorGpuClientTest,
       se_topology->gpu_topology().host_target_machine_options().has_value());
 }
 
-// The "address" allocator must give a dedicated synchronous passthrough
-// StreamExecutorAddressAllocator at the PJRT level and bypass the BFC allocator
-// (MultiDeviceAdapter) entirely.
-TEST(StreamExecutorGpuClientTest, AddressAllocatorIsSynchronousPassthrough) {
+// The "platform" allocator must return a MultiDeviceAdapter wrapping
+// synchronous StreamExecutorMemoryAllocator instances at the PJRT level.
+TEST(StreamExecutorGpuClientTest, PlatformAllocatorIsSynchronousPassthrough) {
   GpuClientOptions options;
-  options.allocator_config.kind = GpuAllocatorConfig::Kind::kAddress;
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kPlatform;
   options.allowed_devices = {0};
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
 
   auto* pjrt_se_client =
       absl::down_cast<PjRtStreamExecutorClient*>(client.get());
-  EXPECT_NE(dynamic_cast<se::StreamExecutorAddressAllocator*>(
-                pjrt_se_client->allocator()),
-            nullptr);
-  EXPECT_EQ(dynamic_cast<se::MultiDeviceAdapter*>(pjrt_se_client->allocator()),
+  EXPECT_NE(dynamic_cast<se::MultiDeviceAdapter*>(pjrt_se_client->allocator()),
             nullptr);
 }
 
@@ -2529,7 +2525,7 @@ TEST_F(VmmTest, CommandBufferSkipTempTwoGemmChain) {
 TEST_F(VmmTest, CommandBufferSkipTempFallsBackWithoutVmmAllocator) {
   GpuClientOptions options;
   options.allowed_devices = {0};
-  options.allocator_config.kind = GpuAllocatorConfig::Kind::kAddress;
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kPlatform;
   ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
 
   ScopedBufferAllocatorVLog vlog;
