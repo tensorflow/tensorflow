@@ -179,27 +179,6 @@ limitations under the License.
 
 namespace xla {
 
-namespace {
-class HostStagingBuffer : public PjRtStagingBuffer {
- public:
-  HostStagingBuffer(std::shared_ptr<void> buffer, size_t size)
-      : buffer_(std::move(buffer)), size_(size) {}
-
-  absl::Span<uint8_t> data() override {
-    return absl::MakeSpan(static_cast<uint8_t*>(buffer_.get()), size_);
-  }
-
-  absl::Span<const uint8_t> const_data() const override {
-    return absl::MakeConstSpan(static_cast<const uint8_t*>(buffer_.get()),
-                               size_);
-  }
-
- private:
-  std::shared_ptr<void> buffer_;
-  size_t size_;
-};
-}  // namespace
-
 template <typename T>
 static std::function<void()> WrapClosureAsCopyable(T cb) {
   return [state = std::make_shared<T>(std::move(cb))]() { return (*state)(); };
@@ -2878,11 +2857,8 @@ PjRtStreamExecutorClient::AllocateForDelinearizationAsync(
     return tsl::MakeErrorAsyncValueRef(absl::ResourceExhaustedError(
         absl::StrCat("Failed to allocate staging buffer of size ", size)));
   }
-  std::shared_ptr<void> buffer(ptr, free);
-
-  auto staging_buffer = tsl::MakeAvailableAsyncValueRef<HostStagingBuffer>(
-      std::move(buffer), size);
-  return tsl::AsyncValueRef<PjRtStagingBuffer>(std::move(staging_buffer));
+  absl::Span<uint8_t> span(static_cast<uint8_t*>(ptr), size);
+  return PjRtStagingBuffer::Create(span, [ptr]() { free(ptr); });
 }
 
 }  // namespace xla

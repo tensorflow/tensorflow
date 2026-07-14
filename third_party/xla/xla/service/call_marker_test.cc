@@ -68,7 +68,7 @@ ENTRY inline {
   custom-call = (f32[]) custom-call(c), custom_call_target="__xla_internal_call_marker_before", custom_call_has_side_effect=true, frontend_attributes={xla_call_marked_computation="a"}
   get-tuple-element = f32[] get-tuple-element(custom-call), index=0
   a = f32[] call(get-tuple-element), to_apply=a
-  custom-call.1 = f32[] custom-call(a), custom_call_target="__xla_internal_call_marker_after", custom_call_has_side_effect=true, frontend_attributes={xla_call_marked_computation="a"}
+  custom-call.1 = f32[] custom-call(a), custom_call_target="__xla_internal_call_marker_after", custom_call_has_side_effect=true, frontend_attributes={xla_call_marked_computation="a",xla_call_marked_instruction_name="a"}
   ROOT tuple = (f32[], f32[]) tuple(custom-call.1, c)
 }
 
@@ -114,7 +114,7 @@ ENTRY inline {
   custom-call = (f32[]) custom-call(c), custom_call_target="__xla_internal_call_marker_before", custom_call_has_side_effect=true, frontend_attributes={xla_call_marked_computation="a"}
   get-tuple-element = f32[] get-tuple-element(custom-call), index=0
   a = f32[] call(get-tuple-element), to_apply=a
-  ROOT custom-call.1 = f32[] custom-call(a), custom_call_target="__xla_internal_call_marker_after", custom_call_has_side_effect=true, frontend_attributes={xla_call_marked_computation="a"}
+  ROOT custom-call.1 = f32[] custom-call(a), custom_call_target="__xla_internal_call_marker_after", custom_call_has_side_effect=true, frontend_attributes={xla_call_marked_computation="a",xla_call_marked_instruction_name="a"}
 }
 
 )";
@@ -469,11 +469,11 @@ ENTRY inline {
   custom-call = (f32[]) custom-call(c), custom_call_target="__xla_internal_call_marker_before", custom_call_has_side_effect=true, frontend_attributes={xla_call_marked_computation="a"}
   get-tuple-element = f32[] get-tuple-element(custom-call), index=0
   add.1 = f32[] add(get-tuple-element, get-tuple-element)
-  custom-call.1 = f32[] custom-call(add.1), custom_call_target="__xla_internal_call_marker_after", custom_call_has_side_effect=true, frontend_attributes={xla_call_marked_computation="a"}
+  custom-call.1 = f32[] custom-call(add.1), custom_call_target="__xla_internal_call_marker_after", custom_call_has_side_effect=true, frontend_attributes={xla_call_marked_computation="a",xla_call_marked_instruction_name="b"}
   custom-call.2 = (f32[]) custom-call(c), custom_call_target="__xla_internal_call_marker_before", custom_call_has_side_effect=true, frontend_attributes={xla_call_marked_computation="a.1"}
   get-tuple-element.1 = f32[] get-tuple-element(custom-call.2), index=0
   negate.1 = f32[] negate(get-tuple-element.1)
-  custom-call.3 = f32[] custom-call(negate.1), custom_call_target="__xla_internal_call_marker_after", custom_call_has_side_effect=true, frontend_attributes={xla_call_marked_computation="a.1"}
+  custom-call.3 = f32[] custom-call(negate.1), custom_call_target="__xla_internal_call_marker_after", custom_call_has_side_effect=true, frontend_attributes={xla_call_marked_computation="a.1",xla_call_marked_instruction_name="call"}
   ROOT tuple = (f32[], f32[]) tuple(custom-call.1, custom-call.3)
 }
 

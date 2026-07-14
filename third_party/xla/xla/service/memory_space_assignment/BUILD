@@ -596,6 +596,41 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "live_range_util",
+    srcs = ["live_range_util.cc"],
+    hdrs = ["live_range_util.h"],
+    deps = [
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_buffer",
+        "//xla/service:hlo_value",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "live_range_util_test",
+    srcs = ["live_range_util_test.cc"],
+    deps = [
+        ":live_range_util",
+        "//xla:shape_util",
+        "//xla/hlo/analysis:alias_info",
+        "//xla/hlo/analysis:hlo_alias_analysis",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/utils:hlo_live_range",
+        "//xla/service:hlo_buffer",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "algorithm",
     srcs = ["algorithm.cc"],
     hdrs = ["algorithm.h"],

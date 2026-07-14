@@ -171,6 +171,43 @@ class CommonPjRtClient : public PjRtClient {
     return absl::UnimplementedError("LinearizeInto is not supported");
   }
 
+  // Tests if a buffer is eligible for zero copy linearization.
+  virtual bool ShouldPerformZeroCopyLinearize(
+      const void* data, const xla::Shape& device_shape, PrimitiveType type,
+      absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides) {
+    return false;
+  }
+
+  // Creates a staging buffer directly from host data for zero copy.
+  virtual tsl::AsyncValueRef<PjRtStagingBuffer>
+  CreateStagingForZeroCopyLinearize(
+      const void* data, const xla::Shape& device_shape,
+      PjRtMemorySpace* memory_space,
+      absl::AnyInvocable<void() &&> on_done_with_host_buffer);
+
+  // Allocates a destination buffer for linearizing into.
+  virtual absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>>
+  AllocateLinearizeDest(bool sync, const xla::Shape& device_shape,
+                        absl::Span<const int64_t> byte_strides,
+                        PjRtRawBufferRef dest_buffer);
+
+  // Linearizes data into dest.
+  virtual absl::Status Linearize(absl::Span<uint8_t> dest, const void* data,
+                                 PrimitiveType type,
+                                 absl::Span<const int64_t> dims,
+                                 absl::Span<const int64_t> byte_strides,
+                                 const Layout& device_layout,
+                                 absl::Span<const uint32_t> dynamic_sizes);
+
+  absl::StatusOr<PjRtDeviceEventRef> LinearizeIntoImpl(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      HostBufferSemantics host_buffer_semantics,
+      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+      const xla::Shape& device_shape, absl::Span<const uint32_t> dynamic_sizes,
+      PjRtRawBufferRef raw_buffer);
+
   // Defines a pjrt buffer from a shape, raw_buffer and definition events.
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> DefineBuffer(
       std::shared_ptr<const Shape> on_device_shape,

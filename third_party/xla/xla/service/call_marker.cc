@@ -97,6 +97,7 @@ absl::Status PopulateMetadataAndDependencies(HloInstruction* call,
   FrontendAttributes before_attributes;
   (*before_attributes.mutable_map())[kCallMarkedComputationAttribute.data()] =
       call->to_apply()->name();
+  // Call markers declare output-to-operand aliasing to pass values through.
   call_before->set_frontend_attributes(before_attributes);
 
   // Set frontend attributes on the 'after' marker (merge original call's
@@ -104,6 +105,9 @@ absl::Status PopulateMetadataAndDependencies(HloInstruction* call,
   FrontendAttributes after_attributes = call->frontend_attributes();
   (*after_attributes.mutable_map())[kCallMarkedComputationAttribute.data()] =
       call->to_apply()->name();
+  (*after_attributes
+        .mutable_map())[kCallMarkedInstructionNameAttribute.data()] =
+      call->name();
   call_after->set_frontend_attributes(after_attributes);
 
   // Move control predecessors of the call to the 'before' marker so they
