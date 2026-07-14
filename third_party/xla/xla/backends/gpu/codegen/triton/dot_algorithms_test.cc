@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <initializer_list>
 #include <iostream>
 #include <iterator>
@@ -32,6 +33,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -47,8 +49,10 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "third_party/gloop/util/status/ret_check.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
+#include "xla/array2d.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/backends/gpu/profiler/kernel_name_tracer.h"
@@ -67,12 +71,15 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_interpreter_reference_mixin.h"
+#include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
-#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/types.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/tensor_float_32_utils.h"
 
 namespace xla::gpu {
 namespace {
@@ -1587,10 +1594,10 @@ TEST_P(TritonAndBlasSupportForDifferentTensorSizes,
       break;
     case PC::ALG_DOT_BF16_BF16_F32_X6:
     case PC::ALG_DOT_BF16_BF16_F32_X9:
-        ASSERT_TRUE(result_or_status.status().ok())
-            << "failed to compile " << algorithm_;
-        EXPECT_TRUE(result_or_status.value())
-            << "wrong result for " << algorithm_;
+      ASSERT_TRUE(result_or_status.status().ok())
+          << "failed to compile " << algorithm_;
+      EXPECT_TRUE(result_or_status.value())
+          << "wrong result for " << algorithm_;
       break;
     case PC::ALG_DOT_F64_F64_F64:
       EXPECT_EQ(result_or_status.status().code(),
@@ -2084,6 +2091,261 @@ INSTANTIATE_TEST_SUITE_P(
                    PC::ALG_DOT_F32_F32_F32),
             Values(Backend::kTriton, Backend::kBlas)),
     AlgorithmAndBackendTestParamToString);
+
+struct DotTestParam {
+  bool is_triton;
+  bool enable_tf32;
+};
+
+std::string PrintDotTestParam(
+    const ::testing::TestParamInfo<DotTestParam>& info) {
+  return absl::StrCat(info.param.is_triton ? "Triton" : "CuBlas", "_",
+                      info.param.enable_tf32 ? "TF32Enabled" : "TF32Disabled");
+}
+
+class DotWithBF16InputPrecisionTest
+    : public AlgorithmTest,
+      public ::testing::WithParamInterface<DotTestParam> {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = AlgorithmTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_autotune_level(0);
+    if (GetParam().is_triton) {
+      debug_options.set_xla_gpu_enable_triton_gemm(true);
+      debug_options.set_xla_gpu_cublas_fallback(false);
+    } else {
+      debug_options.set_xla_gpu_enable_triton_gemm(false);
+      debug_options.set_xla_gpu_cublas_fallback(true);
+    }
+    return debug_options;
+  }
+  struct CandidateModule {
+    std::string name;
+    absl::string_view hlo_text;
+  };
+
+  absl::StatusOr<Literal> CompileCheckAndRun(
+      absl::string_view hlo_text, const std::vector<const Literal*>& args,
+      const DotTestParam& param) {
+    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     GetOptimizedModule(hlo_text));
+    if (param.is_triton) {
+      ASSIGN_OR_RETURN(bool ok,
+                       RunFileCheck(module->ToString(), "CHECK: kind=kCustom"));
+      RET_CHECK(ok)
+          << "Expected Triton custom fusion in optimized module, got:\n"
+          << module->ToString();
+    } else {
+      ASSIGN_OR_RETURN(bool ok,
+                       RunFileCheck(module->ToString(),
+                                    "CHECK: custom_call_target=\"__cublas"));
+      RET_CHECK(ok) << "Expected cuBLAS custom call in optimized module, got:\n"
+                    << module->ToString();
+    }
+    return Execute(std::move(module), args, /*run_hlo_passes=*/false);
+  }
+};
+
+TEST_P(DotWithBF16InputPrecisionTest, WithF32InputsMaskedToBf16) {
+  // The goal of the test is to prove that upcasting the args from BF16 to F32
+  // makes no difference for the dots with f32 accumulator.
+  if (!GetCudaComputeCapability().IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Requires Ampere+ GPU";
+  }
+
+  const DotTestParam& param = GetParam();
+  bool prev_tf32 = tsl::tensor_float_32_execution_enabled();
+  tsl::enable_tensor_float_32_execution(param.enable_tf32);
+  absl::Cleanup cleanup_tf32 = [prev_tf32] {
+    tsl::enable_tensor_float_32_execution(prev_tf32);
+  };
+
+  // Populate all 128 7-bit mantissa combinations for F32 with lower 16 bits
+  // zeroed out.
+  Array2D<float> lhs_arr(32, 32);
+  Array2D<float> rhs_arr(32, 32);
+
+  // Full coverage of the 7-bit mantissa and use moderate values for the
+  // exponent (avoiding both underflow and overflow).
+  for (int i = 0; i < 32; ++i) {
+    for (int j = 0; j < 32; ++j) {
+      int idx = i * 32 + j;
+      uint32_t lhs_mantissa = (idx % 128) << 16;
+      uint32_t rhs_mantissa = ((idx * 3 + 1) % 128) << 16;
+      uint32_t lhs_bits = (127u << 23) | lhs_mantissa;
+      uint32_t rhs_bits = (127u << 23) | rhs_mantissa;
+
+      std::memcpy(&lhs_arr(i, j), &lhs_bits, sizeof(float));
+      std::memcpy(&rhs_arr(i, j), &rhs_bits, sizeof(float));
+    }
+  }
+
+  Literal lhs_literal = LiteralUtil::CreateR2FromArray2D(lhs_arr);
+  Literal rhs_literal = LiteralUtil::CreateR2FromArray2D(rhs_arr);
+  std::vector<const Literal*> args = {&lhs_literal, &rhs_literal};
+
+  constexpr absl::string_view hlo_f32 = R"hlo(
+    ENTRY e {
+      p0 = f32[32,32]{1,0} parameter(0)
+      p1 = f32[32,32]{1,0} parameter(1)
+      ROOT _ = f32[32,32]{1,0} dot(p0, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0},
+        algorithm=dot_f32_f32_f32
+    }
+  )hlo";
+
+  constexpr absl::string_view hlo_tf32 = R"hlo(
+    ENTRY e {
+      p0 = f32[32,32]{1,0} parameter(0)
+      p1 = f32[32,32]{1,0} parameter(1)
+      ROOT _ = f32[32,32]{1,0} dot(p0, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0},
+        algorithm=dot_tf32_tf32_f32
+    }
+  )hlo";
+
+  constexpr absl::string_view hlo_default = R"hlo(
+    ENTRY e {
+      p0 = f32[32,32]{1,0} parameter(0)
+      p1 = f32[32,32]{1,0} parameter(1)
+      ROOT _ = f32[32,32]{1,0} dot(p0, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )hlo";
+
+  constexpr absl::string_view hlo_bf16 = R"hlo(
+    ENTRY e {
+      p0 = f32[32,32]{1,0} parameter(0)
+      p1 = f32[32,32]{1,0} parameter(1)
+      p0_bf16 = bf16[32,32]{1,0} convert(p0)
+      p1_bf16 = bf16[32,32]{1,0} convert(p1)
+      ROOT _ = f32[32,32]{1,0} dot(p0_bf16, p1_bf16),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(Literal ref_output_f32,
+                       CompileCheckAndRun(hlo_f32, args, param));
+
+  std::vector<CandidateModule> candidates = {
+      {"tf32_tf32_f32", hlo_tf32},
+      {"no_explicit_algorithm", hlo_default},
+      {"bf16_truncated_inputs", hlo_bf16},
+  };
+
+  for (const auto& candidate : candidates) {
+    ASSERT_OK_AND_ASSIGN(Literal res,
+                         CompileCheckAndRun(candidate.hlo_text, args, param));
+    EXPECT_TRUE(LiteralTestUtil::Equal(ref_output_f32, res))
+        << "Candidate: " << candidate.name;
+  }
+}
+
+TEST_P(DotWithBF16InputPrecisionTest, WithBf16InputsExpandedToF32) {
+  // The goal of the test is to prove that upcasting the args from BF16 to F32
+  // makes no difference for the dots with f32 accumulator.
+  if (!GetCudaComputeCapability().IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Requires Ampere+ GPU";
+  }
+
+  const DotTestParam& param = GetParam();
+  bool prev_tf32 = tsl::tensor_float_32_execution_enabled();
+  tsl::enable_tensor_float_32_execution(param.enable_tf32);
+  absl::Cleanup cleanup_tf32 = [prev_tf32] {
+    tsl::enable_tensor_float_32_execution(prev_tf32);
+  };
+
+  // Populate all 128 7-bit mantissa combinations directly in bfloat16.
+  Array2D<bfloat16> lhs_arr(32, 32);
+  Array2D<bfloat16> rhs_arr(32, 32);
+
+  // Full coverage of the 7-bit mantissa and use moderate values for the
+  // exponent (avoiding both underflow and overflow).
+  for (int i = 0; i < 32; ++i) {
+    for (int j = 0; j < 32; ++j) {
+      int idx = i * 32 + j;
+      uint16_t lhs_mantissa = idx % 128;
+      uint16_t rhs_mantissa = (idx * 3 + 1) % 128;
+      uint16_t lhs_bits = (127u << 7) | lhs_mantissa;
+      uint16_t rhs_bits = (127u << 7) | rhs_mantissa;
+
+      std::memcpy(&lhs_arr(i, j), &lhs_bits, sizeof(uint16_t));
+      std::memcpy(&rhs_arr(i, j), &rhs_bits, sizeof(uint16_t));
+    }
+  }
+
+  Literal lhs_literal = LiteralUtil::CreateR2FromArray2D(lhs_arr);
+  Literal rhs_literal = LiteralUtil::CreateR2FromArray2D(rhs_arr);
+  std::vector<const Literal*> args = {&lhs_literal, &rhs_literal};
+
+  constexpr absl::string_view hlo_f32 = R"hlo(
+    ENTRY e {
+      p0 = bf16[32,32]{1,0} parameter(0)
+      p1 = bf16[32,32]{1,0} parameter(1)
+      p0_f32 = f32[32,32]{1,0} convert(p0)
+      p1_f32 = f32[32,32]{1,0} convert(p1)
+      ROOT _ = f32[32,32]{1,0} dot(p0_f32, p1_f32),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0},
+        algorithm=dot_f32_f32_f32
+    }
+  )hlo";
+
+  constexpr absl::string_view hlo_tf32 = R"hlo(
+    ENTRY e {
+      p0 = bf16[32,32]{1,0} parameter(0)
+      p1 = bf16[32,32]{1,0} parameter(1)
+      p0_f32 = f32[32,32]{1,0} convert(p0)
+      p1_f32 = f32[32,32]{1,0} convert(p1)
+      ROOT _ = f32[32,32]{1,0} dot(p0_f32, p1_f32),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0},
+        algorithm=dot_tf32_tf32_f32
+    }
+  )hlo";
+
+  constexpr absl::string_view hlo_default = R"hlo(
+    ENTRY e {
+      p0 = bf16[32,32]{1,0} parameter(0)
+      p1 = bf16[32,32]{1,0} parameter(1)
+      p0_f32 = f32[32,32]{1,0} convert(p0)
+      p1_f32 = f32[32,32]{1,0} convert(p1)
+      ROOT _ = f32[32,32]{1,0} dot(p0_f32, p1_f32),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )hlo";
+
+  constexpr absl::string_view hlo_bf16 = R"hlo(
+    ENTRY e {
+      p0 = bf16[32,32]{1,0} parameter(0)
+      p1 = bf16[32,32]{1,0} parameter(1)
+      ROOT _ = f32[32,32]{1,0} dot(p0, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(Literal ref_output_f32,
+                       CompileCheckAndRun(hlo_f32, args, param));
+
+  std::vector<CandidateModule> candidates = {
+      {"tf32_tf32_f32", hlo_tf32},
+      {"no_explicit_algorithm", hlo_default},
+      {"bf16_truncated_inputs", hlo_bf16},
+  };
+
+  for (const auto& candidate : candidates) {
+    ASSERT_OK_AND_ASSIGN(Literal res,
+                         CompileCheckAndRun(candidate.hlo_text, args, param));
+    EXPECT_TRUE(LiteralTestUtil::Equal(ref_output_f32, res))
+        << "Candidate: " << candidate.name;
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Test, DotWithBF16InputPrecisionTest,
+    ::testing::Values(DotTestParam{/*is_triton=*/true, /*enable_tf32=*/false},
+                      DotTestParam{/*is_triton=*/true, /*enable_tf32=*/true},
+                      DotTestParam{/*is_triton=*/false, /*enable_tf32=*/false},
+                      DotTestParam{/*is_triton=*/false, /*enable_tf32=*/true}),
+    PrintDotTestParam);
 
 }  // namespace
 }  // namespace xla::gpu
