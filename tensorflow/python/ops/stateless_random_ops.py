@@ -250,10 +250,16 @@ def stateless_shuffle(value, seed, alg="auto_select", name=None):
   same `value` and `seed`, it will produce the same result.  The
   output is consistent across multiple runs on the same hardware (and between
   CPU and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
-  hardware. This consistency does not extend to XLA: running under
+  hardware.
+
+  Note: This consistency does not extend to XLA. Running under
   `tf.function(jit_compile=True)` may produce different values from eager or
   (non-XLA) graph execution for the same seed, even when `alg` is set to a
-  concrete algorithm.
+  concrete algorithm. XLA may lower these ops to a different underlying RNG
+  algorithm (for example Philox versus ThreeFry) depending on the target
+  device or compilation flags, so code that must reproduce results across XLA
+  and non-XLA execution should verify the behavior on its specific
+  hardware/backend.
 
   Args:
     value: A Tensor to be shuffled.
@@ -291,10 +297,16 @@ def stateless_random_uniform(
   same seeds and shapes, it will produce the same pseudorandom numbers.  The
   output is consistent across multiple runs on the same hardware (and between
   CPU and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
-  hardware. This consistency does not extend to XLA: running under
+  hardware.
+
+  Note: This consistency does not extend to XLA. Running under
   `tf.function(jit_compile=True)` may produce different values from eager or
   (non-XLA) graph execution for the same seed, even when `alg` is set to a
-  concrete algorithm.
+  concrete algorithm. XLA may lower these ops to a different underlying RNG
+  algorithm (for example Philox versus ThreeFry) depending on the target
+  device or compilation flags, so code that must reproduce results across XLA
+  and non-XLA execution should verify the behavior on its specific
+  hardware/backend.
 
   The generated values follow a uniform distribution in the range
   `[minval, maxval)`. The lower bound `minval` is included in the range, while
@@ -428,9 +440,15 @@ def stateless_random_binomial(
   with the same seeds and shapes, it will produce the same pseudorandom numbers.
   The output is consistent across multiple runs on the same hardware (and
   between CPU and GPU), but may change between versions of TensorFlow or on
-  non-CPU/GPU hardware. This consistency does not extend to XLA: running under
+  non-CPU/GPU hardware.
+
+  Note: This consistency does not extend to XLA. Running under
   `tf.function(jit_compile=True)` may produce different values from eager or
-  (non-XLA) graph execution for the same seed.
+  (non-XLA) graph execution for the same seed. XLA may lower these ops to a
+  different underlying RNG algorithm (for example Philox versus ThreeFry)
+  depending on the target device or compilation flags, so code that must
+  reproduce results across XLA and non-XLA execution should verify the
+  behavior on its specific hardware/backend.
 
   Example:
 
@@ -500,10 +518,15 @@ def stateless_random_gamma(
   seeds and shapes, it will produce the same pseudorandom numbers. The output is
   consistent across multiple runs on the same hardware (and between CPU and
   GPU),
-  but may change between versions of TensorFlow or on non-CPU/GPU hardware. This
-  consistency does not extend to XLA: running under
+  but may change between versions of TensorFlow or on non-CPU/GPU hardware.
+
+  Note: This consistency does not extend to XLA. Running under
   `tf.function(jit_compile=True)` may produce different values from eager or
-  (non-XLA) graph execution for the same seed.
+  (non-XLA) graph execution for the same seed. XLA may lower these ops to a
+  different underlying RNG algorithm (for example Philox versus ThreeFry)
+  depending on the target device or compilation flags, so code that must
+  reproduce results across XLA and non-XLA execution should verify the
+  behavior on its specific hardware/backend.
 
   A slight difference exists in the interpretation of the `shape` parameter
   between `stateless_gamma` and `gamma`: in `gamma`, the `shape` is always
@@ -603,9 +626,15 @@ def stateless_random_poisson(shape, seed, lam, dtype=dtypes.int32, name=None):
   This is a stateless version of `tf.random.poisson`: if run twice with the same
   seeds and shapes, it will produce the same pseudorandom numbers. The output is
   consistent across multiple runs on the same hardware, but may change between
-  versions of TensorFlow or on non-CPU/GPU hardware. This consistency does not
-  extend to XLA: running under `tf.function(jit_compile=True)` may produce
-  different values from eager or (non-XLA) graph execution for the same seed.
+  versions of TensorFlow or on non-CPU/GPU hardware.
+
+  Note: This consistency does not extend to XLA. Running under
+  `tf.function(jit_compile=True)` may produce different values from eager or
+  (non-XLA) graph execution for the same seed. XLA may lower these ops to a
+  different underlying RNG algorithm (for example Philox versus ThreeFry)
+  depending on the target device or compilation flags, so code that must
+  reproduce results across XLA and non-XLA execution should verify the
+  behavior on its specific hardware/backend.
 
   A slight difference exists in the interpretation of the `shape` parameter
   between `stateless_poisson` and `poisson`: in `poisson`, the `shape` is always
@@ -671,10 +700,16 @@ def stateless_random_normal(
   same seeds and shapes, it will produce the same pseudorandom numbers.  The
   output is consistent across multiple runs on the same hardware (and between
   CPU and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
-  hardware. This consistency does not extend to XLA: running under
+  hardware.
+
+  Note: This consistency does not extend to XLA. Running under
   `tf.function(jit_compile=True)` may produce different values from eager or
   (non-XLA) graph execution for the same seed, even when `alg` is set to a
-  concrete algorithm.
+  concrete algorithm. XLA may lower these ops to a different underlying RNG
+  algorithm (for example Philox versus ThreeFry) depending on the target
+  device or compilation flags, so code that must reproduce results across XLA
+  and non-XLA execution should verify the behavior on its specific
+  hardware/backend.
 
   Args:
     shape: A 1-D integer Tensor or Python array. The shape of the output tensor.
@@ -725,10 +760,16 @@ def stateless_truncated_normal(
   the same seeds and shapes, it will produce the same pseudorandom numbers.  The
   output is consistent across multiple runs on the same hardware (and between
   CPU and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
-  hardware. This consistency does not extend to XLA: running under
+  hardware.
+
+  Note: This consistency does not extend to XLA. Running under
   `tf.function(jit_compile=True)` may produce different values from eager or
   (non-XLA) graph execution for the same seed, even when `alg` is set to a
-  concrete algorithm.
+  concrete algorithm. XLA may lower these ops to a different underlying RNG
+  algorithm (for example Philox versus ThreeFry) depending on the target
+  device or compilation flags, so code that must reproduce results across XLA
+  and non-XLA execution should verify the behavior on its specific
+  hardware/backend.
 
   The generated values follow a normal distribution with specified mean and
   standard deviation, except that values whose magnitude is more than 2 standard
@@ -779,9 +820,15 @@ def stateless_multinomial(
   same seeds and shapes, it will produce the same pseudorandom numbers.  The
   output is consistent across multiple runs on the same hardware (and between
   CPU and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
-  hardware. This consistency does not extend to XLA: running under
+  hardware.
+
+  Note: This consistency does not extend to XLA. Running under
   `tf.function(jit_compile=True)` may produce different values from eager or
-  (non-XLA) graph execution for the same seed.
+  (non-XLA) graph execution for the same seed. XLA may lower these ops to a
+  different underlying RNG algorithm (for example Philox versus ThreeFry)
+  depending on the target device or compilation flags, so code that must
+  reproduce results across XLA and non-XLA execution should verify the
+  behavior on its specific hardware/backend.
 
   Example:
 
@@ -822,9 +869,15 @@ def stateless_categorical(
   same seeds and shapes, it will produce the same pseudorandom numbers.  The
   output is consistent across multiple runs on the same hardware (and between
   CPU and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
-  hardware. This consistency does not extend to XLA: running under
+  hardware.
+
+  Note: This consistency does not extend to XLA. Running under
   `tf.function(jit_compile=True)` may produce different values from eager or
-  (non-XLA) graph execution for the same seed.
+  (non-XLA) graph execution for the same seed. XLA may lower these ops to a
+  different underlying RNG algorithm (for example Philox versus ThreeFry)
+  depending on the target device or compilation flags, so code that must
+  reproduce results across XLA and non-XLA execution should verify the
+  behavior on its specific hardware/backend.
 
 
   Example:
