@@ -490,6 +490,20 @@ class QuantizationPattern : public RewritePattern {
               (nodes_blocklist.find(sloc) != nodes_blocklist.end())) {
             return failure();
           }
+        } else if (auto fused_loc =
+                       llvm::dyn_cast<FusedLoc>(quantizing_op->getLoc())) {
+          bool blocked = false;
+          for (auto loc : fused_loc.getLocations()) {
+            if (auto comp_name_loc = llvm::dyn_cast<NameLoc>(loc)) {
+              std::string sloc = comp_name_loc.getName().str();
+              if (!sloc.empty() &&
+                  (nodes_blocklist.find(sloc) != nodes_blocklist.end())) {
+                blocked = true;
+                break;
+              }
+            }
+          }
+          if (blocked) return failure();
         }
       }
 

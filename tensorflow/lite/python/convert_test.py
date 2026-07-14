@@ -56,8 +56,9 @@ def _mock_wrapped_convert(
 
 
 def _mock_retrieve_errors():
-  err_data = converter_error_data_pb2.ConverterErrorData(
-      error_code=converter_error_data_pb2.ConverterErrorData.ERROR_STATEFUL_PARTITIONED_CALL_IN_FINAL_IR
+  error_data = converter_error_data_pb2.ConverterErrorData
+  err_data = error_data(
+      error_code=error_data.ERROR_STATEFUL_PARTITIONED_CALL_IN_FINAL_IR
   )
   return [err_data]
 
