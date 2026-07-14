@@ -250,6 +250,7 @@ class ShapeVerifier : public DfsHloVisitor {
   absl::Status HandleRngBitGenerator(HloInstruction*) override;
   absl::Status HandleRngGetAndUpdateState(HloInstruction*) override;
   absl::Status HandleReverse(HloInstruction* reverse) override;
+  absl::Status HandleRotate(HloInstruction* rotate) override;
   absl::Status HandleSort(HloInstruction* hlo) override;
   absl::Status HandleTopK(HloInstruction* hlo) override;
   absl::Status HandleConstant(HloInstruction* constant) override;
