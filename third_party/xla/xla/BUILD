@@ -373,6 +373,7 @@ xla_cc_test(
         ":xla_data_proto_cc",
         "//xla/hlo/testlib:test",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "//xla/tsl/util:maybe_owning",
         "@com_google_absl//absl/algorithm:container",
