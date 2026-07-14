@@ -1,0 +1,60 @@
+# Align GSan structures and stride to 16 bytes for Blackwell compatibility.
+# Remove once upstreamed, b/495776594.
+--- a/python/triton/experimental/gsan/src/GSan.h
++++ b/python/triton/experimental/gsan/src/GSan.h
+@@ -60,7 +60,7 @@
+ static_assert(sizeof(ShadowCell) == 24);
+ static_assert(alignof(ShadowCell) == 4);
+ 
+-struct GlobalState {
++struct alignas(16) GlobalState {
+   // Base address of gsan managed memory
+   uintptr_t reserveBase;
+   uintptr_t globalsBase;
+@@ -75,7 +75,7 @@
+   uint16_t clockBufferSize;
+ };
+ 
+-struct ThreadState {
++struct alignas(16) ThreadState {
+   GlobalState *globals;
+   uintptr_t reserveBase;
+ 
+@@ -94,7 +94,7 @@
+ 
+   // Local vector clock, shape [numThreads]
+   // Followed by the clock buffer, shape [clockBufferSize, numThreads]
+-  epoch_t vectorClock[];
++  alignas(16) epoch_t vectorClock[];
+ };
+ 
+ static constexpr int kMaxAtomicShadowCells = 3;
+
+--- a/python/triton/experimental/gsan/src/GSanLibrary.cu
++++ b/python/triton/experimental/gsan/src/GSanLibrary.cu
+@@ -88,8 +88,9 @@
+ 
+ GSAN_DEVICE uintptr_t getThreadStateStrideBytes(GlobalState *globals) {
+   auto clocksPerThread = 1u + globals->clockBufferSize;
+-  return sizeof(ThreadState) +
+-         sizeof(epoch_t) * globals->numThreads * clocksPerThread;
++  uintptr_t stride = sizeof(ThreadState) +
++                     sizeof(epoch_t) * globals->numThreads * clocksPerThread;
++  return roundUp(stride, alignof(ThreadState));
+ }
+ 
+ GSAN_DEVICE thread_id_t getDeviceThreadId(GlobalState *globals, uint32_t smid) {
+
+--- a/python/triton/experimental/gsan/src/gsan_testing.cc
++++ b/python/triton/experimental/gsan/src/gsan_testing.cc
+@@ -208,7 +208,8 @@
+ size_t threadStateStrideBytes(uint16_t numThreads, uint16_t clockBufferSize) {
+   auto clocksPerThread = static_cast<size_t>(1) + clockBufferSize;
+   auto clockWords = static_cast<size_t>(numThreads) * clocksPerThread;
+-  return kThreadStateSize + sizeof(gsan::epoch_t) * clockWords;
++  size_t stride = kThreadStateSize + sizeof(gsan::epoch_t) * clockWords;
++  return roundUp(stride, alignof(gsan::ThreadState));
+ }
+ 
+ PyGSanThreadState decodeThreadStateBytes(const char *bytes, size_t size,
+
