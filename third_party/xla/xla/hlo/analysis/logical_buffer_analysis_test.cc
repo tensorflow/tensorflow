@@ -49,7 +49,8 @@ class LogicalBufferAnalysisTest : public HloHardwareIndependentTestBase {
                          analysis_->GetBuffer(instruction, index));
     EXPECT_EQ(buffer->instruction(), instruction);
     EXPECT_EQ(buffer->index(), index);
-    EXPECT_THAT(analysis_->GetBuffer(buffer->id()), IsOkAndHolds(buffer));
+    EXPECT_THAT(analysis_->GetBuffer(buffer->id()),
+                absl_testing::IsOkAndHolds(buffer));
   }
 
   // Verifies that no buffer is defined by `instruction` at `index`.
@@ -440,7 +441,7 @@ TEST_F(LogicalBufferAnalysisTest, InvalidGetBufferThrows) {
   HloInstruction* param = FindInstruction(module.get(), "p0");
 
   EXPECT_THAT(analysis_->GetBuffer(param, {0}),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(LogicalBufferAnalysisTest, InvalidGetBufferIdBehavior) {
@@ -457,7 +458,7 @@ TEST_F(LogicalBufferAnalysisTest, InvalidGetBufferIdBehavior) {
 
   // GetBuffer with invalid ID of 100 on a module containing 2 buffers.
   EXPECT_THAT(analysis_->GetBuffer(100),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(LogicalBufferAnalysisTest, SimpleAsyncChain) {
