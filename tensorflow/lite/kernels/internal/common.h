@@ -52,11 +52,21 @@ constexpr int kReverseShift = -1;
 //
 // For floating-point T these are plain a+b / a*b (no overflow concern); the
 // unsigned path is only taken for integral types.
+//
+// Note on integral promotion: for integer types narrower than int (e.g.
+// int16_t), the corresponding unsigned type (uint16_t) is still promoted to the
+// signed `int` before the arithmetic is performed. That promotion would
+// reintroduce signed overflow UB (e.g. 65535 * 65535 overflows int). To avoid
+// it we widen the operands to an unsigned type at least as wide as unsigned int
+// so the arithmetic itself stays unsigned, then truncate back down to the
+// narrow type -- both steps are well-defined.
 template <typename T>
 inline T WrappingAdd(T a, T b) {
   if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>) {
     using U = std::make_unsigned_t<T>;
-    return static_cast<T>(static_cast<U>(a) + static_cast<U>(b));
+    using P = std::common_type_t<U, unsigned int>;
+    return static_cast<T>(static_cast<U>(static_cast<P>(static_cast<U>(a)) +
+                                         static_cast<P>(static_cast<U>(b))));
   } else {
     return a + b;
   }
@@ -66,7 +76,9 @@ template <typename T>
 inline T WrappingMul(T a, T b) {
   if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>) {
     using U = std::make_unsigned_t<T>;
-    return static_cast<T>(static_cast<U>(a) * static_cast<U>(b));
+    using P = std::common_type_t<U, unsigned int>;
+    return static_cast<T>(static_cast<U>(static_cast<P>(static_cast<U>(a)) *
+                                         static_cast<P>(static_cast<U>(b))));
   } else {
     return a * b;
   }
