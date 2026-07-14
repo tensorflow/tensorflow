@@ -399,6 +399,23 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
       self.evaluate(
           rt_placeholder.to_tensor(default_value=default, shape=shape))
 
+  def testValuesShorterThanRowPartition(self):
+    # Regression test: a row partition (value_rowids) that implies more value
+    # rows than `values` actually contains must be rejected up front rather than
+    # reading past the end of `values` (heap out-of-bounds read).
+    from tensorflow.python.ops import gen_ragged_conversion_ops
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Row partition size.*exceeds the number of values|"
+        "row_partition_tensors indicate.*values"):
+      self.evaluate(
+          gen_ragged_conversion_ops.ragged_tensor_to_tensor(
+              shape=[1, 256],
+              values=[42.0],
+              default_value=0.0,
+              row_partition_tensors=[1, [0] * 256],
+              row_partition_types=["FIRST_DIM_SIZE", "VALUE_ROWIDS"]))
+
   def test_shape_limit_shape_is_tensor(self):
     input_data = ragged_factory_ops.constant([[0, 1, 2, 3], [], [4], []])
     actual = input_data.to_tensor(
