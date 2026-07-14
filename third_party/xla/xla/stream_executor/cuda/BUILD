@@ -1562,7 +1562,6 @@ cc_library(
 cc_library(
     name = "cuda_executor_lib",
     srcs = ["cuda_executor.cc"],
-    hdrs = [":cuda_executor"],
     tags = [
         "cuda-only",
         "gpu",
@@ -1769,6 +1768,7 @@ cc_library(
         "//xla/tsl/cuda:tensorrt_rpath",
     ] + if_nccl([
         ":multi_gpu_barrier_kernel_cuda",
+        ":ragged_all_to_all_device_kernel_cuda",
         ":ragged_all_to_all_kernel_cuda",
     ]),
     alwayslink = 1,
@@ -2799,6 +2799,27 @@ cuda_library(
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:make_batch_pointers_kernel",
+        "@com_google_absl//absl/base",
+    ],
+    alwayslink = 1,
+)
+
+cuda_library(
+    name = "ragged_all_to_all_device_kernel_cuda",
+    srcs = [
+        "ragged_all_to_all_device_kernel_cuda.cc",
+        "//xla/stream_executor/gpu:ragged_all_to_all_device_kernel_lib.cu.h",
+    ],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":cuda_platform_id",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/stream_executor/gpu:ragged_all_to_all_device_kernel",
+        "//xla/tsl/cuda:nccl",
         "@com_google_absl//absl/base",
     ],
     alwayslink = 1,

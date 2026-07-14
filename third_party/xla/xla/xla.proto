@@ -1663,6 +1663,10 @@ message DebugOptions {
   // Scratch buffer size (in bytes) for GXL collectives.
   optional int64 xla_gpu_gxl_scratch_size_bytes = 514;
 
+  // If true, use the device-initiated (NCCL GIN + LSA) kernel for
+  // ragged-all-to-all. Requires NCCL >= 2.29.
+  optional bool xla_gpu_experimental_ragged_all_to_all_use_device_kernel = 515;
+
   // If true, enable experimental tiling propagation.
   optional bool xla_gpu_experimental_enable_tiling_propagation = 456;
 

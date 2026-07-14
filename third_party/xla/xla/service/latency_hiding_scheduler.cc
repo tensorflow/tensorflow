@@ -1896,9 +1896,11 @@ bool ReadySetLt::MaybeUpdate(DefaultSchedulerCore::ScheduleCandidate& a,
                              DefaultSchedulerCore::ScheduleCandidate& b,
                              const char** reason) const {
   bool result = AIsBetterThanB(a, b, reason);
-  if (a.node->IsSupportedAsyncStart() || a.node->IsSupportedAsyncDone() ||
-      b.node->IsSupportedAsyncStart() || b.node->IsSupportedAsyncDone() ||
-      IsCollective(&a.node->GetInstr()) || IsCollective(&b.node->GetInstr())) {
+  if (VLOG_IS_ON(1) &&
+      (a.node->IsSupportedAsyncStart() || a.node->IsSupportedAsyncDone() ||
+       b.node->IsSupportedAsyncStart() || b.node->IsSupportedAsyncDone() ||
+       IsCollective(&a.node->GetInstr()) ||
+       IsCollective(&b.node->GetInstr()))) {
     VLOG(1) << "Async comparison: a: " << a.node->GetInstr().name()
             << " b: " << b.node->GetInstr().name() << " result: " << result
             << " reason: " << *reason;

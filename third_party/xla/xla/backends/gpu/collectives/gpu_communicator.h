@@ -87,21 +87,48 @@ class GpuDeviceCommunicator {
   struct Requirements {
     template <typename Sink>
     friend void AbslStringify(Sink& sink, const Requirements& reqs) {
-      absl::Format(&sink, "{lsa_barrier_count: %d}", reqs.lsa_barrier_count);
+      absl::Format(&sink,
+                   "{barrier_count: %d, lsa_barrier_count: %d, "
+                   "rail_gin_barrier_count: %d, "
+                   "gin_signal_count: %d, gin_connection_full: %d}",
+                   reqs.barrier_count, reqs.lsa_barrier_count,
+                   reqs.rail_gin_barrier_count, reqs.gin_signal_count,
+                   reqs.gin_connection_full);
     }
 
     bool operator==(const Requirements& other) const {
-      return other.lsa_barrier_count == lsa_barrier_count;
+      return other.barrier_count == barrier_count &&
+             other.lsa_barrier_count == lsa_barrier_count &&
+             other.rail_gin_barrier_count == rail_gin_barrier_count &&
+             other.gin_signal_count == gin_signal_count &&
+             other.gin_connection_full == gin_connection_full;
     }
 
     bool operator<(const Requirements& other) const {
-      return other.lsa_barrier_count < lsa_barrier_count;
+      if (barrier_count != other.barrier_count)
+        return barrier_count < other.barrier_count;
+      if (lsa_barrier_count != other.lsa_barrier_count)
+        return lsa_barrier_count < other.lsa_barrier_count;
+      if (rail_gin_barrier_count != other.rail_gin_barrier_count)
+        return rail_gin_barrier_count < other.rail_gin_barrier_count;
+      if (gin_signal_count != other.gin_signal_count)
+        return gin_signal_count < other.gin_signal_count;
+      return gin_connection_full < other.gin_connection_full;
     }
 
+    int32_t barrier_count = 0;
     // The number of barriers to allocate for load/store accessible
     // communication.
     int32_t lsa_barrier_count = 0;
+    int32_t rail_gin_barrier_count = 0;
+    int32_t gin_signal_count = 0;
+    bool gin_connection_full = false;
   };
+
+  static bool RequestsGin(const Requirements& reqs) {
+    return reqs.gin_connection_full || reqs.gin_signal_count > 0 ||
+           reqs.rail_gin_barrier_count > 0;
+  }
 
   // Returns a platform-specific handle to the underlying communicator object.
   virtual PlatformCommunicatorHandle platform_comm() const {
@@ -139,6 +166,11 @@ class GpuCommunicator : public Communicator {
 
   // Returns true iff communicator supports device-initiated communication.
   virtual bool SupportsDeviceComm() const { return false; }
+
+  // Returns true iff GPU-initiated networking (GIN) is available for this
+  // communicator. GIN enables device-side threads to directly initiate
+  // network transfers to remote (non-LSA) peers.
+  virtual bool SupportsGin() const { return false; }
 
   // Returns the StreamExecutor (and thus the device) this communicator runs on,
   // or nullptr if not backed by a StreamExecutor.

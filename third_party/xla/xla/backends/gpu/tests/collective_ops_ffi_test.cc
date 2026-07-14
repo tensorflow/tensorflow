@@ -155,7 +155,8 @@ static absl::Status PrepareDeviceAllReduce(
 
   // Ask for a device communicator with 8 lsa barriers.
   CollectiveCliqueRequests::CliqueRequirements requirements;
-  requirements.dev_comm = GpuDeviceCommunicator::Requirements{8};
+  requirements.dev_comm =
+      GpuDeviceCommunicator::Requirements{.lsa_barrier_count = 8};
   std::vector<GlobalDeviceId> all_device_groups;
   for (int i = 0; i < kNumReplicas; ++i) {
     all_device_groups.push_back(GlobalDeviceId(i));
@@ -391,7 +392,8 @@ static absl::Status DeviceAllReduce(se::Stream* stream, ffi::BufferR0<U32> src,
   ASSIGN_OR_RETURN(
       GpuDeviceCommunicator * dev_comm,
       collective_cliques->GetDeviceComm(
-          clique_key, *rank, GpuDeviceCommunicator::Requirements{8}));
+          clique_key, *rank,
+          GpuDeviceCommunicator::Requirements{.lsa_barrier_count = 8}));
 
   // Load custom kernel that does device-initiated collectives.
   ASSIGN_OR_RETURN(auto kernel, se::gpu::GpuKernelRegistry::GetGlobalRegistry()

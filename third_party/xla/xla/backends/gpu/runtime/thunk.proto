@@ -416,6 +416,7 @@ message RaggedAllToAllThunkProto {
   int64 fast_interconnect_slice_size_override = 10;
   reserved 11;
   xla.DebugOptions.CollectivesMode collectives_mode = 12;
+  bool use_device_kernel = 13;
 }
 
 message CollectivePermuteThunkProto {
