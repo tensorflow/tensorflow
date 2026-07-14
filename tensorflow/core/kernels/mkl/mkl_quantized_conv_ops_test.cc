@@ -686,7 +686,7 @@ TEST_F(QuantizedConv2DTest,
 
   const Status status = RunOpKernel();
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
-  EXPECT_THAT(status.message(), HasSubstr("`min_input` must be rank 0"));
+  EXPECT_THAT(status.message(), testing::HasSubstr("`min_input` must be rank 0"));
 }
 
 TEST_F(QuantizedConv2DTest, DepthwiseConv2DWithBiasAndReluOldAPI) {
