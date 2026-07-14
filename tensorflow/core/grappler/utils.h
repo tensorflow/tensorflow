@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -249,13 +250,13 @@ NodeMapInternal<const GraphDef, const NodeDef>::GetNodeDefFromGraph(
 }  // namespace internal
 
 // A utility class to lookup a node and its outputs by node name.
-class NodeMap : public internal::NodeMapInternal<GraphDef, NodeDef> {
+class TF_EXPORT NodeMap : public internal::NodeMapInternal<GraphDef, NodeDef> {
  public:
   explicit NodeMap(GraphDef* graph) : NodeMapInternal(graph) {}
 };
 
 // Same to NodeMap, but uses const GraphDef.
-class ImmutableNodeMap
+class TF_EXPORT ImmutableNodeMap
     : public internal::NodeMapInternal<const GraphDef, const NodeDef> {
  public:
   explicit ImmutableNodeMap(const GraphDef* graph) : NodeMapInternal(graph) {}

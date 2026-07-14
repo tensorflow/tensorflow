@@ -882,6 +882,7 @@ cc_library(
         ":python_tensor_converter",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:status",
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",

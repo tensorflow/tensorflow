@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variable.pb.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/protobuf/queue_runner.pb.h"
 #include "tsl/platform/cpu_info.h"
 
@@ -35,7 +36,7 @@ namespace grappler {
 // A TensorFlow model to optimize.
 // Models are represented by the combination of a graph, one of more fetch
 // nodes, and potentially a set of nodes to feed.
-struct GrapplerItem {
+struct TF_EXPORT GrapplerItem {
   GrapplerItem() = default;
   GrapplerItem(const GrapplerItem& other) = default;
   GrapplerItem(GrapplerItem&& other) = default;

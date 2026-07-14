@@ -162,6 +162,7 @@ cc_library(
         "//tensorflow/core:test",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/platform:macros",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
     ],
@@ -174,12 +175,17 @@ tf_cc_test(
     deps = [
         ":grappler_test",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/platform:macros",
     ],
 )
 

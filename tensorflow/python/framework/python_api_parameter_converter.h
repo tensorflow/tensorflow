@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/python/framework/op_def_util.h"
 #include "tensorflow/python/framework/python_api_info.h"
@@ -53,7 +54,7 @@ namespace tensorflow {
 //
 // Returns true on success, or sets an exception and returns false on error.
 ABSL_MUST_USE_RESULT
-bool ConvertPythonAPIParameters(
+TF_EXPORT bool ConvertPythonAPIParameters(
     const PythonAPIInfo& api_info,
     const PythonTensorConverter& tensor_converter, absl::Span<PyObject*> params,
     PythonAPIInfo::InferredAttributes* inferred_attrs);
@@ -67,10 +68,10 @@ bool ConvertPythonAPIParameters(
 //
 // Returns true on success, or sets an exception and returns false on error.
 ABSL_MUST_USE_RESULT
-bool CopyPythonAPITensorLists(const PythonAPIInfo& api_info,
-                              absl::Span<PyObject*> params);
+TF_EXPORT bool CopyPythonAPITensorLists(const PythonAPIInfo& api_info,
+                                        absl::Span<PyObject*> params);
 
-int GetPythonAPIMaxIndex(const PythonAPIInfo& api_info);
+TF_EXPORT int GetPythonAPIMaxIndex(const PythonAPIInfo& api_info);
 
 }  // namespace tensorflow
 
