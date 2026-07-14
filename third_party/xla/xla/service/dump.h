@@ -239,3 +239,4 @@ std::string GetNonDefaultDebugOptions(const DebugOptions& debug_options);
 }  // namespace xla
 
 #endif  // XLA_SERVICE_DUMP_H_
+// Force diff refresh
