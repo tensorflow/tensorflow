@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -295,6 +296,7 @@ TEST_F(LogicalBufferAnalysisTest, CustomCallFusionAsync) {
   VerifyBufferDefinedAt(async_start, {2});
   // {0, 0} is implicitly aliased to input parameter p0.
   VerifyNoBufferDefinedAt(async_start, {0, 0});
+
   VerifyBufferDefinedAt(async_update, {});
   VerifyNoBufferDefinedAt(async_update, {0});
   VerifyNoBufferDefinedAt(async_update, {1});
@@ -305,6 +307,7 @@ TEST_F(LogicalBufferAnalysisTest, CustomCallFusionAsync) {
   // in async wrapped computation.
   VerifyBufferDefinedAt(async_wrapper_param, {});
   VerifyBufferDefinedAt(async_wrapper_root, {});
+
   VerifyBufferDefinedAt(async_done, {});
 }
 
@@ -631,154 +634,5 @@ TEST_F(LogicalBufferAnalysisTest, AsyncAliasedEmptyTupleBecomesValued) {
   VerifyBufferDefinedAt(update, {1, 0});
 }
 
-TEST_F(LogicalBufferAnalysisTest, AsyncStartLateBinding) {
-  absl::string_view hlo_str = R"(
-  HloModule module
-
-  async_computation {
-    p0 = f32[4] parameter(0)
-    ROOT ccall = f32[4] custom-call(p0), custom_call_target="bar"
-  }
-
-  ENTRY entry {
-    p0 = f32[4] parameter(0)
-    async-start = ((), (), s32[]) async-start(), calls=async_computation,
-                            async_execution_thread="sparsecore"
-    async-update = ((f32[4]), f32[4], s32[]) async-update(async-start, p0)
-    ROOT async-done = f32[4] async-done(async-update)
-  }
-  )";
-  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
-  ASSERT_OK_AND_ASSIGN(analysis_, LogicalBufferAnalysis::Run(module.get()));
-
-  HloInstruction* p0 = FindInstruction(module.get(), "p0");
-  HloInstruction* async_start = FindInstruction(module.get(), "async-start");
-  HloInstruction* async_update = FindInstruction(module.get(), "async-update");
-  HloInstruction* async_done = FindInstruction(module.get(), "async-done");
-
-  VerifyBufferDefinedAt(p0, {});
-
-  VerifyBufferDefinedAt(async_start, {});
-  VerifyBufferDefinedAt(async_start, {0});
-  VerifyBufferDefinedAt(async_start, {1});
-  VerifyBufferDefinedAt(async_start, {2});
-
-  // Verify update buffers:
-  // - {} (top-level tuple) -> defined (always defined for new async-update)
-  // - all other subshapes are compatible with start -> not defined
-  VerifyBufferDefinedAt(async_update, {});
-  VerifyBufferDefinedAt(async_update, {0});
-  VerifyNoBufferDefinedAt(async_update, {0, 0});
-  // {1} is defined in async-update.
-  VerifyBufferDefinedAt(async_update, {1});
-  VerifyNoBufferDefinedAt(async_update, {2});
-
-  VerifyBufferDefinedAt(async_done, {});
-}
-
-TEST_F(LogicalBufferAnalysisTest, AsyncStartLateBindingWithAliasing) {
-  absl::string_view hlo_str = R"(
-  HloModule module
-
-  async_computation {
-    p0 = f32[4] parameter(0)
-    ROOT ccall = f32[4] custom-call(p0), custom_call_target="bar"
-  }
-
-  ENTRY entry {
-    p0 = f32[4] parameter(0)
-    async-start = ((), (), s32[]) async-start(), calls=async_computation,
-                            async_execution_thread="sparsecore",
-                            output_to_operand_aliasing={ {1}: (0, {}) }
-    async-update = ((f32[4]), f32[4], s32[]) async-update(async-start, p0)
-    ROOT async-done = f32[4] async-done(async-update)
-  }
-  )";
-  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
-  ASSERT_OK_AND_ASSIGN(analysis_, LogicalBufferAnalysis::Run(module.get()));
-
-  HloInstruction* p0 = FindInstruction(module.get(), "p0");
-  HloInstruction* async_start = FindInstruction(module.get(), "async-start");
-  HloInstruction* async_update = FindInstruction(module.get(), "async-update");
-  HloInstruction* async_done = FindInstruction(module.get(), "async-done");
-
-  VerifyBufferDefinedAt(p0, {});
-
-  VerifyBufferDefinedAt(async_start, {});
-  VerifyBufferDefinedAt(async_start, {0});
-  // {1} (output) is not bound yet, an empty buffer is defined
-  VerifyBufferDefinedAt(async_start, {1});
-  VerifyBufferDefinedAt(async_start, {2});
-
-  // Verify update buffers:
-  // - {} (top-level tuple) -> defined (always defined for new async-update)
-  // - all other subshapes are compatible with start -> not defined
-  VerifyBufferDefinedAt(async_update, {});
-  VerifyBufferDefinedAt(async_update, {0});
-  VerifyNoBufferDefinedAt(async_update, {0, 0});
-  // {1} is not defined in due to aliasing.
-  VerifyNoBufferDefinedAt(async_update, {1});
-  VerifyNoBufferDefinedAt(async_update, {2});
-
-  VerifyBufferDefinedAt(async_done, {});
-}
-
-TEST_F(LogicalBufferAnalysisTest, AsyncStartLateBindingMultipleUpdates) {
-  absl::string_view hlo_str = R"(
-  HloModule module
-
-  async_computation {
-    p0 = f32[4] parameter(0)
-    ROOT ccall = f32[4] custom-call(p0), custom_call_target="bar"
-  }
-
-  ENTRY entry {
-    p0 = f32[4] parameter(0)
-    async-start = ((), (), s32[]) async-start(), calls=async_computation,
-                            async_execution_thread="sparsecore",
-                            output_to_operand_aliasing={ {1}: (0, {}) }
-    async-update0 = ((), (), s32[]) async-update(async-start)
-    async-update1 = ((f32[4]), f32[4], s32[]) async-update(async-update0, p0)
-    ROOT async-done = f32[4] async-done(async-update1)
-  }
-  )";
-  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
-  ASSERT_OK_AND_ASSIGN(analysis_, LogicalBufferAnalysis::Run(module.get()));
-
-  HloInstruction* p0 = FindInstruction(module.get(), "p0");
-  HloInstruction* async_start = FindInstruction(module.get(), "async-start");
-  HloInstruction* async_update0 =
-      FindInstruction(module.get(), "async-update0");
-  HloInstruction* async_update1 =
-      FindInstruction(module.get(), "async-update1");
-  HloInstruction* async_done = FindInstruction(module.get(), "async-done");
-
-  VerifyBufferDefinedAt(p0, {});
-
-  VerifyBufferDefinedAt(async_start, {});
-  VerifyBufferDefinedAt(async_start, {0});
-  // {1} (output) is not bound yet, an empty buffer is defined
-  VerifyBufferDefinedAt(async_start, {1});
-  VerifyBufferDefinedAt(async_start, {2});
-
-  // Verify update buffers:
-  // - {} (top-level tuple) -> defined (always defined for new async-update)
-  // - all other subshapes are compatible with start -> not defined
-  VerifyBufferDefinedAt(async_update0, {});
-  // not defined due to implicit aliasing from async-start.
-  VerifyNoBufferDefinedAt(async_update0, {0});
-  // {1} is not defined in due to aliasing from async-start.
-  VerifyNoBufferDefinedAt(async_update0, {1});
-  VerifyNoBufferDefinedAt(async_update0, {2});
-
-  VerifyBufferDefinedAt(async_update1, {});
-  VerifyBufferDefinedAt(async_update1, {0});
-  VerifyNoBufferDefinedAt(async_update1, {0, 0});
-  // {1} is not defined in due to aliasing.
-  VerifyNoBufferDefinedAt(async_update1, {1});
-  VerifyNoBufferDefinedAt(async_update1, {2});
-
-  VerifyBufferDefinedAt(async_done, {});
-}
 }  // namespace
 }  // namespace xla
