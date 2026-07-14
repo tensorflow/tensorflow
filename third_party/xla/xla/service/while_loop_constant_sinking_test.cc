@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -721,6 +722,168 @@ ENTRY entry {
           .Run(module.get()));
   EXPECT_FALSE(changed);
   EXPECT_EQ(module->computation_count(), 2);
+}
+
+TEST_F(WhileLoopConstantSinkingTest, SinkWithThreeLoopsSharedCall) {
+  const char* const hlo_string = R"(
+HloModule SinkWithThreeLoopsSharedCall
+
+shared_comp {
+  p0 = f32[2] parameter(0)
+  p1 = f32[2] parameter(1)
+  ROOT add = f32[2] add(p0, p1)
+}
+
+// CHECK-LABEL: %body1.sunk
+// CHECK:         [[P_BODY:%.*]] = (f32[2]{0}, f32[2]{0}) parameter(0)
+// CHECK-DAG:     [[GTE0:%.*]] = f32[2]{0} get-tuple-element([[P_BODY]]), index=0
+// CHECK-DAG:     [[CONST:%.*]] = f32[2]{0} constant({1, 2})
+// CHECK:         [[CALL:%.*]] = f32[2]{0} call([[GTE0]], [[CONST]]), to_apply=%shared_comp
+// CHECK:       }
+body1 {
+  p_body1 = (f32[2], f32[2]) parameter(0)
+  p_body1.0 = f32[2] get-tuple-element(p_body1), index=0
+  p_body1.1 = f32[2] get-tuple-element(p_body1), index=1
+
+  call1 = f32[2] call(p_body1.0, p_body1.1), to_apply=shared_comp
+  ROOT root1 = (f32[2], f32[2]) tuple(call1, p_body1.1)
+}
+
+// CHECK-LABEL: %body2.sunk
+// CHECK:         [[P_BODY:%.*]] = (f32[2]{0}, f32[2]{0}) parameter(0)
+// CHECK-DAG:     [[GTE0:%.*]] = f32[2]{0} get-tuple-element([[P_BODY]]), index=0
+// CHECK-DAG:     [[CONST:%.*]] = f32[2]{0} constant({2, 1})
+// CHECK:         [[CALL:%.*]] = f32[2]{0} call([[GTE0]], [[CONST]]), to_apply=%shared_comp
+// CHECK:       }
+body2 {
+  p_body2 = (f32[2], f32[2]) parameter(0)
+  p_body2.0 = f32[2] get-tuple-element(p_body2), index=0
+  p_body2.1 = f32[2] get-tuple-element(p_body2), index=1
+
+  call2 = f32[2] call(p_body2.0, p_body2.1), to_apply=shared_comp
+  ROOT root2 = (f32[2], f32[2]) tuple(call2, p_body2.1)
+}
+
+// CHECK-LABEL: %body3
+// CHECK:         [[P_BODY:%.*]] = (f32[2]{0}, f32[2]{0}) parameter(0)
+// CHECK-DAG:     [[GTE0:%.*]] = f32[2]{0} get-tuple-element([[P_BODY]]), index=0
+// CHECK-DAG:     [[GTE1:%.*]] = f32[2]{0} get-tuple-element([[P_BODY]]), index=1
+// CHECK:         [[CALL:%.*]] = f32[2]{0} call([[GTE0]], [[GTE1]]), to_apply=%shared_comp
+// CHECK:       }
+body3 {
+  p_body3 = (f32[2], f32[2]) parameter(0)
+  p_body3.0 = f32[2] get-tuple-element(p_body3), index=0
+  p_body3.1 = f32[2] get-tuple-element(p_body3), index=1
+
+  call3 = f32[2] call(p_body3.0, p_body3.1), to_apply=shared_comp
+  ROOT root3 = (f32[2], f32[2]) tuple(call3, p_body3.1)
+}
+
+condition {
+  p_cond = (f32[2], f32[2]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  const_0 = f32[2] constant({1, 2})
+  const_1 = f32[2] constant({2, 1})
+
+  param_x = f32[2] parameter(0)
+  param_y = f32[2] parameter(1)
+  param_z = f32[2] parameter(2)
+  param_w = f32[2] parameter(3)
+
+  while1_init = (f32[2], f32[2]) tuple(param_x, const_0)
+  while1 = (f32[2], f32[2]) while(while1_init), condition=condition, body=body1
+
+  while2_init = (f32[2], f32[2]) tuple(param_y, const_1)
+  while2 = (f32[2], f32[2]) while(while2_init), condition=condition, body=body2
+
+  while3_init = (f32[2], f32[2]) tuple(param_z, param_w)
+  while3 = (f32[2], f32[2]) while(while3_init), condition=condition, body=body3
+
+  ROOT tuple = ((f32[2], f32[2]), (f32[2], f32[2]), (f32[2], f32[2])) tuple(while1, while2, while3)
+}
+)";
+
+  RunAndFilecheckHloRewrite(hlo_string,
+                            WhileLoopConstantSinking(
+                                /*sink_broadcast_of_constants=*/false,
+                                /*sink_only_scalar_constants=*/false));
+}
+
+TEST_F(WhileLoopConstantSinkingTest, SinkWithNestedLoopsSharedCall) {
+  const char* const hlo_string = R"(
+HloModule SinkWithNestedLoopsSharedCall
+
+shared_comp {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+// CHECK-LABEL: %body_inner.sunk
+// CHECK:         [[P_INNER:%.*]] = (f32[], f32[]) parameter(0)
+// CHECK-DAG:     [[GTE0_INNER:%.*]] = f32[] get-tuple-element([[P_INNER]]), index=0
+// CHECK-DAG:     [[CONST_INNER:%.*]] = f32[] constant(1)
+// CHECK:         [[CALL_INNER:%.*]] = f32[] call([[GTE0_INNER]], [[CONST_INNER]]), to_apply=%shared_comp
+// CHECK:       }
+body_inner {
+  p_inner = (f32[], f32[]) parameter(0)
+  g0_inner = f32[] get-tuple-element(p_inner), index=0
+  g1_inner = f32[] get-tuple-element(p_inner), index=1
+
+  call_inner = f32[] call(g0_inner, g1_inner), to_apply=shared_comp
+
+  ROOT root_inner = (f32[], f32[]) tuple(call_inner, g1_inner)
+}
+
+cond_inner {
+  p_cond_inner = (f32[], f32[]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+// CHECK-LABEL: %body_outer.sunk
+// CHECK:         [[P_OUTER:%.*]] = (f32[], f32[]) parameter(0)
+// CHECK-DAG:     [[GTE0_OUTER:%.*]] = f32[] get-tuple-element([[P_OUTER]]), index=0
+// CHECK-DAG:     [[CONST_OUTER:%.*]] = f32[] constant(1)
+// CHECK:         [[CALL_OUTER:%.*]] = f32[] call([[GTE0_OUTER]], [[CONST_OUTER]]), to_apply=%shared_comp
+// CHECK:         [[INIT_INNER:%.*]] = (f32[], f32[]) tuple([[GTE0_OUTER]], [[CONST_OUTER]])
+// CHECK:         [[WHILE_INNER:%.*]] = (f32[], f32[]) while([[INIT_INNER]]), condition=%cond_inner, body=%body_inner.sunk
+// CHECK:       }
+body_outer {
+  p_outer = (f32[], f32[]) parameter(0)
+  g0_outer = f32[] get-tuple-element(p_outer), index=0
+  g1_outer = f32[] get-tuple-element(p_outer), index=1
+
+  call_outer = f32[] call(g0_outer, g1_outer), to_apply=shared_comp
+
+  while_inner_init = (f32[], f32[]) tuple(g0_outer, g1_outer)
+  while_inner = (f32[], f32[]) while(while_inner_init), condition=cond_inner, body=body_inner
+
+  g0_inner_out = f32[] get-tuple-element(while_inner), index=0
+
+  ROOT root_outer = (f32[], f32[]) tuple(g0_inner_out, g1_outer)
+}
+
+cond_outer {
+  p_cond_outer = (f32[], f32[]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  const_0 = f32[] constant(1)
+  param_x = f32[] parameter(0)
+
+  while_outer_init = (f32[], f32[]) tuple(param_x, const_0)
+  ROOT while_outer = (f32[], f32[]) while(while_outer_init), condition=cond_outer, body=body_outer
+}
+)";
+
+  RunAndFilecheckHloRewrite(hlo_string,
+                            WhileLoopConstantSinking(
+                                /*sink_broadcast_of_constants=*/false,
+                                /*sink_only_scalar_constants=*/false));
 }
 
 }  // namespace
