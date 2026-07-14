@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/utils/transitive_fanin.h"
 
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/graph.pb.h"
