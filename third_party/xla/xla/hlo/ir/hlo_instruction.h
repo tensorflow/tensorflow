@@ -2579,19 +2579,12 @@ class HloInstruction {
   void CopyOriginalValue(const HloInstruction* instruction, bool clone = false,
                          bool issue_warning = false);
 
-  // TODO(phui): reimplement this method
-  void DetachFromOperands() {
-    for (HloInstruction* operand : operands_) {
-      operand->RemoveUser(this);
-    }
-    RemoveAllOperands();
-  }
-  void RemoveAllOperands() { operands_.clear(); }
-
  protected:
   // Internal constructor for a given opcode/shape, other fields must be
   // filled by factory methods.
   HloInstruction(HloOpcode opcode, const Shape& shape);
+
+  void RemoveAllOperands() { operands_.clear(); }
 
   void RemoveOperandAt(int index) {
     operands_.erase(operands_.begin() + index);

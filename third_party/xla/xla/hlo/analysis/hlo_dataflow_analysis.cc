@@ -479,6 +479,8 @@ bool HloDataflowAnalysis::UpdateAsyncChainOutputValueSet(
       async_op->async_execution_thread(), execution_threads_);
 
   if (!is_thread_included && async_op->opcode() == HloOpcode::kAsyncStart) {
+    // AsyncStart in a non-included has the output values defined, no need to
+    // propagate.
     return changed;
   }
 
@@ -499,13 +501,6 @@ bool HloDataflowAnalysis::UpdateAsyncChainOutputValueSet(
             output_index.push_back(1);
           }
           output_index.insert(output_index.end(), index.begin(), index.end());
-          if (!ShapeUtil::IndexIsValid(async_op->shape(), output_index) ||
-              !ShapeUtil::Compatible(
-                  subshape,
-                  ShapeUtil::GetSubshape(async_op->shape(), output_index))) {
-            // if the output is not bound, or a subshape is not bound yet, skip.
-            return;
-          }
 
           HloValueSet& value_set = GetMutableValueSet(async_op, output_index);
           if (value_set != root_value_set) {
@@ -520,7 +515,8 @@ bool HloDataflowAnalysis::UpdateAsyncChainOutputValueSet(
     const HloInstruction* operand = async_op->operand(0);
     ShapeUtil::ForEachSubshape(operand->shape(), [&](const Shape& subshape,
                                                      const ShapeIndex& index) {
-      if ((!subshape.IsArray() && !subshape.IsToken()) || index.front() != 1) {
+      if ((!subshape.IsArray() && !subshape.IsToken()) || index.empty() ||
+          index.front() != 1) {
         return;
       }
       const HloValueSet& operand_value_set = GetValueSet(operand, index);
@@ -530,14 +526,6 @@ bool HloDataflowAnalysis::UpdateAsyncChainOutputValueSet(
         output_index = index;
       } else {  // AsyncDone
         output_index.insert(output_index.end(), index.begin() + 1, index.end());
-      }
-
-      if (!ShapeUtil::IndexIsValid(async_op->shape(), output_index) ||
-          !ShapeUtil::Compatible(
-              subshape,
-              ShapeUtil::GetSubshape(async_op->shape(), output_index))) {
-        // if the output is not bound, or a subshape is not bound yet, skip.
-        return;
       }
 
       HloValueSet& value_set = GetMutableValueSet(async_op, output_index);
@@ -569,7 +557,9 @@ bool HloDataflowAnalysis::UpdateAsyncStartValueSet(
 bool HloDataflowAnalysis::UpdateAsyncUpdateValueSet(
     HloInstruction* async_update) {
   CHECK_EQ(async_update->opcode(), HloOpcode::kAsyncUpdate);
+  CHECK_EQ(async_update->shape(), async_update->operand(0)->shape());
   bool changed = false;
+
   // 1. Update bound operands (index 0)
   std::vector<const HloInstruction*> async_bound_operands =
       hlo_instruction_utils::async::GetAsyncBoundOperands(
@@ -851,18 +841,8 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
       CHECK(found_parent);
       need_phi = true;
     } else if (opcode == HloOpcode::kAsyncStart) {
-      const HloInstruction* async_done =
-          callsite.instruction()->async_chain_done();
-      CHECK(async_done != nullptr) << "Async chain done not found for "
-                                   << callsite.instruction()->ToString();
-      std::vector<const HloInstruction*> bound_operands =
-          hlo_instruction_utils::async::GetAsyncBoundOperands(
-              Cast<HloAsyncInstruction>(async_done));
-
-      CHECK_LT(parameter->parameter_number(), bound_operands.size());
-
       inputs.push_back(&GetInstructionValueSet(
-          bound_operands[parameter->parameter_number()]));
+          callsite.instruction()->operand(parameter->parameter_number())));
     } else {
       LOG(FATAL) << "CallContext::kControlFlow computations should only be "
                     "called from call, while, conditional, or async-start "
@@ -870,8 +850,6 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
                  << HloOpcodeString(opcode) << "(" << opcode << ")";
     }
   }
-
-  CHECK(!inputs.empty());
   if (ssa_form_ && need_phi) {
     return Phi(parameter, inputs);
   }
