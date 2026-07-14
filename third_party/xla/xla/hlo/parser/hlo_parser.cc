@@ -356,6 +356,7 @@ class HloParserImpl : public HloParser {
     kMode,
     kConvKind,
     kSparsityConfig,
+    kDebugAttributesTable,
   };
 
   struct AttrConfig {
@@ -645,6 +646,10 @@ class HloParserImpl : public HloParser {
   bool ParseOriginalValueImpl(std::optional<OriginalValue>& original_value);
   bool ParseOriginalValueRecoveryTable(
       OriginalValueRecoveryTable& original_value_recovery_table);
+  bool ParseDebugAttributesTable(
+      absl::btree_map<OriginalArray, std::vector<HloModule::DebugAttributes>>*
+          debug_attributes_map);
+  bool ParseDebugAttributes(HloModule::DebugAttributes* debug_attributes);
   bool ParseCollectiveOpGroupMode(CollectiveOpGroupMode* result);
   bool ParseFileLocationList(StackFrameIndexProto* stack_frame_index);
   bool ParseStackFramesList(StackFrameIndexProto* stack_frame_index);
@@ -1138,6 +1143,9 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   BoolList allow_spmd_sharding_propagation_to_parameters;
   BoolList allow_spmd_sharding_propagation_to_output;
   std::optional<OriginalValueRecoveryTable> original_value_recovery_table;
+  std::optional<
+      absl::btree_map<OriginalArray, std::vector<HloModule::DebugAttributes>>>
+      debug_attributes;
 
   attrs["is_scheduled"] = {/*required=*/false, AttrTy::kBool, &is_scheduled};
   attrs["replica_count"] = {/*required=*/false, AttrTy::kInt64, &replica_count};
@@ -1163,6 +1171,8 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   attrs["origin_recovery_table"] = {/*required=*/false,
                                     AttrTy::kOriginalValueRecoveryTable,
                                     &original_value_recovery_table};
+  attrs["debug_attributes"] = {
+      /*required=*/false, AttrTy::kDebugAttributesTable, &debug_attributes};
 
   if (!parse_module_without_header) {
     if (lexer_.GetKind() != TokKind::kw_HloModule) {
@@ -1271,6 +1281,14 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
     module->set_original_value_recovery_table(
         std::move(*original_value_recovery_table));
   }
+  if (debug_attributes) {
+    for (const auto& [original_array, attributes_list] : *debug_attributes) {
+      for (const auto& attributes : attributes_list) {
+        module->AddDebugAttributes(original_array, attributes);
+      }
+    }
+  }
+
   DeduplicateOriginalValues(module);
 
   return true;
@@ -6039,6 +6057,20 @@ bool HloParserImpl::ParseAttributeHelper(
             ->emplace(std::move(result));
         return true;
       }
+      case AttrTy::kDebugAttributesTable: {
+        absl::btree_map<OriginalArray, std::vector<HloModule::DebugAttributes>>
+            result;
+
+        if (!ParseDebugAttributesTable(&result)) {
+          return false;
+        }
+        static_cast<optional<absl::btree_map<
+            OriginalArray, std::vector<HloModule::DebugAttributes>>>*>(
+            attr_out_ptr)
+            ->emplace(std::move(result));
+
+        return true;
+      }
       case AttrTy::kMetadata: {
         OpMetadata result;
         if (!ParseMetadata(result)) {
@@ -7593,7 +7625,104 @@ bool HloParserImpl::ParseOriginalValueImpl(
   return true;
 }
 
-// OriginalValueRecoveryTable ::= '{' OriginalArray ':' OriginalArray ','
+bool HloParserImpl::ParseDebugAttributes(
+    HloModule::DebugAttributes* debug_attributes) {
+  if (!ParseToken(TokKind::kLbrace, "Expects '{' to start debug attributes")) {
+    return false;
+  }
+  do {
+    std::string name;
+    if (!ParseAttributeName(&name)) {
+      return TokenError("Expects attribute name in debug attributes");
+    }
+    if (name == "log_mode") {
+      std::string mode;
+      if (!ParseName(&mode)) {
+        return false;
+      }
+      if (mode == "default") {
+        debug_attributes->log_mode =
+            HloModule::DebugAttributes::DebugLogMode::kDefault;
+      } else if (mode == "fusion_debugger") {
+        debug_attributes->log_mode =
+            HloModule::DebugAttributes::DebugLogMode::kFusionDebugger;
+      } else {
+        return TokenError(absl::StrCat("Invalid debug_log_mode value: ", mode));
+      }
+    } else if (name == "callback_id") {
+      if (!ParseInt64(&debug_attributes->callback_id)) {
+        return false;
+      }
+    } else if (name == "partitioned") {
+      if (!ParseBool(&debug_attributes->partitioned)) {
+        return false;
+      }
+    } else if (name == "op_id") {
+      if (!ParseInt64(&debug_attributes->op_id)) {
+        return false;
+      }
+    } else {
+      return TokenError(absl::StrCat("Unknown debug attribute: ", name));
+    }
+  } while (EatIfPresent(TokKind::kComma));
+
+  if (!ParseToken(TokKind::kRbrace, "Expects '}' to end debug attributes")) {
+    return false;
+  }
+  return true;
+}
+
+bool HloParserImpl::ParseDebugAttributesTable(
+    absl::btree_map<OriginalArray, std::vector<HloModule::DebugAttributes>>*
+        debug_attributes_map) {
+  if (!ParseToken(TokKind::kLbrace, "Expects '{' to start debug_attributes")) {
+    return false;
+  }
+  if (lexer_.GetKind() == TokKind::kRbrace) {
+    return ParseToken(TokKind::kRbrace, "");
+  }
+  do {
+    OriginalArray original_array;
+    if (!ParseOriginalArray(original_array)) {
+      return false;
+    }
+    if (!ParseToken(TokKind::kColon, "Expects ':' in debug_attributes entry")) {
+      return false;
+    }
+    std::vector<HloModule::DebugAttributes> debug_attributes_list;
+    if (lexer_.GetKind() == TokKind::kLparen) {
+      lexer_.Lex();
+      if (lexer_.GetKind() != TokKind::kRparen) {
+        do {
+          HloModule::DebugAttributes debug_attributes;
+          if (!ParseDebugAttributes(&debug_attributes)) {
+            return false;
+          }
+          debug_attributes_list.push_back(debug_attributes);
+        } while (EatIfPresent(TokKind::kComma));
+      }
+      if (!ParseToken(TokKind::kRparen,
+                      "Expects ')' after list of debug_attributes")) {
+        return false;
+      }
+    } else {
+      HloModule::DebugAttributes debug_attributes;
+      if (!ParseDebugAttributes(&debug_attributes)) {
+        return false;
+      }
+      debug_attributes_list.push_back(debug_attributes);
+    }
+    (*debug_attributes_map)[original_array] = std::move(debug_attributes_list);
+  } while (EatIfPresent(TokKind::kComma));
+
+  if (!ParseToken(TokKind::kRbrace, "Expects '}' to end debug_attributes")) {
+    return false;
+  }
+  return true;
+}
+
+// OriginalValueRecoveryTable ::= '{' OriginalArray ':'
+// OriginalArray ','
 //   HloModule | OriginalValueRecoveryTable '}'
 bool HloParserImpl::ParseOriginalValueRecoveryTable(
     OriginalValueRecoveryTable& original_value_recovery_table) {
@@ -7609,11 +7738,11 @@ bool HloParserImpl::ParseOriginalValueRecoveryTable(
       return false;
     }
     std::string errmsg =
-        "Expected format: <original_array>: <original_array>, "
-        "<HloModule>";
+        "Expected format: <original_array>: <original_array>, <HloModule>";
     if (!ParseToken(TokKind::kColon, errmsg)) {
       return false;
     }
+
     if (!ParseOriginalArray(replacing_original_array)) {
       return false;
     }

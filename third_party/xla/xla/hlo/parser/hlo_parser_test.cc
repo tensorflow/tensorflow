@@ -55,7 +55,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/window_util.h"
@@ -1646,6 +1645,79 @@ ENTRY %entry_spmd () -> s32[1,3] {
 
 )"
 },
+
+{
+"DebugAttributes",
+R"(HloModule module, entry_computation_layout={()->s32[1,3]{1,0}},
+debug_attributes={
+  {"constant"}:({log_mode=default,callback_id=123,partitioned=true})
+}
+
+ENTRY %e () -> s32[1,3] {
+  ROOT %c = s32[1,3]{1,0} constant({ { 0, 1, 2 } }), origin={{"constant"}}
+}
+
+)"
+},
+
+{
+"DebugAttributesFusionDebugger",
+R"(HloModule module, entry_computation_layout={()->s32[1,3]{1,0}},
+debug_attributes={
+  {"constant"}:({log_mode=fusion_debugger,callback_id=123})
+}
+
+ENTRY %e () -> s32[1,3] {
+  ROOT %c = s32[1,3]{1,0} constant({ { 0, 1, 2 } }), origin={{"constant"}}
+}
+
+)"
+},
+
+{
+"DebugAttributesLogModeOnly",
+R"(HloModule module, entry_computation_layout={()->s32[1,3]{1,0}},
+debug_attributes={
+  {"constant"}:({log_mode=default})
+}
+
+ENTRY %e () -> s32[1,3] {
+  ROOT %c = s32[1,3]{1,0} constant({ { 0, 1, 2 } }), origin={{"constant"}}
+}
+
+)"
+},
+
+{
+"DebugAttributesPartitionedOnly",
+R"(HloModule module, entry_computation_layout={()->s32[1,3]{1,0}},
+debug_attributes={
+  {"constant"}:({partitioned=true})
+}
+
+ENTRY %e () -> s32[1,3] {
+  ROOT %c = s32[1,3]{1,0} constant({ { 0, 1, 2 } }), origin={{"constant"}}
+}
+
+)"
+},
+
+{
+"DebugAttributesHloIdOnly",
+R"(HloModule module, entry_computation_layout={()->s32[1,3]{1,0}},
+debug_attributes={
+  {"constant"}:({callback_id=123})
+}
+
+ENTRY %e () -> s32[1,3] {
+  ROOT %c = s32[1,3]{1,0} constant({ { 0, 1, 2 } }), origin={{"constant"}}
+}
+
+)"
+},
+
+
+
 {
 "OriginalValueRecoveryTableWithNestedQuotes",
 R"(HloModule module, entry_computation_layout={()->s32[1,3]{1,0}}, num_partitions=2, origin_recovery_table={
@@ -3164,6 +3236,23 @@ ENTRY %blabla (x: f32[], y: f32[]) -> f32[] {
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
   EXPECT_NE(absl::OkStatus(), result.status());
+}
+
+TEST_F(HloParserTest, InvalidDebugLogMode) {
+  const std::string original =
+      R"(HloModule module, entry_computation_layout={()->s32[1,3]{1,0}},
+debug_attributes={
+  {"constant"}:({log_mode=invalid_mode})
+}
+
+ENTRY %e () -> s32[1,3] {
+  ROOT %c = s32[1,3]{1,0} constant({ { 0, 1, 2 } }), origin={{"constant"}}
+}
+)";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  EXPECT_TRUE(absl::StrContains(result.status().message(),
+                                "Invalid debug_log_mode value: invalid_mode"));
 }
 
 TEST_F(HloParserTest, MetadataWithCholesky) {
