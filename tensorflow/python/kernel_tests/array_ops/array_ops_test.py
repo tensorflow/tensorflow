@@ -1599,6 +1599,17 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
         self.evaluate(sequence_mask_fn(lengths)),
         [[True, True]])
 
+  def testJitCompileWithUint8Lengths(self):
+
+    @def_function.function(jit_compile=True)
+    def sequence_mask_fn(lengths):
+      return array_ops.sequence_mask(lengths, dtype=dtypes.uint8)
+
+    lengths = constant_op.constant([3, 2], dtype=dtypes.uint8)
+    self.assertAllEqual(
+        self.evaluate(sequence_mask_fn(lengths)),
+        [[1, 1, 1], [1, 1, 0]])
+
   def testOutputDtype(self):
 
     def check_output_dtype(output_dtype):
