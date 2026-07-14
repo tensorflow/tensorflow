@@ -405,6 +405,7 @@ EXPORTS
  ?GetOutputString@StatsCalculator@tsl@@QEBA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ
  ?GetParameterLayouts@PjRtExecutable@xla@@UEBA?AV?$StatusOr@V?$vector@V?$shared_ptr@$$CBVPjRtLayout@xla@@@std@@V?$allocator@V?$shared_ptr@$$CBVPjRtLayout@xla@@@std@@@2@@std@@@lts_20260107@absl@@XZ
  ?GetParameterShardings@PjRtExecutable@xla@@UEBA?AV?$optional@V?$vector@VOpSharding@xla@@V?$allocator@VOpSharding@xla@@@std@@@std@@@std@@XZ
+ ?GetPythonAPIMaxIndex@tensorflow@@YAHAEBVPythonAPIInfo@1@@Z
  ?GetPythonWrappers@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEBD_K@Z
  ?GetRefForEmptyClass@container_internal@lts_20260107@absl@@YAPEAXAEAVCommonFields@123@@Z
  ?GetRegisteredOpConverters@tensorrt@tensorflow@@YA?AV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@XZ
