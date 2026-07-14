@@ -354,7 +354,13 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
         result,
         batch_shape.concatenate(result.shape[-2:]))
 
-    if original_dtype == dtypes.float16:
+    # Cast result back to original dtype if it was float16 or bfloat16.
+    # Note: casting from float32 to float16/bfloat16 follows standard TF semantics:
+    # - Values outside the representable range saturate to inf/-inf
+    # - NaNs remain NaN
+    # This behavior is consistent with TensorFlow's standard cast semantics
+    # and is appropriate for the matrix exponential use case.
+    if original_dtype in (dtypes.float16, dtypes.bfloat16):
       result = math_ops.cast(result, original_dtype)
 
     return result
