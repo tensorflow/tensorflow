@@ -351,6 +351,11 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   absl::Status GatherBuffersDefinedByInstruction(
       const HloInstruction* instruction, BufferDefinitionVector* buffers);
 
+  // Propagates points-to sets for an instruction that aggregates its operands
+  // into an output tuple structure.
+  absl::Status ConstructPointsToSetByAggregatingOperands(
+      HloInstruction* instruction);
+
   // Print points-to set for 'instruction' to 'output'.
   void InstructionToString(const HloInstruction* instruction,
                            std::string* output) const;

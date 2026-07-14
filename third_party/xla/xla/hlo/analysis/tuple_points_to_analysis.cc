@@ -524,21 +524,22 @@ absl::Status TuplePointsToAnalysis::HandleSend(HloInstruction* send) {
   return absl::OkStatus();
 }
 
-absl::Status TuplePointsToAnalysis::HandleTuple(HloInstruction* tuple) {
-  absl::Span<HloInstruction* const> operands(tuple->operands());
-  PointsToSet& points_to_set = CreateEmptyPointsToSet(tuple);
-  ASSIGN_OR_RETURN(LogicalBuffer * buffer,
-                   logical_buffer_analysis_->GetBuffer(tuple, /*index=*/{}));
+absl::Status TuplePointsToAnalysis::ConstructPointsToSetByAggregatingOperands(
+    HloInstruction* instruction) {
+  absl::Span<HloInstruction* const> operands(instruction->operands());
+  PointsToSet& points_to_set = CreateEmptyPointsToSet(instruction);
+  ASSIGN_OR_RETURN(LogicalBuffer * buffer, logical_buffer_analysis_->GetBuffer(
+                                               instruction, /*index=*/{}));
   points_to_set.AddPointedToBuffer(*buffer, /*index=*/{});
 
-  // A tuple contains references to all input operands and transitively any
-  // references in those operands.
+  // A tuple/composite contains references to all input operands and
+  // transitively any references in those operands.
   for (int64_t i = 0; i < operands.size(); ++i) {
     const PointsToSet& operand_points_to_set =
         *PerInst(operands[i])->points_to_set;
 
     // Forward the points-to set and tuple sources of the operand into the
-    // respective subtree of the tuple instructions points-to set.
+    // respective subtree of the output instructions points-to set.
     operand_points_to_set.ForEachElement(
         [&points_to_set, &operand_points_to_set, i](
             const ShapeIndex& src_index,
@@ -558,15 +559,38 @@ absl::Status TuplePointsToAnalysis::HandleTuple(HloInstruction* tuple) {
         });
   }
 
-  // Add the tuple instruction as a tuple source for the top-level tuple.
-  points_to_set.add_tuple_source({}, tuple);
+  // Add the instruction as a tuple source for the top-level tuple/composite.
+  points_to_set.add_tuple_source({}, instruction);
 
   return absl::OkStatus();
+}
+
+absl::Status TuplePointsToAnalysis::HandleTuple(HloInstruction* tuple) {
+  return ConstructPointsToSetByAggregatingOperands(tuple);
 }
 
 absl::Status TuplePointsToAnalysis::HandleCustomCall(
     HloInstruction* custom_call) {
   auto ccall = Cast<HloCustomCallInstruction>(custom_call);
+  if (ccall->custom_call_target() == kCallMarkerBeforeTarget) {
+    // kCallMarkerBeforeTarget is a CustomCall that takes N operands and returns
+    // a tuple containing those operands. It acts as a metadata placeholder for
+    // function arguments before inlining. Since it behaves exactly like a Tuple
+    // instruction, we reuse ConstructPointsToSetByAggregatingOperands.
+    return ConstructPointsToSetByAggregatingOperands(custom_call);
+  }
+  if (ccall->custom_call_target() == kCallMarkerAfterTarget) {
+    // kCallMarkerAfterTarget is a CustomCall that takes exactly 1 operand (the
+    // result of the function call) and simply forwards it as its output. Thus,
+    // its PointsToSet is simply a direct copy of its operand's PointsToSet.
+    if (custom_call->operand_count() != 1) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "kCallMarkerAfterTarget must have exactly 1 operand, but got ",
+          custom_call->operand_count()));
+    }
+    CreateCopiedPointsToSet(custom_call, custom_call->operand(0));
+    return absl::OkStatus();
+  }
   PointsToSet& points_to_set = CreateEmptyPointsToSet(custom_call);
   absl::flat_hash_map<ShapeIndex, std::pair<int64_t, ShapeIndex>>
       aliased_outputs;
