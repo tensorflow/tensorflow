@@ -4206,11 +4206,23 @@ bool HloParserImpl::ParseMesh(std::optional<Mesh>& mesh) {
     if (!ParseToken(TokKind::kRparen, "expected ')' to end device_ids")) {
       return false;
     }
+    // Validate the device_ids count against the mesh size before allocating the
+    // device-id array (using an overflow-checked product of the axis sizes).
+    int64_t num_elements = 1;
+    for (int64_t axis_size : axis_sizes) {
+      if (axis_size < 0 ||
+          (axis_size != 0 &&
+           num_elements > std::numeric_limits<int64_t>::max() / axis_size)) {
+        return TokenError("mesh size overflows int64");
+      }
+      num_elements *= axis_size;
+    }
+    if (static_cast<int64_t>(devices.size()) != num_elements) {
+      return TokenError(absl::StrFormat(
+          "Expected %d device_ids based on mesh axes, but got %d", num_elements,
+          devices.size()));
+    }
     Array<int64_t> device_ids_array(axis_sizes);
-    CHECK_EQ(devices.size(), device_ids_array.num_elements())
-        << absl::StrFormat(
-               "Expected %d device_ids based on mesh axes, but got %d",
-               device_ids_array.num_elements(), devices.size());
     absl::c_copy(devices, device_ids_array.begin());
     mesh.emplace(device_ids_array, axis_names_views);
     return true;
@@ -4234,16 +4246,17 @@ bool HloParserImpl::ParseAxisRef(
   auto it = axis_name_to_idx.find(axis_name_or_index);
   if (it != axis_name_to_idx.end()) {
     axis_index = it->second;
-  } else {
-    CHECK(absl::SimpleAtoi(axis_name_or_index, &axis_index))
-        << "axis '" << axis_name_or_index
-        << "' is not a valid axis name or index in mesh " << mesh.ToString();
+  } else if (!absl::SimpleAtoi(axis_name_or_index, &axis_index)) {
+    return TokenError(absl::StrCat(
+        "axis '", axis_name_or_index,
+        "' is not a valid axis name or index in mesh ", mesh.ToString()));
   }
 
-  CHECK(axis_index >= 0 && axis_index < mesh.axis_names().size())
-      << "axis index " << axis_index << " is out of bounds for mesh "
-      << mesh.ToString() << " which has " << mesh.axis_names().size()
-      << " axes";
+  if (axis_index < 0 || axis_index >= mesh.axis_names().size()) {
+    return TokenError(absl::StrCat(
+        "axis index ", axis_index, " is out of bounds for mesh ",
+        mesh.ToString(), " which has ", mesh.axis_names().size(), " axes"));
+  }
 
   if (!EatIfPresent(TokKind::kColon)) {
     axis = AxisRef(axis_index);

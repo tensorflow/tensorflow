@@ -3365,6 +3365,61 @@ ENTRY test {
               HasSubstr("GTE index -1 out of bounds"));
 }
 
+TEST_F(HloParserTest, MeshReplicaGroupInvalidAxisName) {
+  const std::string original = R"(HloModule m
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT a = f32[] add(lhs, rhs)
+}
+
+ENTRY e {
+  p = f32[128,32] parameter(0)
+  ROOT ar = f32[128,32] all-reduce(p), replica_groups=mesh['axis_0'=2,'axis_1'=2] {'bogus'}, to_apply=add
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(),
+              HasSubstr("is not a valid axis name or index"));
+}
+
+TEST_F(HloParserTest, MeshReplicaGroupAxisIndexOutOfBounds) {
+  const std::string original = R"(HloModule m
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT a = f32[] add(lhs, rhs)
+}
+
+ENTRY e {
+  p = f32[128,32] parameter(0)
+  ROOT ar = f32[128,32] all-reduce(p), replica_groups=mesh['axis_0'=2,'axis_1'=2] {'5'}, to_apply=add
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(), HasSubstr("out of bounds for mesh"));
+}
+
+TEST_F(HloParserTest, MeshReplicaGroupDeviceIdsCountMismatch) {
+  const std::string original = R"(HloModule m
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT a = f32[] add(lhs, rhs)
+}
+
+ENTRY e {
+  p = f32[128,32] parameter(0)
+  ROOT ar = f32[128,32] all-reduce(p), replica_groups=mesh['axis_0'=2,'axis_1'=2, device_ids=(0,1,2)] {'axis_0'}, to_apply=add
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(), HasSubstr("device_ids"));
+}
+
 TEST_F(HloParserTest, CompactGteRoundTrip) {
   const std::string original =
       R"(HloModule test, entry_computation_layout={((f32[10]{0}, f16[10]{0}))->f32[10]{0}}
