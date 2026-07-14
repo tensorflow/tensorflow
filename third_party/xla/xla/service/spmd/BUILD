@@ -458,6 +458,7 @@ xla_cc_test(
     deps = [
         ":spmd_partitioner",
         "//xla:array",
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:mesh_and_axis",
         "//xla/hlo/ir:named_sharding",

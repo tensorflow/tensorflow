@@ -549,11 +549,23 @@ GatherScatterOperandsShardedAcrossParallelDims(
 
 // Pattern rewrite preprocessing utilities.
 
-// Returns rotate_amount if the concat(lhs, rhs) is equivalent to rotating the
-// elements along the concat dimension to the right by rotate_amount, where the
-// input of rotation is the shard operand of lhs and rhs. Returns std::nullopt
-// if the pattern is not found.
-std::optional<int64_t> FindRotateRightPattern(const HloInstruction* concat);
+struct RotateRightPatternMatch {
+  int64_t dim;             // The target tensor dimension
+  int64_t amount;          // Right-rotate amount along 'dim'
+  int64_t rotate_dim_idx;  // Index in rotate->dimensions() (-1 for concat)
+};
+
+// Returns a match if inst is either a rotate operation with a sharded dimension
+// or a concat(lhs, rhs) pattern equivalent to rotating elements along the
+// concat dimension to the right.
+std::optional<RotateRightPatternMatch> FindRotateRightPattern(
+    const HloInstruction* inst);
+
+// Pops the (dim, shift) entry at rotate_dim_idx in rotate_inst in-place.
+// If rotate_inst has no dimensions left after erasure, it replaces uses of
+// rotate_inst with its operand(0) and removes rotate_inst.
+absl::StatusOr<HloInstruction*> PopRotateDimension(HloInstruction* rotate_inst,
+                                                   int64_t rotate_dim_idx);
 
 // Describes the pad with wrap pattern.
 struct PadWithWrapPattern {

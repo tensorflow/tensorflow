@@ -4149,6 +4149,37 @@ absl::Status HloEvaluator::HandleReverse(const HloInstruction* reverse) {
   return absl::OkStatus();
 }
 
+absl::Status HloEvaluator::HandleRotate(const HloInstruction* rotate_hlo) {
+  auto* rotate = Cast<HloRotateInstruction>(rotate_hlo);
+  const Shape& result_shape = rotate->shape();
+  const Literal& operand_literal = GetEvaluatedLiteralFor(rotate->operand(0));
+  Literal result(result_shape);
+  const size_t element_byte_size =
+      primitive_util::ByteWidth(result_shape.element_type());
+  auto* operand_base = static_cast<const char*>(operand_literal.untyped_data());
+  RETURN_IF_ERROR(result.PopulateInplaceParallel(
+      [&](void* dest, absl::Span<const int64_t> out_index, int) {
+        std::vector<int64_t> operand_index(out_index.begin(), out_index.end());
+        for (size_t i = 0; i < rotate->dimensions().size(); ++i) {
+          int64_t dim = rotate->dimensions()[i];
+          int64_t shift = rotate->shifts()[i];
+          int64_t dim_size = result_shape.dimensions(dim);
+          if (dim_size > 0) {
+            int64_t norm_shift = ((shift % dim_size) + dim_size) % dim_size;
+            operand_index[dim] = (operand_index[dim] + norm_shift) % dim_size;
+          }
+        }
+        auto* src =
+            operand_base +
+            (element_byte_size * IndexUtil::MultidimensionalIndexToLinearIndex(
+                                     operand_literal.shape(), operand_index));
+        std::memcpy(dest, src, element_byte_size);
+      }));
+
+  SetEvaluatedLiteralFor(rotate, std::move(result));
+  return absl::OkStatus();
+}
+
 absl::Status HloEvaluator::HandleSelectAndScatter(
     const HloInstruction* select_and_scatter) {
   auto operand = select_and_scatter->operand(0);

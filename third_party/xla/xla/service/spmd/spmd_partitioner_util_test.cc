@@ -24,12 +24,18 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/array.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/mesh_and_axis.h"
 #include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/service/spmd/spmd_partitioner_util_internal.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 namespace spmd {
@@ -862,6 +868,105 @@ INSTANTIATE_TEST_SUITE_P(
             HloSharding::SingleDevice(1), false}),
     [](const testing::TestParamInfo<CanReshardWithCollectivePermuteTestCase>&
            info) { return info.param.name; });
+
+TEST(SPMDPartitionerUtilTest, FindRotateRightPatternOnRotate) {
+  HloComputation::Builder builder("test");
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 20});
+  auto* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  auto* rotate = builder.AddInstruction(
+      HloInstruction::CreateRotate(shape, param, {0, 1}, {2, 5}));
+  rotate->set_sharding(HloSharding::IotaTile({1, 2}));
+  auto computation = builder.Build();
+  rotate = computation->root_instruction();
+
+  std::optional<RotateRightPatternMatch> match = FindRotateRightPattern(rotate);
+  ASSERT_TRUE(match.has_value());
+  EXPECT_EQ(match->dim, 1);
+  EXPECT_EQ(match->amount, 15);
+  EXPECT_EQ(match->rotate_dim_idx, 1);
+}
+
+TEST(SPMDPartitionerUtilTest, FindRotateRightPatternOnConcat) {
+  HloComputation::Builder builder("test");
+  Shape shape = ShapeUtil::MakeShape(F32, {12});
+  auto* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  param->set_sharding(HloSharding::IotaTile({4}));
+
+  Shape slice_lhs_shape = ShapeUtil::MakeShape(F32, {2});
+  auto* slice_lhs = builder.AddInstruction(
+      HloInstruction::CreateSlice(slice_lhs_shape, param, {10}, {12}, {1}));
+  Shape slice_rhs_shape = ShapeUtil::MakeShape(F32, {10});
+  auto* slice_rhs = builder.AddInstruction(
+      HloInstruction::CreateSlice(slice_rhs_shape, param, {0}, {10}, {1}));
+
+  auto* concat = builder.AddInstruction(
+      HloInstruction::CreateConcatenate(shape, {slice_lhs, slice_rhs}, 0));
+  concat->set_sharding(HloSharding::IotaTile({4}));
+  auto computation = builder.Build();
+  concat = computation->root_instruction();
+
+  std::optional<RotateRightPatternMatch> match = FindRotateRightPattern(concat);
+  ASSERT_TRUE(match.has_value());
+  EXPECT_EQ(match->dim, 0);
+  EXPECT_EQ(match->amount, 2);
+  EXPECT_EQ(match->rotate_dim_idx, -1);
+}
+
+TEST(SPMDPartitionerUtilTest, PopRotateDimension) {
+  HloComputation::Builder builder("test");
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 20});
+  auto* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  auto* rotate = builder.AddInstruction(
+      HloInstruction::CreateRotate(shape, param, {0, 1}, {2, 5}));
+  auto computation = builder.Build();
+  rotate = computation->root_instruction();
+
+  ASSERT_OK_AND_ASSIGN(HloInstruction * rem_rotate,
+                       PopRotateDimension(rotate, /*rotate_dim_idx=*/1));
+  EXPECT_EQ(rem_rotate, rotate);
+  auto* rem_rotate_inst = Cast<HloRotateInstruction>(rem_rotate);
+  ASSERT_EQ(rem_rotate_inst->dimensions().size(), 1);
+  EXPECT_EQ(rem_rotate_inst->dimensions()[0], 0);
+  EXPECT_EQ(rem_rotate_inst->shifts()[0], 2);
+
+  ASSERT_OK_AND_ASSIGN(HloInstruction * final_inst,
+                       PopRotateDimension(rem_rotate, /*rotate_dim_idx=*/0));
+  EXPECT_EQ(final_inst, param);
+}
+
+TEST(SPMDPartitionerUtilTest, PopRotateDimensionMixedAndAllSharded) {
+  HloComputation::Builder builder("test");
+  Shape shape = ShapeUtil::MakeShape(F32, {8, 12, 16});
+  auto* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  auto* rotate = builder.AddInstruction(
+      HloInstruction::CreateRotate(shape, param, {0, 1, 2}, {1, 2, 3}));
+  auto computation = builder.Build();
+  rotate = computation->root_instruction();
+
+  // 1. Pop sharded dimension 1 (`rotate_dim_idx = 1`). Replicated dims 0 and 2
+  // stay in the rotate instruction.
+  ASSERT_OK_AND_ASSIGN(HloInstruction * rem_rotate,
+                       PopRotateDimension(rotate, /*rotate_dim_idx=*/1));
+  EXPECT_EQ(rem_rotate, rotate);
+  auto* rem_inst = Cast<HloRotateInstruction>(rem_rotate);
+  ASSERT_EQ(rem_inst->dimensions().size(), 2);
+  EXPECT_EQ(rem_inst->dimensions()[0], 0);
+  EXPECT_EQ(rem_inst->dimensions()[1], 2);
+  EXPECT_EQ(rem_inst->shifts()[0], 1);
+  EXPECT_EQ(rem_inst->shifts()[1], 3);
+
+  // 2. If all remaining dimensions (0 and 2) are subsequently popped, the
+  // rotate instruction is completely replaced by its operand.
+  ASSERT_OK_AND_ASSIGN(rem_rotate,
+                       PopRotateDimension(rem_rotate, /*rotate_dim_idx=*/1));
+  ASSERT_OK_AND_ASSIGN(HloInstruction * final_inst,
+                       PopRotateDimension(rem_rotate, /*rotate_dim_idx=*/0));
+  EXPECT_EQ(final_inst, param);
+}
 
 }  // namespace
 }  // namespace spmd

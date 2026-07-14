@@ -9953,6 +9953,97 @@ ENTRY entry {
               AllOf(op::Shape("f32[2,3]"), op::Reverse(op::Parameter(0))));
 }
 
+TEST_P(SpmdPartitioningTest, TiledRotatePassthrough) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[3,3] parameter(0), sharding={devices=[2,1]<=[2]}
+  ROOT rotate = f32[3,3] rotate(p0), dimensions={1}, shifts={2},
+    sharding={devices=[2,1]<=[2]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              AllOf(op::Shape("f32[2,3]"), op::Rotate(op::Parameter(0))));
+}
+
+TEST_P(SpmdPartitioningTest, HandleRotateShardedDimensionTriggersRetCheck) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[4] parameter(0), sharding={devices=[4]<=[4]}
+  ROOT rotate = f32[4] rotate(p0), dimensions={0}, shifts={1},
+    sharding={devices=[4]<=[4]}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  auto collective_ops_creator =
+      GetDefaultCollectiveOpsCreator(/*num_devices=*/4, /*num_replicas=*/1);
+  SpmdPartitioner partitioner(/*num_partitions=*/4, /*num_replicas=*/1,
+                              SpmdPartitionerOptions(), collective_ops_creator);
+  auto call_graph = CallGraph::Build(module.get());
+  spmd::SpmdLogger logger(0, /*disabled=*/true);
+  auto visitor = partitioner.CreateVisitor(
+      module->entry_computation(), /*num_partitions=*/4, /*num_replicas=*/1,
+      collective_ops_creator, /*next_channel_id=*/nullptr, &logger,
+      SpmdPartitionerOptions(), *call_graph);
+  absl::Status status =
+      visitor
+          ->DoPartition(
+              module->entry_computation(),
+              module->entry_computation()->root_instruction()->sharding())
+          .status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.ToString(),
+              ::testing::HasSubstr("Rotate along sharded dimension"));
+}
+
+TEST_P(SpmdPartitioningTest, TiledRotateMixedShardedAndReplicatedDimensions) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[8,12] parameter(0), sharding={devices=[1,4]<=[4]}
+  ROOT %rotate = f32[8,12] rotate(%param0), dimensions={0,1}, shifts={1,2},
+    sharding={devices=[1,4]<=[4]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  const auto root = module->entry_computation()->root_instruction();
+  auto param0 = AllOf(op::Parameter(0), op::Shape("f32[8,3]"));
+  auto sharded_rotate_concat = op::Concatenate(
+      op::Slice(param0), op::CollectivePermute(op::Slice(param0)));
+  EXPECT_THAT(root,
+              AllOf(op::Rotate(sharded_rotate_concat), op::Shape("f32[8,3]")));
+}
+
+TEST_P(SpmdPartitioningTest, TiledRotateAllDimensionsSharded) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[8,12] parameter(0), sharding={devices=[2,2]<=[4]}
+  ROOT %rotate = f32[8,12] rotate(%param0), dimensions={0,1}, shifts={2,3},
+    sharding={devices=[2,2]<=[4]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  const auto root = module->entry_computation()->root_instruction();
+  // Since both dimensions are sharded, the HloRotateInstruction is completely
+  // replaced by nested custom-call right-rotate patterns and removed.
+  EXPECT_NE(root->opcode(), HloOpcode::kRotate);
+  EXPECT_THAT(root, op::Concatenate(::testing::_, ::testing::_));
+}
+
 TEST_P(SpmdPartitioningTest, TiledReverseViaReversedSharding) {
   absl::string_view hlo_string = R"(
 HloModule module
