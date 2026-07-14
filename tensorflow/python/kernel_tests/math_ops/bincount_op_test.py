@@ -688,6 +688,7 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
     # the downstream OOB read on dense_shape(0) in SparseBincountOp.
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError),
+        "Input must be less than rank 2|"
         "Sparse tensor must have at least 1 dimension"):
       self.evaluate(
           gen_math_ops.sparse_bincount(
