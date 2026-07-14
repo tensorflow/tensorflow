@@ -58,7 +58,7 @@ class AsyncSleepOp : public AsyncOpKernel {
     const auto& delay_tensor = ctx->input(0);
     OP_REQUIRES_ASYNC(
         ctx, ::tensorflow::TensorShapeUtils::IsScalar(delay_tensor.shape()),
-        InvalidArgument("Input `delay` must be a scalar."),
+        absl::InvalidArgumentError("Input `delay` must be a scalar."),
         done);  // Important: call `done` in every execution path
     const float delay = delay_tensor.flat<float>()(0);
     OP_REQUIRES_ASYNC(ctx, delay >= 0.0,
