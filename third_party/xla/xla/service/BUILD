@@ -6835,7 +6835,6 @@ cc_library(
     srcs = ["call_outliner.cc"],
     hdrs = ["call_outliner.h"],
     deps = [
-        ":call_marker",
         "//xla:status_macros",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
