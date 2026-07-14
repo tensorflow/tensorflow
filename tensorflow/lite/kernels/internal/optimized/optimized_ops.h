@@ -4400,6 +4400,15 @@ inline void PadImpl(const tflite::PadParams& op_params,
       RuntimeShape::ExtendedShape(max_supported_dims, input_shape);
   const RuntimeShape ext_output_shape =
       RuntimeShape::ExtendedShape(max_supported_dims, output_shape);
+  // A zero-element tensor may legitimately have null data pointers. There is
+  // nothing to copy or fill in that case, and even a zero-byte memcpy must not
+  // receive those null pointers under UBSan. Scan dimensions instead of using
+  // FlatSize(), which intentionally does not check for integer overflow.
+  for (int i = 0; i < output_shape.DimensionsCount(); ++i) {
+    if (output_shape.Dims(i) == 0) {
+      return;
+    }
+  }
   TFLITE_DCHECK_LE(op_params.left_padding_count, max_supported_dims);
   TFLITE_DCHECK_LE(op_params.right_padding_count, max_supported_dims);
 
@@ -4480,7 +4489,9 @@ inline void PadImpl(const tflite::PadParams& op_params,
                         Offset(ext_input_shape, out_b - left_b_padding,
                                out_p - left_s1_padding, out_h - left_s2_padding,
                                out_w - left_s3_padding, 0);
-          memcpy(out, in, input_depth * sizeof(T));
+          if (input_depth != 0) {
+            memcpy(out, in, input_depth * sizeof(T));
+          }
 
           if (right_c_padding != 0) {
             TypedMemset<T>(

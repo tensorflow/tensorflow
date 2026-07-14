@@ -355,6 +355,12 @@ TfLiteStatus CheckedShapeProduct(TfLiteContext* context,
                                  std::initializer_list<int> dims,
                                  const char* error_message, size_t& product);
 
+// Runtime-sized variant for kernels that cannot use span types (including
+// TFLite Micro builds).
+TfLiteStatus CheckedShapeProduct(TfLiteContext* context, const int* dims,
+                                 int count, const char* error_message,
+                                 size_t& product);
+
 /**
  * Calculates the product of the given dimensions. Returns an error if any of
  * the dimensions is negative or if the product overflows.
