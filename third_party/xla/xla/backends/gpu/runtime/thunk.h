@@ -267,7 +267,11 @@ class Thunk {
 
     // Optional allocation indices whose device addresses are stable for this
     // execution. If absent, consumers that need address-change checks should
-    // conservatively treat allocation addresses as dynamic.
+    // conservatively treat allocation addresses as dynamic. Across execution
+    // steps, this may transition only from absent to present, and the
+    // transition must be passed to Initialize before ExecuteOnStream. Once
+    // present, the allocation indices must remain unchanged; consumers may
+    // rely on this invariant without revalidating the vector on each step.
     std::optional<absl::Span<const BufferAllocation::Index>>
         persistent_alloc_indices = std::nullopt;
   };
@@ -345,7 +349,11 @@ class Thunk {
 
     // Optional allocation indices whose device addresses are stable for this
     // execution. If absent, consumers that need address-change checks should
-    // conservatively treat allocation addresses as dynamic.
+    // conservatively treat allocation addresses as dynamic. Across execution
+    // steps, this may transition only from absent to present, and the
+    // transition must be passed to Initialize before ExecuteOnStream. Once
+    // present, the allocation indices must remain unchanged; consumers may
+    // rely on this invariant without revalidating the vector on each step.
     std::optional<absl::Span<const BufferAllocation::Index>>
         persistent_alloc_indices = std::nullopt;
 
