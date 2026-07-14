@@ -135,6 +135,182 @@ void CommonPjRtClient::DelinearizeAsync(
   });
 }
 
+tsl::AsyncValueRef<PjRtStagingBuffer>
+CommonPjRtClient::CreateStagingForZeroCopyLinearize(
+    const void* data, const xla::Shape& device_shape,
+    PjRtMemorySpace* memory_space,
+    absl::AnyInvocable<void() &&> on_done_with_host_buffer) {
+  auto size_or = GetOnDeviceBytesCount(memory_space->kind_id(), device_shape);
+  if (!size_or.ok()) {
+    return tsl::MakeErrorAsyncValueRef(size_or.status());
+  }
+  absl::Span<uint8_t> span(
+      const_cast<uint8_t*>(static_cast<const uint8_t*>(data)), *size_or);
+  return PjRtStagingBuffer::Create(span, std::move(on_done_with_host_buffer));
+}
+
+absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>>
+CommonPjRtClient::AllocateLinearizeDest(bool sync,
+                                        const xla::Shape& device_shape,
+                                        absl::Span<const int64_t> byte_strides,
+                                        PjRtRawBufferRef dest_buffer) {
+  PjRtMemorySpace* memory_space = dest_buffer->memory_space();
+  ASSIGN_OR_RETURN(size_t size, GetOnDeviceBytesCount(memory_space->kind_id(),
+                                                      device_shape));
+  if (dest_buffer->GetHostPointer() != nullptr) {
+    absl::Span<uint8_t> span(
+        static_cast<uint8_t*>(dest_buffer->GetHostPointer()), size);
+    return PjRtStagingBuffer::Create(
+        span, [dest_buffer = std::move(dest_buffer)]() {});
+  }
+  auto vec = std::make_unique<std::vector<uint8_t>>(size);
+  absl::Span<uint8_t> span = absl::MakeSpan(*vec);
+  return PjRtStagingBuffer::Create(span, [vec = std::move(vec)]() {});
+}
+
+absl::Status CommonPjRtClient::Linearize(
+    absl::Span<uint8_t> dest, const void* data, PrimitiveType type,
+    absl::Span<const int64_t> dims, absl::Span<const int64_t> byte_strides,
+    const Layout& device_layout, absl::Span<const uint32_t> dynamic_sizes) {
+  return absl::UnimplementedError("Linearize not supported");
+}
+
+absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeIntoImpl(
+    const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+    std::optional<absl::Span<int64_t const>> byte_strides,
+    HostBufferSemantics host_buffer_semantics,
+    absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+    const xla::Shape& device_shape, absl::Span<const uint32_t> dynamic_sizes,
+    PjRtRawBufferRef raw_buffer) {
+  auto* memory_space = raw_buffer->memory_space();
+  tsl::profiler::TraceMeProducer producer("CommonPjRtClient::LinearizeIntoImpl",
+                                          tsl::profiler::ContextType::kPjRt);
+
+  tsl::AsyncValueRef<PjRtStagingBuffer> linearized;
+  if (raw_buffer->GetHostPointer() == nullptr &&
+      host_buffer_semantics != HostBufferSemantics::kImmutableOnlyDuringCall &&
+      dynamic_sizes.empty() &&
+      ShouldPerformZeroCopyLinearize(data, device_shape, type, dims,
+                                     byte_strides)) {
+    linearized = CreateStagingForZeroCopyLinearize(
+        data, device_shape, memory_space, std::move(on_done_with_host_buffer));
+  } else {
+    ASSIGN_OR_RETURN(
+        linearized,
+        AllocateLinearizeDest(
+            /*sync=*/host_buffer_semantics ==
+                HostBufferSemantics::kImmutableOnlyDuringCall,
+            device_shape, byte_strides.value_or(absl::Span<const int64_t>()),
+            raw_buffer));
+    if (host_buffer_semantics ==
+        HostBufferSemantics::kImmutableOnlyDuringCall) {
+      if (!linearized.IsAvailable()) {
+        tsl::BlockUntilReady(linearized.GetAsyncValue());
+      }
+      if (auto* error = linearized.GetAsyncValue()->GetErrorIfPresent()) {
+        return *error;
+      }
+      RETURN_IF_ERROR(
+          Linearize(linearized->data(), data, type, dims,
+                    byte_strides.value_or(absl::Span<const int64_t>()),
+                    device_shape.layout(), dynamic_sizes));
+      if (on_done_with_host_buffer) {
+        std::move(on_done_with_host_buffer)();
+        on_done_with_host_buffer = nullptr;
+      }
+    } else {
+      PjRtDeviceEventPromiseRef copy_event_promise;
+      PjRtDeviceEventRef copy_event;
+      ASSIGN_OR_RETURN(
+          std::tie(copy_event_promise, copy_event),
+          CreateLinkedEventPromise(memory_space, "BufferFromHostBuffer"));
+
+      async_work_runner()->ExecuteWhenReady(
+          {linearized.CopyRCRef()},
+          [this, linearized = std::move(linearized), copy_event_promise,
+           raw_buffer = std::move(raw_buffer), data, type,
+           dims = absl::InlinedVector<int64_t, 4>(dims.begin(), dims.end()),
+           byte_strides = byte_strides.has_value()
+                              ? absl::InlinedVector<int64_t, 4>(
+                                    byte_strides->begin(), byte_strides->end())
+                              : absl::InlinedVector<int64_t, 4>(),
+           dynamic_sizes = absl::InlinedVector<uint32_t, 4>(
+               dynamic_sizes.begin(), dynamic_sizes.end()),
+           device_layout = device_shape.layout(),
+           context_id{producer.GetContextId()},
+           on_done_with_host_buffer =
+               std::move(on_done_with_host_buffer)]() mutable {
+            tsl::profiler::TraceMeConsumer consumer(
+                "H2D Dispatch", tsl::profiler::ContextType::kPjRt, context_id);
+            absl::Span<uint8_t> staging_data = linearized->data();
+            auto status = [&]() -> absl::Status {
+              if (auto* error =
+                      linearized.GetAsyncValue()->GetErrorIfPresent()) {
+                return *error;
+              }
+              return Linearize(staging_data, data, type, dims, byte_strides,
+                               device_layout, dynamic_sizes);
+            }();
+            if (on_done_with_host_buffer) {
+              std::move(on_done_with_host_buffer)();
+              on_done_with_host_buffer = nullptr;
+            }
+            if (!status.ok()) {
+              copy_event_promise.SetError(std::move(status));
+              return;
+            }
+            PjRtDeviceEventRef copy_event;
+            if (raw_buffer->GetHostPointer() == staging_data.data()) {
+              linearized.reset();
+              copy_event_promise.SetReady();
+              return;
+            }
+            auto event = raw_buffer->CopyRawHostToDeviceAndReturnEvent(
+                staging_data.data(), 0, staging_data.size());
+            if (!event.ok()) {
+              copy_event_promise.SetError(event.status());
+              return;
+            }
+            event->ptr().DeleteWhenReady(
+                tsl::RCReference<tsl::AsyncValue>(std::move(linearized)));
+            copy_event_promise.Set(event.value());
+          });
+      return copy_event;
+    }
+  }
+
+  if (!linearized.IsAvailable()) {
+    tsl::BlockUntilReady(linearized.GetAsyncValue());
+  }
+  if (auto* error = linearized.GetAsyncValue()->GetErrorIfPresent()) {
+    return *error;
+  }
+  auto staging_data = linearized->const_data();
+  if (raw_buffer->GetHostPointer() == staging_data.data()) {
+    PjRtDeviceEventPromiseRef copy_event_promise;
+    PjRtDeviceEventRef copy_event;
+    ASSIGN_OR_RETURN(
+        std::tie(copy_event_promise, copy_event),
+        CreateLinkedEventPromise(memory_space, "BufferFromHostBuffer"));
+    copy_event_promise.SetReady();
+    return copy_event;
+  }
+  auto event = raw_buffer->CopyRawHostToDeviceAndReturnEvent(
+      staging_data.data(), 0, staging_data.size());
+  if (!event.ok()) {
+    PjRtDeviceEventPromiseRef copy_event_promise;
+    PjRtDeviceEventRef copy_event;
+    ASSIGN_OR_RETURN(
+        std::tie(copy_event_promise, copy_event),
+        CreateLinkedEventPromise(memory_space, "BufferFromHostBuffer"));
+    copy_event_promise.SetError(event.status());
+    return copy_event;
+  }
+  event->ptr().DeleteWhenReady(
+      tsl::RCReference<tsl::AsyncValue>(std::move(linearized)));
+  return event.value();
+}
+
 absl::Status CommonPjRtClient::DelinearizeHostBuffer(
     absl::Span<const uint8_t> input_data, const Shape& shape,
     MutableLiteralBase* literal) {
