@@ -206,14 +206,14 @@ absl::Status ValidateSparseTensorIndicesUnordered(const Tensor& indices,
   const auto shape_vec = shape.flat<Tindices>();
   int64_t nnz = indices.dim_size(0);
   int64_t ndims = indices.dim_size(1);
-    
+
   // Reject rank-0 tensors. If ndims=0, the inner bounds-checking loop
   // never executes, allowing crafted inputs to bypass validation.
   if (ndims == 0) {
     return absl::InvalidArgumentError(
         "Sparse tensor must have at least 1 dimension (ndims >= 1), got 0.");
   }
-    
+
   for (int64_t i = 0; i < nnz; ++i) {
     for (int64_t dim = 0; dim < ndims; ++dim) {
       const Tindices idx = indices_mat(i, dim);
@@ -237,14 +237,14 @@ absl::Status ValidateSparseTensorIndicesOrdered(const Tensor& indices,
   const auto shape_vec = shape.flat<Tindices>();
   int64_t nnz = indices.dim_size(0);
   int64_t ndims = indices.dim_size(1);
-    
+
   // Reject rank-0 tensors for consistency with the unordered variant
   // and to prevent bounds-check bypass when ndims=0.
   if (ndims == 0) {
     return absl::InvalidArgumentError(
         "Sparse tensor must have at least 1 dimension (ndims >= 1), got 0.");
   }
-    
+
   if (nnz == 0) {
     return absl::OkStatus();
   }
