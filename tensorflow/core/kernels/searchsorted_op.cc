@@ -33,6 +33,21 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
+
+// Comparator that establishes a strict total order consistent with NaN being
+// the largest value.  Without it, IEEE 754 NaN comparisons are all false and
+// lower_bound/upper_bound misplace NaN at position 0 instead of the end.
+template <typename T>
+struct NanAwareCompare {
+  bool operator()(const T& a, const T& b) const {
+    if constexpr (!std::is_integral<T>::value) {
+      if (Eigen::numext::isnan(a)) return false;
+      if (Eigen::numext::isnan(b)) return true;
+    }
+    return a < b;
+  }
+};
+
 template <typename T, typename OutType>
 struct UpperBoundFunctor<CPUDevice, T, OutType> {
   static absl::Status Compute(
@@ -48,7 +63,8 @@ struct UpperBoundFunctor<CPUDevice, T, OutType> {
         for (int64_t i = first; i < last; ++i) {
           output_ptr[i] = std::upper_bound(sorted_inputs_ptr,
                                            sorted_inputs_ptr + num_inputs,
-                                           values(i + b * num_values)) -
+                                           values(i + b * num_values),
+                                           NanAwareCompare<T>()) -
                           sorted_inputs_ptr;
         }
       }
@@ -78,7 +94,8 @@ struct LowerBoundFunctor<CPUDevice, T, OutType> {
         for (int64_t i = first; i < last; ++i) {
           output_ptr[i] = std::lower_bound(sorted_inputs_ptr,
                                            sorted_inputs_ptr + num_inputs,
-                                           values(i + b * num_values)) -
+                                           values(i + b * num_values),
+                                           NanAwareCompare<T>()) -
                           sorted_inputs_ptr;
         }
       }
