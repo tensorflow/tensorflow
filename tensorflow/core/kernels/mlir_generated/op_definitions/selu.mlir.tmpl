@@ -1,0 +1,16 @@
+func.func @Selu_platform_elem_type_output_type(%arg0: tensor<*xelem_type>) -> tensor<*xoutput_type> attributes {llvm.emit_c_interface, tf_entry} {
+  %0 = mhlo.constant dense<1.75809932> : tensor<elem_type>
+  %1 = mhlo.constant dense<1.05070102> : tensor<elem_type>
+  %2 = mhlo.constant dense<0.000000e+00> : tensor<elem_type>
+  %3 = shape.shape_of %arg0 : tensor<*xelem_type> -> tensor<?xindex>
+  %4 = shape.num_elements %3 : tensor<?xindex> -> index
+  %from_elements = tensor.from_elements %4 : tensor<1xindex>
+  %5 = tensor.reshape %arg0(%from_elements) : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
+  %6 = chlo.broadcast_compare %5, %2 {comparison_direction = #chlo<comparison_direction GT>} : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xi1>
+  %7 = chlo.broadcast_multiply %5, %1 : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xelem_type>
+  %8 = mhlo.exponential_minus_one %5 : tensor<?xelem_type>
+  %9 = chlo.broadcast_multiply %8, %0 : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xelem_type>
+  %10 = chlo.broadcast_select %6, %7, %9 : (tensor<?xi1>, tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
+  %11 = tensor.reshape %10(%3) : (tensor<?xelem_type>, tensor<?xindex>) -> tensor<*xelem_type>
+  return %11 : tensor<*xelem_type>
+}

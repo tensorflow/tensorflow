@@ -1,0 +1,118 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -o - | FileCheck %s
+
+# CHECK: CPU:0
+# CHECK: TPU:0
+# CHECK: TPU:0
+# CHECK: TPU:0
+# CHECK: TPU:1
+# CHECK: TPU:1
+# CHECK: TPU:1
+
+node {
+  name: "x"
+  op: "Const"
+  device: "/device:CPU:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 3
+      }
+    }
+  }
+  experimental_debug_info {
+  }
+}
+
+node {
+  name: "Add0"
+  op: "Add"
+  input: "x"
+  input: "x"
+  device: "/device:TPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+
+node {
+  name: "Add1"
+  op: "Add"
+  input: "Add0"
+  input: "x"
+  device: "/device:TPU:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+
+node {
+  name: "Add2"
+  op: "Add"
+  input: "Add0"
+  input: "x"
+  device: "/device:TPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+
+node {
+  name: "Add3"
+  op: "Add"
+  input: "Add1"
+  input: "x"
+  device: "/device:TPU:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+
+node {
+  name: "Add4"
+  op: "Add"
+  input: "Add2"
+  input: "x"
+  device: "/device:TPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+
+node {
+  name: "Add5"
+  op: "Add"
+  input: "Add3"
+  input: "x"
+  device: "/device:TPU:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}

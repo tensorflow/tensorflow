@@ -1,0 +1,26 @@
+diff --git a/third_party/gpus/crosstool/cc_toolchain_config.bzl.tpl b/third_party/gpus/crosstool/cc_toolchain_config.bzl.tpl
+index 282ba08cda..93713a66dd 100644
+--- a/third_party/gpus/crosstool/cc_toolchain_config.bzl.tpl
++++ b/third_party/gpus/crosstool/cc_toolchain_config.bzl.tpl
+@@ -1311,7 +1311,7 @@ def _impl(ctx):
+             fastbuild_feature,
+             dbg_feature,
+             supports_dynamic_linker_feature,
+-            supports_pic_feature,
++            supports_pic_feature, feature(name='hack', enabled=True, flag_sets = [ flag_set(actions = [ ACTION_NAMES.assemble, ACTION_NAMES.preprocess_assemble, ACTION_NAMES.c_compile, ACTION_NAMES.cpp_compile, ACTION_NAMES.cpp_header_parsing, ACTION_NAMES.cpp_module_compile, ACTION_NAMES.cpp_module_codegen, ACTION_NAMES.cpp_link_executable, ACTION_NAMES.cpp_link_dynamic_library, ACTION_NAMES.cpp_link_nodeps_dynamic_library, ], flag_groups = [ flag_group( flags = ["--sysroot=/dt7"] ) ]) ]),
+         ]
+     elif (ctx.attr.cpu == "darwin"):
+         features = [
+diff --git a/third_party/gpus/cuda_configure.bzl b/third_party/gpus/cuda_configure.bzl
+index cf63adcbaa..c0718a9762 100644
+--- a/third_party/gpus/cuda_configure.bzl
++++ b/third_party/gpus/cuda_configure.bzl
+@@ -282,7 +282,7 @@ def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp):
+         lang = "c++"
+     else:
+         lang = "c"
+-    result = repository_ctx.execute([cc, "-E", "-x" + lang, "-", "-v"])
++    result = repository_ctx.execute([cc, "-E", "-x" + lang, "-", "-v", "--sysroot=/dt7", "-no-canonical-prefixes"])
+     index1 = result.stderr.find(_INC_DIR_MARKER_BEGIN)
+     if index1 == -1:
+         return []

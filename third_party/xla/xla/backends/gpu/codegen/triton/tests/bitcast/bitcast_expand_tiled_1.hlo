@@ -1,0 +1,30 @@
+// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s --check-prefixes=CHECK
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+
+fusion {
+  p = f32[16] parameter(0)
+  ROOT bitcast = f32[1,16] bitcast(p)
+}
+
+// CHECK-LABEL:  xtile.entry_func @triton_fn(
+// CHECK-SAME:     %[[ARG0:.*]]: memref<16xf32>,
+// CHECK-SAME:     %[[ARG1:.*]]: memref<1x16xf32>,
+// CHECK-SAME:     %[[ARG2:.*]]: index)
+// CHECK:          %[[C0:.*]] = arith.constant 0 : index
+// CHECK:          %[[EXTRACT:.*]] = xtile.extract %[[ARG0]][%[[C0]]] [16] [1] : memref<16xf32> -> tensor<16xf32>
+// CHECK:          %[[EXPAND:.*]] = tt.expand_dims %[[EXTRACT]] {axis = 0 : i32} : tensor<16xf32> -> tensor<1x16xf32>
+// CHECK:          xtile.insert %[[EXPAND]] into %[[ARG1]][%[[C0]], %[[C0]]] [1, 16] [1, 1] : tensor<1x16xf32> -> memref<1x16xf32>
+// CHECK:          xtile.return
+
+ENTRY main {
+  p = f32[16] parameter(0)
+  ROOT fusion = f32[1,16] fusion(p), kind=kCustom, calls=fusion,
+    backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":[1,16]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+}

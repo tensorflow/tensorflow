@@ -1,0 +1,19 @@
+# This file contains the list of senior ICs in the XLA team who can
+# approve force submits in addition to manager approval. See
+# go/foundations-force-submit-policy for full policy.
+
+// go/keep-sorted start
+andydavis
+asabne
+berkin
+chenyin
+jikimjikim
+jsreeram
+ksmurthy
+majnemer
+masonchang
+mkuper
+pifon
+pizzud
+// go/keep-sorted end
+

@@ -1,0 +1,59 @@
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+#include "tensorflow/core/tpu/kernels/tpu_util.h"
+
+#include <cstdint>
+#include <memory>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "xla/client/compile_only_client.h"
+#include "xla/shape.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+
+namespace tensorflow {
+namespace tpu {
+
+xla::CompileOnlyClient::AotXlaComputationInstance
+BuildAotXlaComputationInstance(
+    const XlaCompiler::CompilationResult& compilation_result) {
+  xla::CompileOnlyClient::AotXlaComputationInstance instance;
+  instance.computation = compilation_result.computation.get();
+  for (const xla::Shape& shape : compilation_result.xla_input_shapes) {
+    instance.argument_layouts.push_back(&shape);
+  }
+  instance.result_layout = &compilation_result.xla_output_shape;
+  return instance;
+}
+
+absl::Status ShapeTensorToTensorShape(const Tensor& tensor,
+                                      TensorShape* shape) {
+  if (tensor.dtype() != DT_INT64 ||
+      !TensorShapeUtils::IsVector(tensor.shape())) {
+    return absl::InvalidArgumentError("Shape tensor must be an int64 vector.");
+  }
+  const int64_t rank = tensor.NumElements();
+  auto tensor_dims = tensor.flat<int64_t>();
+  std::vector<int64_t> dims(rank);
+  for (int64_t i = 0; i < rank; ++i) {
+    dims[i] = tensor_dims(i);
+  }
+  return TensorShapeUtils::MakeShape(dims, shape);
+}
+
+}  // namespace tpu
+}  // namespace tensorflow

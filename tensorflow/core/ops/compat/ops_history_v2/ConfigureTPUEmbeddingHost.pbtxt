@@ -1,0 +1,20 @@
+op {
+  name: "ConfigureTPUEmbeddingHost"
+  input_arg {
+    name: "common_config"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "memory_config"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "network_config"
+    type: DT_STRING
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  is_stateful: true
+}

@@ -1,0 +1,8 @@
+op {
+  graph_op_name: "UniqueDataset"
+  summary: <<END
+Creates a dataset that contains the unique elements of `input_dataset`.
+END
+  visibility: HIDDEN
+}
+

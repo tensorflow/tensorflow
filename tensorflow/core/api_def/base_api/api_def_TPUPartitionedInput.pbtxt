@@ -1,0 +1,23 @@
+op {
+  graph_op_name: "TPUPartitionedInput"
+  in_arg {
+    name: "inputs"
+    description: <<END
+A list of partitioned inputs which must have the same shape.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A handle which represents the full shape of partitioned tensors.
+END
+  }
+  attr {
+    name: "partition_dim"
+    description: <<END
+An integer describles which dimension is partitioned. -1 means
+those inputs are replicated.
+END
+  }
+  summary: "An op that groups a list of partitioned inputs together. This op"
+}

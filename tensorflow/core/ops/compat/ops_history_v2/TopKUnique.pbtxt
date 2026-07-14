@@ -1,0 +1,19 @@
+op {
+  name: "TopKUnique"
+  input_arg {
+    name: "input"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "topk"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "topk_indices"
+    type: DT_INT32
+  }
+  attr {
+    name: "k"
+    type: "int"
+  }
+}

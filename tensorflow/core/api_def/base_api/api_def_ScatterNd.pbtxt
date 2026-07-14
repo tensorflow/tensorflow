@@ -1,0 +1,126 @@
+# proto-file: tensorflow/core/api_def/base_api/api_def_ScatterNd.pbtxt
+# proto-message: scatter_nd reference proto;
+
+op {
+  graph_op_name: "ScatterNd"
+  in_arg {
+    name: "indices"
+    description: <<END
+Tensor of indices.
+END
+  }
+  in_arg {
+    name: "updates"
+    description: <<END
+Values to scatter into the output tensor.
+END
+  }
+  in_arg {
+    name: "shape"
+    description: <<END
+1-D. The shape of the output tensor.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A new tensor with the given shape and updates applied according
+to the indices.
+END
+  }
+  summary: "Scatters `updates` into a tensor of shape `shape` according to `indices`."
+  description: <<END
+Scatter sparse `updates` according to individual values at the specified
+`indices`. This op returns an output tensor with the `shape` you specify. This
+op is the inverse of the `tf.gather_nd` operator which extracts values or slices
+from a given tensor.
+
+This operation is similar to `tf.tensor_scatter_nd_add`, except that the tensor
+is zero-initialized. Calling `tf.scatter_nd(indices, updates, shape)`
+is identical to calling
+`tf.tensor_scatter_nd_add(tf.zeros(shape, updates.dtype), indices, updates)`
+
+If `indices` contains duplicates, the associated `updates` are accumulated
+(summed) into the output tensor.
+
+**WARNING**: For floating-point data types, the output may be nondeterministic.
+This is because the order in which the updates are applied is nondeterministic
+and when floating-point numbers are added in different orders the resulting
+numerical approximation error can be slightly different. However, the output
+will be deterministic if op determinism is enabled via
+`tf.config.experimental.enable_op_determinism`.
+
+`indices` is an integer tensor containing indices into the output tensor. The
+last dimension of `indices` can be at most the rank of `shape`:
+
+    indices.shape[-1] <= shape.rank
+
+The last dimension of `indices` corresponds to indices of elements
+(if `indices.shape[-1] = shape.rank`) or slices
+(if `indices.shape[-1] < shape.rank`) along dimension `indices.shape[-1]` of
+`shape`.
+
+`updates` is a tensor with shape:
+
+    indices.shape[:-1] + shape[indices.shape[-1]:]
+
+The simplest form of the scatter op is to insert individual elements in
+a tensor by index. Consider an example where you want to insert 4 scattered
+elements in a rank-1 tensor with 8 elements.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd1.png" alt>
+</div>
+
+In Python, this scatter operation would look like this:
+
+```python
+    indices = tf.constant([[4], [3], [1], [7]])
+    updates = tf.constant([9, 10, 11, 12])
+    shape = tf.constant([8])
+    scatter = tf.scatter_nd(indices, updates, shape)
+    print(scatter)
+```
+
+The resulting tensor would look like this:
+
+    [0, 11, 0, 10, 9, 0, 0, 12]
+
+You can also insert entire slices of a higher rank tensor all at once. For
+example, you can insert two slices in the first dimension of a rank-3 tensor
+with two matrices of new values.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd2.png" alt>
+</div>
+
+In Python, this scatter operation would look like this:
+
+```python
+    indices = tf.constant([[1], [3]])
+    updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
+                            [7, 7, 7, 7], [8, 8, 8, 8]],
+                           [[5, 5, 5, 5], [6, 6, 6, 6],
+                            [7, 7, 7, 7], [8, 8, 8, 8]]])
+    shape = tf.constant([4, 4, 4])
+    scatter = tf.scatter_nd(indices, updates, shape)
+    print(scatter)
+```
+
+The resulting tensor would look like this:
+
+    [[[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+     [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
+     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+     [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]]]
+
+If `indices` contains any out-of-bound indices, depending on
+`bad_indices_policy`, the op will either return an error or ignore the
+out-of-bound indices. `bad_indices_policy` can be one of the following values:
+1. "" or "DEFAULT": raises on CPU and ignore on GPU. This is because
+   historically on CPU and GPU we handle errors in different ways, and for
+   backward compatibility we keep the default behavior.
+2. "ERROR": raises error; GPU does not support this value.
+3. "IGNORE": ignore the bad indices; supported on both CPU and GPU.
+END
+}

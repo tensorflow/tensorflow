@@ -1,0 +1,15 @@
+op {
+  name: "NextIteration"
+  input_arg {
+    name: "data"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}

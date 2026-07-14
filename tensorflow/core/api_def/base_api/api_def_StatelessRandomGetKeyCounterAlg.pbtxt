@@ -1,0 +1,32 @@
+op {
+  graph_op_name: "StatelessRandomGetKeyCounterAlg"
+  visibility: HIDDEN
+  in_arg {
+    name: "seed"
+    description: <<END
+2 seeds (shape [2]).
+END
+  }
+  out_arg {
+    name: "key"
+    description: <<END
+Key for the counter-based RNG algorithm (shape uint64[1]).
+END
+  }
+  out_arg {
+    name: "counter"
+    description: <<END
+Counter for the counter-based RNG algorithm. Since counter size is algorithm-dependent, this output will be right-padded with zeros to reach shape uint64[2] (the current maximal counter size among algorithms).
+END
+  }
+  out_arg {
+    name: "alg"
+    description: <<END
+The RNG algorithm (shape int32[]).
+END
+  }
+  summary: "Picks the best algorithm based on device, and scrambles seed into key and counter."
+  description: <<END
+This op picks the best counter-based RNG algorithm based on device, and scrambles a shape-[2] seed into a key and a counter, both needed by the counter-based algorithm. The scrambling is opaque but approximately satisfies the property that different seed results in different key/counter pair (which will in turn result in different random numbers).
+END
+}

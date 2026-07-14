@@ -1,0 +1,93 @@
+op {
+  name: "RandomIndexShuffle"
+  input_arg {
+    name: "index"
+    type_attr: "dtype"
+  }
+  input_arg {
+    name: "seed"
+    type_attr: "Tseed"
+  }
+  input_arg {
+    name: "max_index"
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_UINT32
+        type: DT_INT64
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "Tseed"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_UINT32
+        type: DT_INT64
+        type: DT_UINT64
+      }
+    }
+  }
+}
+op {
+  name: "RandomIndexShuffle"
+  input_arg {
+    name: "index"
+    type_attr: "dtype"
+  }
+  input_arg {
+    name: "seed"
+    type_attr: "Tseed"
+  }
+  input_arg {
+    name: "max_index"
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "rounds"
+    type: "int"
+    default_value {
+      i: 4
+    }
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_UINT32
+        type: DT_INT64
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "Tseed"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_UINT32
+        type: DT_INT64
+        type: DT_UINT64
+      }
+    }
+  }
+}

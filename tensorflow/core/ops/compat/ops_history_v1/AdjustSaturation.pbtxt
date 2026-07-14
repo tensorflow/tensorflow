@@ -1,0 +1,43 @@
+op {
+  name: "AdjustSaturation"
+  input_arg {
+    name: "images"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "scale"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    type: DT_FLOAT
+  }
+}
+op {
+  name: "AdjustSaturation"
+  input_arg {
+    name: "images"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "scale"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+      }
+    }
+  }
+}

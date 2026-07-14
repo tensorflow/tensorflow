@@ -1,0 +1,414 @@
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "tensorflow/lite/simple_memory_arena.h"
+
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <limits>
+#include <string>
+#include <type_traits>
+#include <vector>
+
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/macros.h"
+
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+#include "tensorflow/lite/tensorflow_profiler_logger.h"
+#endif  // TF_LITE_TENSORFLOW_PROFILER
+
+#if defined(__ANDROID__)
+// Android has C11 aligned_alloc only with API 28 or newer, even with C++17 or
+// C11 compilation (this is a non-standard behavior).
+#define TF_LITE_HAS_ALIGNED_ALLOC (__ANDROID_API__ >= 28)
+#elif defined(__APPLE__)
+// Apple does not provide aligned_alloc, even with C++17 or C11 compilation
+// (this is a non-standard behavior).
+#define TF_LITE_HAS_ALIGNED_ALLOC 0
+#elif defined(_WIN32)
+// Windows does not provide aligned_alloc, even with C++17 or C11 compilation
+// (this is a non-standard behavior). However, it provides _aligned_malloc,
+// _aligned_realloc, and _aligned_free, with a slightly different behavior than
+// the C11/C++17 standard functions (size requirement, and free function name.)
+#define TF_LITE_HAS_ALIGNED_ALLOC 0
+#elif __cplusplus >= 201703L || __STDC_VERSION__ >= 201112L
+// C++17 or C11 has (std::)aligned_alloc
+#define TF_LITE_HAS_ALIGNED_ALLOC 1
+#endif
+
+namespace {
+// TODO: b/500201192 - Use a common library for safe integer arithmetic.
+template <typename T>
+bool CheckedAdd(T lhs, T rhs, T* result) {
+  static_assert(std::is_unsigned<T>::value,
+                "CheckedAdd requires an unsigned integer type");
+  if (lhs > std::numeric_limits<T>::max() - rhs) {
+    return false;
+  }
+  *result = lhs + rhs;
+  return true;
+}
+
+template <typename T>
+bool CheckedAlignTo(size_t alignment, T offset, T* aligned_offset) {
+  static_assert(std::is_unsigned<T>::value,
+                "CheckedAlignTo requires an unsigned integer type");
+  if (alignment == 0) {
+    return false;
+  }
+  const size_t remainder = offset % alignment;
+  if (remainder == 0) {
+    *aligned_offset = offset;
+    return true;
+  }
+  return CheckedAdd(offset, static_cast<T>(alignment - remainder),
+                    aligned_offset);
+}
+
+// Allocates memory and aligns it to the specified size. Returns a pair of the
+// allocation pointer and the aligned pointer.
+tflite::PointerAlignedPointerPair AlignedAlloc(size_t size, size_t alignment);
+
+// Frees up aligned memory.
+void AlignedFree(const tflite::PointerAlignedPointerPair& buffer);
+
+// Reallocates aligned memory
+//
+// The function either extends the memory allocation in-place, or if that is not
+// possible a new allocation is created, the data is copied, and the old buffer
+// is deallocated. It is an error to change the alignment during reallocation.
+// If the previous allocation is null, this is equivalent to AlignedAlloc.
+// Returns pointers to the new allocation.
+tflite::PointerAlignedPointerPair AlignedRealloc(
+    const tflite::PointerAlignedPointerPair& old_buffer, size_t old_size,
+    size_t new_size, size_t alignment);
+
+#if defined(_WIN32)
+// On Windows <cstdlib> provides _aligned_malloc, _aligned_free, and
+// _aligned_realloc, use them to implement the Aligned functions.
+
+tflite::PointerAlignedPointerPair AlignedAlloc(size_t size, size_t alignment) {
+  char* pointer = reinterpret_cast<char*>(_aligned_malloc(size, alignment));
+  char* aligned_ptr = pointer;
+  return {pointer, aligned_ptr};
+}
+
+void AlignedFree(const tflite::PointerAlignedPointerPair& buffer) {
+  _aligned_free(buffer.pointer);
+}
+
+tflite::PointerAlignedPointerPair AlignedRealloc(
+    const tflite::PointerAlignedPointerPair& old_buffer, size_t old_size,
+    size_t new_size, size_t alignment) {
+  char* pointer = reinterpret_cast<char*>(
+      _aligned_realloc(old_buffer.pointer, new_size, alignment));
+  if (new_size > 0 && pointer == nullptr) {
+    return {nullptr, nullptr};
+  }
+  char* aligned_ptr = pointer;
+  return {pointer, aligned_ptr};
+}
+#else
+// Default implementation: Use malloc, allocating extra memory, and align the
+// pointer in the allocated buffer.
+
+tflite::PointerAlignedPointerPair AlignedAlloc(size_t size, size_t alignment) {
+  if (alignment == 0) {
+    return {nullptr, nullptr};
+  }
+#if TF_LITE_HAS_ALIGNED_ALLOC
+  // (std::)aligned_alloc requires size to be multiple of alignment.
+  // TODO(b/311495100): when bug is fixed, remove `size + alignment - 1` part.
+  size_t padded_size = 0;
+  size_t allocation_size = 0;
+  if (!CheckedAdd(size, alignment - 1, &padded_size) ||
+      !CheckedAlignTo(alignment, padded_size, &allocation_size)) {
+    return {nullptr, nullptr};
+  }
+  char* pointer =
+      reinterpret_cast<char*>(::aligned_alloc(alignment, allocation_size));
+  char* aligned_ptr = pointer;
+#else
+  // TODO(b/311495100): when bug is fixed, change this to
+  // `size + std::max(size_t{0}, alignment - alignof(std::max_align_t))`
+  size_t allocation_size = 0;
+  if (!CheckedAdd(size, alignment - 1, &allocation_size)) {
+    return {nullptr, nullptr};
+  }
+  char* pointer = reinterpret_cast<char*>(std::malloc(allocation_size));
+  char* aligned_ptr = nullptr;
+  if (pointer != nullptr) {
+    std::uintptr_t aligned_pointer = 0;
+    if (!CheckedAlignTo(alignment, reinterpret_cast<std::uintptr_t>(pointer),
+                        &aligned_pointer)) {
+      std::free(pointer);
+      return {nullptr, nullptr};
+    }
+    aligned_ptr = reinterpret_cast<char*>(aligned_pointer);
+  }
+#endif
+#if defined(__clang__)
+#if __has_feature(memory_sanitizer)
+  if (pointer != nullptr) {
+    std::memset(pointer, 0, allocation_size);
+  }
+#endif
+#endif
+  return {pointer, aligned_ptr};
+}
+
+void AlignedFree(const tflite::PointerAlignedPointerPair& buffer) {
+  std::free(buffer.pointer);
+}
+
+tflite::PointerAlignedPointerPair AlignedRealloc(
+    const tflite::PointerAlignedPointerPair& old_buffer, size_t old_size,
+    size_t new_size, size_t alignment) {
+  tflite::PointerAlignedPointerPair new_buffer =
+      AlignedAlloc(new_size, alignment);
+  if (new_size > 0 && new_buffer.pointer == nullptr) {
+    return {nullptr, nullptr};
+  }
+  if (new_size > 0 && old_size > 0) {
+    // Copy data when both old and new buffers are bigger than 0 bytes.
+    const size_t copy_amount = std::min(new_size, old_size);
+    std::memcpy(new_buffer.aligned_pointer, old_buffer.aligned_pointer,
+                copy_amount);
+  }
+  AlignedFree(old_buffer);
+  return new_buffer;
+}
+#endif
+}  // namespace
+
+namespace tflite {
+
+TfLiteStatus ResizableAlignedBuffer::Resize(size_t new_size,
+                                            bool* buffer_reallocated) {
+  if (buffer_reallocated == nullptr || alignment_ == 0) {
+    return kTfLiteError;
+  }
+  *buffer_reallocated = false;
+  if (new_size <= data_size_) {
+    // Skip reallocation when resizing down.
+    return kTfLiteOk;
+  }
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+  PauseHeapMonitoring(/*pause=*/true);
+#endif
+  auto new_buffer = AlignedRealloc(buffer_, data_size_, new_size, alignment_);
+  if (new_size > 0 && new_buffer.pointer == nullptr) {
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+    PauseHeapMonitoring(/*pause=*/false);
+#endif
+    return kTfLiteError;
+  }
+  *buffer_reallocated = (new_buffer.aligned_pointer != buffer_.aligned_pointer);
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+  OnTfLiteArenaAlloc(subgraph_index_, reinterpret_cast<std::uintptr_t>(this),
+                     new_size);
+  if (data_size_ > 0) {
+    OnTfLiteArenaDealloc(subgraph_index_,
+                         reinterpret_cast<std::uintptr_t>(this), data_size_);
+  }
+  PauseHeapMonitoring(/*pause=*/false);
+#endif
+  buffer_ = new_buffer;
+  data_size_ = new_size;
+  return kTfLiteOk;
+}
+
+void ResizableAlignedBuffer::Release() {
+  if (buffer_.pointer == nullptr) {
+    return;
+  }
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+  OnTfLiteArenaDealloc(subgraph_index_, reinterpret_cast<std::uintptr_t>(this),
+                       data_size_);
+#endif
+  AlignedFree(buffer_);
+  buffer_.pointer = nullptr;
+  buffer_.aligned_pointer = nullptr;
+  data_size_ = 0;
+}
+
+void SimpleMemoryArena::PurgeAfter(int32_t node) {
+  for (int i = 0; i < active_allocs_.size(); ++i) {
+    if (active_allocs_[i].first_node > node) {
+      // alloc is allocated after node, so mark it for deletion.
+      active_allocs_[i].tensor = -1;
+    }
+  }
+  active_allocs_.erase(
+      std::remove_if(active_allocs_.begin(), active_allocs_.end(),
+                     [](ArenaAllocWithUsageInterval& alloc) {
+                       return alloc.tensor == -1;
+                     }),
+      active_allocs_.end());
+}
+
+void SimpleMemoryArena::PurgeActiveAllocs(int32_t node) {
+  for (int i = 0; i < active_allocs_.size(); ++i) {
+    if (active_allocs_[i].last_node < node) {
+      // alloc is deallocated before node, so mark it for deletion..
+      active_allocs_[i].tensor = -1;
+    }
+  }
+  active_allocs_.erase(
+      std::remove_if(active_allocs_.begin(), active_allocs_.end(),
+                     [](ArenaAllocWithUsageInterval& alloc) {
+                       return alloc.tensor == -1;
+                     }),
+      active_allocs_.end());
+}
+
+void SimpleMemoryArena::CalculateActiveAllocs(
+    const std::vector<ArenaAllocWithUsageInterval>& allocs, int32_t node) {
+  active_allocs_.clear();
+  for (int i = 0; i < allocs.size(); ++i) {
+    if (allocs[i].first_node <= node && allocs[i].last_node >= node) {
+      active_allocs_.push_back(allocs[i]);
+    }
+  }
+  std::sort(active_allocs_.begin(), active_allocs_.end());
+}
+
+void SimpleMemoryArena::ResetAllocs() { active_allocs_.clear(); }
+
+TfLiteStatus SimpleMemoryArena::Allocate(
+    TfLiteContext* context, size_t alignment, size_t size, int32_t tensor,
+    int32_t first_node, int32_t last_node,
+    ArenaAllocWithUsageInterval* new_alloc) {
+  TF_LITE_ENSURE(context, new_alloc != nullptr);
+  TF_LITE_ENSURE(context, alignment != 0);
+  TF_LITE_ENSURE(context, alignment <= underlying_buffer_.GetAlignment());
+  new_alloc->tensor = tensor;
+  new_alloc->first_node = first_node;
+  new_alloc->last_node = last_node;
+  new_alloc->size = size;
+  if (size == 0) {
+    new_alloc->offset = 0;
+    return kTfLiteOk;
+  }
+  // If we don't find a better gap just allocate at the end of the buffer.
+  const size_t kOffsetNotAssigned = std::numeric_limits<size_t>::max();
+  size_t best_offset = kOffsetNotAssigned;
+  size_t best_offset_fit = kOffsetNotAssigned;
+
+  // Go through the sorted allocs and look at the gaps between them.
+  size_t current_offset = 0;
+  for (const auto& alloc : active_allocs_) {
+    if (alloc.last_node < first_node || alloc.first_node > last_node) {
+      // Usage interval of alloc doesn't intersect with current tensor's usage
+      // interval, so we skip it.
+      continue;
+    }
+    size_t aligned_current_offset = 0;
+    TF_LITE_ENSURE(context, CheckedAlignTo(alignment, current_offset,
+                                           &aligned_current_offset));
+    size_t aligned_current_end = 0;
+    TF_LITE_ENSURE(context, CheckedAdd(aligned_current_offset, size,
+                                       &aligned_current_end));
+    // If we found a gap larger than required size, and smaller than previous
+    // best fit, take it.
+    if (aligned_current_end <= alloc.offset &&
+        alloc.offset - aligned_current_offset < best_offset_fit) {
+      best_offset = aligned_current_offset;
+      best_offset_fit = alloc.offset - current_offset;
+    }
+    size_t alloc_end = 0;
+    TF_LITE_ENSURE(context, CheckedAdd(alloc.offset, alloc.size, &alloc_end));
+    current_offset = std::max(current_offset, alloc_end);
+    // A gap of zero is as good as it gets, no point continuing.
+    if (best_offset_fit == 0) {
+      break;
+    }
+  }
+  if (best_offset == kOffsetNotAssigned) {
+    TF_LITE_ENSURE(context,
+                   CheckedAlignTo(alignment, current_offset, &best_offset));
+  }
+
+  // Update the required buffer size.
+  size_t required_buffer_size = 0;
+  TF_LITE_ENSURE(context, CheckedAdd(best_offset, size, &required_buffer_size));
+  high_water_mark_ = std::max(high_water_mark_, required_buffer_size);
+  new_alloc->offset = best_offset;
+
+  auto insertion_it = std::upper_bound(active_allocs_.begin(),
+                                       active_allocs_.end(), *new_alloc);
+  active_allocs_.insert(insertion_it, *new_alloc);
+  return kTfLiteOk;
+}
+
+TfLiteStatus SimpleMemoryArena::Commit(bool* arena_reallocated) {
+  if (arena_reallocated == nullptr) {
+    return kTfLiteError;
+  }
+  committed_ = false;
+  // Resize the arena to the high water mark (calculated by Allocate), retaining
+  // old contents and alignment in the process. Since Alloc pointers are offset
+  // based, they will remain valid in the new memory block.
+  TF_LITE_ENSURE_STATUS(
+      underlying_buffer_.Resize(high_water_mark_, arena_reallocated));
+  committed_ = true;
+  return kTfLiteOk;
+}
+
+TfLiteStatus SimpleMemoryArena::ResolveAlloc(
+    TfLiteContext* context, const ArenaAllocWithUsageInterval& alloc,
+    char** output_ptr) {
+  TF_LITE_ENSURE(context, committed_);
+  TF_LITE_ENSURE(context, output_ptr != nullptr);
+  size_t alloc_end = 0;
+  TF_LITE_ENSURE(context, CheckedAdd(alloc.offset, alloc.size, &alloc_end));
+  TF_LITE_ENSURE(context, underlying_buffer_.GetSize() >= alloc_end);
+  if (alloc.size == 0) {
+    *output_ptr = nullptr;
+  } else {
+    *output_ptr = underlying_buffer_.GetPtr() + alloc.offset;
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus SimpleMemoryArena::ClearPlan() {
+  committed_ = false;
+  high_water_mark_ = 0;
+  active_allocs_.clear();
+  return kTfLiteOk;
+}
+
+TfLiteStatus SimpleMemoryArena::ReleaseBuffer() {
+  committed_ = false;
+  underlying_buffer_.Release();
+  return kTfLiteOk;
+}
+
+// Using weak symbols to create a pluggable debugging module.
+TFLITE_ATTRIBUTE_WEAK void DumpArenaInfo(
+    const std::string& name, const std::vector<int>& execution_plan,
+    size_t arena_size, const std::vector<ArenaAllocWithUsageInterval>& allocs) {
+}
+
+void SimpleMemoryArena::DumpDebugInfo(
+    const std::string& name, const std::vector<int>& execution_plan) const {
+  tflite::DumpArenaInfo(name, execution_plan, underlying_buffer_.GetSize(),
+                        active_allocs_);
+}
+
+}  // namespace tflite

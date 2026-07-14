@@ -1,0 +1,51 @@
+--- a/python/test/gsan/test_allocator.py
++++ b/python/test/gsan/test_allocator.py
+@@ -424,12 +424,18 @@ def test_export_import_allocation_handles_maps_real_and_shadow(_direct_allocator
+     ],
+ )
+ def test_export_import_fabric_handles(explicit_config, allocator_config):
+-    result = run_in_process(
+-        _run_export_import_fabric_handles_check,
+-        args=(explicit_config, ),
+-        env={"PYTORCH_CUDA_ALLOC_CONF": allocator_config},
+-    )
+-    if (isinstance(result.exc, RuntimeError) and str(result.exc) == "gsanExportRuntimeStateHandle failed."
+-            and "operation not permitted" in result.driver_stderr_output.lower()):
+-        pytest.skip("CUDA fabric handles require an accessible NVIDIA IMEX channel")
+-    assert result.exc is None
++  result = run_in_process(
++      _run_export_import_fabric_handles_check,
++      args=(explicit_config,),
++      env={"PYTORCH_CUDA_ALLOC_CONF": allocator_config},
++  )
++  if (
++      isinstance(result.exc, RuntimeError)
++      and str(result.exc) == "gsanExportRuntimeStateHandle failed."
++      and (
++          "operation not permitted" in result.driver_stderr_output.lower()
++          or "invalid argument" in result.driver_stderr_output.lower()
++      )
++  ):
++    pytest.skip("CUDA fabric handles require an accessible NVIDIA IMEX channel")
++  assert result.exc is None
+
+--- a/python/triton/experimental/gsan/src/GSanAllocator.cc
++++ b/python/triton/experimental/gsan/src/GSanAllocator.cc
+@@ -372,8 +372,14 @@ CUresult ensureContext(int device) {
+   CUresult res = cuCtxGetCurrent(&ctx);
+   if (res != CUDA_SUCCESS)
+     return res;
+-  if (ctx)
+-    return res;
++  if (ctx) {
++    CUdevice currentDevice = 0;
++    res = cuCtxGetDevice(&currentDevice);
++    if (res != CUDA_SUCCESS)
++      return res;
++    if (currentDevice == device)
++      return CUDA_SUCCESS;
++  }
+ 
+   res = cuDevicePrimaryCtxRetain(&ctx, device);
+   if (res != CUDA_SUCCESS)
+

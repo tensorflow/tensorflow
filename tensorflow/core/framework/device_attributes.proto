@@ -1,0 +1,73 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
+syntax = "proto3";
+
+package tensorflow;
+
+option cc_enable_arenas = true;
+option java_outer_classname = "DeviceAttributesProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/device_attributes_go_proto";
+
+message InterconnectLink {
+  int32 device_id = 1;
+  string type = 2;
+  int32 strength = 3;
+}
+
+message LocalLinks {
+  repeated InterconnectLink link = 1;
+}
+
+message DeviceLocality {
+  // Optional bus locality of device.  Default value of 0 means
+  // no specific locality.  Specific localities are indexed from 1.
+  int32 bus_id = 1;
+
+  // Optional NUMA locality of device.
+  int32 numa_node = 2;
+
+  // Optional local interconnect links to other devices.
+  LocalLinks links = 3;
+}
+
+message DeviceAttributes {
+  // Fully specified name of the device within a cluster.
+  string name = 1;
+
+  // String representation of device_type.
+  string device_type = 2;
+
+  // Memory capacity of device in bytes.
+  int64 memory_limit = 4;
+
+  // Platform-specific data about device that may be useful
+  // for supporting efficient data transfers.
+  DeviceLocality locality = 5;
+
+  // A device is assigned a global unique number each time it is
+  // initialized. "incarnation" should never be 0.
+  fixed64 incarnation = 6;
+
+  // String representation of the physical device that this device maps to.
+  string physical_device_desc = 7;
+
+  // A physical device ID for use in XLA DeviceAssignments, unique across
+  // clients in a multi-client setup. Set to -1 if unavailable, non-negative
+  // otherwise.
+  int64 xla_global_id = 8;
+}

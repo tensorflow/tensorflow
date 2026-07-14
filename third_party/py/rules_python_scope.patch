@@ -1,0 +1,33 @@
+diff --git a/python/config_settings/BUILD.bazel b/python/config_settings/BUILD.bazel
+index 369989eb..b20a0da6 100644
+--- a/python/config_settings/BUILD.bazel
++++ b/python/config_settings/BUILD.bazel
+@@ -245,7 +245,6 @@ label_flag(
+ bool_flag(
+     name = "experimental_python_import_all_repositories",
+     build_setting_default = True,
+-    scope = "universal",
+     visibility = ["//visibility:public"],
+ )
+
+@@ -253,20 +252,17 @@ bool_flag(
+     name = "build_python_zip",
+     build_setting_default = config.build_python_zip_default,
+     help = "Build python executable zip. Defaults to on on Windows, off on other platforms",
+-    scope = "universal",
+     visibility = ["//visibility:public"],
+ )
+
+ bool_flag(
+     name = "incompatible_default_to_explicit_init_py",
+     build_setting_default = False,
+-    scope = "universal",
+     visibility = ["//visibility:public"],
+ )
+
+ string_flag(
+     name = "python_path",
+     build_setting_default = "python",
+-    scope = "universal",
+     visibility = ["//visibility:public"],
+ )

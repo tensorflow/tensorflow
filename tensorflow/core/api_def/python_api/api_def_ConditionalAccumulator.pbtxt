@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "ConditionalAccumulator"
+  visibility: HIDDEN
+}

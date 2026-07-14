@@ -1,0 +1,11 @@
+op {
+  name: "LoopCond"
+  input_arg {
+    name: "input"
+    type: DT_BOOL
+  }
+  output_arg {
+    name: "output"
+    type: DT_BOOL
+  }
+}

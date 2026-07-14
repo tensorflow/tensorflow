@@ -1,0 +1,83 @@
+# RUN: tf_tfl_translate -unfold_batchmatmul=false -tf-input-arrays=Placeholder,Placeholder_1 -tf-input-shapes=2,5,3:3,7 -tf-input-data-types=DT_FLOAT,DT_FLOAT -tf-output-arrays=MatMul -output-mlir %s -o - 2>&1 | FileCheck %s
+
+node {
+  name: "Placeholder"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 2
+        }
+        dim {
+          size: 5
+        }
+        dim {
+          size: 3
+        }
+      }
+    }
+  }
+}
+node {
+  name: "Placeholder_1"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 3
+        }
+        dim {
+          size: 7
+        }
+      }
+    }
+  }
+}
+node {
+  name: "MatMul"
+  op: "BatchMatMulV2"
+  input: "Placeholder"
+  input: "Placeholder_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "adj_x"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "adj_y"
+    value {
+      b: false
+    }
+  }
+}
+versions {
+  producer: 175
+}
+
+# CHECK: func @main(%[[VAL_0:.*]]: tensor<2x5x3xf32>, %[[VAL_1:.*]]: tensor<3x7xf32>) -> tensor<2x5x7xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "Placeholder,Placeholder_1", outputs = "MatMul"}} {
+# CHECK:     %[[VAL_2:.*]] = "tfl.batch_matmul"(%[[VAL_0]], %[[VAL_1]]) <{adj_x = false, adj_y = false}> : (tensor<2x5x3xf32>, tensor<3x7xf32>) -> tensor<2x5x7xf32>
+# CHECK:     return %[[VAL_2]] : tensor<2x5x7xf32>
+# CHECK: }

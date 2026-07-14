@@ -1,0 +1,53 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+toc:
+- title: tf.lite
+  section:
+  - title: Overview
+    path: /lite/api_docs/python/tf/lite
+  - title: Interpreter
+    path: /lite/api_docs/python/tf/lite/Interpreter
+  - title: OpsSet
+    path: /lite/api_docs/python/tf/lite/OpsSet
+  - title: Optimize
+    path: /lite/api_docs/python/tf/lite/Optimize
+  - title: RepresentativeDataset
+    path: /lite/api_docs/python/tf/lite/RepresentativeDataset
+  - title: TFLiteConverter
+    path: /lite/api_docs/python/tf/lite/TFLiteConverter
+  - title: TargetSpec
+    path: /lite/api_docs/python/tf/lite/TargetSpec
+  - title: experimental
+    status: experimental
+    section:
+    - title: Overview
+      path: /lite/api_docs/python/tf/lite/experimental
+    - title: Analyzer
+      path: /lite/api_docs/python/tf/lite/experimental/Analyzer
+    - title: OpResolverType
+      path: /lite/api_docs/python/tf/lite/experimental/OpResolverType
+    - title: QuantizationDebugOptions
+      path: /lite/api_docs/python/tf/lite/experimental/QuantizationDebugOptions
+    - title: QuantizationDebugger
+      path: /lite/api_docs/python/tf/lite/experimental/QuantizationDebugger
+    - title: load_delegate
+      path: /lite/api_docs/python/tf/lite/experimental/load_delegate
+    - title: authoring
+      section:
+      - title: Overview
+        path: /lite/api_docs/python/tf/lite/experimental/authoring
+      - title: compatible
+        path: /lite/api_docs/python/tf/lite/experimental/authoring/compatible

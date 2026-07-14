@@ -1,0 +1,143 @@
+path: "tensorflow.errors"
+tf_module {
+  member {
+    name: "ABORTED"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "ALREADY_EXISTS"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "AbortedError"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "AlreadyExistsError"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "CANCELLED"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "CancelledError"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "DATA_LOSS"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "DEADLINE_EXCEEDED"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "DataLossError"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "DeadlineExceededError"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "FAILED_PRECONDITION"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "FailedPreconditionError"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "INTERNAL"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "INVALID_ARGUMENT"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "InternalError"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "InvalidArgumentError"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "NOT_FOUND"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "NotFoundError"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "OK"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "OUT_OF_RANGE"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "OpError"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "OperatorNotAllowedInGraphError"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "OutOfRangeError"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "PERMISSION_DENIED"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "PermissionDeniedError"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "RESOURCE_EXHAUSTED"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "ResourceExhaustedError"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "UNAUTHENTICATED"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "UNAVAILABLE"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "UNIMPLEMENTED"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "UNKNOWN"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "UnauthenticatedError"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "UnavailableError"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "UnimplementedError"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "UnknownError"
+    mtype: "<class \'type\'>"
+  }
+}

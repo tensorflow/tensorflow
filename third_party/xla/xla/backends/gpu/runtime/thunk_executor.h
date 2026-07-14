@@ -1,0 +1,206 @@
+/* Copyright 2026 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#ifndef XLA_BACKENDS_GPU_RUNTIME_THUNK_EXECUTOR_H_
+#define XLA_BACKENDS_GPU_RUNTIME_THUNK_EXECUTOR_H_
+
+#include <cstddef>
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
+#include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/event_pool.h"
+#include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/while_loop.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/stream_executor.h"
+
+namespace xla::gpu {
+
+// The thunk executor is responsible for executing a thunk sequence on the
+// underlying GPU device. An XLA:GPU executable itself is essentially a sequence
+// of thunks, where each individual thunk can have a nested sequence of its own
+// (e.g. for control flow thunks like WhileThunk). The thunk executor is an
+// interpreter that executes thunks and optionally can track execution progress.
+class ThunkExecutor {
+ public:
+  // Forward declaration. See definition below.
+  class ScopedProgressTracker;
+
+  explicit ThunkExecutor(ThunkSequence thunks);
+
+  ThunkExecutor(ThunkExecutor&&) = default;
+  ThunkExecutor& operator=(ThunkExecutor&&) = default;
+
+  // Thunk execution lifecycle operations.
+  absl::Status Prepare(const Thunk::PrepareParams& params);
+  absl::Status Initialize(const Thunk::InitializeParams& params);
+  absl::Status ExecuteOnStream(const Thunk::ExecuteParams& params);
+
+  const ThunkSequence& thunks() const { return thunks_; }
+  ThunkSequence& thunks() { return thunks_; }
+
+ private:
+  ThunkSequence thunks_;
+};
+
+//===----------------------------------------------------------------------===//
+// Tracking Thunk execution progress.
+//===----------------------------------------------------------------------===//
+
+// Sometimes XLA:GPU executable can get stuck on device because of buggy
+// kernels or problems with the GPU itself, i.e. a kernel can go into an
+// infinite loop and never complete its execution, or a collective kernel can
+// wait for data to arrive forever, because the communication channel dropped
+// the packet and it will never arrive. Such kernels will lead to XLA getting
+// stuck at some point later when XLA hits the device queue limit. The Thunk
+// that will hit the queue limit and will be visible in the stack trace is not
+// the kernel that caused the hang to happen. XLA can optionally add progress
+// tracking to all thunks via recording events after every `Thunk` execution.
+//
+// We rely on the fact that `GpuExecutable` itself and all `Thunks` with nested
+// control flow use `ThunkExecutor` for executing nested thunks, to track the
+// progress of the GPU executable itself. We rely on one scoped progress tracker
+// which is installed for the current thread using a thread-local mechanism, and
+// it is guaranteed to work, because thunk sequence recording is
+// single-threaded.
+class ThunkExecutor::ScopedProgressTracker {
+ public:
+  // We use global indexing across all nested thunks in a sequence, not only the
+  // top-level thunks executed by `ThunkExecutor`. The index is assigned by DFS
+  // traversal of the thunk sequence using WalkNested. This is different from
+  // the index that is used by `ThunkExecutor` progress v-logging.
+  using ThunkIndexing = absl::flat_hash_map<const Thunk*, size_t>;
+
+  // Thunk execution record: captures both the identity and the execution order
+  // of a thunk launch, along with wall-clock time and loop nest context.
+  struct ThunkExecution {
+    // Monotonically increasing index reflecting the real order in which thunks
+    // were launched on the GPU stream. In the presence of while loops, the same
+    // thunk can be launched multiple times, each with a distinct exec_idx.
+    // This is the position of the corresponding event in the events vector.
+    size_t exec_idx;
+
+    // The thunk's identity within the thunk sequence, assigned by DFS traversal
+    // via WalkNested. This is stable across loop iterations: the same thunk
+    // always has the same thunk_idx regardless of how many times it executes.
+    size_t thunk_idx;
+
+    absl::Time executed;
+    Thunk::Kind kind;
+    absl::string_view name;
+    std::vector<WhileLoopState> loop_nest;
+  };
+
+  ~ScopedProgressTracker();
+
+  ScopedProgressTracker(ScopedProgressTracker&&) = default;
+  ScopedProgressTracker& operator=(ScopedProgressTracker&&) = default;
+
+  // Returns the number of unique thunks in the tracked thunk sequence. This
+  // includes all thunks nested inside others.
+  size_t num_thunks() const { return tracker_->indexing.size(); }
+
+  // Returns the total number of thunk executions (launches). This can exceed
+  // num_thunks() when thunks are executed multiple times inside while loops.
+  size_t num_executions() const;
+
+  // Returns the number of thunks that have been launched on the GPU stream and
+  // have completed execution. This polls all executed thunk events.
+  size_t NumCompletedThunks();
+
+  // Returns the number of thunks that have been launched on the GPU stream but
+  // have not yet completed execution. This polls all executed thunk events.
+  size_t NumPendingThunks();
+
+  // Returns the last `n` thunks that successfully completed execution.
+  std::vector<ThunkExecution> LastCompletedThunks(size_t n);
+
+  // Returns the first `n` thunks that were executed but didn't complete
+  // execution. These are the deadlock suspects.
+  std::vector<ThunkExecution> FirstPendingThunks(size_t n);
+
+  // Returns the last `n` thunks that were executed but didn't complete
+  // execution. These tell how far XLA executable got before deadlock.
+  std::vector<ThunkExecution> LastPendingThunks(size_t n);
+
+ private:
+  friend class ThunkExecutor;
+  friend absl::StatusOr<ScopedProgressTracker> InstallProgressTracker(
+      se::StreamExecutor*, ThunkExecutor&);
+
+  // An event recorded for every thunk execution. The same thunk can be executed
+  // 0 to N times during XLA program execution: it can be in a not-taken
+  // conditional branch, or it can be inside a while loop (or the whole while
+  // loop nest). We keep a separate record for each execution to be able to
+  // distinguish executions that happens in different loop iterations.
+  struct ThunkExecutionEvent {
+    ThunkExecutionEvent(const Thunk* thunk, EventPool::Event event,
+                        absl::Span<const WhileLoopState> loop_nest);
+
+    const Thunk* thunk;
+    absl::Time executed;                    // wall time when thunk was launched
+    EventPool::Event event;                 // device event for the launch
+    std::vector<WhileLoopState> loop_nest;  // enclosing loop state snapshot
+  };
+
+  // Mutable state shared between the ScopedProgressTracker and the
+  // ThunkExecutor via thread-local pointer. Holds thunk indexing (immutable),
+  // the event pool, and a growing log of execution events.
+  struct ProgressTracker {
+    ProgressTracker(ThunkIndexing indexing, EventPool* event_pool)
+        : indexing(std::move(indexing)), event_pool(event_pool) {}
+
+    ThunkIndexing indexing;
+    EventPool* event_pool;
+
+    absl::Mutex mu;
+    std::vector<ThunkExecutionEvent> events ABSL_GUARDED_BY(mu);
+  };
+
+  // Each thread can have at most one progress tracker installed and it is
+  // automatically removed when the scoped progress tracker goes out of scope.
+  static thread_local ProgressTracker* installed_progress_tracker;
+
+  explicit ScopedProgressTracker(EventPool* event_pool, ThunkIndexing indexing);
+
+  // Collects up to `n` thunks matching `status`, sorted by executed time.
+  // If `most_recent_first` is true, returns most recently executed thunks
+  // first (descending order); otherwise returns earliest executed thunks first
+  // (ascending order). Lazily checks event status to avoid polling all thunks.
+  std::vector<ThunkExecution> CollectThunks(se::Event::Status status,
+                                            bool most_recent_first, size_t n);
+
+  std::unique_ptr<ProgressTracker> tracker_;
+};
+
+// Installs a progress tracker for the given sequential thunk in the current
+// thread. The progress tracker will be automatically deactivated when it is
+// destroyed. It is an error to install a progress tracker twice;
+// trying to do so will lead to a process crash.
+absl::StatusOr<ThunkExecutor::ScopedProgressTracker> InstallProgressTracker(
+    se::StreamExecutor* stream_executor, ThunkExecutor& executor);
+
+}  // namespace xla::gpu
+
+#endif  // XLA_BACKENDS_GPU_RUNTIME_THUNK_EXECUTOR_H_

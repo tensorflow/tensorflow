@@ -1,0 +1,25 @@
+op {
+  graph_op_name: "TextLineDataset"
+  visibility: HIDDEN
+  in_arg {
+    name: "filenames"
+    description: <<END
+A scalar or a vector containing the name(s) of the file(s) to be
+read.
+END
+  }
+  in_arg {
+    name: "compression_type"
+    description: <<END
+A scalar containing either (i) the empty string (no
+compression), (ii) "ZLIB", or (iii) "GZIP".
+END
+  }
+  in_arg {
+    name: "buffer_size"
+    description: <<END
+A scalar containing the number of bytes to buffer.
+END
+  }
+  summary: "Creates a dataset that emits the lines of one or more text files."
+}

@@ -1,0 +1,9 @@
+// RUN: not hlo-opt %s --passes=nonexistent-optimization-pass 2>&1 | FileCheck %s
+
+// CHECK: INVALID_ARGUMENT: Pass nonexistent-optimization-pass not found.
+
+HloModule NoOpModule
+
+ENTRY no_op {
+  ROOT no_op = () tuple()
+}

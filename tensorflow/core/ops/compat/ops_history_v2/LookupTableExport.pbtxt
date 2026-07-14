@@ -1,0 +1,24 @@
+op {
+  name: "LookupTableExport"
+  input_arg {
+    name: "table_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  output_arg {
+    name: "keys"
+    type_attr: "Tkeys"
+  }
+  output_arg {
+    name: "values"
+    type_attr: "Tvalues"
+  }
+  attr {
+    name: "Tkeys"
+    type: "type"
+  }
+  attr {
+    name: "Tvalues"
+    type: "type"
+  }
+}

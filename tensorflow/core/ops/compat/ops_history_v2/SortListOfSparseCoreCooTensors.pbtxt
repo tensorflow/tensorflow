@@ -1,0 +1,88 @@
+op {
+  name: "SortListOfSparseCoreCooTensors"
+  input_arg {
+    name: "row_ids_list"
+    type: DT_INT32
+    number_attr: "N"
+  }
+  input_arg {
+    name: "col_ids_list"
+    type: DT_INT32
+    number_attr: "N"
+  }
+  input_arg {
+    name: "gains_list"
+    type: DT_FLOAT
+    number_attr: "N"
+  }
+  output_arg {
+    name: "sorted_row_ids"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "sorted_col_ids"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "id_counts"
+    type: DT_INT32
+  }
+  attr {
+    name: "sample_count_list"
+    type: "list(int)"
+  }
+  attr {
+    name: "col_offset_list"
+    type: "list(int)"
+  }
+  attr {
+    name: "num_replica"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "table_vocab_size"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "feature_width"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_sc_per_chip"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "max_ids_per_sparse_core"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "max_unique_ids_per_sparse_core"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+}

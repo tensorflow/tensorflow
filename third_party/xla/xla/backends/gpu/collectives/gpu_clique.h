@@ -1,0 +1,163 @@
+/* Copyright 2024 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#ifndef XLA_BACKENDS_GPU_COLLECTIVES_GPU_CLIQUE_H_
+#define XLA_BACKENDS_GPU_COLLECTIVES_GPU_CLIQUE_H_
+
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+
+#include "absl/base/thread_annotations.h"
+#include "absl/container/btree_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/backends/gpu/collectives/cancellation_token.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
+#include "xla/core/collectives/clique.h"
+#include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
+#include "xla/service/lockable.h"
+#include "xla/tsl/util/tied_ref.h"
+
+namespace xla::gpu {
+
+class LockableGpuClique;
+
+// A group of GPU communicators making up a clique for a given clique key.
+class GpuClique : public Clique {
+ public:
+  GpuClique(
+      GpuCliqueKey key, std::optional<CliqueIds> ids,
+      absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators,
+      bool peer_access_enabled, std::shared_ptr<CancellationToken> cancel,
+      const GpuClique* parent = nullptr);
+
+  const GpuCliqueKey& key() const { return key_; }
+  const std::optional<CliqueIds>& ids() const { return ids_; }
+  bool peer_access_enabled() const { return peer_access_enabled_; }
+
+  // Returns a device communicator for a given rank and requirements if it's in
+  // a clique.
+  std::optional<GpuDeviceCommunicator*> device_comm(
+      RankId rank, const GpuDeviceCommunicator::Requirements& reqs) const;
+
+  // Adds a device communicator to the clique.
+  absl::Status AddDeviceComm(
+      RankId rank, GpuDeviceCommunicator::Requirements reqs,
+      std::unique_ptr<GpuDeviceCommunicator> communicator);
+
+  // Ties an object to a clique. Clique takes ownership of the object and will
+  // destroy it when the clique is destroyed. When TiedRef is destroyed, the
+  // object will be garbage collected.
+  template <typename T>
+  absl::StatusOr<tsl::TiedRef<T>> Tie(std::unique_ptr<T> object);
+
+  std::string DebugString() const final;
+
+  // Checks for async errors for all the communicators in the clique.
+  absl::Status HealthCheck() const final;
+
+  // Aborts all communicators in the clique.
+  absl::Status Abort();
+
+  // Cancels all communicators in the clique.
+  //
+  // Cancellation signals all communicators in the clique that they will be
+  // aborted next, and that they should gracefully cancel all pending collective
+  // operations and not start any new ones.
+  void Cancel();
+
+  // Returns true if the clique was cancelled.
+  bool IsCancelled() const;
+
+  // Returns a parent clique iff *this one was created by clique splitting.
+  const GpuClique* parent() const { return parent_; }
+
+ private:
+  friend LockableGpuClique;
+
+  // A functor to give human-readable names to lockable GPU cliques.
+  struct LockableName {
+    static std::string ToString(const GpuClique& clique);
+  };
+
+  GpuCliqueKey key_;
+  std::optional<CliqueIds> ids_;
+
+  // True if peer device memory access is possible between all local devices in
+  // the clique.
+  bool peer_access_enabled_;
+
+  // Cancellation token shared with all communicators in the clique.
+  std::shared_ptr<CancellationToken> cancel_;
+
+  // A parent GPU clique iff *this clique was constructed by split operation.
+  const GpuClique* parent_;
+
+  // We keep device communicators in a sorted container to guarantee that they
+  // are destroyed in deterministic order.
+  mutable absl::Mutex mu_;
+  absl::btree_map<std::pair<RankId, GpuDeviceCommunicator::Requirements>,
+                  std::unique_ptr<GpuDeviceCommunicator>>
+      device_communicators_ ABSL_GUARDED_BY(mu_);
+
+  // Storage for tied objects.
+  tsl::TiedAny tied_any_ ABSL_GUARDED_BY(mu_);
+};
+
+template <typename T>
+absl::StatusOr<tsl::TiedRef<T>> GpuClique::Tie(std::unique_ptr<T> object) {
+  absl::MutexLock lock(mu_);
+  return tied_any_.Tie<T>(std::move(object));
+}
+
+// A lockable version of GpuClique that guarantees exclusive access to the
+// clique communicators.
+class LockableGpuClique : public Lockable<GpuClique, GpuClique::LockableName> {
+ public:
+  LockableGpuClique(
+      GpuCliqueKey clique_key, std::optional<CliqueIds> clique_ids,
+      absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators,
+      bool peer_access_enabled, std::shared_ptr<CancellationToken> cancel,
+      const GpuClique* parent = nullptr);
+
+  // Returns true if this clique has a parent whose key is a superset of (or
+  // equal to) `clique_key`. When the existing parent is a superset of the new
+  // split candidate, the clique was created from a bigger (or equal) split and
+  // is still valid — no need to abandon and re-split.
+  bool IsParentSupersetOf(const GpuCliqueKey& clique_key) const;
+
+  std::string DebugString() const;
+
+  // Checks for async errors for all the communicators in the clique without
+  // having to acquire the lock. If at least one of the communicators has an
+  // async error, it returns one of the errors.
+  absl::Status HealthCheck() const;
+
+  // Aborts all communicators in the clique without taking the lock.
+  absl::Status Abort();
+
+  // Cancels all communicators in the clique without taking the lock.
+  void Cancel();
+};
+
+}  // namespace xla::gpu
+
+#endif  // XLA_BACKENDS_GPU_COLLECTIVES_GPU_CLIQUE_H_

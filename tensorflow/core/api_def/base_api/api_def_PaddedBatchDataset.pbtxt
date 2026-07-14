@@ -1,0 +1,28 @@
+op {
+  graph_op_name: "PaddedBatchDataset"
+  visibility: HIDDEN
+  in_arg {
+    name: "batch_size"
+    description: <<END
+A scalar representing the number of elements to accumulate in a
+batch.
+END
+  }
+  in_arg {
+    name: "padded_shapes"
+    description: <<END
+A list of int64 tensors representing the desired padded shapes
+of the corresponding output components. These shapes may be partially
+specified, using `-1` to indicate that a particular dimension should be
+padded to the maximum size of all batch elements.
+END
+  }
+  in_arg {
+    name: "padding_values"
+    description: <<END
+A list of scalars containing the padding value to use for
+each of the outputs.
+END
+  }
+  summary: "Creates a dataset that batches and pads `batch_size` elements from the input."
+}

@@ -1,0 +1,29 @@
+op {
+  name: "ReduceJoin"
+  input_arg {
+    name: "inputs"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "reduction_indices"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type: DT_STRING
+  }
+  attr {
+    name: "keep_dims"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "separator"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+}

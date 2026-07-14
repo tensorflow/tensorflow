@@ -1,0 +1,15 @@
+op {
+  name: "ShardedFilespec"
+  input_arg {
+    name: "basename"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "num_shards"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "filename"
+    type: DT_STRING
+  }
+}

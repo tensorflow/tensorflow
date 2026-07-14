@@ -1,0 +1,7 @@
+HloModule module_computation, entry_computation_layout={(f32[2,1]{1,0}, f32[3,1]{1,0})->f32[3,2]{1,0}}
+
+ENTRY %computation (Arg_1.2: f32[2,1], Arg_2.2: f32[3,1]) -> f32[3,2] {
+  %Arg_1.2 = f32[2,1]{1,0} parameter(0)
+  %Arg_2.2 = f32[3,1]{1,0} parameter(1)
+  ROOT %cat.3 = f32[3,2]{1,0} concatenate(f32[2,1]{1,0} %Arg_1.2, f32[3,1]{1,0} %Arg_2.2), dimensions={1}
+}

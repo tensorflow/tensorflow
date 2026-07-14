@@ -1,0 +1,5 @@
+op {
+  graph_op_name: "TensorSliceDataset"
+  visibility: HIDDEN
+  summary: "Creates a dataset that emits each dim-0 slice of `components` once."
+}

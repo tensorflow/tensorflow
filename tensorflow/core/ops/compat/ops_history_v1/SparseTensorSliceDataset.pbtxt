@@ -1,0 +1,24 @@
+op {
+  name: "SparseTensorSliceDataset"
+  input_arg {
+    name: "indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "values"
+    type_attr: "Tvalues"
+  }
+  input_arg {
+    name: "dense_shape"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "Tvalues"
+    type: "type"
+  }
+  is_stateful: true
+}

@@ -1,0 +1,35 @@
+// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation=false | FileCheck %s --check-prefixes=CHECK,CHECK-OLD
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation=false
+// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s --check-prefixes=CHECK,CHECK-NEW
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+
+fusion {
+  p = f32[1,1,1] parameter(0)
+  ROOT bitcast = f32[] bitcast(p)
+}
+
+// CHECK-LABEL: xtile.entry_func @triton_fn(
+// CHECK-SAME:      %[[ARG0:.*]]: memref<1x1x1xf32>,
+// CHECK-SAME:      %[[ARG1:.*]]: memref<f32>,
+// CHECK-SAME:      %[[PID:.*]]: index) attributes {num_opaque_args = 0 : i32} {
+// CHECK:           %[[C0:.*]] = arith.constant 0 : index
+// CHECK-OLD:       %[[EXTRACT:.*]] = xtile.extract %[[ARG0]][%[[C0]], %[[C0]], %[[C0]]] [1, 1, 1] [0, 0, 0] : memref<1x1x1xf32> -> tensor<1x1x1xf32>
+// CHECK-NEW:       %[[EXTRACT:.*]] = xtile.extract %[[ARG0]][%[[C0]], %[[C0]], %[[C0]]] [1, 1, 1] [1, 1, 1] : memref<1x1x1xf32> -> tensor<1x1x1xf32>
+// CHECK:           %[[UNSPLAT:.*]] = tt.unsplat %[[EXTRACT]] : tensor<1x1x1xf32>
+// CHECK:           %[[FROM_ELEMENTS:.*]] = tensor.from_elements %[[UNSPLAT]] : tensor<f32>
+// CHECK:           xtile.insert %[[FROM_ELEMENTS]] into %[[ARG1]][] [] [] : tensor<f32> -> memref<f32>
+// CHECK:           xtile.return
+// CHECK:         }
+
+ENTRY main {
+  p = f32[1,1,1] parameter(0)
+  ROOT fusion = f32[] fusion(p), kind=kCustom, calls=fusion,
+    backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":[]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+}

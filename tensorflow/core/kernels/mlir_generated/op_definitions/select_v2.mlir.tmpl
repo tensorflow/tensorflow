@@ -1,0 +1,183 @@
+func.func @SelectV2_platform_elem_type_output_type(%arg0: tensor<*xi1>, %arg1: tensor<*xelem_type>, %arg2: tensor<*xelem_type>) -> tensor<*xoutput_type> attributes {llvm.emit_c_interface, tf_entry} {
+  %0 = shape.const_shape [1, 1, 1, 1, 1, 1, 1, 1] : tensor<8xindex>
+  %c8 = arith.constant 8 : index
+  %1 = shape.const_shape [1, 1, 1, 1, 1, 1, 1] : tensor<7xindex>
+  %c7 = arith.constant 7 : index
+  %2 = shape.const_shape [1, 1, 1, 1, 1, 1] : tensor<6xindex>
+  %c6 = arith.constant 6 : index
+  %3 = shape.const_shape [1, 1, 1, 1, 1] : tensor<5xindex>
+  %c5 = arith.constant 5 : index
+  %4 = shape.const_shape [1, 1, 1, 1] : tensor<4xindex>
+  %c4 = arith.constant 4 : index
+  %5 = shape.const_shape [1, 1, 1] : tensor<3xindex>
+  %c3 = arith.constant 3 : index
+  %6 = shape.const_shape [1, 1] : tensor<2xindex>
+  %c2 = arith.constant 2 : index
+  %7 = shape.const_shape [1] : tensor<1xindex>
+  %c1 = arith.constant 1 : index
+  %8 = shape.shape_of %arg0 : tensor<*xi1> -> tensor<?xindex>
+  %9 = shape.shape_of %arg1 : tensor<*xelem_type> -> tensor<?xindex>
+  %10 = shape.shape_of %arg2 : tensor<*xelem_type> -> tensor<?xindex>
+  %11 = shape.shape_eq %8, %9 : tensor<?xindex>, tensor<?xindex>
+  %12 = shape.shape_eq %8, %10 : tensor<?xindex>, tensor<?xindex>
+  %13 = arith.andi %11, %12 : i1
+  %14 = scf.if %13 -> (tensor<*xelem_type>) {
+    %20 = shape.any %8, %9, %10 : tensor<?xindex>, tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>
+    %21 = shape.num_elements %20 : tensor<?xindex> -> index
+    %from_elements = tensor.from_elements %21 : tensor<1xindex>
+    %22 = tensor.reshape %arg0(%from_elements) : (tensor<*xi1>, tensor<1xindex>) -> tensor<?xi1>
+    %23 = tensor.reshape %arg1(%from_elements) : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
+    %24 = tensor.reshape %arg2(%from_elements) : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
+    %25 = chlo.broadcast_select %22, %23, %24 : (tensor<?xi1>, tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
+    %cast = tensor.cast %25 : tensor<?xelem_type> to tensor<*xelem_type>
+    scf.yield %cast : tensor<*xelem_type>
+  } else {
+    %20:3 = mhlo.minimum_broadcast_shapes %8, %9, %10 : tensor<?xindex>, tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>, tensor<?xindex>, tensor<?xindex>
+    %21 = shape.rank %20#0 : tensor<?xindex> -> index
+    %22 = shape.rank %20#1 : tensor<?xindex> -> index
+    %23 = arith.cmpi sgt, %21, %22 : index
+    %24 = arith.select %23, %21, %22 : index
+    %25 = shape.rank %20#2 : tensor<?xindex> -> index
+    %26 = arith.cmpi sgt, %24, %25 : index
+    %27 = arith.select %26, %24, %25 : index
+    %28 = arith.cmpi ule, %27, %c1 : index
+    %29 = scf.if %28 -> (tensor<*xelem_type>) {
+      %30 = shape.broadcast %20#0, %7 : tensor<?xindex>, tensor<1xindex> -> tensor<?xindex>
+      %cast = tensor.cast %30 : tensor<?xindex> to tensor<1xindex>
+      %31 = tensor.reshape %arg0(%cast) : (tensor<*xi1>, tensor<1xindex>) -> tensor<?xi1>
+      %32 = shape.broadcast %20#1, %7 : tensor<?xindex>, tensor<1xindex> -> tensor<?xindex>
+      %cast_0 = tensor.cast %32 : tensor<?xindex> to tensor<1xindex>
+      %33 = tensor.reshape %arg1(%cast_0) : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
+      %34 = shape.broadcast %20#2, %7 : tensor<?xindex>, tensor<1xindex> -> tensor<?xindex>
+      %cast_1 = tensor.cast %34 : tensor<?xindex> to tensor<1xindex>
+      %35 = tensor.reshape %arg2(%cast_1) : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
+      %36 = chlo.broadcast_select %31, %33, %35 : (tensor<?xi1>, tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
+      %cast_2 = tensor.cast %36 : tensor<?xelem_type> to tensor<*xelem_type>
+      scf.yield %cast_2 : tensor<*xelem_type>
+    } else {
+      %30 = arith.cmpi ule, %27, %c2 : index
+      %31 = scf.if %30 -> (tensor<*xelem_type>) {
+        %32 = shape.broadcast %20#0, %6 : tensor<?xindex>, tensor<2xindex> -> tensor<?xindex>
+        %cast = tensor.cast %32 : tensor<?xindex> to tensor<2xindex>
+        %33 = tensor.reshape %arg0(%cast) : (tensor<*xi1>, tensor<2xindex>) -> tensor<?x?xi1>
+        %34 = shape.broadcast %20#1, %6 : tensor<?xindex>, tensor<2xindex> -> tensor<?xindex>
+        %cast_0 = tensor.cast %34 : tensor<?xindex> to tensor<2xindex>
+        %35 = tensor.reshape %arg1(%cast_0) : (tensor<*xelem_type>, tensor<2xindex>) -> tensor<?x?xelem_type>
+        %36 = shape.broadcast %20#2, %6 : tensor<?xindex>, tensor<2xindex> -> tensor<?xindex>
+        %cast_1 = tensor.cast %36 : tensor<?xindex> to tensor<2xindex>
+        %37 = tensor.reshape %arg2(%cast_1) : (tensor<*xelem_type>, tensor<2xindex>) -> tensor<?x?xelem_type>
+        %38 = chlo.broadcast_select %33, %35, %37 : (tensor<?x?xi1>, tensor<?x?xelem_type>, tensor<?x?xelem_type>) -> tensor<?x?xelem_type>
+        %cast_2 = tensor.cast %38 : tensor<?x?xelem_type> to tensor<*xelem_type>
+        scf.yield %cast_2 : tensor<*xelem_type>
+      } else {
+        %32 = arith.cmpi ule, %27, %c3 : index
+        %33 = scf.if %32 -> (tensor<*xelem_type>) {
+          %34 = shape.broadcast %20#0, %5 : tensor<?xindex>, tensor<3xindex> -> tensor<?xindex>
+          %cast = tensor.cast %34 : tensor<?xindex> to tensor<3xindex>
+          %35 = tensor.reshape %arg0(%cast) : (tensor<*xi1>, tensor<3xindex>) -> tensor<?x?x?xi1>
+          %36 = shape.broadcast %20#1, %5 : tensor<?xindex>, tensor<3xindex> -> tensor<?xindex>
+          %cast_0 = tensor.cast %36 : tensor<?xindex> to tensor<3xindex>
+          %37 = tensor.reshape %arg1(%cast_0) : (tensor<*xelem_type>, tensor<3xindex>) -> tensor<?x?x?xelem_type>
+          %38 = shape.broadcast %20#2, %5 : tensor<?xindex>, tensor<3xindex> -> tensor<?xindex>
+          %cast_1 = tensor.cast %38 : tensor<?xindex> to tensor<3xindex>
+          %39 = tensor.reshape %arg2(%cast_1) : (tensor<*xelem_type>, tensor<3xindex>) -> tensor<?x?x?xelem_type>
+          %40 = chlo.broadcast_select %35, %37, %39 : (tensor<?x?x?xi1>, tensor<?x?x?xelem_type>, tensor<?x?x?xelem_type>) -> tensor<?x?x?xelem_type>
+          %cast_2 = tensor.cast %40 : tensor<?x?x?xelem_type> to tensor<*xelem_type>
+          scf.yield %cast_2 : tensor<*xelem_type>
+        } else {
+          %34 = arith.cmpi ule, %27, %c4 : index
+          %35 = scf.if %34 -> (tensor<*xelem_type>) {
+            %36 = shape.broadcast %20#0, %4 : tensor<?xindex>, tensor<4xindex> -> tensor<?xindex>
+            %cast = tensor.cast %36 : tensor<?xindex> to tensor<4xindex>
+            %37 = tensor.reshape %arg0(%cast) : (tensor<*xi1>, tensor<4xindex>) -> tensor<?x?x?x?xi1>
+            %38 = shape.broadcast %20#1, %4 : tensor<?xindex>, tensor<4xindex> -> tensor<?xindex>
+            %cast_0 = tensor.cast %38 : tensor<?xindex> to tensor<4xindex>
+            %39 = tensor.reshape %arg1(%cast_0) : (tensor<*xelem_type>, tensor<4xindex>) -> tensor<?x?x?x?xelem_type>
+            %40 = shape.broadcast %20#2, %4 : tensor<?xindex>, tensor<4xindex> -> tensor<?xindex>
+            %cast_1 = tensor.cast %40 : tensor<?xindex> to tensor<4xindex>
+            %41 = tensor.reshape %arg2(%cast_1) : (tensor<*xelem_type>, tensor<4xindex>) -> tensor<?x?x?x?xelem_type>
+            %42 = chlo.broadcast_select %37, %39, %41 : (tensor<?x?x?x?xi1>, tensor<?x?x?x?xelem_type>, tensor<?x?x?x?xelem_type>) -> tensor<?x?x?x?xelem_type>
+            %cast_2 = tensor.cast %42 : tensor<?x?x?x?xelem_type> to tensor<*xelem_type>
+            scf.yield %cast_2 : tensor<*xelem_type>
+          } else {
+            %36 = arith.cmpi ule, %27, %c5 : index
+            %37 = scf.if %36 -> (tensor<*xelem_type>) {
+              %38 = shape.broadcast %20#0, %3 : tensor<?xindex>, tensor<5xindex> -> tensor<?xindex>
+              %cast = tensor.cast %38 : tensor<?xindex> to tensor<5xindex>
+              %39 = tensor.reshape %arg0(%cast) : (tensor<*xi1>, tensor<5xindex>) -> tensor<?x?x?x?x?xi1>
+              %40 = shape.broadcast %20#1, %3 : tensor<?xindex>, tensor<5xindex> -> tensor<?xindex>
+              %cast_0 = tensor.cast %40 : tensor<?xindex> to tensor<5xindex>
+              %41 = tensor.reshape %arg1(%cast_0) : (tensor<*xelem_type>, tensor<5xindex>) -> tensor<?x?x?x?x?xelem_type>
+              %42 = shape.broadcast %20#2, %3 : tensor<?xindex>, tensor<5xindex> -> tensor<?xindex>
+              %cast_1 = tensor.cast %42 : tensor<?xindex> to tensor<5xindex>
+              %43 = tensor.reshape %arg2(%cast_1) : (tensor<*xelem_type>, tensor<5xindex>) -> tensor<?x?x?x?x?xelem_type>
+              %44 = chlo.broadcast_select %39, %41, %43 : (tensor<?x?x?x?x?xi1>, tensor<?x?x?x?x?xelem_type>, tensor<?x?x?x?x?xelem_type>) -> tensor<?x?x?x?x?xelem_type>
+              %cast_2 = tensor.cast %44 : tensor<?x?x?x?x?xelem_type> to tensor<*xelem_type>
+              scf.yield %cast_2 : tensor<*xelem_type>
+            } else {
+              %38 = arith.cmpi ule, %27, %c6 : index
+              %39 = scf.if %38 -> (tensor<*xelem_type>) {
+                %40 = shape.broadcast %20#0, %2 : tensor<?xindex>, tensor<6xindex> -> tensor<?xindex>
+                %cast = tensor.cast %40 : tensor<?xindex> to tensor<6xindex>
+                %41 = tensor.reshape %arg0(%cast) : (tensor<*xi1>, tensor<6xindex>) -> tensor<?x?x?x?x?x?xi1>
+                %42 = shape.broadcast %20#1, %2 : tensor<?xindex>, tensor<6xindex> -> tensor<?xindex>
+                %cast_0 = tensor.cast %42 : tensor<?xindex> to tensor<6xindex>
+                %43 = tensor.reshape %arg1(%cast_0) : (tensor<*xelem_type>, tensor<6xindex>) -> tensor<?x?x?x?x?x?xelem_type>
+                %44 = shape.broadcast %20#2, %2 : tensor<?xindex>, tensor<6xindex> -> tensor<?xindex>
+                %cast_1 = tensor.cast %44 : tensor<?xindex> to tensor<6xindex>
+                %45 = tensor.reshape %arg2(%cast_1) : (tensor<*xelem_type>, tensor<6xindex>) -> tensor<?x?x?x?x?x?xelem_type>
+                %46 = chlo.broadcast_select %41, %43, %45 : (tensor<?x?x?x?x?x?xi1>, tensor<?x?x?x?x?x?xelem_type>, tensor<?x?x?x?x?x?xelem_type>) -> tensor<?x?x?x?x?x?xelem_type>
+                %cast_2 = tensor.cast %46 : tensor<?x?x?x?x?x?xelem_type> to tensor<*xelem_type>
+                scf.yield %cast_2 : tensor<*xelem_type>
+              } else {
+                %40 = arith.cmpi ule, %27, %c7 : index
+                %41 = scf.if %40 -> (tensor<*xelem_type>) {
+                  %42 = shape.broadcast %20#0, %1 : tensor<?xindex>, tensor<7xindex> -> tensor<?xindex>
+                  %cast = tensor.cast %42 : tensor<?xindex> to tensor<7xindex>
+                  %43 = tensor.reshape %arg0(%cast) : (tensor<*xi1>, tensor<7xindex>) -> tensor<?x?x?x?x?x?x?xi1>
+                  %44 = shape.broadcast %20#1, %1 : tensor<?xindex>, tensor<7xindex> -> tensor<?xindex>
+                  %cast_0 = tensor.cast %44 : tensor<?xindex> to tensor<7xindex>
+                  %45 = tensor.reshape %arg1(%cast_0) : (tensor<*xelem_type>, tensor<7xindex>) -> tensor<?x?x?x?x?x?x?xelem_type>
+                  %46 = shape.broadcast %20#2, %1 : tensor<?xindex>, tensor<7xindex> -> tensor<?xindex>
+                  %cast_1 = tensor.cast %46 : tensor<?xindex> to tensor<7xindex>
+                  %47 = tensor.reshape %arg2(%cast_1) : (tensor<*xelem_type>, tensor<7xindex>) -> tensor<?x?x?x?x?x?x?xelem_type>
+                  %48 = chlo.broadcast_select %43, %45, %47 : (tensor<?x?x?x?x?x?x?xi1>, tensor<?x?x?x?x?x?x?xelem_type>, tensor<?x?x?x?x?x?x?xelem_type>) -> tensor<?x?x?x?x?x?x?xelem_type>
+                  %cast_2 = tensor.cast %48 : tensor<?x?x?x?x?x?x?xelem_type> to tensor<*xelem_type>
+                  scf.yield %cast_2 : tensor<*xelem_type>
+                } else {
+                  %42 = arith.cmpi ule, %27, %c8 : index
+                  cf.assert %42, "Input for dynamic binary or n-ary op lowering was of a rank greater than 8"
+                  %43 = shape.broadcast %20#0, %0 : tensor<?xindex>, tensor<8xindex> -> tensor<?xindex>
+                  %cast = tensor.cast %43 : tensor<?xindex> to tensor<8xindex>
+                  %44 = tensor.reshape %arg0(%cast) : (tensor<*xi1>, tensor<8xindex>) -> tensor<?x?x?x?x?x?x?x?xi1>
+                  %45 = shape.broadcast %20#1, %0 : tensor<?xindex>, tensor<8xindex> -> tensor<?xindex>
+                  %cast_0 = tensor.cast %45 : tensor<?xindex> to tensor<8xindex>
+                  %46 = tensor.reshape %arg1(%cast_0) : (tensor<*xelem_type>, tensor<8xindex>) -> tensor<?x?x?x?x?x?x?x?xelem_type>
+                  %47 = shape.broadcast %20#2, %0 : tensor<?xindex>, tensor<8xindex> -> tensor<?xindex>
+                  %cast_1 = tensor.cast %47 : tensor<?xindex> to tensor<8xindex>
+                  %48 = tensor.reshape %arg2(%cast_1) : (tensor<*xelem_type>, tensor<8xindex>) -> tensor<?x?x?x?x?x?x?x?xelem_type>
+                  %49 = chlo.broadcast_select %44, %46, %48 : (tensor<?x?x?x?x?x?x?x?xi1>, tensor<?x?x?x?x?x?x?x?xelem_type>, tensor<?x?x?x?x?x?x?x?xelem_type>) -> tensor<?x?x?x?x?x?x?x?xelem_type>
+                  %cast_2 = tensor.cast %49 : tensor<?x?x?x?x?x?x?x?xelem_type> to tensor<*xelem_type>
+                  scf.yield %cast_2 : tensor<*xelem_type>
+                }
+                scf.yield %41 : tensor<*xelem_type>
+              }
+              scf.yield %39 : tensor<*xelem_type>
+            }
+            scf.yield %37 : tensor<*xelem_type>
+          }
+          scf.yield %35 : tensor<*xelem_type>
+        }
+        scf.yield %33 : tensor<*xelem_type>
+      }
+      scf.yield %31 : tensor<*xelem_type>
+    }
+    scf.yield %29 : tensor<*xelem_type>
+  }
+  %15 = shape.shape_of %arg0 : tensor<*xi1> -> tensor<?xindex>
+  %16 = shape.shape_of %arg1 : tensor<*xelem_type> -> tensor<?xindex>
+  %17 = shape.shape_of %arg2 : tensor<*xelem_type> -> tensor<?xindex>
+  %18 = shape.broadcast %15, %16, %17 : tensor<?xindex>, tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>
+  %19 = tensor.reshape %14(%18) : (tensor<*xelem_type>, tensor<?xindex>) -> tensor<*xelem_type>
+  return %19 : tensor<*xelem_type>
+}

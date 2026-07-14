@@ -1,0 +1,11 @@
+op {
+  name: "MatchingFiles"
+  input_arg {
+    name: "pattern"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "filenames"
+    type: DT_STRING
+  }
+}

@@ -1,0 +1,1814 @@
+<!DOCTYPE html>
+<html devsite>
+<head>
+  <title>lite/c/common.h</title>
+  <meta name="page_type" value="reference" />
+</head>
+<body>
+  <div id="top"><!-- do not remove this div --></div>
+  <h1>lite/c/common.h</h1>
+  <p>This file defines common C types and APIs for implementing operations, delegates and other constructs in TensorFlow Lite. </p>
+  <h2>Summary</h2>
+  <p>The actual operations and delegates can be defined using C++, but the interface between the interpreter and the operations are C.</p>
+  <p>Summary of abstractions:<ul>
+      <li><code>TF_LITE_ENSURE</code> - self-sufficient error checking</li>
+      <li><code>TfLiteStatus</code> - status reporting</li>
+      <li><code><a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a></code> - stores tensor shapes (dims),</li>
+      <li><code><a href="/lite/api_docs/c/struct/tf-lite-context.html#struct_tf_lite_context">TfLiteContext</a></code> - allows an op to access the tensors</li>
+      <li><code><a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a></code> - tensor (a multidimensional array)</li>
+      <li><code><a href="/lite/api_docs/c/struct/tf-lite-node.html#struct_tf_lite_node">TfLiteNode</a></code> - a single node or operation</li>
+      <li><code><a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a></code> - the implementation of a conceptual operation.</li>
+      <li><code><a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a></code> - allows delegation of nodes to alternative backends.</li>
+    </ul></p>
+  <p>Some abstractions in this file are created and managed by Interpreter.</p>
+  <p>NOTE: The order of values in these structs are "semi-ABI stable". New values should be added only to the end of structs and never reordered.<aside class="note"><strong>Note:</strong> Users of TensorFlow Lite should use <pre class="prettyprint">#include "tensorflow/lite/c/common.h"</pre> to access the APIs documented on this page. </aside></p>
+  <table class="constants responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Enumerations</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga06fc87d81c62e9abb8790b6e5713c55b">Anonymous Enum 0</a></code>
+      </td>
+      <td>enum</td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gae00888e38fbedcb5130cf359c574580a">TfLiteAllocationStrategy</a>{<br>&nbsp;&nbsp;<a href="#group__common_1ggae00888e38fbedcb5130cf359c574580aae89cc791f049ab2226e7ca6dae6a0cc7">kTfLiteAllocationStrategyMMap</a>,<br>&nbsp;&nbsp;<a href="#group__common_1ggae00888e38fbedcb5130cf359c574580aa492a6abbe17252e67e60dde797e793f3">kTfLiteAllocationStrategyArena</a>,<br>&nbsp;&nbsp;<a href="#group__common_1ggae00888e38fbedcb5130cf359c574580aa87bb16ed0b5aaa451f089bc406f55370">kTfLiteAllocationStrategyMalloc</a>,<br>&nbsp;&nbsp;<a href="#group__common_1ggae00888e38fbedcb5130cf359c574580aa6a6b7830286adad707e992ad794ad6d5">kTfLiteAllocationStrategyNew</a><br>}</code>
+      </td>
+      <td>enum<div>Memory allocation strategies. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gae48332e93fec6c3fe7c4ee4897770d4b">TfLiteAllocationType</a></code>
+      </td>
+      <td>enum<div>Memory allocation strategies. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gab9ba81155474515a58a7281794950836">TfLiteCustomAllocationFlags</a>{<br>&nbsp;&nbsp;<a href="#group__common_1ggab9ba81155474515a58a7281794950836ac17eab86ed19d120cc3fda3c2336e231">kTfLiteCustomAllocationFlagsSkipAlignCheck</a> = 1<br>}</code>
+      </td>
+      <td>enum<div>The flags used in <code>Interpreter::SetCustomAllocationForTensor</code>. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga69fe39f64b6ac9983afdda112b0256d4">TfLiteDelegateFlags</a>{<br>&nbsp;&nbsp;<a href="#group__common_1gga69fe39f64b6ac9983afdda112b0256d4aec2565db20a2446cf201c0d8ef0e5fad">kTfLiteDelegateFlagsAllowDynamicTensors</a> = 1,<br>&nbsp;&nbsp;<a href="#group__common_1gga69fe39f64b6ac9983afdda112b0256d4abb7a7e1a0a689a28c8c1b20fe4f76973">kTfLiteDelegateFlagsRequirePropagatedShapes</a> = 2,<br>&nbsp;&nbsp;<a href="#group__common_1gga69fe39f64b6ac9983afdda112b0256d4a417d6f979201e48e71a728c64ba30a1d">kTfLiteDelegateFlagsPerOperatorProfiling</a> = 4<br>}</code>
+      </td>
+      <td>enum<div>The flags used in <code><a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a></code>. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga71e0001719140df24b5ae660cd0c322e">TfLiteDimensionType</a></code>
+      </td>
+      <td>enum<div>Storage format of each dimension in a sparse tensor. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga6d1d3582ab46e837f9f108839232dc03">TfLiteExternalContextType</a>{<br>&nbsp;&nbsp;<a href="#group__common_1gga6d1d3582ab46e837f9f108839232dc03ac82c5823a84bd728411c778dec2c4fe5">kTfLiteGemmLowpContext</a> = 1,<br>&nbsp;&nbsp;<a href="#group__common_1gga6d1d3582ab46e837f9f108839232dc03a80dd6279810a535bff7222bf21fe25ee">kTfLiteEdgeTpuContext</a> = 2,<br>&nbsp;&nbsp;<a href="#group__common_1gga6d1d3582ab46e837f9f108839232dc03a2a3e81dca662de1bbd886d9d94b9910f">kTfLiteCpuBackendContext</a> = 3,<br>&nbsp;&nbsp;<a href="#group__common_1gga6d1d3582ab46e837f9f108839232dc03a9d313c890d34fb105e760980c70433b6">kTfLiteMaxExternalContexts</a> = 4<br>}</code>
+      </td>
+      <td>enum<div>The list of external context types known to TF Lite. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gaef13b180d6d3bc3ff1dd5db03c68eaae">TfLiteInPlaceOp</a>{<br>&nbsp;&nbsp;<a href="#group__common_1ggaef13b180d6d3bc3ff1dd5db03c68eaaeae2dd62e5552cd2ee9460d954396922ff">kTfLiteInplaceOpNone</a> = 0,<br>&nbsp;&nbsp;<a href="#group__common_1ggaef13b180d6d3bc3ff1dd5db03c68eaaea6e214bf83426f4bef37ce42e2d96ee9e">kTfLiteInplaceOpDataUnmodified</a> = 1,<br>&nbsp;&nbsp;<a href="#group__common_1ggaef13b180d6d3bc3ff1dd5db03c68eaaea71e259fe563c66638acda447f194dcf6">kTfLiteInplaceInputCanBeSharedWithCorrespondingOutput</a> = 2,<br>&nbsp;&nbsp;<a href="#group__common_1ggaef13b180d6d3bc3ff1dd5db03c68eaaeafcb30f3635f649c39ffbd15611940ff9">kTfLiteInplaceOpInput0Shared</a> = 4,<br>&nbsp;&nbsp;<a href="#group__common_1ggaef13b180d6d3bc3ff1dd5db03c68eaaea60bdb2620b2b01b0b14abbb399b08e4a">kTfLiteInplaceOpInput1Shared</a> = 8,<br>&nbsp;&nbsp;<a href="#group__common_1ggaef13b180d6d3bc3ff1dd5db03c68eaaea0466a9e0e1f428a809e50e3e57720d53">kTfLiteInplaceOpInput2Shared</a> = 16,<br>&nbsp;&nbsp;<a href="#group__common_1ggaef13b180d6d3bc3ff1dd5db03c68eaaeafcd31ec42f06513340044dac60aba230">kTfLiteInplaceOpMaxValue</a> = UINT64_MAX<br>}</code>
+      </td>
+      <td>enum<div>The valid values of the <code>inplace_operator</code> field in <code><a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a></code>. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga9a7dad0b2e1bc9afe44b055915cbddb8">TfLiteQuantizationType</a>{<br>&nbsp;&nbsp;<a href="#group__common_1gga9a7dad0b2e1bc9afe44b055915cbddb8a6b28c8f5f14be808a142fcaacd03e22c">kTfLiteNoQuantization</a> = 0,<br>&nbsp;&nbsp;<a href="#group__common_1gga9a7dad0b2e1bc9afe44b055915cbddb8a89fc74624d70b4d3625c0fc82624bf31">kTfLiteAffineQuantization</a> = 1<br>}</code>
+      </td>
+      <td>enum<div>SupportedQuantizationTypes. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga8e48d3a995a7dea060434068920c5b23">TfLiteRunStability</a>{<br>&nbsp;&nbsp;<a href="#group__common_1gga8e48d3a995a7dea060434068920c5b23a86c0e4d85d2e5cb35de18e11868e60d7">kTfLiteRunStabilitySingleRun</a>,<br>&nbsp;&nbsp;<a href="#group__common_1gga8e48d3a995a7dea060434068920c5b23ad772cadddc26a7ea4b4cc5e41ba50843">kTfLiteRunStabilityAcrossRuns</a><br>}</code>
+      </td>
+      <td>enum<div>Describes how stable a tensor attribute is with regards to an interpreter runs. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gaa07ed5a55fa2bff442239a17b6c371d9">TfLiteRunStep</a></code>
+      </td>
+      <td>enum<div>Describes the steps of a TFLite operation life cycle. </div></td>
+    </tr>
+  </table>
+  <table class="properties responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Typedefs</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga32c5c678bd369f8fa781955529b98fea">TfLiteAffineQuantization</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-affine-quantization.html#struct_tf_lite_affine_quantization">TfLiteAffineQuantization</a></code>
+        </div><div>Parameters for asymmetric quantization across a dimension (i.e per output channel quantization). </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga526d5721e8551d8f6f9ab2ce28493c34">TfLiteAllocationStrategy</a></code>
+      </td>
+      <td>typedef<div>
+          <code>enum <a href="/lite/api_docs/c/group/common.html#group__common_1gae00888e38fbedcb5130cf359c574580a">TfLiteAllocationStrategy</a></code>
+        </div><div>Memory allocation strategies. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga6d6efce15b7e646bb013fe5b1174a88d">TfLiteAllocationType</a></code>
+      </td>
+      <td>typedef<div>
+          <code>enum <a href="/lite/api_docs/c/group/common.html#group__common_1gae48332e93fec6c3fe7c4ee4897770d4b">TfLiteAllocationType</a></code>
+        </div><div>Memory allocation strategies. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga837e524d72cc15f4790178c2e7bf57e1">TfLiteBufferHandle</a></code>
+      </td>
+      <td>typedef<div>
+          <code>int</code>
+        </div><div>The delegates should use zero or positive integers to represent handles. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gac99f22bd4dd1a4f46201a50952b4ee28">TfLiteComplex128</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-complex128.html#struct_tf_lite_complex128">TfLiteComplex128</a></code>
+        </div><div>Double-precision complex data type compatible with the C99 definition. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gab00698536cdda17203dd45283515fec4">TfLiteComplex64</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-complex64.html#struct_tf_lite_complex64">TfLiteComplex64</a></code>
+        </div><div>Single-precision complex data type compatible with the C99 definition. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gacc152d228ace87838cd6a9ceb26dd229">TfLiteContext</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-context.html#struct_tf_lite_context">TfLiteContext</a></code>
+        </div><div><code><a href="/lite/api_docs/c/struct/tf-lite-context.html#struct_tf_lite_context">TfLiteContext</a></code> allows an op to access the tensors. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gabcefe8ea3aff3dd996e90bd96b231f46">TfLiteCustomAllocation</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-custom-allocation.html#struct_tf_lite_custom_allocation">TfLiteCustomAllocation</a></code>
+        </div><div>Defines a custom memory allocation not owned by the runtime. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga0651070702d32de748f18c696495ddf2">TfLiteCustomAllocationFlags</a></code>
+      </td>
+      <td>typedef<div>
+          <code>enum <a href="/lite/api_docs/c/group/common.html#group__common_1gab9ba81155474515a58a7281794950836">TfLiteCustomAllocationFlags</a></code>
+        </div><div>The flags used in <code>Interpreter::SetCustomAllocationForTensor</code>. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gaacc6b1d356ccca52db5f21db02fe2bfd">TfLiteDelegate</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a></code>
+        </div><div>WARNING: This is an experimental interface that is subject to change. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga795a741c5e13a701b38fb3cdf9f00564">TfLiteDelegateFlags</a></code>
+      </td>
+      <td>typedef<div>
+          <code>enum <a href="/lite/api_docs/c/group/common.html#group__common_1ga69fe39f64b6ac9983afdda112b0256d4">TfLiteDelegateFlags</a></code>
+        </div><div>The flags used in <code><a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a></code>. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga5ae262ae98148e6fe3b67989f4d81da9">TfLiteDelegateParams</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-delegate-params.html#struct_tf_lite_delegate_params">TfLiteDelegateParams</a></code>
+        </div><div>WARNING: This is an experimental interface that is subject to change. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga7e655651f7df0d4444ab6cd8007aa142">TfLiteDimensionMetadata</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-dimension-metadata.html#struct_tf_lite_dimension_metadata">TfLiteDimensionMetadata</a></code>
+        </div><div>Metadata to encode each dimension in a sparse tensor. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gaa2f9c1219b9175718c1fd7279f635f0f">TfLiteDimensionType</a></code>
+      </td>
+      <td>typedef<div>
+          <code>enum <a href="/lite/api_docs/c/group/common.html#group__common_1ga71e0001719140df24b5ae660cd0c322e">TfLiteDimensionType</a></code>
+        </div><div>Storage format of each dimension in a sparse tensor. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga77fe7f7397e98411530923eb0759a570">TfLiteEvalTensor</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-eval-tensor.html#struct_tf_lite_eval_tensor">TfLiteEvalTensor</a></code>
+        </div><div>Light-weight tensor struct for TF Micro runtime. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga4ded51b2b9ce14751af44ec94b5f8d4c">TfLiteExternalContext</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-external-context.html#struct_tf_lite_external_context">TfLiteExternalContext</a></code>
+        </div><div>An external context is a collection of information unrelated to the TF Lite framework, but useful to a subset of the ops. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gab7a9532fb9a864d9c197d0220d568615">TfLiteExternalContextType</a></code>
+      </td>
+      <td>typedef<div>
+          <code>enum <a href="/lite/api_docs/c/group/common.html#group__common_1ga6d1d3582ab46e837f9f108839232dc03">TfLiteExternalContextType</a></code>
+        </div><div>The list of external context types known to TF Lite. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga7bf854f309e78212690d3ac5bd7bd165">TfLiteFloat16</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-float16.html#struct_tf_lite_float16">TfLiteFloat16</a></code>
+        </div><div>Half precision data type compatible with the C99 definition. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gaad8795b5f1abcd81c1bef337b89bc551">TfLiteFloatArray</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-float-array.html#struct_tf_lite_float_array">TfLiteFloatArray</a></code>
+        </div><div>Fixed size list of floats. Used for per-channel quantization. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gabda876f2ca7cc34c68df2603174d0679">TfLiteIntArray</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a></code>
+        </div><div>Fixed size list of integers. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga8434b49f7fc5e8752506b421acf6bb37">TfLiteNode</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-node.html#struct_tf_lite_node">TfLiteNode</a></code>
+        </div><div>A structure representing an instance of a node. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga32657b5a172e6c6a5d287e88623af483">TfLiteOpaqueDelegateBuilder</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-opaque-delegate-builder.html#struct_tf_lite_opaque_delegate_builder">TfLiteOpaqueDelegateBuilder</a></code>
+        </div><div><code><a href="/lite/api_docs/c/struct/tf-lite-opaque-delegate-builder.html#struct_tf_lite_opaque_delegate_builder">TfLiteOpaqueDelegateBuilder</a></code> is used for constructing <code>TfLiteOpaqueDelegate</code>, see <code>TfLiteOpaqueDelegateCreate</code> below. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga183bc6d20ab7cea94d5ae51375177403">TfLiteOpaqueDelegateParams</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-opaque-delegate-params.html#struct_tf_lite_opaque_delegate_params">TfLiteOpaqueDelegateParams</a></code>
+        </div><div>WARNING: This is an experimental interface that is subject to change. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga01428ebfee84565185d3358d9f00036e">TfLitePtrUnion</a></code>
+      </td>
+      <td>typedef<div>
+          <code>union <a href="/lite/api_docs/c/union/tf-lite-ptr-union.html#union_tf_lite_ptr_union">TfLitePtrUnion</a></code>
+        </div><div>A union of pointers that points to memory for a given tensor. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga66621f7cc3fb48cae71da7c1903a045c">TfLiteQuantization</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-quantization.html#struct_tf_lite_quantization">TfLiteQuantization</a></code>
+        </div><div>Structure specifying the quantization used by the tensor, if-any. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gace3c87f21a9c1adda50bd8b8743b050d">TfLiteQuantizationType</a></code>
+      </td>
+      <td>typedef<div>
+          <code>enum <a href="/lite/api_docs/c/group/common.html#group__common_1ga9a7dad0b2e1bc9afe44b055915cbddb8">TfLiteQuantizationType</a></code>
+        </div><div>SupportedQuantizationTypes. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gac593e30563d2c784c045d0faa3ecad08">TfLiteRegistration</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a></code>
+        </div><div><code><a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a></code> defines the implementation of an operation (a built-in op, custom op, or custom delegate kernel). </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gac0d70c820dfb7187a23e38e14deec7eb">TfLiteRegistrationExternal</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/group/common.html#group__common_1gac0d70c820dfb7187a23e38e14deec7eb">TfLiteRegistrationExternal</a></code>
+        </div><div><code>TfLiteRegistrationExternal</code> is an external version of <code><a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a></code> for C API which doesn't use internal types (such as <code><a href="/lite/api_docs/c/struct/tf-lite-context.html#struct_tf_lite_context">TfLiteContext</a></code>) but only uses stable API types (such as <code>TfLiteOpaqueContext</code>). </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga15580754d1a22684ff8f1172459ff3b4">TfLiteRegistration_V1</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct TfLiteRegistration_V1</code>
+        </div><div>Old version of <code><a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a></code> to maintain binary backward compatibility. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga2474458f38f559d454023d7864d707ab">TfLiteRegistration_V2</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct TfLiteRegistration_V2</code>
+        </div><div>Old version of <code><a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a></code> to maintain binary backward compatibility. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga46465f2a5a6c9cc3d6862a5114df94c1">TfLiteRegistration_V3</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct TfLiteRegistration_V3</code>
+        </div><div>Old version of <code><a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a></code> to maintain binary backward compatibility. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga54c27fb0e9603d03dc66d23c25929d70">TfLiteRunStability</a></code>
+      </td>
+      <td>typedef<div>
+          <code>enum <a href="/lite/api_docs/c/group/common.html#group__common_1ga8e48d3a995a7dea060434068920c5b23">TfLiteRunStability</a></code>
+        </div><div>Describes how stable a tensor attribute is with regards to an interpreter runs. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gadc01596ee2d7f95b1e4052323c876185">TfLiteRunStep</a></code>
+      </td>
+      <td>typedef<div>
+          <code>enum <a href="/lite/api_docs/c/group/common.html#group__common_1gaa07ed5a55fa2bff442239a17b6c371d9">TfLiteRunStep</a></code>
+        </div><div>Describes the steps of a TFLite operation life cycle. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga432277b5d4290e4e95390a85be2861ac">TfLiteSparsity</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-sparsity.html#struct_tf_lite_sparsity">TfLiteSparsity</a></code>
+        </div><div>Parameters used to encode a sparse tensor. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gab419d183abc8b95474df51dbda99e865">TfLiteTensor</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a></code>
+        </div><div>A tensor in the interpreter system which is a wrapper around a buffer of data including a dimensionality (or NULL if not currently defined). </div></td>
+    </tr>
+  </table>
+  <table class="properties responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Variables</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga06a3f79b190497748f49b0dcd664950b">kTfLiteMaxSharableOpInputs</a> = 3</code>
+      </td>
+      <td>
+        <div>
+          <code>const int</code>
+        </div>
+        <div>The number of shareable inputs supported. </div>
+      </td>
+    </tr>
+  </table>
+  <table class="methods responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Functions</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga43bc367823478730b849e482c609a35a">TfLiteDelegateCreate</a>(void)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a></code>
+        </div>
+        <div>Build a <code>null</code> delegate, with all the fields properly set to their default values. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gae044e189dfd055b86b15620e9dedbdab">TfLiteFloatArrayCopy</a>(const <a href="/lite/api_docs/c/struct/tf-lite-float-array.html#struct_tf_lite_float_array">TfLiteFloatArray</a> *src)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-float-array.html#struct_tf_lite_float_array">TfLiteFloatArray</a> *</code>
+        </div>
+        <div>Create a copy of an array passed as <code>src</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga07365f9141fc5887bc74f59d132d1722">TfLiteFloatArrayCreate</a>(int size)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-float-array.html#struct_tf_lite_float_array">TfLiteFloatArray</a> *</code>
+        </div>
+        <div>Create a array of a given <code>size</code> (uninitialized entries). </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gaba5c61271098bf2259d5373bad4c91bf">TfLiteFloatArrayFree</a>(<a href="/lite/api_docs/c/struct/tf-lite-float-array.html#struct_tf_lite_float_array">TfLiteFloatArray</a> *a)</code>
+      </td>
+      <td>
+        <div>
+          <code>void</code>
+        </div>
+        <div>Free memory of array <code>a</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gac5eb091b03131b33b1c11bd6aaf7c7a3">TfLiteFloatArrayGetSizeInBytes</a>(int size)</code>
+      </td>
+      <td>
+        <div>
+          <code>int</code>
+        </div>
+        <div>Given the size (number of elements) in a <a href="/lite/api_docs/c/struct/tf-lite-float-array.html#struct_tf_lite_float_array">TfLiteFloatArray</a>, calculate its size in bytes. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gabd4775ace71b1798c4d91b4a608c3eba">TfLiteIntArrayCopy</a>(const <a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *src)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *</code>
+        </div>
+        <div>Create a copy of an array passed as <code>src</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga21a2151465664e5481de0f35696dc156">TfLiteIntArrayCreate</a>(int size)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *</code>
+        </div>
+        <div>Create a array of a given <code>size</code> (uninitialized entries). </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gae4512fc4acb4d7aa7639041ca5c937a2">TfLiteIntArrayEqual</a>(const <a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *a, const <a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *b)</code>
+      </td>
+      <td>
+        <div>
+          <code>int</code>
+        </div>
+        <div>Check if two intarrays are equal. Returns 1 if they are equal, 0 otherwise. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga86bc87639d7cfc31043f27eb3f1c9ff6">TfLiteIntArrayEqualsArray</a>(const <a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *a, int b_size, const int b_data[])</code>
+      </td>
+      <td>
+        <div>
+          <code>int</code>
+        </div>
+        <div>Check if an intarray equals an array. Returns 1 if equals, 0 otherwise. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga35d0ee19ef26521ea055d291e7c18ae8">TfLiteIntArrayFree</a>(<a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *a)</code>
+      </td>
+      <td>
+        <div>
+          <code>void</code>
+        </div>
+        <div>Free memory of array <code>a</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga190cdcfc51265e1ca4485d9d9ad4b8f4">TfLiteIntArrayGetSizeInBytes</a>(int size)</code>
+      </td>
+      <td>
+        <div>
+          <code>size_t</code>
+        </div>
+        <div>Given the size (number of elements) in a <a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a>, calculate its size in bytes. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga3af848a0513c0bcf398df4196d251390">TfLiteOpaqueDelegateCreate</a>(const <a href="/lite/api_docs/c/struct/tf-lite-opaque-delegate-builder.html#struct_tf_lite_opaque_delegate_builder">TfLiteOpaqueDelegateBuilder</a> *opaque_delegate_builder)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gac2bc3e65b2b4dfe997134c006faa442f">TfLiteOpaqueDelegate</a> *</code>
+        </div>
+        <div>Creates an opaque delegate and returns its address. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga8e61fe31a06e3cc138a24e11d3ee4dc0">TfLiteOpaqueDelegateDelete</a>(<a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gac2bc3e65b2b4dfe997134c006faa442f">TfLiteOpaqueDelegate</a> *delegate)</code>
+      </td>
+      <td>
+        <div>
+          <code>void</code>
+        </div>
+        <div>Deletes the provided opaque <code>delegate</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gae9ca389b98a8809a2593b63f354a094f">TfLiteOpaqueDelegateGetData</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gac2bc3e65b2b4dfe997134c006faa442f">TfLiteOpaqueDelegate</a> *delegate)</code>
+      </td>
+      <td>
+        <div>
+          <code>void *</code>
+        </div>
+        <div>Returns a pointer to the data associated with the provided opaque <code>delegate</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga76e2b19f4fa884fc771deb58d4b81c01">TfLiteQuantizationFree</a>(<a href="/lite/api_docs/c/struct/tf-lite-quantization.html#struct_tf_lite_quantization">TfLiteQuantization</a> *quantization)</code>
+      </td>
+      <td>
+        <div>
+          <code>void</code>
+        </div>
+        <div>Free quantization data. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga7180fcadca789ede6ee1866950bb4442">TfLiteSparsityFree</a>(<a href="/lite/api_docs/c/struct/tf-lite-sparsity.html#struct_tf_lite_sparsity">TfLiteSparsity</a> *sparsity)</code>
+      </td>
+      <td>
+        <div>
+          <code>void</code>
+        </div>
+        <div>Free sparsity parameters. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga42287f175ff9914d60fdf87caf8c3c11">TfLiteTensorCopy</a>(const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *src, <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *dst)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Copies the contents of <code>src</code> in <code>dst</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga1970f4c536d8b8a824e429a6d1ba6954">TfLiteTensorDataFree</a>(<a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *t)</code>
+      </td>
+      <td>
+        <div>
+          <code>void</code>
+        </div>
+        <div>Free data memory of tensor <code>t</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gab200ece199c15d3e64768165f5c14772">TfLiteTensorFree</a>(<a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *t)</code>
+      </td>
+      <td>
+        <div>
+          <code>void</code>
+        </div>
+        <div>Free memory of tensor <code>t</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga7a842c0d2e23ffb7da9c8ce1b64650e4">TfLiteTensorGetAllocationStrategy</a>(const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *t)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/common.html#group__common_1gae00888e38fbedcb5130cf359c574580a">TfLiteAllocationStrategy</a></code>
+        </div>
+        <div>Returns a tensor data allocation strategy. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gaeb40cd5f8cda3298f3e7cc4bba72a934">TfLiteTensorGetBufferAddressStability</a>(const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *t)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/common.html#group__common_1ga8e48d3a995a7dea060434068920c5b23">TfLiteRunStability</a></code>
+        </div>
+        <div>Returns how stable a tensor data buffer address is across runs. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga3e3fd4cb6febe0d2569b366c415b3f93">TfLiteTensorGetDataKnownStep</a>(const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *t)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/common.html#group__common_1gaa07ed5a55fa2bff442239a17b6c371d9">TfLiteRunStep</a></code>
+        </div>
+        <div>Returns the operation step when the data of a tensor is populated. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gaf5299e8349d6e0dace1dc3cec3c0d470">TfLiteTensorGetDataStability</a>(const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *t)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/common.html#group__common_1ga8e48d3a995a7dea060434068920c5b23">TfLiteRunStability</a></code>
+        </div>
+        <div>Returns how stable a tensor data values are across runs. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga9e0bda13aa92d337c3fd546d000d7efa">TfLiteTensorGetShapeKnownStep</a>(const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *t)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/common.html#group__common_1gaa07ed5a55fa2bff442239a17b6c371d9">TfLiteRunStep</a></code>
+        </div>
+        <div>Returns the operation steop when the shape of a tensor is computed. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1ga99092263b63ce537c2e409009391773e">TfLiteTensorRealloc</a>(size_t num_bytes, <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *tensor)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Change the size of the memory block owned by <code>tensor</code> to <code>num_bytes</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gab74ff0bd0ef3c4a2fe54d3303f2fec5c">TfLiteTensorReset</a>(<a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1ga8a47ba81bdef28b5c479ee7928a7d123">TfLiteType</a> type, const char *name, <a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *dims, <a href="/lite/api_docs/c/struct/tf-lite-quantization-params.html#struct_tf_lite_quantization_params">TfLiteQuantizationParams</a> quantization, char *buffer, size_t size, <a href="/lite/api_docs/c/group/common.html#group__common_1gae48332e93fec6c3fe7c4ee4897770d4b">TfLiteAllocationType</a> allocation_type, const void *allocation, bool is_variable, <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *tensor)</code>
+      </td>
+      <td>
+        <div>
+          <code>void</code>
+        </div>
+        <div>Set all of a tensor's fields (and free any previously allocated data). </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gaa9170ea08a56312aca38ea01e7aea2f9">TfLiteTensorResizeMaybeCopy</a>(size_t num_bytes, <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *tensor, bool preserve_data)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Change the size of the memory block owned by <code>tensor</code> to <code>num_bytes</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__common_1gac950eb7bae7dbaaad3368d4ab9646917">TfLiteTypeGetName</a>(<a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1ga8a47ba81bdef28b5c479ee7928a7d123">TfLiteType</a> type)</code>
+      </td>
+      <td>
+        <div>
+          <code>const char *</code>
+        </div>
+        <div>Return the name of a given type, for error reporting purposes. </div>
+      </td>
+    </tr>
+  </table>
+  <table class="constants responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Structs</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <a href="/lite/api_docs/c/struct/tf-lite-affine-quantization">TfLiteAffineQuantization</a>
+      </td>
+      <td>
+        <p>Parameters for asymmetric quantization across a dimension (i.e per output channel quantization). </p>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/lite/api_docs/c/struct/tf-lite-complex128">TfLiteComplex128</a>
+      </td>
+      <td>
+        <p>Double-precision complex data type compatible with the C99 definition. </p>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/lite/api_docs/c/struct/tf-lite-complex64">TfLiteComplex64</a>
+      </td>
+      <td>
+        <p>Single-precision complex data type compatible with the C99 definition. </p>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/lite/api_docs/c/struct/tf-lite-context">TfLiteContext</a>
+      </td>
+      <td>
+        <p><code><a href="/lite/api_docs/c/struct/tf-lite-context.html#struct_tf_lite_context">TfLiteContext</a></code> allows an op to access the tensors. </p>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/lite/api_docs/c/struct/tf-lite-custom-allocation">TfLiteCustomAllocation</a>
+      </td>
+      <td>
+        <p>Defines a custom memory allocation not owned by the runtime. </p>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/lite/api_docs/c/struct/tf-lite-delegate">TfLiteDelegate</a>
+      </td>
+      <td>
+        <p>WARNING: This is an experimental interface that is subject to change. </p>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/lite/api_docs/c/struct/tf-lite-delegate-params">TfLiteDelegateParams</a>
+      </td>
+      <td>
+        <p>WARNING: This is an experimental interface that is subject to change. </p>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/lite/api_docs/c/struct/tf-lite-dimension-metadata">TfLiteDimensionMetadata</a>
+      </td>
+      <td>
+        <p>Metadata to encode each dimension in a sparse tensor. </p>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/lite/api_docs/c/struct/tf-lite-eval-tensor">TfLiteEvalTensor</a>
+      </td>
+      <td>
+        <p>Light-weight tensor struct for TF Micro runtime. </p>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/lite/api_docs/c/struct/tf-lite-external-context">TfLiteExternalContext</a>
+      </td>
+      <td>
+        <p>An external context is a collection of information unrelated to the TF Lite framework, but useful to a subset of the ops. </p>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/lite/api_docs/c/struct/tf-lite-float16">TfLiteFloat16</a>
+      </td>
+      <td>
+        <p>Half precision data type compatible with the C99 definition. </p>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/lite/api_docs/c/struct/tf-lite-float-array">TfLiteFloatArray</a>
+      </td>
+      <td>
+        <p>Fixed size list of floats. Used for per-channel quantization. </p>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/lite/api_docs/c/struct/tf-lite-int-array">TfLiteIntArray</a>
+      </td>
+      <td>
+        <p>Fixed size list of integers. </p>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/lite/api_docs/c/struct/tf-lite-node">TfLiteNode</a>
+      </td>
+      <td>
+        <p>A structure representing an instance of a node. </p>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/lite/api_docs/c/struct/tf-lite-opaque-delegate-builder">TfLiteOpaqueDelegateBuilder</a>
+      </td>
+      <td>
+        <p><code><a href="/lite/api_docs/c/struct/tf-lite-opaque-delegate-builder.html#struct_tf_lite_opaque_delegate_builder">TfLiteOpaqueDelegateBuilder</a></code> is used for constructing <code>TfLiteOpaqueDelegate</code>, see <code>TfLiteOpaqueDelegateCreate</code> below. </p>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/lite/api_docs/c/struct/tf-lite-opaque-delegate-params">TfLiteOpaqueDelegateParams</a>
+      </td>
+      <td>
+        <p>WARNING: This is an experimental interface that is subject to change. </p>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/lite/api_docs/c/struct/tf-lite-quantization">TfLiteQuantization</a>
+      </td>
+      <td>
+        <p>Structure specifying the quantization used by the tensor, if-any. </p>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/lite/api_docs/c/struct/tf-lite-registration">TfLiteRegistration</a>
+      </td>
+      <td>
+        <p><code><a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a></code> defines the implementation of an operation (a built-in op, custom op, or custom delegate kernel). </p>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/lite/api_docs/c/struct/tf-lite-sparsity">TfLiteSparsity</a>
+      </td>
+      <td>
+        <p>Parameters used to encode a sparse tensor. </p>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/lite/api_docs/c/struct/tf-lite-tensor">TfLiteTensor</a>
+      </td>
+      <td>
+        <p>A tensor in the interpreter system which is a wrapper around a buffer of data including a dimensionality (or NULL if not currently defined). </p>
+      </td>
+    </tr>
+  </table>
+  <table class="constants responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Unions</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <a href="/lite/api_docs/c/union/tf-lite-ptr-union">TfLitePtrUnion</a>
+      </td>
+      <td>
+        <p>A union of pointers that points to memory for a given tensor. </p>
+      </td>
+    </tr>
+  </table>
+  <h2>Enumerations</h2>
+  <div id="group__common_1ga06fc87d81c62e9abb8790b6e5713c55b">
+    <h3>Anonymous Enum 0</h3>
+    <pre class="prettyprint"> Anonymous Enum 0</pre>
+    <div />
+  </div>
+  <div id="group__common_1gae00888e38fbedcb5130cf359c574580a">
+    <h3>TfLiteAllocationStrategy</h3>
+    <pre class="prettyprint"> TfLiteAllocationStrategy</pre>
+    <div>
+      <p>Memory allocation strategies. </p>
+      <p>TfLiteAllocationType values have been overloaded to mean more than their original intent. This enum should only be used to document the allocation strategy used by a tensor for it data. </p>
+      <table class="properties responsive">
+        <tr>
+          <th colspan="2">Properties</th>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__common_1ggae00888e38fbedcb5130cf359c574580aa492a6abbe17252e67e60dde797e793f3" />kTfLiteAllocationStrategyArena</code>
+          </td>
+          <td>
+            <p>Data is mmaped. </p>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__common_1ggae00888e38fbedcb5130cf359c574580aae89cc791f049ab2226e7ca6dae6a0cc7" />kTfLiteAllocationStrategyMMap</code>
+          </td>
+          <td>
+            <p>No data is allocated. </p>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__common_1ggae00888e38fbedcb5130cf359c574580aa87bb16ed0b5aaa451f089bc406f55370" />kTfLiteAllocationStrategyMalloc</code>
+          </td>
+          <td>
+            <p>Handled by the arena. </p>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__common_1ggae00888e38fbedcb5130cf359c574580aa6a6b7830286adad707e992ad794ad6d5" />kTfLiteAllocationStrategyNew</code>
+          </td>
+          <td>
+            <p>Uses <code>malloc</code>/<code>free</code>. </p>
+            <p>Uses <code>new[]</code>/<code>delete[]</code>. </p>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+  <div id="group__common_1gae48332e93fec6c3fe7c4ee4897770d4b">
+    <h3>TfLiteAllocationType</h3>
+    <pre class="prettyprint"> TfLiteAllocationType</pre>
+    <div>
+      <p>Memory allocation strategies. </p>
+      <p>
+        <ul>
+          <li><code>kTfLiteMmapRo</code>: Read-only memory-mapped data, or data externally allocated.</li>
+          <li><code>kTfLiteArenaRw</code>: Arena allocated with no guarantees about persistence, and available during eval.</li>
+          <li><code>kTfLiteArenaRwPersistent</code>: Arena allocated but persistent across eval, and only available during eval.</li>
+          <li><code>kTfLiteDynamic</code>: Allocated during eval, or for string tensors.</li>
+          <li><code>kTfLitePersistentRo</code>: Allocated and populated during prepare. This is useful for tensors that can be computed during prepare and treated as constant inputs for downstream ops (also in prepare).</li>
+          <li><code>kTfLiteCustom</code>: Custom memory allocation provided by the user. See <a href="/lite/api_docs/c/struct/tf-lite-custom-allocation.html#struct_tf_lite_custom_allocation">TfLiteCustomAllocation</a> below.</li>
+          <li><code>kTfLiteVariantObject</code>: Allocation is an arbitrary type-erased C++ object. Allocation and deallocation are done through <code>new</code> and <code>delete</code>. </li>
+        </ul>
+      </p>
+    </div>
+  </div>
+  <div id="group__common_1gab9ba81155474515a58a7281794950836">
+    <h3>TfLiteCustomAllocationFlags</h3>
+    <pre class="prettyprint"> TfLiteCustomAllocationFlags</pre>
+    <div>
+      <p>The flags used in <code>Interpreter::SetCustomAllocationForTensor</code>. </p>
+      <p>Note that this is a bitmask, so the values should be 1, 2, 4, 8, ...etc. </p>
+      <table class="properties responsive">
+        <tr>
+          <th colspan="2">Properties</th>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__common_1ggab9ba81155474515a58a7281794950836ac17eab86ed19d120cc3fda3c2336e231" />kTfLiteCustomAllocationFlagsSkipAlignCheck</code>
+          </td>
+          <td>
+            <p>Skips checking whether allocation.data points to an aligned buffer as expected by the TFLite runtime. </p>
+            <p>NOTE: Setting this flag can cause crashes when calling Invoke(). Use with caution. </p>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+  <div id="group__common_1ga69fe39f64b6ac9983afdda112b0256d4">
+    <h3>TfLiteDelegateFlags</h3>
+    <pre class="prettyprint"> TfLiteDelegateFlags</pre>
+    <div>
+      <p>The flags used in <code><a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a></code>. </p>
+      <p>Note that this is a bitmask, so the values should be 1, 2, 4, 8, ...etc. </p>
+      <table class="properties responsive">
+        <tr>
+          <th colspan="2">Properties</th>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__common_1gga69fe39f64b6ac9983afdda112b0256d4aec2565db20a2446cf201c0d8ef0e5fad" />kTfLiteDelegateFlagsAllowDynamicTensors</code>
+          </td>
+          <td>
+            <p>The flag is set if the delegate can handle dynamic sized tensors. </p>
+            <p>For example, the output shape of a <code>Resize</code> op with non-constant shape can only be inferred when the op is invoked. In this case, the Delegate is responsible for calling <code>SetTensorToDynamic</code> to mark the tensor as a dynamic tensor, and calling <code>ResizeTensor</code> when invoking the op.</p>
+            <p>If the delegate isn't capable to handle dynamic tensors, this flag need to be set to false. </p>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__common_1gga69fe39f64b6ac9983afdda112b0256d4a417d6f979201e48e71a728c64ba30a1d" />kTfLiteDelegateFlagsPerOperatorProfiling</code>
+          </td>
+          <td>
+            <p>This flag can be used by delegates to request per-operator profiling. </p>
+            <p>If a node is a delegate node, this flag will be checked before profiling. If set, then the node will not be profiled. The delegate will then add per operator information using <code>Profiler::EventType::OPERATOR_INVOKE_EVENT</code> and the results will appear in the operator-wise Profiling section and not in the Delegate internal section. </p>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__common_1gga69fe39f64b6ac9983afdda112b0256d4abb7a7e1a0a689a28c8c1b20fe4f76973" />kTfLiteDelegateFlagsRequirePropagatedShapes</code>
+          </td>
+          <td>
+            <p>This flag can be used by delegates (that allow dynamic tensors) to ensure applicable tensor shapes are automatically propagated in the case of tensor resizing. </p>
+            <p>This means that non-dynamic (allocation_type != kTfLiteDynamic) I/O tensors of a delegate kernel will have correct shapes before its Prepare() method is called. The runtime leverages TFLite builtin ops in the original execution plan to propagate shapes.</p>
+            <p>A few points to note:<ol>
+                <li>This requires kTfLiteDelegateFlagsAllowDynamicTensors. If that flag is false, this one is redundant since the delegate kernels are re-initialized every time tensors are resized.</li>
+                <li>Enabling this flag adds some overhead to AllocateTensors(), since extra work is required to prepare the original execution plan.</li>
+                <li>This flag requires that the original execution plan only have ops with valid registrations (and not 'dummy' custom ops like with Flex).</li>
+              </ol></p>
+            <p>WARNING: This feature is experimental and subject to change. </p>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+  <div id="group__common_1ga71e0001719140df24b5ae660cd0c322e">
+    <h3>TfLiteDimensionType</h3>
+    <pre class="prettyprint"> TfLiteDimensionType</pre>
+    <div>
+      <p>Storage format of each dimension in a sparse tensor. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga6d1d3582ab46e837f9f108839232dc03">
+    <h3>TfLiteExternalContextType</h3>
+    <pre class="prettyprint"> TfLiteExternalContextType</pre>
+    <div>
+      <p>The list of external context types known to TF Lite. </p>
+      <p>This list exists solely to avoid conflicts and to ensure ops can share the external contexts they need. Access to the external contexts is controlled by one of the corresponding support files. </p>
+      <table class="properties responsive">
+        <tr>
+          <th colspan="2">Properties</th>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__common_1gga6d1d3582ab46e837f9f108839232dc03a2a3e81dca662de1bbd886d9d94b9910f" />kTfLiteCpuBackendContext</code>
+          </td>
+          <td>
+            <p>Placeholder for Edge TPU support. </p>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__common_1gga6d1d3582ab46e837f9f108839232dc03a80dd6279810a535bff7222bf21fe25ee" />kTfLiteEdgeTpuContext</code>
+          </td>
+          <td>
+            <p>include gemm_support.h to use. </p>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__common_1gga6d1d3582ab46e837f9f108839232dc03ac82c5823a84bd728411c778dec2c4fe5" />kTfLiteGemmLowpContext</code>
+          </td>
+          <td>
+            <p>include eigen_support.h to use. </p>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__common_1gga6d1d3582ab46e837f9f108839232dc03a9d313c890d34fb105e760980c70433b6" />kTfLiteMaxExternalContexts</code>
+          </td>
+          <td>
+            <p>include cpu_backend_context.h to use. </p>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+  <div id="group__common_1gaef13b180d6d3bc3ff1dd5db03c68eaae">
+    <h3>TfLiteInPlaceOp</h3>
+    <pre class="prettyprint"> TfLiteInPlaceOp</pre>
+    <div>
+      <p>The valid values of the <code>inplace_operator</code> field in <code><a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a></code>. </p>
+      <p>This allow an op to signal to the runtime that the same data pointer may be passed as an input and output without impacting the result. This does not mean that the memory can safely be reused, it is up to the runtime to determine this, e.g. if another op consumes the same input or not or if an input tensor has sufficient memory allocated to store the output data.</p>
+      <p>Setting these flags authorizes the runtime to set the data pointers of an input and output tensor to the same value. In such cases, the memory required by the output must be less than or equal to that required by the shared input, never greater. If kTfLiteInplaceOpDataUnmodified is set, then the runtime can share the same input tensor with multiple operator's outputs, provided that kTfLiteInplaceOpDataUnmodified is set for all of them. Otherwise, if an input tensor is consumed by multiple operators, it may only be shared with the operator which is the last to consume it.</p>
+      <p>Note that this is a bitmask, so the values should be 1, 2, 4, 8, ...etc. </p>
+      <table class="properties responsive">
+        <tr>
+          <th colspan="2">Properties</th>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__common_1ggaef13b180d6d3bc3ff1dd5db03c68eaaea71e259fe563c66638acda447f194dcf6" />kTfLiteInplaceInputCanBeSharedWithCorrespondingOutput</code>
+          </td>
+          <td>
+            <p>Setting kTfLiteInplaceInputCanBeSharedWithCorrespondingOutput means that InputN may be shared with OutputN instead of with the first output. </p>
+            <p>This flag requires one or more of kTfLiteInplaceOpInputNShared to be set. </p>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__common_1ggaef13b180d6d3bc3ff1dd5db03c68eaaea6e214bf83426f4bef37ce42e2d96ee9e" />kTfLiteInplaceOpDataUnmodified</code>
+          </td>
+          <td>
+            <p>This indicates that an op's first output's data is identical to its first input's data, for example Reshape. </p>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__common_1ggaef13b180d6d3bc3ff1dd5db03c68eaaeafcb30f3635f649c39ffbd15611940ff9" />kTfLiteInplaceOpInput0Shared</code>
+          </td>
+          <td>
+            <p>kTfLiteInplaceOpInputNShared indicates that it is safe for an op to share InputN's data pointer with an output tensor. </p>
+            <p>If kTfLiteInplaceInputCanBeSharedWithCorrespondingOutput is set then kTfLiteInplaceOpInputNShared indicates that InputN may be shared with OutputN, otherwise kTfLiteInplaceOpInputNShared indicates that InputN may be shared with the first output.</p>
+            <p>Indicates that an op's first input may be shared with the first output tensor. kTfLiteInplaceInputCanBeSharedWithCorrespondingOutput has no impact on the behavior allowed by this flag. </p>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__common_1ggaef13b180d6d3bc3ff1dd5db03c68eaaea60bdb2620b2b01b0b14abbb399b08e4a" />kTfLiteInplaceOpInput1Shared</code>
+          </td>
+          <td>
+            <p>Indicates that an op's second input may be shared with the first output if kTfLiteInplaceInputCanBeSharedWithCorrespondingOutput is not set or second output if kTfLiteInplaceInputCanBeSharedWithCorrespondingOutput is set. </p>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__common_1ggaef13b180d6d3bc3ff1dd5db03c68eaaea0466a9e0e1f428a809e50e3e57720d53" />kTfLiteInplaceOpInput2Shared</code>
+          </td>
+          <td>
+            <p>Indicates that an op's third input may be shared with the first output if kTfLiteInplaceInputCanBeSharedWithCorrespondingOutput is not set or third output if kTfLiteInplaceInputCanBeSharedWithCorrespondingOutput is set. </p>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__common_1ggaef13b180d6d3bc3ff1dd5db03c68eaaeafcd31ec42f06513340044dac60aba230" />kTfLiteInplaceOpMaxValue</code>
+          </td>
+          <td>
+            <p>Placeholder to ensure that enum can hold 64 bit values to accommodate future fields. </p>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__common_1ggaef13b180d6d3bc3ff1dd5db03c68eaaeae2dd62e5552cd2ee9460d954396922ff" />kTfLiteInplaceOpNone</code>
+          </td>
+          <td>
+            <p>The default value. </p>
+            <p>This indicates that the same data pointer cannot safely be passed as an op's input and output. </p>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+  <div id="group__common_1ga9a7dad0b2e1bc9afe44b055915cbddb8">
+    <h3>TfLiteQuantizationType</h3>
+    <pre class="prettyprint"> TfLiteQuantizationType</pre>
+    <div>
+      <p>SupportedQuantizationTypes. </p>
+      <table class="properties responsive">
+        <tr>
+          <th colspan="2">Properties</th>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__common_1gga9a7dad0b2e1bc9afe44b055915cbddb8a89fc74624d70b4d3625c0fc82624bf31" />kTfLiteAffineQuantization</code>
+          </td>
+          <td>
+            <p>Affine quantization (with support for per-channel quantization). </p>
+            <p>Corresponds to <a href="/lite/api_docs/c/struct/tf-lite-affine-quantization.html#struct_tf_lite_affine_quantization">TfLiteAffineQuantization</a>. </p>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__common_1gga9a7dad0b2e1bc9afe44b055915cbddb8a6b28c8f5f14be808a142fcaacd03e22c" />kTfLiteNoQuantization</code>
+          </td>
+          <td>
+            <p>No quantization. </p>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+  <div id="group__common_1ga8e48d3a995a7dea060434068920c5b23">
+    <h3>TfLiteRunStability</h3>
+    <pre class="prettyprint"> TfLiteRunStability</pre>
+    <div>
+      <p>Describes how stable a tensor attribute is with regards to an interpreter runs. </p>
+      <table class="properties responsive">
+        <tr>
+          <th colspan="2">Properties</th>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__common_1gga8e48d3a995a7dea060434068920c5b23ad772cadddc26a7ea4b4cc5e41ba50843" />kTfLiteRunStabilityAcrossRuns</code>
+          </td>
+          <td>
+            <p>Will stay the same for one run. </p>
+            <p>Will stay the same across all runs. </p>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__common_1gga8e48d3a995a7dea060434068920c5b23a86c0e4d85d2e5cb35de18e11868e60d7" />kTfLiteRunStabilitySingleRun</code>
+          </td>
+          <td>
+            <p>May change at any time. </p>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+  <div id="group__common_1gaa07ed5a55fa2bff442239a17b6c371d9">
+    <h3>TfLiteRunStep</h3>
+    <pre class="prettyprint"> TfLiteRunStep</pre>
+    <div>
+      <p>Describes the steps of a TFLite operation life cycle. </p>
+    </div>
+  </div>
+  <h2>Typedefs</h2>
+  <div id="group__common_1ga32c5c678bd369f8fa781955529b98fea">
+    <h3>TfLiteAffineQuantization</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-affine-quantization.html#struct_tf_lite_affine_quantization">TfLiteAffineQuantization</a> TfLiteAffineQuantization</pre>
+    <div>
+      <p>Parameters for asymmetric quantization across a dimension (i.e per output channel quantization). </p>
+      <p>quantized_dimension specifies which dimension the scales and zero_points correspond to. For a particular value in quantized_dimension, quantized values can be converted back to float using: <code>real_value = scale * (quantized_value - zero_point)</code></p>
+    </div>
+  </div>
+  <div id="group__common_1ga526d5721e8551d8f6f9ab2ce28493c34">
+    <h3>TfLiteAllocationStrategy</h3>
+    <pre class="prettyprint">enum <a href="/lite/api_docs/c/group/common.html#group__common_1gae00888e38fbedcb5130cf359c574580a">TfLiteAllocationStrategy</a> TfLiteAllocationStrategy</pre>
+    <div>
+      <p>Memory allocation strategies. </p>
+      <p>TfLiteAllocationType values have been overloaded to mean more than their original intent. This enum should only be used to document the allocation strategy used by a tensor for it data. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga6d6efce15b7e646bb013fe5b1174a88d">
+    <h3>TfLiteAllocationType</h3>
+    <pre class="prettyprint">enum <a href="/lite/api_docs/c/group/common.html#group__common_1gae48332e93fec6c3fe7c4ee4897770d4b">TfLiteAllocationType</a> TfLiteAllocationType</pre>
+    <div>
+      <p>Memory allocation strategies. </p>
+      <p>
+        <ul>
+          <li><code>kTfLiteMmapRo</code>: Read-only memory-mapped data, or data externally allocated.</li>
+          <li><code>kTfLiteArenaRw</code>: Arena allocated with no guarantees about persistence, and available during eval.</li>
+          <li><code>kTfLiteArenaRwPersistent</code>: Arena allocated but persistent across eval, and only available during eval.</li>
+          <li><code>kTfLiteDynamic</code>: Allocated during eval, or for string tensors.</li>
+          <li><code>kTfLitePersistentRo</code>: Allocated and populated during prepare. This is useful for tensors that can be computed during prepare and treated as constant inputs for downstream ops (also in prepare).</li>
+          <li><code>kTfLiteCustom</code>: Custom memory allocation provided by the user. See <a href="/lite/api_docs/c/struct/tf-lite-custom-allocation.html#struct_tf_lite_custom_allocation">TfLiteCustomAllocation</a> below.</li>
+          <li><code>kTfLiteVariantObject</code>: Allocation is an arbitrary type-erased C++ object. Allocation and deallocation are done through <code>new</code> and <code>delete</code>. </li>
+        </ul>
+      </p>
+    </div>
+  </div>
+  <div id="group__common_1ga837e524d72cc15f4790178c2e7bf57e1">
+    <h3>TfLiteBufferHandle</h3>
+    <pre class="prettyprint">int TfLiteBufferHandle</pre>
+    <div>
+      <p>The delegates should use zero or positive integers to represent handles. </p>
+      <p>-1 is reserved from unallocated status. </p>
+    </div>
+  </div>
+  <div id="group__common_1gac99f22bd4dd1a4f46201a50952b4ee28">
+    <h3>TfLiteComplex128</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-complex128.html#struct_tf_lite_complex128">TfLiteComplex128</a> TfLiteComplex128</pre>
+    <div>
+      <p>Double-precision complex data type compatible with the C99 definition. </p>
+    </div>
+  </div>
+  <div id="group__common_1gab00698536cdda17203dd45283515fec4">
+    <h3>TfLiteComplex64</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-complex64.html#struct_tf_lite_complex64">TfLiteComplex64</a> TfLiteComplex64</pre>
+    <div>
+      <p>Single-precision complex data type compatible with the C99 definition. </p>
+    </div>
+  </div>
+  <div id="group__common_1gacc152d228ace87838cd6a9ceb26dd229">
+    <h3>TfLiteContext</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-context.html#struct_tf_lite_context">TfLiteContext</a> TfLiteContext</pre>
+    <div>
+      <p><code><a href="/lite/api_docs/c/struct/tf-lite-context.html#struct_tf_lite_context">TfLiteContext</a></code> allows an op to access the tensors. </p>
+      <p><code><a href="/lite/api_docs/c/struct/tf-lite-context.html#struct_tf_lite_context">TfLiteContext</a></code> is a struct that is created by the TF Lite runtime and passed to the "methods" (C function pointers) in the <code><a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a></code> struct that are used to define custom ops and custom delegate kernels. It contains information and methods (C function pointers) that can be called by the code implementing a custom op or a custom delegate kernel. These methods provide access to the context in which that custom op or custom delegate kernel occurs, such as access to the input and output tensors for that op, as well as methods for allocating memory buffers and intermediate tensors, etc.</p>
+      <p>See also <code>TfLiteOpaqueContext</code>, which is an more ABI-stable equivalent. </p>
+    </div>
+  </div>
+  <div id="group__common_1gabcefe8ea3aff3dd996e90bd96b231f46">
+    <h3>TfLiteCustomAllocation</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-custom-allocation.html#struct_tf_lite_custom_allocation">TfLiteCustomAllocation</a> TfLiteCustomAllocation</pre>
+    <div>
+      <p>Defines a custom memory allocation not owned by the runtime. </p>
+      <p><code>data</code> should be aligned to kDefaultTensorAlignment defined in lite/util.h. (Currently 64 bytes) NOTE: See <code>Interpreter::SetCustomAllocationForTensor</code> for details on usage. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga0651070702d32de748f18c696495ddf2">
+    <h3>TfLiteCustomAllocationFlags</h3>
+    <pre class="prettyprint">enum <a href="/lite/api_docs/c/group/common.html#group__common_1gab9ba81155474515a58a7281794950836">TfLiteCustomAllocationFlags</a> TfLiteCustomAllocationFlags</pre>
+    <div>
+      <p>The flags used in <code>Interpreter::SetCustomAllocationForTensor</code>. </p>
+      <p>Note that this is a bitmask, so the values should be 1, 2, 4, 8, ...etc. </p>
+    </div>
+  </div>
+  <div id="group__common_1gaacc6b1d356ccca52db5f21db02fe2bfd">
+    <h3>TfLiteDelegate</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a> TfLiteDelegate</pre>
+    <div>
+      <p>WARNING: This is an experimental interface that is subject to change. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga795a741c5e13a701b38fb3cdf9f00564">
+    <h3>TfLiteDelegateFlags</h3>
+    <pre class="prettyprint">enum <a href="/lite/api_docs/c/group/common.html#group__common_1ga69fe39f64b6ac9983afdda112b0256d4">TfLiteDelegateFlags</a> TfLiteDelegateFlags</pre>
+    <div>
+      <p>The flags used in <code><a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a></code>. </p>
+      <p>Note that this is a bitmask, so the values should be 1, 2, 4, 8, ...etc. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga5ae262ae98148e6fe3b67989f4d81da9">
+    <h3>TfLiteDelegateParams</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-delegate-params.html#struct_tf_lite_delegate_params">TfLiteDelegateParams</a> TfLiteDelegateParams</pre>
+    <div>
+      <p>WARNING: This is an experimental interface that is subject to change. </p>
+      <p>Currently, <a href="/lite/api_docs/c/struct/tf-lite-delegate-params.html#struct_tf_lite_delegate_params">TfLiteDelegateParams</a> has to be allocated in a way that it's trivially destructable. It will be stored as <code>builtin_data</code> field in <code><a href="/lite/api_docs/c/struct/tf-lite-node.html#struct_tf_lite_node">TfLiteNode</a></code> of the delegate node.</p>
+      <p>See also the <code>CreateDelegateParams</code> function in <code>interpreter.cc</code> details. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga7e655651f7df0d4444ab6cd8007aa142">
+    <h3>TfLiteDimensionMetadata</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-dimension-metadata.html#struct_tf_lite_dimension_metadata">TfLiteDimensionMetadata</a> TfLiteDimensionMetadata</pre>
+    <div>
+      <p>Metadata to encode each dimension in a sparse tensor. </p>
+    </div>
+  </div>
+  <div id="group__common_1gaa2f9c1219b9175718c1fd7279f635f0f">
+    <h3>TfLiteDimensionType</h3>
+    <pre class="prettyprint">enum <a href="/lite/api_docs/c/group/common.html#group__common_1ga71e0001719140df24b5ae660cd0c322e">TfLiteDimensionType</a> TfLiteDimensionType</pre>
+    <div>
+      <p>Storage format of each dimension in a sparse tensor. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga77fe7f7397e98411530923eb0759a570">
+    <h3>TfLiteEvalTensor</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-eval-tensor.html#struct_tf_lite_eval_tensor">TfLiteEvalTensor</a> TfLiteEvalTensor</pre>
+    <div>
+      <p>Light-weight tensor struct for TF Micro runtime. </p>
+      <p>Provides the minimal amount of information required for a kernel to run during TfLiteRegistration::Eval. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga4ded51b2b9ce14751af44ec94b5f8d4c">
+    <h3>TfLiteExternalContext</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-external-context.html#struct_tf_lite_external_context">TfLiteExternalContext</a> TfLiteExternalContext</pre>
+    <div>
+      <p>An external context is a collection of information unrelated to the TF Lite framework, but useful to a subset of the ops. </p>
+      <p>TF Lite knows very little about the actual contexts, but it keeps a list of them, and is able to refresh them if configurations like the number of recommended threads change. </p>
+    </div>
+  </div>
+  <div id="group__common_1gab7a9532fb9a864d9c197d0220d568615">
+    <h3>TfLiteExternalContextType</h3>
+    <pre class="prettyprint">enum <a href="/lite/api_docs/c/group/common.html#group__common_1ga6d1d3582ab46e837f9f108839232dc03">TfLiteExternalContextType</a> TfLiteExternalContextType</pre>
+    <div>
+      <p>The list of external context types known to TF Lite. </p>
+      <p>This list exists solely to avoid conflicts and to ensure ops can share the external contexts they need. Access to the external contexts is controlled by one of the corresponding support files. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga7bf854f309e78212690d3ac5bd7bd165">
+    <h3>TfLiteFloat16</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-float16.html#struct_tf_lite_float16">TfLiteFloat16</a> TfLiteFloat16</pre>
+    <div>
+      <p>Half precision data type compatible with the C99 definition. </p>
+    </div>
+  </div>
+  <div id="group__common_1gaad8795b5f1abcd81c1bef337b89bc551">
+    <h3>TfLiteFloatArray</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-float-array.html#struct_tf_lite_float_array">TfLiteFloatArray</a> TfLiteFloatArray</pre>
+    <div>
+      <p>Fixed size list of floats. Used for per-channel quantization. </p>
+    </div>
+  </div>
+  <div id="group__common_1gabda876f2ca7cc34c68df2603174d0679">
+    <h3>TfLiteIntArray</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> TfLiteIntArray</pre>
+    <div>
+      <p>Fixed size list of integers. </p>
+      <p>Used for dimensions and inputs/outputs tensor indices </p>
+    </div>
+  </div>
+  <div id="group__common_1ga8434b49f7fc5e8752506b421acf6bb37">
+    <h3>TfLiteNode</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-node.html#struct_tf_lite_node">TfLiteNode</a> TfLiteNode</pre>
+    <div>
+      <p>A structure representing an instance of a node. </p>
+      <p>This structure only exhibits the inputs, outputs, user defined data and some node properties (like statefulness), not other features like the type. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga32657b5a172e6c6a5d287e88623af483">
+    <h3>TfLiteOpaqueDelegateBuilder</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-opaque-delegate-builder.html#struct_tf_lite_opaque_delegate_builder">TfLiteOpaqueDelegateBuilder</a> TfLiteOpaqueDelegateBuilder</pre>
+    <div>
+      <p><code><a href="/lite/api_docs/c/struct/tf-lite-opaque-delegate-builder.html#struct_tf_lite_opaque_delegate_builder">TfLiteOpaqueDelegateBuilder</a></code> is used for constructing <code>TfLiteOpaqueDelegate</code>, see <code>TfLiteOpaqueDelegateCreate</code> below. </p>
+      <p>Note: This struct is not ABI stable.</p>
+      <p>For forward source compatibility <code><a href="/lite/api_docs/c/struct/tf-lite-opaque-delegate-builder.html#struct_tf_lite_opaque_delegate_builder">TfLiteOpaqueDelegateBuilder</a></code> objects should be brace-initialized, so that all fields (including any that might be added in the future) get zero-initialized. The purpose of each field is exactly the same as with <code><a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a></code>.</p>
+      <p>WARNING: This is an experimental interface that is subject to change. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga183bc6d20ab7cea94d5ae51375177403">
+    <h3>TfLiteOpaqueDelegateParams</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-opaque-delegate-params.html#struct_tf_lite_opaque_delegate_params">TfLiteOpaqueDelegateParams</a> TfLiteOpaqueDelegateParams</pre>
+    <div>
+      <p>WARNING: This is an experimental interface that is subject to change. </p>
+      <p>Currently, <a href="/lite/api_docs/c/struct/tf-lite-opaque-delegate-params.html#struct_tf_lite_opaque_delegate_params">TfLiteOpaqueDelegateParams</a> has to be allocated in a way that it's trivially destructable. It will be stored as <code>builtin_data</code> field in <code><a href="/lite/api_docs/c/struct/tf-lite-node.html#struct_tf_lite_node">TfLiteNode</a></code> of the delegate node.</p>
+      <p>See also the <code>CreateOpaqueDelegateParams</code> function in <code>subgraph.cc</code> details. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga01428ebfee84565185d3358d9f00036e">
+    <h3>TfLitePtrUnion</h3>
+    <pre class="prettyprint">union <a href="/lite/api_docs/c/union/tf-lite-ptr-union.html#union_tf_lite_ptr_union">TfLitePtrUnion</a> TfLitePtrUnion</pre>
+    <div>
+      <p>A union of pointers that points to memory for a given tensor. </p>
+      <p>Do not access these members directly, if possible, use <code>GetTensorData<TYPE>(tensor)</code> instead, otherwise only access <code>.data</code>, as other members are deprecated. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga66621f7cc3fb48cae71da7c1903a045c">
+    <h3>TfLiteQuantization</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-quantization.html#struct_tf_lite_quantization">TfLiteQuantization</a> TfLiteQuantization</pre>
+    <div>
+      <p>Structure specifying the quantization used by the tensor, if-any. </p>
+    </div>
+  </div>
+  <div id="group__common_1gace3c87f21a9c1adda50bd8b8743b050d">
+    <h3>TfLiteQuantizationType</h3>
+    <pre class="prettyprint">enum <a href="/lite/api_docs/c/group/common.html#group__common_1ga9a7dad0b2e1bc9afe44b055915cbddb8">TfLiteQuantizationType</a> TfLiteQuantizationType</pre>
+    <div>
+      <p>SupportedQuantizationTypes. </p>
+    </div>
+  </div>
+  <div id="group__common_1gac593e30563d2c784c045d0faa3ecad08">
+    <h3>TfLiteRegistration</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a> TfLiteRegistration</pre>
+    <div>
+      <p><code><a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a></code> defines the implementation of an operation (a built-in op, custom op, or custom delegate kernel). </p>
+      <p>It is a struct containing "methods" (C function pointers) that will be invoked by the TF Lite runtime to evaluate instances of the operation.</p>
+      <p>See also <code>TfLiteRegistrationExternal</code> which is a more ABI-stable equivalent. </p>
+    </div>
+  </div>
+  <div id="group__common_1gac0d70c820dfb7187a23e38e14deec7eb">
+    <h3>TfLiteRegistrationExternal</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/group/common.html#group__common_1gac0d70c820dfb7187a23e38e14deec7eb">TfLiteRegistrationExternal</a> TfLiteRegistrationExternal</pre>
+    <div>
+      <p><code>TfLiteRegistrationExternal</code> is an external version of <code><a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a></code> for C API which doesn't use internal types (such as <code><a href="/lite/api_docs/c/struct/tf-lite-context.html#struct_tf_lite_context">TfLiteContext</a></code>) but only uses stable API types (such as <code>TfLiteOpaqueContext</code>). </p>
+      <p>The purpose of each field is the exactly the same as with <code><a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a></code>. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga15580754d1a22684ff8f1172459ff3b4">
+    <h3>TfLiteRegistration_V1</h3>
+    <pre class="prettyprint">struct TfLiteRegistration_V1 TfLiteRegistration_V1</pre>
+    <div>
+      <p>Old version of <code><a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a></code> to maintain binary backward compatibility. </p>
+      <p>The legacy registration type must be a POD struct type whose field types must be a prefix of the field types in <a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a>, and offset of the first field in <a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a> that is not present in the legacy registration type must be greater than or equal to the size of the legacy registration type.</p>
+      <p>WARNING: This structure is deprecated / not an official part of the API. It should be only used for binary backward compatibility. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga2474458f38f559d454023d7864d707ab">
+    <h3>TfLiteRegistration_V2</h3>
+    <pre class="prettyprint">struct TfLiteRegistration_V2 TfLiteRegistration_V2</pre>
+    <div>
+      <p>Old version of <code><a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a></code> to maintain binary backward compatibility. </p>
+      <p>The legacy registration type must be a POD struct type whose field types must be a prefix of the field types in <a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a>, and offset of the first field in <a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a> that is not present in the legacy registration type must be greater than or equal to the size of the legacy registration type.</p>
+      <p>WARNING: This structure is deprecated / not an official part of the API. It should be only used for binary backward compatibility. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga46465f2a5a6c9cc3d6862a5114df94c1">
+    <h3>TfLiteRegistration_V3</h3>
+    <pre class="prettyprint">struct TfLiteRegistration_V3 TfLiteRegistration_V3</pre>
+    <div>
+      <p>Old version of <code><a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a></code> to maintain binary backward compatibility. </p>
+      <p>The legacy registration type must be a POD struct type whose field types must be a prefix of the field types in <a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a>, and offset of the first field in <a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a> that is not present in the legacy registration type must be greater than or equal to the size of the legacy registration type.</p>
+      <p>WARNING: This structure is deprecated / not an official part of the API. It should be only used for binary backward compatibility. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga54c27fb0e9603d03dc66d23c25929d70">
+    <h3>TfLiteRunStability</h3>
+    <pre class="prettyprint">enum <a href="/lite/api_docs/c/group/common.html#group__common_1ga8e48d3a995a7dea060434068920c5b23">TfLiteRunStability</a> TfLiteRunStability</pre>
+    <div>
+      <p>Describes how stable a tensor attribute is with regards to an interpreter runs. </p>
+    </div>
+  </div>
+  <div id="group__common_1gadc01596ee2d7f95b1e4052323c876185">
+    <h3>TfLiteRunStep</h3>
+    <pre class="prettyprint">enum <a href="/lite/api_docs/c/group/common.html#group__common_1gaa07ed5a55fa2bff442239a17b6c371d9">TfLiteRunStep</a> TfLiteRunStep</pre>
+    <div>
+      <p>Describes the steps of a TFLite operation life cycle. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga432277b5d4290e4e95390a85be2861ac">
+    <h3>TfLiteSparsity</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-sparsity.html#struct_tf_lite_sparsity">TfLiteSparsity</a> TfLiteSparsity</pre>
+    <div>
+      <p>Parameters used to encode a sparse tensor. </p>
+      <p>For detailed explanation of each field please refer to lite/schema/schema.fbs. </p>
+    </div>
+  </div>
+  <div id="group__common_1gab419d183abc8b95474df51dbda99e865">
+    <h3>TfLiteTensor</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> TfLiteTensor</pre>
+    <div>
+      <p>A tensor in the interpreter system which is a wrapper around a buffer of data including a dimensionality (or NULL if not currently defined). </p>
+    </div>
+  </div>
+  <h2>Variables</h2>
+  <div id="group__common_1ga06a3f79b190497748f49b0dcd664950b">
+    <h3>kTfLiteMaxSharableOpInputs</h3>
+    <pre class="prettyprint">const int kTfLiteMaxSharableOpInputs = 3</pre>
+    <div>
+      <p>The number of shareable inputs supported. </p>
+    </div>
+  </div>
+  <h2>Functions</h2>
+  <div id="group__common_1ga43bc367823478730b849e482c609a35a">
+    <h3>TfLiteDelegateCreate</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a> TfLiteDelegateCreate(
+  void
+)</pre>
+    <div>
+      <p>Build a <code>null</code> delegate, with all the fields properly set to their default values. </p>
+    </div>
+  </div>
+  <div id="group__common_1gae044e189dfd055b86b15620e9dedbdab">
+    <h3>TfLiteFloatArrayCopy</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-float-array.html#struct_tf_lite_float_array">TfLiteFloatArray</a> * TfLiteFloatArrayCopy(
+  const <a href="/lite/api_docs/c/struct/tf-lite-float-array.html#struct_tf_lite_float_array">TfLiteFloatArray</a> *src
+)</pre>
+    <div>
+      <p>Create a copy of an array passed as <code>src</code>. </p>
+      <p>You are expected to free memory with TfLiteFloatArrayFree. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga07365f9141fc5887bc74f59d132d1722">
+    <h3>TfLiteFloatArrayCreate</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-float-array.html#struct_tf_lite_float_array">TfLiteFloatArray</a> * TfLiteFloatArrayCreate(
+  int size
+)</pre>
+    <div>
+      <p>Create a array of a given <code>size</code> (uninitialized entries). </p>
+      <p>This returns a pointer, that you must free using <a href="/lite/api_docs/c/group/common.html#group__common_1gaba5c61271098bf2259d5373bad4c91bf">TfLiteFloatArrayFree()</a>. </p>
+    </div>
+  </div>
+  <div id="group__common_1gaba5c61271098bf2259d5373bad4c91bf">
+    <h3>TfLiteFloatArrayFree</h3>
+    <pre class="prettyprint">void TfLiteFloatArrayFree(
+  <a href="/lite/api_docs/c/struct/tf-lite-float-array.html#struct_tf_lite_float_array">TfLiteFloatArray</a> *a
+)</pre>
+    <div>
+      <p>Free memory of array <code>a</code>. </p>
+    </div>
+  </div>
+  <div id="group__common_1gac5eb091b03131b33b1c11bd6aaf7c7a3">
+    <h3>TfLiteFloatArrayGetSizeInBytes</h3>
+    <pre class="prettyprint">int TfLiteFloatArrayGetSizeInBytes(
+  int size
+)</pre>
+    <div>
+      <p>Given the size (number of elements) in a <a href="/lite/api_docs/c/struct/tf-lite-float-array.html#struct_tf_lite_float_array">TfLiteFloatArray</a>, calculate its size in bytes. </p>
+    </div>
+  </div>
+  <div id="group__common_1gabd4775ace71b1798c4d91b4a608c3eba">
+    <h3>TfLiteIntArrayCopy</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> * TfLiteIntArrayCopy(
+  const <a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *src
+)</pre>
+    <div>
+      <p>Create a copy of an array passed as <code>src</code>. </p>
+      <p>You are expected to free memory with TfLiteIntArrayFree </p>
+    </div>
+  </div>
+  <div id="group__common_1ga21a2151465664e5481de0f35696dc156">
+    <h3>TfLiteIntArrayCreate</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> * TfLiteIntArrayCreate(
+  int size
+)</pre>
+    <div>
+      <p>Create a array of a given <code>size</code> (uninitialized entries). </p>
+      <p>This returns a pointer, that you must free using <a href="/lite/api_docs/c/group/common.html#group__common_1ga35d0ee19ef26521ea055d291e7c18ae8">TfLiteIntArrayFree()</a>. </p>
+    </div>
+  </div>
+  <div id="group__common_1gae4512fc4acb4d7aa7639041ca5c937a2">
+    <h3>TfLiteIntArrayEqual</h3>
+    <pre class="prettyprint">int TfLiteIntArrayEqual(
+  const <a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *a,
+  const <a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *b
+)</pre>
+    <div>
+      <p>Check if two intarrays are equal. Returns 1 if they are equal, 0 otherwise. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga86bc87639d7cfc31043f27eb3f1c9ff6">
+    <h3>TfLiteIntArrayEqualsArray</h3>
+    <pre class="prettyprint">int TfLiteIntArrayEqualsArray(
+  const <a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *a,
+  int b_size,
+  const int b_data[]
+)</pre>
+    <div>
+      <p>Check if an intarray equals an array. Returns 1 if equals, 0 otherwise. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga35d0ee19ef26521ea055d291e7c18ae8">
+    <h3>TfLiteIntArrayFree</h3>
+    <pre class="prettyprint">void TfLiteIntArrayFree(
+  <a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *a
+)</pre>
+    <div>
+      <p>Free memory of array <code>a</code>. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga190cdcfc51265e1ca4485d9d9ad4b8f4">
+    <h3>TfLiteIntArrayGetSizeInBytes</h3>
+    <pre class="prettyprint">size_t TfLiteIntArrayGetSizeInBytes(
+  int size
+)</pre>
+    <div>
+      <p>Given the size (number of elements) in a <a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a>, calculate its size in bytes. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga3af848a0513c0bcf398df4196d251390">
+    <h3>TfLiteOpaqueDelegateCreate</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gac2bc3e65b2b4dfe997134c006faa442f">TfLiteOpaqueDelegate</a> * TfLiteOpaqueDelegateCreate(
+  const <a href="/lite/api_docs/c/struct/tf-lite-opaque-delegate-builder.html#struct_tf_lite_opaque_delegate_builder">TfLiteOpaqueDelegateBuilder</a> *opaque_delegate_builder
+)</pre>
+    <div>
+      <p>Creates an opaque delegate and returns its address. </p>
+      <p>The opaque delegate will behave according to the provided <code>opaque_delegate_builder</code>. The lifetime of the objects pointed to by any of the fields within the <code>opaque_delegate_builder</code> must outlive the returned <code>TfLiteOpaqueDelegate</code> and any <code>TfLiteInterpreter</code>, <code>TfLiteInterpreterOptions</code>, <code>tflite::Interpreter</code>, or <code>tflite::InterpreterBuilder</code> that the delegate is added to. The returned address should be passed to <code>TfLiteOpaqueDelegateDelete</code> for deletion. If <code>opaque_delegate_builder</code> is a null pointer, then a null pointer will be returned. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga8e61fe31a06e3cc138a24e11d3ee4dc0">
+    <h3>TfLiteOpaqueDelegateDelete</h3>
+    <pre class="prettyprint">void TfLiteOpaqueDelegateDelete(
+  <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gac2bc3e65b2b4dfe997134c006faa442f">TfLiteOpaqueDelegate</a> *delegate
+)</pre>
+    <div>
+      <p>Deletes the provided opaque <code>delegate</code>. </p>
+      <p>This function has no effect if the <code>delegate</code> is a null pointer. </p>
+    </div>
+  </div>
+  <div id="group__common_1gae9ca389b98a8809a2593b63f354a094f">
+    <h3>TfLiteOpaqueDelegateGetData</h3>
+    <pre class="prettyprint">void * TfLiteOpaqueDelegateGetData(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gac2bc3e65b2b4dfe997134c006faa442f">TfLiteOpaqueDelegate</a> *delegate
+)</pre>
+    <div>
+      <p>Returns a pointer to the data associated with the provided opaque <code>delegate</code>. </p>
+      <p>A null pointer will be returned when:<ul>
+          <li>The <code>delegate</code> is null.</li>
+          <li>The <code>data</code> field of the <code><a href="/lite/api_docs/c/struct/tf-lite-opaque-delegate-builder.html#struct_tf_lite_opaque_delegate_builder">TfLiteOpaqueDelegateBuilder</a></code> used to construct the <code>delegate</code> was null.</li>
+          <li>Or in case of any other error.</li>
+          <li>The <code>delegate</code> has been constructed via a <code><a href="/lite/api_docs/c/struct/tf-lite-opaque-delegate-builder.html#struct_tf_lite_opaque_delegate_builder">TfLiteOpaqueDelegateBuilder</a></code>, but the <code>data</code> field of the <code><a href="/lite/api_docs/c/struct/tf-lite-opaque-delegate-builder.html#struct_tf_lite_opaque_delegate_builder">TfLiteOpaqueDelegateBuilder</a></code> is null.The data_ field of <code>delegate</code> will be returned if the <code>opaque_delegate_builder</code> field is null. </li>
+        </ul></p>
+    </div>
+  </div>
+  <div id="group__common_1ga76e2b19f4fa884fc771deb58d4b81c01">
+    <h3>TfLiteQuantizationFree</h3>
+    <pre class="prettyprint">void TfLiteQuantizationFree(
+  <a href="/lite/api_docs/c/struct/tf-lite-quantization.html#struct_tf_lite_quantization">TfLiteQuantization</a> *quantization
+)</pre>
+    <div>
+      <p>Free quantization data. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga7180fcadca789ede6ee1866950bb4442">
+    <h3>TfLiteSparsityFree</h3>
+    <pre class="prettyprint">void TfLiteSparsityFree(
+  <a href="/lite/api_docs/c/struct/tf-lite-sparsity.html#struct_tf_lite_sparsity">TfLiteSparsity</a> *sparsity
+)</pre>
+    <div>
+      <p>Free sparsity parameters. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga42287f175ff9914d60fdf87caf8c3c11">
+    <h3>TfLiteTensorCopy</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteTensorCopy(
+  const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *src,
+  <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *dst
+)</pre>
+    <div>
+      <p>Copies the contents of <code>src</code> in <code>dst</code>. </p>
+      <p>Function does nothing if either <code>src</code> or <code>dst</code> is passed as nullptr and return <code>kTfLiteOk</code>. Returns <code>kTfLiteError</code> if <code>src</code> and <code>dst</code> doesn't have matching data size. Note function copies contents, so it won't create new data pointer or change allocation type. All Tensor related properties will be copied from <code>src</code> to <code>dst</code> like quantization, sparsity, ... </p>
+    </div>
+  </div>
+  <div id="group__common_1ga1970f4c536d8b8a824e429a6d1ba6954">
+    <h3>TfLiteTensorDataFree</h3>
+    <pre class="prettyprint">void TfLiteTensorDataFree(
+  <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *t
+)</pre>
+    <div>
+      <p>Free data memory of tensor <code>t</code>. </p>
+    </div>
+  </div>
+  <div id="group__common_1gab200ece199c15d3e64768165f5c14772">
+    <h3>TfLiteTensorFree</h3>
+    <pre class="prettyprint">void TfLiteTensorFree(
+  <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *t
+)</pre>
+    <div>
+      <p>Free memory of tensor <code>t</code>. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga7a842c0d2e23ffb7da9c8ce1b64650e4">
+    <h3>TfLiteTensorGetAllocationStrategy</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/common.html#group__common_1gae00888e38fbedcb5130cf359c574580a">TfLiteAllocationStrategy</a> TfLiteTensorGetAllocationStrategy(
+  const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *t
+)</pre>
+    <div>
+      <p>Returns a tensor data allocation strategy. </p>
+    </div>
+  </div>
+  <div id="group__common_1gaeb40cd5f8cda3298f3e7cc4bba72a934">
+    <h3>TfLiteTensorGetBufferAddressStability</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/common.html#group__common_1ga8e48d3a995a7dea060434068920c5b23">TfLiteRunStability</a> TfLiteTensorGetBufferAddressStability(
+  const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *t
+)</pre>
+    <div>
+      <p>Returns how stable a tensor data buffer address is across runs. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga3e3fd4cb6febe0d2569b366c415b3f93">
+    <h3>TfLiteTensorGetDataKnownStep</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/common.html#group__common_1gaa07ed5a55fa2bff442239a17b6c371d9">TfLiteRunStep</a> TfLiteTensorGetDataKnownStep(
+  const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *t
+)</pre>
+    <div>
+      <p>Returns the operation step when the data of a tensor is populated. </p>
+      <p>Some operations can precompute their results before the evaluation step. This makes the data available earlier for subsequent operations. </p>
+    </div>
+  </div>
+  <div id="group__common_1gaf5299e8349d6e0dace1dc3cec3c0d470">
+    <h3>TfLiteTensorGetDataStability</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/common.html#group__common_1ga8e48d3a995a7dea060434068920c5b23">TfLiteRunStability</a> TfLiteTensorGetDataStability(
+  const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *t
+)</pre>
+    <div>
+      <p>Returns how stable a tensor data values are across runs. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga9e0bda13aa92d337c3fd546d000d7efa">
+    <h3>TfLiteTensorGetShapeKnownStep</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/common.html#group__common_1gaa07ed5a55fa2bff442239a17b6c371d9">TfLiteRunStep</a> TfLiteTensorGetShapeKnownStep(
+  const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *t
+)</pre>
+    <div>
+      <p>Returns the operation steop when the shape of a tensor is computed. </p>
+      <p>Some operations can precompute the shape of their results before the evaluation step. This makes the shape available earlier for subsequent operations. </p>
+    </div>
+  </div>
+  <div id="group__common_1ga99092263b63ce537c2e409009391773e">
+    <h3>TfLiteTensorRealloc</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteTensorRealloc(
+  size_t num_bytes,
+  <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *tensor
+)</pre>
+    <div>
+      <p>Change the size of the memory block owned by <code>tensor</code> to <code>num_bytes</code>. </p>
+      <p>Tensors with allocation types other than <code>kTfLiteDynamic</code> will be ignored and a <code>kTfLiteOk</code> will be returned. <code>tensor</code>'s internal data buffer will be assigned a pointer which can safely be passed to free or realloc if <code>num_bytes</code> is zero. Tensor data will be unchanged in the range from the start of the region up to the minimum of the old and new sizes. In the case of NULL tensor, or an error allocating new memory, returns <code>kTfLiteError</code>. </p>
+    </div>
+  </div>
+  <div id="group__common_1gab74ff0bd0ef3c4a2fe54d3303f2fec5c">
+    <h3>TfLiteTensorReset</h3>
+    <pre class="prettyprint">void TfLiteTensorReset(
+  <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1ga8a47ba81bdef28b5c479ee7928a7d123">TfLiteType</a> type,
+  const char *name,
+  <a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *dims,
+  <a href="/lite/api_docs/c/struct/tf-lite-quantization-params.html#struct_tf_lite_quantization_params">TfLiteQuantizationParams</a> quantization,
+  char *buffer,
+  size_t size,
+  <a href="/lite/api_docs/c/group/common.html#group__common_1gae48332e93fec6c3fe7c4ee4897770d4b">TfLiteAllocationType</a> allocation_type,
+  const void *allocation,
+  bool is_variable,
+  <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *tensor
+)</pre>
+    <div>
+      <p>Set all of a tensor's fields (and free any previously allocated data). </p>
+    </div>
+  </div>
+  <div id="group__common_1gaa9170ea08a56312aca38ea01e7aea2f9">
+    <h3>TfLiteTensorResizeMaybeCopy</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteTensorResizeMaybeCopy(
+  size_t num_bytes,
+  <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *tensor,
+  bool preserve_data
+)</pre>
+    <div>
+      <p>Change the size of the memory block owned by <code>tensor</code> to <code>num_bytes</code>. </p>
+      <p>Tensors with allocation types other than <code>kTfLiteDynamic</code> will be ignored and a <code>kTfLiteOk</code> will be returned. <code>tensor</code>'s internal data buffer will be assigned a pointer which can safely be passed to free or realloc if <code>num_bytes</code> is zero. If <code>preserve_data</code> is true, tensor data will be unchanged in the range from the start of the region up to the minimum of the old and new sizes. In the case of NULL tensor, or an error allocating new memory, returns <code>kTfLiteError</code>. </p>
+    </div>
+  </div>
+  <div id="group__common_1gac950eb7bae7dbaaad3368d4ab9646917">
+    <h3>TfLiteTypeGetName</h3>
+    <pre class="prettyprint">const char * TfLiteTypeGetName(
+  <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1ga8a47ba81bdef28b5c479ee7928a7d123">TfLiteType</a> type
+)</pre>
+    <div>
+      <p>Return the name of a given type, for error reporting purposes. </p>
+    </div>
+  </div>
+</body>
+</html>

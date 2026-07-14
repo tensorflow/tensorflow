@@ -1,0 +1,12 @@
+diff --git a/scripts/BUILD.bazel b/scripts/BUILD.bazel
+index 06ef17beb2..d38639967f 100644
+--- a/scripts/BUILD.bazel
++++ b/scripts/BUILD.bazel
+@@ -19,6 +19,7 @@
+ # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ # SOFTWARE.
++load("@rules_python//python:defs.bzl", "py_binary")
+
+ py_binary(
+     name = "print_version_file",

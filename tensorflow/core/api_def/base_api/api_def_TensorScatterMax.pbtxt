@@ -1,0 +1,40 @@
+op {
+  graph_op_name: "TensorScatterMax"
+  in_arg {
+    name: "tensor"
+    description: <<END
+Tensor to update.
+END
+  }
+  in_arg {
+    name: "indices"
+    description: <<END
+Index tensor.
+END
+  }
+  in_arg {
+    name: "updates"
+    description: <<END
+Updates to scatter into output.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A new tensor copied from tensor whose values are element-wise maximum between tensor and updates according to the indices.
+END
+  }
+  summary:"Apply a sparse update to a tensor taking the element-wise maximum."
+  description: <<END
+Returns a new tensor copied from `tensor` whose values are element-wise maximum between
+tensor and updates according to the indices.
+
+>>> tensor = [0, 0, 0, 0, 0, 0, 0, 0]
+>>> indices = [[1], [4], [5]]
+>>> updates = [1, -1, 1]
+>>> tf.tensor_scatter_nd_max(tensor, indices, updates).numpy()
+array([0, 1, 0, 0, 0, 1, 0, 0], dtype=int32)
+
+Refer to `tf.tensor_scatter_nd_update` for more details.
+END
+}

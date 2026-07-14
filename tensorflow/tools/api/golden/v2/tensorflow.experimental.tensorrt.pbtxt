@@ -1,0 +1,11 @@
+path: "tensorflow.experimental.tensorrt"
+tf_module {
+  member {
+    name: "ConversionParams"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "Converter"
+    mtype: "<class \'type\'>"
+  }
+}

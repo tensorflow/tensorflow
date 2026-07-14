@@ -1,0 +1,8 @@
+op {
+  name: "TPURoundRobin"
+  output_arg {
+    name: "device_ordinal"
+    type: DT_INT32
+  }
+  is_stateful: true
+}

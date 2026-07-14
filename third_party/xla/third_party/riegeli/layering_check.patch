@@ -1,0 +1,1890 @@
+diff --git a/python/riegeli/base/BUILD b/python/riegeli/base/BUILD
+index abfc211..f2d2953 100644
+--- a/python/riegeli/base/BUILD
++++ b/python/riegeli/base/BUILD
+@@ -15,7 +15,10 @@ cc_library(
+     data = [":riegeli_error"],  # Python module imported from C++.
+     # utils.cc has #define before #include to influence what the included
+     # files provide.
+-    features = ["-use_header_modules"],
++    features = [
++        "-layering_check",
++        "-use_header_modules",
++    ],
+     deps = [
+         "//riegeli/base:arithmetic",
+         "//riegeli/base:assert",
+diff --git a/python/riegeli/bytes/BUILD b/python/riegeli/bytes/BUILD
+index 0301ffb..d8de33c 100644
+--- a/python/riegeli/bytes/BUILD
++++ b/python/riegeli/bytes/BUILD
+@@ -13,7 +13,10 @@ cc_library(
+     hdrs = ["python_reader.h"],
+     # python_reader.cc has #define before #include to influence what the
+     # included files provide.
+-    features = ["-use_header_modules"],
++    features = [
++        "-layering_check",
++        "-use_header_modules",
++    ],
+     deps = [
+         "//python/riegeli/base:utils",
+         "//riegeli/base:arithmetic",
+@@ -38,7 +41,10 @@ cc_library(
+     hdrs = ["python_writer.h"],
+     # python_writer.cc has #define before #include to influence what the
+     # included files provide.
+-    features = ["-use_header_modules"],
++    features = [
++        "-layering_check",
++        "-use_header_modules",
++    ],
+     deps = [
+         "//python/riegeli/base:utils",
+         "//riegeli/base:arithmetic",
+diff --git a/riegeli/base/BUILD b/riegeli/base/BUILD
+index 4b45271..e33639c 100644
+--- a/riegeli/base/BUILD
++++ b/riegeli/base/BUILD
+@@ -10,6 +10,7 @@ licenses(["notice"])
+ cc_library(
+     name = "type_traits",
+     hdrs = ["type_traits.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/base:core_headers",
+         "@com_google_absl//absl/strings",
+@@ -21,17 +22,20 @@ cc_library(
+     name = "constexpr",
+     srcs = ["port.h"],
+     hdrs = ["constexpr.h"],
++    features = ["-layering_check"],
+ )
+ 
+ cc_library(
+     name = "null_safe_memcpy",
+     hdrs = ["null_safe_memcpy.h"],
++    features = ["-layering_check"],
+     deps = ["@com_google_absl//absl/base:core_headers"],
+ )
+ 
+ cc_library(
+     name = "compare",
+     hdrs = ["compare.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/strings",
+         "@com_google_absl//absl/types:compare",
+@@ -42,6 +46,7 @@ cc_library(
+     name = "stream_utils",
+     srcs = ["stream_utils.cc"],
+     hdrs = ["stream_utils.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":types",
+         "@com_google_absl//absl/base:core_headers",
+@@ -53,6 +58,7 @@ cc_library(
+     name = "debug",
+     srcs = ["debug.cc"],
+     hdrs = ["debug.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":stream_utils",
+         "@com_google_absl//absl/base:core_headers",
+@@ -69,6 +75,7 @@ cc_library(
+         "port.h",
+     ],
+     hdrs = ["assert.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":debug",
+         ":stream_utils",
+@@ -80,11 +87,13 @@ cc_library(
+ cc_library(
+     name = "types",
+     hdrs = ["types.h"],
++    features = ["-layering_check"],
+ )
+ 
+ cc_library(
+     name = "arithmetic",
+     hdrs = ["arithmetic.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":assert",
+         ":type_traits",
+@@ -97,6 +106,7 @@ cc_library(
+ cc_library(
+     name = "buffering",
+     hdrs = ["buffering.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":arithmetic",
+         ":types",
+@@ -107,6 +117,7 @@ cc_library(
+ cc_library(
+     name = "estimated_allocated_size",
+     hdrs = ["estimated_allocated_size.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":arithmetic",
+         "@com_google_absl//absl/base:core_headers",
+@@ -116,6 +127,7 @@ cc_library(
+ cc_library(
+     name = "new_aligned",
+     hdrs = ["new_aligned.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":arithmetic",
+         ":assert",
+@@ -129,6 +141,7 @@ cc_library(
+     name = "string_utils",
+     srcs = ["string_utils.cc"],
+     hdrs = ["string_utils.h"],
++    features = ["-layering_check"],
+     deps = [":arithmetic"],
+ )
+ 
+@@ -136,6 +149,7 @@ cc_library(
+     name = "cord_utils",
+     srcs = ["cord_utils.cc"],
+     hdrs = ["cord_utils.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":arithmetic",
+         ":buffering",
+@@ -155,7 +169,7 @@ cc_library(
+         # files provide.
+         "@platforms//os:windows": ["-use_header_modules"],
+         "//conditions:default": [],
+-    }),
++    }) + ["-layering_check"],
+     deps = select({
+         "@platforms//os:windows": [
+             ":arithmetic",
+@@ -170,6 +184,7 @@ cc_library(
+ cc_library(
+     name = "type_id",
+     hdrs = ["type_id.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":compare",
+         "@com_google_absl//absl/base:nullability",
+@@ -179,6 +194,7 @@ cc_library(
+ cc_library(
+     name = "reset",
+     hdrs = ["reset.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/strings",
+         "@com_google_absl//absl/strings:cord",
+@@ -188,6 +204,7 @@ cc_library(
+ cc_library(
+     name = "type_erased_ref",
+     hdrs = ["type_erased_ref.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":type_traits",
+         "@com_google_absl//absl/base:core_headers",
+@@ -204,6 +221,7 @@ cc_library(
+         "maker.h",
+         "temporary_storage.h",
+     ],
++    features = ["-layering_check"],
+     deps = [
+         ":assert",
+         ":reset",
+@@ -218,11 +236,13 @@ cc_library(
+ cc_library(
+     name = "global",
+     hdrs = ["global.h"],
++    features = ["-layering_check"],
+ )
+ 
+ cc_library(
+     name = "string_ref",
+     hdrs = ["string_ref.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":assert",
+         ":compare",
+@@ -237,6 +257,7 @@ cc_library(
+ cc_library(
+     name = "bytes_ref",
+     hdrs = ["bytes_ref.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":compare",
+         ":initializer",
+@@ -252,6 +273,7 @@ cc_library(
+ cc_library(
+     name = "c_string_ref",
+     hdrs = ["c_string_ref.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":compare",
+         ":initializer",
+@@ -267,6 +289,7 @@ cc_library(
+     name = "memory_estimator",
+     srcs = ["memory_estimator.cc"],
+     hdrs = ["memory_estimator.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":arithmetic",
+         ":estimated_allocated_size",
+@@ -284,6 +307,7 @@ cc_library(
+ cc_library(
+     name = "closing_ptr",
+     hdrs = ["closing_ptr.h"],
++    features = ["-layering_check"],
+     deps = ["@com_google_absl//absl/base:core_headers"],
+ )
+ 
+@@ -294,6 +318,7 @@ cc_library(
+         "dependency_base.h",
+         "dependency_manager.h",
+     ],
++    features = ["-layering_check"],
+     deps = [
+         ":assert",
+         ":bytes_ref",
+@@ -313,6 +338,7 @@ cc_library(
+ cc_library(
+     name = "moving_dependency",
+     hdrs = ["moving_dependency.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":dependency",
+         ":type_traits",
+@@ -323,6 +349,7 @@ cc_library(
+ cc_library(
+     name = "stable_dependency",
+     hdrs = ["stable_dependency.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":assert",
+         ":dependency",
+@@ -340,6 +367,7 @@ cc_library(
+         "any.h",
+         "any_initializer.h",
+     ],
++    features = ["-layering_check"],
+     deps = [
+         ":arithmetic",
+         ":assert",
+@@ -361,6 +389,7 @@ cc_library(
+ cc_library(
+     name = "iterable",
+     hdrs = ["iterable.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":dependency",
+         "@com_google_absl//absl/meta:type_traits",
+@@ -382,7 +411,7 @@ cc_library(
+         # included files provide.
+         "@platforms//os:windows": ["-use_header_modules"],
+         "//conditions:default": [],
+-    }),
++    }) + ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/status",
+         "@com_google_absl//absl/status:statusor",
+@@ -402,6 +431,7 @@ cc_library(
+     name = "object",
+     srcs = ["object.cc"],
+     hdrs = ["object.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":assert",
+         ":initializer",
+@@ -415,6 +445,7 @@ cc_library(
+     name = "external_data",
+     srcs = ["external_data.cc"],
+     hdrs = ["external_data.h"],
++    features = ["-layering_check"],
+     deps = ["@com_google_absl//absl/strings"],
+ )
+ 
+@@ -426,6 +457,7 @@ cc_library(
+         "ref_count.h",
+         "shared_ptr.h",
+     ],
++    features = ["-layering_check"],
+     deps = [
+         ":arithmetic",
+         ":assert",
+@@ -442,6 +474,7 @@ cc_library(
+     name = "buffer",
+     srcs = ["buffer.cc"],
+     hdrs = ["buffer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":arithmetic",
+         ":assert",
+@@ -457,6 +490,7 @@ cc_library(
+     name = "shared_buffer",
+     srcs = ["shared_buffer.cc"],
+     hdrs = ["shared_buffer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":arithmetic",
+         ":assert",
+@@ -473,6 +507,7 @@ cc_library(
+     name = "sized_shared_buffer",
+     srcs = ["sized_shared_buffer.cc"],
+     hdrs = ["sized_shared_buffer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":arithmetic",
+         ":assert",
+@@ -493,6 +528,7 @@ cc_library(
+         "external_ref_base.h",
+         "external_ref_support.h",
+     ],
++    features = ["-layering_check"],
+     visibility = ["//visibility:private"],
+     deps = [
+         ":arithmetic",
+@@ -522,12 +558,14 @@ cc_library(
+ cc_library(
+     name = "chain",
+     hdrs = ["chain.h"],
++    features = ["-layering_check"],
+     deps = [":chain_and_external_ref"],
+ )
+ 
+ cc_library(
+     name = "external_ref",
+     hdrs = ["external_ref.h"],
++    features = ["-layering_check"],
+     deps = [":chain_and_external_ref"],
+ )
+ 
+@@ -535,6 +573,7 @@ cc_library(
+     name = "byte_fill",
+     srcs = ["byte_fill.cc"],
+     hdrs = ["byte_fill.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":arithmetic",
+         ":assert",
+@@ -558,6 +597,7 @@ cc_library(
+     name = "compact_string",
+     srcs = ["compact_string.cc"],
+     hdrs = ["compact_string.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":arithmetic",
+         ":assert",
+@@ -578,6 +618,7 @@ cc_library(
+ cc_library(
+     name = "optional_compact_string",
+     hdrs = ["optional_compact_string.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":assert",
+         ":bytes_ref",
+@@ -593,6 +634,7 @@ cc_library(
+ cc_library(
+     name = "binary_search",
+     hdrs = ["binary_search.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":compare",
+         "@com_google_absl//absl/base:core_headers",
+@@ -605,6 +647,7 @@ cc_library(
+     name = "parallelism",
+     srcs = ["parallelism.cc"],
+     hdrs = ["parallelism.h"],
++    features = ["-layering_check"],
+     visibility = ["//riegeli:__subpackages__"],
+     deps = [
+         ":assert",
+@@ -620,6 +663,7 @@ cc_library(
+     name = "background_cleaning",
+     srcs = ["background_cleaning.cc"],
+     hdrs = ["background_cleaning.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":assert",
+         ":global",
+@@ -633,6 +677,7 @@ cc_library(
+ cc_library(
+     name = "recycling_pool",
+     hdrs = ["recycling_pool.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":arithmetic",
+         ":assert",
+@@ -652,6 +697,7 @@ cc_library(
+     name = "options_parser",
+     srcs = ["options_parser.cc"],
+     hdrs = ["options_parser.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":assert",
+         ":initializer",
+diff --git a/riegeli/brotli/BUILD b/riegeli/brotli/BUILD
+index db32094..8efdcb0 100644
+--- a/riegeli/brotli/BUILD
++++ b/riegeli/brotli/BUILD
+@@ -11,6 +11,7 @@ cc_library(
+     name = "brotli_reader",
+     srcs = ["brotli_reader.cc"],
+     hdrs = ["brotli_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":brotli_allocator",
+         ":brotli_dictionary",
+@@ -36,6 +37,7 @@ cc_library(
+     name = "brotli_writer",
+     srcs = ["brotli_writer.cc"],
+     hdrs = ["brotli_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":brotli_allocator",
+         ":brotli_dictionary",
+@@ -63,6 +65,7 @@ cc_library(
+     name = "brotli_dictionary",
+     srcs = ["brotli_dictionary.cc"],
+     hdrs = ["brotli_dictionary.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:private"],
+     deps = [
+         "//riegeli/base:assert",
+@@ -82,6 +85,7 @@ cc_library(
+     name = "brotli_allocator",
+     srcs = ["brotli_allocator.cc"],
+     hdrs = ["brotli_allocator.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:private"],
+     deps = [
+         "//riegeli/base:shared_ptr",
+diff --git a/riegeli/bytes/BUILD b/riegeli/bytes/BUILD
+index c8423ba..cb34424 100644
+--- a/riegeli/bytes/BUILD
++++ b/riegeli/bytes/BUILD
+@@ -21,6 +21,7 @@ config_setting(
+ cc_library(
+     name = "reader",
+     hdrs = ["reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":reader_and_writer",
+         "//riegeli/base:arithmetic",
+@@ -40,6 +41,7 @@ cc_library(
+ cc_library(
+     name = "writer",
+     hdrs = ["writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":reader_and_writer",
+         ":stringify",
+@@ -65,6 +67,7 @@ cc_library(
+ cc_library(
+     name = "backward_writer",
+     hdrs = ["backward_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":reader_and_writer",
+         ":stringify",
+@@ -100,6 +103,7 @@ cc_library(
+         "restricted_chain_writer.h",
+         "writer.h",
+     ],
++    features = ["-layering_check"],
+     visibility = ["//visibility:private"],
+     deps = [
+         ":stringify",
+@@ -133,6 +137,7 @@ cc_library(
+     name = "read_all",
+     srcs = ["read_all.cc"],
+     hdrs = ["read_all.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":reader",
+         "//riegeli/base:arithmetic",
+@@ -152,6 +157,7 @@ cc_library(
+     name = "copy_all",
+     srcs = ["copy_all.cc"],
+     hdrs = ["copy_all.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":backward_writer",
+         ":reader",
+@@ -170,6 +176,7 @@ cc_library(
+ cc_library(
+     name = "write",
+     hdrs = ["write.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":backward_writer",
+         ":stringify",
+@@ -185,6 +192,7 @@ cc_library(
+     name = "write_int_internal",
+     srcs = ["write_int_internal.cc"],
+     hdrs = ["write_int_internal.h"],
++    features = ["-layering_check"],
+     visibility = ["//riegeli:__subpackages__"],
+     deps = [
+         "//riegeli/base:arithmetic",
+@@ -198,6 +206,7 @@ cc_library(
+ cc_library(
+     name = "stringify",
+     hdrs = ["stringify.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":write_int_internal",
+         "//riegeli/base:byte_fill",
+@@ -215,6 +224,7 @@ cc_library(
+     name = "pullable_reader",
+     srcs = ["pullable_reader.cc"],
+     hdrs = ["pullable_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":backward_writer",
+         ":reader",
+@@ -242,6 +252,7 @@ cc_library(
+     name = "pushable_writer",
+     srcs = ["pushable_writer.cc"],
+     hdrs = ["pushable_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":reader",
+         ":writer",
+@@ -268,6 +279,7 @@ cc_library(
+     name = "pushable_backward_writer",
+     srcs = ["pushable_backward_writer.cc"],
+     hdrs = ["pushable_backward_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":backward_writer",
+         "//riegeli/base:arithmetic",
+@@ -293,6 +305,7 @@ cc_library(
+     name = "buffer_options",
+     srcs = ["buffer_options.cc"],
+     hdrs = ["buffer_options.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:arithmetic",
+         "//riegeli/base:assert",
+@@ -307,6 +320,7 @@ cc_library(
+     name = "buffered_reader",
+     srcs = ["buffered_reader.cc"],
+     hdrs = ["buffered_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":backward_writer",
+         ":buffer_options",
+@@ -334,6 +348,7 @@ cc_library(
+     name = "buffered_writer",
+     srcs = ["buffered_writer.cc"],
+     hdrs = ["buffered_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":buffer_options",
+         ":reader",
+@@ -355,6 +370,7 @@ cc_library(
+     name = "wrapping_reader",
+     srcs = ["wrapping_reader.cc"],
+     hdrs = ["wrapping_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":backward_writer",
+         ":reader",
+@@ -379,6 +395,7 @@ cc_library(
+     name = "wrapping_writer",
+     srcs = ["wrapping_writer.cc"],
+     hdrs = ["wrapping_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":reader",
+         ":writer",
+@@ -404,6 +421,7 @@ cc_library(
+     name = "wrapping_backward_writer",
+     srcs = ["wrapping_backward_writer.cc"],
+     hdrs = ["wrapping_backward_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":backward_writer",
+         "//riegeli/base:arithmetic",
+@@ -428,6 +446,7 @@ cc_library(
+     name = "limiting_reader",
+     srcs = ["limiting_reader.cc"],
+     hdrs = ["limiting_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":backward_writer",
+         ":reader",
+@@ -453,6 +472,7 @@ cc_library(
+     name = "limiting_writer",
+     srcs = ["limiting_writer.cc"],
+     hdrs = ["limiting_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":reader",
+         ":writer",
+@@ -478,6 +498,7 @@ cc_library(
+     name = "limiting_backward_writer",
+     srcs = ["limiting_backward_writer.cc"],
+     hdrs = ["limiting_backward_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":backward_writer",
+         "//riegeli/base:arithmetic",
+@@ -502,6 +523,7 @@ cc_library(
+     name = "prefix_limiting_reader",
+     srcs = ["prefix_limiting_reader.cc"],
+     hdrs = ["prefix_limiting_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":backward_writer",
+         ":reader",
+@@ -528,6 +550,7 @@ cc_library(
+     name = "prefix_limiting_writer",
+     srcs = ["prefix_limiting_writer.cc"],
+     hdrs = ["prefix_limiting_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":prefix_limiting_reader",
+         ":reader",
+@@ -555,6 +578,7 @@ cc_library(
+     name = "prefix_limiting_backward_writer",
+     srcs = ["prefix_limiting_backward_writer.cc"],
+     hdrs = ["prefix_limiting_backward_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":backward_writer",
+         "//riegeli/base:arithmetic",
+@@ -580,6 +604,7 @@ cc_library(
+     name = "position_shifting_reader",
+     srcs = ["position_shifting_reader.cc"],
+     hdrs = ["position_shifting_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":backward_writer",
+         ":reader",
+@@ -606,6 +631,7 @@ cc_library(
+     name = "position_shifting_writer",
+     srcs = ["position_shifting_writer.cc"],
+     hdrs = ["position_shifting_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":position_shifting_reader",
+         ":reader",
+@@ -633,6 +659,7 @@ cc_library(
+     name = "position_shifting_backward_writer",
+     srcs = ["position_shifting_backward_writer.cc"],
+     hdrs = ["position_shifting_backward_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":backward_writer",
+         "//riegeli/base:arithmetic",
+@@ -658,6 +685,7 @@ cc_library(
+     name = "null_writer",
+     srcs = ["null_writer.cc"],
+     hdrs = ["null_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":buffer_options",
+         ":writer",
+@@ -680,6 +708,7 @@ cc_library(
+     name = "null_backward_writer",
+     srcs = ["null_backward_writer.cc"],
+     hdrs = ["null_backward_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":backward_writer",
+         ":buffer_options",
+@@ -702,6 +731,7 @@ cc_library(
+     name = "joining_reader",
+     srcs = ["joining_reader.cc"],
+     hdrs = ["joining_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":pullable_reader",
+         ":reader",
+@@ -726,6 +756,7 @@ cc_library(
+     name = "splitting_writer",
+     srcs = ["splitting_writer.cc"],
+     hdrs = ["splitting_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":chain_reader",
+         ":cord_reader",
+@@ -752,6 +783,7 @@ cc_library(
+     name = "reader_factory",
+     srcs = ["reader_factory.cc"],
+     hdrs = ["reader_factory.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":buffer_options",
+         ":pullable_reader",
+@@ -781,6 +813,7 @@ cc_library(
+     name = "array_writer",
+     srcs = ["array_writer.cc"],
+     hdrs = ["array_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":pushable_writer",
+         ":reader",
+@@ -803,6 +836,7 @@ cc_library(
+     name = "array_backward_writer",
+     srcs = ["array_backward_writer.cc"],
+     hdrs = ["array_backward_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":backward_writer",
+         ":pushable_backward_writer",
+@@ -823,6 +857,7 @@ cc_library(
+     name = "string_reader",
+     srcs = ["string_reader.cc"],
+     hdrs = ["string_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":reader",
+         "//riegeli/base:assert",
+@@ -840,6 +875,7 @@ cc_library(
+     name = "string_writer",
+     srcs = ["string_writer.cc"],
+     hdrs = ["string_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":buffer_options",
+         ":reader",
+@@ -868,6 +904,7 @@ cc_library(
+     name = "resizable_writer",
+     srcs = ["resizable_writer.cc"],
+     hdrs = ["resizable_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":buffer_options",
+         ":reader",
+@@ -894,6 +931,7 @@ cc_library(
+ cc_library(
+     name = "compact_string_writer",
+     hdrs = ["compact_string_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":resizable_writer",
+         "//riegeli/base:assert",
+@@ -908,6 +946,7 @@ cc_library(
+     name = "chain_reader",
+     srcs = ["chain_reader.cc"],
+     hdrs = ["chain_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":backward_writer",
+         ":pullable_reader",
+@@ -933,6 +972,7 @@ cc_library(
+     name = "chain_writer",
+     srcs = ["chain_writer.cc"],
+     hdrs = ["chain_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":chain_reader",
+         ":reader",
+@@ -959,6 +999,7 @@ cc_library(
+     name = "chain_backward_writer",
+     srcs = ["chain_backward_writer.cc"],
+     hdrs = ["chain_backward_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":backward_writer",
+         "//riegeli/base:arithmetic",
+@@ -982,6 +1023,7 @@ cc_library(
+ cc_library(
+     name = "restricted_chain_writer",
+     hdrs = ["restricted_chain_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":reader_and_writer",
+         "//riegeli/base:arithmetic",
+@@ -1000,6 +1042,7 @@ cc_library(
+     name = "cord_reader",
+     srcs = ["cord_reader.cc"],
+     hdrs = ["cord_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":backward_writer",
+         ":pullable_reader",
+@@ -1024,6 +1067,7 @@ cc_library(
+     name = "cord_writer",
+     srcs = ["cord_writer.cc"],
+     hdrs = ["cord_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cord_reader",
+         ":reader",
+@@ -1051,6 +1095,7 @@ cc_library(
+     name = "cord_backward_writer",
+     srcs = ["cord_backward_writer.cc"],
+     hdrs = ["cord_backward_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":backward_writer",
+         "//riegeli/base:arithmetic",
+@@ -1076,6 +1121,7 @@ cc_library(
+     name = "file_mode_string",
+     srcs = ["file_mode_string.cc"],
+     hdrs = ["file_mode_string.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:private"],
+     deps = [
+         "@com_google_absl//absl/base:core_headers",
+@@ -1086,6 +1132,7 @@ cc_library(
+ cc_library(
+     name = "path_ref",
+     hdrs = ["path_ref.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:compare",
+         "//riegeli/base:initializer",
+@@ -1103,7 +1150,10 @@ cc_library(
+     hdrs = ["fd_handle.h"],
+     # fd_handle.cc has #define before #include to influence what the included
+     # files provide.
+-    features = ["-use_header_modules"],
++    features = [
++        "-layering_check",
++        "-use_header_modules",
++    ],
+     deps = [
+         ":fd_internal",
+         ":path_ref",
+@@ -1140,7 +1190,10 @@ cc_library(
+     }),
+     # fd_reader.cc has #define before #include to influence what the included
+     # files provide.
+-    features = ["-use_header_modules"],
++    features = [
++        "-layering_check",
++        "-use_header_modules",
++    ],
+     deps = [
+         ":buffer_options",
+         ":buffered_reader",
+@@ -1178,7 +1231,10 @@ cc_library(
+     hdrs = ["fd_mmap_reader.h"],
+     # fd_mmap_reader.cc has #define before #include to influence what the
+     # included files provide.
+-    features = ["-use_header_modules"],
++    features = [
++        "-layering_check",
++        "-use_header_modules",
++    ],
+     deps = [
+         ":chain_reader",
+         ":fd_handle",
+@@ -1213,7 +1269,10 @@ cc_library(
+     hdrs = ["fd_writer.h"],
+     # fd_writer.cc has #define before #include to influence what the included
+     # files provide.
+-    features = ["-use_header_modules"],
++    features = [
++        "-layering_check",
++        "-use_header_modules",
++    ],
+     deps = [
+         ":buffer_options",
+         ":buffered_writer",
+@@ -1251,7 +1310,10 @@ cc_library(
+     ],
+     # fd_internal.cc has #define before #include to influence what the included
+     # files provide.
+-    features = ["-use_header_modules"],
++    features = [
++        "-layering_check",
++        "-use_header_modules",
++    ],
+     visibility = ["//visibility:private"],
+     deps = ["@com_google_absl//absl/strings"] + select({
+         "@platforms//os:windows": [],
+@@ -1267,6 +1329,7 @@ cc_library(
+     name = "std_io",
+     srcs = ["std_io.cc"],
+     hdrs = ["std_io.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":fd_handle",
+         ":fd_reader",
+@@ -1286,6 +1349,7 @@ cc_library(
+         "istream_reader.cc",
+     ],
+     hdrs = ["istream_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":buffer_options",
+         ":buffered_reader",
+@@ -1309,6 +1373,7 @@ cc_library(
+         "ostream_writer.cc",
+     ],
+     hdrs = ["ostream_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":buffer_options",
+         ":buffered_writer",
+@@ -1332,6 +1397,7 @@ cc_library(
+     name = "reader_istream",
+     srcs = ["reader_istream.cc"],
+     hdrs = ["reader_istream.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":reader",
+         "//riegeli/base:arithmetic",
+@@ -1351,6 +1417,7 @@ cc_library(
+     name = "writer_ostream",
+     srcs = ["writer_ostream.cc"],
+     hdrs = ["writer_ostream.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":reader",
+         ":writer",
+@@ -1374,7 +1441,10 @@ cc_library(
+     hdrs = ["cfile_handle.h"],
+     # cfile_handle.cc has #define before #include to influence what the
+     # included files provide.
+-    features = ["-use_header_modules"],
++    features = [
++        "-layering_check",
++        "-use_header_modules",
++    ],
+     deps = [
+         ":cfile_internal",
+         ":path_ref",
+@@ -1408,7 +1478,7 @@ cc_library(
+         # cfile_reader.cc has #define before #include to influence what the
+         # included files provide.
+         "//conditions:default": ["-use_header_modules"],
+-    }),
++    }) + ["-layering_check"],
+     deps = [
+         ":buffer_options",
+         ":buffered_reader",
+@@ -1442,7 +1512,7 @@ cc_library(
+         # cfile_writer.cc has #define before #include to influence what the
+         # included files provide.
+         "//conditions:default": ["-use_header_modules"],
+-    }),
++    }) + ["-layering_check"],
+     deps = [
+         ":buffer_options",
+         ":buffered_writer",
+@@ -1476,6 +1546,7 @@ cc_library(
+         "cfile_internal.h",
+         "cfile_internal_for_cc.h",
+     ],
++    features = ["-layering_check"],
+     visibility = ["//visibility:private"],
+     deps = [
+         ":fd_internal",
+@@ -1490,7 +1561,10 @@ cc_library(
+     hdrs = ["reader_cfile.h"],
+     # reader_cfile.cc has #define before #include to influence what the included
+     # files provide.
+-    features = ["-use_header_modules"],
++    features = [
++        "-layering_check",
++        "-use_header_modules",
++    ],
+     deps = [
+         ":cfile_handle",
+         ":path_ref",
+@@ -1515,7 +1589,10 @@ cc_library(
+     hdrs = ["writer_cfile.h"],
+     # writer_cfile.cc has #define before #include to influence what the included
+     # files provide.
+-    features = ["-use_header_modules"],
++    features = [
++        "-layering_check",
++        "-use_header_modules",
++    ],
+     deps = [
+         ":cfile_handle",
+         ":path_ref",
+@@ -1538,6 +1615,7 @@ cc_library(
+ cc_library(
+     name = "stringify_writer",
+     hdrs = ["stringify_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":buffered_writer",
+         ":prefix_limiting_writer",
+diff --git a/riegeli/bzip2/BUILD b/riegeli/bzip2/BUILD
+index 1ba70cd..6fe06e7 100644
+--- a/riegeli/bzip2/BUILD
++++ b/riegeli/bzip2/BUILD
+@@ -11,6 +11,7 @@ cc_library(
+     name = "bzip2_reader",
+     srcs = ["bzip2_reader.cc"],
+     hdrs = ["bzip2_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":bzip2_error",
+         "//riegeli/base:arithmetic",
+@@ -34,6 +35,7 @@ cc_library(
+     name = "bzip2_writer",
+     srcs = ["bzip2_writer.cc"],
+     hdrs = ["bzip2_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":bzip2_error",
+         "//riegeli/base:arithmetic",
+@@ -57,6 +59,7 @@ cc_library(
+     name = "bzip2_error",
+     srcs = ["bzip2_error.cc"],
+     hdrs = ["bzip2_error.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:private"],
+     deps = [
+         "//riegeli/base:assert",
+diff --git a/riegeli/chunk_encoding/BUILD b/riegeli/chunk_encoding/BUILD
+index 8d714a5..d357e95 100644
+--- a/riegeli/chunk_encoding/BUILD
++++ b/riegeli/chunk_encoding/BUILD
+@@ -11,6 +11,7 @@ cc_library(
+     name = "chunk_encoder",
+     srcs = ["chunk_encoder.cc"],
+     hdrs = ["chunk_encoder.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":constants",
+         "//riegeli/base:bytes_ref",
+@@ -31,6 +32,7 @@ cc_library(
+     name = "chunk_decoder",
+     srcs = ["chunk_decoder.cc"],
+     hdrs = ["chunk_decoder.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":chunk",
+         ":constants",
+@@ -61,12 +63,14 @@ cc_library(
+ cc_library(
+     name = "constants",
+     hdrs = ["constants.h"],
++    features = ["-layering_check"],
+ )
+ 
+ cc_library(
+     name = "chunk",
+     srcs = ["chunk.cc"],
+     hdrs = ["chunk.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":constants",
+         ":hash",
+@@ -85,6 +89,7 @@ cc_library(
+     name = "hash",
+     srcs = ["hash.cc"],
+     hdrs = ["hash.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:chain",
+         "@com_google_absl//absl/container:inlined_vector",
+@@ -99,6 +104,7 @@ cc_library(
+     name = "compressor_options",
+     srcs = ["compressor_options.cc"],
+     hdrs = ["compressor_options.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":constants",
+         "//riegeli/base:arithmetic",
+@@ -117,6 +123,7 @@ cc_library(
+     name = "compressor",
+     srcs = ["compressor.cc"],
+     hdrs = ["compressor.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":brotli_encoder_selection",
+         ":compressor_options",
+@@ -141,6 +148,7 @@ cc_library(
+     name = "decompressor",
+     srcs = ["decompressor.cc"],
+     hdrs = ["decompressor.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":constants",
+         "//riegeli/base:any",
+@@ -166,6 +174,7 @@ cc_library(
+     name = "brotli_encoder_selection",
+     srcs = ["brotli_encoder_selection.cc"],
+     hdrs = ["brotli_encoder_selection.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":compressor_options",
+         "//riegeli/base:assert",
+@@ -185,6 +194,7 @@ cc_library(
+     name = "simple_encoder",
+     srcs = ["simple_encoder.cc"],
+     hdrs = ["simple_encoder.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":chunk_encoder",
+         ":compressor",
+@@ -212,6 +222,7 @@ cc_library(
+     name = "simple_decoder",
+     srcs = ["simple_decoder.cc"],
+     hdrs = ["simple_decoder.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":constants",
+         ":decompressor",
+@@ -232,6 +243,7 @@ cc_library(
+     name = "transpose_encoder",
+     srcs = ["transpose_encoder.cc"],
+     hdrs = ["transpose_encoder.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":chunk_encoder",
+         ":compressor",
+@@ -274,6 +286,7 @@ cc_library(
+     name = "transpose_decoder",
+     srcs = ["transpose_decoder.cc"],
+     hdrs = ["transpose_decoder.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":constants",
+         ":decompressor",
+@@ -305,6 +318,7 @@ cc_library(
+ cc_library(
+     name = "transpose_internal",
+     hdrs = ["transpose_internal.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:private"],
+     deps = [
+         "//riegeli/base:assert",
+@@ -316,6 +330,7 @@ cc_library(
+ cc_library(
+     name = "field_projection",
+     hdrs = ["field_projection.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:assert",
+         "//riegeli/base:initializer",
+@@ -327,6 +342,7 @@ cc_library(
+     name = "deferred_encoder",
+     srcs = ["deferred_encoder.cc"],
+     hdrs = ["deferred_encoder.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":chunk_encoder",
+         ":constants",
+diff --git a/riegeli/containers/BUILD b/riegeli/containers/BUILD
+index cab7359..f05d2a6 100644
+--- a/riegeli/containers/BUILD
++++ b/riegeli/containers/BUILD
+@@ -11,6 +11,7 @@ cc_library(
+     name = "linear_sorted_string_set",
+     srcs = ["linear_sorted_string_set.cc"],
+     hdrs = ["linear_sorted_string_set.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:arithmetic",
+         "//riegeli/base:assert",
+@@ -38,6 +39,7 @@ cc_library(
+     name = "chunked_sorted_string_set",
+     srcs = ["chunked_sorted_string_set.cc"],
+     hdrs = ["chunked_sorted_string_set.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":linear_sorted_string_set",
+         "//riegeli/base:arithmetic",
+diff --git a/riegeli/csv/BUILD b/riegeli/csv/BUILD
+index dac46d5..acf9274 100644
+--- a/riegeli/csv/BUILD
++++ b/riegeli/csv/BUILD
+@@ -11,6 +11,7 @@ cc_library(
+     name = "csv_reader",
+     srcs = ["csv_reader.cc"],
+     hdrs = ["csv_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":csv_record",
+         "//riegeli/base:arithmetic",
+@@ -36,6 +37,7 @@ cc_library(
+     name = "csv_writer",
+     srcs = ["csv_writer.cc"],
+     hdrs = ["csv_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":csv_record",
+         "//riegeli/base:arithmetic",
+@@ -61,6 +63,7 @@ cc_library(
+     name = "csv_record",
+     srcs = ["csv_record.cc"],
+     hdrs = ["csv_record.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:arithmetic",
+         "//riegeli/base:assert",
+diff --git a/riegeli/digests/BUILD b/riegeli/digests/BUILD
+index 0c4d041..539900b 100644
+--- a/riegeli/digests/BUILD
++++ b/riegeli/digests/BUILD
+@@ -10,6 +10,7 @@ licenses(["notice"])
+ cc_library(
+     name = "digest_converter",
+     hdrs = ["digest_converter.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/endian:endian_reading",
+         "//riegeli/endian:endian_writing",
+@@ -22,6 +23,7 @@ cc_library(
+     name = "digester_handle",
+     srcs = ["digester_handle.cc"],
+     hdrs = ["digester_handle.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":digest_converter",
+         "//riegeli/base:any",
+@@ -46,6 +48,7 @@ cc_library(
+ cc_library(
+     name = "wrapping_digester",
+     hdrs = ["wrapping_digester.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":digest_converter",
+         ":digester_handle",
+@@ -65,6 +68,7 @@ cc_library(
+     name = "digesting_reader",
+     srcs = ["digesting_reader.cc"],
+     hdrs = ["digesting_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":digest_converter",
+         ":digester_handle",
+@@ -91,6 +95,7 @@ cc_library(
+     name = "digesting_writer",
+     srcs = ["digesting_writer.cc"],
+     hdrs = ["digesting_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":digest_converter",
+         ":digester_handle",
+@@ -120,6 +125,7 @@ cc_library(
+ cc_library(
+     name = "crc32c_digester",
+     hdrs = ["crc32c_digester.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:arithmetic",
+         "//riegeli/base:byte_fill",
+@@ -134,6 +140,7 @@ cc_library(
+     name = "crc32_digester",
+     srcs = ["crc32_digester.cc"],
+     hdrs = ["crc32_digester.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:arithmetic",
+         "@com_google_absl//absl/base:core_headers",
+@@ -146,6 +153,7 @@ cc_library(
+     name = "adler32_digester",
+     srcs = ["adler32_digester.cc"],
+     hdrs = ["adler32_digester.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:arithmetic",
+         "@com_google_absl//absl/base:core_headers",
+@@ -158,6 +166,7 @@ cc_library(
+     name = "highwayhash_digester",
+     srcs = ["highwayhash_digester.cc"],
+     hdrs = ["highwayhash_digester.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/base:core_headers",
+         "@com_google_absl//absl/meta:type_traits",
+@@ -171,6 +180,7 @@ cc_library(
+ cc_library(
+     name = "openssl_digester",
+     hdrs = ["openssl_digester.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/base:core_headers",
+         "@com_google_absl//absl/strings",
+@@ -182,6 +192,7 @@ cc_library(
+ cc_library(
+     name = "md5_digester",
+     hdrs = ["md5_digester.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":openssl_digester",
+         "@boringssl//:crypto",
+@@ -193,6 +204,7 @@ cc_library(
+ cc_library(
+     name = "sha1_digester",
+     hdrs = ["sha1_digester.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":openssl_digester",
+         "@boringssl//:crypto",
+@@ -202,6 +214,7 @@ cc_library(
+ cc_library(
+     name = "sha256_digester",
+     hdrs = ["sha256_digester.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":openssl_digester",
+         "@boringssl//:crypto",
+@@ -211,6 +224,7 @@ cc_library(
+ cc_library(
+     name = "sha512_digester",
+     hdrs = ["sha512_digester.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":openssl_digester",
+         "@boringssl//:crypto",
+@@ -220,6 +234,7 @@ cc_library(
+ cc_library(
+     name = "sha512_256_digester",
+     hdrs = ["sha512_256_digester.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":openssl_digester",
+         "@boringssl//:crypto",
+diff --git a/riegeli/endian/BUILD b/riegeli/endian/BUILD
+index 3174460..cfa193c 100644
+--- a/riegeli/endian/BUILD
++++ b/riegeli/endian/BUILD
+@@ -10,6 +10,7 @@ licenses(["notice"])
+ cc_library(
+     name = "endian_reading",
+     hdrs = ["endian_reading.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:null_safe_memcpy",
+         "//riegeli/base:type_traits",
+@@ -25,6 +26,7 @@ cc_library(
+ cc_library(
+     name = "endian_writing",
+     hdrs = ["endian_writing.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:null_safe_memcpy",
+         "//riegeli/base:type_traits",
+diff --git a/riegeli/gcs/BUILD b/riegeli/gcs/BUILD
+index ab6ccde..bd60525 100644
+--- a/riegeli/gcs/BUILD
++++ b/riegeli/gcs/BUILD
+@@ -11,6 +11,7 @@ cc_library(
+     name = "gcs_object",
+     srcs = ["gcs_object.cc"],
+     hdrs = ["gcs_object.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:arithmetic",
+         "//riegeli/base:compare",
+@@ -36,6 +37,7 @@ cc_library(
+         "gcs_reader.cc",
+     ],
+     hdrs = ["gcs_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":gcs_object",
+         "//riegeli/base:arithmetic",
+@@ -64,6 +66,7 @@ cc_library(
+         "gcs_writer.cc",
+     ],
+     hdrs = ["gcs_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":gcs_object",
+         ":gcs_reader",
+diff --git a/riegeli/lines/BUILD b/riegeli/lines/BUILD
+index df01f81..472dd0e 100644
+--- a/riegeli/lines/BUILD
++++ b/riegeli/lines/BUILD
+@@ -10,6 +10,7 @@ licenses(["notice"])
+ cc_library(
+     name = "newline",
+     hdrs = ["newline.h"],
++    features = ["-layering_check"],
+     deps = ["@com_google_absl//absl/strings"],
+ )
+ 
+@@ -17,6 +18,7 @@ cc_library(
+     name = "line_reading",
+     srcs = ["line_reading.cc"],
+     hdrs = ["line_reading.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":newline",
+         "//riegeli/base:arithmetic",
+@@ -33,6 +35,7 @@ cc_library(
+ cc_library(
+     name = "line_writing",
+     hdrs = ["line_writing.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":newline",
+         "//riegeli/base:assert",
+@@ -47,6 +50,7 @@ cc_library(
+     name = "text_reader",
+     srcs = ["text_reader.cc"],
+     hdrs = ["text_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":newline",
+         "//riegeli/base:any",
+@@ -71,6 +75,7 @@ cc_library(
+     name = "text_writer",
+     srcs = ["text_writer.cc"],
+     hdrs = ["text_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":line_writing",
+         ":newline",
+diff --git a/riegeli/lz4/BUILD b/riegeli/lz4/BUILD
+index 822ef7f..6554f62 100644
+--- a/riegeli/lz4/BUILD
++++ b/riegeli/lz4/BUILD
+@@ -13,7 +13,10 @@ cc_library(
+     hdrs = ["lz4_reader.h"],
+     # zstd_reader.cc has #define before #include to influence what the included
+     # files provide.
+-    features = ["-use_header_modules"],
++    features = [
++        "-layering_check",
++        "-use_header_modules",
++    ],
+     deps = [
+         ":lz4_dictionary",
+         "//riegeli/base:arithmetic",
+@@ -40,7 +43,10 @@ cc_library(
+     hdrs = ["lz4_writer.h"],
+     # lz4_writer.cc has #define before #include to influence what the included
+     # files provide.
+-    features = ["-use_header_modules"],
++    features = [
++        "-layering_check",
++        "-use_header_modules",
++    ],
+     deps = [
+         ":lz4_dictionary",
+         ":lz4_reader",
+@@ -70,7 +76,10 @@ cc_library(
+     hdrs = ["lz4_dictionary.h"],
+     # lz4_dictionary.cc has #define before #include to influence what the
+     # included files provide.
+-    features = ["-use_header_modules"],
++    features = [
++        "-layering_check",
++        "-use_header_modules",
++    ],
+     visibility = ["//visibility:private"],
+     deps = [
+         "//riegeli/base:bytes_ref",
+diff --git a/riegeli/messages/BUILD b/riegeli/messages/BUILD
+index 2de9c70..3d74d3c 100644
+--- a/riegeli/messages/BUILD
++++ b/riegeli/messages/BUILD
+@@ -11,6 +11,7 @@ cc_library(
+     name = "parse_message",
+     srcs = ["parse_message.cc"],
+     hdrs = ["parse_message.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:arithmetic",
+         "//riegeli/base:assert",
+@@ -36,6 +37,7 @@ cc_library(
+     name = "serialize_message",
+     srcs = ["serialize_message.cc"],
+     hdrs = ["serialize_message.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:arithmetic",
+         "//riegeli/base:assert",
+@@ -65,6 +67,7 @@ cc_library(
+     name = "text_parse_message",
+     srcs = ["text_parse_message.cc"],
+     hdrs = ["text_parse_message.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":parse_message",
+         "//riegeli/base:bytes_ref",
+@@ -86,6 +89,7 @@ cc_library(
+     name = "text_print_message",
+     srcs = ["text_print_message.cc"],
+     hdrs = ["text_print_message.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":serialize_message",
+         "//riegeli/base:assert",
+@@ -105,12 +109,14 @@ cc_library(
+ cc_library(
+     name = "message_wire_format",
+     hdrs = ["message_wire_format.h"],
++    features = ["-layering_check"],
+ )
+ 
+ cc_library(
+     name = "serialized_message_writer",
+     srcs = ["serialized_message_writer.cc"],
+     hdrs = ["serialized_message_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":message_wire_format",
+         ":serialize_message",
+@@ -138,6 +144,7 @@ cc_library(
+     name = "serialized_message_backward_writer",
+     srcs = ["serialized_message_backward_writer.cc"],
+     hdrs = ["serialized_message_backward_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":message_wire_format",
+         ":serialize_message",
+@@ -165,6 +172,7 @@ cc_library(
+         "serialized_message_reader.cc",
+     ],
+     hdrs = ["serialized_message_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":message_wire_format",
+         ":parse_message",
+@@ -196,6 +204,7 @@ cc_library(
+         "serialized_message_rewriter.cc",
+     ],
+     hdrs = ["serialized_message_rewriter.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":message_wire_format",
+         ":parse_message",
+diff --git a/riegeli/ordered_varint/BUILD b/riegeli/ordered_varint/BUILD
+index 7165f53..fd9aaf7 100644
+--- a/riegeli/ordered_varint/BUILD
++++ b/riegeli/ordered_varint/BUILD
+@@ -14,6 +14,7 @@ cc_library(
+         "ordered_varint_reading.cc",
+     ],
+     hdrs = ["ordered_varint_reading.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:assert",
+         "//riegeli/bytes:reader",
+@@ -29,6 +30,7 @@ cc_library(
+         "ordered_varint_writing.cc",
+     ],
+     hdrs = ["ordered_varint_writing.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:arithmetic",
+         "//riegeli/base:assert",
+diff --git a/riegeli/records/BUILD b/riegeli/records/BUILD
+index 576f2ec..70206e0 100644
+--- a/riegeli/records/BUILD
++++ b/riegeli/records/BUILD
+@@ -13,6 +13,7 @@ cc_library(
+     name = "record_reader",
+     srcs = ["record_reader.cc"],
+     hdrs = ["record_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":chunk_reader",
+         ":record_position",
+@@ -52,6 +53,7 @@ cc_library(
+     name = "record_writer",
+     srcs = ["record_writer.cc"],
+     hdrs = ["record_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":chunk_writer",
+         ":record_position",
+@@ -95,6 +97,7 @@ cc_library(
+     name = "record_position",
+     srcs = ["record_position.cc"],
+     hdrs = ["record_position.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":block",
+         "//riegeli/base:assert",
+@@ -118,6 +121,7 @@ cc_library(
+     name = "skipped_region",
+     srcs = ["skipped_region.cc"],
+     hdrs = ["skipped_region.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:assert",
+         "//riegeli/base:string_ref",
+@@ -130,6 +134,7 @@ cc_library(
+     name = "chunk_reader",
+     srcs = ["chunk_reader.cc"],
+     hdrs = ["chunk_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":block",
+         ":skipped_region",
+@@ -154,6 +159,7 @@ cc_library(
+     name = "chunk_writer",
+     srcs = ["chunk_writer.cc"],
+     hdrs = ["chunk_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":block",
+         "//riegeli/base:arithmetic",
+@@ -180,6 +186,7 @@ cc_library(
+ cc_library(
+     name = "block",
+     hdrs = ["block.h"],
++    features = ["-layering_check"],
+     visibility = ["//riegeli:__subpackages__"],
+     deps = [
+         "//riegeli/base:arithmetic",
+diff --git a/riegeli/records/tools/BUILD b/riegeli/records/tools/BUILD
+index 3a44737..78f45a8 100644
+--- a/riegeli/records/tools/BUILD
++++ b/riegeli/records/tools/BUILD
+@@ -100,6 +100,7 @@ cc_library(
+     name = "tfrecord_recognizer",
+     srcs = ["tfrecord_recognizer.cc"],
+     hdrs = ["tfrecord_recognizer.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:any",
+         "//riegeli/base:assert",
+diff --git a/riegeli/snappy/BUILD b/riegeli/snappy/BUILD
+index 269abcc..6fbfbf8 100644
+--- a/riegeli/snappy/BUILD
++++ b/riegeli/snappy/BUILD
+@@ -11,6 +11,7 @@ cc_library(
+     name = "snappy_reader",
+     srcs = ["snappy_reader.cc"],
+     hdrs = ["snappy_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":snappy_streams",
+         "//riegeli/base:assert",
+@@ -36,6 +37,7 @@ cc_library(
+     name = "snappy_writer",
+     srcs = ["snappy_writer.cc"],
+     hdrs = ["snappy_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":snappy_streams",
+         "//riegeli/base:arithmetic",
+@@ -66,6 +68,7 @@ cc_library(
+     name = "snappy_streams",
+     srcs = ["snappy_streams.cc"],
+     hdrs = ["snappy_streams.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:private"],
+     deps = [
+         "//riegeli/base:arithmetic",
+diff --git a/riegeli/snappy/framed/BUILD b/riegeli/snappy/framed/BUILD
+index cf92194..962135e 100644
+--- a/riegeli/snappy/framed/BUILD
++++ b/riegeli/snappy/framed/BUILD
+@@ -11,6 +11,7 @@ cc_library(
+     name = "framed_snappy_reader",
+     srcs = ["framed_snappy_reader.cc"],
+     hdrs = ["framed_snappy_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:arithmetic",
+         "//riegeli/base:assert",
+@@ -36,6 +37,7 @@ cc_library(
+     name = "framed_snappy_writer",
+     srcs = ["framed_snappy_writer.cc"],
+     hdrs = ["framed_snappy_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":framed_snappy_reader",
+         "//riegeli/base:arithmetic",
+diff --git a/riegeli/snappy/hadoop/BUILD b/riegeli/snappy/hadoop/BUILD
+index 8690030..63e2465 100644
+--- a/riegeli/snappy/hadoop/BUILD
++++ b/riegeli/snappy/hadoop/BUILD
+@@ -11,6 +11,7 @@ cc_library(
+     name = "hadoop_snappy_reader",
+     srcs = ["hadoop_snappy_reader.cc"],
+     hdrs = ["hadoop_snappy_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:arithmetic",
+         "//riegeli/base:assert",
+@@ -34,6 +35,7 @@ cc_library(
+     name = "hadoop_snappy_writer",
+     srcs = ["hadoop_snappy_writer.cc"],
+     hdrs = ["hadoop_snappy_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":hadoop_snappy_reader",
+         "//riegeli/base:arithmetic",
+diff --git a/riegeli/tensorflow/io/BUILD b/riegeli/tensorflow/io/BUILD
+index b4029cf..0fc6e78 100644
+--- a/riegeli/tensorflow/io/BUILD
++++ b/riegeli/tensorflow/io/BUILD
+@@ -11,6 +11,7 @@ cc_library(
+     name = "file_reader",
+     srcs = ["file_reader.cc"],
+     hdrs = ["file_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:arithmetic",
+         "//riegeli/base:assert",
+@@ -44,6 +45,7 @@ cc_library(
+     name = "file_writer",
+     srcs = ["file_writer.cc"],
+     hdrs = ["file_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":file_reader",
+         "//riegeli/base:arithmetic",
+@@ -74,6 +76,7 @@ cc_library(
+ cc_library(
+     name = "tstring_writer",
+     hdrs = ["tstring_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:arithmetic",
+         "//riegeli/base:assert",
+diff --git a/riegeli/text/BUILD b/riegeli/text/BUILD
+index 34871b1..090f72c 100644
+--- a/riegeli/text/BUILD
++++ b/riegeli/text/BUILD
+@@ -10,6 +10,7 @@ licenses(["notice"])
+ cc_library(
+     name = "concat",
+     hdrs = ["concat.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:initializer",
+         "//riegeli/bytes:ostream_writer",
+@@ -24,6 +25,7 @@ cc_library(
+     name = "write_int",
+     srcs = ["write_int.cc"],
+     hdrs = ["write_int.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:arithmetic",
+         "//riegeli/base:assert",
+@@ -42,6 +44,7 @@ cc_library(
+ cc_library(
+     name = "ascii_align",
+     hdrs = ["ascii_align.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":concat",
+         "//riegeli/base:arithmetic",
+@@ -63,6 +66,7 @@ cc_library(
+ cc_library(
+     name = "join",
+     hdrs = ["join.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:initializer",
+         "//riegeli/base:iterable",
+diff --git a/riegeli/varint/BUILD b/riegeli/varint/BUILD
+index e01cf38..5db0b14 100644
+--- a/riegeli/varint/BUILD
++++ b/riegeli/varint/BUILD
+@@ -14,6 +14,7 @@ cc_library(
+         "varint_reading.cc",
+     ],
+     hdrs = ["varint_reading.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:arithmetic",
+         "//riegeli/bytes:reader",
+@@ -25,6 +26,7 @@ cc_library(
+     name = "varint_writing",
+     srcs = ["varint_internal.h"],
+     hdrs = ["varint_writing.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//riegeli/base:arithmetic",
+         "//riegeli/base:constexpr",
+diff --git a/riegeli/xz/BUILD b/riegeli/xz/BUILD
+index 0f8e6a1..3ded3df 100644
+--- a/riegeli/xz/BUILD
++++ b/riegeli/xz/BUILD
+@@ -11,6 +11,7 @@ cc_library(
+     name = "xz_reader",
+     srcs = ["xz_reader.cc"],
+     hdrs = ["xz_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":xz_error",
+         "//riegeli/base:arithmetic",
+@@ -36,6 +37,7 @@ cc_library(
+     name = "xz_writer",
+     srcs = ["xz_writer.cc"],
+     hdrs = ["xz_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":xz_error",
+         ":xz_reader",
+@@ -63,6 +65,7 @@ cc_library(
+     name = "xz_error",
+     srcs = ["xz_error.cc"],
+     hdrs = ["xz_error.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:private"],
+     deps = [
+         "//riegeli/base:assert",
+diff --git a/riegeli/zlib/BUILD b/riegeli/zlib/BUILD
+index 237003e..ef809f4 100644
+--- a/riegeli/zlib/BUILD
++++ b/riegeli/zlib/BUILD
+@@ -14,6 +14,7 @@ cc_library(
+         "zlib_reader.cc",
+     ],
+     hdrs = ["zlib_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":zlib_error",
+         "//riegeli/base:arithmetic",
+@@ -44,6 +45,7 @@ cc_library(
+         "zlib_writer.cc",
+     ],
+     hdrs = ["zlib_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":zlib_error",
+         ":zlib_reader",
+@@ -73,6 +75,7 @@ cc_library(
+     name = "zlib_error",
+     srcs = ["zlib_error.cc"],
+     hdrs = ["zlib_error.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:private"],
+     deps = [
+         "//riegeli/base:assert",
+diff --git a/riegeli/zstd/BUILD b/riegeli/zstd/BUILD
+index a868516..fd00ab1 100644
+--- a/riegeli/zstd/BUILD
++++ b/riegeli/zstd/BUILD
+@@ -13,7 +13,10 @@ cc_library(
+     hdrs = ["zstd_reader.h"],
+     # zstd_reader.cc has #define before #include to influence what the included
+     # files provide.
+-    features = ["-use_header_modules"],
++    features = [
++        "-layering_check",
++        "-use_header_modules",
++    ],
+     deps = [
+         ":zstd_dictionary",
+         "//riegeli/base:arithmetic",
+@@ -40,7 +43,10 @@ cc_library(
+     hdrs = ["zstd_writer.h"],
+     # zstd_writer.cc has #define before #include to influence what the included
+     # files provide.
+-    features = ["-use_header_modules"],
++    features = [
++        "-layering_check",
++        "-use_header_modules",
++    ],
+     deps = [
+         ":zstd_dictionary",
+         ":zstd_reader",
+@@ -69,7 +75,10 @@ cc_library(
+     hdrs = ["zstd_dictionary.h"],
+     # zstd_dictionary.cc has #define before #include to influence what the
+     # included files provide.
+-    features = ["-use_header_modules"],
++    features = [
++        "-layering_check",
++        "-use_header_modules",
++    ],
+     visibility = ["//visibility:private"],
+     deps = [
+         "//riegeli/base:arithmetic",

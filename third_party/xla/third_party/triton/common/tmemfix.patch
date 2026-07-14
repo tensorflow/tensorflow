@@ -1,0 +1,400 @@
+#
+#This bridges the gap between Google CUDA 12.8 and upstream CUDA 13.2 
+#and reverts 0914a04af03c8345d15fa41af6f2fab618f07b43 
+#and 3de9d0473881f16a2749211bcedee79f491dcbb1
+#
+--- a/lib/Analysis/Utility.cpp
++++ b/lib/Analysis/Utility.cpp
+@@ -1197,7 +1197,7 @@ bool supportMMA(triton::DotOp op, int version) {
+     if (k < 256 / aElemTy.getIntOrFloatBitWidth())
+       return false;
+     if (!(retShapePerCTA[rank - 2] % 64 == 0 &&
+-          retShapePerCTA[rank - 1] % 8 == 0))
++          retShapePerCTA[rank - 1] % 16 == 0))
+       return false;
+     if (aElemTy.isF64() || bElemTy.isF64() ||
+         retType.getElementType().isF64()) {
+@@ -1222,7 +1222,7 @@ bool supportMMA(triton::DotOp op, int version) {
+     if (rank == 3)
+       return false;
+     if (!(numWarps % 4 == 0 && retShapePerCTA[rank - 2] % 64 == 0 &&
+-          retShapePerCTA[rank - 1] % 8 == 0 &&
++          retShapePerCTA[rank - 1] % 16 == 0 &&
+           (llvm::isa<Float8E5M2Type, Float8E4M3FNType>(aElemTy) ||
+            aElemTy.isInteger(8) || aElemTy.isF16() || aElemTy.isBF16() ||
+            aElemTy.isF32()))) {
+
+--- a/lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp
++++ b/lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp
+@@ -76,7 +76,7 @@ TMemAllocation getTmemAllocSizes(MemDescType memDescType) {
+   auto ll = toLinearLayout(shape, memDescType.getEncoding());
+   auto bitwidth = memDescType.getElementTypeBitWidth();
+   int nRow = ll.getInDimSize(kRow);
+-  int nCol = ll.getInDimSize(kCol) / (32 / bitwidth);
++  int nCol = llvm::divideCeil(ll.getInDimSize(kCol), 32 / bitwidth);
+   // If we have just one 16xcol block per warp, we don't allocate 128 rows
+   // we use 64 rows instead.
+   // We could generalise this to when we have more zeros in the layout, but
+@@ -166,13 +166,21 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
+     auto kReg = StringAttr::get(ctx, "register");
+     LinearLayout quot;
+     int bestContig = 1;
++    bool isDim0 = false;
+     for (int contig = 1; bitwidth * contig <= 32; contig *= 2) {
+       auto maybeQuot = divideLeft(
+           ll, LinearLayout::identity1D(contig, rowColDims[1], dims[1]));
++      bool currDim0 = false;
++      if (!maybeQuot) {
++        maybeQuot = divideLeft(
++            ll, LinearLayout::identity1D(contig, rowColDims[1], dims[0]));
++        currDim0 = true;
++      }
+       if (!maybeQuot)
+         break;
+       quot = *maybeQuot;
+       bestContig = contig;
++      isDim0 = currDim0;
+     }
+ 
+     // Pack contiguous elements
+@@ -182,7 +190,7 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
+                                                  bitwidth * bestContig);
+       if (!ret)
+         return ret;
+-      auto castbbitwidth = LinearLayout::identity1D(bestContig, kReg, dims[1]);
++      auto castbbitwidth = LinearLayout::identity1D(bestContig, kReg, isDim0 ? dims[0] : dims[1]);
+       return castbbitwidth * ret.value();
+     }
+     if (auto maybeQuot = divideLeft(
+@@ -223,10 +231,7 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
+ 
+   auto nColsTile = tile.getOutDimSize(rowColDims[1]);
+   auto nColsLL = ll.getInDimSize(rowColDims[1]);
+-  auto nColsMissing = nColsLL / nColsTile;
+-  if (nColsMissing == 0) {
+-    return std::nullopt;
+-  }
++  auto nColsMissing = std::max<int>(nColsLL / nColsTile, 1);
+   auto kReg = StringAttr::get(ctx, "register");
+   auto kLane = StringAttr::get(ctx, "lane");
+   auto kWarp = StringAttr::get(ctx, "warp");
+@@ -243,7 +248,9 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
+   // basis as that would disallow the resulting layout to be left-divisible by
+   // the tile
+   auto trivialBlock = LinearLayout::identity1D(1, kBlock, kBlock);
+-  auto comp = (tile * trivialBlock)
++  auto tileMult = tile * trivialBlock;
++  auto tileMultShrunk = tileMult.resizeOutDim(rowColDims[0], std::min<int>(ll.getInDimSize(rowColDims[0]), tileMult.getOutDimSize(rowColDims[0]))).resizeOutDim(rowColDims[1], std::min<int>(ll.getInDimSize(rowColDims[1]), tileMult.getOutDimSize(rowColDims[1])));
++  auto comp = tileMultShrunk
+                   .compose(ll)
+                   .sublayout({kReg, kLane}, to_vector(ll.getOutDimNames()));
+   if (instr32Rows) {
+@@ -251,7 +258,7 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
+     // basis
+     comp = comp.resizeInDim(kLane, comp.getInDimSize(kLane) / 2);
+   }
+-  if (!comp.isInjective())
++  if (!comp.isInjective() && nColsLL > 32)
+     return std::nullopt;
+ 
+   // Fit the warp bases either tiling on the RHS or in row=16
+@@ -306,9 +313,8 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
+   // Add CTAs as a trivial map
+   auto nCTAs = ll.getInDimSize(kBlock);
+   tile *= LinearLayout::identity1D(nCTAs, kBlock, kBlock);
+-  assert(tile.getOutDimSize(rowColDims[1]) == ll.getInDimSize(rowColDims[1]));
+-
+-  auto ret = tile.compose(ll);
++  auto tileShrunk = tile.resizeOutDim(rowColDims[0], std::min<int>(ll.getInDimSize(rowColDims[0]), tile.getOutDimSize(rowColDims[0]))).resizeOutDim(rowColDims[1], std::min<int>(ll.getInDimSize(rowColDims[1]), tile.getOutDimSize(rowColDims[1])));
++  auto ret = tileShrunk.compose(ll);
+   return ret;
+ }
+ 
+@@ -331,6 +337,18 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
+   auto *ctx = memType.getContext();
+   auto layout = getDistributedLayoutForTmemLdSt(
+       memType, TMemAccessAtom::I32x32b, numWarps);
++  if (!layout) {
++    layout = getDistributedLayoutForTmemLdSt(
++        memType, TMemAccessAtom::I16x256b, numWarps);
++  }
++  if (!layout) {
++    layout = getDistributedLayoutForTmemLdSt(
++        memType, TMemAccessAtom::I16x128b, numWarps);
++  }
++  if (!layout) {
++    layout = getDistributedLayoutForTmemLdSt(
++        memType, TMemAccessAtom::I16x64b, numWarps);
++  }
+   assert(layout);
+   return LinearEncodingAttr::get(ctx, std::move(*layout));
+ }
+@@ -404,6 +422,10 @@ getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
+ bool isDistributedLayoutTMemCompatible(Operation *op,
+                                        RankedTensorType tensorType,
+                                        gpu::MemDescType memType) {
++  for (auto l : getTmemCompatibleLayouts(op, tensorType, memType)) {
++    if (l == tensorType.getEncoding())
++      return true;
++  }
+   auto maxnreg = getContextualMaxNReg(op);
+   return succeeded(computeTMemLdStEncodingInfo(tensorType, memType, maxnreg));
+ }
+
+--- a/lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp
++++ b/lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp
+@@ -117,7 +117,7 @@ int getContextualMaxNReg(Operation *op) {
+ }
+ 
+ FailureOr<TMemLdStEncodingInfo>
+-lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth,
++lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth, bool isScales,
+               std::function<InFlightDiagnostic()> emitError,
+               bool unpacked = false) {
+   // We will fill in the returned value recursively (if it exists)
+@@ -126,7 +126,8 @@ lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth,
+   auto removeBroadcastSrc = actionRemoveBroadcastedRegs(cvt);
+   if (!removeBroadcastSrc.isIdentity()) {
+     auto prmtCvt = removeBroadcastSrc.apply(cvt);
+-    auto info = lowerTMemLdSt(prmtCvt, maxnreg, bitwidth, emitError, unpacked);
++    auto info = lowerTMemLdSt(prmtCvt, maxnreg, bitwidth, isScales, emitError,
++                              unpacked);
+     if (failed(info))
+       return failure();
+     info->broadcast = std::move(removeBroadcastSrc);
+@@ -144,6 +145,9 @@ lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth,
+     for (int contig = 1; bitwidth * contig <= 32; contig *= 2) {
+       auto maybeQuot =
+           divideLeft(cvt, LinearLayout::identity1D(contig, kReg, kCol));
++      if (!maybeQuot) {
++        maybeQuot = divideLeft(cvt, LinearLayout::identity1D(contig, kReg, kRow));
++      }
+       if (!maybeQuot)
+         break;
+       quot = *maybeQuot;
+@@ -185,7 +189,8 @@ lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth,
+     if (unpacked) {
+       quot = LinearLayout::zeros1D(1, kReg, kCol, 32 / bitwidth) * quot;
+     }
+-    auto info = lowerTMemLdSt(quot, maxnreg, newBitwidth, emitError, unpacked);
++    auto info = lowerTMemLdSt(quot, maxnreg, newBitwidth, isScales, emitError,
++                              unpacked);
+     if (failed(info))
+       return failure();
+     if (bestContig > 1) {
+@@ -234,6 +239,19 @@ lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth,
+       auto row = reps.getBasis(kLane, 4, kRow);
+       auto col = reps.getBasis(kLane, 4, kCol);
+       secondHalfOffset = (row << 16) | col;
++      if (*secondHalfOffset == 0) {
++        // Workaround for ptxas bug, we cannot use secondHalfOffset = 0 to write
++        // only 16 elements. We use secondHalfOffset = 1 instead and we pad the
++        // allocation.
++        if (!isScales) {
++          if (emitError) {
++            emitError()
++                << "Only supported for scales as we pad the allocation.";
++          }
++          return failure();
++        }
++        secondHalfOffset = 1;
++      }
+       // We "quotient it out", meaning we remove the last basis from reps
+       auto basis = reps.getBases();
+       basis[kLane][4] = {0, 0};
+@@ -298,8 +316,9 @@ computeTMemLdStEncodingInfo(RankedTensorType regTy, MemDescType memTy,
+   cvt = LinearLayout(std::move(bases), cvt.getOutDims(),
+                      /*isSurjective=*/cvt.isSurjective());
+ 
++  bool isScales = isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding());
+   int bitwidth = memTy.getElementTypeBitWidth();
+-  return lowerTMemLdSt(cvt, maxnreg, bitwidth, emitError);
++  return lowerTMemLdSt(cvt, maxnreg, bitwidth, isScales, emitError);
+ }
+ 
+ } // namespace mlir::triton::nvidia_gpu
+
+--- a/python/test/gluon/test_fpsan.py
++++ b/python/test/gluon/test_fpsan.py
+@@ -1792,6 +1792,8 @@ _WMMA_DOT_CASES = [
+ 
+ 
+ def _native_mma_k(type_a: str) -> int:
++    if is_cuda() and type_a == "f32":
++        return 16
+     return 256 // _float_dtype_info(type_a)[0]
+ 
+ 
+
+--- a/python/test/unit/language/test_core.py
++++ b/python/test/unit/language/test_core.py
+@@ -3595,10 +3595,7 @@ def get_test_small_dots_cases():
+     if not is_cuda():
+         return []
+     return [(2, 4, 32, 1, False, False, 'None', 'ieee', 'float16', 'float32', 1, None),
+-            (1, 2, 32, 1, False, False, 'None', 'ieee', 'float8e5', 'float32', 1, None),
+-            # N=8: TF32 K=8 (wgmma.m64n8k8, sm90+) and FP16 K=16 (wgmma.m64n8k16)
+-            (64, 8, 8, 4, False, False, 'None', 'tf32', 'float32', 'float32', 1, None),
+-            (64, 8, 16, 4, False, False, 'None', 'ieee', 'float16', 'float32', 1, None)]
++            (1, 2, 32, 1, False, False, 'None', 'ieee', 'float8e5', 'float32', 1, None)]
+ 
+ 
+ @pytest.mark.interpreter
+@@ -3833,21 +3830,19 @@ def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, input_precision, in_dty
+     # make sure ld/st are vectorized
+     ptx = pgm.asm['ptx']
+ 
+-    # XXX: skip small sizes because they are not vectorized; with runtime
+-    # strides, v4 needs the contiguous dim >= 16 (K for loads, N for stores).
+-    enough_work = (M * N // (num_warps * 32) >= 4) and (K > 16 or N > 16 or M > 16)
+-    if enough_work and K >= 16:
+-        if 'float64' in in_dtype:
+-            assert 'ld.global.v2.b64' in ptx
+-        else:
+-            assert 'ld.global.v4' in ptx
+-    if enough_work and N >= 16:
+-        if 'float8' in in_dtype:
+-            assert 'st.global.v2' in ptx
+-        elif 'float64' in in_dtype:
+-            assert 'st.global.v2.b64' in ptx
+-        else:
+-            assert 'st.global.v4' in ptx
++    if (K > 16 or N > 16 or M > 16) and (M * N // (num_warps * 32) >= 4):
++        if K >= 16:
++            if 'float64' in in_dtype:
++                assert 'ld.global.v2.b64' in ptx
++            else:
++                assert 'ld.global.v4' in ptx
++        if N >= 16:
++            if 'float8' in in_dtype:
++                assert 'st.global.v2' in ptx
++            elif 'float64' in in_dtype:
++                assert 'st.global.v2.b64' in ptx
++            else:
++                assert 'st.global.v4' in ptx
+ 
+     is_tcgen5 = (capability[0] == 10) and (num_warps % 4) == 0 and (M % 64) == 0 and (N % 8) == 0
+ 
+
+--- a/python/test/unit/language/test_matmul.py
++++ b/python/test/unit/language/test_matmul.py
+@@ -402,6 +402,8 @@ def test_mxfp(BLOCK_M, BLOCK_N, BLOCK_K, NUM_STAGES, nonKDim, NUM_WARPS, device)
+             pytest.skip(f"CDNA4 does not support {BLOCK_K=} for scaled mfma {nonKDim=} variants")
+         if (BLOCK_M == 256 or BLOCK_N == 256) and BLOCK_K == 256:
+             pytest.skip("Config requires too much shared memory")
++    if is_cuda() and torch.cuda.get_device_capability()[0] >= 10 and BLOCK_N < 32:
++        pytest.skip("Blackwell TMEM scaling instructions require aligned BLOCK_N >= 32")
+ 
+     if BLOCK_N == 256 and BLOCK_K == 256:
+         NUM_STAGES = min(NUM_STAGES, 2)
+
+--- a/python/tutorials/09-persistent-matmul.py
++++ b/python/tutorials/09-persistent-matmul.py
+@@ -61,7 +61,7 @@ def supports_tma():
+ 
+ 
+ def is_hopper():
+-    return torch.cuda.get_device_capability()[0] == 9
++    return torch.cuda.get_device_capability()[0] >= 9
+ 
+ 
+ def supports_ws():
+
+--- a/test/Conversion/tritongpu_to_llvm_blackwell.mlir
++++ b/test/Conversion/tritongpu_to_llvm_blackwell.mlir
+@@ -1076,7 +1076,7 @@ module attributes {"ttg.num-warps" = 8 : i32} {
+ // CHECK-LABEL: @load_store_16x32bx1_broadcast
+ tt.func private @load_store_16x32bx1_broadcast(%arg0: !ttg.memdesc<16x8xi8, #tmem_scales, #ttng.tensor_memory, mutable>, %arg1: tensor<16x8xi8, #linear>) {
+   %true = arith.constant true
+-  // CHECK: @$0 tcgen05.st.sync.aligned.16x32bx2.x1.b32 [$1 + 0], 0, {$2}
++  // CHECK: @$0 tcgen05.st.sync.aligned.16x32bx2.x1.b32 [$1 + 0], 1, {$2}
+   ttng.tmem_store %arg1, %arg0, %true : tensor<16x8xi8, #linear> -> !ttg.memdesc<16x8xi8, #tmem_scales, #ttng.tensor_memory, mutable>
+   tt.return
+ }
+@@ -1091,7 +1091,7 @@ module attributes {"ttg.num-warps" = 4 : i32} {
+ // CHECK-LABEL: @load_store_16x2_scales_uses_zero_second_half
+ tt.func private @load_store_16x2_scales_uses_zero_second_half(%arg0: !ttg.memdesc<16x2xi8, #tmem_scales, #ttng.tensor_memory, mutable>, %arg1: tensor<16x2xi8, #linear>) {
+   %true = arith.constant true
+-  // CHECK: @$0 tcgen05.st.sync.aligned.16x32bx2.x1.unpack::16b.b32 [$1 + 0], 0, {$2}
++  // CHECK: @$0 tcgen05.st.sync.aligned.16x32bx2.x1.unpack::16b.b32 [$1 + 0], 1, {$2}
+   // CHECK: llvm.return
+   ttng.tmem_store %arg1, %arg0, %true : tensor<16x2xi8, #linear> -> !ttg.memdesc<16x2xi8, #tmem_scales, #ttng.tensor_memory, mutable>
+   tt.return
+
+--- a/test/TritonGPU/accelerate-matmul.mlir
++++ b/test/TritonGPU/accelerate-matmul.mlir
+@@ -1001,36 +1001,3 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
+   }
+ }
+ 
+-// -----
+-
+-// Verify TF32 dot with N=8, K=8 (native WGMMA tile) selects MMAv3 on sm90.
+-// CHECK: #[[$MMA:.+]] = #ttg.nvidia_mma<{versionMajor = 3, versionMinor = 0, warpsPerCTA = [4, 1], instrShape = [16, 8, 8]}>
+-#blocked_tf32_n8 = #ttg.blocked<{sizePerThread = [2, 2], threadsPerWarp = [8, 4], warpsPerCTA = [4, 1], order = [1, 0]}>
+-module attributes {"ttg.target" = "cuda:90", "ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, "ttg.threads-per-warp" = 32 : i32} {
+-  // CHECK-LABEL: tf32_n8k8_sm90
+-  tt.func public @tf32_n8k8_sm90(
+-      %a: tensor<64x8xf32, #ttg.dot_op<{opIdx = 0, parent = #blocked_tf32_n8}>>,
+-      %b: tensor<8x8xf32, #ttg.dot_op<{opIdx = 1, parent = #blocked_tf32_n8}>>) -> tensor<64x8xf32, #blocked_tf32_n8> {
+-    %cst = arith.constant dense<0.000000e+00> : tensor<64x8xf32, #blocked_tf32_n8>
+-    // CHECK: ttng.warp_group_dot {{.*}} -> tensor<64x8xf32, #[[$MMA]]>
+-    %d = tt.dot %a, %b, %cst, inputPrecision = tf32 : tensor<64x8xf32, #ttg.dot_op<{opIdx = 0, parent = #blocked_tf32_n8}>> * tensor<8x8xf32, #ttg.dot_op<{opIdx = 1, parent = #blocked_tf32_n8}>> -> tensor<64x8xf32, #blocked_tf32_n8>
+-    tt.return %d : tensor<64x8xf32, #blocked_tf32_n8>
+-  }
+-}
+-
+-// -----
+-
+-// Verify FP16 dot with N=8, K=16 (native WGMMA tile) selects MMAv3 on sm90.
+-// CHECK: #[[$MMA:.+]] = #ttg.nvidia_mma<{versionMajor = 3, versionMinor = 0, warpsPerCTA = [4, 1], instrShape = [16, 8, 16]}>
+-#blocked_fp16_n8 = #ttg.blocked<{sizePerThread = [2, 2], threadsPerWarp = [8, 4], warpsPerCTA = [4, 1], order = [1, 0]}>
+-module attributes {"ttg.target" = "cuda:90", "ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, "ttg.threads-per-warp" = 32 : i32} {
+-  // CHECK-LABEL: fp16_n8k16_sm90
+-  tt.func public @fp16_n8k16_sm90(
+-      %a: tensor<64x16xf16, #ttg.dot_op<{opIdx = 0, parent = #blocked_fp16_n8}>>,
+-      %b: tensor<16x8xf16, #ttg.dot_op<{opIdx = 1, parent = #blocked_fp16_n8}>>) -> tensor<64x8xf32, #blocked_fp16_n8> {
+-    %cst = arith.constant dense<0.000000e+00> : tensor<64x8xf32, #blocked_fp16_n8>
+-    // CHECK: ttng.warp_group_dot {{.*}} -> tensor<64x8xf32, #[[$MMA]]>
+-    %d = tt.dot %a, %b, %cst : tensor<64x16xf16, #ttg.dot_op<{opIdx = 0, parent = #blocked_fp16_n8}>> * tensor<16x8xf16, #ttg.dot_op<{opIdx = 1, parent = #blocked_fp16_n8}>> -> tensor<64x8xf32, #blocked_fp16_n8>
+-    tt.return %d : tensor<64x8xf32, #blocked_fp16_n8>
+-  }
+-}
+
+--- a/third_party/nvidia/backend/compiler.py
++++ b/third_party/nvidia/backend/compiler.py
+@@ -27,8 +27,6 @@ def min_dot_size(target: GPUTarget):
+             return (1, 1, 32)
+         elif lhs_bitwidth == 64:
+             return (1, 1, 4)
+-        elif lhs_bitwidth == 32:
+-            return (1, 1, 8)
+         else:
+             return (1, 1, 16)
+ 
+
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp
+@@ -683,15 +683,18 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
+                           int k) {
+     auto [numRepM, numRepN, numRepK] = desc.repShape;
+     int scaleFactorColsPerSet = getScaleFactorColsPerSet(mxfpInstKind);
++    int aMultibuffers = cast<MemDescType>(op.getAScale().getType()).getRank() > 2 ? cast<MemDescType>(op.getAScale().getType()).getDimSize(0) : 1;
++    int bMultibuffers = cast<MemDescType>(op.getBScale().getType()).getRank() > 2 ? cast<MemDescType>(op.getBScale().getType()).getDimSize(0) : 1;
+     int numColPerScaleBlockA = ceil<int>(
+         ttng::getTmemAllocSizes(cast<MemDescType>(op.getAScale().getType()))
+-            .numCols,
++            .numCols / aMultibuffers,
+         numRepM * (ceil<int>(numRepK, 4 / scaleFactorColsPerSet)));
+     int numColPerScaleBlockB = ceil<int>(
+         ttng::getTmemAllocSizes(cast<MemDescType>(op.getBScale().getType()))
+-            .numCols,
++            .numCols / bMultibuffers,
+         numRepN * (ceil<int>(numRepK, 4 / scaleFactorColsPerSet)));
+-    numColPerScaleBlockB = std::max(numColPerScaleBlockB, 2);
++    if (desc.mmaSizeN >= 32)
++      numColPerScaleBlockB = std::max(numColPerScaleBlockB, 2);
+     int subWordIdx = k % (4 / scaleFactorColsPerSet);
+     int wordIdx = k / (4 / scaleFactorColsPerSet);
+     Value scaleA = tb.add(
+

@@ -1,0 +1,14 @@
+op {
+  name: "OutfeedEnqueueTuple"
+  input_arg {
+    name: "inputs"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}

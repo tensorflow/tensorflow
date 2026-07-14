@@ -1,0 +1,32 @@
+op {
+  graph_op_name: "AutoShardDataset"
+  visibility: HIDDEN
+  in_arg {
+    name: "input_dataset"
+    description: <<END
+A variant tensor representing the input dataset.
+END
+  }
+  in_arg {
+  name: "num_workers"
+  description: <<END
+A scalar representing the number of workers to distribute this dataset across.
+END
+  }
+  in_arg {
+  name: "index"
+  description: <<END
+A scalar representing the index of the current worker out of num_workers.
+END
+  }
+  summary: "Creates a dataset that shards the input dataset."
+  description: <<END
+Creates a dataset that shards the input dataset by num_workers, returning a
+sharded dataset for the index-th worker. This attempts to automatically shard
+a dataset by examining the Dataset graph and inserting a shard op before the
+inputs to a reader Dataset (e.g. CSVDataset, TFRecordDataset).
+
+This dataset will throw a NotFound error if we cannot shard the dataset
+automatically.
+END
+}

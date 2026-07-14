@@ -1,0 +1,14 @@
+// Test only stable XNNPack delegate settings file.
+//
+// This file follows the TFLiteSettings message structure in
+// tensorflow/lite/acceleration/configuration/configuration.proto
+// The stable delegate provider unit tests use it.
+{
+  "delegate": "XNNPACK",
+  "stable_delegate_loader_settings": {
+    "delegate_path": "tensorflow/lite/delegates/utils/experimental/stable_delegate/libtensorflowlite_stable_xnnpack_delegate.so"
+  },
+  "xnnpack_settings": {
+    "num_threads": 5
+  }
+}

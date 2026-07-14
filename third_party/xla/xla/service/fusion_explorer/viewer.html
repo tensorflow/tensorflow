@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Fusion Explorer</title>
+  <style>
+    html, body {height: 100%; text-align: center;}
+    #rendered {height: 70%; width: 80%; border:1px solid black; margin: auto; }
+    #label {width: 80%; margin: auto;}
+    #performance_note { font-size: small; color: gray; }
+    #frames_list {
+      list-style: none; text-align: left; height: 20%; overflow: scroll;
+    }
+    #frames_list li { padding: 0.2em; margin: 0.2em; }
+    .selected { background-color: #e0e0e0; }
+    .selected a { color: black; text-decoration: none; }
+    #rendered svg { height: 100% !important; width: 100% !important; }
+  </style>
+</head>
+<body>
+  <script src="https://www.gstatic.com/external_hosted/hpcc_js_wasm/index.min.js"
+      integrity="sha384-LigJPbR3TOfU/Xbb+PjiN1dGJYPweLk7kiGnaMgmxnUmKWaCFKbb5tH6iLlyVhPZ"
+      crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/external_hosted/svg_pan_zoom/svg-pan-zoom.js">
+  </script>
+
+  <div id='rendered'><center>Loading...</center></div>
+  <ul id='frames_list'></ul>
+  <p>Use j/k for keyboard navigation.</p>
+  <p id='performance_note'>Initializing...</p>
+
+  <script>
+  <!--
+  const renderCache = {};
+  const cssregex = new RegExp('stylesheet=<([^]*)\n>\n', 'gm');
+  const hpccWasm = window["@hpcc-js/wasm"];
+
+  const getIdFromHash = () => {
+    let hash = window.location.hash;
+    if (hash.indexOf('frame') == -1) {
+      return 0;
+    }
+    return parseInt(window.location.hash.substring('#frame'.length, window.location.hash.length));
+  }
+
+  window.frames = [];
+  window.graphs = {};
+  const pendingGraphRequests = new Map();
+  const getGraph = (graphId) => {
+    if (window.graphs[graphId]) {
+      return Promise.resolve(window.graphs[graphId]);
+    }
+    if (pendingGraphRequests.has(graphId)) {
+      return pendingGraphRequests.get(graphId);
+    }
+
+    const promise = fetch(`/api/graph?id=${graphId}`)
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP error! status: ${r.status}`);
+        return r.text();
+      })
+      .then(graph => {
+        window.graphs[graphId] = graph;
+        pendingGraphRequests.delete(graphId);
+        return graph;
+      })
+      .catch(err => {
+        pendingGraphRequests.delete(graphId);
+        throw err;
+      });
+
+    pendingGraphRequests.set(graphId, promise);
+    return promise;
+  };
+
+  const renderCurrentFrame = () => {
+    if (window.frames.length === 0) return;
+
+    const frames_list = document.getElementById('frames_list');
+    const currId = getIdFromHash();
+
+    for (let selected of frames_list.getElementsByClassName('selected')) {
+        selected.classList.remove('selected');
+    }
+    if (frames_list.children.length > currId) {
+      const items = frames_list.getElementsByTagName('li');
+      for (let item of items) {
+        const link = item.getElementsByTagName('a')[0];
+        if (link && link.getAttribute('href') === `#frame${currId}`) {
+          item.classList.add('selected');
+          item.scrollIntoView({ block: 'nearest' });
+          break;
+        }
+      }
+    }
+
+    const frame = window.frames[currId];
+    if (!frame) return;
+    const graphId = frame.graph_id;
+
+    const setupInteractiveFeatures = (cssData) => {
+      const toHighlight = frame.to_highlight.length ?
+        document.querySelector(`${frame.to_highlight}`) : null;
+      if (toHighlight) {
+        toHighlight.style.setProperty('fill', 'red');
+      }
+      // Change cursor.
+      let text_nodes = document.getElementsByTagName("text");
+      for (var el of text_nodes) {
+        if (title_to_id.has(el.innerHTML)) {
+          el.style.cursor = "pointer";
+        }
+      }
+    };
+
+    if (renderCache[graphId]) {
+      const cached = renderCache[graphId];
+      var area = document.getElementById('rendered');
+      area.innerHTML = `${cached.svg}<style>${cached.cssData}</style>`;
+      svgPanZoom(area.children[0], {
+          zoomEnabled: true, controlIconsEnabled: true, maxZoom: 200, });
+      setupInteractiveFeatures(cached.cssData);
+      document.getElementById('performance_note').textContent = "Rendered from cache";
+      return;
+    }
+
+    document.getElementById('performance_note').textContent = "Retrieving data...";
+
+    getGraph(graphId).then(graph_txt => {
+      const latestCurrId = getIdFromHash();
+      if (!window.frames[latestCurrId] || window.frames[latestCurrId].graph_id !== graphId) {
+        console.log("Main: resolved graph is no longer current, ignoring rendering.");
+        return;
+      }
+
+      let renderStart = performance.now();
+      document.getElementById('performance_note').textContent = "Rendering...";
+
+      const results = cssregex.exec(graph_txt)
+      let cssData = ''
+      if (results !== null) {
+          cssData = results[1].replace(/\s*data:.*\s*,/,'');
+          cssData = unescape(cssData);
+          graph_txt = graph_txt.replace(cssregex, '');
+      }
+
+      hpccWasm.graphviz.layout(graph_txt, "svg", "dot").then(svg => {
+        renderCache[graphId] = { svg, cssData };
+        const nowCurrId = getIdFromHash();
+        if (!window.frames[nowCurrId] || window.frames[nowCurrId].graph_id !== graphId) {
+          console.log("Main: layout finished, but graph is no longer current. Ignoring rendering.");
+          return;
+        }
+        var area = document.getElementById('rendered');
+        area.innerHTML = `${svg}<style>${cssData}</style>`;
+        svgPanZoom(area.children[0], {
+            zoomEnabled: true, controlIconsEnabled: true, maxZoom: 200, });
+        setupInteractiveFeatures(cssData);
+        document.getElementById('performance_note').textContent =
+          `Rendering took ${(performance.now() - renderStart).toFixed(2)}ms`;
+      });
+    }).catch(err => {
+      const latestCurrId = getIdFromHash();
+      if (window.frames[latestCurrId] && window.frames[latestCurrId].graph_id === graphId) {
+        document.getElementById('performance_note').textContent = `Error: ${err.message}`;
+      } else {
+        console.log("Main: ignored error for non-current frame:", graphId, "error:", err.message);
+      }
+    });
+  };
+
+  const update = (delta) => {
+    let currId = getIdFromHash();
+    currId = (currId + delta + frames.length) % frames.length;
+    window.location.hash = `#frame${currId}`
+  };
+
+  const renderFrameList = () => {
+    const currId = getIdFromHash();
+    const frames_list = document.getElementById('frames_list');
+    frames_list.innerHTML = ''; // Clear if re-rendering
+    for (let i = 0; i < window.frames.length; i++) {
+      const f = window.frames[i];
+      let frameDescr = f.label || "Unnamed state";
+      const rendered = document.createElement("li");
+      rendered.innerHTML = `<a href="#frame${i}">${frameDescr}</a>`;
+      if (i == currId) {
+        rendered.classList.add('selected');
+      }
+      frames_list.appendChild(rendered);
+    }
+  };
+
+  window.addEventListener('hashchange', () => {
+    renderCurrentFrame();
+  });
+
+  window.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented) {
+      return;
+    }
+    if (event.key == "j") {
+      update(1);
+    } else if (event.key == "k") {
+      update(-1);
+    } else {
+      return;
+    }
+    event.preventDefault();
+  }, true);
+
+  const init = () => {
+    document.getElementById('performance_note').textContent = "Loading metadata...";
+    fetch('/api/metadata')
+      .then(r => {
+        if (!r.ok) throw new Error(`Failed to load metadata: ${r.status}`);
+        return r.json();
+      })
+      .then(data => {
+        document.title = data.title;
+
+        window.frames = data.frames;
+        window.graphs = {};
+
+        window.title_to_id = new Map();
+        for (let i=0; i < window.frames.length; i++) {
+           title_to_id.set(window.frames[i].label, i);
+         }
+
+        renderFrameList();
+        renderCurrentFrame();
+
+        document.getElementById('performance_note').textContent = "Metadata loaded";
+      })
+      .catch(err => {
+        document.getElementById('performance_note').textContent = `Error: ${err.message}`;
+      });
+  };
+
+  document.addEventListener("DOMContentLoaded", () => {
+    init();
+
+    // Navigate to next elements on click.
+    document.addEventListener("click", (event) => {
+      let txt = event.target.innerHTML;
+      if (title_to_id.has(txt)) {
+        let id = title_to_id.get(txt);
+        window.location.hash = `#frame${id}`;
+      }
+    });
+  });
+  //-->
+  </script>
+</body>
+</html>

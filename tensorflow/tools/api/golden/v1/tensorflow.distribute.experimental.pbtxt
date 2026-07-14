@@ -1,0 +1,35 @@
+path: "tensorflow.distribute.experimental"
+tf_module {
+  member {
+    name: "CentralStorageStrategy"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "CollectiveCommunication"
+    mtype: "<class \'enum.EnumType\'>"
+  }
+  member {
+    name: "CollectiveHints"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "CommunicationImplementation"
+    mtype: "<class \'enum.EnumType\'>"
+  }
+  member {
+    name: "CommunicationOptions"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "MultiWorkerMirroredStrategy"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "ParameterServerStrategy"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "TPUStrategy"
+    mtype: "<class \'type\'>"
+  }
+}

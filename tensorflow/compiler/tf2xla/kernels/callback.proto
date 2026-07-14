@@ -1,0 +1,49 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
+syntax = "proto2";
+
+package tensorflow;
+
+import "tensorflow/core/framework/node_def.proto";
+import "tensorflow/core/framework/tensor.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+
+message TfCallbackData {
+  message BufferDescription {
+    optional TensorShapeProto shape = 1;
+    optional DataType type = 2;
+  }
+
+  message InputBufferDescription {
+    optional BufferDescription buffer_description = 1;
+
+    // The input value might be already fixed at the compilation time.
+    // This value may or may not be present.
+    optional TensorProto value = 2;
+  }
+
+  message OutputBufferDescription {
+    optional BufferDescription buffer_description = 1;
+    // Whether the buffer stores dynamically padded data: in that case, actual
+    // concrete dimensions need to be stored after the buffer.
+    optional bool is_dynamically_padded = 2;
+  }
+
+  optional tensorflow.NodeDef op = 1;
+  repeated InputBufferDescription inputs = 2;
+  repeated OutputBufferDescription outputs = 3;
+}

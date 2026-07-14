@@ -1,0 +1,11 @@
+path: "tensorflow.types.experimental"
+tf_module {
+  member {
+    name: "FunctionType"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "TensorLike"
+    mtype: "typing.Union"
+  }
+}

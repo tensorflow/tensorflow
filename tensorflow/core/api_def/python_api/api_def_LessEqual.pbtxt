@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "LessEqual"
+  endpoint {
+    name: "math.less_equal"
+  }
+  endpoint {
+    name: "less_equal"
+  }
+}

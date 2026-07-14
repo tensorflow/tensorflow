@@ -1,0 +1,114 @@
+/* Copyright 2021 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include <optional>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "xla/literal_util.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+
+namespace xla::gpu {
+namespace {
+
+class PredArithmeticTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+ protected:
+  void RunAndCompareTruthTable(const char* const hlo_text) {
+    auto false_literal = LiteralUtil::CreateR0(false);
+    auto true_literal = LiteralUtil::CreateR0(true);
+
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+    // Each call to RunAndCompareNoHloPasses insists on taking ownership and
+    // deleting the module, so just Clone it.
+
+    EXPECT_TRUE(RunAndCompareNoHloPasses(
+        module->Clone(), {&false_literal, &false_literal}, std::nullopt));
+
+    EXPECT_TRUE(RunAndCompareNoHloPasses(
+        module->Clone(), {&false_literal, &true_literal}, std::nullopt));
+
+    EXPECT_TRUE(RunAndCompareNoHloPasses(
+        module->Clone(), {&true_literal, &false_literal}, std::nullopt));
+
+    EXPECT_TRUE(RunAndCompareNoHloPasses(
+        module->Clone(), {&true_literal, &true_literal}, std::nullopt));
+  }
+};
+
+TEST_F(PredArithmeticTest, AddPreds) {
+  const char* hlo_text = R"(
+HloModule TestModule
+
+ENTRY compare {
+  x = pred[] parameter(0)
+  y = pred[] parameter(1)
+  ROOT z = pred[] add(x, y)
+}
+
+)";
+
+  RunAndCompareTruthTable(hlo_text);
+}
+
+TEST_F(PredArithmeticTest, MulPreds) {
+  const char* hlo_text = R"(
+HloModule TestModule
+
+ENTRY compare {
+  x = pred[] parameter(0)
+  y = pred[] parameter(1)
+  ROOT z = pred[] multiply(x, y)
+}
+
+)";
+
+  RunAndCompareTruthTable(hlo_text);
+}
+
+TEST_F(PredArithmeticTest, MaxPreds) {
+  const char* hlo_text = R"(
+HloModule TestModule
+
+ENTRY compare {
+  x = pred[] parameter(0)
+  y = pred[] parameter(1)
+  ROOT z = pred[] maximum(x, y)
+}
+
+)";
+
+  RunAndCompareTruthTable(hlo_text);
+}
+
+TEST_F(PredArithmeticTest, MinPreds) {
+  const char* hlo_text = R"(
+HloModule TestModule
+
+ENTRY compare {
+  x = pred[] parameter(0)
+  y = pred[] parameter(1)
+  ROOT z = pred[] minimum(x, y)
+}
+
+)";
+
+  RunAndCompareTruthTable(hlo_text);
+}
+
+}  // namespace
+}  // namespace xla::gpu

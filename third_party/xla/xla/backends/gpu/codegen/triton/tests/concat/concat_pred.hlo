@@ -1,0 +1,75 @@
+// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s --check-prefixes=CHECK,CHECK-OLD
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %s
+
+// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s --check-prefixes=CHECK,CHECK-NEW
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+
+fusion {
+  p0 = pred[128] parameter(0)
+  p1 = pred[128] parameter(1)
+  p2 = pred[25] parameter(2)
+  ROOT concatenate = pred[281] concatenate(p0, p1, p2), dimensions={0}
+}
+// CHECK-OLD-DAG: #[[$MAP0:.+]] = #xla.indexing_map<"(pid_0) -> (pid_0 * 32), domain: pid_0 in [0, 8]">
+// CHECK-OLD-DAG: #[[$MAP1:.+]] = #xla.indexing_map<"(pid_0) -> (pid_0 * 32), domain: pid_0 in [0, 3]">
+// CHECK-OLD-DAG: #[[$MAP2:.+]] = #xla.indexing_map<"(pid_0) -> (pid_0 * 32 - 128), domain: pid_0 in [4, 7]">
+
+// CHECK-NEW-DAG: #[[$MAP0:.+]] = #xla.indexing_map<"(pid) -> (pid * 32), domain: pid in [0, 8]">
+// CHECK-NEW-DAG: #[[$MAP1:.+]] = #xla.indexing_map<"(pid) -> (pid * 32 - 128), domain: pid in [0, 8]">
+// CHECK-NEW-DAG: #[[$MAP2:.+]] = #xla.indexing_map<"(pid) -> (pid * 32 - 256), domain: pid in [0, 8]">
+
+// CHECK:       xtile.entry_func
+// CHECK-SAME:  %[[ARG0:[A-Za-z0-9]+]]: memref<128xi8>,
+// CHECK-SAME:  %[[ARG1:[A-Za-z0-9]+]]: memref<128xi8>,
+// CHECK-SAME:  %[[ARG2:[A-Za-z0-9]+]]: memref<25xi8>,
+// CHECK-SAME:  %[[RESULT:[A-Za-z0-9]+]]: memref<281xi8>,
+// CHECK-SAME:  %[[PID:[A-Za-z0-9]+]]: index
+
+// CHECK-DAG:   %[[C128:.*]] = arith.constant 128 : index
+// CHECK-DAG:   %[[C256:.*]] = arith.constant 256 : index
+// CHECK-DAG:   %[[CST:.*]] = arith.constant dense<0> : tensor<32xi8>
+// CHECK-OLD-DAG: %[[C0:.*]] = arith.constant 0 : index
+
+// CHECK:       %[[OFFSET:.*]] = xla.apply_indexing #[[$MAP0]](%[[PID]])
+// CHECK:       %[[CMPI_0:.*]] = arith.cmpi slt, %[[OFFSET]], %[[C128]] : index
+// CHECK:       %[[IF_0:.*]] = scf.if %[[CMPI_0]] -> (tensor<32xi1>) {
+// CHECK-OLD:     %[[OFFSET_1:.*]] = xla.apply_indexing #[[$MAP1]](%[[PID]])
+// CHECK-OLD:     %[[EXTRACT_0:.*]] = xtile.extract %[[ARG0]][%[[OFFSET_1]]] [32] [1] : memref<128xi8> -> tensor<32xi8>
+// CHECK-NEW:     %[[EXTRACT_0:.*]] = xtile.extract %[[ARG0]][%[[OFFSET]]] [32] [1] : memref<128xi8> -> tensor<32xi8>
+// CHECK:         %[[CMPI_1:.*]] = arith.cmpi ne, %[[EXTRACT_0]], %[[CST]] : tensor<32xi8>
+// CHECK:         scf.yield %[[CMPI_1]] : tensor<32xi1>
+// CHECK:       } else {
+// CHECK:         %[[CMPI_2:.*]] = arith.cmpi slt, %[[OFFSET]], %[[C256]] : index
+// CHECK:         %[[IF_1:.*]] = scf.if %[[CMPI_2]] -> (tensor<32xi1>) {
+// CHECK-OLD:       %[[OFFSET_2:.*]] = xla.apply_indexing #[[$MAP2]](%[[PID]])
+// CHECK-OLD:       %[[EXTRACT_1:.*]] = xtile.extract %[[ARG1]][%[[OFFSET_2]]] [32] [1] : memref<128xi8> -> tensor<32xi8>
+// CHECK-NEW:       %[[OFFSET_2:.*]] = xla.apply_indexing #[[$MAP1]](%[[PID]])
+// CHECK-NEW:       %[[EXTRACT_1:.*]] = xtile.extract %[[ARG1]][%[[OFFSET_2]]] [32] [1] : memref<128xi8> -> tensor<32xi8>
+// CHECK:           %[[CMPI_3:.*]] = arith.cmpi ne, %[[EXTRACT_1]], %[[CST]] : tensor<32xi8>
+// CHECK:           scf.yield %[[CMPI_3]] : tensor<32xi1>
+// CHECK:         } else {
+// CHECK-OLD:       %[[EXTRACT_2:.*]] = xtile.extract %[[ARG2]][%[[C0]]] [32] [1] : memref<25xi8> -> tensor<32xi8>
+// CHECK-NEW:       %[[OFFSET_3:.*]] = xla.apply_indexing #[[$MAP2]](%[[PID]])
+// CHECK-NEW:       %[[EXTRACT_2:.*]] = xtile.extract %[[ARG2]][%[[OFFSET_3]]] [32] [1] : memref<25xi8> -> tensor<32xi8>
+// CHECK:           %[[CMPI_4:.*]] = arith.cmpi ne, %[[EXTRACT_2]], %[[CST]] : tensor<32xi8>
+// CHECK:           scf.yield %[[CMPI_4]] : tensor<32xi1>
+// CHECK:         }
+// CHECK:         scf.yield %[[IF_1]] : tensor<32xi1>
+// CHECK:       }
+// CHECK:       %[[EXTUI:.*]] = arith.extui %[[IF_0]] : tensor<32xi1> to tensor<32xi8>
+// CHECK:       xtile.insert %[[EXTUI]] into %[[RESULT]][%[[OFFSET]]] [32] [1] : tensor<32xi8> -> memref<281xi8>
+
+ENTRY main {
+  p0 = pred[128] parameter(0)
+  p1 = pred[128] parameter(1)
+  p2 = pred[25] parameter(2)
+  ROOT fusion = pred[281] fusion(p0, p1, p2), kind=kCustom,
+    calls=fusion, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["32"]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+}

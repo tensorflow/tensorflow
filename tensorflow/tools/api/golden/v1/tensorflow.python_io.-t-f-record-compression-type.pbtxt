@@ -1,0 +1,20 @@
+path: "tensorflow.python_io.TFRecordCompressionType"
+tf_class {
+  is_instance: "<class \'tensorflow.python.lib.io.tf_record.TFRecordCompressionType\'>"
+  is_instance: "<class \'object\'>"
+  member {
+    name: "GZIP"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "NONE"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "ZLIB"
+    mtype: "<class \'int\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+}

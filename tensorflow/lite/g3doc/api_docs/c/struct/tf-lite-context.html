@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html devsite>
+<head>
+  <title>TfLiteContext Struct Reference</title>
+  <meta name="page_type" value="reference" />
+</head>
+<body>
+  <div id="top"><!-- do not remove this div --></div>
+  <h1>TfLiteContext</h1>
+  <code>#include &lt;common.h&gt;</code>
+  <p><code><a href="/lite/api_docs/c/struct/tf-lite-context.html#struct_tf_lite_context">TfLiteContext</a></code> allows an op to access the tensors. </p>
+  <h2>Summary</h2>
+  <p><code><a href="/lite/api_docs/c/struct/tf-lite-context.html#struct_tf_lite_context">TfLiteContext</a></code> is a struct that is created by the TF Lite runtime and passed to the "methods" (C function pointers) in the <code><a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a></code> struct that are used to define custom ops and custom delegate kernels. It contains information and methods (C function pointers) that can be called by the code implementing a custom op or a custom delegate kernel. These methods provide access to the context in which that custom op or custom delegate kernel occurs, such as access to the input and output tensors for that op, as well as methods for allocating memory buffers and intermediate tensors, etc.</p>
+  <p>See also <code>TfLiteOpaqueContext</code>, which is an more ABI-stable equivalent. </p>
+  <table class="properties responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Public attributes</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_context_1a3c7b83d2e2e0d10fac40e74fcc5501c9">AcquireSubgraphContext</a>)(struct TfLiteContext *context, int subgraph_index, struct TfLiteContext **acquired_context)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(*</code>
+        </div>
+        <div>Retrieves the corresponding <a href="/lite/api_docs/c/struct/tf-lite-context.html#struct_tf_lite_context">TfLiteContext</a> of a subgraph that the given subgraph_index points to and switches to the delegate context for that subgraph. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_context_1af42843f0aa27c86616f13b89d918c7fa">AddTensors</a>)(struct TfLiteContext *, int tensors_to_add, int *first_new_tensor_index)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(*</code>
+        </div>
+        <div>Add <code>tensors_to_add</code> tensors, preserving pre-existing Tensor entries. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_context_1ae58057987f38a9d4ad2c59612fa69e81">AllocateBufferForEval</a>)(struct TfLiteContext *ctx, size_t bytes, void **ptr)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(*</code>
+        </div>
+        <div>Allocate a buffer which will be deallocated right after invoke phase. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_context_1a6be0a7dc5e0b26df0818f47b775369c3">AllocatePersistentBuffer</a>)(struct TfLiteContext *ctx, size_t bytes)</code>
+      </td>
+      <td>
+        <div>
+          <code>void *(*</code>
+        </div>
+        <div>Allocate persistent buffer which has the same life time as the interpreter. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_context_1a7967c64f2435042d5f6d80baf045a097">GetEvalTensor</a>)(const struct TfLiteContext *context, int tensor_idx)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-eval-tensor.html#struct_tf_lite_eval_tensor">TfLiteEvalTensor</a> *(*</code>
+        </div>
+        <div>Returns a <a href="/lite/api_docs/c/struct/tf-lite-eval-tensor.html#struct_tf_lite_eval_tensor">TfLiteEvalTensor</a> struct for a given index. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_context_1aa5cdeaf32eb9b734e84dcb73445c21c2">GetExecutionPlan</a>)(struct TfLiteContext *context, TfLiteIntArray **execution_plan)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(*</code>
+        </div>
+        <div>The execution plan contains a list of the node indices in execution order. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_context_1a88569659197f9afb84c4b1d64763dbe1">GetExternalContext</a>)(struct TfLiteContext *, TfLiteExternalContextType)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-external-context.html#struct_tf_lite_external_context">TfLiteExternalContext</a> *(*</code>
+        </div>
+        <div>Access external contexts by type. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_context_1af98e01da8d4d602737f2de09cf82f1ca">GetModelMetadata</a>)(const struct TfLiteContext *context, const char *name, const char **ptr, size_t *bytes)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(*</code>
+        </div>
+        <div>Retrieves named metadata buffer from the TFLite model. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_context_1ad9e4688ba7cc45a5686b2e6fdf78a96b">GetNodeAndRegistration</a>)(struct TfLiteContext *, int node_index, TfLiteNode **node, struct TfLiteRegistration **registration)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(*</code>
+        </div>
+        <div>Get a Tensor node by node_index. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_context_1a7a475accf4aa157a9ed65f1e6d700eb1">GetScratchBuffer</a>)(struct TfLiteContext *ctx, int buffer_idx)</code>
+      </td>
+      <td>
+        <div>
+          <code>void *(*</code>
+        </div>
+        <div>Get the scratch buffer pointer. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_context_1a205d79ec6870754eebac003f883ee923">GetTensor</a>)(const struct TfLiteContext *context, int tensor_idx)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *(*</code>
+        </div>
+        <div>Returns a <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> struct for a given index. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_context_1afaaf502811bbcf1441c3879e9c47b8ec">PreviewDelegatePartitioning</a>)(struct TfLiteContext *context, const TfLiteIntArray *nodes_to_replace, TfLiteDelegateParams **partition_params_array, int *num_partitions)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(*</code>
+        </div>
+        <div>This method provides a preview of post-delegation partitioning. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_context_1a3efba668c1f270366bd4203ca1c4fde9">ReleaseSubgraphContext</a>)(struct TfLiteContext *context, int subgraph_index)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(*</code>
+        </div>
+        <div>Releases the subgraph context by switching back to the TFLite kernel context for the subgraph that the given subgraph_index points to. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_context_1a3ca1af96f5dcbcfe5ae72665dd9c27df">ReplaceNodeSubsetsWithDelegateKernels</a>)(struct TfLiteContext *, struct TfLiteRegistration registration, const TfLiteIntArray *nodes_to_replace, struct TfLiteDelegate *delegate)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(*</code>
+        </div>
+        <div>Replace ops with one or more stub delegate operations. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_context_1aefe130a452e108010d3f8fd428b0bf23">ReportError</a>)(struct TfLiteContext *, const char *msg,...)</code>
+      </td>
+      <td>
+        <div>
+          <code>void(*</code>
+        </div>
+        <div>Request that an error be reported with format string msg. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_context_1a7a3778903dc181d98fe1f10a4f6e15c9">RequestScratchBufferInArena</a>)(struct TfLiteContext *ctx, size_t bytes, int *buffer_idx)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(*</code>
+        </div>
+        <div>Request a scratch buffer in the arena through static memory planning. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_context_1af37c2aaccdca191c9ac3bf2b9b00b59a">ResizeTensor</a>)(struct TfLiteContext *, TfLiteTensor *tensor, TfLiteIntArray *new_size)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(*</code>
+        </div>
+        <div>Request memory pointer be resized. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_context_1adcbd972b5271979f35c18e83e28511b7">ResizeTensorExplicit</a>)(struct TfLiteContext *ctx, TfLiteTensor *tensor, int dims, const int *shape)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(*</code>
+        </div>
+        <div>Resize the memory pointer of the <code>tensor</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_context_1a46dd8ae6f6b945bee9caefa39528d954">SetExternalContext</a>)(struct TfLiteContext *, TfLiteExternalContextType, TfLiteExternalContext *)</code>
+      </td>
+      <td>
+        <div>
+          <code>void(*</code>
+        </div>
+        <div>Set the value of a external context. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_context_1a2c14aa723ed7d38a33fb8c0f611b1ad2">allow_fp32_relax_to_fp16</a></code>
+      </td>
+      <td>
+        <div>
+          <code>bool</code>
+        </div>
+        <div>Flag for allowing float16 precision for FP32 calculation. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_context_1ad66dfab7fa23723499f600668adb7684">impl_</a></code>
+      </td>
+      <td>
+        <div>
+          <code>void *</code>
+        </div>
+        <div>opaque full context ptr (an opaque c++ data structure) </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_context_1a63073f6c160cf0c0ff56537a6c57888e">profiler</a></code>
+      </td>
+      <td>
+        <div>
+          <code>void *</code>
+        </div>
+        <div>Pointer to the op-level profiler, if set; nullptr otherwise. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_context_1a76dc6ac92f9ff38e377f48b1d0b165ad">recommended_num_threads</a></code>
+      </td>
+      <td>
+        <div>
+          <code>int</code>
+        </div>
+        <div>Number of threads that are recommended to subsystems like gemmlowp and eigen. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_context_1a4c2b2195a11468ab3009a961fdf1bbe5">tensors</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *</code>
+        </div>
+        <div>An array of tensors in the interpreter context (of length <code>tensors_size</code>) </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_context_1a70d1aa6ac0773caf8bb9f20b07cfd595">tensors_size</a></code>
+      </td>
+      <td>
+        <div>
+          <code>size_t</code>
+        </div>
+        <div>Number of tensors in the context. </div>
+      </td>
+    </tr>
+  </table>
+  <h2>Public attributes</h2>
+  <div id="struct_tf_lite_context_1a3c7b83d2e2e0d10fac40e74fcc5501c9">
+    <h3>AcquireSubgraphContext</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(* TfLiteContext::AcquireSubgraphContext)(struct TfLiteContext *context, int subgraph_index, struct TfLiteContext **acquired_context)</pre>
+    <div>
+      <p>Retrieves the corresponding <a href="/lite/api_docs/c/struct/tf-lite-context.html#struct_tf_lite_context">TfLiteContext</a> of a subgraph that the given subgraph_index points to and switches to the delegate context for that subgraph. </p>
+      <p>If an invalid subgraph index is given, returns kTfLiteError.</p>
+      <p>NOTE: This function is expected to be paired with <a href="/lite/api_docs/c/struct/tf-lite-context.html#struct_tf_lite_context_1a3efba668c1f270366bd4203ca1c4fde9">ReleaseSubgraphContext()</a> once the delegate preparation is done and/or the delegate context functions are no longer needed.</p>
+      <p>WARNING: This is an experimental interface that is subject to change. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_context_1af42843f0aa27c86616f13b89d918c7fa">
+    <h3>AddTensors</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(* TfLiteContext::AddTensors)(struct TfLiteContext *, int tensors_to_add, int *first_new_tensor_index)</pre>
+    <div>
+      <p>Add <code>tensors_to_add</code> tensors, preserving pre-existing Tensor entries. </p>
+      <p>If non-null, the value pointed to by <code>first_new_tensor_index</code> will be set to the index of the first new tensor. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_context_1ae58057987f38a9d4ad2c59612fa69e81">
+    <h3>AllocateBufferForEval</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(* TfLiteContext::AllocateBufferForEval)(struct TfLiteContext *ctx, size_t bytes, void **ptr)</pre>
+    <div>
+      <p>Allocate a buffer which will be deallocated right after invoke phase. </p>
+      <p>The memory is allocated from heap in TFL, and from volatile arena in TFLM. This method is only available in invoke stage.</p>
+      <p>NOTE: If possible use <code>RequestScratchBufferInArena</code> method to avoid memory allocation during inference time.</p>
+      <p>WARNING: This is an experimental interface that is subject to change. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_context_1a6be0a7dc5e0b26df0818f47b775369c3">
+    <h3>AllocatePersistentBuffer</h3>
+    <pre class="prettyprint">void *(* TfLiteContext::AllocatePersistentBuffer)(struct TfLiteContext *ctx, size_t bytes)</pre>
+    <div>
+      <p>Allocate persistent buffer which has the same life time as the interpreter. </p>
+      <p>Returns <code>nullptr</code> on failure. The memory is allocated from heap for TFL, and from tail in TFLM. This method is only available in <code>Init</code> or <code>Prepare</code> stage.</p>
+      <p>WARNING: This is an experimental interface that is subject to change. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_context_1a7967c64f2435042d5f6d80baf045a097">
+    <h3>GetEvalTensor</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-eval-tensor.html#struct_tf_lite_eval_tensor">TfLiteEvalTensor</a> *(* TfLiteContext::GetEvalTensor)(const struct TfLiteContext *context, int tensor_idx)</pre>
+    <div>
+      <p>Returns a <a href="/lite/api_docs/c/struct/tf-lite-eval-tensor.html#struct_tf_lite_eval_tensor">TfLiteEvalTensor</a> struct for a given index. </p>
+      <p>WARNING: This is an experimental interface that is subject to change.</p>
+      <p>WARNING: This method may not be available on all platforms. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_context_1aa5cdeaf32eb9b734e84dcb73445c21c2">
+    <h3>GetExecutionPlan</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(* TfLiteContext::GetExecutionPlan)(struct TfLiteContext *context, TfLiteIntArray **execution_plan)</pre>
+    <div>
+      <p>The execution plan contains a list of the node indices in execution order. </p>
+      <p>execution_plan->size is the current number of nodes. And, execution_plan->data[0] is the first node that needs to be run. TfLiteDelegates can traverse the current execution plan by iterating through each member of this array and using <a href="/lite/api_docs/c/struct/tf-lite-context.html#struct_tf_lite_context_1ad9e4688ba7cc45a5686b2e6fdf78a96b">GetNodeAndRegistration()</a> to access details about a node. i.e.</p>
+      <p>
+        <pre class="prettyprint">TfLiteIntArray* execution_plan;
+TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context,
+                                                &execution_plan));
+for (int exec_index = 0; exec_index < execution_plan->size;
+      exec_index++) {
+   int node_index = execution_plan->data[exec_index];
+   TfLiteNode* node;
+   TfLiteRegistration* reg;
+   context->GetNodeAndRegistration(context, node_index, &node, &reg);
+}
+</pre>
+      </p>
+      <p>Note: the memory pointed by '<code>*execution_plan</code> is OWNED by TfLite runtime. Future calls to GetExecutionPlan invalidates earlier outputs. The following code snippet shows the issue of such an invocation pattern. After calling CheckNode, subsequent access to <code>plan_1st</code> is undefined. <pre class="prettyprint">void CheckNode(const TfLiteNode* node) {
+  ...
+  TfLiteIntArray* plan_2nd;
+  TF_LITE_ENSURE_STATUS(
+      context->GetExecutionPlan(context, &plan_2nd)
+  );
+  ...
+}
+
+TfLiteIntArray* plan_1st;
+TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &plan_1st));
+for (int exec_index = 0; exec_index < plan_1st->size; exec_index++) {
+   int node_index = plan_1st->data[exec_index];
+   TfLiteNode* node;
+   TfLiteRegistration* reg;
+   context->GetNodeAndRegistration(context, node_index, &node, &reg);
+   CheckNode(node);
+}
+</pre></p>
+      <p>WARNING: This is an experimental interface that is subject to change. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_context_1a88569659197f9afb84c4b1d64763dbe1">
+    <h3>GetExternalContext</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-external-context.html#struct_tf_lite_external_context">TfLiteExternalContext</a> *(* TfLiteContext::GetExternalContext)(struct TfLiteContext *, TfLiteExternalContextType)</pre>
+    <div>
+      <p>Access external contexts by type. </p>
+      <p>WARNING: This is an experimental interface that is subject to change. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_context_1af98e01da8d4d602737f2de09cf82f1ca">
+    <h3>GetModelMetadata</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(* TfLiteContext::GetModelMetadata)(const struct TfLiteContext *context, const char *name, const char **ptr, size_t *bytes)</pre>
+    <div>
+      <p>Retrieves named metadata buffer from the TFLite model. </p>
+      <p>Returns kTfLiteOk if metadata is successfully obtained from the flatbuffer Model: that is, there exists a <code>metadata</code> entry with given <code>name</code> string. (see TFLite's schema.fbs). The corresponding <code>buffer</code> information is populated in <code>ptr</code> & <code>bytes</code>. The data from <code>ptr</code> is valid for the lifetime of the Interpreter.</p>
+      <p>WARNING: This is an experimental interface that is subject to change. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_context_1ad9e4688ba7cc45a5686b2e6fdf78a96b">
+    <h3>GetNodeAndRegistration</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(* TfLiteContext::GetNodeAndRegistration)(struct TfLiteContext *, int node_index, TfLiteNode **node, struct TfLiteRegistration **registration)</pre>
+    <div>
+      <p>Get a Tensor node by node_index. </p>
+      <p>WARNING: This is an experimental interface that is subject to change. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_context_1a7a475accf4aa157a9ed65f1e6d700eb1">
+    <h3>GetScratchBuffer</h3>
+    <pre class="prettyprint">void *(* TfLiteContext::GetScratchBuffer)(struct TfLiteContext *ctx, int buffer_idx)</pre>
+    <div>
+      <p>Get the scratch buffer pointer. </p>
+      <p>This method is only available in Eval stage.</p>
+      <p>WARNING: This is an experimental interface that is subject to change. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_context_1a205d79ec6870754eebac003f883ee923">
+    <h3>GetTensor</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *(* TfLiteContext::GetTensor)(const struct TfLiteContext *context, int tensor_idx)</pre>
+    <div>
+      <p>Returns a <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> struct for a given index. </p>
+      <p>WARNING: This is an experimental interface that is subject to change.</p>
+      <p>WARNING: This method may not be available on all platforms. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_context_1afaaf502811bbcf1441c3879e9c47b8ec">
+    <h3>PreviewDelegatePartitioning</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(* TfLiteContext::PreviewDelegatePartitioning)(struct TfLiteContext *context, const TfLiteIntArray *nodes_to_replace, TfLiteDelegateParams **partition_params_array, int *num_partitions)</pre>
+    <div>
+      <p>This method provides a preview of post-delegation partitioning. </p>
+      <p>Each <a href="/lite/api_docs/c/struct/tf-lite-delegate-params.html#struct_tf_lite_delegate_params">TfLiteDelegateParams</a> in the referenced array corresponds to one instance of the delegate kernel. Example usage: <pre class="prettyprint">TfLiteIntArray* nodes_to_replace = ...;
+TfLiteDelegateParams* params_array;
+int num_partitions = 0;
+TF_LITE_ENSURE_STATUS(context->PreviewDelegatePartitioning(
+   context, delegate, nodes_to_replace, &params_array,
+   &num_partitions));
+for (int idx = 0; idx < num_partitions; idx++) {
+   const auto& partition_params = params_array[idx];
+   ...
+}
+</pre></p>
+      <p>NOTE: The context owns the memory referenced by partition_params_array. It will be cleared with another call to PreviewDelegatePartitioning, or after TfLiteDelegateParams::Prepare returns.</p>
+      <p>WARNING: This is an experimental interface that is subject to change. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_context_1a3efba668c1f270366bd4203ca1c4fde9">
+    <h3>ReleaseSubgraphContext</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(* TfLiteContext::ReleaseSubgraphContext)(struct TfLiteContext *context, int subgraph_index)</pre>
+    <div>
+      <p>Releases the subgraph context by switching back to the TFLite kernel context for the subgraph that the given subgraph_index points to. </p>
+      <p>NOTE: This function is expected to be used after <a href="/lite/api_docs/c/struct/tf-lite-context.html#struct_tf_lite_context_1a3c7b83d2e2e0d10fac40e74fcc5501c9">AcquireSubgraphContext()</a> once the delegate preparation is done and/or the delegate context functions are no longer needed.</p>
+      <p>WARNING: This is an experimental interface that is subject to change. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_context_1a3ca1af96f5dcbcfe5ae72665dd9c27df">
+    <h3>ReplaceNodeSubsetsWithDelegateKernels</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(* TfLiteContext::ReplaceNodeSubsetsWithDelegateKernels)(struct TfLiteContext *, struct TfLiteRegistration registration, const TfLiteIntArray *nodes_to_replace, struct TfLiteDelegate *delegate)</pre>
+    <div>
+      <p>Replace ops with one or more stub delegate operations. </p>
+      <p>This function does not take ownership of <code>nodes_to_replace</code>. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_context_1aefe130a452e108010d3f8fd428b0bf23">
+    <h3>ReportError</h3>
+    <pre class="prettyprint">void(* TfLiteContext::ReportError)(struct TfLiteContext *, const char *msg,...)</pre>
+    <div>
+      <p>Request that an error be reported with format string msg. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_context_1a7a3778903dc181d98fe1f10a4f6e15c9">
+    <h3>RequestScratchBufferInArena</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(* TfLiteContext::RequestScratchBufferInArena)(struct TfLiteContext *ctx, size_t bytes, int *buffer_idx)</pre>
+    <div>
+      <p>Request a scratch buffer in the arena through static memory planning. </p>
+      <p>This method is only available in <code>Prepare</code> stage and the buffer is allocated by the interpreter between Prepare and Eval stage. In <code>Eval</code> stage, <code>GetScratchBuffer</code> API can be used to fetch the address.</p>
+      <p>WARNING: This is an experimental interface that is subject to change. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_context_1af37c2aaccdca191c9ac3bf2b9b00b59a">
+    <h3>ResizeTensor</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(* TfLiteContext::ResizeTensor)(struct TfLiteContext *, TfLiteTensor *tensor, TfLiteIntArray *new_size)</pre>
+    <div>
+      <p>Request memory pointer be resized. </p>
+      <p>Updates dimensions on the tensor. NOTE: ResizeTensor takes ownership of newSize. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_context_1adcbd972b5271979f35c18e83e28511b7">
+    <h3>ResizeTensorExplicit</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(* TfLiteContext::ResizeTensorExplicit)(struct TfLiteContext *ctx, TfLiteTensor *tensor, int dims, const int *shape)</pre>
+    <div>
+      <p>Resize the memory pointer of the <code>tensor</code>. </p>
+      <p>This method behaves the same as <code>ResizeTensor</code>, except that it makes a copy of the shape array internally so the shape array could be deallocated right afterwards.</p>
+      <p>WARNING: This is an experimental interface that is subject to change. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_context_1a46dd8ae6f6b945bee9caefa39528d954">
+    <h3>SetExternalContext</h3>
+    <pre class="prettyprint">void(* TfLiteContext::SetExternalContext)(struct TfLiteContext *, TfLiteExternalContextType, TfLiteExternalContext *)</pre>
+    <div>
+      <p>Set the value of a external context. </p>
+      <p>Does not take ownership of the pointer.</p>
+      <p>WARNING: This is an experimental interface that is subject to change. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_context_1a2c14aa723ed7d38a33fb8c0f611b1ad2">
+    <h3>allow_fp32_relax_to_fp16</h3>
+    <pre class="prettyprint">bool TfLiteContext::allow_fp32_relax_to_fp16</pre>
+    <div>
+      <p>Flag for allowing float16 precision for FP32 calculation. </p>
+      <p>default: false.</p>
+      <p>WARNING: This is an experimental API and subject to change. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_context_1ad66dfab7fa23723499f600668adb7684">
+    <h3>impl_</h3>
+    <pre class="prettyprint">void * TfLiteContext::impl_</pre>
+    <div>
+      <p>opaque full context ptr (an opaque c++ data structure) </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_context_1a63073f6c160cf0c0ff56537a6c57888e">
+    <h3>profiler</h3>
+    <pre class="prettyprint">void * TfLiteContext::profiler</pre>
+    <div>
+      <p>Pointer to the op-level profiler, if set; nullptr otherwise. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_context_1a76dc6ac92f9ff38e377f48b1d0b165ad">
+    <h3>recommended_num_threads</h3>
+    <pre class="prettyprint">int TfLiteContext::recommended_num_threads</pre>
+    <div>
+      <p>Number of threads that are recommended to subsystems like gemmlowp and eigen. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_context_1a4c2b2195a11468ab3009a961fdf1bbe5">
+    <h3>tensors</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> * TfLiteContext::tensors</pre>
+    <div>
+      <p>An array of tensors in the interpreter context (of length <code>tensors_size</code>) </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_context_1a70d1aa6ac0773caf8bb9f20b07cfd595">
+    <h3>tensors_size</h3>
+    <pre class="prettyprint">size_t TfLiteContext::tensors_size</pre>
+    <div>
+      <p>Number of tensors in the context. </p>
+    </div>
+  </div>
+</body>
+</html>

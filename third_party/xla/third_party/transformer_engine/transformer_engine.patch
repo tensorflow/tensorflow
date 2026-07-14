@@ -1,0 +1,158 @@
+diff --git a/transformer_engine/common/common.cu b/transformer_engine/common/common.cu
+index 192c915..e94a92b 100644
+--- a/transformer_engine/common/common.cu
++++ b/transformer_engine/common/common.cu
+@@ -6,7 +6,6 @@
+
+ #include <transformer_engine/transformer_engine.h>
+
+-#include <bit>
+
+ #include "./common.h"
+ #include "./utils.cuh"
+diff --git a/transformer_engine/common/cudnn_utils.h b/transformer_engine/common/cudnn_utils.h
+index 0016ad7..985a9ba 100644
+--- a/transformer_engine/common/cudnn_utils.h
++++ b/transformer_engine/common/cudnn_utils.h
+@@ -8,8 +8,8 @@
+ #define TRANSFORMER_ENGINE_CUDNN_UTILS_H_
+
+ #include <cudnn.h>
+-#include <cudnn_frontend.h>
+-#include <cudnn_frontend_utils.h>
++#include "third_party/cudnn_frontend/include/cudnn_frontend.h"
++#include "third_party/cudnn_frontend/include/cudnn_frontend_utils.h"
+ #include <cudnn_graph.h>
+
+ #include "transformer_engine/transformer_engine.h"
+diff --git a/transformer_engine/common/fused_attn/fused_attn_f16_arbitrary_seqlen.cu b/transformer_engine/common/fused_attn/fused_attn_f16_arbitrary_seqlen.cu
+index 0932b2c..7fd2a94 100644
+--- a/transformer_engine/common/fused_attn/fused_attn_f16_arbitrary_seqlen.cu
++++ b/transformer_engine/common/fused_attn/fused_attn_f16_arbitrary_seqlen.cu
+@@ -6,8 +6,8 @@
+
+ #include <cuda_bf16.h>
+ #include <cuda_fp16.h>
+-#include <cudnn_frontend.h>
+-#include <cudnn_frontend_utils.h>
++#include "third_party/cudnn_frontend/include/cudnn_frontend.h"
++#include "third_party/cudnn_frontend/include/cudnn_frontend_utils.h"
+
+ #include <map>
+ #include <vector>
+diff --git a/transformer_engine/common/fused_attn/fused_attn_f16_max512_seqlen.cu b/transformer_engine/common/fused_attn/fused_attn_f16_max512_seqlen.cu
+index 89528fa..9f53123 100644
+--- a/transformer_engine/common/fused_attn/fused_attn_f16_max512_seqlen.cu
++++ b/transformer_engine/common/fused_attn/fused_attn_f16_max512_seqlen.cu
+@@ -6,7 +6,7 @@
+
+ #include <cuda_bf16.h>
+ #include <cuda_fp16.h>
+-#include <cudnn_frontend.h>
++#include "third_party/cudnn_frontend/include/cudnn_frontend.h"
+
+ #include <map>
+ #include <vector>
+diff --git a/transformer_engine/common/fused_attn/utils.h b/transformer_engine/common/fused_attn/utils.h
+index 678b636..58bcec4 100644
+--- a/transformer_engine/common/fused_attn/utils.h
++++ b/transformer_engine/common/fused_attn/utils.h
+@@ -8,8 +8,8 @@
+ #define TRANSFORMER_ENGINE_FUSED_ATTN_UTILS_H_
+
+ #include <cudnn.h>
+-#include <cudnn_frontend.h>
+-#include <cudnn_frontend_utils.h>
++#include "third_party/cudnn_frontend/include/cudnn_frontend.h"
++#include "third_party/cudnn_frontend/include/cudnn_frontend_utils.h"
+
+ #include <cstdint>
+ #include <mutex>
+diff --git a/transformer_engine/common/normalization/common.h b/transformer_engine/common/normalization/common.h
+index 0ec1604..aef319d 100644
+--- a/transformer_engine/common/normalization/common.h
++++ b/transformer_engine/common/normalization/common.h
+@@ -8,8 +8,8 @@
+ #define TRANSFORMER_ENGINE_COMMON_NORM_COMMON_H_
+
+ #include <cudnn.h>
+-#include <cudnn_frontend.h>
+-#include <cudnn_frontend_utils.h>
++#include "third_party/cudnn_frontend/include/cudnn_frontend.h"
++#include "third_party/cudnn_frontend/include/cudnn_frontend_utils.h"
+ #include <transformer_engine/normalization.h>
+ #include <transformer_engine/transformer_engine.h>
+
+diff --git a/transformer_engine/common/util/cuda_runtime.cpp b/transformer_engine/common/util/cuda_runtime.cpp
+index ac1bb1b..febb9a1 100644
+--- a/transformer_engine/common/util/cuda_runtime.cpp
++++ b/transformer_engine/common/util/cuda_runtime.cpp
+@@ -13,18 +13,12 @@
+ #include "../util/cuda_driver.h"
+ #include "../util/system.h"
+ #include "common/util/cuda_runtime.h"
++#include "tsl/platform/cuda_root_path.h"
+
+ namespace transformer_engine {
+
+ namespace cuda {
+
+-namespace {
+-
+-// String with build-time CUDA include path
+-#include "string_path_cuda_include.h"
+-
+-}  // namespace
+-
+ int num_devices() {
+   auto query_num_devices = []() -> int {
+     int count;
+@@ -146,8 +140,10 @@ const std::string &include_directory(bool required) {
+     std::vector<std::pair<std::string, Path>> search_paths = {{"NVTE_CUDA_INCLUDE_DIR", ""},
+                                                               {"CUDA_HOME", ""},
+                                                               {"CUDA_DIR", ""},
+-                                                              {"", string_path_cuda_include},
+                                                               {"", "/usr/local/cuda"}};
++    for (auto &candidate : tsl::CandidateCudaRoots()) {
++      search_paths.push_back({"", candidate});
++    }
+     for (auto &[env, p] : search_paths) {
+       if (p.empty()) {
+         p = getenv<Path>(env.c_str());
+diff --git a/transformer_engine/jax/csrc/extensions/attention.cpp b/transformer_engine/jax/csrc/extensions/attention.cpp
+index 40089dc..cf256e3 100644
+--- a/transformer_engine/jax/csrc/extensions/attention.cpp
++++ b/transformer_engine/jax/csrc/extensions/attention.cpp
+@@ -5,6 +5,7 @@
+  ************************************************************************/
+
+ #include "../extensions.h"
++#include <cudnn_graph.h>
+ #include "transformer_engine/fused_attn.h"
+ #include "transformer_engine/transformer_engine.h"
+
+diff --git a/transformer_engine/jax/csrc/extensions/ffi.h b/transformer_engine/jax/csrc/extensions/ffi.h
+index 852a67c..92df9de 100644
+--- a/transformer_engine/jax/csrc/extensions/ffi.h
++++ b/transformer_engine/jax/csrc/extensions/ffi.h
+@@ -5,7 +5,7 @@
+  ************************************************************************/
+
+ #include <transformer_engine/transformer_engine.h>
+-#include <xla/ffi/api/ffi.h>
++#include "xla/ffi/api/ffi.h"
+
+ #include <numeric>
+
+diff --git a/transformer_engine/jax/csrc/extensions/utils.cpp b/transformer_engine/jax/csrc/extensions/utils.cpp
+index 3ba0737..10b72c8 100644
+--- a/transformer_engine/jax/csrc/extensions/utils.cpp
++++ b/transformer_engine/jax/csrc/extensions/utils.cpp
+@@ -6,6 +6,7 @@
+ #include "utils.h"
+
+ #include <cuda_runtime_api.h>
++#include <cudnn_graph.h>
+
+ #include <cassert>
+

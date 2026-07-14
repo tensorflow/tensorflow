@@ -1,0 +1,102 @@
+node {
+  name: "Placeholder"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_BOOL
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "Placeholder_1"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "If"
+  op: "If"
+  input: "Placeholder"
+  input: "Placeholder_1"
+  attr {
+    key: "Tcond"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "Tin"
+    value {
+      list {
+        type: DT_INT32
+      }
+    }
+  }
+  attr {
+    key: "Tout"
+    value {
+      list {
+        type: DT_INT32
+      }
+    }
+  }
+  attr {
+    key: "else_branch"
+    value {
+      func {
+        name: "identity_function"
+      }
+    }
+  }
+  attr {
+    key: "then_branch"
+    value {
+      func {
+        name: "identity_function"
+      }
+    }
+  }
+  experimental_debug_info {
+  }
+}
+library {
+  function {
+    signature {
+      name: "identity_function"
+      input_arg {
+        name: "identity_input"
+        type: DT_INT32
+      }
+      output_arg {
+        name: "identity_output"
+        type: DT_INT32
+      }
+    }
+    ret {
+      key: "identity_output"
+      value: "identity_input"
+    }
+    attr {
+      key: "_input_shapes"
+      value {
+        list {
+          shape {
+          }
+        }
+      }
+    }
+  }
+}
+versions {
+  producer: 29
+  min_consumer: 12
+}

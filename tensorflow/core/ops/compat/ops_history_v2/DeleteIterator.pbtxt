@@ -1,0 +1,12 @@
+op {
+  name: "DeleteIterator"
+  input_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "deleter"
+    type: DT_VARIANT
+  }
+  is_stateful: true
+}

@@ -1,0 +1,64 @@
+path: "tensorflow.train.SaverDef"
+tf_proto {
+  descriptor {
+    name: "SaverDef"
+    field {
+      name: "filename_tensor_name"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    field {
+      name: "save_tensor_name"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    field {
+      name: "restore_op_name"
+      number: 3
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    field {
+      name: "max_to_keep"
+      number: 4
+      label: LABEL_OPTIONAL
+      type: TYPE_INT32
+    }
+    field {
+      name: "sharded"
+      number: 5
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "keep_checkpoint_every_n_hours"
+      number: 6
+      label: LABEL_OPTIONAL
+      type: TYPE_FLOAT
+    }
+    field {
+      name: "version"
+      number: 7
+      label: LABEL_OPTIONAL
+      type: TYPE_ENUM
+      type_name: ".tensorflow.SaverDef.CheckpointFormatVersion"
+    }
+    enum_type {
+      name: "CheckpointFormatVersion"
+      value {
+        name: "LEGACY"
+        number: 0
+      }
+      value {
+        name: "V1"
+        number: 1
+      }
+      value {
+        name: "V2"
+        number: 2
+      }
+    }
+  }
+}

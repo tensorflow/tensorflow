@@ -1,0 +1,34 @@
+op {
+  graph_op_name: "QuantizedRelu6"
+  in_arg {
+    name: "min_features"
+    description: <<END
+The float value that the lowest quantized value represents.
+END
+  }
+  in_arg {
+    name: "max_features"
+    description: <<END
+The float value that the highest quantized value represents.
+END
+  }
+  out_arg {
+    name: "activations"
+    description: <<END
+Has the same output shape as "features".
+END
+  }
+  out_arg {
+    name: "min_activations"
+    description: <<END
+The float value that the lowest quantized value represents.
+END
+  }
+  out_arg {
+    name: "max_activations"
+    description: <<END
+The float value that the highest quantized value represents.
+END
+  }
+  summary: "Computes Quantized Rectified Linear 6: `min(max(features, 0), 6)`"
+}

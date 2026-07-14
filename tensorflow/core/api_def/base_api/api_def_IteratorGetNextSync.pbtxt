@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "IteratorGetNextSync"
+  summary: "Gets the next output from the given iterator."
+  description: <<END
+This operation is a synchronous version IteratorGetNext. It should only be used
+in situations where the iterator does not block the calling thread, or where
+the calling thread is not a member of the thread pool used to execute parallel
+operations (e.g. in eager mode).
+END
+}

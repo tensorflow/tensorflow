@@ -1,0 +1,85 @@
+path: "tensorflow.NodeDef"
+tf_proto {
+  descriptor {
+    name: "NodeDef"
+    field {
+      name: "name"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    field {
+      name: "op"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    field {
+      name: "input"
+      number: 3
+      label: LABEL_REPEATED
+      type: TYPE_STRING
+    }
+    field {
+      name: "device"
+      number: 4
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    field {
+      name: "attr"
+      number: 5
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.NodeDef.AttrEntry"
+    }
+    field {
+      name: "experimental_debug_info"
+      number: 6
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.NodeDef.ExperimentalDebugInfo"
+    }
+    field {
+      name: "experimental_type"
+      number: 7
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.FullTypeDef"
+    }
+    nested_type {
+      name: "AttrEntry"
+      field {
+        name: "key"
+        number: 1
+        label: LABEL_OPTIONAL
+        type: TYPE_STRING
+      }
+      field {
+        name: "value"
+        number: 2
+        label: LABEL_OPTIONAL
+        type: TYPE_MESSAGE
+        type_name: ".tensorflow.AttrValue"
+      }
+      options {
+        map_entry: true
+      }
+    }
+    nested_type {
+      name: "ExperimentalDebugInfo"
+      field {
+        name: "original_node_names"
+        number: 1
+        label: LABEL_REPEATED
+        type: TYPE_STRING
+      }
+      field {
+        name: "original_func_names"
+        number: 2
+        label: LABEL_REPEATED
+        type: TYPE_STRING
+      }
+    }
+  }
+}

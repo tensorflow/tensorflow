@@ -1,0 +1,51 @@
+op {
+  graph_op_name: "FakeQuantWithMinMaxVars"
+  summary: "Fake-quantize the \'inputs\' tensor of type float via global float scalars"
+  description: <<END
+Fake-quantize the `inputs` tensor of type float via global float scalars
+`min` and `max` to `outputs` tensor of same shape as `inputs`.
+
+Attributes
+
+*   `[min; max]` define the clamping range for the `inputs` data.
+*   `inputs` values are quantized into the quantization range (
+`[0; 2^num_bits - 1]` when `narrow_range` is false and `[1; 2^num_bits - 1]`
+when it is true) and then de-quantized and output as floats in `[min; max]`
+interval.
+*   `num_bits` is the bitwidth of the quantization; between 2 and 16, inclusive.
+
+Before quantization, `min` and `max` values are adjusted with the following
+logic.
+It is suggested to have `min <= 0 <= max`. If `0` is not in the range of values,
+the behavior can be unexpected:
+
+*   If `0 < min < max`: `min_adj = 0` and `max_adj = max - min`.
+*   If `min < max < 0`: `min_adj = min - max` and `max_adj = 0`.
+*   If `min <= 0 <= max`: `scale = (max - min) / (2^num_bits - 1) `,
+`min_adj = scale * round(min / scale)` and `max_adj = max + min_adj - min`.
+
+This operation has a gradient and thus allows for training `min` and `max`
+values.
+
+>>> constant_input = tf.constant([[1.2, -0.3, 0.7], [2.1, 0.5, -1.0]], dtype=tf.float32)
+>>>
+>>> min_val = -0.5
+>>> max_val = 0.8
+>>> num_bits = 8
+>>> narrow_range = False #False:for the quantization range [0; 2^num_bits - 1]
+>>>
+>>> quantized_data = tf.quantization.fake_quant_with_min_max_vars(
+...   inputs=constant_input, min=min_val, max=max_val, num_bits=num_bits, narrow_range=narrow_range
+... )
+>>>
+>>> print("Input:\n", constant_input.numpy())
+Input:
+[[ 1.2 -0.3  0.7]
+[ 2.1  0.5 -1. ]]
+>>> print("Output:\n", quantized_data.numpy())
+Output:
+[[ 0.8003921 -0.3007843  0.6984313]
+[ 0.8003921  0.4996078 -0.4996078]]
+
+END
+}

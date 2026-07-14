@@ -1,0 +1,53 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Postsubmit CI
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'main' }}
+
+jobs:
+  Tests:
+    name: XLA Linux X86 GPU ONEAPI POSTSUBMIT
+    runs-on: linux-x64-battlemage-256-1gpu-intel
+    container: 
+      image: us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest  # zizmor: ignore[unpinned-images]
+      options: --device=/dev/dri
+  
+    timeout-minutes: 120
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checking out openxla/xla
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          path: openxla/xla
+          persist-credentials: false
+
+      - name: Run oneAPI CI
+        working-directory: openxla/xla
+        run: bash build_tools/sycl/ci_docker_test.sh

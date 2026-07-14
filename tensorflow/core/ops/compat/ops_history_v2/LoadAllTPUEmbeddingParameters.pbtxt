@@ -1,0 +1,62 @@
+op {
+  name: "LoadAllTPUEmbeddingParameters"
+  input_arg {
+    name: "parameters"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  input_arg {
+    name: "auxiliary1"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  input_arg {
+    name: "auxiliary2"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  input_arg {
+    name: "auxiliary3"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  input_arg {
+    name: "auxiliary4"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  input_arg {
+    name: "auxiliary5"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  input_arg {
+    name: "auxiliary6"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  input_arg {
+    name: "auxiliary7"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  attr {
+    name: "NumTables"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  attr {
+    name: "num_shards"
+    type: "int"
+  }
+  attr {
+    name: "shard_id"
+    type: "int"
+  }
+  is_stateful: true
+}

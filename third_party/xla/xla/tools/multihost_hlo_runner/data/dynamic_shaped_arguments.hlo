@@ -1,0 +1,6 @@
+HloModule test, entry_computation_layout={(f32[<=4194304])->f32[<=4194304]{0}}
+
+ENTRY %test (arg26.27: f32[<=4194304]) -> f32[<=4194304]{0} {
+  %arg26.27 = f32[<=4194304]{0:T(1024)} parameter(0), parameter_replication={false}, sharding={maximal device=0}, metadata={op_name="XLA_Args"}
+  ROOT %reshape.1744 = f32[<=4194304]{0} reshape(f32[<=4194304]{0:T(1024)} %arg26.27)
+}

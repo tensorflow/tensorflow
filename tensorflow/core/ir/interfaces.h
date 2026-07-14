@@ -1,0 +1,75 @@
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#ifndef TENSORFLOW_CORE_IR_INTERFACES_H_
+#define TENSORFLOW_CORE_IR_INTERFACES_H_
+
+#include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/DialectInterface.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/core/ir/dialect.h"
+
+// Include generated declarations.
+#include "tensorflow/core/ir/interfaces.h.inc"
+
+namespace mlir {
+namespace tfg {
+// The dialect fallback model for the TensorFlow registry interface.
+class TensorFlowRegistryInterfaceBase
+    : public TensorFlowRegistryInterface::FallbackModel<
+          TensorFlowRegistryInterfaceBase>,
+      public DialectInterface::Base<TensorFlowRegistryInterfaceBase> {
+ public:
+  explicit TensorFlowRegistryInterfaceBase(Dialect *dialect)
+      : DialectInterface::Base<TensorFlowRegistryInterfaceBase>(dialect) {}
+
+  // Returns whether the operation is stateful.
+  virtual bool isStateful(Operation *op) const = 0;
+};
+
+// This dialect fallback model implements memory effects for TensorFlow
+// operations.
+class StatefulMemoryEffectInterface
+    : public MemoryEffectOpInterface::FallbackModel<
+          StatefulMemoryEffectInterface>,
+      public DialectInterface::Base<StatefulMemoryEffectInterface> {
+ public:
+  explicit StatefulMemoryEffectInterface(Dialect *dialect)
+      : DialectInterface::Base<StatefulMemoryEffectInterface>(dialect) {}
+
+  // Get the memory effects of a TensorFlow operation. If the operation is known
+  // to be stateless, then it has no memory effects. Otherwise, statefulness is
+  // modelled as `MemoryWrite`.
+  void getEffects(
+      Operation *op,
+      SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+          &effects) const;
+};
+}  // namespace tfg
+
+namespace OpTrait {
+// This trait marks intrinsic TFG operations, e.g. terminators, functions,
+// and region control-flow operations. Any TFG operation that has this trait
+// exists only in MLIR.
+template <typename ConcreteType>
+class IntrinsicOperation
+    : public mlir::OpTrait::TraitBase<ConcreteType, IntrinsicOperation> {};
+}  // namespace OpTrait
+}  // namespace mlir
+
+#endif  // TENSORFLOW_CORE_IR_INTERFACES_H_

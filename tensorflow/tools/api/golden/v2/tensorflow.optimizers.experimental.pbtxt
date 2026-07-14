@@ -1,0 +1,47 @@
+path: "tensorflow.optimizers.experimental"
+tf_module {
+  member {
+    name: "Adadelta"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "Adafactor"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "Adagrad"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "Adam"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "AdamW"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "Adamax"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "Ftrl"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "Nadam"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "Optimizer"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "RMSprop"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "SGD"
+    mtype: "<class \'type\'>"
+  }
+}

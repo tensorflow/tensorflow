@@ -1,0 +1,11 @@
+op {
+  name: "TensorArrayClose"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  deprecation {
+    version: 16
+  }
+}

@@ -1,0 +1,42 @@
+op {
+  graph_op_name: "BoostedTreesMakeQuantileSummaries"
+  deprecation_message: "Boosted Trees kernels in TF are deprecated. Please use TensorFlow Decision Forests instead (https://github.com/tensorflow/decision-forests)"
+  visibility: HIDDEN
+  in_arg {
+    name: "float_values"
+    description: <<END
+float; List of Rank 1 Tensors each containing values for a single feature.
+END
+  }
+  in_arg {
+    name: "example_weights"
+    description: <<END
+float; Rank 1 Tensor with weights per instance.
+END
+  }
+  in_arg {
+    name: "epsilon"
+    description: <<END
+float; The required maximum approximation error.
+END
+  }
+  out_arg {
+    name: "summaries"
+    description: <<END
+float; List of Rank 2 Tensors each containing the quantile summary
+(value, weight, min_rank, max_rank) of a single feature.
+END
+  }
+  attr {
+    name: "num_features"
+    description: <<END
+int; Inferred from the size of float_values.
+The number of float features.
+END
+  }
+  summary: "Makes the summary of quantiles for the batch."
+  description: <<END
+An op that takes a list of tensors (one tensor per feature) and outputs the
+quantile summaries for each tensor.
+END
+}

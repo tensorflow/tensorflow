@@ -1,0 +1,335 @@
+hlo_module {
+  name: "jit__lambda_"
+  entry_computation_name: "main.5"
+  computations {
+    name: "main.5"
+    instructions {
+      name: "Arg_0.1"
+      opcode: "parameter"
+      shape {
+        element_type: S64
+        dimensions: 8
+        dimensions: 1
+        layout {
+          minor_to_major: 1
+          minor_to_major: 0
+          tail_padding_alignment_in_elements: 1
+        }
+        is_dynamic_dimension: false
+        is_dynamic_dimension: false
+      }
+      metadata {
+        op_name: "x"
+      }
+      id: 1
+      sharding {
+        type: OTHER
+        tile_assignment_dimensions: 2
+        tile_assignment_dimensions: 1
+        iota_reshape_dims: 2
+        iota_transpose_perm: 0
+      }
+      frontend_attributes {
+      }
+      statistics_viz {
+      }
+    }
+    instructions {
+      name: "constant.2"
+      opcode: "constant"
+      shape {
+        element_type: S64
+        layout {
+          tail_padding_alignment_in_elements: 1
+        }
+      }
+      metadata {
+      }
+      literal {
+        shape {
+          element_type: S64
+          layout {
+            tail_padding_alignment_in_elements: 1
+          }
+        }
+        s64s: 2
+      }
+      id: 2
+      frontend_attributes {
+      }
+      statistics_viz {
+      }
+    }
+    instructions {
+      name: "broadcast.3"
+      opcode: "broadcast"
+      shape {
+        element_type: S64
+        dimensions: 8
+        dimensions: 1
+        layout {
+          minor_to_major: 1
+          minor_to_major: 0
+          tail_padding_alignment_in_elements: 1
+        }
+        is_dynamic_dimension: false
+        is_dynamic_dimension: false
+      }
+      metadata {
+      }
+      id: 3
+      operand_ids: 2
+      frontend_attributes {
+      }
+      statistics_viz {
+      }
+    }
+    instructions {
+      name: "multiply.4"
+      opcode: "multiply"
+      shape {
+        element_type: S64
+        dimensions: 8
+        dimensions: 1
+        layout {
+          minor_to_major: 1
+          minor_to_major: 0
+          tail_padding_alignment_in_elements: 1
+        }
+        is_dynamic_dimension: false
+        is_dynamic_dimension: false
+      }
+      metadata {
+        op_name: "jit(<lambda>)/jit(main)/mul"
+        source_file: "third_party/py/jax/tests/pjit_test.py"
+        source_line: 3599
+        stack_frame_id: 10
+      }
+      id: 4
+      operand_ids: 1
+      operand_ids: 3
+      frontend_attributes {
+      }
+      statistics_viz {
+      }
+    }
+    program_shape {
+      parameters {
+        element_type: S64
+        dimensions: 8
+        dimensions: 1
+        layout {
+          minor_to_major: 1
+          minor_to_major: 0
+          tail_padding_alignment_in_elements: 1
+        }
+        is_dynamic_dimension: false
+        is_dynamic_dimension: false
+      }
+      result {
+        element_type: S64
+        dimensions: 8
+        dimensions: 1
+        layout {
+          minor_to_major: 1
+          minor_to_major: 0
+          tail_padding_alignment_in_elements: 1
+        }
+        is_dynamic_dimension: false
+        is_dynamic_dimension: false
+      }
+      parameter_names: "Arg_0.1"
+    }
+    id: 5
+    root_id: 4
+  }
+  host_program_shape {
+    parameters {
+      element_type: S64
+      dimensions: 8
+      dimensions: 1
+      layout {
+        minor_to_major: 1
+        minor_to_major: 0
+        tail_padding_alignment_in_elements: 1
+      }
+      is_dynamic_dimension: false
+      is_dynamic_dimension: false
+    }
+    result {
+      element_type: S64
+      dimensions: 8
+      dimensions: 1
+      layout {
+        minor_to_major: 1
+        minor_to_major: 0
+        tail_padding_alignment_in_elements: 1
+      }
+      is_dynamic_dimension: false
+      is_dynamic_dimension: false
+    }
+    parameter_names: "p0"
+  }
+  id: 16
+  entry_computation_id: 5
+  input_output_alias {
+  }
+  stack_frame_index {
+    file_names: "third_party/py/jax/tests/pjit_test.py"
+    file_names: "third_party/py/absl/testing/absltest.py"
+    file_names: "third_party/py/absl/app.py"
+    function_names: "<module>"
+    function_names: "main"
+    function_names: "_run_in_app"
+    function_names: "run"
+    function_names: "_run_main"
+    function_names: "_run_in_app.<locals>.main_function"
+    function_names: "run_tests"
+    function_names: "_run_and_get_tests_result"
+    function_names: "ArrayPjitTest.test_jit_mul_sum_sharding_preserved"
+    function_names: "ArrayPjitTest.test_jit_mul_sum_sharding_preserved.<locals>.<lambda>"
+    file_locations {
+      file_name_id: 1
+      function_name_id: 1
+      line: 5945
+      column: 2
+    }
+    file_locations {
+      file_name_id: 2
+      function_name_id: 2
+      line: 2224
+      column: 2
+    }
+    file_locations {
+      file_name_id: 2
+      function_name_id: 3
+      line: 2342
+      column: 4
+    }
+    file_locations {
+      file_name_id: 3
+      function_name_id: 4
+      line: 484
+      column: 6
+    }
+    file_locations {
+      file_name_id: 3
+      function_name_id: 5
+      line: 404
+      column: 13
+    }
+    file_locations {
+      file_name_id: 2
+      function_name_id: 6
+      line: 2340
+      column: 6
+    }
+    file_locations {
+      file_name_id: 2
+      function_name_id: 7
+      line: 2801
+      column: 35
+    }
+    file_locations {
+      file_name_id: 2
+      function_name_id: 8
+      line: 2765
+      column: 19
+    }
+    file_locations {
+      file_name_id: 1
+      function_name_id: 9
+      line: 3600
+      column: 10
+    }
+    file_locations {
+      file_name_id: 1
+      function_name_id: 10
+      line: 3599
+      column: 26
+    }
+    stack_frames {
+      file_location_id: 1
+    }
+    stack_frames {
+      file_location_id: 2
+      parent_frame_id: 1
+    }
+    stack_frames {
+      file_location_id: 3
+      parent_frame_id: 2
+    }
+    stack_frames {
+      file_location_id: 4
+      parent_frame_id: 3
+    }
+    stack_frames {
+      file_location_id: 5
+      parent_frame_id: 4
+    }
+    stack_frames {
+      file_location_id: 6
+      parent_frame_id: 5
+    }
+    stack_frames {
+      file_location_id: 7
+      parent_frame_id: 6
+    }
+    stack_frames {
+      file_location_id: 8
+      parent_frame_id: 7
+    }
+    stack_frames {
+      file_location_id: 9
+      parent_frame_id: 8
+    }
+    stack_frames {
+      file_location_id: 10
+      parent_frame_id: 9
+    }
+  }
+  buffer_donor {
+  }
+  frontend_attributes {
+  }
+}
+partitions {
+  arguments {
+    shape {
+      element_type: S64
+      dimensions: 4
+      dimensions: 1
+      layout {
+        minor_to_major: 1
+        minor_to_major: 0
+        tail_padding_alignment_in_elements: 1
+      }
+      is_dynamic_dimension: false
+      is_dynamic_dimension: false
+    }
+    s64s: 0
+    s64s: 1
+    s64s: 2
+    s64s: 3
+  }
+}
+partitions {
+  arguments {
+    shape {
+      element_type: S64
+      dimensions: 4
+      dimensions: 1
+      layout {
+        minor_to_major: 1
+        minor_to_major: 0
+        tail_padding_alignment_in_elements: 1
+      }
+      is_dynamic_dimension: false
+      is_dynamic_dimension: false
+    }
+    s64s: 4
+    s64s: 5
+    s64s: 6
+    s64s: 7
+  }
+}

@@ -1,0 +1,24 @@
+path: "tensorflow.AggregationMethod"
+tf_class {
+  is_instance: "<class \'tensorflow.python.ops.gradients_util.AggregationMethod\'>"
+  is_instance: "<class \'object\'>"
+  member {
+    name: "ADD_N"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "DEFAULT"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "EXPERIMENTAL_ACCUMULATE_N"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "EXPERIMENTAL_TREE"
+    mtype: "<class \'int\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+}

@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "FlatMapDataset"
+  endpoint {
+    name: "data.FlatMapDataset"
+  }
+}

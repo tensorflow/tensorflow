@@ -1,0 +1,140 @@
+path: "tensorflow.GraphKeys"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.ops.GraphKeys\'>"
+  is_instance: "<class \'object\'>"
+  member {
+    name: "ACTIVATIONS"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "ASSET_FILEPATHS"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "BIASES"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "CONCATENATED_VARIABLES"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "COND_CONTEXT"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "EVAL_STEP"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "GLOBAL_STEP"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "GLOBAL_VARIABLES"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "INIT_OP"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "LOCAL_INIT_OP"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "LOCAL_RESOURCES"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "LOCAL_VARIABLES"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "LOSSES"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "METRIC_VARIABLES"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "MODEL_VARIABLES"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "MOVING_AVERAGE_VARIABLES"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "QUEUE_RUNNERS"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "READY_FOR_LOCAL_INIT_OP"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "READY_OP"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "REGULARIZATION_LOSSES"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "RESOURCES"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "SAVEABLE_OBJECTS"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "SAVERS"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "SUMMARIES"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "SUMMARY_OP"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "TABLE_INITIALIZERS"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "TRAINABLE_RESOURCE_VARIABLES"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "TRAINABLE_VARIABLES"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "TRAIN_OP"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "UPDATE_OPS"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "VARIABLES"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "WEIGHTS"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "WHILE_CONTEXT"
+    mtype: "<class \'str\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+}

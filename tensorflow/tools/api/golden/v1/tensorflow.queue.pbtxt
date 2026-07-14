@@ -1,0 +1,23 @@
+path: "tensorflow.queue"
+tf_module {
+  member {
+    name: "FIFOQueue"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "PaddingFIFOQueue"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "PriorityQueue"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "QueueBase"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "RandomShuffleQueue"
+    mtype: "<class \'type\'>"
+  }
+}

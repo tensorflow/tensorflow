@@ -1,0 +1,33 @@
+HloModule gather_start_index_map
+// A canonicalized (simplified) gather with non-normalized start_index_map.
+
+ENTRY main {
+  %operand = f32[30,20] parameter(0)
+  %indices = s32[10,2] parameter(1)
+  ROOT %gather = f32[10,4,8] gather(%operand, %indices),
+    offset_dims={1,2},
+    collapsed_slice_dims={},
+    start_index_map={1,0},
+    index_vector_dim=1,
+    slice_sizes={4,8}
+}
+
+// RUN: gpu_fusion_to_mlir %s | FileCheck %s
+// RUN: cpu_fusion_to_mlir %s | FileCheck %s
+// RUN: gpu_test_correctness %s
+// RUN: cpu_test_correctness %s
+
+// CHECK-LABEL: func.func @main
+// CHECK-SAME: %arg0: tensor<30x20xf32>
+// CHECK-SAME: %arg1: tensor<10x2xi32>
+// CHECK-SAME: %arg2: tensor<10x4x8xf32>
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: %[[IDX0:.*]] = tensor.extract %arg1[{{.*}}, %[[C0]]]
+// CHECK: %[[IDX0_I:.*]] = arith.index_cast %[[IDX0]]
+// CHECK: %[[C12:.*]] = arith.constant 12 : index
+// CHECK: arith.minsi %[[IDX0_I]], %[[C12]]
+// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK: %[[IDX1:.*]] = tensor.extract %arg1[{{.*}}, %[[C1]]]
+// CHECK: %[[IDX1_I:.*]] = arith.index_cast %[[IDX1]]
+// CHECK: %[[C26:.*]] = arith.constant 26 : index
+// CHECK: arith.minsi %[[IDX1_I]], %[[C26]]

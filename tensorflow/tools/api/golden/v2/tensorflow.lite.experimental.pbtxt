@@ -1,0 +1,27 @@
+path: "tensorflow.lite.experimental"
+tf_module {
+  member {
+    name: "Analyzer"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "OpResolverType"
+    mtype: "<class \'enum.EnumType\'>"
+  }
+  member {
+    name: "QuantizationDebugOptions"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "QuantizationDebugger"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "authoring"
+    mtype: "<class \'module\'>"
+  }
+  member_method {
+    name: "load_delegate"
+    argspec: "args=[\'library\', \'options\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

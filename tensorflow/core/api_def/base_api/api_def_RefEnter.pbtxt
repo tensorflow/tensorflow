@@ -1,0 +1,41 @@
+op {
+  graph_op_name: "RefEnter"
+  visibility: HIDDEN
+  in_arg {
+    name: "data"
+    description: <<END
+The tensor to be made available to the child frame.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+The same tensor as `data`.
+END
+  }
+  attr {
+    name: "frame_name"
+    description: <<END
+The name of the child frame.
+END
+  }
+  attr {
+    name: "is_constant"
+    description: <<END
+If true, the output is constant within the child frame.
+END
+  }
+  attr {
+    name: "parallel_iterations"
+    description: <<END
+The number of iterations allowed to run in parallel.
+END
+  }
+  summary: "Creates or finds a child frame, and makes `data` available to the child frame."
+  description: <<END
+The unique `frame_name` is used by the `Executor` to identify frames. If
+`is_constant` is true, `output` is a constant in the child frame; otherwise
+it may be changed in the child frame. At most `parallel_iterations` iterations
+are run in parallel in the child frame.
+END
+}

@@ -1,0 +1,5 @@
+op {
+  graph_op_name: "PyFuncStateless"
+  visibility: SKIP
+  summary: "A stateless version of PyFunc."
+}

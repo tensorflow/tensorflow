@@ -1,0 +1,19 @@
+op {
+  graph_op_name: "Igamma"
+  summary: "Compute the lower regularized incomplete Gamma function `P(a, x)`."
+  description: <<END
+The lower regularized incomplete Gamma function is defined as:
+
+
+\\(P(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)\\)
+
+where
+
+\\(gamma(a, x) = \int_{0}^{x} t^{a-1} exp(-t) dt\\)
+
+is the lower incomplete Gamma function.
+
+Note, above `Q(a, x)` (`Igammac`) is the upper regularized complete
+Gamma function.
+END
+}

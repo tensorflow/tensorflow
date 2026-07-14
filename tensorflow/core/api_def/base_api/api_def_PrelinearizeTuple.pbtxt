@@ -1,0 +1,34 @@
+op {
+  graph_op_name: "PrelinearizeTuple"
+  visibility: HIDDEN
+  in_arg {
+    name: "inputs"
+    description: <<END
+A list of tensors that will be provided using the infeed mechanism.
+END
+  }
+  attr {
+    name: "dtypes"
+    description: <<END
+The element types of each element in `inputs`.
+END
+  }
+  attr {
+    name: "shapes"
+    description: <<END
+The shapes of each tensor in `inputs`.
+END
+  }
+  attr {
+    name: "layouts"
+    description: <<END
+A vector holding the requested layout in minor-to-major sequence for all the
+tuple shapes in the order the shapes appear in the "shapes" input. The layout
+elements for a sub-shape can be set to -1 in which case the corresponding layout
+will be computed by the infeed operation.
+END
+  }
+  summary: <<END
+An op which linearizes multiple Tensor values to an opaque variant tensor.
+END
+}

@@ -1,0 +1,30 @@
+path: "tensorflow.errors.PermissionDeniedError"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.errors_impl.PermissionDeniedError\'>"
+  is_instance: "<class \'tensorflow.python.framework.errors_impl.OpError\'>"
+  is_instance: "<class \'Exception\'>"
+  member {
+    name: "error_code"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "experimental_payloads"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "message"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "node_def"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "op"
+    mtype: "<class \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'node_def\', \'op\', \'message\'], varargs=args, keywords=None, defaults=None"
+  }
+}

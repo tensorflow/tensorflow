@@ -1,0 +1,89 @@
+// Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+namespace tflite;
+
+// Here is an overview of the pipeline & runtime metadata looks like:
+//
+// ======== IRs after TAC ========
+// op1 = .... {tac.device = "CPU"}
+// op2 = .... {tac.device = "GPU"}
+// op3 = .... {tac.device = "GPU"}
+// op4 = .... {tac.device = "CPU"}
+//
+// We will run a separate cost estimation for each op with each different
+// hardwares.
+//
+// ======== IRs after cost-estimation ========
+// op1 = .... {tac.device = "CPU"} {"CPU": 10, "GPU": -1.0}
+// op2 = .... {tac.device = "GPU"} {"CPU": 20, "GPU": 5.0}
+// op3 = .... {tac.device = "GPU"} {"CPU": 30, "GPU": 10.0}
+// op4 = .... {tac.device = "CPU"} {"CPU": 40, "GPU": -1.0}
+//
+// The exported runtime metadata will look like below:
+// ======== Runtime Metadata ========
+//
+// RuntimeMetadata: {
+//   hardwares: {
+//    ["CPU", "GPU"]
+//   }
+//
+//  subgraph_metadata: {
+//    [
+//      op1:
+//       hardware: 0
+//       op_costs: [10, -1],
+//      op2:
+//       hardware: 1
+//       op_costs: [20, 5],
+//      op3:
+//       hardware: 1
+//       op_costs: [30, 10],
+//      op4:
+//       hardware: 0
+//       op_costs: [40, -1],
+//    ]
+//  }
+// }
+table HardwareMetadata {
+  // List of different hardwares this model can use.
+  hardware_name:[string];
+}
+
+// Metadata for a single Op.
+table OpMetadata {
+  // Node index in the corresponding subgraph.
+  index:int;
+  // The hardware suggested for inference.
+  // This will correspond to the index in the hardware_name field in the
+  // hardware metadata.
+  hardware:uint8;
+  // The estimated costs for the given op.
+  // The index matches the hardware array.
+  op_costs: [float];
+}
+
+table SubgraphMetadata {
+  // Metadata for all ops in the current subgraph.
+  op_metadata:[OpMetadata];
+}
+
+table RuntimeMetadata {
+  // Metadata about different hardwares used by the model.
+  hardwares: HardwareMetadata;
+  // Metadata for each subgraph in same order as in the TFLite model file.
+  subgraph_metadata:[SubgraphMetadata];
+}
+
+root_type RuntimeMetadata;

@@ -1,0 +1,61 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+# Dockerfile to build a manylinux 2010 compliant cross-compiler.
+#
+# Builds a devtoolset gcc/libstdc++ that targets manylinux 2010 compatible
+# glibc (2.12) and system libstdc++ (4.4).
+#
+# To push a new version, run:
+# $ docker build -f Dockerfile.rbe.cuda12.2-cudnn9.1-ubuntu20.04-manylinux2014-multipython \
+#  --tag "gcr.io/tensorflow-testing/nosla-cuda12.2-cudnn9.1-ubuntu20.04-manylinux2014-multipython" .
+# $ docker push gcr.io/tensorflow-testing/nosla-cuda12.2-cudnn9.1-ubuntu20.04-manylinux2014-multipython
+
+FROM gcr.io/tensorflow-sigs/build@sha256:7c8ecb6482e26c4b4efce0ddaefe3fb3667b3b958c83fe8d3cc3763c6ed7a4d1
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+COPY install/install_bootstrap_deb_packages.sh /install/
+RUN /install/install_bootstrap_deb_packages.sh
+
+COPY install/install_deb_packages.sh /install/
+RUN /install/install_deb_packages.sh
+
+RUN apt-get update && apt-get install -y \
+    libbz2-dev \
+    libffi-dev \
+    libgdbm-dev \
+    libncurses5-dev \
+    libnss3-dev \
+    libreadline-dev \
+    libsqlite3-dev \
+    patchelf \
+    libcudnn9-dev-cuda-12=9.1.1.17-1 \
+    libcudnn9-cuda-12=9.1.1.17-1 \
+      && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY install/build_and_install_python.sh /install/
+RUN /install/build_and_install_python.sh "3.9.18"
+RUN /install/build_and_install_python.sh "3.10.13"
+RUN /install/build_and_install_python.sh "3.11.6"
+RUN /install/build_and_install_python.sh "3.12.0"
+
+COPY install/install_pip_packages_by_version.sh /install/
+# https://github.com/numpy/numpy/issues/22623 for `SETUPTOOLS_USE_DISTUTILS`.
+RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.9" "jax"
+RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.10" "jax"
+RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.11" "jax"
+RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.12" "jax"

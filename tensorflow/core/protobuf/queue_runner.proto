@@ -1,0 +1,45 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
+syntax = "proto3";
+
+package tensorflow;
+
+import "tensorflow/core/protobuf/error_codes.proto";
+
+option cc_enable_arenas = true;
+option java_outer_classname = "QueueRunnerProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
+
+// Protocol buffer representing a QueueRunner.
+message QueueRunnerDef {
+  // Queue name.
+  string queue_name = 1;
+
+  // A list of enqueue operations.
+  repeated string enqueue_op_name = 2;
+
+  // The operation to run to close the queue.
+  string close_op_name = 3;
+
+  // The operation to run to cancel the queue.
+  string cancel_op_name = 4;
+
+  // A list of exception types considered to signal a safely closed queue
+  // if raised during enqueue operations.
+  repeated error.Code queue_closed_exception_types = 5;
+}

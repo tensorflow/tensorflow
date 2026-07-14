@@ -1,0 +1,15 @@
+op {
+  name: "KMC2ChainInitialization"
+  input_arg {
+    name: "distances"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "seed"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "index"
+    type: DT_INT64
+  }
+}

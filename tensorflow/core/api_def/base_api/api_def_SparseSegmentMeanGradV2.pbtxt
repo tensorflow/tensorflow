@@ -1,0 +1,33 @@
+op {
+  graph_op_name: "SparseSegmentMeanGradV2"
+  in_arg {
+    name: "grad"
+    description: <<END
+gradient propagated to the SparseSegmentMean op.
+END
+  }
+  in_arg {
+    name: "indices"
+    description: <<END
+indices passed to the corresponding SparseSegmentMean op.
+END
+  }
+  in_arg {
+    name: "segment_ids"
+    description: <<END
+segment_ids passed to the corresponding SparseSegmentMean op.
+END
+  }
+  in_arg {
+    name: "dense_output_dim0"
+    description: <<END
+dimension 0 of "data" passed to SparseSegmentMean op.
+END
+  }
+  summary: "Computes gradients for SparseSegmentMean."
+  description: <<END
+Returns tensor "output" with same shape as grad, except for dimension 0 whose
+value is the number of unique indexes in "indices". Also returns vector
+"sorted_unique_indices" containing the corresponding indexes from "indices".
+END
+}

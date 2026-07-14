@@ -1,0 +1,144 @@
+diff --git a/third_party/gtest/CMakeLists.txt b/third_party/gtest_unused/CMakeLists.txt
+similarity index 100%
+rename from third_party/gtest/CMakeLists.txt
+rename to third_party/gtest_unused/CMakeLists.txt
+diff --git a/third_party/gtest/LICENSE b/third_party/gtest_unused/LICENSE
+similarity index 100%
+rename from third_party/gtest/LICENSE
+rename to third_party/gtest_unused/LICENSE
+diff --git a/third_party/gtest/gtest-death-test.h b/third_party/gtest_unused/gtest-death-test.h
+similarity index 100%
+rename from third_party/gtest/gtest-death-test.h
+rename to third_party/gtest_unused/gtest-death-test.h
+diff --git a/third_party/gtest/gtest-matchers.h b/third_party/gtest_unused/gtest-matchers.h
+similarity index 100%
+rename from third_party/gtest/gtest-matchers.h
+rename to third_party/gtest_unused/gtest-matchers.h
+diff --git a/third_party/gtest/gtest-message.h b/third_party/gtest_unused/gtest-message.h
+similarity index 100%
+rename from third_party/gtest/gtest-message.h
+rename to third_party/gtest_unused/gtest-message.h
+diff --git a/third_party/gtest/gtest-param-test.h b/third_party/gtest_unused/gtest-param-test.h
+similarity index 100%
+rename from third_party/gtest/gtest-param-test.h
+rename to third_party/gtest_unused/gtest-param-test.h
+diff --git a/third_party/gtest/gtest-printers.h b/third_party/gtest_unused/gtest-printers.h
+similarity index 100%
+rename from third_party/gtest/gtest-printers.h
+rename to third_party/gtest_unused/gtest-printers.h
+diff --git a/third_party/gtest/gtest-spi.h b/third_party/gtest_unused/gtest-spi.h
+similarity index 100%
+rename from third_party/gtest/gtest-spi.h
+rename to third_party/gtest_unused/gtest-spi.h
+diff --git a/third_party/gtest/gtest-test-part.h b/third_party/gtest_unused/gtest-test-part.h
+similarity index 100%
+rename from third_party/gtest/gtest-test-part.h
+rename to third_party/gtest_unused/gtest-test-part.h
+diff --git a/third_party/gtest/gtest-typed-test.h b/third_party/gtest_unused/gtest-typed-test.h
+similarity index 100%
+rename from third_party/gtest/gtest-typed-test.h
+rename to third_party/gtest_unused/gtest-typed-test.h
+diff --git a/third_party/gtest/gtest.h b/third_party/gtest_unused/gtest.h
+similarity index 100%
+rename from third_party/gtest/gtest.h
+rename to third_party/gtest_unused/gtest.h
+diff --git a/third_party/gtest/gtest_pred_impl.h b/third_party/gtest_unused/gtest_pred_impl.h
+similarity index 100%
+rename from third_party/gtest/gtest_pred_impl.h
+rename to third_party/gtest_unused/gtest_pred_impl.h
+diff --git a/third_party/gtest/gtest_prod.h b/third_party/gtest_unused/gtest_prod.h
+similarity index 100%
+rename from third_party/gtest/gtest_prod.h
+rename to third_party/gtest_unused/gtest_prod.h
+diff --git a/third_party/gtest/internal/custom/README.md b/third_party/gtest_unused/internal/custom/README.md
+similarity index 100%
+rename from third_party/gtest/internal/custom/README.md
+rename to third_party/gtest_unused/internal/custom/README.md
+diff --git a/third_party/gtest/internal/custom/gtest-port.h b/third_party/gtest_unused/internal/custom/gtest-port.h
+similarity index 100%
+rename from third_party/gtest/internal/custom/gtest-port.h
+rename to third_party/gtest_unused/internal/custom/gtest-port.h
+diff --git a/third_party/gtest/internal/custom/gtest-printers.h b/third_party/gtest_unused/internal/custom/gtest-printers.h
+similarity index 100%
+rename from third_party/gtest/internal/custom/gtest-printers.h
+rename to third_party/gtest_unused/internal/custom/gtest-printers.h
+diff --git a/third_party/gtest/internal/custom/gtest.h b/third_party/gtest_unused/internal/custom/gtest.h
+similarity index 100%
+rename from third_party/gtest/internal/custom/gtest.h
+rename to third_party/gtest_unused/internal/custom/gtest.h
+diff --git a/third_party/gtest/internal/gtest-death-test-internal.h b/third_party/gtest_unused/internal/gtest-death-test-internal.h
+similarity index 100%
+rename from third_party/gtest/internal/gtest-death-test-internal.h
+rename to third_party/gtest_unused/internal/gtest-death-test-internal.h
+diff --git a/third_party/gtest/internal/gtest-filepath.h b/third_party/gtest_unused/internal/gtest-filepath.h
+similarity index 100%
+rename from third_party/gtest/internal/gtest-filepath.h
+rename to third_party/gtest_unused/internal/gtest-filepath.h
+diff --git a/third_party/gtest/internal/gtest-internal.h b/third_party/gtest_unused/internal/gtest-internal.h
+similarity index 100%
+rename from third_party/gtest/internal/gtest-internal.h
+rename to third_party/gtest_unused/internal/gtest-internal.h
+diff --git a/third_party/gtest/internal/gtest-param-util.h b/third_party/gtest_unused/internal/gtest-param-util.h
+similarity index 100%
+rename from third_party/gtest/internal/gtest-param-util.h
+rename to third_party/gtest_unused/internal/gtest-param-util.h
+diff --git a/third_party/gtest/internal/gtest-port-arch.h b/third_party/gtest_unused/internal/gtest-port-arch.h
+similarity index 100%
+rename from third_party/gtest/internal/gtest-port-arch.h
+rename to third_party/gtest_unused/internal/gtest-port-arch.h
+diff --git a/third_party/gtest/internal/gtest-port.h b/third_party/gtest_unused/internal/gtest-port.h
+similarity index 100%
+rename from third_party/gtest/internal/gtest-port.h
+rename to third_party/gtest_unused/internal/gtest-port.h
+diff --git a/third_party/gtest/internal/gtest-string.h b/third_party/gtest_unused/internal/gtest-string.h
+similarity index 100%
+rename from third_party/gtest/internal/gtest-string.h
+rename to third_party/gtest_unused/internal/gtest-string.h
+diff --git a/third_party/gtest/internal/gtest-type-util.h b/third_party/gtest_unused/internal/gtest-type-util.h
+similarity index 100%
+rename from third_party/gtest/internal/gtest-type-util.h
+rename to third_party/gtest_unused/internal/gtest-type-util.h
+diff --git a/third_party/gtest/src/gtest-all.cc b/third_party/gtest_unused/src/gtest-all.cc
+similarity index 100%
+rename from third_party/gtest/src/gtest-all.cc
+rename to third_party/gtest_unused/src/gtest-all.cc
+diff --git a/third_party/gtest/src/gtest-death-test.cc b/third_party/gtest_unused/src/gtest-death-test.cc
+similarity index 100%
+rename from third_party/gtest/src/gtest-death-test.cc
+rename to third_party/gtest_unused/src/gtest-death-test.cc
+diff --git a/third_party/gtest/src/gtest-filepath.cc b/third_party/gtest_unused/src/gtest-filepath.cc
+similarity index 100%
+rename from third_party/gtest/src/gtest-filepath.cc
+rename to third_party/gtest_unused/src/gtest-filepath.cc
+diff --git a/third_party/gtest/src/gtest-internal-inl.h b/third_party/gtest_unused/src/gtest-internal-inl.h
+similarity index 100%
+rename from third_party/gtest/src/gtest-internal-inl.h
+rename to third_party/gtest_unused/src/gtest-internal-inl.h
+diff --git a/third_party/gtest/src/gtest-matchers.cc b/third_party/gtest_unused/src/gtest-matchers.cc
+similarity index 100%
+rename from third_party/gtest/src/gtest-matchers.cc
+rename to third_party/gtest_unused/src/gtest-matchers.cc
+diff --git a/third_party/gtest/src/gtest-port.cc b/third_party/gtest_unused/src/gtest-port.cc
+similarity index 100%
+rename from third_party/gtest/src/gtest-port.cc
+rename to third_party/gtest_unused/src/gtest-port.cc
+diff --git a/third_party/gtest/src/gtest-printers.cc b/third_party/gtest_unused/src/gtest-printers.cc
+similarity index 100%
+rename from third_party/gtest/src/gtest-printers.cc
+rename to third_party/gtest_unused/src/gtest-printers.cc
+diff --git a/third_party/gtest/src/gtest-test-part.cc b/third_party/gtest_unused/src/gtest-test-part.cc
+similarity index 100%
+rename from third_party/gtest/src/gtest-test-part.cc
+rename to third_party/gtest_unused/src/gtest-test-part.cc
+diff --git a/third_party/gtest/src/gtest-typed-test.cc b/third_party/gtest_unused/src/gtest-typed-test.cc
+similarity index 100%
+rename from third_party/gtest/src/gtest-typed-test.cc
+rename to third_party/gtest_unused/src/gtest-typed-test.cc
+diff --git a/third_party/gtest/src/gtest.cc b/third_party/gtest_unused/src/gtest.cc
+similarity index 100%
+rename from third_party/gtest/src/gtest.cc
+rename to third_party/gtest_unused/src/gtest.cc
+diff --git a/third_party/gtest/src/gtest_main.cc b/third_party/gtest_unused/src/gtest_main.cc
+similarity index 100%
+rename from third_party/gtest/src/gtest_main.cc
+rename to third_party/gtest_unused/src/gtest_main.cc

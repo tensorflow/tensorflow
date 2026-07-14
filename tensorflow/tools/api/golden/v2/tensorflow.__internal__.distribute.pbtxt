@@ -1,0 +1,27 @@
+path: "tensorflow.__internal__.distribute"
+tf_module {
+  member {
+    name: "ShardedVariable"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "combinations"
+    mtype: "<class \'module\'>"
+  }
+  member {
+    name: "interim"
+    mtype: "<class \'module\'>"
+  }
+  member {
+    name: "multi_process_runner"
+    mtype: "<class \'module\'>"
+  }
+  member_method {
+    name: "strategy_supports_no_merge_call"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "variable_sync_on_read_context"
+    argspec: "args=[], varargs=args, keywords=kwds, defaults=None"
+  }
+}

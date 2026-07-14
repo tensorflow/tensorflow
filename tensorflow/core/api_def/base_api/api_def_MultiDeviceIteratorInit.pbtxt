@@ -1,0 +1,30 @@
+op {
+  graph_op_name: "MultiDeviceIteratorInit"
+  in_arg {
+    name: "dataset"
+    description: <<END
+Dataset to be iterated upon.
+END
+  }
+  in_arg {
+    name: "multi_device_iterator"
+    description: <<END
+A MultiDeviceIteratorResource.
+END
+  }
+  in_arg {
+    name: "max_buffer_size"
+    description: <<END
+The maximum size of the host side per device buffer to keep.
+END
+  }
+  out_arg {
+    name: "incarnation_id"
+    description: <<END
+An int64 indicating which incarnation of the MultiDeviceIterator
+is running.
+END
+  }
+  summary: "Initializes the multi device iterator with the given dataset."
+  visibility: HIDDEN
+}

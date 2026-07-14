@@ -1,0 +1,2 @@
+REPOSITORY                                            TAG                 DIGEST                                                                    IMAGE ID            CREATED             SIZE
+gcr.io/tensorflow-testing/tf-win2019-rbe   latest              sha256:d3577d20dea75966faf7fd03479c71462441937df5694259109c2ee1d002a3dd   b601adb43430        8 minutes ago       20.4GB

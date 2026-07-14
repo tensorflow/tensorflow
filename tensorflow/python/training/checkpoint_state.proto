@@ -1,0 +1,38 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
+syntax = "proto3";
+
+package tensorflow;
+
+option cc_enable_arenas = true;
+
+// Protocol buffer representing the checkpoint state.
+message CheckpointState {
+  // Path to the most-recent model checkpoint.
+  string model_checkpoint_path = 1;
+
+  // Paths to all not-yet-deleted model checkpoints, sorted from oldest to
+  // newest.
+  // Note that the value of model_checkpoint_path should be the last item in
+  // this list.
+  repeated string all_model_checkpoint_paths = 2;
+  // Unix timestamps corresponding to all_model_checkpoint_paths, indicating
+  // when each checkpoint was created.
+  repeated double all_model_checkpoint_timestamps = 3;
+  // Unix timestamp indicating the creation time for the last preserved
+  // checkpoint.
+  double last_preserved_timestamp = 4;
+}

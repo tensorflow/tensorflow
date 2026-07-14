@@ -1,0 +1,57 @@
+path: "tensorflow.train.ServerDef"
+tf_proto {
+  descriptor {
+    name: "ServerDef"
+    field {
+      name: "cluster"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.ClusterDef"
+    }
+    field {
+      name: "job_name"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    field {
+      name: "replica"
+      number: 8
+      label: LABEL_OPTIONAL
+      type: TYPE_INT32
+    }
+    field {
+      name: "task_index"
+      number: 3
+      label: LABEL_OPTIONAL
+      type: TYPE_INT32
+    }
+    field {
+      name: "default_session_config"
+      number: 4
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.ConfigProto"
+    }
+    field {
+      name: "protocol"
+      number: 5
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    field {
+      name: "port"
+      number: 6
+      label: LABEL_OPTIONAL
+      type: TYPE_INT32
+    }
+    field {
+      name: "cluster_device_filters"
+      number: 7
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.ClusterDeviceFilters"
+    }
+  }
+}

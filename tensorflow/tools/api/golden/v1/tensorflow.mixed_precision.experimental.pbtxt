@@ -1,0 +1,15 @@
+path: "tensorflow.mixed_precision.experimental"
+tf_module {
+  member {
+    name: "DynamicLossScale"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "FixedLossScale"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "LossScale"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+}

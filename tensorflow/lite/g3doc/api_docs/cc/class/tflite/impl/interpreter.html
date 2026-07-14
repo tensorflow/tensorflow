@@ -1,0 +1,1405 @@
+<!DOCTYPE html>
+
+<html devsite="">
+<head>
+<title>tflite::impl::Interpreter Class Reference</title>
+<meta name="page_type" value="reference"/>
+<meta content="reference" name="page_type"/></head>
+<body>
+<div id="top"><!-- do not remove this div --></div>
+<h1>tflite::<wbr/>impl::<wbr/>Interpreter</h1>
+<h2>Summary</h2>
+
+<aside class="note">
+  <b>Note:</b> <code>tflite::impl::Interpreter</code> class is implementation details. Users should reference it as <code>tflite::Interpreter</code> instead.
+</aside>
+
+<table class="constructors responsive">
+<tr>
+<th colspan="2">
+<h3>Constructors and Destructors</h3>
+</th>
+</tr>
+<tr>
+<td colspan="2">
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a00ab4f17f33dec6bd60829c54ddfeb26">Interpreter</a>(<a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter)</code>
+<br/>
+</td>
+</tr>
+<tr>
+<td colspan="2">
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1ac84c44b9dfd9dcd93d77769fc256dcc9">Interpreter</a>(const Interpreter &amp;)</code>
+<br/>
+</td>
+</tr>
+<tr>
+<td colspan="2">
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a1d1e3b24c3749df859670210303bbfac">~Interpreter</a>()</code>
+<br/>
+</td>
+</tr>
+</table>
+<table class="properties responsive">
+<tr>
+<th colspan="2">
+<h3>Public types</h3>
+</th>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a03eaa66ea76d2cc71027da8bcecdcdb3">TfLiteDelegatePtr</a></code>
+</td>
+<td>using<div>
+<code>std::unique_ptr&lt; TfLiteDelegate, void(*)(TfLiteDelegate *)&gt;</code>
+</div></td>
+</tr>
+</table>
+<table class="properties responsive">
+<tr>
+<th colspan="2">
+<h3>Public static attributes</h3>
+</th>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a31efdb164bcab9b4511a5946b8544ba3">kTensorsCapacityHeadroom</a> = 16</code>
+</td>
+<td>
+<div>
+<code>constexpr int</code>
+</div>
+<div>The capacity headroom of <code>tensors_</code> vector before calling ops' <code>prepare</code> and <code>invoke</code> function. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a71da71f101e3bc0f8b3158006938c970">kTensorsReservedCapacity</a> = 128</code>
+</td>
+<td>
+<div>
+<code>constexpr int</code>
+</div>
+</td>
+</tr>
+</table>
+<table class="constants responsive">
+<tr>
+<th colspan="2">
+<h3>Friend classes</h3>
+</th>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a6a44ac717f75ad342611d5f7c3eb553a">tflite::impl::InterpreterBuilder</a></code>
+</td>
+<td>
+<div>
+<code>friend class</code>
+</div>
+</td>
+</tr>
+</table>
+<table class="methods responsive">
+<tr>
+<th colspan="2">
+<h3>Public functions</h3>
+</th>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a0abc055fb48cd03049531c552cc9d6fd">AddProfiler</a>(Profiler *profiler)</code>
+</td>
+<td>
+<div>
+<code>void</code>
+</div>
+<div>\warning This is an experimental API and subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a7905f5a480f27620338bbd7a01a47c37">AddProfiler</a>(std::unique_ptr&lt; Profiler &gt; profiler)</code>
+</td>
+<td>
+<div>
+<code>void</code>
+</div>
+<div>\warning This is an experimental API and subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a2b9b8f0339e27782214ab7ccbeab795d">AllocateTensors</a>()</code>
+</td>
+<td>
+<div>
+<code>TfLiteStatus</code>
+</div>
+<div>Update allocations for all tensors. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a18b1a96728f78015171d82be0ede4094">ApplyOptions</a>(InterpreterOptions *options)</code>
+</td>
+<td>
+<div>
+<code>TfLiteStatus</code>
+</div>
+<div>\warning This is an experimental API and subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a8f33554d88af7e501968feabefc68540">Cancel</a>()</code>
+</td>
+<td>
+<div>
+<code>TfLiteStatus</code>
+</div>
+<div>\warning This is an experimental API and subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1ae548d4795c7bf0deb41b93374459d21d">EnsureTensorDataIsReadable</a>(int tensor_index)</code>
+</td>
+<td>
+<div>
+<code>TfLiteStatus</code>
+</div>
+<div>\warning This is an experimental API and subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1ab70b0d07dea41547d3706cb330be8213">GetAllowFp16PrecisionForFp32</a>() const </code>
+</td>
+<td>
+<div>
+<code>bool</code>
+</div>
+<div>\warning Experimental interface, subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1aea6d6aaee9954d7f183e207c2630589f">GetAsyncSignatureRunner</a>(const char *signature_key)</code>
+</td>
+<td>
+<div>
+<code>async::AsyncSignatureRunner *</code>
+</div>
+<div>\warning Experimental interface, subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1ab8f6df5cced798ffdd4a625b2bf4eb8b">GetBufferHandle</a>(int tensor_index, TfLiteBufferHandle *buffer_handle, TfLiteDelegate **delegate)</code>
+</td>
+<td>
+<div>
+<code>TfLiteStatus</code>
+</div>
+<div>\warning This is an experimental API and subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a54a8f28c44bbcf24538f3c1f2701ed43">GetInputName</a>(int index) const </code>
+</td>
+<td>
+<div>
+<code>const char *</code>
+</div>
+<div>Return the name of a given input. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a8b5bb022ea0bb33a82a51f108ed0246d">GetOutputName</a>(int index) const </code>
+</td>
+<td>
+<div>
+<code>const char *</code>
+</div>
+<div>Return the name of a given output. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a0ba64e0f035f831216708ddb36da6066">GetProfiler</a>()</code>
+</td>
+<td>
+<div>
+<code>Profiler *</code>
+</div>
+<div>\warning This is an experimental API and subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a4482fe2d38221191e0ef0ea566ee7efa">GetSignatureRunner</a>(const char *signature_key)</code>
+</td>
+<td>
+<div>
+<code>SignatureRunner *</code>
+</div>
+<div>\warning Experimental interface, subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a61d2a71d36cc514e6362a077ada31ac9">GetSubgraphIndexFromSignature</a>(const char *signature_key) const </code>
+</td>
+<td>
+<div>
+<code>int</code>
+</div>
+<div>\warning Experimental interface, subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a20d86ac8d237c4875bfb8db6f48a3e0d">Invoke</a>()</code>
+</td>
+<td>
+<div>
+<code>TfLiteStatus</code>
+</div>
+<div>Invoke the interpreter (run the whole graph in dependency order). </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1ae46b1385edfc65352400f388975830df">ModifyGraphWithDelegate</a>(TfLiteDelegate *delegate)</code>
+</td>
+<td>
+<div>
+<code>TfLiteStatus</code>
+</div>
+<div>Allow a delegate to look at the graph and modify the graph to handle parts of the graph themselves. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1aa714211c6ab48034ddd211599c7f49c4">ModifyGraphWithDelegate</a>(std::unique_ptr&lt; Delegate, Deleter &gt; delegate)</code>
+</td>
+<td>
+<div>
+<code>TfLiteStatus</code>
+</div>
+<div>\warning This is an experimental API and subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a1c592ce0046a7ecbc9fc1a902c16a4ec">ModifyGraphWithDelegate</a>(std::unique_ptr&lt; TfLiteDelegate &gt; delegate)=delete</code>
+</td>
+<td>
+<div>
+<code>TfLiteStatus</code>
+</div>
+<div>This overload is <i>never</i> OK. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1ac79756db977afd82c301f7f3f58050fd">OpProfilingString</a>(const TfLiteRegistration &amp; op_reg, const TfLiteNode *node) const </code>
+</td>
+<td>
+<div>
+<code>const char *</code>
+</div>
+<div>Retrieve an operator's description of its work, for profiling purposes. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a6f69f19204f6ab4cabb0479938a93008">ReleaseNonPersistentMemory</a>()</code>
+</td>
+<td>
+<div>
+<code>TfLiteStatus</code>
+</div>
+<div>\warning Experimental interface, subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1ab16bdf5dcb14dd106e1dabfb8d70cba0">ResetVariableTensors</a>()</code>
+</td>
+<td>
+<div>
+<code>TfLiteStatus</code>
+</div>
+<div>\warning This is an experimental API and subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1ad0cd6fc5c7ad0458ddcba13643bd2811">ResizeInputTensor</a>(int tensor_index, const std::vector&lt; int &gt; &amp; dims)</code>
+</td>
+<td>
+<div>
+<code>TfLiteStatus</code>
+</div>
+<div>Change the dimensionality of a given tensor. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1add183246a95f78aa3075a0055ab90aaf">ResizeInputTensorStrict</a>(int tensor_index, const std::vector&lt; int &gt; &amp; dims)</code>
+</td>
+<td>
+<div>
+<code>TfLiteStatus</code>
+</div>
+<div>Change the dimensionality of a given tensor. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1ac2051a87a0c6959fe9678691c906f1d6">SetAllowBufferHandleOutput</a>(bool allow_buffer_handle_output)</code>
+</td>
+<td>
+<div>
+<code>void</code>
+</div>
+<div>\warning This is an experimental API and subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a259df676187dc3fb312d4b7e3417a7de">SetAllowFp16PrecisionForFp32</a>(bool allow)</code>
+</td>
+<td>
+<div>
+<code>void</code>
+</div>
+<div>Allow float16 precision for FP32 calculation when possible. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1ae6b66acdeb1d1c110898c74569e15a87">SetBufferHandle</a>(int tensor_index, TfLiteBufferHandle buffer_handle, TfLiteDelegate *delegate)</code>
+</td>
+<td>
+<div>
+<code>TfLiteStatus</code>
+</div>
+<div>\warning This is an experimental API and subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a3160fbd05c9e8e926bbfc1e79bec4fed">SetBufferHandle</a>(TfLiteTensor *tensor, TfLiteBufferHandle buffer_handle, TfLiteDelegate *delegate)</code>
+</td>
+<td>
+<div>
+<code>TfLiteStatus</code>
+</div>
+<div>\warning This is an experimental API and subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a25927ac5191f965604f255e82fc70a36">SetCancellationFunction</a>(void *data, bool(*)(void *) check_cancelled_func)</code>
+</td>
+<td>
+<div>
+<code>void</code>
+</div>
+<div>\warning This is an experimental API and subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a9f12c3be4dd336120ba88763ea022f3e">SetCustomAllocationForTensor</a>(int tensor_index, const TfLiteCustomAllocation &amp; allocation, int64_t flags)</code>
+</td>
+<td>
+<div>
+<code>TfLiteStatus</code>
+</div>
+<div>Assigns (or reassigns) a custom memory allocation for the given tensor. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1ab6fb58331951a78ce12af5861dfd0cf8">SetExternalContext</a>(TfLiteExternalContextType type, TfLiteExternalContext *ctx)</code>
+</td>
+<td>
+<div>
+<code>void</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a32cdfd8cf77b25b54d582d93d23e0461">SetNumThreads</a>(int num_threads)</code>
+</td>
+<td>
+<div>
+<code>TfLiteStatus</code>
+</div>
+<div>Set the number of threads available to the interpreter. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a46db1764e0f45181984df6b24ed87476">SetProfiler</a>(Profiler *profiler)</code>
+</td>
+<td>
+<div>
+<code>void</code>
+</div>
+<div>\warning This is an experimental API and subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a76372bd5ca03f8a78f34a1bb85f68bad">SetProfiler</a>(std::unique_ptr&lt; Profiler &gt; profiler)</code>
+</td>
+<td>
+<div>
+<code>void</code>
+</div>
+<div>\warning This is an experimental API and subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a262f108498e9365678a6600913aa72a2">error_reporter</a>() const </code>
+</td>
+<td>
+<div>
+<code><a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *</code>
+</div>
+<div>\warning Experimental interface, subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a84266d641a7e67b0753c3978c34e19fc">execution_plan</a>() const </code>
+</td>
+<td>
+<div>
+<code>const std::vector&lt; int &gt; &amp;</code>
+</div>
+<div>\warning Experimental interface, subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1ab18e42add80625910ddad9491d20a19d">input_tensor</a>(size_t index)</code>
+</td>
+<td>
+<div>
+<code>TfLiteTensor *</code>
+</div>
+<div>Return a mutable pointer to the given input tensor. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a1813f18cbdd8ddccda9ef97a735bdef2">input_tensor</a>(size_t index) const </code>
+</td>
+<td>
+<div>
+<code>const TfLiteTensor *</code>
+</div>
+<div>Return an immutable pointer to the given input tensor. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1adb221f3ea76fd71f3d3229d04ea06105">input_tensor_by_signature</a>(const char *signature_input_name, const char *signature_key)</code>
+</td>
+<td>
+<div>
+<code>TfLiteTensor *</code>
+</div>
+<div>\warning Experimental interface, subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a164111335003fd7253a4ebd6e23049fc">inputs</a>() const </code>
+</td>
+<td>
+<div>
+<code>const std::vector&lt; int &gt; &amp;</code>
+</div>
+<div>Read only access to list of inputs. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a913f75fffa09aa29e16f5d568f189216">node_and_registration</a>(int node_index) const </code>
+</td>
+<td>
+<div>
+<code>const std::pair&lt; TfLiteNode, TfLiteRegistration &gt; *</code>
+</div>
+<div>Returns a pointer to an operation and registration data structure if in bounds from the primary subgraph(subgraph_[0]). </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a4b88ecfcfb7e054b46766cd9be07c4ee">node_and_registration</a>(int subgraph_index, int node_index) const </code>
+</td>
+<td>
+<div>
+<code>const std::pair&lt; TfLiteNode, TfLiteRegistration &gt; *</code>
+</div>
+<div>Returns a pointer to an operation and registration data structure if in bounds. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1ac90b230e3bac8796733277062b3e0c86">nodes_size</a>() const </code>
+</td>
+<td>
+<div>
+<code>size_t</code>
+</div>
+<div>Return the number of ops in the model. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a491de73c0dc379fbbe502e40efee79d0">operator=</a>(const <a href="/lite/api_docs/cc/namespace/tflite.html#namespacetflite_1a2d6d829bce5eba5b241987ca5b4f0f40">Interpreter</a> &amp;)=delete</code>
+</td>
+<td>
+<div>
+<code><a href="/lite/api_docs/cc/namespace/tflite.html#namespacetflite_1a2d6d829bce5eba5b241987ca5b4f0f40">Interpreter</a> &amp;</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a8fa7c388513479aa16ed8878554eb277">output_tensor</a>(size_t index)</code>
+</td>
+<td>
+<div>
+<code>TfLiteTensor *</code>
+</div>
+<div>Return a mutable pointer to the given output tensor. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a10c640a1d463bb2c46412a1d126aa386">output_tensor</a>(size_t index) const </code>
+</td>
+<td>
+<div>
+<code>const TfLiteTensor *</code>
+</div>
+<div>Return an immutable pointer to the given output tensor. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1ac3b563b816a026b22c0e704611ba3baf">output_tensor_by_signature</a>(const char *signature_output_name, const char *signature_key) const </code>
+</td>
+<td>
+<div>
+<code>const TfLiteTensor *</code>
+</div>
+<div>\warning Experimental interface, subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1ae4413b1e20b48d1d6964f469b1d7d861">outputs</a>() const </code>
+</td>
+<td>
+<div>
+<code>const std::vector&lt; int &gt; &amp;</code>
+</div>
+<div>Read only access to list of outputs. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a135ca95a2355843cdf80e83f4d7675df">signature_inputs</a>(const char *signature_key) const </code>
+</td>
+<td>
+<div>
+<code>const std::map&lt; std::string, uint32_t &gt; &amp;</code>
+</div>
+<div>\warning Experimental interface, subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a07be728c7c04977929e3c5ee7ffe32c5">signature_keys</a>() const </code>
+</td>
+<td>
+<div>
+<code>std::vector&lt; const std::string * &gt;</code>
+</div>
+<div>\warning Experimental interface, subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1abf5f0d0991805dc6fa18c30f1f4de93d">signature_outputs</a>(const char *signature_key) const </code>
+</td>
+<td>
+<div>
+<code>const std::map&lt; std::string, uint32_t &gt; &amp;</code>
+</div>
+<div>\warning Experimental interface, subject to change. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a5185b7b7a413c9be967ee3027d6625b9">tensor</a>(int tensor_index)</code>
+</td>
+<td>
+<div>
+<code>TfLiteTensor *</code>
+</div>
+<div>Get a mutable tensor data structure. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a8397d8c7e7609465a5c7bdb512f68976">tensor</a>(int tensor_index) const </code>
+</td>
+<td>
+<div>
+<code>const TfLiteTensor *</code>
+</div>
+<div>Get an immutable tensor data structure. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a491d847d43f6b77bc116ce70e959c613">tensors_size</a>() const </code>
+</td>
+<td>
+<div>
+<code>size_t</code>
+</div>
+<div>Return the number of tensors in the model. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a38401a4fb0ace7c485acd93a421d9f20">typed_input_tensor</a>(int index)</code>
+</td>
+<td>
+<div>
+<code>T *</code>
+</div>
+<div>Return a mutable pointer into the data of a given input tensor. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a8021d26892e49176de5f1e40434b7c2a">typed_input_tensor</a>(int index) const </code>
+</td>
+<td>
+<div>
+<code>const T *</code>
+</div>
+<div>Return an immutable pointer into the data of a given input tensor. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1ac4f9d65dc76249546c72834002e19b9a">typed_output_tensor</a>(int index)</code>
+</td>
+<td>
+<div>
+<code>T *</code>
+</div>
+<div>Return a mutable pointer into the data of a given output tensor. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1aa60bb9f55cd57ac79ce2253d24d89afc">typed_output_tensor</a>(int index) const </code>
+</td>
+<td>
+<div>
+<code>const T *</code>
+</div>
+<div>Return an immutable pointer into the data of a given output tensor. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1aa54709eb61d98be824d9f99e04cdb3e6">typed_tensor</a>(int tensor_index)</code>
+</td>
+<td>
+<div>
+<code>T *</code>
+</div>
+<div>Perform a checked cast to the appropriate tensor type (mutable pointer version). </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1a89ad6197373815a8e52631cb4ebaebe7">typed_tensor</a>(int tensor_index) const </code>
+</td>
+<td>
+<div>
+<code>const T *</code>
+</div>
+<div>Perform a checked cast to the appropriate tensor type (immutable pointer version). </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_interpreter_1acf4be52d69a6049bbab511774ed9a367">variables</a>() const </code>
+</td>
+<td>
+<div>
+<code>const std::vector&lt; int &gt; &amp;</code>
+</div>
+<div>Read only access to list of variable tensors. </div>
+</td>
+</tr>
+</table>
+<h2>Public types</h2>
+<div id="classtflite_1_1impl_1_1_interpreter_1a03eaa66ea76d2cc71027da8bcecdcdb3">
+<h3>TfLiteDelegatePtr</h3>
+<pre class="prettyprint">std::unique_ptr&lt; TfLiteDelegate, void(*)(TfLiteDelegate *)&gt; TfLiteDelegatePtr</pre>
+<div></div>
+</div>
+<h2>Public static attributes</h2>
+<div id="classtflite_1_1impl_1_1_interpreter_1a31efdb164bcab9b4511a5946b8544ba3">
+<h3>kTensorsCapacityHeadroom</h3>
+<pre class="prettyprint">constexpr int kTensorsCapacityHeadroom = 16</pre>
+<div>
+<p>The capacity headroom of <code>tensors_</code> vector before calling ops' <code>prepare</code> and <code>invoke</code> function. </p>
+<p>In these functions, it's guaranteed allocating up to <code>kTensorsCapacityHeadroom</code> more tensors won't invalidate pointers to existing tensors. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a71da71f101e3bc0f8b3158006938c970">
+<h3>kTensorsReservedCapacity</h3>
+<pre class="prettyprint">constexpr int kTensorsReservedCapacity = 128</pre>
+<div></div>
+</div>
+<h2>Friend classes</h2>
+<div id="classtflite_1_1impl_1_1_interpreter_1a6a44ac717f75ad342611d5f7c3eb553a">
+<h3>tflite::impl::InterpreterBuilder</h3>
+<pre class="prettyprint">friend class tflite::impl::InterpreterBuilder</pre>
+<div></div>
+</div>
+<h2>Public functions</h2>
+<div id="classtflite_1_1impl_1_1_interpreter_1a0abc055fb48cd03049531c552cc9d6fd">
+<h3>AddProfiler</h3>
+<pre class="prettyprint">void AddProfiler(
+  Profiler *profiler
+)</pre>
+<div>
+<p>\warning This is an experimental API and subject to change. </p>
+<p>\n Adds the profiler to tracing execution. The caller retains ownership of the profiler and must ensure its validity. nullptr <code>profiler</code> will be ignored. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a7905f5a480f27620338bbd7a01a47c37">
+<h3>AddProfiler</h3>
+<pre class="prettyprint">void AddProfiler(
+  std::unique_ptr&lt; Profiler &gt; profiler
+)</pre>
+<div>
+<p>\warning This is an experimental API and subject to change. </p>
+<p>\n Adds the profiler to tracing execution. Transfers ownership of the profiler to the interpreter. nullptr <code>profiler</code> will be ignored. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a2b9b8f0339e27782214ab7ccbeab795d">
+<h3>AllocateTensors</h3>
+<pre class="prettyprint">TfLiteStatus AllocateTensors()</pre>
+<div>
+<p>Update allocations for all tensors. </p>
+<p>This will redim dependent tensors using the input tensor dimensionality as given. This is relatively expensive. This <i>must be</i> called after the interpreter has been created and before running inference (and accessing tensor buffers), and <i>must be</i> called again if (and only if) an input tensor is resized. Returns status of success or failure. Will fail if any of the ops in the model (other than those which were rewritten by delegates, if any) are not supported by the Interpreter's <a href="/lite/api_docs/cc/class/tflite/op-resolver.html#classtflite_1_1_op_resolver">OpResolver</a>. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a18b1a96728f78015171d82be0ede4094">
+<h3>ApplyOptions</h3>
+<pre class="prettyprint">TfLiteStatus ApplyOptions(
+  InterpreterOptions *options
+)</pre>
+<div>
+<p>\warning This is an experimental API and subject to change. </p>
+<p>\n Apply InterpreterOptions which tunes behavior of the interpreter. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a8f33554d88af7e501968feabefc68540">
+<h3>Cancel</h3>
+<pre class="prettyprint">TfLiteStatus Cancel()</pre>
+<div>
+<p>\warning This is an experimental API and subject to change. </p>
+<p>\n Attempts to cancel in flight invocation if any. This will not affect <code>Invoke</code>s that happends after the cancellation. Non blocking. Thread safe. Returns kTfLiteError if cancellation is not enabled, otherwise returns kTfLiteOk. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1ae548d4795c7bf0deb41b93374459d21d">
+<h3>EnsureTensorDataIsReadable</h3>
+<pre class="prettyprint">TfLiteStatus EnsureTensorDataIsReadable(
+  int tensor_index
+)</pre>
+<div>
+<p>\warning This is an experimental API and subject to change. </p>
+<p>\n Ensure the data in <code>tensor.data</code> is readable. In case delegate is used, it might require to copy the data from delegate buffer to raw memory. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1ab70b0d07dea41547d3706cb330be8213">
+<h3>GetAllowFp16PrecisionForFp32</h3>
+<pre class="prettyprint">bool GetAllowFp16PrecisionForFp32() const </pre>
+<div>
+<p>\warning Experimental interface, subject to change. </p>
+<p>\n Get the half precision flag. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1aea6d6aaee9954d7f183e207c2630589f">
+<h3>GetAsyncSignatureRunner</h3>
+<pre class="prettyprint">async::AsyncSignatureRunner * GetAsyncSignatureRunner(
+  const char *signature_key
+)</pre>
+<div>
+<p>\warning Experimental interface, subject to change. </p>
+<p>\n Returns a pointer to the AsyncSignatureRunner instance to run the part of the graph identified by a SignatureDef. The nullptr is returned if the given signature key is not valid. The async delegate should be applied before calling this function. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1ab8f6df5cced798ffdd4a625b2bf4eb8b">
+<h3>GetBufferHandle</h3>
+<pre class="prettyprint">TfLiteStatus GetBufferHandle(
+  int tensor_index,
+  TfLiteBufferHandle *buffer_handle,
+  TfLiteDelegate **delegate
+)</pre>
+<div>
+<p>\warning This is an experimental API and subject to change. </p>
+<p>\n Get the delegate buffer handle, and the delegate which can process the buffer handle. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a54a8f28c44bbcf24538f3c1f2701ed43">
+<h3>GetInputName</h3>
+<pre class="prettyprint">const char * GetInputName(
+  int index
+) const </pre>
+<div>
+<p>Return the name of a given input. </p>
+<p>The given index must be between 0 and inputs().size(). </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a8b5bb022ea0bb33a82a51f108ed0246d">
+<h3>GetOutputName</h3>
+<pre class="prettyprint">const char * GetOutputName(
+  int index
+) const </pre>
+<div>
+<p>Return the name of a given output. </p>
+<p>The given index must be between 0 and outputs().size(). </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a0ba64e0f035f831216708ddb36da6066">
+<h3>GetProfiler</h3>
+<pre class="prettyprint">Profiler * GetProfiler()</pre>
+<div>
+<p>\warning This is an experimental API and subject to change. </p>
+<p>\n Gets the profiler used for op tracing. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a4482fe2d38221191e0ef0ea566ee7efa">
+<h3>GetSignatureRunner</h3>
+<pre class="prettyprint">SignatureRunner * GetSignatureRunner(
+  const char *signature_key
+)</pre>
+<div>
+<p>\warning Experimental interface, subject to change. </p>
+<p>\n Returns a pointer to the SignatureRunner instance to run the part of the graph identified by a SignatureDef. The nullptr is returned if the given signature key is not valid. If you need to specify delegates, you have to do that before calling this function. This function will additionally apply default delegates. Thus, applying delegates after that might lead to undesirable behaviors. Note, the pointed instance has lifetime same as the Interpreter object and the SignatureRunner class is <i>not</i> thread-safe. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a61d2a71d36cc514e6362a077ada31ac9">
+<h3>GetSubgraphIndexFromSignature</h3>
+<pre class="prettyprint">int GetSubgraphIndexFromSignature(
+  const char *signature_key
+) const </pre>
+<div>
+<p>\warning Experimental interface, subject to change. </p>
+<p>\n Return the subgraph index that corresponds to a SignatureDef, defined by 'signature_key'. If invalid name passed, -1 will be returned. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a00ab4f17f33dec6bd60829c54ddfeb26">
+<h3>Interpreter</h3>
+<pre class="prettyprint"> Interpreter(
+  <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter
+)</pre>
+<div></div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1ac84c44b9dfd9dcd93d77769fc256dcc9">
+<h3>Interpreter</h3>
+<pre class="prettyprint"> Interpreter(
+  const Interpreter &amp;
+)=delete</pre>
+<div></div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a20d86ac8d237c4875bfb8db6f48a3e0d">
+<h3>Invoke</h3>
+<pre class="prettyprint">TfLiteStatus Invoke()</pre>
+<div>
+<p>Invoke the interpreter (run the whole graph in dependency order). </p>
+<p>NOTE: It is possible that the interpreter is not in a ready state to evaluate (i.e. if a ResizeTensor() has been performed without an AllocateTensors(). Returns status of success or failure. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1ae46b1385edfc65352400f388975830df">
+<h3>ModifyGraphWithDelegate</h3>
+<pre class="prettyprint">TfLiteStatus ModifyGraphWithDelegate(
+  TfLiteDelegate *delegate
+)</pre>
+<div>
+<p>Allow a delegate to look at the graph and modify the graph to handle parts of the graph themselves. </p>
+<p>After this is called, the graph may contain new nodes that replace 1 more nodes. 'delegate' must outlive the interpreter. Returns one of the following status codes:<ol>
+<li>kTfLiteOk: Success.</li>
+<li>kTfLiteDelegateError: Delegation failed due to an error in the delegate, or the delegate parameter was null. The Interpreter has been restored to its pre-delegation state. NOTE: This undoes all delegates previously applied to the Interpreter.</li>
+<li>kTfLiteApplicationError : Delegation failed to be applied due to the incompatibility with the TfLite runtime, e.g., the model graph is already immutable when applying the delegate. However, the interpreter could still be invoked.</li>
+<li>kTfLiteUnresolvedOps: Delegation failed because the model has an operator that cannot be resolved. This can happen when the op is not registered or built with the TF Lite framework.</li>
+<li>kTfLiteError: Unexpected/runtime failure. \n \warning This is an experimental API and subject to change. \n </li>
+</ol></p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1aa714211c6ab48034ddd211599c7f49c4">
+<h3>ModifyGraphWithDelegate</h3>
+<pre class="prettyprint">TfLiteStatus ModifyGraphWithDelegate(
+  std::unique_ptr&lt; Delegate, Deleter &gt; delegate
+)</pre>
+<div>
+<p>\warning This is an experimental API and subject to change. </p>
+<p>\n Same as ModifyGraphWithDelegate except this interpreter takes ownership of the provided delegate. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a1c592ce0046a7ecbc9fc1a902c16a4ec">
+<h3>ModifyGraphWithDelegate</h3>
+<pre class="prettyprint">TfLiteStatus ModifyGraphWithDelegate(
+  std::unique_ptr&lt; TfLiteDelegate &gt; delegate
+)=delete</pre>
+<div>
+<p>This overload is <i>never</i> OK. </p>
+<p>TfLiteDelegate is a C structure, so it has no virtual destructor. The default deleter of the unique_ptr does not know how to delete C++ objects deriving from TfLiteDelegate. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1ac79756db977afd82c301f7f3f58050fd">
+<h3>OpProfilingString</h3>
+<pre class="prettyprint">const char * OpProfilingString(
+  const TfLiteRegistration &amp; op_reg,
+  const TfLiteNode *node
+) const </pre>
+<div>
+<p>Retrieve an operator's description of its work, for profiling purposes. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a6f69f19204f6ab4cabb0479938a93008">
+<h3>ReleaseNonPersistentMemory</h3>
+<pre class="prettyprint">TfLiteStatus ReleaseNonPersistentMemory()</pre>
+<div>
+<p>\warning Experimental interface, subject to change. </p>
+<p>\n This releases memory held by non-persistent tensors. It does NOT re-perform memory planning. AllocateTensors needs to be called before next invocation. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1ab16bdf5dcb14dd106e1dabfb8d70cba0">
+<h3>ResetVariableTensors</h3>
+<pre class="prettyprint">TfLiteStatus ResetVariableTensors()</pre>
+<div>
+<p>\warning This is an experimental API and subject to change. </p>
+<p>\n Reset all variable tensors to the default value. If a variable tensor doesn't have a buffer, reset it to zero. TODO(b/115961645): Implement - If a variable tensor has a buffer, reset it to the value of the buffer. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1ad0cd6fc5c7ad0458ddcba13643bd2811">
+<h3>ResizeInputTensor</h3>
+<pre class="prettyprint">TfLiteStatus ResizeInputTensor(
+  int tensor_index,
+  const std::vector&lt; int &gt; &amp; dims
+)</pre>
+<div>
+<p>Change the dimensionality of a given tensor. </p>
+<p>Note, this is only acceptable for tensor indices that are inputs or variables. Returns status of failure or success. Note that this doesn't actually resize any existing buffers. A call to AllocateTensors() is required to change the tensor input buffer. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1add183246a95f78aa3075a0055ab90aaf">
+<h3>ResizeInputTensorStrict</h3>
+<pre class="prettyprint">TfLiteStatus ResizeInputTensorStrict(
+  int tensor_index,
+  const std::vector&lt; int &gt; &amp; dims
+)</pre>
+<div>
+<p>Change the dimensionality of a given tensor. </p>
+<p>This is only acceptable for tensor indices that are inputs or variables. Only unknown dimensions can be resized with this function. Unknown dimensions are indicated as <code>-1</code> in the <code>dims_signature</code> attribute of a <code>TfLiteTensor</code>. Returns status of failure or success. Note that this doesn't actually resize any existing buffers. A call to AllocateTensors() is required to change the tensor input buffer. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1ac2051a87a0c6959fe9678691c906f1d6">
+<h3>SetAllowBufferHandleOutput</h3>
+<pre class="prettyprint">void SetAllowBufferHandleOutput(
+  bool allow_buffer_handle_output
+)</pre>
+<div>
+<p>\warning This is an experimental API and subject to change. </p>
+<p>\n Set if buffer handle output is allowed.</p>
+<p>When using hardware delegation, Interpreter will make the data of output tensors available in <code>tensor-&gt;data</code> by default. If the application can consume the buffer handle directly (e.g. reading output from OpenGL texture), it can set this flag to false, so Interpreter won't copy the data from buffer handle to CPU memory. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a259df676187dc3fb312d4b7e3417a7de">
+<h3>SetAllowFp16PrecisionForFp32</h3>
+<pre class="prettyprint">void SetAllowFp16PrecisionForFp32(
+  bool allow
+)</pre>
+<div>
+<p>Allow float16 precision for FP32 calculation when possible. </p>
+<p>Default: not allow.</p>
+<p>WARNING: This API is deprecated: prefer controlling this via delegate options, e.g. `tflite::StatefulNnApiDelegate::Options::allow_fp16' or <code>TfLiteGpuDelegateOptionsV2::is_precision_loss_allowed</code>. This method will be removed in a future release. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1ae6b66acdeb1d1c110898c74569e15a87">
+<h3>SetBufferHandle</h3>
+<pre class="prettyprint">TfLiteStatus SetBufferHandle(
+  int tensor_index,
+  TfLiteBufferHandle buffer_handle,
+  TfLiteDelegate *delegate
+)</pre>
+<div>
+<p>\warning This is an experimental API and subject to change. </p>
+<p>\n Set the delegate buffer handle to a tensor. It can be called in the following cases:<ol>
+<li>Set the buffer handle to a tensor that's not being written by a delegate. For example, feeding an OpenGL texture as the input of the inference graph.</li>
+<li>Set the buffer handle to a tensor that uses the same delegate. For example, set an OpenGL texture as the output of inference, while the node which produces output is an OpenGL delegate node. </li>
+</ol></p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a3160fbd05c9e8e926bbfc1e79bec4fed">
+<h3>SetBufferHandle</h3>
+<pre class="prettyprint">TfLiteStatus SetBufferHandle(
+  TfLiteTensor *tensor,
+  TfLiteBufferHandle buffer_handle,
+  TfLiteDelegate *delegate
+)</pre>
+<div>
+<p>\warning This is an experimental API and subject to change. </p>
+<p>\n Set the delegate buffer handle to the given tensor. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a25927ac5191f965604f255e82fc70a36">
+<h3>SetCancellationFunction</h3>
+<pre class="prettyprint">void SetCancellationFunction(
+  void *data,
+  bool(*)(void *) check_cancelled_func
+)</pre>
+<div>
+<p>\warning This is an experimental API and subject to change. </p>
+<p>\n Sets the cancellation function pointer in order to cancel a request in the middle of a call to Invoke(). The interpreter queries this function during inference, between op invocations; when it returns true, the interpreter will abort execution and return <code>kTfLiteError</code>. The <code>data</code> parameter contains any data used by the cancellation function, and if non-null, remains owned by the caller. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a9f12c3be4dd336120ba88763ea022f3e">
+<h3>SetCustomAllocationForTensor</h3>
+<pre class="prettyprint">TfLiteStatus SetCustomAllocationForTensor(
+  int tensor_index,
+  const TfLiteCustomAllocation &amp; allocation,
+  int64_t flags
+)</pre>
+<div>
+<p>Assigns (or reassigns) a custom memory allocation for the given tensor. </p>
+<p><code>flags</code> is a bitmask, see TfLiteCustomAllocationFlags. The runtime does NOT take ownership of the underlying memory.</p>
+<p>NOTE: User needs to call AllocateTensors() after this. Invalid/insufficient buffers will cause an error during AllocateTensors or Invoke (in case of dynamic shapes in the graph).</p>
+<p>Parameters should satisfy the following conditions:<ol>
+<li>tensor-&gt;allocation_type == kTfLiteArenaRw or kTfLiteArenaRwPersistent In general, this is true for I/O tensors &amp; variable tensors.</li>
+<li>allocation-&gt;data has the appropriate permissions for runtime access (Read-only for inputs, Read-Write for others), and outlives Interpreter.</li>
+<li>allocation-&gt;bytes &gt;= tensor-&gt;bytes. This condition is checked again if any tensors are resized.</li>
+<li>allocation-&gt;data should be aligned to kDefaultTensorAlignment defined in lite/util.h. (Currently 64 bytes) This check is skipped if kTfLiteCustomAllocationFlagsSkipAlignCheck is set through <code>flags</code>. \warning This is an experimental API and subject to change. \n </li>
+</ol></p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1ab6fb58331951a78ce12af5861dfd0cf8">
+<h3>SetExternalContext</h3>
+<pre class="prettyprint">void SetExternalContext(
+  TfLiteExternalContextType type,
+  TfLiteExternalContext *ctx
+)</pre>
+<div></div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a32cdfd8cf77b25b54d582d93d23e0461">
+<h3>SetNumThreads</h3>
+<pre class="prettyprint">TfLiteStatus SetNumThreads(
+  int num_threads
+)</pre>
+<div>
+<p>Set the number of threads available to the interpreter. </p>
+<p>NOTE: <code>num_threads</code> should be &gt;= -1. Setting <code>num_threads</code> to 0 has the effect to disable multithreading, which is equivalent to setting <code>num_threads</code> to 1. If set to the value -1, the number of threads used will be implementation-defined and platform-dependent.</p>
+<p>As TfLite interpreter could internally apply a TfLite delegate by default (i.e. XNNPACK), the number of threads that are available to the default delegate <i>should be</i> set via InterpreterBuilder APIs as follows: <pre class="prettyprint">std::unique_ptr<tflite::interpreter> interpreter;
+tflite::InterpreterBuilder builder(tflite model, op resolver);
+builder.SetNumThreads(...)
+ASSERT_EQ(builder(&amp;interpreter), kTfLiteOk);
+</tflite::interpreter></pre></p>
+<p>WARNING: This API is deprecated: prefer using <code>InterpreterBuilder::SetNumThreads</code>, as documented above. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a46db1764e0f45181984df6b24ed87476">
+<h3>SetProfiler</h3>
+<pre class="prettyprint">void SetProfiler(
+  Profiler *profiler
+)</pre>
+<div>
+<p>\warning This is an experimental API and subject to change. </p>
+<p>\n Sets the profiler to tracing execution. The caller retains ownership of the profiler and must ensure its validity. Previously registered profilers will be unregistered. If <code>profiler</code> is nullptr, all previously installed profilers will be removed. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a76372bd5ca03f8a78f34a1bb85f68bad">
+<h3>SetProfiler</h3>
+<pre class="prettyprint">void SetProfiler(
+  std::unique_ptr&lt; Profiler &gt; profiler
+)</pre>
+<div>
+<p>\warning This is an experimental API and subject to change. </p>
+<p>\n Same as SetProfiler except this interpreter takes ownership of the provided profiler. Previously registered profilers will be unregistered. If <code>profiler</code> is nullptr, all previously installed profilers will be removed. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a262f108498e9365678a6600913aa72a2">
+<h3>error_reporter</h3>
+<pre class="prettyprint"><a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> * error_reporter() const </pre>
+<div>
+<p>\warning Experimental interface, subject to change. </p>
+<p>\n Get the error reporter associated with this interpreter. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a84266d641a7e67b0753c3978c34e19fc">
+<h3>execution_plan</h3>
+<pre class="prettyprint">const std::vector&lt; int &gt; &amp; execution_plan() const </pre>
+<div>
+<p>\warning Experimental interface, subject to change. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1ab18e42add80625910ddad9491d20a19d">
+<h3>input_tensor</h3>
+<pre class="prettyprint">TfLiteTensor * input_tensor(
+  size_t index
+)</pre>
+<div>
+<p>Return a mutable pointer to the given input tensor. </p>
+<p>The given index must be between 0 and inputs().size(). </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a1813f18cbdd8ddccda9ef97a735bdef2">
+<h3>input_tensor</h3>
+<pre class="prettyprint">const TfLiteTensor * input_tensor(
+  size_t index
+) const </pre>
+<div>
+<p>Return an immutable pointer to the given input tensor. </p>
+<p>The given index must be between 0 and inputs().size(). </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1adb221f3ea76fd71f3d3229d04ea06105">
+<h3>input_tensor_by_signature</h3>
+<pre class="prettyprint">TfLiteTensor * input_tensor_by_signature(
+  const char *signature_input_name,
+  const char *signature_key
+)</pre>
+<div>
+<p>\warning Experimental interface, subject to change. </p>
+<p>\n Returns the input tensor identified by 'signature_input_name' in the signature identified by 'signature_key'. Returns nullptr if not found. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a164111335003fd7253a4ebd6e23049fc">
+<h3>inputs</h3>
+<pre class="prettyprint">const std::vector&lt; int &gt; &amp; inputs() const </pre>
+<div>
+<p>Read only access to list of inputs. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a913f75fffa09aa29e16f5d568f189216">
+<h3>node_and_registration</h3>
+<pre class="prettyprint">const std::pair&lt; TfLiteNode, TfLiteRegistration &gt; * node_and_registration(
+  int node_index
+) const </pre>
+<div>
+<p>Returns a pointer to an operation and registration data structure if in bounds from the primary subgraph(subgraph_[0]). </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a4b88ecfcfb7e054b46766cd9be07c4ee">
+<h3>node_and_registration</h3>
+<pre class="prettyprint">const std::pair&lt; TfLiteNode, TfLiteRegistration &gt; * node_and_registration(
+  int subgraph_index,
+  int node_index
+) const </pre>
+<div>
+<p>Returns a pointer to an operation and registration data structure if in bounds. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1ac90b230e3bac8796733277062b3e0c86">
+<h3>nodes_size</h3>
+<pre class="prettyprint">size_t nodes_size() const </pre>
+<div>
+<p>Return the number of ops in the model. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a491de73c0dc379fbbe502e40efee79d0">
+<h3>operator=</h3>
+<pre class="prettyprint"><a href="/lite/api_docs/cc/namespace/tflite.html#namespacetflite_1a2d6d829bce5eba5b241987ca5b4f0f40">Interpreter</a> &amp; operator=(
+  const <a href="/lite/api_docs/cc/namespace/tflite.html#namespacetflite_1a2d6d829bce5eba5b241987ca5b4f0f40">Interpreter</a> &amp;
+)=delete</pre>
+<div></div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a8fa7c388513479aa16ed8878554eb277">
+<h3>output_tensor</h3>
+<pre class="prettyprint">TfLiteTensor * output_tensor(
+  size_t index
+)</pre>
+<div>
+<p>Return a mutable pointer to the given output tensor. </p>
+<p>The given index must be between 0 and outputs().size(). </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a10c640a1d463bb2c46412a1d126aa386">
+<h3>output_tensor</h3>
+<pre class="prettyprint">const TfLiteTensor * output_tensor(
+  size_t index
+) const </pre>
+<div>
+<p>Return an immutable pointer to the given output tensor. </p>
+<p>The given index must be between 0 and outputs().size(). </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1ac3b563b816a026b22c0e704611ba3baf">
+<h3>output_tensor_by_signature</h3>
+<pre class="prettyprint">const TfLiteTensor * output_tensor_by_signature(
+  const char *signature_output_name,
+  const char *signature_key
+) const </pre>
+<div>
+<p>\warning Experimental interface, subject to change. </p>
+<p>\n Returns the output tensor identified by 'signature_output_name' in the signature identified by 'signature_key'. Returns nullptr if not found. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1ae4413b1e20b48d1d6964f469b1d7d861">
+<h3>outputs</h3>
+<pre class="prettyprint">const std::vector&lt; int &gt; &amp; outputs() const </pre>
+<div>
+<p>Read only access to list of outputs. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a135ca95a2355843cdf80e83f4d7675df">
+<h3>signature_inputs</h3>
+<pre class="prettyprint">const std::map&lt; std::string, uint32_t &gt; &amp; signature_inputs(
+  const char *signature_key
+) const </pre>
+<div>
+<p>\warning Experimental interface, subject to change. </p>
+<p>\n Returns the mapping of inputs to tensor index in the signature specified through 'signature_key'. If invalid name passed, an empty list will be returned. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a07be728c7c04977929e3c5ee7ffe32c5">
+<h3>signature_keys</h3>
+<pre class="prettyprint">std::vector&lt; const std::string * &gt; signature_keys() const </pre>
+<div>
+<p>\warning Experimental interface, subject to change. </p>
+<p>\n Returns list of all keys of different method signatures defined in the model. Note, pointers returned have lifetime same as the Interpreter object. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1abf5f0d0991805dc6fa18c30f1f4de93d">
+<h3>signature_outputs</h3>
+<pre class="prettyprint">const std::map&lt; std::string, uint32_t &gt; &amp; signature_outputs(
+  const char *signature_key
+) const </pre>
+<div>
+<p>\warning Experimental interface, subject to change. </p>
+<p>\n Returns the mapping of outputs to tensor index in the signature specified through 'signature_key'. If invalid name passed, an empty list will be returned. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a5185b7b7a413c9be967ee3027d6625b9">
+<h3>tensor</h3>
+<pre class="prettyprint">TfLiteTensor * tensor(
+  int tensor_index
+)</pre>
+<div>
+<p>Get a mutable tensor data structure. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a8397d8c7e7609465a5c7bdb512f68976">
+<h3>tensor</h3>
+<pre class="prettyprint">const TfLiteTensor * tensor(
+  int tensor_index
+) const </pre>
+<div>
+<p>Get an immutable tensor data structure. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a491d847d43f6b77bc116ce70e959c613">
+<h3>tensors_size</h3>
+<pre class="prettyprint">size_t tensors_size() const </pre>
+<div>
+<p>Return the number of tensors in the model. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a38401a4fb0ace7c485acd93a421d9f20">
+<h3>typed_input_tensor</h3>
+<pre class="prettyprint">T * typed_input_tensor(
+  int index
+)</pre>
+<div>
+<p>Return a mutable pointer into the data of a given input tensor. </p>
+<p>The given index must be between 0 and inputs().size(). </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a8021d26892e49176de5f1e40434b7c2a">
+<h3>typed_input_tensor</h3>
+<pre class="prettyprint">const T * typed_input_tensor(
+  int index
+) const </pre>
+<div>
+<p>Return an immutable pointer into the data of a given input tensor. </p>
+<p>The given index must be between 0 and inputs().size(). </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1ac4f9d65dc76249546c72834002e19b9a">
+<h3>typed_output_tensor</h3>
+<pre class="prettyprint">T * typed_output_tensor(
+  int index
+)</pre>
+<div>
+<p>Return a mutable pointer into the data of a given output tensor. </p>
+<p>The given index must be between 0 and outputs().size(). </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1aa60bb9f55cd57ac79ce2253d24d89afc">
+<h3>typed_output_tensor</h3>
+<pre class="prettyprint">const T * typed_output_tensor(
+  int index
+) const </pre>
+<div>
+<p>Return an immutable pointer into the data of a given output tensor. </p>
+<p>The given index must be between 0 and outputs().size(). </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1aa54709eb61d98be824d9f99e04cdb3e6">
+<h3>typed_tensor</h3>
+<pre class="prettyprint">T * typed_tensor(
+  int tensor_index
+)</pre>
+<div>
+<p>Perform a checked cast to the appropriate tensor type (mutable pointer version). </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a89ad6197373815a8e52631cb4ebaebe7">
+<h3>typed_tensor</h3>
+<pre class="prettyprint">const T * typed_tensor(
+  int tensor_index
+) const </pre>
+<div>
+<p>Perform a checked cast to the appropriate tensor type (immutable pointer version). </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1acf4be52d69a6049bbab511774ed9a367">
+<h3>variables</h3>
+<pre class="prettyprint">const std::vector&lt; int &gt; &amp; variables() const </pre>
+<div>
+<p>Read only access to list of variable tensors. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_interpreter_1a1d1e3b24c3749df859670210303bbfac">
+<h3>~Interpreter</h3>
+<pre class="prettyprint"> ~Interpreter()</pre>
+<div></div>
+</div>
+</body>
+</html>

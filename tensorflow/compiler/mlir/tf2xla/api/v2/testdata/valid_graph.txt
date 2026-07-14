@@ -1,0 +1,44 @@
+ node {
+  name: "Empty/shape"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:TPU:0"
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 2
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+        }
+        tensor_content: "\200\000\000\000\200\000\000\000"
+      }
+    }
+  }
+  experimental_debug_info {
+  }
+}
+library {
+}
+versions {
+  producer: 268
+}

@@ -1,0 +1,159 @@
+op {
+  name: "LoadDataset"
+  input_arg {
+    name: "path"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "reader_func_other_args"
+    type_list_attr: "Treader_func_args"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "compression"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "reader_func"
+    type: "func"
+  }
+  attr {
+    name: "Treader_func_args"
+    type: "list(type)"
+    has_minimum: true
+  }
+  is_stateful: true
+}
+op {
+  name: "LoadDataset"
+  input_arg {
+    name: "path"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "reader_func_other_args"
+    type_list_attr: "Treader_func_args"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "compression"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "reader_func"
+    type: "func"
+  }
+  attr {
+    name: "Treader_func_args"
+    type: "list(type)"
+    has_minimum: true
+  }
+  is_stateful: true
+}
+op {
+  name: "LoadDataset"
+  input_arg {
+    name: "path"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "reader_func_other_args"
+    type_list_attr: "Treader_func_args"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
+      }
+    }
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "compression"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "reader_func"
+    type: "func"
+  }
+  attr {
+    name: "Treader_func_args"
+    type: "list(type)"
+    has_minimum: true
+  }
+  is_stateful: true
+}

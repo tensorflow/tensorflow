@@ -1,0 +1,52 @@
+path: "tensorflow.IndexedSlices"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.indexed_slices.IndexedSlices\'>"
+  is_instance: "<class \'tensorflow.python.types.internal.IndexedSlices\'>"
+  is_instance: "<class \'tensorflow.python.types.internal.NativeObject\'>"
+  is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
+  is_instance: "<class \'object\'>"
+  member {
+    name: "dense_shape"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "device"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "dtype"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "graph"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "indices"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "name"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "op"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "shape"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "values"
+    mtype: "<class \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'values\', \'indices\', \'dense_shape\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "consumers"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

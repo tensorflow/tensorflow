@@ -1,0 +1,24 @@
+diff --git a/BUILD.bazel b/BUILD.bazel
+index 2c6375f..5417d7e 100644
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -137,6 +137,7 @@ cc_library(
+         ":linux_riscv32": COMMON_SRCS + RISCV_SRCS + LINUX_SRCS + LINUX_RISCV_SRCS,
+         ":linux_riscv64": COMMON_SRCS + RISCV_SRCS + LINUX_SRCS + LINUX_RISCV_SRCS,
+         ":linux_s390x": COMMON_SRCS + LINUX_SRCS,
++               ":linux_ppc64le": COMMON_SRCS + LINUX_SRCS,
+         ":macos_x86_64": COMMON_SRCS + X86_SRCS + MACH_SRCS + MACH_X86_SRCS,
+         ":macos_x86_64_legacy": COMMON_SRCS + X86_SRCS + MACH_SRCS + MACH_X86_SRCS,
+         ":macos_arm64": COMMON_SRCS + MACH_SRCS + MACH_ARM_SRCS,
+@@ -277,6 +278,11 @@ config_setting(
+     values = {"cpu": "s390x"},
+ )
+
++config_setting(
++    name = "linux_ppc64le",
++    values = {"cpu": "ppc"},
++)
++
+ config_setting(
+     name = "macos_x86_64_legacy",
+     values = {

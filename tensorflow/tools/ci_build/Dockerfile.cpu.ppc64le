@@ -1,0 +1,35 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+FROM ubuntu:16.04
+
+LABEL maintainer="William Irons <wdirons@us.ibm.com>"
+
+# Copy and run the install scripts.
+COPY install/*.sh /install/
+RUN /install/install_bootstrap_deb_packages.sh
+RUN add-apt-repository -y ppa:openjdk-r/ppa
+RUN /install/install_deb_packages.sh
+RUN /install/install_openblas_ppc64le.sh
+RUN /install/install_hdf5_ppc64le.sh
+RUN /install/install_pip_packages.sh
+RUN /install/install_bazel_from_source.sh
+RUN /install/install_proto3.sh
+RUN /install/install_buildifier_from_source.sh
+RUN /install/install_auditwheel.sh
+RUN /install/install_golang_ppc64le.sh
+
+# Set up the master bazelrc configuration file.
+COPY install/.bazelrc /etc/bazel.bazelrc

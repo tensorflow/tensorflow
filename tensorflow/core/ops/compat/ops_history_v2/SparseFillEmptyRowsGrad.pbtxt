@@ -1,0 +1,23 @@
+op {
+  name: "SparseFillEmptyRowsGrad"
+  input_arg {
+    name: "reverse_index_map"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "grad_values"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "d_values"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "d_default_value"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}

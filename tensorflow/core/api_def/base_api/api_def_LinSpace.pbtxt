@@ -1,0 +1,40 @@
+op {
+  graph_op_name: "LinSpace"
+  visibility: HIDDEN
+  in_arg {
+    name: "start"
+    description: <<END
+0-D tensor. First entry in the range.
+END
+  }
+  in_arg {
+    name: "stop"
+    description: <<END
+0-D tensor. Last entry in the range.
+END
+  }
+  in_arg {
+    name: "num"
+    description: <<END
+0-D tensor. Number of values to generate.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+1-D. The generated values.
+END
+  }
+  summary: "Generates values in an interval."
+  description: <<END
+A sequence of `num` evenly-spaced values are generated beginning at `start`.
+If `num > 1`, the values in the sequence increase by
+`(stop - start) / (num - 1)`, so that the last one is exactly `stop`.
+
+For example:
+
+```
+tf.linspace(10.0, 12.0, 3, name="linspace") => [ 10.0  11.0  12.0]
+```
+END
+}

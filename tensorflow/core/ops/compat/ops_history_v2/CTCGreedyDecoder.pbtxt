@@ -1,0 +1,135 @@
+op {
+  name: "CTCGreedyDecoder"
+  input_arg {
+    name: "inputs"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "sequence_length"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "decoded_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "decoded_values"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "decoded_shape"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "log_probability"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "merge_repeated"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "CTCGreedyDecoder"
+  input_arg {
+    name: "inputs"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sequence_length"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "decoded_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "decoded_values"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "decoded_shape"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "log_probability"
+    type_attr: "T"
+  }
+  attr {
+    name: "merge_repeated"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "CTCGreedyDecoder"
+  input_arg {
+    name: "inputs"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sequence_length"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "decoded_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "decoded_values"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "decoded_shape"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "log_probability"
+    type_attr: "T"
+  }
+  attr {
+    name: "merge_repeated"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "blank_index"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}

@@ -1,0 +1,5 @@
+op {
+  graph_op_name: "MatrixExponential"
+  visibility: SKIP
+  summary: "Deprecated, use python implementation tf.linalg.matrix_exponential."
+}

@@ -1,0 +1,11 @@
+// RUN: hlo-opt --list-passes | xargs -I {} hlo-opt --passes={} %s | FileCheck %s
+
+HloModule test_module
+
+// CHECK-LABEL: test_computation
+ENTRY test_computation {
+  %param0 = f32[10] parameter(0)
+  %param1 = f32[10] parameter(1)
+  %add = f32[10] add(%param0, %param1)
+  ROOT %result = f32[10] sqrt(%add)
+}

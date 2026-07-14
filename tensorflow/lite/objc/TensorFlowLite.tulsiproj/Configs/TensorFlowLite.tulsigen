@@ -1,0 +1,63 @@
+{
+  "sourceFilters" : [
+    "tensorflow/lite",
+    "tensorflow/lite/c",
+    "tensorflow/lite/objc",
+    "tensorflow/lite/objc/apis",
+    "tensorflow/lite/objc/apps/TestApp/TestApp",
+    "tensorflow/lite/objc/apps/TestApp/TestApp/Base.lproj",
+    "tensorflow/lite/objc/sources",
+    "tensorflow/lite/objc/tests",
+    "tensorflow/lite/kernels",
+    "tensorflow/lite/kernels/internal",
+    "tensorflow/lite/nnapi",
+    "tensorflow/lite/schema"
+  ],
+  "buildTargets" : [
+    "//tensorflow/lite/objc:TensorFlowLite",
+    "//tensorflow/lite/objc:TestApp",
+    "//tensorflow/lite/objc:tests"
+  ],
+  "projectName" : "TensorFlowLite",
+  "optionSet" : {
+    "LaunchActionPreActionScript" : {
+      "p" : "$(inherited)"
+    },
+    "BazelBuildStartupOptionsRelease" : {
+      "p" : "$(inherited)"
+    },
+    "BazelBuildOptionsRelease" : {
+      "p" : "$(inherited)"
+    },
+    "BazelBuildOptionsDebug" : {
+      "p" : "$(inherited)"
+    },
+    "EnvironmentVariables" : {
+      "p" : "$(inherited)"
+    },
+    "BuildActionPreActionScript" : {
+      "p" : "$(inherited)"
+    },
+    "CommandlineArguments" : {
+      "p" : "$(inherited)"
+    },
+    "TestActionPreActionScript" : {
+      "p" : "$(inherited)"
+    },
+    "BazelBuildStartupOptionsDebug" : {
+      "p" : "$(inherited)"
+    },
+    "BuildActionPostActionScript" : {
+      "p" : "$(inherited)"
+    },
+    "TestActionPostActionScript" : {
+      "p" : "$(inherited)"
+    },
+    "LaunchActionPostActionScript" : {
+      "p" : "$(inherited)"
+    }
+  },
+  "additionalFilePaths" : [
+    "tensorflow/lite/objc/BUILD"
+  ]
+}

@@ -1,0 +1,4 @@
+e {
+  a = u4[1024,512]{1,0:E(4)} parameter(0)
+  b = u4[1024,4096]{1,0:E(4)} all-gather(a), dimensions={1}
+}

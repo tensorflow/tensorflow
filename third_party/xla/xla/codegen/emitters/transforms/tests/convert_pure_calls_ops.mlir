@@ -1,0 +1,64 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+// RUN: emitters_opt %s -xla-convert-pure-call-ops | FileCheck %s
+// RUN: emitters_opt %s -cse -xla-convert-pure-call-ops \
+// RUN: | FileCheck %s -check-prefixes=CHECK-CSE
+
+func.func private @callee() -> f32 {
+  %ret = arith.constant 0.0 : f32
+  return %ret : f32
+}
+
+func.func @caller() -> f32 {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c10 = arith.constant 10 : index
+  %call0 = xla.pure_call @callee() : () -> (f32)
+  %v = scf.for %i = %c0 to %c10 step %c1 iter_args(%r = %call0) -> f32 {
+    %call1 = xla.pure_call @callee() : () -> (f32)
+    %new_v = arith.addf %call1, %r : f32
+    scf.yield %new_v : f32
+  }
+  return %v : f32
+}
+
+// CHECK-LABEL: @caller
+// CHECK:   call @callee
+// CHECK:   call @callee
+
+// CHECK-CSE: @caller
+// CHECK-CSE: %[[CALL:.*]] = call @callee
+// CHECK-CSE: scf.for {{.*}} iter_args(%[[ITER_ARG:.*]] = %[[CALL]])
+// CHECK-CSE: arith.addf %[[CALL]], %[[ITER_ARG]]
+
+// -----
+
+func.func private @arg_callee(%arg0: f32, %arg1: f32) -> f32 {
+  %ret = arith.addf %arg0, %arg1 : f32
+  return %ret : f32
+}
+
+func.func @arg_caller() -> f32 {
+  %cst0 = arith.constant 0.0 : f32
+  %cst1 = arith.constant 1.0 : f32
+  %call = xla.pure_call @arg_callee(%cst0, %cst1) : (f32, f32) -> (f32)
+  return %call : f32
+}
+
+// CHECK-LABEL: @arg_caller
+// CHECK: %[[CST0:.*]] = arith.constant 0
+// CHECK: %[[CST1:.*]] = arith.constant 1
+// CHECK: %[[RET:.*]] = call @arg_callee(%[[CST0]], %[[CST1]])
+// CHECK: return %[[RET]]

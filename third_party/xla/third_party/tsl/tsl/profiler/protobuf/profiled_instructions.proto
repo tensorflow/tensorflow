@@ -1,0 +1,33 @@
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package tensorflow.profiler;
+
+// Next ID: 3
+message ProfiledInstructionsProto {
+  message InstructionCost {
+    string name = 1;
+    double cost_us = 2;
+  }
+  message Latency {
+    string source = 1;
+    string target = 2;
+    double latency_us = 3;
+  }
+  repeated InstructionCost costs = 1;
+  repeated Latency latencies = 2;
+}

@@ -1,0 +1,39 @@
+path: "tensorflow.distribute.cluster_resolver"
+tf_module {
+  member {
+    name: "ClusterResolver"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "GCEClusterResolver"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "KubernetesClusterResolver"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "KubernetesExecutableLocation"
+    mtype: "<class \'enum.EnumType\'>"
+  }
+  member {
+    name: "SimpleClusterResolver"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "SlurmClusterResolver"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "TFConfigClusterResolver"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "TPUClusterResolver"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "UnionResolver"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+}

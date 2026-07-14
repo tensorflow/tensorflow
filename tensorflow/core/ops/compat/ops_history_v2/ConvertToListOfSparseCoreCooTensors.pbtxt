@@ -1,0 +1,73 @@
+op {
+  name: "ConvertToListOfSparseCoreCooTensors"
+  input_arg {
+    name: "indices_or_row_splits"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "values"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "weights"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "row_ids_list"
+    type: DT_INT32
+    number_attr: "num_sc_per_chip"
+  }
+  output_arg {
+    name: "col_ids_list"
+    type: DT_INT32
+    number_attr: "num_sc_per_chip"
+  }
+  output_arg {
+    name: "gains_list"
+    type: DT_FLOAT
+    number_attr: "num_sc_per_chip"
+  }
+  attr {
+    name: "sample_count"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_sc_per_chip"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "row_offset"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "col_offset"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "col_shift"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "num_sc_shards"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "stacked_table_sample_count"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "combiner"
+    type: "string"
+  }
+}

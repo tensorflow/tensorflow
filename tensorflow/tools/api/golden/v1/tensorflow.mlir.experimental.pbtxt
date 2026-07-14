@@ -1,0 +1,31 @@
+path: "tensorflow.mlir.experimental"
+tf_module {
+  member_method {
+    name: "convert_function"
+    argspec: "args=[\'concrete_function\', \'pass_pipeline\', \'show_debug_info\'], varargs=None, keywords=None, defaults=[\'tf-standard-pipeline\', \'False\'], "
+  }
+  member_method {
+    name: "convert_graph_def"
+    argspec: "args=[\'graph_def\', \'pass_pipeline\', \'show_debug_info\'], varargs=None, keywords=None, defaults=[\'tf-standard-pipeline\', \'False\'], "
+  }
+  member_method {
+    name: "convert_saved_model"
+    argspec: "args=[\'saved_model_path\', \'exported_names\', \'show_debug_info\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
+    name: "convert_saved_model_v1"
+    argspec: "args=[\'saved_model_path\', \'exported_names\', \'tags\', \'lift_variables\', \'include_variables_in_initializers\', \'upgrade_legacy\', \'show_debug_info\'], varargs=None, keywords=None, defaults=[\'True\', \'False\'], "
+  }
+  member_method {
+    name: "run_pass_pipeline"
+    argspec: "args=[\'mlir_txt\', \'pass_pipeline\', \'show_debug_info\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
+    name: "tflite_to_tosa_bytecode"
+    argspec: "args=[\'flatbuffer\', \'bytecode\', \'use_external_constant\', \'ordered_input_arrays\', \'ordered_output_arrays\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "write_bytecode"
+    argspec: "args=[\'filename\', \'mlir_txt\'], varargs=None, keywords=None, defaults=None"
+  }
+}

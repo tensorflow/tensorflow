@@ -1,0 +1,15 @@
+licenses(["notice"])
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["LICENSE"])
+
+alias(
+    name = "jpegxl",
+    actual = "//lib:jpegxl",
+)
+
+alias(
+    name = "jpegxl_threads",
+    actual = "//lib:jpegxl_threads",
+)

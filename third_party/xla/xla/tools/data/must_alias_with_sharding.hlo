@@ -1,0 +1,7 @@
+HloModule f, input_output_alias={{}: (0, {}, must-alias)}
+
+ENTRY f {
+  a = s32[10] parameter(0)
+  b = s32[10] custom-call(a), custom_call_target="Sharding", sharding={replicated}
+  ROOT sum = s32[10] add(b, b)
+}

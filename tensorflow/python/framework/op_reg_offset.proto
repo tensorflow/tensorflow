@@ -1,0 +1,36 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
+syntax = "proto3";
+
+package tensorflow;
+
+// OpRegOffset describes the location of an op registration (i.e. where
+// REGISTER_OP is called).
+message OpRegOffset {
+  // Name of the op.
+  string name = 1;
+  // Filepath of where the op is registered.
+  string filepath = 2;
+  // The start offset of the op registration in the file.
+  uint32 start = 3;
+  // The end offset of the op registration in the file.
+  uint32 end = 4;
+}
+
+// OpRegOffsets is a collection of OpRegOffset.
+message OpRegOffsets {
+  repeated OpRegOffset offsets = 1;
+}

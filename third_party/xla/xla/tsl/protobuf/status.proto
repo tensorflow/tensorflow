@@ -1,0 +1,39 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
+syntax = "proto3";
+
+package tensorflow;
+
+import "xla/tsl/protobuf/error_codes.proto";
+
+option cc_enable_arenas = true;
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+option go_package = "github.com/google/tsl/tsl/go/protobuf/for_core_protos_go_proto";
+
+// Wire-format for Status.
+// Next tag: 4
+message StatusProto {
+  // Status code as defined in
+  // tensorflow/compiler/xla/tsl/protobuf/error_codes.proto.
+  error.Code code = 1;
+
+  // Detail error message.
+  string message = 2;
+
+  // Unique type URL -> value, like absl::Status payloads.
+  map<string, bytes> payload = 3;
+}

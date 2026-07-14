@@ -1,0 +1,65 @@
+op {
+  graph_op_name: "TensorArraySplitV3"
+  endpoint {
+    name: "TensorArraySplit"
+  }
+  in_arg {
+    name: "handle"
+    description: <<END
+The handle to a TensorArray.
+END
+  }
+  in_arg {
+    name: "value"
+    description: <<END
+The concatenated tensor to write to the TensorArray.
+END
+  }
+  in_arg {
+    name: "lengths"
+    description: <<END
+The vector of lengths, how to split the rows of value into the
+TensorArray.
+END
+  }
+  in_arg {
+    name: "flow_in"
+    description: <<END
+A float scalar that enforces proper chaining of operations.
+END
+  }
+  out_arg {
+    name: "flow_out"
+    description: <<END
+A float scalar that enforces proper chaining of operations.
+END
+  }
+  summary: "Split the data from the input value into TensorArray elements."
+  description: <<END
+Assuming that `lengths` takes on values
+
+  ```
+  (n0, n1, ..., n(T-1))
+  ```
+
+and that `value` has shape
+
+  ```
+  (n0 + n1 + ... + n(T-1) x d0 x d1 x ...),
+  ```
+
+this splits values into a TensorArray with T tensors.
+
+TensorArray index t will be the subtensor of values with starting position
+
+  ```
+  (n0 + n1 + ... + n(t-1), 0, 0, ...)
+  ```
+
+and having size
+
+  ```
+  nt x d0 x d1 x ...
+  ```
+END
+}

@@ -1,0 +1,54 @@
+// Copyright 2026 The TensorFlow Authors All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
+syntax = "proto3";
+
+package tensorflow.tfprof;
+
+// Refers to tfprof_options.h/cc for documentation.
+// Only used to pass tfprof options from Python to C++.
+message OptionsProto {
+  int64 max_depth = 1;
+  int64 min_bytes = 2;
+  int64 min_peak_bytes = 19;
+  int64 min_residual_bytes = 20;
+  int64 min_output_bytes = 21;
+  int64 min_micros = 3;
+  int64 min_accelerator_micros = 22;
+  int64 min_cpu_micros = 23;
+  int64 min_params = 4;
+  int64 min_float_ops = 5;
+  int64 min_occurrence = 17;
+  int64 step = 18;
+
+  string order_by = 7;
+  repeated string account_type_regexes = 8;
+  repeated string start_name_regexes = 9;
+  repeated string trim_name_regexes = 10;
+  repeated string show_name_regexes = 11;
+  repeated string hide_name_regexes = 12;
+  bool account_displayed_op_only = 13;
+  repeated string select = 14;
+  string output = 15;
+  string dump_to_file = 16;
+}
+
+message AdvisorOptionsProto {
+  // checker name -> a dict of key-value options.
+  map<string, CheckerOption> checkers = 1;
+  message CheckerOption {
+    map<string, string> options = 1;
+  }
+}

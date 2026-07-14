@@ -1,0 +1,37 @@
+op {
+  graph_op_name: "CollectivePermute"
+  visibility: HIDDEN
+  in_arg {
+    name: "input"
+    description: <<END
+The local input to be permuted. Currently only supports float and
+bfloat16.
+END
+  }
+  in_arg {
+    name: "source_target_pairs"
+    description: <<END
+A tensor with shape [num_pairs, 2].
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+The permuted input.
+END
+  }
+  attr {
+    name: "T"
+    description: <<END
+The type of elements to be exchanged.
+END
+  }
+  summary: "An Op to permute tensors across replicated TPU instances."
+  description: <<END
+Each instance supplies its own input.
+
+For example, suppose there are 4 TPU instances: `[A, B, C, D]`. Passing
+source_target_pairs=`[[0,1],[1,2],[2,3],[3,0]]` gets the outputs:
+`[D, A, B, C]`.
+END
+}

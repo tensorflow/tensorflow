@@ -1,0 +1,54 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
+syntax = "proto3";
+
+package tensorflow;
+
+message ProfilerServiceMonitorResult {
+  // Represents the different types of responses from the profiling service.
+  enum ResponseType {
+    // No result is returned from the profiling service.
+    EMPTY_RESULT = 0;
+    // Only device utilization is available.
+    UTIL_ONLY = 1;
+    // Both device utilization and device idle time are available.
+    UTIL_IDLE = 2;
+    // Device utilization, device idle time, step time, and infeed percentage
+    // are all available.
+    UTIL_IDLE_STEP = 3;
+  }
+
+  // Type of profiling responses.
+  ResponseType response_type = 1;
+  // Percentage of time when device is idle.
+  double device_idle_time_percent = 2;
+  // TPU matrix unit utilization percentage.
+  double matrix_unit_utilization_percent = 3;
+  // Average step time in millisecond.
+  double step_time_ms_avg = 4;
+  // Minimum step time in millisecond.
+  double step_time_ms_min = 5;
+  // Maximum step time in millisecond.
+  double step_time_ms_max = 6;
+  // Average infeed percentage.
+  double infeed_percent_avg = 7;
+  // Minimum infeed percentage.
+  double infeed_percent_min = 8;
+  // Maximum infeed percentage.
+  double infeed_percent_max = 9;
+
+  // next-field: 10
+}

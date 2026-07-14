@@ -1,0 +1,7 @@
+HloModule add_module
+
+ENTRY %main (arg0: f32[], arg1: f32[]) -> f32[] {
+  %arg0 = f32[] parameter(0)
+  %arg1 = f32[] parameter(1)
+  ROOT %result = f32[] add(%arg0, %arg1)
+}

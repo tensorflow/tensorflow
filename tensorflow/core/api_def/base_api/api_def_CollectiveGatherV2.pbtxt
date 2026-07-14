@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "CollectiveGatherV2"
+  summary: "Mutually accumulates multiple tensors of identical type and shape."
+  description: <<END
+`is_stateless` means each op does not need control dependencies to other
+collective ops. In this case, keys that are unique at runtime
+(e.g. `instance_key`) should be used to distinguish collective groups.
+END
+  visibility: HIDDEN
+}

@@ -1,0 +1,41 @@
+path: "tensorflow.ragged.RaggedTensorValue"
+tf_class {
+  is_instance: "<class \'tensorflow.python.ops.ragged.ragged_tensor_value.RaggedTensorValue\'>"
+  is_instance: "<class \'object\'>"
+  member {
+    name: "dtype"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "flat_values"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "nested_row_splits"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "ragged_rank"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "row_splits"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "shape"
+    mtype: "<class \'property\'>"
+  }
+  member {
+    name: "values"
+    mtype: "<class \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'values\', \'row_splits\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "to_list"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

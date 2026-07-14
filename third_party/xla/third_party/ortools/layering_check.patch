@@ -1,0 +1,4261 @@
+diff --git a/examples/cpp/BUILD.bazel b/examples/cpp/BUILD.bazel
+index 6cc1490..a7fa5c1 100644
+--- a/examples/cpp/BUILD.bazel
++++ b/examples/cpp/BUILD.bazel
+@@ -711,6 +711,7 @@ cc_test(
+ cc_library(
+     name = "print_dimacs_assignment",
+     hdrs = ["print_dimacs_assignment.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:file",
+@@ -725,6 +726,7 @@ cc_library(
+ cc_library(
+     name = "parse_dimacs_assignment",
+     hdrs = ["parse_dimacs_assignment.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/graph:ebert_graph",
+@@ -878,6 +880,7 @@ cc_test(
+ cc_library(
+     name = "fap_parser",
+     hdrs = ["fap_parser.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:file",
+@@ -891,6 +894,7 @@ cc_library(
+ cc_library(
+     name = "fap_model_printer",
+     hdrs = ["fap_model_printer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":fap_parser",
+         "//ortools/base",
+@@ -903,6 +907,7 @@ cc_library(
+ cc_library(
+     name = "fap_utilities",
+     hdrs = ["fap_utilities.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":fap_parser",
+         "//ortools/base",
+diff --git a/ortools/algorithms/BUILD.bazel b/ortools/algorithms/BUILD.bazel
+index be5f372..4d1c6ae 100644
+--- a/ortools/algorithms/BUILD.bazel
++++ b/ortools/algorithms/BUILD.bazel
+@@ -65,6 +65,7 @@ cc_library(
+     name = "binary_search",
+     srcs = [],
+     hdrs = ["binary_search.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "@com_google_absl//absl/functional:function_ref",
+@@ -95,6 +96,7 @@ cc_library(
+     name = "radix_sort",
+     srcs = [],
+     hdrs = ["radix_sort.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/algorithm:container",
+         "@com_google_absl//absl/base",
+@@ -132,6 +134,7 @@ cc_library(
+     name = "duplicate_remover",
+     srcs = ["duplicate_remover.cc"],
+     hdrs = ["duplicate_remover.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/log:check",
+         "@com_google_absl//absl/numeric:bits",
+@@ -147,6 +150,7 @@ cc_library(
+     name = "hungarian",
+     srcs = ["hungarian.cc"],
+     hdrs = ["hungarian.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "@com_google_absl//absl/container:flat_hash_map",
+@@ -174,6 +178,7 @@ cc_test(
+ cc_library(
+     name = "adjustable_k_ary_heap",
+     hdrs = ["adjustable_k_ary_heap.h"],
++    features = ["-layering_check"],
+     deps = ["@com_google_absl//absl/log:check"],
+ )
+ 
+@@ -213,6 +218,7 @@ cc_library(
+         ":use_scip": ["-DUSE_SCIP"],
+         "//conditions:default": [],
+     }),
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/log:check",
+         "@com_google_absl//absl/strings",
+@@ -269,6 +275,7 @@ cc_library(
+     name = "set_cover_lagrangian",
+     srcs = ["set_cover_lagrangian.cc"],
+     hdrs = ["set_cover_lagrangian.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":adjustable_k_ary_heap",
+         ":set_cover_invariant",
+@@ -282,6 +289,7 @@ cc_library(
+     name = "set_cover_model",
+     srcs = ["set_cover_model.cc"],
+     hdrs = ["set_cover_model.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":set_cover_cc_proto",
+         "//ortools/base:intops",
+@@ -297,6 +305,7 @@ cc_library(
+     name = "set_cover_invariant",
+     srcs = ["set_cover_invariant.cc"],
+     hdrs = ["set_cover_invariant.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":set_cover_cc_proto",
+         ":set_cover_model",
+@@ -311,6 +320,7 @@ cc_library(
+     name = "set_cover_heuristics",
+     srcs = ["set_cover_heuristics.cc"],
+     hdrs = ["set_cover_heuristics.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":adjustable_k_ary_heap",
+         ":set_cover_invariant",
+@@ -328,6 +338,7 @@ cc_library(
+     name = "set_cover_mip",
+     srcs = ["set_cover_mip.cc"],
+     hdrs = ["set_cover_mip.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":set_cover_invariant",
+         ":set_cover_model",
+@@ -343,6 +354,7 @@ cc_library(
+     name = "set_cover_reader",
+     srcs = ["set_cover_reader.cc"],
+     hdrs = ["set_cover_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":set_cover_model",
+         "//ortools/base:file",
+@@ -378,6 +390,7 @@ cc_test(
+ cc_library(
+     name = "dense_doubly_linked_list",
+     hdrs = ["dense_doubly_linked_list.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+     ],
+@@ -387,6 +400,7 @@ cc_library(
+     name = "dynamic_partition",
+     srcs = ["dynamic_partition.cc"],
+     hdrs = ["dynamic_partition.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:murmur",
+         "@com_google_absl//absl/log:check",
+@@ -411,6 +425,7 @@ cc_library(
+     name = "sparse_permutation",
+     srcs = ["sparse_permutation.cc"],
+     hdrs = ["sparse_permutation.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "@com_google_absl//absl/strings",
+@@ -433,6 +448,7 @@ cc_library(
+     name = "dynamic_permutation",
+     srcs = ["dynamic_permutation.cc"],
+     hdrs = ["dynamic_permutation.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":sparse_permutation",
+         "//ortools/base",
+@@ -453,6 +469,7 @@ cc_library(
+     name = "find_graph_symmetries",
+     srcs = ["find_graph_symmetries.cc"],
+     hdrs = ["find_graph_symmetries.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":dense_doubly_linked_list",
+         ":dynamic_partition",
+@@ -507,6 +524,7 @@ cc_test(
+ cc_library(
+     name = "binary_indexed_tree",
+     hdrs = ["binary_indexed_tree.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/log:check",
+     ],
+@@ -525,6 +543,7 @@ cc_library(
+     name = "n_choose_k",
+     srcs = ["n_choose_k.cc"],
+     hdrs = ["n_choose_k.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":binary_search",
+         "//ortools/base:mathutil",
+diff --git a/ortools/algorithms/python/BUILD.bazel b/ortools/algorithms/python/BUILD.bazel
+index fe3de2c..0a4ccf9 100644
+--- a/ortools/algorithms/python/BUILD.bazel
++++ b/ortools/algorithms/python/BUILD.bazel
+@@ -48,6 +48,7 @@ config_setting(
+ cc_library(
+     name = "knapsack_solver_doc",
+     hdrs = ["knapsack_solver_doc.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+ )
+ 
+diff --git a/ortools/base/BUILD.bazel b/ortools/base/BUILD.bazel
+index c57c0d2..6ebc65a 100644
+--- a/ortools/base/BUILD.bazel
++++ b/ortools/base/BUILD.bazel
+@@ -54,6 +54,7 @@ cc_library(
+         "-DOR_TOOLS_MINOR=11",
+         "-DOR_TOOLS_PATCH=9999",
+     ],
++    features = ["-layering_check"],
+     linkopts = select({
+         "on_linux": [],
+         "on_macos": ["-framework CoreFoundation"],
+@@ -83,6 +84,7 @@ cc_library(
+ cc_library(
+     name = "accurate_sum",
+     hdrs = ["accurate_sum.h"],
++    features = ["-layering_check"],
+ )
+ 
+ cc_library(
+@@ -91,6 +93,7 @@ cc_library(
+         "adjustable_priority_queue.h",
+         "adjustable_priority_queue-inl.h",
+     ],
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+     ],
+@@ -99,18 +102,21 @@ cc_library(
+ cc_library(
+     name = "basictypes",
+     hdrs = ["basictypes.h"],
++    features = ["-layering_check"],
+ )
+ 
+ cc_library(
+     name = "bitmap",
+     srcs = ["bitmap.cc"],
+     hdrs = ["bitmap.h"],
++    features = ["-layering_check"],
+ )
+ 
+ cc_library(
+     name = "case",
+     srcs = ["case.cc"],
+     hdrs = ["case.h"],
++    features = ["-layering_check"],
+     deps = [":base"],
+ )
+ 
+@@ -120,6 +126,7 @@ cc_library(
+         "commandlineflags.cc",
+     ],
+     hdrs = ["commandlineflags.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/flags:flag",
+         "@com_google_absl//absl/flags:parse",
+@@ -130,6 +137,7 @@ cc_library(
+ cc_library(
+     name = "container_logging",
+     hdrs = ["container_logging.h"],
++    features = ["-layering_check"],
+     deps = [":base"],
+ )
+ 
+@@ -142,6 +150,7 @@ cc_library(
+         "on_windows": ["/Zc:preprocessor"],
+         "//conditions:default": [],
+     }),
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/container:inlined_vector",
+     ],
+@@ -167,6 +176,7 @@ cc_test(
+ cc_library(
+     name = "dynamic_library",
+     hdrs = ["dynamic_library.h"],
++    features = ["-layering_check"],
+     linkopts = select({
+         "on_linux": ["-Wl,--no-as-needed -ldl"],
+         "on_macos": [],
+@@ -182,12 +192,14 @@ cc_library(
+ cc_library(
+     name = "encodingutils",
+     hdrs = ["encodingutils.h"],
++    features = ["-layering_check"],
+     deps = [":base"],
+ )
+ 
+ cc_library(
+     name = "flags",
+     hdrs = ["flags.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/flags:flag",
+     ],
+@@ -205,6 +217,7 @@ cc_library(
+         "helpers.h",
+         "options.h",
+     ],
++    features = ["-layering_check"],
+     deps = [
+         ":status_macros",
+         "@com_google_absl//absl/log",
+@@ -218,6 +231,7 @@ cc_library(
+ cc_library(
+     name = "status_matchers",
+     hdrs = ["status_matchers.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         "@com_google_absl//absl/status",
+@@ -230,6 +244,7 @@ cc_library(
+ cc_library(
+     name = "message_matchers",
+     hdrs = ["message_matchers.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/strings",
+         "@com_google_googletest//:gtest",
+@@ -240,6 +255,7 @@ cc_library(
+ cc_library(
+     name = "gmock",
+     hdrs = ["gmock.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":message_matchers",
+         ":status_matchers",
+@@ -249,6 +265,7 @@ cc_library(
+ 
+ cc_library(
+     name = "gmock_main",
++    features = ["-layering_check"],
+     deps = [
+         ":gmock",
+         "@com_google_googletest//:gtest_main",
+@@ -259,6 +276,7 @@ cc_library(
+     name = "gzipfile",
+     srcs = ["gzipfile.cc"],
+     hdrs = ["gzipfile.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         ":basictypes",
+@@ -272,6 +290,7 @@ cc_library(
+ cc_library(
+     name = "gzipstring",
+     hdrs = ["gzipstring.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         "@zlib",
+@@ -286,6 +305,7 @@ cc_library(
+     hdrs = [
+         "hash.h",
+     ],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/strings",
+     ],
+@@ -294,24 +314,28 @@ cc_library(
+ cc_library(
+     name = "int_type",
+     hdrs = ["int_type.h"],
++    features = ["-layering_check"],
+     deps = [":base"],
+ )
+ 
+ cc_library(
+     name = "intops",
+     hdrs = ["strong_int.h"],
++    features = ["-layering_check"],
+     deps = [":int_type"],
+ )
+ 
+ cc_library(
+     name = "iterator_adaptors",
+     hdrs = ["iterator_adaptors.h"],
++    features = ["-layering_check"],
+     deps = [":base"],
+ )
+ 
+ cc_library(
+     name = "linked_hash_map",
+     hdrs = ["linked_hash_map.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         ":logging",
+@@ -324,6 +348,7 @@ cc_library(
+     name = "logging",
+     srcs = ["logging.cc"],
+     hdrs = ["logging.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":macros",
+         "@com_google_absl//absl/base:log_severity",
+@@ -344,11 +369,13 @@ cc_library(
+ cc_library(
+     name = "macros",
+     hdrs = ["macros.h"],
++    features = ["-layering_check"],
+ )
+ 
+ cc_library(
+     name = "map_util",
+     hdrs = ["map_util.h"],
++    features = ["-layering_check"],
+     deps = [":base"],
+ )
+ 
+@@ -356,6 +383,7 @@ cc_library(
+     name = "mathutil",
+     srcs = ["mathutil.cc"],
+     hdrs = ["mathutil.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+     ],
+@@ -364,12 +392,14 @@ cc_library(
+ cc_library(
+     name = "memfile",
+     hdrs = ["memfile.h"],
++    features = ["-layering_check"],
+     deps = [],
+ )
+ 
+ cc_library(
+     name = "murmur",
+     hdrs = ["murmur.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         ":hash",
+@@ -380,6 +410,7 @@ cc_library(
+ cc_library(
+     name = "mutable_memfile",
+     hdrs = ["mutable_memfile.h"],
++    features = ["-layering_check"],
+     deps = [],
+ )
+ 
+@@ -387,6 +418,7 @@ cc_library(
+     name = "numbers",
+     srcs = ["numbers.cc"],
+     hdrs = ["numbers.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":strtoint",
+         "@com_google_absl//absl/strings",
+@@ -396,6 +428,7 @@ cc_library(
+ cc_library(
+     name = "parse_text_proto",
+     hdrs = ["parse_text_proto.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/log:check",
+         "@com_google_protobuf//:protobuf",
+@@ -406,6 +439,7 @@ cc_library(
+     name = "path",
+     srcs = ["path.cc"],
+     hdrs = ["path.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         "@com_google_absl//absl/strings",
+@@ -416,6 +450,7 @@ cc_library(
+     name = "temp_path",
+     srcs = ["temp_path.cc"],
+     hdrs = ["temp_path.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         ":file",
+@@ -429,11 +464,13 @@ cc_library(
+ cc_library(
+     name = "protobuf_util",
+     hdrs = ["protobuf_util.h"],
++    features = ["-layering_check"],
+ )
+ 
+ cc_library(
+     name = "protoutil",
+     hdrs = ["protoutil.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":timer",
+         "@com_google_absl//absl/status",
+@@ -445,12 +482,14 @@ cc_library(
+ cc_library(
+     name = "ptr_util",
+     hdrs = ["ptr_util.h"],
++    features = ["-layering_check"],
+ )
+ 
+ cc_library(
+     name = "recordio",
+     srcs = ["recordio.cc"],
+     hdrs = ["recordio.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         ":file",
+@@ -465,18 +504,21 @@ cc_library(
+ cc_library(
+     name = "small_map",
+     hdrs = ["small_map.h"],
++    features = ["-layering_check"],
+     deps = [":base"],
+ )
+ 
+ cc_library(
+     name = "source_location",
+     hdrs = ["source_location.h"],
++    features = ["-layering_check"],
+     deps = ["@com_google_absl//absl/base:config"],
+ )
+ 
+ cc_library(
+     name = "status_builder",
+     hdrs = ["status_builder.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         "@com_google_absl//absl/status",
+@@ -487,6 +529,7 @@ cc_library(
+ cc_library(
+     name = "status_macros",
+     hdrs = ["status_macros.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         ":status_builder",
+@@ -498,12 +541,14 @@ cc_library(
+ cc_library(
+     name = "stl_util",
+     hdrs = ["stl_util.h"],
++    features = ["-layering_check"],
+     deps = [":base"],
+ )
+ 
+ cc_library(
+     name = "strong_vector",
+     hdrs = ["strong_vector.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         ":intops",
+@@ -514,6 +559,7 @@ cc_library(
+     name = "strtoint",
+     srcs = ["strtoint.cc"],
+     hdrs = ["strtoint.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/log:check",
+         "@com_google_absl//absl/strings",
+@@ -524,6 +570,7 @@ cc_library(
+     name = "sysinfo",
+     srcs = ["sysinfo.cc"],
+     hdrs = ["sysinfo.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/strings",
+     ],
+@@ -533,6 +580,7 @@ cc_library(
+     name = "threadpool",
+     srcs = ["threadpool.cc"],
+     hdrs = ["threadpool.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/log:check",
+         "@com_google_absl//absl/synchronization",
+@@ -543,6 +591,7 @@ cc_library(
+     name = "timer",
+     srcs = ["timer.cc"],
+     hdrs = ["timer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":macros",
+         "@com_google_absl//absl/log:check",
+@@ -553,22 +602,26 @@ cc_library(
+ cc_library(
+     name = "top_n",
+     hdrs = ["top_n.h"],
++    features = ["-layering_check"],
+ )
+ 
+ cc_library(
+     name = "typeid",
+     hdrs = ["typeid.h"],
++    features = ["-layering_check"],
+ )
+ 
+ cc_library(
+     name = "types",
+     hdrs = ["types.h"],
++    features = ["-layering_check"],
+ )
+ 
+ cc_library(
+     name = "zipfile",
+     srcs = ["zipfile.cc"],
+     hdrs = ["zipfile.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":basictypes",
+         ":file",
+diff --git a/ortools/bop/BUILD.bazel b/ortools/bop/BUILD.bazel
+index 4720990..605ce2b 100644
+--- a/ortools/bop/BUILD.bazel
++++ b/ortools/bop/BUILD.bazel
+@@ -30,6 +30,7 @@ cc_proto_library(
+ cc_library(
+     name = "bop_types",
+     hdrs = ["bop_types.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:intops",
+@@ -41,6 +42,7 @@ cc_library(
+     name = "bop_base",
+     srcs = ["bop_base.cc"],
+     hdrs = ["bop_base.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":bop_parameters_cc_proto",
+         ":bop_solution",
+@@ -67,6 +69,7 @@ cc_library(
+     name = "bop_util",
+     srcs = ["bop_util.cc"],
+     hdrs = ["bop_util.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":bop_base",
+         ":bop_solution",
+@@ -80,6 +83,7 @@ cc_library(
+     name = "bop_solution",
+     srcs = ["bop_solution.cc"],
+     hdrs = ["bop_solution.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":bop_types",
+         "//ortools/base",
+@@ -94,6 +98,7 @@ cc_library(
+     name = "bop_fs",
+     srcs = ["bop_fs.cc"],
+     hdrs = ["bop_fs.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":bop_base",
+         ":bop_parameters_cc_proto",
+@@ -126,6 +131,7 @@ cc_library(
+     name = "bop_lns",
+     srcs = ["bop_lns.cc"],
+     hdrs = ["bop_lns.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":bop_base",
+         ":bop_parameters_cc_proto",
+@@ -156,6 +162,7 @@ cc_library(
+     name = "complete_optimizer",
+     srcs = ["complete_optimizer.cc"],
+     hdrs = ["complete_optimizer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":bop_base",
+         ":bop_solution",
+@@ -178,6 +185,7 @@ cc_library(
+     name = "bop_ls",
+     srcs = ["bop_ls.cc"],
+     hdrs = ["bop_ls.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":bop_base",
+         ":bop_solution",
+@@ -199,6 +207,7 @@ cc_library(
+     name = "bop_portfolio",
+     srcs = ["bop_portfolio.cc"],
+     hdrs = ["bop_portfolio.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":bop_base",
+         ":bop_fs",
+@@ -231,6 +240,7 @@ cc_library(
+     name = "bop_solver",
+     srcs = ["bop_solver.cc"],
+     hdrs = ["bop_solver.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":bop_base",
+         ":bop_fs",
+@@ -265,6 +275,7 @@ cc_library(
+     name = "integral_solver",
+     srcs = ["integral_solver.cc"],
+     hdrs = ["integral_solver.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":bop_base",
+         ":bop_fs",
+diff --git a/ortools/constraint_solver/BUILD.bazel b/ortools/constraint_solver/BUILD.bazel
+index 99d9b4d..6cedaa6 100644
+--- a/ortools/constraint_solver/BUILD.bazel
++++ b/ortools/constraint_solver/BUILD.bazel
+@@ -169,6 +169,7 @@ cc_library(
+         "constraint_solver.h",
+         "constraint_solveri.h",
+     ],
++    features = ["-layering_check"],
+     deps = [
+         ":assignment_cc_proto",
+         ":demon_profiler_cc_proto",
+@@ -267,6 +268,7 @@ cc_library(
+     name = "routing_parameters",
+     srcs = ["routing_parameters.cc"],
+     hdrs = ["routing_parameters.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp",
+         ":routing_enums_cc_proto",
+@@ -286,6 +288,7 @@ cc_library(
+ cc_library(
+     name = "routing_types",
+     hdrs = ["routing_types.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:intops",
+@@ -296,6 +299,7 @@ cc_library(
+     name = "routing_utils",
+     srcs = ["routing_utils.cc"],
+     hdrs = ["routing_utils.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         "//ortools/base",
+@@ -307,6 +311,7 @@ cc_library(
+     name = "routing_neighborhoods",
+     srcs = ["routing_neighborhoods.cc"],
+     hdrs = ["routing_neighborhoods.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         ":cp",
+@@ -320,6 +325,7 @@ cc_library(
+     name = "routing_index_manager",
+     srcs = ["routing_index_manager.cc"],
+     hdrs = ["routing_index_manager.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":routing_types",
+         "//ortools/base",
+@@ -360,6 +366,7 @@ cc_library(
+         "on_windows": ["/Zc:preprocessor"],
+         "//conditions:default": [],
+     }),
++    features = ["-layering_check"],
+     deps = [
+         ":cp",
+         ":routing_enums_cc_proto",
+diff --git a/ortools/flatzinc/BUILD.bazel b/ortools/flatzinc/BUILD.bazel
+index d3e8b22..5015c77 100644
+--- a/ortools/flatzinc/BUILD.bazel
++++ b/ortools/flatzinc/BUILD.bazel
+@@ -46,6 +46,7 @@ cc_library(
+     name = "model",
+     srcs = ["model.cc"],
+     hdrs = ["model.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:hash",
+@@ -71,6 +72,7 @@ cc_library(
+     copts = [
+         "$(STACK_FRAME_UNLIMITED)",  # parser.tab.cc
+     ],
++    features = ["-layering_check"],
+     deps = [
+         ":model",
+         "//ortools/base",
+@@ -90,6 +92,7 @@ cc_library(
+         "on_windows": [],
+         "//conditions:default": [],
+     }),
++    features = ["-layering_check"],
+     deps = [
+         ":parser_yacc_lib",
+         "//ortools/base",
+@@ -102,6 +105,7 @@ cc_library(
+     name = "parser_lib",
+     srcs = ["parser.cc"],
+     hdrs = ["parser.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":model",
+         ":parser_lex_lib",
+@@ -113,6 +117,7 @@ cc_library(
+     name = "presolve",
+     srcs = ["presolve.cc"],
+     hdrs = ["presolve.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":model",
+         "//ortools/base",
+@@ -128,6 +133,7 @@ cc_library(
+     name = "checker",
+     srcs = ["checker.cc"],
+     hdrs = ["checker.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":model",
+         "//ortools/base",
+@@ -142,6 +148,7 @@ cc_library(
+     name = "cp_model_fz_solver",
+     srcs = ["cp_model_fz_solver.cc"],
+     hdrs = ["cp_model_fz_solver.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":checker",
+         ":model",
+diff --git a/ortools/glop/BUILD.bazel b/ortools/glop/BUILD.bazel
+index 687c48d..48e856c 100644
+--- a/ortools/glop/BUILD.bazel
++++ b/ortools/glop/BUILD.bazel
+@@ -54,6 +54,7 @@ SAFE_FP_CODE = select({
+ cc_library(
+     name = "pricing",
+     hdrs = ["pricing.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/lp_data:base",
+@@ -69,6 +70,7 @@ cc_library(
+     srcs = ["revised_simplex.cc"],
+     hdrs = ["revised_simplex.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":basis_representation",
+         ":dual_edge_norms",
+@@ -106,6 +108,7 @@ cc_library(
+     srcs = ["update_row.cc"],
+     hdrs = ["update_row.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":basis_representation",
+         ":parameters_cc_proto",
+@@ -125,6 +128,7 @@ cc_library(
+     srcs = ["variables_info.cc"],
+     hdrs = ["variables_info.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/lp_data:base",
+@@ -139,6 +143,7 @@ cc_library(
+     srcs = ["lu_factorization.cc"],
+     hdrs = ["lu_factorization.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":markowitz",
+         ":parameters_cc_proto",
+@@ -155,6 +160,7 @@ cc_library(
+     srcs = ["markowitz.cc"],
+     hdrs = ["markowitz.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":parameters_cc_proto",
+         ":status",
+@@ -174,6 +180,7 @@ cc_library(
+     srcs = ["basis_representation.cc"],
+     hdrs = ["basis_representation.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":lu_factorization",
+         ":parameters_cc_proto",
+@@ -193,6 +200,7 @@ cc_library(
+     name = "rank_one_update",
+     hdrs = ["rank_one_update.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":status",
+         "//ortools/base",
+@@ -210,6 +218,7 @@ cc_library(
+     srcs = ["initial_basis.cc"],
+     hdrs = ["initial_basis.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":markowitz",
+         "//ortools/base",
+@@ -227,6 +236,7 @@ cc_library(
+     srcs = ["status.cc"],
+     hdrs = ["status.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+     ],
+@@ -255,6 +265,7 @@ cc_library(
+     srcs = ["dual_edge_norms.cc"],
+     hdrs = ["dual_edge_norms.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":basis_representation",
+         ":parameters_cc_proto",
+@@ -274,6 +285,7 @@ cc_library(
+     srcs = ["primal_edge_norms.cc"],
+     hdrs = ["primal_edge_norms.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":basis_representation",
+         ":parameters_cc_proto",
+@@ -293,6 +305,7 @@ cc_library(
+     srcs = ["reduced_costs.cc"],
+     hdrs = ["reduced_costs.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":basis_representation",
+         ":parameters_cc_proto",
+@@ -317,6 +330,7 @@ cc_library(
+     srcs = ["variable_values.cc"],
+     hdrs = ["variable_values.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":basis_representation",
+         ":dual_edge_norms",
+@@ -338,6 +352,7 @@ cc_library(
+     srcs = ["entering_variable.cc"],
+     hdrs = ["entering_variable.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":basis_representation",
+         ":parameters_cc_proto",
+@@ -366,6 +381,7 @@ cc_library(
+     srcs = ["preprocessor.cc"],
+     hdrs = ["preprocessor.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":parameters_cc_proto",
+         ":revised_simplex",
+@@ -389,6 +405,7 @@ cc_library(
+     srcs = ["lp_solver.cc"],
+     hdrs = ["lp_solver.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":parameters_cc_proto",
+         ":preprocessor",
+@@ -413,6 +430,7 @@ cc_library(
+     name = "parameters_validation",
+     srcs = ["parameters_validation.cc"],
+     hdrs = ["parameters_validation.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":parameters_cc_proto",
+         "@com_google_absl//absl/strings",
+diff --git a/ortools/glpk/BUILD.bazel b/ortools/glpk/BUILD.bazel
+index 246ee67..7f2c088 100644
+--- a/ortools/glpk/BUILD.bazel
++++ b/ortools/glpk/BUILD.bazel
+@@ -18,6 +18,7 @@ cc_library(
+     name = "glpk_env_deleter",
+     srcs = ["glpk_env_deleter.cc"],
+     hdrs = ["glpk_env_deleter.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "@glpk",
+@@ -28,6 +29,7 @@ cc_library(
+     name = "glpk_formatters",
+     srcs = ["glpk_formatters.cc"],
+     hdrs = ["glpk_formatters.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "@com_google_absl//absl/strings",
+@@ -38,6 +40,7 @@ cc_library(
+ cc_library(
+     name = "glpk_computational_form",
+     hdrs = ["glpk_computational_form.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@glpk",
+     ],
+diff --git a/ortools/graph/BUILD.bazel b/ortools/graph/BUILD.bazel
+index fe0f588..4bb9556 100644
+--- a/ortools/graph/BUILD.bazel
++++ b/ortools/graph/BUILD.bazel
+@@ -35,6 +35,7 @@ config_setting(
+ cc_library(
+     name = "graphs",
+     hdrs = ["graphs.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":ebert_graph",
+         ":graph",
+@@ -44,6 +45,7 @@ cc_library(
+ cc_library(
+     name = "graph",
+     hdrs = ["graph.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":iterators",
+         "//ortools/base",
+@@ -55,6 +57,7 @@ cc_library(
+ cc_library(
+     name = "bfs",
+     hdrs = ["bfs.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/status",
+         "@com_google_absl//absl/strings:str_format",
+@@ -64,6 +67,7 @@ cc_library(
+ cc_library(
+     name = "bounded_dijkstra",
+     hdrs = ["bounded_dijkstra.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":graph",
+         "//ortools/base:iterator_adaptors",
+@@ -78,6 +82,7 @@ cc_library(
+ cc_library(
+     name = "multi_dijkstra",
+     hdrs = ["multi_dijkstra.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:map_util",
+         "//ortools/base:types",
+@@ -88,6 +93,7 @@ cc_library(
+ cc_library(
+     name = "bidirectional_dijkstra",
+     hdrs = ["bidirectional_dijkstra.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:iterator_adaptors",
+@@ -103,6 +109,7 @@ cc_library(
+     name = "cliques",
+     srcs = ["cliques.cc"],
+     hdrs = ["cliques.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:int_type",
+@@ -116,6 +123,7 @@ cc_library(
+ cc_library(
+     name = "hamiltonian_path",
+     hdrs = ["hamiltonian_path.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:types",
+@@ -129,6 +137,7 @@ cc_library(
+ cc_library(
+     name = "christofides",
+     hdrs = ["christofides.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":eulerian_path",
+         ":graph",
+@@ -147,6 +156,7 @@ cc_library(
+ cc_library(
+     name = "eulerian_path",
+     hdrs = ["eulerian_path.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+     ],
+@@ -155,6 +165,7 @@ cc_library(
+ cc_library(
+     name = "minimum_spanning_tree",
+     hdrs = ["minimum_spanning_tree.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":connected_components",
+         "//ortools/base:adjustable_priority_queue",
+@@ -167,6 +178,7 @@ cc_library(
+ cc_library(
+     name = "one_tree_lower_bound",
+     hdrs = ["one_tree_lower_bound.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":christofides",
+         ":graph",
+@@ -179,6 +191,7 @@ cc_library(
+ cc_library(
+     name = "ebert_graph",
+     hdrs = ["ebert_graph.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:types",
+@@ -192,6 +205,7 @@ cc_library(
+     name = "shortest_paths",
+     srcs = ["shortest_paths.cc"],
+     hdrs = ["shortest_paths.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":ebert_graph",
+         ":graph",
+@@ -212,6 +226,7 @@ cc_library(
+ cc_library(
+     name = "k_shortest_paths",
+     hdrs = ["k_shortest_paths.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":bounded_dijkstra",
+         ":ebert_graph",
+@@ -242,6 +257,7 @@ cc_library(
+     name = "max_flow",
+     srcs = ["max_flow.cc"],
+     hdrs = ["max_flow.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":ebert_graph",
+         ":flow_problem_cc_proto",
+@@ -290,6 +306,7 @@ cc_library(
+         "on_windows": ["/Zc:preprocessor"],
+         "//conditions:default": [],
+     }),
++    features = ["-layering_check"],
+     deps = [
+         ":ebert_graph",
+         ":graph",
+@@ -336,6 +353,7 @@ cc_library(
+     name = "assignment",
+     srcs = ["assignment.cc"],
+     hdrs = ["assignment.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":ebert_graph",
+         ":linear_assignment",
+@@ -349,6 +367,7 @@ cc_library(
+     name = "linear_assignment",
+     srcs = ["linear_assignment.cc"],
+     hdrs = ["linear_assignment.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":ebert_graph",
+         "//ortools/base",
+@@ -364,6 +383,7 @@ cc_library(
+     name = "perfect_matching",
+     srcs = ["perfect_matching.cc"],
+     hdrs = ["perfect_matching.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:adjustable_priority_queue",
+@@ -382,6 +402,7 @@ cc_library(
+     name = "dag_shortest_path",
+     srcs = ["dag_shortest_path.cc"],
+     hdrs = ["dag_shortest_path.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":ebert_graph",
+         ":graph",
+@@ -399,6 +420,7 @@ cc_library(
+     name = "dag_constrained_shortest_path",
+     srcs = ["dag_constrained_shortest_path.cc"],
+     hdrs = ["dag_constrained_shortest_path.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":dag_shortest_path",
+         ":graph",
+@@ -416,6 +438,7 @@ cc_library(
+ cc_library(
+     name = "rooted_tree",
+     hdrs = ["rooted_tree.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:status_macros",
+         "@com_google_absl//absl/algorithm:container",
+@@ -437,6 +460,7 @@ cc_library(
+     hdrs = [
+         "connected_components.h",
+     ],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:map_util",
+@@ -450,6 +474,7 @@ cc_library(
+ cc_library(
+     name = "io",
+     hdrs = ["io.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":graph",
+         "//ortools/base:numbers",
+@@ -463,12 +488,14 @@ cc_library(
+ cc_library(
+     name = "iterators",
+     hdrs = ["iterators.h"],
++    features = ["-layering_check"],
+ )
+ 
+ cc_library(
+     name = "random_graph",
+     srcs = ["random_graph.cc"],
+     hdrs = ["random_graph.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":graph",
+         "//ortools/base:logging",
+@@ -485,6 +512,7 @@ cc_library(
+     hdrs = [
+         "strongly_connected_components.h",
+     ],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+     ],
+@@ -494,6 +522,7 @@ cc_library(
+     name = "topologicalsorter",
+     srcs = ["topologicalsorter.cc"],
+     hdrs = ["topologicalsorter.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":graph",
+         "//ortools/base",
+@@ -512,6 +541,7 @@ cc_library(
+     name = "util",
+     srcs = ["util.cc"],
+     hdrs = ["util.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":connected_components",
+         ":graph",
+diff --git a/ortools/gscip/BUILD.bazel b/ortools/gscip/BUILD.bazel
+index d949483..37dd2ee 100644
+--- a/ortools/gscip/BUILD.bazel
++++ b/ortools/gscip/BUILD.bazel
+@@ -39,6 +39,7 @@ cc_library(
+     name = "gscip_parameters",
+     srcs = ["gscip_parameters.cc"],
+     hdrs = ["gscip_parameters.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":gscip_cc_proto",
+         "//ortools/base:status_macros",
+@@ -62,6 +63,7 @@ cc_library(
+     name = "legacy_scip_params",
+     srcs = ["legacy_scip_params.cc"],
+     hdrs = ["legacy_scip_params.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/linear_solver:scip_helper_macros",
+         "//ortools/linear_solver:scip_with_glop",
+@@ -81,6 +83,7 @@ cc_library(
+         "gscip.h",
+         "gscip_event_handler.h",
+     ],
++    features = ["-layering_check"],
+     deps = [
+         ":gscip_cc_proto",
+         ":gscip_message_handler",
+@@ -106,6 +109,7 @@ cc_library(
+     name = "gscip_ext",
+     srcs = ["gscip_ext.cc"],
+     hdrs = ["gscip_ext.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":gscip",
+         "//ortools/base:status_macros",
+@@ -118,6 +122,7 @@ cc_library(
+     name = "gscip_message_handler",
+     srcs = ["gscip_message_handler.cc"],
+     hdrs = ["gscip_message_handler.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/linear_solver:scip_helper_macros",
+@@ -131,6 +136,7 @@ cc_library(
+     name = "gscip_callback_result",
+     srcs = ["gscip_callback_result.cc"],
+     hdrs = ["gscip_callback_result.h"],
++    features = ["-layering_check"],
+     deps = ["@scip//:libscip"],
+ )
+ 
+@@ -138,6 +144,7 @@ cc_library(
+     name = "gscip_constraint_handler",
+     srcs = ["gscip_constraint_handler.cc"],
+     hdrs = ["gscip_constraint_handler.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":gscip",
+         ":gscip_callback_result",
+diff --git a/ortools/gurobi/BUILD.bazel b/ortools/gurobi/BUILD.bazel
+index d8e4a72..83da625 100644
+--- a/ortools/gurobi/BUILD.bazel
++++ b/ortools/gurobi/BUILD.bazel
+@@ -21,6 +21,7 @@ cc_library(
+     hdrs = [
+         "environment.h",
+     ],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:dynamic_library",
+@@ -39,6 +40,7 @@ cc_library(
+     name = "gurobi_util",
+     srcs = ["gurobi_util.cc"],
+     hdrs = ["gurobi_util.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":environment",
+         "@com_google_absl//absl/strings",
+@@ -51,5 +53,6 @@ cc_library(
+     testonly = True,
+     srcs = ["gurobi_stdout_matchers.cc"],
+     hdrs = ["gurobi_stdout_matchers.h"],
++    features = ["-layering_check"],
+     deps = ["//ortools/base:gmock"],
+ )
+diff --git a/ortools/gurobi/isv_public/BUILD.bazel b/ortools/gurobi/isv_public/BUILD.bazel
+index efae616..1006da8 100644
+--- a/ortools/gurobi/isv_public/BUILD.bazel
++++ b/ortools/gurobi/isv_public/BUILD.bazel
+@@ -17,6 +17,7 @@ cc_library(
+     name = "gurobi_isv",
+     srcs = ["gurobi_isv.cc"],
+     hdrs = ["gurobi_isv.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/gurobi:environment",
+         "//ortools/math_opt/solvers:gurobi_cc_proto",
+diff --git a/ortools/init/BUILD.bazel b/ortools/init/BUILD.bazel
+index 0705399..aec2da3 100644
+--- a/ortools/init/BUILD.bazel
++++ b/ortools/init/BUILD.bazel
+@@ -16,6 +16,7 @@ package(default_visibility = ["//visibility:public"])
+ cc_library(
+     name = "init",
+     hdrs = ["init.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/gurobi:environment",
+diff --git a/ortools/init/python/BUILD.bazel b/ortools/init/python/BUILD.bazel
+index 1774f36..eb75897 100644
+--- a/ortools/init/python/BUILD.bazel
++++ b/ortools/init/python/BUILD.bazel
+@@ -21,6 +21,7 @@ load("@rules_python//python:defs.bzl", "py_test")
+ cc_library(
+     name = "init_doc",
+     hdrs = ["init_doc.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+ )
+ 
+diff --git a/ortools/linear_solver/BUILD.bazel b/ortools/linear_solver/BUILD.bazel
+index 618e192..b7bcf34 100644
+--- a/ortools/linear_solver/BUILD.bazel
++++ b/ortools/linear_solver/BUILD.bazel
+@@ -252,6 +252,7 @@ cc_library(
+         ":use_cplex": ["-DUSE_CPLEX"],
+         "//conditions:default": [],
+     }),
++    features = ["-layering_check"],
+     deps = [
+         ":linear_solver_cc_proto",
+         ":model_exporter",
+@@ -323,6 +324,7 @@ cc_library(
+     name = "model_validator",
+     srcs = ["model_validator.cc"],
+     hdrs = ["model_validator.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         ":linear_solver_cc_proto",
+@@ -352,6 +354,7 @@ copy_file(
+ cc_library(
+     name = "scip_with_glop",
+     srcs = ["lpi_glop.cpp"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/glop:lp_solver",
+         "@scip//:libscip",
+@@ -361,6 +364,7 @@ cc_library(
+ cc_library(
+     name = "scip_helper_macros",
+     hdrs = ["scip_helper_macros.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:status_macros",
+         "@com_google_absl//absl/status",
+@@ -373,6 +377,7 @@ cc_library(
+     name = "model_exporter",
+     srcs = ["model_exporter.cc"],
+     hdrs = ["model_exporter.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":linear_solver_cc_proto",
+         "//ortools/base",
+@@ -412,6 +417,7 @@ cc_library(
+     name = "solve_mp_model",
+     srcs = ["solve_mp_model.cc"],
+     hdrs = ["solve_mp_model.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         ":linear_solver",
+diff --git a/ortools/linear_solver/proto_solver/BUILD.bazel b/ortools/linear_solver/proto_solver/BUILD.bazel
+index 57a1d82..3998779 100644
+--- a/ortools/linear_solver/proto_solver/BUILD.bazel
++++ b/ortools/linear_solver/proto_solver/BUILD.bazel
+@@ -16,6 +16,7 @@ package(default_visibility = ["//visibility:public"])
+ cc_library(
+     name = "proto_utils",
+     hdrs = ["proto_utils.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         "//ortools/port:proto_utils",
+@@ -28,6 +29,7 @@ cc_library(
+     name = "glop_proto_solver",
+     srcs = ["glop_proto_solver.cc"],
+     hdrs = ["glop_proto_solver.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":proto_utils",
+         "//ortools/glop:lp_solver",
+@@ -52,6 +54,7 @@ cc_library(
+     name = "pdlp_proto_solver",
+     srcs = ["pdlp_proto_solver.cc"],
+     hdrs = ["pdlp_proto_solver.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:logging",
+         "//ortools/linear_solver:linear_solver_cc_proto",
+@@ -71,6 +74,7 @@ cc_library(
+     name = "sat_solver_utils",
+     srcs = ["sat_solver_utils.cc"],
+     hdrs = ["sat_solver_utils.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/glop:parameters_cc_proto",
+         "//ortools/glop:preprocessor",
+@@ -85,6 +89,7 @@ cc_library(
+     name = "sat_proto_solver",
+     srcs = ["sat_proto_solver.cc"],
+     hdrs = ["sat_proto_solver.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":proto_utils",
+         ":sat_solver_utils",
+@@ -118,6 +123,7 @@ cc_library(
+         "//ortools/linear_solver:use_scip": ["USE_SCIP"],
+         "//conditions:default": [],
+     }),
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:timer",
+@@ -144,6 +150,7 @@ cc_library(
+     name = "gurobi_proto_solver",
+     srcs = ["gurobi_proto_solver.cc"],
+     hdrs = ["gurobi_proto_solver.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:timer",
+         "//ortools/gurobi:environment",
+@@ -171,6 +178,7 @@ cc_library(
+         "//ortools/linear_solver:use_highs": ["USE_HIGHS"],
+         "//conditions:default": [],
+     }),
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:timer",
+         "//ortools/linear_solver:linear_solver_cc_proto",
+@@ -186,6 +194,7 @@ cc_library(
+     name = "xpress_proto_solver",
+     srcs = ["xpress_proto_solver.cc"],
+     hdrs = ["xpress_proto_solver.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:timer",
+         "//ortools/linear_solver:linear_solver_cc_proto",
+diff --git a/ortools/linear_solver/wrappers/BUILD.bazel b/ortools/linear_solver/wrappers/BUILD.bazel
+index f0f031b..fce5554 100644
+--- a/ortools/linear_solver/wrappers/BUILD.bazel
++++ b/ortools/linear_solver/wrappers/BUILD.bazel
+@@ -35,6 +35,7 @@ cc_library(
+         "-DUSE_SCIP",
+         "-DUSE_LP_PARSER",
+     ],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         "//ortools/base:file",
+diff --git a/ortools/lp_data/BUILD.bazel b/ortools/lp_data/BUILD.bazel
+index c0e2993..b8bbb47 100644
+--- a/ortools/lp_data/BUILD.bazel
++++ b/ortools/lp_data/BUILD.bazel
+@@ -48,6 +48,7 @@ cc_library(
+     name = "base",
+     srcs = ["lp_types.cc"],
+     hdrs = ["lp_types.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:hash",
+@@ -61,6 +62,7 @@ cc_library(
+     name = "permutation",
+     hdrs = ["permutation.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         "//ortools/base",
+@@ -73,6 +75,7 @@ cc_library(
+ cc_library(
+     name = "scattered_vector",
+     hdrs = ["scattered_vector.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         "//ortools/base",
+@@ -86,6 +89,7 @@ cc_library(
+     name = "sparse_vector",
+     hdrs = ["sparse_vector.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         ":permutation",
+@@ -102,6 +106,7 @@ cc_library(
+     srcs = ["sparse_column.cc"],
+     hdrs = ["sparse_column.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         ":sparse_vector",
+@@ -113,6 +118,7 @@ cc_library(
+     name = "sparse_row",
+     hdrs = ["sparse_row.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         ":sparse_vector",
+@@ -127,6 +133,7 @@ cc_library(
+         "sparse.h",
+     ],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         ":matrix_scaler_hdr",
+@@ -148,6 +155,7 @@ cc_library(
+     srcs = ["matrix_scaler.cc"],
+     hdrs = ["matrix_scaler.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         ":lp_utils",
+@@ -165,6 +173,7 @@ cc_library(
+ cc_library(
+     name = "matrix_scaler_hdr",
+     hdrs = ["matrix_scaler.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         "//ortools/base",
+@@ -177,6 +186,7 @@ cc_library(
+     srcs = ["lp_data.cc"],
+     hdrs = ["lp_data.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         ":lp_print_utils",
+@@ -200,6 +210,7 @@ cc_library(
+     name = "lp_data_utils",
+     srcs = ["lp_data_utils.cc"],
+     hdrs = ["lp_data_utils.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         ":lp_data",
+@@ -213,6 +224,7 @@ cc_library(
+     srcs = ["lp_utils.cc"],
+     hdrs = ["lp_utils.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         ":scattered_vector",
+@@ -227,6 +239,7 @@ cc_library(
+     srcs = ["matrix_utils.cc"],
+     hdrs = ["matrix_utils.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         ":sparse",
+@@ -241,6 +254,7 @@ cc_library(
+     hdrs = ["lp_parser.h"],
+     copts = SAFE_FP_CODE,
+     defines = ["USE_LP_PARSER"],
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         ":lp_data",
+@@ -271,6 +285,7 @@ cc_library(
+     srcs = ["lp_print_utils.cc"],
+     hdrs = ["lp_print_utils.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         "//ortools/base",
+@@ -285,6 +300,7 @@ cc_library(
+     srcs = ["proto_utils.cc"],
+     hdrs = ["proto_utils.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         ":lp_data",
+@@ -297,6 +313,7 @@ cc_library(
+     name = "mps_reader_template",
+     srcs = ["mps_reader_template.cc"],
+     hdrs = ["mps_reader_template.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:map_util",
+@@ -317,6 +334,7 @@ cc_library(
+     srcs = ["mps_reader.cc"],
+     hdrs = ["mps_reader.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":lp_data",
+         ":lp_print_utils",
+@@ -337,6 +355,7 @@ cc_library(
+     name = "model_reader",
+     srcs = ["model_reader.cc"],
+     hdrs = ["model_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":lp_data",
+         ":mps_reader",
+@@ -354,6 +373,7 @@ cc_library(
+     srcs = ["lp_decomposer.cc"],
+     hdrs = ["lp_decomposer.h"],
+     copts = SAFE_FP_CODE,
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         ":lp_data",
+@@ -370,6 +390,7 @@ cc_library(
+     name = "sol_reader",
+     srcs = ["sol_reader.cc"],
+     hdrs = ["sol_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":base",
+         ":lp_data",
+diff --git a/ortools/math_opt/constraints/indicator/BUILD.bazel b/ortools/math_opt/constraints/indicator/BUILD.bazel
+index 12fdf6d..e4d2fa4 100644
+--- a/ortools/math_opt/constraints/indicator/BUILD.bazel
++++ b/ortools/math_opt/constraints/indicator/BUILD.bazel
+@@ -17,6 +17,7 @@ cc_library(
+     name = "indicator_constraint",
+     srcs = ["indicator_constraint.cc"],
+     hdrs = ["indicator_constraint.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:intops",
+         "//ortools/math_opt/constraints/util:model_util",
+@@ -45,6 +46,7 @@ cc_library(
+     name = "storage",
+     srcs = ["storage.cc"],
+     hdrs = ["storage.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:intops",
+         "//ortools/math_opt:model_cc_proto",
+@@ -75,6 +77,7 @@ cc_library(
+     name = "validator",
+     srcs = ["validator.cc"],
+     hdrs = ["validator.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:status_macros",
+         "//ortools/math_opt:model_cc_proto",
+diff --git a/ortools/math_opt/constraints/quadratic/BUILD.bazel b/ortools/math_opt/constraints/quadratic/BUILD.bazel
+index e4a0925..d521c19 100644
+--- a/ortools/math_opt/constraints/quadratic/BUILD.bazel
++++ b/ortools/math_opt/constraints/quadratic/BUILD.bazel
+@@ -17,6 +17,7 @@ cc_library(
+     name = "quadratic_constraint",
+     srcs = ["quadratic_constraint.cc"],
+     hdrs = ["quadratic_constraint.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:intops",
+         "//ortools/math_opt/constraints/util:model_util",
+@@ -50,6 +51,7 @@ cc_library(
+     name = "storage",
+     srcs = ["storage.cc"],
+     hdrs = ["storage.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/math_opt:model_cc_proto",
+         "//ortools/math_opt:model_update_cc_proto",
+@@ -81,6 +83,7 @@ cc_library(
+     name = "validator",
+     srcs = ["validator.cc"],
+     hdrs = ["validator.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:status_macros",
+         "//ortools/math_opt:model_cc_proto",
+diff --git a/ortools/math_opt/constraints/second_order_cone/BUILD.bazel b/ortools/math_opt/constraints/second_order_cone/BUILD.bazel
+index 37ed646..17b383d 100644
+--- a/ortools/math_opt/constraints/second_order_cone/BUILD.bazel
++++ b/ortools/math_opt/constraints/second_order_cone/BUILD.bazel
+@@ -17,6 +17,7 @@ cc_library(
+     name = "second_order_cone_constraint",
+     srcs = ["second_order_cone_constraint.cc"],
+     hdrs = ["second_order_cone_constraint.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":storage",
+         "//ortools/base:intops",
+@@ -47,6 +48,7 @@ cc_library(
+     name = "storage",
+     srcs = ["storage.cc"],
+     hdrs = ["storage.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:intops",
+         "//ortools/math_opt:model_cc_proto",
+@@ -79,6 +81,7 @@ cc_library(
+     name = "validator",
+     srcs = ["validator.cc"],
+     hdrs = ["validator.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:status_macros",
+         "//ortools/math_opt:model_cc_proto",
+diff --git a/ortools/math_opt/constraints/sos/BUILD.bazel b/ortools/math_opt/constraints/sos/BUILD.bazel
+index fade5cb..aad7cd5 100644
+--- a/ortools/math_opt/constraints/sos/BUILD.bazel
++++ b/ortools/math_opt/constraints/sos/BUILD.bazel
+@@ -17,6 +17,7 @@ cc_library(
+     name = "sos1_constraint",
+     srcs = ["sos1_constraint.cc"],
+     hdrs = ["sos1_constraint.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":util",
+         "//ortools/base:intops",
+@@ -50,6 +51,7 @@ cc_library(
+     name = "sos2_constraint",
+     srcs = ["sos2_constraint.cc"],
+     hdrs = ["sos2_constraint.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":util",
+         "//ortools/base:intops",
+@@ -82,6 +84,7 @@ cc_test(
+ cc_library(
+     name = "storage",
+     hdrs = ["storage.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:intops",
+         "//ortools/math_opt:model_cc_proto",
+@@ -112,6 +115,7 @@ cc_test(
+ cc_library(
+     name = "util",
+     hdrs = ["util.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/math_opt/cpp:variable_and_expressions",
+         "//ortools/util:fp_roundtrip_conv",
+@@ -123,6 +127,7 @@ cc_library(
+     name = "validator",
+     srcs = ["validator.cc"],
+     hdrs = ["validator.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:status_macros",
+         "//ortools/math_opt:model_cc_proto",
+diff --git a/ortools/math_opt/constraints/util/BUILD.bazel b/ortools/math_opt/constraints/util/BUILD.bazel
+index c3d0c06..968ba25 100644
+--- a/ortools/math_opt/constraints/util/BUILD.bazel
++++ b/ortools/math_opt/constraints/util/BUILD.bazel
+@@ -17,6 +17,7 @@ cc_library(
+     name = "model_util",
+     srcs = ["model_util.cc"],
+     hdrs = ["model_util.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:intops",
+         "//ortools/math_opt/cpp:variable_and_expressions",
+diff --git a/ortools/math_opt/core/BUILD.bazel b/ortools/math_opt/core/BUILD.bazel
+index 06da18f..45f3170 100644
+--- a/ortools/math_opt/core/BUILD.bazel
++++ b/ortools/math_opt/core/BUILD.bazel
+@@ -17,6 +17,7 @@ cc_library(
+     name = "math_opt_proto_utils",
+     srcs = ["math_opt_proto_utils.cc"],
+     hdrs = ["math_opt_proto_utils.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         ":sparse_vector_view",
+@@ -42,6 +43,7 @@ cc_library(
+ cc_library(
+     name = "sparse_vector_view",
+     hdrs = ["sparse_vector_view.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":arrow_operator_proxy",
+         ":sparse_vector",
+@@ -59,6 +61,7 @@ cc_library(
+     name = "model_summary",
+     srcs = ["model_summary.cc"],
+     hdrs = ["model_summary.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:linked_hash_map",
+         "//ortools/base:status_macros",
+@@ -78,6 +81,7 @@ cc_library(
+     name = "solver_interface",
+     srcs = ["solver_interface.cc"],
+     hdrs = ["solver_interface.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":non_streamable_solver_init_arguments",
+         "//ortools/base:map_util",
+@@ -104,6 +108,7 @@ cc_library(
+     name = "solver",
+     srcs = ["solver.cc"],
+     hdrs = ["solver.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":base_solver",
+         ":concurrent_calls_guard",
+@@ -139,6 +144,7 @@ cc_library(
+     name = "non_streamable_solver_init_arguments",
+     srcs = ["non_streamable_solver_init_arguments.cc"],
+     hdrs = ["non_streamable_solver_init_arguments.h"],
++    features = ["-layering_check"],
+     deps = ["//ortools/math_opt:parameters_cc_proto"],
+ )
+ 
+@@ -146,22 +152,26 @@ cc_library(
+     name = "solver_debug",
+     srcs = ["solver_debug.cc"],
+     hdrs = ["solver_debug.h"],
++    features = ["-layering_check"],
+ )
+ 
+ cc_library(
+     name = "arrow_operator_proxy",
+     hdrs = ["arrow_operator_proxy.h"],
++    features = ["-layering_check"],
+ )
+ 
+ cc_library(
+     name = "sparse_vector",
+     hdrs = ["sparse_vector.h"],
++    features = ["-layering_check"],
+ )
+ 
+ cc_library(
+     name = "sparse_submatrix",
+     srcs = ["sparse_submatrix.cc"],
+     hdrs = ["sparse_submatrix.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":sparse_vector",
+         ":sparse_vector_view",
+@@ -176,6 +186,7 @@ cc_library(
+     name = "inverted_bounds",
+     srcs = ["inverted_bounds.cc"],
+     hdrs = ["inverted_bounds.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:status_macros",
+         "@com_google_absl//absl/status",
+@@ -188,6 +199,7 @@ cc_library(
+     name = "invalid_indicators",
+     srcs = ["invalid_indicators.cc"],
+     hdrs = ["invalid_indicators.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:status_macros",
+         "@com_google_absl//absl/algorithm:container",
+@@ -200,6 +212,7 @@ cc_library(
+     name = "concurrent_calls_guard",
+     srcs = ["concurrent_calls_guard.cc"],
+     hdrs = ["concurrent_calls_guard.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/base:core_headers",
+         "@com_google_absl//absl/log:check",
+@@ -213,6 +226,7 @@ cc_library(
+     name = "empty_bounds",
+     srcs = ["empty_bounds.cc"],
+     hdrs = ["empty_bounds.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/math_opt:result_cc_proto",
+         "//ortools/util:fp_roundtrip_conv",
+@@ -223,6 +237,7 @@ cc_library(
+ cc_library(
+     name = "sorted",
+     hdrs = ["sorted.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/algorithm:container",
+         "@com_google_absl//absl/container:flat_hash_map",
+@@ -235,6 +250,7 @@ cc_library(
+     name = "base_solver",
+     srcs = ["base_solver.cc"],
+     hdrs = ["base_solver.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/math_opt:callback_cc_proto",
+         "//ortools/math_opt:infeasible_subsystem_cc_proto",
+diff --git a/ortools/math_opt/cpp/BUILD.bazel b/ortools/math_opt/cpp/BUILD.bazel
+index a606388..51e4b90 100644
+--- a/ortools/math_opt/cpp/BUILD.bazel
++++ b/ortools/math_opt/cpp/BUILD.bazel
+@@ -20,6 +20,7 @@ package(default_visibility = [
+ cc_library(
+     name = "math_opt",
+     hdrs = ["math_opt.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         ":model",
+@@ -32,6 +33,7 @@ cc_library(
+     name = "basis_status",
+     srcs = ["basis_status.cc"],
+     hdrs = ["basis_status.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":enums",
+         "//ortools/math_opt:solution_cc_proto",
+@@ -44,6 +46,7 @@ cc_library(
+     name = "sparse_containers",
+     srcs = ["sparse_containers.cc"],
+     hdrs = ["sparse_containers.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":basis_status",
+         ":linear_constraint",
+@@ -71,6 +74,7 @@ cc_library(
+     name = "model",
+     srcs = ["model.cc"],
+     hdrs = ["model.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":key_types",
+         ":linear_constraint",
+@@ -105,6 +109,7 @@ cc_library(
+     name = "variable_and_expressions",
+     srcs = ["variable_and_expressions.cc"],
+     hdrs = ["variable_and_expressions.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":formatters",
+         ":key_types",
+@@ -126,6 +131,7 @@ cc_library(
+     name = "objective",
+     srcs = ["objective.cc"],
+     hdrs = ["objective.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":key_types",
+         ":variable_and_expressions",
+@@ -140,6 +146,7 @@ cc_library(
+ cc_library(
+     name = "linear_constraint",
+     hdrs = ["linear_constraint.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":key_types",
+         ":variable_and_expressions",
+@@ -156,6 +163,7 @@ cc_library(
+     name = "solution",
+     srcs = ["solution.cc"],
+     hdrs = ["solution.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":basis_status",
+         ":enums",
+@@ -184,6 +192,7 @@ cc_library(
+     name = "solve_result",
+     srcs = ["solve_result.cc"],
+     hdrs = ["solve_result.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":enums",
+         ":linear_constraint",
+@@ -212,6 +221,7 @@ cc_library(
+     name = "map_filter",
+     srcs = ["map_filter.cc"],
+     hdrs = ["map_filter.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":key_types",
+         ":linear_constraint",
+@@ -231,6 +241,7 @@ cc_library(
+     name = "callback",
+     srcs = ["callback.cc"],
+     hdrs = ["callback.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":enums",
+         ":map_filter",
+@@ -256,6 +267,7 @@ cc_library(
+ cc_library(
+     name = "key_types",
+     hdrs = ["key_types.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/math_opt/storage:model_storage",
+         "@com_google_absl//absl/algorithm:container",
+@@ -270,6 +282,7 @@ cc_library(
+     name = "model_solve_parameters",
+     srcs = ["model_solve_parameters.cc"],
+     hdrs = ["model_solve_parameters.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":linear_constraint",
+         ":map_filter",
+@@ -295,6 +308,7 @@ cc_library(
+     name = "update_tracker",
+     srcs = ["update_tracker.cc"],
+     hdrs = ["update_tracker.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:logging",
+         "//ortools/math_opt:model_cc_proto",
+@@ -310,6 +324,7 @@ cc_library(
+     name = "message_callback",
+     srcs = ["message_callback.cc"],
+     hdrs = ["message_callback.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:logging",
+         "//ortools/base:source_location",
+@@ -323,6 +338,7 @@ cc_library(
+ cc_library(
+     name = "solver_init_arguments",
+     hdrs = ["solver_init_arguments.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":streamable_solver_init_arguments",
+         "//ortools/math_opt/core:non_streamable_solver_init_arguments",
+@@ -333,6 +349,7 @@ cc_library(
+     name = "solve_arguments",
+     srcs = ["solve_arguments.cc"],
+     hdrs = ["solve_arguments.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":callback",
+         ":message_callback",
+@@ -350,6 +367,7 @@ cc_library(
+     name = "solve",
+     srcs = ["solve.cc"],
+     hdrs = ["solve.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":compute_infeasible_subsystem_arguments",
+         ":compute_infeasible_subsystem_result",
+@@ -375,6 +393,7 @@ cc_library(
+     name = "streamable_solver_init_arguments",
+     srcs = ["streamable_solver_init_arguments.cc"],
+     hdrs = ["streamable_solver_init_arguments.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/math_opt:parameters_cc_proto",
+         "//ortools/math_opt/solvers:gurobi_cc_proto",
+@@ -386,6 +405,7 @@ cc_library(
+     name = "parameters",
+     srcs = ["parameters.cc"],
+     hdrs = ["parameters.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":enums",
+         "//ortools/base:linked_hash_map",
+@@ -414,6 +434,7 @@ cc_library(
+     testonly = 1,
+     srcs = ["matchers.cc"],
+     hdrs = ["matchers.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         ":linear_constraint",
+@@ -435,6 +456,7 @@ cc_library(
+ cc_library(
+     name = "enums",
+     hdrs = ["enums.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/log:check",
+         "@com_google_absl//absl/strings",
+@@ -446,6 +468,7 @@ cc_library(
+     name = "statistics",
+     srcs = ["statistics.cc"],
+     hdrs = ["statistics.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         ":model",
+@@ -456,12 +479,14 @@ cc_library(
+ cc_library(
+     name = "formatters",
+     hdrs = ["formatters.h"],
++    features = ["-layering_check"],
+     deps = ["//ortools/util:fp_roundtrip_conv"],
+ )
+ 
+ cc_library(
+     name = "update_result",
+     hdrs = ["update_result.h"],
++    features = ["-layering_check"],
+     deps = ["//ortools/math_opt:model_update_cc_proto"],
+ )
+ 
+@@ -469,6 +494,7 @@ cc_library(
+     name = "compute_infeasible_subsystem_result",
+     srcs = ["compute_infeasible_subsystem_result.cc"],
+     hdrs = ["compute_infeasible_subsystem_result.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":enums",
+         ":key_types",
+@@ -500,6 +526,7 @@ cc_library(
+ cc_library(
+     name = "compute_infeasible_subsystem_arguments",
+     hdrs = ["compute_infeasible_subsystem_arguments.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":message_callback",
+         ":parameters",
+@@ -511,6 +538,7 @@ cc_library(
+     name = "solver_resources",
+     srcs = ["solver_resources.cc"],
+     hdrs = ["solver_resources.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/math_opt:rpc_cc_proto",
+         "//ortools/port:proto_utils",
+@@ -524,6 +552,7 @@ cc_library(
+     name = "solve_impl",
+     srcs = ["solve_impl.cc"],
+     hdrs = ["solve_impl.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":compute_infeasible_subsystem_arguments",
+         ":compute_infeasible_subsystem_result",
+@@ -551,6 +580,7 @@ cc_library(
+ cc_library(
+     name = "incremental_solver",
+     hdrs = ["incremental_solver.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":compute_infeasible_subsystem_arguments",
+         ":compute_infeasible_subsystem_result",
+diff --git a/ortools/math_opt/io/BUILD.bazel b/ortools/math_opt/io/BUILD.bazel
+index 428beaf..8e1bb4a 100644
+--- a/ortools/math_opt/io/BUILD.bazel
++++ b/ortools/math_opt/io/BUILD.bazel
+@@ -17,6 +17,7 @@ cc_library(
+     name = "proto_converter",
+     srcs = ["proto_converter.cc"],
+     hdrs = ["proto_converter.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:status_macros",
+         "//ortools/linear_solver:linear_solver_cc_proto",
+@@ -41,6 +42,7 @@ cc_library(
+     name = "mps_converter",
+     srcs = ["mps_converter.cc"],
+     hdrs = ["mps_converter.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":proto_converter",
+         "//ortools/base:status_macros",
+@@ -57,6 +59,7 @@ cc_library(
+     name = "names_removal",
+     srcs = ["names_removal.cc"],
+     hdrs = ["names_removal.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/math_opt:model_cc_proto",
+         "//ortools/math_opt:model_update_cc_proto",
+@@ -67,6 +70,7 @@ cc_library(
+     name = "lp_converter",
+     srcs = ["lp_converter.cc"],
+     hdrs = ["lp_converter.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":proto_converter",
+         "//ortools/base:status_macros",
+@@ -81,6 +85,7 @@ cc_library(
+     name = "lp_parser",
+     srcs = ["lp_parser.cc"],
+     hdrs = ["lp_parser.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":mps_converter",
+         "//ortools/base",
+diff --git a/ortools/math_opt/io/lp/BUILD.bazel b/ortools/math_opt/io/lp/BUILD.bazel
+index 95d079c..02f1634 100644
+--- a/ortools/math_opt/io/lp/BUILD.bazel
++++ b/ortools/math_opt/io/lp/BUILD.bazel
+@@ -15,6 +15,7 @@ cc_library(
+     name = "lp_model",
+     srcs = ["lp_model.cc"],
+     hdrs = ["lp_model.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":lp_name",
+         "//ortools/base:intops",
+@@ -32,6 +33,7 @@ cc_library(
+     name = "lp_name",
+     srcs = ["lp_name.cc"],
+     hdrs = ["lp_name.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:status_macros",
+         "@com_google_absl//absl/status",
+@@ -44,6 +46,7 @@ cc_library(
+     name = "model_utils",
+     srcs = ["model_utils.cc"],
+     hdrs = ["model_utils.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":lp_model",
+         "//ortools/base:status_macros",
+diff --git a/ortools/math_opt/labs/BUILD.bazel b/ortools/math_opt/labs/BUILD.bazel
+index d048d84..c57e06a 100644
+--- a/ortools/math_opt/labs/BUILD.bazel
++++ b/ortools/math_opt/labs/BUILD.bazel
+@@ -15,6 +15,7 @@ cc_library(
+     name = "general_constraint_to_mip",
+     srcs = ["general_constraint_to_mip.cc"],
+     hdrs = ["general_constraint_to_mip.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         ":linear_expr_util",
+@@ -28,6 +29,7 @@ cc_library(
+     name = "linear_expr_util",
+     srcs = ["linear_expr_util.cc"],
+     hdrs = ["linear_expr_util.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         "//ortools/math_opt/cpp:math_opt",
+@@ -39,6 +41,7 @@ cc_library(
+     name = "solution_feasibility_checker",
+     srcs = ["solution_feasibility_checker.cc"],
+     hdrs = ["solution_feasibility_checker.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         "//ortools/base:mathutil",
+@@ -57,6 +60,7 @@ cc_library(
+     name = "solution_improvement",
+     srcs = ["solution_improvement.cc"],
+     hdrs = ["solution_improvement.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         "//ortools/base:status_macros",
+@@ -77,6 +81,7 @@ cc_library(
+         "dualizer.cc",
+     ],
+     hdrs = ["dualizer.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         "//ortools/base:map_util",
+diff --git a/ortools/math_opt/solver_tests/BUILD.bazel b/ortools/math_opt/solver_tests/BUILD.bazel
+index 48fc1d2..e43f488 100644
+--- a/ortools/math_opt/solver_tests/BUILD.bazel
++++ b/ortools/math_opt/solver_tests/BUILD.bazel
+@@ -18,6 +18,7 @@ cc_library(
+     testonly = 1,
+     srcs = ["base_solver_test.cc"],
+     hdrs = ["base_solver_test.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:gmock",
+         "//ortools/base:linked_hash_map",
+@@ -34,6 +35,7 @@ cc_library(
+     data = [
+         "//ortools/math_opt/solver_tests/testdata:23588.mps",
+     ],
++    features = ["-layering_check"],
+     deps = [
+         ":base_solver_test",
+         ":test_models",
+@@ -69,6 +71,7 @@ cc_library(
+     data = [
+         "//ortools/math_opt/solver_tests/testdata:23588.mps",
+     ],
++    features = ["-layering_check"],
+     deps = [
+         ":test_models",
+         "//ortools/base",
+@@ -91,6 +94,7 @@ cc_library(
+     testonly = 1,
+     srcs = ["lp_tests.cc"],
+     hdrs = ["lp_tests.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":base_solver_test",
+         "//ortools/base:gmock",
+@@ -111,6 +115,7 @@ cc_library(
+     testonly = 1,
+     srcs = ["lp_incomplete_solve_tests.cc"],
+     hdrs = ["lp_incomplete_solve_tests.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":test_models",
+         "//ortools/base",
+@@ -131,6 +136,7 @@ cc_library(
+     testonly = 1,
+     srcs = ["invalid_input_tests.cc"],
+     hdrs = ["invalid_input_tests.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":base_solver_test",
+         "//ortools/base:gmock",
+@@ -167,6 +173,7 @@ cc_library(
+     testonly = 1,
+     srcs = ["mip_tests.cc"],
+     hdrs = ["mip_tests.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":base_solver_test",
+         "//ortools/base",
+@@ -185,6 +192,7 @@ cc_library(
+     testonly = 1,
+     srcs = ["ip_model_solve_parameters_tests.cc"],
+     hdrs = ["ip_model_solve_parameters_tests.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":base_solver_test",
+         "//ortools/base:gmock",
+@@ -204,6 +212,7 @@ cc_library(
+     testonly = 1,
+     srcs = ["ip_multiple_solutions_tests.cc"],
+     hdrs = ["ip_multiple_solutions_tests.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:gmock",
+         "//ortools/math_opt/cpp:matchers",
+@@ -220,6 +229,7 @@ cc_library(
+     testonly = 1,
+     srcs = ["lp_model_solve_parameters_tests.cc"],
+     hdrs = ["lp_model_solve_parameters_tests.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":base_solver_test",
+         ":test_models",
+@@ -237,6 +247,7 @@ cc_library(
+     testonly = 1,
+     srcs = ["lp_parameter_tests.cc"],
+     hdrs = ["lp_parameter_tests.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:gmock",
+         "//ortools/base:status_macros",
+@@ -258,6 +269,7 @@ cc_library(
+     testonly = 1,
+     srcs = ["lp_initial_basis_tests.cc"],
+     hdrs = ["lp_initial_basis_tests.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":base_solver_test",
+         "//ortools/base:gmock",
+@@ -279,6 +291,7 @@ cc_library(
+         "//ortools/math_opt/solver_tests/testdata:23588.mps",
+         "//ortools/math_opt/solver_tests/testdata:beavma.mps",
+     ],
++    features = ["-layering_check"],
+     deps = [
+         ":test_models",
+         "//ortools/base",
+@@ -305,6 +318,7 @@ cc_library(
+     testonly = 1,
+     srcs = ["multi_objective_tests.cc"],
+     hdrs = ["multi_objective_tests.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:gmock",
+         "//ortools/base:status_macros",
+@@ -327,6 +341,7 @@ cc_library(
+     testonly = 1,
+     srcs = ["qp_tests.cc"],
+     hdrs = ["qp_tests.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:gmock",
+@@ -345,6 +360,7 @@ cc_library(
+     testonly = 1,
+     srcs = ["qc_tests.cc"],
+     hdrs = ["qc_tests.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:gmock",
+         "//ortools/math_opt/cpp:matchers",
+@@ -363,6 +379,7 @@ cc_library(
+     testonly = 1,
+     srcs = ["second_order_cone_tests.cc"],
+     hdrs = ["second_order_cone_tests.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:gmock",
+         "//ortools/math_opt/cpp:matchers",
+@@ -381,6 +398,7 @@ cc_library(
+     testonly = 1,
+     srcs = ["logical_constraint_tests.cc"],
+     hdrs = ["logical_constraint_tests.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:gmock",
+         "//ortools/math_opt:model_update_cc_proto",
+@@ -401,6 +419,7 @@ cc_library(
+     testonly = 1,
+     srcs = ["test_models.cc"],
+     hdrs = ["test_models.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/math_opt/cpp:math_opt",
+         "@com_google_absl//absl/log:check",
+@@ -426,6 +445,7 @@ cc_library(
+     testonly = True,
+     srcs = ["generic_tests.cc"],
+     hdrs = ["generic_tests.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":test_models",
+         "//ortools/base:gmock",
+@@ -452,6 +472,7 @@ cc_library(
+     testonly = 1,
+     srcs = ["infeasible_subsystem_tests.cc"],
+     hdrs = ["infeasible_subsystem_tests.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:gmock",
+         "//ortools/gurobi:gurobi_stdout_matchers",
+diff --git a/ortools/math_opt/solvers/BUILD.bazel b/ortools/math_opt/solvers/BUILD.bazel
+index e7e8054..ef6c123 100644
+--- a/ortools/math_opt/solvers/BUILD.bazel
++++ b/ortools/math_opt/solvers/BUILD.bazel
+@@ -22,6 +22,7 @@ cc_library(
+         "gscip_solver.cc",
+         "gscip_solver.h",
+     ],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         ":message_callback_data",
+@@ -106,6 +107,7 @@ cc_library(
+     name = "gurobi_callback",
+     srcs = ["gurobi_callback.cc"],
+     hdrs = ["gurobi_callback.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":message_callback_data",
+         "//ortools/base:linked_hash_map",
+@@ -140,6 +142,7 @@ cc_library(
+     hdrs = [
+         "gurobi_init_arguments.h",
+     ],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         ":gurobi_callback",
+@@ -195,6 +198,7 @@ cc_library(
+         "glop_solver.cc",
+         "glop_solver.h",
+     ],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         "//ortools/base:map_util",
+@@ -245,6 +249,7 @@ cc_library(
+         "cp_sat_solver.cc",
+         "cp_sat_solver.h",
+     ],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         "//ortools/base:protoutil",
+@@ -311,9 +316,9 @@ cc_test(
+ 
+ cc_test(
+     name = "cp_sat_solver_test",
++    timeout = "eternal",
+     srcs = ["cp_sat_solver_test.cc"],
+     shard_count = 10,
+-    timeout = "eternal",
+     deps = [
+         ":cp_sat_solver",
+         "//ortools/base:gmock_main",
+@@ -342,6 +347,7 @@ cc_library(
+     name = "message_callback_data",
+     srcs = ["message_callback_data.cc"],
+     hdrs = ["message_callback_data.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/math_opt/core:solver_interface",
+         "@com_google_absl//absl/strings",
+@@ -365,6 +371,7 @@ cc_library(
+     name = "pdlp_bridge",
+     srcs = ["pdlp_bridge.cc"],
+     hdrs = ["pdlp_bridge.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:status_macros",
+         "//ortools/math_opt:model_cc_proto",
+@@ -391,6 +398,7 @@ cc_library(
+         "pdlp_solver.cc",
+         "pdlp_solver.h",
+     ],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         ":pdlp_bridge",
+@@ -464,6 +472,7 @@ cc_library(
+         "glpk_solver.cc",
+         "glpk_solver.h",
+     ],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         ":glpk_cc_proto",
+@@ -563,6 +572,7 @@ cc_library(
+         "highs_solver.cc",
+         "highs_solver.h",
+     ],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         ":highs_cc_proto",
+diff --git a/ortools/math_opt/solvers/glpk/BUILD.bazel b/ortools/math_opt/solvers/glpk/BUILD.bazel
+index b33dd3b..af07950 100644
+--- a/ortools/math_opt/solvers/glpk/BUILD.bazel
++++ b/ortools/math_opt/solvers/glpk/BUILD.bazel
+@@ -18,6 +18,7 @@ cc_library(
+     name = "rays",
+     srcs = ["rays.cc"],
+     hdrs = ["rays.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:logging",
+         "//ortools/base:status_macros",
+@@ -35,6 +36,7 @@ cc_library(
+     name = "glpk_sparse_vector",
+     srcs = ["glpk_sparse_vector.cc"],
+     hdrs = ["glpk_sparse_vector.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:logging",
+         "@com_google_absl//absl/log:check",
+@@ -54,6 +56,7 @@ cc_library(
+     name = "gap",
+     srcs = ["gap.cc"],
+     hdrs = ["gap.h"],
++    features = ["-layering_check"],
+ )
+ 
+ cc_test(
+diff --git a/ortools/math_opt/solvers/gscip/BUILD.bazel b/ortools/math_opt/solvers/gscip/BUILD.bazel
+index fd91d85..fcc2c9c 100644
+--- a/ortools/math_opt/solvers/gscip/BUILD.bazel
++++ b/ortools/math_opt/solvers/gscip/BUILD.bazel
+@@ -17,6 +17,7 @@ cc_library(
+     name = "gscip_solver_constraint_handler",
+     srcs = ["gscip_solver_constraint_handler.cc"],
+     hdrs = ["gscip_solver_constraint_handler.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:linked_hash_map",
+         "//ortools/base:protoutil",
+diff --git a/ortools/math_opt/solvers/gurobi/BUILD.bazel b/ortools/math_opt/solvers/gurobi/BUILD.bazel
+index 32f8f39..5039d84 100644
+--- a/ortools/math_opt/solvers/gurobi/BUILD.bazel
++++ b/ortools/math_opt/solvers/gurobi/BUILD.bazel
+@@ -19,6 +19,7 @@ cc_library(
+     hdrs = [
+         "g_gurobi.h",
+     ],
++    features = ["-layering_check"],
+     visibility = [
+         "//ortools/gurobi:__subpackages__",
+         "//ortools/math_opt:__subpackages__",
+diff --git a/ortools/math_opt/storage/BUILD.bazel b/ortools/math_opt/storage/BUILD.bazel
+index cb85a81..459d2b0 100644
+--- a/ortools/math_opt/storage/BUILD.bazel
++++ b/ortools/math_opt/storage/BUILD.bazel
+@@ -16,6 +16,7 @@ package(default_visibility = ["//ortools/math_opt:__subpackages__"])
+ cc_library(
+     name = "model_storage_types",
+     hdrs = ["model_storage_types.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:intops",
+         "@com_google_absl//absl/strings",
+@@ -25,11 +26,13 @@ cc_library(
+ cc_library(
+     name = "range",
+     hdrs = ["range.h"],
++    features = ["-layering_check"],
+ )
+ 
+ cc_library(
+     name = "iterators",
+     hdrs = ["iterators.h"],
++    features = ["-layering_check"],
+     deps = [":range"],
+ )
+ 
+@@ -37,6 +40,7 @@ cc_library(
+     name = "sparse_coefficient_map",
+     srcs = ["sparse_coefficient_map.cc"],
+     hdrs = ["sparse_coefficient_map.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":model_storage_types",
+         "//ortools/base:intops",
+@@ -51,6 +55,7 @@ cc_library(
+     name = "sparse_matrix",
+     srcs = ["sparse_matrix.cc"],
+     hdrs = ["sparse_matrix.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":model_storage_types",
+         "//ortools/base:intops",
+@@ -67,6 +72,7 @@ cc_library(
+ cc_library(
+     name = "linear_expression_data",
+     hdrs = ["linear_expression_data.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":sparse_coefficient_map",
+         "//ortools/math_opt:sparse_containers_cc_proto",
+@@ -78,6 +84,7 @@ cc_library(
+ cc_library(
+     name = "update_trackers",
+     hdrs = ["update_trackers.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":model_storage_types",
+         "//ortools/base:intops",
+@@ -93,6 +100,7 @@ cc_library(
+     name = "variable_storage",
+     srcs = ["variable_storage.cc"],
+     hdrs = ["variable_storage.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":model_storage_types",
+         ":range",
+@@ -112,6 +120,7 @@ cc_library(
+     name = "objective_storage",
+     srcs = ["objective_storage.cc"],
+     hdrs = ["objective_storage.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":range",
+         ":sparse_coefficient_map",
+@@ -136,6 +145,7 @@ cc_library(
+     name = "linear_constraint_storage",
+     srcs = ["linear_constraint_storage.cc"],
+     hdrs = ["linear_constraint_storage.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":model_storage_types",
+         ":range",
+@@ -158,6 +168,7 @@ cc_library(
+ cc_library(
+     name = "atomic_constraint_storage",
+     hdrs = ["atomic_constraint_storage.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":model_storage_types",
+         ":range",
+@@ -176,6 +187,7 @@ cc_library(
+     name = "model_storage",
+     srcs = ["model_storage.cc"],
+     hdrs = ["model_storage.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":atomic_constraint_storage",
+         ":iterators",
+diff --git a/ortools/math_opt/testing/BUILD.bazel b/ortools/math_opt/testing/BUILD.bazel
+index e80e4e0..058bd4b 100644
+--- a/ortools/math_opt/testing/BUILD.bazel
++++ b/ortools/math_opt/testing/BUILD.bazel
+@@ -17,6 +17,7 @@ cc_library(
+     name = "param_name",
+     testonly = True,
+     hdrs = ["param_name.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:gmock",
+     ],
+@@ -25,4 +26,5 @@ cc_library(
+ cc_library(
+     name = "stream",
+     hdrs = ["stream.h"],
++    features = ["-layering_check"],
+ )
+diff --git a/ortools/math_opt/tools/BUILD.bazel b/ortools/math_opt/tools/BUILD.bazel
+index 55c1f2f..adfeac6 100644
+--- a/ortools/math_opt/tools/BUILD.bazel
++++ b/ortools/math_opt/tools/BUILD.bazel
+@@ -66,6 +66,7 @@ cc_library(
+     name = "file_format_flags",
+     srcs = ["file_format_flags.cc"],
+     hdrs = ["file_format_flags.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:file",
+diff --git a/ortools/math_opt/validators/BUILD.bazel b/ortools/math_opt/validators/BUILD.bazel
+index 5448a93..c23ef8e 100644
+--- a/ortools/math_opt/validators/BUILD.bazel
++++ b/ortools/math_opt/validators/BUILD.bazel
+@@ -17,6 +17,7 @@ cc_library(
+     name = "ids_validator",
+     srcs = ["ids_validator.cc"],
+     hdrs = ["ids_validator.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:status_macros",
+         "//ortools/math_opt/core:model_summary",
+@@ -31,6 +32,7 @@ cc_library(
+     name = "scalar_validator",
+     srcs = ["scalar_validator.cc"],
+     hdrs = ["scalar_validator.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/status",
+         "@com_google_absl//absl/strings",
+@@ -41,6 +43,7 @@ cc_library(
+     name = "sparse_matrix_validator",
+     srcs = ["sparse_matrix_validator.cc"],
+     hdrs = ["sparse_matrix_validator.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":ids_validator",
+         "//ortools/base:status_macros",
+@@ -56,6 +59,7 @@ cc_library(
+ cc_library(
+     name = "sparse_vector_validator",
+     hdrs = ["sparse_vector_validator.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":ids_validator",
+         ":scalar_validator",
+@@ -70,6 +74,7 @@ cc_library(
+     name = "model_validator",
+     srcs = ["model_validator.cc"],
+     hdrs = ["model_validator.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":ids_validator",
+         ":scalar_validator",
+@@ -94,6 +99,7 @@ cc_library(
+     name = "solve_stats_validator",
+     srcs = ["solve_stats_validator.cc"],
+     hdrs = ["solve_stats_validator.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:protoutil",
+         "//ortools/math_opt:result_cc_proto",
+@@ -108,6 +114,7 @@ cc_library(
+     name = "result_validator",
+     srcs = ["result_validator.cc"],
+     hdrs = ["result_validator.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":solution_validator",
+         ":solve_stats_validator",
+@@ -128,6 +135,7 @@ cc_library(
+     name = "solution_validator",
+     srcs = ["solution_validator.cc"],
+     hdrs = ["solution_validator.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":ids_validator",
+         ":scalar_validator",
+@@ -148,6 +156,7 @@ cc_library(
+     name = "solve_parameters_validator",
+     srcs = ["solve_parameters_validator.cc"],
+     hdrs = ["solve_parameters_validator.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:protoutil",
+         "//ortools/base:status_macros",
+@@ -164,6 +173,7 @@ cc_library(
+     name = "callback_validator",
+     srcs = ["callback_validator.cc"],
+     hdrs = ["callback_validator.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":ids_validator",
+         ":model_parameters_validator",
+@@ -190,6 +200,7 @@ cc_library(
+     name = "model_parameters_validator",
+     srcs = ["model_parameters_validator.cc"],
+     hdrs = ["model_parameters_validator.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":ids_validator",
+         ":solution_validator",
+@@ -208,6 +219,7 @@ cc_library(
+     name = "linear_expression_validator",
+     srcs = ["linear_expression_validator.cc"],
+     hdrs = ["linear_expression_validator.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":scalar_validator",
+         ":sparse_vector_validator",
+@@ -223,6 +235,7 @@ cc_library(
+     name = "infeasible_subsystem_validator",
+     srcs = ["infeasible_subsystem_validator.cc"],
+     hdrs = ["infeasible_subsystem_validator.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":bounds_and_status_validator",
+         ":ids_validator",
+@@ -238,6 +251,7 @@ cc_library(
+     name = "bounds_and_status_validator",
+     srcs = ["bounds_and_status_validator.cc"],
+     hdrs = ["bounds_and_status_validator.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":scalar_validator",
+         "//ortools/base:status_macros",
+@@ -252,6 +266,7 @@ cc_library(
+     name = "termination_validator",
+     srcs = ["termination_validator.cc"],
+     hdrs = ["termination_validator.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":bounds_and_status_validator",
+         "//ortools/base:status_macros",
+diff --git a/ortools/packing/BUILD.bazel b/ortools/packing/BUILD.bazel
+index 04b7014..a774e8f 100644
+--- a/ortools/packing/BUILD.bazel
++++ b/ortools/packing/BUILD.bazel
+@@ -21,6 +21,7 @@ cc_library(
+     name = "arc_flow_builder",
+     srcs = ["arc_flow_builder.cc"],
+     hdrs = ["arc_flow_builder.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:map_util",
+@@ -37,6 +38,7 @@ cc_library(
+         "arc_flow_solver.cc",
+     ],
+     hdrs = ["arc_flow_solver.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":arc_flow_builder",
+         "//ortools/base",
+@@ -65,6 +67,7 @@ cc_library(
+     name = "vector_bin_packing_parser",
+     srcs = ["vector_bin_packing_parser.cc"],
+     hdrs = ["vector_bin_packing_parser.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         ":vector_bin_packing_cc_proto",
+@@ -131,6 +134,7 @@ cc_library(
+     name = "binpacking_2d_parser",
+     srcs = ["binpacking_2d_parser.cc"],
+     hdrs = ["binpacking_2d_parser.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         ":multiple_dimensions_bin_packing_cc_proto",
+diff --git a/ortools/pdlp/BUILD.bazel b/ortools/pdlp/BUILD.bazel
+index 5b68856..739a948 100644
+--- a/ortools/pdlp/BUILD.bazel
++++ b/ortools/pdlp/BUILD.bazel
+@@ -20,6 +20,7 @@ package(default_visibility = ["//visibility:public"])
+ cc_library(
+     name = "scheduler",
+     hdrs = ["scheduler.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/functional:any_invocable",
+     ],
+@@ -62,6 +63,7 @@ py_proto_library(
+ cc_library(
+     name = "gtest_main",
+     srcs = ["gtest_main.cc"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:gmock",
+@@ -72,6 +74,7 @@ cc_library(
+     name = "iteration_stats",
+     srcs = ["iteration_stats.cc"],
+     hdrs = ["iteration_stats.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":quadratic_program",
+         ":sharded_quadratic_program",
+@@ -105,6 +108,7 @@ cc_library(
+     name = "primal_dual_hybrid_gradient",
+     srcs = ["primal_dual_hybrid_gradient.cc"],
+     hdrs = ["primal_dual_hybrid_gradient.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":iteration_stats",
+         ":quadratic_program",
+@@ -169,6 +173,7 @@ cc_library(
+     name = "quadratic_program",
+     srcs = ["quadratic_program.cc"],
+     hdrs = ["quadratic_program.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:status_macros",
+@@ -201,6 +206,7 @@ cc_library(
+     name = "quadratic_program_io",
+     srcs = ["quadratic_program_io.cc"],
+     hdrs = ["quadratic_program_io.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":quadratic_program",
+         "//ortools/base",
+@@ -224,6 +230,7 @@ cc_library(
+     name = "sharded_optimization_utils",
+     srcs = ["sharded_optimization_utils.cc"],
+     hdrs = ["sharded_optimization_utils.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":quadratic_program",
+         ":sharded_quadratic_program",
+@@ -256,6 +263,7 @@ cc_library(
+     name = "sharded_quadratic_program",
+     srcs = ["sharded_quadratic_program.cc"],
+     hdrs = ["sharded_quadratic_program.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":quadratic_program",
+         ":sharder",
+@@ -285,6 +293,7 @@ cc_library(
+     name = "sharder",
+     srcs = ["sharder.cc"],
+     hdrs = ["sharder.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:mathutil",
+@@ -315,6 +324,7 @@ cc_library(
+     name = "solvers_proto_validation",
+     srcs = ["solvers_proto_validation.cc"],
+     hdrs = ["solvers_proto_validation.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":solvers_cc_proto",
+         "//ortools/base:status_macros",
+@@ -340,6 +350,7 @@ cc_library(
+     name = "termination",
+     srcs = ["termination.cc"],
+     hdrs = ["termination.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":solve_log_cc_proto",
+         ":solvers_cc_proto",
+@@ -365,6 +376,7 @@ cc_library(
+     testonly = 1,
+     srcs = ["test_util.cc"],
+     hdrs = ["test_util.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":quadratic_program",
+         "//ortools/base",
+@@ -390,6 +402,7 @@ cc_library(
+     name = "trust_region",
+     srcs = ["trust_region.cc"],
+     hdrs = ["trust_region.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":quadratic_program",
+         ":sharded_optimization_utils",
+diff --git a/ortools/port/BUILD.bazel b/ortools/port/BUILD.bazel
+index 00b8585..b947b31 100644
+--- a/ortools/port/BUILD.bazel
++++ b/ortools/port/BUILD.bazel
+@@ -17,6 +17,7 @@ cc_library(
+     name = "sysinfo",
+     srcs = ["sysinfo.cc"],
+     hdrs = ["sysinfo.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:sysinfo",
+@@ -27,6 +28,7 @@ cc_library(
+     name = "proto_utils",
+     srcs = ["proto_utils.cc"],
+     hdrs = ["proto_utils.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/util:parse_proto",
+@@ -38,6 +40,7 @@ cc_library(
+ cc_library(
+     name = "utf8",
+     hdrs = ["utf8.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:encodingutils",
+@@ -52,6 +55,7 @@ cc_library(
+     hdrs = [
+         "file.h",
+     ],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:file",
+         "@com_google_absl//absl/status",
+@@ -64,4 +68,5 @@ cc_library(
+ cc_library(
+     name = "scoped_std_stream_capture",
+     hdrs = ["scoped_std_stream_capture.h"],
++    features = ["-layering_check"],
+ )
+diff --git a/ortools/routing/parsers/BUILD.bazel b/ortools/routing/parsers/BUILD.bazel
+index 94690f3..a99b6dd 100644
+--- a/ortools/routing/parsers/BUILD.bazel
++++ b/ortools/routing/parsers/BUILD.bazel
+@@ -30,6 +30,7 @@ cc_library(
+     name = "simple_graph",
+     srcs = ["simple_graph.cc"],
+     hdrs = ["simple_graph.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/hash",
+     ],
+@@ -50,6 +51,7 @@ cc_library(
+     name = "solomon_parser",
+     srcs = ["solomon_parser.cc"],
+     hdrs = ["solomon_parser.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":simple_graph",
+         "//ortools/base",
+@@ -79,6 +81,7 @@ cc_library(
+     name = "lilim_parser",
+     srcs = ["lilim_parser.cc"],
+     hdrs = ["lilim_parser.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":simple_graph",
+         "//ortools/base:file",
+@@ -110,6 +113,7 @@ cc_library(
+     name = "carp_parser",
+     srcs = ["carp_parser.cc"],
+     hdrs = ["carp_parser.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":simple_graph",
+         "//ortools/base",
+@@ -153,6 +157,7 @@ cc_library(
+     name = "nearp_parser",
+     srcs = ["nearp_parser.cc"],
+     hdrs = ["nearp_parser.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":simple_graph",
+         "//ortools/base",
+@@ -186,6 +191,7 @@ cc_library(
+     name = "pdtsp_parser",
+     srcs = ["pdtsp_parser.cc"],
+     hdrs = ["pdtsp_parser.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         "//ortools/base",
+@@ -220,6 +226,7 @@ cc_library(
+     name = "tsplib_parser",
+     srcs = ["tsplib_parser.cc"],
+     hdrs = ["tsplib_parser.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         ":simple_graph",
+@@ -268,6 +275,7 @@ cc_library(
+     name = "tsptw_parser",
+     srcs = ["tsptw_parser.cc"],
+     hdrs = ["tsptw_parser.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         ":simple_graph",
+@@ -302,6 +310,7 @@ cc_library(
+     name = "solution_serializer",
+     srcs = ["solution_serializer.cc"],
+     hdrs = ["solution_serializer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":simple_graph",
+         "//ortools/base",
+@@ -332,6 +341,7 @@ cc_library(
+     name = "cvrptw_lib",
+     srcs = ["cvrptw_lib.cc"],
+     hdrs = ["cvrptw_lib.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/constraint_solver:routing",
+@@ -343,6 +353,7 @@ cc_library(
+     name = "dow_parser",
+     srcs = ["dow_parser.cc"],
+     hdrs = ["dow_parser.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":capacity_planning_cc_proto",
+         "//ortools/base",
+diff --git a/ortools/sat/BUILD.bazel b/ortools/sat/BUILD.bazel
+index 222559f..b05763d 100644
+--- a/ortools/sat/BUILD.bazel
++++ b/ortools/sat/BUILD.bazel
+@@ -24,6 +24,7 @@ cc_library(
+     name = "cp_model",
+     srcs = ["cp_model.cc"],
+     hdrs = ["cp_model.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_model_cc_proto",
+         ":cp_model_solver",
+@@ -42,6 +43,7 @@ cc_library(
+ cc_library(
+     name = "model",
+     hdrs = ["model.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:typeid",
+@@ -95,6 +97,7 @@ cc_library(
+     name = "cp_model_utils",
+     srcs = ["cp_model_utils.cc"],
+     hdrs = ["cp_model_utils.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_model_cc_proto",
+         ":sat_base",
+@@ -117,6 +120,7 @@ cc_library(
+     name = "synchronization",
+     srcs = ["synchronization.cc"],
+     hdrs = ["synchronization.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_model_cc_proto",
+         ":cp_model_utils",
+@@ -162,6 +166,7 @@ cc_library(
+     name = "cp_model_checker",
+     srcs = ["cp_model_checker.cc"],
+     hdrs = ["cp_model_checker.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_model_cc_proto",
+         ":cp_model_utils",
+@@ -185,6 +190,7 @@ cc_library(
+     name = "constraint_violation",
+     srcs = ["constraint_violation.cc"],
+     hdrs = ["constraint_violation.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_model_cc_proto",
+         ":cp_model_utils",
+@@ -208,6 +214,7 @@ cc_library(
+     name = "feasibility_jump",
+     srcs = ["feasibility_jump.cc"],
+     hdrs = ["feasibility_jump.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":constraint_violation",
+         ":cp_model_cc_proto",
+@@ -243,6 +250,7 @@ cc_library(
+     name = "linear_model",
+     srcs = ["linear_model.cc"],
+     hdrs = ["linear_model.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_model_cc_proto",
+         ":cp_model_utils",
+@@ -258,6 +266,7 @@ cc_library(
+     name = "parameters_validation",
+     srcs = ["parameters_validation.cc"],
+     hdrs = ["parameters_validation.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_model_search",
+         ":sat_parameters_cc_proto",
+@@ -269,6 +278,7 @@ cc_library(
+     name = "cp_model_search",
+     srcs = ["cp_model_search.cc"],
+     hdrs = ["cp_model_search.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_model_cc_proto",
+         ":cp_model_mapping",
+@@ -297,6 +307,7 @@ cc_library(
+     name = "cp_model_solver_helpers",
+     srcs = ["cp_model_solver_helpers.cc"],
+     hdrs = ["cp_model_solver_helpers.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":circuit",
+         ":clause",
+@@ -381,6 +392,7 @@ cc_library(
+     name = "shaving_solver",
+     srcs = ["shaving_solver.cc"],
+     hdrs = ["shaving_solver.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_model_cc_proto",
+         ":cp_model_lns",
+@@ -411,6 +423,7 @@ cc_library(
+     name = "cp_model_solver",
+     srcs = ["cp_model_solver.cc"],
+     hdrs = ["cp_model_solver.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":circuit",
+         ":clause",
+@@ -498,6 +511,7 @@ cc_library(
+ cc_library(
+     name = "cp_model_mapping",
+     hdrs = ["cp_model_mapping.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_model_cc_proto",
+         ":cp_model_utils",
+@@ -521,6 +535,7 @@ cc_library(
+     name = "cp_model_loader",
+     srcs = ["cp_model_loader.cc"],
+     hdrs = ["cp_model_loader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":all_different",
+         ":circuit",
+@@ -582,6 +597,7 @@ cc_library(
+     name = "presolve_util",
+     srcs = ["presolve_util.cc"],
+     hdrs = ["presolve_util.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_model_cc_proto",
+         ":cp_model_utils",
+@@ -612,6 +628,7 @@ cc_library(
+     name = "presolve_context",
+     srcs = ["presolve_context.cc"],
+     hdrs = ["presolve_context.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_model_cc_proto",
+         ":cp_model_loader",
+@@ -653,6 +670,7 @@ cc_library(
+         "cp_model_presolve.cc",
+     ],
+     hdrs = ["cp_model_presolve.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":2d_rectangle_presolve",
+         ":circuit",
+@@ -718,6 +736,7 @@ cc_library(
+         "cp_model_postsolve.cc",
+     ],
+     hdrs = ["cp_model_postsolve.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_model_cc_proto",
+         ":cp_model_utils",
+@@ -734,6 +753,7 @@ cc_library(
+     name = "cp_model_expand",
+     srcs = ["cp_model_expand.cc"],
+     hdrs = ["cp_model_expand.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_model_cc_proto",
+         ":cp_model_checker",
+@@ -762,6 +782,7 @@ cc_library(
+ cc_library(
+     name = "sat_base",
+     hdrs = ["sat_base.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":model",
+         "//ortools/base",
+@@ -788,6 +809,7 @@ cc_library(
+         "sat_solver.cc",
+     ],
+     hdrs = ["sat_solver.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":clause",
+         ":drat_proof_handler",
+@@ -826,6 +848,7 @@ cc_library(
+     name = "restart",
+     srcs = ["restart.cc"],
+     hdrs = ["restart.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":model",
+         ":sat_decision",
+@@ -844,6 +867,7 @@ cc_library(
+     name = "probing",
+     srcs = ["probing.cc"],
+     hdrs = ["probing.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":clause",
+         ":implied_bounds",
+@@ -874,6 +898,7 @@ cc_library(
+     name = "sat_inprocessing",
+     srcs = ["sat_inprocessing.cc"],
+     hdrs = ["sat_inprocessing.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":clause",
+         ":drat_checker",
+@@ -907,6 +932,7 @@ cc_library(
+     name = "sat_decision",
+     srcs = ["sat_decision.cc"],
+     hdrs = ["sat_decision.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":model",
+         ":pb_constraint",
+@@ -927,6 +953,7 @@ cc_library(
+     name = "clause",
+     srcs = ["clause.cc"],
+     hdrs = ["clause.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":drat_proof_handler",
+         ":inclusion",
+@@ -959,6 +986,7 @@ cc_library(
+     name = "simplification",
+     srcs = ["simplification.cc"],
+     hdrs = ["simplification.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":drat_proof_handler",
+         ":model",
+@@ -988,6 +1016,7 @@ cc_library(
+     name = "pb_constraint",
+     srcs = ["pb_constraint.cc"],
+     hdrs = ["pb_constraint.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":model",
+         ":sat_base",
+@@ -1012,6 +1041,7 @@ cc_library(
+     name = "symmetry",
+     srcs = ["symmetry.cc"],
+     hdrs = ["symmetry.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":sat_base",
+         "//ortools/algorithms:sparse_permutation",
+@@ -1027,6 +1057,7 @@ cc_library(
+     name = "symmetry_util",
+     srcs = ["symmetry_util.cc"],
+     hdrs = ["symmetry_util.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/algorithms:dynamic_partition",
+         "//ortools/algorithms:sparse_permutation",
+@@ -1040,6 +1071,7 @@ cc_library(
+     name = "var_domination",
+     srcs = ["var_domination.cc"],
+     hdrs = ["var_domination.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_model_cc_proto",
+         ":cp_model_utils",
+@@ -1068,6 +1100,7 @@ cc_library(
+     name = "integer",
+     srcs = ["integer.cc"],
+     hdrs = ["integer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":model",
+         ":sat_base",
+@@ -1097,6 +1130,7 @@ cc_library(
+     name = "integer_search",
+     srcs = ["integer_search.cc"],
+     hdrs = ["integer_search.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":clause",
+         ":cp_model_cc_proto",
+@@ -1134,6 +1168,7 @@ cc_library(
+     name = "lb_tree_search",
+     srcs = ["lb_tree_search.cc"],
+     hdrs = ["lb_tree_search.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_model_mapping",
+         ":integer",
+@@ -1165,6 +1200,7 @@ cc_library(
+     name = "pseudo_costs",
+     srcs = ["pseudo_costs.cc"],
+     hdrs = ["pseudo_costs.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_model_mapping",
+         ":integer",
+@@ -1187,6 +1223,7 @@ cc_library(
+     name = "intervals",
+     srcs = ["intervals.cc"],
+     hdrs = ["intervals.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_constraints",
+         ":implied_bounds",
+@@ -1216,6 +1253,7 @@ cc_library(
+     name = "precedences",
+     srcs = ["precedences.cc"],
+     hdrs = ["precedences.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":clause",
+         ":cp_constraints",
+@@ -1251,6 +1289,7 @@ cc_library(
+     name = "integer_expr",
+     srcs = ["integer_expr.cc"],
+     hdrs = ["integer_expr.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":integer",
+         ":linear_constraint",
+@@ -1278,6 +1317,7 @@ cc_library(
+     name = "linear_propagation",
+     srcs = ["linear_propagation.cc"],
+     hdrs = ["linear_propagation.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":integer",
+         ":model",
+@@ -1310,6 +1350,7 @@ cc_library(
+     name = "all_different",
+     srcs = ["all_different.cc"],
+     hdrs = ["all_different.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":integer",
+         ":model",
+@@ -1331,6 +1372,7 @@ cc_library(
+     name = "theta_tree",
+     srcs = ["theta_tree.cc"],
+     hdrs = ["theta_tree.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":integer",
+         "//ortools/base",
+@@ -1342,6 +1384,7 @@ cc_library(
+     name = "disjunctive",
+     srcs = ["disjunctive.cc"],
+     hdrs = ["disjunctive.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":all_different",
+         ":integer",
+@@ -1368,6 +1411,7 @@ cc_library(
+     name = "timetable",
+     srcs = ["timetable.cc"],
+     hdrs = ["timetable.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":integer",
+         ":intervals",
+@@ -1384,6 +1428,7 @@ cc_library(
+     name = "timetable_edgefinding",
+     srcs = ["timetable_edgefinding.cc"],
+     hdrs = ["timetable_edgefinding.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":integer",
+         ":intervals",
+@@ -1399,6 +1444,7 @@ cc_library(
+     name = "cumulative",
+     srcs = ["cumulative.cc"],
+     hdrs = ["cumulative.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cumulative_energy",
+         ":disjunctive",
+@@ -1425,6 +1471,7 @@ cc_library(
+     name = "cumulative_energy",
+     srcs = ["cumulative_energy.cc"],
+     hdrs = ["cumulative_energy.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":2d_orthogonal_packing",
+         ":diffn_util",
+@@ -1447,6 +1494,7 @@ cc_library(
+     name = "boolean_problem",
+     srcs = ["boolean_problem.cc"],
+     hdrs = ["boolean_problem.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":boolean_problem_cc_proto",
+         ":cp_model_cc_proto",
+@@ -1480,6 +1528,7 @@ cc_library(
+     name = "linear_relaxation",
+     srcs = ["linear_relaxation.cc"],
+     hdrs = ["linear_relaxation.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":circuit",
+         ":clause",
+@@ -1524,6 +1573,7 @@ cc_library(
+     name = "linear_constraint",
+     srcs = ["linear_constraint.cc"],
+     hdrs = ["linear_constraint.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":integer",
+         ":model",
+@@ -1544,6 +1594,7 @@ cc_library(
+     name = "linear_programming_constraint",
+     srcs = ["linear_programming_constraint.cc"],
+     hdrs = ["linear_programming_constraint.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_model_cc_proto",
+         ":cp_model_mapping",
+@@ -1590,6 +1641,7 @@ cc_library(
+     name = "linear_constraint_manager",
+     srcs = ["linear_constraint_manager.cc"],
+     hdrs = ["linear_constraint_manager.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":integer",
+         ":linear_constraint",
+@@ -1620,6 +1672,7 @@ cc_library(
+     name = "cuts",
+     srcs = ["cuts.cc"],
+     hdrs = ["cuts.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":clause",
+         ":implied_bounds",
+@@ -1653,6 +1706,7 @@ cc_library(
+     name = "routing_cuts",
+     srcs = ["routing_cuts.cc"],
+     hdrs = ["routing_cuts.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_model_cc_proto",
+         ":cuts",
+@@ -1680,6 +1734,7 @@ cc_library(
+     name = "scheduling_cuts",
+     srcs = ["scheduling_cuts.cc"],
+     hdrs = ["scheduling_cuts.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cuts",
+         ":implied_bounds",
+@@ -1710,6 +1765,7 @@ cc_library(
+     name = "diffn_cuts",
+     srcs = ["diffn_cuts.cc"],
+     hdrs = ["diffn_cuts.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cuts",
+         ":diffn_util",
+@@ -1741,6 +1797,7 @@ cc_library(
+     name = "zero_half_cuts",
+     srcs = ["zero_half_cuts.cc"],
+     hdrs = ["zero_half_cuts.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":integer",
+         ":util",
+@@ -1756,6 +1813,7 @@ cc_library(
+     name = "lp_utils",
+     srcs = ["lp_utils.cc"],
+     hdrs = ["lp_utils.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":boolean_problem",
+         ":boolean_problem_cc_proto",
+@@ -1786,6 +1844,7 @@ cc_library(
+     name = "optimization",
+     srcs = ["optimization.cc"],
+     hdrs = ["optimization.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":boolean_problem",
+         ":boolean_problem_cc_proto",
+@@ -1825,6 +1884,7 @@ cc_library(
+     name = "max_hs",
+     srcs = ["max_hs.cc"],
+     hdrs = ["max_hs.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":boolean_problem",
+         ":cp_model_cc_proto",
+@@ -1871,6 +1931,7 @@ cc_library(
+     name = "util",
+     srcs = ["util.cc"],
+     hdrs = ["util.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":model",
+         ":sat_base",
+@@ -1904,6 +1965,7 @@ cc_library(
+     name = "stat_tables",
+     srcs = ["stat_tables.cc"],
+     hdrs = ["stat_tables.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_model_cc_proto",
+         ":cp_model_lns",
+@@ -1926,6 +1988,7 @@ cc_library(
+     name = "table",
+     srcs = ["table.cc"],
+     hdrs = ["table.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":integer",
+         ":model",
+@@ -1943,6 +2006,7 @@ cc_library(
+     name = "cp_constraints",
+     srcs = ["cp_constraints.cc"],
+     hdrs = ["cp_constraints.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":integer",
+         ":model",
+@@ -1960,6 +2024,7 @@ cc_library(
+     name = "diffn_util",
+     srcs = ["diffn_util.cc"],
+     hdrs = ["diffn_util.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":integer",
+         ":intervals",
+@@ -1981,6 +2046,7 @@ cc_library(
+     name = "2d_orthogonal_packing",
+     srcs = ["2d_orthogonal_packing.cc"],
+     hdrs = ["2d_orthogonal_packing.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":2d_packing_brute_force",
+         ":integer",
+@@ -2000,6 +2066,7 @@ cc_library(
+     name = "2d_packing_brute_force",
+     srcs = ["2d_packing_brute_force.cc"],
+     hdrs = ["2d_packing_brute_force.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":diffn_util",
+         ":integer",
+@@ -2016,6 +2083,7 @@ cc_library(
+     name = "2d_rectangle_presolve",
+     srcs = ["2d_rectangle_presolve.cc"],
+     hdrs = ["2d_rectangle_presolve.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":diffn_util",
+         ":integer",
+@@ -2032,6 +2100,7 @@ cc_library(
+     testonly = 1,
+     srcs = ["2d_orthogonal_packing_testing.cc"],
+     hdrs = ["2d_orthogonal_packing_testing.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":diffn_util",
+         ":integer",
+@@ -2046,6 +2115,7 @@ cc_library(
+     name = "diffn",
+     srcs = ["diffn.cc"],
+     hdrs = ["diffn.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":2d_orthogonal_packing",
+         ":cumulative_energy",
+@@ -2075,6 +2145,7 @@ cc_library(
+     name = "circuit",
+     srcs = ["circuit.cc"],
+     hdrs = ["circuit.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":integer",
+         ":model",
+@@ -2097,6 +2168,7 @@ cc_library(
+     name = "encoding",
+     srcs = ["encoding.cc"],
+     hdrs = ["encoding.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":boolean_problem_cc_proto",
+         ":pb_constraint",
+@@ -2117,6 +2189,7 @@ cc_library(
+     name = "cp_model_lns",
+     srcs = ["cp_model_lns.cc"],
+     hdrs = ["cp_model_lns.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_model_cc_proto",
+         ":cp_model_mapping",
+@@ -2160,6 +2233,7 @@ cc_library(
+     name = "feasibility_pump",
+     srcs = ["feasibility_pump.cc"],
+     hdrs = ["feasibility_pump.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_model_mapping",
+         ":integer",
+@@ -2193,6 +2267,7 @@ cc_library(
+     name = "rins",
+     srcs = ["rins.cc"],
+     hdrs = ["rins.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_model_mapping",
+         ":integer",
+@@ -2211,6 +2286,7 @@ cc_library(
+     name = "subsolver",
+     srcs = ["subsolver.cc"],
+     hdrs = ["subsolver.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:threadpool",
+@@ -2230,6 +2306,7 @@ cc_library(
+     name = "drat_proof_handler",
+     srcs = ["drat_proof_handler.cc"],
+     hdrs = ["drat_proof_handler.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":drat_checker",
+         ":drat_writer",
+@@ -2246,6 +2323,7 @@ cc_library(
+     name = "drat_checker",
+     srcs = ["drat_checker.cc"],
+     hdrs = ["drat_checker.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":sat_base",
+         "//ortools/base",
+@@ -2265,6 +2343,7 @@ cc_library(
+     name = "drat_writer",
+     srcs = ["drat_writer.cc"],
+     hdrs = ["drat_writer.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":sat_base",
+         "//ortools/base",
+@@ -2311,6 +2390,7 @@ cc_binary(
+ cc_library(
+     name = "sat_cnf_reader",
+     hdrs = ["sat_cnf_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":boolean_problem_cc_proto",
+         ":cp_model_cc_proto",
+@@ -2328,6 +2408,7 @@ cc_library(
+     name = "cp_model_symmetries",
+     srcs = ["cp_model_symmetries.cc"],
+     hdrs = ["cp_model_symmetries.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_model_cc_proto",
+         ":cp_model_checker",
+@@ -2367,6 +2448,7 @@ cc_library(
+     name = "swig_helper",
+     srcs = ["swig_helper.cc"],
+     hdrs = ["swig_helper.h"],
++    features = ["-layering_check"],
+     visibility = [
+         "//ortools/sat/java:__pkg__",
+         "//ortools/sat/python:__pkg__",
+@@ -2389,6 +2471,7 @@ cc_library(
+     name = "implied_bounds",
+     srcs = ["implied_bounds.cc"],
+     hdrs = ["implied_bounds.h"],
++    features = ["-layering_check"],
+     deps = [
+         "linear_constraint",
+         ":clause",
+@@ -2418,6 +2501,7 @@ cc_library(
+ cc_library(
+     name = "inclusion",
+     hdrs = ["inclusion.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "@com_google_absl//absl/log:check",
+@@ -2429,6 +2513,7 @@ cc_library(
+     name = "diophantine",
+     srcs = ["diophantine.cc"],
+     hdrs = ["diophantine.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":util",
+         "@com_google_absl//absl/log:check",
+@@ -2441,6 +2526,7 @@ cc_library(
+     name = "work_assignment",
+     srcs = ["work_assignment.cc"],
+     hdrs = ["work_assignment.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":cp_model_mapping",
+         ":cp_model_utils",
+diff --git a/ortools/scheduling/BUILD.bazel b/ortools/scheduling/BUILD.bazel
+index d2c0ef0..5c794d4 100644
+--- a/ortools/scheduling/BUILD.bazel
++++ b/ortools/scheduling/BUILD.bazel
+@@ -34,6 +34,7 @@ cc_library(
+     name = "jobshop_scheduling_parser",
+     srcs = ["jobshop_scheduling_parser.cc"],
+     hdrs = ["jobshop_scheduling_parser.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":jobshop_scheduling_cc_proto",
+         "//ortools/base",
+@@ -63,6 +64,7 @@ cc_library(
+     name = "rcpsp_parser",
+     srcs = ["rcpsp_parser.cc"],
+     hdrs = ["rcpsp_parser.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+     deps = [
+         ":rcpsp_cc_proto",
+diff --git a/ortools/util/BUILD.bazel b/ortools/util/BUILD.bazel
+index b2ee315..a123c8d 100644
+--- a/ortools/util/BUILD.bazel
++++ b/ortools/util/BUILD.bazel
+@@ -56,6 +56,7 @@ py_proto_library(
+ cc_library(
+     name = "affine_relation",
+     hdrs = ["affine_relation.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:iterator_adaptors",
+@@ -65,6 +66,7 @@ cc_library(
+ cc_library(
+     name = "filelineiter",
+     hdrs = ["filelineiter.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:file",
+@@ -77,6 +79,7 @@ cc_library(
+     name = "bitset",
+     srcs = ["bitset.cc"],
+     hdrs = ["bitset.h"],
++    features = ["-layering_check"],
+     deps = ["//ortools/base"],
+ )
+ 
+@@ -85,6 +88,7 @@ cc_library(
+     hdrs = [
+         "integer_pq.h",
+     ],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+     ],
+@@ -94,6 +98,7 @@ cc_library(
+     name = "cached_log",
+     srcs = ["cached_log.cc"],
+     hdrs = ["cached_log.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:types",
+@@ -103,18 +108,21 @@ cc_library(
+ cc_library(
+     name = "zvector",
+     hdrs = ["zvector.h"],
++    features = ["-layering_check"],
+     deps = ["//ortools/base"],
+ )
+ 
+ cc_library(
+     name = "permutation",
+     hdrs = ["permutation.h"],
++    features = ["-layering_check"],
+     deps = ["//ortools/base"],
+ )
+ 
+ cc_library(
+     name = "saturated_arithmetic",
+     hdrs = ["saturated_arithmetic.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":bitset",
+         "//ortools/base",
+@@ -126,6 +134,7 @@ cc_library(
+     name = "piecewise_linear_function",
+     srcs = ["piecewise_linear_function.cc"],
+     hdrs = ["piecewise_linear_function.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":saturated_arithmetic",
+         "//ortools/base",
+@@ -140,6 +149,7 @@ cc_library(
+     name = "rational_approximation",
+     srcs = ["rational_approximation.cc"],
+     hdrs = ["rational_approximation.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "@com_google_absl//absl/strings",
+@@ -150,6 +160,7 @@ cc_library(
+     name = "sorted_interval_list",
+     srcs = ["sorted_interval_list.cc"],
+     hdrs = ["sorted_interval_list.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":saturated_arithmetic",
+         "//ortools/base",
+@@ -163,6 +174,7 @@ cc_library(
+ cc_library(
+     name = "string_array",
+     hdrs = ["string_array.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/strings",
+     ],
+@@ -171,6 +183,7 @@ cc_library(
+ cc_library(
+     name = "tuple_set",
+     hdrs = ["tuple_set.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:hash",
+@@ -183,6 +196,7 @@ cc_library(
+     name = "stats",
+     srcs = ["stats.cc"],
+     hdrs = ["stats.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:stl_util",
+@@ -200,6 +214,7 @@ cc_library(
+     name = "time_limit",
+     srcs = ["time_limit.cc"],
+     hdrs = ["time_limit.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":running_stat",
+         "//ortools/base",
+@@ -216,6 +231,7 @@ cc_library(
+     name = "sigint",
+     srcs = ["sigint.cc"],
+     hdrs = ["sigint.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+     ],
+@@ -234,6 +250,7 @@ cc_library(
+         "on_windows": [],
+         "//conditions:default": ["-frounding-math"],
+     }),
++    features = ["-layering_check"],
+     deps = [
+         ":bitset",
+         "//ortools/base",
+@@ -244,18 +261,21 @@ cc_library(
+     name = "monoid_operation_tree",
+     srcs = [],
+     hdrs = ["monoid_operation_tree.h"],
++    features = ["-layering_check"],
+     deps = ["//ortools/base"],
+ )
+ 
+ cc_library(
+     name = "return_macros",
+     hdrs = ["return_macros.h"],
++    features = ["-layering_check"],
+     deps = ["//ortools/base"],
+ )
+ 
+ cc_library(
+     name = "running_stat",
+     hdrs = ["running_stat.h"],
++    features = ["-layering_check"],
+     deps = ["//ortools/base"],
+ )
+ 
+@@ -263,6 +283,7 @@ cc_library(
+     name = "proto_tools",
+     srcs = ["proto_tools.cc"],
+     hdrs = ["proto_tools.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/status",
+         "@com_google_absl//absl/status:statusor",
+@@ -302,6 +323,7 @@ cc_library(
+     hdrs = [
+         "functions_swig_helpers.h",
+     ],
++    features = ["-layering_check"],
+     deps = ["//ortools/base"],
+ )
+ 
+@@ -311,12 +333,14 @@ cc_library(
+     hdrs = [
+         "functions_swig_test_helpers.h",
+     ],
++    features = ["-layering_check"],
+     deps = ["//ortools/base"],
+ )
+ 
+ cc_library(
+     name = "range_minimum_query",
+     hdrs = ["range_minimum_query.h"],
++    features = ["-layering_check"],
+     deps = [":bitset"],
+ )
+ 
+@@ -324,6 +348,7 @@ cc_library(
+     name = "range_query_function",
+     srcs = ["range_query_function.cc"],
+     hdrs = ["range_query_function.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":range_minimum_query",
+         "//ortools/base",
+@@ -333,6 +358,7 @@ cc_library(
+ cc_library(
+     name = "rev",
+     hdrs = ["rev.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:map_util",
+@@ -343,6 +369,7 @@ cc_library(
+ cc_library(
+     name = "vector_or_function",
+     hdrs = ["vector_or_function.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+     ],
+@@ -354,6 +381,7 @@ cc_library(
+     name = "qap_reader",
+     srcs = ["qap_reader.cc"],
+     hdrs = ["qap_reader.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/util:filelineiter",
+         "@com_google_absl//absl/strings",
+@@ -363,6 +391,7 @@ cc_library(
+ cc_library(
+     name = "sort",
+     hdrs = ["sort.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+     ],
+@@ -372,6 +401,7 @@ cc_library(
+     name = "file_util",
+     srcs = ["file_util.cc"],
+     hdrs = ["file_util.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:dump_vars",
+@@ -391,6 +421,7 @@ cc_library(
+ cc_library(
+     name = "random_engine",
+     hdrs = ["random_engine.h"],
++    features = ["-layering_check"],
+     deps = [],
+ )
+ 
+@@ -398,6 +429,7 @@ cc_library(
+     name = "string_util",
+     srcs = ["string_util.cc"],
+     hdrs = ["string_util.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "@com_google_absl//absl/strings",
+@@ -408,12 +440,14 @@ cc_library(
+ cc_library(
+     name = "adaptative_parameter_value",
+     hdrs = ["adaptative_parameter_value.h"],
++    features = ["-layering_check"],
+     deps = ["//ortools/base"],
+ )
+ 
+ cc_library(
+     name = "lazy_mutable_copy",
+     hdrs = ["lazy_mutable_copy.h"],
++    features = ["-layering_check"],
+     deps = ["@com_google_absl//absl/memory"],
+ )
+ 
+@@ -421,6 +455,7 @@ cc_library(
+     name = "logging",
+     srcs = ["logging.cc"],
+     hdrs = ["logging.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:timer",
+@@ -431,11 +466,13 @@ cc_library(
+ cc_library(
+     name = "testing_utils",
+     hdrs = ["testing_utils.h"],
++    features = ["-layering_check"],
+ )
+ 
+ cc_library(
+     name = "strong_integers",
+     hdrs = ["strong_integers.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "@com_google_absl//absl/strings",
+@@ -445,6 +482,7 @@ cc_library(
+ cc_library(
+     name = "status_macros",
+     hdrs = ["status_macros.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:status_macros",
+         "@com_google_absl//absl/status",
+@@ -455,6 +493,7 @@ cc_library(
+     name = "fp_roundtrip_conv",
+     srcs = ["fp_roundtrip_conv.cc"],
+     hdrs = ["fp_roundtrip_conv.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:status_builder",
+@@ -468,6 +507,7 @@ cc_library(
+ cc_library(
+     name = "flat_matrix",
+     hdrs = ["flat_matrix.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/types:span",
+     ],
+@@ -477,6 +517,7 @@ cc_library(
+     name = "fp_roundtrip_conv_testing",
+     testonly = 1,
+     hdrs = ["fp_roundtrip_conv_testing.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/strings",
+     ],
+@@ -486,6 +527,7 @@ cc_library(
+     name = "aligned_memory",
+     srcs = ["aligned_memory_internal.h"],
+     hdrs = ["aligned_memory.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base:mathutil",
+     ],
+@@ -495,6 +537,7 @@ cc_library(
+     name = "vector_sum",
+     srcs = ["vector_sum_internal.h"],
+     hdrs = ["vector_sum.h"],
++    features = ["-layering_check"],
+     deps = [
+         ":aligned_memory",
+         "@com_google_absl//absl/base:core_headers",
+@@ -506,6 +549,7 @@ cc_library(
+     name = "parse_proto",
+     srcs = ["parse_proto.cc"],
+     hdrs = ["parse_proto.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/strings",
+         "@com_google_protobuf//:protobuf",
+@@ -516,6 +560,7 @@ cc_library(
+     name = "solve_interrupter",
+     srcs = ["solve_interrupter.cc"],
+     hdrs = ["solve_interrupter.h"],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:intops",
+@@ -529,6 +574,7 @@ cc_library(
+ cc_library(
+     name = "dense_set",
+     hdrs = ["dense_set.h"],
++    features = ["-layering_check"],
+     deps = [
+         "@com_google_absl//absl/log:check",
+         "@com_google_absl//absl/types:span",
+diff --git a/ortools/util/python/BUILD.bazel b/ortools/util/python/BUILD.bazel
+index 925cf57..765f573 100644
+--- a/ortools/util/python/BUILD.bazel
++++ b/ortools/util/python/BUILD.bazel
+@@ -21,6 +21,7 @@ load("@rules_python//python:defs.bzl", "py_test")
+ cc_library(
+     name = "sorted_interval_list_doc",
+     hdrs = ["sorted_interval_list_doc.h"],
++    features = ["-layering_check"],
+     visibility = ["//visibility:public"],
+ )
+ 
+diff --git a/ortools/xpress/BUILD.bazel b/ortools/xpress/BUILD.bazel
+index 22b6ed9..a86bc1d 100644
+--- a/ortools/xpress/BUILD.bazel
++++ b/ortools/xpress/BUILD.bazel
+@@ -21,6 +21,7 @@ cc_library(
+     hdrs = [
+         "environment.h",
+     ],
++    features = ["-layering_check"],
+     deps = [
+         "//ortools/base",
+         "//ortools/base:dynamic_library",

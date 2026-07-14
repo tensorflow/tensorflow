@@ -1,0 +1,317 @@
+// RUN: xla-translate -hlo-text-to-mlir-hlo -with-layouts -print-layouts -hlo-import-all-computations -split-input-file -verify-diagnostics %s -o - | FileCheck %s
+
+HloModule entry, entry_computation_layout={(
+  f32[2,3,4]{0,1,2:T(2,128)},
+  f32[2,3,4]{1,2,0:T(2,1)},
+  (
+    f32[1,2]{1,0:T(1,2)},
+    f32[1,2]{0,1:T(2,1)}
+  ),
+  s32[]
+)->f32[2,3,4]{2,0,1:T(2,128)}}
+
+ENTRY %main.6 (Arg_0.1: f32[2,3,4], Arg_1.2: f32[2,3,4], Arg_2.3: (f32[1,2], f32[1,2]), Arg_3.4: s32[]) -> f32[2,3,4] {
+  %Arg_2.3 = (f32[1,2]{1,0}, f32[1,2]{1,0}) parameter(2)
+  %Arg_3.4 = s32[] parameter(3)
+  %Arg_0.1 = f32[2,3,4]{2,1,0} parameter(0)
+  %Arg_1.2 = f32[2,3,4]{2,1,0} parameter(1)
+  ROOT %add.5 = f32[2,3,4]{2,1,0} add(f32[2,3,4]{2,1,0} %Arg_0.1, f32[2,3,4]{2,1,0} %Arg_1.2)
+}
+
+// CHECK: module @entry
+// CHECK-SAME: mhlo.xla_entry_computation_parameter_layouts = [
+// CHECK-SAME:   dense<[0, 1, 2]> : tensor<3xindex>,
+// CHECK-SAME:   dense<[1, 2, 0]> : tensor<3xindex>,
+// CHECK-SAME:   [
+// CHECK-SAME:     dense<[1, 0]> : tensor<2xindex>,
+// CHECK-SAME:     dense<[0, 1]> : tensor<2xindex>
+// CHECK-SAME:   ],
+// CHECK-SAME:   dense<> : tensor<0xindex>
+// CHECK-SAME: ],
+// CHECK-SAME: mhlo.xla_entry_computation_parameter_tiles = [
+// CHECK-SAME:   [dense<[2, 128]> : tensor<2xindex>],
+// CHECK-SAME:   [dense<[2, 1]> : tensor<2xindex>],
+// CHECK-SAME:   [
+// CHECK-SAME:     [dense<[1, 2]> : tensor<2xindex>],
+// CHECK-SAME:     [dense<[2, 1]> : tensor<2xindex>]
+// CHECK-SAME:   ],
+// CHECK-SAME:   []
+// CHECK-SAME: ],
+// CHECK-SAME: mhlo.xla_entry_computation_result_layout = [
+// CHECK-SAME:   dense<[2, 0, 1]> : tensor<3xindex>
+// CHECK-SAME: ],
+// CHECK-SAME: mhlo.xla_entry_computation_result_tiles = [
+// CHECK-SAME:   [dense<[2, 128]> : tensor<2xindex>]
+// CHECK-SAME: ]
+
+// -----
+
+///////////////////////////////////////////
+// Test Parameter Layouts                //
+///////////////////////////////////////////
+
+// Test layout
+HloModule entry, entry_computation_layout={(
+  f32[2,3,4]{1,0,2}
+)->f32[2,3,4]{2,1,0}}
+
+ENTRY %main.2 (Arg_0.1: f32[2,3,4]) -> f32[2,3,4] {
+  ROOT %Arg_0.1 = f32[2,3,4]{2,1,0} parameter(0)
+}
+
+// CHECK: module @entry
+// CHECK-SAME: mhlo.xla_entry_computation_parameter_layouts = [
+// CHECK-SAME:   dense<[1, 0, 2]> : tensor<3xindex>
+// CHECK-SAME: ]
+
+// -----
+
+// Test no layout
+// This is equivalent to default layout.
+HloModule entry, entry_computation_layout={(
+  f32[2,3,4]{2,1,0}
+)->f32[2,3,4]{2,1,0}}
+
+ENTRY %main.2 (Arg_0.1: f32[2,3,4]) -> f32[2,3,4] {
+  ROOT %Arg_0.1 = f32[2,3,4]{2,1,0} parameter(0)
+}
+
+// CHECK: module @entry
+// CHECK-NOT: mhlo.xla_entry_computation_parameter_layouts
+
+// Test empty layout
+// This test is intentionally left out since empty layout is considered invalid
+// HLO by the parser.
+
+// -----
+
+// Test nested tuple layout
+HloModule entry, entry_computation_layout={(
+  (
+    (
+      f32[1,2]{1,0},
+      f32[1,2]{0,1}
+    )
+  )
+)->((f32[1,2]{1,0}, f32[1,2]{1,0}))}
+
+ENTRY %main.2 (Arg_0.1: ((f32[1,2], f32[1,2]))) -> ((f32[1,2], f32[1,2])) {
+  ROOT %Arg_0.1 = ((f32[1,2]{1,0}, f32[1,2]{1,0})) parameter(0)
+}
+
+// CHECK: module @entry
+// CHECK-SAME: mhlo.xla_entry_computation_parameter_layouts = [
+// CHECK-SAME:   [
+// CHECK-SAME:     [
+// CHECK-SAME:       dense<[1, 0]> : tensor<2xindex>,
+// CHECK-SAME:       dense<[0, 1]> : tensor<2xindex>
+// CHECK-SAME:     ]
+// CHECK-SAME:   ]
+// CHECK-SAME: ]
+
+// -----
+
+// Test multi arg layout
+HloModule entry, entry_computation_layout={(
+  f32[2,3,4]{1,0,2},
+  f32[2,3,4]{0,1,2}
+)->f32[2,3,4]{2,1,0}}
+
+ENTRY %main.3 (Arg_0.1: f32[2,3,4], Arg_1.2: f32[2,3,4]) -> f32[2,3,4] {
+  ROOT %Arg_0.1 = f32[2,3,4]{2,1,0} parameter(0)
+  %Arg_1.2 = f32[2,3,4]{2,1,0} parameter(1)
+}
+
+// CHECK: module @entry
+// CHECK-SAME: mhlo.xla_entry_computation_parameter_layouts = [
+// CHECK-SAME:   dense<[1, 0, 2]> : tensor<3xindex>,
+// CHECK-SAME:   dense<[0, 1, 2]> : tensor<3xindex>
+// CHECK-SAME: ]
+
+// -----
+
+///////////////////////////////////////////
+// Test Paramter Tiles                   //
+///////////////////////////////////////////
+
+// Test tile
+HloModule entry, entry_computation_layout={(
+  f32[1,2]{1,0:T(2,128)}
+)->f32[1,2]{1,0}}
+
+ENTRY %main.2 (Arg_0.1: f32[1,2]) -> f32[1,2] {
+  ROOT %Arg_0.1 = f32[1,2]{1,0} parameter(0)
+}
+
+// CHECK: module @entry
+// CHECK-SAME: mhlo.xla_entry_computation_parameter_tiles = [
+// CHECK-SAME:   [dense<[2, 128]> : tensor<2xindex>]
+// CHECK-SAME: ]
+
+// -----
+
+// Test no tile
+HloModule entry, entry_computation_layout={(
+  f32[1,2]{1,0}
+)->f32[1,2]{1,0}}
+
+ENTRY %main.2 (Arg_0.1: f32[1,2]) -> f32[1,2] {
+  ROOT %Arg_0.1 = f32[1,2]{1,0} parameter(0)
+}
+
+// CHECK: module @entry
+// CHECK-NOT: mhlo.xla_entry_computation_parameter_tiles
+
+// Test empty tile
+// This test is intentionally left out since empty tile has no semantic meaning.
+
+// -----
+
+// Test nested tuple tile
+HloModule entry, entry_computation_layout={(
+  (
+    (
+      f32[1,2]{1,0:T(2,128)}
+    )
+  )
+)->((f32[1,2]{1,0}))}
+
+ENTRY %main.2 (Arg_0.1: ((f32[1,2]))) -> ((f32[1,2])) {
+  ROOT %Arg_0.1 = ((f32[1,2]{1,0})) parameter(0)
+}
+
+// CHECK: module @entry
+// CHECK-SAME: mhlo.xla_entry_computation_parameter_tiles = [
+// CHECK-SAME:   [
+// CHECK-SAME:     [
+// CHECK-SAME:       [dense<[2, 128]> : tensor<2xindex>]
+// CHECK-SAME:     ]
+// CHECK-SAME:   ]
+// CHECK-SAME: ]
+
+// -----
+
+// Test multi arg tile
+HloModule entry, entry_computation_layout={(
+  f32[1,2]{1,0:T(2,128)},
+  f32[1,2]{1,0:T(4,128)}
+)->f32[1,2]{1,0}}
+
+ENTRY %main.3 (Arg_0.1: f32[1,2], Arg_1.2: f32[1,2]) -> f32[1,2] {
+  ROOT %Arg_0.1 = f32[1,2]{1,0} parameter(0)
+  %Arg_1.2 = f32[1,2]{1,0} parameter(1)
+}
+
+// CHECK: module @entry
+// CHECK-SAME: mhlo.xla_entry_computation_parameter_tiles = [
+// CHECK-SAME:   [dense<[2, 128]> : tensor<2xindex>],
+// CHECK-SAME:   [dense<[4, 128]> : tensor<2xindex>]
+// CHECK-SAME: ]
+
+// -----
+
+// Test sub-tiles
+HloModule entry, entry_computation_layout={(
+  f32[1,2]{1,0:T(128)(2)}
+)->f32[1,2]{1,0}}
+
+ENTRY %main.2 (Arg_0.1: f32[1,2]) -> f32[1,2] {
+  ROOT %Arg_0.1 = f32[1,2]{1,0} parameter(0)
+}
+
+// CHECK: module @entry
+// CHECK-SAME: mhlo.xla_entry_computation_parameter_tiles = [
+// CHECK-SAME:   [dense<128> : tensor<1xindex>, dense<2> : tensor<1xindex>]
+// CHECK-SAME: ]
+
+// -----
+
+///////////////////////////////////////////
+// Test Result Layouts                   //
+///////////////////////////////////////////
+
+// Test layout
+HloModule entry, entry_computation_layout={(
+  f32[1,2]{1,0}
+)->f32[1,2]{0,1}}
+
+ENTRY %main.2 (Arg_0.1: f32[1,2]) -> f32[1,2] {
+  ROOT %Arg_0.1 = f32[1,2]{1,0} parameter(0)
+}
+
+// CHECK: module @entry
+// CHECK-SAME: mhlo.xla_entry_computation_result_layout = [
+// CHECK-SAME:   dense<[0, 1]> : tensor<2xindex>
+// CHECK-SAME: ]
+
+// -----
+
+// Test nested tuple layout
+HloModule entry, entry_computation_layout={(
+  (
+    (
+      f32[1,2]{1,0},
+      f32[1,2]{1,0}
+    )
+  )
+)->((f32[1,2]{1,0}, f32[1,2]{0,1}))}
+
+ENTRY %main.2 (Arg_0.1: ((f32[1,2], f32[1,2]))) -> ((f32[1,2], f32[1,2])) {
+  ROOT %Arg_0.1 = ((f32[1,2]{1,0}, f32[1,2]{1,0})) parameter(0)
+}
+
+// CHECK: module @entry
+// CHECK-SAME: mhlo.xla_entry_computation_result_layout = [
+// CHECK-SAME:   [
+// CHECK-SAME:     [
+// CHECK-SAME:       dense<[1, 0]> : tensor<2xindex>,
+// CHECK-SAME:       dense<[0, 1]> : tensor<2xindex>
+// CHECK-SAME:     ]
+// CHECK-SAME:   ]
+// CHECK-SAME: ]
+
+// -----
+
+///////////////////////////////////////////
+// Test Result Tiles                     //
+///////////////////////////////////////////
+
+// Test tile
+HloModule entry, entry_computation_layout={(
+  f32[1,2]{1,0}
+)->f32[1,2]{1,0:T(2,128)}}
+
+ENTRY %main.2 (Arg_0.1: f32[1,2]) -> f32[1,2] {
+  ROOT %Arg_0.1 = f32[1,2]{1,0} parameter(0)
+}
+
+// CHECK: module @entry
+// CHECK-SAME: mhlo.xla_entry_computation_result_tiles = [
+// CHECK-SAME:   [dense<[2, 128]> : tensor<2xindex>]
+// CHECK-SAME: ]
+
+// -----
+
+// Test nested tuple tile
+HloModule entry, entry_computation_layout={(
+  (
+    (
+      f32[1,2]{1,0},
+      f32[1,2]{1,0}
+    )
+  )
+)->((f32[1,2]{1,0:T(2,128)}, f32[1,2]{1,0:T(2,1)}))}
+
+ENTRY %main.2 (Arg_0.1: ((f32[1,2], f32[1,2]))) -> ((f32[1,2], f32[1,2])) {
+  ROOT %Arg_0.1 = ((f32[1,2]{1,0}, f32[1,2]{1,0})) parameter(0)
+}
+
+// CHECK: module @entry
+// CHECK-SAME: mhlo.xla_entry_computation_result_tiles = [
+// CHECK-SAME:   [
+// CHECK-SAME:     [
+// CHECK-SAME:       [dense<[2, 128]> : tensor<2xindex>],
+// CHECK-SAME:       [dense<[2, 1]> : tensor<2xindex>]
+// CHECK-SAME:     ]
+// CHECK-SAME:   ]
+// CHECK-SAME: ]

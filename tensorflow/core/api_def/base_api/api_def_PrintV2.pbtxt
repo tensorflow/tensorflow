@@ -1,0 +1,19 @@
+op {
+  graph_op_name: "PrintV2"
+  in_arg {
+    name: "input"
+    description: <<END
+The string scalar to print.
+END
+  }
+  attr {
+    name: "output_stream"
+    description: <<END
+A string specifying the output stream or logging level to print to.
+END
+  }
+  summary: "Prints a string scalar."
+  description: <<END
+Prints a string scalar to the desired output_stream.
+END
+}

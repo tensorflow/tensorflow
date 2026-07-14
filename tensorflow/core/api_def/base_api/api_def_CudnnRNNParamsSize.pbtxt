@@ -1,0 +1,27 @@
+op {
+  graph_op_name: "CudnnRNNParamsSize"
+  summary: "Computes size of weights that can be used by a Cudnn RNN model."
+  description: <<END
+Return the params size that can be used by the Cudnn RNN model. Subsequent
+weight allocation and initialization should use this size.
+
+num_layers: Specifies the number of layers in the RNN model.
+num_units: Specifies the size of the hidden state.
+input_size: Specifies the size of the input state.
+rnn_mode: Indicates the type of the RNN model.
+input_mode: Indicate whether there is a linear projection between the input and
+  The actual computation before the first layer. 'skip_input' is only allowed
+  when input_size == num_units; 'auto_select' implies 'skip_input' when
+  input_size == num_units; otherwise, it implies 'linear_input'.
+direction: Indicates whether a bidirectional model will be used.
+  dir = (direction == bidirectional) ? 2 : 1
+dropout: dropout probability. When set to 0., dropout is disabled.
+seed: the 1st part of a seed to initialize dropout.
+seed2: the 2nd part of a seed to initialize dropout.
+params_size: The size of the params buffer that should be allocated and
+  initialized for this RNN model. Note that this params buffer may not be
+  compatible across GPUs. Please use CudnnRNNParamsWeights and
+  CudnnRNNParamsBiases to save and restore them in a way that is compatible
+  across different runs.
+END
+}

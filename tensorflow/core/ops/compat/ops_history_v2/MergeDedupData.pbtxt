@@ -1,0 +1,49 @@
+op {
+  name: "MergeDedupData"
+  input_arg {
+    name: "integer_tensor"
+    type_attr: "integer_type"
+  }
+  input_arg {
+    name: "float_tensor"
+    type_attr: "float_type"
+  }
+  output_arg {
+    name: "output"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "tuple_mask"
+    type: "string"
+  }
+  attr {
+    name: "integer_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "float_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+}

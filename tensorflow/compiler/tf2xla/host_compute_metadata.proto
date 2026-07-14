@@ -1,0 +1,55 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
+syntax = "proto3";
+
+package tensorflow.tf2xla;
+
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+
+option cc_enable_arenas = true;
+option java_outer_classname = "Tf2XlaProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.tf2xla";
+
+// TensorMetadata indicates the type and shape of a Tensor that is
+// part of a host compute transfer.
+message TensorMetadata {
+  DataType type = 1;
+  TensorShapeProto shape = 2;
+  int64 channel_id = 3;
+}
+
+// HostTransferMetadata describes a transfer either from host to device
+// or device to host. It has a key that is unique to the computation,
+// and metadata about the list of tensors being transferred.
+message HostTransferMetadata {
+  // The key used to identify this transfer.
+  string key = 1;
+
+  // For each Tensor being transferred, its type and shape.
+  repeated TensorMetadata metadata = 2;
+}
+
+// HostComputeMetadata describes all the sends and recvs
+// from all host compute transfer ops in a computation.
+message HostComputeMetadata {
+  // Metadata about each device_to_host transfer
+  repeated HostTransferMetadata device_to_host = 1;
+
+  // Metadata about each host_to_device transfer
+  repeated HostTransferMetadata host_to_device = 2;
+}

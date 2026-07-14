@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "ReduceJoin"
+  endpoint {
+    name: "strings.ReduceJoin"
+  }
+}

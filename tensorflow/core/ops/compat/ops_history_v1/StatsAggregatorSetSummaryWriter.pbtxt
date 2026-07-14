@@ -1,0 +1,12 @@
+op {
+  name: "StatsAggregatorSetSummaryWriter"
+  input_arg {
+    name: "stats_aggregator"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "summary"
+    type: DT_RESOURCE
+  }
+  is_stateful: true
+}

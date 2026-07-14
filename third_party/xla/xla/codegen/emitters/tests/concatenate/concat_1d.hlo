@@ -1,0 +1,46 @@
+// RUN: gpu_fusion_to_mlir %s | emitters_opt -xla-test-optimize |\
+// RUN:   FileCheck %s --check-prefixes=CHECK,CHECK-GPU
+// RUN: cpu_fusion_to_mlir %s | emitters_opt -xla-test-optimize |\
+// RUN:   FileCheck %s --check-prefixes=CHECK,CHECK-CPU
+// RUN: gpu_test_correctness %s
+// RUN: cpu_test_correctness %s
+
+fusion {
+  param0 = f32[200] parameter(0)
+  param1 = f32[400] parameter(1)
+  param2 = f32[300] parameter(2)
+  ROOT concat = f32[900] concatenate(param0, param1, param2), dimensions={0}
+}
+
+// The first loop mapping is the same as the output indexing map so it it CSE'd.
+// CHECK-GPU-DAG: #[[MAP:.*]] = #xla.indexing_map<"(th_x, bl_x) -> (bl_x * 128 + th_x)
+// CHECK-GPU-DAG: #[[LOOPMAP_2:.*]] = #xla.indexing_map<"(th_x, bl_x) -> (bl_x * 128 + th_x + 200)
+// CHECK-GPU-DAG: #[[LOOPMAP_3:.*]] = #xla.indexing_map<"(th_x, bl_x) -> (bl_x * 128 + th_x + 600)
+
+// CHECK-CPU-DAG: #[[MAP:.*]] = #xla.indexing_map<"()[s0] -> (s0)
+// CHECK-CPU-DAG: #[[LOOPMAP_2:.*]] = #xla.indexing_map<"()[s0] -> (s0 + 200)
+// CHECK-CPU-DAG: #[[LOOPMAP_3:.*]] = #xla.indexing_map<"()[s0] -> (s0 + 600)
+
+// CHECK:       func.func @main
+// CHECK-SAME:    %[[ARG_0:[a-zA-Z0-9]*]]: {{[^,]*}},
+// CHECK-SAME:    %[[ARG_1:[a-zA-Z0-9]*]]: {{[^,]*}},
+// CHECK-SAME:    %[[ARG_2:[a-zA-Z0-9]*]]: {{[^,]*}},
+// CHECK-SAME:    %[[OUTPUT:[a-zA-Z0-9]*]]: {{[^,]*}}
+
+// CHECK-GPU: %[[WORKGROUP_ID:.*]] = xla.workgroup_id x
+// CHECK-GPU: scf.forall (%[[THREAD_ID:.*]]) in (128)
+
+// CHECK: xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in #[[MAP]]
+// CHECK-GPU:   xla.apply_indexing #[[MAP]]
+// CHECK:   %[[VAL_1:.*]] = xla.pure_call @fusion_param0
+// CHECK:   %[[INSERTED_1:.*]] = tensor.insert %[[VAL_1:.*]] into {{.*}}[%[[RA]]]
+
+// CHECK: xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in #[[LOOPMAP_2]]
+// CHECK-GPU:   xla.apply_indexing #[[MAP]]
+// CHECK:   %[[VAL_2:.*]] = xla.pure_call @fusion_param1
+// CHECK:   %[[INSERTED_2:.*]] = tensor.insert %[[VAL_2:.*]] into {{.*}}[%[[RA]]]
+
+// CHECK: xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in #[[LOOPMAP_3]]
+// CHECK-GPU:   xla.apply_indexing #[[MAP]]
+// CHECK:   %[[VAL_3:.*]] = xla.pure_call @fusion_param2
+// CHECK:   %[[INSERTED_3:.*]] = tensor.insert %[[VAL_3:.*]] into {{.*}}[%[[RA]]]

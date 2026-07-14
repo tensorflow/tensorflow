@@ -1,0 +1,26 @@
+// RUN: hlo-opt %s --platform=gpu --xla_gpu_target_config_filename=%S/../../../../target_config/specs/h100_sxm.txtpb --xla_gpu_experimental_enable_tiling_propagation=true --logtostderr --vmodule=tile_propagation=2 2>&1 | FileCheck %s
+
+// CHECK: Skipping reshape contiguity check as tile sizes are not assigned yet.
+// CHECK: ROOT {{.*}} = bf16[4096,16,4096]{{.*}} fusion({{.*}}), kind=kCustom, calls=%{{.*}}gemm_fusion_tmp_11_computation, backend_config={{{.*}}"kind":"__triton_nested_gemm_fusion"
+
+gemm_fusion_tmp_11_computation {
+  parameter_0 = s4[16,8,256,4096]{3,2,1,0:E(4)} parameter(0)
+  tmp_1.1 = s8[16,8,256,4096]{3,2,1,0} convert(parameter_0)
+  convert.4 = bf16[16,8,256,4096]{3,2,1,0} convert(tmp_1.1)
+  transpose.4 = bf16[16,4096,8,256]{3,2,1,0} transpose(convert.4), dimensions={0,3,1,2}
+  parameter_1 = bf16[16,8,4096]{2,1,0} parameter(1)
+  transpose.5 = bf16[16,4096,8]{2,1,0} transpose(parameter_1), dimensions={0,2,1}
+  broadcast.1 = bf16[16,4096,8,256]{3,2,1,0} broadcast(transpose.5), dimensions={0,1,2}
+  multiply.1 = bf16[16,4096,8,256]{3,2,1,0} multiply(transpose.4, broadcast.1)
+  bitcast.22 = bf16[16,2048,4096]{1,2,0} bitcast(multiply.1)
+  parameter_2 = bf16[16,2048,4096]{2,1,0} parameter(2)
+  tmp_11.1 = bf16[16,4096,4096]{2,1,0} dot(bitcast.22, parameter_2), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+  ROOT transpose.6 = bf16[4096,16,4096]{2,1,0} transpose(tmp_11.1), dimensions={1,0,2}
+}
+
+ENTRY main {
+  p0 = s4[16,8,256,4096]{3,2,1,0:E(4)} parameter(0)
+  p1 = bf16[16,8,4096]{2,1,0} parameter(1)
+  p2 = bf16[16,2048,4096]{2,1,0} parameter(2)
+  ROOT gemm_fusion_tmp_11 = bf16[4096,16,4096]{2,1,0} fusion(p0, p1, p2), kind=kCustom, calls=gemm_fusion_tmp_11_computation, backend_config={"operation_queue_id":"0","fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
+}

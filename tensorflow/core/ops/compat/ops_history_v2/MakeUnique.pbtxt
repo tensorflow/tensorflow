@@ -1,0 +1,11 @@
+op {
+  name: "MakeUnique"
+  input_arg {
+    name: "input"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    type: DT_FLOAT
+  }
+}

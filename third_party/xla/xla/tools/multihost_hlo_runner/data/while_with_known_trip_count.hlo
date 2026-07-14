@@ -1,0 +1,21 @@
+condition {
+  p = (s32[]) parameter(0)
+  cond = s32[] get-tuple-element(p), index=0
+  trip_count = s32[] constant(7)
+  done = pred[] compare(cond, trip_count), direction=LT
+}
+
+body {
+  p = (s32[]) parameter(0)
+  cond = s32[] get-tuple-element(p), index=0
+  one = s32[] constant(1)
+  cond_plus_1 = s32[] add(cond, one)
+  t = (s32[]) tuple(cond_plus_1)
+}
+
+main {
+  p = s32[] constant(0)
+  t = (s32[]) tuple(p)
+  w = (s32[]) while(t), condition=condition,
+    body=body, backend_config={"known_trip_count":{"n":"7"}}
+}

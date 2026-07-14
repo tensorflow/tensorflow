@@ -1,0 +1,112 @@
+op {
+  name: "QuantizedRelu"
+  input_arg {
+    name: "features"
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "min_features"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_features"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "activations"
+    type_attr: "out_type"
+  }
+  output_arg {
+    name: "min_activations"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "max_activations"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "Tinput"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    default_value {
+      type: DT_QUINT8
+    }
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+}
+op {
+  name: "QuantizedRelu"
+  input_arg {
+    name: "features"
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "min_features"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_features"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "activations"
+    type_attr: "out_type"
+  }
+  output_arg {
+    name: "min_activations"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "max_activations"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "Tinput"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_QINT16
+        type: DT_QUINT16
+      }
+    }
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    default_value {
+      type: DT_QUINT8
+    }
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_QINT16
+        type: DT_QUINT16
+      }
+    }
+  }
+}

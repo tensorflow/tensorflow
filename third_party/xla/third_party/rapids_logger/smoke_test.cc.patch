@@ -1,0 +1,41 @@
+--- /dev/null	2025-08-20 16:29:02.164000374 +0000
++++ b/smoke_test.cc	2025-08-20 21:00:53.000000000 +0000
+@@ -0,0 +1,38 @@
++#include <gtest/gtest.h>
++
++#include <memory>
++#include <sstream>
++#include <string>
++
++#include "rapids_logger/logger.hpp"
++
++struct LoggerTest : public ::testing::Test {
++  LoggerTest()
++      : oss{},
++        logger_{"logger_test",
++                {std::make_shared<rapids_logger::ostream_sink_mt>(oss)}} {
++    // Remove extra formatting to simplify validation of outputs.
++    logger_.set_pattern("%v");
++  }
++
++  void clear_sink() { oss.str(""); }
++  std::string sink_content() { return oss.str(); }
++
++  std::ostringstream oss;
++  rapids_logger::logger logger_;
++};
++
++TEST_F(LoggerTest, DefaultLevel) {
++  // The default level should not change without suitable warning to consumers.
++  EXPECT_EQ(logger_.level(), rapids_logger::level_enum::info);
++}
++
++TEST_F(LoggerTest, DefaultLevelLogs) {
++  logger_.trace("trace");
++  logger_.debug("debug");
++  logger_.info("info");
++  logger_.warn("warn");
++  logger_.error("error");
++  logger_.critical("critical");
++  EXPECT_EQ(this->sink_content(), "info\nwarn\nerror\ncritical\n");
++}

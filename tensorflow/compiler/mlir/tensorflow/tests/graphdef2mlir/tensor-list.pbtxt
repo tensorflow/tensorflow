@@ -1,0 +1,218 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s
+
+node {
+  name: "TensorListReserve/num_elements"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 3
+      }
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "TensorListSetItem/index"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "TensorListSetItem/item"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 2
+          }
+          dim {
+            size: 2
+          }
+        }
+        float_val: 1
+        float_val: 2
+        float_val: 3
+        float_val: 4
+      }
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "TensorListStack/element_shape"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: -1
+      }
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "TensorListReserve/element_shape"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+        }
+        int_val: 2
+      }
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "TensorListReserve"
+  op: "TensorListReserve"
+  input: "TensorListReserve/element_shape"
+  input: "TensorListReserve/num_elements"
+  attr {
+    key: "element_dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape_type"
+    value {
+      type: DT_INT32
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "TensorListReserve1"
+  op: "TensorListReserve"
+  input: "TensorListReserve/element_shape"
+  input: "TensorListReserve/num_elements"
+  attr {
+    key: "element_dtype"
+    value {
+      type: DT_VARIANT
+    }
+  }
+  attr {
+    key: "shape_type"
+    value {
+      type: DT_INT32
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "TensorListSetItem"
+  op: "TensorListSetItem"
+  input: "TensorListReserve"
+  input: "TensorListSetItem/index"
+  input: "TensorListSetItem/item"
+  attr {
+    key: "element_dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "TensorListStack"
+  op: "TensorListStack"
+  input: "TensorListSetItem"
+  input: "TensorListStack/element_shape"
+  attr {
+    key: "element_dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "num_elements"
+    value {
+      i: -1
+    }
+  }
+  experimental_debug_info {
+  }
+}
+library {
+}
+versions {
+  producer: 76
+}
+
+# Verify that list element shape and dtype are expected.
+# CHECK:  tf.TensorListReserve{{.*}}(tensor<2xi32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<*xf32>>>
+
+# Nested variant type.
+# CHECK:  tf.TensorListReserve{{.*}}(tensor<2xi32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<*x!tf_type.variant>>>
+
+# CHECK:  tf.TensorListSetItem{{.*}}(tensor<!tf_type.variant<tensor<*xf32>>>, tensor<i32>, tensor<2x2xf32>) -> tensor<*x!tf_type.variant>
+# CHECK:  tf.TensorListStack{{.*}}(tensor<*x!tf_type.variant>, tensor<i32>) -> tensor<*xf32>

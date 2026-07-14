@@ -1,0 +1,127 @@
+path: "tensorflow.saved_model"
+tf_module {
+  member {
+    name: "ASSETS_DIRECTORY"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "ASSETS_KEY"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "Asset"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "CLASSIFY_INPUTS"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "CLASSIFY_METHOD_NAME"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "CLASSIFY_OUTPUT_CLASSES"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "CLASSIFY_OUTPUT_SCORES"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "DEBUG_DIRECTORY"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "DEBUG_INFO_FILENAME_PB"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "DEFAULT_SERVING_SIGNATURE_DEF_KEY"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "GPU"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "LoadOptions"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "PREDICT_INPUTS"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "PREDICT_METHOD_NAME"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "PREDICT_OUTPUTS"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "REGRESS_INPUTS"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "REGRESS_METHOD_NAME"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "REGRESS_OUTPUTS"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "SAVED_MODEL_FILENAME_PB"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "SAVED_MODEL_FILENAME_PBTXT"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "SAVED_MODEL_SCHEMA_VERSION"
+    mtype: "<class \'int\'>"
+  }
+  member {
+    name: "SERVING"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "SaveOptions"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "TPU"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "TRAINING"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "VARIABLES_DIRECTORY"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "VARIABLES_FILENAME"
+    mtype: "<class \'str\'>"
+  }
+  member {
+    name: "experimental"
+    mtype: "<class \'module\'>"
+  }
+  member_method {
+    name: "contains_saved_model"
+    argspec: "args=[\'export_dir\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "load"
+    argspec: "args=[\'export_dir\', \'tags\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "save"
+    argspec: "args=[\'obj\', \'export_dir\', \'signatures\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+}

@@ -1,0 +1,24 @@
+op {
+  name: "CreateSummaryFileWriter"
+  input_arg {
+    name: "writer"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "logdir"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "max_queue"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "flush_millis"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "filename_suffix"
+    type: DT_STRING
+  }
+  is_stateful: true
+}

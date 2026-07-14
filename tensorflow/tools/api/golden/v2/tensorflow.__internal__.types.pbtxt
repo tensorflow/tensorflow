@@ -1,0 +1,11 @@
+path: "tensorflow.__internal__.types"
+tf_module {
+  member {
+    name: "Tensor"
+    mtype: "<class \'type\'>"
+  }
+  member {
+    name: "data"
+    mtype: "<class \'module\'>"
+  }
+}

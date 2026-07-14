@@ -1,0 +1,24 @@
+op {
+  graph_op_name: "EluGrad"
+  visibility: HIDDEN
+  in_arg {
+    name: "gradients"
+    description: <<END
+The backpropagated gradients to the corresponding Elu operation.
+END
+  }
+  in_arg {
+    name: "outputs"
+    description: <<END
+The outputs of the corresponding Elu operation.
+END
+  }
+  out_arg {
+    name: "backprops"
+    description: <<END
+The gradients: `gradients * (outputs + 1)` if outputs < 0,
+`gradients` otherwise.
+END
+  }
+  summary: "Computes gradients for the exponential linear (Elu) operation."
+}

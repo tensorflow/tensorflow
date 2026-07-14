@@ -1,0 +1,5 @@
+path: "tensorflow.errors.OperatorNotAllowedInGraphError"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.errors_impl.OperatorNotAllowedInGraphError\'>"
+  is_instance: "<class \'TypeError\'>"
+}
