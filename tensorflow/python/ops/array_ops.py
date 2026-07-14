@@ -5043,7 +5043,7 @@ def _batch_gather(params, indices, batch_dims, axis=None):
 
 @tf_export(v1=["gather_nd", "manip.gather_nd"])
 @dispatch.add_dispatch_support
-@deprecated_endpoints("manip.gather_nd")
+@deprecation.deprecated_endpoints("manip.gather_nd")
 def gather_nd(params, indices, name=None, batch_dims=0, bad_indices_policy=""):
   r"""Gather slices from `params` into a Tensor with shape specified by `indices`.
 
