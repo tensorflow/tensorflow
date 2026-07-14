@@ -19,7 +19,10 @@ limitations under the License.
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/match.h"
 
 #ifndef _WIN32
 #include <unistd.h>
