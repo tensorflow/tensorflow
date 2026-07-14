@@ -372,6 +372,48 @@ TEST_F(WhileLoopAnalysisTest, ExactBoundTrivialTripCount) {
       CalculateTripCount(0, 40, 5, ComparisonDirection::kLe));
 }
 
+// Regression test for a bug where a non-divisible step combined with a small
+// loop bound caused the trip count to be undercounted (often to zero), which
+// made the simplify-while-loop pass incorrectly fold an integer while loop to
+// its initial value. See https://github.com/tensorflow/tensorflow/issues/123067
+// The cases below are miscounted by the old kLt/kLe logic but must match the
+// reference `CalculateTripCount` implementation.
+TEST_F(WhileLoopAnalysisTest, NonDivisibleStepDoesNotUndercount) {
+  // kLt cases. The old code returned 0 for these single-iteration loops (i < N
+  // with N <= step), folding the loop to its initial value.
+  EXPECT_EQ(
+      MakeWhileLoopAndGetTripCount(0, 1, 2, ComparisonDirection::kLt).value(),
+      CalculateTripCount(0, 1, 2, ComparisonDirection::kLt));
+  EXPECT_EQ(
+      MakeWhileLoopAndGetTripCount(0, 1, 3, ComparisonDirection::kLt).value(),
+      CalculateTripCount(0, 1, 3, ComparisonDirection::kLt));
+  EXPECT_EQ(
+      MakeWhileLoopAndGetTripCount(0, 1, 5, ComparisonDirection::kLt).value(),
+      CalculateTripCount(0, 1, 5, ComparisonDirection::kLt));
+  // kLt cases with a negative init that the old code undercounted to a nonzero
+  // but still-wrong value.
+  EXPECT_EQ(
+      MakeWhileLoopAndGetTripCount(-2, 1, 2, ComparisonDirection::kLt).value(),
+      CalculateTripCount(-2, 1, 2, ComparisonDirection::kLt));
+  EXPECT_EQ(
+      MakeWhileLoopAndGetTripCount(1, 10, 3, ComparisonDirection::kLt).value(),
+      CalculateTripCount(1, 10, 3, ComparisonDirection::kLt));
+  EXPECT_EQ(
+      MakeWhileLoopAndGetTripCount(0, 7, 2, ComparisonDirection::kLt).value(),
+      CalculateTripCount(0, 7, 2, ComparisonDirection::kLt));
+
+  // kLe cases with a non-divisible step.
+  EXPECT_EQ(
+      MakeWhileLoopAndGetTripCount(0, 1, 2, ComparisonDirection::kLe).value(),
+      CalculateTripCount(0, 1, 2, ComparisonDirection::kLe));
+  EXPECT_EQ(
+      MakeWhileLoopAndGetTripCount(0, 10, 3, ComparisonDirection::kLe).value(),
+      CalculateTripCount(0, 10, 3, ComparisonDirection::kLe));
+  EXPECT_EQ(
+      MakeWhileLoopAndGetTripCount(2, 2, 5, ComparisonDirection::kLe).value(),
+      CalculateTripCount(2, 2, 5, ComparisonDirection::kLe));
+}
+
 TEST_F(WhileLoopAnalysisTest, NoAIVNoConstChain) {
   absl::string_view kHloModule = R"(
     HloModule ModuleWithWhile
