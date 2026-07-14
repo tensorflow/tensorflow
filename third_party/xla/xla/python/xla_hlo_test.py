@@ -326,6 +326,53 @@ ENTRY %main {
             self.assertNotEqual(operands[0], add_op)
 
     @unittest.skipIf(cloud_tpu or pathways, "not implemented")
+    def testHloInstructionProperties(self):
+      module = self.ExampleComputation()
+      computations = module.computations()
+      self.assertNotEmpty(computations)
+      for comp in computations:
+        self.assertIsInstance(comp.id, int)
+        self.assertIsInstance(comp.root_id, int)
+        if comp.name.startswith("main"):
+          instructions = comp.instructions()
+          add_ops = [i for i in instructions if i.opcode == _hlo.HloOpcode.kAdd]
+          self.assertNotEmpty(add_ops)
+          add_op = add_ops[0]
+
+          self.assertIsInstance(add_op.id, int)
+          self.assertIsInstance(add_op.opcode_name, str)
+          self.assertEqual(add_op.opcode_name, "add")
+
+          self.assertIsInstance(add_op.shape_string, str)
+
+          self.assertIsInstance(add_op.operand_ids, list)
+          self.assertLen(add_op.operand_ids, 2)
+          self.assertEqual(add_op.operand_ids[0], add_op.operands()[0].id)
+
+          p0 = [
+              i for i in instructions if i.opcode == _hlo.HloOpcode.kParameter
+          ][0]
+          self.assertIsInstance(p0.user_ids, list)
+          self.assertGreaterEqual(len(p0.user_ids), 1)
+          self.assertEqual(p0.user_ids[0], p0.users()[0].id)
+
+      async_module = self.AsyncComputation()
+      for comp in async_module.computations():
+        if comp.name.startswith("main"):
+          start_op = [
+              i
+              for i in comp.instructions()
+              if i.opcode == _hlo.HloOpcode.kAsyncStart
+          ][0]
+          self.assertIsInstance(start_op.called_computation_names, list)
+          self.assertIsInstance(start_op.called_computation_ids, list)
+          self.assertNotEmpty(start_op.called_computation_names)
+          self.assertNotEmpty(start_op.called_computation_ids)
+          self.assertEqual(
+              start_op.called_computation_names[0], "async_wrapped"
+          )
+
+    @unittest.skipIf(cloud_tpu or pathways, "not implemented")
     def testFrontendAttributes(self):
       hlo_string = R"""
 HloModule frontend_attributes_module
