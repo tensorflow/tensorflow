@@ -1847,8 +1847,11 @@ absl::StatusOr<tsl::AllocatorStats> StreamExecutorGpuDevice::GetAllocatorStats()
                    allocator_adapter->GetAllocator(local_device_id().value()));
 
   auto stats = allocator->GetStats();
-  TF_RET_CHECK(stats.has_value());
-  return stats.value();
+  if (!stats.has_value()) {
+    return Unimplemented(
+        "GetAllocatorStats() is not supported by this allocator");
+  }
+  return *stats;
 }
 
 absl::Status StreamExecutorGpuDevice::ClearMemoryStats() {
