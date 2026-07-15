@@ -5806,11 +5806,11 @@ class name_scope_v2(contextlib.AbstractContextManager[str]):
                 f"to match the following pattern: "
                 f"{_VALID_SCOPE_NAME_REGEX.pattern}")
         else:
-          if not _VALID_OP_NAME_REGEX.match(self._name):
+          if not _VALID_SCOPE_NAME_REGEX.match(self._name):
             raise ValueError(
                 f"'{self._name}' is not a valid root scope name. A root scope "
                 f"name has to match the following pattern: "
-                f"{_VALID_OP_NAME_REGEX.pattern}")
+                f"{_VALID_SCOPE_NAME_REGEX.pattern}")
 
       # Names are not auto-incremented in eager mode.
       # A trailing slash breaks out of nested name scopes, indicating a
