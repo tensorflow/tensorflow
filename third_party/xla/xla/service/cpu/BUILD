@@ -397,6 +397,7 @@ cc_library(
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ]) + if_onednn([
         ":onednn_contraction_rewriter",
+        ":onednn_copy_removal",
         ":onednn_float_support",
         ":onednn_ops_rewriter",
     ]),
@@ -1576,6 +1577,25 @@ onednn_cc_library(
         "@eigen_archive//:eigen3",
         "@tsl//tsl/platform:logging",
         "@tsl//tsl/platform:platform_port",
+    ],
+)
+
+cc_library(
+    name = "onednn_copy_removal",
+    srcs = ["onednn_copy_removal.cc"],
+    hdrs = ["onednn_copy_removal.h"],
+    copts = tsl_copts(),
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/utils:hlo_query",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

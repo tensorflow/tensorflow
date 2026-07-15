@@ -193,6 +193,7 @@ limitations under the License.
 #include "xla/service/cpu/ir_emitter.h"
 #include "xla/service/cpu/ir_emitter2.h"
 #include "xla/service/cpu/metrics.h"
+#include "xla/service/cpu/onednn_copy_removal.h"
 #include "xla/service/cpu/parallel_task_assignment.h"
 #include "xla/service/cpu/small_while_loop_hoisting_pass.h"
 #include "xla/service/cpu/thunk_emitter.h"
@@ -243,7 +244,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/sorted_range.h"
 #include "xla/util.h"
@@ -1007,12 +1007,18 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 
 #ifdef XLA_ONEDNN
   if (use_onednn_custom_call) {
+    [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
+         "individual onednn operand cleanup")] {
+      pipeline.AddPass<OneDnnOperandCopyRemoval>();
+    }();
+
     // Run SimplifyFPConversions pass to simplify the BF16 pattern and make it
     // easier to match.
     // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
     if (debug_options.xla_allow_excess_precision()) {
       pipeline.AddPass<SimplifyFPConversions>();
     }
+
     bool use_onednn_graph =
         debug_options.xla_cpu_use_onednn() &&
         (!debug_options.xla_cpu_experimental_onednn_fusion_type().empty());
