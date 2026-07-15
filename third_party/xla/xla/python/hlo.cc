@@ -374,6 +374,8 @@ NB_MODULE(_hlo, m) {
       .value("U64", U64)
       .value("F16", F16)
       .value("F4E2M1FN", F4E2M1FN)
+      .value("F6E2M3FN", F6E2M3FN)
+      .value("F6E3M2FN", F6E3M2FN)
       .value("F8E3M4", F8E3M4)
       .value("F8E4M3", F8E4M3)
       .value("F8E4M3FN", F8E4M3FN)

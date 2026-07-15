@@ -47,6 +47,10 @@ class PrimitiveType(enum.IntEnum):
 
   F4E2M1FN = 32
 
+  F6E2M3FN = 36
+
+  F6E3M2FN = 35
+
   F8E3M4 = 29
 
   F8E4M3 = 28

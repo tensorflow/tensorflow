@@ -18,6 +18,7 @@ limitations under the License.
 
 // An increasing version number to protect jax code against breaking changes.
 // In JAX, reference this via jax._src.lib.ifrt_version.
-#define JAX_IFRT_VERSION_NUMBER 57  // semantically immutable RemapPlan support
+#define JAX_IFRT_VERSION_NUMBER \
+  58  // FP6 float6_e2m3fn and float6_e3m2fn support
 
 #endif  // XLA_PYTHON_VERSION_H_
