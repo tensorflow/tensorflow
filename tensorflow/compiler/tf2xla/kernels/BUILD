@@ -2081,8 +2081,10 @@ tf_kernel_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@xla//xla:literal_util",
+        "@xla//xla:shape_util",
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
     ],
 )
 
