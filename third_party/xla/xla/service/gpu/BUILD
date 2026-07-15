@@ -697,8 +697,14 @@ bool_flag(
 
 cc_library(
     name = "gpu_executable_buffer_allocator",
-    srcs = ["gpu_executable_buffer_allocator.cc"],
-    hdrs = ["gpu_executable_buffer_allocator.h"],
+    srcs = [
+        "gpu_executable_buffer_allocator.cc",
+        "gpu_executable_va_remap_allocator.cc",
+    ],
+    hdrs = [
+        "gpu_executable_buffer_allocator.h",
+        "gpu_executable_va_remap_allocator.h",
+    ],
     deps = [
         ":buffer_allocations",
         ":gpu_constants",

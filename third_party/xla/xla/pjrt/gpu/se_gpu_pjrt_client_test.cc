@@ -2491,9 +2491,13 @@ class ScopedBufferAllocatorVLog {
  public:
   ScopedBufferAllocatorVLog()
       : old_vlog_level_(
-            absl::SetVLogLevel("gpu_executable_buffer_allocator", 3)) {}
+            absl::SetVLogLevel("gpu_executable_buffer_allocator", 3)),
+        old_va_remap_vlog_level_(
+            absl::SetVLogLevel("gpu_executable_va_remap_allocator", 3)) {}
 
   ~ScopedBufferAllocatorVLog() {
+    absl::SetVLogLevel("gpu_executable_va_remap_allocator",
+                       old_va_remap_vlog_level_);
     absl::SetVLogLevel("gpu_executable_buffer_allocator", old_vlog_level_);
   }
 
@@ -2503,6 +2507,7 @@ class ScopedBufferAllocatorVLog {
 
  private:
   int old_vlog_level_;
+  int old_va_remap_vlog_level_;
 };
 
 TEST_F(VmmTest, CommandBufferSkipTempTwoGemmChain) {
