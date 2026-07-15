@@ -766,7 +766,7 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       type_spec_registry.register("tf.NewName")(TwoCompositesSpec)
 
   def testRegistryReDefinition(self):
-      # Simulate first cell run
+    # Simulate first cell run
     @type_spec_registry.register("tf.RedefineSpec")
     class RedefineSpec(TwoCompositesSpec):
       pass
