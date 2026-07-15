@@ -26,13 +26,14 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 namespace grappler {
 
-class GrapplerTest : public ::testing::Test {
+class TF_EXPORT GrapplerTest : public ::testing::Test {
  public:
   GrapplerTest();
 
