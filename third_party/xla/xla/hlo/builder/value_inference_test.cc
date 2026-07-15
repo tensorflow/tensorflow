@@ -741,5 +741,16 @@ TEST_F(ConstValueInferenceTest, ParamaterValuePassThroughSetBound) {
   EXPECT_EQ(result.value(), 32);
 }
 
+TEST_F(ConstValueInferenceTest, TanConstantValue) {
+  XlaBuilder b(TestName());
+  auto p0 = ConstantR0<float>(&b, 0.0f);
+  auto tan = Tan(p0);
+  auto result = ComputeConstantValueLiteral(tan, &b);
+  ASSERT_OK(result);
+  auto optional_val = result.value().Get<float>({});
+  ASSERT_TRUE(optional_val.has_value());
+  EXPECT_NEAR(optional_val.value(), 0.0f, 1e-6);
+}
+
 }  // namespace
 }  // namespace xla
