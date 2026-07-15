@@ -565,13 +565,18 @@ func.func @testDoubleNeg(%arg0: tensor<8x16x32x64xi32>) -> tensor<8x16x32x64xi32
 // CHECK: return %arg0
 }
 
+// Reciprocal is not an exact involution (1 / (1 / x) rounds in floating
+// point and truncates to zero for integer |x| > 1), so a Reciprocal pair
+// must not fold away.
 // CHECK-LABEL: testDoubleReciprocal
 func.func @testDoubleReciprocal(%arg0: tensor<8x16x32x64xi32>) -> tensor<8x16x32x64xi32> {
   %0 = "tf.Reciprocal"(%arg0) : (tensor<8x16x32x64xi32>) -> tensor<8x16x32x64xi32>
   %1 = "tf.Reciprocal"(%0) : (tensor<8x16x32x64xi32>) -> tensor<8x16x32x64xi32>
   func.return %1: tensor<8x16x32x64xi32>
 
-// CHECK: return %arg0
+// CHECK: %[[RECIPROCAL0:.*]] = "tf.Reciprocal"(%arg0)
+// CHECK: %[[RECIPROCAL1:.*]] = "tf.Reciprocal"(%[[RECIPROCAL0]])
+// CHECK: return %[[RECIPROCAL1]]
 }
 
 // CHECK-LABEL: testRedundantReshape

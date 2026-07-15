@@ -12716,30 +12716,6 @@ If `x` and `y` are reals, this will return the floating-point division.
   let hasFolder = 1;
 }
 
-def TF_ReciprocalOp : TF_Op<"Reciprocal", [Pure, TF_Involution, TF_SameOperandsAndResultTypeResolveRef]> {
-  let summary = "Computes the reciprocal of x element-wise.";
-
-  let description = [{
-I.e., \\(y = 1 / x\\).
-  }];
-
-  let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$x
-  );
-
-  let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$y
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-
-  let extraClassDeclaration = [{
-    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
-      return ArraysAreCastCompatible(inferred, actual);
-    }
-  }];
-}
-
 def TF_ReciprocalGradOp : TF_Op<"ReciprocalGrad", [Pure, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes the gradient for the inverse of `x` wrt its input.";
 
