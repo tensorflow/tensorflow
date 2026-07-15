@@ -20,6 +20,7 @@ the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
@@ -116,8 +117,8 @@ class HloLiveRange {
   // computation that this computation is in, if any. When this value is
   // non-null, it means that this computation is called by an async op or
   // another op in an asynchronous context.
-  void FlattenSchedule(const HloComputation& computation,
-                       const HloComputation* async_context = nullptr);
+  absl::Status FlattenSchedule(const HloComputation& computation,
+                               const HloComputation* async_context = nullptr);
 
   // Returns the last position of a value.
   TimeBound GetLastPosition(const HloValue& value,
