@@ -24,10 +24,9 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <limits>
-#include <memory>
-#include <tuple>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -4400,6 +4399,13 @@ inline void PadImpl(const tflite::PadParams& op_params,
       RuntimeShape::ExtendedShape(max_supported_dims, input_shape);
   const RuntimeShape ext_output_shape =
       RuntimeShape::ExtendedShape(max_supported_dims, output_shape);
+  // A zero-element tensor may legitimately have null data pointers. There is
+  // nothing to copy or fill in that case, and even a zero-byte memcpy must not
+  // receive those null pointers under UBSan. Scan dimensions instead of using
+  // FlatSize(), which intentionally does not check for integer overflow.
+  if (output_shape.HasZeroDimension()) {
+    return;
+  }
   TFLITE_DCHECK_LE(op_params.left_padding_count, max_supported_dims);
   TFLITE_DCHECK_LE(op_params.right_padding_count, max_supported_dims);
 
@@ -4474,13 +4480,16 @@ inline void PadImpl(const tflite::PadParams& op_params,
                            pad_value, left_c_padding);
           }
 
-          T* out = output_data + Offset(ext_output_shape, out_b, out_p, out_h,
-                                        out_w, left_c_padding);
-          const T* in = input_data +
-                        Offset(ext_input_shape, out_b - left_b_padding,
-                               out_p - left_s1_padding, out_h - left_s2_padding,
-                               out_w - left_s3_padding, 0);
-          memcpy(out, in, input_depth * sizeof(T));
+          if (input_depth != 0) {
+            T* out = output_data + Offset(ext_output_shape, out_b, out_p, out_h,
+                                          out_w, left_c_padding);
+            const T* in =
+                input_data + Offset(ext_input_shape, out_b - left_b_padding,
+                                    out_p - left_s1_padding,
+                                    out_h - left_s2_padding,
+                                    out_w - left_s3_padding, 0);
+            memcpy(out, in, input_depth * sizeof(T));
+          }
 
           if (right_c_padding != 0) {
             TypedMemset<T>(
@@ -4576,6 +4585,9 @@ inline void PadImageStyleMemset(const tflite::PadParams& op_params,
       RuntimeShape::ExtendedShape(4, input_shape);
   const RuntimeShape ext_output_shape =
       RuntimeShape::ExtendedShape(4, output_shape);
+  if (output_shape.HasZeroDimension()) {
+    return;
+  }
   TFLITE_DCHECK_LE(op_params.left_padding_count, 4);
   TFLITE_DCHECK_LE(op_params.right_padding_count, 4);
 
@@ -4627,9 +4639,10 @@ inline void PadImageStyleMemset(const tflite::PadParams& op_params,
   const int inner_line_size = input_width * depth;
   const size_t num_inner_line_bytes = inner_line_size * sizeof(T);
 
-  if (input_height == 0) {
-    memset(output_data, pad_value,
-           num_top_block_bytes + num_bottom_block_bytes);
+  // Empty tensors may have null data pointers. If an empty spatial dimension
+  // is padded into a non-empty output, every output element is padding.
+  if (input_height == 0 || input_width == 0) {
+    TypedMemset<T>(output_data, pad_value, ext_output_shape.FlatSize());
   } else {
     for (int i = 0; i < batch; ++i) {
       // For each image in the batch, apply the top padding, then iterate
