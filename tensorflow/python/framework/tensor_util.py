@@ -686,6 +686,11 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
     raise TypeError(f"`dtype` {dtype} is not compatible with {values} of "
                     f"dtype {nparray.dtype}.")
 
+  # Normalize byte order to native so that tobytes() and element access
+  # produce values in the host's expected representation.
+  if not nparray.dtype.isnative:
+    nparray = nparray.astype(nparray.dtype.newbyteorder("="))
+
   # If shape is not given, get the shape from the numpy array.
   if shape is None:
     shape = nparray.shape

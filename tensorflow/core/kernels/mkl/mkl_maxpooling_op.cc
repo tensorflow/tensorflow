@@ -65,6 +65,23 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       bool is_pool2d = (this->ksize_.size() == 4);
       // Get the input tensor and initialize the pooling parameters
       TensorShape input_tensor_shape = input_tensor.shape();
+      TensorShape logical_shape = dnn_shape_input.IsMklTensor()
+                                      ? dnn_shape_input.GetTfShape()
+                                      : input_tensor_shape;
+      if (input_tensor.NumElements() != 0 && this->padding_ == Padding::VALID) {
+        const int ksize_size = this->ksize_.size();
+        for (int i = 0; i < ksize_size; i++) {
+          OP_REQUIRES(
+              context,
+              logical_shape.dims() > i &&
+                  logical_shape.dim_size(i) >= this->ksize_[i],
+              absl::InvalidArgumentError(absl::StrCat(
+                  "The ksize dimension ", i, " (value ", this->ksize_[i], ")",
+                  " is larger than the input tensor dimension ", i, " (value ",
+                  logical_shape.dims() > i ? logical_shape.dim_size(i) : -1,
+                  ").")));
+        }
+      }
       this->InitMklPoolParameters(context, &pool_params, dnn_shape_input,
                                   input_tensor_shape);
       OP_REQUIRES_OK(context, context->status());

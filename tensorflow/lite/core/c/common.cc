@@ -145,6 +145,7 @@ TfLiteSparsity* TfLiteSparsityClone(const TfLiteSparsity* const src) {
 TfLiteQuantization TfLiteQuantizationClone(const TfLiteQuantization& src) {
   TfLiteQuantization dst;
   dst.type = src.type;
+  dst.params = nullptr;
   switch (src.type) {
     case kTfLiteNoQuantization:
       break;
@@ -170,6 +171,21 @@ TfLiteQuantization TfLiteQuantizationClone(const TfLiteQuantization& src) {
       dst_params->blocksize = src_params->blocksize;
       dst_params->scale = src_params->scale;
       dst_params->zero_point = src_params->zero_point;
+      dst_params->quantized_dimension = src_params->quantized_dimension;
+      break;
+    }
+    case kTfLiteMultiAxisQuantization: {
+      dst.params = calloc(1, sizeof(TfLiteMultiAxisQuantization));
+      if (!dst.params) return TfLiteQuantization();
+      const TfLiteMultiAxisQuantization* const src_params =
+          reinterpret_cast<TfLiteMultiAxisQuantization*>(src.params);
+      TfLiteMultiAxisQuantization* const dst_params =
+          reinterpret_cast<TfLiteMultiAxisQuantization*>(dst.params);
+      dst_params->scales = src_params->scales;
+      dst_params->zero_points = src_params->zero_points;
+      dst_params->blocksize = src_params->blocksize;
+      dst_params->quantized_dimensions =
+          TfLiteIntArrayCopy(src_params->quantized_dimensions);
       break;
     }
   }
@@ -265,6 +281,15 @@ void TfLiteQuantizationFree(TfLiteQuantization* quantization) {
   if (quantization->type == kTfLiteBlockwiseQuantization) {
     TfLiteBlockwiseQuantization* q_params =
         reinterpret_cast<TfLiteBlockwiseQuantization*>(quantization->params);
+    free(q_params);
+  }
+  if (quantization->type == kTfLiteMultiAxisQuantization) {
+    TfLiteMultiAxisQuantization* q_params =
+        reinterpret_cast<TfLiteMultiAxisQuantization*>(quantization->params);
+    if (q_params->quantized_dimensions) {
+      TfLiteIntArrayFree(q_params->quantized_dimensions);
+      q_params->quantized_dimensions = nullptr;
+    }
     free(q_params);
   }
   quantization->params = nullptr;

@@ -171,6 +171,42 @@ class CommonPjRtClient : public PjRtClient {
     return absl::UnimplementedError("LinearizeInto is not supported");
   }
 
+  // Tests if a buffer is eligible for zero copy linearization.
+  virtual bool ShouldPerformZeroCopyLinearize(
+      const void* data, const xla::Shape& device_shape, PrimitiveType type,
+      absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides) {
+    return false;
+  }
+
+  // Creates a staging buffer directly from host data for zero copy.
+  virtual tsl::AsyncValueRef<PjRtStagingBuffer>
+  CreateStagingForZeroCopyLinearize(
+      const void* data, const xla::Shape& device_shape,
+      PjRtMemorySpace* memory_space,
+      absl::AnyInvocable<void() &&> on_done_with_host_buffer);
+
+  // Allocates a destination buffer for linearizing into.
+  virtual absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>>
+  AllocateLinearizeDest(bool sync, const xla::Shape& device_shape,
+                        absl::Span<const int64_t> byte_strides,
+                        PjRtRawBufferRef dest_buffer);
+
+  // Linearizes data into dest.
+  virtual absl::Status Linearize(absl::Span<uint8_t> dest, const void* data,
+                                 absl::Span<const int64_t> byte_strides,
+                                 const Shape& device_shape,
+                                 PjRtMemorySpace* memory_space,
+                                 absl::Span<const uint32_t> dynamic_sizes);
+
+  absl::StatusOr<PjRtDeviceEventRef> LinearizeIntoImpl(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      HostBufferSemantics host_buffer_semantics,
+      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+      const xla::Shape& device_shape, absl::Span<const uint32_t> dynamic_sizes,
+      PjRtRawBufferRef raw_buffer);
+
   // Defines a pjrt buffer from a shape, raw_buffer and definition events.
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> DefineBuffer(
       std::shared_ptr<const Shape> on_device_shape,
@@ -398,7 +434,8 @@ class CommonPjRtClient : public PjRtClient {
       const Shape& output_device_shape,
       absl::Span<const CommonPjRtBuffer::ScopedHold> input_device_buffer_holds,
       const HloInputOutputAliasConfig& alias_config, PjRtDevice* device,
-      absl::Span<const int> output_memory_space_kind_ids);
+      absl::Span<const int> output_memory_space_kind_ids,
+      const ExecuteOptions& options);
 
   std::vector<std::unique_ptr<PjRtBuffer>> CreateOutputs(
       const std::shared_ptr<const Shape>& output_device_shape,
@@ -430,6 +467,12 @@ class CommonPjRtClient : public PjRtClient {
                                     std::intptr_t stream);
 
  protected:
+  // Returns the required alignment for device memory addresses when slicing.
+  virtual absl::StatusOr<size_t> GetDeviceAddressAlignment() const {
+    return absl::UnimplementedError(
+        "GetDeviceAddressAlignment is not implemented.");
+  }
+
   absl::Status DelinearizeHostBuffer(absl::Span<const uint8_t> input_data,
                                      const Shape& shape,
                                      MutableLiteralBase* literal);

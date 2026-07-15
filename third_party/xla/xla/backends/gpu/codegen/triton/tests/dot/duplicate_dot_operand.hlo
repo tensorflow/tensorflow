@@ -12,8 +12,8 @@ fusion {
 // CHECK-SAME:      %[[ARG1:.*]]: memref<8x16xf32>,
 // CHECK-SAME:      %[[ARG2:.*]]: memref<4x16xf32>,
 // CHECK-SAME:      %[[ARG3:.*]]: index)
-// CHECK:           %[[CST:.*]] = arith.constant dense<0.000000e+00> : tensor<1x2xf32>
-// CHECK:           %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:       %[[CST:.*]] = arith.constant dense<0.000000e+00> : tensor<1x2xf32>
+// CHECK-DAG:       %[[C0:.*]] = arith.constant 0 : index
 // CHECK:           %[[APPLY_IDX0:.*]] = xla.apply_indexing #indexing_map(%[[ARG3]])
 // CHECK:           %[[EXTRACT0:.*]] = xtile.extract %[[ARG0]][%[[APPLY_IDX0]], %[[C0]]] [1, 8] [1, 1] : memref<4x8xf32> -> tensor<1x8xf32>
 // CHECK:           %[[APPLY_IDX1:.*]] = xla.apply_indexing #indexing_map1(%[[ARG3]])

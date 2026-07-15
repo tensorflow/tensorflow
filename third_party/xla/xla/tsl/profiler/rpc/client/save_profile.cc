@@ -19,23 +19,26 @@ limitations under the License.
 #include <ostream>
 #include <sstream>
 #include <string>
-#include <vector>
+#include <type_traits>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
-#include "absl/strings/strip.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "riegeli/bytes/cord_writer.h"
+#include "riegeli/records/record_writer.h"
 #include "xla/tsl/lib/io/zlib_compression_options.h"
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/profiler/utils/file_system_utils.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -44,7 +47,6 @@ namespace tsl {
 namespace profiler {
 namespace {
 
-constexpr char kProtoTraceFileName[] = "trace";
 constexpr char kTfStatsHelperSuffix[] = "tf_stats_helper_result";
 constexpr char kXPlanePb[] = "xplane.pb";
 
@@ -75,6 +77,92 @@ absl::Status WriteGzippedDataToFile(const std::string& filepath,
   RETURN_IF_ERROR(buffer.Init());
   RETURN_IF_ERROR(buffer.Append(data));
   RETURN_IF_ERROR(buffer.Close());
+  RETURN_IF_ERROR(file->Close());
+  return absl::OkStatus();
+}
+
+// SFINAE helpers to bridge API differences between the version of Riegeli
+// used internally (uses options.set_padding()) and older versions used
+// in open-source environments (which use options.set_pad_to_block_boundary()).
+template <typename T, typename = void>
+struct HasSetPadding : std::false_type {};
+
+template <typename T>
+struct HasSetPadding<
+    T, std::void_t<decltype(std::declval<T>().set_padding(64 * 1024))>>
+    : std::true_type {};
+
+template <typename T, typename = void>
+struct HasPaddingEnum : std::false_type {};
+
+template <typename T>
+struct HasPaddingEnum<T, std::void_t<typename T::Padding>> : std::true_type {};
+
+template <typename Options, typename RecordWriterBase, bool HasEnum>
+struct PadToBlockBoundaryHelper {
+  static void Call(Options& options) {
+    options.set_pad_to_block_boundary(true);
+  }
+};
+
+template <typename Options, typename RecordWriterBase>
+struct PadToBlockBoundaryHelper<Options, RecordWriterBase, true> {
+  static void Call(Options& options) {
+    options.set_pad_to_block_boundary(RecordWriterBase::Padding::kTrue);
+  }
+};
+
+template <typename Options>
+void SetPadding(Options& options) {
+  if constexpr (HasSetPadding<Options>::value) {
+    options.set_padding(64 * 1024);
+  } else {
+    using RWB = riegeli::RecordWriterBase;
+    PadToBlockBoundaryHelper<Options, RWB, HasPaddingEnum<RWB>::value>::Call(
+        options);
+  }
+}
+
+// Returns a comma-separated string of plane names in the given XSpace.
+// Used for logging/debugging purposes.
+std::string GetPlaneNames(const tensorflow::profiler::XSpace& xspace) {
+  return absl::StrJoin(
+      xspace.planes(), ", ",
+      [](std::string* out, const tensorflow::profiler::XPlane& plane) {
+        absl::StrAppend(out, plane.name());
+      });
+}
+
+// Serializes the given XSpace proto into a Riegeli-formatted buffer.
+// Uses Brotli compression (level 6) by default.
+absl::StatusOr<absl::Cord> SerializeXSpaceToRiegeli(
+    const tensorflow::profiler::XSpace& xspace) {
+  riegeli::RecordWriterBase::Options record_options;
+  RETURN_IF_ERROR(record_options.FromString("brotli:6"));
+  SetPadding(record_options);
+  absl::Cord buffer;
+  riegeli::RecordWriter writer{riegeli::CordWriter(&buffer), record_options};
+  if (!writer.WriteRecord(xspace)) {
+    return writer.status();
+  }
+  if (!writer.Close()) {
+    return writer.status();
+  }
+  return buffer;
+}
+
+// Writes `data` to a file at `path`. If `append` is true, appends to the
+// existing file (or creates it if it doesn't exist); otherwise, overwrites
+// the file.
+absl::Status WriteOrAppendToFile(const std::string& path,
+                                 const absl::Cord& data, bool append) {
+  std::unique_ptr<WritableFile> file;
+  if (append) {
+    RETURN_IF_ERROR(Env::Default()->NewAppendableFile(path, &file));
+  } else {
+    RETURN_IF_ERROR(Env::Default()->NewWritableFile(path, &file));
+  }
+  RETURN_IF_ERROR(file->Append(data));
   RETURN_IF_ERROR(file->Close());
   return absl::OkStatus();
 }
@@ -151,6 +239,37 @@ absl::Status SaveXSpace(const std::string& repository_root,
   LOG(INFO) << "Collecting XSpace to repository: " << out_path;
 
   return WriteBinaryProto(Env::Default(), out_path, xspace);
+}
+
+absl::Status SaveXSpaceChunk(absl::string_view repository_root,
+                             absl::string_view run, absl::string_view host,
+                             int chunk_index,
+                             const tensorflow::profiler::XSpace& xspace) {
+  std::string plane_names = GetPlaneNames(xspace);
+  LOG(INFO) << "SaveXSpaceChunk index: " << chunk_index
+            << ", size: " << xspace.ByteSizeLong() << " bytes"
+            << (plane_names.empty()
+                    ? ""
+                    : absl::StrCat(" [Planes: ", plane_names, "]"));
+  std::string log_dir = ProfilerJoinPath(repository_root, run);
+  VLOG(1) << "Creating " << log_dir;
+  RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(log_dir));
+
+  std::string file_name = absl::StrCat(host, ".xplane.riegeli");
+  // Windows file names do not support colons.
+  absl::StrReplaceAll({{":", "_"}}, &file_name);
+
+  std::string out_path = ProfilerJoinPath(log_dir, file_name);
+  ASSIGN_OR_RETURN(absl::Cord buffer, SerializeXSpaceToRiegeli(xspace));
+
+  bool append = (chunk_index > 0);
+  if (append) {
+    LOG(INFO) << "Appending chunk " << chunk_index
+              << " to Riegeli file: " << out_path;
+  } else {
+    LOG(INFO) << "Creating new Riegeli file: " << out_path;
+  }
+  return WriteOrAppendToFile(out_path, buffer, append);
 }
 
 }  // namespace profiler

@@ -280,15 +280,13 @@ ENTRY main {
 // CHECK-LABEL: @test_fn
 // CHECK:         %[[INPUT:.*]] = xtile.extract %arg0[%c0] [1024] [1] : memref<1024xf32> -> tensor<1024xf32>
 // CHECK:         %[[INIT:.*]] = xtile.extract %arg1[] [] [] : memref<f32> -> tensor<f32>
-// CHECK:         %[[OUTPUT:.*]], %{{.*}} = xtile.scan(%[[INPUT]]) inits(%[[INIT]])
-// CHECK-SAME:        dimension = 0 {scan_dim_size = 1024 : i64}
-// CHECK-SAME:        : (tensor<1024xf32>), (tensor<f32>) -> (tensor<1024xf32>), (tensor<1024xf32>) {
-// CHECK:         ^bb0(%[[INPUT:.*]]: tensor<f32>, %[[CARRY:.*]]: tensor<f32>):
-// CHECK-DAG:       %[[LHS:.*]] = tensor.extract %[[INPUT]][] : tensor<f32>
-// CHECK-DAG:       %[[RHS:.*]] = tensor.extract %[[CARRY]][] : tensor<f32>
+// CHECK:         %[[SCAN:.*]] = "tt.scan"(%[[INPUT]]) <{axis = 0 : i32, reverse = false}> ({
+// CHECK:         ^bb0(%[[LHS:.*]]: f32, %[[RHS:.*]]: f32):
 // CHECK:           %[[ADD:.*]] = arith.addf %[[LHS]], %[[RHS]] : f32
-// CHECK:           %[[RESULT:.*]] = tensor.from_elements %[[ADD]] : tensor<f32>
-// CHECK:           stablehlo.return %[[RESULT]], %[[RESULT]] : tensor<f32>, tensor<f32>
+// CHECK:           tt.scan.return %[[ADD]] : f32
+// CHECK:         }) : (tensor<1024xf32>) -> tensor<1024xf32>
+// CHECK:         %[[BCAST_INIT:.*]] = stablehlo.broadcast_in_dim %[[INIT]], dims = [] : (tensor<f32>) -> tensor<1024xf32>
+// CHECK:         %[[OUTPUT:.*]] = arith.addf %[[BCAST_INIT]], %[[SCAN]] : tensor<1024xf32>
 // CHECK:         xtile.insert %[[OUTPUT]] into %arg2[%c0] [1024] [1] : tensor<1024xf32> -> memref<1024xf32>
 )";
 

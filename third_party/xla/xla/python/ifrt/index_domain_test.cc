@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "xla/python/ifrt/index_domain.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
-#include "absl/status/status_matchers.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.pb.h"
 #include "xla/python/ifrt/serdes_test_util.h"

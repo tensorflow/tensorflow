@@ -383,14 +383,7 @@ message AllReduceThunkProto {
   repeated CollectiveBufferProto buffers = 3;
 
   xla.ReductionKindProto reduction_kind = 4;
-  bool is_multimem_enabled = 5;
-  int32 shmem_bytes = 6;
-  string kernel_name = 7;
-  bool collective_kernel_enabled = 8;
-  bool is_async = 9;
-  LaunchDimensionsProto launch_dimensions = 10;
-  bool use_pdl = 11;
-  optional bytes cubin = 12;
+  reserved 5 to 12;  // Was collective_kernel_thunk_proto fields.
 }
 
 message ReduceScatterThunkProto {

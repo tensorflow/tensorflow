@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/compiler.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -58,10 +57,12 @@ class NativeEmitterBackend : public GpuCodegenBackend {
   absl::Status ApplyConfig(HloInstruction& instr,
                            const BackendConfig& config) override;
 
+  // Update manually if some change affects native emitters performance
+  // significantly.
+  std::string version() const override { return "v1"; }
+
  private:
   bool IsSupported(const HloInstruction& instr) override;
-  // TODO(b/514330710): use valid version
-  std::string version() const override { return "unknown"; }
 };
 
 }  // namespace gpu

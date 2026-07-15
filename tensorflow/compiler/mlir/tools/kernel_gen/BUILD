@@ -79,6 +79,7 @@ cc_library(
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:NVVMToLLVMIRTranslation",
+        "@llvm-project//mlir:NVVMTransforms",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ROCDLToLLVMIRTranslation",

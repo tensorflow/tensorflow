@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include <gtest/gtest.h>
+#include "absl/status/statusor.h"
 #include "absl/strings/substitute.h"
 #include "xla/backends/gpu/tests/gpu_pjrt_codegen_test.h"
 #include "xla/hlo/ir/hlo_computation.h"

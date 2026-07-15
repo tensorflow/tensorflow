@@ -84,12 +84,22 @@ class GpuPjRtCodegenTest : public HloPjRtGpuTestBase {
                                   bool match_optimized_ir = false,
                                   bool run_optimization_passes = true);
 
-  bool IsBuiltWithRocm() {
+  bool IsBuiltWithRocm() const {
     return runner_type_ == HloRunnerPropertyTag::kUsingGpuRocm;
   }
 
-  bool IsBuiltWithOneAPI() {
+  bool IsBuiltWithOneAPI() const {
     return runner_type_ == HloRunnerPropertyTag::kUsingGpuOneAPI;
+  }
+
+  std::string GpuKernelType() const {
+    if (IsBuiltWithRocm()) {
+      return "amdgpu_kernel";
+    }
+    if (IsBuiltWithOneAPI()) {
+      return "spir_kernel";
+    }
+    return "ptx_kernel";
   }
 
  private:

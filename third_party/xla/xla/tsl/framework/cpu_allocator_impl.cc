@@ -83,6 +83,12 @@ class CPUAllocator : public Allocator {
     return AllocateRawCommon(alignment, num_bytes, port::AlignedNew);
   }
 
+  void* AllocateRawAlignedNew(
+      size_t alignment, size_t num_bytes,
+      const AllocationAttributes& allocation_attr) override {
+    return AllocateRawAlignedNew(alignment, num_bytes);
+  }
+
   void DeallocateRaw(void* ptr) override {
     DeallocateRawCommon(ptr);
     port::AlignedFree(ptr);

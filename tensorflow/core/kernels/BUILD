@@ -551,7 +551,7 @@ cc_library(
     deps = if_cuda_or_rocm([
         "@xla//xla/stream_executor:data_type",
         "@xla//xla/stream_executor:dnn",
-        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_headers_lib",
     ]),
 )
 
@@ -1302,7 +1302,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "unravel_index_op",
     prefix = "unravel_index_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -3069,6 +3072,19 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:tensor_shape_proto_cc",
         "//tensorflow/core/lib/core:refcount",
+    ],
+)
+
+tf_cc_test(
+    name = "tensor_list_test",
+    srcs = ["tensor_list_test.cc"],
+    deps = [
+        ":tensor_list",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_shape_proto_cc",
     ],
 )
 
@@ -8313,7 +8329,7 @@ tf_cc_shared_library(
         "@local_config_tensorrt//:__subpackages__",
         "@mkl_dnn_acl_compatible//:__subpackages__",
         "@net_zstd//:__subpackages__",
-        "@onednn//:__subpackages__",
+        "@onednn_async//:__subpackages__",
         "@org_sqlite//:__subpackages__",
         "@platforms//:__subpackages__",
         "@png//:__subpackages__",

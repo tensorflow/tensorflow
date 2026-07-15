@@ -300,7 +300,7 @@ TEST_F(CostModelConfigOptimizationHloTest,
       TritonGemmConfig(128, 128, 128, 1, 4, 1, false),
   };
 
-  DebugOptions debug_options;
+  DebugOptions debug_options = module->config().debug_options();
   (*debug_options
         .mutable_xla_gpu_experimental_cost_model_gemm_tiling_options())["top"] =
       "2";
@@ -328,7 +328,7 @@ TEST_F(CostModelConfigOptimizationHloTest, MixinKeepsInvalidConfigs) {
   std::vector<TritonGemmConfig> optimized_configs = {valid_config,
                                                      invalid_config};
 
-  DebugOptions debug_options;
+  DebugOptions debug_options = module->config().debug_options();
   (*debug_options.mutable_xla_gpu_experimental_cost_model_gemm_tiling_options())
       ["mixin"] = "1";
 
@@ -353,7 +353,7 @@ TEST_F(CostModelConfigOptimizationHloTest, FilterRemovesInvalidConfigs) {
   std::vector<TritonGemmConfig> optimized_configs = {valid_config,
                                                      invalid_config};
 
-  DebugOptions debug_options;
+  DebugOptions debug_options = module->config().debug_options();
   (*debug_options.mutable_xla_gpu_experimental_cost_model_gemm_tiling_options())
       ["filter"] = "1.0";
 

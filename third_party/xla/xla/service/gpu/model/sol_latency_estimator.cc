@@ -55,14 +55,6 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using ::mlir::MLIRContext;
-
-bool IsTritonCollectiveKernel(
-    CollectiveBackendConfig::CollectiveKernelStrategy ks) {
-  return ks == CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT ||
-         ks == CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT;
-}
-
 bool IsSupportedCollectiveOp(const HloInstruction& instr) {
   return HloPredicateIsOp<HloOpcode::kAllReduceStart, HloOpcode::kAllReduce,
                           HloOpcode::kReduceScatter, HloOpcode::kAllGatherStart,

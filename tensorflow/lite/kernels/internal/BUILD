@@ -359,7 +359,6 @@ cc_library(
     }),
     deps = [
         ":cppmath",
-        ":cpu_check",
         "@cpuinfo//:cpuinfo_with_unstripped_include_path",
     ],
 )

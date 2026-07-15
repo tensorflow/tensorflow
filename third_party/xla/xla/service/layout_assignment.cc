@@ -874,9 +874,8 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
                 /*minor_to_major_only=*/true)) {
           *branch_computation_layout.mutable_result_layout() =
               best_branch_computation_layout.result_layout();
-          InsertOrDie(&conditional_mismatch_,
-                      instruction->branch_computation(k),
-                      branch_computation_layout);
+          conditional_mismatch_.try_emplace(instruction->branch_computation(k),
+                                            branch_computation_layout);
         } else {
           RETURN_IF_ERROR(SetOperandLayout(
               branch_computation_layout.parameter_shape(0), instruction, k + 1,

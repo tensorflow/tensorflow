@@ -16,10 +16,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_HLO_GRAPH_DUMPER_H_
 #define XLA_SERVICE_HLO_GRAPH_DUMPER_H_
 
+#include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"

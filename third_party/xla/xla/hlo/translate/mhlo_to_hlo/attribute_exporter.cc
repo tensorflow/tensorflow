@@ -450,7 +450,9 @@ absl::StatusOr<xla::PrecisionConfig::Algorithm> ConvertDotAlgorithm(
       attr.getAccumulationType(), attr.getLhsComponentCount(),
       attr.getRhsComponentCount(), attr.getNumPrimitiveOperations(),
       attr.getAllowImpreciseAccumulation());
-  if (failed(algorithm)) return Internal("Unknown dot algorithm");
+  if (failed(algorithm)) {
+    return Internal("Unknown dot algorithm");
+  }
 
   switch (algorithm.value()) {
     case mlir::hlo::detail::KnownDotAlgorithm::ANY_F8_ANY_F8_F32:
@@ -490,7 +492,9 @@ absl::StatusOr<xla::PrecisionConfig::Algorithm> ConvertDotAlgorithm(
       attr.getAccumulationType(), attr.getLhsComponentCount(),
       attr.getRhsComponentCount(), attr.getNumPrimitiveOperations(),
       attr.getAllowImpreciseAccumulation());
-  if (failed(algorithm)) return Internal("Unknown dot algorithm");
+  if (failed(algorithm)) {
+    return Internal("Unknown dot algorithm");
+  }
 
   switch (algorithm.value()) {
     case mlir::hlo::detail::KnownDotAlgorithm::ANY_F8_ANY_F8_F32:
@@ -595,12 +599,14 @@ absl::StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroupsToV1(
 // and source-target pairs are defined in HLO.
 absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>> ConvertNx2Attribute(
     std::optional<mlir::DenseIntElementsAttr> optional_attr) {
-  if (!optional_attr.has_value())
+  if (!optional_attr.has_value()) {
     return std::vector<std::pair<int64_t, int64_t>>{};
+  }
   mlir::DenseIntElementsAttr attr = *optional_attr;
   auto type = mlir::dyn_cast<mlir::RankedTensorType>(attr.getType());
-  if (!type || type.getRank() != 2 || type.getShape()[1] != 2)
+  if (!type || type.getRank() != 2 || type.getShape()[1] != 2) {
     return Internal("expected Nx2 attribute to be a tensor of shape Nx2");
+  }
   auto it = attr.getValues<int64_t>().begin();
   std::vector<std::pair<int64_t, int64_t>> out(attr.getNumElements() / 2);
   for (auto& item : out) {
@@ -617,8 +623,9 @@ absl::StatusOr<TriangularSolveOptions::Transpose> ConvertTranspose(
     llvm::StringRef transpose_string) {
   std::optional<mlir::mhlo::Transpose> transpose =
       mlir::mhlo::symbolizeTranspose(transpose_string);
-  if (!transpose)
+  if (!transpose) {
     return InvalidArgument("Unknown transpose type %s", transpose_string.str());
+  }
 
   switch (*transpose) {
     case mlir::mhlo::Transpose::NO_TRANSPOSE:
@@ -690,10 +697,14 @@ absl::StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
 
 std::optional<xla::OpSharding> ConvertSharding(llvm::StringRef sharding) {
   xla::OpSharding sharding_proto;
-  if (sharding_proto.ParseFromString(sharding.str())) return sharding_proto;
+  if (sharding_proto.ParseFromString(sharding.str())) {
+    return sharding_proto;
+  }
   absl::StatusOr<xla::HloSharding> sharding_cpp =
       xla::ParseSharding(sharding.str());
-  if (sharding_cpp.ok()) return sharding_cpp->ToProto();
+  if (sharding_cpp.ok()) {
+    return sharding_cpp->ToProto();
+  }
   return std::nullopt;
 }
 
@@ -749,7 +760,9 @@ std::optional<xla::OriginalValueProto> ConvertOriginalValue(
 
 std::optional<xla::HloInputOutputAliasProto> ConvertInputOutputAlias(
     llvm::ArrayRef<mlir::Attribute> aliasing) {
-  if (aliasing.empty()) return std::nullopt;
+  if (aliasing.empty()) {
+    return std::nullopt;
+  }
 
   xla::HloInputOutputAliasProto input_output_alias_proto;
   for (auto attr : aliasing) {
@@ -771,12 +784,13 @@ std::optional<xla::HloInputOutputAliasProto> ConvertInputOutputAlias(
                                                parameter_index.end());
     mlir::StringRef kind =
         mlir::cast<mlir::StringAttr>(alias_attr.get("kind")).getValue();
-    if (kind == "may_alias")
+    if (kind == "may_alias") {
       entry.set_kind(xla::Kind::MAY_ALIAS);
-    else if (kind == "must_alias")
+    } else if (kind == "must_alias") {
       entry.set_kind(xla::Kind::MUST_ALIAS);
-    else
+    } else {
       entry.set_kind(xla::Kind::UNDEFINED_ALIAS);
+    }
     input_output_alias_proto.add_entries()->Swap(&entry);
   }
   return input_output_alias_proto;

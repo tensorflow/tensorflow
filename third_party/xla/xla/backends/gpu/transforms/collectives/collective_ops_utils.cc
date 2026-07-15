@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
@@ -327,7 +329,25 @@ bool IsAllReplicasLocal(int64_t gpus_per_host,
                         absl::Span<const ReplicaGroup> replica_groups,
                         CollectiveOpGroupMode group_mode,
                         const DeviceAssignment* device_assignment) {
-  if (device_assignment != nullptr) {
+  if (VLOG_IS_ON(3)) {
+    VLOG(3) << "IsAllReplicasLocal: gpus_per_host=" << gpus_per_host
+            << ", replica_groups=" << ReplicaGroupsToString(replica_groups)
+            << ", device_assignment="
+            << (device_assignment != nullptr ? device_assignment->ToString()
+                                             : "nullptr");
+  }
+  // functional_hlo_runner assigns 0 for device assigments for multi-host
+  // cases. In this case we ignore the assignment.
+  // See LoadAndCompile in functional_hlo_runner.cc for more details.
+  const bool has_device_assignment =
+      [](const DeviceAssignment* device_assignment) {
+        if (device_assignment == nullptr) {
+          return false;
+        }
+        return !absl::c_all_of(*device_assignment,
+                               [](int64_t v) { return v == 0; });
+      }(device_assignment);
+  if (has_device_assignment) {
     auto status_or_groups = GetParticipatingDevicesGroups(
         *device_assignment, replica_groups, group_mode);
     if (!status_or_groups.ok()) {
@@ -342,6 +362,14 @@ bool IsAllReplicasLocal(int64_t gpus_per_host,
   return absl::c_all_of(replica_groups, [&](const auto& group) {
     return IsLocalReplicaGroup(gpus_per_host, group.replica_ids());
   });
+}
+
+bool IsTritonCollectiveKernel(
+    CollectiveBackendConfig::CollectiveKernelStrategy kernel_strategy) {
+  return kernel_strategy ==
+             CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT ||
+         kernel_strategy ==
+             CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT;
 }
 
 }  // namespace gpu

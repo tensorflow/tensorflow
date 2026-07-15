@@ -1,6 +1,6 @@
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
-load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_binary", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -28,6 +28,7 @@ cc_library(
     deps = [
         ":tiling_space_utils",
         "//xla:shape_util",
+        "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla/codegen/tiling:constraint_expression",
         "//xla/hlo/analysis:indexing_analysis",
@@ -129,17 +130,43 @@ xla_cc_test(
         ":tile",
         ":tile_propagation",
         "//xla:shape_util",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/hlo/analysis:indexing_test_utils",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/hlo/utils:hlo_traversal",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+xla_cc_test(
+    name = "reshape_tile_propagation_test",
+    srcs = ["reshape_tile_propagation_test.cc"],
+    deps = [
+        ":test_utils",
+        ":tile",
+        ":tile_propagation",
+        "//xla:shape_util",
+        "//xla/hlo/analysis:symbolic_map",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/hlo/utils:hlo_traversal",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -234,6 +261,7 @@ cc_library(
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
@@ -276,14 +304,45 @@ cc_library(
     hdrs = ["test_utils.h"],
     deps = [
         ":tile",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:indexing_test_utils",
         "//xla/hlo/analysis:symbolic_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_for_library",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_binary(
+    name = "validate_reshape_propagation",
+    testonly = True,
+    srcs = ["validate_reshape_propagation.cc"],
+    deps = [
+        ":test_utils",
+        ":tile",
+        ":tile_propagation",
+        "//xla:shape_util",
+        "//xla/hlo/analysis:symbolic_map",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_traversal",
+        "//xla/tsl/platform:status_macros",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 

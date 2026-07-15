@@ -16,6 +16,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "rocm/include/rocm_smi/rocm_smi.h"
 #include "xla/stream_executor/rocm/rocm_smi_util.h"
 #include "xla/tsl/platform/logging.h"
@@ -49,6 +50,8 @@ constexpr int64_t ComputePcieBandwidthFromSpeedAndWidth(
 }  // namespace
 
 std::optional<int64_t> GetRocmPcieBandwidth(absl::string_view pci_bus_id) {
+  absl::MutexLock lock(&rocm_smi_mutex);
+
   if (!InitRocmSmi()) return std::nullopt;
 
   std::optional<BdfComponents> bdf = ParseBdf(pci_bus_id);

@@ -75,6 +75,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:tuple_points_to_analysis",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_instruction_utils",
         "//xla/service:dynamic_dimension_inference",
         "//xla/service:gather_scatter_utils",
         "//xla/service:hlo_module_config",

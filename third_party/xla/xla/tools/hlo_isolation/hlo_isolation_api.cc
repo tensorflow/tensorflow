@@ -29,6 +29,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -269,15 +270,7 @@ std::vector<HloOutputCallback> CreateDumpHloOutputCallbacks(
             }
 
             auto* env = tsl::Env::Default();
-            std::string outdir;
-            std::string filename =
-                absl::StrCat("fusion-debugger-reference-", hlo_name, ".bin");
-            std::string filepath;
-            if (tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
-              filepath = tsl::io::JoinPath(outdir, filename);
-            } else {
-              filepath = tsl::io::GetTempFilename(filename);
-            }
+            std::string filepath = GetFusionDebuggerFilePath(hlo_name);
             auto status = tsl::WriteStringToFile(
                 env, filepath, mutated_literal.ToProto().SerializeAsString());
             if (!status.ok()) {
@@ -297,15 +290,6 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
     const HloModule& original_module, const ModuleIsolationOptions& options,
     std::shared_ptr<absl::Mutex> result_mutex,
     HloIsolationTestResult* test_result) {
-  auto* env = tsl::Env::Default();
-  auto get_path = [](absl::string_view filename) -> std::string {
-    std::string outdir;
-    if (tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
-      return tsl::io::JoinPath(outdir, filename);
-    }
-    return tsl::io::GetTempFilename(std::string(filename));
-  };
-
   int64_t next_hlo_id = 1;
   std::vector<xla::HloOutputCallback> dynamic_cbs;
 
@@ -350,8 +334,8 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
       dynamic_cb.callback_id = hlo_id;
       dynamic_cb.num_operands = 1;
       dynamic_cb.callback =
-          [op_name, ref_op_name, module_name = original_module.name(), get_path,
-           env, abs_error, rel_error, result_mutex, test_result](
+          [op_name, ref_op_name, module_name = original_module.name(),
+           abs_error, rel_error, result_mutex, test_result](
               int64_t replica_id, int64_t partition_id,
               absl::Span<std::shared_ptr<const Literal> const> literals) {
             if (literals.empty() || !literals[0]) {
@@ -361,15 +345,14 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
               return;
             }
 
-            std::string filename =
-                absl::StrCat("fusion-debugger-reference-", ref_op_name, ".bin");
-            std::string filepath = get_path(filename);
+            std::string filepath = GetFusionDebuggerFilePath(ref_op_name);
 
             bool shape_matched = false;
             Literal expected_literal;
             xla::LiteralProto literal_proto;
             std::string content;
-            if (tsl::ReadFileToString(env, filepath, &content).ok()) {
+            if (tsl::ReadFileToString(tsl::Env::Default(), filepath, &content)
+                    .ok()) {
               if (literal_proto.ParseFromString(content)) {
                 auto expected_status = Literal::CreateFromProto(literal_proto);
                 if (expected_status.ok()) {
@@ -464,6 +447,43 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
 }
 
 }  // namespace
+
+std::string GetFusionDebuggerDir() {
+  std::string outdir;
+  if (tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
+    return outdir;
+  }
+  std::string temp_file = tsl::io::GetTempFilename("");
+  std::string temp_dir = std::string(tsl::io::Dirname(temp_file));
+  (void)tsl::Env::Default()->DeleteFile(temp_file);
+  return temp_dir;
+}
+
+std::string GetFusionDebuggerFilePath(absl::string_view op_name) {
+  std::string filename =
+      absl::StrCat("fusion-debugger-reference-", op_name, ".bin");
+  std::string outdir;
+  if (tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
+    return tsl::io::JoinPath(outdir, filename);
+  }
+  return tsl::io::GetTempFilename(filename);
+}
+
+void CleanUpAllFusionDebuggerFiles() {
+  tsl::Env* env = tsl::Env::Default();
+  for (const std::string& path : GetLeftoverFusionDebuggerFiles()) {
+    (void)env->DeleteFile(path);
+  }
+}
+
+std::vector<std::string> GetLeftoverFusionDebuggerFiles() {
+  std::vector<std::string> bin_files;
+  tsl::Env* env = tsl::Env::Default();
+  std::string pattern = tsl::io::JoinPath(GetFusionDebuggerDir(),
+                                          "*fusion-debugger-reference-*.bin");
+  (void)env->GetMatchingPaths(pattern, &bin_files);
+  return bin_files;
+}
 
 void PopulateNumericCheckMismatches(
     NumericCheck* numeric_check,
@@ -662,6 +682,8 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
         ref_groups[key].push_back(std::string(instruction->name()));
       }
     }
+
+    absl::Cleanup cleanup = [] { CleanUpAllFusionDebuggerFiles(); };
 
     RunModuleOptions reference_opts;
     reference_opts.use_fusion_debugger = true;

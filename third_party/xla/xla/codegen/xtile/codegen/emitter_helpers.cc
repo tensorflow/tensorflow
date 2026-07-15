@@ -186,9 +186,17 @@ mlir::Value OnesLike(mlir::ImplicitLocOpBuilder& b, mlir::Type type) {
   mlir::Type element_type = mlir::getElementTypeOrSelf(type);
   CHECK(element_type.isInteger()) << "OnesLike only supports integer types.";
 
+  mlir::Type const_type = GetSignlessType(type);
+
   int64_t width = element_type.getIntOrFloatBitWidth();
   mlir::APInt all_ones = mlir::APInt::getAllOnes(width);
-  return mlir::createScalarOrSplatConstant(b, b.getLoc(), type, all_ones);
+  mlir::Value cst =
+      mlir::createScalarOrSplatConstant(b, b.getLoc(), const_type, all_ones);
+  if (element_type.isUnsignedInteger()) {
+    cst = mlir::UnrealizedConversionCastOp::create(b, b.getLoc(), type, cst)
+              .getResult(0);
+  }
+  return cst;
 }
 
 }  // namespace
@@ -221,7 +229,7 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
   // - some parallel and sequential dimensions of tiling space d0, d1, ..
   // - some runtime variables s0, s1, .., represented as symbols.
   // To evaluate them we create first `offset_indexing_map`
-  //   (pid)[<sequential dims k_0, k_1, ...>, <runtime vars rt_0, rt_1>]
+  //   (pid, tid)[<sequential dims k_0, k_1, ...>, <runtime vars rt_0, rt_1>]
   //     -> (<tiling space dims>)[<runtime variables>]
   // Note that sequential dimensions are moved from dimensions to symbols.
   // Then plug in pid, sequential and runtime values.
@@ -235,9 +243,20 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
   const llvm::SmallVector<int64_t>& dim_ids = used_parameters.dimension_ids;
   const llvm::SmallVector<int64_t>& symbol_ids = used_parameters.symbol_ids;
 
-  SmallVector<Value> dim_values{Cast(b_, pid_, pid_.getType())};
+  SmallVector<Value> dim_values{Cast(b_, pid_, pid_.getType()),
+                                Cast(b_, tid_, tid_.getType())};
+  int64_t num_tiles_per_pid = schedule_.GetNumTilesPerPid();
   std::vector<IndexingMap::Variable> dim_variables{
-      IndexingMap::Variable(schedule_.pid_bounds, "pid")};
+      IndexingMap::Variable(0, schedule_.num_pids - 1, "pid"),
+      IndexingMap::Variable(0, num_tiles_per_pid - 1, "tid")};
+  SmallVector<std::pair<SymbolicExpr, Interval>> constraints;
+  if (num_tiles_per_pid > 1) {
+    SymbolicExpr pid_expr = CreateDimExpr(0, mlir_context);
+    SymbolicExpr tid_expr = CreateDimExpr(1, mlir_context);
+    SymbolicExpr global_tile_id_expr = pid_expr * num_tiles_per_pid + tid_expr;
+    constraints.push_back(std::make_pair(global_tile_id_expr,
+                                         Interval{0, schedule_.num_tiles - 1}));
+  }
 
   int64_t symbol_count = 0;
   SmallVector<Value> symbol_values;
@@ -301,7 +320,8 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
   IndexingMap offset_indexing_map(
       SymbolicMap::Get(mlir_context, dim_values.size(), symbol_count,
                        updated_exprs),
-      std::move(dim_variables), std::move(symbol_variables), {});
+      std::move(dim_variables), std::move(symbol_variables), /*rt_vars=*/{},
+      constraints);
 
   return emitters::ApplyIndexing(offset_indexing_map, dim_values, symbol_values,
                                  b_);
@@ -392,6 +412,22 @@ absl::StatusOr<PrimitiveType> GetPrimitiveType(Type t) {
 Type StorageType(Type t) {
   if (auto i = mlir::dyn_cast<mlir::IntegerType>(t); i && i.getWidth() == 1) {
     return i.get(i.getContext(), 8, i.getSignedness());
+  }
+  return t;
+}
+
+Type GetSignlessType(Type t) {
+  Type elem_type = mlir::getElementTypeOrSelf(t);
+  if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(elem_type)) {
+    if (int_type.isUnsignedInteger()) {
+      Type signless_elem = mlir::IntegerType::get(
+          t.getContext(), int_type.getWidth(),
+          mlir::IntegerType::SignednessSemantics::Signless);
+      if (auto shaped_type = mlir::dyn_cast<mlir::ShapedType>(t)) {
+        return shaped_type.clone(signless_elem);
+      }
+      return signless_elem;
+    }
   }
   return t;
 }
@@ -891,9 +927,6 @@ mlir::MemRefType GetMemRefType(const Shape& shape, mlir::Type element_type) {
 absl::StatusOr<Type> GetMlirType(
     mlir::ImplicitLocOpBuilder& b, PrimitiveType type,
     const std::optional<GpuComputeCapability>& gpu_cc) {
-  if (type == U16) {
-    return b.getI16Type();
-  }
   if (type == S4) {
     return b.getI4Type();
   }

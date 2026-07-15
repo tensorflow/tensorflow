@@ -19,10 +19,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/framework/op_def_util.h"
 #include "tensorflow/python/framework/python_api_info.h"
@@ -438,6 +439,8 @@ bool InferLengthAttributes(const absl::Span<PyObject*> params,
   return true;
 }
 
+}  // namespace
+
 int GetPythonAPIMaxIndex(const PythonAPIInfo& api_info) {
   int max_index = -1;
   for (const auto& attr : api_info.attributes()) {
@@ -448,8 +451,6 @@ int GetPythonAPIMaxIndex(const PythonAPIInfo& api_info) {
   }
   return max_index;
 }
-
-}  // namespace
 
 bool ConvertPythonAPIParameters(const PythonAPIInfo& api_info,
                                 const PythonTensorConverter& tensor_converter,

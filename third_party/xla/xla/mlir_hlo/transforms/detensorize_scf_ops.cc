@@ -13,15 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-#include <utility>
-
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/Pass/Pass.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "transforms/passes.h"
@@ -128,8 +126,3 @@ struct DetensorizeScfOpsPass
 
 }  // namespace
 }  // namespace mlir
-
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-mlir::createDetensorizeScfOpsPass() {
-  return std::make_unique<mlir::DetensorizeScfOpsPass>();
-}

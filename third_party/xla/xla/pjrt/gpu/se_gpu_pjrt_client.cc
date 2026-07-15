@@ -22,6 +22,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <variant>
@@ -43,6 +44,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -65,7 +67,6 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
 #include "xla/pjrt/async_work_runner.h"
-#include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/device_event_utils.h"
@@ -79,7 +80,6 @@ limitations under the License.
 #include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/host_to_device_transfer_manager.h"
-#include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -87,12 +87,14 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/raw_buffer.h"
-#include "xla/pjrt/se_raw_buffer.h"
-#include "xla/pjrt/tracked_device_buffer.h"
+#include "xla/pjrt/se/buffer_sequencing_event.h"
+#include "xla/pjrt/se/local_device_state.h"
+#include "xla/pjrt/se/pjrt_stream_executor_client.h"
+#include "xla/pjrt/se/se_raw_buffer.h"
+#include "xla/pjrt/se/tracked_device_buffer.h"
 #include "xla/pjrt/worker_thread.h"
 #include "xla/runtime/device_id.h"
 #include "xla/runtime/hang_watchdog.h"
@@ -110,6 +112,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/device_interconnect_resource.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
@@ -136,7 +139,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/pjrt/gpu/gpu_metrics.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
-#include "xla/pjrt/stream_executor_executable.pb.h"
+#include "xla/pjrt/se/stream_executor_executable.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable.h"
@@ -159,7 +162,6 @@ limitations under the License.
 #endif
 
 #include "xla/service/gpu/gpu_executable_run_options.h"
-#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -1297,29 +1299,6 @@ BuildLocalDeviceStates(LocalClient* xla_client, bool schedule_async,
   return std::move(addressable_devices);
 }
 
-// Creates allocator memory registration and adds the required suballocator
-// visitors to `allocator_config`. Allocators that do not use suballocator
-// visitors simply ignore them.
-std::shared_ptr<gpu::AllocatorMemoryRegistration>
-CreateAllocatorMemoryRegistration(GpuAllocatorConfig* allocator_config) {
-  // Automatic memory registration is only safe for preallocated BFC arenas.
-  // If BFC grows later, ranks may not see a consistent set of registered
-  // backing allocations, which can lead to undefined behavior or deadlocks.
-  if (!allocator_config->preallocate) {
-    return nullptr;
-  }
-
-  auto memory_registration =
-      std::make_shared<gpu::AllocatorMemoryRegistration>();
-  gpu::RegisterOnGpuCliqueCreatedCallback(
-      memory_registration->CliqueCreatedCallback());
-  allocator_config->sub_allocator_alloc_visitors.push_back(
-      memory_registration->alloc_visitor());
-  allocator_config->sub_allocator_free_visitors.push_back(
-      memory_registration->free_visitor());
-
-  return memory_registration;
-}
 
 // Constructs a GPU device memory allocator to use, according to the allocator
 // configuration the client requested.
@@ -1384,12 +1363,13 @@ GetStreamExecutorGpuDeviceAllocator(
             {bfc_allocator, ordinal_and_device.second->compute_stream(),
              /*memory_space=*/(int)xla::gpu::MemorySpaceColor::kDefault});
         if (shared_collective_pool) {
-          size_t collective_memory_alignment =
+          uint64_t collective_memory_alignment =
               tsl::Allocator::kAllocatorAlignment;
-          if (auto* collectives =
-                  gpu::GpuCollectives::Default(platform->Name())) {
-            collective_memory_alignment =
-                collectives->SymmetricMemoryAlignment();
+          absl::StatusOr<uint64_t> granularity =
+              ordinal_and_device.second->executor()
+                  ->GetCollectiveMemoryGranularity();
+          if (granularity.ok()) {
+            collective_memory_alignment = *granularity;
           }
           allocators.push_back(
               {std::move(bfc_allocator),
@@ -1404,16 +1384,53 @@ GetStreamExecutorGpuDeviceAllocator(
       break;
     }
 
-    case GpuAllocatorConfig::Kind::kPlatform:
-      LOG(INFO) << "Using platform allocator.";
+    case GpuAllocatorConfig::Kind::kPlatform: {
+      LOG(INFO) << "Using platform (synchronous passthrough) allocator.";
       if (allocator_config.collective_memory_size != 0) {
         LOG(WARNING)
             << "collective_memory_size is non-zero, but allocator kind is set "
-               "to \"platform\". Collective memory will not be allocated.";
+               "to \"platform\". Collective memory will not be preallocated.";
       }
-      // Returning null will cause the client to use the default backend
-      // allocator.
-      return nullptr;
+      for (const auto& [ordinal, device] : addressable_devices) {
+        auto* executor = device->executor();
+        auto* stream = device->compute_stream();
+
+        // Default device memory space (XLA color 0 -> StreamExecutor
+        // MemorySpace::kDevice = 0)
+        auto default_allocator =
+            std::make_shared<se::StreamExecutorMemoryAllocator>(
+                executor, static_cast<int64_t>(se::MemorySpace::kDevice));
+        allocators.push_back(
+            {std::move(default_allocator), stream,
+             /*memory_space=*/(int)xla::gpu::MemorySpaceColor::kDefault});
+
+        // Collective memory space (XLA color 1 -> StreamExecutor
+        // MemorySpace::kCollective = 2)
+        auto collective_allocator =
+            std::make_shared<se::StreamExecutorMemoryAllocator>(
+                executor, static_cast<int64_t>(se::MemorySpace::kCollective));
+        allocators.push_back(
+            {std::move(collective_allocator), stream,
+             /*memory_space=*/(int)xla::gpu::MemorySpaceColor::kCollective});
+
+        // Temp buffer memory space (XLA color 2 -> StreamExecutor
+        // MemorySpace::kDevice = 0)
+        auto temp_allocator =
+            std::make_shared<se::StreamExecutorMemoryAllocator>(
+                executor, static_cast<int64_t>(se::MemorySpace::kDevice));
+        allocators.push_back(
+            {std::move(temp_allocator), stream,
+             /*memory_space=*/(int)xla::gpu::MemorySpaceColor::kTempBuffer});
+
+        // Host memory space (StreamExecutor MemorySpace::kHost = 5)
+        ASSIGN_OR_RETURN(auto host_allocator, GetGpuHostAllocator(executor));
+        allocators.push_back(
+            {std::move(host_allocator), stream,
+             /*memory_space=*/static_cast<int>(se::MemorySpace::kHost)});
+      }
+      return std::make_unique<se::MultiDeviceAdapter>(platform,
+                                                      std::move(allocators));
+    }
 
     case GpuAllocatorConfig::Kind::kVmm: {
 #if GOOGLE_CUDA
@@ -1440,26 +1457,6 @@ GetStreamExecutorGpuDeviceAllocator(
       return absl::UnimplementedError(
           "VMM allocator is only supported with CUDA or ROCm.");
 #endif  // GOOGLE_CUDA
-    }
-
-    case GpuAllocatorConfig::Kind::kAddress: {
-      // Synchronous passthrough allocator. Unlike kPlatform (which returns
-      // nullptr to share the Backend/LocalClient allocator with TF), this
-      // constructs a dedicated StreamExecutorAddressAllocator at the PJRT
-      // level and bypasses the BFC allocator entirely.
-      LOG(INFO) << "Using address (synchronous passthrough) allocator.";
-      if (allocator_config.collective_memory_size != 0) {
-        LOG(WARNING)
-            << "collective_memory_size is non-zero, but allocator kind is set "
-               "to \"address\". Collective memory will not be allocated.";
-      }
-      std::vector<se::StreamExecutor*> executors;
-      executors.reserve(addressable_devices.size());
-      for (const auto& [ordinal, device] : addressable_devices) {
-        executors.push_back(device->executor());
-      }
-      return std::make_unique<se::StreamExecutorAddressAllocator>(platform,
-                                                                  executors);
     }
   }
 
@@ -1531,6 +1528,35 @@ void NameDeviceAndLauncherThread(const LocalTopologyProto& node,
 }
 
 }  // namespace
+
+// Creates allocator memory registration and adds the required suballocator
+// visitors to `allocator_config`. Allocators that do not use suballocator
+// visitors simply ignore them.
+std::shared_ptr<gpu::AllocatorMemoryRegistration>
+CreateAllocatorMemoryRegistration(GpuAllocatorConfig* allocator_config) {
+  const DebugOptions& debug_options = GetDebugOptionsFromFlags();
+  // TODO(b/530631424): Enable by default once bug is fixed.
+  if (!debug_options.xla_gpu_enable_nccl_user_buffers_in_default_space()) {
+    return nullptr;
+  }
+  // Automatic memory registration is only safe for preallocated BFC arenas.
+  // If BFC grows later, ranks may not see a consistent set of registered
+  // backing allocations, which can lead to undefined behavior or deadlocks.
+  if (!allocator_config->preallocate) {
+    return nullptr;
+  }
+
+  auto memory_registration =
+      std::make_shared<gpu::AllocatorMemoryRegistration>();
+  gpu::RegisterOnGpuCliqueCreatedCallback(
+      memory_registration->CliqueCreatedCallback());
+  allocator_config->sub_allocator_alloc_visitors.push_back(
+      memory_registration->alloc_visitor());
+  allocator_config->sub_allocator_free_visitors.push_back(
+      memory_registration->free_visitor());
+
+  return memory_registration;
+}
 
 absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     absl::string_view platform_name,
@@ -2104,6 +2130,7 @@ StreamExecutorGpuClient::RunAsync(
       gpu::GpuExecutableBufferAllocator::ExecutionScope allocation_scope,
       gpu_exec->buffer_allocator().CreateExecutionScope(
           run_options, memory_allocator, device_ordinal));
+
   ASSIGN_OR_RETURN(xla::gpu::BufferAllocations buffer_allocations,
                    allocation_scope.GenerateBufferAllocations(
                        run_options, get_parameter_buffer, globals,
@@ -2190,8 +2217,11 @@ StreamExecutorGpuClient::RunAsync(
 
   absl::Status execute_status = allocation_scope.ExecuteWithBufferAllocations(
       buffer_allocations, device_ordinal,
-      [&](const gpu::BufferAllocations& execution_buffers) {
-        return gpu_exec->ExecuteThunks(execution_buffers, run_options);
+      [&](const gpu::BufferAllocations& execution_buffers,
+          std::optional<absl::Span<const BufferAllocation::Index>>
+              persistent_alloc_indices) {
+        return gpu_exec->ExecuteThunks(execution_buffers, run_options,
+                                       persistent_alloc_indices);
       });
   absl::Status teardown_status = buffer_allocations.TearDown(
       buffers_in_result, gpu_exec->GetAllocations());

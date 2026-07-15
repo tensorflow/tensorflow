@@ -168,8 +168,7 @@ class DynamicStitchOpImplBase : public OpKernel {
 
 template <typename T>
 void DynamicStitchGPUImpl(const Eigen::GpuDevice& gpu_device,
-                          const int32_t slice_size,
-                          const int32_t first_dim_size,
+                          int32_t slice_size, int32_t first_dim_size,
                           const GpuDeviceArrayStruct<int>& input_indices,
                           const GpuDeviceArrayStruct<const T*>& input_ptrs,
                           T* output);

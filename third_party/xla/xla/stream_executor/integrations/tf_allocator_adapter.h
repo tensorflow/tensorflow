@@ -32,9 +32,30 @@ limitations under the License.
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/allocator.h"
 
 namespace stream_executor {
+
+// Thin tsl::Allocator wrapper around StreamExecutor for a given memory space.
+// Used to plug StreamExecutor memory spaces into MultiDeviceAdapter via
+// TfAllocatorAdapter without BFC caching or pooling.
+class StreamExecutorMemoryAllocator : public tsl::Allocator {
+ public:
+  StreamExecutorMemoryAllocator(StreamExecutor* executor, int64_t memory_space);
+
+  std::string Name() override;
+
+  void* AllocateRaw(size_t alignment, size_t num_bytes) override;
+
+  void DeallocateRaw(void* ptr) override;
+
+  bool TracksAllocationSizes() const override { return false; }
+
+ private:
+  StreamExecutor* executor_;
+  int64_t memory_space_;
+};
 
 // Adapter class that wraps a Tensorflow allocator.
 //

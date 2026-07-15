@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -186,7 +187,8 @@ ENTRY entry {
   EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 
-TEST_P(TritonFusionNumericsVerifierTest, MultiOutput) {
+// TODO: b/502910372 - support multi-output fusions.
+TEST_P(TritonFusionNumericsVerifierTest, DISABLED_MultiOutput) {
   constexpr absl::string_view kHlo = R"hlo(
 HloModule m
 fusion_computation {

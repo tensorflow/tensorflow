@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/constraint_expression.h"
+#include "xla/codegen/tiling/experimental/tiling_space_utils.h"
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
@@ -235,6 +236,9 @@ class SymbolicTileAnalysisTest : public HloHardwareIndependentTestBase {
         HloHardwareIndependentTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_unsupported_enable_triton_multi_output_fusion(
         true);
+    // TODO: b/514293537 - drop the test altogether but consider migrating some
+    // of the test cases to the new tiling.
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(false);
     return debug_options;
   }
 

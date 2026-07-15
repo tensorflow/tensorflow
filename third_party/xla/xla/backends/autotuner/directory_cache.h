@@ -48,10 +48,10 @@ namespace xla {
 // PersistentCache.
 class DirectoryCache : public PersistentCache {
  public:
-  DirectoryCache(AutotuneScope scope, std::string directory_path,
+  DirectoryCache(AutotuneCacheContext cache_ctx, std::string directory_path,
                  CacheMode mode = CacheMode::kReadWrite,
                  KeyMatchingMode matching_mode = KeyMatchingMode::kStrict)
-      : PersistentCache(std::move(scope), mode, matching_mode),
+      : PersistentCache(std::move(cache_ctx), mode, matching_mode),
         directory_path_(std::move(directory_path)) {}
 
  protected:

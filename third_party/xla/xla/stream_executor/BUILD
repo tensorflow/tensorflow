@@ -380,6 +380,27 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "device_address_vmm_allocator_test",
+    srcs = ["device_address_vmm_allocator_test.cc"],
+    deps = [
+        ":device_address",
+        ":device_address_vmm_allocator",
+        ":memory_allocation",
+        ":memory_reservation",
+        ":mock_platform",
+        ":mock_stream",
+        ":mock_stream_executor",
+        ":platform",
+        ":stream_executor_h",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 # Factory backends. Each implementation is free of platform `#if` macros; the
 # right one is selected by the top-level `device_address_vmm_allocator_factory`
 # dispatcher below (Stub / CUDA / ROCm), mirroring the //xla/pjrt:triton idiom.

@@ -569,6 +569,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -677,6 +678,7 @@ cc_library(
         # copybara:uncomment "@riegeli//riegeli/bytes:file_writer",
         "@riegeli//riegeli/bytes:writer",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -692,6 +694,7 @@ cc_library(
         "@riegeli//riegeli/bytes:fd_writer",
         "@riegeli//riegeli/bytes:writer",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -3596,7 +3599,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-    ] + if_libtpu([":tpu_computation_placer"]),
+    ],
     alwayslink = True,  # Contains per-platform computation placer registration
 )
 
@@ -3624,25 +3627,6 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
     ],
-)
-
-cc_library(
-    name = "tpu_computation_placer",
-    srcs = ["tpu_computation_placer.cc"],
-    hdrs = ["tpu_computation_placer.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":computation_placer_hdr",
-        "//xla:array2d",
-        "//xla/stream_executor/tpu:tpu_platform_id",
-        "//xla/tpu:c_api_decl",
-        "//xla/tpu:status_helper",
-        "//xla/tpu:tpu_executor_api",
-        "//xla/tpu:tpu_topology_external",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status:statusor",
-    ],
-    alwayslink = True,  # Contains TPU computation placer registration
 )
 
 cc_library(
@@ -3967,6 +3951,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -4105,6 +4090,7 @@ cc_library(
         "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/analysis:hlo_reachability",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_instruction_utils",
         "//xla/hlo/ir:ptrvec",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
@@ -4159,6 +4145,7 @@ xla_cc_test(
     name = "copy_insertion_test",
     srcs = ["copy_insertion_test.cc"],
     deps = [
+        ":buffer_value",
         ":copy_insertion",
         ":hlo_graph_dumper",
         ":hlo_module_config",
@@ -4173,6 +4160,7 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
         "//xla/hlo/testlib:test_helpers",
+        "//xla/hlo/transforms/simplifiers:hlo_memory_scheduler",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/hlo/utils:hlo_query",
         "//xla/tests:xla_internal_test_main",
@@ -4265,6 +4253,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:collective_op_group_mode",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_instruction_utils",
         "//xla/hlo/pass:hlo_pass",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_macros",
@@ -4756,6 +4745,14 @@ cc_library(
 )
 
 genrule(
+    name = "viewer_server_h",
+    srcs = ["fusion_explorer/viewer_server.py"],
+    outs = ["viewer_server.h"],
+    cmd = "echo 'const char* kPythonServerCode = R\"python(' > $@ && cat $< >> $@ && echo ')python\";' >> $@",
+    compatible_with = get_compatible_with_portable(),
+)
+
+genrule(
     name = "viewer_html_h",
     srcs = ["fusion_explorer/viewer.html"],
     outs = ["viewer_html.h"],
@@ -4768,6 +4765,7 @@ cc_library(
     srcs = [
         "hlo_graph_dumper.cc",
         ":viewer_html_h",
+        ":viewer_server_h",
     ],
     hdrs = ["hlo_graph_dumper.h"],
     deps = [
@@ -4782,6 +4780,7 @@ cc_library(
         "//xla/service/gpu:cublas_cudnn",
         "//xla/stream_executor:dnn",
         "//xla/tsl/lib/gtl:map_util",
+        "//xla/tsl/lib/io:zip_writer",
         "//xla/tsl/lib/io:zlib_compression_options",
         "//xla/tsl/lib/io:zlib_outputbuffer",
         "//xla/tsl/platform:env",
@@ -4790,6 +4789,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/hash",
@@ -4800,7 +4800,9 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+        "@org_sqlite",
         "@tsl//tsl/platform:base64",
+        "@tsl//tsl/platform:path",
         "@tsl//tsl/platform:thread_annotations",
     ],
     alwayslink = 1,
@@ -5801,15 +5803,19 @@ cc_library(
     srcs = ["topk_rewriter.cc"],
     hdrs = ["topk_rewriter.h"],
     deps = [
+        ":call_inliner",
         ":hlo_creation_utils",
         ":pattern_matcher",
         "//xla:shape_util",
+        "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/builder/lib:comparators",
+        "//xla/hlo/builder/lib:sorting",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_instruction_utils",
         "//xla/hlo/pass:hlo_pass",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
@@ -6833,7 +6839,6 @@ cc_library(
     srcs = ["call_outliner.cc"],
     hdrs = ["call_outliner.h"],
     deps = [
-        ":call_marker",
         "//xla:status_macros",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",

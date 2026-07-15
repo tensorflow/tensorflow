@@ -183,7 +183,7 @@ class Allocator {
   virtual void* AllocateRawAlignedNew(
       size_t alignment, size_t num_bytes,
       const AllocationAttributes& allocation_attr) {
-    return AllocateRawAlignedNew(alignment, num_bytes);
+    return AllocateRaw(alignment, num_bytes, allocation_attr);
   }
 
   // Deallocate a block of memory pointer to by "ptr"

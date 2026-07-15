@@ -43,6 +43,7 @@ struct NodeInfo {
 
 // Generic helpers
 ynn_type GetYnnType(TfLiteType type);
+size_t YnnTypeElementCount(ynn_type type);
 ynn_unary_operator GetYnnUnaryOperator(int builtin_code);
 ynn_binary_operator GetYnnBinaryOperator(int builtin_code);
 ynn_reduce_operator GetYnnReduceOperator(int builtin_code);
@@ -52,6 +53,8 @@ bool IsStablehloOp(int builtin_code);
 bool IsQuantized(const TfLiteTensor& tensor);
 bool IsSupportedQuantization(const TfLiteTensor& tensor,
                              bool allow_per_channel = false);
+bool IsTensorSupported(const TfLiteTensor& tensor,
+                       bool allow_per_channel = false);
 bool QuantizationParamsEqual(const TfLiteTensor& tensor1,
                              const TfLiteTensor& tensor2);
 bool IsActivationSupported(TfLiteFusedActivation activation,
@@ -86,6 +89,11 @@ TfLiteStatus ApplyActivation(TfLiteContext* context, ynn_subgraph_t subgraph,
                              TfLiteFusedActivation activation,
                              uint32_t input_id, uint32_t& output_id,
                              int output_tensor_index, ynn_type internal_type);
+
+TfLiteStatus ApplyClamp(TfLiteContext* context, ynn_subgraph_t subgraph,
+                        double min_val, double max_val, uint32_t input_id,
+                        uint32_t& output_id, int output_tensor_index,
+                        ynn_type internal_type);
 
 TfLiteStatus DequantizeIfNeeded(TfLiteContext* context, ynn_subgraph_t subgraph,
                                 TensorToValueIdMap& tensor_to_value_id,

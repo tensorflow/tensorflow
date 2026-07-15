@@ -24,6 +24,7 @@
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "llvm/Support/Casting.h"
@@ -72,15 +73,15 @@ class TestProgramSerDes : public llvm::RTTIExtends<TestProgramSerDes, SerDes> {
     return "xla::ifrt::proxy::TestProgram";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions>) override {
     CHECK(llvm::isa<TestProgram>(serializable));
-    return "";
+    return absl::Cord();
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     return std::make_unique<TestProgram>();
   }
@@ -104,15 +105,15 @@ class TestCompileOptionsSerDes
     return "xla::ifrt::proxy::TestCompileOptions";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions>) override {
     CHECK(llvm::isa<TestCompileOptions>(serializable));
-    return "";
+    return absl::Cord();
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     return std::make_unique<TestCompileOptions>();
   }

@@ -200,11 +200,8 @@ CollectiveConfig GetCollectiveConfig(
                           .value();
 
   config.use_symmetric_buffer =
-      hlo->GetModule() &&
-      hlo->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_experimental_enable_nccl_symmetric_buffers();
+      hlo->GetModule() && IsNcclSymmetricBuffersEnabledForCollective(
+                              hlo, hlo->GetModule()->config().debug_options());
   return config;
 }
 

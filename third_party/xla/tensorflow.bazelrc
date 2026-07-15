@@ -157,6 +157,7 @@ common:macos --features=archive_param_file
 
 # Settings for MacOS on ARM CPUs.
 common:macos_arm64 --cpu=darwin_arm64
+common:macos_arm64 --platform_mappings=tools/toolchains/cross_compile/config/platform_mappings
 common:macos_arm64 --macos_minimum_os=11.0
 common:macos_arm64 --platforms=@build_bazel_apple_support//platforms:darwin_arm64
 
@@ -285,7 +286,7 @@ common:rocm_clang_hermetic --@rules_ml_toolchain//common:enable_sycl=False
 common:rocm_clang_hermetic --@rules_ml_toolchain//common:enable_hermetic_cc=True
 common:rocm_clang_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 common:rocm_clang_hermetic --strategy=CppLink=local
-common:rocm_clang_hermetic --@rules_ml_toolchain//common:static_libcxx=True
+common:rocm_clang_hermetic --@rules_ml_toolchain//common:static_libcxx=False
 
 common:rocm --config=rocm_clang_hermetic
 common:rocm_ci --config=rocm
@@ -294,7 +295,7 @@ common:rocm_ci --@local_config_rocm//rocm:rocm_path_type=hermetic
 common:rocm_ci_hermetic --dynamic_mode=off
 common:rocm_ci_hermetic --config=rocm_clang_hermetic
 common:rocm_ci_hermetic --repo_env=TF_ROCM_AMDGPU_TARGETS="gfx908,gfx90a"
-common:rocm_ci_hermetic --repo_env=ROCM_DISTRO_VERSION="rocm_7.12.0_gfx90a"
+common:rocm_ci_hermetic --repo_env=ROCM_DISTRO_VERSION="rocm_7.13.0_gfx90a"
 common:rocm_ci_hermetic --repo_env=SYSROOT_DIST=linux_glibc_2_31
 common:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 
@@ -625,6 +626,7 @@ common:release_macos_x86 --config=release_macos_base
 # Build with the AVX instruction set when on macOS x86
 common:release_macos_x86 --config=avx_linux
 common:release_macos_x86 --cpu=darwin
+common:release_macos_x86 --platform_mappings=tools/toolchains/cross_compile/config/platform_mappings
 common:release_macos_x86 --platforms=@build_bazel_apple_support//platforms:darwin_x86_64
 # Target Catalina as the minimum compatible OS version
 common:release_macos_x86 --macos_minimum_os=10.15
@@ -633,6 +635,7 @@ common:release_macos_x86 --macos_sdk_version=10.15
 # Build configs for macOS Arm64
 common:release_macos_arm64 --config=release_macos_base
 common:release_macos_arm64 --cpu=darwin_arm64
+common:release_macos_arm64 --platform_mappings=tools/toolchains/cross_compile/config/platform_mappings
 common:release_macos_arm64 --platforms=@build_bazel_apple_support//platforms:darwin_arm64
 common:release_macos_arm64 --define=tensorflow_mkldnn_contraction_kernel=0
 # Target Moneterey as the minimum compatible OS version
@@ -676,6 +679,9 @@ common:cross_compile_base --host_cpu=k8
 common:cross_compile_base --host_crosstool_top=//tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
 common:cross_compile_base --extra_execution_platforms=//tools/toolchains/cross_compile/config:linux_x86_64
 common:cross_compile_base --extra_toolchains=//tools/toolchains/cross_compile/cc:linux_x86_toolchain
+# Map XLA-owned cross-compile platforms to legacy --cpu values and vice versa
+# so platform-based selects remain compatible with legacy toolchain flags.
+common:cross_compile_base --platform_mappings=tools/toolchains/cross_compile/config/platform_mappings
 
 common:rbe_cross_compile_base --config=rbe_base
 common:rbe_cross_compile_base --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
@@ -717,9 +723,6 @@ common:cross_compile_macos_x86 --crosstool_top=//tools/toolchains/cross_compile/
 # toolchain. Otherwise, oddly, RBE complains that a "docker container must be
 # specified".
 common:cross_compile_macos_x86 --extra_toolchains=//tools/toolchains/cross_compile/config:macos-x86-cross-compile-cc-toolchain
-# Map --platforms=darwin_x86_64 to --cpu=darwin and vice-versa to make selects()
-# and transistions that use these flags work.
-common:cross_compile_macos_x86 --platform_mappings=tools/toolchains/cross_compile/config/platform_mappings
 
 # RBE cross-compile configs for Darwin x86
 common:rbe_cross_compile_macos_x86 --config=cross_compile_macos_x86 --remote_download_minimal
@@ -741,7 +744,9 @@ build:pjrt_release -c opt --@local_config_cuda//cuda:include_cuda_libs=false
 build:pjrt_nightly -c opt --@local_config_cuda//cuda:include_cuda_libs=true
 
 build:pjrt_x86 --cpu=k8
+build:pjrt_x86 --platform_mappings=tools/toolchains/cross_compile/config/platform_mappings
 build:pjrt_aarch64 --cpu=aarch64
+build:pjrt_aarch64 --platform_mappings=tools/toolchains/cross_compile/config/platform_mappings
 
 build:pjrt_cuda12 --config=cuda_nvcc
 build:pjrt_cuda12 --repo_env=HERMETIC_CUDA_VERSION="12.9.1"

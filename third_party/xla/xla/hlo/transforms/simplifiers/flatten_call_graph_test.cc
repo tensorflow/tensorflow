@@ -639,8 +639,7 @@ HloModule CallInWhileInCall
 
 %while_body (p.body: (f32[4096])) -> (f32[4096]) {
   %p.body = (f32[4096]{0}) parameter(0)
-  %gte = f32[4096]{0} get-tuple-element(%p.body), index=0
-  %call.internal = f32[4096]{0} call(%gte), to_apply=%called_computation_internal
+  %call.internal = f32[4096]{0} call(%p.body#0), to_apply=%called_computation_internal
   ROOT %tuple.body = (f32[4096]{0}) tuple(%call.internal)
 }
 
@@ -662,8 +661,7 @@ HloModule CallInWhileInCall
 
 %while_body.clone (p.body.1: (f32[4096])) -> (f32[4096]) {
   %p.body.1 = (f32[4096]{0}) parameter(0)
-  %gte.1 = f32[4096]{0} get-tuple-element(%p.body.1), index=0
-  %call.internal.1 = f32[4096]{0} call(%gte.1), to_apply=%called_computation_internal.clone
+  %call.internal.1 = f32[4096]{0} call(%p.body.1#0), to_apply=%called_computation_internal.clone
   ROOT %tuple.body.1 = (f32[4096]{0}) tuple(%call.internal.1)
 }
 

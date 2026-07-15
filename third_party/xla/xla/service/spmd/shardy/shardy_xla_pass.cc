@@ -424,6 +424,8 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   stablehloExportPipelineOptions.exportAllReduceScatter =
       debugOptions.xla_sdy_export_all_reduce_scatter();
   stablehloExportPipelineOptions.simplifyReplicatedShardings = true;
+  stablehloExportPipelineOptions.clearReverseOpSharding =
+      options.clearReverseOpSharding;
   addStablehloExportPipeline(pm, stablehloExportPipelineOptions);
   pm.addPass(mlir::sdy::createSaveModuleOpPass(shardyDir, "output_module",
                                                dumpIndex++));

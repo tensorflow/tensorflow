@@ -19,15 +19,20 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/backends.pb.h"
+#include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/directory_cache.h"
+#include "xla/backends/autotuner/fake_codegen_backend.h"
 #include "xla/backends/autotuner/local_cache.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/testing/temporary_directory.h"
 
@@ -42,6 +47,30 @@ ENTRY entry {
   ROOT dot = f32[10,10]{1,0} dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 )";
+
+AutotuneCacheContext CreateCacheContext(
+    std::string explicit_version = "v1.0",
+    std::vector<std::pair<autotuner::Backend, std::string>> backends_info = {
+        {autotuner::Backend::TRITON, "triton_v1"}}) {
+  stream_executor::DeviceDescription device_description;
+  device_description.set_name("test_gpu");
+  device_description.set_core_count(108);
+  device_description.set_clock_rate_ghz(1.41);
+  device_description.set_memory_bandwidth(1555000000000);
+  device_description.set_l2_cache_size(41943040);
+
+  stream_executor::CudaComputeCapability cuda_cc(8, 0);
+  stream_executor::GpuComputeCapability gpu_cc(cuda_cc);
+  device_description.set_gpu_compute_capability(gpu_cc);
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  for (const auto& [backend, version] : backends_info) {
+    backends.push_back(std::make_unique<FakeCodegenBackend>(backend, version));
+  }
+
+  return AutotuneCacheContext::Create(device_description, backends,
+                                      std::move(explicit_version));
+}
 
 class TieredCacheTest : public HloHardwareIndependentTestBase {
  protected:
@@ -78,25 +107,22 @@ TEST_F(TieredCacheTest, PropagationOnLookupMiss) {
   const HloInstruction* instr1 =
       module->entry_computation()->root_instruction();
 
-  AutotuneScope scope;
-  scope.device = "device";
-  scope.explicit_version = "v1.0";
-  scope.codegen_version = "cg_v1";
+  AutotuneCacheContext cache_ctx = CreateCacheContext("v1.0");
 
   AutotunerCacheInterface::Config config = CreateTestConfig();
 
   // 1. Populate the persistent DirectoryCache directly.
   {
-    DirectoryCache temp_dir_cache(scope, cache_dir_, CacheMode::kReadWrite,
+    DirectoryCache temp_dir_cache(cache_ctx, cache_dir_, CacheMode::kReadWrite,
                                   KeyMatchingMode::kStrict);
     EXPECT_OK(temp_dir_cache.Insert(instr1, config));
   }
 
   // 2. Create the TieredCache delegates.
   auto persistent_cache = std::make_unique<DirectoryCache>(
-      scope, cache_dir_, CacheMode::kReadWrite, KeyMatchingMode::kStrict);
+      cache_ctx, cache_dir_, CacheMode::kReadWrite, KeyMatchingMode::kStrict);
   auto local_cache = std::make_unique<LocalCache>(
-      persistent_cache->GetKeyMatchingMode(), &local_storage_);
+      cache_ctx, persistent_cache->GetKeyMatchingMode(), &local_storage_);
   TieredCache cache(std::move(local_cache), std::move(persistent_cache));
 
   // Verify that the statistics start empty.
@@ -130,15 +156,12 @@ TEST_F(TieredCacheTest, TotalMissStat) {
   const HloInstruction* instr1 =
       module->entry_computation()->root_instruction();
 
-  AutotuneScope scope;
-  scope.device = "device";
-  scope.explicit_version = "v1.0";
-  scope.codegen_version = "cg_v1";
+  AutotuneCacheContext cache_ctx = CreateCacheContext("v1.0");
 
   auto persistent_cache = std::make_unique<DirectoryCache>(
-      scope, cache_dir_, CacheMode::kReadWrite, KeyMatchingMode::kStrict);
+      cache_ctx, cache_dir_, CacheMode::kReadWrite, KeyMatchingMode::kStrict);
   auto local_cache = std::make_unique<LocalCache>(
-      persistent_cache->GetKeyMatchingMode(), &local_storage_);
+      cache_ctx, persistent_cache->GetKeyMatchingMode(), &local_storage_);
   TieredCache cache(std::move(local_cache), std::move(persistent_cache));
 
   // Verify stats start at 0.
@@ -160,15 +183,12 @@ TEST_F(TieredCacheTest, DualInsertion) {
   const HloInstruction* instr1 =
       module->entry_computation()->root_instruction();
 
-  AutotuneScope scope;
-  scope.device = "device";
-  scope.explicit_version = "v1.0";
-  scope.codegen_version = "cg_v1";
+  AutotuneCacheContext cache_ctx = CreateCacheContext("v1.0");
 
   auto persistent_cache = std::make_unique<DirectoryCache>(
-      scope, cache_dir_, CacheMode::kReadWrite, KeyMatchingMode::kStrict);
+      cache_ctx, cache_dir_, CacheMode::kReadWrite, KeyMatchingMode::kStrict);
   auto local_cache = std::make_unique<LocalCache>(
-      persistent_cache->GetKeyMatchingMode(), &local_storage_);
+      cache_ctx, persistent_cache->GetKeyMatchingMode(), &local_storage_);
   TieredCache cache(std::move(local_cache), std::move(persistent_cache));
   AutotunerCacheInterface::Config config = CreateTestConfig();
 
@@ -181,7 +201,7 @@ TEST_F(TieredCacheTest, DualInsertion) {
   EXPECT_EQ(result->codegen_backend, autotuner::Backend::TRITON);
 
   // Verify that another cache instance pointing to same file path also hits.
-  DirectoryCache persistent_check(scope, cache_dir_, CacheMode::kReadOnly,
+  DirectoryCache persistent_check(cache_ctx, cache_dir_, CacheMode::kReadOnly,
                                   KeyMatchingMode::kStrict);
   std::optional<AutotunerCacheInterface::Config> result2 =
       persistent_check.Lookup(instr1);

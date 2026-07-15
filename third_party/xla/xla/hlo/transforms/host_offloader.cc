@@ -936,7 +936,10 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
     if (!host_offload_utils::IsValidDuringPureMemoryOffload(
             instruction_and_shape.instruction) &&
         instruction_and_shape.instruction->opcode() !=
-            HloOpcode::kDynamicUpdateSlice) {
+            HloOpcode::kDynamicUpdateSlice &&
+        instruction_and_shape.instruction->opcode() != HloOpcode::kCopy) {
+      VLOG(1) << "Unexpected instruction: "
+              << instruction_and_shape.instruction->name();
       // Hit some unexpected instruction, stop the process.
       return absl::OkStatus();
     }
@@ -948,6 +951,17 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
         // Found a broadcast.
         found_broadcast = true;
         HloInstruction* broadcast_user = instruction_and_shape.instruction;
+        HloInstruction* matched_copy = nullptr;
+        if (predecessor_instruction->user_count() == 1) {
+          HloInstruction* user = predecessor_instruction->users()[0];
+          CHECK_EQ(user, broadcast_user);
+          if (user->opcode() == HloOpcode::kCopy && user->user_count() == 1) {
+            CHECK(user->shape().has_layout() &&
+                  user->shape().layout().memory_space() ==
+                      Layout::kHostMemorySpace);
+            matched_copy = user;
+          }
+        }
         HloInstruction* allocate_buffer =
             predecessor_instruction->parent()->AddInstruction(
                 HloInstruction::CreateCustomCall(
@@ -964,6 +978,9 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
           // (because the shape index is meant to be a tuple index, not a use
           // index). Use only the index from which we arrived here, as any other
           // index might not be expecting host memory.
+          CHECK(matched_copy == nullptr)
+              << "Expecting empty shape_index for copy op: "
+              << matched_copy->name();
           CHECK_EQ(instruction->opcode(), HloOpcode::kTuple)
               << "Expecting a tuple when shape index has ndim>0";
           RETURN_IF_ERROR(broadcast_user->ReplaceOperandWith(shape_index[0],
@@ -972,19 +989,26 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
           // Any shape index larger than 1 would mean that the broadcast
           // produces a tuple, which is not possible.
           CHECK_EQ(shape_index.size(), 0)
-              << "Only other supported shape index ndim is 0";
-          // Ideally, we'd like to know via which index we arrived here, but we
-          // do not. We'll look up at which indices this broadcast is used.
-          const auto operand_indices =
-              broadcast_user->OperandIndices(predecessor_instruction);
-          // 0 uses would be a hard error, as that would mean there is a bug in
-          // the GetPredecessors function. If there are more than 1 uses, we do
-          // not know via which use we arrived here and setting all uses as host
-          // memory space could be incorrect.
-          CHECK_EQ(operand_indices.size(), 1)
-              << "Only a single use is currently supported";
-          RETURN_IF_ERROR(broadcast_user->ReplaceOperandWith(operand_indices[0],
-                                                             allocate_buffer));
+              << "Only other supported shape index size is 0";
+          if (matched_copy != nullptr) {
+            CHECK_EQ(matched_copy->user_count(), 1);
+            RETURN_IF_ERROR(matched_copy->ReplaceAllUsesWith(allocate_buffer));
+            RETURN_IF_ERROR(
+                matched_copy->parent()->RemoveInstruction(matched_copy));
+          } else {
+            // Ideally, we'd like to know via which index we arrived here, but
+            // we do not. We'll look up at which indices this broadcast is used.
+            const auto operand_indices =
+                broadcast_user->OperandIndices(predecessor_instruction);
+            // 0 uses would be a hard error, as that would mean there is a bug
+            // in the GetPredecessors function. If there are more than 1 uses,
+            // we do not know via which use we arrived here and setting all uses
+            // as host memory space could be incorrect.
+            CHECK_EQ(operand_indices.size(), 1)
+                << "Only a single use is currently supported";
+            RETURN_IF_ERROR(broadcast_user->ReplaceOperandWith(
+                operand_indices[0], allocate_buffer));
+          }
         }
         if (predecessor_instruction->user_count() == 0) {
           // No remaining users. Remove the broadcast.

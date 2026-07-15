@@ -24,6 +24,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -36,7 +37,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -128,9 +129,9 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Combine(::testing::Bool(), ::testing::Bool()),
     [](const ::testing::TestParamInfo<GemmFusionTestVersioned::ParamType>&
            info) {
-      return std::string(std::get<0>(info.param) ? "V2" : "V1") +
-             std::string(std::get<1>(info.param) ? "TilingPropagation"
-                                                 : "SymbolicAnalysis");
+      return absl::StrCat(
+          std::get<0>(info.param) ? "V2" : "V1", "_",
+          std::get<1>(info.param) ? "TilingPropagation" : "SymbolicAnalysis");
     });
 
 INSTANTIATE_TEST_SUITE_P(
@@ -344,14 +345,14 @@ TEST_P(GemmFusionTestV2, UnhoistedBitcastIsNotFusedAtEdge) {
 HloModule m
 
 ENTRY e {
-  p0 = f32[2,8,8] parameter(0)
-  p2 = f32[2,8,8] parameter(2)
-  c = f32[4,8,8] concatenate(p0, p2), dimensions={0}
-  r1 = f32[2,16,8] reshape(c)
-  bi = f32[32,8] bitcast(r1)
+  p0 = f32[64,8,8] parameter(0)
+  p2 = f32[64,8,8] parameter(2)
+  c = f32[128,8,8] concatenate(p0, p2), dimensions={0}
+  r1 = f32[64,16,8] reshape(c)
+  bi = f32[1024,8] bitcast(r1)
   p1 = s8[8,7] parameter(1)
   c1 = f32[8,7] convert(p1)
-  ROOT d = f32[32,7] dot(bi, c1),
+  ROOT d = f32[1024,7] dot(bi, c1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
   ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
@@ -510,7 +511,7 @@ ENTRY e {
   e = bf16[32,12] exponential(p0)
   c = bf16[] constant(7)
   b = bf16[32,12] broadcast(c), dimensions={}
-  m = bf16[32,12] multiply(p0, b)
+  m = bf16[32,12] add(p0, b)
   a = bf16[32,12] add(e, m)
   bc = bf16[12,32] bitcast(a)
   p1 = bf16[32,3] parameter(1)
@@ -725,8 +726,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
 
-  const se::CudaComputeCapability cc{se::CudaComputeCapability::kAmpere, 0};
-  EXPECT_THAT(GemmFusion(cc).Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(false));
 }
 
 // TODO(b/417172838): support dynamic slice op.
@@ -2028,11 +2028,7 @@ ENTRY main {
   RunAndFilecheckHloRewrite(hlo_text, GemmFusion(gpu_version_), std::nullopt);
 }
 
-TEST_P(GemmFusionTest, TransposeFusesInConcatGemm) {
-  if (!GetParam()) {
-    GTEST_SKIP() << "Tiling propagation is not enabled.";
-  }
-
+TEST_P(GemmFusionTestVersioned, TransposeFusesInConcatGemm) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
 HloModule module
@@ -2066,11 +2062,7 @@ ENTRY main {
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())));
 }
 
-TEST_P(GemmFusionTest, TransposeDoesNotFuseInConcatGemmIfUnaligned) {
-  if (!GetParam()) {
-    GTEST_SKIP() << "Tiling propagation is not enabled.";
-  }
-
+TEST_P(GemmFusionTestVersioned, TransposeDoesNotFuseInConcatGemmIfUnaligned) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
 HloModule module
@@ -2106,6 +2098,168 @@ ENTRY main {
                   m::Parameter(),
                   m::Concatenate(m::Bitcast(m::Transpose(m::Parameter())),
                                  m::Bitcast(m::Transpose(m::Parameter()))))));
+}
+
+TEST_P(GemmFusionTestVersioned,
+       TransposeDoesNotFuseInConcatGemmIfNonMajorPhysicalDim) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+ENTRY main {
+  p_lhs = bf16[512,3584] parameter(0)
+  p_p1 = bf16[14336,3584] parameter(1)
+  p_p2 = bf16[3584,64]{1,0} parameter(2)
+
+  trans2 = bf16[64,3584]{1,0} transpose(p_p2), dimensions={1,0}
+  cat = bf16[14400,3584]{1,0} concatenate(p_p1, trans2), dimensions={0}
+  bitcast_cat = bf16[3584,14400]{0,1} bitcast(cat)
+
+  ROOT d = bf16[14400,512]{0,1} dot(bitcast_cat, p_lhs),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
+}
+)"));
+
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       GemmFusion(gpu_version_).Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  if (std::get<0>(GetParam())) {
+    // V2: TritonFusionAnalysis returns a failure status.
+    const HloComputation* computation = module->entry_computation()
+                                            ->root_instruction()
+                                            ->called_computations()[0];
+    EXPECT_THAT(
+        TritonFusionAnalysis::Execute(*computation).status(),
+        absl_testing::StatusIs(
+            absl::StatusCode::kFailedPrecondition,
+            ::testing::HasSubstr("Transposing sliced concatenate dimension to "
+                                 "non-major-most physical position.")));
+  } else {
+    // V1: Transpose is unfused.
+    EXPECT_THAT(
+        module->entry_computation()->root_instruction(),
+        GmockMatch(m::Fusion(m::Parameter(), m::Transpose(m::Parameter()),
+                             m::Parameter())));
+  }
+}
+
+TEST_P(GemmFusionTestVersioned, InstructionWithCalledComputationsIsSkipped) {
+  // Tests that reduce instruction (which has called computations) is not fused.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add_fn (x: f32[], y: f32[]) -> f32[] {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+
+ENTRY e {
+  p0 = f32[32,1] parameter(0)
+  p1 = f32[32,1,32] parameter(1)
+  p2 = f32[32,1] parameter(2)
+  c0 = f32[] constant(0)
+  profitable = f32[32,1] log(p2)
+  reduced = f32[1,32] reduce(p1, c0), to_apply=add_fn, dimensions={0}
+  ROOT d = f32[32,32] dot(profitable, reduced),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kFusion);
+  EXPECT_THAT(root->operands(),
+              ::testing::UnorderedElementsAre(GmockMatch(m::Parameter()),
+                                              GmockMatch(m::Reduce())));
+}
+
+// Another Test Suite to group profitability tests.
+using GemmFusionProfitabilityTest = GemmFusionTestVersioned;
+
+INSTANTIATE_TEST_SUITE_P(
+    GemmFusionProfitabilityTest, GemmFusionProfitabilityTest,
+    ::testing::Combine(::testing::Bool(), ::testing::Bool()),
+    [](const ::testing::TestParamInfo<GemmFusionProfitabilityTest::ParamType>&
+           info) {
+      return std::string(std::get<0>(info.param) ? "V2_" : "V1_") +
+             std::string(std::get<1>(info.param) ? "TilingPropagation"
+                                                 : "SymbolicAnalysis");
+    });
+
+TEST_P(GemmFusionProfitabilityTest, UnprofitableOperand) {
+  // Tests that a large elementwise operation with multiple users is not fused.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[32,32] parameter(0)
+  p1 = f32[32,32] parameter(1)
+  p2 = f32[32,32] parameter(2)
+  p3 = f32[32,32] parameter(3)
+  unprofitable = f32[32,32] add(p1, p2)
+  other = f32[32,32] log(p1)
+  profitable = f32[32,32] log(p3)
+  ROOT d = f32[32,32] dot(profitable, unprofitable),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+  // Confirm unprofitable add was not fused.
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kFusion);
+  EXPECT_THAT(root->operands(),
+              ::testing::UnorderedElementsAre(GmockMatch(m::Parameter()),
+                                              GmockMatch(m::Add())));
+}
+
+TEST_P(GemmFusionProfitabilityTest, UnprofitableOperandWithBroadcastException) {
+  // Tests that a large elementwise operation is fused even if unprofitable
+  // if it is a binary elementwise with a broadcast of a parameter/constant.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[32,32] parameter(0)
+  p1 = f32[32] parameter(1)
+  p2 = f32[32,32] parameter(2)
+  b1 = f32[32,32] broadcast(p1), dimensions={0}
+  add1 = f32[32,32] add(b1, p2)
+  other = f32[32] log(p1)
+  ROOT d = f32[32,32] dot(p0, add1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())));
+}
+
+TEST_P(GemmFusionProfitabilityTest, UnprofitableConvertOutput) {
+  // Tests that a convert that increases size (bf16->f32) is not fused
+  // because it is unprofitable as an epilogue.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = bf16[32,32] parameter(0)
+  p1 = bf16[32,32] parameter(1)
+  p2 = bf16[32,32] parameter(2)
+
+  profitable = bf16[32,32] log(p0)
+  d = bf16[32,32] dot(profitable, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  c = f32[32,32] convert(d)
+  ROOT l = f32[32,32] log(c)
+})"));
+
+  ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+  // Check the convert was not fused.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Log(
+                  m::Convert(m::Fusion(m::Parameter(), m::Parameter())))));
 }
 
 }  // namespace

@@ -391,8 +391,8 @@ struct NodeViewDiff {
   int num_regular_inputs_to_remove = 0;
   absl::flat_hash_set<std::string> controlling_inputs_to_add;
   std::set<int> controlling_inputs_to_remove;
-  absl::flat_hash_map<string, AttrValue> attrs_to_add;
-  absl::flat_hash_set<string> attrs_to_remove;
+  absl::flat_hash_map<std::string, AttrValue> attrs_to_add;
+  absl::flat_hash_set<std::string> attrs_to_remove;
   // AttrValueMap constructor and destructor are very expensive, we will
   // initialize it lazily only if needed.
   absl::optional<AttrValueMap> processed_attrs;

@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/shape.h"
+#include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu::experimental {
@@ -62,6 +63,24 @@ std::string HloPtrToString(const HloInstruction* hlo) {
 }
 
 }  // namespace
+
+llvm::DenseMap<SymbolicExpr, SymbolicExpr> GetTileSizeReplacementMap(
+    const TilingSpace& tiling_space, absl::Span<const int64_t> tile_sizes) {
+  CHECK_EQ(tile_sizes.size(), tiling_space.dimensions().size());
+  mlir::MLIRContext* ctx = tiling_space.mlir_context();
+  llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacement_map;
+  for (const auto& [index, dim] : llvm::enumerate(tiling_space.dimensions())) {
+    replacement_map[CreateSymbolExpr(dim.id.value(), tile_sizes.size(), ctx)] =
+        CreateSymbolicConstant(tile_sizes[index], ctx);
+    // If the tile size is greater than or equal to the dimension size, then
+    // the dimension is trivial and can be replaced with 0.
+    if (dim.dimension_size <= tile_sizes[index]) {
+      replacement_map[CreateDimExpr(dim.id.value(), ctx)] =
+          CreateSymbolicConstant(0, ctx);
+    }
+  }
+  return replacement_map;
+}
 
 std::string TilingSpace::DimensionInfo::ToString() const {
   std::stringstream ss;
@@ -256,20 +275,12 @@ absl::Status TilingSpace::AssignTileSizes(
   CHECK_EQ(tile_sizes.size(), dimensions_.size());
   is_symbolic_ = false;
 
-  llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacement_map;
-  for (const auto& [index, dim] : llvm::enumerate(dimensions_)) {
-    dim.tile_size = tile_sizes[index];
-    replacement_map[CreateSymbolExpr(dim.id.value(), dimensions_.size(),
-                                     mlir_context_)] =
-        CreateSymbolicConstant(tile_sizes[index], mlir_context_);
-
-    // If the tile size is greater than or equal to the dimension size, then
-    // the dimension is trivial and can be replaced with 0.
-    if (dim.dimension_size <= tile_sizes[index]) {
-      replacement_map[CreateDimExpr(dim.id.value(), mlir_context_)] =
-          CreateSymbolicConstant(0, mlir_context_);
-    }
+  for (const auto& [index, size] : llvm::enumerate(tile_sizes)) {
+    dimensions_[index].tile_size = size;
   }
+
+  llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacement_map =
+      GetTileSizeReplacementMap(*this, tile_sizes);
 
   if (!constraint_.IsSatisfiedBy(tile_sizes)) {
     return absl::InvalidArgumentError(absl::StrFormat(
@@ -310,7 +321,7 @@ absl::StatusOr<std::unique_ptr<TilingSpace>> TilingSpace::Create(
   auto tiling_space = std::make_unique<TilingSpace>();
   tiling_space->mlir_context_ = ctx;
   auto roots = fusion.GetRoots();
-  CHECK(!roots.empty()) << "Fusion has no roots";
+  TF_RET_CHECK(!roots.empty()) << "Fusion has no roots";
 
   // TODO: b/502910372 - Support multi-output fusions. The option name is
   // misleading as it is not GPU specific.
@@ -321,7 +332,7 @@ absl::StatusOr<std::unique_ptr<TilingSpace>> TilingSpace::Create(
            ->config()
            .debug_options()
            .xla_gpu_unsupported_enable_triton_multi_output_fusion()) {
-    return absl::InvalidArgumentError(
+    return absl::UnimplementedError(
         "TilingSpace does not support fusions with multiple roots");
   }
 

@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -47,6 +48,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
+#include "triton/Version.h"
 
 namespace xla::gpu {
 namespace {
@@ -216,6 +218,13 @@ bool BlockLevelEmitterBackend::IsSupported(const HloInstruction& instr) {
     return false;
   }
   const HloFusionInstruction* fusion = Cast<HloFusionInstruction>(&instr);
+  if (absl::c_any_of(
+          fusion->fused_instructions_computation()->instructions(),
+          HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kScaledDot>)) {
+    // If a dot fusion can be handled by Triton, GemmRewriter would have already
+    // taken care of it.
+    return false;
+  }
   if (!xla_gpu_experimental_all_fusions_with_triton_ &&
       !absl::c_any_of(
           fusion->fused_instructions_computation()->instructions(),
@@ -229,5 +238,7 @@ bool BlockLevelEmitterBackend::IsSupported(const HloInstruction& instr) {
              target_config().device_description.gpu_compute_capability())
       .IsAllowed();
 }
+
+std::string BlockLevelEmitterBackend::version() const { return TRITON_VERSION; }
 
 }  // namespace xla::gpu

@@ -2672,5 +2672,47 @@ TEST_F(LayoutAssignmentTest, CloneConditionalComputationWithMultipleCallsites) {
   ASSERT_NE(branch_comp_clone, nullptr);
 }
 
+TEST_F(LayoutAssignmentTest, SharedBranchComputationMismatch) {
+  // LayoutAssignment forces all conditional branches to match the expected
+  // layout from the largest branch (the branch computation with the highest
+  // number of instructions). Here, %comp_large ({0,1}) has more instructions
+  // than %comp_small_shared ({1,0}), so {0,1} is the expected layout for all
+  // branches.
+  const char* module_str = R"hlo(
+  HloModule test
+
+  %comp_large (param: f32[8,8]) -> f32[8,8] {
+    %param = f32[8,8] parameter(0)
+    %c1 = f32[8,8] constant(1)
+    %add1 = f32[8,8] add(%param, %c1)
+    %add2 = f32[8,8] add(%add1, %c1)
+    ROOT %cc = f32[8,8]{0,1} custom-call(%add2), custom_call_target="LayoutConstraint", operand_layout_constraints={f32[8,8]{0,1}}
+  }
+
+  %comp_small_shared (param2: f32[8,8]) -> f32[8,8] {
+    %param2 = f32[8,8] parameter(0)
+    %c2 = f32[8,8] constant(1)
+    %add = f32[8,8] add(%param2, %c2)
+    ROOT %cc2 = f32[8,8]{1,0} custom-call(%add), custom_call_target="LayoutConstraint", operand_layout_constraints={f32[8,8]{1,0}}
+  }
+
+  ENTRY %main (param0: f32[8,8]{1,0}, pred_index: s32[]) -> f32[8,8]{1,0} {
+    %param0 = f32[8,8]{1,0} parameter(0)
+    %pred_index = s32[] parameter(1)
+    ROOT %conditional = f32[8,8]{1,0} conditional(%pred_index, %param0, %param0, %param0), branch_computations={%comp_large, %comp_small_shared, %comp_small_shared}
+  }
+  )hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout* computation_layout = m->mutable_entry_computation_layout();
+  LayoutAssignment layout_assignment(computation_layout);
+  // Because %comp_small_shared ({1,0}) mismatches the expected layout from the
+  // largest branch (%comp_large with {0,1}) and is shared across branches,
+  // LayoutAssignment tries to record a mismatch for it multiple times.
+  // This should not crash with a duplicate key error in InsertOrDie.
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+}
+
 }  // namespace
 }  // namespace xla

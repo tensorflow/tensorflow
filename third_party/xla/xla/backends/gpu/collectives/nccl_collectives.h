@@ -22,13 +22,16 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
+#include "xla/backends/gpu/collectives/gxl_collectives.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
@@ -41,8 +44,6 @@ namespace xla::gpu {
 class NcclCollectives : public GpuCollectives {
  public:
   bool IsImplemented() const final { return true; }
-
-  size_t SymmetricMemoryAlignment() const final;
 
   absl::Status GroupLaunch(absl::Span<const GpuCommunicator* const> comms,
                            absl::FunctionRef<absl::Status()> group) final;
@@ -85,6 +86,12 @@ class NcclCollectives : public GpuCollectives {
 
   absl::StatusOr<CliqueIdCallback> InitializeTopology(
       const Topology& topology) final;
+
+ private:
+  GxlCollectives* gxl_collectives();
+
+  absl::once_flag gxl_init_flag_;
+  std::unique_ptr<GxlCollectives> gxl_collectives_;
 };
 
 }  // namespace xla::gpu

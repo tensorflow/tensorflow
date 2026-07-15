@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/call_once.h"
 #include "absl/base/casts.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/btree_set.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
+#include "xla/backends/gpu/collectives/gxl_collectives.h"
 #include "xla/backends/gpu/collectives/nccl_communicator.h"
 #include "xla/backends/gpu/collectives/nccl_errors.h"
 #include "xla/backends/gpu/collectives/nccl_group.h"
@@ -289,13 +291,14 @@ absl::Status NcclCollectives::GroupLaunch(
   return absl::OkStatus();
 }
 
-size_t NcclCollectives::SymmetricMemoryAlignment() const {
-  // Multicast memory requires buffers aligned to
-  // CU_MULTICAST_GRANULARITY_MINIMUM which is 2MB on Hopper. Since both
-  // symmetric and multicast buffers share the same kCollective memory space
-  // color, we use the larger alignment.
-  // TODO(ezhulenev): Query this from CUDA at runtime.
-  return 2 * 1024 * 1024;
+GxlCollectives* NcclCollectives::gxl_collectives() {
+  absl::call_once(gxl_init_flag_, [this] {
+    if (xla::GetDebugOptionsFromFlags()
+            .xla_gpu_enable_gxl_ragged_all_to_all()) {
+      gxl_collectives_ = CreateGxlCollectives();
+    }
+  });
+  return gxl_collectives_.get();
 }
 
 static absl::StatusOr<ncclConfig_t> AsNcclConfig(
@@ -307,9 +310,16 @@ static absl::StatusOr<ncclConfig_t> AsNcclConfig(
 
   ASSIGN_OR_RETURN(int nccl_version, GetLinkedNcclVersion());
 
-  if (xla::GetDebugOptionsFromFlags()
-          .xla_gpu_experimental_enable_nccl_symmetric_buffers() &&
-      config.use_minimal_resource) {
+  const DebugOptions& opts = xla::GetDebugOptionsFromFlags();
+  bool symmetric_buffers_enabled =
+      opts.xla_gpu_experimental_enable_nccl_symmetric_buffers() ||
+      absl::c_any_of(opts.xla_enable_nccl_symmetric_buffers_for_collectives(),
+                     [](const DebugOptions::CollectiveFilter& filter) {
+                       return filter.collective() ==
+                              DebugOptions::ALLCOLLECTIVES;
+                     });
+
+  if (symmetric_buffers_enabled && config.use_minimal_resource) {
     VLOG(1) << "Setting CTAPolicy to NCCL_CTA_POLICY_ZERO";
     comm_config.CTAPolicy = NCCL_CTA_POLICY_ZERO;
   }
@@ -461,7 +471,14 @@ NcclCollectives::CreateCommunicatorsWithCancel(
     });
   }
 
-  return JoinFutures(absl::MakeSpan(futures)).Await();
+  ASSIGN_OR_RETURN(auto comms, JoinFutures(absl::MakeSpan(futures)).Await());
+
+  if (auto* gxl = gxl_collectives()) {
+    RETURN_IF_ERROR(gxl->MaybeAttachGxlCommunicators(absl::MakeSpan(comms),
+                                                     ranks, clique_key));
+  }
+
+  return comms;
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
@@ -547,7 +564,15 @@ NcclCollectives::SplitCommunicatorsWithCancel(
     });
   }
 
-  return JoinFutures(absl::MakeSpan(futures)).Await();
+  ASSIGN_OR_RETURN(auto split_comms,
+                   JoinFutures(absl::MakeSpan(futures)).Await());
+
+  if (auto* gxl = gxl_collectives()) {
+    RETURN_IF_ERROR(gxl->MaybeAttachSplitGxlCommunicators(
+        comms, absl::MakeSpan(split_comms), ranks));
+  }
+
+  return split_comms;
 }
 
 

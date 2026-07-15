@@ -185,14 +185,24 @@ std::vector<T> CastVector(const std::vector<int>& input_data) {
   return casted_input;
 }
 
-#if GTEST_HAS_DEATH_TEST
-TYPED_TEST(StridedSliceOpTest, UnsupportedInputSize) {
-  EXPECT_DEATH(StridedSliceOpModel<TypeParam>({2, 2, 2, 2, 2, 2}, {5}, {5}, {5},
-                                              {TypeParam{}}, {}, {}, {}, 0, 0,
-                                              0, 0, 0, false),
-               "StridedSlice op only supports 1D-5D input arrays.");
+TYPED_TEST(StridedSliceOpTest, In6D) {
+  for (bool constant_tensors : {true, false}) {
+    if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+      // NNAPI does not support graphs with all constant inputs.
+      continue;
+    }
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({0, 1, 2, 3, 4, 5});
+    StridedSliceOpModel<TypeParam> m({2, 1, 1, 1, 1, 3}, {6}, {6}, {6},
+                                     input_data, {1, 0, 0, 0, 0, 1},
+                                     {2, 1, 1, 1, 1, 3}, {1, 1, 1, 1, 1, 1}, 0,
+                                     0, 0, 0, 0, constant_tensors);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 1, 1, 2}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({4, 5})));
+  }
 }
-#endif
 
 TYPED_TEST(StridedSliceOpTest, In1DEmpty) {
   for (bool constant_tensors : {true, false}) {

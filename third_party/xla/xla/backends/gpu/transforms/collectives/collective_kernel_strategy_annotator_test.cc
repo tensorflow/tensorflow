@@ -34,12 +34,13 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_description.pb.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-// Template for a module with an AllReduceStart of the given number of elements.
+// Template for a module with an AllReduce of the given number of elements.
 // Uses 8 replicas so num_devices = 8 (a power of 2, as required by the Triton
 // collective kernel).  Reduction is F32 SUM which is supported.
 constexpr absl::string_view kAllReduceHloTemplate = R"(
@@ -52,11 +53,10 @@ constexpr absl::string_view kAllReduceHloTemplate = R"(
   }
 
   ENTRY e {
-    p0 = f32[%d] parameter(0)
-    ar-start = f32[%d] all-reduce-start(p0),
+    p0 = f32[%1$d] parameter(0)
+    ROOT all-reduce = f32[%1$d] all-reduce(p0),
         replica_groups={{0,1,2,3,4,5,6,7}},
         to_apply=add
-    ROOT ar-done = f32[%d] all-reduce-done(ar-start)
   }
 )";
 
@@ -83,7 +83,7 @@ class CollectiveKernelStrategyAnnotatorTest
   GetKernelStrategy(HloModule* module) {
     for (HloComputation* comp : module->computations()) {
       for (HloInstruction* instr : comp->instructions()) {
-        if (instr->opcode() == HloOpcode::kAllReduceStart) {
+        if (instr->opcode() == HloOpcode::kAllReduce) {
           ASSIGN_OR_RETURN(GpuBackendConfig cfg,
                            instr->backend_config<GpuBackendConfig>());
           return cfg.collective_backend_config().kernel_strategy();
@@ -102,8 +102,7 @@ class CollectiveKernelStrategyAnnotatorTest
 TEST_F(CollectiveKernelStrategyAnnotatorTest,
        SmallAllReduceIsAnnotatedOneShot) {
   constexpr int64_t kNumElements = 32768;  // 128 KB
-  std::string hlo = absl::StrFormat(kAllReduceHloTemplate, kNumElements,
-                                    kNumElements, kNumElements);
+  std::string hlo = absl::StrFormat(kAllReduceHloTemplate, kNumElements);
   ASSERT_OK_AND_ASSIGN(auto module,
                        ParseAndReturnVerifiedModule(hlo, /*replica_count=*/8));
 
@@ -121,8 +120,7 @@ TEST_F(CollectiveKernelStrategyAnnotatorTest,
 TEST_F(CollectiveKernelStrategyAnnotatorTest,
        MediumAllReduceIsAnnotatedTwoShot) {
   constexpr int64_t kNumElements = 262144;  // 1 MB
-  std::string hlo = absl::StrFormat(kAllReduceHloTemplate, kNumElements,
-                                    kNumElements, kNumElements);
+  std::string hlo = absl::StrFormat(kAllReduceHloTemplate, kNumElements);
   ASSERT_OK_AND_ASSIGN(auto module,
                        ParseAndReturnVerifiedModule(hlo, /*replica_count=*/8));
 
@@ -140,8 +138,7 @@ TEST_F(CollectiveKernelStrategyAnnotatorTest,
 TEST_F(CollectiveKernelStrategyAnnotatorTest,
        LargeAllReduceKeepsDefaultStrategy) {
   constexpr int64_t kNumElements = 2097152;  // 8 MB
-  std::string hlo = absl::StrFormat(kAllReduceHloTemplate, kNumElements,
-                                    kNumElements, kNumElements);
+  std::string hlo = absl::StrFormat(kAllReduceHloTemplate, kNumElements);
   ASSERT_OK_AND_ASSIGN(auto module,
                        ParseAndReturnVerifiedModule(hlo, /*replica_count=*/8));
 

@@ -25,11 +25,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest-spi.h>
 #include "absl/base/nullability.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -57,6 +60,10 @@ limitations under the License.
 namespace xla {
 namespace hlo_isolation {
 namespace {
+
+using ::absl_testing::StatusIs;
+using ::testing::Contains;
+using ::testing::IsEmpty;
 
 class HloIsolationTest
     : public HloIsolationTestMixin<HloInterpreterReferenceMixin<HloTestBase>> {
@@ -919,6 +926,97 @@ TEST_F(HloIsolationTest, TestPopulateNumericCheckMismatches) {
   EXPECT_EQ(numeric_check.top_mismatches_size(), 1);
   ASSERT_TRUE(numeric_check.has_top_mismatch());
   EXPECT_DOUBLE_EQ(numeric_check.top_mismatch().rel_error(), 2.5);
+}
+
+TEST(FusionDebuggerTest, DirUsesUndeclaredOutputsDir) {
+  // Save environment variable
+  const char* original_env = std::getenv("TEST_UNDECLARED_OUTPUTS_DIR");
+  std::string original_val = original_env ? original_env : "";
+
+  // Set custom undeclared outputs dir
+  std::string custom_dir = "/some/custom/undeclared/outputs/dir";
+  tsl::setenv("TEST_UNDECLARED_OUTPUTS_DIR", custom_dir.c_str(),
+              /*overwrite=*/1);
+
+  EXPECT_EQ(GetFusionDebuggerDir(), custom_dir);
+
+  // Restore environment variable
+  if (!original_val.empty()) {
+    tsl::setenv("TEST_UNDECLARED_OUTPUTS_DIR", original_val.c_str(),
+                /*overwrite=*/1);
+  } else {
+    tsl::unsetenv("TEST_UNDECLARED_OUTPUTS_DIR");
+  }
+}
+
+TEST(FusionDebuggerTest, FilePathUsesUndeclaredOutputsDir) {
+  // Save environment variable
+  const char* original_env = std::getenv("TEST_UNDECLARED_OUTPUTS_DIR");
+  std::string original_val = original_env ? original_env : "";
+
+  // Set custom undeclared outputs dir
+  std::string custom_dir = "/some/custom/undeclared/outputs/dir";
+  tsl::setenv("TEST_UNDECLARED_OUTPUTS_DIR", custom_dir.c_str(),
+              /*overwrite=*/1);
+
+  EXPECT_EQ(
+      GetFusionDebuggerFilePath("my_op"),
+      tsl::io::JoinPath(custom_dir, "fusion-debugger-reference-my_op.bin"));
+
+  // Restore environment variable
+  if (!original_val.empty()) {
+    tsl::setenv("TEST_UNDECLARED_OUTPUTS_DIR", original_val.c_str(),
+                /*overwrite=*/1);
+  } else {
+    tsl::unsetenv("TEST_UNDECLARED_OUTPUTS_DIR");
+  }
+}
+
+TEST(FusionDebuggerTest, CleanUpAndGetLeftoverFiles) {
+  // We can write to the directory from GetFusionDebuggerDir().
+  std::string debugger_dir = GetFusionDebuggerDir();
+
+  // Make sure it is cleaned up before starting
+  CleanUpAllFusionDebuggerFiles();
+  EXPECT_THAT(GetLeftoverFusionDebuggerFiles(), IsEmpty());
+
+  // Create a debug file
+  std::string file_path = GetFusionDebuggerFilePath("test_cleanup_op");
+
+  // Write a dummy string to file
+  tsl::Env* env = tsl::Env::Default();
+  ASSERT_OK(tsl::WriteStringToFile(env, file_path, "dummy data"));
+
+  // Verify it exists in leftover files and via filesystem
+  EXPECT_THAT(GetLeftoverFusionDebuggerFiles(), Contains(file_path));
+
+  // Clean up
+  CleanUpAllFusionDebuggerFiles();
+
+  // Verify it no longer exists
+  EXPECT_THAT(GetLeftoverFusionDebuggerFiles(), IsEmpty());
+  EXPECT_THAT(env->FileExists(file_path),
+              StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST(FusionDebuggerTest, DestructorCleansUpAllFiles) {
+  // Clear any existing leftover files first
+  CleanUpAllFusionDebuggerFiles();
+  EXPECT_THAT(GetLeftoverFusionDebuggerFiles(), IsEmpty());
+
+  std::string file_path = GetFusionDebuggerFilePath("cleanup_destructor_test");
+  tsl::Env* env = tsl::Env::Default();
+
+  {
+    absl::Cleanup cleanup = [] { CleanUpAllFusionDebuggerFiles(); };
+    ASSERT_OK(tsl::WriteStringToFile(env, file_path, "test data"));
+    EXPECT_OK(env->FileExists(file_path));
+  }
+
+  // Destruction of cleanup should delete the file
+  EXPECT_THAT(env->FileExists(file_path),
+              StatusIs(absl::StatusCode::kNotFound));
+  EXPECT_THAT(GetLeftoverFusionDebuggerFiles(), IsEmpty());
 }
 
 }  // namespace

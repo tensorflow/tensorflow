@@ -34,7 +34,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "jpeglib.h"  // from @libjpeg_turbo
 #include "tensorflow/core/lib/jpeg/jpeg_mem.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/pad.h"
@@ -42,7 +41,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/profiling/time.h"
-#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/preprocessing_steps.pb.h"
@@ -53,6 +51,14 @@ namespace {
 
 // We assume 3-channel RGB images.
 constexpr int kNumChannels = 3;
+
+// Extra padding bytes required by XNNPACK.
+constexpr size_t kXnnExtraBytes = 16;
+
+// Returns the unpadded size of the image, accounting for XNNPACK padding.
+inline size_t GetUnpaddedSize(size_t padded_size) {
+  return padded_size >= kXnnExtraBytes ? padded_size - kXnnExtraBytes : 0;
+}
 
 // Returns the offset for the element in the raw image array based on the image
 // height/weight & coordinates of a pixel (h, w, c).
@@ -399,19 +405,71 @@ TfLiteStatus ImagePreprocessingStage::Run() {
     return kTfLiteError;
   }
 
+  // Find the index of the last sizing step with a target size.
+  int last_sizing_step_index = -1;
+  for (int i = params.steps_size() - 1; i >= 0; --i) {
+    const auto& param = params.steps(i);
+    bool is_sizing_step_with_target = false;
+    if (param.has_cropping_params() &&
+        param.cropping_params().has_target_size()) {
+      is_sizing_step_with_target = true;
+    } else if (param.has_resizing_params() &&
+               param.resizing_params().has_target_size()) {
+      is_sizing_step_with_target = true;
+    } else if (param.has_padding_params() &&
+               param.padding_params().has_target_size()) {
+      is_sizing_step_with_target = true;
+    }
+    if (is_sizing_step_with_target) {
+      last_sizing_step_index = i;
+      break;
+    }
+  }
+
   // Cropping, padding and resizing are not supported with raw images since raw
   // images do not contain image size information. Those steps are assumed to
   // be done before raw images are generated.
-  for (const ImagePreprocessingStepParams& param : params.steps()) {
+  for (int i = 0; i < params.steps_size(); ++i) {
+    const ImagePreprocessingStepParams& param = params.steps(i);
     if (param.has_cropping_params()) {
       if (is_raw_image) {
         LOG(WARNING) << "Image cropping will not be performed on raw images";
+        if (param.cropping_params().has_target_size() &&
+            i == last_sizing_step_index) {
+          // Only validate against the target size if this is the last sizing
+          // step in the preprocessing chain.
+          if (image_data.data.size() !=
+              static_cast<size_t>(
+                  param.cropping_params().target_size().width()) *
+                  param.cropping_params().target_size().height() *
+                  kNumChannels) {
+            LOG(ERROR)
+                << "Raw image size does not match the final expected size "
+                   "from cropping params.";
+            return kTfLiteError;
+          }
+        }
         continue;
       }
       TF_LITE_ENSURE_STATUS(Crop(&image_data, param.cropping_params()));
     } else if (param.has_resizing_params()) {
       if (is_raw_image) {
         LOG(WARNING) << "Image resizing will not be performed on raw images";
+        if (param.resizing_params().has_target_size() &&
+            i == last_sizing_step_index) {
+          // Only validate against the target size if this is the last sizing
+          // step in the preprocessing chain.
+          if (image_data.data.size() !=
+              static_cast<size_t>(
+                  param.resizing_params().target_size().width()) *
+                  param.resizing_params().target_size().height() *
+                  kNumChannels) {
+            LOG(ERROR)
+                << "Raw image size does not match the final expected size "
+                   "from resizing params.";
+            return kTfLiteError;
+          }
+        }
         continue;
       }
       TF_LITE_ENSURE_STATUS(
@@ -419,6 +477,21 @@ TfLiteStatus ImagePreprocessingStage::Run() {
     } else if (param.has_padding_params()) {
       if (is_raw_image) {
         LOG(WARNING) << "Image padding will not be performed on raw images";
+        if (param.padding_params().has_target_size() &&
+            i == last_sizing_step_index) {
+          // Only validate against the target size if this is the last sizing
+          // step in the preprocessing chain.
+          if (image_data.data.size() !=
+              static_cast<size_t>(
+                  param.padding_params().target_size().width()) *
+                  param.padding_params().target_size().height() *
+                  kNumChannels) {
+            LOG(ERROR)
+                << "Raw image size does not match the final expected size "
+                   "from padding params.";
+            return kTfLiteError;
+          }
+        }
         continue;
       }
       TF_LITE_ENSURE_STATUS(Pad(&image_data, param.padding_params()));
@@ -427,19 +500,16 @@ TfLiteStatus ImagePreprocessingStage::Run() {
           Normalize(&image_data, param.normalization_params()));
     }
   }
-
   // Converts data to output type.
   if (output_type_ == kTfLiteUInt8) {
     uint8_preprocessed_image_.clear();
-    uint8_preprocessed_image_.resize(image_data.data.size() +
-                                     /*XNN_EXTRA_BYTES=*/16);
+    uint8_preprocessed_image_.resize(image_data.data.size() + kXnnExtraBytes);
     for (size_t i = 0; i < image_data.data.size(); ++i) {
       uint8_preprocessed_image_[i] = static_cast<uint8_t>(image_data.data[i]);
     }
   } else if (output_type_ == kTfLiteInt8) {
     int8_preprocessed_image_.clear();
-    int8_preprocessed_image_.resize(image_data.data.size() +
-                                    /*XNN_EXTRA_BYTES=*/16);
+    int8_preprocessed_image_.resize(image_data.data.size() + kXnnExtraBytes);
     for (size_t i = 0; i < image_data.data.size(); ++i) {
       int8_preprocessed_image_[i] = static_cast<int8_t>(image_data.data[i]);
     }
@@ -462,6 +532,19 @@ void* ImagePreprocessingStage::GetPreprocessedImageData() {
     return float_preprocessed_image_.data();
   }
   return nullptr;
+}
+
+size_t ImagePreprocessingStage::GetPreprocessedImageBytes() {
+  if (latency_stats_.count() == 0) return 0;
+
+  if (output_type_ == kTfLiteUInt8) {
+    return GetUnpaddedSize(uint8_preprocessed_image_.size()) * sizeof(uint8_t);
+  } else if (output_type_ == kTfLiteInt8) {
+    return GetUnpaddedSize(int8_preprocessed_image_.size()) * sizeof(int8_t);
+  } else if (output_type_ == kTfLiteFloat32) {
+    return float_preprocessed_image_.size() * sizeof(float);
+  }
+  return 0;
 }
 
 EvaluationStageMetrics ImagePreprocessingStage::LatestMetrics() {
