@@ -62,6 +62,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tsl/platform/context.h"
 #include "tsl/platform/random.h"
 #include "tsl/platform/retrying_utils.h"
 
@@ -247,8 +248,9 @@ TraceMeMetadata DataServiceClient::GetTraceMeMetadata() const {
 void DataServiceClient::EnsureThreadsStarted()
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   if (!task_thread_manager_ && !cancelled_) {
-    task_thread_manager_ = ctx_->StartThread("task-thread-manager",
-                                             [this]() { TaskThreadManager(); });
+    task_thread_manager_.reset(Env::Default()->StartThread(
+        /*thread_options=*/{}, "task-thread-manager",
+        tsl::WithCurrentContext([this]() { TaskThreadManager(); })));
   }
 }
 
@@ -617,11 +619,12 @@ void DataServiceClient::UpdateWorkerThreads() TF_LOCKS_EXCLUDED(mu_) {
       get_next_cv_.notify_all();
     };
     int64_t thread_index = worker_threads_.size();
-    worker_threads_.push_back(
-        ctx_->StartThread("tf-data-service-task_thread",
-                          [this, thread_index, done = std::move(done)]() {
-                            RunWorkerThread(thread_index, std::move(done));
-                          }));
+    worker_threads_.emplace_back(Env::Default()->StartThread(
+        /*thread_options=*/{}, "tf-data-service-task_thread",
+        tsl::WithCurrentContext(
+            [this, thread_index, done = std::move(done)]() mutable {
+              RunWorkerThread(thread_index, std::move(done));
+            })));
   }
 }
 

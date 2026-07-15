@@ -1182,6 +1182,27 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
           tf_xgrad = tf_op(tf_ygrad, indices, segment_ids, output_dim0)
           self.assertAllClose(tf_xgrad, np_xgrad)
 
+  def testGradientEmptyIndicesWithNonZeroOutputDim(self):
+    ops_list = [
+        math_ops.sparse_segment_sum_grad,
+        math_ops.sparse_segment_mean_grad,
+        math_ops.sparse_segment_sqrt_n_grad,
+    ]
+    indices = []
+    segment_ids = []
+    output_dim0 = 4
+    for dtype in [
+        dtypes_lib.float16,
+        dtypes_lib.bfloat16,
+        dtypes_lib.float32,
+        dtypes_lib.float64,
+    ]:
+      grad = constant_op.constant([], shape=[0, 3], dtype=dtype)
+      for tf_op in ops_list:
+        res = self.evaluate(tf_op(grad, indices, segment_ids, output_dim0))
+        self.assertEqual(res.shape, (4, 3))
+        self.assertAllEqual(res, np.zeros((4, 3), dtype=dtype.as_numpy_dtype))
+
   def testGradientV2Explicit(self):
     # Note that the GPU implem has different paths for different inner sizes.
     for inner_size in (1, 2, 3, 32):
