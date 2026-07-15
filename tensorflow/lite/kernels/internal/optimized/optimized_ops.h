@@ -7919,7 +7919,8 @@ void Col2im(const T* col_data, const int channel, const int planes,
               if (ip >= 0 && ip < planes && ih >= 0 && ih < height && iw >= 0 &&
                   iw < width) {
                 for (int i = 0; i < channel; ++i) {
-                  im_patch_data[i] += col_data[i];
+                  im_patch_data[i] =
+                      WrappingAdd<T>(im_patch_data[i], col_data[i]);
                 }
               }
               im_patch_data += channel;
