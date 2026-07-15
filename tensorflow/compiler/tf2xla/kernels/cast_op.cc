@@ -162,8 +162,11 @@ class BitcastOp : public XlaOpKernel {
         // BitcastConvertType does not introduce a new minor dimension when
         // the widths already match, so add one explicitly before
         // concatenating the real and imaginary halves.
-        std::vector<int64_t> expanded_dims(input_shape.dim_sizes().begin(),
-                                           input_shape.dim_sizes().end());
+        // dim_sizes() returns by value, so it must be materialized once: two
+        // separate calls yield two distinct temporaries, and an iterator pair
+        // taken across them does not denote a valid range.
+        const auto dims = input_shape.dim_sizes();
+        std::vector<int64_t> expanded_dims(dims.begin(), dims.end());
         expanded_dims.push_back(1);
         real_bits = xla::Reshape(real_bits, expanded_dims);
         imag_bits = xla::Reshape(imag_bits, expanded_dims);
