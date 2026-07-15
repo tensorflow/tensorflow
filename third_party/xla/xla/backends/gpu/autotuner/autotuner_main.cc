@@ -258,8 +258,7 @@ absl::Status RunAutotuning(const std::vector<std::string>& hlo_files,
     l2_cache = std::make_unique<PrintingAutotunerCache>();
   }
   auto local_cache = std::make_unique<LocalCache>(
-      l2_cache->GetKeyMatchingMode(),
-      &LocalCacheStorage::GetInstance(env.cache_ctx));
+      env.cache_ctx, l2_cache->GetKeyMatchingMode());
   auto autotuner_cache = std::make_unique<TieredCache>(std::move(local_cache),
                                                        std::move(l2_cache));
 

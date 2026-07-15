@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
+#include "xla/backends/autotuner/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {
@@ -60,16 +61,23 @@ class LocalCacheStorage {
 // and updates configurations stored in a LocalCacheStorage.
 class LocalCache : public AutotunerCacheInterface {
  public:
-  // Constructs a LocalCache with the given matching mode, and backing storage.
-  LocalCache(KeyMatchingMode matching_mode,
+  // Constructs a LocalCache using the process-wide context-specific storage.
+  LocalCache(AutotuneCacheContext context, KeyMatchingMode matching_mode);
+
+  // Constructs a LocalCache with the given matching mode and backing storage.
+  LocalCache(AutotuneCacheContext context, KeyMatchingMode matching_mode,
              LocalCacheStorage* absl_nonnull storage);
 
   std::optional<Config> Lookup(const HloInstruction* instr) override;
   absl::Status Insert(const HloInstruction* instr,
                       const Config& config) override;
 
+  // If instructions_to_serialize is empty, serializes the entire cache, adding
+  // current context information to each entry.
   absl::StatusOr<std::string> Serialize(absl::Span<const HloInstruction* const>
                                             instructions_to_serialize) override;
+  // Local cache will only deserialize entries that are compatible with the
+  // current context, as other entries will not be used anyway.
   absl::Status Deserialize(absl::string_view serialized_cache) override;
 
   CacheStats GetCacheStats() const override;
@@ -78,8 +86,10 @@ class LocalCache : public AutotunerCacheInterface {
 
  private:
   std::string GetCacheKey(const HloInstruction* instr) const;
+  bool IsEntryCompatible(const autotuner::AutotuneEntry& entry) const;
 
   KeyMatchingMode matching_mode_;
+  AutotuneCacheContext context_;
   LocalCacheStorage* absl_nonnull storage_;  // Not owned.
 };
 
