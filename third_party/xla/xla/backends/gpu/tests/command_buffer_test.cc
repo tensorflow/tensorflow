@@ -79,16 +79,15 @@ bool IsAtLeastCuda12900(const se::StreamExecutor* stream_executor) {
   return false;
 }
 
-class CommandBufferTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>,
-      public ::testing::WithParamInterface<
-          DebugOptions::CommandBufferSchedulingMode> {
+class CommandBufferTest : public HloInterpreterReferenceMixin<HloPjRtTestBase>,
+                          public ::testing::WithParamInterface<
+                              DebugOptions::CommandBufferSchedulingMode> {
  protected:
   bool IsRocm() {
     return test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm);
   }
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_command_buffer_scheduling_mode(GetParam());
     return debug_options;
   }
@@ -192,7 +191,7 @@ class CommandBufferTest
 // Test fixture that enables loop unrolling for command buffers.
 class CommandBufferUnrollTest : public CommandBufferTest {
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_command_buffer_scheduling_mode(GetParam());
     debug_options.set_xla_gpu_command_buffer_unroll_loops(true);
     return debug_options;

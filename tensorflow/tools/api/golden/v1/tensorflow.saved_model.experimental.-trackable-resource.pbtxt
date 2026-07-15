@@ -9,6 +9,10 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__del__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'device\'], varargs=None, keywords=None, defaults=[\'\'], "
   }
