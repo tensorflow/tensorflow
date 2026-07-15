@@ -314,10 +314,9 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   //
   // The record is owned by records_by_allocator_address while either the
   // allocator address or a reservation-address alias is active, stale, or
-  // pending completion. Active indexes are callable by public APIs. Stale
-  // indexes are no longer callable by users, but still keep mappings alive
-  // until the stream-ordered deferred operation completes or a later Allocate()
-  // or Map() reuses them.
+  // pending completion. Stale addresses are no longer callable by users, but
+  // their records keep mappings alive until the stream-ordered deferred
+  // operation completes or a later Allocate() or Map() reuses them.
   class AllocationRecord {
    public:
     enum class Kind {
@@ -334,8 +333,6 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
         bool multi_device);
     AllocationRecord(const AllocationRecord&) = delete;
     AllocationRecord& operator=(const AllocationRecord&) = delete;
-    AllocationRecord(AllocationRecord&&) = default;
-    AllocationRecord& operator=(AllocationRecord&&) = default;
 
     Kind kind() const { return kind_; }
     DeviceAddressBase allocator_address() const { return allocator_address_; }
@@ -351,6 +348,7 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
     MemoryReservation* allocator_address_reservation() const {
       return allocator_address_reservation_.get();
     }
+
     bool has_reservation_alias() const {
       return reservation_alias_.has_value();
     }
@@ -369,6 +367,7 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
 
     void MarkAllocatorStale(uint64_t seqno);
     void ReactivateAllocator(uint64_t new_size);
+
     void AddActiveReservationAlias(
         MemoryReservation::ScopedMapping reservation_address_mapping);
     void MarkReservationStale(uint64_t seqno);
@@ -403,10 +402,10 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   // live in AllocationRecord; this entry only says which stale address becomes
   // safe to complete when the GPU timeline reaches `seqno`.
   struct PendingDeallocation {
-    PendingDeallocationKind kind = PendingDeallocationKind::kAllocation;
+    PendingDeallocationKind kind;
     // GPU stream sequence number recorded at deallocation time. When the
     // pinned_timeline value reaches this seqno, the memory is safe to free.
-    uint64_t seqno = 0;
+    uint64_t seqno;
     // Allocator address for allocation deallocations; reservation address for
     // kMap.
     DeviceAddressBase addr;
@@ -515,9 +514,8 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   // Records a raw allocation mapped at an owning allocator address. Takes
   // ownership of `reservation` when the allocator address was allocator-owned;
   // reservation-backed returned addresses pass nullptr here. Charges the raw
-  // allocation's committed size to the PA budget and returns the allocator VA
-  // pointer.
-  void* TrackAllocatorAddressMappedAllocation(
+  // allocation's committed size to the PA budget.
+  AllocationRecord& TrackAllocatorAddressMappedAllocation(
       PerDeviceState& state, AllocationRecord::Kind kind,
       DeviceAddressBase allocator_address,
       std::unique_ptr<MemoryAllocation> raw_allocation,
@@ -525,26 +523,22 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
       MemoryReservation::ScopedMapping mapping, bool multi_device)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
 
+  enum class MappedAddressMode {
+    kReservationAddress,
+    kSeparateAllocatorAddress,
+  };
+
   struct MappedAllocateRequest {
     MemoryReservation* reservation;
     DeviceAddressBase reservation_address;
-    uint64_t allocation_size;
+    uint64_t size;
     uint64_t reservation_offset;
-    uint64_t mapping_size;
     bool multi_device;
+    MappedAddressMode mode;
   };
 
-  // Reactivates a stale mapped allocation whose returned allocator address is
-  // the requested caller-owned reservation address.
-  absl::StatusOr<std::optional<DeviceAddressBase>>
-  TryReuseMappedAllocationAtReservationAddress(
-      PerDeviceState& state, const MappedAllocateRequest& request)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
-
-  // Reactivates a stale mapped allocation with both a separate allocator-owned
-  // returned address and an alias at the requested reservation address.
-  absl::StatusOr<std::optional<DeviceAddressBase>>
-  TryReuseMappedAllocationWithSeparateAddress(
+  // Reactivates a compatible stale mapped allocation.
+  std::optional<DeviceAddressBase> TryReuseMappedAllocation(
       PerDeviceState& state, const MappedAllocateRequest& request)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
 
@@ -554,22 +548,17 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
       PerDeviceState& state, const MappedAllocateRequest& request)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
 
-  // Creates a mapped allocation that uses the caller-owned reservation address
-  // as its returned allocator address.
-  absl::StatusOr<DeviceAddressBase> CreateMappedAllocationAtReservationAddress(
-      PerDeviceState& state, const MappedAllocateRequest& request)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
-
-  // Creates a mapped allocation with a separate allocator-owned returned
-  // address and a non-owning alias in the caller-owned reservation.
-  absl::StatusOr<DeviceAddressBase> CreateMappedAllocationWithSeparateAddress(
+  // Creates a mapped allocation with either the caller-owned reservation
+  // address or a separate allocator-owned address as its returned address.
+  absl::StatusOr<DeviceAddressBase> CreateMappedAllocation(
       PerDeviceState& state, const MappedAllocateRequest& request)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
 
   // Shared allocation retry policy. First calls `try_reuse` to reactivate
-  // compatible pending state without blocking, then calls `try_fresh`. On
-  // ResourceExhausted, it completes ready pending entries and, if needed, waits
-  // for enough pending frees to reclaim approximately `reclaim_size` bytes.
+  // compatible pending state without blocking, then calls `try_fresh`. A
+  // ResourceExhausted result completes ready pending entries and, if needed,
+  // waits for enough pending frees to reclaim approximately `reclaim_size`
+  // bytes.
   template <typename TryReuseFn, typename TryFreshFn>
   absl::StatusOr<DeviceAddressBase> TryWithPendingReclaim(PerDeviceState& state,
                                                           uint64_t reclaim_size,
@@ -587,10 +576,10 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
       uint64_t size) const;
 
   struct OverlappingRecord {
-    AllocationRecord* record = nullptr;
+    AllocationRecord* record;
     DeviceAddressBase tracked_address;
-    bool is_allocator = false;
-    bool is_active = false;
+    bool is_allocator;
+    bool is_active;
   };
 
   enum class AddressRole { kAllocator, kReservation, kBoth };
@@ -601,9 +590,9 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   // helpers.
   struct MapRequest {
     DeviceAddressBase source_address;
-    MemoryReservation* reservation = nullptr;
-    uint64_t reservation_offset = 0;
-    uint64_t size = 0;
+    MemoryReservation* reservation;
+    uint64_t reservation_offset;
+    uint64_t size;
     DeviceAddressBase reservation_address;
   };
 
