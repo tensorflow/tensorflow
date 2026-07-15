@@ -405,8 +405,32 @@ class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               input=[0], size=[1, 1], weights=[3], binary_output=False))
 
 
+  def test_bincount_overflow(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Too many elements in tensor|Encountered overflow|negative"):
+      # Large enough size to overflow int64 when multiplied by num_rows
+      self.evaluate(
+          gen_math_ops.dense_bincount(
+              input=[[0, 0], [0, 0]],
+              size=2**62,
+              weights=[]))
+
 class SparseBincountOpTest(test_util.TensorFlowTestCase,
                            parameterized.TestCase):
+
+  def test_bincount_overflow(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Too many elements in tensor|Encountered overflow|negative"):
+      # Large enough size to overflow int64 when multiplied by num_rows
+      self.evaluate(
+          gen_math_ops.sparse_bincount(
+              indices=[[0, 0], [0, 0]],
+              values=[0, 0],
+              dense_shape=[2**62, 2**62],
+              size=2**20,
+              weights=[]))
 
   @parameterized.parameters([
       {
@@ -685,6 +709,18 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
 
 class RaggedBincountOpTest(test_util.TensorFlowTestCase,
                            parameterized.TestCase):
+
+  def test_bincount_overflow(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Too many elements in tensor|Encountered overflow|negative"):
+      # Large enough size to overflow int64 when multiplied by num_rows
+      self.evaluate(
+          gen_math_ops.ragged_bincount(
+              splits=[0, 1, 2],
+              values=[0, 0],
+              size=2**62,
+              weights=[]))
 
   @parameterized.parameters([{
       "dtype": np.int32,
