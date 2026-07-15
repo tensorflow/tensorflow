@@ -301,6 +301,9 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
       platform_name_(std::move(platform_name)),
       client_(client),
       host_memory_allocator_(std::move(host_memory_allocator)),
+      has_custom_host_memory_allocator_(dynamic_cast<BasicHostMemoryAllocator*>(
+                                            host_memory_allocator_.get()) ==
+                                        nullptr),
       owned_allocator_(std::move(allocator)),
       owned_devices_(std::move(devices)),
       process_index_(process_index),
@@ -563,12 +566,26 @@ absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorClient::AllocateRawBuffer(
         absl::StrCat("Buffer allocation: invalid memory space: ",
                      memory_space->DebugString()));
   }
-  ASSIGN_OR_RETURN(
-      auto buffer,
-      allocator()->Allocate(local_device->local_device_id().value(),
-                            on_device_bytes_count, true, layout_memory_space));
-  auto mem =
-      RawSEDeviceMemory::Create(buffer.Release(), local_device, allocator());
+  tsl::AsyncValueRef<RawSEDeviceMemory> mem;
+  if (has_custom_host_memory_allocator_ &&
+      layout_memory_space == Layout::kHostMemorySpace) {
+    xla::HostMemoryAllocator::AllocateOptions alloc_opts = {
+        /*numa_node=*/local_device->executor()->numa_node(),
+        /*local_device_id=*/local_device->local_device_id(),
+    };
+    auto buffer =
+        GetHostMemoryAllocator()->Allocate(on_device_bytes_count, alloc_opts);
+    se::DeviceAddressBase address(buffer.get(), on_device_bytes_count);
+    mem = RawSEDeviceMemory::CreateForeign(address,
+                                           [buffer = std::move(buffer)]() {});
+  } else {
+    ASSIGN_OR_RETURN(auto buffer,
+                     allocator()->Allocate(
+                         local_device->local_device_id().value(),
+                         on_device_bytes_count, true, layout_memory_space));
+    mem =
+        RawSEDeviceMemory::Create(buffer.Release(), local_device, allocator());
+  }
   if (local_device->allocation_model() !=
       LocalDeviceState::kComputeSynchronized) {
     DCHECK(client()->backend().transfer_manager()->CanBufferBeAccessedNow(

@@ -34,6 +34,8 @@ limitations under the License.
 #include "absl/base/log_severity.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/globals.h"
 #include "absl/log/log.h"
@@ -67,6 +69,7 @@ limitations under the License.
 #include "xla/parse_flags_from_env.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
+#include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
@@ -1424,6 +1427,76 @@ TEST(StreamExecutorGpuClientTest, CopyToPinnedHostMemorySpaceInt4) {
   TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteral().Await());
   std::vector<xla::s4> expected{xla::s4(1), xla::s4(2), xla::s4(3), xla::s4(4)};
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<xla::s4>(expected),
+                                     *literal));
+}
+
+class RecordingAllocator : public HostMemoryAllocator {
+ public:
+  using AllocationSet = absl::flat_hash_set<const void*>;
+
+  explicit RecordingAllocator(AllocationSet& allocations, Options options)
+      : allocations_(allocations), options_(std::move(options)) {}
+
+  OwnedPtr Allocate(size_t size, const AllocateOptions& options) override {
+    auto* const buffer = static_cast<uint8_t*>(operator new(size));
+    CHECK_OK(options_.map_fn(std::nullopt, buffer, size));
+    allocations_.insert(buffer);
+
+    return xla::HostMemoryAllocator::OwnedPtr(
+        buffer, xla::HostMemoryAllocator::Deleter{
+                    /*deleter=*/
+                    [](void* ptr, void* arg) {
+                      auto* const allocator =
+                          static_cast<RecordingAllocator*>(arg);
+                      allocator->allocations_.erase(ptr);
+                      CHECK_OK(allocator->options_.unmap_fn(std::nullopt, ptr));
+                      operator delete(ptr);
+                    },
+                    /*arg=*/this});
+  }
+
+ private:
+  AllocationSet& allocations_;
+  Options options_;
+};
+
+TEST(StreamExecutorGpuClientTest, PinnedHostWithCustomHostMemoryAllocator) {
+  GpuClientOptions options = GetTestGpuClientOptions();
+
+  RecordingAllocator::AllocationSet allocations;
+  options.host_memory_allocator_factory =
+      [&](HostMemoryAllocator::Options options)
+      -> absl::StatusOr<std::unique_ptr<HostMemoryAllocator>> {
+    return std::make_unique<RecordingAllocator>(allocations,
+                                                std::move(options));
+  };
+
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  std::vector<int32_t> data{1, 2, 3, 4};
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  auto device = client->addressable_devices()[0];
+  auto* pinned_memory_space = device->memory_spaces()[1];
+  ASSERT_EQ(pinned_memory_space->kind_id(), PinnedHostMemorySpace::kKindId);
+  ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          pinned_memory_space, /*device_layout=*/nullptr));
+
+  EXPECT_EQ(buffer->memory_space()->kind(), "pinned_host");
+  EXPECT_TRUE(buffer->IsOnCpu());
+
+  {
+    ASSERT_OK_AND_ASSIGN(auto external_ref, buffer->AcquireExternalReference());
+    EXPECT_THAT(allocations,
+                Contains(external_ref->OpaqueDeviceMemoryDataPointer()));
+  }
+
+  ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteral().Await());
+  std::vector<int32_t> expected{1, 2, 3, 4};
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
                                      *literal));
 }
 

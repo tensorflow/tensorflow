@@ -507,6 +507,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 
   // Allocator to be used for staging memory transfers to devices.
   std::unique_ptr<HostMemoryAllocator> host_memory_allocator_;
+  bool has_custom_host_memory_allocator_ = false;
 
   // Device memory allocator. If owned, the allocator must outlive the devices,
   // because it is the device destructor that waits for any outstanding work to
