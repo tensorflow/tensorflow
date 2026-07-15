@@ -2513,7 +2513,7 @@ func.func @cast_i2f(%arg0: tensor<2xi32>) -> tensor<2xf32> {
 // CHECK-LABEL: func @cast_float_to_unsigned
 func.func @cast_float_to_unsigned(%arg0: tensor<?xf32>) -> tensor<?xui32> {
   // CHECK: %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
-  // CHECK: %[[BROADCAST_ZERO:.*]] = "mhlo.broadcast_in_dim"(%[[ZERO]]) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<?xf32>
+  // CHECK: %[[BROADCAST_ZERO:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ZERO]], %{{.*}}) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>, tensor<1xindex>) -> tensor<?xf32>
   // CHECK: %[[IS_NEGATIVE:.*]] = mhlo.compare LT, %arg0, %[[BROADCAST_ZERO]]
   // CHECK: %[[IS_FINITE:.*]] = mhlo.is_finite %arg0 : (tensor<?xf32>) -> tensor<?xi1>
   // CHECK: %[[FINITE_NEGATIVE:.*]] = mhlo.and %[[IS_NEGATIVE]], %[[IS_FINITE]] : tensor<?xi1>

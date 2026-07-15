@@ -702,8 +702,8 @@ class ConvertFloatToUnsignedCastOp : public OpRewritePattern<TF::CastOp> {
         DenseElementsAttr::get(
             scalar_input_type,
             rewriter.getFloatAttr(input_element_type, 0.0)));
-    Value broadcast_zero = BroadcastInDimOp::create(
-        rewriter, loc, input_type, zero, GetI64ElementsAttr({}, &rewriter));
+    Value broadcast_zero =
+        BroadcastToShapeOf(loc, zero, op.getX(), rewriter);
     Value is_negative =
         CompareOp::create(rewriter, loc, op.getX(), broadcast_zero,
                           ComparisonDirection::LT);
