@@ -511,6 +511,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_enable_hlo_sharding_v3(false);
   opts.set_xla_enable_rgv3_materialization(true);
   opts.set_xla_sdy_export_all_reduce_scatter(false);
+  opts.set_xla_track_modifying_passes(DebugOptions::TRACK_NONE);
   opts.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(false);
   opts.set_xla_gpu_experimental_enable_buffer_saver_on_thunks(false);
   opts.set_xla_gpu_experimental_thunk_buffer_debug_module_outputs(false);
@@ -1024,6 +1025,25 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         debug_options->set_xla_cpu_scheduler_type(scheduler_type);
         return true;
       };
+
+  auto setter_for_xla_track_modifying_passes = [debug_options](
+                                                   absl::string_view value) {
+    std::string upper_value = absl::AsciiStrToUpper(value);
+    if (upper_value == "TRUE" || upper_value == "1") {
+      debug_options->set_xla_track_modifying_passes(DebugOptions::FULL_PATH);
+      return true;
+    }
+    if (upper_value == "FALSE" || upper_value == "0") {
+      debug_options->set_xla_track_modifying_passes(DebugOptions::TRACK_NONE);
+      return true;
+    }
+    DebugOptions::ModifyingPassTrackMode mode;
+    if (!DebugOptions::ModifyingPassTrackMode_Parse(upper_value, &mode)) {
+      return false;
+    }
+    debug_options->set_xla_track_modifying_passes(mode);
+    return true;
+  };
 
   // Custom parser for `xla_gpu_enable_while_loop_unrolling` flag.
   auto setter_for_xla_gpu_enable_while_loop_unrolling =
@@ -3323,6 +3343,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Whether to export all sdy.reduce_scatter operations as native StableHLO "
       "collectives wrapped in manual computation blocks. If false (default), "
       "only operations with unreduced axes are exported this way."));
+  flag_list->push_back(tsl::Flag(
+      "xla_track_modifying_passes", setter_for_xla_track_modifying_passes,
+      DebugOptions::ModifyingPassTrackMode_Name(
+          debug_options->xla_track_modifying_passes()),
+      "Track the modifying passes for each HLO operation using hlo-diff. "
+      "Modes: TRACK_NONE, LAST_PASS, FULL_PATH (or true/false)."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_enable_checksum_tracing_on_thunks",
       bool_setter_for(
