@@ -510,7 +510,7 @@ GpuExecutable::GpuExecutable(
 
   const DebugOptions* allocation_debug_options =
       has_module() ? &module_config().debug_options() : nullptr;
-  buffer_allocator_ = std::make_unique<GpuExecutableBufferAllocator>(
+  buffer_allocator_ = GpuExecutableBufferAllocator::Create(
       module_name_, allocation_ptrs_, program_shape_.result(),
       allocation_debug_options, thunk_executor_.get());
 }
@@ -1082,13 +1082,13 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
         param_no};
   };
 
-  ASSIGN_OR_RETURN(
-      GpuExecutableBufferAllocator::ExecutionScope allocation_scope,
-      buffer_allocator_->CreateExecutionScope(run_options, memory_allocator,
-                                              device_ordinal));
+  ASSIGN_OR_RETURN(std::unique_ptr<GpuExecutableBufferAllocator::ExecutionScope>
+                       allocation_scope,
+                   buffer_allocator_->CreateExecutionScope(
+                       run_options, memory_allocator, device_ordinal));
 
   ASSIGN_OR_RETURN(BufferAllocations buffer_allocations,
-                   allocation_scope.GenerateBufferAllocations(
+                   allocation_scope->GenerateBufferAllocations(
                        run_options, get_parameter_buffer, globals,
                        memory_allocator, device_ordinal));
   XLA_VLOG_DEVICE(3, device_ordinal) << buffer_allocations.ToString();
@@ -1168,7 +1168,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
                       .IsTuple()) {
         ASSIGN_OR_RETURN(
             result_buffer,
-            allocation_scope.AllocateCopyProtectedOutputBuffer(
+            allocation_scope->AllocateCopyProtectedOutputBuffer(
                 run_options, buffer_allocations, index, *allocation,
                 device_ordinal, memory_allocator, [&](absl::Status status) {
                   return ResourceExhausted("%s\n%s\n", status.message(),
@@ -1192,7 +1192,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     buffers_in_result.insert(result_buffer);
   }
 
-  absl::Status execute_status = allocation_scope.ExecuteWithBufferAllocations(
+  absl::Status execute_status = allocation_scope->ExecuteWithBufferAllocations(
       buffer_allocations, device_ordinal,
       [&](const BufferAllocations& execution_buffers,
           std::optional<absl::Span<const BufferAllocation::Index>>

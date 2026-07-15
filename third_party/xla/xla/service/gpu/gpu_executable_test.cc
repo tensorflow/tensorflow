@@ -301,19 +301,21 @@ TEST_F(GpuExecutableTest, CommandBufferAllocationPolicy) {
       -> absl::StatusOr<AllocationPolicy> {
     DebugOptions debug_options;
     debug_options.set_xla_gpu_command_buffer_update_mode(update_mode);
-    GpuExecutableBufferAllocator buffer_allocator(
-        "test", allocation_ptrs, shape, &debug_options, &thunk_executor);
+    std::unique_ptr<GpuExecutableBufferAllocator> buffer_allocator =
+        GpuExecutableBufferAllocator::Create("test", allocation_ptrs, shape,
+                                             &debug_options, &thunk_executor);
     ServiceExecutableRunOptions run_options;
     ASSIGN_OR_RETURN(
-        GpuExecutableBufferAllocator::ExecutionScope allocation_scope,
-        buffer_allocator.CreateExecutionScope(
+        std::unique_ptr<GpuExecutableBufferAllocator::ExecutionScope>
+            allocation_scope,
+        buffer_allocator->CreateExecutionScope(
             &run_options, /*memory_allocator=*/nullptr, /*device_ordinal=*/0));
 
     std::vector<se::DeviceAddressBase> buffers;
     BufferAllocations buffer_allocations(buffers, /*device_ordinal=*/0,
                                          /*memory_allocator=*/nullptr);
     std::optional<std::vector<BufferAllocation::Index>> persistent_indices;
-    RETURN_IF_ERROR(allocation_scope.ExecuteWithBufferAllocations(
+    RETURN_IF_ERROR(allocation_scope->ExecuteWithBufferAllocations(
         buffer_allocations, /*device_ordinal=*/0,
         [&](const BufferAllocations&,
             std::optional<absl::Span<const BufferAllocation::Index>> indices) {
@@ -322,7 +324,7 @@ TEST_F(GpuExecutableTest, CommandBufferAllocationPolicy) {
           }
           return absl::OkStatus();
         }));
-    return AllocationPolicy{buffer_allocator.command_buffer_allocation_count(),
+    return AllocationPolicy{buffer_allocator->command_buffer_allocation_count(),
                             std::move(persistent_indices)};
   };
 
@@ -1115,7 +1117,6 @@ TEST_F(GpuExecutableTest, ExecutableAbiVersion) {
 int64_t BufferSizeBytes(const BufferValue& buffer) {
   return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
 }
-
 
 }  // namespace
 }  // namespace xla::gpu
