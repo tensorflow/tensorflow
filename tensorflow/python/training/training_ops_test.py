@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tensorflow.ops.gen_training_ops."""
 
 import itertools
 import threading
@@ -24,6 +23,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.test_util import TensorFlowTestCase
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
@@ -573,9 +573,483 @@ class TrainingOpsTest(TensorFlowTestCase):
         ),
     ]
     for apply_op in cases:
-      with self.assertRaises(errors.InvalidArgumentError):
+      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
         self.evaluate(apply_op())
 
+  @test_util.run_in_graph_and_eager_modes
+  def testApplyAdadeltaInvalidAccumUpdateShape(self):
+    var = variables.Variable([1.0, 2.0])
+    accum = variables.Variable([1.0, 2.0])
+    accum_update = variables.Variable([1.0])
+    lr = constant_op.constant(0.001)
+    rho = constant_op.constant(0.9)
+    epsilon = constant_op.constant(1e-8)
+    grad = constant_op.constant([0.1, 0.1])
 
-if __name__ == '__main__':
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.resource)
+        ]
+    )
+    def run_op(accum_update_handle):
+      gen_training_ops.resource_apply_adadelta(
+          var.handle, accum.handle, accum_update_handle, lr, rho, epsilon, grad
+      )
+
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, TypeError, ValueError), r".*"
+    ):
+      run_op(accum_update.handle)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testApplyAdamWithAmsgradInvalidVhatShape(self):
+    var = variables.Variable([1.0, 2.0])
+    m = variables.Variable([1.0, 2.0])
+    v = variables.Variable([1.0, 2.0])
+    vhat = variables.Variable([1.0])
+    beta1_power = constant_op.constant(0.9)
+    beta2_power = constant_op.constant(0.999)
+    lr = constant_op.constant(0.001)
+    beta1 = constant_op.constant(0.9)
+    beta2 = constant_op.constant(0.999)
+    epsilon = constant_op.constant(1e-8)
+    grad = constant_op.constant([0.1, 0.1])
+
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.resource)
+        ]
+    )
+    def run_op(vhat_handle):
+      gen_training_ops.resource_apply_adam_with_amsgrad(
+          var.handle,
+          m.handle,
+          v.handle,
+          vhat_handle,
+          beta1_power,
+          beta2_power,
+          lr,
+          beta1,
+          beta2,
+          epsilon,
+          grad,
+      )
+
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, TypeError, ValueError), r".*"
+    ):
+      run_op(vhat.handle)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testApplyAdamWithAmsgradInvalidGradShape(self):
+    var = variables.Variable([1.0, 2.0])
+    m = variables.Variable([1.0, 2.0])
+    v = variables.Variable([1.0, 2.0])
+    vhat = variables.Variable([1.0, 2.0])
+    beta1_power = constant_op.constant(0.9)
+    beta2_power = constant_op.constant(0.999)
+    lr = constant_op.constant(0.001)
+    beta1 = constant_op.constant(0.9)
+    beta2 = constant_op.constant(0.999)
+    epsilon = constant_op.constant(1e-8)
+    grad = constant_op.constant([0.1])
+
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)
+        ]
+    )
+    def run_op(grad_t):
+      gen_training_ops.resource_apply_adam_with_amsgrad(
+          var.handle,
+          m.handle,
+          v.handle,
+          vhat.handle,
+          beta1_power,
+          beta2_power,
+          lr,
+          beta1,
+          beta2,
+          epsilon,
+          grad_t,
+      )
+
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, TypeError, ValueError), r".*"
+    ):
+      run_op(grad)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSparseApplyAdagradDAInvalidGradShape(self):
+    var = variables.Variable([1.0, 2.0])
+    accum = variables.Variable([1.0, 2.0])
+    accum_update = variables.Variable([1.0, 2.0])
+    grad = constant_op.constant([], shape=[2, 0])
+    indices = constant_op.constant([0, 1], dtype=dtypes.int32)
+    lr = constant_op.constant(0.001)
+    l1 = constant_op.constant(0.1)
+    l2 = constant_op.constant(0.1)
+    global_step = constant_op.constant(1, dtype=dtypes.int64)
+
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)
+        ]
+    )
+    def run_op(grad_t):
+      gen_training_ops.resource_sparse_apply_adagrad_da(
+          var.handle,
+          accum.handle,
+          accum_update.handle,
+          grad_t,
+          indices,
+          lr,
+          l1,
+          l2,
+          global_step,
+      )
+
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, TypeError, ValueError), r".*"
+    ):
+      run_op(grad)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSparseApplyAdadeltaInvalidGradShape(self):
+    var = variables.Variable([1.0, 2.0])
+    grad = constant_op.constant([], shape=[2, 0])
+    indices = constant_op.constant([0, 1], dtype=dtypes.int32)
+    accum = variables.Variable([1.0, 2.0])
+    accum_update = variables.Variable([1.0, 2.0])
+    lr = constant_op.constant(0.1)
+    rho = constant_op.constant(0.1)
+    epsilon = constant_op.constant(0.1)
+
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)
+        ]
+    )
+    def run_op(grad_t):
+      gen_training_ops.resource_sparse_apply_adadelta(
+          var.handle,
+          accum.handle,
+          accum_update.handle,
+          lr,
+          rho,
+          epsilon,
+          grad_t,
+          indices,
+      )
+
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, TypeError, ValueError), r".*"
+    ):
+      run_op(grad)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSparseApplyProximalGradientDescentInvalidGradShape(self):
+    var = variables.Variable([1.0, 2.0])
+    grad = constant_op.constant([], shape=[2, 0])
+    indices = constant_op.constant([0, 1], dtype=dtypes.int32)
+    alpha = constant_op.constant(0.1)
+    l1 = constant_op.constant(0.1)
+    l2 = constant_op.constant(0.1)
+
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)
+        ]
+    )
+    def run_op(grad_t):
+      gen_training_ops.resource_sparse_apply_proximal_gradient_descent(
+          var.handle, alpha, l1, l2, grad_t, indices
+      )
+
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, TypeError, ValueError), r".*"
+    ):
+      run_op(grad)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSparseApplyProximalAdagradInvalidGradShape(self):
+    var = variables.Variable([1.0, 2.0])
+    grad = constant_op.constant([], shape=[2, 0])
+    indices = constant_op.constant([0, 1], dtype=dtypes.int32)
+    accum = variables.Variable([1.0, 2.0])
+    lr = constant_op.constant(0.1)
+    l1 = constant_op.constant(0.1)
+    l2 = constant_op.constant(0.1)
+
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)
+        ]
+    )
+    def run_op(grad_t):
+      gen_training_ops.resource_sparse_apply_proximal_adagrad(
+          var.handle, accum.handle, lr, l1, l2, grad_t, indices
+      )
+
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, TypeError, ValueError), r".*"
+    ):
+      run_op(grad)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSparseApplyFtrlInvalidGradShape(self):
+    with ops.device('/cpu:0'):
+      var = variables.Variable([1.0, 2.0])
+      grad = constant_op.constant([], shape=[2, 0])
+      indices = constant_op.constant([0, 1], dtype=dtypes.int32)
+      accum = variables.Variable([1.0, 2.0])
+      linear = variables.Variable([1.0, 2.0])
+      lr = constant_op.constant(0.1)
+      l1 = constant_op.constant(0.1)
+      l2 = constant_op.constant(0.1)
+      lr_power = constant_op.constant(0.1)
+
+      @def_function.function(
+          input_signature=[
+              tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)
+          ]
+      )
+      def run_op(grad_t):
+        gen_training_ops.resource_sparse_apply_ftrl(
+            var.handle,
+            accum.handle,
+            linear.handle,
+            grad_t,
+            indices,
+            lr,
+            l1,
+            l2,
+            lr_power,
+        )
+
+      with self.assertRaisesRegex(
+          (errors.InvalidArgumentError, TypeError, ValueError), r".*"
+      ):
+        run_op(grad)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSparseApplyMomentumInvalidGradShape(self):
+    with ops.device('/cpu:0'):
+      var = variables.Variable([1.0, 2.0])
+      grad = constant_op.constant([], shape=[2, 0])
+      indices = constant_op.constant([0, 1], dtype=dtypes.int32)
+      accum = variables.Variable([1.0, 2.0])
+      lr = constant_op.constant(0.1)
+      momentum = constant_op.constant(0.1)
+
+      @def_function.function(
+          input_signature=[
+              tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)
+          ]
+      )
+      def run_op(grad_t):
+        gen_training_ops.resource_sparse_apply_momentum(
+            var.handle, accum.handle, lr, grad_t, indices, momentum
+        )
+
+      with self.assertRaisesRegex(
+          (errors.InvalidArgumentError, TypeError, ValueError), r".*"
+      ):
+        run_op(grad)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSparseApplyKerasMomentumInvalidGradShape(self):
+    with ops.device('/cpu:0'):
+      var = variables.Variable([1.0, 2.0])
+      grad = constant_op.constant([], shape=[2, 0])
+      indices = constant_op.constant([0, 1], dtype=dtypes.int32)
+      accum = variables.Variable([1.0, 2.0])
+      lr = constant_op.constant(0.1)
+      momentum = constant_op.constant(0.1)
+
+      @def_function.function(
+          input_signature=[
+              tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)
+          ]
+      )
+      def run_op(grad_t):
+        gen_training_ops.resource_sparse_apply_keras_momentum(
+            var.handle, accum.handle, lr, grad_t, indices, momentum
+        )
+
+      with self.assertRaisesRegex(
+          (errors.InvalidArgumentError, TypeError, ValueError), r".*"
+      ):
+        run_op(grad)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSparseApplyRMSPropInvalidGradShape(self):
+    with ops.device('/cpu:0'):
+      var = variables.Variable([1.0, 2.0])
+      grad = constant_op.constant([], shape=[2, 0])
+      indices = constant_op.constant([0, 1], dtype=dtypes.int32)
+      ms = variables.Variable([1.0, 2.0])
+      mom = variables.Variable([1.0, 2.0])
+      lr = constant_op.constant(0.1)
+      rho = constant_op.constant(0.1)
+      momentum = constant_op.constant(0.1)
+      epsilon = constant_op.constant(0.1)
+
+      @def_function.function(
+          input_signature=[
+              tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)
+          ]
+      )
+      def run_op(grad_t):
+        gen_training_ops.resource_sparse_apply_rms_prop(
+            var.handle,
+            ms.handle,
+            mom.handle,
+            lr,
+            rho,
+            momentum,
+            epsilon,
+            grad_t,
+            indices,
+        )
+
+      with self.assertRaisesRegex(
+          (errors.InvalidArgumentError, TypeError, ValueError), r".*"
+      ):
+        run_op(grad)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSparseApplyCenteredRMSPropInvalidGradShape(self):
+    with ops.device('/cpu:0'):
+      var = variables.Variable([1.0, 2.0])
+      grad = constant_op.constant([], shape=[2, 0])
+      indices = constant_op.constant([0, 1], dtype=dtypes.int32)
+      mg = variables.Variable([1.0, 2.0])
+      ms = variables.Variable([1.0, 2.0])
+      mom = variables.Variable([1.0, 2.0])
+      lr = constant_op.constant(0.1)
+      rho = constant_op.constant(0.1)
+      momentum = constant_op.constant(0.1)
+      epsilon = constant_op.constant(0.1)
+
+      @def_function.function(
+          input_signature=[
+              tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)
+          ]
+      )
+      def run_op(grad_t):
+        gen_training_ops.resource_sparse_apply_centered_rms_prop(
+            var.handle,
+            mg.handle,
+            ms.handle,
+            mom.handle,
+            lr,
+            rho,
+            momentum,
+            epsilon,
+            grad_t,
+            indices,
+        )
+
+      with self.assertRaisesRegex(
+          (errors.InvalidArgumentError, TypeError, ValueError), r".*"
+      ):
+        run_op(grad)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testApplyAdadeltaSuccess(self):
+    var = variables.Variable([1.0, 2.0])
+    accum = variables.Variable([1.0, 2.0])
+    accum_update = variables.Variable([1.0, 2.0])
+    lr = constant_op.constant(0.001)
+    rho = constant_op.constant(0.9)
+    epsilon = constant_op.constant(1e-8)
+    grad = constant_op.constant([0.1, 0.1])
+    self.evaluate(variables.global_variables_initializer())
+    gen_training_ops.resource_apply_adadelta(
+        var.handle, accum.handle, accum_update.handle, lr, rho, epsilon, grad
+    )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testApplyAdamWithAmsgradSuccess(self):
+    var = variables.Variable([1.0, 2.0])
+    m = variables.Variable([1.0, 2.0])
+    v = variables.Variable([1.0, 2.0])
+    vhat = variables.Variable([1.0, 2.0])
+    beta1_power = constant_op.constant(0.9)
+    beta2_power = constant_op.constant(0.999)
+    lr = constant_op.constant(0.001)
+    beta1 = constant_op.constant(0.9)
+    beta2 = constant_op.constant(0.999)
+    epsilon = constant_op.constant(1e-8)
+    grad = constant_op.constant([0.1, 0.1])
+    self.evaluate(variables.global_variables_initializer())
+    gen_training_ops.resource_apply_adam_with_amsgrad(
+        var.handle,
+        m.handle,
+        v.handle,
+        vhat.handle,
+        beta1_power,
+        beta2_power,
+        lr,
+        beta1,
+        beta2,
+        epsilon,
+        grad,
+    )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSparseApplyRMSPropSuccess(self):
+    with ops.device('/cpu:0'):
+      var = variables.Variable([1.0, 2.0])
+      ms = variables.Variable([1.0, 2.0])
+      mom = variables.Variable([1.0, 2.0])
+      lr = constant_op.constant(0.1)
+      rho = constant_op.constant(0.1)
+      momentum = constant_op.constant(0.1)
+      epsilon = constant_op.constant(0.1)
+      grad = constant_op.constant([0.1, 0.1])
+      indices = constant_op.constant([0, 1], dtype=dtypes.int32)
+      self.evaluate(variables.global_variables_initializer())
+      gen_training_ops.resource_sparse_apply_rms_prop(
+          var.handle,
+          ms.handle,
+          mom.handle,
+          lr,
+          rho,
+          momentum,
+          epsilon,
+          grad,
+          indices,
+      )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSparseApplyCenteredRMSPropSuccess(self):
+    with ops.device('/cpu:0'):
+      var = variables.Variable([1.0, 2.0])
+      mg = variables.Variable([1.0, 2.0])
+      ms = variables.Variable([1.0, 2.0])
+      mom = variables.Variable([1.0, 2.0])
+      lr = constant_op.constant(0.1)
+      rho = constant_op.constant(0.1)
+      momentum = constant_op.constant(0.1)
+      epsilon = constant_op.constant(0.1)
+      grad = constant_op.constant([0.1, 0.1])
+      indices = constant_op.constant([0, 1], dtype=dtypes.int32)
+      self.evaluate(variables.global_variables_initializer())
+      gen_training_ops.resource_sparse_apply_centered_rms_prop(
+          var.handle,
+          mg.handle,
+          ms.handle,
+          mom.handle,
+          lr,
+          rho,
+          momentum,
+          epsilon,
+          grad,
+          indices,
+      )
+
+
+if __name__ == "__main__":
   googletest.main()

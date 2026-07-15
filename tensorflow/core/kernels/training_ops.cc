@@ -17,16 +17,25 @@ limitations under the License.
 #include "tensorflow/core/kernels/training_ops.h"
 
 #include <algorithm>  // NOLINT
+#include <type_traits>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "Eigen/Core"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
-#include "tensorflow/core/kernels/variable_ops.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/bfloat16.h"
+#include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
@@ -1112,6 +1121,11 @@ class ApplyAdadeltaOp : public OpKernel {
         absl::InvalidArgumentError(absl::StrCat(
             "var and accum do not have the same shape",
             var.shape().DebugString(), " ", accum.shape().DebugString())));
+    OP_REQUIRES(ctx, var.shape().IsSameSize(accum_update.shape()),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "var and accum_update do not have the same shape",
+                    var.shape().DebugString(), " ",
+                    accum_update.shape().DebugString())));
     OP_REQUIRES(
         ctx, var.shape().IsSameSize(grad.shape()),
         absl::InvalidArgumentError(absl::StrCat(
@@ -3799,6 +3813,11 @@ class ApplyAdamWithAmsgradOp : public OpKernel {
                     "var and v do not have the same shape",
                     var.shape().DebugString(), " ", v.shape().DebugString())));
     OP_REQUIRES(
+        ctx, var.shape().IsSameSize(vhat.shape()),
+        absl::InvalidArgumentError(absl::StrCat(
+            "var and vhat do not have the same shape",
+            var.shape().DebugString(), " ", vhat.shape().DebugString())));
+    OP_REQUIRES(
         ctx, var.shape().IsSameSize(grad.shape()),
         absl::InvalidArgumentError(absl::StrCat(
             "var and grad do not have the same shape",
@@ -4324,6 +4343,9 @@ class SparseApplyRMSPropOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 absl::InvalidArgumentError("indices must be one-dimensional"));
 
+    OP_REQUIRES(ctx, grad.dims() == var.dims(),
+                absl::InvalidArgumentError("grad must have the same number of "
+                                           "dimensions as var"));
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
                   absl::InvalidArgumentError(absl::StrCat(
@@ -4469,6 +4491,9 @@ class SparseApplyCenteredRMSPropOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 absl::InvalidArgumentError("indices must be one-dimensional"));
 
+    OP_REQUIRES(ctx, grad.dims() == var.dims(),
+                absl::InvalidArgumentError("grad must have the same number of "
+                                           "dimensions as var"));
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
                   absl::InvalidArgumentError(absl::StrCat(
