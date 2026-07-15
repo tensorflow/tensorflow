@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/Transforms/InliningUtils.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/type_util.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 
 // The order of these includes is important.
 #define GET_ATTRDEF_CLASSES
@@ -139,6 +140,7 @@ struct XlaOpAsmDialectInterface : public mlir::OpAsmDialectInterface {
 }  // namespace
 
 void XlaDialect::initialize() {
+  RegisterSymbolicExprStorage(getContext());
   addOperations<
 #define GET_OP_LIST
 #include "xla/codegen/emitters/ir/xla_ops.cc.inc"

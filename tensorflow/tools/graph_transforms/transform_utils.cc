@@ -219,9 +219,9 @@ absl::Status SortByExecutionOrder(const GraphDef& input_graph_def,
       const std::string& input_name = node_def.input(i);
       const std::string& input_node_name = NodeNameFromInput(input_name);
       if (!name_index.count(input_node_name)) {
-        return errors::InvalidArgument("Node '", node_def.name(),
-                                       "': Unknown input node '",
-                                       node_def.input(i), "'");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Node '", node_def.name(), "': Unknown input node '",
+                         node_def.input(i), "'"));
       }
       outputs[name_index[input_node_name]].push_back(n);
     }
@@ -259,7 +259,8 @@ absl::Status SortByExecutionOrder(const GraphDef& input_graph_def,
                      << "WITH PENDING COUNT = " << pending_count[i];
       }
     }
-    return errors::InvalidArgument(num_nodes - processed, " nodes in a cycle");
+    return absl::InvalidArgumentError(
+        absl::StrCat(num_nodes - processed, " nodes in a cycle"));
   }
   return absl::OkStatus();
 }
@@ -500,9 +501,9 @@ absl::Status RenameNodeInputs(
           canonical_inputs_to_rename.count(NodeNameFromInput(new_input_name))) {
         std::string input_node_name = NodeNameFromInput(new_input_name);
         if (already_visited.count(input_node_name)) {
-          return errors::InvalidArgument(
-              "RenameNodeInputs argument contains a cycle for ",
-              input_node_name);
+          return absl::InvalidArgumentError(
+              absl::StrCat("RenameNodeInputs argument contains a cycle for ",
+                           input_node_name));
         }
         already_visited.insert(input_node_name);
         if (nodes_to_ignore.count(node.name())) {
@@ -585,7 +586,7 @@ absl::Status IsGraphValid(const GraphDef& graph_def) {
                  << invalid_input.first << " - "
                  << node_map[invalid_input.first]->DebugString();
     }
-    return errors::Internal(
+    return absl::InternalError(
         "Invalid graph with inputs referring to nonexistent nodes");
   }
   return absl::OkStatus();
@@ -602,7 +603,7 @@ absl::Status GetInOutTypes(const NodeDef& node_def, DataTypeVector* inputs,
 absl::Status TensorShapeFromString(const std::string& shape_string,
                                    TensorShape* result) {
   if (shape_string.empty()) {
-    return errors::InvalidArgument("Specified shape is empty.");
+    return absl::InvalidArgumentError("Specified shape is empty.");
   }
   std::vector<std::string> dims_as_str = str_util::Split(shape_string, ",");
   std::vector<int64_t> dims;
@@ -611,8 +612,8 @@ absl::Status TensorShapeFromString(const std::string& shape_string,
     if (absl::SimpleAtoi(dim, &tmp)) {
       dims.push_back(tmp);
     } else {
-      return errors::InvalidArgument("Could parse as shape: '", shape_string,
-                                     "'");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Could parse as shape: '", shape_string, "'"));
     }
   }
   *result = TensorShape(dims);
@@ -638,9 +639,9 @@ absl::Status TransformFuncContext::GetOneStringParameter(
     *result = params.at(name).at(0);
     return absl::OkStatus();
   } else {
-    return errors::InvalidArgument("Expected a single '", name,
-                                   "' parameter, but found ", params_count,
-                                   " occurrences");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected a single '", name, "' parameter, but found ",
+                     params_count, " occurrences"));
   }
 }
 
@@ -655,8 +656,9 @@ absl::Status TransformFuncContext::GetOneInt32Parameter(const std::string& name,
   std::string string_value;
   TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
   if (!absl::SimpleAtoi(absl::string_view(string_value), result)) {
-    return errors::InvalidArgument("Couldn't interpret the ", name,
-                                   " argument as a number:", string_value);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Couldn't interpret the ", name,
+                     " argument as a number:", string_value));
   }
   return absl::OkStatus();
 }
@@ -672,8 +674,9 @@ absl::Status TransformFuncContext::GetOneInt64Parameter(const std::string& name,
   std::string string_value;
   TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
   if (!absl::SimpleAtoi(absl::string_view(string_value), result)) {
-    return errors::InvalidArgument("Couldn't interpret the ", name,
-                                   " argument as a number:", string_value);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Couldn't interpret the ", name,
+                     " argument as a number:", string_value));
   }
   return absl::OkStatus();
 }
@@ -689,9 +692,9 @@ absl::Status TransformFuncContext::GetOneFloatParameter(const std::string& name,
   std::string string_value;
   TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
   if (!absl::SimpleAtof(string_value.c_str(), result)) {
-    return errors::InvalidArgument(
-        "Couldn't interpret the ", name,
-        " argument as a float number:", string_value);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Couldn't interpret the ", name,
+                     " argument as a float number:", string_value));
   }
   return absl::OkStatus();
 }
@@ -711,9 +714,9 @@ absl::Status TransformFuncContext::GetOneBoolParameter(const std::string& name,
   } else if (string_value == "false" || string_value == "0") {
     *result = false;
   } else {
-    return errors::InvalidArgument("Couldn't interpret the ", name,
-                                   " argument as a boolean:", string_value,
-                                   " (expected true, false, 0 or 1)");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Couldn't interpret the ", name, " argument as a boolean:",
+                     string_value, " (expected true, false, 0 or 1)"));
   }
   return absl::OkStatus();
 }

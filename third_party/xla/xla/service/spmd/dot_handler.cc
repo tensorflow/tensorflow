@@ -4344,28 +4344,12 @@ absl::Status SpmdPartitioningVisitor::HandleDotHelper(
             ? MakeACopyAndReturnItsPartitionedHlo(raw_rhs_scale, builder())
             : raw_rhs_scale;
 
-    HloSharding original_lhs_sharding = lhs_operand.sharding();
-    HloSharding original_rhs_sharding = rhs_operand.sharding();
-    HloSharding original_lhs_scale_sharding = lhs_scale.sharding();
-    HloSharding original_rhs_scale_sharding = rhs_scale.sharding();
     HloSharding original_output_sharding = hlo->sharding();
 
-    if (original_lhs_sharding.UseNamedShardingLeaf()) {
-      lhs_operand.hlo()->set_sharding(
-          HloSharding::V3ToV2Sharding(original_lhs_sharding.named_sharding()));
-    }
-    if (original_rhs_sharding.UseNamedShardingLeaf()) {
-      rhs_operand.hlo()->set_sharding(
-          HloSharding::V3ToV2Sharding(original_rhs_sharding.named_sharding()));
-    }
-    if (original_lhs_scale_sharding.UseNamedShardingLeaf()) {
-      lhs_scale.hlo()->set_sharding(HloSharding::V3ToV2Sharding(
-          original_lhs_scale_sharding.named_sharding()));
-    }
-    if (original_rhs_scale_sharding.UseNamedShardingLeaf()) {
-      rhs_scale.hlo()->set_sharding(HloSharding::V3ToV2Sharding(
-          original_rhs_scale_sharding.named_sharding()));
-    }
+    lhs_operand.set_sharding_may_convert_to_v2();
+    rhs_operand.set_sharding_may_convert_to_v2();
+    lhs_scale.set_sharding_may_convert_to_v2();
+    rhs_scale.set_sharding_may_convert_to_v2();
 
     HloSharding v2_output_sharding = original_output_sharding;
     if (v2_output_sharding.UseNamedShardingLeaf()) {
@@ -4395,18 +4379,10 @@ absl::Status SpmdPartitioningVisitor::HandleDotHelper(
       conv_window = hlo->window();
     }
 
-    HloSharding original_lhs_sharding = lhs.sharding();
-    HloSharding original_rhs_sharding = rhs.sharding();
     HloSharding original_output_sharding = hlo->sharding();
 
-    if (original_lhs_sharding.UseNamedShardingLeaf()) {
-      lhs.hlo()->set_sharding(
-          HloSharding::V3ToV2Sharding(original_lhs_sharding.named_sharding()));
-    }
-    if (original_rhs_sharding.UseNamedShardingLeaf()) {
-      rhs.hlo()->set_sharding(
-          HloSharding::V3ToV2Sharding(original_rhs_sharding.named_sharding()));
-    }
+    lhs.set_sharding_may_convert_to_v2();
+    rhs.set_sharding_may_convert_to_v2();
 
     HloSharding v2_output_sharding = original_output_sharding;
     if (v2_output_sharding.UseNamedShardingLeaf()) {

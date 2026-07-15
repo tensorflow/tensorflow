@@ -98,11 +98,11 @@ absl::StatusOr<absl::Duration> EstimateRunTimeWithConfig(
 absl::StatusOr<OrderedEstimatesAndConfigs> EstimateConfigs(
     const EstimationContext& context,
     const std::vector<TritonGemmConfig>& configs,
-    mlir::MLIRContext* mlir_context) {
+    mlir::MLIRContext* mlir_context, bool use_experimental_tiling) {
   HloFusionAnalysisCache fusion_analysis_cache{context.device_description};
   GpuPerformanceModelWithIndexingAnalysis cost_model{
       &context.device_description, &fusion_analysis_cache,
-      HloCostAnalysis::DefaultShapeSize, mlir_context};
+      HloCostAnalysis::DefaultShapeSize, mlir_context, use_experimental_tiling};
 
   OrderedEstimatesAndConfigs estimates_and_confs;
   for (const TritonGemmConfig& config : configs) {
@@ -285,8 +285,12 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
     const DebugOptions& debug_options, mlir::MLIRContext* mlir_context) {
   namespace detail = cost_model_config_optimization_detail;
 
+  const bool use_experimental_tiling =
+      debug_options.xla_gpu_experimental_enable_tiling_propagation();
+
   std::unique_ptr<HloModule> module =
       ExtractInstructionIntoNewModule(*dot->parent()->FusionInstruction());
+  module->mutable_config().set_debug_options(debug_options);
 
   auto extracted_fusion = Cast<HloFusionInstruction>(
       module->entry_computation()->root_instruction());
@@ -311,8 +315,8 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
   auto get_estimated_all_configs =
       [&]() -> const absl::StatusOr<detail::OrderedEstimatesAndConfigs>& {
     if (!estimated_all_configs.has_value()) {
-      estimated_all_configs =
-          detail::EstimateConfigs(context, all_configs, mlir_context);
+      estimated_all_configs = detail::EstimateConfigs(
+          context, all_configs, mlir_context, use_experimental_tiling);
     }
     return *estimated_all_configs;
   };
@@ -330,7 +334,8 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
     ASSIGN_OR_RETURN(
         detail::OrderedEstimatesAndConfigs base_config_set,
         options.top_from_default
-            ? EstimateConfigs(context, optimized_configs, mlir_context)
+            ? EstimateConfigs(context, optimized_configs, mlir_context,
+                              use_experimental_tiling)
             : get_estimated_all_configs());
 
     VLOG(1) << "Cost Model: Selecting top " << *options.top << " configs from "
@@ -344,7 +349,8 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
   } else {
     VLOG(1) << "Cost Model: Using default set";
     ASSIGN_OR_RETURN(detail::OrderedEstimatesAndConfigs base_config_set,
-                     EstimateConfigs(context, optimized_configs, mlir_context));
+                     EstimateConfigs(context, optimized_configs, mlir_context,
+                                     use_experimental_tiling));
     current_set = std::move(base_config_set);
   }
 

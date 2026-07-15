@@ -32,7 +32,7 @@ namespace xla::gpu {
 namespace {
 
 class SwapConvOperandsTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {
+    : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  public:
   void MatchOptimizedHloWithShapes(absl::string_view hlo,
                                    absl::string_view expected_hlo) {

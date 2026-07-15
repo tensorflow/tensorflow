@@ -223,6 +223,60 @@ ENTRY entry {
   EXPECT_EQ(get_tuple_index->tuple_index(), 3);
 }
 
+TEST_F(CollectivePipelinerTest, SinkableFrontendAttributeBypassesCheck) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.5 = bf16[3,8,128] get-tuple-element(param), index=2
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.5, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  ar.1 = bf16[1,8,128] all-reduce(mul), replica_groups={}, to_apply=add, channel_id=1
+  constant.broadcast.value = bf16[] constant(0)
+  constant.395 = bf16[3,8,128] broadcast(constant.broadcast.value), dimensions={}
+  ar.1.annotated = bf16[1,8,128] custom-call(ar.1), custom_call_target="annotate"
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(constant.395, ar.1.annotated, select.1348, constant.2561, constant.2561), frontend_attributes={always_sink="1"}
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.5)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128] parameter(0)
+  tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+  while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true).value());
+}
+
 TEST_F(CollectivePipelinerTest, MinimalCaseWithoutDefaultLayouts) {
   constexpr absl::string_view hlo_string = R"(
     HloModule module
@@ -2044,7 +2098,6 @@ ENTRY entry {
                    collective_pipeliner_utils::PipeliningDirection::kBackward,
                    /*should_process=*/IsAllGather)
           .value());
-  XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
   // CHECK: %while_body
   // CHECK: %[[cp:.+]] = {{.+}} collective-permute({{.+}})
@@ -2052,8 +2105,7 @@ ENTRY entry {
   // CHECK: ROOT {{.+}} = {{.+}} tuple({{.*}}%[[dus]], {{.*}})
   // CHECK: ENTRY %entry
   // CHECK: %[[while:.+]] = {{.+}} while({{.*}})
-  // CHECK: %[[gte:.+]] = {{.+}} get-tuple-element({{.*}}%[[while]]), index=1
-  // CHECK: %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[gte]])
+  // CHECK: %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[while]]#1)
   // CHECK: %[[dus:.+]] = {{.+}} dynamic-update-slice({{.*}}%[[cp2]], {{.*}})
   // CHECK: %[[tuple:.+]] = {{.+}} tuple({{.*}}%[[dus]], {{.*}})
   // CHECK: ROOT {{.+}} = {{.+}} get-tuple-element({{.*}}%[[tuple]]), index=1
@@ -2122,7 +2174,6 @@ ENTRY entry {
                    collective_pipeliner_utils::PipeliningDirection::kBackward,
                    /*should_process=*/IsAllGather)
           .value());
-  XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
   // CHECK: %while_body
   // CHECK: %[[cp:.+]] = {{.+}} collective-permute({{.+}})
@@ -2130,8 +2181,7 @@ ENTRY entry {
   // CHECK: ROOT {{.+}} = {{.+}} tuple({{.*}}%[[dus]], {{.*}})
   // CHECK: ENTRY %entry
   // CHECK: %[[while:.+]] = {{.+}} while({{.+}})
-  // CHECK: %[[gte:.+]] = {{.+}} get-tuple-element({{.*}}%[[while]]), index=1
-  // CHECK: %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[gte]])
+  // CHECK: %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[while]]#1)
   // CHECK: %[[dus:.+]] = {{.+}} dynamic-update-slice({{.*}}%[[cp2]], {{.*}})
   // CHECK: %[[tuple:.+]] = {{.+}} tuple({{.*}}%[[dus]], {{.*}})
   // CHECK: ROOT {{.+}} = {{.+}} get-tuple-element({{.*}}%[[tuple]]), index=1
@@ -6705,6 +6755,81 @@ ENTRY entry {
   // In kForward mode the all-reduce is peeled and the output is a DUS.
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::DynamicUpdateSlice(_, op::AllReduce(), _, _, _));
+}
+TEST_F(CollectivePipelinerTest, ForwardSinkLayoutConstraintAsFormattingOp) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.35 = bf16[3,8,128] get-tuple-element(param), index=2
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.35, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  ar.1 = bf16[1,8,128] all-reduce(mul), replica_groups={}, to_apply=add, channel_id=1
+  layout_constraint = bf16[1,8,128]{2,1,0} custom-call(ar.1), custom_call_target="LayoutConstraint", operand_layout_constraints={bf16[1,8,128]{0,1,2}}
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, layout_constraint, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.35)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128] parameter(0)
+  tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+  while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(RunOptimizer(
+                  module.get(), /*last_run=*/true,
+                  /*level_to_operate_on=*/0,
+                  /*pipeline_use_tree=*/true,
+                  /*process_different_sized_ops=*/true,
+                  collective_pipeliner_utils::PipeliningDirection::kForwardSink)
+                  .value());
+  // Let's find the LayoutConstraint custom call.
+  const HloInstruction* custom_call =
+      FindInstruction(module.get(), HloOpcode::kCustomCall);
+  ASSERT_NE(custom_call, nullptr);
+  EXPECT_EQ(custom_call->custom_call_target(), "LayoutConstraint");
+  const auto* custom_call_instr = Cast<HloCustomCallInstruction>(custom_call);
+  ASSERT_EQ(custom_call_instr->operand_shapes_with_layout().size(), 1);
+  const Shape& constraint_shape =
+      custom_call_instr->operand_shapes_with_layout()[0];
+  EXPECT_EQ(constraint_shape.dimensions(0), 3);
+  EXPECT_EQ(constraint_shape.dimensions(1), 1);
+  EXPECT_EQ(constraint_shape.dimensions(2), 8);
+  EXPECT_EQ(constraint_shape.dimensions(3), 128);
+  EXPECT_EQ(constraint_shape.layout().minor_to_major(0), 1);
+  EXPECT_EQ(constraint_shape.layout().minor_to_major(1), 2);
+  EXPECT_EQ(constraint_shape.layout().minor_to_major(2), 3);
+  EXPECT_EQ(constraint_shape.layout().minor_to_major(3), 0);
 }
 
 }  // namespace

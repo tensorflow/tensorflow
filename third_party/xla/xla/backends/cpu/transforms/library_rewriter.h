@@ -39,19 +39,12 @@ limitations under the License.
 #include "xla/backends/cpu/transforms/onednn_matcher.h"
 #endif  // XLA_ONEDNN_USE_GRAPH_API
 
-
 namespace xla::cpu {
 
 // The maximum number of instructions allowed in a library fusion. This avoids
 // crashing libraries with too large graphs. It could break good fusions, e.g.,
 // Softmax, etc. We should deploy a smarter logic in the future.
 static constexpr int kMaxInstructionsInFusion = 100;
-
-enum class FusionDirection {
-  kUp,    // Traverse up (to parents).
-  kDown,  // Traverse down (to children).
-  kBoth,  // Traverse both up and down.
-};
 
 struct LibraryRewriterOptions {
   bool use_onednn = false;
@@ -127,6 +120,16 @@ class LibraryRewriter : public HloModulePass {
 
   // Finds and creates fusions in the given computation.
   absl::StatusOr<bool> ProcessComputation(HloComputation* computation);
+
+  // Returns true if the library is in the list of matchers.
+  bool IsLibraryRegistered(absl::string_view lib_fusion_kind) const {
+    for (const auto& lib : libs_) {
+      if (lib->fusion_kind() == lib_fusion_kind) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   absl::string_view name() const override { return "dot-library-rewriter"; }
 

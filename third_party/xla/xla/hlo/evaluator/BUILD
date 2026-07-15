@@ -75,6 +75,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:tuple_points_to_analysis",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_instruction_utils",
         "//xla/service:dynamic_dimension_inference",
         "//xla/service:gather_scatter_utils",
         "//xla/service:hlo_module_config",
@@ -130,6 +131,7 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings:string_view",
     ],
 )
@@ -158,6 +160,7 @@ xla_cc_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
+        "//xla/hlo/testlib:test_helpers",
         "//xla/hlo/transforms/simplifiers:hlo_element_type_converter",
         "//xla/service:dynamic_dimension_inference",
         "//xla/service:hlo_module_config",

@@ -25,10 +25,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/call_once.h"
 #include "absl/base/casts.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -44,8 +46,11 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
+#include "xla/backends/gpu/collectives/gxl_collectives.h"
 #include "xla/backends/gpu/collectives/nccl_communicator.h"
 #include "xla/backends/gpu/collectives/nccl_errors.h"
+#include "xla/backends/gpu/collectives/nccl_group.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
@@ -63,7 +68,6 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
-#include "tsl/platform/casts.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -234,7 +238,7 @@ static auto DeviceOrdinal(const Collectives::DeviceRank& rank) {
 static auto DeviceOrdinalsToString(
     absl::Span<const Collectives::DeviceRank> ranks) {
   return absl::StrJoin(ranks, ",", [](std::string* str, auto& rank) {
-    auto* device = tsl::down_cast<const GpuCollectives::Device*>(rank.device);
+    auto* device = absl::down_cast<const GpuCollectives::Device*>(rank.device);
     absl::StrAppend(str, device->stream_executor()->device_ordinal());
   });
 }
@@ -246,10 +250,17 @@ static auto DeviceRanksToString(
   });
 }
 
+static auto DevicesToString(absl::Span<const GlobalDeviceId> devices) {
+  return absl::StrFormat("%zu:[%s]", devices.size(),
+                         HumanReadableDevices(devices));
+}
+
 static ncclComm_t Cast(const Communicator* comm) {
   auto* nccl_communicator = absl::down_cast<const NcclCommunicator*>(comm);
   CHECK(nccl_communicator != nullptr) << "Unsupported XLA communicator";
-  return nccl_communicator->comm();
+  std::shared_ptr<NcclCommState> comm_state = nccl_communicator->comm_state();
+  absl::MutexLock lock(comm_state->mutex);
+  return comm_state->comm;
 }
 
 absl::StatusOr<CliqueId> NcclCollectives::CreateUniqueCliqueId() const {
@@ -258,13 +269,36 @@ absl::StatusOr<CliqueId> NcclCollectives::CreateUniqueCliqueId() const {
   return CliqueId(absl::string_view(id.internal, NCCL_UNIQUE_ID_BYTES));
 }
 
-size_t NcclCollectives::SymmetricMemoryAlignment() const {
-  // Multicast memory requires buffers aligned to
-  // CU_MULTICAST_GRANULARITY_MINIMUM which is 2MB on Hopper. Since both
-  // symmetric and multicast buffers share the same kCollective memory space
-  // color, we use the larger alignment.
-  // TODO(ezhulenev): Query this from CUDA at runtime.
-  return 2 * 1024 * 1024;
+absl::Status NcclCollectives::GroupLaunch(
+    absl::Span<const GpuCommunicator* const> comms,
+    absl::FunctionRef<absl::Status()> group) {
+  for (const GpuCommunicator* comm : comms) {
+    auto* nccl_comm = absl::down_cast<const NcclCommunicator*>(comm);
+    if (!nccl_comm->IsBlocking()) {
+      return FailedPrecondition(
+          "NCCL multi-communicator group launch requires blocking "
+          "communicators");
+    }
+  }
+
+  ASSIGN_OR_RETURN(bool launched, NcclGroupLaunch(group));
+  if (launched) {
+    for (const GpuCommunicator* comm : comms) {
+      auto* nccl_comm = absl::down_cast<const NcclCommunicator*>(comm);
+      RETURN_IF_ERROR(nccl_comm->PollUntilDone());
+    }
+  }
+  return absl::OkStatus();
+}
+
+GxlCollectives* NcclCollectives::gxl_collectives() {
+  absl::call_once(gxl_init_flag_, [this] {
+    if (xla::GetDebugOptionsFromFlags()
+            .xla_gpu_enable_gxl_ragged_all_to_all()) {
+      gxl_collectives_ = CreateGxlCollectives();
+    }
+  });
+  return gxl_collectives_.get();
 }
 
 static absl::StatusOr<ncclConfig_t> AsNcclConfig(
@@ -276,9 +310,16 @@ static absl::StatusOr<ncclConfig_t> AsNcclConfig(
 
   ASSIGN_OR_RETURN(int nccl_version, GetLinkedNcclVersion());
 
-  if (xla::GetDebugOptionsFromFlags()
-          .xla_gpu_experimental_enable_nccl_symmetric_buffers() &&
-      config.use_minimal_resource) {
+  const DebugOptions& opts = xla::GetDebugOptionsFromFlags();
+  bool symmetric_buffers_enabled =
+      opts.xla_gpu_experimental_enable_nccl_symmetric_buffers() ||
+      absl::c_any_of(opts.xla_enable_nccl_symmetric_buffers_for_collectives(),
+                     [](const DebugOptions::CollectiveFilter& filter) {
+                       return filter.collective() ==
+                              DebugOptions::ALLCOLLECTIVES;
+                     });
+
+  if (symmetric_buffers_enabled && config.use_minimal_resource) {
     VLOG(1) << "Setting CTAPolicy to NCCL_CTA_POLICY_ZERO";
     comm_config.CTAPolicy = NCCL_CTA_POLICY_ZERO;
   }
@@ -338,10 +379,11 @@ NcclCollectives::CreateCommunicatorsWithCancel(
   VLOG(1) << absl::StreamFormat(
       "[%s] [ranks=%s] Initialize NCCL (compiled with %s, linked with %s) "
       "communicators for %d local devices (out of %d global devices); "
-      "size(id)=%zu; fingerprint(id)=%v",
+      "devices=%s; size(id)=%zu; fingerprint(id)=%v",
       DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks),
       FormatNcclVersion(NCCL_VERSION_CODE), FormatNcclVersion(nccl_version),
-      ranks.size(), clique_key.num_devices(), clique_ids->size(),
+      ranks.size(), clique_key.num_devices(),
+      DevicesToString(clique_key.devices()), clique_ids->size(),
       clique_ids->fingerprint());
 
   const auto& gpu_config =
@@ -400,9 +442,12 @@ NcclCollectives::CreateCommunicatorsWithCancel(
 
     absl::Time init_done = absl::Now();
     VLOG(1) << absl::StreamFormat(
-        "[%d] [rank=%v] Initialized NCCL communicator for rank %v of %d in %v",
-        device_ordinal, ranks[i].rank, ranks[i].rank, num_ranks,
-        init_done - init_start);
+        "[%d] [rank=%v] Initialized NCCL communicator %p for rank %v of %d "
+        "in %v; devices=%s; size(id)=%zu; fingerprint(id)=%v",
+        device_ordinal, ranks[i].rank, static_cast<const void*>(comm),
+        ranks[i].rank, num_ranks, init_done - init_start,
+        DevicesToString(clique_key.devices()), clique_ids->size(),
+        clique_ids->fingerprint());
 
     return comm;
   };
@@ -419,14 +464,21 @@ NcclCollectives::CreateCommunicatorsWithCancel(
                                    cancel, gpu_config.async_execution);
       if (!comm.ok()) {
         LOG(ERROR) << absl::StreamFormat(
-            "[%d] [rank=%v] Failed to create NCCL communicator: %s",
-            DeviceOrdinal(ranks[i]), ranks[i].rank, comm.status().ToString());
+            "[%d] [rank=%v] Failed to create NCCL communicator: %v",
+            DeviceOrdinal(ranks[i]), ranks[i].rank, comm.status());
       }
       return Cast(std::move(comm));
     });
   }
 
-  return JoinFutures(absl::MakeSpan(futures)).Await();
+  ASSIGN_OR_RETURN(auto comms, JoinFutures(absl::MakeSpan(futures)).Await());
+
+  if (auto* gxl = gxl_collectives()) {
+    RETURN_IF_ERROR(gxl->MaybeAttachGxlCommunicators(absl::MakeSpan(comms),
+                                                     ranks, clique_key));
+  }
+
+  return comms;
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
@@ -469,23 +521,25 @@ NcclCollectives::SplitCommunicatorsWithCancel(
     });
 
     absl::Time split_start = absl::Now();
+    ncclComm_t parent_comm = Cast(comms[i]);
     VLOG(1) << absl::StreamFormat(
-        "[%d] [rank=%v] Split NCCL communicator %p with color %d "
-        "and key %v",
-        device_ordinal, rank, static_cast<const void*>(comms[i]), color, key);
+        "[%d] [rank=%v] Split NCCL communicator %p with color %d and key %v",
+        device_ordinal, rank, static_cast<const void*>(parent_comm), color,
+        key);
 
     ASSIGN_OR_RETURN(ncclConfig_t comm_config,
                      AsNcclConfig(gpu_config, stream_executors[i]));
 
     ncclComm_t split_comm;
-    XLA_NCCL_RETURN_IF_ERROR(ncclCommSplit(Cast(comms[i]), color, key.value(),
+    XLA_NCCL_RETURN_IF_ERROR(ncclCommSplit(parent_comm, color, key.value(),
                                            &split_comm, &comm_config));
 
     absl::Time split_done = absl::Now();
     VLOG(1) << absl::StreamFormat(
-        "[%d] [rank=%v] Split NCCL communicator %p with color %d "
+        "[%d] [rank=%v] Split NCCL communicator %p -> %p with color %d "
         "and key %v in %v",
-        device_ordinal, rank, static_cast<const void*>(comms[i]), color, key,
+        device_ordinal, rank, static_cast<const void*>(parent_comm),
+        static_cast<const void*>(split_comm), color, key,
         split_done - split_start);
 
     return split_comm;
@@ -503,35 +557,27 @@ NcclCollectives::SplitCommunicatorsWithCancel(
                                    cancel, gpu_config.async_execution);
       if (!comm.ok()) {
         LOG(ERROR) << absl::StreamFormat(
-            "[%d] [rank=%v] Failed to split NCCL communicator: %s",
-            DeviceOrdinal(ranks[i]), ranks[i].rank, comm.status().ToString());
+            "[%d] [rank=%v] Failed to split NCCL communicator: %v",
+            DeviceOrdinal(ranks[i]), ranks[i].rank, comm.status());
       }
       return Cast(std::move(comm));
     });
   }
 
-  return JoinFutures(absl::MakeSpan(futures)).Await();
-}
+  ASSIGN_OR_RETURN(auto split_comms,
+                   JoinFutures(absl::MakeSpan(futures)).Await());
 
-static absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectives() {
-  ASSIGN_OR_RETURN(xla::Collectives * collectives,
-                   xla::CollectivesRegistry::Get("gpu", "nvshmem"));
-  xla::gpu::GpuCollectives* nvshmem_collectives =
-      absl::down_cast<GpuCollectives*>(collectives);
-  if (nvshmem_collectives == nullptr) {
-    return Internal("Failed to get NVSHMEM collectives");
+  if (auto* gxl = gxl_collectives()) {
+    RETURN_IF_ERROR(gxl->MaybeAttachSplitGxlCommunicators(
+        comms, absl::MakeSpan(split_comms), ranks));
   }
 
-  return nvshmem_collectives;
+  return split_comms;
 }
+
 
 absl::StatusOr<GpuCollectives::CliqueIdCallback>
 NcclCollectives::InitializeTopology(const Topology& topology) {
-  if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem()) {
-    ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
-    RETURN_IF_ERROR(nvshmem_collectives->InitializeTopology(topology).status());
-  }
-
   if (topology.num_processes > 1) {
     auto nccl_id_store = std::make_shared<NcclIdStore>(
         topology.process_id, topology.device_to_process,

@@ -4918,6 +4918,30 @@ TEST_F(ShapeInferenceTest, UnboundedCollectiveBroadcast) {
       << " expected: " << ShapeUtil::HumanString(expected);
 }
 
+TEST_F(ShapeInferenceTest, UnboundedCollectiveBroadcastWithDynamicRoot) {
+  ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  ASSERT_OK_AND_ASSIGN(const Shape roots, ParseShape("s32[1]"));
+  ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
+  ASSERT_OK_AND_ASSIGN(
+      const Shape inferred_shape,
+      ShapeInference::InferCollectiveBroadcastShape(
+          /*operand_shapes=*/{&operand, &roots}, /*has_dynamic_root=*/true));
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(inferred_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_F(ShapeInferenceTest,
+       UnboundedCollectiveBroadcastWithMismatchedDynamicRootOperand) {
+  ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferCollectiveBroadcastShape(
+          /*operand_shapes=*/{&operand}, /*has_dynamic_root=*/true);
+  EXPECT_THAT(inferred_shape.status().message(),
+              HasSubstr("operand_shapes.size() > 1"));
+}
+
 TEST_F(ShapeInferenceTest, CollectivePermute) {
   TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[8, 8]"));
   TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[8, 8]"));

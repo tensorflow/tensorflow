@@ -34,7 +34,7 @@ namespace xla {
 namespace {
 
 using ConvolutionHloTest =
-    HloPjRtInterpreterReferenceMixin<gpu::HloPjRtGpuTestBase>;
+    HloInterpreterReferenceMixin<gpu::HloPjRtGpuTestBase>;
 
 TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32) {
   // This convolution should be transformed to "cudnn-conv" and vectorized as

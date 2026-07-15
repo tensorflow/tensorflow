@@ -17,7 +17,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/gemm_rewriter.h"
 
 #include <math.h>
-
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -76,6 +75,7 @@ limitations under the License.
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/types.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
 
@@ -102,26 +102,6 @@ absl::Status SetName(HloModule* module, HloInstruction* gemm) {
   module->SetAndUniquifyInstrName(
       gemm, is_batch_dot ? "cublas-batch-gemm" : "cublas-gemm");
   return absl::OkStatus();
-}
-
-// Returns whether a given PrimitiveType is supported by cuBLASLt Epilogue
-// Fusion. A table of supported data types can be found in the cuBLASLt
-// documentation: https://docs.nvidia.com/cuda/cublas/index.html#cublasLtMatmul.
-// Note that `Ctype` also describes the output type of the GEMM. Rows with
-// `Non-default epilogue not supported` entries in the last column indicate data
-// types not compatible with Epilogue Fusion.
-bool SupportsEpilogueFusion(PrimitiveType type) {
-  switch (type) {
-    case F8E4M3FN:
-    case F8E5M2:
-    case F16:
-    case BF16:
-    case F32:
-    case F64:
-      return true;
-    default:
-      return false;
-  }
 }
 
 bool IsF8Type(const HloInstruction* instr) {
@@ -613,8 +593,8 @@ absl::StatusOr<HloInstruction*> NormalizeBatchDimensions(HloInstruction* dot) {
       dims[i].ApplyPermutation(permutation);
     }
 
-    RETURN_IF_ERROR(
-        dims[i].Collapse(DotOperandDims::kBatch, /*remove_if_empty=*/false));
+    RETURN_IF_ERROR(dims[i].CollapseCategory(DotOperandDims::kBatch,
+                                             /*remove_if_empty=*/false));
     ASSIGN_OR_RETURN(operands[i], MakeReshapeHlo(dims[i].shape(), operands[i]));
   }
 
@@ -799,15 +779,18 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
   absl::Status HandleRaggedDot(HloInstruction* instr) override {
     // The cuDNN ragged dot fusion is only available on NVIDIA/CUDA devices.
-    // On AMD ROCm, always use hipBLASLt GroupedMatMul instead, regardless of
-    // the xla_gpu_experimental_use_ragged_dot_fusion flag value.
+    // On AMD ROCm, use hipBLASLt GroupedMatMul when
+    // xla_gpu_experimental_use_ragged_dot_grouped_gemm is enabled.
+    const DebugOptions& debug_options =
+        instr->GetModule()->config().debug_options();
     bool ragged_dot_fusion_enabled =
         gpu_version_.IsCuda() &&
-        instr->GetModule()
-            ->config()
-            .debug_options()
-            .xla_gpu_experimental_use_ragged_dot_fusion();
-    if (ragged_dot_fusion_enabled ||
+        debug_options.xla_gpu_experimental_use_ragged_dot_fusion();
+    bool grouped_gemm_enabled =
+        debug_options.xla_gpu_experimental_use_ragged_dot_grouped_gemm() &&
+        // NOLINTNEXTLINE(clang-diagnostic-deprecated-declarations)
+        debug_options.xla_gpu_enable_cublaslt();
+    if (ragged_dot_fusion_enabled || !grouped_gemm_enabled ||
         !IsGpublasLtSupportedGroupedMatMul(*instr)) {
       return absl::OkStatus();
     }
@@ -1807,6 +1790,33 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return absl::OkStatus();
   }
 
+  // Returns whether a given PrimitiveType is supported by cuBLASLt Epilogue
+  // Fusion. A table of supported data types can be found in the cuBLASLt
+  // documentation:
+  // https://docs.nvidia.com/cuda/cublas/index.html#cublasLtMatmul. Note that
+  // `Ctype` also describes the output type of the GEMM. Rows with `Non-default
+  // epilogue not supported` entries in the last column indicate data types not
+  // compatible with Epilogue Fusion. DEPRECATED: This standalone function has
+  // been moved to GemmRewriterVisitor as a member function to allow
+  bool SupportsEpilogueFusion(PrimitiveType type) {
+    // ROCm doesn't support F64 epilogue fusion
+    if (gpu_version_.IsRocm() && type == F64) {
+      return false;
+    }
+
+    switch (type) {
+      case F8E4M3FN:
+      case F8E5M2:
+      case F16:
+      case BF16:
+      case F32:
+      case F64:
+        return true;
+      default:
+        return false;
+    }
+  }
+
   // Fuses a matrix bias into a cuBLAS call. 'instr' should be an Add
   // instruction in the following form:
   //   Add(OptionalBitcast(OptionalSlice(gemm)), bias)
@@ -2591,6 +2601,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
         {ComputationType::kF64, DataType::kDouble, PrimitiveType::F64,
          PrimitiveType::F64, DataType::kDouble},
+
+        // Complex types: hipBLASLt has no complex GEMM kernels, so the ROCm
+        // BlasLt wrapper redirects C64/C128 matmuls to rocBLAS at runtime.
+        {ComputationType::kF32, DataType::kComplexFloat, PrimitiveType::C64,
+         PrimitiveType::C64, DataType::kComplexFloat},
+        {ComputationType::kF64, DataType::kComplexDouble, PrimitiveType::C128,
+         PrimitiveType::C128, DataType::kComplexDouble},
 
         // TF32
         {ComputationType::kTF32AsF32, DataType::kFloat, PrimitiveType::F32,

@@ -1,5 +1,13 @@
 # PJRT C API changelog
 
+## 0.113
+
+*   Added `peak_allocated_bytes` and `peak_allocated_bytes_is_set` to `PJRT_Device_MemoryStats_Args`.
+
+## 0.112
+
+*   Added PJRT_HloOutputCallbackInfo to PJRT_ExecuteOptions.
+
 ## 0.111
 
 * Added `PJRT_LoadOptions` and `load_options` to `PJRT_Executable_DeserializeAndLoad_Args`.

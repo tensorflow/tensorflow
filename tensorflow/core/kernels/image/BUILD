@@ -179,7 +179,11 @@ tf_kernel_library(
 tf_kernel_library(
     name = "adjust_saturation_op",
     prefix = "adjust_saturation_op",
-    deps = IMAGE_DEPS + [":adjust_hsv_gpu_lib"],
+    deps = IMAGE_DEPS + [
+        ":adjust_hsv_gpu_lib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -195,7 +199,10 @@ tf_kernel_library(
     name = "colorspace_op",
     gpu_copts = tf_disable_ptxas_warning_flags(),
     prefix = "colorspace_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -257,6 +264,8 @@ tf_kernel_library(
     prefix = "extract_image_patches_op",
     deps = [
         "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ] + IMAGE_DEPS,
 )
 
@@ -285,7 +294,13 @@ tf_kernel_library(
     name = "non_max_suppression_op",
     features = ["-layering_check"],
     prefix = "non_max_suppression_op",
-    deps = IMAGE_DEPS + ["//tensorflow/core/kernels:gpu_prim_hdrs"] + if_cuda_or_rocm([
+    deps = IMAGE_DEPS + [
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels:gpu_prim_hdrs",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+    ] + if_cuda_or_rocm([
         "@com_google_absl//absl/strings",
     ]),
 )
@@ -296,6 +311,7 @@ tf_kernel_library(
     deps = IMAGE_DEPS + [
         ":sampling_kernels",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -485,7 +501,6 @@ cc_library(
     name = "android_tensorflow_image_op",
     srcs = if_android(["decode_image_op.cc"]),
     copts = tf_copts(),
-    features = if_android(["-layering_check"]),
     linkopts = ["-ldl"],
     visibility = ["//visibility:public"],
     deps = [
@@ -504,7 +519,6 @@ cc_library(
         "//tensorflow/core/lib/png:png_io",
         "//tensorflow/core/lib/webp:webp_io",
         "//tensorflow/core/platform:byte_order",
-        "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@tsl//tsl/profiler/lib:traceme",

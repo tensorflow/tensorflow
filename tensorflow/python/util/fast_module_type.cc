@@ -102,6 +102,7 @@ static PyObject *ParseFunc(PyObject *args) {
 // corresponding to 'self'.
 static PyObject *SetGetattributeCallback(PyObject *self, PyObject *args) {
   PyObject *func = ParseFunc(args);
+  if (func == nullptr) return nullptr;
   FastModuleObject* fast_module = FastModuleObject::UncheckedCast(self);
   PyObject* old_func = nullptr;
   {
@@ -117,6 +118,7 @@ static PyObject *SetGetattributeCallback(PyObject *self, PyObject *args) {
 // corresponding to 'self'.
 static PyObject *SetGetattrCallback(PyObject *self, PyObject *args) {
   PyObject *func = ParseFunc(args);
+  if (func == nullptr) return nullptr;
   FastModuleObject* fast_module = FastModuleObject::UncheckedCast(self);
   PyObject* old_func = nullptr;
   {
@@ -375,7 +377,7 @@ FastModuleObject *FastModuleObject::UncheckedCast(PyObject *obj) {
   return reinterpret_cast<FastModuleObject *>(obj);
 }
 
-PYBIND11_MODULE(fast_module_type, m) {
+PYBIND11_MODULE(fast_module_type, m, pybind11::mod_gil_not_used()) {
   FastModuleType.tp_base = &PyModule_Type;
   FastModuleType.tp_setattro = [](PyObject* module, PyObject* name,
                                   PyObject* value) -> int {

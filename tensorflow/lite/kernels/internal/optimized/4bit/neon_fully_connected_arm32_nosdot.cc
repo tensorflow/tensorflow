@@ -48,7 +48,6 @@ void NeonRunKernelNoSDot<4, 1, 32>(const uint8_t* lhs, const int8_t* rhs,
   const int outer_rows = (clamped_end_row + rows_left - 1) / rows_left;
   const int outer_cols = (clamped_end_col + rows_right - 1) / rows_right;
   const int depth = std::min(lhs_layout_cols / cols, rhs_layout_cols / cols);
-  const int run_depth = depth;
   for (int i = start_row; i < outer_rows; ++i) {
     const int left_index = i * rows_left * lhs_layout_cols / 2;
     const uint8_t* lhs_ptr_data = lhs + left_index;
@@ -56,8 +55,8 @@ void NeonRunKernelNoSDot<4, 1, 32>(const uint8_t* lhs, const int8_t* rhs,
       const uint8_t* lhs_ptr = lhs_ptr_data;
       const int right_index = j * rows_right * rhs_layout_cols;
       const int8_t* rhs_ptr = rhs + right_index;
-      asm volatile(
-          R"asm(
+      int run_depth = depth;
+      asm(R"asm(
           vmov.i8 q14, #15
           vld1.8 {q4}, [%[lhs_ptr]]!
           vmov.i32 q0, #0
@@ -77,8 +76,7 @@ void NeonRunKernelNoSDot<4, 1, 32>(const uint8_t* lhs, const int8_t* rhs,
           vld1.8 {d26, d27}, [%[rhs_ptr]]!
           vshr.u8 q6, q6, #4
           vshr.u8 q7, q7, #4
-          mov r3, %[run_depth]
-          subs r3, r3, #1
+          subs %[run_depth], %[run_depth], #1
           bls 1f /* skip loop */
             0: /* loop start */
             vmull.s8 q15, d8, d24
@@ -112,7 +110,7 @@ void NeonRunKernelNoSDot<4, 1, 32>(const uint8_t* lhs, const int8_t* rhs,
             vshr.u8 q5, q5, #4
             vshr.u8 q6, q6, #4
             vshr.u8 q7, q7, #4
-            subs r3, r3, #1
+            subs %[run_depth], %[run_depth], #1
             bhi 0b /* loop branch */
           1: /* loop end */
           vmull.s8 q15, d8, d24
@@ -143,13 +141,14 @@ void NeonRunKernelNoSDot<4, 1, 32>(const uint8_t* lhs, const int8_t* rhs,
           vpadd.i32 d5, d2, d3
           vst1.32 {d4, d5}, [%[dst]]!
           )asm"
-          : [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr), [dst] "+r"(dst)
-          : [run_depth] "r"(run_depth)
-          : "cc", "memory", "r3", "d0", "d1", "d2", "d3", "d4", "d5", "d6",
-            "d7", "d8", "d9", "d10", "d11", "d12", "d13", "d14", "d15", "d16",
-            "d17", "d18", "d19", "d20", "d21", "d22", "d23", "d24", "d25",
-            "d26", "d27", "q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8",
-            "q9", "q10", "q11", "q14", "q15");
+          : [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr), [dst] "+r"(dst),
+            [run_depth] "+r"(run_depth)
+          :
+          : "cc", "memory", "d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7",
+            "d8", "d9", "d10", "d11", "d12", "d13", "d14", "d15", "d16", "d17",
+            "d18", "d19", "d20", "d21", "d22", "d23", "d24", "d25", "d26",
+            "d27", "q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9",
+            "q10", "q11", "q14", "q15");
     }
   }
 }

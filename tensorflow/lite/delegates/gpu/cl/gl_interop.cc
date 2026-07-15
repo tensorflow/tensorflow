@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/gl_interop.h"
 
+#ifndef CL_DELEGATE_NO_GL
+
 #include <algorithm>
 #include <variant>
 
@@ -26,6 +28,7 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
+
 namespace {
 
 #ifndef EGL_VERSION_1_5
@@ -306,3 +309,5 @@ absl::Status GlClBufferCopier::Convert(const TensorObject& input_obj,
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
+
+#endif  // CL_DELEGATE_NO_GL

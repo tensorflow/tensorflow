@@ -34,12 +34,13 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/primitive_util.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 
 namespace xla::gpu {
@@ -68,6 +69,21 @@ std::string SelectKThunk::ToString(int indent) const {
   return absl::StrCat(indent_str, "SelectKThunk(batch_size=", batch_size_,
                       ", num_elements=", num_elements_, ", k=", k_,
                       ", dtype=", dtype_, ")");
+}
+
+Thunk::BufferUses SelectKThunk::buffer_uses() const {
+  BufferUses uses;
+  uses.reserve(args_.size());
+  uses.push_back(BufferUse::Read(
+      args_[0], ShapeUtil::MakeShape(dtype_, {batch_size_, num_elements_})));
+
+  uses.push_back(BufferUse::Write(
+      args_[1], ShapeUtil::MakeShape(dtype_, {batch_size_, k_})));
+
+  uses.push_back(BufferUse::Write(
+      args_[2], ShapeUtil::MakeShape(PrimitiveType::S32, {batch_size_, k_})));
+
+  return uses;
 }
 
 // Execute the TopK operation on the GPU stream.

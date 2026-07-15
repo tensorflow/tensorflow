@@ -27,11 +27,13 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_executor.h"
 #include "xla/stream_executor/cuda/cuda_executor_multigpu_test_kernels.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/gpu/multicast_memory.h"
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -41,6 +43,9 @@ namespace {
 using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
+using ::testing::IsEmpty;
+using ::testing::Not;
 using ::testing::NotNull;
 
 template <typename T>
@@ -292,6 +297,41 @@ TEST(CudaExecutorMultiGpuTest, IsVmmMemoryCheck) {
       1024, static_cast<int64_t>(stream_executor::MemorySpace::kCollective));
   EXPECT_TRUE(executor->IsVmmMemory(collective_mem));
   executor->Deallocate(&collective_mem);
+}
+
+TEST(CudaExecutorMultiGpuTest, GetGpuInterconnectStatus) {
+  CudaExecutor* executor = static_cast<CudaExecutor*>(GetGpuExecutor(0));
+
+  auto status_or = executor->GetInterconnectStatus();
+
+  const DeviceDescription& desc = executor->GetDeviceDescription();
+  bool is_target_platform = desc.cuda_compute_capability().IsAtLeastHopper();
+  bool supports_fabric_info = false;
+  supports_fabric_info =
+      desc.kernel_mode_driver_version().major_version() >= 545;
+
+  if (is_target_platform) {
+    EXPECT_THAT(status_or, IsOkAndHolds(Not(IsEmpty())));
+    EXPECT_THAT(*status_or, Not(IsEmpty()));
+    EXPECT_THAT(*status_or, HasSubstr("Fabric:"));
+    if (supports_fabric_info) {
+      EXPECT_THAT(*status_or, Not(HasSubstr("Fabric: failed to get info")));
+    }
+    EXPECT_THAT(*status_or, HasSubstr("NVLinks:"));
+    EXPECT_THAT(*status_or, Not(HasSubstr("NVLinks: ;")));
+    EXPECT_THAT(*status_or, HasSubstr("P2P NVLink:"));
+    EXPECT_THAT(*status_or, Not(HasSubstr("P2P NVLink: none")));
+  } else {
+    if (status_or.ok()) {
+      EXPECT_THAT(*status_or, Not(IsEmpty()));
+    }
+  }
+}
+
+TEST(CudaExecutorMultiGpuTest, GetCollectiveMemoryGranularity) {
+  CudaExecutor* executor = static_cast<CudaExecutor*>(GetGpuExecutor(0));
+  EXPECT_THAT(executor->GetCollectiveMemoryGranularity(),
+              IsOkAndHolds(2 * 1024 * 1024));
 }
 
 }  // namespace

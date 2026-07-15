@@ -1,8 +1,10 @@
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/platform:build_config.bzl", "tsl_cc_test")
 load(
     "//xla/tsl/platform:rules_cc.bzl",
+    "cc_binary",
     "cc_library",
 )
 
@@ -634,5 +636,62 @@ tsl_cc_test(
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:strcat",
         "@zlib",
+    ],
+)
+
+cc_library(
+    name = "zip_writer",
+    srcs = ["zip_writer.cc"],
+    hdrs = ["zip_writer.h"],
+    visibility = ["//xla:__subpackages__"],
+    deps = [
+        ":zlib_compression_options",
+        ":zlib_outputbuffer",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@zlib",
+    ],
+)
+
+cc_binary(
+    name = "zip_generator",
+    testonly = True,
+    srcs = ["zip_generator.cc"],
+    deps = [
+        ":zip_writer",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@tsl//tsl/platform:platform_port",
+    ],
+)
+
+py_test(
+    name = "zip_writer_integration_test",
+    srcs = ["zip_writer_integration_test.py"],
+    data = [":zip_generator"],
+    deps = [
+        "@absl_py//absl/testing:absltest",
+    ],
+)
+
+tsl_cc_test(
+    name = "zip_writer_test",
+    srcs = ["zip_writer_test.cc"],
+    deps = [
+        ":zip_writer",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )

@@ -113,14 +113,12 @@ TEST(MeshAndAxisTest, MeshToProtoIotaTilingWithReshapeDims) {
   expected.mutable_axes(0)->set_size(4);
   expected.mutable_axes(1)->set_size(4);
   expected.mutable_axes(2)->set_size(1);
-  // When dims=[4,4,1] reshape_dims=[4,2,2], transpose_perm=[1,0,2] (swap dim 0
-  // and dim 1) corresponds to [4,4,1]<=[4,2,2]T(1,0,2) which in full array V1
-  // format is [0,1,4,5,8,9,12,13,2,3,6,7,10,11,14,15].
-  std::vector<int> expected_device_ids = {0, 1, 4, 5, 8,  9,  12, 13,
-                                          2, 3, 6, 7, 10, 11, 14, 15};
-  for (int i = 0; i < expected_device_ids.size(); ++i) {
-    expected.add_device_ids(expected_device_ids[i]);
-  }
+  expected.mutable_iota_transform()->add_reshape_dims(4);
+  expected.mutable_iota_transform()->add_reshape_dims(2);
+  expected.mutable_iota_transform()->add_reshape_dims(2);
+  expected.mutable_iota_transform()->add_transpose_perm(1);
+  expected.mutable_iota_transform()->add_transpose_perm(0);
+  expected.mutable_iota_transform()->add_transpose_perm(2);
 
   std::vector<absl::string_view> axes_names = {"axis1", "axis2", "axis3"};
   EXPECT_THAT(
@@ -164,9 +162,15 @@ TEST(MeshAndAxisTest, MeshFromProtoNonIotaTiling) {
 }
 
 TEST(MeshAndAxisTest, MeshRoundtripProto) {
-  // Iota tiling.
+  // Simple iota tiling.
   std::vector<absl::string_view> axes_xy = {"data", "model"};
-  Mesh mesh_iota({5, 3}, axes_xy);
+  Mesh mesh_simple_iota({5, 3}, axes_xy);
+  EXPECT_THAT(mesh_simple_iota, Mesh::FromProto(mesh_simple_iota.ToProto()));
+
+  // Transformed iota tiling.
+  Mesh mesh_iota(
+      TileAssignment(IotaTileAssignment::Create({5, 3}, {5, 3}, {1, 0})),
+      axes_xy);
   EXPECT_THAT(mesh_iota, Mesh::FromProto(mesh_iota.ToProto()));
 
   // Non-iota tiling.

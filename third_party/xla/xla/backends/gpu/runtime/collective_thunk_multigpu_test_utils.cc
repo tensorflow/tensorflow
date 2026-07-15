@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command.h"
-#include "xla/backends/gpu/runtime/scratch_memory_requests.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
@@ -145,10 +144,9 @@ absl::Status SetupCollectiveThunksDevice(
       MakeBufferAllocations(state, state.create_buffers);
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests memory_requests(allocations);
-  ScratchMemoryRequests scratch_requests;
-  Thunk::PrepareParams prepare_params{&params,          &clique_requests,
-                                      &memory_requests, &scratch_requests,
-                                      state.executor,   &allocations};
+  Thunk::PrepareParams prepare_params{&params, &clique_requests,
+                                      &memory_requests, state.executor,
+                                      &allocations};
   for (CollectiveThunk* thunk : thunks) {
     RETURN_IF_ERROR(thunk->Prepare(prepare_params));
   }

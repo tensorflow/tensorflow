@@ -66,11 +66,12 @@ class EmitterContext {
  public:
   EmitterContext(
       mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
-      mlir::Value pid, gpu::experimental::Schedule schedule,
+      mlir::Value pid, mlir::Value tid, gpu::experimental::Schedule schedule,
       xtile::EntryFuncOp entry_func,
       const gpu::experimental::TiledHloComputation& tiled_computation)
       : b_(b),
         pid_(pid),
+        tid_(tid),
         schedule_(std::move(schedule)),
         fusion_(fusion),
         entry_func_(entry_func),
@@ -78,6 +79,7 @@ class EmitterContext {
 
   mlir::ImplicitLocOpBuilder& b() { return b_; }
   mlir::Value pid() const { return pid_; }
+  mlir::Value tid() const { return tid_; }
   const HloFusionInstruction& fusion() const { return *fusion_; }
   xtile::EntryFuncOp entry_func() const { return entry_func_; }
 
@@ -117,6 +119,7 @@ class EmitterContext {
  private:
   mlir::ImplicitLocOpBuilder& b_;
   mlir::Value pid_;
+  mlir::Value tid_;
   absl::flat_hash_map<const gpu::experimental::TiledHloInstruction*,
                       TensorValue>
       tiled_hlo_to_tensor_;
@@ -220,8 +223,9 @@ absl::StatusOr<mlir::Type> PrimitiveTypeToMlirType(
 absl::StatusOr<PrimitiveType> GetPrimitiveType(mlir::Type t);
 
 mlir::Type StorageType(mlir::Type t);
+mlir::Type GetSignlessType(mlir::Type t);
 
-// Get the value of the scalar constant's literal in a C++ ty˝pe.
+// Get the value of the scalar constant's literal in a C++ type.
 template <typename T>
 T ScalarConstantValue(const HloInstruction& instr, PrimitiveType dst_type) {
   CHECK_EQ(instr.opcode(), HloOpcode::kConstant);
@@ -235,7 +239,14 @@ T ScalarConstantValue(const HloInstruction& instr, PrimitiveType dst_type) {
 template <typename T>
 mlir::Value CreateConst(mlir::ImplicitLocOpBuilder& b, mlir::Type type,
                         T value) {
-  if (mlir::isa<mlir::IntegerType>(type)) {
+  if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(type)) {
+    if (int_type.isUnsignedInteger()) {
+      mlir::Type signless_type = GetSignlessType(type);
+      mlir::Value cst = b.create<mlir::arith::ConstantOp>(
+          b.getIntegerAttr(signless_type, value));
+      return mlir::UnrealizedConversionCastOp::create(b, b.getLoc(), type, cst)
+          .getResult(0);
+    }
     return b.create<mlir::arith::ConstantOp>(b.getIntegerAttr(type, value));
   }
 
@@ -257,6 +268,19 @@ mlir::TypedValue<mlir::RankedTensorType> CreateConst(
     llvm::ArrayRef<int64_t> shape) {
   auto tensor_type = mlir::RankedTensorType::get(shape, type);
   if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(type)) {
+    if (int_type.isUnsignedInteger()) {
+      auto signless_tensor_type =
+          mlir::cast<mlir::ShapedType>(GetSignlessType(tensor_type));
+      mlir::Value cst =
+          b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
+              signless_tensor_type,
+              mlir::APInt(int_type.getIntOrFloatBitWidth(), value,
+                          /*isSigned=*/false, /*implicitTrunc=*/true)));
+      mlir::Value cast_res = mlir::UnrealizedConversionCastOp::create(
+                                 b, b.getLoc(), tensor_type, cst)
+                                 .getResult(0);
+      return mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(cast_res);
+    }
     mlir::Value result =
         b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
             tensor_type,
@@ -296,7 +320,8 @@ mlir::Value Cast(mlir::ImplicitLocOpBuilder& b, mlir::Value value,
 
 // Emits a scalar constant.
 absl::StatusOr<mlir::TypedValue<mlir::RankedTensorType>> EmitConstant(
-    mlir::ImplicitLocOpBuilder& b, const HloInstruction& constant);
+    mlir::ImplicitLocOpBuilder& b, const HloInstruction& constant,
+    std::optional<llvm::ArrayRef<int64_t>> tile_shape);
 
 absl::StatusOr<mlir::Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
                                             const HloInstruction& hlo,

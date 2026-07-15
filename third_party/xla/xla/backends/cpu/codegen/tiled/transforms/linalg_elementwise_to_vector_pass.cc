@@ -194,9 +194,4 @@ struct LinalgElementwiseToVectorPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateLinalgElementwiseToVectorPass() {
-  return std::make_unique<LinalgElementwiseToVectorPass>();
-}
-
 }  // namespace xla::cpu

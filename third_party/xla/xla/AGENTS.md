@@ -93,3 +93,7 @@ suggesting, or modifying code within the
 
 9.  **Namespaces**:
     *   Prefer xla::gpu over nested namespaces.
+
+10. **MLIR Operation Creation**:
+    *   **Always** use the static `OpTy::create(rewriter, ...)` method when creating MLIR operations.
+    *   **Avoid** using `rewriter.create<OpTy>(...)`. This syntax is deprecated.

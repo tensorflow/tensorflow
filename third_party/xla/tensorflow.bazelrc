@@ -26,7 +26,6 @@
 #     cuda:         Build with CUDA support.
 #     cuda_clang    Build with CUDA Clang support.
 #     rocm:         Build with AMD GPU support (rocm)
-#     mkl:          Enable full mkl support.
 #     nonccl:       Disable nccl support.
 #
 # PJRT Releases:
@@ -111,7 +110,6 @@ common --define=grpc_no_ares=true
 # TODO: Remove the following two lines once TF doesn't depend on Bazel wrapping
 # all library archives in -whole_archive -no_whole_archive.
 common --noincompatible_remove_legacy_whole_archive
-common --features=-force_no_whole_archive
 
 # TODO(mihaimaruseac): Document this option or remove if no longer needed
 common --enable_platform_specific_config
@@ -159,6 +157,7 @@ common:macos --features=archive_param_file
 
 # Settings for MacOS on ARM CPUs.
 common:macos_arm64 --cpu=darwin_arm64
+common:macos_arm64 --platform_mappings=tools/toolchains/cross_compile/config/platform_mappings
 common:macos_arm64 --macos_minimum_os=11.0
 common:macos_arm64 --platforms=@build_bazel_apple_support//platforms:darwin_arm64
 
@@ -169,20 +168,6 @@ common:macos_arm64 --platforms=@build_bazel_apple_support//platforms:darwin_arm6
 common:monolithic --define framework_shared_object=false
 common:monolithic --define tsl_protobuf_header_only=false
 common:monolithic --experimental_link_static_libraries_once=false  # b/229868128
-
-# Please note that MKL on MacOS is still not supported.
-# If you would like to use a local MKL instead of downloading, please set the
-# environment variable "TF_MKL_ROOT" every time before build.
-common:mkl --define=build_with_mkl=true --define=enable_mkl=true
-common:mkl --define=tensorflow_mkldnn_contraction_kernel=0
-common:mkl --define=build_with_openmp=true
-common:mkl -c opt
-
-# config to build OneDNN backend with a user specified threadpool.
-common:mkl_threadpool --define=build_with_mkl=true --define=enable_mkl=true
-common:mkl_threadpool --define=tensorflow_mkldnn_contraction_kernel=0
-common:mkl_threadpool --define=build_with_mkl_opensource=true
-common:mkl_threadpool -c opt
 
 # Config setting to build oneDNN with Compute Library for the Arm Architecture (ACL).
 # with Eigen threadpool support
@@ -289,7 +274,7 @@ common:rocm_base --repo_env=TF_ROCM_AMDGPU_TARGETS="gfx908,gfx90a,gfx942,gfx950,
 
 common:rocm_clang_local --config=rocm_base
 common:rocm_clang_local --config=clang_local
-common:rocm_clang_local --crosstool_top=@local_config_rocm//crosstool:toolchain
+common:rocm_clang_local --extra_toolchains=@local_config_rocm//crosstool:toolchain-linux-x86_64
 common:rocm_clang_local --config=rocm_base
 common:rocm_clang_local --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
 
@@ -301,7 +286,7 @@ common:rocm_clang_hermetic --@rules_ml_toolchain//common:enable_sycl=False
 common:rocm_clang_hermetic --@rules_ml_toolchain//common:enable_hermetic_cc=True
 common:rocm_clang_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 common:rocm_clang_hermetic --strategy=CppLink=local
-common:rocm_clang_hermetic --@rules_ml_toolchain//common:static_libcxx=True
+common:rocm_clang_hermetic --@rules_ml_toolchain//common:static_libcxx=False
 
 common:rocm --config=rocm_clang_hermetic
 common:rocm_ci --config=rocm
@@ -309,8 +294,9 @@ common:rocm_ci --@local_config_rocm//rocm:rocm_path_type=hermetic
 
 common:rocm_ci_hermetic --dynamic_mode=off
 common:rocm_ci_hermetic --config=rocm_clang_hermetic
-common:rocm_ci_hermetic --config="gfx908,gfx90a"
-common:rocm_ci_hermetic --repo_env="ROCM_DISTRO_VERSION=rocm_7.12.0_gfx90X"
+common:rocm_ci_hermetic --repo_env=TF_ROCM_AMDGPU_TARGETS="gfx908,gfx90a"
+common:rocm_ci_hermetic --repo_env=ROCM_DISTRO_VERSION="rocm_7.13.0_gfx90a"
+common:rocm_ci_hermetic --repo_env=SYSROOT_DIST=linux_glibc_2_31
 common:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 
 # This config option is used for SYCL as GPU backend.
@@ -321,13 +307,16 @@ common:sycl --define=tensorflow_mkldnn_contraction_kernel=0
 common:sycl --cxxopt=-std=c++17
 common:sycl --host_cxxopt=-std=c++17
 common:sycl --repo_env=SYCL_BUILD_HERMETIC=0
+common:sycl --define=build_with_onednn_async=true
 
 # Enable Clang for host and icpx for SYCL
 common:icpx_clang --repo_env TF_ICPX_CLANG=1
 common:icpx_clang --copt=-fclang-abi-compat=17
+common:icpx_clang --copt=-Wno-unknown-warning-option
 
 # Hermetic SYCL Configuration
 common:sycl_hermetic --config=sycl
+common:sycl_hermetic --config=icpx_clang
 common:sycl_hermetic --repo_env=SYCL_BUILD_HERMETIC=1
 
 # Options to disable default on features
@@ -637,6 +626,7 @@ common:release_macos_x86 --config=release_macos_base
 # Build with the AVX instruction set when on macOS x86
 common:release_macos_x86 --config=avx_linux
 common:release_macos_x86 --cpu=darwin
+common:release_macos_x86 --platform_mappings=tools/toolchains/cross_compile/config/platform_mappings
 common:release_macos_x86 --platforms=@build_bazel_apple_support//platforms:darwin_x86_64
 # Target Catalina as the minimum compatible OS version
 common:release_macos_x86 --macos_minimum_os=10.15
@@ -645,6 +635,7 @@ common:release_macos_x86 --macos_sdk_version=10.15
 # Build configs for macOS Arm64
 common:release_macos_arm64 --config=release_macos_base
 common:release_macos_arm64 --cpu=darwin_arm64
+common:release_macos_arm64 --platform_mappings=tools/toolchains/cross_compile/config/platform_mappings
 common:release_macos_arm64 --platforms=@build_bazel_apple_support//platforms:darwin_arm64
 common:release_macos_arm64 --define=tensorflow_mkldnn_contraction_kernel=0
 # Target Moneterey as the minimum compatible OS version
@@ -688,6 +679,9 @@ common:cross_compile_base --host_cpu=k8
 common:cross_compile_base --host_crosstool_top=//tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
 common:cross_compile_base --extra_execution_platforms=//tools/toolchains/cross_compile/config:linux_x86_64
 common:cross_compile_base --extra_toolchains=//tools/toolchains/cross_compile/cc:linux_x86_toolchain
+# Map XLA-owned cross-compile platforms to legacy --cpu values and vice versa
+# so platform-based selects remain compatible with legacy toolchain flags.
+common:cross_compile_base --platform_mappings=tools/toolchains/cross_compile/config/platform_mappings
 
 common:rbe_cross_compile_base --config=rbe_base
 common:rbe_cross_compile_base --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
@@ -729,9 +723,6 @@ common:cross_compile_macos_x86 --crosstool_top=//tools/toolchains/cross_compile/
 # toolchain. Otherwise, oddly, RBE complains that a "docker container must be
 # specified".
 common:cross_compile_macos_x86 --extra_toolchains=//tools/toolchains/cross_compile/config:macos-x86-cross-compile-cc-toolchain
-# Map --platforms=darwin_x86_64 to --cpu=darwin and vice-versa to make selects()
-# and transistions that use these flags work.
-common:cross_compile_macos_x86 --platform_mappings=tools/toolchains/cross_compile/config/platform_mappings
 
 # RBE cross-compile configs for Darwin x86
 common:rbe_cross_compile_macos_x86 --config=cross_compile_macos_x86 --remote_download_minimal
@@ -753,7 +744,9 @@ build:pjrt_release -c opt --@local_config_cuda//cuda:include_cuda_libs=false
 build:pjrt_nightly -c opt --@local_config_cuda//cuda:include_cuda_libs=true
 
 build:pjrt_x86 --cpu=k8
+build:pjrt_x86 --platform_mappings=tools/toolchains/cross_compile/config/platform_mappings
 build:pjrt_aarch64 --cpu=aarch64
+build:pjrt_aarch64 --platform_mappings=tools/toolchains/cross_compile/config/platform_mappings
 
 build:pjrt_cuda12 --config=cuda_nvcc
 build:pjrt_cuda12 --repo_env=HERMETIC_CUDA_VERSION="12.9.1"

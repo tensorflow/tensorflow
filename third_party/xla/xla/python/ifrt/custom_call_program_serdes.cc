@@ -35,8 +35,6 @@ limitations under the License.
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/sharding.pb.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -51,7 +49,7 @@ class CustomCallProgramSerDes
     return "xla::ifrt::CustomCallProgram";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     const SerDesVersion version = GetRequestedSerDesVersion(options.get());
@@ -78,11 +76,11 @@ class CustomCallProgramSerDes
     for (const ArraySpec& spec : program.output_specs) {
       RETURN_IF_ERROR(spec.ToProto(*proto.add_output_specs(), version));
     }
-    return proto.SerializeAsString();
+    return proto.SerializeAsCord();
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     const auto* deserialize_program_options =
         llvm::dyn_cast_or_null<DeserializeProgramOptions>(options.get());
@@ -145,21 +143,66 @@ class CustomCallCompileOptionsSerDes
     return "xla::ifrt::CustomCallCompileOptions";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
-      std::unique_ptr<SerializeOptions>) override {
-    return "";
+      std::unique_ptr<SerializeOptions> options) override {
+    const SerDesVersion version = GetRequestedSerDesVersion(options.get());
+    if (version.version_number() < SerDesVersionNumber(0)) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Unsupported ", version.version_number(),
+                       " for CustomCallCompileOptions serialization"));
+    }
+    const auto& compile_options =
+        llvm::cast<CustomCallCompileOptions>(serializable);
+
+    if (version.version_number() >= SerDesVersionNumber(4)) {
+      CustomCallCompileOptionsProto proto;
+      proto.set_version_number(SerDesVersionNumber(4).value());
+      if (compile_options.outputs_bundle_slice_sizes.has_value()) {
+        proto.mutable_outputs_bundle_slice_sizes()->Add(
+            compile_options.outputs_bundle_slice_sizes->begin(),
+            compile_options.outputs_bundle_slice_sizes->end());
+      }
+      return proto.SerializeAsCord();
+    }
+
+    if (compile_options.outputs_bundle_slice_sizes.has_value()) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Unsupported ", version.version_number(),
+                       " for CustomCallCompileOptions serialization with "
+                       "outputs_bundle_slice_sizes"));
+    }
+    return absl::Cord();
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
-      std::unique_ptr<DeserializeOptions> options) override {
-    if (!serialized.empty()) {
-      return absl::InvalidArgumentError(
-          "Invalid serialized CustomCallCompileOptions; a serialized "
-          "CustomCallCompileOptions is expected to be an empty string");
+      const absl::Cord& serialized,
+      std::unique_ptr<DeserializeOptions>) override {
+    if (serialized.empty()) {
+      // For a compatibility with version 0, which uses an empty string.
+      return std::make_unique<CustomCallCompileOptions>();
     }
-    return std::make_unique<CustomCallCompileOptions>();
+    CustomCallCompileOptionsProto proto;
+    if (!proto.ParseFromString(serialized)) {
+      return absl::InvalidArgumentError(
+          "Failed to parse serialized CustomCallCompileOptionsProto");
+    }
+    const SerDesVersionNumber version_number(proto.version_number());
+    if (version_number > SerDesVersionNumber(4)) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Unsupported ", version_number,
+                       " for CustomCallCompileOptions deserialization"));
+    }
+
+    auto compile_options = std::make_unique<CustomCallCompileOptions>();
+    if (version_number >= SerDesVersionNumber(4)) {
+      if (!proto.outputs_bundle_slice_sizes().empty()) {
+        compile_options->outputs_bundle_slice_sizes.emplace(
+            proto.outputs_bundle_slice_sizes().begin(),
+            proto.outputs_bundle_slice_sizes().end());
+      }
+    }
+    return compile_options;
   }
 
   static char ID;  // NOLINT

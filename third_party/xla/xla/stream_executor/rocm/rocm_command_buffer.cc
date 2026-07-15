@@ -377,7 +377,7 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateEmptyNode(
 }
 
 absl::Status RocmCommandBuffer::Trace(
-    Stream* stream, absl::AnyInvocable<absl::Status()> function) {
+    Stream* stream, absl::AnyInvocable<absl::Status(Stream* stream)> function) {
   RETURN_IF_ERROR(CheckNotFinalized());
   ASSIGN_OR_RETURN(size_t count, GetNodeCount());
   if (count != 0 || !is_owned_graph_)
@@ -395,7 +395,7 @@ absl::Status RocmCommandBuffer::Trace(
   RETURN_IF_ERROR(ToStatus(
       hipStreamBeginCapture(stream_handle, hipStreamCaptureModeThreadLocal),
       "Failed to begin stream capture"));
-  auto traced = function();
+  auto traced = function(stream);
 
   // Always stop capturing the stream before checking `traced` result.
   VLOG(5) << "End stream " << stream << " capture";

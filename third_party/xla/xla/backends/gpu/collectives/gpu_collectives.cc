@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <optional>
 
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
 
 namespace xla::gpu {
 

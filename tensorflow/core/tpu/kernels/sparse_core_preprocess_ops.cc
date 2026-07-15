@@ -36,8 +36,8 @@ limitations under the License.
 #include "hwy/base.h"  // from @com_google_highway
 #include "hwy/contrib/sort/order.h"  // from @com_google_highway
 #include "hwy/contrib/sort/vqsort.h"  // from @com_google_highway
-#include "xla/stream_executor/tpu/tpu_api.h"
-#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/tpu/tpu_api.h"
+#include "xla/tpu/tpu_ops_c_api.h"
 #include "xla/util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"

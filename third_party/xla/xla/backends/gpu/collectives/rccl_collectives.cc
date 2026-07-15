@@ -26,8 +26,10 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
+#include "absl/base/casts.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -43,8 +45,10 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/collectives/rccl_communicator.h"
 #include "xla/backends/gpu/collectives/rccl_errors.h"
+#include "xla/backends/gpu/collectives/rccl_group.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
@@ -64,7 +68,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
-#include "tsl/platform/casts.h"
 #include "tsl/platform/numbers.h"
 
 namespace xla::gpu {
@@ -143,6 +146,28 @@ absl::StatusOr<CliqueId> RcclCollectives::CreateUniqueCliqueId() const {
   ncclUniqueId id;
   XLA_RCCL_RETURN_IF_ERROR(ncclGetUniqueId(&id));
   return CliqueId(absl::string_view(id.internal, NCCL_UNIQUE_ID_BYTES));
+}
+
+absl::Status RcclCollectives::GroupLaunch(
+    absl::Span<const GpuCommunicator* const> comms,
+    absl::FunctionRef<absl::Status()> group) {
+  for (const GpuCommunicator* comm : comms) {
+    auto* rccl_comm = absl::down_cast<const RcclCommunicator*>(comm);
+    if (!rccl_comm->IsBlocking()) {
+      return FailedPrecondition(
+          "RCCL multi-communicator group launch requires blocking "
+          "communicators");
+    }
+  }
+
+  ASSIGN_OR_RETURN(bool launched, RcclGroupLaunch(group));
+  if (launched) {
+    for (const GpuCommunicator* comm : comms) {
+      auto* rccl_comm = absl::down_cast<const RcclCommunicator*>(comm);
+      RETURN_IF_ERROR(rccl_comm->PollUntilDone());
+    }
+  }
+  return absl::OkStatus();
 }
 
 static absl::StatusOr<ncclConfig_t> AsRcclConfig(
@@ -312,24 +337,8 @@ RcclCollectives::SplitCommunicatorsWithCancel(
   return split_comms;
 }
 
-static absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectives() {
-  ASSIGN_OR_RETURN(xla::Collectives * collectives,
-                   xla::CollectivesRegistry::Get("gpu", "nvshmem"));
-  xla::gpu::GpuCollectives* nvshmem_collectives =
-      absl::down_cast<GpuCollectives*>(collectives);
-  if (nvshmem_collectives == nullptr) {
-    return absl::InternalError("Failed to get NVSHMEM collectives");
-  }
-
-  return nvshmem_collectives;
-}
 
 absl::StatusOr<void*> RcclCollectives::Allocate(uint64_t bytes) {
-  if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem()) {
-    ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
-    return nvshmem_collectives->Allocate(bytes);
-  }
-
   void* ptr = nullptr;
   ncclResult_t res = ncclMemAlloc(&ptr, bytes);
   if (res != ncclSuccess) {
@@ -345,11 +354,6 @@ absl::StatusOr<void*> RcclCollectives::Allocate(uint64_t bytes) {
 }
 
 absl::Status RcclCollectives::Deallocate(void* location) {
-  if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem()) {
-    ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
-    return nvshmem_collectives->Deallocate(location);
-  }
-
   ncclResult_t res = ncclMemFree(location);
   if (res != ncclSuccess) {
     return absl::InternalError(absl::StrFormat(
@@ -364,10 +368,6 @@ absl::Status RcclCollectives::Deallocate(void* location) {
 
 absl::StatusOr<CliqueIdCallback> RcclCollectives::InitializeTopology(
     const Topology& topology) {
-  if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem()) {
-    ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
-    RETURN_IF_ERROR(nvshmem_collectives->InitializeTopology(topology).status());
-  }
 
   if (topology.num_processes > 1) {
     auto rccl_id_store = std::make_shared<RcclIdStore>(

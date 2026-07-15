@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
@@ -1897,6 +1898,33 @@ TEST_F(AlgebraicSimplifierTest,
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   AlgebraicSimplifierOptions options = default_options_;
   ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
+
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kMultiply);
+}
+
+TEST_F(AlgebraicSimplifierTest,
+       ReduceWindowCumSumBroadcastOfConstantWithReshapeToScalar) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    add_f32 {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT a = f32[] add(p0, p1)
+    }
+
+    ENTRY test {
+      c = f32[1] constant({1.0})
+      c_scalar = f32[] reshape(c)
+      b = f32[10,10] broadcast(c_scalar), dimensions={}
+      c_zero = f32[] constant(0.0)
+      ROOT rw = f32[10,10] reduce-window(b, c_zero), window={size=1x10 pad=0_0x9_0}, to_apply=add_f32
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options = default_options_;
+  ASSERT_OK(AlgebraicSimplifier(options).Run(m.get()));
 
   HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kMultiply);
@@ -8286,6 +8314,28 @@ TEST_F(AlgebraicSimplifierTest, DotIsAnnotatedWithUnreducedSharding) {
               absl_testing::IsOkAndHolds(false));
 }
 
+TEST_F(AlgebraicSimplifierTest, DotIsAnnotatedWithUnreducedShardingV3) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      lhs = f32[10,20,30,40] parameter(0)
+      rhs = f32[10,20,50,30] parameter(1)
+      lhs_t = transpose(lhs), dimensions={1,0,3,2}
+      rhs_t = transpose(rhs), dimensions={1,0,3,2}
+      dot = dot(lhs_t, rhs_t), lhs_batch_dims={0,1}, rhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_contracting_dims={2}
+      ROOT root = f32[20,10,40,50] custom-call(dot), custom_call_target="Sharding", sharding={mesh['x'=1,'y'=2], [{}, {}, {}, {}], unreduced={'x'}}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options = default_options_;
+  AlgebraicSimplifier simplifier(options);
+  ASSERT_THAT(RunHloPass(&simplifier, module.get()),
+              absl_testing::IsOkAndHolds(false));
+}
+
 struct PadReduceWindowEffectiveBroadcastCase {
   std::vector<int64_t> input_spatials;
   std::vector<int64_t> symmetric_pad_spatials;
@@ -8486,6 +8536,74 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Combine(::testing::Values(-1, 1, 2), ::testing::Values(-1, 1, 2),
                        ::testing::Values(-1, 1, 2),
                        ::testing::Values(C128, C64, F64, F32, BF16)));
+
+TEST_F(AlgebraicSimplifierTest, CpuDotStrengthReductionVectorVector) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  Shape lhs_shape = ShapeUtil::MakeShape(F32, {2048, 2048});
+  Shape rhs_shape = ShapeUtil::MakeShape(F32, {2048, 2048});
+  Shape output_shape = ShapeUtil::MakeShape(F32, {2048});
+
+  auto lhs = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, lhs_shape, "lhs"));
+  auto rhs = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, rhs_shape, "rhs"));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_batch_dimensions(0);
+  dot_dnums.add_rhs_batch_dimensions(0);
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(1);
+
+  builder.AddInstruction(HloInstruction::CreateDot(
+      output_shape, lhs, rhs, dot_dnums, DefaultPrecisionConfig(2)));
+
+  auto computation = module->AddEntryComputationWithLayouts(builder.Build());
+
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_executing_on_cpu(true);
+  options.set_enable_dot_strength_reduction(true);
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          AlgebraicSimplifier(options).Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  EXPECT_THAT(computation->instructions(), ::testing::Each(Not(op::Dot())));
+}
+
+TEST_F(AlgebraicSimplifierTest, CpuDotStrengthReductionGEMV) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  Shape lhs_shape = ShapeUtil::MakeShape(F32, {2048, 2048});
+  Shape rhs_shape = ShapeUtil::MakeShape(F32, {2048, 2048, 10});
+  Shape output_shape = ShapeUtil::MakeShape(F32, {2048, 10});
+
+  auto lhs = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, lhs_shape, "lhs"));
+  auto rhs = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, rhs_shape, "rhs"));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_batch_dimensions(0);
+  dot_dnums.add_rhs_batch_dimensions(0);
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(1);
+
+  builder.AddInstruction(HloInstruction::CreateDot(
+      output_shape, lhs, rhs, dot_dnums, DefaultPrecisionConfig(2)));
+
+  auto computation = module->AddEntryComputationWithLayouts(builder.Build());
+
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_executing_on_cpu(true);
+  options.set_enable_dot_strength_reduction(true);
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          AlgebraicSimplifier(options).Run(module.get()));
+  EXPECT_FALSE(changed);
+
+  EXPECT_THAT(computation->instructions(), ::testing::Contains(op::Dot()));
+}
 
 class DotStrengthReductionTest
     : public AlgebraicSimplifierTest,
@@ -14158,6 +14276,110 @@ TEST_F(AlgebraicSimplifierTest, CommuteReduceAndBroadcastUnsorted) {
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Broadcast(m::Reduce(m::Parameter(), m::Constant()))));
+}
+
+TEST_F(AlgebraicSimplifierTest, FoldTransposeIntoScatter) {
+  const std::string& hlo_string = R"(
+    HloModule m
+
+    update_computation {
+      a_val = f32[] parameter(0)
+      b_val = f32[] parameter(1)
+      ROOT add = f32[] add(a_val, b_val)
+    }
+
+    ENTRY test {
+      operand = f32[10, 20] parameter(0)
+      indices = s32[5, 1] parameter(1)
+      updates = f32[5, 1, 20] parameter(2)
+
+      scatter = f32[10, 20] scatter(operand, indices, updates),
+        update_window_dims={1, 2},
+        inserted_window_dims={},
+        scatter_dims_to_operand_dims={0},
+        index_vector_dim=1,
+        to_apply=update_computation
+
+      ROOT transpose = f32[20, 10] transpose(scatter), dimensions={1, 0}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_fold_transpose_into_scatter(true);
+  ASSERT_THAT(AlgebraicSimplifier(options).Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  constexpr absl::string_view kPattern = R"(
+CHECK: %[[transposed_operand:.*]] = f32[20,10]{{.*}} transpose(%[[operand:.*]]), dimensions={1,0}
+CHECK: %[[transposed_updates:.*]] = f32[5,20,1]{{.*}} transpose(%[[updates:.*]]), dimensions={0,2,1}
+CHECK: ROOT %[[new_scatter:.*]] = f32[20,10]{{.*}} scatter(%[[transposed_operand]], %[[indices:.*]], %[[transposed_updates]]),
+CHECK-SAME: update_window_dims={1,2},
+CHECK-SAME: inserted_window_dims={},
+CHECK-SAME: scatter_dims_to_operand_dims={1},
+CHECK-SAME: index_vector_dim=1
+  )";
+  ASSERT_OK_AND_ASSIGN(bool matched,
+                       RunFileCheck(module->ToString(), kPattern));
+  EXPECT_TRUE(matched);
+}
+
+TEST_F(AlgebraicSimplifierTest,
+       DoNotFoldTransposeIntoScatterWithInputBatchingDim) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    update_computation {
+      a_val = bf16[] parameter(0)
+      b_val = bf16[] parameter(1)
+      add = bf16[] add(a_val, b_val)
+    }
+
+    test {
+      operand = bf16[1,16,8208,128] parameter(0)
+      indices = s32[1,3] parameter(1)
+      updates = bf16[1,16,8192,128] parameter(2)
+      scatter = bf16[1,16,8208,128] scatter(operand, indices, updates),
+        update_window_dims={1,2,3}, inserted_window_dims={},
+        scatter_dims_to_operand_dims={1,2,3}, index_vector_dim=1,
+        input_batching_dims={0}, scatter_indices_batching_dims={0},
+        to_apply=update_computation
+      transpose = bf16[1,8208,16,128] transpose(scatter), dimensions={0,2,1,3}
+    }
+  )"));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_fold_transpose_into_scatter(true);
+  EXPECT_THAT(AlgebraicSimplifier(options).Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
+}
+
+TEST_F(AlgebraicSimplifierTest, DoNotFoldTransposeIntoScatterWhenDisabled) {
+  const std::string& hlo_string = R"(
+    HloModule m
+
+    update_computation {
+      a_val = f32[] parameter(0)
+      b_val = f32[] parameter(1)
+      ROOT add = f32[] add(a_val, b_val)
+    }
+
+    ENTRY test {
+      operand = f32[10, 20] parameter(0)
+      indices = s32[5, 1] parameter(1)
+      updates = f32[5, 1, 20] parameter(2)
+
+      scatter = f32[10, 20] scatter(operand, indices, updates),
+        update_window_dims={1, 2},
+        inserted_window_dims={},
+        scatter_dims_to_operand_dims={0},
+        index_vector_dim=1,
+        to_apply=update_computation
+
+      ROOT transpose = f32[20, 10] transpose(scatter), dimensions={1, 0}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_fold_transpose_into_scatter(false);
+  EXPECT_THAT(AlgebraicSimplifier(options).Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
 }
 
 }  // namespace

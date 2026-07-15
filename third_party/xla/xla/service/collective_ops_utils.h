@@ -222,8 +222,8 @@ bool IsRaggedAllToAllOrAsyncStartRaggedAllToAll(
 bool IsRaggedAllToAllOrAsyncDoneRaggedAllToAll(
     const HloInstruction* instruction);
 
-// Returns true if the one-shot zero-copy RaggedAllToAll feature is enabled.
-bool IsOneShotZeroCopyRaggedAllToAllEnabled(const DebugOptions& opts);
+// Returns true if the one-shot RaggedAllToAll with NCCL feature is enabled.
+bool IsOneShotRaggedAllToAllWithNcclEnabled(const DebugOptions& opts);
 
 // Returns the collective instruction if argument is a collective op (or a
 // collective fusion) with channel_id.
@@ -328,6 +328,24 @@ inline constexpr absl::string_view kCollectiveStreamP2P = "p2p";
 
 int64_t GetSubgroupSize(const HloCollectiveInstruction* hlo,
                         CollectiveOpGroupMode group_mode);
+
+class NcclSymmetricBuffersSpec {
+ public:
+  explicit NcclSymmetricBuffersSpec(const DebugOptions& debug_options);
+
+  bool IsEnabled(const HloInstruction& inst) const;
+
+ private:
+  struct Filter {
+    DebugOptions::CollectiveOpType collective;
+    std::optional<int64_t> max_size_bytes;
+    std::optional<PrimitiveType> op_type;
+  };
+  std::vector<Filter> filters_;
+};
+
+bool IsNcclSymmetricBuffersEnabledForCollective(
+    const HloInstruction* instruction, const DebugOptions& opts);
 
 }  // end namespace xla
 

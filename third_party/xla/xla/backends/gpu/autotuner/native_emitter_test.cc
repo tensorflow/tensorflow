@@ -31,6 +31,8 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gpu_fusible.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
@@ -185,12 +187,19 @@ TEST_F(NativeEmitterBackendTest, GetSupportedConfigsForLoopFusion) {
 
     native_configs.push_back(config->native_emitter());
   }
+  HloFusionAnalysis analysis =
+      HloFusionAnalysis::Create(*fusion, target_config_.device_description);
+  int64_t max_unroll_factor = MaxUnrollFactor(&analysis);
+  ASSERT_GT(max_unroll_factor, 1);
   EXPECT_THAT(
       native_configs,
-      UnorderedElementsAre(EqualsProto(R"pb(type: NATIVE_EMITTER_TYPE_LOOP
-                                            unroll_factor: 2)pb"),
-                           EqualsProto(R"pb(type: NATIVE_EMITTER_TYPE_LOOP
-                                            unroll_factor: 4)pb")));
+      UnorderedElementsAre(
+          EqualsProto(absl::Substitute(R"pb(type: NATIVE_EMITTER_TYPE_LOOP
+                                            unroll_factor: $0)pb",
+                                       max_unroll_factor / 2)),
+          EqualsProto(absl::Substitute(R"pb(type: NATIVE_EMITTER_TYPE_LOOP
+                                            unroll_factor: $0)pb",
+                                       max_unroll_factor))));
 }
 
 TEST_F(NativeEmitterBackendTest,

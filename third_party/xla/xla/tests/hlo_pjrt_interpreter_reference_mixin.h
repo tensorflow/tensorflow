@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,36 +16,16 @@ limitations under the License.
 #ifndef XLA_TESTS_HLO_PJRT_INTERPRETER_REFERENCE_MIXIN_H_
 #define XLA_TESTS_HLO_PJRT_INTERPRETER_REFERENCE_MIXIN_H_
 
-#include <memory>
-
-#include "xla/hlo/evaluator/hlo_evaluator.h"
-#include "xla/service/hlo_runner_interface.h"
-#include "xla/service/hlo_runner_pjrt.h"
-#include "xla/tests/aot_utils.h"
-#include "xla/tests/hlo_runner_agnostic_reference_mixin.h"
+#include "absl/base/macros.h"
+#include "xla/tests/hlo_interpreter_reference_mixin.h"
 
 namespace xla {
 
-// A wrapper mixin around HloRunnerAgnosticReferenceMixin which provides a
-// default reference backend via HloRunnerPjRt using the PjRt InterpreterClient.
-//
-// The mixin requires that that the test class is a subclass of
-// HloRunnerAgnosticTestBase.
 template <typename T>
-class HloPjRtInterpreterReferenceMixin
-    : public HloRunnerAgnosticReferenceMixin<T> {
- protected:
-  template <typename... BaseArgs>
-  explicit HloPjRtInterpreterReferenceMixin(BaseArgs&&... base_args)
-      : HloRunnerAgnosticReferenceMixin<T>(
-            std::make_unique<HloRunnerPjRt>(MakeAotAwareInterpreterClient(
-                []() { return std::make_unique<HloEvaluator>(); })),
-            std::forward<BaseArgs>(base_args)...) {}
-  bool IsRocm() {
-    return this->test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm);
-  }
-  ~HloPjRtInterpreterReferenceMixin() override = default;
-};
+using HloPjRtInterpreterReferenceMixin
+    [[deprecated("HloPjRtInterpreterReferenceMixin is a deprecated alias for "
+                 "HloInterpreterReferenceMixin.")]] ABSL_REFACTOR_INLINE =
+        HloInterpreterReferenceMixin<T>;
 
 }  // namespace xla
 

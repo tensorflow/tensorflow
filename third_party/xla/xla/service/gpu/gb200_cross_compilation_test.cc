@@ -43,7 +43,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class Gb200CrossCompilationTest : public HloPjRtTestBase {
+class Gb200CrossCompilationTest : public HloTestBase {
  public:
   absl::StatusOr<std::unique_ptr<CompiledModule>> CrossCompileTo(
       GpuModel gpu_model) {

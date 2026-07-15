@@ -23,8 +23,8 @@ xla_cc_test(
 )
 
 xla_cc_test(
-    name = "tracked_cpu_device_buffer_test",
-    srcs = ["tracked_cpu_device_buffer_test.cc"],
+    name = "cpu_device_memory_test",
+    srcs = ["cpu_device_memory_test.cc"],
     deps = [
         ":abstract_cpu_buffer",
         ":cpu_client",
@@ -49,17 +49,22 @@ xla_cc_test(
     ],
 )
 
+alias(
+    name = "tracked_cpu_device_buffer_test",
+    actual = ":cpu_device_memory_test",
+)
+
 cc_library(
     name = "abstract_cpu_buffer",
     srcs = [
         "abstract_cpu_buffer.cc",
+        "cpu_device_memory.cc",
         "raw_buffer.cc",
-        "tracked_cpu_device_buffer.cc",
     ],
     hdrs = [
         "abstract_cpu_buffer.h",
+        "cpu_device_memory.h",
         "raw_buffer.h",
-        "tracked_cpu_device_buffer.h",
     ],
     visibility = internal_visibility(["//xla/pjrt/cpu:legacy_cpu_buffer_internal_users"]),
     deps = [

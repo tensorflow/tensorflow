@@ -454,7 +454,6 @@ class PjRtCApiClient : public PjRtClient {
   absl::StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
       const override;
 
-  absl::StatusOr<HostAllocator*> GetHostAllocator() const override;
   HostMemoryAllocator* GetHostMemoryAllocator() const override;
 
   absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
@@ -595,8 +594,6 @@ class PjRtCApiClient : public PjRtClient {
   // from GetTopologyDescription().
   absl::StatusOr<const PjRtCApiTopologyDescription> topo_desc_;
   absl::flat_hash_map<PJRT_Extension_Type, PJRT_Extension_Base*> extensions_;
-  // Not all PJRT C API implementations support the host allocator extension.
-  absl::StatusOr<std::unique_ptr<PjRtClient::HostAllocator>> host_allocator_;
   std::unique_ptr<HostMemoryAllocator> host_memory_allocator_;
 
   const std::string platform_version_;
@@ -921,6 +918,10 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
       PJRT_Chunk*, PJRT_CallbackError*, size_t, bool)>;
   // std::function version of PJRT_RecvCallback
   using RecvCallbackFunction = std::function<void(PJRT_CopyToDeviceStream*)>;
+  // std::function version of PJRT_HloOutputCallback
+  using HloOutputCallbackFunction = std::function<void(
+      int64_t replica_id, int64_t partition_id,
+      absl::Span<std::shared_ptr<const Literal> const> literals)>;
 
   // Override to call FingerprintExecutable through the wrapped
   // PjRtCApiExecutable.
@@ -931,13 +932,41 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
  private:
   std::vector<LogicalDeviceIds> addressable_device_logical_ids_;
   // Groups data needed to support send/recv execution callbacks.
+  struct HloOutputCallbackState {
+    // Key is {replica_id, partition_id}.
+    absl::flat_hash_map<std::pair<int64_t, int64_t>,
+                        std::vector<std::shared_ptr<const Literal>>>
+        accumulated_literals;
+    absl::flat_hash_map<std::pair<int64_t, int64_t>, std::vector<bool>>
+        received_operands;
+    absl::Mutex mu;
+    HloOutputCallbackFunction callback;
+    size_t num_operands;
+  };
+
+  friend PJRT_HloOutputCallbackInfo CppHloOutputCallbackToC(
+      const xla::HloOutputCallback& cpp_callback, size_t num_operands,
+      PjRtCApiLoadedExecutable::HloOutputCallbackState* state);
+
+  friend void CppHloOutputCallbacksToC(
+      absl::Span<const xla::HloOutputCallback> cpp_list,
+      std::vector<
+          std::unique_ptr<PjRtCApiLoadedExecutable::HloOutputCallbackState>>&
+          hlo_output_callback_states,
+      std::vector<PJRT_HloOutputCallbackInfo>& c_list);
+
+ private:
   struct SendRecvCallbackData {
     std::vector<std::vector<PJRT_SendCallbackInfo>> c_send_callbacks;
     std::vector<PJRT_SendCallbackInfo*> c_send_callback_lists;
     std::vector<std::vector<PJRT_RecvCallbackInfo>> c_recv_callbacks;
     std::vector<PJRT_RecvCallbackInfo*> c_recv_callback_lists;
+    std::vector<PJRT_HloOutputCallbackInfo> c_hlo_output_callbacks;
     std::vector<SendCallbackFunction> send_callback_functions;
     std::vector<RecvCallbackFunction> recv_callback_functions;
+    std::vector<HloOutputCallbackFunction> hlo_output_callback_functions;
+    std::vector<std::unique_ptr<HloOutputCallbackState>>
+        hlo_output_callback_states;
   };
 
   // Returns the number of outputs of the executable.

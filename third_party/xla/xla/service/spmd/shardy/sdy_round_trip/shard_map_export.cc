@@ -111,7 +111,7 @@ class SdyRoundTripShardMapExportPass
       auto callOp =
           CallOp::create(rewriter, loc, localResultTypes, funcName, operands);
       setFrontendAttribute(callOp, kXlaInlineableAttr,
-                           rewriter.getBoolAttr(false));
+                           rewriter.getStringAttr("xla_late"));
 
       mlir::ResultRange results = manualComputation->getResults();
       if (!results.empty()) {

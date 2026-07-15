@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/xnnpack/file_util.h"
 #include "tensorflow/lite/delegates/xnnpack/flexbuffers_util.h"
+#include "tensorflow/lite/delegates/xnnpack/moe_delegate_kernel.h"
 #include "tensorflow/lite/delegates/xnnpack/quantization_util.h"
 #include "tensorflow/lite/delegates/xnnpack/weight_cache.h"
 #include "tensorflow/lite/experimental/resource/resource_variable.h"
@@ -718,7 +719,8 @@ class Delegate {
     }
   }
 
-  TfLiteIntArray* PrepareOpsToDelegate(TfLiteContext* context);
+  TfLiteIntArray* PrepareOpsToDelegate(TfLiteContext* context,
+                                       TfLiteIntArray** moe_ops_to_delegate);
   TfLiteDelegate* tflite_delegate() { return &delegate_; }
 
   bool support_signed_8bit_quantization() const {
@@ -955,12 +957,26 @@ class Subgraph {
     }
     // Map tensors identifiers before packing anything.
     if (delegate.weight_cache_provider_->IsActive()) {
+      const auto* subgraph =
+          reinterpret_cast<tflite::Subgraph*>(context->impl_);
+      auto tensor_buffer_identifiers = subgraph->GetTensorBufferIdentifiers();
+      for (const auto& [tensor_index, external_buffer_id] :
+           subgraph->GetExternalTensorBufferIdentifiers()) {
+        tensor_buffer_identifiers.insert_or_assign(tensor_index,
+                                                   external_buffer_id);
+      }
       if (!delegate.weight_cache_provider_->MapTensorIdentifiers(
               context->tensors, context->tensors_size,
-              reinterpret_cast<tflite::Subgraph*>(context->impl_)
-                  ->GetTensorBufferIdentifiers())) {
+              tensor_buffer_identifiers)) {
         return nullptr;
       }
+    }
+
+    std::unique_ptr<MoeExpertsDelegateKernel> moe_kernel =
+        MoeExpertsDelegateKernel::Create(context, params,
+                                         delegate.threadpool());
+    if (moe_kernel != nullptr) {
+      return new Subgraph(delegate, std::move(moe_kernel));
     }
 
     // Convert subgraph inputs and outputs to hash sets for faster lookup.
@@ -1273,6 +1289,10 @@ class Subgraph {
 
   TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node,
                        bool enable_subgraph_reshaping, Delegate* delegate) {
+    if (moe_kernel_ != nullptr) {
+      return moe_kernel_->Prepare(context);
+    }
+
     std::lock_guard<std::mutex> lock(delegate->workspace_mutex_);
     tflite::Subgraph* this_subgraph =
         reinterpret_cast<tflite::Subgraph*>(context->impl_);
@@ -1350,6 +1370,10 @@ class Subgraph {
 
   TfLiteStatus Invoke(TfLiteContext* context, bool enable_subgraph_reshaping,
                       Delegate* delegate) {
+    if (moe_kernel_ != nullptr) {
+      return moe_kernel_->Invoke(context);
+    }
+
     std::lock_guard<std::mutex> lock(delegate->workspace_mutex_);
 
     tflite::Subgraph* this_subgraph =
@@ -5267,8 +5291,8 @@ class Subgraph {
 
     const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
     TF_LITE_ENSURE_STATUS(
-        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input_tensor,
-                                       node->inputs->data[0], node_index));
+        CheckTensorFloatOrQUInt8Type(delegate, logging_context, input_tensor,
+                                     node->inputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorShape(
         logging_context, input_tensor, 1, XNN_MAX_TENSOR_DIMS,
         node->inputs->data[0], BuiltinOperator_PAD, node_index));
@@ -5683,11 +5707,11 @@ class Subgraph {
         logging_context, node, 1, 1, BuiltinOperator_SOFTMAX, node_index));
 
     const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
         logging_context, input_tensor, node->inputs->data[0], node_index));
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
         logging_context, output_tensor, node->outputs->data[0], node_index));
 
     if (subgraph != nullptr) {
@@ -6796,10 +6820,22 @@ class Subgraph {
     delegate_ = &delegate;
   }
 
+  Subgraph(Delegate& delegate,
+           std::unique_ptr<MoeExpertsDelegateKernel> moe_kernel)
+      : runtime_(nullptr, &xnn_delete_runtime),
+        moe_kernel_(std::move(moe_kernel)) {
+    enable_subgraph_reshaping_ = delegate.enable_subgraph_reshaping();
+    delegate_ = &delegate;
+  }
+
   // XNNPACK Runtime (subgraph + workspace) with smart-pointer for lifetime
   // management.
   std::unique_ptr<xnn_runtime, decltype(&xnn_delete_runtime)> runtime_{
       nullptr, &xnn_delete_runtime};
+  // Optional single-custom-op MoE executor. This is used only in the opt-in
+  // prototype path for moe, where dynamic routing cannot be
+  // expressed as a pure XNNPACK subgraph today.
+  std::unique_ptr<MoeExpertsDelegateKernel> moe_kernel_;
   // Mapping from TFLite Tensor IDs for input/output tensors in the delegated
   // subgraph to their data locations.
   std::unordered_map<int, void*> externals_;
@@ -6821,7 +6857,11 @@ class Subgraph {
   Delegate* delegate_;
 };
 
-TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
+TfLiteIntArray* Delegate::PrepareOpsToDelegate(
+    TfLiteContext* context, TfLiteIntArray** moe_ops_to_delegate) {
+  if (moe_ops_to_delegate != nullptr) {
+    *moe_ops_to_delegate = nullptr;
+  }
   // Clear previous data, in case the delegate is reused without re-creation.
   int subgraph_index = 0;
   if (context) {
@@ -6872,6 +6912,19 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
   TfLiteIntArray* nodes_to_delegate =
       TfLiteIntArrayCreate(execution_plan->size);
   nodes_to_delegate->size = 0;
+  TfLiteIntArray* moe_nodes_to_delegate = nullptr;
+  if (moe_ops_to_delegate != nullptr) {
+    moe_nodes_to_delegate = TfLiteIntArrayCreate(execution_plan->size);
+    moe_nodes_to_delegate->size = 0;
+  }
+  auto cleanup_and_return_null = [&]() -> TfLiteIntArray* {
+    TfLiteIntArrayFree(nodes_to_delegate);
+    TfLiteIntArrayFree(moe_nodes_to_delegate);
+    if (moe_ops_to_delegate != nullptr) {
+      *moe_ops_to_delegate = nullptr;
+    }
+    return nullptr;
+  };
   for (int i = 0; i < execution_plan->size; ++i) {
     const int node_index = execution_plan->data[i];
 
@@ -6884,6 +6937,16 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
                          "Unable to get node and registration for node %d.",
                          node_index);
       continue;  // Soft error (skip this node).
+    }
+
+    if (moe_nodes_to_delegate != nullptr && registration != nullptr &&
+        node != nullptr &&
+        MoeExpertsDelegateKernel::IsMoeExpertsNode(registration, node)) {
+      if (MoeExpertsDelegateKernel::IsSupported(context, node, registration,
+                                                node_index) == kTfLiteOk) {
+        moe_nodes_to_delegate->data[moe_nodes_to_delegate->size++] = node_index;
+      }
+      continue;
     }
 
     // Prepare to unpack FP16/INT8 tensors.
@@ -7057,24 +7120,21 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
       TF_LITE_KERNEL_LOG(context,
                          "Unable to get node and registration for node %d.",
                          producer_index);
-      TfLiteIntArrayFree(nodes_to_delegate);
-      return nullptr;  // Hard error.
+      return cleanup_and_return_null();  // Hard error.
     }
 
     if (Subgraph::CheckNumInputs(
             context, node, /*expected_num_inputs=*/1,
             static_cast<BuiltinOperator>(registration->builtin_code),
             producer_index) != kTfLiteOk) {
-      TfLiteIntArrayFree(nodes_to_delegate);
-      return nullptr;  // Hard error.
+      return cleanup_and_return_null();  // Hard error.
     }
 
     if (Subgraph::CheckNumOutputs(
             context, node, /*expected_num_outputs=*/1,
             static_cast<BuiltinOperator>(registration->builtin_code),
             producer_index) != kTfLiteOk) {
-      TfLiteIntArrayFree(nodes_to_delegate);
-      return nullptr;  // Hard error.
+      return cleanup_and_return_null();  // Hard error.
     }
 
     const TfLiteTensor& input_tensor = context->tensors[node->inputs->data[0]];
@@ -7089,8 +7149,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
             "unexpected allocation type (%d) in tensor %d in node %d (%d)",
             input_tensor.allocation_type, node->inputs->data[0], producer_index,
             registration->builtin_code);
-        TfLiteIntArrayFree(nodes_to_delegate);
-        return nullptr;  // Hard error.
+        return cleanup_and_return_null();  // Hard error.
       }
     }
     const char* packed_data =
@@ -7115,8 +7174,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
                            "unexpected datatype (%s) in tensor %d in node %d",
                            TfLiteTypeGetName(output_tensor.type),
                            node->outputs->data[0], producer_index);
-        TfLiteIntArrayFree(nodes_to_delegate);
-        return nullptr;  // Hard error.
+        return cleanup_and_return_null();  // Hard error.
       }
     }
 
@@ -7252,8 +7310,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
       TF_LITE_KERNEL_LOG(context,
                          "Unable to get node and registration for node %d.",
                          producer_index);
-      TfLiteIntArrayFree(nodes_to_delegate);
-      return nullptr;  // Hard error.
+      return cleanup_and_return_null();  // Hard error.
     }
     const TfLiteTensor& input_tensor = context->tensors[node->inputs->data[0]];
     char* unpacked_data = static_unpacked_data[t].data();
@@ -7276,6 +7333,10 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
   }
   std::sort(&nodes_to_delegate->data[0],
             &nodes_to_delegate->data[nodes_to_delegate->size]);
+  if (moe_nodes_to_delegate != nullptr) {
+    std::sort(&moe_nodes_to_delegate->data[0],
+              &moe_nodes_to_delegate->data[moe_nodes_to_delegate->size]);
+  }
 
 #ifdef XNNPACK_DELEGATE_TEST_MODE
   // In the test mode build (used by unit tests), XNNPACK delegate claims to
@@ -7289,7 +7350,9 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
             &execution_plan->data[execution_plan->size],
             &nodes_to_delegate->data[0]);
 #endif
-
+  if (moe_ops_to_delegate != nullptr) {
+    *moe_ops_to_delegate = moe_nodes_to_delegate;
+  }
   return nodes_to_delegate;
 }
 
@@ -7340,16 +7403,40 @@ const TfLiteRegistration kSubgraphRegistration = {
 };
 
 TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
+  std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> moe_ops_to_replace(
+      nullptr, TfLiteIntArrayFree);
+  TfLiteIntArray* moe_ops_to_replace_raw = nullptr;
   TfLiteIntArray* ops_to_replace =
       static_cast<::tflite::xnnpack::Delegate*>(delegate->data_)
-          ->PrepareOpsToDelegate(context);
+          ->PrepareOpsToDelegate(context, &moe_ops_to_replace_raw);
+  moe_ops_to_replace.reset(moe_ops_to_replace_raw);
   if (ops_to_replace == nullptr) {
     return kTfLiteError;
   }
 
-  const TfLiteStatus status = context->ReplaceNodeSubsetsWithDelegateKernels(
-      context, kSubgraphRegistration, ops_to_replace, delegate);
+  TfLiteStatus status = kTfLiteOk;
+  if (ops_to_replace->size != 0) {
+    status = context->ReplaceNodeSubsetsWithDelegateKernels(
+        context, kSubgraphRegistration, ops_to_replace, delegate);
+  }
   TfLiteIntArrayFree(ops_to_replace);
+  if (status != kTfLiteOk) {
+    return status;
+  }
+
+  if (moe_ops_to_replace != nullptr) {
+    for (int i = 0; i < moe_ops_to_replace->size; ++i) {
+      TfLiteIntArray* singleton_moe_op = TfLiteIntArrayCreate(1);
+      singleton_moe_op->size = 1;
+      singleton_moe_op->data[0] = moe_ops_to_replace->data[i];
+      status = context->ReplaceNodeSubsetsWithDelegateKernels(
+          context, kSubgraphRegistration, singleton_moe_op, delegate);
+      TfLiteIntArrayFree(singleton_moe_op);
+      if (status != kTfLiteOk) {
+        break;
+      }
+    }
+  }
   return status;
 }
 

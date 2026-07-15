@@ -41,22 +41,34 @@ using ::mlir::MLIRContext;
 using ::testing::Contains;
 using ::testing::Truly;
 
-class GpuCostModelStatsCollectionTest : public HloHardwareIndependentTestBase {
+class GpuCostModelStatsCollectionTest
+    : public HloHardwareIndependentTestBase,
+      public ::testing::WithParamInterface</*use_experimental_tiling=*/bool> {
  public:
   GpuCostModelStatsCollectionTest() {
     RegisterSymbolicExprStorage(&mlir_context_);
   }
 
+  bool use_experimental_tiling() const { return GetParam(); }
+
   GpuCostModelStatsCollection cost_model_stats_{
       TestGpuDeviceInfo::H100SXMDeviceInfo(),
       GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true},
-      &mlir_context_};
+      &mlir_context_, use_experimental_tiling()};
 
  protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(
+        use_experimental_tiling());
+    return debug_options;
+  }
+
   mlir::MLIRContext mlir_context_;
 };
 
-TEST_F(GpuCostModelStatsCollectionTest, FusionInEntryComputation) {
+TEST_P(GpuCostModelStatsCollectionTest, FusionInEntryComputation) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
     HloModule test_module
 
@@ -81,7 +93,7 @@ TEST_F(GpuCostModelStatsCollectionTest, FusionInEntryComputation) {
   EXPECT_GT(gpu_config.reification_cost()[0].end_to_end_cycles(), 0);
 }
 
-TEST_F(GpuCostModelStatsCollectionTest, FusionInWhileComputation) {
+TEST_P(GpuCostModelStatsCollectionTest, FusionInWhileComputation) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
     HloModule test_module
 
@@ -118,7 +130,7 @@ TEST_F(GpuCostModelStatsCollectionTest, FusionInWhileComputation) {
   EXPECT_GT(gpu_config.reification_cost()[0].end_to_end_cycles(), 0);
 }
 
-TEST_F(GpuCostModelStatsCollectionTest, GemmCostModelAddedToGemmFusion) {
+TEST_P(GpuCostModelStatsCollectionTest, GemmCostModelAddedToGemmFusion) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
   HloModule test_module
 
@@ -161,6 +173,13 @@ TEST_F(GpuCostModelStatsCollectionTest, GemmCostModelAddedToGemmFusion) {
                        cost.end_to_end_cycles() > 0;
               })));
 }
+
+INSTANTIATE_TEST_SUITE_P(GpuCostModelStatsCollectionTestSuite,
+                         GpuCostModelStatsCollectionTest, ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "ExperimentalTiling"
+                                             : "SymbolicTiling";
+                         });
 
 }  // namespace
 }  // namespace gpu

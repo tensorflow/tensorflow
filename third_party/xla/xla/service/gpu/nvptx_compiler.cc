@@ -327,22 +327,58 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
 }
 
 absl::Status NVPTXCompiler::RunCudnnCompilerPasses(
-    HloModule* module, se::dnn::DnnSupport& dnn_support,
-    BinaryMap* dnn_compiled_graphs) {
-  if (module->config()
-          .debug_options()
-          .xla_gpu_experimental_disable_binary_libraries()) {
+    HloModule* module, se::StreamExecutor* stream_exec,
+    const GpuTargetConfig& gpu_target_config, BinaryMap* dnn_compiled_graphs) {
+  const DebugOptions& debug_options = module->config().debug_options();
+  if (debug_options.xla_gpu_experimental_disable_binary_libraries()) {
     return absl::OkStatus();
   }
+
+  // Decide whether to run cuDNN compilation deviceless (no live cuDNN handle).
+  bool use_deviceless_cudnn = false;
+  switch (debug_options.xla_gpu_cudnn_deviceless_compilation_mode()) {
+    case DebugOptions::CUDNN_DEVICELESS_COMPILATION_UNSET:
+    case DebugOptions::CUDNN_DEVICELESS_COMPILATION_DISABLED:
+      use_deviceless_cudnn = false;
+      break;
+    case DebugOptions::CUDNN_DEVICELESS_COMPILATION_ALWAYS:
+      // Force deviceless even if we have a device.
+      use_deviceless_cudnn = true;
+      break;
+    case DebugOptions::CUDNN_DEVICELESS_COMPILATION_AUTO:
+    default:
+      // Deviceless only when there is no live device to query.
+      use_deviceless_cudnn = (stream_exec == nullptr);
+      break;
+  }
+  // Without a live device and without deviceless compilation there is nothing
+  // to do.
+  if (stream_exec == nullptr && !use_deviceless_cudnn) {
+    return absl::OkStatus();
+  }
+  // Deviceless cuDNN compilation relies on DeviceProperties JSON
+  // serialization, added in cuDNN 9.8.
+  if (use_deviceless_cudnn &&
+      gpu_target_config.dnn_version_info < se::dnn::VersionInfo(9, 8, 0)) {
+    return absl::FailedPreconditionError(
+        "Deviceless cuDNN compilation requires cuDNN >= 9.8.");
+  }
+  se::dnn::DnnSupport* dnn_support =
+      use_deviceless_cudnn ? nullptr : stream_exec->AsDnn();
+
   tsl::profiler::ScopedAnnotation annotation([&] {
     return absl::StrFormat("XlaCompileCudnnFusion:#module=%s,program_id=%d#",
                            module->name(), module->unique_id());
   });
-  CuDnnFusionCompiler fusion_compiler(dnn_support, *dnn_compiled_graphs);
+  const se::DeviceDescription& gpu_device_info =
+      gpu_target_config.device_description;
+  CuDnnFusionCompiler fusion_compiler(dnn_support, gpu_device_info,
+                                      *dnn_compiled_graphs);
   RETURN_IF_ERROR(
       fusion_compiler.Run(module, {HloInstruction::kMainExecutionThread})
           .status());
-  CuDnnCustomCallCompiler call_compiler(dnn_support, *dnn_compiled_graphs);
+  CuDnnCustomCallCompiler call_compiler(dnn_support, gpu_device_info,
+                                        *dnn_compiled_graphs);
   return call_compiler.Run(module, {HloInstruction::kMainExecutionThread})
       .status();
 }
@@ -558,8 +594,8 @@ NVPTXCompiler::CompileTargetBinary(
   se::cuda::CompilationOptions compilation_options =
       PtxCompileOptionsFromDebugOptions(module_config.debug_options());
 
-  se::CudaComputeCapability cc =
-      *device_description.gpu_compute_capability().cuda_compute_capability();
+  se::CudaComputeCapability cc = nvptx::ResolveSupportedComputeCapability(
+      *device_description.gpu_compute_capability().cuda_compute_capability());
 
   // This may print multiple lines per HLO compilation because of the
   // parallelized compilation of LLVM modules.
@@ -589,16 +625,15 @@ NVPTXCompiler::CompileTargetBinary(
                      compilation_provider->CompileToRelocatableModule(
                          cc, ptx, compilation_options));
     record_ptx_to_cubin_metric();
-    return BackendCompileResult{
-        std::move(ptx), std::move(relocatable_module.cubin),
-        /*dnn_compiled_graphs=*/{}, std::move(relocatable_module.module_stats)};
+    return BackendCompileResult{std::move(ptx),
+                                std::move(relocatable_module.cubin),
+                                std::move(relocatable_module.module_stats)};
   }
 
   ASSIGN_OR_RETURN(se::cuda::Assembly assembly,
                    compilation_provider->Compile(cc, ptx, compilation_options));
   record_ptx_to_cubin_metric();
   return BackendCompileResult{std::move(ptx), std::move(assembly.cubin),
-                              /*dnn_compiled_graphs=*/{},
                               std::move(assembly.module_stats)};
 }
 
@@ -621,8 +656,8 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
     return std::vector<uint8_t>{};
   }
 
-  auto cc =
-      device_description.gpu_compute_capability().cuda_compute_capability();
+  se::CudaComputeCapability cc = nvptx::ResolveSupportedComputeCapability(
+      *device_description.gpu_compute_capability().cuda_compute_capability());
 
   ASSIGN_OR_RETURN(const se::cuda::CompilationProvider* compilation_provider,
                    GetCompilationProvider(debug_options, stream_exec));
@@ -641,7 +676,7 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
           << compilation_provider->name();
   ASSIGN_OR_RETURN(
       se::cuda::Assembly assembly,
-      compilation_provider->CompileAndLink(*cc, inputs, compilation_options));
+      compilation_provider->CompileAndLink(cc, inputs, compilation_options));
 
   return std::move(assembly.cubin);
 }

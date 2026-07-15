@@ -68,9 +68,4 @@ class TensorOpsToBufferizablePass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateTensorOpsToBufferizablePass() {
-  return std::make_unique<TensorOpsToBufferizablePass>();
-}
-
 }  // namespace xla::cpu

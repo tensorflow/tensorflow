@@ -48,6 +48,7 @@ struct EstimateRunTimeData {
   absl::Duration compute_time;
   absl::Duration exec_time;
   int64_t l2_bytes_read = 0;
+  int64_t shared_memory_per_block_bytes = 0;
 
   // Returns an estimate that is guaranteed to be zero.
   static EstimateRunTimeData Zero() {
@@ -58,7 +59,8 @@ struct EstimateRunTimeData {
                                /*write_time=*/absl::ZeroDuration(),
                                /*compute_time=*/absl::ZeroDuration(),
                                /*exec_time=*/absl::ZeroDuration(),
-                               /*l2_bytes_read=*/0};
+                               /*l2_bytes_read=*/0,
+                               /*shared_memory_per_block_bytes=*/0};
   }
 
   // Returns an estimate that is guaranteed to be larger than any real runtime.
@@ -71,7 +73,8 @@ struct EstimateRunTimeData {
         /*write_time=*/absl::InfiniteDuration(),
         /*compute_time=*/absl::InfiniteDuration(),
         /*exec_time=*/absl::InfiniteDuration(),
-        /*l2_bytes_read=*/std::numeric_limits<int64_t>::max()};
+        /*l2_bytes_read=*/std::numeric_limits<int64_t>::max(),
+        /*shared_memory_per_block_bytes=*/std::numeric_limits<int64_t>::max()};
   }
 
   // Returns true if the estimate is guaranteed to be larger than any real
@@ -85,14 +88,16 @@ struct EstimateRunTimeData {
         " bytes_read: %v\n"
         " bytes_written: %v\n"
         " l2_bytes_read: %v\n"
+        " shared_memory_per_block_bytes: %v\n"
         " read_time: %s\n"
         " write_time: %s\n"
         " compute_time: %s\n"
         " exec_time: %s\n"
         "}",
         flops, bytes_read, bytes_written, l2_bytes_read,
-        absl::FormatDuration(read_time), absl::FormatDuration(write_time),
-        absl::FormatDuration(compute_time), absl::FormatDuration(exec_time));
+        shared_memory_per_block_bytes, absl::FormatDuration(read_time),
+        absl::FormatDuration(write_time), absl::FormatDuration(compute_time),
+        absl::FormatDuration(exec_time));
   }
 };
 
@@ -169,8 +174,7 @@ class GpuPerformanceModelBase {
   // Uses HloFusionAnalysis for computing the actual number of threads and
   // blocks that the IR emitter will use.
   static LaunchDimensions EstimateFusionLaunchDimensions(
-      const HloFusionAnalysis& fusion_analysis,
-      mlir::MLIRContext* mlir_context);
+      const HloFusionAnalysis& fusion_analysis);
 
   // Returns bytes accessed of operand output by instruction. Returns 0, if the
   // operand is not used by the instruction.

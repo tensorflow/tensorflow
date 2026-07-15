@@ -81,12 +81,21 @@ absl::StatusOr<Value> ScaledDot(mlir::ImplicitLocOpBuilder& b,
   mlir::Type rhs_dot_elem_type = getElementTypeOrSelf(operands.rhs.getType());
 
   Value lhs_scale;
-  if (lhs_dot_elem_type != b.getBF16Type()) {
-    lhs_scale = Bitcast(b, operands.lhs_scale, b.getI8Type());
+  if (lhs_dot_elem_type != b.getBF16Type() && operands.lhs_scale) {
+    lhs_scale = operands.lhs_scale;
+    if (mlir::isa<mlir::Float8E8M0FNUType>(
+            getElementTypeOrSelf(lhs_scale.getType()))) {
+      lhs_scale = Bitcast(b, lhs_scale, b.getI8Type());
+    }
   }
+
   Value rhs_scale;
-  if (rhs_dot_elem_type != b.getBF16Type()) {
-    rhs_scale = Bitcast(b, operands.rhs_scale, b.getI8Type());
+  if (rhs_dot_elem_type != b.getBF16Type() && operands.rhs_scale) {
+    rhs_scale = operands.rhs_scale;
+    if (mlir::isa<mlir::Float8E8M0FNUType>(
+            getElementTypeOrSelf(rhs_scale.getType()))) {
+      rhs_scale = Bitcast(b, rhs_scale, b.getI8Type());
+    }
     auto rhs_scale_type = mlir::cast<mlir::ShapedType>(rhs_scale.getType());
     int64_t rank = rhs_scale_type.getRank();
     CHECK_GE(rank, 2) << "RHS scale must be at least rank 2 for scaled dot.";
@@ -100,16 +109,24 @@ absl::StatusOr<Value> ScaledDot(mlir::ImplicitLocOpBuilder& b,
         b, rhs_scale, b.getDenseI64ArrayAttr(permutation));
   }
 
-  // When operand type is subbyte size then it is packed along minor dim and for
-  // RHS minor dim is not K.
-  const auto& lhs_shaped_type =
-      mlir::dyn_cast<ShapedType>(operands.lhs.getType());
-  const bool rhs_k_pack = lhs_shaped_type.getElementType() !=
-                          mlir::Float4E2M1FNType::get(b.getContext());
+  int64_t lhs_rank = mlir::cast<ShapedType>(operands.lhs.getType()).getRank();
+  int64_t lhs_contracting_dim =
+      operands.dot_dimension_numbers.getLhsContractingDimensions()[0];
+  const bool lhs_k_pack =
+      (lhs_dot_elem_type != mlir::Float4E2M1FNType::get(b.getContext())) ||
+      (lhs_contracting_dim == lhs_rank - 1);
+
+  int64_t rhs_rank = mlir::cast<ShapedType>(operands.rhs.getType()).getRank();
+  int64_t rhs_contracting_dim =
+      operands.dot_dimension_numbers.getRhsContractingDimensions()[0];
+  const bool rhs_k_pack =
+      (rhs_dot_elem_type != mlir::Float4E2M1FNType::get(b.getContext())) ||
+      (rhs_contracting_dim == rhs_rank - 1);
+
   auto dot_scaled_op = xtile::DotScaledOp::create(
       b, operands.accumulator.getType(), operands.lhs, operands.rhs, lhs_scale,
-      rhs_scale, /*fastMath=*/true, /*lhs_k_pack=*/true, rhs_k_pack,
-      operands.dot_dimension_numbers);
+      rhs_scale, /*fastMath=*/true, lhs_k_pack, rhs_k_pack, lhs_dot_elem_type,
+      rhs_dot_elem_type, operands.dot_dimension_numbers);
 
   auto add_result =
       mlir::isa<mlir::IntegerType>(
@@ -187,6 +204,11 @@ absl::StatusOr<std::optional<Type>> DotDefaultOperandsType(
     return std::nullopt;
   }
   auto debug_options = dot.GetModule()->config().debug_options();
+  for (int p : dot.precision_config().operand_precision()) {
+    if (p != PrecisionConfig::DEFAULT) {
+      return lhs_type;
+    }
+  }
   if (debug_options.xla_gpu_default_to_alg_dot_bf16_bf16_f32()) {
     return b.getBF16Type();
   }

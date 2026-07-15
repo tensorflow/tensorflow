@@ -1057,6 +1057,10 @@ TEST(OpVersionTest, VersioningTransposeTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_TRANSPOSE,
   };
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteBFloat16, 4);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 8);
+
   fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32, 7);
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 8);
 
@@ -1487,6 +1491,10 @@ TEST(OpVersionTest, VersioningLogTest) {
 TEST(OpVersionTest, VersioningDynamicUpdateSliceTest) {
   OpSignature fake_op_sig = {};
   fake_op_sig.op = BuiltinOperator_DYNAMIC_UPDATE_SLICE;
+  fake_op_sig.inputs =
+      CreateOpSignatureTensorSpecs(std::vector<TfLiteType>{kTfLiteBFloat16});
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 6);
+
   fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
       std::vector<TfLiteType>{kTfLiteFloat32, kTfLiteFloat32, kTfLiteInt32});
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);

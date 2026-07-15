@@ -57,11 +57,7 @@ class HloSharding {
 
   // Creates a trivial sharding that replicates a maximal tile across all
   // devices.
-  static HloSharding Replicate(absl::Span<const OpMetadata> metadata = {},
-                               bool use_named_sharding = false) {
-    if (use_named_sharding) {
-      return HloSharding(NamedSharding::Replicate(metadata));
-    }
+  static HloSharding Replicate(absl::Span<const OpMetadata> metadata = {}) {
     return HloSharding(/*manual=*/false, /*replicated=*/true, /*unknown=*/false,
                        /*unreduced=*/false, metadata);
   }
@@ -86,8 +82,7 @@ class HloSharding {
   // Creates a sharding that emulates device placement; a tile shape equal to
   // the input shape (one tile) assigned to a single device.
   static HloSharding SingleDevice(int64_t device_id,
-                                  absl::Span<const OpMetadata> metadata = {},
-                                  bool use_named_sharding = false);
+                                  absl::Span<const OpMetadata> metadata = {});
 
   // Creates a new sharding which splits a shape into tiles amongst the devices
   // specified by `tile_assignment`.
@@ -626,15 +621,6 @@ class HloSharding {
            "team if you encounter this error.";
 
     return tile_assignment_;
-  }
-
-  // Returns the flattened list of devices used in the tile assignment.
-  // REQUIRES: !IsReplicated() && !IsTuple()
-  absl::Span<const int64_t> flattened_device_list() const {
-    const auto& array = UseNamedShardingLeaf()
-                            ? named_sharding_->device_assignment().array()
-                            : tile_assignment_.array();
-    return absl::MakeConstSpan(array.begin(), array.num_elements());
   }
 
   const NamedSharding& named_sharding() const {

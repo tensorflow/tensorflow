@@ -44,6 +44,11 @@ std::vector<int64_t> ShapePartitionAssigner::Run(
     }
   }
 
+  // If there are no eligible outer dimensions, we cannot partition the shape.
+  if (outer_dims.empty()) {
+    return {};
+  }
+
   // Clip target partition count if outer dim size is insufficient to cover.
   target_partition_count = std::min(outer_dim_size, target_partition_count);
 

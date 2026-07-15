@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/c_api_experimental.h"
 
 #include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/c/c_api.h"
@@ -55,7 +56,6 @@ using tensorflow::FunctionDef;
 using tensorflow::Node;
 using tensorflow::NodeBuilder;
 using tensorflow::Status;
-using tensorflow::errors::InvalidArgument;
 
 namespace {
 typedef std::unique_ptr<TF_Function, decltype(&TF_DeleteFunction)>
@@ -500,6 +500,14 @@ TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType data_type,
     return nullptr;
   }
 
+  size_t expected_len = static_cast<size_t>(tensorflow::DataTypeSize(dtype));
+  if (len > expected_len) {
+    status->status = absl::InvalidArgumentError(
+        absl::StrCat("len (", len, ") is larger than expected scalar size for ",
+                     dtype, " (", expected_len, " bytes)"));
+    return nullptr;
+  }
+
   tensorflow::Tensor tensor(dtype, tensorflow::TensorShape({}));
   std::memcpy(tensorflow::TensorCApi::Buffer(tensor)->data(), data, len);
 
@@ -728,7 +736,7 @@ void TF_ImportGraphDefOptionsSetValidateColocationConstraints(
 TF_Library* TF_LoadPluggableDeviceLibrary(const char* library_filename,
                                           TF_Status* status) {
 #if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
-  status->status = tensorflow::errors::Unimplemented(
+  status->status = absl::UnimplementedError(
       "PluggableDevice plugin functionality is not supported on mobile");
   return nullptr;
 #else

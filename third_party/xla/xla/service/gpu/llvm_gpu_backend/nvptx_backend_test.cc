@@ -64,6 +64,27 @@ TEST(UtilsTest, TestGetSmName) {
   ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{13, 0}), "sm_121");
 }
 
+TEST(UtilsTest, UnknownCapabilityFallsBackToFamilyCompatible) {
+  using FeatureExtension = se::CudaComputeCapability::FeatureExtension;
+  // Directly supported compute capabilities keep their feature extension.
+  EXPECT_EQ(nvptx::ResolveSupportedComputeCapability(se::CudaComputeCapability{
+                10, 0, FeatureExtension::kAcceleratedFeatures}),
+            (se::CudaComputeCapability{
+                10, 0, FeatureExtension::kAcceleratedFeatures}));
+  // An unknown compute capability within a known major version falls back to
+  // the latest supported minor version with the family compatible extension.
+  // This mirrors a yet-unreleased device (e.g. sm_1099a) where ptxas only knows
+  // about sm_103f.
+  EXPECT_EQ(nvptx::ResolveSupportedComputeCapability(se::CudaComputeCapability{
+                10, 99, FeatureExtension::kAcceleratedFeatures}),
+            (se::CudaComputeCapability{
+                10, 3, FeatureExtension::kFamilyCompatibleFeatures}));
+  // When no family-compatible extension is available, don't use any.
+  EXPECT_EQ(nvptx::ResolveSupportedComputeCapability(se::CudaComputeCapability{
+                9, 99, FeatureExtension::kAcceleratedFeatures}),
+            (se::CudaComputeCapability{9, 0, FeatureExtension::kNone}));
+}
+
 using VersionPair = std::pair<se::SemanticVersion, se::SemanticVersion>;
 using PtxVersionFromCudaVersionTest = ::testing::TestWithParam<VersionPair>;
 

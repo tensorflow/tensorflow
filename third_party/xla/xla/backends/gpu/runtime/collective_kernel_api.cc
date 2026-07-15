@@ -19,7 +19,7 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <string>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -51,21 +51,25 @@ namespace {
 template <typename Kernel>
 absl::StatusOr<typename Kernel::KernelType*> GetCachedKernel(
     se::StreamExecutor* executor) {
-  static absl::NoDestructor<
-      absl::flat_hash_map<se::StreamExecutor*, typename Kernel::KernelType>>
+  static absl::NoDestructor<absl::flat_hash_map<
+      se::StreamExecutor*, std::unique_ptr<typename Kernel::KernelType>>>
       kernel_per_executor;
   static absl::NoDestructor<absl::Mutex> kernel_mutex;
 
   absl::MutexLock lock(*kernel_mutex);
-  if (!kernel_per_executor->contains(executor)) {
+  auto it = kernel_per_executor->find(executor);
+  if (it == kernel_per_executor->end()) {
     ASSIGN_OR_RETURN(
         auto new_kernel,
         (stream_executor::gpu::GpuKernelRegistry::GetGlobalRegistry()
              .LoadKernel<Kernel>(executor)));
-    kernel_per_executor->emplace(executor, std::move(new_kernel));
+    it = kernel_per_executor
+             ->emplace(executor, std::make_unique<typename Kernel::KernelType>(
+                                     std::move(new_kernel)))
+             .first;
   }
 
-  return &kernel_per_executor->at(executor);
+  return it->second.get();
 }
 
 }  // namespace
@@ -119,6 +123,8 @@ absl::Status LaunchMultiGpuBarrierWithNccl(
     stream_executor::DeviceAddressBase local_barrier_signal_value) {
   using MultiGpuBarrierWithNcclKernel =
       stream_executor::gpu::MultiGpuBarrierWithNcclKernel;
+
+  TF_RET_CHECK(symmetric_memory != nullptr) << "Symmetric memory is required";
 
   ASSIGN_OR_RETURN(
       MultiGpuBarrierWithNcclKernel::KernelType * kernel,

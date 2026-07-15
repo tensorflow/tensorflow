@@ -590,21 +590,28 @@ Relation::RuntimeOrder ComputeRelativeLocation::ComputeRuntimeOrdering(
         }
         return false;
       };
-      if (!ctrl_deps_.empty()) {
-        auto ctrl_deps = ctrl_deps_[instr1->parent()];
-        if (absl::c_any_of(ctrl_deps[instr2], [&](HloInstruction* pred2) {
-              return ControlDependenceBefore(instr1, pred2);
-            })) {
-          VLOG(2) << "control-dependent: " << instr1->name() << " vs "
-                  << instr2->name();
-          return Save(instr1, instr2, Relation::kBeforeStart);
+      if (auto ctrl_deps_it = ctrl_deps_.find(instr1->parent());
+          ctrl_deps_it != ctrl_deps_.end()) {
+        const auto& ctrl_deps = ctrl_deps_it->second;
+        if (auto instr2_deps = ctrl_deps.find(instr2);
+            instr2_deps != ctrl_deps.end()) {
+          if (absl::c_any_of(instr2_deps->second, [&](HloInstruction* pred2) {
+                return ControlDependenceBefore(instr1, pred2);
+              })) {
+            VLOG(2) << "control-dependent: " << instr1->name() << " vs "
+                    << instr2->name();
+            return Save(instr1, instr2, Relation::kBeforeStart);
+          }
         }
-        if (absl::c_any_of(ctrl_deps[instr1], [&](HloInstruction* pred1) {
-              return ControlDependenceBefore(instr2, pred1);
-            })) {
-          VLOG(2) << "control-dependent: " << instr2->name() << " vs "
-                  << instr1->name();
-          return Save(instr1, instr2, Relation::kAfterEnd);
+        if (auto instr1_deps = ctrl_deps.find(instr1);
+            instr1_deps != ctrl_deps.end()) {
+          if (absl::c_any_of(instr1_deps->second, [&](HloInstruction* pred1) {
+                return ControlDependenceBefore(instr2, pred1);
+              })) {
+            VLOG(2) << "control-dependent: " << instr2->name() << " vs "
+                    << instr1->name();
+            return Save(instr1, instr2, Relation::kAfterEnd);
+          }
         }
       }
       // Don't save the result for unordered operations, so they can be

@@ -25,13 +25,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/runtime/collective_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
@@ -67,16 +65,10 @@ class AllReduceReduceScatterThunkBase : public CollectiveThunk {
 
 class AllReduceThunk : public AllReduceReduceScatterThunkBase {
  public:
-  AllReduceThunk(ThunkInfo thunk_info, const HloAllReduceInstruction* inst,
-                 std::vector<Buffer> buffers,
-                 std::unique_ptr<CollectiveKernelThunk> collective_kernel_thunk,
-                 bool p2p_memcpy_enabled = false);
   AllReduceThunk(ThunkInfo thunk_info, AllReduceConfig config,
                  std::vector<Buffer> buffers);
-  AllReduceThunk(
-      ThunkInfo thunk_info, AllReduceConfig config, std::vector<Buffer> buffers,
-      std::unique_ptr<CollectiveKernelThunk> collective_kernel_thunk);
-
+  AllReduceThunk(ThunkInfo thunk_info, const HloAllReduceInstruction* inst,
+                 std::vector<Buffer> buffers, bool p2p_memcpy_enabled = false);
   static absl::string_view GetHloOpName() { return "all-reduce-start"; }
 
   static absl::Status CheckImplementable(const HloAllReduceInstruction* inst,
@@ -85,9 +77,6 @@ class AllReduceThunk : public AllReduceReduceScatterThunkBase {
 
   static CollectiveOpGroupMode GetGroupMode(
       const HloAllReduceInstruction* inst);
-
-  absl::Status Prepare(const PrepareParams& params) override;
-  absl::Status Initialize(const InitializeParams& params) override;
 
   static absl::StatusOr<std::unique_ptr<AllReduceThunk>> FromProto(
       ThunkInfo thunk_info, const AllReduceThunkProto& thunk_proto,
@@ -103,9 +92,6 @@ class AllReduceThunk : public AllReduceReduceScatterThunkBase {
                              Communicator& comm) override;
 
   bool CanUseSymmetricBuffer() const override { return true; }
-
- private:
-  std::unique_ptr<CollectiveKernelThunk> collective_kernel_thunk_;
 };
 
 // -----------------------------------------------------------------------------

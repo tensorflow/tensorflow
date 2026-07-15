@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/batch_matmul.h"
 #include "tensorflow/lite/kernels/internal/reference/batch_to_space_nd.h"
 #include "tensorflow/lite/kernels/internal/reference/binary_function.h"
+#include "tensorflow/lite/kernels/internal/reference/broadcast_loop.h"
 #include "tensorflow/lite/kernels/internal/reference/cast.h"
 #include "tensorflow/lite/kernels/internal/reference/ceil.h"
 #include "tensorflow/lite/kernels/internal/reference/comparisons.h"
@@ -654,8 +655,8 @@ inline TfLiteStatus ScatterNd(const RuntimeShape& indices_shape,
                               UpdatesT* output_data) {
   ruy::profiler::ScopeLabel label("ScatterNd");
 
-  int n_slices = 1;
-  int slice_size = 1;
+  int64_t n_slices = 1;
+  int64_t slice_size = 1;
   const int outer_dims = indices_shape.DimensionsCount() - 1;
   const int indices_nd = indices_shape.Dims(outer_dims);
   const int updates_dims = updates_shape.DimensionsCount();
@@ -670,19 +671,24 @@ inline TfLiteStatus ScatterNd(const RuntimeShape& indices_shape,
   int remain_flat_size = output_flat_size;
   std::vector<int> dims_to_count(indices_nd, 0);
   for (int i = 0; i < indices_nd; ++i) {
-    dims_to_count[i] = remain_flat_size / output_shape.Dims(i);
+    const int dim = output_shape.Dims(i);
+    dims_to_count[i] = (dim == 0) ? 0 : remain_flat_size / dim;
     remain_flat_size = dims_to_count[i];
   }
 
-  if (n_slices * slice_size > updates_shape.FlatSize()) {
+  if (static_cast<int64_t>(n_slices) * slice_size > updates_shape.FlatSize()) {
     return kTfLiteError;
   }
   memset(output_data, 0, sizeof(UpdatesT) * output_flat_size);
-  for (int i = 0; i < n_slices; ++i) {
-    int to_pos = 0;
+  for (int64_t i = 0; i < n_slices; ++i) {
+    int64_t to_pos = 0;
     for (int j = 0; j < indices_nd; ++j) {
-      IndicesT idx = indices_data[i * indices_nd + j];
-      to_pos += idx * dims_to_count[j];
+      IndicesT idx = indices_data[static_cast<int64_t>(i) * indices_nd + j];
+      if (static_cast<int64_t>(idx) < 0 ||
+          static_cast<int64_t>(idx) >= output_shape.Dims(j)) {
+        return kTfLiteError;
+      }
+      to_pos += static_cast<int64_t>(idx) * dims_to_count[j];
     }
     if (to_pos < 0 || to_pos + slice_size > output_flat_size) {
       return kTfLiteError;
@@ -865,31 +871,10 @@ inline void BroadcastPow4DSlow(const RuntimeShape& unextended_input1_shape,
                                const T* input2_data,
                                const RuntimeShape& unextended_output_shape,
                                T* output_data) {
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
-                                      unextended_input2_shape, &desc1, &desc2);
-
-  for (int b = 0; b < output_shape.Dims(0); ++b) {
-    for (int y = 0; y < output_shape.Dims(1); ++y) {
-      for (int x = 0; x < output_shape.Dims(2); ++x) {
-        for (int c = 0; c < output_shape.Dims(3); ++c) {
-          auto out_idx = Offset(output_shape, b, y, x, c);
-          auto in1_idx = SubscriptToIndex(desc1, b, y, x, c);
-          auto in2_idx = SubscriptToIndex(desc2, b, y, x, c);
-          auto in1_val = input1_data[in1_idx];
-          auto in2_val = input2_data[in2_idx];
-          output_data[out_idx] = std::pow(in1_val, in2_val);
-        }
-      }
-    }
-  }
+  auto op = [](T a, T b) { return std::pow(a, b); };
+  BroadcastBinaryOpSimple(unextended_input1_shape, input1_data,
+                          unextended_input2_shape, input2_data,
+                          unextended_output_shape, output_data, op);
 }
 
 template <typename Scalar, typename TS>

@@ -127,7 +127,7 @@ TEST_P(SavedVariableLoadingTest, AssignAndReadVariableSuccesful) {
   absl::Status status;
   std::unique_ptr<Variable> var;
   TF_EXPECT_OK(Variable::CreateUninitialized(context(), dtype, shape,
-                                             absl::nullopt, nullptr, {}, &var));
+                                             std::nullopt, nullptr, {}, &var));
 
   // Create a TensorHandle
   ImmediateTensorHandlePtr expected_handle =

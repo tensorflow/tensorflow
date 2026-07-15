@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/autotuning.pb.h"
@@ -63,6 +64,32 @@ namespace se = ::stream_executor;
 using MIOpenBackendConfig = stream_executor::dnn::AlgorithmProto;
 
 namespace {
+
+struct OwningScratchAllocator : public se::ScratchAllocator {
+  OwningScratchAllocator(int device_ordinal,
+                         se::DeviceAddressAllocator* allocator)
+      : device_ordinal_(device_ordinal), allocator_(allocator) {}
+
+  int64_t GetMemoryLimitInBytes() override { return -1; }
+
+  absl::StatusOr<se::DeviceAddress<uint8_t>> AllocateBytes(
+      int64_t byte_size) override {
+    if (byte_size < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("byte_size must be non-negative, but got ", byte_size));
+    }
+    ASSIGN_OR_RETURN(se::ScopedDeviceAddress<uint8_t> buffer,
+                     allocator_->Allocate(device_ordinal_, byte_size,
+                                          /*retry_on_failure=*/false));
+    buffers_.push_back(std::move(buffer));
+    return *buffers_.back();
+  }
+
+ private:
+  int device_ordinal_;
+  se::DeviceAddressAllocator* allocator_;
+  absl::InlinedVector<se::ScopedDeviceAddress<uint8_t>, 4> buffers_;
+};
 
 bool IsCustomCallToDnnFusedConvolution(const HloInstruction& hlo) {
   if (hlo.opcode() != HloOpcode::kCustomCall) {
@@ -287,8 +314,8 @@ GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
                                          allow_tf32,
                                          /*require_command_buffer=*/false};
 
-  se::OwningScratchAllocator<4> scratch_allocator(
-      stream_executor->device_ordinal(), allocator);
+  OwningScratchAllocator scratch_allocator(stream_executor->device_ordinal(),
+                                           allocator);
 
   const auto initialize_buffer = [stream](se::DeviceAddressBase buffer) {
     // Although we don't have evidence this matters, zero out the buffers

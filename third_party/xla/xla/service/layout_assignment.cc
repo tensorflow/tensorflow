@@ -874,9 +874,8 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
                 /*minor_to_major_only=*/true)) {
           *branch_computation_layout.mutable_result_layout() =
               best_branch_computation_layout.result_layout();
-          InsertOrDie(&conditional_mismatch_,
-                      instruction->branch_computation(k),
-                      branch_computation_layout);
+          conditional_mismatch_.try_emplace(instruction->branch_computation(k),
+                                            branch_computation_layout);
         } else {
           RETURN_IF_ERROR(SetOperandLayout(
               branch_computation_layout.parameter_shape(0), instruction, k + 1,
@@ -2582,6 +2581,21 @@ absl::Status LayoutAssignment::ConstrainChannelLayouts(
   return absl::OkStatus();
 }
 
+namespace {
+
+void CopyMemorySpace(const Shape& src, Shape* dst) {
+  ShapeUtil::ForEachMutableSubshape(
+      dst, [&](Shape* dst_subshape, const ShapeIndex& index) {
+        const Shape& src_subshape = ShapeUtil::GetSubshape(src, index);
+        if (src_subshape.IsArray() && src_subshape.has_layout()) {
+          dst_subshape->mutable_layout()->set_memory_space(
+              src_subshape.layout().memory_space());
+        }
+      });
+}
+
+}  // namespace
+
 absl::Status LayoutAssignment::PropagateComputationLayouts(
     HloComputation* computation, ComputationLayout* computation_layout) {
   ComputationLayout computed_computation_layout(
@@ -2614,17 +2628,20 @@ absl::Status LayoutAssignment::PropagateComputationLayouts(
           return absl::OkStatus();
         }));
     if (needs_assign) {
+      Shape new_shape = computed_computation_layout.parameter_shape(i);
+      CopyMemorySpace(param_layout->shape(), &new_shape);
+      *param_layout = ShapeLayout(new_shape);
       VLOG(4) << "Assigning layout to parameter " << i << " of computation "
-              << computation->name() << ": "
-              << computed_computation_layout.parameter_layout(i).ToString();
-      *param_layout = computed_computation_layout.parameter_layout(i);
+              << computation->name() << ": " << param_layout->ToString();
     }
   }
   ShapeLayout* result_layout = computation_layout->mutable_result_layout();
   if (!result_layout->LayoutIsSet()) {
+    Shape new_shape = computed_computation_layout.result_shape();
+    CopyMemorySpace(result_layout->shape(), &new_shape);
+    *result_layout = ShapeLayout(new_shape);
     VLOG(4) << "Assigning result layout of computation " << computation->name()
-            << ": " << computed_computation_layout.result_layout().ToString();
-    *result_layout = computed_computation_layout.result_layout();
+            << ": " << result_layout->ToString();
   } else {
     TF_RET_CHECK(
         Shape::Equal().IgnoreDynamicDimension().MinorToMajorOnlyInLayout()(

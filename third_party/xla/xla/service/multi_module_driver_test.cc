@@ -30,7 +30,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class MultiModuleDriverTest : public HloPjRtTestBase {
+class MultiModuleDriverTest : public HloTestBase {
  protected:
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
   GetModuleWithCompilationUnit() {

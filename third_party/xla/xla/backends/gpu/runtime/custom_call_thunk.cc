@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>

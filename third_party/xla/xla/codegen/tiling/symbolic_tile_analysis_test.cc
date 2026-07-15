@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_join.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/constraint_expression.h"
+#include "xla/codegen/tiling/experimental/tiling_space_utils.h"
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
@@ -62,6 +64,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace {
@@ -176,7 +179,7 @@ class FakeEmitterSpecificConstraints : public EmitterSpecificConstraints {
 
 class SymbolicTileAnalysisTest : public HloHardwareIndependentTestBase {
  public:
-  SymbolicTileAnalysisTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+  SymbolicTileAnalysisTest() = default;
 
   std::optional<SymbolicTileAnalysis> TryAnalyzeModule(
       HloModule* module,
@@ -233,6 +236,9 @@ class SymbolicTileAnalysisTest : public HloHardwareIndependentTestBase {
         HloHardwareIndependentTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_unsupported_enable_triton_multi_output_fusion(
         true);
+    // TODO: b/514293537 - drop the test altogether but consider migrating some
+    // of the test cases to the new tiling.
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(false);
     return debug_options;
   }
 

@@ -4,13 +4,7 @@ package(default_visibility = ["//visibility:public"])
 
 # Point both runtimes to the same python binary to ensure we always
 # use the python binary specified by ./configure.py script.
-load("@bazel_tools//tools/python:toolchain.bzl", "py_runtime_pair")
-
-py_runtime(
-    name = "py2_runtime",
-    interpreter = "%{PYTHON_INTERPRETER}",
-    python_version = "PY2",
-)
+load("@rules_python//python:py_runtime_pair.bzl", "py_runtime_pair")
 
 py_runtime(
     name = "py3_runtime",
@@ -20,7 +14,6 @@ py_runtime(
 
 py_runtime_pair(
     name = "py_runtime_pair",
-    py2_runtime = ":py2_runtime",
     py3_runtime = ":py3_runtime",
 )
 

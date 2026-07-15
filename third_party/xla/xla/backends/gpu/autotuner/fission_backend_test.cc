@@ -387,6 +387,31 @@ class CublasFissionBackendTest : public HloHardwareIndependentTestBase {
             &mlir_context_, stream_executor_)) {}
 };
 
+TEST_F(CublasFissionBackendTest, ApplyConfigReplacesFusionWithControlDeps) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+  c {
+    p0 = bf16[1024,1024] parameter(0)
+    p1 = bf16[1024,1024] parameter(1)
+    dot = bf16[1024,1024] dot(p0, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  }
+
+  main {
+    p0 = bf16[1024,1024] parameter(0)
+    p1 = bf16[1024,1024] parameter(1)
+    a = bf16[1024,1024] add(p0, p0)
+    f = bf16[1024,1024] fusion(p0, p1),
+      kind=kCustom, calls=c, control-predecessors={a},
+      backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+  })"));
+  HloInstruction& fusion = *module->entry_computation()->root_instruction();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
+                       fission_backend_->GetDefaultConfig(fusion));
+  EXPECT_OK(fission_backend_->ApplyConfig(fusion, *config));
+  EXPECT_THAT(module->ToString(), testing::Not(HasSubstr("__triton_gemm")));
+}
+
 TEST_F(CublasFissionBackendTest, ApplyConfigRemovesComputation) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kTritonFusionHlo));
@@ -502,6 +527,61 @@ TEST_F(CublasFissionBackendTest, CublasFallbackForBf16Bf16F32Algorithm) {
       EXPECT_FALSE(hasCublasConfig(configs));
     }
   }
+}
+
+// Verifies that user-defined DebugOptions are propagated into the module
+// extracted by GetFissionedAndRewrittenModule, so that the rewriter pipeline
+// observes the correct flag values rather than
+// DefaultDebugOptionsIgnoringFlags.
+//
+// Concretely, DefaultDebugOptionsIgnoringFlags sets
+// xla_gpu_gemm_rewrite_size_threshold = 100, while the test fixture's
+// default-constructed DebugOptions proto has the field at its proto default
+// value of 0 (meaning: rewrite ALL GEMMs regardless of size).
+//
+// The tiny 5×5 dot has a "combined size" of (5+5)*5 = 50:
+//   • Without the fix: the extracted module inherits threshold=100, so 50 < 100
+//     → the dot is treated as "tiny" and skipped by GemmRewriter, yielding no
+//     cuBLAS custom call and therefore no supported configs.
+//   • With the fix: the module gets the user's threshold=0, so 50 < 0 is false
+//     → the dot is NOT tiny → rewritten to a cuBLAS custom call → configs
+//     returned.
+TEST_F(CublasFissionBackendTest,
+       GetSupportedConfigsRespectsUserGemmRewriteSizeThreshold) {
+  // Confirm the fixture's debug options use the proto default (0), which
+  // differs from DefaultDebugOptionsIgnoringFlags() that sets it to 100.
+  EXPECT_EQ(debug_options_.xla_gpu_gemm_rewrite_size_threshold(), 0);
+
+  // A tiny f32 fusion whose dot's combined size is 50 < 100
+  // (the DefaultDebugOptionsIgnoringFlags threshold).
+  constexpr absl::string_view kTinyF32DotFusion = R"(
+    HloModule module
+
+    computation {
+      p0 = f32[5,5]{1,0} parameter(0)
+      p1 = f32[5,5]{1,0} parameter(1)
+      ROOT dot = f32[5,5]{1,0} dot(p0, p1),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+
+    ENTRY main {
+      p0 = f32[5,5]{1,0} parameter(0)
+      p1 = f32[5,5]{1,0} parameter(1)
+      ROOT fusion = f32[5,5]{1,0} fusion(p0, p1),
+        kind=kCustom, calls=computation
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kTinyF32DotFusion));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+
+  // With user's threshold=0, the tiny dot is NOT considered "too small" and
+  // must be rewritten to a cuBLAS (or hipBLASLt on ROCm) custom call.
+  // GetSupportedConfigs must therefore return at least one config.
+  ASSERT_OK_AND_ASSIGN(auto configs,
+                       fission_backend_->GetSupportedConfigs(*fusion));
+  EXPECT_THAT(configs, testing::Not(testing::IsEmpty()));
 }
 
 }  // namespace

@@ -19,11 +19,12 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
-#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/index_domain.h"
+#include "xla/tsl/concurrency/executor.h"
+#include "xla/tsl/concurrency/future.h"
 
 namespace xla {
 namespace ifrt {
@@ -38,8 +39,10 @@ namespace ifrt {
 // done on a per-buffer basis; if a single buffer is larger than this limit, the
 // actual memory use will be larger. This limit is applied only within a single
 // call to `HashPjRtBuffers()`.
-absl::StatusOr<std::vector<uint64_t>> HashPjRtBuffers(
-    absl::Span<PjRtBuffer* const> buffers,
+//
+// Once it returns, `buffers` may be donated or deleted.
+tsl::Future<std::vector<uint64_t>> HashPjRtBuffers(
+    tsl::Executor& executor, absl::Span<PjRtBuffer* const> buffers,
     absl::Span<const IndexDomain> index_domains, Client::HashMode mode,
     int64_t max_inflight_memory = 128 * 1024 * 1024);
 

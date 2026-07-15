@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/MLIRContext.h"
@@ -262,7 +261,6 @@ AMDGPUCompiler::CompileTargetBinary(
   }
 
   return BackendCompileResult{"", std::move(hsaco_result.hsaco),
-                              /*dnn_compiled_graphs=*/{},
                               std::move(hsaco_result.module_stats)};
 }
 

@@ -137,7 +137,6 @@ inline void CopyPayloads(const absl::Status& from, absl::Status& to) {
   });
 }
 
-#ifdef PLATFORM_GOOGLE
 // Creates a new status with the given code, message and payloads.
 inline absl::Status Create(
     absl::StatusCode code, absl::string_view message,
@@ -162,22 +161,6 @@ inline absl::Status CreateWithUpdatedMessage(const absl::Status& status,
   }
   return new_status;
 }
-
-#else   // PLATFORM_GOOGLE
-inline absl::Status Create(
-    absl::StatusCode code, absl::string_view message,
-    const std::unordered_map<std::string, std::string>& payloads) {
-  absl::Status status(code, message);
-  InsertPayloads(status, payloads);
-  return status;
-}
-// Returns a new Status, replacing its message with the given.
-inline absl::Status CreateWithUpdatedMessage(const absl::Status& status,
-                                             absl::string_view message) {
-  return Create(static_cast<absl::StatusCode>(status.code()), message,
-                GetPayloads(status));
-}
-#endif  // PLATFORM_GOOGLE
 
 // Append some context to an error message.  Each time we append
 // context put it on a new line, since it is possible for there

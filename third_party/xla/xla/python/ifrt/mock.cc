@@ -186,6 +186,10 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
       .WillByDefault([this](absl::Span<const ValueRef> values) {
         return delegated_->GetReadyFuture(values);
       });
+  ON_CALL(*this, DeleteValues)
+      .WillByDefault([this](absl::Span<ValueRef> values) {
+        return delegated_->DeleteValues(values);
+      });
   ON_CALL(*this, MakeTuple).WillByDefault([this](absl::Span<ValueRef> values) {
     return delegated_->MakeTuple(values);
   });

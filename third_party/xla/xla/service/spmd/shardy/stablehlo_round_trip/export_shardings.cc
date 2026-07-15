@@ -99,7 +99,8 @@ using ::mlir::sdy::TensorShardingAttr;
 // Convert the shardings from kShardingAttr into kXlaShardingAttr.
 void exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
                 OpBuilder& builder, bool addMissingShardingToControlFlow,
-                bool enableHloShardingV3, bool simplifyReplicatedShardings) {
+                bool enableHloShardingV3, bool simplifyReplicatedShardings,
+                bool clearReverseOpSharding) {
   std::function<StringAttr(const HloSharding&)> getStringAttr =
       [&](const HloSharding& hloSharding) {
         return builder.getStringAttr(hloSharding.ToString());
@@ -108,6 +109,18 @@ void exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
       [&](TensorShardingAttr sharding) {
         return sharding.getMesh(symbolTable);
       };
+
+  // If clearReverseOpSharding is enabled, do a pre-pass walk specifically for
+  // stablehlo.reverse operations before the function arguments layouts are
+  // converted and erased. This ensures we can resolve block argument shardings.
+  if (clearReverseOpSharding) {
+    funcOp.front().walk([&](stablehlo::ReverseOp reverseOp) {
+      if (mlir::sdy::getSharding(reverseOp.getOperand())) {
+        reverseOp->removeAttr(kManualAxes);
+        reverseOp->removeAttr(kShardingAttr);
+      }
+    });
+  }
 
   llvm::SmallVector<mlir::DictionaryAttr> funcArgAttrs;
   funcArgAttrs.reserve(funcOp.getNumArguments());
@@ -194,10 +207,12 @@ class ExportStablehloShardingsPass
 
   explicit ExportStablehloShardingsPass(
       bool addMissingShardingToControlFlow, bool enableHloShardingV3 = false,
-      bool simplifyReplicatedShardings = false)
+      bool simplifyReplicatedShardings = false,
+      bool clearReverseOpSharding = false)
       : addMissingShardingToControlFlow(addMissingShardingToControlFlow),
         enableHloShardingV3(enableHloShardingV3),
-        simplifyReplicatedShardings(simplifyReplicatedShardings) {}
+        simplifyReplicatedShardings(simplifyReplicatedShardings),
+        clearReverseOpSharding(clearReverseOpSharding) {}
 
   StringRef getArgument() const override {
     return "xla-sdy-stablehlo-export-shardings";
@@ -223,7 +238,8 @@ class ExportStablehloShardingsPass
 
     for (auto funcOp : moduleOp.getOps<FuncOp>()) {
       exportFunc(funcOp, symbolTable, builder, addMissingShardingToControlFlow,
-                 enableHloShardingV3, simplifyReplicatedShardings);
+                 enableHloShardingV3, simplifyReplicatedShardings,
+                 clearReverseOpSharding);
     }
 
     moduleOp.walk([&](stablehlo::CustomCallOp customCall) {
@@ -292,6 +308,7 @@ class ExportStablehloShardingsPass
   bool addMissingShardingToControlFlow;
   bool enableHloShardingV3;
   bool simplifyReplicatedShardings;
+  bool clearReverseOpSharding;
 };
 
 HloSharding getHloShardingForOp(
@@ -344,20 +361,6 @@ NamedSharding convertToNamedSharding(
     TensorShardingAttr sdySharding,
     std::function<MeshAttr(TensorShardingAttr)> getMeshAttr,
     ArrayRef<StringAttr> manualAxes, bool simplifyReplicatedShardings) {
-  // If simplifyReplicatedShardings is enabled, we convert fully replicated,
-  // closed, non-manual, and non-unreduced shardings to
-  // NamedSharding::Replicate(), which is represented as "{mesh[], replicated}".
-  // We do this only during the final export at the end of ShardyXLA pass to
-  // make the final HLO strings much shorter and more human-readable. We must
-  // NOT do this during the initial MLIR-to-HLO export, because preserving the
-  // rank and open/closed dimension states is required for Shardy verification
-  // passes.
-  if (simplifyReplicatedShardings && sdySharding.isFullyReplicated() &&
-      sdySharding.isFullyClosed() && sdySharding.getUnreducedAxes().empty() &&
-      manualAxes.empty()) {
-    return NamedSharding::Replicate();
-  }
-
   MeshAttr sdyMesh = getMeshAttr(sdySharding);
   // If there are no axes, convert to:
   // - maximal sharding if the mesh has a device id
@@ -375,6 +378,20 @@ NamedSharding convertToNamedSharding(
           NamedSharding::DimensionSharding({}, dimSharding.getIsClosed()));
     }
     return NamedSharding(Mesh(), dimShardings);
+  }
+
+  // If simplifyReplicatedShardings is enabled, we convert fully replicated,
+  // closed, non-manual, and non-unreduced shardings to
+  // NamedSharding::Replicate(), which is represented as "{mesh[], replicated}".
+  // We do this only during the final export at the end of ShardyXLA pass to
+  // make the final HLO strings much shorter and more human-readable. We must
+  // NOT do this during the initial MLIR-to-HLO export, because preserving the
+  // rank and open/closed dimension states is required for Shardy verification
+  // passes.
+  if (simplifyReplicatedShardings && sdySharding.isFullyReplicated() &&
+      sdySharding.isFullyClosed() && sdySharding.getUnreducedAxes().empty() &&
+      manualAxes.empty()) {
+    return NamedSharding::Replicate();
   }
 
   std::vector<int64_t> axisSizes;
@@ -560,10 +577,10 @@ void setHloShardingAttr(Operation* op, ArrayRef<TensorShardingAttr> shardings,
 
 std::unique_ptr<Pass> createExportStablehloShardingsPass(
     bool addMissingShardingToControlFlow, bool enableHloShardingV3,
-    bool simplifyReplicatedShardings) {
+    bool simplifyReplicatedShardings, bool clearReverseOpSharding) {
   return std::make_unique<ExportStablehloShardingsPass>(
       addMissingShardingToControlFlow, enableHloShardingV3,
-      simplifyReplicatedShardings);
+      simplifyReplicatedShardings, clearReverseOpSharding);
 }
 
 void registerStablehloExportShardingsPass() {

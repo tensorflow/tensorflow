@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
@@ -62,7 +63,18 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
     CollectiveParams* collective_params, CollectiveCliques* collective_cliques,
     CollectiveMemory* collective_memory,
     std::vector<se::Stream*> additional_compute_streams,
-    ExecutionScopedState* execution_scoped_state) {
+    ExecutionScopedState* execution_scoped_state,
+    std::optional<absl::Span<const BufferAllocation::Index>>
+        persistent_alloc_indices) {
+  const gpu::GpuExecutableRunOptions* gpu_opts =
+      run_options.run_options().gpu_executable_run_options();
+
+  bool enable_mock_collectives =
+      gpu_opts ? gpu_opts->enable_mock_collectives() : false;
+
+  uint64_t rng_seed =
+      static_cast<uint64_t>(run_options.run_options().rng_seed());
+
   return ExecuteParams(&buffer_allocations, stream, command_buffer_trace_stream,
                        collective_params, collective_cliques, collective_memory,
                        run_options.run_options().device_to_host_stream(),
@@ -71,13 +83,9 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
                        run_options.run_options().recv_device_memory_function(),
                        run_options.run_options().ffi_execution_context(),
                        additional_compute_streams, execution_scoped_state,
-                       run_options.run_options().gpu_executable_run_options()
-                           ? run_options.run_options()
-                                 .gpu_executable_run_options()
-                                 ->enable_mock_collectives()
-                           : false,
-                       run_options.run_options().rng_seed(),
-                       run_options.run_options().run_id().ToInt());
+                       enable_mock_collectives,
+                       run_options.run_options().run_id().ToInt(), rng_seed,
+                       persistent_alloc_indices);
 }
 
 Thunk::ExecuteParams Thunk::ExecuteParams::CloneWithNewAllocations(
@@ -96,7 +104,7 @@ Thunk::ExecuteParams Thunk::ExecuteParams::WithComputeStream(
                        send_device_memory_function, recv_device_memory_function,
                        ffi_execution_context, additional_compute_streams,
                        execution_scoped_state, mock_collectives, execution_id,
-                       rng_seed);
+                       rng_seed, persistent_alloc_indices);
 }
 
 Thunk::ExecuteParams::ExecuteParams(
@@ -110,7 +118,9 @@ Thunk::ExecuteParams::ExecuteParams(
     const ffi::ExecutionContext* ffi_execution_context,
     std::vector<se::Stream*> additional_compute_streams,
     ExecutionScopedState* execution_scoped_state, bool mock_collectives,
-    int64_t execution_id, uint64_t rng_seed)
+    int64_t execution_id, uint64_t rng_seed,
+    std::optional<absl::Span<const BufferAllocation::Index>>
+        persistent_alloc_indices)
     : buffer_allocations(buffer_allocations),
       stream(stream),
       command_buffer_trace_stream(command_buffer_trace_stream),
@@ -126,7 +136,8 @@ Thunk::ExecuteParams::ExecuteParams(
       execution_scoped_state(execution_scoped_state),
       mock_collectives(mock_collectives),
       execution_id(execution_id),
-      rng_seed(rng_seed) {}
+      rng_seed(rng_seed),
+      persistent_alloc_indices(persistent_alloc_indices) {}
 
 //===----------------------------------------------------------------------===//
 
@@ -499,6 +510,13 @@ static std::optional<int64_t> NextDep(
 
 absl::Status ThunkSequence::WalkNested(Thunk::Walker callback) {
   for (auto& thunk : *this) {
+    RETURN_IF_ERROR(thunk->Walk(callback));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ThunkSequence::WalkNested(Thunk::ConstWalker callback) const {
+  for (const auto& thunk : *this) {
     RETURN_IF_ERROR(thunk->Walk(callback));
   }
   return absl::OkStatus();

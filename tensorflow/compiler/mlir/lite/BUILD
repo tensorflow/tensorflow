@@ -1989,6 +1989,7 @@ tf_cc_binary(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -2189,7 +2190,10 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/compiler/mlir/lite/core/api:error_reporter"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/core/api:error_reporter",
+        "//tensorflow/lite:util",
+    ],
 )
 
 exports_files(srcs = ["utils/control_edges.h"])

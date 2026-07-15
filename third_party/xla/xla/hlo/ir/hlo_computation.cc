@@ -55,7 +55,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_payload_deduplicator.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/ptrvec.h"
 #include "xla/literal.h"
@@ -71,9 +70,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -1082,7 +1079,7 @@ HloComputation::MakeInstructionPostOrderWithReshapeFirst() const {
     }
   }
 
-  std::reverse(sorted.begin(), sorted.end());
+  absl::c_reverse(sorted);
   CHECK_EQ(sorted.size(), instruction_count());
   return sorted;
 }
@@ -1217,6 +1214,11 @@ void HloComputation::Print(
     name_map.Reserve(instruction_count());
     auto print_one = [&](const HloInstruction* instruction) {
       DCHECK_EQ(this, instruction->parent());
+      if (options.compact_gte() &&
+          instruction->opcode() == HloOpcode::kGetTupleElement &&
+          instruction != root_instruction_) {
+        return;
+      }
       // 2 more spaces than just 'tab' due to indent_amount()+1 above
       printer->Append(tab);
       printer->Append("  ");
@@ -1741,9 +1743,19 @@ bool HloComputation::EqualInternal(
 
 absl::Status HloComputation::ReplaceWithNewInstruction(
     HloInstruction* old_instruction,
-    std::unique_ptr<HloInstruction> new_instruction) {
-  return ReplaceInstruction(old_instruction,
-                            AddInstruction(std::move(new_instruction)));
+    std::unique_ptr<HloInstruction> new_instruction, bool preserve_sharding,
+    bool relay_control_dependency, bool remove_unused_operands,
+    bool preserve_frontend_attributes) {
+  ASSIGN_OR_RETURN(
+      bool changed,
+      ReplaceInstruction(
+          old_instruction, AddInstruction(std::move(new_instruction)),
+          /*preserve_sharding=*/preserve_sharding,
+          /*relay_control_dependency=*/relay_control_dependency,
+          /*remove_unused_operands=*/remove_unused_operands,
+          /*preserve_frontend_attributes=*/preserve_frontend_attributes));
+  DCHECK(changed);
+  return absl::OkStatus();
 }
 
 absl::Status HloComputation::ReplaceWithNewEntryComputationParameter(
@@ -1809,6 +1821,10 @@ absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
                            !old_instruction->metadata().op_name().empty();
   if (overwrite_op_name) {
     new_instruction->set_metadata(old_instruction->metadata());
+  } else if (!new_instruction->metadata().has_metadata_payload() &&
+             old_instruction->metadata().has_metadata_payload()) {
+    *new_instruction->mutable_metadata().mutable_metadata_payload() =
+        old_instruction->metadata().metadata_payload();
   }
   if (preserve_frontend_attributes &&
       new_instruction->frontend_attributes().map().empty()) {

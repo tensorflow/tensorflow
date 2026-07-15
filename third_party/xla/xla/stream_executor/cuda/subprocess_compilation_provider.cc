@@ -59,6 +59,9 @@ absl::StatusOr<Assembly> CompileHelper(absl::string_view ptxas_path,
   if (options.generate_debug_info) {
     asm_opts.extra_flags.push_back("--device-debug");
   }
+  asm_opts.extra_flags.insert(asm_opts.extra_flags.end(),
+                              options.additional_ptxas_flags.begin(),
+                              options.additional_ptxas_flags.end());
 
   return CompileGpuAsmUsingPtxAs(ptxas_path, cc, ptx, asm_opts,
                                  options.cancel_if_reg_spill,

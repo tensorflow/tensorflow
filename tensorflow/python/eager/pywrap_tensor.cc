@@ -42,7 +42,6 @@ limitations under the License.
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
-#include "tensorflow/python/lib/core/py_exception_registry.h"
 #include "tensorflow/python/lib/core/py_seq_tensor.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
@@ -122,7 +121,7 @@ TFE_Context* GetContextHandle(PyObject* py_context) {
   }
 
   auto* ctx = reinterpret_cast<TFE_Context*>(
-      PyCapsule_GetPointer(py_context_handle.get(), nullptr));
+      PyCapsule_GetPointer(py_context_handle.get(), "TFE_Context"));
   if (ctx == nullptr) {
     PyErr_SetString(
         PyExc_TypeError,
@@ -711,7 +710,7 @@ static PyObject* EagerTensor_copy_to_device(EagerTensor* self, PyObject* args,
   if (!_PyArg_NoKeywords("copy_to_device", kwds)) return nullptr;
 #else
   const char* keyname = "copy_to_device";
-  if (kwds != NULL && PyDict_Size(kwds) > 0) {
+  if (kwds != nullptr && PyDict_Size(kwds) > 0) {
     PyErr_SetString(PyExc_TypeError, "Function does not accept keyword args.");
     return nullptr;
   }

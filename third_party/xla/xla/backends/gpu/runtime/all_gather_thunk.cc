@@ -18,9 +18,11 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
@@ -28,10 +30,13 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
+#include "xla/backends/gpu/collectives/gxl_communicator.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
@@ -117,7 +122,6 @@ CollectiveOpGroupMode AllGatherThunk::GetGroupMode(
     const HloAllGatherInstruction* inst) {
   return GetAllGatherConfig(inst).config.group_mode;
 }
-
 absl::Status AllGatherThunk::PrepareCollective(const PrepareParams& params,
                                                const GpuCliqueKey& clique_key) {
   if (use_symmetric_memory() && clique_key.is_local()) {
@@ -173,7 +177,6 @@ absl::Status AllGatherThunk::RunCollective(const ExecuteParams& params,
   ASSIGN_OR_RETURN(std::vector<DeviceBufferPair> device_buffers,
                    ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
                                           config_.config.operand_element_type));
-
   if (use_symmetric_memory() && clique_key.is_local()) {
     XLA_VLOG_DEVICE(3, device_ordinal)
         << "AllGather: using one-sided mode (Put+Signal)";
@@ -182,6 +185,20 @@ absl::Status AllGatherThunk::RunCollective(const ExecuteParams& params,
   }
 
   XLA_VLOG_DEVICE(3, device_ordinal) << "AllGather: using host-initiated mode";
+  if (device_buffers.size() == 1) {
+    auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
+    if (gpu_comm->gxl_communicator() != nullptr) {
+      GxlCommunicator* gxl_nccl_comm = gpu_comm->gxl_communicator();
+
+      const std::optional<RankId> rank =
+          clique_key.rank(params.collective_params->global_device_id);
+
+      return gxl_nccl_comm->RunAllGatherGxl(
+          &stream, device_buffers[0].element_type,
+          device_buffers[0].source_buffer, device_buffers[0].destination_buffer,
+          device_buffers[0].element_count, rank.value().value());
+    }
+  }
   return xla::gpu::RunAllGather(device_buffers, stream, comm,
                                 config_.config.use_symmetric_buffer);
 }
@@ -191,18 +208,15 @@ absl::Status RunAllGather(std::vector<DeviceBufferPair>& buffers,
                           bool use_symmetric_buffer) {
   int device_ordinal = stream.parent()->device_ordinal();
   XLA_VLOG_DEVICE(3, device_ordinal) << "Performing all-gather";
-  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
-  Future<> future = gpu_comm->GroupExecute(
-      [&buffers, &stream](GpuCommunicator* comm) -> absl::Status {
-        for (DeviceBufferPair& buffer : buffers) {
-          RETURN_IF_ERROR(comm->LaunchAllGather(
-              buffer.source_buffer, buffer.destination_buffer,
-              buffer.element_type, buffer.element_count,
-              GpuCollectives::On(stream)));
-        }
-        return absl::OkStatus();
-      });
-
+  auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
+  Future<> future = gpu_comm->GroupExecute([&]() -> absl::Status {
+    for (DeviceBufferPair& buffer : buffers) {
+      RETURN_IF_ERROR(gpu_comm->LaunchAllGather(
+          buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
+          buffer.element_count, GpuCollectives::On(stream)));
+    }
+    return absl::OkStatus();
+  });
   RETURN_IF_ERROR(future.Await());
   XLA_VLOG_DEVICE(3, device_ordinal) << "Done performing all-gather";
   return absl::OkStatus();
@@ -264,7 +278,8 @@ static absl::Status RunOneSidedAllGather(
   }
 
   // Step 3: Put our source chunk into each peer's destination buffer.
-  auto put_all = [&](GpuCommunicator* c) -> absl::Status {
+  auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
+  auto put_all = [&]() -> absl::Status {
     for (size_t i = 0; i < device_buffers.size(); ++i) {
       const auto& buf = device_buffers[i];
       size_t chunk_size = buf.source_buffer.size();
@@ -293,15 +308,14 @@ static absl::Status RunOneSidedAllGather(
             << "OneSidedAllGather: Put " << chunk_size << " bytes to peer "
             << peer_rank << " at offset " << offset;
 
-        RETURN_IF_ERROR(c->LaunchPut(buf.source_buffer, sym_mem, offset,
-                                     chunk_size, peer_rank,
-                                     GpuCollectives::On(stream)));
+        RETURN_IF_ERROR(gpu_comm->LaunchPut(buf.source_buffer, sym_mem, offset,
+                                            chunk_size, peer_rank,
+                                            GpuCollectives::On(stream)));
       }
     }
     return absl::OkStatus();
   };
 
-  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
   RETURN_IF_ERROR(gpu_comm->GroupExecute(put_all).Await());
 
   // Copy our own source chunk into our destination buffer (local copy).

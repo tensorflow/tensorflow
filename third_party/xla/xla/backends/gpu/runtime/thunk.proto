@@ -134,6 +134,7 @@ message CudnnThunkProto {
   repeated ShapedSliceProto args = 2;
   repeated bool output_args = 4;
   optional int64 sdpa_dropout_seed = 3;
+  bool should_memzero = 5;
 }
 
 message HostSendThunkProto {
@@ -382,14 +383,7 @@ message AllReduceThunkProto {
   repeated CollectiveBufferProto buffers = 3;
 
   xla.ReductionKindProto reduction_kind = 4;
-  bool is_multimem_enabled = 5;
-  int32 shmem_bytes = 6;
-  string kernel_name = 7;
-  bool collective_kernel_enabled = 8;
-  bool is_async = 9;
-  LaunchDimensionsProto launch_dimensions = 10;
-  bool use_pdl = 11;
-  optional bytes cubin = 12;
+  reserved 5 to 12;  // Was collective_kernel_thunk_proto fields.
 }
 
 message ReduceScatterThunkProto {
@@ -420,7 +414,7 @@ message RaggedAllToAllThunkProto {
   reserved 8;
   bool use_multi_gpu_barrier_with_nccl_in_one_shot_kernel = 9;
   int64 fast_interconnect_slice_size_override = 10;
-  bool zero_copy_in_one_shot_kernel = 11;
+  reserved 11;
   xla.DebugOptions.CollectivesMode collectives_mode = 12;
 }
 
@@ -523,7 +517,6 @@ message ThunkProto {
     RecvThunkProto recv_thunk = 45;
     CollectiveBroadcastThunkProto collective_broadcast_thunk = 46;
     CollectiveGroupThunkProto collective_group_thunk = 47;
-    DynamicMemcpyThunkProto dynamic_memcpy_thunk = 48;
     AsyncStartThunkProto async_start_thunk = 57;
     AsyncDoneThunkProto async_done_thunk = 58;
     CollectiveKernelThunkProto collective_kernel_thunk = 59;
@@ -531,7 +524,7 @@ message ThunkProto {
     RngSeedThunkProto rng_seed_thunk = 61;
   }
 
-  reserved 10, 37, 49, 50, 51, 52, 53, 54, 55, 56;
+  reserved 10, 37, 48, 49, 50, 51, 52, 53, 54, 55, 56;
   reserved "wait_for_streams_thunk";
   reserved "nvshmem_collective_done_thunk";
   reserved "nvshmem_collective_permute_done_thunk";
@@ -539,6 +532,7 @@ message ThunkProto {
   reserved "cub_sort_thunk";
   reserved "collective_done_thunk";
   reserved "copy_done_thunk";
+  reserved "dynamic_memcpy_thunk";
   reserved "all_gather_start_thunk";
   reserved "all_reduce_start_thunk";
   reserved "all_to_all_start_thunk";

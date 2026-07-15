@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/runtime/command.h"
@@ -45,8 +46,8 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/mock_command_buffer.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
@@ -67,6 +68,7 @@ struct DummyThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return absl::OkStatus();
   }
+  BufferUses buffer_uses() const override { return {}; }
   static absl::StatusOr<std::unique_ptr<DummyThunk>> FromProto(
       const ThunkProto& thunk_proto, Thunk::Kind kind) {
     ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
@@ -232,7 +234,20 @@ TEST(ConditionalThunkTest, PreparePropagatesToCommandBufferBranchExecutors) {
   ASSERT_OK(thunk.SetOrUpdateCommandBufferBranchExecutors(
       std::move(branch_executors)));
 
-  Thunk::PrepareParams prepare_params;
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("Host"));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  std::vector<se::DeviceAddressBase> buffers;
+  BufferAllocations allocations(buffers, /*device_ordinal=*/0,
+                                /*memory_allocator=*/nullptr);
+
+  Thunk::PrepareParams prepare_params{/*collective_params=*/nullptr,
+                                      /*collective_clique_requests=*/nullptr,
+                                      /*collective_memory_requests=*/nullptr,
+                                      /*executor=*/executor,
+                                      /*buffer_allocations=*/&allocations};
   ASSERT_OK(thunk.Prepare(prepare_params));
 
   EXPECT_EQ(branch0_counts.prepares, 1);

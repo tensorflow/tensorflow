@@ -53,7 +53,7 @@ namespace {
 
 namespace m = ::xla::match;
 
-using GemmRewriteTest = HloPjRtInterpreterReferenceMixin<GemmRewriteTestBase>;
+using GemmRewriteTest = HloInterpreterReferenceMixin<GemmRewriteTestBase>;
 
 TEST_F(GemmRewriteTest, CheckCustomCallTarget) {
   if (SkipGpuBlasLtTest()) {
@@ -385,11 +385,11 @@ TEST_F(GemmRewriteTest, DotWithoutBias) {
 }
 
 using ParameterizedGemmRewriteTest =
-    HloPjRtInterpreterReferenceMixin<ParameterizedGemmRewriteTestBase>;
+    HloInterpreterReferenceMixin<ParameterizedGemmRewriteTestBase>;
 
 // A test fixture class for tests which are specific to cublasLt
 class CublasLtGemmRewriteTest
-    : public HloPjRtInterpreterReferenceMixin<GemmRewriteTestBase> {
+    : public HloInterpreterReferenceMixin<GemmRewriteTestBase> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GemmRewriteTestBase::GetDebugOptionsForTest();

@@ -273,7 +273,8 @@ CustomCallOp cloneCustomCallWithNewResultTypes(CustomCallOp op,
       op.getCallTargetNameAttr(), op.getHasSideEffectAttr(),
       op.getBackendConfigAttr(), op.getApiVersionAttr(),
       op.getCalledComputations(), op.getOperandLayoutsAttr(),
-      op.getResultLayoutsAttr(), op.getOutputOperandAliases());
+      op.getResultLayoutsAttr(), op.getOutputOperandAliases(),
+      op.getResultTilingsAttr());
   customCallOp->setDiscardableAttrs(mlir::DictionaryAttr::get(
       op->getContext(), llvm::to_vector(op->getDiscardableAttrs())));
   return customCallOp;
@@ -432,6 +433,11 @@ bool hasFrontendMhloShardings(mlir::ModuleOp module) {
     }
   }
   return false;
+}
+
+bool hasFrontendMeshes(mlir::ModuleOp module) {
+  return tryGetFrontendAttr<mlir::DictionaryAttr>(module, kMeshesRoundTripAttr)
+      .has_value();
 }
 
 bool hasShardyMesh(mlir::ModuleOp module) {

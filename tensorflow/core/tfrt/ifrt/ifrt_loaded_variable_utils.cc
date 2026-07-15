@@ -103,14 +103,11 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
     const xla::ifrt::LayoutRef& xla_input_layout,
     std::shared_ptr<const xla::Shape> shape_on_device,
     const xla::ifrt::DeviceListRef& device_list) {
-  IfrtLoadedVariableRegistry::Key key{
-      .device_ids = sharding_config.device_ids,
-      .input_name = std::string(tensor_name),
-      .hlo_sharding = sharding_config.hlo_sharding,
-      .shape_on_device = std::move(shape_on_device),
-  };
-
-  if (loaded_variable_registry.GetLoadedVariable(key).ok()) {
+  if (loaded_variable_registry
+          .GetLoadedVariable(IfrtLoadedVariableRegistry::KeyView(
+              sharding_config.device_ids, tensor_name,
+              sharding_config.hlo_sharding, shape_on_device))
+          .ok()) {
     VLOG(1) << "Found alread registered variable for " << tensor_name;
     return absl::OkStatus();
   }
@@ -131,6 +128,12 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
   }
   auto [loaded_variable_promise, loaded_variable_future] =
       tsl::MakePromise<xla::ifrt::ArrayRef>();
+  IfrtLoadedVariableRegistry::Key key{
+      .device_ids = sharding_config.device_ids,
+      .input_name = std::string(tensor_name),
+      .hlo_sharding = sharding_config.hlo_sharding,
+      .shape_on_device = std::move(shape_on_device),
+  };
   absl::Status status = loaded_variable_registry.TryRegisterLoadedVariable(
       key,
       [&]() -> absl::StatusOr<

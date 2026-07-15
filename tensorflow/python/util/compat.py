@@ -78,8 +78,12 @@ def as_bytes(bytes_or_text, encoding='utf-8'):
   elif isinstance(bytes_or_text, bytes):
     return bytes_or_text
   else:
-    raise TypeError('Expected binary or unicode string, got %r' %
-                    (bytes_or_text,))
+    try:
+      return bytes(memoryview(bytes_or_text))
+    except TypeError as e:
+      raise TypeError(
+          'Expected binary or unicode string, got %r' % (bytes_or_text,)
+      ) from e
 
 
 def as_text(bytes_or_text, encoding='utf-8'):

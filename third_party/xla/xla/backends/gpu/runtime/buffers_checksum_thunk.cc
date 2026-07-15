@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/runtime/buffer_debug_log.pb.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -45,15 +46,11 @@ namespace se = stream_executor;
 
 absl::Status BuffersDebugChecksumThunk::Initialize(
     const InitializeParams& params) {
-  if (params.executor->GetPlatform()->id() != se::cuda::kCudaPlatformId) {
-    VLOG(1)
-        << "Buffer checksumming not supported on non-CUDA platforms, skipping";
-    return absl::OkStatus();
-  }
-  if (!params.executor->GetDeviceDescription()
+  if (params.executor->GetPlatform()->id() == se::cuda::kCudaPlatformId &&
+      !params.executor->GetDeviceDescription()
            .cuda_compute_capability()
            .IsAtLeastPascal()) {
-    VLOG(1)
+    LOG_FIRST_N(WARNING, 1)
         << "Buffer checksumming not supported on CUDA architectures older than "
            "Pascal due to missing atomic fetch_add with system scope, skipping";
     return absl::OkStatus();

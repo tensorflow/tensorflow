@@ -53,7 +53,7 @@ struct CuptiTracerOptions {
   // Whether to call cuptiFinalize.
   bool cupti_finalize = false;
   // Whether to prefer CUPTI V2 multi-subscriber APIs when available.
-  bool prefer_cupti_v2 = true;
+  bool prefer_cupti_v2 = false;
   // Whether to call cuCtxSynchronize for each device before Stop().
   bool sync_devices_before_stop = false;
   // Whether to enable NVTX tracking, we need this for TensorRT tracking.

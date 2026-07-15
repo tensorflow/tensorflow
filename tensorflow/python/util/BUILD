@@ -8,7 +8,6 @@ load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")  # @unus
 load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap", "if_static")
 
 visibility = [
-    "//engedu/ml/tf_from_scratch:__pkg__",
     "//third_party/cloud_tpu/convergence_tools:__subpackages__",
     "//third_party/mlperf:__subpackages__",
     "//tensorflow:internal",
@@ -489,6 +488,7 @@ tf_python_pybind_extension(
         "@tsl//tsl/platform:fingerprint",
         "@tsl//tsl/platform:mutex",
         "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@xla//xla/tsl/platform:status",
     ] + if_static([
         ":stack_trace",
     ]),

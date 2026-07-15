@@ -266,6 +266,8 @@ class PjRtClient final
 
   tsl::Future<> GetReadyFuture(absl::Span<const ValueRef> values) override;
 
+  tsl::Future<> DeleteValues(absl::Span<ValueRef> values) override;
+
   absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
       absl::Span<ValueRef> values) override;
 

@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/service/llvm_compiler.h"
 #include "xla/tests/restricted/hlo_test_base_legacy.h"
 

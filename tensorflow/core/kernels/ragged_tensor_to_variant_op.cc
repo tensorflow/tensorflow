@@ -42,7 +42,7 @@ absl::Status UnbatchDenseZerothDim(
   Tensor batched_values = batched_ragged.values();
   TensorShape values_shape = batched_values.shape();
   if (values_shape.dims() < 1) {
-    return errors::InvalidArgument("Can't unbatch rank-0 tensor.");
+    return absl::InvalidArgumentError("Can't unbatch rank-0 tensor.");
   }
   auto num_components = values_shape.dim_size(0);
   values_shape.RemoveDim(0);
@@ -78,7 +78,7 @@ absl::Status UnbatchRaggedZerothDim(
   auto num_components = batched_splits_top_vec.size() - 1;
 
   if (num_components < 0) {
-    return errors::Internal("Invalid split argument.");
+    return absl::InternalError("Invalid split argument.");
   }
 
   int num_splits = ragged_rank - 1;
@@ -195,7 +195,7 @@ class RaggedTensorToVariantOp : public OpKernel {
       SPLIT_TYPE nvals;
       if (i == ragged_nested_splits_len - 1) {
         OP_REQUIRES(context, batched_ragged_input.values().dims() >= 1,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(
                         "Requires flat_values to have rank>=1 when "
                         "nested_row_splits is not empty, but is 0."));
         nvals = batched_ragged_input.values().dim_size(0);

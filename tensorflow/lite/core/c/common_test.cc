@@ -151,6 +151,35 @@ TEST(Quantization, TestQuantizationFree) {
   TfLiteTensorFree(&t);
 }
 
+TEST(Quantization, TestMultiAxisQuantizationCloneAndFree) {
+  auto* params = reinterpret_cast<TfLiteMultiAxisQuantization*>(
+      malloc(sizeof(TfLiteMultiAxisQuantization)));
+  params->scales = 1;
+  params->zero_points = -1;
+  params->blocksize = 32;
+  params->quantized_dimensions = BuildTfLiteArray<int>({0, 2}).release();
+  TfLiteQuantization quantization = {
+      /*type=*/kTfLiteMultiAxisQuantization,
+      /*params=*/params,
+  };
+
+  TfLiteQuantization clone = TfLiteQuantizationClone(quantization);
+
+  EXPECT_THAT(clone.type, Eq(kTfLiteMultiAxisQuantization));
+  ASSERT_THAT(clone.params, Not(AnyOf(nullptr, quantization.params)));
+  auto* clone_params =
+      reinterpret_cast<TfLiteMultiAxisQuantization*>(clone.params);
+  EXPECT_THAT(clone_params->scales, Eq(params->scales));
+  EXPECT_THAT(clone_params->zero_points, Eq(params->zero_points));
+  EXPECT_THAT(clone_params->blocksize, Eq(params->blocksize));
+  EXPECT_THAT(clone_params->quantized_dimensions,
+              TfLiteArrayIs(params->quantized_dimensions));
+  EXPECT_NE(clone_params->quantized_dimensions, params->quantized_dimensions);
+
+  TfLiteQuantizationFree(&clone);
+  TfLiteQuantizationFree(&quantization);
+}
+
 TEST(Sparsity, TestSparsityFree) {
   TfLiteTensor t = {};
   // Set these values, otherwise TfLiteTensorFree has uninitialized values.
@@ -1049,5 +1078,7 @@ TEST(EnsureOk, WithMessage) {
   EXPECT_THAT(last_error, ::testing::HasSubstr("Error code: 42"));
   EXPECT_THAT(last_error, ::testing::HasSubstr("common_test.cc"));
 }
+
+TEST(TensorFree, NullTensor_DoesNotCrash) { TfLiteTensorFree(nullptr); }
 
 }  // namespace tflite

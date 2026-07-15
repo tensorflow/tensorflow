@@ -41,6 +41,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service:elemental_ir_emitter",
+        "//xla/service/gpu:dense_data_intermediate",
         "//xla/service/gpu:gpu_constants",
         "//xla/service/gpu:hlo_to_ir_bindings",
         "//xla/service/gpu:ir_emission_utils",

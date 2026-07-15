@@ -84,15 +84,49 @@ ENTRY main {
   ROOT done = f32[2,3] call-done(start)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   const HloInstruction* start = FindInstruction(module.get(), "start");
+  const HloInstruction* done = FindInstruction(module.get(), "done");
+  AliasInfo alias_info;
+  auto pairs_start = alias_info.GetInPlaceInputOutputPairs(start);
+  EXPECT_THAT(pairs_start, ElementsAre(std::pair<HloOperandIndex, ShapeIndex>{
+                               HloOperandIndex{0, {}}, {1}}));
+  auto pairs_done = alias_info.GetInPlaceInputOutputPairs(done);
+  EXPECT_THAT(pairs_done, ElementsAre(std::pair<HloOperandIndex, ShapeIndex>{
+                              HloOperandIndex{0, {0, 0}}, {}}));
+}
 
-  auto pairs = alias_info_.GetInPlaceInputOutputPairs(start);
-
-  // By default for forwarded operands: operand 0 maps to output {0, 0} for the
-  // parameter subshape
-  EXPECT_THAT(pairs, ElementsAre(std::pair<HloOperandIndex, ShapeIndex>{
-                         HloOperandIndex{0, {}}, {1}}));
+// Tests that the alias info is computed correctly when the output-to-operand
+// aliasing is late-bound.
+TEST_F(GetInPlaceInputOutputPairsTest, AsyncStart_LateBinding) {
+  const char* const kHlo = R"(
+HloModule test
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  ROOT abs = f32[2,3] abs(p0)
+}
+ENTRY main {
+  p0 = f32[2,3] parameter(0)
+  start = ((), (), s32[]) call-start(),
+    to_apply=async_computation,
+    output_to_operand_aliasing={{1}: (0, {})}
+  update = ((f32[2,3]), f32[2,3]) async-update(start, p0)
+  ROOT done = f32[2,3] call-done(update)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  const HloInstruction* start = FindInstruction(module.get(), "start");
+  AliasInfo alias_info;
+  auto pairs_start = alias_info.GetInPlaceInputOutputPairs(start);
+  EXPECT_TRUE(pairs_start.empty());
+  const HloInstruction* update = FindInstruction(module.get(), "update");
+  auto pairs_update = alias_info.GetInPlaceInputOutputPairs(update);
+  EXPECT_THAT(pairs_update, ElementsAre(std::pair<HloOperandIndex, ShapeIndex>{
+                                HloOperandIndex{1, {}}, {1}}));
+  const HloInstruction* done = FindInstruction(module.get(), "done");
+  auto pairs_done = alias_info.GetInPlaceInputOutputPairs(done);
+  EXPECT_THAT(pairs_done, ElementsAre(std::pair<HloOperandIndex, ShapeIndex>{
+                              HloOperandIndex{0, {0, 0}}, {}}));
 }
 
 // Verifies that a dynamic-update-slice instruction can compute in-place
@@ -169,9 +203,21 @@ ENTRY %Comp_spmd {
       custom_call_target="BarrierStart"
   %tuple = (f32[8,4,1], (f32[8,4,1], u32[]{:S(2)}, u32[]{:S(2)}))
       tuple(%copy, %custom-call)
-  %all-to-all-start.1 = (((f32[8,4,1],
-      (f32[8,4,1], u32[]{:S(2)}, u32[]{:S(2)}))),
-      f32[8,4,1], u32[]{:S(2)}, u32[]{:S(2)})
+  %all-to-all-start.1 = (
+        (                   // BEGIN OF 0
+          (                 // BEGIN OF 0, 0
+            f32[8,4,1],     // 0, 0, 0
+            (               // BEGIN OF 0, 0, 1
+              f32[8,4,1],    // 0, 0, 1, 0
+              u32[]{:S(2)},  // 0, 0, 1, 1
+              u32[]{:S(2)}   // 0, 0, 1, 2
+            )               // END OF 0, 0, 1
+          )                 // END OF 0, 0
+        ),                  // END OF 0
+        f32[8,4,1],   // 1
+        u32[]{:S(2)}, // 2
+        u32[]{:S(2)}  // 3
+      )
       async-start(%tuple),
       output_to_operand_aliasing={
         {0,0,1,0}: (0, {1,0}),
@@ -679,40 +725,6 @@ ENTRY AllToAll {
   EXPECT_EQ(in_place_pairs, expected_pairs);
 }
 
-// Verifies that all-reduce-start with NVSHMEM backend expects no aliasing
-// (empty in-place pairs).
-TEST_F(GetInPlaceInputOutputPairsTest, nvshmem_ar) {
-  const char* kHlo = R"(
-HloModule test_ar
-region_add {
-  lhs = f32[] parameter(0)
-  rhs = f32[] parameter(1)
-  ROOT ret = f32[] add(lhs, rhs)
-}
-
-ENTRY test {
-  p0 = f32[10] parameter(0)
-  ar = f32[10] all-reduce-start(p0), replica_groups={},
-      to_apply=region_add,
-      backend_config={
-        "collective_backend_config":
-          {
-            "backend":"NVSHMEM"
-          }
-        }
-  ROOT ar.done = f32[10] all-reduce-done(ar)
-}
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
-  const HloInstruction* ar_start =
-      module->entry_computation()->root_instruction()->operand(0);
-
-  auto in_place_pairs = alias_info_.GetInPlaceInputOutputPairs(ar_start);
-  std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
-  // For nvshmem allreduce, we expect no aliasing for input and output buffers
-  // therefore empty inplace pairs.
-  EXPECT_EQ(in_place_pairs, expected_pairs);
-}
 
 // Verifies that collective-permute-start expects no aliasing (empty in-place
 // pairs).

@@ -20,7 +20,6 @@ limitations under the License.
 #include <initializer_list>
 #include <limits>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -49,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/transforms/simplifiers/hlo_element_type_converter.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -458,6 +458,33 @@ TEST_F(HloEvaluatorTest, DoesMulhiS32Min) {
   auto expected_s32_2 = LiteralUtil::CreateR0<int32_t>(-1);
   TestBinaryOp(HloOpcode::kMulhi, std::move(expected_s32_2),
                std::move(lhs_s32_2), std::move(rhs_s32_2));
+}
+
+// Regression test: clz of a negative signed integer must be 0, not negative.
+// The evaluator used to sign extend to 64 bits, so clz(s32 0xC1A63AF0) gave
+// -32.
+TEST_F(HloEvaluatorTest, DoesCountLeadingZerosS32) {
+  auto input = LiteralUtil::CreateR1<int32_t>(
+      {0, 1, -1, -1046070544, std::numeric_limits<int32_t>::min(),
+       std::numeric_limits<int32_t>::max()});
+  auto expected = LiteralUtil::CreateR1<int32_t>({32, 31, 0, 0, 0, 1});
+  TestUnaryOp(HloOpcode::kClz, std::move(expected), std::move(input));
+}
+
+TEST_F(HloEvaluatorTest, DoesCountLeadingZerosU32) {
+  auto input = LiteralUtil::CreateR1<uint32_t>(
+      {0, 1, 0xFFFFFFFF, 0x80000000, 0x7FFFFFFF});
+  auto expected = LiteralUtil::CreateR1<uint32_t>({32, 31, 0, 0, 1});
+  TestUnaryOp(HloOpcode::kClz, std::move(expected), std::move(input));
+}
+
+// Narrow type: masks to the s8 width, not the 64 bit ElementwiseT width.
+TEST_F(HloEvaluatorTest, DoesCountLeadingZerosS8) {
+  auto input = LiteralUtil::CreateR1<int8_t>(
+      {0, 1, -1, std::numeric_limits<int8_t>::min(),
+       std::numeric_limits<int8_t>::max()});
+  auto expected = LiteralUtil::CreateR1<int8_t>({8, 7, 0, 0, 1});
+  TestUnaryOp(HloOpcode::kClz, std::move(expected), std::move(input));
 }
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise divide with 2 operands.
@@ -2994,14 +3021,14 @@ TEST_P(HloEvaluatorBf16Test, Conv2DGroupedConvolution) {
   *window.add_dimensions() = dim;
 
   std::vector<float> input_elems(ShapeUtil::ElementsIn(input_shape));
-  std::iota(input_elems.begin(), input_elems.end(), -7);
+  absl::c_iota(input_elems, -7);
   auto input_r1 = LiteralUtil::CreateR1<float>(input_elems);
   auto input_r4 = input_r1.Reshape(input_dims).value();
   HloInstruction* lhs_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(input_r4)));
 
   std::vector<float> filter_elems(ShapeUtil::ElementsIn(filter_shape));
-  std::iota(filter_elems.begin(), filter_elems.end(), -31);
+  absl::c_iota(filter_elems, -31);
   auto filter_r1 = LiteralUtil::CreateR1<float>(filter_elems);
   auto filter_r4 = filter_r1.Reshape(filter_dims).value();
   HloInstruction* rhs_instruction =
@@ -6179,6 +6206,27 @@ ENTRY main {
   EXPECT_EQ(actual.GetFirstElement<int32_t>(), static_cast<int32_t>(3));
 }
 
+TEST_F(HloEvaluatorTest, SetDimensionSizeStatic) {
+  const absl::string_view hlo_text = R"(
+HloModule Test
+
+ENTRY main {
+  size = s32[] parameter(0)
+  data = s32[4] parameter(1)
+  ROOT result = s32[4] set-dimension-size(data, size), dimensions={0}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+
+  Literal size_arg = LiteralUtil::CreateR0<int32_t>(3);
+  Literal data_arg = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4});
+
+  ASSERT_OK_AND_ASSIGN(Literal actual, Evaluate({&size_arg, &data_arg}));
+
+  EXPECT_FALSE(actual.shape().is_dynamic_dimension(0));
+  EXPECT_EQ(actual.GetFirstElement<int32_t>(), 1);
+}
+
 // Check that we get a useful error if we pass inputs of the wrong shape.
 TEST_F(HloEvaluatorTest, EvaluateWithWrongInputShapes) {
   const absl::string_view hlo_text = R"(
@@ -6545,6 +6593,126 @@ TEST_F(HloEvaluatorTest, AsyncOpsWithLayout) {
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, LateBindingAsyncStartAndUpdate) {
+  const absl::string_view hlo_text = R"(
+  HloModule test
+
+  async_computation {
+    p0 = f32[4] parameter(0)
+    ROOT negate = f32[4] negate(p0)
+  }
+
+  ENTRY entry {
+    x = f32[4] constant({1.0, 2.0, 3.0, 4.0})
+    async-start = ((), (), s32[]) async-start(), calls=async_computation,
+                                  async_execution_thread="thread"
+    async-update = ((f32[4]), f32[4], s32[]) async-update(async-start, x)
+    ROOT async-done = f32[4] async-done(async-update)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected = LiteralUtil::CreateR1<float>({-1.0f, -2.0f, -3.0f, -4.0f});
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, LateBindingAsyncMultipleUpdates) {
+  const absl::string_view hlo_text = R"(
+  HloModule test
+
+  async_computation {
+    p0 = f32[4] parameter(0)
+    p1 = f32[4] parameter(1)
+    add = f32[4] add(p0, p1)
+    negate = f32[4] negate(p0)
+    ROOT tuple = (f32[4], f32[4]) tuple(add, negate)
+  }
+
+  ENTRY entry {
+    x = f32[4] constant({1.0, 2.0, 3.0, 4.0})
+    y = f32[4] constant({10.0, 20.0, 30.0, 40.0})
+    async-start = ((), (), s32[]) async-start(), calls=async_computation,
+                                  async_execution_thread="thread"
+    async-update0 = ((f32[4]), (), s32[]) async-update(async-start, x)
+    async-update1 = ((f32[4], f32[4]), (f32[4], f32[4]), s32[]) async-update(async-update0, y)
+    ROOT async-done = (f32[4], f32[4]) async-done(async-update1)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected_add =
+      LiteralUtil::CreateR1<float>({11.0f, 22.0f, 33.0f, 44.0f});
+  Literal expected_negate =
+      LiteralUtil::CreateR1<float>({-1.0f, -2.0f, -3.0f, -4.0f});
+  Literal expected = LiteralUtil::MakeTuple({&expected_add, &expected_negate});
+
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, LateBindingAsyncDone) {
+  const absl::string_view hlo_text = R"(
+  HloModule test
+
+  async_computation {
+    p0 = f32[4] parameter(0)
+    ROOT negate = f32[4] negate(p0)
+  }
+
+  ENTRY entry {
+    x = f32[4] constant({1.0, 2.0, 3.0, 4.0})
+    async-start = ((), (), s32[]) async-start(), calls=async_computation,
+                                  async_execution_thread="thread"
+    async-update = ((f32[4]), (), s32[]) async-update(async-start, x)
+    ROOT async-done = f32[4] async-done(async-update)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected = LiteralUtil::CreateR1<float>({-1.0f, -2.0f, -3.0f, -4.0f});
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, LateBindingAsyncOutputBoundFirst) {
+  const absl::string_view hlo_text = R"(
+  HloModule test
+
+  async_computation {
+    p0 = f32[4] parameter(0)
+    ROOT negate = f32[4] negate(p0)
+  }
+
+  ENTRY entry {
+    x = f32[4] constant({1.0, 2.0, 3.0, 4.0})
+    async-start = ((), f32[4], s32[]) async-start(), calls=async_computation,
+                                  async_execution_thread="thread"
+    async-update = ((f32[4]), f32[4], s32[]) async-update(async-start, x)
+    ROOT async-done = f32[4] async-done(async-update)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected = LiteralUtil::CreateR1<float>({-1.0f, -2.0f, -3.0f, -4.0f});
+  Literal start_literal;
+  HloEvaluator evaluator;
+  evaluator.set_eval_literal_handler(
+      [&](const HloInstruction* hlo, const LiteralSlice& literal) {
+        if (hlo->name() == "async-start") {
+          start_literal = literal.Clone();
+        }
+      });
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       evaluator.Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+
+  // Verify that back-propagation updated the outputs
+  // tuple component {1} of async-start:
+  EXPECT_EQ(start_literal.shape().tuple_shapes().size(), 3);
+  Literal start_output = start_literal.SubLiteral({1});
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, start_output));
 }
 
 TEST_F(HloEvaluatorTest, MapBF16) {

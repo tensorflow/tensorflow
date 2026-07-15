@@ -1,3 +1,4 @@
+# Harmless comment to trigger format check
 # Description:
 # C API for TensorFlow, for use by client language bindings.
 
@@ -536,6 +537,10 @@ cc_library(
         ":tf_status_helper",
         ":tf_tensor_internal",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@eigen_archive//:eigen3",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
@@ -837,8 +842,10 @@ tf_cuda_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":c_api_headers",
         ":c_api_macros_hdrs",
         ":kernels",
+        ":tf_datatype_hdrs",
         ":tf_status_helper",
         ":tf_status_internal",
         ":tf_tensor_internal",
@@ -848,6 +855,16 @@ tf_cuda_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:strcat",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@tsl//tsl/platform:mutex",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:status",
     ] + if_not_mobile([
         "//tensorflow/core/kernels:tensor_list",
         "//tensorflow/core/kernels:tensor_list_util",

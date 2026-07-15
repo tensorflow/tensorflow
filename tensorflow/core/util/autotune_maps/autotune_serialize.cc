@@ -133,7 +133,7 @@ absl::Status PopulateConvMap(
         algorithm_config_proto.has_algorithm_no_scratch()
             ? std::optional<AlgorithmDesc>(
                   AlgorithmDesc(algorithm_config_proto.algorithm_no_scratch()))
-            : absl::nullopt;
+            : std::nullopt;
 
     bool devices_matched = false;
     for (int ordinal = 0; ordinal < device_descs.size(); ordinal++) {

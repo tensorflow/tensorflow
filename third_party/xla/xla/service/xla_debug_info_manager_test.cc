@@ -56,6 +56,12 @@ class XlaDebugInfoManagerTestPeer {
     return module_ids;
   }
 
+  std::vector<std::unique_ptr<HloProto>> StopTracingAndGetProtos() {
+    std::vector<std::unique_ptr<HloProto>> module_debug_info;
+    xla_debug_info_manager_.StopTracing(&module_debug_info);
+    return module_debug_info;
+  }
+
   absl::flat_hash_set<ModuleIdentifier> GetModuleIds() {
     absl::flat_hash_set<ModuleIdentifier> module_ids;
     absl::MutexLock lock(xla_debug_info_manager_.mutex_);
@@ -190,6 +196,49 @@ TEST_F(XlaDebugInfoManagerTest, UnregisterDuringTrace) {
   EXPECT_THAT(GetModuleIds(), UnorderedElementsAre(program0A));
 
   UnregisterProgram(program0A);
+}
+
+TEST_F(XlaDebugInfoManagerTest, RegisterBufferAssignmentProto) {
+  HloModuleConfig config;
+  auto hlo_module_with_proto =
+      std::make_shared<HloModule>("program_with_proto", config);
+  BufferAssignmentProto proto;
+  auto allocation = proto.add_buffer_allocations();
+  allocation->set_index(42);
+  allocation->set_size(1024);
+
+  xla_debug_info_manager_.RegisterModule(hlo_module_with_proto,
+                                         std::move(proto));
+
+  auto hlo_module_without_proto =
+      std::make_shared<HloModule>("program_without_proto", config);
+  xla_debug_info_manager_.RegisterModule(hlo_module_without_proto,
+                                         std::nullopt);
+
+  StartTrace();
+
+  auto protos = xla_debug_info_manager_.StopTracingAndGetProtos();
+  ASSERT_EQ(protos.size(), 2);
+
+  const HloProto* proto_with = nullptr;
+  const HloProto* proto_without = nullptr;
+  for (const auto& p : protos) {
+    if (p->hlo_module().name() == "program_with_proto") {
+      proto_with = p.get();
+    } else if (p->hlo_module().name() == "program_without_proto") {
+      proto_without = p.get();
+    }
+  }
+
+  ASSERT_NE(proto_with, nullptr);
+  ASSERT_NE(proto_without, nullptr);
+
+  EXPECT_TRUE(proto_with->has_buffer_assignment());
+  EXPECT_EQ(proto_with->buffer_assignment().buffer_allocations_size(), 1);
+  EXPECT_EQ(proto_with->buffer_assignment().buffer_allocations(0).index(), 42);
+  EXPECT_EQ(proto_with->buffer_assignment().buffer_allocations(0).size(), 1024);
+
+  EXPECT_FALSE(proto_without->has_buffer_assignment());
 }
 
 }  // namespace

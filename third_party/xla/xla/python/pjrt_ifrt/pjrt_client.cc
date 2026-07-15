@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
+#include "absl/base/no_destructor.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -66,12 +67,14 @@ limitations under the License.
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/basic_bundle.h"
 #include "xla/python/ifrt/basic_device_list.h"
+#include "xla/python/ifrt/buffer_hash_util.h"
 #include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/client_impl_util.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
@@ -83,6 +86,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/basic_string_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
+#include "xla/python/pjrt_ifrt/pjrt_buffer_hash_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
@@ -95,6 +99,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
@@ -945,19 +950,9 @@ std::unique_ptr<PjRtClient> PjRtClient::Create(
   return *Create(std::move(options));
 }
 
-static int NumCompilationThreads(xla::PjRtPlatformId platform_id) {
-  if (platform_id == xla::CudaId()) {
-    // Disable asynchronous compilation on GPUs since sharded autotuning may
-    // require in-order compilation.
-    return 0;
-  }
-  return 8;
-}
-
 PjRtClient::PjRtClient(std::shared_ptr<xla::PjRtClient> pjrt_client)
     : pjrt_client_(std::move(pjrt_client)),
-      default_compiler_(this,
-                        NumCompilationThreads(pjrt_client_->platform_id())),
+      default_compiler_(this),
       attributes_(MakeAttributeMap(pjrt_client_.get())) {}
 
 PjRtClient::~PjRtClient() {
@@ -1066,8 +1061,6 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
 
   absl::Span<xla::ifrt::Device* const> ifrt_addressable_devices =
       sharding->devices()->AddressableDeviceList()->devices();
-  auto count =
-      std::make_shared<std::atomic<int>>(ifrt_addressable_devices.size());
   if (ifrt_addressable_devices.empty()) {
     return InvalidArgument("Cannot copy array to non-addressable device: %v",
                            sharding->devices());
@@ -1083,12 +1076,12 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
   }
   std::function<void()> on_done_with_host_buffer_per_device;
   if (on_done_with_host_buffer) {
+    auto shared_on_done = std::shared_ptr<void>(
+        nullptr,
+        [on_done = std::move(on_done_with_host_buffer)](void*) { on_done(); });
     on_done_with_host_buffer_per_device =
-        [on_done_with_host_buffer = std::move(on_done_with_host_buffer),
-         count]() {
-          if (count->fetch_sub(1, std::memory_order_relaxed) == 1) {
-            on_done_with_host_buffer();
-          }
+        [shared_on_done = std::move(shared_on_done)]() mutable {
+          shared_on_done.reset();
         };
   } else {
     on_done_with_host_buffer_per_device = []() {};
@@ -1811,8 +1804,103 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::BitcastArrays(
 
 tsl::Future<std::vector<uint64_t>> PjRtClient::HashValues(
     absl::Span<const ValueRef> values, HashMode mode) {
-  return absl::UnimplementedError(
-      "HashValues is not implemented in PjRtClient.");
+  if (values.empty()) {
+    return std::vector<uint64_t>();
+  }
+  int total_num_buffers = 0;
+  for (int i = 0; i < values.size(); ++i) {
+    auto* pjrt_array = llvm::dyn_cast<PjRtCompatibleArray>(values[i].get());
+    if (pjrt_array == nullptr) {
+      return absl::UnimplementedError(
+          "PjRtClient::HashValues requires PjRtCompatibleArray");
+    }
+    if (!pjrt_array->sharding().devices()->IsFullyAddressable()) {
+      return absl::UnimplementedError(
+          "PjRtClient::HashValues only supports fully addressable arrays");
+    }
+    total_num_buffers += pjrt_array->pjrt_buffers().size();
+  }
+
+  // Number of buffers for each value. This is the length of the contiguous span
+  // in `flat_buffers` and `flat_index_domains` that correspond to each value.
+  std::vector<int> num_buffers_per_value;
+  num_buffers_per_value.reserve(values.size());
+  // Flat list of all buffers and index domains for all values. This allows
+  // applying the hashing and throttling logic in a single call to
+  // `HashPjRtBuffers()`.
+  std::vector<PjRtBuffer*> flat_buffers;
+  flat_buffers.reserve(total_num_buffers);
+  std::vector<IndexDomain> flat_index_domains;
+  flat_index_domains.reserve(total_num_buffers);
+
+  for (int i = 0; i < values.size(); ++i) {
+    // We have verified that all values are `PjRtCompatibleArray`.
+    auto* pjrt_array = llvm::cast<PjRtCompatibleArray>(values[i].get());
+
+    ASSIGN_OR_RETURN(
+        std::vector<IndexDomain> index_domains,
+        pjrt_array->sharding().IndexDomains(
+            pjrt_array->shape(), SingleDeviceShardSemantics::kAllShards));
+
+    absl::Span<const std::shared_ptr<PjRtBuffer>> buffers =
+        pjrt_array->pjrt_buffers();
+
+    if (buffers.size() != index_domains.size()) {
+      return absl::InternalError(absl::StrCat(
+          "Buffers and index domains size mismatch for value ", i));
+    }
+
+    num_buffers_per_value.push_back(buffers.size());
+    for (const std::shared_ptr<PjRtBuffer>& buf : buffers) {
+      flat_buffers.push_back(buf.get());
+    }
+    for (IndexDomain& index_domain : index_domains) {
+      flat_index_domains.push_back(std::move(index_domain));
+    }
+  }
+
+  // Wraps `SchedClosure` to make it compatible with `tsl::Executor`.
+  class SchedClosureExecutor : public tsl::Executor {
+   public:
+    void Execute(Task task) override {
+      tsl::Env::Default()->SchedClosure(
+          [task = std::move(task)]() mutable { std::move(task)(); });
+    }
+  };
+  static absl::NoDestructor<SchedClosureExecutor> executor;
+
+  tsl::Future<std::vector<uint64_t>> shard_hashes_future =
+      HashPjRtBuffers(*executor, flat_buffers, flat_index_domains, mode);
+
+  return shard_hashes_future.Map(
+      *executor,
+      [num_buffers_per_value = std::move(num_buffers_per_value),
+       flat_index_domains = std::move(flat_index_domains),
+       mode](absl::Span<const uint64_t> shard_hashes)
+          -> absl::StatusOr<std::vector<uint64_t>> {
+        absl::Span<const IndexDomain> index_domains_span =
+            absl::MakeConstSpan(flat_index_domains);
+
+        std::vector<uint64_t> hashes;
+        hashes.reserve(num_buffers_per_value.size());
+        int flat_index = 0;
+        for (int i = 0; i < num_buffers_per_value.size(); ++i) {
+          const int num_buffers = num_buffers_per_value[i];
+          absl::Span<const uint64_t> value_shard_hashes =
+              shard_hashes.subspan(flat_index, num_buffers);
+          absl::Span<const IndexDomain> value_index_domains =
+              index_domains_span.subspan(flat_index, num_buffers);
+          flat_index += num_buffers;
+
+          std::vector<int> replica_group_ids =
+              GetReplicaGroupIds(value_index_domains);
+          ASSIGN_OR_RETURN(uint64_t aggregated_hash,
+                           AggregateShardHashes(value_shard_hashes,
+                                                replica_group_ids, mode));
+          hashes.push_back(aggregated_hash);
+        }
+        return hashes;
+      });
 }
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::ReshardArrays(
@@ -1826,6 +1914,15 @@ tsl::Future<> PjRtClient::GetReadyFuture(absl::Span<const ValueRef> values) {
   futures.reserve(values.size());
   for (const auto& value : values) {
     futures.push_back(value->GetReadyFuture());
+  }
+  return JoinFutures(futures);
+}
+
+tsl::Future<> PjRtClient::DeleteValues(absl::Span<ValueRef> values) {
+  absl::InlinedVector<tsl::Future<>, 1> futures;
+  futures.reserve(values.size());
+  for (const auto& value : values) {
+    futures.push_back(value->Delete());
   }
   return JoinFutures(futures);
 }

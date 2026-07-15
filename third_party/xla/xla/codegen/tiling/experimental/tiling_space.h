@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/constraint_expression.h"
@@ -89,15 +90,12 @@ inline std::ostream& operator<<(std::ostream& os, TiledDimId id) {
 // TilePropagation.
 class TilingSpace {
  public:
-  TilingSpace() : constraints_(ConstraintExpression::GetAlwaysSatisfied()) {}
+  TilingSpace() : constraint_(ConstraintExpression::GetAlwaysSatisfied()) {}
 
   // Disable copy constructor and assignment to prevent dangling pointers
   // inside hlo_to_dimension_.
   TilingSpace(const TilingSpace&) = delete;
   TilingSpace& operator=(const TilingSpace&) = delete;
-
-  // Unique ID for the dimension or runtime variable.
-  using ID = int64_t;
 
   enum class DimensionSemantics { kParallel, kSequential };
   struct DimensionInfo {
@@ -156,15 +154,15 @@ class TilingSpace {
   };
 
   // Special constraint requiring that `expr` evaluated at concrete tile sizes
-  // is a clean multiple of the concrete value of `tile_size` symbol.
+  // is a multiple of `tile_size`.
   // This allows verification using IsMultipleOf without heuristics for tid.
   struct DivisibilityConstraint {
     SymbolicExpr expr;
     SymbolicExpr tile_size;
   };
 
-  static std::unique_ptr<TilingSpace> Create(const HloFusionAdaptor& fusion,
-                                             mlir::MLIRContext* ctx);
+  static absl::StatusOr<std::unique_ptr<TilingSpace>> Create(
+      const HloFusionAdaptor& fusion, mlir::MLIRContext* ctx);
 
   std::string ToString() const;
 
@@ -196,9 +194,6 @@ class TilingSpace {
   llvm::SmallVector<DimensionInfo, 4> dimensions() const {
     return llvm::to_vector(dimensions_);
   }
-
-  ConstraintExpression& mutable_constraint() { return constraints_; }
-  const ConstraintExpression& constraint() const { return constraints_; }
 
   void AddDivisibilityConstraint(SymbolicExpr expr, SymbolicExpr tile_size) {
     divisibility_constraints_.push_back({expr, tile_size});
@@ -232,7 +227,9 @@ class TilingSpace {
  private:
   void ProcessDotLike(const HloInstruction& hlo);
   void ProcessReduce(const HloInstruction& hlo);
+  void ProcessScan(const HloInstruction& hlo);
   void ProcessDynamicSlice(const HloInstruction& hlo);
+  void ProcessGetTupleElement(const HloInstruction& hlo);
   void ProcessInstruction(const HloInstruction& hlo);
 
   // Initializes cached indexing map variables. This is necessary to allow
@@ -258,8 +255,8 @@ class TilingSpace {
   // there will be only one symbolic tile.
   llvm::SmallVector<Tile, 2> tiled_roots_;
 
-  // Constraint expression for the tiling space.
-  ConstraintExpression constraints_;
+  // Constraint for tile sizes.
+  ConstraintExpression constraint_;
 
   // Special divisibility constraints.
   llvm::SmallVector<DivisibilityConstraint, 2> divisibility_constraints_;
@@ -279,6 +276,10 @@ class TilingSpace {
 // If the shape is a tuple, return the shape at the given index.
 // Otherwise, return the shape itself.
 const Shape& GetFirstShape(const HloInstruction* instr, int64_t index = 0);
+
+// Returns a symbol replacement map to set concrete tile sizes.
+llvm::DenseMap<SymbolicExpr, SymbolicExpr> GetTileSizeReplacementMap(
+    const TilingSpace& tiling_space, absl::Span<const int64_t> tile_sizes);
 
 }  // namespace xla::gpu::experimental
 

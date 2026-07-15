@@ -278,3 +278,42 @@ def LegalizeBMM4dAdjY_2 : Pat<
           ConstantStrAttr<StrAttr, "tfl.bmm_4d_adj_y">, $attrs, $_, $_),
         (TFL_BatchMatMulOp $lhs, $rhs, ConstBoolAttrFalse, ConstBoolAttrTrue,
                      ConstBoolAttrFalse)>;
+
+def LegalizeCompositeMean : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $input),
+          ConstantStrAttr<StrAttr, "tfl.mean">, $attrs, $_, $_),
+        (TFL_MeanOp $input,
+          (Arith_ConstantOp (GetI32DenseAttr (GetAsVectorAttr<"axis"> $attrs))),
+          (GetCompositeAttributeAs<"keep_dims", "BoolAttr"> $attrs))>;
+
+def LegalizeCompositeMeanDynamicShaped : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $_, $input),
+          ConstantStrAttr<StrAttr, "tfl.mean">, $attrs, $_, $_),
+        (TFL_MeanOp $input,
+          (Arith_ConstantOp (GetI32DenseAttr (GetAsVectorAttr<"axis"> $attrs))),
+          (GetCompositeAttributeAs<"keep_dims", "BoolAttr"> $attrs))>;
+
+def LegalizeCompositeMeanDynamicShaped2 : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $_, $_, $input),
+          ConstantStrAttr<StrAttr, "tfl.mean">, $attrs, $_, $_),
+        (TFL_MeanOp $input,
+          (Arith_ConstantOp (GetI32DenseAttr (GetAsVectorAttr<"axis"> $attrs))),
+          (GetCompositeAttributeAs<"keep_dims", "BoolAttr"> $attrs))>;
+
+def LegalizeCompositeMeanDynamicShaped3 : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $_, $_, $_, $input),
+          ConstantStrAttr<StrAttr, "tfl.mean">, $attrs, $_, $_),
+        (TFL_MeanOp $input,
+          (Arith_ConstantOp (GetI32DenseAttr (GetAsVectorAttr<"axis"> $attrs))),
+          (GetCompositeAttributeAs<"keep_dims", "BoolAttr"> $attrs))>;
+
+def LegalizeSoftmax : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $input),
+          ConstantStrAttr<StrAttr, "odml.softmax">, $attrs, $_, $_),
+        (TFL_SoftmaxOp $input, ConstF32Attr<"1.0">)>;
+

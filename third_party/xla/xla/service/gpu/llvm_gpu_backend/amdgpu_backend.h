@@ -39,8 +39,7 @@ struct HsacoResult {
 // Links ROCm-Device-Libs into the given module if the module needs it.
 absl::Status LinkROCDLIfNecessary(llvm::Module* module,
                                   const std::string& gfx_version,
-                                  const DebugOptions& debug_options,
-                                  const std::string& rocdl_dir_path);
+                                  const DebugOptions& debug_options);
 
 // Compiles the argument module and returns it with LLVM AMDGPU backend.
 // rocdl_dir_path is the parent directory of ROCm-Device-Libs bitcode libraries.

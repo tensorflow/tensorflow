@@ -157,10 +157,11 @@ static bufferization::BufferizationOptions getPartialBufferizationOptions() {
   options.allowUnknownOps = true;
   options.copyBeforeWrite = true;
   options.unknownTypeConverterFn =
-      [](TensorType type, Attribute memorySpace,
-         const bufferization::BufferizationOptions& options) {
-        return bufferization::getMemRefTypeWithStaticIdentityLayout(
-            type, memorySpace);
+      [](bufferization::TensorLikeType type, Attribute memorySpace,
+         const bufferization::BufferizationOptions&) {
+        return cast<bufferization::BufferLikeType>(
+            bufferization::getMemRefTypeWithStaticIdentityLayout(
+                cast<TensorType>(type), memorySpace));
       };
   options.opFilter.allowDialect<bufferization::BufferizationDialect>();
   return options;
@@ -301,12 +302,8 @@ struct OneShotBufferizePass
                 bufferization::getMemRefTypeWithStaticIdentityLayout(
                     tensorType, memorySpace));
           }
-          // If not builtin, fallback to TensorLikeType::getBufferType()
-          auto bufferType =
-              type.getBufferType(opts, [&]() { return funcOp->emitError(); });
-          assert(succeeded(bufferType) &&
-                 "a valid buffer is always expected at function boundary");
-          return *bufferType;
+          // If not builtin, fallback to unknown type conversion.
+          return opts.unknownTypeConverterFn(type, memorySpace, opts);
         };
     opts.inferFunctionResultLayout = false;
     opts.bufferAlignment = 64;
@@ -370,7 +367,8 @@ struct FinalBufferizePass
     vector::registerBufferizableOpInterfaceExternalModels(registry);
     if (dialectsCallback) dialectsCallback(registry);
   }
-  // Default alignment_ specified in passes.td
+  using impl::FinalBufferizePassBase<
+      FinalBufferizePass>::FinalBufferizePassBase;
   FinalBufferizePass() = default;
 
   explicit FinalBufferizePass(uint64_t alignment) { alignment_ = alignment; }
@@ -446,20 +444,6 @@ struct FinalBufferizePass
 };
 
 }  // namespace
-
-namespace hlo {
-std::unique_ptr<OperationPass<ModuleOp>> createOneShotBufferizePass() {
-  return std::make_unique<OneShotBufferizePass>();
-}
-}  // namespace hlo
-
-std::unique_ptr<OperationPass<ModuleOp>> createComputeOpAndFuncBufferizePass() {
-  return std::make_unique<ComputeOpAndFuncBufferizePass>();
-}
-
-std::unique_ptr<OperationPass<ModuleOp>> createFinalBufferizePass() {
-  return std::make_unique<FinalBufferizePass>();
-}
 
 std::unique_ptr<OperationPass<ModuleOp>> createFinalBufferizePass(
     uint64_t alignment, BufferizeDialectsCallback dc,

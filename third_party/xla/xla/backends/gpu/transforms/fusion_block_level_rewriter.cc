@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/MathExtras.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -43,12 +44,11 @@ limitations under the License.
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -156,6 +156,16 @@ bool ShouldRewriteReductionFusion(
 absl::StatusOr<bool> ShouldTryRewriteFusion(
     const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_description) {
+  // If a dot fusion can be handled by Triton, GemmRewriter would have already
+  // taken care of it.
+  for (const HloInstruction* instr :
+       fusion->fused_instructions_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kDot ||
+        instr->opcode() == HloOpcode::kScaledDot) {
+      return false;
+    }
+  }
+
   if (fusion->IsMultiOutputFusion() &&
       !fusion->GetModule()
            ->config()
@@ -181,7 +191,12 @@ absl::StatusOr<bool> ProcessFusionInstruction(
     HloFusionInstruction* fusion_instruction,
     const se::DeviceDescription& device_info,
     HloCostAnalysis::ShapeSizeFunction shape_size,
-    mlir::MLIRContext* mlir_context) {
+    mlir::MLIRContext* mlir_context, bool use_experimental_tiling) {
+  bool dump_fusion_visualization = fusion_instruction->GetModule()
+                                       ->config()
+                                       .debug_options()
+                                       .xla_dump_fusion_visualization();
+
   ASSIGN_OR_RETURN(bool should_try_rewrite,
                    ShouldTryRewriteFusion(fusion_instruction, device_info));
   if (!should_try_rewrite) {
@@ -198,6 +213,13 @@ absl::StatusOr<bool> ProcessFusionInstruction(
     VLOG(2) << "Can't rewrite fusion " << fusion_instruction->ToString()
             << " because one or more instructions is not supported by Triton: "
             << can_codegen.Explain();
+    if (dump_fusion_visualization) {
+      RegisterFusionState(
+          *fusion_instruction->parent(),
+          absl::StrCat("Can't rewrite |", fusion_instruction->name(),
+                       "|: not supported by Triton: ", can_codegen.Explain()),
+          *fusion_instruction);
+    }
     return false;
   }
 
@@ -212,7 +234,8 @@ absl::StatusOr<bool> ProcessFusionInstruction(
 
   HloFusionAnalysisCache fusion_analysis_cache(device_info);
   GpuPerformanceModelWithIndexingAnalysis indexing_performance_model(
-      &device_info, &fusion_analysis_cache, shape_size, mlir_context);
+      &device_info, &fusion_analysis_cache, shape_size, mlir_context,
+      use_experimental_tiling);
 
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
       Cast<HloFusionInstruction>(fusion_instruction));
@@ -227,6 +250,13 @@ absl::StatusOr<bool> ProcessFusionInstruction(
     VLOG(2) << "Can't rewrite fusion " << fusion_instruction->ToString()
             << " because tiling search failed. (The most likely cause for "
             << "is that SymbolicTileAnalysis failed.)";
+    if (dump_fusion_visualization) {
+      RegisterFusionState(
+          *fusion_instruction->parent(),
+          absl::StrCat("Can't rewrite |", fusion_instruction->name(),
+                       "|: tiling search failed: ", fusion_decision->Explain()),
+          *fusion_instruction);
+    }
     return false;
   }
 
@@ -249,6 +279,13 @@ absl::StatusOr<bool> ProcessFusionInstruction(
   backend_config.mutable_fusion_backend_config()->set_kind(kTritonFusionKind);
   RETURN_IF_ERROR(fusion_instruction->set_backend_config(backend_config));
   fusion_instruction->set_fusion_kind(HloInstruction::FusionKind::kCustom);
+
+  if (dump_fusion_visualization) {
+    RegisterFusionState(*fusion_instruction->parent(),
+                        absl::StrCat("Rewrote |", fusion_instruction->name(),
+                                     "| to Triton block-level fusion"),
+                        *fusion_instruction);
+  }
   return true;
 }
 
@@ -269,9 +306,13 @@ absl::StatusOr<bool> FusionBlockLevelRewriter::RunImpl(
     }
     HloFusionInstruction* fusion_instruction =
         ::xla::Cast<HloFusionInstruction>(computation->FusionInstruction());
-    ASSIGN_OR_RETURN(bool changed,
-                     ProcessFusionInstruction(fusion_instruction, device_info_,
-                                              shape_size_, mlir_context_));
+    ASSIGN_OR_RETURN(
+        bool changed,
+        ProcessFusionInstruction(
+            fusion_instruction, device_info_, shape_size_, mlir_context_,
+            module->config()
+                .debug_options()
+                .xla_gpu_experimental_enable_tiling_propagation()));
 
     has_changed |= changed;
   }

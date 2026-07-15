@@ -57,7 +57,7 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
       const se::DeviceDescription* device_info,
       HloFusionAnalysisCache* fusion_analysis_cache,
       HloCostAnalysis::ShapeSizeFunction shape_size,
-      mlir::MLIRContext* mlir_context, bool use_experimental_tiling = false)
+      mlir::MLIRContext* mlir_context, bool use_experimental_tiling)
       : hlo_op_profile_(&HloOpProfiles::Singleton().GetProfile(*device_info)),
         device_info_(device_info),
         fusion_analysis_cache_(fusion_analysis_cache),
@@ -81,7 +81,8 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
 
   absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputation(
       const HloFusionAdaptor& fusion_adaptor,
-      const TiledHloComputation& tiled_hlo_computation, int64_t num_warps);
+      const TiledHloComputation& tiled_hlo_computation,
+      const BlockLevelParameters& block_level_parameters);
 
   // Estimate the run time of the fusion with the given launch dimensions and
   // output tile sizes.
@@ -96,7 +97,8 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
   // Estimate the run time of an Hlo instruction assuming it is emitted by
   // Triton.
   absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTriton(
-      const HloInstruction* instr);
+      const HloInstruction* instr,
+      const BlockLevelParameters* block_level_parameters = nullptr);
 
   // Estimates the best tile sizes for the given fusion. Iterates over all the
   // good tile sizes provided by SymbolicTileAnalysis, estimates the run time

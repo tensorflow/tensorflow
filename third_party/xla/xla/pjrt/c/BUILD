@@ -64,7 +64,7 @@ cc_library(
 cc_library(
     name = "pjrt_c_api_callback_extension_hdrs",
     hdrs = ["pjrt_c_api_callback_extension.h"],
-    deps = ["//xla/pjrt/c:pjrt_c_api_hdrs"],
+    deps = [":pjrt_c_api_hdrs"],
 )
 
 cc_library(
@@ -144,6 +144,10 @@ cc_library(
     srcs = ["pjrt_c_api_collectives_internal.cc"],
     hdrs = ["pjrt_c_api_collectives_internal.h"],
     deps = [
+        ":pjrt_c_api_collectives_extension_hdrs",
+        ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_helpers",
+        ":pjrt_c_api_wrapper_impl",
         "//xla:executable_run_options",
         "//xla/backends/cpu/collectives:cpu_clique_key",
         "//xla/backends/cpu/collectives:cpu_collectives",
@@ -152,10 +156,6 @@ cc_library(
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/core/collectives:reduction_kind",
-        "//xla/pjrt/c:pjrt_c_api_collectives_extension_hdrs",
-        "//xla/pjrt/c:pjrt_c_api_hdrs",
-        "//xla/pjrt/c:pjrt_c_api_helpers",
-        "//xla/pjrt/c:pjrt_c_api_wrapper_impl",
         "//xla/runtime:device_id",
         "//xla/service:collective_ops_utils",
         "//xla/tsl/concurrency:future",
@@ -315,6 +315,7 @@ cc_library(
     hdrs = ["pjrt_c_api_raw_buffer_extension.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":pjrt_c_api_device_event_hdrs",
         ":pjrt_c_api_hdrs",
     ],
 )
@@ -331,7 +332,6 @@ cc_library(
         ":pjrt_c_api_status_utils",
         ":pjrt_c_api_wrapper_impl",
         "//xla/pjrt:raw_buffer",
-        "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/status",
     ],
 )
@@ -347,12 +347,14 @@ cc_library(
         ":pjrt_c_api_raw_buffer_extension_hdrs",
         ":pjrt_c_api_status_utils",
         "//xla:future",
+        "//xla/pjrt:device_event",
         "//xla/pjrt:raw_buffer",
         "//xla/pjrt/c_api_client:pjrt_c_api_client",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@tsl//tsl/platform:casts",
@@ -655,6 +657,8 @@ cc_library(
         ":pjrt_c_api_triton_extension_hdrs",
         ":pjrt_c_api_triton_internal",
         ":pjrt_c_api_wrapper_impl",
+        ":pjrt_c_api_xla_transform_extension_hdrs",
+        ":pjrt_c_api_xla_transform_internal",
         "//xla/backends/cpu:target_machine_options",
         "//xla/backends/profiler:profiler_backends",  # To register the Host Tracers for GPU Plugin.
         "//xla/backends/profiler/gpu:device_tracer",  # To register the GPU Tracers with the GPU Plugin.

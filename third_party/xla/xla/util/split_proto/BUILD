@@ -19,8 +19,8 @@ tf_proto_library(
     srcs = ["split_proto.proto"],
     visibility = [
         # This proto is an implementation detail of the split proto format,
-        # it shouldn't be used outside of this package.
-        "//visibility:private",
+        # it shouldn't be used outside of this package, and the split_proto_cli.
+        "//xla/tools/split_proto:__subpackages__",
     ],
 )
 
@@ -104,6 +104,7 @@ cc_library(
     name = "split_gpu_executable_writer",
     srcs = ["split_gpu_executable_writer.cc"],
     hdrs = ["split_gpu_executable_writer.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = [
         ":split_proto_cc",
         ":split_proto_riegeli_options",
@@ -114,8 +115,11 @@ cc_library(
         "//xla/service:hlo_proto_util",
         "//xla/service/gpu:gpu_executable_proto_cc",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf",
         "@riegeli//riegeli/bytes:writer",
         "@riegeli//riegeli/records:record_writer",
@@ -135,6 +139,7 @@ xla_cc_test(
         "//xla/tsl/util/proto:parse_text_proto",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_googletest//:gtest_main",
+        "@riegeli//riegeli/base:initializer",
         "@riegeli//riegeli/bytes:string_reader",
         "@riegeli//riegeli/bytes:string_writer",
     ],
@@ -183,6 +188,7 @@ cc_library(
     name = "split_hlo_writer",
     srcs = ["split_hlo_writer.cc"],
     hdrs = ["split_hlo_writer.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = [
         ":split_proto_cc",
         ":split_proto_riegeli_options",

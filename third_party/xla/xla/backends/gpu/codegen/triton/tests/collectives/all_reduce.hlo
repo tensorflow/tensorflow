@@ -1,4 +1,4 @@
-// RUN: hlo_to_xtileir %s | FileCheck %s
+// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s
 // RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s
 
 sum {
@@ -8,7 +8,7 @@ sum {
 }
 fusion{
   p0 = f32[65536]{0} parameter(0)
-  ROOT all-reduce-start = f32[65536]{0} all-reduce-start(p0),
+  ROOT all-reduce = f32[65536]{0} all-reduce(p0),
     replica_groups={{0,1}}, to_apply=sum
 }
 

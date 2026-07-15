@@ -66,7 +66,7 @@ void CppFileRenderer::Render() {
     includes_.SelfHeader();
   }
 
-  includes_.Headers();
+  includes_.Headers(ops_);
   name_space_.Open();
   BlankLine();
 

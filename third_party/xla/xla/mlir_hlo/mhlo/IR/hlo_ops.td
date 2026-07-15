@@ -2818,7 +2818,8 @@ def MHLO_CustomCallOp: MHLO_Op<"custom_call",
         TypedArrayAttrBase<
             MHLO_OutputOperandAlias,
             "Aliasing attribute for outputs and operands of CustomCall">,
-        "{}">:$output_operand_aliases
+        "{}">:$output_operand_aliases,
+    OptionalAttr<MHLO_ArrayOfTilingAttr>:$result_tilings
   );
   let results = (outs Variadic<MHLO_CustomCallValue>);
   let hasCustomHLOConverter = 1;
@@ -2835,7 +2836,8 @@ def MHLO_CustomCallOp: MHLO_Op<"custom_call",
       "::mlir::mhlo::CustomCallApiVersionAttr":$api_version,
       "::mlir::ArrayAttr":$called_computations,
       "::mlir::ArrayAttr":$operand_layouts,
-      "::mlir::ArrayAttr":$result_layouts)>];
+      "::mlir::ArrayAttr":$result_layouts,
+      "::mlir::ArrayAttr":$result_tilings)>];
 
   let assemblyFormat = [{
     custom<CustomCallTarget>($call_target_name) `(` $inputs `)`
@@ -3354,6 +3356,10 @@ def MHLO_TopKOp : MHLO_Op<"topk", [RecursiveMemoryEffects, InferTensorType]> {
     dimension of the operand if `largest=true` or the bottom `k` values if
     `largest=false`.
 
+    If `is_stable=true` (the default), the original relative order of equal
+    elements is preserved. If `is_stable=false`, the order of equal elements
+    is undefined, which may allow for more efficient execution on some backends.
+
     See:
     https://www.tensorflow.org/xla/operation_semantics#top-k
 
@@ -3367,13 +3373,14 @@ def MHLO_TopKOp : MHLO_Op<"topk", [RecursiveMemoryEffects, InferTensorType]> {
   let arguments = (ins
     MHLO_Tensor:$operand,
     I64Attr:$k,
-    DefaultValuedOptionalAttr<BoolAttr, "true">:$largest
+    DefaultValuedOptionalAttr<BoolAttr, "true">:$largest,
+    DefaultValuedOptionalAttr<BoolAttr, "true">:$is_stable
   );
   let results = (outs MHLO_Tensor:$values,
                       MHLO_Tensor:$indices);
 
   let assemblyFormat = [{
-    `(`$operand `,` `k` `=` $k (`,` `largest` `=` $largest^)? `)` attr-dict `:`
+    `(`$operand `,` `k` `=` $k (`,` `largest` `=` $largest^)? (`,` `is_stable` `=` $is_stable^)? `)` attr-dict `:`
     type($operand) `->` `(`type($values)`,` type($indices)`)`
   }];
   let hasCustomHLOConverter = 1;
@@ -4169,4 +4176,3 @@ def MHLO_MinimumBroadcastShapesOp : CppDeprecated<"Do not use this op outside of
 }
 
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS
-

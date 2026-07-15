@@ -72,6 +72,7 @@ xla_test(
         "//xla/service:llvm_compiler",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Core",
@@ -97,6 +98,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_for_library",
         "@tsl//tsl/platform:test",
     ],
 )

@@ -56,9 +56,10 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
                           debug_options, compiler, target_config),
         shape_size_fn_(std::move(shape_size_fn)),
         fusion_analysis_cache_(target_config->device_description),
-        indexing_performance_model_(&target_config->device_description,
-                                    &fusion_analysis_cache_, shape_size_fn_,
-                                    &mlir_context_),
+        indexing_performance_model_(
+            &target_config->device_description, &fusion_analysis_cache_,
+            shape_size_fn_, &mlir_context_,
+            debug_options->xla_gpu_experimental_enable_tiling_propagation()),
         xla_gpu_experimental_all_fusions_with_triton_(
             debug_options->xla_gpu_experimental_all_fusions_with_triton()) {
     RegisterSymbolicExprStorage(&mlir_context_);
@@ -83,8 +84,7 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
   // We don't want to use the Triton emitter as a reference because it can
   // produce wrong results.
   bool CanProduceWrongResults() const override { return true; }
-  // TODO(b/514330710): use valid version
-  std::string version() const override { return "unknown"; }
+  std::string version() const override;
 
  private:
   absl::StatusOr<BlockLevelFusionConfig> GetCostModelConfig(

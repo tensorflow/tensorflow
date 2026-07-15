@@ -41,7 +41,6 @@ namespace xla::gpu::experimental {
 namespace {
 
 using absl_testing::IsOkAndHolds;
-using absl_testing::StatusIs;
 using mlir::MLIRContext;
 
 }  // namespace
@@ -68,7 +67,8 @@ class SchedulingTest : public HloHardwareIndependentTestBase {
       absl::string_view hlo_string, absl::Span<const int64_t> tile_sizes = {}) {
     HloInstruction* root = ParseAndGetRoot(hlo_string);
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-    auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+    ASSIGN_OR_RETURN(auto tiling_space,
+                     TilingSpace::Create(*fusion_adaptor, &mlir_context_));
     if (!tile_sizes.empty()) {
       RETURN_IF_ERROR(tiling_space->AssignTileSizes(tile_sizes));
     }
@@ -78,6 +78,48 @@ class SchedulingTest : public HloHardwareIndependentTestBase {
   mlir::MLIRContext mlir_context_;
   std::unique_ptr<VerifiedHloModule> module_;
 };
+
+TEST_F(SchedulingTest, OnlyParallelDimensionsTwoTilesPerProgramId) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"(
+    fusion {
+      p0 = f32[2,97]{1,0} parameter(0)
+      p1 = f32[2,97]{1,0} parameter(1)
+      ROOT subtract = f32[2,97]{1,0} subtract(p0, p1)
+    }
+    ENTRY main {
+      p0 = f32[2,97]{1,0} parameter(0)
+      p1 = f32[2,97]{1,0} parameter(1)
+      ROOT fusion = f32[2,97]{1,0} fusion(p0, p1), kind=kLoop, calls=fusion
+    })",
+                                    {1, 32}));
+  auto scheduling = GetSchedule(tiled_computation, 2);
+  EXPECT_THAT(scheduling,
+              IsOkAndHolds(MatchSchedule("d0 -> (pid * 2 + tid) / 4, "
+                                         "d1 -> (pid * 2 + tid) mod 4, "
+                                         "num_pids=4, num_tiles=8")));
+}
+
+TEST_F(SchedulingTest, OnlyParallelDimensionsThreeTilesPerProgramId) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"(
+    fusion {
+      p0 = f32[2,97]{1,0} parameter(0)
+      p1 = f32[2,97]{1,0} parameter(1)
+      ROOT subtract = f32[2,97]{1,0} subtract(p0, p1)
+    }
+    ENTRY main {
+      p0 = f32[2,97]{1,0} parameter(0)
+      p1 = f32[2,97]{1,0} parameter(1)
+      ROOT fusion = f32[2,97]{1,0} fusion(p0, p1), kind=kLoop, calls=fusion
+    })",
+                                    {1, 32}));
+  auto scheduling = GetSchedule(tiled_computation, 3);
+  EXPECT_THAT(scheduling,
+              IsOkAndHolds(MatchSchedule("d0 -> (pid * 3 + tid) / 4, "
+                                         "d1 -> (pid * 3 + tid) mod 4, "
+                                         "num_pids=3, num_tiles=8")));
+}
 
 TEST_F(SchedulingTest, OnlyParallelDimensions) {
   ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
@@ -95,8 +137,8 @@ TEST_F(SchedulingTest, OnlyParallelDimensions) {
                                     {1, 32}));
   auto scheduling = GetSchedule(tiled_computation);
   EXPECT_THAT(scheduling,
-              IsOkAndHolds(MatchSchedule(
-                  "d0 -> pid / 4, d1 -> pid mod 4, pid_bounds=[0, 7]")));
+              IsOkAndHolds(MatchSchedule("d0 -> pid / 4, d1 -> pid mod 4, "
+                                         "num_pids=8, num_tiles=8")));
 }
 
 TEST_F(SchedulingTest, ReductionsAndContractionsAreNotSupported) {
@@ -120,8 +162,8 @@ TEST_F(SchedulingTest, ReductionsAndContractionsAreNotSupported) {
     })",
                                     {1, 32, /*reduction_tile_size=*/8}));
   EXPECT_THAT(GetSchedule(tiled_computation),
-              IsOkAndHolds(MatchSchedule(
-                  "d0 -> pid / 4, d1 -> pid mod 4, pid_bounds=[0, 7]")));
+              IsOkAndHolds(MatchSchedule("d0 -> pid / 4, d1 -> pid mod 4, "
+                                         "num_pids=8, num_tiles=8")));
 }
 
 TEST_F(SchedulingTest, GetDotPermutationMultipleBatchDims) {
@@ -146,7 +188,7 @@ TEST_F(SchedulingTest, GetDotPermutationMultipleBatchDims) {
       IsOkAndHolds(MatchSchedule("d0 -> pid / 384, d1 -> (pid mod 384) / 128, "
                                  "d2 -> pid mod 384 mod 128 mod 2, "
                                  "d3 -> (pid mod 384 mod 128) / 2, "
-                                 "pid_bounds=[0, 767]")));
+                                 "num_pids=768, num_tiles=768")));
 }
 
 }  // namespace xla::gpu::experimental
