@@ -30,6 +30,26 @@ limitations under the License.
 namespace Eigen {
 namespace internal {
 
+template <>
+struct scalar_logistic_op<Eigen::bfloat16> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Eigen::bfloat16 operator()(
+      const Eigen::bfloat16& x) const {
+    float x_f = static_cast<float>(x);
+    const float cst_exp_hi = 16.6355324f;
+    const float e = Eigen::numext::exp(Eigen::numext::mini(x_f, cst_exp_hi));
+    return static_cast<Eigen::bfloat16>(e / (1.0f + e));
+  }
+};
+
+template <>
+struct functor_traits<scalar_logistic_op<Eigen::bfloat16>> {
+  enum {
+    Cost = NumTraits<Eigen::bfloat16>::AddCost * 15 +
+           NumTraits<Eigen::bfloat16>::MulCost * 11,
+    PacketAccess = false
+  };
+};
+
 #if GOOGLE_CUDA
 template <>
 struct scalar_arg_op<std::complex<float>> {
