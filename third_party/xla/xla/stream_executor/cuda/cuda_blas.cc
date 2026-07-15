@@ -1421,7 +1421,7 @@ void initialize_cublas() {
             return blas;
           });
 
-  if (!status.ok() && status.code() != absl::StatusCode::kAlreadyExists) {
+  if (!status.ok() && !absl::IsAlreadyExists(status)) {
     LOG(INFO) << "Unable to register cuBLAS factory: " << status.message();
   }
 }
