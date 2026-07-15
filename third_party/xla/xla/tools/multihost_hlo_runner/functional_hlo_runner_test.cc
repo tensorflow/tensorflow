@@ -45,11 +45,14 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
+#include "xla/pjrt/mock_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
@@ -1337,6 +1340,199 @@ TEST_F(FunctionalHloRunnerTest, SingleDeviceHloWithRandomData) {
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
       *client, preproc_options, raw_compile_options, running_options,
       {GetHloPath("single_device.hlo")}, InputFormat::kText));
+}
+
+class FakePjRtDevice : public PjRtDevice {
+ public:
+  FakePjRtDevice(int id, int process_index)
+      : id_(id), process_index_(process_index) {}
+  PjRtClient* client() const override { return nullptr; }
+  bool IsAddressable() const override { return true; }
+  LocalChipId local_hardware_id() const override { return LocalChipId(0); }
+  std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
+      absl::string_view description) const override {
+    return nullptr;
+  }
+  absl::Status TransferToInfeed(const LiteralSlice& literal) override {
+    return absl::OkStatus();
+  }
+  absl::Status TransferFromOutfeed(MutableBorrowingLiteral literal) override {
+    return absl::OkStatus();
+  }
+  absl::Span<PjRtMemorySpace* const> memory_spaces() const override {
+    return {};
+  }
+  absl::StatusOr<PjRtMemorySpace*> default_memory_space() const override {
+    return absl::UnimplementedError("");
+  }
+  int process_index() const override { return process_index_; }
+  int id() const override { return id_; }
+  GlobalDeviceId global_device_id() const override {
+    return GlobalDeviceId(id_);
+  }
+  absl::string_view device_kind() const override { return "fake"; }
+  absl::string_view ToString() const override { return "fake"; }
+  absl::string_view DebugString() const override { return "fake"; }
+
+ private:
+  int id_;
+  int process_index_;
+};
+
+class FakePjRtLoadedExecutable : public PjRtLoadedExecutable {
+ public:
+  FakePjRtLoadedExecutable(PjRtClient* client,
+                           absl::Span<PjRtDevice* const> addressable_devices)
+      : client_(client),
+        addressable_devices_(addressable_devices.begin(),
+                             addressable_devices.end()) {
+    for (int i = 0; i < addressable_devices_.size(); ++i) {
+      logical_ids_.push_back({i, 0});
+    }
+  }
+
+  PjRtClient* client() const override { return client_; }
+
+  const DeviceAssignment& device_assignment() const override {
+    return device_assignment_;
+  }
+
+  absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
+      const override {
+    return logical_ids_;
+  }
+
+  absl::Span<PjRtDevice* const> addressable_devices() const override {
+    return addressable_devices_;
+  }
+
+  absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
+      absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
+      const ExecuteOptions& options,
+      std::optional<std::vector<Future<>>>& returned_futures) const override {
+    std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results;
+    results.resize(addressable_devices_.size());
+    if (returned_futures.has_value()) {
+      returned_futures->resize(addressable_devices_.size(),
+                               Future<>(absl::OkStatus()));
+    }
+    return results;
+  }
+
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+      const ExecuteOptions& options, std::optional<Future<>>& returned_future,
+      bool fill_future) const override {
+    return absl::UnimplementedError("");
+  }
+
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+      const ExecuteOptions& options, std::optional<Future<>>& returned_future,
+      bool fill_future) const override {
+    return absl::UnimplementedError("");
+  }
+
+  void Delete() override {}
+  bool IsDeleted() const override { return false; }
+
+  absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
+      const override {
+    return hlo_modules_;
+  }
+
+  void SetHloModules(std::vector<std::shared_ptr<HloModule>> modules) {
+    hlo_modules_ = std::move(modules);
+  }
+
+  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  GetParameterLayouts() const override {
+    return std::vector<std::shared_ptr<const PjRtLayout>>{};
+  }
+
+ private:
+  PjRtClient* client_;
+  std::vector<PjRtDevice*> addressable_devices_;
+  std::vector<LogicalDeviceIds> logical_ids_;
+  DeviceAssignment device_assignment_;
+  std::vector<std::shared_ptr<HloModule>> hlo_modules_;
+};
+
+class FakeKeyValueStore : public KeyValueStoreInterface {
+ public:
+  absl::StatusOr<std::string> Get(absl::string_view key,
+                                  absl::Duration timeout) override {
+    return "";
+  }
+
+  absl::StatusOr<std::string> TryGet(absl::string_view key) override {
+    return "";
+  }
+
+  absl::Status Set(absl::string_view key, absl::string_view value) override {
+    absl::MutexLock lock(&mu_);
+    map_[std::string(key)] = std::string(value);
+    return absl::OkStatus();
+  }
+
+  std::shared_ptr<tsl::CallOptions> AsyncGet(
+      absl::string_view key,
+      tsl::CoordinationServiceAgent::StatusOrValueCallback done) override {
+    return nullptr;
+  }
+
+  bool Contains(absl::string_view key) const {
+    absl::MutexLock lock(&mu_);
+    return map_.contains(key);
+  }
+
+ private:
+  mutable absl::Mutex mu_;
+  absl::flat_hash_map<std::string, std::string> map_;
+};
+
+TEST_F(FunctionalHloRunnerTest, HostSynchronizationBarrier) {
+  MockPjRtClient client;
+
+  FakePjRtDevice device0(0, 0);
+  FakePjRtDevice device1(1, 1);
+  std::vector<PjRtDevice*> devices = {&device0, &device1};
+  std::vector<PjRtDevice*> addressable_devices = {&device0};
+
+  EXPECT_CALL(client, process_index()).WillRepeatedly(::testing::Return(0));
+  EXPECT_CALL(client, devices())
+      .WillRepeatedly(::testing::Return(absl::MakeSpan(devices)));
+  EXPECT_CALL(client, addressable_devices())
+      .WillRepeatedly(::testing::Return(absl::MakeSpan(addressable_devices)));
+
+  absl::string_view hlo_string = R"(
+    HloModule test_module
+    ENTRY test_computation {
+      ROOT const0 = s32[] constant(42)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  FakePjRtLoadedExecutable executable(&client, addressable_devices);
+  std::vector<std::shared_ptr<HloModule>> modules = {std::move(module)};
+  executable.SetHloModules(modules);
+
+  auto kv_store = std::make_shared<FakeKeyValueStore>();
+
+  FunctionalHloRunner::RunningOptions running_options;
+  running_options.kv_store = kv_store;
+  running_options.num_repeats = 2;
+  running_options.module_argument_mode =
+      FunctionalHloRunner::ModuleArgumentMode::kUseRandomNormalInputs;
+
+  std::minstd_rand0 engine(42);
+  TF_EXPECT_OK(FunctionalHloRunner::Run(client, &executable, /*arguments=*/{},
+                                        running_options, &engine)
+                   .status());
+
+  EXPECT_TRUE(kv_store->Contains("run_internal_repeat_0_0"));
+  EXPECT_TRUE(kv_store->Contains("run_internal_repeat_1_0"));
 }
 
 }  // namespace

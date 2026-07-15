@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/btree_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/random/random.h"
@@ -218,6 +219,27 @@ absl::StatusOr<HloModuleAndArguments> ReadModuleFromSnapshotBinaryProtoFile(
 }
 
 namespace {
+
+int GetProcessCount(const PjRtClient& client) {
+  absl::flat_hash_set<int> process_indices;
+  for (PjRtDevice* device : client.devices()) {
+    process_indices.insert(device->process_index());
+  }
+  return process_indices.size();
+}
+
+absl::Status WaitAtKvStoreBarrier(KeyValueStoreInterface* kv_store,
+                                  int process_index, int process_count,
+                                  std::string barrier_name) {
+  std::string my_key = absl::StrCat(barrier_name, "_", process_index);
+  RETURN_IF_ERROR(kv_store->Set(my_key, "ready"));
+  for (int i = 0; i < process_count; ++i) {
+    std::string peer_key = absl::StrCat(barrier_name, "_", i);
+    ASSIGN_OR_RETURN(std::string val,
+                     kv_store->Get(peer_key, absl::Minutes(10)));
+  }
+  return absl::OkStatus();
+}
 
 // This function reads an HloUnoptimizedSnapshot from the file at the given
 // path.
@@ -598,6 +620,16 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
       if (profile_current_repeat && !has_active_profiler_session) {
         running_options.profiler->CreateSession();
         has_active_profiler_session = true;
+      }
+      if (running_options.kv_store != nullptr) {
+        int process_count = GetProcessCount(client);
+        if (process_count > 1) {
+          std::string barrier_name =
+              absl::StrCat("run_internal_repeat_", repeat);
+          RETURN_IF_ERROR(WaitAtKvStoreBarrier(running_options.kv_store.get(),
+                                               client.process_index(),
+                                               process_count, barrier_name));
+        }
       }
       futures->clear();
       ASSIGN_OR_RETURN(
