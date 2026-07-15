@@ -1,0 +1,154 @@
+/* Copyright 2026 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+/* Pygments Styles (Simplified) */
+.c1 { color: #888; font-style: italic } /* Comment.Single */
+.cs { color: #c00; font-weight: bold } /* Comment.Special */
+.s { color: #d12f1b } /* String */
+.k { color: #080; font-weight: bold } /* Keyword */
+.kt { color: #555; font-weight: bold } /* Keyword.Type */
+.nv { color: #111 } /* Name.Variable */
+.nf { color: #06b; font-weight: bold } /* Name.Function */
+.m { color: #60e; font-weight: bold } /* Number */
+.p { color: #888 } /* Punctuation */
+.n { color: #111 } /* Name */
+
+body {
+  font-family: monospace;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+#graph-container,
+#histogram-container {
+  height: 300px;
+  min-height: 50px;
+  width: 100%;
+  border-bottom: 2px solid #ccc;
+}
+#graph-container {
+  overflow: hidden;
+}
+#histogram-container {
+  overflow: auto;
+  padding: 10px;
+}
+#splitter-graph,
+#splitter-histogram {
+  height: 8px;
+  cursor: ns-resize;
+  background: #eee;
+  border-top: 1px solid #ccc;
+  border-bottom: 1px solid #ccc;
+  flex-shrink: 0;
+}
+#hlo-container {
+  flex: 1;
+  overflow: auto;
+  padding: 10px;
+}
+pre {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+.stats-box {
+  border: 1px solid #ccc;
+  padding: 10px;
+  margin-bottom: 10px;
+  background-color: #f9f9f9;
+  border-radius: 5px;
+  display: inline-block;
+}
+.tooltip {
+  cursor: help;
+}
+.tooltip:target,
+.nv:target,
+.nc:target,
+.nf:target,
+.n:target {
+  outline: 3px solid #5eaeffff;
+  outline-offset: 0;
+  background-color: rgba(51, 153, 255, 0.2) !important;
+  border-radius: 2px;
+  z-index: 10;
+}
+.tooltip-table {
+  border-collapse: collapse;
+  font-family: monospace;
+}
+.tooltip-cell {
+  border: 1px solid #ccc;
+  padding: 2px;
+}
+.tooltip-cell-right {
+  border: 1px solid #ccc;
+  padding: 2px;
+  text-align: right;
+}
+.tooltiptext {
+  display: none;
+  position: fixed;
+  width: max-content;
+  max-width: 1000px;
+  background-color: #333;
+  color: #fff;
+  text-align: left;
+  border-radius: 4px;
+  padding: 4px 8px;
+  z-index: 10000;
+  font-family: monospace;
+  font-size: 12px;
+  white-space: normal;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+}
+[data-stack-frame-id] {
+  cursor: help;
+  text-decoration: underline dotted #aaa;
+}
+[data-stack-frame-id]:hover {
+  background-color: rgba(255, 255, 0, 0.2);
+  outline: 1px solid #ffd700;
+}
+.stack-trace-tooltip {
+  display: none;
+  position: fixed;
+  background-color: #333;
+  color: #fff;
+  padding: 10px;
+  border-radius: 5px;
+  z-index: 10000;
+  white-space: pre;
+  font-family: monospace;
+  font-size: 11px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+  max-width: 90vw;
+}
+.stack-trace-tooltip a {
+  color: #8cf;
+}
+#dag-tooltip {
+  position: fixed;
+  background-color: #333;
+  color: #fff;
+  padding: 5px;
+  border-radius: 3px;
+  display: none;
+  z-index: 10000;
+  font-family: monospace;
+  font-size: 12px;
+}
