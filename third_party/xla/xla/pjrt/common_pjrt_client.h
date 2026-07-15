@@ -194,10 +194,9 @@ class CommonPjRtClient : public PjRtClient {
 
   // Linearizes data into dest.
   virtual absl::Status Linearize(absl::Span<uint8_t> dest, const void* data,
-                                 PrimitiveType type,
-                                 absl::Span<const int64_t> dims,
                                  absl::Span<const int64_t> byte_strides,
-                                 const Layout& device_layout,
+                                 const Shape& device_shape,
+                                 PjRtMemorySpace* memory_space,
                                  absl::Span<const uint32_t> dynamic_sizes);
 
   absl::StatusOr<PjRtDeviceEventRef> LinearizeIntoImpl(

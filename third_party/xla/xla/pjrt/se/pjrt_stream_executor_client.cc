@@ -668,8 +668,6 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
                    tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
                        ->GetLocalDeviceState());
 
-  TransferManager* transfer_manager = client()->backend().transfer_manager();
-
   auto* copy_stream = local_device->host_to_device_stream();
 
   RETURN_IF_ERROR(WaitForAllocation(copy_stream, *raw_buffer));
@@ -692,35 +690,16 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
   }
   int64_t size = ShapeUtil::ByteSizeOf(on_host_shape);
 
+  ASSIGN_OR_RETURN(
+      int64_t packed_size,
+      GetOnDeviceBytesCount(memory_space->kind_id(), device_shape));
+
   absl::InlinedVector<int64_t, 4> shape_strides(
       device_shape.dimensions().size());
   RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
       device_shape, absl::MakeSpan(shape_strides)));
   bool host_and_device_strides_equal =
       (size == 0 || *byte_strides == shape_strides);
-
-  std::shared_ptr<TransposePlan> transpose;
-  if (!host_and_device_strides_equal) {
-    absl::InlinedVector<int64_t, 4> permutation(dims.size());
-    absl::c_reverse_copy(device_shape.layout().minor_to_major(),
-                         permutation.begin());
-    TransposePlan::Options options;
-    options.elem_size_in_bytes = primitive_util::ByteWidth(type);
-    options.dims = dims;
-    options.permutation = permutation;
-    options.input_striding = TransposePlan::Striding{*byte_strides};
-    ASSIGN_OR_RETURN(transpose, GetTransposePlan(options));
-  }
-
-  bool should_pack = primitive_util::IsSubByteNonPredType(type) &&
-                     transfer_manager->PackSubbyteTypes();
-  int64_t packed_size;
-  if (should_pack) {
-    packed_size =
-        CeilOfRatio<int64_t>(size, 8 / primitive_util::BitWidth(type));
-  } else {
-    packed_size = size;
-  }
 
   // If necessary, allocate a host-side buffer for staging host-to-device
   // transfers. On GPU this is a buffer in pinned memory.
@@ -733,8 +712,8 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
     HostMemoryAllocator::AllocateOptions alloc_opts;
     alloc_opts.numa_node = local_device->executor()->numa_node();
     alloc_opts.local_device_id = local_device->local_device_id();
-    staging_buffer = GetHostMemoryAllocator()->Allocate(
-        transpose ? size : packed_size, alloc_opts);
+    staging_buffer =
+        GetHostMemoryAllocator()->Allocate(packed_size, alloc_opts);
   }
 
   // Copy the buffer into a staging buffer before returning control to the
@@ -742,25 +721,12 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
   // duration of the call. Otherwise, we stage (if necessary) on a separate
   // thread.
   if (host_buffer_semantics == HostBufferSemantics::kImmutableOnlyDuringCall) {
-    if (transpose) {
-      transpose->Execute(data, staging_buffer.get());
-      if (should_pack) {
-        primitive_util::PackIntN(
-            type,
-            absl::MakeConstSpan(static_cast<const char*>(staging_buffer.get()),
-                                size),
-            absl::MakeSpan(static_cast<char*>(staging_buffer.get()),
-                           packed_size));
-      }
-    } else {
-      if (should_pack) {
-        primitive_util::PackIntN(
-            type, absl::MakeConstSpan(static_cast<const char*>(data), size),
-            absl::MakeSpan(static_cast<char*>(staging_buffer.get()),
-                           packed_size));
-      } else {
-        std::memcpy(staging_buffer.get(), data, size);
-      }
+    if (staging_buffer) {
+      RETURN_IF_ERROR(
+          Linearize(absl::MakeSpan(static_cast<uint8_t*>(staging_buffer.get()),
+                                   packed_size),
+                    data, *byte_strides, device_shape,
+                    raw_buffer->memory_space(), /*dynamic_sizes=*/{}));
     }
     if (on_done_with_host_buffer) {
       std::move(on_done_with_host_buffer)();
@@ -773,15 +739,17 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
   // TODO(misard) assess if it would be preferable to introduce a heuristic to
   // put the transfer into the calling thread for small literals.
   auto transfer_h2d =
-      [this, local_client = client(), local_device, data, size, type,
-       packed_size, event = definition_event, raw_buffer, should_pack,
-       staging_buffer{std::move(staging_buffer)},
+      [this, local_device, data,
+       captured_strides = absl::InlinedVector<int64_t, 4>(byte_strides->begin(),
+                                                          byte_strides->end()),
+       device_shape, memory_space, packed_size, event = definition_event,
+       raw_buffer, staging_buffer{std::move(staging_buffer)},
        on_done_with_host_buffer =
            on_done_with_host_buffer
                ? std::make_shared<absl::AnyInvocable<void() &&>>(
                      std::move(on_done_with_host_buffer))
                : nullptr,
-       host_buffer_semantics, transpose{std::move(transpose)}]() mutable {
+       host_buffer_semantics]() mutable {
         // This function uses CHECK_OK and value() since we have no way
         // to report failures from a callback. However, the operations here are
         // unlikely to fail and not recoverable even if we were to fail: DMAs to
@@ -800,27 +768,11 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
           // do so now.
           if (host_buffer_semantics !=
               HostBufferSemantics::kImmutableOnlyDuringCall) {
-            if (transpose) {
-              transpose->Execute(data, staging_buffer.get());
-              if (should_pack) {
-                primitive_util::PackIntN(
-                    type,
-                    absl::MakeConstSpan(
-                        static_cast<const char*>(staging_buffer.get()), size),
-                    absl::MakeSpan(static_cast<char*>(staging_buffer.get()),
-                                   packed_size));
-              }
-            } else {
-              if (should_pack) {
-                primitive_util::PackIntN(
-                    type,
-                    absl::MakeConstSpan(static_cast<const char*>(data), size),
-                    absl::MakeSpan(static_cast<char*>(staging_buffer.get()),
-                                   packed_size));
-              } else {
-                std::memcpy(staging_buffer.get(), data, size);
-              }
-            }
+            CHECK_OK(Linearize(
+                absl::MakeSpan(static_cast<uint8_t*>(staging_buffer.get()),
+                               packed_size),
+                data, captured_strides, device_shape, memory_space,
+                /*dynamic_sizes=*/{}));
           }
           CHECK_OK(local_device->host_to_device_stream()->Memcpy(
               &device_memory, staging_buffer.get(), packed_size));
