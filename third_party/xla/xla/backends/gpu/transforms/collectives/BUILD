@@ -743,6 +743,8 @@ cc_library(
     hdrs = ["collective_kernel_strategy_annotator.h"],
     deps = [
         "//xla:status_macros",
+        "//xla:xla_proto_cc",
+        "//xla/backends/gpu/runtime:all_gather",
         "//xla/backends/gpu/runtime:all_reduce",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
@@ -750,6 +752,7 @@ cc_library(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/stream_executor/gpu:all_reduce_kernel",
         "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
