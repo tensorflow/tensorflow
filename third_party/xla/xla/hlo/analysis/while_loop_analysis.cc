@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/hlo/analysis/while_loop_analysis.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -864,15 +863,23 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
       VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX.";
       return nullopt;
     }
+    // The loop does not execute at all if N <= init.
     if (*trips <= 0) {
       return 0;
     }
-    trips = CheckedAdd(*trips, trip_count_step - 1);
-    if (!trips) {
+    // Trip count is ceil((N - init) / k). Compute it as
+    // (N - init - 1) / k + 1 to avoid the overflow that
+    // (N - init + k - 1) / k can hit when N - init is close to INT64_MAX.
+    // Here *trips >= 1, so (*trips - 1) is safe and the division result is
+    // at most *trips - 1, so adding 1 cannot overflow; use CheckedAdd anyway
+    // for uniformity.
+    optional<int64_t> trip_count =
+        CheckedAdd((*trips - 1) / trip_count_step, 1);
+    if (!trip_count) {
       VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX.";
       return nullopt;
     }
-    return *trips / trip_count_step;
+    return *trip_count;
   }
 
   // Handle `i = init; i <= N; i+=k`.
@@ -888,9 +895,12 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
       VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX";
       return nullopt;
     }
+    // The loop does not execute at all if N < init.
     if (*trips < 0) {
       return 0;
     }
+    // Trip count is floor((N - init) / k) + 1. Integer division of
+    // non-negative values already floors, and CheckedAdd guards the +1.
     optional<int64_t> trip_count = CheckedAdd(*trips / trip_count_step, 1);
     if (!trip_count) {
       VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX";

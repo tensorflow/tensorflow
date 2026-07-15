@@ -356,6 +356,18 @@ TEST_F(WhileLoopAnalysisTest, ExactBoundTrivialTripCount) {
   EXPECT_EQ(
       MakeWhileLoopAndGetTripCount(0, 40, 5, ComparisonDirection::kLt).value(),
       CalculateTripCount(0, 40, 5, ComparisonDirection::kLt));
+  // Verify small limits and large steps.
+  EXPECT_EQ(
+      MakeWhileLoopAndGetTripCount(0, 1, 5, ComparisonDirection::kLt).value(),
+      CalculateTripCount(0, 1, 5, ComparisonDirection::kLt));
+  // Verify negative limits/init.
+  EXPECT_EQ(
+      MakeWhileLoopAndGetTripCount(-10, 0, 3, ComparisonDirection::kLt).value(),
+      CalculateTripCount(-10, 0, 3, ComparisonDirection::kLt));
+  // Verify zero iterations.
+  EXPECT_EQ(
+      MakeWhileLoopAndGetTripCount(6, 5, 5, ComparisonDirection::kLt).value(),
+      CalculateTripCount(6, 5, 5, ComparisonDirection::kLt));
 
   // LE cases
   EXPECT_EQ(
@@ -370,6 +382,14 @@ TEST_F(WhileLoopAnalysisTest, ExactBoundTrivialTripCount) {
   EXPECT_EQ(
       MakeWhileLoopAndGetTripCount(0, 40, 5, ComparisonDirection::kLe).value(),
       CalculateTripCount(0, 40, 5, ComparisonDirection::kLe));
+  // Verify negative limits/init.
+  EXPECT_EQ(
+      MakeWhileLoopAndGetTripCount(-10, 0, 3, ComparisonDirection::kLe).value(),
+      CalculateTripCount(-10, 0, 3, ComparisonDirection::kLe));
+  // Verify zero iterations.
+  EXPECT_EQ(
+      MakeWhileLoopAndGetTripCount(6, 5, 5, ComparisonDirection::kLe).value(),
+      CalculateTripCount(6, 5, 5, ComparisonDirection::kLe));
 }
 
 // Regression test for a bug where a non-divisible step combined with a small
