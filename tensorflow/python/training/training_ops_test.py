@@ -24,15 +24,23 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
-from tensorflow.python.framework.test_util import TensorFlowTestCase
+from tensorflow.python.framework.test_util import (
+    TensorFlowTestCase,
+)
+
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
 from tensorflow.python.ops import gen_training_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
+
+# pylint: disable=unused-import
+from tensorflow.python.ops import resource_variable_ops
+
+# pylint: enable=unused-import
 from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
 
 
 class TrainingOpsTest(TensorFlowTestCase):
@@ -49,7 +57,7 @@ class TrainingOpsTest(TensorFlowTestCase):
     elif dtype == np.int64:
       return dtypes.int64
     else:
-      assert False, (dtype)
+      assert False, dtype
 
   def _testTypes(self, x, alpha, delta, use_gpu=None):
     self.setUp()
@@ -62,11 +70,14 @@ class TrainingOpsTest(TensorFlowTestCase):
       self.assertShapeEqual(out, apply_sgd)
       self.assertAllCloseAccordingToType(x - alpha * delta, out)
 
-  @test_util.run_v1_only("ApplyGradientDescent op returns a ref, so it is not "
-                         "supported in eager mode.")
+  @test_util.run_v1_only(
+      "ApplyGradientDescent op returns a ref, so it is not "
+      "supported in eager mode."
+  )
   def testApplyGradientDescent(self):
-    for (dtype, use_gpu) in itertools.product(
-        [np.float16, np.float32, np.float64], [False, True]):
+    for dtype, use_gpu in itertools.product(
+        [np.float16, np.float32, np.float64], [False, True]
+    ):
       x = np.arange(100).astype(dtype)
       alpha = np.array(2.0).astype(dtype)
       delta = np.arange(100).astype(dtype)
@@ -83,20 +94,14 @@ class TrainingOpsTest(TensorFlowTestCase):
       apply_adagrad = gen_training_ops.apply_adagrad(var, accum, lr, grad)
       out = self.evaluate(apply_adagrad)
       self.assertShapeEqual(out, apply_adagrad)
-      self.assertAllCloseAccordingToType(x - lr * grad * (y + grad * grad)**
-                                         (-0.5), out)
+      self.assertAllCloseAccordingToType(
+          x - lr * grad * (y + grad * grad) ** (-0.5), out
+      )
       self.assertAllCloseAccordingToType(y + grad * grad, self.evaluate(accum))
 
-  def _testTypesForFtrl(self,
-                        x,
-                        y,
-                        z,
-                        lr,
-                        grad,
-                        use_gpu=None,
-                        l1=0.0,
-                        l2=0.0,
-                        lr_power=-0.5):
+  def _testTypesForFtrl(
+      self, x, y, z, lr, grad, use_gpu=None, l1=0.0, l2=0.0, lr_power=-0.5
+  ):
     self.setUp()
     with self.session(use_gpu=use_gpu):
       var = variable_v1.VariableV1(x)
@@ -105,101 +110,108 @@ class TrainingOpsTest(TensorFlowTestCase):
       self.evaluate(variables.global_variables_initializer())
 
       self.assertAllCloseAccordingToType(x, self.evaluate(var))
-      apply_ftrl = gen_training_ops.apply_ftrl(var, accum, linear, grad, lr, l1,
-                                               l2, lr_power)
+      apply_ftrl = gen_training_ops.apply_ftrl(
+          var, accum, linear, grad, lr, l1, l2, lr_power
+      )
       out = self.evaluate(apply_ftrl)
       self.assertShapeEqual(out, apply_ftrl)
       accum_update = y + grad * grad
-      linear_update = z + grad - (accum_update**(-lr_power) - y**
-                                  (-lr_power)) / lr * x
-      quadratic = 1.0 / (accum_update**(lr_power) * lr) + 2 * l2
-      expected_out = np.array([(
-          np.sign(linear_update[i]) * l1 - linear_update[i]) / (quadratic[i]) if
-                               np.abs(linear_update[i]) > l1 else 0.0
-                               for i in range(linear_update.size)])
-      self.assertAllCloseAccordingToType(accum_update, self.evaluate(accum))
-      if x.dtype == np.float16:
-        # The calculations here really are not very precise in float16.
-        self.assertAllClose(
-            linear_update, self.evaluate(linear), rtol=2e-2, atol=2e-2)
-        self.assertAllClose(expected_out, out, rtol=2e-2, atol=2e-2)
-      elif x.dtype == np.float32:
-        # The calculations here not sufficiently precise in float32.
-        self.assertAllClose(
-            linear_update, self.evaluate(linear), rtol=1e-5, atol=1e-5)
-        self.assertAllClose(expected_out, out, rtol=1e-5, atol=1e-5)
-      else:
-        self.assertAllClose(linear_update, self.evaluate(linear))
-        self.assertAllClose(expected_out, out)
-
-  def _testTypesForFtrlMultiplyLinearByLr(self,
-                                          x,
-                                          y,
-                                          z,
-                                          lr,
-                                          grad,
-                                          use_gpu=None,
-                                          l1=0.0,
-                                          l2=0.0,
-                                          lr_power=-0.5):
-    self.setUp()
-    with self.session(use_gpu=use_gpu):
-      var = variable_v1.VariableV1(x)
-      accum = variable_v1.VariableV1(y)
-      linear = variable_v1.VariableV1(z)
-      self.evaluate(variables.global_variables_initializer())
-
-      self.assertAllCloseAccordingToType(x, self.evaluate(var))
-      apply_ftrl = (
-          gen_training_ops.apply_ftrl(
-              var,
-              accum,
-              linear,
-              grad,
-              lr,
-              l1,
-              l2,
-              lr_power,
-              multiply_linear_by_lr=True))
-      out = self.evaluate(apply_ftrl)
-      self.assertShapeEqual(out, apply_ftrl)
-      accum_update = y + grad * grad
-      linear_update = z + grad * lr - (accum_update**(-lr_power) - y**
-                                       (-lr_power)) * x
-      quadratic = accum_update**(-lr_power) + 2 * l2 * lr
+      linear_update = (
+          z + grad - (accum_update ** (-lr_power) - y ** (-lr_power)) / lr * x
+      )
+      quadratic = 1.0 / (accum_update ** (lr_power) * lr) + 2 * l2
       expected_out = np.array([
-          (np.sign(linear_update[i]) * l1 * lr - linear_update[i]) /
-          (quadratic[i]) if np.abs(linear_update[i]) > l1 * lr else 0.0
+          (np.sign(linear_update[i]) * l1 - linear_update[i]) / (quadratic[i])
+          if np.abs(linear_update[i]) > l1
+          else 0.0
           for i in range(linear_update.size)
       ])
       self.assertAllCloseAccordingToType(accum_update, self.evaluate(accum))
       if x.dtype == np.float16:
         # The calculations here really are not very precise in float16.
         self.assertAllClose(
-            linear_update, self.evaluate(linear), rtol=2e-2, atol=2e-2)
+            linear_update, self.evaluate(linear), rtol=2e-2, atol=2e-2
+        )
         self.assertAllClose(expected_out, out, rtol=2e-2, atol=2e-2)
       elif x.dtype == np.float32:
         # The calculations here not sufficiently precise in float32.
         self.assertAllClose(
-            linear_update, self.evaluate(linear), rtol=1e-5, atol=1e-5)
+            linear_update, self.evaluate(linear), rtol=1e-5, atol=1e-5
+        )
         self.assertAllClose(expected_out, out, rtol=1e-5, atol=1e-5)
       else:
         self.assertAllClose(linear_update, self.evaluate(linear))
         self.assertAllClose(expected_out, out)
 
-  @test_util.run_v1_only("ApplyAdagrad op returns a ref, so it is not "
-                         "supported in eager mode.")
+  def _testTypesForFtrlMultiplyLinearByLr(
+      self, x, y, z, lr, grad, use_gpu=None, l1=0.0, l2=0.0, lr_power=-0.5
+  ):
+    self.setUp()
+    with self.session(use_gpu=use_gpu):
+      var = variable_v1.VariableV1(x)
+      accum = variable_v1.VariableV1(y)
+      linear = variable_v1.VariableV1(z)
+      self.evaluate(variables.global_variables_initializer())
+
+      self.assertAllCloseAccordingToType(x, self.evaluate(var))
+      apply_ftrl = gen_training_ops.apply_ftrl(
+          var,
+          accum,
+          linear,
+          grad,
+          lr,
+          l1,
+          l2,
+          lr_power,
+          multiply_linear_by_lr=True,
+      )
+      out = self.evaluate(apply_ftrl)
+      self.assertShapeEqual(out, apply_ftrl)
+      accum_update = y + grad * grad
+      linear_update = (
+          z + grad * lr - (accum_update ** (-lr_power) - y ** (-lr_power)) * x
+      )
+      quadratic = accum_update ** (-lr_power) + 2 * l2 * lr
+      expected_out = np.array([
+          (np.sign(linear_update[i]) * l1 * lr - linear_update[i])
+          / (quadratic[i])
+          if np.abs(linear_update[i]) > l1 * lr
+          else 0.0
+          for i in range(linear_update.size)
+      ])
+      self.assertAllCloseAccordingToType(accum_update, self.evaluate(accum))
+      if x.dtype == np.float16:
+        # The calculations here really are not very precise in float16.
+        self.assertAllClose(
+            linear_update, self.evaluate(linear), rtol=2e-2, atol=2e-2
+        )
+        self.assertAllClose(expected_out, out, rtol=2e-2, atol=2e-2)
+      elif x.dtype == np.float32:
+        # The calculations here not sufficiently precise in float32.
+        self.assertAllClose(
+            linear_update, self.evaluate(linear), rtol=1e-5, atol=1e-5
+        )
+        self.assertAllClose(expected_out, out, rtol=1e-5, atol=1e-5)
+      else:
+        self.assertAllClose(linear_update, self.evaluate(linear))
+        self.assertAllClose(expected_out, out)
+
+  @test_util.run_v1_only(
+      "ApplyAdagrad op returns a ref, so it is not supported in eager mode."
+  )
   def testApplyAdagrad(self):
-    for (dtype, use_gpu) in itertools.product(
-        [np.float16, np.float32, np.float64], [False, True]):
+    for dtype, use_gpu in itertools.product(
+        [np.float16, np.float32, np.float64], [False, True]
+    ):
       x = np.arange(100).astype(dtype)
       y = np.arange(1, 101).astype(dtype)
       lr = np.array(2.0).astype(dtype)
       grad = np.arange(100).astype(dtype)
       self._testTypesForAdagrad(x, y, lr, grad, use_gpu)
 
-  @test_util.run_v1_only("ApplyFtrl op returns a ref, so it is not "
-                         "supported in eager mode.")
+  @test_util.run_v1_only(
+      "ApplyFtrl op returns a ref, so it is not supported in eager mode."
+  )
   def testApplyFtrl(self):
     for dtype in [np.float16, np.float32, np.float64]:
       x = np.arange(100).astype(dtype)
@@ -211,8 +223,10 @@ class TrainingOpsTest(TensorFlowTestCase):
       grad = np.arange(100).astype(dtype)
       self._testTypesForFtrl(x, y, z, lr, grad, use_gpu=False, l1=l1, l2=l2)
 
-  @test_util.run_v1_only("ApplyFtrlMultiplyLinearByLr op returns a ref, so it "
-                         "is not supported in eager mode.")
+  @test_util.run_v1_only(
+      "ApplyFtrlMultiplyLinearByLr op returns a ref, so it "
+      "is not supported in eager mode."
+  )
   def testApplyFtrlMultiplyLinearByLr(self):
     for dtype in [np.float16, np.float32, np.float64]:
       x = np.arange(100).astype(dtype)
@@ -223,7 +237,8 @@ class TrainingOpsTest(TensorFlowTestCase):
       l2 = np.array(4.0).astype(dtype)
       grad = np.arange(100).astype(dtype)
       self._testTypesForFtrlMultiplyLinearByLr(
-          x, y, z, lr, grad, use_gpu=False, l1=l1, l2=l2)
+          x, y, z, lr, grad, use_gpu=False, l1=l1, l2=l2
+      )
 
   def _testTypesForSparseAdagrad(self, x, y, lr, grad, indices, use_gpu):
     self.setUp()
@@ -234,29 +249,27 @@ class TrainingOpsTest(TensorFlowTestCase):
 
       self.assertAllCloseAccordingToType(x, self.evaluate(var))
       sparse_apply_adagrad = gen_training_ops.sparse_apply_adagrad(
-          var, accum, lr, grad,
-          constant_op.constant(indices, self._toType(indices.dtype)))
+          var,
+          accum,
+          lr,
+          grad,
+          constant_op.constant(indices, self._toType(indices.dtype)),
+      )
       out = self.evaluate(sparse_apply_adagrad)
       self.assertShapeEqual(out, sparse_apply_adagrad)
 
-      for (i, index) in enumerate(indices):
+      for i, index in enumerate(indices):
         self.assertAllCloseAccordingToType(
-            x[index] - lr * grad[i] * (y[index] + grad[i] * grad[i])**(-0.5),
-            self.evaluate(var)[index])
-        self.assertAllCloseAccordingToType(y[index] + grad[i] * grad[i],
-                                           self.evaluate(accum)[index])
+            x[index] - lr * grad[i] * (y[index] + grad[i] * grad[i]) ** (-0.5),
+            self.evaluate(var)[index],
+        )
+        self.assertAllCloseAccordingToType(
+            y[index] + grad[i] * grad[i], self.evaluate(accum)[index]
+        )
 
-  def _testTypesForSparseFtrl(self,
-                              x,
-                              y,
-                              z,
-                              lr,
-                              grad,
-                              indices,
-                              use_gpu,
-                              l1=0.0,
-                              l2=0.0,
-                              lr_power=-0.5):
+  def _testTypesForSparseFtrl(
+      self, x, y, z, lr, grad, indices, use_gpu, l1=0.0, l2=0.0, lr_power=-0.5
+  ):
     self.setUp()
     with self.session(use_gpu=use_gpu):
       var = variable_v1.VariableV1(x)
@@ -274,28 +287,24 @@ class TrainingOpsTest(TensorFlowTestCase):
           lr,
           l1,
           l2,
-          lr_power=lr_power)
+          lr_power=lr_power,
+      )
       out = self.evaluate(sparse_apply_ftrl)
       self.assertShapeEqual(out, sparse_apply_ftrl)
 
-      for (i, index) in enumerate(indices):
+      for i, index in enumerate(indices):
         self.assertAllCloseAccordingToType(
-            x[index] - lr * grad[i] *
-            (y[index] + grad[i] * grad[i])**(lr_power),
-            self.evaluate(var)[index])
-        self.assertAllCloseAccordingToType(y[index] + grad[i] * grad[i],
-                                           self.evaluate(accum)[index])
+            x[index]
+            - lr * grad[i] * (y[index] + grad[i] * grad[i]) ** (lr_power),
+            self.evaluate(var)[index],
+        )
+        self.assertAllCloseAccordingToType(
+            y[index] + grad[i] * grad[i], self.evaluate(accum)[index]
+        )
 
-  def _testTypesForSparseFtrlMultiplyLinearByLr(self,
-                                                x,
-                                                y,
-                                                z,
-                                                lr,
-                                                grad,
-                                                indices,
-                                                l1=0.0,
-                                                l2=0.0,
-                                                lr_power=-0.5):
+  def _testTypesForSparseFtrlMultiplyLinearByLr(
+      self, x, y, z, lr, grad, indices, l1=0.0, l2=0.0, lr_power=-0.5
+  ):
     self.setUp()
     with self.session(use_gpu=False):
       var = variable_v1.VariableV1(x)
@@ -304,35 +313,41 @@ class TrainingOpsTest(TensorFlowTestCase):
       self.evaluate(variables.global_variables_initializer())
 
       self.assertAllCloseAccordingToType(x, self.evaluate(var))
-      sparse_apply_ftrl = (
-          gen_training_ops.sparse_apply_ftrl(
-              var,
-              accum,
-              linear,
-              grad,
-              constant_op.constant(indices, self._toType(indices.dtype)),
-              lr,
-              l1,
-              l2,
-              lr_power=lr_power,
-              multiply_linear_by_lr=True))
+      sparse_apply_ftrl = gen_training_ops.sparse_apply_ftrl(
+          var,
+          accum,
+          linear,
+          grad,
+          constant_op.constant(indices, self._toType(indices.dtype)),
+          lr,
+          l1,
+          l2,
+          lr_power=lr_power,
+          multiply_linear_by_lr=True,
+      )
       out = self.evaluate(sparse_apply_ftrl)
       self.assertShapeEqual(out, sparse_apply_ftrl)
 
-      for (i, index) in enumerate(indices):
+      for i, index in enumerate(indices):
         self.assertAllCloseAccordingToType(
-            x[index] - lr * grad[i] * (y[index] + grad[i] * grad[i])**
-            (lr_power),
-            self.evaluate(var)[index])
-        self.assertAllCloseAccordingToType(y[index] + grad[i] * grad[i],
-                                           self.evaluate(accum)[index])
+            x[index]
+            - lr * grad[i] * (y[index] + grad[i] * grad[i]) ** (lr_power),
+            self.evaluate(var)[index],
+        )
+        self.assertAllCloseAccordingToType(
+            y[index] + grad[i] * grad[i], self.evaluate(accum)[index]
+        )
 
-  @test_util.run_v1_only("SparseApplyAdagrad op returns a ref, so it is not "
-                         "supported in eager mode.")
+  @test_util.run_v1_only(
+      "SparseApplyAdagrad op returns a ref, so it is not "
+      "supported in eager mode."
+  )
   def testSparseApplyAdagrad(self):
-    for (dtype, index_type,
-         use_gpu) in itertools.product([np.float16, np.float32, np.float64],
-                                       [np.int32, np.int64], [False, True]):
+    for dtype, index_type, use_gpu in itertools.product(
+        [np.float16, np.float32, np.float64],
+        [np.int32, np.int64],
+        [False, True],
+    ):
       x_val = [np.arange(10), np.arange(10, 20), np.arange(20, 30)]
       y_val = [np.arange(1, 11), np.arange(11, 21), np.arange(21, 31)]
       x = np.array(x_val).astype(dtype)
@@ -345,15 +360,20 @@ class TrainingOpsTest(TensorFlowTestCase):
       # Empty sparse gradients.
       empty_grad = np.zeros([0, 10], dtype=dtype)
       empty_indices = np.zeros([0], dtype=index_type)
-      self._testTypesForSparseAdagrad(x, y, lr, empty_grad, empty_indices,
-                                      use_gpu)
+      self._testTypesForSparseAdagrad(
+          x, y, lr, empty_grad, empty_indices, use_gpu
+      )
 
-  @test_util.run_v1_only("SparseApplyAdagrad op returns a ref, so it is not "
-                         "supported in eager mode.")
+  @test_util.run_v1_only(
+      "SparseApplyAdagrad op returns a ref, so it is not "
+      "supported in eager mode."
+  )
   def testSparseApplyAdagradDim1(self):
-    for (dtype, index_type,
-         use_gpu) in itertools.product([np.float16, np.float32, np.float64],
-                                       [np.int32, np.int64], [False, True]):
+    for dtype, index_type, use_gpu in itertools.product(
+        [np.float16, np.float32, np.float64],
+        [np.int32, np.int64],
+        [False, True],
+    ):
       x_val = [[1.0], [2.0], [3.0]]
       y_val = [[4.0], [5.0], [6.0]]
       x = np.array(x_val).astype(dtype)
@@ -364,12 +384,15 @@ class TrainingOpsTest(TensorFlowTestCase):
       indices = np.array([0, 2]).astype(index_type)
       self._testTypesForSparseAdagrad(x, y, lr, grad, indices, use_gpu)
 
-  @test_util.run_v1_only("SparseApplyFtrl op returns a ref, so it is not "
-                         "supported in eager mode.")
+  @test_util.run_v1_only(
+      "SparseApplyFtrl op returns a ref, so it is not supported in eager mode."
+  )
   def testSparseApplyFtrlDim1(self):
-    for (dtype, index_type,
-         use_gpu) in itertools.product([np.float16, np.float32, np.float64],
-                                       [np.int32, np.int64], [False, True]):
+    for dtype, index_type, use_gpu in itertools.product(
+        [np.float16, np.float32, np.float64],
+        [np.int32, np.int64],
+        [False, True],
+    ):
       x_val = [[0.0], [0.0], [0.0]]
       y_val = [[4.0], [5.0], [6.0]]
       z_val = [[0.0], [0.0], [0.0]]
@@ -384,15 +407,18 @@ class TrainingOpsTest(TensorFlowTestCase):
       # Empty sparse gradients.
       empty_grad = np.zeros([0, 1], dtype=dtype)
       empty_indices = np.zeros([0], dtype=index_type)
-      self._testTypesForSparseFtrl(x, y, z, lr, empty_grad, empty_indices,
-                                   use_gpu)
+      self._testTypesForSparseFtrl(
+          x, y, z, lr, empty_grad, empty_indices, use_gpu
+      )
 
-  @test_util.run_v1_only("SparseApplyFtrlMultiplyLinearByLr op returns a ref, "
-                         "so it is not supported in eager mode.")
+  @test_util.run_v1_only(
+      "SparseApplyFtrlMultiplyLinearByLr op returns a ref, "
+      "so it is not supported in eager mode."
+  )
   def testSparseApplyFtrlMultiplyLinearByLrDim1(self):
-    for (dtype,
-         index_type) in itertools.product([np.float16, np.float32, np.float64],
-                                          [np.int32, np.int64]):
+    for dtype, index_type in itertools.product(
+        [np.float16, np.float32, np.float64], [np.int32, np.int64]
+    ):
       x_val = [[0.0], [0.0], [0.0]]
       y_val = [[4.0], [5.0], [6.0]]
       z_val = [[0.0], [0.0], [0.0]]
@@ -405,11 +431,13 @@ class TrainingOpsTest(TensorFlowTestCase):
       indices = np.array([0, 2]).astype(index_type)
       self._testTypesForSparseFtrlMultiplyLinearByLr(x, y, z, lr, grad, indices)
 
-  @test_util.run_v1_only("ApplyAdam op returns a ref, so it is not "
-                         "supported in eager mode.")
+  @test_util.run_v1_only(
+      "ApplyAdam op returns a ref, so it is not supported in eager mode."
+  )
   def testApplyAdam(self):
     for dtype, use_gpu in itertools.product(
-        [np.float16, np.float32, np.float64], [False, True]):
+        [np.float16, np.float32, np.float64], [False, True]
+    ):
       var = np.arange(100).astype(dtype)
       m = np.arange(1, 101).astype(dtype)
       v = np.arange(101, 201).astype(dtype)
@@ -439,11 +467,21 @@ class TrainingOpsTest(TensorFlowTestCase):
       self.evaluate(variables.global_variables_initializer())
 
       self.assertAllCloseAccordingToType(var, self.evaluate(var_t))
-      new_var, _, _ = self._adamUpdateNumpy(var, grad, t, m, v, lr, beta1,
-                                            beta2, epsilon)
-      apply_adam = gen_training_ops.apply_adam(var_t, m_t, v_t, beta1_power_t,
-                                               beta2_power_t, lr_t, beta1_t,
-                                               beta2_t, epsilon_t, grad)
+      new_var, _, _ = self._adamUpdateNumpy(
+          var, grad, t, m, v, lr, beta1, beta2, epsilon
+      )
+      apply_adam = gen_training_ops.apply_adam(
+          var_t,
+          m_t,
+          v_t,
+          beta1_power_t,
+          beta2_power_t,
+          lr_t,
+          beta1_t,
+          beta2_t,
+          epsilon_t,
+          grad,
+      )
       out = self.evaluate(apply_adam)
       self.assertShapeEqual(out, apply_adam)
       self.assertAllCloseAccordingToType(new_var, out)
@@ -490,8 +528,13 @@ class TrainingOpsTest(TensorFlowTestCase):
       ret = constant_op.constant(0, dtypes.int32)
       for i in math_ops.range(num_iter):
         adagrad_op = gen_training_ops.resource_sparse_apply_adagrad_v2(
-            var.handle, accum.handle, lr, epsilon, grad,
-            constant_op.constant(indices, dtypes.int32))
+            var.handle,
+            accum.handle,
+            lr,
+            epsilon,
+            grad,
+            constant_op.constant(indices, dtypes.int32),
+        )
         with ops.control_dependencies([adagrad_op]):
           ret += i
       return ret
@@ -499,9 +542,11 @@ class TrainingOpsTest(TensorFlowTestCase):
     # Run two tf.functions simultaneously to make sure there is no race
     # condition between the two ops that caused deadlock before (b/270712679).
     thread1 = threading.Thread(
-        target=lambda: self.evaluate(fn_disable_copy_on_read()))
+        target=lambda: self.evaluate(fn_disable_copy_on_read())
+    )
     thread2 = threading.Thread(
-        target=lambda: self.evaluate(fn_resource_sparse_apply_adagrad_v2()))
+        target=lambda: self.evaluate(fn_resource_sparse_apply_adagrad_v2())
+    )
     thread1.start()
     thread2.start()
     thread1.join()
@@ -534,6 +579,353 @@ class TrainingOpsTest(TensorFlowTestCase):
             )
         )
 
+  @test_util.run_v2_only
+  def testApplyAdadeltaInvalidAccumUpdateShape(self):
+    var = variables.Variable([1.0, 2.0])
+    accum = variables.Variable([1.0, 2.0])
+    accum_update = variables.Variable([1.0, 2.0, 3.0])
+    lr = constant_op.constant(0.001)
+    rho = constant_op.constant(0.9)
+    epsilon = constant_op.constant(1e-8)
+    grad = constant_op.constant([0.1, 0.1])
+
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.resource)
+        ]
+    )
+    def apply_op(accum_update_handle):
+      gen_training_ops.resource_apply_adadelta(
+          var.handle, accum.handle, accum_update_handle, lr, rho, epsilon, grad
+      )
+
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r"var and accum_update do not have the same shape",
+    ):
+      apply_op(accum_update.handle)
+
+  @test_util.run_v2_only
+  def testSparseApplyAdadeltaInvalidAccumUpdateShape(self):
+    var = variables.Variable([1.0, 2.0])
+    accum = variables.Variable([1.0, 2.0])
+    accum_update = variables.Variable([1.0, 2.0, 3.0])
+    lr = constant_op.constant(0.001)
+    rho = constant_op.constant(0.9)
+    epsilon = constant_op.constant(1e-8)
+    grad = constant_op.constant([0.1, 0.1])
+    indices = constant_op.constant([0, 1], dtype=dtypes.int32)
+
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.resource)
+        ]
+    )
+    def apply_op(accum_update_handle):
+      gen_training_ops.resource_sparse_apply_adadelta(
+          var.handle,
+          accum.handle,
+          accum_update_handle,
+          lr,
+          rho,
+          epsilon,
+          grad,
+          indices,
+      )
+
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r"var and accum_update do not have the same shape",
+    ):
+      apply_op(accum_update.handle)
+
+  @test_util.run_v2_only
+  def testApplyAdamWithAmsgradInvalidVhatShape(self):
+    var = variables.Variable([1.0, 2.0])
+    m = variables.Variable([1.0, 2.0])
+    v = variables.Variable([1.0, 2.0])
+    vhat = variables.Variable([1.0, 2.0, 3.0])
+    beta1_power = constant_op.constant(0.9)
+    beta2_power = constant_op.constant(0.999)
+    lr = constant_op.constant(0.001)
+    beta1 = constant_op.constant(0.9)
+    beta2 = constant_op.constant(0.999)
+    epsilon = constant_op.constant(1e-8)
+    grad = constant_op.constant([0.1, 0.1])
+
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.resource)
+        ]
+    )
+    def apply_op(vhat_handle):
+      gen_training_ops.resource_apply_adam_with_amsgrad(
+          var.handle,
+          m.handle,
+          v.handle,
+          vhat_handle,
+          beta1_power,
+          beta2_power,
+          lr,
+          beta1,
+          beta2,
+          epsilon,
+          grad,
+      )
+
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r"var and vhat do not have the same shape",
+    ):
+      apply_op(vhat.handle)
+
+  @test_util.run_v2_only
+  def testApplyAdamWithAmsgradUninitializedVhat(self):
+    var = variables.Variable([1.0, 2.0], name="var")
+    m = variables.Variable([1.0, 2.0], name="m")
+    v = variables.Variable([1.0, 2.0], name="v")
+    # Using var_handle_op directly to create an uninitialized handle
+    vhat_handle = resource_variable_ops.var_handle_op(
+        dtype=dtypes.float32, shape=[2], name="vhat"
+    )
+    beta1_power = constant_op.constant(0.9)
+    beta2_power = constant_op.constant(0.999)
+    lr = constant_op.constant(0.001)
+    beta1 = constant_op.constant(0.9)
+    beta2 = constant_op.constant(0.999)
+    epsilon = constant_op.constant(1e-8)
+    grad = constant_op.constant([0.1, 0.1])
+
+    with self.assertRaisesRegex(
+        (errors.FailedPreconditionError, errors.InternalError),
+        r"(Attempting to use uninitialized variables.*vhat|Invalid variable"
+        r" reference)",
+    ):
+      gen_training_ops.resource_apply_adam_with_amsgrad(
+          var.handle,
+          m.handle,
+          v.handle,
+          vhat_handle,
+          beta1_power,
+          beta2_power,
+          lr,
+          beta1,
+          beta2,
+          epsilon,
+          grad,
+      )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testApplyAdadeltaSuccess(self):
+    var = variables.Variable([1.0, 2.0])
+    accum = variables.Variable([1.0, 2.0])
+    accum_update = variables.Variable([1.0, 2.0])
+    lr = constant_op.constant(0.001)
+    rho = constant_op.constant(0.9)
+    epsilon = constant_op.constant(1e-8)
+    grad = constant_op.constant([0.1, 0.1])
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(
+        gen_training_ops.resource_apply_adadelta(
+            var.handle,
+            accum.handle,
+            accum_update.handle,
+            lr,
+            rho,
+            epsilon,
+            grad,
+        )
+    )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testApplyAdamWithAmsgradSuccess(self):
+    var = variables.Variable([1.0, 2.0])
+    m = variables.Variable([1.0, 2.0])
+    v = variables.Variable([1.0, 2.0])
+    vhat = variables.Variable([1.0, 2.0])
+    beta1_power = constant_op.constant(0.9)
+    beta2_power = constant_op.constant(0.999)
+    lr = constant_op.constant(0.001)
+    beta1 = constant_op.constant(0.9)
+    beta2 = constant_op.constant(0.999)
+    epsilon = constant_op.constant(1e-8)
+    grad = constant_op.constant([0.1, 0.1])
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(
+        gen_training_ops.resource_apply_adam_with_amsgrad(
+            var.handle,
+            m.handle,
+            v.handle,
+            vhat.handle,
+            beta1_power,
+            beta2_power,
+            lr,
+            beta1,
+            beta2,
+            epsilon,
+            grad,
+        )
+    )
+
+  @test_util.run_v2_only
+  def testSparseApplyRMSPropUninitializedMs(self):
+    with ops.device("/cpu:0"):
+      var = variables.Variable([1.0, 2.0], name="var")
+      ms_handle = resource_variable_ops.var_handle_op(
+          dtype=dtypes.float32, shape=[2], name="ms"
+      )
+      mom = variables.Variable([1.0, 2.0], name="mom")
+      lr = constant_op.constant(0.1)
+      rho = constant_op.constant(0.1)
+      momentum = constant_op.constant(0.1)
+      epsilon = constant_op.constant(0.1)
+      grad = constant_op.constant([0.1, 0.1])
+      indices = constant_op.constant([0, 1], dtype=dtypes.int32)
+
+      with self.assertRaisesRegex(
+          (errors.FailedPreconditionError, errors.InternalError),
+          r"(Attempting to use uninitialized variables.*ms|Invalid variable"
+          r" reference)",
+      ):
+        gen_training_ops.resource_sparse_apply_rms_prop(
+            var.handle,
+            ms_handle,
+            mom.handle,
+            lr,
+            rho,
+            momentum,
+            epsilon,
+            grad,
+            indices,
+        )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSparseApplyRMSPropSuccess(self):
+    with ops.device("/cpu:0"):
+      var = variables.Variable([1.0, 2.0])
+      ms = variables.Variable([1.0, 2.0])
+      mom = variables.Variable([1.0, 2.0])
+      lr = constant_op.constant(0.1)
+      rho = constant_op.constant(0.1)
+      momentum = constant_op.constant(0.1)
+      epsilon = constant_op.constant(0.1)
+      grad = constant_op.constant([0.1, 0.1])
+      indices = constant_op.constant([0, 1], dtype=dtypes.int32)
+      self.evaluate(variables.global_variables_initializer())
+      self.evaluate(
+          gen_training_ops.resource_sparse_apply_rms_prop(
+              var.handle,
+              ms.handle,
+              mom.handle,
+              lr,
+              rho,
+              momentum,
+              epsilon,
+              grad,
+              indices,
+          )
+      )
+
+  @test_util.run_v2_only
+  def testApplyCenteredRMSPropInvalidMgShape(self):
+    var = variables.Variable([1.0, 2.0])
+    mg = variables.Variable([1.0, 2.0, 3.0])  # Invalid shape
+    ms = variables.Variable([1.0, 2.0])
+    mom = variables.Variable([1.0, 2.0])
+    lr = constant_op.constant(0.1)
+    rho = constant_op.constant(0.1)
+    momentum = constant_op.constant(0.1)
+    epsilon = constant_op.constant(0.1)
+    grad = constant_op.constant([0.1, 0.1])
+
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.resource)
+        ]
+    )
+    def apply_op(mg_handle):
+      gen_training_ops.resource_apply_centered_rms_prop(
+          var.handle,
+          mg_handle,
+          ms.handle,
+          mom.handle,
+          lr,
+          rho,
+          momentum,
+          epsilon,
+          grad,
+      )
+
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r"var and mg do not have the same shape",
+    ):
+      apply_op(mg.handle)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSparseApplyCenteredRMSPropSuccess(self):
+    with ops.device("/cpu:0"):
+      var = variables.Variable([1.0, 2.0])
+      mg = variables.Variable([1.0, 2.0])
+      ms = variables.Variable([1.0, 2.0])
+      mom = variables.Variable([1.0, 2.0])
+      lr = constant_op.constant(0.1)
+      rho = constant_op.constant(0.1)
+      momentum = constant_op.constant(0.1)
+      epsilon = constant_op.constant(0.1)
+      grad = constant_op.constant([0.1, 0.1])
+      indices = constant_op.constant([0, 1], dtype=dtypes.int32)
+      self.evaluate(variables.global_variables_initializer())
+      self.evaluate(
+          gen_training_ops.resource_sparse_apply_centered_rms_prop(
+              var.handle,
+              mg.handle,
+              ms.handle,
+              mom.handle,
+              lr,
+              rho,
+              momentum,
+              epsilon,
+              grad,
+              indices,
+          )
+      )
+
+  @test_util.run_v2_only
+  def testSparseApplyCenteredRMSPropUninitializedMg(self):
+    with ops.device("/cpu:0"):
+      var = variables.Variable([1.0, 2.0], name="var")
+      mg_handle = resource_variable_ops.var_handle_op(
+          dtype=dtypes.float32, shape=[2], name="mg"
+      )
+      ms = variables.Variable([1.0, 2.0], name="ms")
+      mom = variables.Variable([1.0, 2.0], name="mom")
+      lr = constant_op.constant(0.1)
+      rho = constant_op.constant(0.1)
+      momentum = constant_op.constant(0.1)
+      epsilon = constant_op.constant(0.1)
+      grad = constant_op.constant([0.1, 0.1])
+      indices = constant_op.constant([0, 1], dtype=dtypes.int32)
+
+      with self.assertRaisesRegex(
+          (errors.FailedPreconditionError, errors.InternalError),
+          r"(Attempting to use uninitialized variables.*mg|Invalid variable"
+          r" reference)",
+      ):
+        gen_training_ops.resource_sparse_apply_centered_rms_prop(
+            var.handle,
+            mg_handle,
+            ms.handle,
+            mom.handle,
+            lr,
+            rho,
+            momentum,
+            epsilon,
+            grad,
+            indices,
+        )
+
+  @test_util.run_in_graph_and_eager_modes
   def testSparseApplyOpsRejectLowerRankGrad(self):
     # Regression test for #94131: a grad of lower rank than var made the
     # per-dimension shape check read past grad's rank and crash the process.
@@ -603,6 +995,190 @@ class TrainingOpsTest(TensorFlowTestCase):
       with self.assertRaises(errors.InvalidArgumentError):
         self.evaluate(apply_op())
 
+  @test_util.run_v2_only
+  def testApplyAddSignInvalidSignDecayShape(self):
+    var = variables.Variable([1.0, 2.0])
+    m = variables.Variable([1.0, 2.0])
+    lr = constant_op.constant(0.001)
+    alpha = constant_op.constant(0.1)
+    sign_decay = constant_op.constant([0.9, 0.9])
+    beta = constant_op.constant(0.9)
+    grad = constant_op.constant([0.1, 0.1])
 
-if __name__ == '__main__':
-  googletest.main()
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)
+        ]
+    )
+    def apply_op(sign_decay_t):
+      gen_training_ops.resource_apply_add_sign(
+          var.handle,
+          m.handle,
+          lr,
+          alpha,
+          sign_decay_t,
+          beta,
+          grad,
+      )
+
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r"sign_decay is not a scalar",
+    ):
+      apply_op(sign_decay)
+
+  @test_util.run_v2_only
+  def testApplyPowerSignInvalidSignDecayShape(self):
+    var = variables.Variable([1.0, 2.0])
+    m = variables.Variable([1.0, 2.0])
+    lr = constant_op.constant(0.001)
+    logbase = constant_op.constant(2.0)
+    sign_decay = constant_op.constant([0.9, 0.9])
+    beta = constant_op.constant(0.9)
+    grad = constant_op.constant([0.1, 0.1])
+
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)
+        ]
+    )
+    def apply_op(sign_decay_t):
+      gen_training_ops.resource_apply_power_sign(
+          var.handle,
+          m.handle,
+          lr,
+          logbase,
+          sign_decay_t,
+          beta,
+          grad,
+      )
+
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r"sign_decay is not a scalar",
+    ):
+      apply_op(sign_decay)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testApplyAddSignSuccess(self):
+    var = variables.Variable([1.0, 2.0])
+    m = variables.Variable([1.0, 2.0])
+    lr = constant_op.constant(0.001)
+    alpha = constant_op.constant(0.1)
+    sign_decay = constant_op.constant(0.9)
+    beta = constant_op.constant(0.9)
+    grad = constant_op.constant([0.1, 0.1])
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(
+        gen_training_ops.resource_apply_add_sign(
+            var.handle,
+            m.handle,
+            lr,
+            alpha,
+            sign_decay,
+            beta,
+            grad,
+        )
+    )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testApplyPowerSignSuccess(self):
+    var = variables.Variable([1.0, 2.0])
+    m = variables.Variable([1.0, 2.0])
+    lr = constant_op.constant(0.001)
+    logbase = constant_op.constant(2.0)
+    sign_decay = constant_op.constant(0.9)
+    beta = constant_op.constant(0.9)
+    grad = constant_op.constant([0.1, 0.1])
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(
+        gen_training_ops.resource_apply_power_sign(
+            var.handle,
+            m.handle,
+            lr,
+            logbase,
+            sign_decay,
+            beta,
+            grad,
+        )
+    )
+
+  @test_util.run_v2_only
+  def testSparseApplyRMSPropInvalidGradDims(self):
+    with ops.device("/cpu:0"):
+      var = variables.Variable([[1.0, 2.0], [3.0, 4.0]])
+      ms = variables.Variable([[1.0, 2.0], [3.0, 4.0]])
+      mom = variables.Variable([[1.0, 2.0], [3.0, 4.0]])
+      lr = constant_op.constant(0.1)
+      rho = constant_op.constant(0.1)
+      momentum = constant_op.constant(0.1)
+      epsilon = constant_op.constant(0.1)
+      grad = constant_op.constant([0.1, 0.1])
+      indices = constant_op.constant([0, 1], dtype=dtypes.int32)
+
+      @def_function.function(
+          input_signature=[
+              tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)
+          ]
+      )
+      def apply_op(grad_t):
+        gen_training_ops.resource_sparse_apply_rms_prop(
+            var.handle,
+            ms.handle,
+            mom.handle,
+            lr,
+            rho,
+            momentum,
+            epsilon,
+            grad_t,
+            indices,
+        )
+
+      with self.assertRaisesRegex(
+          (errors.InvalidArgumentError, ValueError),
+          r"grad must have the same number of dimensions as var",
+      ):
+        apply_op(grad)
+
+  @test_util.run_v2_only
+  def testSparseApplyCenteredRMSPropInvalidGradDims(self):
+    with ops.device("/cpu:0"):
+      var = variables.Variable([[1.0, 2.0], [3.0, 4.0]])
+      mg = variables.Variable([[1.0, 2.0], [3.0, 4.0]])
+      ms = variables.Variable([[1.0, 2.0], [3.0, 4.0]])
+      mom = variables.Variable([[1.0, 2.0], [3.0, 4.0]])
+      lr = constant_op.constant(0.1)
+      rho = constant_op.constant(0.1)
+      momentum = constant_op.constant(0.1)
+      epsilon = constant_op.constant(0.1)
+      grad = constant_op.constant([0.1, 0.1])
+      indices = constant_op.constant([0, 1], dtype=dtypes.int32)
+
+      @def_function.function(
+          input_signature=[
+              tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)
+          ]
+      )
+      def apply_op(grad_t):
+        gen_training_ops.resource_sparse_apply_centered_rms_prop(
+            var.handle,
+            mg.handle,
+            ms.handle,
+            mom.handle,
+            lr,
+            rho,
+            momentum,
+            epsilon,
+            grad_t,
+            indices,
+        )
+
+      with self.assertRaisesRegex(
+          (errors.InvalidArgumentError, ValueError),
+          r"grad must have the same number of dimensions as var",
+      ):
+        apply_op(grad)
+
+
+if __name__ == "__main__":
+  test.main()
