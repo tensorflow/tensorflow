@@ -596,6 +596,7 @@ xla_cc_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/service:hlo_runner",
         "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:env",
