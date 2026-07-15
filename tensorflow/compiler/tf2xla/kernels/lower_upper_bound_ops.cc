@@ -63,13 +63,19 @@ void BuildLowerUpperBoundOp(XlaOpKernelContext* ctx, DataType out_dtype,
   // the associated sorted_inputs row.
   // The reshapes above leave the tensors with equal rank of 3, so broadcast
   // dimensions are not explicitly specified.
-  // Use total-order comparisons so that NaN (the largest value in total order)
-  // is placed at the end -- consistent with NumPy semantics.
+  // Use explicit NaN-aware logic: NaN is treated as the largest value.
+  auto element_is_nan = xla::Ne(sorted_inputs_reshaped, sorted_inputs_reshaped);
+  auto val_is_nan = xla::Ne(values_reshaped, values_reshaped);
+
   xla::XlaOp comparison;
   if (comparison_direction == xla::ComparisonDirection::kGt) {
-    comparison = xla::GtTotalOrder(values_reshaped, sorted_inputs_reshaped, {});
+    auto standard_gt = xla::Gt(values_reshaped, sorted_inputs_reshaped);
+    comparison =
+        xla::And(xla::Not(element_is_nan), xla::Or(val_is_nan, standard_gt));
   } else {
-    comparison = xla::GeTotalOrder(values_reshaped, sorted_inputs_reshaped, {});
+    auto standard_ge = xla::Ge(values_reshaped, sorted_inputs_reshaped);
+    comparison = xla::Or(val_is_nan,
+                         xla::And(xla::Not(element_is_nan), standard_ge));
   }
   const DataType accumulation_type = XlaHelpers::SumAccumulationType(out_dtype);
 
