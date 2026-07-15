@@ -22,6 +22,7 @@
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -73,6 +74,21 @@ TEST(ArrayCopySemanticsTest, FromToFromProto) {
     TF_ASSERT_OK_AND_ASSIGN(
         const auto cpp_enum_copy,
         FromArrayCopySemanticsProto(ToArrayCopySemanticsProto(cpp_enum)));
+    EXPECT_EQ(cpp_enum_copy, cpp_enum);
+  }
+}
+
+TEST(HashModeTest, FromToFromProto) {
+  for (int i = 0; i < proto::HashMode_descriptor()->value_count(); ++i) {
+    const auto proto_enum = static_cast<proto::HashMode>(
+        proto::HashMode_descriptor()->value(i)->number());
+    if (proto_enum == proto::HASH_MODE_UNSPECIFIED) {
+      continue;
+    }
+    TF_ASSERT_OK_AND_ASSIGN(const Client::HashMode cpp_enum,
+                            FromHashModeProto(proto_enum));
+    TF_ASSERT_OK_AND_ASSIGN(const Client::HashMode cpp_enum_copy,
+                            FromHashModeProto(ToHashModeProto(cpp_enum)));
     EXPECT_EQ(cpp_enum_copy, cpp_enum);
   }
 }

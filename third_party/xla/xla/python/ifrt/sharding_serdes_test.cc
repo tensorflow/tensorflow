@@ -25,6 +25,8 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
+#include "xla/python/ifrt/index.h"
+#include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
@@ -98,7 +100,10 @@ TEST_P(ShardingSerDesTest, ConcreteShardingRoundTrip) {
   auto sharding = ConcreteSharding::Create(
       GetDevices({0, 1}), MemoryKind("abc"),
       /*shape=*/Shape({10, 20}),
-      /*shard_shapes=*/{Shape({3, 20}), Shape({7, 20})});
+      /*shard_shapes=*/{Shape({3, 20}), Shape({7, 20})},
+      /*index_domains=*/
+      std::vector<IndexDomain>{IndexDomain(Index({0, 0}), Shape({3, 20})),
+                               IndexDomain(Index({3, 0}), Shape({7, 20}))});
 
   auto options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(auto serialized,
@@ -114,6 +119,7 @@ TEST_P(ShardingSerDesTest, ConcreteShardingRoundTrip) {
   EXPECT_THAT(out_sharding->shape(), sharding->shape());
   EXPECT_THAT(out_sharding->shard_shapes(),
               ElementsAreArray(sharding->shard_shapes()));
+  EXPECT_THAT(out_sharding->index_domains(), sharding->index_domains());
 }
 
 TEST_P(ShardingSerDesTest, ConcreteShardingWithDynamicShapeRoundTrip) {

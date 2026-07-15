@@ -960,6 +960,7 @@ cc_library(
     ]),
     deps = [
         ":ifrt",
+        ":index_domain_proto_cc",
         ":rtti",
         ":serdes",
         ":serdes_version",
@@ -1314,6 +1315,7 @@ tf_proto_library(
     ]),
     deps = [
         ":device_proto",
+        ":index_domain_proto",
         ":shape_proto",
     ],
 )
