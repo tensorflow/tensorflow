@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -658,6 +659,41 @@ ENTRY main {
       async::IsFirstFullyBound(add),
       StatusIs(absl::StatusCode::kInvalidArgument,
                ::testing::HasSubstr("Instruction is not asynchronous")));
+}
+
+TEST_F(HloInstructionUtilsTest, IsTopKStable) {
+  const char* const hlo = R"(
+    HloModule test
+
+    compare-gt.1 {
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT, type=TOTALORDER
+    }
+
+    ENTRY main {
+      arg = f32[1024] parameter(0)
+      topk_stable = (f32[24], s32[24]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = true}
+      topk_unstable = (f32[24], s32[24]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = false}
+      topk_default = (f32[24], s32[24]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}
+      ROOT tuple = tuple(topk_stable, topk_unstable, topk_default)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo));
+
+  auto* topk_stable =
+      Cast<HloCustomCallInstruction>(FindInstruction(m.get(), "topk_stable"));
+  auto* topk_unstable =
+      Cast<HloCustomCallInstruction>(FindInstruction(m.get(), "topk_unstable"));
+  auto* topk_default =
+      Cast<HloCustomCallInstruction>(FindInstruction(m.get(), "topk_default"));
+
+  EXPECT_TRUE(IsTopKStable(topk_stable));
+  EXPECT_FALSE(IsTopKStable(topk_unstable));
+  EXPECT_TRUE(IsTopKStable(topk_default));
 }
 }  // namespace
 

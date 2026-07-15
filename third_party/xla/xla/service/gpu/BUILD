@@ -563,6 +563,7 @@ cc_library(
         "//xla/core/host_offloading:host_offloading_executable_proto_cc",
         "//xla/ffi:attribute_map",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_instruction_utils",
         "//xla/mlir/utils:error_util",
         "//xla/mlir_hlo:transforms_gpu_passes",
         "//xla/runtime:device_id",

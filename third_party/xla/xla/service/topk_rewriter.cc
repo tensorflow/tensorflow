@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "re2/re2.h"
 #include "xla/hlo/builder/lib/comparators.h"
 #include "xla/hlo/builder/lib/sorting.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -41,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
@@ -562,11 +562,7 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
     if (auto* topk_inst = DynCast<HloTopKInstruction>(call)) {
       is_stable = topk_inst->is_stable();
     } else if (auto* custom_call = DynCast<HloCustomCallInstruction>(call)) {
-      absl::string_view config = custom_call->raw_backend_config_string();
-      static const LazyRE2 kUnstableRegex = {R"((?i)is_stable\s*=\s*false)"};
-      if (RE2::PartialMatch(config, *kUnstableRegex)) {
-        is_stable = false;
-      }
+      is_stable = hlo_instruction_utils::IsTopKStable(custom_call);
     }
     std::vector<int64_t> zeroes(rank, 0);
     std::vector<int64_t> ones(rank, 1);

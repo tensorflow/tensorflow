@@ -5815,6 +5815,7 @@ cc_library(
         "//xla/hlo/builder/lib:comparators",
         "//xla/hlo/builder/lib:sorting",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_instruction_utils",
         "//xla/hlo/pass:hlo_pass",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
@@ -5826,7 +5827,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
-        "@com_googlesource_code_re2//:re2",
     ],
 )
 
