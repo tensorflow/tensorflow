@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -175,6 +176,168 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
   EXPECT_FALSE(changed);
+}
+
+TEST_F(HloPassPipelineTest, VerifyLastModifyingPassTracking) {
+  class MultiplyToAddPass : public HloModulePass {
+   public:
+    absl::string_view name() const override { return "mul2add"; }
+
+   protected:
+    absl::StatusOr<bool> RunImpl(HloModule* module,
+                                 const absl::flat_hash_set<absl::string_view>&
+                                     execution_threads) override {
+      bool changed = false;
+      for (HloComputation* computation :
+           module->computations(execution_threads)) {
+        HloInstruction* mul_inst = nullptr;
+        for (HloInstruction* instruction : computation->instructions()) {
+          if (instruction->opcode() == HloOpcode::kMultiply) {
+            mul_inst = instruction;
+            break;
+          }
+        }
+        if (mul_inst) {
+          HloInstruction* new_inst =
+              computation->AddInstruction(HloInstruction::CreateBinary(
+                  mul_inst->shape(), HloOpcode::kAdd,
+                  mul_inst->mutable_operand(0), mul_inst->mutable_operand(1)));
+          RETURN_IF_ERROR(computation->ReplaceInstruction(mul_inst, new_inst));
+          changed = true;
+        }
+      }
+      return changed;
+    }
+  };
+
+  const std::string module_str = R"(
+HloModule VerifyLastModifyingPassTracking
+
+ENTRY main {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT foo = f32[] multiply(a, b)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_track_modifying_passes(DebugOptions::LAST_PASS);
+
+  HloPassPipeline pipeline(TestName());
+  pipeline.AddPass<MultiplyToAddPass>();
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kMultiply);
+
+  ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* new_root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(new_root->opcode(), HloOpcode::kAdd);
+
+  // Verify frontend attribute is set.
+  EXPECT_TRUE(new_root->has_frontend_attributes());
+  auto attrs = new_root->frontend_attributes();
+  auto it = attrs.map().find("_xla_last_modifying_pass");
+  ASSERT_NE(it, attrs.map().end());
+  EXPECT_EQ(it->second, "mul2add");
+}
+
+TEST_F(HloPassPipelineTest, VerifyLastModifyingPassAccumulation) {
+  class MultiplyToAddPass : public HloModulePass {
+   public:
+    absl::string_view name() const override { return "mul2add"; }
+
+   protected:
+    absl::StatusOr<bool> RunImpl(HloModule* module,
+                                 const absl::flat_hash_set<absl::string_view>&
+                                     execution_threads) override {
+      bool changed = false;
+      for (HloComputation* computation :
+           module->computations(execution_threads)) {
+        HloInstruction* mul_inst = nullptr;
+        for (HloInstruction* instruction : computation->instructions()) {
+          if (instruction->opcode() == HloOpcode::kMultiply) {
+            mul_inst = instruction;
+            break;
+          }
+        }
+        if (mul_inst) {
+          HloInstruction* new_inst =
+              computation->AddInstruction(HloInstruction::CreateBinary(
+                  mul_inst->shape(), HloOpcode::kAdd,
+                  mul_inst->mutable_operand(0), mul_inst->mutable_operand(1)));
+          RETURN_IF_ERROR(computation->ReplaceInstruction(mul_inst, new_inst));
+          changed = true;
+        }
+      }
+      return changed;
+    }
+  };
+
+  class AddToMultiplyPass : public HloModulePass {
+   public:
+    absl::string_view name() const override { return "add2mul"; }
+
+   protected:
+    absl::StatusOr<bool> RunImpl(HloModule* module,
+                                 const absl::flat_hash_set<absl::string_view>&
+                                     execution_threads) override {
+      bool changed = false;
+      for (HloComputation* computation :
+           module->computations(execution_threads)) {
+        HloInstruction* add_inst = nullptr;
+        for (HloInstruction* instruction : computation->instructions()) {
+          if (instruction->opcode() == HloOpcode::kAdd) {
+            add_inst = instruction;
+            break;
+          }
+        }
+        if (add_inst) {
+          HloInstruction* new_inst =
+              computation->AddInstruction(HloInstruction::CreateBinary(
+                  add_inst->shape(), HloOpcode::kMultiply,
+                  add_inst->mutable_operand(0), add_inst->mutable_operand(1)));
+          RETURN_IF_ERROR(computation->ReplaceInstruction(add_inst, new_inst));
+          changed = true;
+        }
+      }
+      return changed;
+    }
+  };
+
+  const std::string module_str = R"(
+HloModule VerifyLastModifyingPassAccumulation
+
+ENTRY main {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT foo = f32[] multiply(a, b)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_track_modifying_passes(DebugOptions::FULL_PATH);
+
+  HloPassPipeline pipeline(TestName());
+  pipeline.AddPass<MultiplyToAddPass>();
+  pipeline.AddPass<AddToMultiplyPass>();
+
+  ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* new_root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(new_root->opcode(), HloOpcode::kMultiply);
+
+  EXPECT_TRUE(new_root->has_frontend_attributes());
+  auto attrs = new_root->frontend_attributes();
+  auto it = attrs.map().find("_xla_modifying_passes");
+  ASSERT_NE(it, attrs.map().end());
+  EXPECT_EQ(it->second, "mul2add,add2mul");
 }
 
 TEST_F(HloPassPipelineTest, ModulePassChangedForParallelThread) {
