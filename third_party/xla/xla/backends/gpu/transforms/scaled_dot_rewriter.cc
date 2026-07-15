@@ -170,6 +170,9 @@ absl::StatusOr<bool> ScaledDotRewriter::RewriteComputation(
     if (instruction->opcode() != HloOpcode::kScaledDot) {
       continue;
     }
+    if (extra_filter_ && !extra_filter_(instruction)) {
+      continue;
+    }
     changed = true;
     HloScaledDotInstruction* dot = Cast<HloScaledDotInstruction>(instruction);
     ASSIGN_OR_RETURN(HloInstruction * lhs, Dequantize(dot, 0, 2, "LHS"));
