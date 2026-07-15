@@ -1711,8 +1711,9 @@ XLA_FFI_DEFINE_HANDLER(
         .Ret<ffi::AnyBuffer>());
 
 TEST_F(GpuCompilerTest, MosaicMultimemRequiresSymmetricMemoryCopies) {
-  if (device_description().gpu_compute_capability().IsRocm()) {
-    GTEST_SKIP() << "Mosaic GPU is not supported on ROCm.";
+  if (device_description().gpu_compute_capability().IsRocm() ||
+      device_description().gpu_compute_capability().IsOneAPI()) {
+    GTEST_SKIP() << "Mosaic GPU is not supported on ROCm and oneAPI.";
   }
   XLA_FFI_Handler_Bundle bundle = {
       /*instantiate=*/nullptr,
@@ -1782,8 +1783,9 @@ TEST_F(GpuCompilerTest, MosaicMultimemRequiresSymmetricMemoryCopies) {
 }
 
 TEST_F(GpuCompilerTest, MosaicCollectiveMetadataRequiresSymmetricMemoryCopies) {
-  if (device_description().gpu_compute_capability().IsRocm()) {
-    GTEST_SKIP() << "Mosaic GPU is not supported on ROCm.";
+  if (device_description().gpu_compute_capability().IsRocm() ||
+      device_description().gpu_compute_capability().IsOneAPI()) {
+    GTEST_SKIP() << "Mosaic GPU is not supported on ROCm and oneAPI.";
   }
   XLA_FFI_Handler_Bundle bundle = {
       /*instantiate=*/nullptr,
