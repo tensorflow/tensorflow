@@ -65,6 +65,17 @@ func.func @testTripleReciprocal(%arg0: tensor<i32>) -> tensor<i32> {
   func.return %2: tensor<i32>
 }
 
+// CHECK-LABEL: func @testDoubleReciprocalFloat
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<f32>)
+func.func @testDoubleReciprocalFloat(%arg0: tensor<f32>) -> tensor<f32> {
+  // CHECK: [[RECIPROCAL0:%.+]] = "tf.Reciprocal"([[ARG0]])
+  %0 = "tf.Reciprocal"(%arg0) : (tensor<f32>) -> tensor<f32>
+  // CHECK: [[RECIPROCAL1:%.+]] = "tf.Reciprocal"([[RECIPROCAL0]])
+  %1 = "tf.Reciprocal"(%0) : (tensor<f32>) -> tensor<f32>
+  // CHECK: return [[RECIPROCAL1]]
+  func.return %1: tensor<f32>
+}
+
 // CHECK-LABEL: func @testSingleInvert
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<i32>)
 func.func @testSingleInvert(%arg0: tensor<i32>) -> tensor<i32> {

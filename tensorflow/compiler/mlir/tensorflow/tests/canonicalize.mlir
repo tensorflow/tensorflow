@@ -579,6 +579,17 @@ func.func @testDoubleReciprocal(%arg0: tensor<8x16x32x64xi32>) -> tensor<8x16x32
 // CHECK: return %[[RECIPROCAL1]]
 }
 
+// CHECK-LABEL: testDoubleReciprocalFloat
+func.func @testDoubleReciprocalFloat(%arg0: tensor<8x16x32x64xf32>) -> tensor<8x16x32x64xf32> {
+  %0 = "tf.Reciprocal"(%arg0) : (tensor<8x16x32x64xf32>) -> tensor<8x16x32x64xf32>
+  %1 = "tf.Reciprocal"(%0) : (tensor<8x16x32x64xf32>) -> tensor<8x16x32x64xf32>
+  func.return %1: tensor<8x16x32x64xf32>
+
+// CHECK: %[[RECIPROCAL0:.*]] = "tf.Reciprocal"(%arg0)
+// CHECK: %[[RECIPROCAL1:.*]] = "tf.Reciprocal"(%[[RECIPROCAL0]])
+// CHECK: return %[[RECIPROCAL1]]
+}
+
 // CHECK-LABEL: testRedundantReshape
 func.func @testRedundantReshape(%arg0: tensor<4x4xi32>) -> tensor<2x8xi32> {
   %0 = "tf.Const"() {value = dense<[8, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
