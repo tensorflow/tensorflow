@@ -167,6 +167,15 @@ common --enable_workspace
 common --incompatible_enable_cc_toolchain_resolution
 common --repo_env USE_HERMETIC_CC_TOOLCHAIN=1
 
+# external_include_paths feature forces passing external repositories headers
+# via -isystem alters how Clang resolves their file paths. This mismatch with
+# Bazel's auto-generated module maps prevents Clang from recognizing the
+# dependency, triggering layering_check errors.
+# Following lines can be removed after rules_cc will be updated
+# (path-mapping issues are resolved in upstream rules_cc)
+common --features=-external_include_paths
+common --host_features=-external_include_paths
+
 # TODO: Migrate for https://github.com/bazelbuild/bazel/issues/7260
 common:clang_local --noincompatible_enable_cc_toolchain_resolution
 common:clang_local --noincompatible_enable_android_toolchain_resolution
