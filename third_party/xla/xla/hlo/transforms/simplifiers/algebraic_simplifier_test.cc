@@ -14382,6 +14382,95 @@ TEST_F(AlgebraicSimplifierTest, DoNotFoldTransposeIntoScatterWhenDisabled) {
               absl_testing::IsOkAndHolds(false));
 }
 
+TEST_F(AlgebraicSimplifierTest, FusesNestedRotates) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule rotate_module
+
+    ENTRY main {
+      p0 = f32[5]{0} parameter(0)
+      r1 = f32[5]{0} rotate(p0), dimensions={0}, shifts={2}
+      ROOT r2 = f32[5]{0} rotate(r1), dimensions={0}, shifts={1}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_OK_AND_ASSIGN(bool changed, simplifier.Run(m.get()));
+  EXPECT_TRUE(changed);
+
+  auto* root = m->entry_computation()->root_instruction();
+  ASSERT_EQ(root->opcode(), HloOpcode::kRotate);
+  auto* rotate = Cast<HloRotateInstruction>(root);
+  EXPECT_EQ(rotate->operand(0)->opcode(), HloOpcode::kParameter);
+  ASSERT_EQ(rotate->dimensions().size(), 1);
+  EXPECT_EQ(rotate->dimensions()[0], 0);
+  EXPECT_EQ(rotate->shifts()[0], 3);
+}
+
+TEST_F(AlgebraicSimplifierTest, RemovesRotateOnSplatBroadcast) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule rotate_module
+
+    ENTRY main {
+      c = f32[] constant(1.0)
+      b = f32[5,5]{1,0} broadcast(c), dimensions={}
+      ROOT r = f32[5,5]{1,0} rotate(b), dimensions={0}, shifts={2}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_OK_AND_ASSIGN(bool changed, simplifier.Run(m.get()));
+  EXPECT_TRUE(changed);
+
+  auto* root = m->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kBroadcast);
+}
+
+TEST_F(AlgebraicSimplifierTest, RemovesNoopDimAndCanonicalizesShift) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule rotate_module
+
+    ENTRY main {
+      p0 = f32[5,5]{1,0} parameter(0)
+      ROOT r = f32[5,5]{1,0} rotate(p0), dimensions={1,0}, shifts={0,-1}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_OK_AND_ASSIGN(bool changed, simplifier.Run(m.get()));
+  EXPECT_TRUE(changed);
+
+  auto* root = m->entry_computation()->root_instruction();
+  ASSERT_EQ(root->opcode(), HloOpcode::kRotate);
+  auto* rotate = Cast<HloRotateInstruction>(root);
+  ASSERT_EQ(rotate->dimensions().size(), 1);
+  EXPECT_EQ(rotate->dimensions()[0], 0);
+  EXPECT_EQ(rotate->shifts()[0], 4);
+}
+
+TEST_F(AlgebraicSimplifierTest, CanonicalizesMultiDimRotate) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule rotate_module
+
+    ENTRY main {
+      p0 = f32[5,6]{1,0} parameter(0)
+      ROOT r = f32[5,6]{1,0} rotate(p0), dimensions={1,0}, shifts={3,-2}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_OK_AND_ASSIGN(bool changed, simplifier.Run(m.get()));
+  EXPECT_TRUE(changed);
+
+  auto* root = m->entry_computation()->root_instruction();
+  ASSERT_EQ(root->opcode(), HloOpcode::kRotate);
+  auto* rotate = Cast<HloRotateInstruction>(root);
+  ASSERT_EQ(rotate->dimensions().size(), 2);
+  EXPECT_EQ(rotate->dimensions()[0], 0);
+  EXPECT_EQ(rotate->shifts()[0], 3);
+  EXPECT_EQ(rotate->dimensions()[1], 1);
+  EXPECT_EQ(rotate->shifts()[1], 3);
+}
+
 }  // namespace
 }  // namespace xla
 // Trivial comment to force rebuild

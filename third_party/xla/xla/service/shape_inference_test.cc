@@ -2941,6 +2941,43 @@ TEST_F(ShapeInferenceTest, ReverseInvalidDimension) {
               HasSubstr("Expected array argument"));
 }
 
+TEST_F(ShapeInferenceTest, Rotate) {
+  const Shape input_shape = ShapeUtil::MakeShape(F32, {10, 25});
+
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferRotateShape(input_shape, {0, 1}, {2, 5});
+  ASSERT_IS_OK(inferred_shape.status());
+  ASSERT_TRUE(ShapeUtil::Equal(input_shape, *inferred_shape));
+}
+
+TEST_F(ShapeInferenceTest, RotateInvalidDimension) {
+  const Shape input_shape = ShapeUtil::MakeShape(F32, {10, 25});
+
+  const absl::StatusOr<Shape> inferred_shape_error0 =
+      ShapeInference::InferRotateShape(input_shape, {0, 2}, {2, 5});
+  ASSERT_FALSE(inferred_shape_error0.ok());
+  ASSERT_THAT(inferred_shape_error0.status().message(),
+              HasSubstr("out-of-bounds"));
+
+  const absl::StatusOr<Shape> inferred_shape_error1 =
+      ShapeInference::InferRotateShape(input_shape, {0, -1}, {2, 5});
+  ASSERT_FALSE(inferred_shape_error1.ok());
+  ASSERT_THAT(inferred_shape_error1.status().message(),
+              HasSubstr("out-of-bounds"));
+
+  const absl::StatusOr<Shape> inferred_shape_error2 =
+      ShapeInference::InferRotateShape(input_shape, {0, 0}, {2, 5});
+  ASSERT_FALSE(inferred_shape_error2.ok());
+  ASSERT_THAT(inferred_shape_error2.status().message(),
+              HasSubstr("duplicated"));
+
+  const absl::StatusOr<Shape> inferred_shape_error3 =
+      ShapeInference::InferRotateShape(input_shape, {0, 1}, {2});
+  ASSERT_FALSE(inferred_shape_error3.ok());
+  ASSERT_THAT(inferred_shape_error3.status().message(),
+              HasSubstr("dimensions and shifts must have the same size"));
+}
+
 TEST_F(ShapeInferenceTest, Call) {
   const absl::StatusOr<Shape> inferred_shape0 =
       ShapeInference::InferCallShape({}, ShapeUtil::MakeProgramShape({}, f32_));
