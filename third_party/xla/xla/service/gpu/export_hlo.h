@@ -30,7 +30,7 @@ limitations under the License.
 // HLO means the HLO given to XLA, while optimized HLO refers to HLO that has
 // been successfully compiled. Errors in upload should not block compilation.
 
-namespace xla {
+namespace xla::gpu {
 
 // Uploads HLO to a repository. The only non-dummy implementation is
 // Google-internal as of 2023-10.
@@ -115,6 +115,6 @@ inline void MaybeWaitForUploads() {
   }
 }
 
-}  // namespace xla
+}  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_EXPORT_HLO_H_

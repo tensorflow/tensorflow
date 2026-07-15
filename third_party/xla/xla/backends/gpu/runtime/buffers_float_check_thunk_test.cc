@@ -22,12 +22,14 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log.pb.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
@@ -36,12 +38,12 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
-#include "xla/backends/gpu/runtime/scratch_memory_requests.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/buffer_debug_log.h"
@@ -100,17 +102,20 @@ constexpr PrimitiveType kPrimitiveTypeOf<Eigen::half> = PrimitiveType::F16;
 class BuffersDebugFloatCheckThunkTest : public ::testing::Test {
  protected:
   void SetUp() override {
+    std::string name = absl::AsciiStrToUpper(
+        xla::PlatformUtil::CanonicalPlatformName("gpu").value());
     TF_ASSERT_OK_AND_ASSIGN(platform_,
-                            se::PlatformManager::PlatformWithName("CUDA"));
+                            se::PlatformManager::PlatformWithName(name));
     TF_ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
     TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
     allocator_ =
         std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
             stream_->parent());
 
-    if (!executor_->GetDeviceDescription()
-             .cuda_compute_capability()
-             .IsAtLeastPascal()) {
+    if (const auto* cc = executor_->GetDeviceDescription()
+                             .gpu_compute_capability()
+                             .cuda_compute_capability();
+        cc != nullptr && !cc->IsAtLeastPascal()) {
       GTEST_SKIP()
           << "buffer float checking is not supported on CUDA architectures "
              "older than Pascal due to missing atomic fetch_add with "
@@ -185,10 +190,9 @@ TYPED_TEST(BuffersDebugFloatCheckThunkTypedTest, CalculatesNanCounts) {
                            LocalDeviceId(this->executor_->device_ordinal())));
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests memory_requests(allocations);
-  ScratchMemoryRequests scratch_memory_requests;
-  Thunk::PrepareParams prepare_params{
-      &collective_params,       &clique_requests, &memory_requests,
-      &scratch_memory_requests, this->executor_,  &allocations};
+  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
+                                      &memory_requests, this->executor_,
+                                      &allocations};
 
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), allocations, this->stream_.get(),
@@ -280,10 +284,9 @@ TYPED_TEST(BuffersDebugFloatCheckThunkTypedTest,
                            LocalDeviceId(this->executor_->device_ordinal())));
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests memory_requests(allocations);
-  ScratchMemoryRequests scratch_memory_requests;
-  Thunk::PrepareParams prepare_params{
-      &collective_params,       &clique_requests, &memory_requests,
-      &scratch_memory_requests, this->executor_,  &allocations};
+  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
+                                      &memory_requests, this->executor_,
+                                      &allocations};
 
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), allocations, this->stream_.get(),
@@ -391,10 +394,9 @@ TYPED_TEST(BuffersDebugFloatCheckThunkTypedTest,
                            LocalDeviceId(this->executor_->device_ordinal())));
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests memory_requests(allocations);
-  ScratchMemoryRequests scratch_memory_requests;
-  Thunk::PrepareParams prepare_params{
-      &collective_params,       &clique_requests, &memory_requests,
-      &scratch_memory_requests, this->executor_,  &allocations};
+  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
+                                      &memory_requests, this->executor_,
+                                      &allocations};
 
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), allocations, this->stream_.get(),
@@ -472,10 +474,9 @@ TYPED_TEST(BuffersDebugFloatCheckThunkTypedTest,
                            LocalDeviceId(this->executor_->device_ordinal())));
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests memory_requests(allocations);
-  ScratchMemoryRequests scratch_memory_requests;
-  Thunk::PrepareParams prepare_params{
-      &collective_params,       &clique_requests, &memory_requests,
-      &scratch_memory_requests, this->executor_,  &allocations};
+  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
+                                      &memory_requests, this->executor_,
+                                      &allocations};
 
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), allocations, this->stream_.get(),
@@ -585,10 +586,9 @@ TYPED_TEST(BuffersDebugFloatCheckThunkTypedTest,
                            LocalDeviceId(this->executor_->device_ordinal())));
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests memory_requests(allocations);
-  ScratchMemoryRequests scratch_memory_requests;
-  Thunk::PrepareParams prepare_params{
-      &collective_params,       &clique_requests, &memory_requests,
-      &scratch_memory_requests, this->executor_,  &allocations};
+  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
+                                      &memory_requests, this->executor_,
+                                      &allocations};
 
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), allocations, this->stream_.get(),
@@ -692,10 +692,9 @@ TEST_F(BuffersDebugFloatCheckThunkTest, HandlesInputsWithDifferentTypes) {
                                LocalDeviceId(executor_->device_ordinal())));
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests memory_requests(allocations);
-  ScratchMemoryRequests scratch_memory_requests;
-  Thunk::PrepareParams prepare_params{
-      &collective_params,       &clique_requests, &memory_requests,
-      &scratch_memory_requests, executor_,        &allocations};
+  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
+                                      &memory_requests, executor_,
+                                      &allocations};
 
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), allocations, stream_.get(),

@@ -30,6 +30,7 @@ lit_test_suite(
             "import_emit_stablehlo.hlo",
             "layouts_and_names.hlo",
             "location.hlo",
+            "memory_space.hlo",
             "module_attributes.hlo",
             "module_config.hlo",
             "operand_convert_for_convolution.hlo",

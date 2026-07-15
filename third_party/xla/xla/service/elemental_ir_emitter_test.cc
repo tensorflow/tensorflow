@@ -46,7 +46,7 @@ namespace {
 using std::nullopt;
 
 class ElementalIrEmitterExecutionTest
-    : public HloPjRtInterpreterReferenceMixin<HloTestBase> {
+    : public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
   void RunTest(const std::string& hlo_text, absl::Span<Literal* const> args) {
     HloModuleConfig config;
@@ -341,6 +341,10 @@ TYPED_TEST(ElementalIrEmitterExecutionTypedTest, ConvertFloatToFloats) {
 }
 
 TYPED_TEST(ElementalIrEmitterExecutionTypedTest, ConvertFloatToSigned) {
+  if (std::is_same<TypeParam, tsl::float4_e2m1fn>()) {
+    GTEST_SKIP() << "Skipping test for type f4e2m1fn as conversion to integer "
+                    "types can overflow for the full range of values.";
+  }
   auto tname = this->TypeName();
   const auto hlo_text = absl::StrReplaceAll(R"(
     HloModule m
@@ -361,6 +365,10 @@ TYPED_TEST(ElementalIrEmitterExecutionTypedTest, ConvertFloatToSigned) {
 }
 
 TYPED_TEST(ElementalIrEmitterExecutionTypedTest, ConvertFloatToUnsigned) {
+  if (std::is_same<TypeParam, tsl::float4_e2m1fn>()) {
+    GTEST_SKIP() << "Skipping test for type f4e2m1fn as conversion to integer "
+                    "types can overflow for the full range of values.";
+  }
   auto tname = this->TypeName();
   const auto hlo_text = absl::StrReplaceAll(R"(
     HloModule m

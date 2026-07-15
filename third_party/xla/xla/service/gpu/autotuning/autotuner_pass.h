@@ -25,8 +25,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/autotuner/codegen_orchestrator.h"
+#include "xla/backends/autotuner/config_assigner.h"
+#include "xla/backends/autotuner/hlo_extractor.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
@@ -46,11 +48,19 @@ namespace gpu {
 
 class GpuCompiler;
 
-AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options,
-                                 bool is_deviceless = false);
+ConfigAssigner::Options GetConfigAssignerOptions(
+    const DebugOptions& debug_options, bool is_deviceless = false);
 
-ProfileOptions GetProfileOptions(const DebugOptions& debug_options,
-                                 const AutotuneConfig& autotune_config);
+CodegenOrchestrator::Options GetCodegenOrchestratorOptions(
+    const DebugOptions& debug_options);
+
+ProfileOptions GetProfileOptions(
+    const DebugOptions& debug_options,
+    const ConfigAssigner::Options& config_assigner_options);
+
+InstructionFilterFn GetShouldAutotuneInstructionFn(
+    const DebugOptions& debug_options,
+    const se::GpuComputeCapability& gpu_version);
 
 // HloModulePass that runs the autotuner.
 class AutotunerPass : public HloModulePass {
@@ -87,16 +97,16 @@ class AutotunerPass : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  explicit AutotunerPass(std::unique_ptr<Autotuner> autotuner,
+  explicit AutotunerPass(std::unique_ptr<ConfigAssigner> config_assigner,
                          InstructionFilterFn should_autotune,
                          MultiProcessKeyValueStore key_value_store,
                          bool enable_sharding)
-      : autotuner_(std::move(autotuner)),
+      : config_assigner_(std::move(config_assigner)),
         should_autotune_(std::move(should_autotune)),
         key_value_store_(std::move(key_value_store)),
         enable_sharding_(enable_sharding) {}
 
-  std::unique_ptr<Autotuner> autotuner_;
+  std::unique_ptr<ConfigAssigner> config_assigner_;
   InstructionFilterFn should_autotune_;
   MultiProcessKeyValueStore key_value_store_;
   bool enable_sharding_ = false;

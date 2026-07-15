@@ -48,10 +48,10 @@ constexpr int kTestDataSize = 10000;
 
 // Common base class to share configuration and helpers.
 class CubSortTestBase
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {
+    : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  public:
   void SetUp() override {
-    HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase>::SetUp();
+    HloInterpreterReferenceMixin<HloPjRtGpuTestBase>::SetUp();
     SortRewriter::SetSortModeForTestingOnly(SortRewriter::Mode::kAlways);
   }
 

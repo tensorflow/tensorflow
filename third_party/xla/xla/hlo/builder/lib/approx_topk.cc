@@ -141,7 +141,12 @@ XlaOp AggregateToTopKBuilder(XlaBuilder* builder,
     return Tuple(builder, {top1_vals, top1_args});
   }
 
-  auto sorted_results = Sort(operands, comparator, reduction_dim);
+  // approx_top_k should be lowered to stable_sort+slice to preserve historical
+  // behavior and ensure output consistency.
+  // TODO(b/534418378): Lower approx_top_k to unstable_sort+slice for better
+  // performance once critical DL models can handle the output variation.
+  XlaOp sorted_results =
+      Sort(operands, comparator, reduction_dim, /*is_stable=*/true);
   std::vector<int64_t> slice_start_indices(rank, 0);
   std::vector<int64_t> slice_limit_indices;
   std::vector<int64_t> slice_strides(rank, 1);

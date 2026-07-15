@@ -1,4 +1,5 @@
 load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
+load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -19,6 +20,7 @@ py_test(
         "//xla/backends/cpu/testlib",
         "//xla/codegen/testlib",
         "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -42,13 +44,14 @@ cc_library(
         "//xla/codegen/emitters/ir:xla",
         "//xla/codegen/tiling:symbolic_tile_analysis",
         "//xla/codegen/tiling:tiled_hlo_computation",
-        "//xla/codegen/tiling:tiled_hlo_instruction",
         "//xla/codegen/tiling:tiling_specification",
         "//xla/codegen/tiling/experimental:tile",
         "//xla/codegen/tiling/experimental:tiled_hlo",
+        "//xla/codegen/xtile/codegen:emitter_helpers",
         "//xla/codegen/xtile/codegen:fusion_emitter",
         "//xla/codegen/xtile/codegen:tiled_emitter_constraints",
         "//xla/codegen/xtile/ir:xtile",
+        "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/runtime:work_dimensions",
@@ -65,5 +68,29 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+    ],
+)
+
+xla_cc_test(
+    name = "tiled_fusion_emitter_test",
+    srcs = ["tiled_fusion_emitter_test.cc"],
+    deps = [
+        ":tiled_fusion_emitter",
+        "//xla/backends/cpu/codegen:fusion_compiler",
+        "//xla/codegen/tiling/experimental:tile",
+        "//xla/hlo/analysis:alias_info",
+        "//xla/hlo/analysis:hlo_ordering",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/utils:hlo_traversal",
+        "//xla/service:buffer_assignment",
+        "//xla/service:buffer_value",
+        "//xla/service:logical_buffer",
+        "//xla/service/cpu:cpu_executable",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )

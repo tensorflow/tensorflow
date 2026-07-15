@@ -35,10 +35,12 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/numeric/bits.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/allocator_retry.h"
+#include "xla/tsl/framework/scoped_allocation_trace.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/logging.h"
@@ -55,6 +57,25 @@ const uint64_t kDefaultMemoryFilterMask = tsl::profiler::TraceMeFiltersToMask(
     {tsl::profiler::TraceMeFilter::kTraceMemory});
 
 constexpr BFCAllocator::ChunkHandle BFCAllocator::kInvalidChunkHandle;
+
+static std::string AllocationAnnotationFrameDebugString(
+    const ScopedAllocationTrace::Frame& frame) {
+  if (frame.args.empty()) {
+    return frame.name;
+  }
+  return absl::StrCat(frame.name, "{",
+                      absl::StrJoin(frame.args, ", ", absl::PairFormatter("=")),
+                      "}");
+}
+
+static std::string AllocationAnnotationSnapshotDebugString(
+    const ScopedAllocationTrace::Snapshot& snapshot) {
+  return absl::StrJoin(
+      snapshot.frames, " / ",
+      [](std::string* out, const ScopedAllocationTrace::Frame& frame) {
+        absl::StrAppend(out, AllocationAnnotationFrameDebugString(frame));
+      });
+}
 
 BFCAllocator::BFCAllocator(std::unique_ptr<SubAllocator> sub_allocator,
                            size_t total_memory, const std::string& name,
@@ -223,6 +244,7 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
   c->next = kInvalidChunkHandle;
   c->freed_at_count = 0;
   c->tag = free_chunk_tag_;
+  c->allocation_annotation.reset();
 
   region_manager_.set_handle(c->ptr, h);
 
@@ -264,6 +286,7 @@ void BFCAllocator::DeallocateChunk(ChunkHandle h) {
   Chunk* c = ChunkFromHandle(h);
   c->allocation_id = -1;
   c->bin_num = kInvalidBinNum;
+  c->allocation_annotation.reset();
   c->next = unused_chunk_handle_head_;
   unused_chunk_handle_head_ = h;
 }
@@ -839,6 +862,13 @@ void BFCAllocator::FinishChunkAllocation(Chunk* chunk, size_t num_bytes) {
   // Assign a unique id and increment the id counter, marking the chunk as being
   // in use.
   chunk->allocation_id = next_allocation_id_++;
+  ScopedAllocationTrace::Snapshot allocation_annotation =
+      ScopedAllocationTrace::Current();
+  if (allocation_annotation.frames.empty()) {
+    chunk->allocation_annotation.reset();
+  } else {
+    chunk->allocation_annotation = std::move(allocation_annotation);
+  }
 
   // Update stats.
   ++stats_.num_allocs;
@@ -900,6 +930,8 @@ void BFCAllocator::SplitChunk(BFCAllocator::ChunkHandle h, size_t num_bytes) {
 
   // It inherits the tag; callers update the in-use piece after splitting.
   new_chunk->tag = c->tag;
+
+  new_chunk->allocation_annotation.reset();
 
   // Maintain the pointers.
   // c <-> c_neighbor becomes
@@ -1088,6 +1120,7 @@ void BFCAllocator::MarkFree(BFCAllocator::ChunkHandle h) {
 
   // Mark the chunk as no longer in use.
   c->allocation_id = -1;
+  c->allocation_annotation.reset();
 
   // Optionally record the free time. Timestamped chunks are kept in their
   // original lower/upper tag until they become safe to merge; otherwise a
@@ -1392,6 +1425,11 @@ void BFCAllocator::DumpMemoryLog(size_t num_bytes,
                         c->action_count, " step ", c->step_id);
       }
 #endif
+      if (c->in_use() && c->allocation_annotation.has_value()) {
+        absl::StrAppend(
+            &buf, " allocation_annotation ",
+            AllocationAnnotationSnapshotDebugString(*c->allocation_annotation));
+      }
       absl::StrAppend(&buf, " next ", c->next);
       if (timing_counter_) {
         absl::StrAppend(&buf, " freed_at_count ", c->freed_at_count);

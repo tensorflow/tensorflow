@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "google/protobuf/message_lite.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -204,7 +205,8 @@ TEST_F(CompilePhaseHloRunnerTest,
       test::TestCompilationEnvironment1::GetDescriptor(),
       [](std::unique_ptr<tsl::protobuf::Message> msg) {
         std::unique_ptr<test::TestCompilationEnvironment1> env(
-            absl::down_cast<test::TestCompilationEnvironment1*>(msg.release()));
+            google::protobuf::DownCastMessage<test::TestCompilationEnvironment1>(
+                msg.release()));
         if (env == nullptr) {
           env = std::make_unique<test::TestCompilationEnvironment1>();
         }

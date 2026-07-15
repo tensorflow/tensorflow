@@ -31,7 +31,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MathExtras.h"
@@ -365,15 +364,16 @@ Decision VerifyTritonConstraints(const TiledHloComputation& tiled_computation,
     }
 
     // Check that the number of blocks fits on the device grid X.
-    int64_t num_blocks = 1;
-    int64_t limit = device_info.block_dim_limit().x;
+    uint64_t num_blocks = 1;
+    uint64_t limit = device_info.block_dim_limit().x;
     for (size_t i = 0; i < root_tile_sizes.size(); ++i) {
-      int64_t tile_size = root_tile_sizes[i];
-      int64_t dim_size = dim_sizes[i];
-      int64_t blocks_in_dim = CeilOfRatio(dim_size, tile_size);
-      if (blocks_in_dim > limit || num_blocks > (limit - 1) / blocks_in_dim) {
-        return Decision::Forbid(absl::StrCat(
-            "Number of blocks exceeds the device grid limit of ", limit, "."));
+      uint64_t tile_size = static_cast<uint64_t>(root_tile_sizes[i]);
+      uint64_t dim_size = static_cast<uint64_t>(dim_sizes[i]);
+      uint64_t blocks_in_dim = CeilOfRatio(dim_size, tile_size);
+      if (blocks_in_dim > limit || (num_blocks > limit / blocks_in_dim)) {
+        return Decision::Forbid(
+            absl::StrCat("Number of blocks ", num_blocks, "*", blocks_in_dim,
+                         " exceeds the device grid X limit of ", limit, "."));
       }
       num_blocks *= blocks_in_dim;
     }

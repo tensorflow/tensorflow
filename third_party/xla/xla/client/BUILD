@@ -101,6 +101,7 @@ xla_cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest",
+        "@com_google_protobuf//:protobuf_lite",
         "@tsl//tsl/platform:protobuf",
     ],
 )
@@ -119,6 +120,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/hlo/builder:xla_computation",
         "//xla/service:backend",
         "//xla/service:compiler",

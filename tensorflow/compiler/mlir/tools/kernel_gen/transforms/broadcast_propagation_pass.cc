@@ -17,7 +17,6 @@ limitations under the License.
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 #include "llvm/ADT/DenseMapInfo.h"
@@ -80,13 +79,6 @@ using mlir::kernel_gen::BroadcastIntent;
 
 template <>
 struct DenseMapInfo<BroadcastIntent> {
-  static BroadcastIntent getEmptyKey() {
-    return {DenseMapInfo<mlir::RankedTensorType>::getEmptyKey(),
-            DenseMapInfo<mlir::Value>::getEmptyKey(),
-            DenseMapInfo<mlir::Value>::getEmptyKey(),
-            DenseMapInfo<mlir::Attribute>::getEmptyKey()};
-  }
-
   static unsigned getHashValue(const BroadcastIntent &intent) {
     return hash_combine(
         DenseMapInfo<mlir::RankedTensorType>::getHashValue(intent.resultType),

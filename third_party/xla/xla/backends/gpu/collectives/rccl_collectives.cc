@@ -337,23 +337,8 @@ RcclCollectives::SplitCommunicatorsWithCancel(
   return split_comms;
 }
 
-static absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectives() {
-  ASSIGN_OR_RETURN(xla::Collectives * collectives,
-                   xla::CollectivesRegistry::Get("gpu", "nvshmem"));
-  auto* nvshmem_collectives = absl::down_cast<GpuCollectives*>(collectives);
-  if (nvshmem_collectives == nullptr) {
-    return absl::InternalError("Failed to get NVSHMEM collectives");
-  }
-
-  return nvshmem_collectives;
-}
 
 absl::StatusOr<void*> RcclCollectives::Allocate(uint64_t bytes) {
-  if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem()) {
-    ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
-    return nvshmem_collectives->Allocate(bytes);
-  }
-
   void* ptr = nullptr;
   ncclResult_t res = ncclMemAlloc(&ptr, bytes);
   if (res != ncclSuccess) {
@@ -369,11 +354,6 @@ absl::StatusOr<void*> RcclCollectives::Allocate(uint64_t bytes) {
 }
 
 absl::Status RcclCollectives::Deallocate(void* location) {
-  if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem()) {
-    ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
-    return nvshmem_collectives->Deallocate(location);
-  }
-
   ncclResult_t res = ncclMemFree(location);
   if (res != ncclSuccess) {
     return absl::InternalError(absl::StrFormat(
@@ -388,10 +368,6 @@ absl::Status RcclCollectives::Deallocate(void* location) {
 
 absl::StatusOr<CliqueIdCallback> RcclCollectives::InitializeTopology(
     const Topology& topology) {
-  if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem()) {
-    ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
-    RETURN_IF_ERROR(nvshmem_collectives->InitializeTopology(topology).status());
-  }
 
   if (topology.num_processes > 1) {
     auto rccl_id_store = std::make_shared<RcclIdStore>(

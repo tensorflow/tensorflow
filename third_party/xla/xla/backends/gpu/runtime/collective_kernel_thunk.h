@@ -15,7 +15,6 @@ limitations under the License.*/
 #ifndef XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_KERNEL_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_KERNEL_THUNK_H_
 
-#include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -36,8 +35,8 @@ limitations under the License.*/
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/core/collectives/rank_id.h"
-#include "xla/core/collectives/reduction_kind.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/device_address.h"
@@ -60,39 +59,37 @@ namespace xla::gpu {
 // - Launch the kernel.
 // When codegen kernel is used, kernel_name, launch_dimensions, shmem_bytes
 // must be set.
-class CollectiveKernelThunk : public Thunk {
+class CollectiveKernelThunk : public TracedCommand {
  public:
   static constexpr auto kMaxNumExecutors =
       ::stream_executor::gpu::kMaxNumAllReduceInputPtrs;
 
   CollectiveKernelThunk(
       ThunkInfo info, CollectiveConfig collective_config,  //
-      ReductionKind reduction_kind,                        //
+      CollectiveKernelSpec kernel_spec,                    //
       bool is_async,                                       //
       std::vector<CollectiveThunk::Buffer> buffers,        //
       bool is_collective_kernel_enabled,                   //
       absl::string_view kernel_name,                       //
       LaunchDimensions launch_dimensions,                  //
       int32_t shmem_bytes = 0,                             //
-      bool is_multimem_enabled = false,
       std::optional<std::vector<uint8_t>> cubin = std::nullopt,
       bool use_pdl = false)
-      : Thunk{Thunk::kCollectiveKernel, info},
+      : TracedCommand{Thunk::kCollectiveKernel, info},
         collective_kernel_enabled_(is_collective_kernel_enabled),
         is_async_(is_async),
         collective_config_(std::move(collective_config)),
-        reduction_kind_(reduction_kind),
+        kernel_spec_(std::move(kernel_spec)),
         launch_dimensions_(launch_dimensions),
         kernel_name_(kernel_name),
         cubin_(std::move(cubin)),
         shmem_bytes_(shmem_bytes),
         buffers_(std::move(buffers)),
-        is_multimem_enabled_(is_multimem_enabled),
         use_pdl_(use_pdl) {
     per_stream_state_.reserve(kMaxNumExecutors);
   }
 
-  bool is_multimem_enabled() const { return is_multimem_enabled_; }
+  const CollectiveKernelSpec& kernel_spec() const { return kernel_spec_; }
 
   int32_t shmem_bytes() const { return shmem_bytes_; }
 
@@ -105,10 +102,11 @@ class CollectiveKernelThunk : public Thunk {
   bool use_pdl() const { return use_pdl_; }
   const std::optional<std::vector<uint8_t>>& cubin() const { return cubin_; }
 
-  // Returns true if the collective kernel is supported for the given clique.
-  absl::StatusOr<bool> IsSupported(
-      const GpuCliqueKey& clique_key, se::StreamExecutor& executor,
-      const CollectiveParams& collective_params) const;
+  // Returns the reason why the collective kernel is not supported.
+  // Returns OK if the collective kernel is supported.
+  absl::Status IsSupported(const GpuCliqueKey& clique_key,
+                           se::StreamExecutor& executor,
+                           const CollectiveParams& collective_params) const;
 
   // The single host collective thunk actually requires a clique key.
   absl::Status Prepare(const PrepareParams& params) final;
@@ -120,6 +118,8 @@ class CollectiveKernelThunk : public Thunk {
 
   // Execute the kernel on all devices.
   absl::Status ExecuteOnStream(const ExecuteParams& params) final;
+
+  BufferUses buffer_uses() const override;
 
   static absl::StatusOr<std::unique_ptr<CollectiveKernelThunk>> FromProto(
       ThunkInfo thunk_info, const CollectiveKernelThunkProto& thunk_proto,
@@ -134,24 +134,7 @@ class CollectiveKernelThunk : public Thunk {
 
   // Per-executor scratch memory.
   struct StreamMemory {
-    // Buffers allocated for the collective.
-    // Buffers are double buffered to allow for consecutive invocation
-    // of the kernel on different GPUs.
-    // - GPUs sync on Buffer 0 on first invocation.
-    // - GPUs sync on Buffer 1 on second invocation.
-    //   This implies that all GPUs must have finished the first invocation
-    //   before they can sync on the second invocation.
-    // - Alternate back to Buffer 0 on third invocation. And so on.
-    se::DeviceAddressHandle local_buffers_handle;
-
-    // Signal buffers allocated for the collective.
-    // Also double buffered for the same reason as local buffers.
-    se::DeviceAddressHandle signal_buffers_handle;
-
-    se::gpu::AllReduceStrategy strategy;
-
-    const int64_t local_buffer_size_bytes = 0;
-    const int64_t signal_buffer_size_bytes = 0;
+    std::vector<se::DeviceAddressHandle> scratch_allocations;
   };
 
   // Per-executor state that needs to be synchronized for access.
@@ -162,11 +145,6 @@ class CollectiveKernelThunk : public Thunk {
     // Pointer to the collective kernel metadata on device.
     se::DeviceAddressBase metadata;
 
-    // These vectors are merely pointers into the buffer(s) above ordered
-    // by RankId. They are initialized once at the end of Initialize() and never
-    // changed.
-    std::array<se::DeviceAddressBase, kNumBuffers> remote_buffer_ptrs;
-    std::array<se::DeviceAddressBase, kNumBuffers> signal_buffer_ptrs;
     // Kernel entry for the stream executor.
     std::unique_ptr<se::Kernel> kernel;
     uint32_t invocation_count = 0;
@@ -183,20 +161,15 @@ class CollectiveKernelThunk : public Thunk {
   // Returns the input size in bytes for the collective.
   int64_t GetInputSizeBytes() const;
 
-  // Calculate the device memory base for the given parameter index.
-  // The size of the returned memory is num_devices pointers.
-  static absl::StatusOr<se::DeviceAddressBase> GetParameterDeviceMemoryBase(
-      se::DeviceAddressBase metadata, int64_t num_parameters,
-      int64_t num_devices, int64_t parameter_index);
-
   // Whether the one-shot kernel is enabled.
   const bool collective_kernel_enabled_;
   // Whether the collective is run on an async stream.
   const bool is_async_;
   // Collective config being used. Copied over to avoid lifetime issues.
   const CollectiveConfig collective_config_;
-  // Reduction kind being to use for AllReduce collective.
-  const ReductionKind reduction_kind_;
+  // Operation specific parameters.
+  // Used to find runtime requirements for an emitted kernel.
+  const CollectiveKernelSpec kernel_spec_;
   // Launch dimensions for the kernel. Only relevant when the codegen kernel
   // is used.
   LaunchDimensions launch_dimensions_;
@@ -218,7 +191,6 @@ class CollectiveKernelThunk : public Thunk {
       per_stream_state_ ABSL_GUARDED_BY(mutex_);
   absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<StreamMemory>>
       per_stream_memory_ ABSL_GUARDED_BY(mutex_);
-  const bool is_multimem_enabled_;
 
   // Programmatic Dependent Launch.
   const bool use_pdl_;

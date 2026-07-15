@@ -3066,14 +3066,13 @@ class BaseGeluOpModel : public SingleOpModel {
 };
 
 // The FloatGeluOpModel class handles float input and output.
+template <typename T>
 class FloatGeluOpModel : public BaseGeluOpModel {
  public:
   using BaseGeluOpModel::BaseGeluOpModel;
 
-  void SetInput(std::initializer_list<float> data) {
-    PopulateTensor(input_, data);
-  }
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+  void SetInput(std::initializer_list<T> data) { PopulateTensor(input_, data); }
+  std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
 };
 
 // The QuantizedGeluOpModel class handles quantized input and output.
@@ -3097,7 +3096,8 @@ class QuantizedGeluOpModel : public BaseGeluOpModel {
 };
 
 TEST(FloatActivationsOpTest, Gelu) {
-  FloatGeluOpModel m({TensorType_FLOAT32, {2, 3}}, /*approximate=*/false);
+  FloatGeluOpModel<float> m({TensorType_FLOAT32, {2, 3}},
+                            /*approximate=*/false);
 
   m.SetInput({
       0.0f, 1.0f, 3.0f,    // Row 1
@@ -3110,8 +3110,33 @@ TEST(FloatActivationsOpTest, Gelu) {
                              })));
 }
 
+TEST(FloatActivationsOpTest, GeluHalf) {
+  FloatGeluOpModel<half> m({TensorType_FLOAT16, {2, 3}}, /*approximate=*/false);
+
+  m.SetInput({
+      half(0.0f),
+      half(1.0f),
+      half(3.0f),  // Row 1
+      half(1.0f),
+      half(-1.0f),
+      half(-2.0f),  // Row 2
+  });
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.0f,
+                      0.841345f,
+                      2.99595f,  // Row 1
+                      0.841345f,
+                      -0.158655f,
+                      -0.0455003f,  // Row 2
+                  },
+                  static_cast<float>(NumericLimits<half>::epsilon()) * 10)));
+}
+
 TEST(FloatActivationsOpTest, GeluApproximate) {
-  FloatGeluOpModel m({TensorType_FLOAT32, {2, 3}}, /*approximate=*/true);
+  FloatGeluOpModel<float> m({TensorType_FLOAT32, {2, 3}}, /*approximate=*/true);
   // The OpenCL delegate always uses the accurate version so use a higher
   // tolerance for validation.
   constexpr float kEpsilon = 1e-3;
@@ -3207,7 +3232,7 @@ void GeluInt16Test(bool approximate) {
 
   // Initialize the float GELU op model and run it. An output will be generated
   // and compared with the quantized GELU op model output.
-  FloatGeluOpModel model(
+  FloatGeluOpModel<float> model(
       {TensorType_FLOAT32, {1, static_cast<int>(gelu_input.size())}},
       approximate);
   model.SetInput(gelu_input);

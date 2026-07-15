@@ -99,7 +99,8 @@ class AllReduceKernelTest : public ::testing::Test,
       const std::vector<Array<T>>& input_data, ReductionKind reduction_kind) {
     const int64_t num_ranks = input_data.size();
     const LaunchDimensions launch_dimensions = AllReduceLaunchDimensions(
-        input_data[0].num_elements(), num_ranks, params_.all_reduce_strategy);
+        input_data[0].num_elements(), num_ranks, params_.all_reduce_strategy,
+        executors[0]->GetDeviceDescription());
 
     int64_t num_elements = input_data[0].num_elements();
 

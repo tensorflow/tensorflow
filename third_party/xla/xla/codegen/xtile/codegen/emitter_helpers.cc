@@ -186,9 +186,17 @@ mlir::Value OnesLike(mlir::ImplicitLocOpBuilder& b, mlir::Type type) {
   mlir::Type element_type = mlir::getElementTypeOrSelf(type);
   CHECK(element_type.isInteger()) << "OnesLike only supports integer types.";
 
+  mlir::Type const_type = GetSignlessType(type);
+
   int64_t width = element_type.getIntOrFloatBitWidth();
   mlir::APInt all_ones = mlir::APInt::getAllOnes(width);
-  return mlir::createScalarOrSplatConstant(b, b.getLoc(), type, all_ones);
+  mlir::Value cst =
+      mlir::createScalarOrSplatConstant(b, b.getLoc(), const_type, all_ones);
+  if (element_type.isUnsignedInteger()) {
+    cst = mlir::UnrealizedConversionCastOp::create(b, b.getLoc(), type, cst)
+              .getResult(0);
+  }
+  return cst;
 }
 
 }  // namespace
@@ -215,26 +223,40 @@ Value EmitClampedRTVar(mlir::ImplicitLocOpBuilder& b,
 }
 
 // Evaluates tiling parameters for the given affine expressions, e.g. offsets.
-// This function only supports pid and does not support runtime values including
-// the induction variables yet.
 absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
     ArrayRef<SymbolicExpr> exprs) {
-  // Create offset_indexing_map
-  // (pid, sequential_dims) -> (tiling dimensions)
-  // and then evaluate expressions (tiling dimensions) -> (...) using
-  // values for pid and sequential_dim_id_to_value_.
+  // We expect expressions to use:
+  // - some parallel and sequential dimensions of tiling space d0, d1, ..
+  // - some runtime variables s0, s1, .., represented as symbols.
+  // To evaluate them we create first `offset_indexing_map`
+  //   (pid, tid)[<sequential dims k_0, k_1, ...>, <runtime vars rt_0, rt_1>]
+  //     -> (<tiling space dims>)[<runtime variables>]
+  // Note that sequential dimensions are moved from dimensions to symbols.
+  // Then plug in pid, sequential and runtime values.
 
   MLIRContext* mlir_context = tiled_computation_.GetMLIRContext();
   const ge::TilingSpace& tiling_space = tiled_computation_.tiling_space();
+  int64_t num_dimensions = tiling_space.num_dimensions();
+  int64_t num_parallel_dimensions = tiling_space.num_parallel_dimensions();
   // Get all dimension and symbol IDs from all of the expressions.
-  UsedParameters used_parameters =
-      GetUsedParameters(exprs, tiling_space.num_dimensions());
-  const auto& dim_ids = used_parameters.dimension_ids;
-  const auto& symbol_ids = used_parameters.symbol_ids;
+  UsedParameters used_parameters = GetUsedParameters(exprs, num_dimensions);
+  const llvm::SmallVector<int64_t>& dim_ids = used_parameters.dimension_ids;
+  const llvm::SmallVector<int64_t>& symbol_ids = used_parameters.symbol_ids;
 
-  SmallVector<Value> dim_values{Cast(b_, pid_, pid_.getType())};
+  SmallVector<Value> dim_values{Cast(b_, pid_, pid_.getType()),
+                                Cast(b_, tid_, tid_.getType())};
+  int64_t num_tiles_per_pid = schedule_.GetNumTilesPerPid();
   std::vector<IndexingMap::Variable> dim_variables{
-      IndexingMap::Variable(schedule_.pid_bounds, "pid")};
+      IndexingMap::Variable(0, schedule_.num_pids - 1, "pid"),
+      IndexingMap::Variable(0, num_tiles_per_pid - 1, "tid")};
+  SmallVector<std::pair<SymbolicExpr, Interval>> constraints;
+  if (num_tiles_per_pid > 1) {
+    SymbolicExpr pid_expr = CreateDimExpr(0, mlir_context);
+    SymbolicExpr tid_expr = CreateDimExpr(1, mlir_context);
+    SymbolicExpr global_tile_id_expr = pid_expr * num_tiles_per_pid + tid_expr;
+    constraints.push_back(std::make_pair(global_tile_id_expr,
+                                         Interval{0, schedule_.num_tiles - 1}));
+  }
 
   int64_t symbol_count = 0;
   SmallVector<Value> symbol_values;
@@ -246,28 +268,26 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
   // errors when trying to print uninitialized SymbolicExprs.
   SymbolicExpr default_replacement = CreateSymbolicConstant(-1, mlir_context);
 
-  // Remap parallel dimensions.
-  SmallVector<SymbolicExpr> dim_replacements(1, default_replacement);
-  if (!dim_ids.empty()) {
-    dim_replacements.resize(dim_ids.back() + 1, default_replacement);
-    for (int64_t dim : dim_ids) {
-      switch (tiling_space.dimensions()[dim].type) {
-        case ge::TilingSpace::DimensionSemantics::kParallel: {
-          dim_replacements[dim] = schedule_.GetPidExpr(dim);
-          break;
-        }
-        case ge::TilingSpace::DimensionSemantics::kSequential: {
-          dim_replacements[dim] =
-              CreateSymbolExpr(symbol_count++, dim_values.size(), mlir_context);
-          auto [value, range] = GetSequentialDimValue(ge::TiledDimId(dim));
-          symbol_values.push_back(value);
-          symbol_variables.push_back(
-              IndexingMap::Variable{range, absl::StrCat("k_", dim)});
-          break;
-        }
-        default:
-          return absl::InvalidArgumentError("Unsupported dimension semantics.");
+  // Create replacements for all tiling space dims, but replace only ones that
+  // are used in the expressions.
+  SmallVector<SymbolicExpr> dim_replacements(num_dimensions,
+                                             default_replacement);
+  for (const int64_t dim : dim_ids) {
+    switch (tiling_space.dimensions()[dim].type) {
+      case ge::TilingSpace::DimensionSemantics::kParallel:
+        dim_replacements[dim] = schedule_.GetPidExpr(dim);
+        break;
+      case ge::TilingSpace::DimensionSemantics::kSequential: {
+        dim_replacements[dim] =
+            CreateSymbolExpr(symbol_count++, dim_values.size(), mlir_context);
+        auto [value, range] = GetSequentialDimValue(ge::TiledDimId(dim));
+        symbol_values.push_back(value);
+        symbol_variables.push_back(IndexingMap::Variable{
+            range, absl::StrCat("k_", dim - num_parallel_dimensions)});
+        break;
       }
+      default:
+        return absl::InvalidArgumentError("Unsupported dimension semantics.");
     }
   }
 
@@ -277,7 +297,7 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
     symbol_replacements.resize(symbol_ids.back() + 1, default_replacement);
     const auto& rt_symbol_to_tiled_hlo =
         tiled_computation_.rt_symbol_to_tiled_hlo();
-    for (const auto& symbol_id : symbol_ids) {
+    for (const int64_t symbol_id : symbol_ids) {
       auto it = rt_symbol_to_tiled_hlo.find(symbol_id);
       TF_RET_CHECK(it != rt_symbol_to_tiled_hlo.end());
       const auto& [tiled_hlo, bounds] = it->second;
@@ -292,14 +312,16 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
 
   // Update the expressions with the remapped dimensions and symbols.
   SmallVector<SymbolicExpr> updated_exprs;
-  for (const auto& expr : exprs) {
+  updated_exprs.reserve(exprs.size());
+  for (const SymbolicExpr& expr : exprs) {
     updated_exprs.push_back(
         expr.ReplaceDimsAndSymbols(dim_replacements, symbol_replacements));
   }
   IndexingMap offset_indexing_map(
       SymbolicMap::Get(mlir_context, dim_values.size(), symbol_count,
                        updated_exprs),
-      std::move(dim_variables), std::move(symbol_variables), {});
+      std::move(dim_variables), std::move(symbol_variables), /*rt_vars=*/{},
+      constraints);
 
   return emitters::ApplyIndexing(offset_indexing_map, dim_values, symbol_values,
                                  b_);
@@ -390,6 +412,22 @@ absl::StatusOr<PrimitiveType> GetPrimitiveType(Type t) {
 Type StorageType(Type t) {
   if (auto i = mlir::dyn_cast<mlir::IntegerType>(t); i && i.getWidth() == 1) {
     return i.get(i.getContext(), 8, i.getSignedness());
+  }
+  return t;
+}
+
+Type GetSignlessType(Type t) {
+  Type elem_type = mlir::getElementTypeOrSelf(t);
+  if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(elem_type)) {
+    if (int_type.isUnsignedInteger()) {
+      Type signless_elem = mlir::IntegerType::get(
+          t.getContext(), int_type.getWidth(),
+          mlir::IntegerType::SignednessSemantics::Signless);
+      if (auto shaped_type = mlir::dyn_cast<mlir::ShapedType>(t)) {
+        return shaped_type.clone(signless_elem);
+      }
+      return signless_elem;
+    }
   }
   return t;
 }
@@ -576,11 +614,17 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
 }
 
 absl::StatusOr<mlir::TypedValue<mlir::RankedTensorType>> EmitConstant(
-    mlir::ImplicitLocOpBuilder& b, const HloInstruction& constant) {
+    mlir::ImplicitLocOpBuilder& b, const HloInstruction& constant,
+    std::optional<llvm::ArrayRef<int64_t>> tile_shape) {
   ASSIGN_OR_RETURN(Type ty,
                    PrimitiveTypeToMlirType(b, constant.shape().element_type()));
-  llvm::SmallVector<int64_t> shape{constant.shape().dimensions().begin(),
-                                   constant.shape().dimensions().end()};
+  llvm::SmallVector<int64_t> shape;
+  if (tile_shape.has_value()) {
+    shape.assign(tile_shape->begin(), tile_shape->end());
+  } else {
+    shape.assign(constant.shape().dimensions().begin(),
+                 constant.shape().dimensions().end());
+  }
 
   if (constant.shape().AreAllLeavesIntegers()) {
     if (constant.shape().element_type() == U64) {
@@ -745,7 +789,8 @@ absl::StatusOr<TensorValue> EmitScope(
           "Broadcast is not yet supported in EmitScope().");
     }
     if (hlo->opcode() == HloOpcode::kConstant) {
-      ASSIGN_OR_RETURN(result, EmitConstant(b, *hlo));
+      ASSIGN_OR_RETURN(result,
+                       EmitConstant(b, *hlo, /*tile_shape=*/std::nullopt));
     } else if (HloInstruction::IsOpElementwise(hlo->opcode())) {
       std::vector<Value> operands;
       operands.reserve(hlo->operands().size());
@@ -882,9 +927,6 @@ mlir::MemRefType GetMemRefType(const Shape& shape, mlir::Type element_type) {
 absl::StatusOr<Type> GetMlirType(
     mlir::ImplicitLocOpBuilder& b, PrimitiveType type,
     const std::optional<GpuComputeCapability>& gpu_cc) {
-  if (type == U16) {
-    return b.getI16Type();
-  }
   if (type == S4) {
     return b.getI4Type();
   }

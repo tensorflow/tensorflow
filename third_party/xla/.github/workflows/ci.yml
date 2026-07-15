@@ -98,7 +98,7 @@ jobs:
           },
           {
             pool: "linux-x86-g2-16-l4-1gpu",
-            container: "gcr.io/tensorflow-sigs/build:latest-python3.11",
+            container: "gcr.io/tensorflow-sigs/build:latest-python3.12",
             name: "JAX Linux x86 GPU L4",
             repo: "jax-ml/jax",
           },
@@ -123,17 +123,22 @@ jobs:
         shell: bash
     steps:
       - name: "Checking out openxla/xla"
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           path: "openxla/xla"
           persist-credentials: false
       - name: Checking out ${{ matrix.job_info.repo }}
         if: ${{ matrix.job_info.repo != 'openxla/xla' }}
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: ${{ matrix.job_info.repo }}
           path: ${{ matrix.job_info.repo }}
           persist-credentials: false
+      - name: Checking out rules_ml_toolchain # TODO(alekstheod):  remove once jax is migrated to the latest rules_ml_toolchain changes
+        run: |
+          git clone https://github.com/google-ml-infra/rules_ml_toolchain.git openxla/rules_ml_toolchain
+          cd openxla/rules_ml_toolchain
+          git checkout b11745590f513ec55b32e2d126073576fde18c71
       - name: "Wait For Connection"
         uses: google-ml-infra/actions/ci_connection@7f5ca0c263a81ed09ea276524c1b9192f1304e3c
         with:

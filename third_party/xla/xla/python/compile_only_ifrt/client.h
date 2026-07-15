@@ -392,10 +392,7 @@ class CompileOnlyIfRtClient final
   }
 
  private:
-  xla::ifrt::PjRtCompiler default_compiler_{
-      /*client=*/nullptr,
-      /*num_threads=*/0,
-  };
+  xla::ifrt::PjRtCompiler default_compiler_{/*client=*/nullptr};
   std::shared_ptr<ifrt::PjRtTopology> topology_;
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> descriptions_;
   ifrt::AttributeMap attributes_;

@@ -107,6 +107,7 @@ tf_cc_test(
         "//tensorflow/core/platform:jpeg",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
         "@libjpeg_turbo//:jpeg",
     ],
 )

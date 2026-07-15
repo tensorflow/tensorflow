@@ -3006,7 +3006,7 @@ void GeneratorDatasetRegionOp::getRegionInvocationBounds(
 OperandRange GeneratorDatasetRegionOp::getEntrySuccessorOperands(
     RegionSuccessor successor) {
   auto end = this->getOperation()->operand_end();
-  if (successor.isParent()) {
+  if (successor.isOperation()) {
     // The op itself doesn't branch back to itself.
     return ::mlir::OperandRange(end, end);
   } else if (successor.getSuccessor() == &getInit()) {
@@ -3031,7 +3031,7 @@ ValueRange GeneratorDatasetRegionOp::getSuccessorInputs(
   // Therefore, getSuccessorInputs returns only the portion of block arguments
   // that correspond to what the incoming terminators provide.
 
-  if (successor.isParent()) {
+  if (successor.isOperation()) {
     return ValueRange();
   }
 
@@ -3065,7 +3065,7 @@ void GeneratorDatasetRegionOp::getSuccessorRegions(
     regions.push_back(RegionSuccessor(&getFinalize()));
   } else {
     // `finalize` branches back to the parent op.
-    regions.push_back(RegionSuccessor::parent());
+    regions.push_back(RegionSuccessor(getOperation()));
   }
 }
 
@@ -3284,7 +3284,7 @@ void IfRegionOp::getRegionInvocationBounds(
 OperandRange IfRegionOp::getEntrySuccessorOperands(RegionSuccessor successor) {
   // IfRegionOp currently only allows one op (the condition), so there are no
   // remaining operands for the successor.
-  assert((successor.isParent() ||
+  assert((successor.isOperation() ||
           (successor.getSuccessor() == &(*this)->getRegion(0) ||
            successor.getSuccessor() == &(*this)->getRegion(1))) &&
          "Invalid IfRegionOp region index.");
@@ -3294,7 +3294,7 @@ OperandRange IfRegionOp::getEntrySuccessorOperands(RegionSuccessor successor) {
 
 ::mlir::ValueRange IfRegionOp::getSuccessorInputs(
     ::mlir::RegionSuccessor successor) {
-  if (successor.isParent()) return getResults();
+  if (successor.isOperation()) return getResults();
   return ::mlir::ValueRange();
 }
 
@@ -3302,7 +3302,7 @@ void IfRegionOp::getSuccessorRegions(
     RegionBranchPoint point, SmallVectorImpl<RegionSuccessor>& regions) {
   if (!point.isParent()) {
     // The `then` and the `else` region branch back to the parent operation.
-    regions.push_back(RegionSuccessor::parent());
+    regions.push_back(RegionSuccessor(getOperation()));
     return;
   } else {
     // The parent can branch to either `then` or `else`.
@@ -3311,8 +3311,7 @@ void IfRegionOp::getSuccessorRegions(
     if (!elseRegion->empty())
       regions.push_back(RegionSuccessor(elseRegion));
     else
-      regions.push_back(RegionSuccessor(
-          point.getTerminatorPredecessorOrNull()->getParentRegion()));
+      regions.push_back(RegionSuccessor(getOperation()));
   }
 }
 

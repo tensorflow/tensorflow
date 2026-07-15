@@ -54,7 +54,6 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
-#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -159,18 +158,54 @@ std::string DynamicSliceFusionV2Thunk::ToString(int indent) const {
 }
 
 absl::Status DynamicSliceFusionV2Thunk::Prepare(const PrepareParams& params) {
-  if (command_executor_.has_value()) {
-    RETURN_IF_ERROR(command_executor_->Prepare(params));
+  if (!params.buffer_allocations) {
+    if (command_executor_.has_value()) {
+      RETURN_IF_ERROR(command_executor_->Prepare(params));
+    }
+    return executor_.Prepare(params);
   }
-  return executor_.Prepare(params);
+
+  // Embedded thunks and commands use synthetic embedded allocation indices
+  // rather than parent allocation indices, so we must construct embedded_allocs
+  // and pass embedded_params for preparation.
+  std::vector<se::DeviceAddressBase> buffers = BuildDynamicSliceBuffers(
+      *params.buffer_allocations, IsInsideWhileLoopNest());
+  BufferAllocations embedded_allocs(
+      buffers, params.buffer_allocations->device_ordinal(),
+      params.buffer_allocations->memory_allocator());
+  PrepareParams embedded_params = params;
+  embedded_params.buffer_allocations = &embedded_allocs;
+
+  if (command_executor_.has_value()) {
+    RETURN_IF_ERROR(command_executor_->Prepare(embedded_params));
+  }
+  return executor_.Prepare(embedded_params);
 }
 
 absl::Status DynamicSliceFusionV2Thunk::Initialize(
     const InitializeParams& params) {
-  if (command_executor_.has_value()) {
-    RETURN_IF_ERROR(command_executor_->Initialize(params));
+  if (!params.buffer_allocations) {
+    if (command_executor_.has_value()) {
+      RETURN_IF_ERROR(command_executor_->Initialize(params));
+    }
+    return executor_.Initialize(params);
   }
-  return executor_.Initialize(params);
+
+  // Embedded thunks and commands use synthetic embedded allocation indices
+  // rather than parent allocation indices, so we must construct embedded_allocs
+  // and pass embedded_params for initialization.
+  std::vector<se::DeviceAddressBase> buffers = BuildDynamicSliceBuffers(
+      *params.buffer_allocations, IsInsideWhileLoopNest());
+  BufferAllocations embedded_allocs(
+      buffers, params.buffer_allocations->device_ordinal(),
+      params.buffer_allocations->memory_allocator());
+  InitializeParams embedded_params = params;
+  embedded_params.buffer_allocations = &embedded_allocs;
+
+  if (command_executor_.has_value()) {
+    RETURN_IF_ERROR(command_executor_->Initialize(embedded_params));
+  }
+  return executor_.Initialize(embedded_params);
 }
 
 absl::Status DynamicSliceFusionV2Thunk::VerifyBufferAssignment(
@@ -360,7 +395,6 @@ DynamicSliceFusionV2Thunk::Record(const Thunk::ExecuteParams& execute_params,
   auto child_record_params = [&]() {
     Command::RecordParams params = record_params;
     params.updated_allocs = std::nullopt;
-    params.command_buffer_update_mode = DebugOptions::ALWAYS_UPDATE;
     return params;
   };
 
@@ -408,14 +442,15 @@ DynamicSliceFusionV2Thunk::Record(const Thunk::ExecuteParams& execute_params,
   return Internal("Invalid record action");
 }
 
-bool DynamicSliceFusionV2Thunk::requires_initialization() const {
+bool DynamicSliceFusionV2Thunk::requires_update_on_initialize() const {
   return command_executor_.has_value() &&
-         command_executor_->requires_initialization();
+         command_executor_->requires_update_on_initialize();
 }
 
-bool DynamicSliceFusionV2Thunk::requires_update() const {
-  return HasLoopDependentOffsets() || (command_executor_.has_value() &&
-                                       command_executor_->requires_update());
+bool DynamicSliceFusionV2Thunk::requires_update_on_execute() const {
+  return HasLoopDependentOffsets() ||
+         (command_executor_.has_value() &&
+          command_executor_->requires_update_on_execute());
 }
 
 bool DynamicSliceFusionV2Thunk::support_loop_unroll() const {

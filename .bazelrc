@@ -130,8 +130,6 @@ common --define=grpc_no_ares=true
 # TODO: Remove the following two lines once TF doesn't depend on Bazel wrapping
 # all library archives in -whole_archive -no_whole_archive.
 common --noincompatible_remove_legacy_whole_archive
-common --features=-force_no_whole_archive
-common --host_features=-force_no_whole_archive
 
 # TODO(mihaimaruseac): Document this option or remove if no longer needed
 common --enable_platform_specific_config
@@ -1006,6 +1004,7 @@ common:cross_compile_base --config=clang_local
 common:cross_compile_base --host_cpu=k8
 common:cross_compile_base --host_crosstool_top=//tensorflow/tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
 common:cross_compile_base --extra_execution_platforms=//tensorflow/tools/toolchains/cross_compile/config:linux_x86_64
+common:cross_compile_base --extra_toolchains=//tensorflow/tools/toolchains/cross_compile/cc:linux_x86_toolchain
 
 common:rbe_cross_compile_base --config=rbe_base
 common:rbe_cross_compile_base --remote_instance_name=projects/tensorflow-testing/instances/default_instance
@@ -1023,6 +1022,7 @@ common:cross_compile_linux_arm64 --config=cross_compile_base
 common:cross_compile_linux_arm64 --platforms=//tensorflow/tools/toolchains/cross_compile/config:linux_aarch64
 common:cross_compile_linux_arm64 --cpu=aarch64
 common:cross_compile_linux_arm64 --crosstool_top=//tensorflow/tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
+common:cross_compile_linux_arm64 --extra_toolchains=//tensorflow/tools/toolchains/cross_compile/cc:linux_aarch64_toolchain
 common:cross_compile_linux_arm64 --define=linux_arm64_cross_compile=true
 
 # RBE cross-compile configs for Linux Aarch64

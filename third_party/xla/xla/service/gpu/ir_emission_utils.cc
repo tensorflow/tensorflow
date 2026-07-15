@@ -164,10 +164,6 @@ bool IsCustomCallToMosaicGpu(const HloInstruction& hlo) {
           hlo.custom_call_target() == "mosaic_gpu_v2");
 }
 
-bool IsMosaicWithNvshmem(const HloInstruction& hlo) {
-  return IsCustomCallToMosaicGpu(hlo) &&
-         absl::StrContains(hlo.raw_backend_config_string(), "nvshmem");
-}
 
 bool IsMosaicWithMultimem(const HloInstruction& hlo) {
   return IsCustomCallToMosaicGpu(hlo) &&
@@ -182,7 +178,7 @@ bool IsMosaicWithCollectiveMetadata(const HloInstruction& hlo) {
 }
 
 bool IsCollectiveMosaicGpuInstruction(const HloInstruction& hlo) {
-  return IsMosaicWithNvshmem(hlo) || IsMosaicWithMultimem(hlo);
+  return IsMosaicWithMultimem(hlo);
 }
 
 static bool IsContiguousSlice(
@@ -691,8 +687,8 @@ std::optional<const HloInstruction*> VerifyInductionVariable(
         induction_var = gte;
       } else if (IsDynamicVariable(gte, loop)) {
         // Dynamic variables are also acceptable because they represent tuple
-        // indices used in DS/DUS that can be optimized by
-        // FusionDynamicMemcpyRewriter.
+        // indices used in DS/DUS copy fusions that can be emitted as
+        // specialized D2D copy thunk sequences.
         if (induction_var) {
           // This should never happen.
           VLOG(5) << "Found non-unique GTEs for the dynamic variable. Did "

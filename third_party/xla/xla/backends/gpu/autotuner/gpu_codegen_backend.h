@@ -121,7 +121,6 @@ class GpuCodegenBackend : public CodegenBackend {
     debug_options.set_xla_gpu_dump_llvmir(false);
     // Avoid using another thread pool.
     debug_options.set_xla_gpu_force_compilation_parallelism(1);
-    debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
     // Avoid using GPU graphs as we don't want to measure graph construction
     // time.
     debug_options.clear_xla_gpu_enable_command_buffer();
@@ -138,6 +137,7 @@ class GpuCodegenBackend : public CodegenBackend {
     debug_options.set_xla_gpu_dump_autotune_results_to("");
     debug_options.set_xla_gpu_load_autotune_results_from("");
     debug_options.set_xla_gpu_dump_autotune_logs_to("");
+    debug_options.clear_xla_run_hlo_passes_starting_from();
   }
 
  private:

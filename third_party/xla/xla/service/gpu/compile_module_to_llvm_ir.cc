@@ -47,12 +47,10 @@ limitations under the License.
 #include "llvm/Transforms/Utils/SplitModule.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
-#include "mlir/Support/LogicalResult.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
-#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/future.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -93,7 +91,6 @@ using tsl::profiler::ScopedAnnotation;
 CompileModuleResults InitializeResults(const HloModule* hlo_module) {
   CompileModuleResults results;
   results.module_name = hlo_module->name();
-  results.use_original_allocations = true;
   results.execution_stream_assignment =
       std::make_unique<ExecutionStreamAssignment>(
           hlo_module,
@@ -175,6 +172,15 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
   opts.allocate_buffers_for_constants = true;
   opts.colorer = CreateColorer(options);
   opts.temp_buffer_color = color;
+
+  // Allow S(0) buffers to reuse S(1) temp allocations. S(1) allocations
+  // satisfy stricter alignment and symmetric-offset requirements, so they are
+  // valid storage for S(0) buffers. Keep this directional: S(1) buffers must
+  // not be assigned to S(0) allocations.
+  opts.can_use_allocation = BufferAssigner::AllowCrossColorReuse(
+      static_cast<int>(MemorySpaceColor::kDefault),
+      static_cast<int>(MemorySpaceColor::kCollective));
+
   std::unique_ptr<HloOrdering> hlo_ordering;
   switch (options.xla_gpu_command_buffer_scheduling_mode()) {
     case DebugOptions::CONCURRENT:
@@ -239,7 +245,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   IrEmitterContext ir_emitter_context(
       hlo_module, results.buffer_assignment.get(),
       results.execution_stream_assignment.get(), platform_id->ToName(),
-      device_desc, borrowed_context->get(), llvm::Triple(target_triple),
+      gpu_topology, borrowed_context->get(), llvm::Triple(target_triple),
       data_layout, compiler, std::move(cpu_target_machine_options),
       mlir_context_pool);
   ThunkEmitter thunk_emitter(&ir_emitter_context, &llvm_options_lock);
@@ -260,7 +266,8 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
 
   ASSIGN_OR_RETURN(
       results.constants_binary,
-      compiler->CompileToPtx(thunk_emitter.ConsumeConstantsModule()).Await());
+      compiler->CompileToTargetBinary(thunk_emitter.ConsumeConstantsModule())
+          .Await());
   ASSIGN_OR_RETURN(results.executable,
                    std::move(future_sequential_thunk).Await());
 

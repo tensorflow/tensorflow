@@ -126,7 +126,7 @@ class CollectiveThunk : public Command {
   }
 
   bool IsTracedCommand() const override { return true; }
-  bool requires_initialization() const override { return true; }
+  bool requires_update_on_initialize() const override { return true; }
   bool requires_warmup() const override { return true; }
 
   absl::Status Prepare(const PrepareParams& params) override;

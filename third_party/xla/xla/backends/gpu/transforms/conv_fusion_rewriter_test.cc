@@ -476,7 +476,7 @@ TEST_F(ConvFusionRewriterUnitTest, StrengthReduceF32ToF16) {
 // It verifies that the rewriter works correctly within the full GPU
 // optimization pipeline and produces numerically correct results on hardware.
 class ConvFusionRewriterIntegrationTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {
+    : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  public:
   bool IsCuda() const {
     return device_description().gpu_compute_capability().IsCuda();
@@ -496,7 +496,7 @@ class ConvFusionRewriterIntegrationTest
   }
 
   ConvFusionRewriterIntegrationTest()
-      : HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase>(
+      : HloInterpreterReferenceMixin<HloPjRtGpuTestBase>(
             HloTestBaseOptions{/*verifier_layout_sensitive=*/false,
                                /*allow_mixed_precision_in_hlo_verifier=*/false,
                                /*instruction_can_change_layout_func=*/{}}) {}

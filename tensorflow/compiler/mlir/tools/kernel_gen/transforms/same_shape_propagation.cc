@@ -17,6 +17,9 @@ limitations under the License.
 // functions such that they use a single set of arguments for the strides and
 // sizes of operands with equal shapes.
 
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <tuple>
 #include <utility>
@@ -169,10 +172,6 @@ namespace llvm {
 
 template <>
 struct DenseMapInfo<ShapeValue> {
-  static ShapeValue getEmptyKey() {
-    return ShapeValue(DenseMapInfo<mlir::Value>::getEmptyKey());
-  }
-
   static unsigned getHashValue(ShapeValue shape) { return hash_value(shape); }
   static bool isEqual(ShapeValue LHS, ShapeValue RHS) { return LHS == RHS; }
 };

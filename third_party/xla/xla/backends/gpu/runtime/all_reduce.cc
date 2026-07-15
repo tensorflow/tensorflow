@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -31,13 +32,21 @@ limitations under the License.
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/bit.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/computation_placer.h"
+#include "xla/service/gpu/gpu_constants.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
@@ -45,7 +54,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/collective_kernel_metadata.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -87,7 +95,6 @@ static constexpr auto kOrPredTags = TagRegistry<bool, ReductionKind::MAX>{};
 // of 2 from a higher dimension to a lower dimension.
 static constexpr int64_t kMaxBlocksPerGrid = 32;
 static constexpr uint64_t kMaxThreadsPerBlock = 512;
-static constexpr int64_t kWarpSize = 32;
 
 template <typename TagType>
 absl::Status LaunchTypedKernel(
@@ -202,18 +209,20 @@ int64_t GetMaxSupportedAllReduceSizeBytes(AllReduceStrategy strategy) {
   }
 }
 
-LaunchDimensions AllReduceLaunchDimensions(int64_t elements, int64_t num_ranks,
-                                           AllReduceStrategy strategy) {
+LaunchDimensions AllReduceLaunchDimensions(
+    int64_t elements, int64_t num_ranks, AllReduceStrategy strategy,
+    const se::DeviceDescription& device_info) {
   int64_t threads_per_block;
   int64_t blocks_per_grid;
+  const int64_t warp_size = WarpSize(device_info);
   const int64_t elements_per_rank =
       elements / (strategy == AllReduceStrategy::kTwoShot ? num_ranks : 1);
   // Maximum number of threads such that each thread has elements to process.
   const int64_t total_threads =
       RoundUpTo(CeilOfRatio(elements_per_rank, se::gpu::kNumElementsPerThread),
-                kWarpSize);
+                warp_size);
   // Triton expects power of 2 for threads_per_block / threads_per_warp.
-  // Since threads_per_warp is 32 for all NVIDIA GPUs, power of 2 is guaranteed.
+  // Since threads_per_warp is always a power of 2, this is guaranteed.
   threads_per_block =
       std::min(kMaxThreadsPerBlock,
                llvm::bit_ceil(static_cast<uint64_t>(total_threads)));
@@ -245,11 +254,17 @@ absl::Status IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,
 }
 
 absl::Status IsAllReduceKernelSupported(
-    bool is_collective_kernel_enabled, const se::DeviceDescription& device_info,
-    int32_t num_operands, std::optional<ReductionKind> reduction_kind,
-    int64_t num_devices, int64_t num_elements, PrimitiveType element_type,
-    bool is_local, bool is_multimem_enabled,
-    const std::vector<ReplicaGroup>& replica_groups) {
+    bool is_collective_kernel_enabled,               //
+    const se::DeviceDescription& device_info,        //
+    int32_t num_operands,                            //
+    std::optional<ReductionKind> reduction_kind,     //
+    int64_t num_devices,                             //
+    int64_t num_elements,                            //
+    PrimitiveType element_type,                      //
+    bool is_local,                                   //
+    bool is_multimem_enabled,                        //
+    const std::vector<ReplicaGroup>& replica_groups  //
+) {
   if (!is_collective_kernel_enabled) {
     return absl::UnimplementedError("Collective kernel is not enabled.");
   }
@@ -274,6 +289,17 @@ absl::Status IsAllReduceKernelSupported(
   if (replica_groups.empty()) {
     return absl::UnimplementedError(
         "Replica groups must be explicitly provided for collective kernels.");
+  }
+  // The kernel bakes world_size (from the first replica group) at codegen and
+  // sizes its buffers the same way, so it cannot serve cliques of different
+  // sizes. Fall back to the library collective for non-uniform replica groups.
+  for (const ReplicaGroup& group : replica_groups) {
+    if (group.replica_ids_size() != num_devices) {
+      return absl::UnimplementedError(absl::StrCat(
+          "Collective kernel requires all replica groups to have the same "
+          "size. Got a group of size ",
+          group.replica_ids_size(), " but expected ", num_devices, "."));
+    }
   }
   if (!reduction_kind.has_value()) {
     return absl::UnimplementedError("Could not match reduction computation.");
@@ -302,8 +328,14 @@ absl::Status IsAllReduceKernelSupported(
 
 absl::StatusOr<AllReduceInfo> BuildAllReduceInfo(
     bool is_collective_kernel_enabled, bool is_multimem_enabled,
-    const se::DeviceDescription& device_info,
-    const HloAllReduceInstruction* all_reduce) {
+    const GpuTopology& gpu_topology, const HloAllReduceInstruction* all_reduce,
+    const DeviceAssignment* device_assignment) {
+  if (!gpu_topology.has_gpu_target_config()) {
+    return absl::InvalidArgumentError(
+        "GpuTopology must have a target config to build AllReduceInfo.");
+  }
+  const se::DeviceDescription& device_info =
+      gpu_topology.gpu_target_config().device_description;
   const int64_t num_devices =
       all_reduce->device_list()->num_devices_per_group();
   const std::optional<ReductionKind> reduction_kind =
@@ -317,10 +349,27 @@ absl::StatusOr<AllReduceInfo> BuildAllReduceInfo(
       num_elements * primitive_util::ByteWidth(element_type);
   const AllReduceStrategy strategy =
       GetAllReduceStrategy(byte_size, is_multimem_enabled);
-  RETURN_IF_ERROR(IsAllReduceKernelSupported(
-      is_collective_kernel_enabled, device_info, num_operands, reduction_kind,
-      num_devices, num_elements, element_type, /*is_local=*/true,
-      is_multimem_enabled, all_reduce->replica_groups()));
+  ASSIGN_OR_RETURN(const CollectiveOpGroupMode group_mode,
+                   GetCollectiveOpGroupMode(all_reduce));
+  const bool is_local = IsAllReplicasLocal(
+      gpu_topology.num_devices_per_process(), all_reduce->replica_groups(),
+      group_mode, device_assignment);
+  if (device_info.device_interconnect_info().active_links <= 0) {
+    return absl::UnimplementedError(
+        "Collective kernels are only supported on devices with NVLink/UALink "
+        "support.");
+  }
+  RETURN_IF_ERROR(IsAllReduceKernelSupported(is_collective_kernel_enabled,  //
+                                             device_info,                   //
+                                             num_operands,                  //
+                                             reduction_kind,                //
+                                             num_devices,                   //
+                                             num_elements,                  //
+                                             element_type,                  //
+                                             is_local,                      //
+                                             is_multimem_enabled,           //
+                                             all_reduce->replica_groups()   //
+                                             ));
   return AllReduceInfo{
       /*.reduction_kind=*/*reduction_kind,
       /*.num_devices =*/num_devices,
@@ -381,6 +430,48 @@ absl::Status RunAllReduceKernel(
   return absl::InvalidArgumentError(
       "Unsupported AllReduce kernel. This line should never be reached if the "
       "result of `IsAllReduceKernelSupported` is correct.");
+}
+
+absl::StatusOr<CollectiveKernelSpec> CreateAllReduceKernelSpec(
+    const HloInstruction* instr, const LaunchDimensions& launch_dimensions) {
+  int64_t group_size = instr->GetModule()->config().replica_count();
+  if (!instr->replica_groups().empty() &&
+      instr->replica_groups()[0].replica_ids_size() > 0) {
+    group_size = instr->replica_groups()[0].replica_ids_size();
+  }
+  const int64_t input_size_bytes =
+      ShapeUtil::ByteSizeOf(instr->operand(0)->shape());
+  const se::gpu::AllReduceStrategy strategy =
+      GetAllReduceStrategy(input_size_bytes, /*is_multimem_enabled=*/false);
+  const int64_t num_signal_flags = group_size * launch_dimensions.num_blocks();
+  const int64_t signal_size = xla::RoundUpTo<uint64_t>(
+      num_signal_flags * sizeof(int32_t), kXlaAllocatedBufferAlignBytes);
+  const int64_t remote_size =
+      xla::RoundUpTo<uint64_t>(input_size_bytes, kXlaAllocatedBufferAlignBytes);
+
+  CollectiveKernelSpec kernel_spec = {
+      /* .input_buffer_specs= */ {
+          {/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
+      /* .output_buffer_specs= */
+      {{/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
+      /* .scratch_buffers= */
+      {{signal_size, /*requires_multimem=*/false,  // Signal buffers
+        SymmetricMemoryType::kXlaRendezvous,
+        /*should_memzero=*/true,
+        /*should_double_buffer=*/true},
+       {remote_size, /*requires_multimem=*/false,  // Remote buffers
+        SymmetricMemoryType::kXlaRendezvous,
+        /*should_memzero=*/false,
+        /*should_double_buffer=*/true}},
+      /* .argument_descriptors= */
+      {{KernelArgType::kInputBuffer, /*index=*/0},   // buffers[0].source_buffer
+       {KernelArgType::kOutputBuffer, /*index=*/0},  // buffers[0].dst_buffer
+       {KernelArgType::kRuntimeRank},
+       {KernelArgType::kInvocationCount},
+       {KernelArgType::kScratchBuffer, /*index=*/0},   // signal buffers
+       {KernelArgType::kScratchBuffer, /*index=*/1}},  // scratch buffers
+      /* .sync_count_increment = */ 1 + static_cast<uint32_t>(strategy)};
+  return kernel_spec;
 }
 
 }  // namespace xla::gpu

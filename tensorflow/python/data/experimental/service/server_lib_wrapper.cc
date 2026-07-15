@@ -42,7 +42,7 @@ limitations under the License.
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(_pywrap_server_lib, m) {
+PYBIND11_MODULE(_pywrap_server_lib, m, pybind11::mod_gil_not_used()) {
   pybind11_protobuf::ImportNativeProtoCasters();
 
   py::class_<tensorflow::data::DispatchGrpcDataServer>(m,

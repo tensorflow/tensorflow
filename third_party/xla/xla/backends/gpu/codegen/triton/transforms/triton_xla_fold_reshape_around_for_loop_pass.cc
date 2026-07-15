@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -109,9 +108,5 @@ class TritonXLAFoldReshapeAroundForLoopPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateTritonXLAFoldReshapeAroundForLoopPass() {
-  return std::make_unique<TritonXLAFoldReshapeAroundForLoopPass>();
-}
 
 }  // namespace mlir::triton::xla

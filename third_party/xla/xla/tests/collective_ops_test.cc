@@ -443,8 +443,8 @@ TEST_F(CollectiveOpsTest, AllReduce_ManyConcurrentAllReduces) {
           GetGlobalPjRtClientTestFactory().Get()();
       CHECK_OK(client_status.status());
       std::unique_ptr<PjRtClient> client = *std::move(client_status);
-      std::unique_ptr<HloRunnerPjRt> runner =
-          std::make_unique<HloRunnerPjRt>(std::move(client));
+      std::unique_ptr<HloRunner> runner =
+          std::make_unique<HloRunner>(std::move(client));
 
       std::unique_ptr<HloModule> module =
           MakeCrsModule(input_literal.shape(),

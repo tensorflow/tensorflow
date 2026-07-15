@@ -17,6 +17,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/xla_data.pb.h"
 
@@ -30,6 +31,11 @@ void SetDisjointReadWriteRegionsAttr(HloInstruction* instruction) {
 bool HasDisjointReadWriteRegionsAttr(HloInstruction* instruction) {
   return instruction->frontend_attributes().map().contains(
       xla::kXlaDisjointReadWriteRegions);
+}
+
+bool DoesPdlLaunch(const HloInstruction& instruction) {
+  return instruction.has_frontend_attributes() &&
+         instruction.frontend_attributes().map().contains(kXlaPdlLaunch);
 }
 
 absl::flat_hash_set<int> NonInvariantOperands(

@@ -241,9 +241,6 @@ bool IfrtCallOpInfo::isEqual(CallOp lhs, CallOp rhs) {
   if (lhs == rhs) {
     return true;
   }
-  if (lhs == getEmptyKey() || rhs == getEmptyKey()) {
-    return false;
-  }
   // Verify that the input and output types are the same.
   if (lhs.getInputs().getTypes() != rhs.getInputs().getTypes()) {
     return false;

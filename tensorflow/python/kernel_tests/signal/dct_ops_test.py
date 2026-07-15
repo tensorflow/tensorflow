@@ -239,6 +239,35 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
     with self.assertRaises(NotImplementedError):
       dct_ops.dct(signals, axis=0)
 
+  def test_idct_n_argument_supported(self):
+    # Regression for https://github.com/tensorflow/tensorflow/issues/102418:
+    # the docstring of `idct` previously claimed that `n` "must be None",
+    # but the implementation routes through `_dct_internal` which has
+    # always supported an arbitrary positive `n`. The runtime contract is
+    # asserted here so a future change cannot silently re-introduce the
+    # mismatch the docstring used to advertise.
+    signals = np.random.rand(8).astype(np.float32)
+    # Same n as the input length — must not raise and must agree with the
+    # default-None call.
+    out_default = dct_ops.idct(signals, type=3, norm="ortho")
+    out_explicit = dct_ops.idct(signals, type=3, norm="ortho", n=8)
+    self.assertAllClose(out_default, out_explicit)
+    # Smaller n (truncate). The runtime accepts it; we only assert no
+    # exception and the expected output length.
+    out_trunc = dct_ops.idct(signals, type=3, norm="ortho", n=4)
+    self.assertEqual(out_trunc.shape[-1], 4)
+    # Larger n (zero-pad).
+    out_pad = dct_ops.idct(signals, type=3, norm="ortho", n=12)
+    self.assertEqual(out_pad.shape[-1], 12)
+    # Negative n still rejected by the shared validator.
+    with self.assertRaises(ValueError):
+      dct_ops.idct(signals, n=-1)
+
+  def test_idct_docstring_does_not_claim_n_must_be_none(self):
+    # Ensures the docstring stays in sync with the runtime contract
+    # (regression for the pure-doc issue tracked in #102418).
+    self.assertNotIn("Must be `None`", dct_ops.idct.__doc__)
+
 
 if __name__ == "__main__":
   test.main()

@@ -454,7 +454,6 @@ class PjRtCApiClient : public PjRtClient {
   absl::StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
       const override;
 
-  absl::StatusOr<HostAllocator*> GetHostAllocator() const override;
   HostMemoryAllocator* GetHostMemoryAllocator() const override;
 
   absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
@@ -595,8 +594,6 @@ class PjRtCApiClient : public PjRtClient {
   // from GetTopologyDescription().
   absl::StatusOr<const PjRtCApiTopologyDescription> topo_desc_;
   absl::flat_hash_map<PJRT_Extension_Type, PJRT_Extension_Base*> extensions_;
-  // Not all PJRT C API implementations support the host allocator extension.
-  absl::StatusOr<std::unique_ptr<PjRtClient::HostAllocator>> host_allocator_;
   std::unique_ptr<HostMemoryAllocator> host_memory_allocator_;
 
   const std::string platform_version_;

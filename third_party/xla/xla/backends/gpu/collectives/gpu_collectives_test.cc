@@ -34,30 +34,26 @@ limitations under the License.
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/allocator_memory_registration.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
+#include "xla/backends/gpu/collectives/collectives_test_util.h"
 #include "xla/backends/gpu/collectives/gpu_clique.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
-#include "xla/core/collectives/clique_id.h"
-#include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/core/collectives/registered_memory.h"
-#include "xla/core/collectives/symmetric_memory.h"
 #include "xla/future.h"
 #include "xla/runtime/device_id.h"
+#include "xla/service/platform_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
-#include "xla/stream_executor/memory_allocator.h"
-#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
 
@@ -69,169 +65,9 @@ static constexpr GlobalDeviceId kD1(1);
 static constexpr GlobalDeviceId kD2(2);
 static constexpr GlobalDeviceId kD3(3);
 
-static absl::StatusOr<std::vector<se::StreamExecutor*>> CreateExecutors(
-    se::Platform* platform, size_t n) {
-  std::vector<se::StreamExecutor*> executors(n);
-  for (size_t d = 0; d < n; ++d) {
-    ASSIGN_OR_RETURN(executors[d], platform->ExecutorForDevice(d));
-  }
-  return executors;
-}
-
-static std::vector<std::unique_ptr<GpuCommunicator>> DowncastComms(
-    std::vector<std::unique_ptr<Communicator>> comms) {
-  std::vector<std::unique_ptr<GpuCommunicator>> gpu_comms;
-  gpu_comms.reserve(comms.size());
-  for (size_t i = 0; i < comms.size(); ++i) {
-    gpu_comms.emplace_back(dynamic_cast<GpuCommunicator*>(comms[i].release()));
-  }
-  return gpu_comms;
-}
-
-// Creates communicators for the given executors.
-static absl::StatusOr<std::vector<std::unique_ptr<GpuCommunicator>>>
-CreateCommunicators(absl::Span<se::StreamExecutor* const> executors,
-                    std::vector<GlobalDeviceId> device_ids,
-                    bool blocking = true, size_t num_ids = 1) {
-  CHECK_EQ(executors.size(), device_ids.size());
-
-  GpuCollectives* collectives = GpuCollectives::Default("GPU");
-
-  std::vector<GpuCollectives::Device> devices;
-  devices.reserve(executors.size());
-  for (se::StreamExecutor* executor : executors) {
-    devices.emplace_back(executor);
-  }
-
-  std::vector<GpuCollectives::DeviceRank> device_ranks;
-  device_ranks.reserve(devices.size());
-  for (size_t i = 0; i < devices.size(); ++i) {
-    device_ranks.emplace_back(&devices[i], RankId(i));
-  }
-
-  CliqueIds clique_ids;
-  for (size_t i = 0; i < num_ids; ++i) {
-    ASSIGN_OR_RETURN(CliqueId clique_id, collectives->CreateUniqueCliqueId());
-    clique_ids.Add(clique_id);
-  }
-
-  GpuCliqueKey clique_key(device_ids, executors.size());
-
-  GpuCollectives::Config config;
-  config.blocking_communicators = blocking;
-  config.async_execution = !blocking;
-
-  ASSIGN_OR_RETURN(auto comms, collectives->CreateCommunicatorsWithCancel(
-                                   clique_key, clique_ids, device_ranks, config,
-                                   std::make_shared<CancellationToken>()));
-  return DowncastComms(std::move(comms));
-}
-
-// Splits communicators from existing ones.
-static absl::StatusOr<std::vector<std::unique_ptr<GpuCommunicator>>>
-SplitCommunicators(
-    absl::Span<se::StreamExecutor* const> executors,
-    absl::Span<const std::unique_ptr<GpuCommunicator>> existing_comms,
-    std::vector<GlobalDeviceId> device_ids, bool blocking = true) {
-  CHECK_EQ(executors.size(), device_ids.size());
-
-  GpuCollectives* collectives = GpuCollectives::Default("GPU");
-
-  std::vector<GpuCollectives::Device> devices;
-  devices.reserve(executors.size());
-  for (se::StreamExecutor* executor : executors) {
-    devices.emplace_back(executor);
-  }
-
-  std::vector<GpuCollectives::DeviceRank> device_ranks;
-  device_ranks.reserve(devices.size());
-  for (size_t i = 0; i < devices.size(); ++i) {
-    device_ranks.emplace_back(&devices[i], RankId(i));
-  }
-
-  GpuCollectives::Config config;
-  config.blocking_communicators = blocking;
-  config.async_execution = !blocking;
-
-  // We do a fake split by splitting with the same color and keys corresponding
-  // to ranks. This tests the very basics of the GpuCollectives implementation.
-  std::vector<RankId> keys(existing_comms.size());
-  std::vector<const Communicator*> existing_comms_ptrs(existing_comms.size());
-  for (size_t i = 0; i < existing_comms.size(); ++i) {
-    keys[i] = RankId(i);
-    existing_comms_ptrs[i] = existing_comms[i].get();
-  }
-
-  ASSIGN_OR_RETURN(auto comms,
-                   collectives->SplitCommunicatorsWithCancel(
-                       existing_comms_ptrs, /*color=*/0, keys, config,
-                       device_ranks, std::make_shared<CancellationToken>()));
-  return DowncastComms(std::move(comms));
-}
-
-// Creates memory allocators that allocate physical memory in the collective
-// memory space, which makes them compatible with symmetric memory requirements.
-static absl::StatusOr<std::vector<std::unique_ptr<se::MemoryAllocator>>>
-CreateMemoryAllocators(absl::Span<se::StreamExecutor* const> executors) {
-  std::vector<std::unique_ptr<se::MemoryAllocator>> allocators;
-  allocators.reserve(executors.size());
-  for (se::StreamExecutor* executor : executors) {
-    ASSIGN_OR_RETURN(
-        allocators.emplace_back(),
-        executor->CreateMemoryAllocator(se::MemorySpace::kCollective));
-  }
-  return allocators;
-}
-
-// Allocate `num_bytes` on each allocator.
-static absl::StatusOr<std::vector<std::unique_ptr<se::MemoryAllocation>>>
-Allocate(absl::Span<const std::unique_ptr<se::MemoryAllocator>> allocators,
-         size_t num_bytes) {
-  std::vector<std::unique_ptr<se::MemoryAllocation>> allocations;
-  allocations.reserve(allocators.size());
-  for (auto& allocator : allocators) {
-    ASSIGN_OR_RETURN(allocations.emplace_back(),
-                     allocator->Allocate(num_bytes));
-  }
-  return allocations;
-}
-
-// Create symmetric memory with given comms and allocations.
-static std::vector<Future<std::unique_ptr<SymmetricMemory>>>
-CreateSymmetricMemory(
-    tsl::Executor& exec,
-    absl::Span<const std::unique_ptr<GpuCommunicator>> comms,
-    absl::Span<const std::unique_ptr<se::MemoryAllocation>> allocs) {
-  CHECK_EQ(comms.size(), allocs.size());
-
-  std::vector<Future<std::unique_ptr<SymmetricMemory>>> futures;
-  futures.reserve(allocs.size());
-  for (size_t i = 0; i < comms.size(); ++i) {
-    futures.emplace_back(MakeFutureOn(exec, [=] {
-      return comms[i]->CreateSymmetricMemory(allocs[i]->address());
-    }));
-  }
-
-  return futures;
-}
-
-// Wait for symmetric memory futures to become available.
-static absl::StatusOr<std::vector<std::unique_ptr<SymmetricMemory>>>
-AwaitSymmetricMemory(
-    std::vector<Future<std::unique_ptr<SymmetricMemory>>> futures) {
-  std::vector<std::unique_ptr<SymmetricMemory>> symm;
-  symm.reserve(futures.size());
-
-  for (auto& future : futures) {
-    ASSIGN_OR_RETURN(symm.emplace_back(), std::move(future).Await());
-  }
-
-  return symm;
-}
-
 TEST(GpuCollectivesTest, CreateWithMultipleIds) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
@@ -250,7 +86,7 @@ TEST(GpuCollectivesTest, CreateWithMultipleIds) {
 
 TEST(GpuCollectivesTest, SplitCommunicators) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
@@ -274,7 +110,7 @@ TEST(GpuCollectivesTest, SplitCommunicators) {
 
 TEST(GpuCollectivesTest, GroupLaunchMultipleCommunicators) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 4) {
     GTEST_SKIP() << "Test requires at least 4 GPUs";
@@ -366,7 +202,7 @@ TEST(GpuCollectivesTest, GroupLaunchMultipleCommunicators) {
 
 TEST(GpuCollectivesTest, CreateSymmetricMemory) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
@@ -403,7 +239,7 @@ TEST(GpuCollectivesTest, CreateSymmetricMemory) {
 
 TEST(GpuCollectivesTest, CreateRegisteredMemory) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
@@ -434,7 +270,7 @@ TEST(GpuCollectivesTest, CreateRegisteredMemory) {
 
 TEST(GpuCollectivesTest, CreateSymmetricMemoryOnDifferentComms) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 4) {
     GTEST_SKIP() << "Test requires at least 4 GPUs";
@@ -479,7 +315,7 @@ TEST(GpuCollectivesTest, CreateSymmetricMemoryOnDifferentComms) {
 
 TEST(GpuCollectivesTest, CreateDeviceComm) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
@@ -535,7 +371,7 @@ TEST_P(GpuAbortCollectivesTest, Abort) {
   bool blocking = GetParam();
 
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
@@ -582,7 +418,7 @@ INSTANTIATE_TEST_SUITE_P(GpuAbortCollectives, GpuAbortCollectivesTest,
 
 TEST(GpuCollectivesTest, PutAndWaitSignal) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
@@ -593,10 +429,8 @@ TEST(GpuCollectivesTest, PutAndWaitSignal) {
   if (!executors[0]->CanEnablePeerAccessTo(executors[1])) {
     GTEST_SKIP() << "Test requires peer access between devices";
   }
-  if (!executors[0]
-           ->GetDeviceDescription()
-           .cuda_compute_capability()
-           .IsAtLeastHopper()) {
+  if (auto cc = executors[0]->GetDeviceDescription().gpu_compute_capability();
+      cc.IsCuda() && !cc.cuda_compute_capability()->IsAtLeastHopper()) {
     GTEST_SKIP() << "Test requires at least Hopper architecture";
   }
 
@@ -680,7 +514,7 @@ TEST(GpuCollectivesTest, PutAndWaitSignal) {
 // with the clique communicator that runs on the same device.
 TEST(GpuCollectivesTest, AllocatorMemoryRegistrationRegistersWithClique) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";

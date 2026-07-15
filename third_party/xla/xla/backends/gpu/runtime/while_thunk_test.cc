@@ -53,10 +53,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
-#include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -77,6 +74,7 @@ struct DummyThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return absl::OkStatus();
   }
+  BufferUses buffer_uses() const override { return {}; }
   static absl::StatusOr<std::unique_ptr<DummyThunk>> FromProto(
       const ThunkProto& thunk_proto, Thunk::Kind kind) {
     ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
@@ -200,6 +198,8 @@ class IterationLoggerThunk : public Thunk {
     return absl::OkStatus();
   }
 
+  BufferUses buffer_uses() const override { return {}; }
+
   const std::vector<std::optional<int64_t>>& logged_counters() const {
     return iteration_counters_;
   }
@@ -311,7 +311,6 @@ TEST(WhileThunkTest, PreparePropagatesToCommandBufferExecutors) {
   Thunk::PrepareParams prepare_params{/*collective_params=*/nullptr,
                                       /*collective_clique_requests=*/nullptr,
                                       /*collective_memory_requests=*/nullptr,
-                                      /*scratch_memory_requests=*/nullptr,
                                       /*executor=*/executor,
                                       /*buffer_allocations=*/&allocations};
   ASSERT_OK(thunk.Prepare(prepare_params));

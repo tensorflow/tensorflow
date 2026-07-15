@@ -46,9 +46,10 @@ diff --git a/build_defs/BUILD.bazel b/build_defs/BUILD.bazel
 diff --git a/python/dist/system_python.bzl b/python/dist/system_python.bzl
 --- a/python/dist/system_python.bzl
 +++ b/python/dist/system_python.bzl
-@@ -73,11 +73,10 @@ load("@bazel_skylib//lib:selects.bzl", "selects")
+@@ -73,11 +73,11 @@ load("@bazel_skylib//lib:selects.bzl", "selects")
  load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
- load("@bazel_tools//tools/python:toolchain.bzl", "py_runtime_pair")
+-load("@bazel_tools//tools/python:toolchain.bzl", "py_runtime_pair")
++load("@rules_python//python:py_runtime_pair.bzl", "py_runtime_pair")
 
 -cc_library(
 -   name = "python_headers",

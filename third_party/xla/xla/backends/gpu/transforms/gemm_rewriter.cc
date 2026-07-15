@@ -17,7 +17,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/gemm_rewriter.h"
 
 #include <math.h>
-
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -76,6 +75,7 @@ limitations under the License.
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/types.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
 
@@ -102,26 +102,6 @@ absl::Status SetName(HloModule* module, HloInstruction* gemm) {
   module->SetAndUniquifyInstrName(
       gemm, is_batch_dot ? "cublas-batch-gemm" : "cublas-gemm");
   return absl::OkStatus();
-}
-
-// Returns whether a given PrimitiveType is supported by cuBLASLt Epilogue
-// Fusion. A table of supported data types can be found in the cuBLASLt
-// documentation: https://docs.nvidia.com/cuda/cublas/index.html#cublasLtMatmul.
-// Note that `Ctype` also describes the output type of the GEMM. Rows with
-// `Non-default epilogue not supported` entries in the last column indicate data
-// types not compatible with Epilogue Fusion.
-bool SupportsEpilogueFusion(PrimitiveType type) {
-  switch (type) {
-    case F8E4M3FN:
-    case F8E5M2:
-    case F16:
-    case BF16:
-    case F32:
-    case F64:
-      return true;
-    default:
-      return false;
-  }
 }
 
 bool IsF8Type(const HloInstruction* instr) {
@@ -613,8 +593,8 @@ absl::StatusOr<HloInstruction*> NormalizeBatchDimensions(HloInstruction* dot) {
       dims[i].ApplyPermutation(permutation);
     }
 
-    RETURN_IF_ERROR(
-        dims[i].Collapse(DotOperandDims::kBatch, /*remove_if_empty=*/false));
+    RETURN_IF_ERROR(dims[i].CollapseCategory(DotOperandDims::kBatch,
+                                             /*remove_if_empty=*/false));
     ASSIGN_OR_RETURN(operands[i], MakeReshapeHlo(dims[i].shape(), operands[i]));
   }
 
@@ -1808,6 +1788,33 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     RETURN_IF_ERROR(ReplaceInstruction(instr, d));
 
     return absl::OkStatus();
+  }
+
+  // Returns whether a given PrimitiveType is supported by cuBLASLt Epilogue
+  // Fusion. A table of supported data types can be found in the cuBLASLt
+  // documentation:
+  // https://docs.nvidia.com/cuda/cublas/index.html#cublasLtMatmul. Note that
+  // `Ctype` also describes the output type of the GEMM. Rows with `Non-default
+  // epilogue not supported` entries in the last column indicate data types not
+  // compatible with Epilogue Fusion. DEPRECATED: This standalone function has
+  // been moved to GemmRewriterVisitor as a member function to allow
+  bool SupportsEpilogueFusion(PrimitiveType type) {
+    // ROCm doesn't support F64 epilogue fusion
+    if (gpu_version_.IsRocm() && type == F64) {
+      return false;
+    }
+
+    switch (type) {
+      case F8E4M3FN:
+      case F8E5M2:
+      case F16:
+      case BF16:
+      case F32:
+      case F64:
+        return true;
+      default:
+        return false;
+    }
   }
 
   // Fuses a matrix bias into a cuBLAS call. 'instr' should be an Add

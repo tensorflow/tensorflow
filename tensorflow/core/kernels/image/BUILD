@@ -199,7 +199,10 @@ tf_kernel_library(
     name = "colorspace_op",
     gpu_copts = tf_disable_ptxas_warning_flags(),
     prefix = "colorspace_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -261,6 +264,8 @@ tf_kernel_library(
     prefix = "extract_image_patches_op",
     deps = [
         "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ] + IMAGE_DEPS,
 )
 
@@ -306,6 +311,7 @@ tf_kernel_library(
     deps = IMAGE_DEPS + [
         ":sampling_kernels",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -513,7 +519,6 @@ cc_library(
         "//tensorflow/core/lib/png:png_io",
         "//tensorflow/core/lib/webp:webp_io",
         "//tensorflow/core/platform:byte_order",
-        "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@tsl//tsl/profiler/lib:traceme",

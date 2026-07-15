@@ -23,6 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_clique.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
@@ -39,13 +41,13 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/future.h"
 #include "xla/runtime/device_id.h"
+#include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "tsl/platform/casts.h"
 
 namespace xla::gpu {
 
@@ -125,9 +127,8 @@ WaitCliques(std::vector<Future<std::shared_ptr<LockableGpuClique::Lock>>> fs) {
 
 TEST(GpuCliquesTest, AcquireCliques) {
   auto cleanup = absl::MakeCleanup([] { internal::DestroyAcquiredCliques(); });
-
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
@@ -157,7 +158,7 @@ TEST(GpuCliquesTest, OnGpuCliqueCreatedCallback) {
   auto cleanup = absl::MakeCleanup([] { internal::DestroyAcquiredCliques(); });
 
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
@@ -200,7 +201,7 @@ TEST(GpuCliquesTest, SplitCliques) {
   auto cleanup = absl::MakeCleanup([] { internal::DestroyAcquiredCliques(); });
 
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 4) {
     GTEST_SKIP() << "Test requires at least 4 GPUs";
@@ -247,11 +248,70 @@ TEST(GpuCliquesTest, SplitCliques) {
   }
 }
 
+TEST(GpuCliquesTest, SplitCliquesKeepsReorderedRanksOnCorrectExecutors) {
+  auto cleanup = absl::MakeCleanup([] { internal::DestroyAcquiredCliques(); });
+
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       PlatformUtil::GetPlatform("CUDA"));
+
+  if (platform->VisibleDeviceCount() < 2) {
+    GTEST_SKIP() << "Test requires at least 2 GPUs";
+  }
+
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "collectives", 2);
+  tsl::Executor& exec = *pool.AsExecutor();
+
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       CreateExecutors(platform, 2));
+  ASSERT_OK_AND_ASSIGN(Collectives * loopback_base,
+                       CollectivesRegistry::Get("GPU", "loopback"));
+  auto* loopback = absl::down_cast<GpuCollectives*>(loopback_base);
+
+  GpuCliqueKey parent_key({kD0, kD1}, 2);
+  DeviceGroups parent_group = {{kD0, kD1}};
+  std::vector<AcquiredCliquesMap> acquired_cliques(2);
+
+  // Create a parent whose communicator ranks match physical device order.
+  auto parent_futures = AcquireCliquesWithCollectives(
+      loopback, exec, executors, parent_key, parent_group, acquired_cliques);
+  ASSERT_OK_AND_ASSIGN(auto parent_cliques,
+                       WaitCliques(std::move(parent_futures)));
+  for (size_t i = 0; i < 2; ++i) {
+    acquired_cliques[i].emplace(parent_key, parent_cliques[i]);
+  }
+
+  // Split a child that reverses the ranks: device 1 becomes rank 0 and device
+  // 0 becomes rank 1. Reorder both per-device inputs to match the child ranks.
+  GpuCliqueKey child_key({kD1, kD0}, 2);
+  DeviceGroups child_group = {{kD1, kD0}};
+  std::vector<se::StreamExecutor*> child_executors = {executors[1],
+                                                      executors[0]};
+  std::vector<AcquiredCliquesMap> child_acquired_cliques = {
+      acquired_cliques[1], acquired_cliques[0]};
+
+  auto child_futures =
+      AcquireCliquesWithCollectives(loopback, exec, child_executors, child_key,
+                                    child_group, child_acquired_cliques);
+  ASSERT_OK_AND_ASSIGN(auto child_cliques,
+                       WaitCliques(std::move(child_futures)));
+
+  ASSERT_NE((*child_cliques.front())->parent(), nullptr);
+  EXPECT_EQ((*child_cliques.front())->parent()->key(), parent_key);
+  for (size_t rank = 0; rank < 2; ++rank) {
+    auto comm = (*child_cliques[rank])->comm(RankId(rank));
+    ASSERT_TRUE(comm.has_value());
+    auto* gpu_comm = absl::down_cast<GpuCommunicator*>(*comm);
+    EXPECT_EQ(gpu_comm->stream_executor(), child_executors[rank]);
+    ASSERT_OK_AND_ASSIGN(size_t current_rank, gpu_comm->CurrentRank());
+    EXPECT_EQ(current_rank, rank);
+  }
+}
+
 TEST(GpuCliquesTest, SplitCliquesNoDeadlock0) {
   auto cleanup = absl::MakeCleanup([] { internal::DestroyAcquiredCliques(); });
 
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 4) {
     GTEST_SKIP() << "Test requires at least 4 GPUs";
@@ -308,7 +368,7 @@ TEST(GpuCliquesTest, SplitCliquesNoDeadlock1) {
   auto cleanup = absl::MakeCleanup([] { internal::DestroyAcquiredCliques(); });
 
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 4) {
     GTEST_SKIP() << "Test requires at least 4 GPUs";
@@ -371,7 +431,7 @@ TEST(GpuCliquesTest, ParentSupersetSkipsAbandon) {
   auto cleanup = absl::MakeCleanup([] { internal::DestroyAcquiredCliques(); });
 
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 8) {
     GTEST_SKIP() << "Test requires at least 8 GPUs";
@@ -481,7 +541,7 @@ TEST(GpuCliquesTest, DifferentCollectivesProduceDifferentCliques) {
   auto cleanup = absl::MakeCleanup([] { internal::DestroyAcquiredCliques(); });
 
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";

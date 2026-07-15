@@ -90,10 +90,10 @@ CHECK-NEXT: bf16[73728,448]{1,0} bitcast)"),
               IsOkAndHolds(true));
 }
 
-TEST_F(SwapOperandsTest, MultipleNoncontractingWithoutReshapeIsKeptInLhs) {
-  // In cases where the non-contracting dimension is split, we cant reshape it
-  // into a a single non-contracting dimension and therefore cannot emit it in
-  // Triton.
+// In cases where the non-contracting dimension is split, we can still swap the
+// operands since the Triton emitter can now handle multiple non-contracting
+// dimensions.
+TEST_F(SwapOperandsTest, MultipleNoncontractingIsSwapped) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule DotLayout
 
@@ -115,7 +115,7 @@ ENTRY main {
     kind=kCustom, calls=fcomp,
     backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
 })"));
-  ASSERT_THAT(GemmFusionSwapOperands().Run(module.get()), IsOkAndHolds(false));
+  ASSERT_THAT(GemmFusionSwapOperands().Run(module.get()), IsOkAndHolds(true));
 }
 
 TEST_F(SwapOperandsTest, DoNotSwapSmallRhsNoncontracting) {
@@ -240,6 +240,30 @@ ENTRY main {
   p1 = s8[1536,1536]{1,0} parameter(1)
   p2 = s8[1536,1536]{1,0} parameter(2)
   ROOT %micro_kernel = bf16[8,3072]{1,0} fusion(p0, p1, p2), kind=kCustom, calls=fcomp,
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+})"));
+  ASSERT_THAT(GemmFusionSwapOperands().Run(module.get()), IsOkAndHolds(true));
+}
+
+TEST_F(SwapOperandsTest, MultipleLhsNonContractingDims) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule MultipleLhsNonContractingDims
+
+%fused_computation (param_0: bf16[4,8,2048,1,1], param_1.3: s8[2048,12288], param_2: s8[2048,12288]) -> bf16[4,8,1,1,24576] {
+  %param_0 = bf16[4,8,2048,1,1]{4,3,2,1,0} parameter(0)
+  %param_1.3 = s8[2048,12288]{1,0} parameter(1)
+  %param_2 = s8[2048,12288]{1,0} parameter(2)
+  %concatenate.0 = s8[2048,24576]{1,0} concatenate(%param_1.3, %param_2), dimensions={1}
+  %bitcast.1358 = s8[24576,2048]{0,1} bitcast(%concatenate.0)
+  %convert.130 = bf16[24576,2048]{0,1} convert(%bitcast.1358)
+  ROOT %dot.0 = bf16[4,8,1,1,24576]{4,3,2,1,0} dot(%param_0, %convert.130), lhs_contracting_dims={2}, rhs_contracting_dims={1}
+}
+
+ENTRY main {
+  p0 = bf16[4,8,2048,1,1]{4,3,2,1,0} parameter(0)
+  p1 = s8[2048,12288]{1,0} parameter(1)
+  p2 = s8[2048,12288]{1,0} parameter(2)
+  ROOT %fusion = bf16[4,8,1,1,24576]{4,3,2,1,0} fusion(p0, p1, p2), kind=kCustom, calls=%fused_computation,
     backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
 })"));
   ASSERT_THAT(GemmFusionSwapOperands().Run(module.get()), IsOkAndHolds(true));

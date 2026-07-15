@@ -2613,7 +2613,10 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops_gen",
         "//tensorflow/python/platform:test",
     ],

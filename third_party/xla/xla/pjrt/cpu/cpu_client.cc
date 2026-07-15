@@ -70,9 +70,9 @@ limitations under the License.
 #include "xla/pjrt/cpu/abstract_cpu_buffer.h"
 #include "xla/pjrt/cpu/cpu_async_execution_tracker.h"
 #include "xla/pjrt/cpu/cpu_device.h"
+#include "xla/pjrt/cpu/cpu_device_memory.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/raw_buffer.h"
-#include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/device_event_utils.h"
 #include "xla/pjrt/dump/dump.h"
@@ -1080,11 +1080,14 @@ absl::StatusOr<PjRtDeviceEventRef> PjRtCpuClient::LinearizeHostBufferInto(
   if (device_shape.IsToken()) {
     return PjRtDeviceEventRef(tsl::MakeAvailableAsyncValueRef<CpuEvent>());
   }
-  return absl::down_cast<CpuRawBuffer*>(raw_buffer.get())
-      ->CopyFromHostBuffer(
-          data, type, dims, byte_strides, host_buffer_semantics,
-          std::move(on_done_with_host_buffer), device_shape,
-          async_work_runner(), eigen_intraop_pool(), max_transpose_threads_);
+  auto* cpp_buf = raw_buffer->down_cast<CpuRawBuffer>();
+  if (cpp_buf == nullptr) {
+    return absl::InvalidArgumentError("Not a CPU raw buffer");
+  }
+  return cpp_buf->CopyFromHostBuffer(
+      data, type, dims, byte_strides, host_buffer_semantics,
+      std::move(on_done_with_host_buffer), device_shape, async_work_runner(),
+      eigen_intraop_pool(), max_transpose_threads_);
 }
 
 absl::StatusOr<PjRtDeviceEventRef> PjRtCpuClient::LinearizeInto(
@@ -1098,8 +1101,12 @@ absl::StatusOr<PjRtDeviceEventRef> PjRtCpuClient::LinearizeInto(
   if (device_shape.IsToken()) {
     return PjRtDeviceEventRef(tsl::MakeAvailableAsyncValueRef<CpuEvent>());
   }
-  return absl::down_cast<CpuRawBuffer*>(raw_buffer.get())
-      ->CopyFromLiteral(literal, device_shape.layout(), async_work_runner());
+  auto* cpp_buf = raw_buffer->down_cast<CpuRawBuffer>();
+  if (cpp_buf == nullptr) {
+    return absl::InvalidArgumentError("Not a CPU raw buffer");
+  }
+  return cpp_buf->CopyFromLiteral(literal, device_shape.layout(),
+                                  async_work_runner());
 }
 
 absl::StatusOr<CompiledMemoryStats> PjRtCpuExecutable::GetCompiledMemoryStats()
@@ -1179,9 +1186,13 @@ PjRtCpuClient::CreateRawBufferChannel(PjRtMemorySpace* memory_space,
       buffer_promise->SetError(status);
       return status;
     }
-    buffer_promise->ForwardTo(absl::down_cast<CpuRawBuffer*>(raw_buffer->get())
-                                  ->buffer()
-                                  .CopyRCRef());
+    auto* cpp_buf = raw_buffer->get()->down_cast<CpuRawBuffer>();
+    if (cpp_buf == nullptr) {
+      auto status = absl::InvalidArgumentError("Not a CPU raw buffer");
+      buffer_promise->SetError(status);
+      return status;
+    }
+    buffer_promise->ForwardTo(cpp_buf->buffer().CopyRCRef());
     return absl::OkStatus();
   };
 
@@ -1426,7 +1437,7 @@ static absl::StatusOr<tsl::AsyncValueRef<CpuDeviceMemory>> MemoryForAllocation(
     const PjRtRawBufferRef& allocated_output) {
   auto buffer_or_default = [&]() -> tsl::AsyncValueRef<CpuDeviceMemory> {
     if (allocated_output) {
-      return absl::down_cast<CpuRawBuffer*>(allocated_output.get())->buffer();
+      return allocated_output->down_cast<CpuRawBuffer>()->buffer();
     }
     return CpuDeviceMemory::CreateDelayedMemory();
   };
@@ -1437,8 +1448,8 @@ static absl::StatusOr<tsl::AsyncValueRef<CpuDeviceMemory>> MemoryForAllocation(
         return tuple_index_table;
       }
       if (allocation.param_shape_index().size() == 1) {
-        arg = absl::down_cast<CpuRawBuffer*>(
-            input_buffers[allocation.param_shape_index()[0]].get());
+        arg = input_buffers[allocation.param_shape_index()[0]]
+                  ->down_cast<CpuRawBuffer>();
       } else {
         return absl::InvalidArgumentError(absl::StrCat(
             "Nested tuples are not supported for argument: ",
@@ -1451,19 +1462,18 @@ static absl::StatusOr<tsl::AsyncValueRef<CpuDeviceMemory>> MemoryForAllocation(
           allocation.parameter_number(),
           " at shape index:", allocation.param_shape_index().ToString()));
     } else {
-      arg = absl::down_cast<CpuRawBuffer*>(
-          input_buffers[allocation.parameter_number()].get());
+      arg = input_buffers[allocation.parameter_number()]
+                ->down_cast<CpuRawBuffer>();
     }
     if (allocated_output) {
-      if (arg != allocated_output.get()) {
-        auto copy =
-            absl::down_cast<CpuRawBuffer*>(allocated_output.get())->buffer();
+      if (arg != allocated_output->down_cast<CpuRawBuffer>()) {
+        auto copy = allocated_output->down_cast<CpuRawBuffer>()->buffer();
         buffer_alloc_and_copy.src_buffers.push_back(arg->buffer());
         buffer_alloc_and_copy.dst_buffers.push_back(copy);
         buffer_alloc_and_copy.allocation_sizes.push_back(allocation.size());
         return copy;
       }
-      return absl::down_cast<CpuRawBuffer*>(allocated_output.get())->buffer();
+      return allocated_output->down_cast<CpuRawBuffer>()->buffer();
     }
     return arg->buffer();
   } else if (allocation.is_constant() &&
@@ -1592,8 +1602,9 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
     absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> leaf_buffers;
     leaf_buffers.reserve(input_buffers.size());
     for (const auto& buffer : input_buffers) {
-      leaf_buffers.push_back(
-          absl::down_cast<CpuRawBuffer*>(buffer.get())->buffer());
+      auto* cpp_buf = buffer->down_cast<CpuRawBuffer>();
+      CHECK(cpp_buf != nullptr) << "Not a CPU raw buffer";
+      leaf_buffers.push_back(cpp_buf->buffer());
     }
     tuple_index_table = CpuDeviceMemory::CreateDelayedMemory();
     tsl::RunWhenReady(
@@ -1643,6 +1654,7 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
   // Need to keep device_assignment alive until execution completes.
   run_options.set_device_assignment(device_assignment_.get());
   run_options.set_intra_op_thread_pool(client->eigen_intraop_device());
+  run_options.set_rng_seed(options.seed);
 
   auto cpu_run_options = std::make_unique<cpu::CpuExecutableRunOptions>();
   run_options.set_cpu_executable_run_options(cpu_run_options.get());
@@ -1768,6 +1780,9 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
         ynn_params ? &*ynn_params : nullptr,
         run_options.run_id().ToInt(),
         run_options.device_ordinal(),
+        cpu::Thunk::ExecuteSession(cpu::Thunk::ExecuteSession::kMaxWorkers,
+                                   cpu::Thunk::ExecuteSession::kSplitThreshold),
+        static_cast<uint64_t>(static_cast<uint32_t>(run_options.rng_seed())),
     };
 
     auto thunks_execute_event =

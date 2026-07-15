@@ -93,7 +93,12 @@ struct ReplicaGroups {
 
   template <typename H>
   friend H AbslHashValue(H h, const ReplicaGroups& rg) {
-    return H::combine(std::move(h), rg.replica_groups.size());
+    for (const ReplicaGroup& group : rg.replica_groups) {
+      h = H::combine(std::move(h), group.replica_ids_size());
+      h = H::combine_contiguous(std::move(h), group.replica_ids().data(),
+                                group.replica_ids_size());
+    }
+    return h;
   }
 
   friend bool operator==(const ReplicaGroups& item,
@@ -104,6 +109,10 @@ struct ReplicaGroups {
     for (int i = 0; i < item.replica_groups.size(); i++) {
       const ReplicaGroup& item_replica_group = item.replica_groups[i];
       const ReplicaGroup& other_replica_group = other.replica_groups[i];
+      if (item_replica_group.replica_ids_size() !=
+          other_replica_group.replica_ids_size()) {
+        return false;
+      }
       for (int i = 0; i < item_replica_group.replica_ids_size(); i++) {
         if (item_replica_group.replica_ids(i) !=
             other_replica_group.replica_ids(i)) {

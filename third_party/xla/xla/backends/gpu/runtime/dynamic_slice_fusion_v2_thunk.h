@@ -89,8 +89,8 @@ class DynamicSliceFusionV2Thunk : public Command {
       const Thunk::ExecuteParams& execute_params,
       const RecordParams& record_params, RecordAction record_action,
       se::CommandBuffer* command_buffer) override;
-  bool requires_initialization() const override;
-  bool requires_update() const override;
+  bool requires_update_on_initialize() const override;
+  bool requires_update_on_execute() const override;
   bool support_loop_unroll() const override;
 
   BufferUses buffer_uses() const override;

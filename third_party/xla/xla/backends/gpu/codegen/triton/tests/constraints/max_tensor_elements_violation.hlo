@@ -1,5 +1,5 @@
-// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s 2>&1 | FileCheck %s --check-prefix=CHECK-ERROR
-// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation 2>&1 | FileCheck %s --check-prefix=CHECK-ERROR-NEW
+// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s 2>&1 | FileCheck %s --check-prefixes=CHECK-ERROR
+// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation 2>&1 | FileCheck %s --check-prefixes=CHECK-ERROR-NEW
 
 // CHECK-ERROR: Tiling does not satisfy constraints.
 // CHECK-ERROR-NEW: exceeds the maximum allowed tensor size of 1048576 elements

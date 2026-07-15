@@ -1142,6 +1142,12 @@ message NamedShardingProto {
   // A sharding can have unreduced axes, meaning the tensor is unreduced
   // along these axes.
   repeated AxisRefProto unreduced_axes = 5;
+  enum ReductionOpProto {
+    SUM = 0;
+    MAX = 1;
+    MIN = 2;
+  }
+  ReductionOpProto reduction_op = 8;
   // A list of axes that is controlled by the users.
   repeated AxisRefProto manual_axes = 7;
 

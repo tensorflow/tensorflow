@@ -51,7 +51,6 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_compiler.h"
-#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/dnn.h"
@@ -131,6 +130,10 @@ class GpuCompiler : public LLVMCompiler {
     return false;
   }
 
+  virtual bool IsScaledDotSupportedByBackend(
+      const HloInstruction* instr,
+      const GpuTargetConfig& gpu_target_config) const;
+
   enum class AlgebraicSimplifierMode {
     kLayoutInsensitive,
     kPostFusionSimplification,
@@ -144,7 +147,7 @@ class GpuCompiler : public LLVMCompiler {
       AlgebraicSimplifierMode mode, const DebugOptions& debug_options,
       bool is_rocm);
 
-  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutableFromAotResult(
+  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutableFromLegacyAotResult(
       const CompiledModule& aot_result,
       const se::DeviceDescription& device_description) override;
 
@@ -199,11 +202,11 @@ class GpuCompiler : public LLVMCompiler {
       HloCostAnalysis::ShapeSizeFunction shape_size_fn,
       const MultiProcessKeyValueStore& key_value_store);
 
-
   // Runs cuDNN fusion and custom call compiler passes.
-  virtual absl::Status RunCudnnCompilerPasses(HloModule* module,
-                                              se::dnn::DnnSupport& dnn_support,
-                                              BinaryMap* dnn_compiled_graphs) {
+  virtual absl::Status RunCudnnCompilerPasses(
+      HloModule* module, se::StreamExecutor* stream_exec,
+      const Compiler::GpuTargetConfig& gpu_target_config,
+      BinaryMap* dnn_compiled_graphs) {
     return absl::OkStatus();
   }
 

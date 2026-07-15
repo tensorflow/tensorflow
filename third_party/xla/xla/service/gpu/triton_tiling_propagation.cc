@@ -317,6 +317,42 @@ DotRequirementsOrError CombineDotRequirements(
 }
 namespace {
 
+FusionDecision HasInvalidPhysicalSlice(const Fragments& tensor_dim_fragments) {
+  // For each dimension check that only the major-most physical fragment is
+  // sliced. We group contiguous fragments in physical order that map to the
+  // same logical dim.
+  int last_dim = -1;
+  std::vector<const Fragment*> current_group;
+
+  auto validate_group =
+      [](const std::vector<const Fragment*>& group) -> FusionDecision {
+    if (group.size() > 1) {
+      for (int i = 0; i < group.size() - 1; ++i) {
+        if (group[i]->is_sliced()) {
+          return FusionDecision::Forbid(
+              "Sliced non-major-most fragment physically.");
+        }
+      }
+    }
+    return FusionDecision::Allow();
+  };
+
+  for (const Fragment& fragment : tensor_dim_fragments) {
+    int dim = fragment.dst_dim_number();
+    if (dim == last_dim) {
+      current_group.push_back(&fragment);
+    } else {
+      if (FusionDecision d = validate_group(current_group); !d) {
+        return d;
+      }
+      current_group.clear();
+      current_group.push_back(&fragment);
+      last_dim = dim;
+    }
+  }
+  return validate_group(current_group);
+}
+
 // If the dimension order is supported by the triton emitters, this returns
 // which requirements does this order impose on the fusion.
 //
@@ -326,13 +362,15 @@ DotRequirementsOrError GetRequirementsIfSupportedOrder(
   VLOG(8) << order.ToString();
   int64_t split_dim_major_part = kNoSplitRequirement;
   const Fragments& tensor_dim_fragments = order.TensorFragmentsOrder();
+
+  if (FusionDecision physical_slice_decision =
+          HasInvalidPhysicalSlice(tensor_dim_fragments);
+      physical_slice_decision.IsForbidden()) {
+    return physical_slice_decision;
+  }
+
   for (const auto& [dim_index, dim_fragments] : order.DimFragmentsOrders()) {
     CHECK(!dim_fragments.empty());
-    for (int i = 0; i < dim_fragments.size() - 1; ++i) {
-      if (tensor_dim_fragments[dim_fragments[i]].is_sliced()) {
-        return FusionDecision::Forbid("Sliced non-major-most fragment.");
-      }
-    }
     int group_counter = 0;
     int last_seen_group_last_fragment_index = -1;
     auto fragment_it = dim_fragments.cbegin();
@@ -506,41 +544,79 @@ DimOrderMapOrError GetPropagatedDimOrdersForBitcast(
       // Assign further destination dimensions.
       // Size of the not yet assigned part of the source dimension.
       int64_t src_remaining_size = src_dim->full_count();
+
       // Handle dimension splits.
-      if (dst_remaining_size > 1) {
-        // If there is a remaining fragment of a previous destination dimension
-        // assign it first.
-        if (src_remaining_size % dst_remaining_size || (src_dim->is_sliced())) {
-          return FusionDecision::Forbid("Unsupported bitcast");
+      // We iterate through the destination dimensions to distribute the size of
+      // the current source fragment.
+      auto get_next_target_size = [&]() {
+        if (dst_remaining_size > 1) {
+          int64_t size = dst_remaining_size;
+          dst_remaining_size = 1;  // Reset carry-over after using it.
+          return std::make_pair(size, /*is_carry_over=*/true);
         }
-        add_new_fragment(Fragment{src_dim->dst_dim_number(), dst_remaining_size,
-                                  src_dim->broadcast_multiplier()});
-        // Update the size of the fragment remaining to assign.
-        src_remaining_size /= dst_remaining_size;
-        dst_remaining_size = 1;
-      }
-      while (src_remaining_size > 1) {
-        // Assign destination dimensions until the source remainder is covered.
         CHECK(dst_dim_it != dst_dim_end);
-        int64_t dst_dim_size = dst_shape.dimensions(*dst_dim_it);
-        int64_t new_fragment_size = dst_dim_size;
-        if (dst_dim_size > src_remaining_size) {
-          // If adding the next destination dimension exceeds source fragment
-          // size assign the remainder of the source and carry over the
-          // remainder of the destination.
-          if (dst_dim_size % src_remaining_size) {
+        int64_t size = dst_shape.dimensions(*dst_dim_it);
+        ++dst_dim_it;
+        return std::make_pair(size, /*is_carry_over=*/false);
+      };
+
+      int64_t cumulative_minor_product = 1;
+      while (src_remaining_size > 1) {
+        auto [target_dst_size, is_carry_over] = get_next_target_size();
+
+        int64_t new_fragment_size = target_dst_size;
+        if (is_carry_over) {
+          // If we are using a carry-over, the remaining source size must be
+          // divisible by the carry-over size. This prevents splitting a source
+          // fragment across a destination boundary in an unaligned way.
+          if (src_remaining_size % target_dst_size) {
             return FusionDecision::Forbid("Unsupported bitcast");
           }
-          dst_remaining_size = dst_dim_size / src_remaining_size;
-          new_fragment_size = src_remaining_size;
+        } else {
+          // If the next destination dimension is larger than what remains of
+          // the source fragment, we split the destination dimension. We assign
+          // the remainder of the source to this destination piece and carry
+          // over the rest of the destination dimension to be filled by
+          // subsequent source fragments.
+          if (target_dst_size > src_remaining_size) {
+            if (target_dst_size % src_remaining_size) {
+              return FusionDecision::Forbid("Unsupported bitcast");
+            }
+            dst_remaining_size = target_dst_size / src_remaining_size;
+            new_fragment_size = src_remaining_size;
+          }
         }
-        if (src_dim->is_sliced()) {
-          return FusionDecision::Forbid("Unsupported bitcast");
+
+        // Validate slice alignment. Only the major-most physical fragment of a
+        // split dimension can have a slice offset. All minor physical fragments
+        // must be completely unsliced (start at 0 and cover full size).
+        int64_t slice_start = src_dim->slice_start();
+        int64_t sliced_count = src_dim->sliced_count();
+        if (slice_start % cumulative_minor_product != 0 ||
+            sliced_count % cumulative_minor_product != 0) {
+          return FusionDecision::Forbid("Unsupported bitcast split alignment");
         }
-        add_new_fragment(Fragment{src_dim->dst_dim_number(), new_fragment_size,
-                                  src_dim->broadcast_multiplier()});
-        src_remaining_size /= new_fragment_size;
-        ++dst_dim_it;
+
+        int64_t next_src_remaining_size =
+            src_remaining_size / new_fragment_size;
+        Fragment new_frag(src_dim->dst_dim_number(), new_fragment_size,
+                          src_dim->broadcast_multiplier());
+
+        // If this is the last fragment of the split (major-most), it inherits
+        // the scaled slice offset and size.
+        if (next_src_remaining_size == 1) {
+          new_frag.set_slice(slice_start / cumulative_minor_product,
+                             sliced_count / cumulative_minor_product);
+        } else {
+          // Otherwise, it is a minor fragment and must be completely unsliced.
+          new_frag.set_slice(0, new_fragment_size);
+        }
+        add_new_fragment(new_frag);
+
+        // Update cumulative minor product to scale the slice for the next major
+        // fragments.
+        cumulative_minor_product *= new_fragment_size;
+        src_remaining_size = next_src_remaining_size;
       }
     }
   }
@@ -652,6 +728,19 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
       dst_logical.resize(permutation.size());
       for (int i = 0; i < permutation.size(); ++i) {
         dst_logical[permutation[i]] = src_logical[i];
+      }
+      if (direction == TransformDirection::kOutputToInput) {
+        for (int i = 0; i < permutation.size(); ++i) {
+          if (!src_logical[i].empty() && src_logical[i][0]->slice_start() < 0) {
+            int dst_dim = permutation[i];
+            int major_most_dim = dst->shape().layout().minor_to_major().back();
+            if (dst_dim != major_most_dim) {
+              return FusionDecision::Forbid(
+                  "Transposing sliced concatenate dimension to non-major-most "
+                  "physical position.");
+            }
+          }
+        }
       }
     } else if (hlo.opcode() == HloOpcode::kBroadcast) {
       const auto* broadcast = Cast<HloBroadcastInstruction>(&hlo);
@@ -817,11 +906,9 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
   if (hlo.opcode() != HloOpcode::kParameter &&
       direction == TransformDirection::kOutputToInput &&
       absl::c_any_of(hlo.users(), [](const HloInstruction* user) {
-        return (user->opcode() == HloOpcode::kConcatenate ||
-                user->opcode() == HloOpcode::kDynamicSlice);
+        return user->opcode() == HloOpcode::kDynamicSlice;
       })) {
-    return FusionDecision::Forbid(
-        "No fusion into concatenations or dynamic slice.");
+    return FusionDecision::Forbid("No fusion into dynamic slice.");
   }
   if (hlo.opcode() == HloOpcode::kParameter ||
       hlo_query::IsScalarConstant(&hlo)) {
@@ -932,10 +1019,6 @@ bool CanNotBeFusedIntoAUser(const HloInstruction& hlo) {
                           hlo.users()[0]->opcode() == HloOpcode::kTuple);
 }
 
-// Maximum contracting dimension size for which slice fusion is allowed when
-// the operand has multiple users.
-constexpr int kMaxContractingDimSizeForSliceFusion = 1024;
-
 // Let input and output data volumes of a fusion grow by small amounts.
 constexpr int kIoToleranceBytes = 1024;
 
@@ -952,9 +1035,10 @@ bool AllUsersAreSlicesWithSameShape(const HloInstruction& operand,
   return true;
 }
 
+}  // namespace
+
 // Tells that fusing an instruction as an input is efficient.
-bool IsInputWorthFusing(const HloInstruction& hlo,
-                        const DotProperties& properties) {
+bool IsInputWorthFusing(const HloInstruction& hlo) {
   std::optional<int64_t> input_minus_output_bytes = InputMinusOutputBytes(hlo);
   if (!input_minus_output_bytes.has_value()) {
     return false;
@@ -973,20 +1057,19 @@ bool IsInputWorthFusing(const HloInstruction& hlo,
   // Explanation:
   // * Operand user count > 1 - if the producer of the slice has a single user
   //   the slice can be fused into the producer instead of here.
-  // * contracting_dim_size < 1024 - fusing slices disables split-K rewriter,
-  //   which may outweigh the benefit of fusing it in the first place. Small
-  //   contracting dimension almost never benefits from splitting it, so we
-  //   allow the fusion.
   // * AllUsersAreSlicesWithSameShape - slices of the same shape can be
   //   fused into the producer by the multi output fusion pass.
-  //
-  // TODO: b/393299275 - Remove the contracting dim size restriction once the
-  // new emitter lands and we can support slices in contracting dimension with
-  // splits.
-  if (hlo.opcode() == HloOpcode::kSlice && hlo.operand(0)->user_count() > 1 &&
-      properties.contracting_dim_size <= kMaxContractingDimSizeForSliceFusion &&
-      !AllUsersAreSlicesWithSameShape(*hlo.operand(0), hlo.shape())) {
-    return true;
+  if (hlo.opcode() == HloOpcode::kSlice) {
+    const HloInstruction* operand = hlo.operand(0);
+    while (HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kTranspose,
+                            HloOpcode::kReshape>(operand) &&
+           operand->user_count() == 1) {
+      operand = operand->operand(0);
+    }
+    if (operand->user_count() > 1 &&
+        !AllUsersAreSlicesWithSameShape(*operand, hlo.shape())) {
+      return true;
+    }
   }
 
   const bool enable_subchannel_dequantisation_fusion =
@@ -996,8 +1079,8 @@ bool IsInputWorthFusing(const HloInstruction& hlo,
           .xla_gpu_experimental_enable_subchannel_dequantisation_fusion();
   if (hlo.opcode() == HloOpcode::kMultiply) {
     return enable_subchannel_dequantisation_fusion &&
-           IsInputWorthFusing(*hlo.operand(0), properties) &&
-           IsInputWorthFusing(*hlo.operand(1), properties);
+           IsInputWorthFusing(*hlo.operand(0)) &&
+           IsInputWorthFusing(*hlo.operand(1));
   }
   return hlo_query::AllOperandsAreParametersOrConstantsWithSingleUser(hlo);
 }
@@ -1012,8 +1095,6 @@ bool IsOutputWorthFusing(const HloInstruction& hlo) {
   return CanNotBeFusedIntoAUser(hlo) ||
          input_minus_output_bytes.value() >= -kIoToleranceBytes;
 }
-
-}  // namespace
 
 DimOrdersAndReqsOrError GetPropagatedDimOrdersAndRequirements(
     const HloInstruction& hlo, const DimensionOrder& src_dim_order,
@@ -1104,7 +1185,7 @@ GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
         }
       }
     }
-    if (!accepted && !IsInputWorthFusing(hlo, properties)) {
+    if (!accepted && !IsInputWorthFusing(hlo)) {
       return FusionDecision::Forbid(
           "Not obviously profitable to fuse as input.");
     }

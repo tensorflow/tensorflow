@@ -63,7 +63,6 @@ struct OpWithSameArgsInfo : llvm::DenseMapInfo<mlir::Operation *> {
     auto *lhs = const_cast<mlir::Operation *>(const_lhs);
     auto *rhs = const_cast<mlir::Operation *>(const_rhs);
     if (lhs == rhs) return true;
-    if (lhs == getEmptyKey() || rhs == getEmptyKey()) return false;
 
     return std::equal(lhs->operand_begin(), lhs->operand_end(),
                       rhs->operand_begin(), rhs->operand_end());

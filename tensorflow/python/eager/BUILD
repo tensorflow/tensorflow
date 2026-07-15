@@ -210,7 +210,6 @@ py_library(
     strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = [
-    # "//smartass/brain/ops:__subpackages__",
     # "//third_party/py/courier:__subpackages__",
     # "//third_party/py/jax_tpu_embedding:__subpackages__",
     # "//tensorflow:internal",
@@ -678,6 +677,7 @@ py_library(
 py_library(
     name = "backprop",
     srcs = ["backprop.py"],
+    lazy_imports = True,
     strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [

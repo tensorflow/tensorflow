@@ -2079,7 +2079,13 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           ElementWiseUnaryOp(clz, [](ElementwiseT elem_operand) {
             int64_t unsigned_digits = std::numeric_limits<ReturnT>::digits +
                                       std::numeric_limits<ReturnT>::is_signed;
-            return (unsigned_digits - 1) - Log2Floor<uint64_t>(elem_operand);
+            // Mask to ReturnT's width: ElementwiseT is 64 bits, so a negative
+            // operand is sign extended and Log2Floor would count the sign bits.
+            const uint64_t mask = unsigned_digits >= 64
+                                      ? ~uint64_t{0}
+                                      : (uint64_t{1} << unsigned_digits) - 1;
+            const uint64_t bits = static_cast<uint64_t>(elem_operand) & mask;
+            return (unsigned_digits - 1) - Log2Floor<uint64_t>(bits);
           }));
       parent_->SetEvaluatedLiteralFor(clz, std::move(literal));
       return absl::OkStatus();

@@ -272,9 +272,9 @@ tsl::RCReference<ChunkDestination> MakeDmaDestination(
 
 class SlicedRawBufferChunkDestination : public ChunkDestination {
  public:
-  SlicedRawBufferChunkDestination(
-      tsl::RCReference<xla::PjRtRawBuffer> raw_buffer, size_t offset,
-      size_t size, tsl::Promise<> promise)
+  SlicedRawBufferChunkDestination(xla::PjRtRawBufferRef raw_buffer,
+                                  size_t offset, size_t size,
+                                  tsl::Promise<> promise)
       : raw_buffer_(raw_buffer),
         slice_offset_(offset),
         slice_size_(size),
@@ -328,7 +328,7 @@ class SlicedRawBufferChunkDestination : public ChunkDestination {
   }
 
  private:
-  tsl::RCReference<xla::PjRtRawBuffer> raw_buffer_;
+  xla::PjRtRawBufferRef raw_buffer_;
   size_t slice_offset_;
   size_t slice_size_;
   size_t sent_bytes_ ABSL_GUARDED_BY(&mu_) = 0;
@@ -339,8 +339,8 @@ class SlicedRawBufferChunkDestination : public ChunkDestination {
 };
 
 absl::StatusOr<std::pair<tsl::RCReference<ChunkDestination>, tsl::Future<>>>
-CreateSlicedRawBufferDest(tsl::RCReference<xla::PjRtRawBuffer> raw_buffer,
-                          size_t offset, size_t size) {
+CreateSlicedRawBufferDest(xla::PjRtRawBufferRef raw_buffer, size_t offset,
+                          size_t size) {
   auto [promise, future] = tsl::MakePromise();
   auto dest = tsl::MakeRef<SlicedRawBufferChunkDestination>(
       raw_buffer, offset, size, std::move(promise));

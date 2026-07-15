@@ -64,10 +64,18 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceEvent_FunctionTable,
 
 // A PJRT_DeviceEvent is a pair of pointers containing both type information
 // and the actual opaque device event object. See: xla::PjRtDeviceEventRef.
-struct PJRT_DeviceEvent {
+typedef struct PJRT_DeviceEvent {
   const struct PJRT_DeviceEvent_FunctionTable* vtable;
   void* device_event;
-};
+} PJRT_DeviceEvent;
+
+// A std::vector<PJRT_DeviceEvent> optimized for quickly passing over the c-api.
+typedef struct PJRT_DeviceEventVector {
+  PJRT_DeviceEvent* data;
+  size_t size;
+  size_t capacity;
+  void (*destroy)(PJRT_DeviceEvent* data);
+} PJRT_DeviceEventVector;
 
 typedef struct PJRT_DeviceEventPromise PJRT_DeviceEventPromise;
 

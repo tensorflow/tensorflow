@@ -18,7 +18,9 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/base/no_destructor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/lib/monitoring/collected_metrics.h"
@@ -68,6 +70,39 @@ void Collector::CollectMetricDescriptor(
 }
 
 }  // namespace internal
+
+namespace exporter_registration {
+
+// static
+ExporterRegistration* ExporterRegistration::Get() {
+  static absl::NoDestructor<ExporterRegistration> instance;
+  return instance.get();
+}
+
+void ExporterRegistration::Register(Exporter* exporter) {
+  CHECK(exporter != nullptr)
+      << "ExporterRegistration::Register() called with a null exporter.";
+
+  absl::MutexLock l(exporters_mu_);
+  CHECK(!start_exporters_called_)
+      << "ExporterRegistration registered after "
+         "StartExporters() was called. The newly added exporter "
+         "will not be initialized.";
+  exporters_.emplace_back(exporter);
+}
+
+// static
+void ExporterRegistration::StartExporters() { Get()->StartExportersImpl(); }
+
+void ExporterRegistration::StartExportersImpl() {
+  absl::MutexLock l(exporters_mu_);
+  start_exporters_called_ = true;
+  for (Exporter* exporter : exporters_) {
+    exporter->PeriodicallyExportMetrics();
+  }
+}
+
+}  // namespace exporter_registration
 
 // static
 CollectionRegistry* CollectionRegistry::Default() {

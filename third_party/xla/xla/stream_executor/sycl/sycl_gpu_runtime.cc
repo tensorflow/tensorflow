@@ -279,16 +279,8 @@ absl::StatusOr<StreamPtr> SyclStreamPool::GetOrCreateStream(
   ASSIGN_OR_RETURN(StreamPool * stream_pool,
                    SyclStreamPool::InitStreamPool(device_ordinal));
   // If multiple streams are enabled, create a new stream and add it
-  // to the pool, unless the pool has reached kMaxStreamsPerDevice.
+  // to the pool.
   absl::MutexLock write_lock(&stream_pool_mu_);
-  if (stream_pool->size() >= kMaxStreamsPerDevice) {
-    VLOG(2) << "Stream pool size for device ordinal " << device_ordinal
-            << " exceeds the maximum limit of " << kMaxStreamsPerDevice;
-    return absl::ResourceExhaustedError(
-        absl::StrCat("SyclStreamPool::GetOrCreateStream: Maximum number of "
-                     "streams reached for device ordinal ",
-                     device_ordinal, "."));
-  }
   VLOG(2) << "Stream pool size for device ordinal " << device_ordinal << ": "
           << stream_pool->size();
   ::sycl::property_list prop_list{::sycl::property::queue::enable_profiling(),

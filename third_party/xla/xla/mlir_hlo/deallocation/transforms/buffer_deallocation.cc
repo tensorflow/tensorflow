@@ -776,14 +776,5 @@ struct BufferDeallocationPass
 };
 
 }  // namespace
-
-//===----------------------------------------------------------------------===//
-// BufferDeallocationPass construction
-//===----------------------------------------------------------------------===//
-
-std::unique_ptr<Pass> createBufferDeallocationPass() {
-  return std::make_unique<BufferDeallocationPass>();
-}
-
 }  // namespace deallocation
 }  // namespace mlir

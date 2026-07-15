@@ -26,6 +26,7 @@ cc_library(
         ":utils",
         "//xla:shape_layout",
         "//xla:shape_util",
+        "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",

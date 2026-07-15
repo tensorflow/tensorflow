@@ -15,6 +15,7 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op.h"
@@ -1734,6 +1735,11 @@ REGISTER_OP("HistogramFixedWidth")
         if (nbins <= 0) {
           return absl::InvalidArgumentError(
               absl::StrCat("Requires nbins > 0: ", nbins));
+        }
+        if (nbins >= std::numeric_limits<int32_t>::max()) {
+          return absl::InvalidArgumentError(
+              absl::StrCat("Requires nbins < ",
+                           std::numeric_limits<int32_t>::max(), ": ", nbins));
         }
         c->set_output(0, c->Vector(nbins));
       } else {

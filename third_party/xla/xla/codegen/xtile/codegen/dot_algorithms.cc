@@ -81,12 +81,21 @@ absl::StatusOr<Value> ScaledDot(mlir::ImplicitLocOpBuilder& b,
   mlir::Type rhs_dot_elem_type = getElementTypeOrSelf(operands.rhs.getType());
 
   Value lhs_scale;
-  if (lhs_dot_elem_type != b.getBF16Type()) {
-    lhs_scale = Bitcast(b, operands.lhs_scale, b.getI8Type());
+  if (lhs_dot_elem_type != b.getBF16Type() && operands.lhs_scale) {
+    lhs_scale = operands.lhs_scale;
+    if (mlir::isa<mlir::Float8E8M0FNUType>(
+            getElementTypeOrSelf(lhs_scale.getType()))) {
+      lhs_scale = Bitcast(b, lhs_scale, b.getI8Type());
+    }
   }
+
   Value rhs_scale;
-  if (rhs_dot_elem_type != b.getBF16Type()) {
-    rhs_scale = Bitcast(b, operands.rhs_scale, b.getI8Type());
+  if (rhs_dot_elem_type != b.getBF16Type() && operands.rhs_scale) {
+    rhs_scale = operands.rhs_scale;
+    if (mlir::isa<mlir::Float8E8M0FNUType>(
+            getElementTypeOrSelf(rhs_scale.getType()))) {
+      rhs_scale = Bitcast(b, rhs_scale, b.getI8Type());
+    }
     auto rhs_scale_type = mlir::cast<mlir::ShapedType>(rhs_scale.getType());
     int64_t rank = rhs_scale_type.getRank();
     CHECK_GE(rank, 2) << "RHS scale must be at least rank 2 for scaled dot.";
@@ -116,8 +125,8 @@ absl::StatusOr<Value> ScaledDot(mlir::ImplicitLocOpBuilder& b,
 
   auto dot_scaled_op = xtile::DotScaledOp::create(
       b, operands.accumulator.getType(), operands.lhs, operands.rhs, lhs_scale,
-      rhs_scale, /*fastMath=*/true, lhs_k_pack, rhs_k_pack,
-      operands.dot_dimension_numbers);
+      rhs_scale, /*fastMath=*/true, lhs_k_pack, rhs_k_pack, lhs_dot_elem_type,
+      rhs_dot_elem_type, operands.dot_dimension_numbers);
 
   auto add_result =
       mlir::isa<mlir::IntegerType>(

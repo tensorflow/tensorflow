@@ -232,7 +232,6 @@ cc_library(
         "@xla//xla:xla_proto_cc",
         "@xla//xla/hlo/builder:sharding_builder",
         "@xla//xla/service:computation_placer",
-        "@xla//xla/stream_executor/tpu:tpu_platform_interface",
         "@xla//xla/tpu:c_api_decl",
         "@xla//xla/tpu:tpu_api",
         "@xla//xla/tpu:tpu_ops_c_api_hdrs",

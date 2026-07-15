@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: xla-opt %s -split-input-file \
 // RUN: -stablehlo-lower-to-triton="warp_specialization_allowed=false" \
 // RUN: -triton-xla-fold-reshape-around-for-loop \
@@ -57,6 +71,15 @@ func.func @lower_broadcast_in_dim_on_0d_tensor_produced_by_to_tensor_to_splat(%a
   %0 = stablehlo.broadcast_in_dim %to_tensor, dims = [] : (tensor<f32>) -> tensor<4x2xf32>
   // CHECK: return %[[RES]] : tensor<4x2xf32>
   return %0 : tensor<4x2xf32>
+}
+
+// CHECK: func @lower_broadcast_in_dim_to_scalar_to_from_elements(%[[ARG0:.*]]: f32) -> tensor<f32>
+func.func @lower_broadcast_in_dim_to_scalar_to_from_elements(%arg0: f32) -> tensor<f32> {
+  // CHECK: %[[FROM_ELEMENTS:.*]] = tensor.from_elements %arg0 : tensor<f32>
+  %to_tensor = tensor.from_elements %arg0 : tensor<f32>
+  %2 = stablehlo.broadcast_in_dim %to_tensor, dims = [] : (tensor<f32>) -> tensor<f32>
+  // CHECK: return %[[FROM_ELEMENTS]] : tensor<f32>
+  return %2 : tensor<f32>
 }
 
 // CHECK: func @reduce(%[[ARG0:.*]]: tensor<16x8xf32>) -> tensor<8xf32>

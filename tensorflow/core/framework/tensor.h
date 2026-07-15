@@ -108,6 +108,9 @@ class TensorBuffer : public core::RefCounted {
     return AllocatorMemoryType::kUnknown;
   }
 
+  /// \brief Whether this TensorBuffer allocates an opaque handle.
+  virtual bool AllocatesOpaqueHandle() const { return false; }
+
  private:
   void* const data_;
 };

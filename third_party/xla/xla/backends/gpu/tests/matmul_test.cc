@@ -23,10 +23,10 @@ namespace xla {
 namespace {
 
 class MatmulTestWithCublas
-    : public HloPjRtInterpreterReferenceMixin<gpu::HloPjRtGpuTestBase> {
+    : public HloInterpreterReferenceMixin<gpu::HloPjRtGpuTestBase> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloPjRtInterpreterReferenceMixin<
+    DebugOptions debug_options = HloInterpreterReferenceMixin<
         gpu::HloPjRtGpuTestBase>::GetDebugOptionsForTest();
     return debug_options;
   }

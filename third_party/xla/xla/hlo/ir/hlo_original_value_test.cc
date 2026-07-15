@@ -140,6 +140,20 @@ TEST(OriginalValueTest, ProtoSerde) {
   EXPECT_EQ(*value_empty_from_proto, value_empty);
 }
 
+TEST(OriginalValueTest, FromProtoWithNegativeShapeIndexReturnsNull) {
+  OriginalValueProto proto;
+  auto* element = proto.add_elements();
+  element->add_shape_index(-1);
+  EXPECT_EQ(OriginalValue::FromProto(proto), nullptr);
+
+  OriginalValueProto proto_array;
+  auto* element_array = proto_array.add_elements();
+  element_array->add_shape_index(0);
+  element_array->mutable_original_array()->set_instruction_name("foo");
+  element_array->mutable_original_array()->add_shape_index(-1);
+  EXPECT_EQ(OriginalValue::FromProto(proto_array), nullptr);
+}
+
 TEST(OriginalValueTest, ElementAccess) {
   OriginalValue value(Node::Tuple({Node::Leaf(OriginalArray{"inst1", {1}}),
                                    Node::Leaf(OriginalArray{"inst2", {2}})}));

@@ -392,7 +392,7 @@ TEST_F(PjrtCApiGpuTest, CreateAndDestroyExecuteContext) {
   destroy_args.extension_start = nullptr;
   destroy_args.context = create_arg.context;
 
-  api_->PJRT_ExecuteContext_Destroy(&destroy_args);
+  EXPECT_EQ(api_->PJRT_ExecuteContext_Destroy(&destroy_args), nullptr);
 }
 
 TEST_F(PjrtCApiGpuTest, DmaMapAndUnmap) {
@@ -779,7 +779,7 @@ TEST(PjrtCApiGpuAllocatorTest, InvalidAllocatorOptionsParsing) {
                   absl::StatusCode::kUnimplemented,
                   "Allocator invalid_allocator not supported for PJRT GPU "
                   "plugin. Supported allocator options are: 'default', "
-                  "'platform', 'bfc', 'cuda_async' and 'vmm'."));
+                  "'platform', 'bfc', 'cuda_async', 'vmm' and 'address'."));
 
   PJRT_Error_Destroy_Args error_destroy_args;
   error_destroy_args.struct_size = PJRT_Error_Destroy_Args_STRUCT_SIZE;

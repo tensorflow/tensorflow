@@ -292,6 +292,8 @@ CommandExecutor::CommandExecutor(
   commands_.Walk([&](const Command* command) {
     Command::BufferUses buffer_uses = command->buffer_uses();
     buffer_uses_.insert(buffer_uses.begin(), buffer_uses.end());
+    requires_update_on_initialize_ |= command->requires_update_on_initialize();
+    requires_update_on_execute_ |= command->requires_update_on_execute();
   });
 
   // Buffer allocations referenced by all buffer uses.
@@ -555,6 +557,16 @@ absl::Status CommandExecutor::RecordUpdate(
     return absl::OkStatus();
   }
 
+  auto* state = command_buffer->GetOrConstructResource<CommandExecutorsState>();
+  CommandExecutorsState::Key key = std::make_pair(this, record_id);
+  RecordedCommands& recorded_commands = state->recorded_commands[key];
+
+  if (execute_params.persistent_alloc_indices.has_value()) {
+    DCHECK(absl::c_is_sorted(*execute_params.persistent_alloc_indices))
+        << "Persistent allocs must be sorted: "
+        << absl::StrJoin(*execute_params.persistent_alloc_indices, ", ");
+  }
+
   // Check if command `id` has to be updated based on the buffer allocations
   // that changed since the last call to `Record`. We keep intersection vector
   // outside of a lambda to avoid repeated heap allocations on every call.
@@ -568,32 +580,29 @@ absl::Status CommandExecutor::RecordUpdate(
 
     Command* command = commands_[id];
 
-    if (command->requires_update()) {
+    if (command->requires_update_on_execute()) {
       return false;
     }
 
-    // For CAPTURE_CMD_NEVER_UPDATE mode, always skip updates for commands
-    // implemented via tracing. This includes CollectiveThunk command/thunk
-    // hybrids: their buffer allocations are VA-remapped to fixed offsets within
-    // the reserved VA range, so their recorded addresses remain valid across
-    // executions and no update is needed.
-    //
-    // Note: CollectiveThunk satisfies both IsTracedCommand() and
-    // requires_initialization(), but the requires_initialization() check below
-    // is intentionally unreachable for traced commands in this mode. Because
-    // their buffer addresses are stable (VA-mapped), re-initialization is
-    // unnecessary.
-    if (record_params.command_buffer_update_mode ==
-            DebugOptions::CAPTURE_CMD_NEVER_UPDATE &&
-        command->IsTracedCommand()) {
-      VLOG(3) << "Skipping update for traced command " << id
-              << " (CAPTURE_CMD_NEVER_UPDATE mode)";
+    // Persistent allocations keep stable command-buffer-visible addresses. If
+    // every allocation referenced by this command is persistent, the command
+    // does not need an update, including traced collective commands that also
+    // require initialization.
+    if (execute_params.persistent_alloc_indices.has_value()) {
+      DCHECK(absl::c_is_sorted(cmd_allocs_indices_[id]))
+          << "Command allocs must be sorted: "
+          << absl::StrJoin(cmd_allocs_indices_[id], ", ");
+    }
+    if (execute_params.persistent_alloc_indices.has_value() &&
+        absl::c_includes(*execute_params.persistent_alloc_indices,
+                         cmd_allocs_indices_[id])) {
       return true;
     }
 
-    // We always update commands that require initialization, even if buffer
-    // allocations didn't change.
-    if (command->requires_initialization() && record_params.is_initialization) {
+    // We always update commands that require updates on initialization, even if
+    // buffer allocations didn't change.
+    if (command->requires_update_on_initialize() &&
+        record_params.is_initialization) {
       return false;
     }
 
@@ -612,10 +621,6 @@ absl::Status CommandExecutor::RecordUpdate(
     return alloc_intersection.empty();
   };
 
-  auto* state = command_buffer->GetOrConstructResource<CommandExecutorsState>();
-  RecordedCommands& recorded_commands =
-      state->recorded_commands[std::make_pair(this, record_id)];
-
   // Check this this executor was correctly recorded into the command buffer.
   if (recorded_commands.size() != commands_.size()) {
     return Internal(
@@ -629,9 +634,6 @@ absl::Status CommandExecutor::RecordUpdate(
   for (CommandId id = 0; id < commands_.size(); ++id) {
     Command* command = commands_[id];
 
-    std::optional<tsl::profiler::ScopedAnnotation> annotation =
-        GetKernelAnnotation(command->profile_annotation());
-
     // Skip updating collective commands if mock collectives are enabled.
     if (execute_params.mock_collectives && command->IsCollective()) {
       continue;
@@ -643,6 +645,9 @@ absl::Status CommandExecutor::RecordUpdate(
       ++num_skipped_command_updates;
       continue;
     }
+
+    std::optional<tsl::profiler::ScopedAnnotation> annotation =
+        GetKernelAnnotation(command->profile_annotation());
 
     Command::RecordUpdate record_action{recorded_commands[id]};
     ASSIGN_OR_RETURN(recorded_commands[id],

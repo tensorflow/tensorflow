@@ -78,24 +78,6 @@ bool_flag(
     ),
 )
 
-# Allows to explicitely disable nvshmem collectives using invocation flag.
-bool_flag(
-    name = "nvshmem_enabled",
-    build_setting_default = True,
-)
-
-# NVSHMEM requires builtin functions since it uses printf's for debugging.
-config_setting(
-    name = "no_builtin_used",
-    values = {"copt": "-fno-builtin"},
-)
-
-config_setting(
-    name = "nvshmem_supported",
-    constraint_values = ["@platforms//os:linux"],
-    flag_values = {":nvshmem_enabled": "True"},
-)
-
 config_setting(
     name = "libnvjitlink_support_enabled",
     flag_values = {
@@ -431,61 +413,34 @@ cuda_library(
 
 cuda_library(
     name = "buffer_debug_xor_checksum_kernel_cuda",
-    srcs = ["buffer_debug_xor_checksum_kernel_cuda.cu.cc"],
+    srcs = [
+        "buffer_debug_xor_checksum_kernel_cuda.cu.cc",
+        "//xla/stream_executor/gpu:buffer_debug_xor_checksum_kernel_lib.cu.h.inc",
+    ],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     tags = [
         "cuda-only",
         "gpu",
     ],
     deps = [
+        ":cuda_platform",
         ":cuda_platform_id",
         "//xla/backends/gpu/runtime:buffer_debug_log_structs",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:buffer_debug_xor_checksum_kernel",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
-        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base",
         "@local_config_cuda//cuda:cuda_headers",
     ],
     alwayslink = True,
 )
 
-xla_test(
-    name = "buffer_debug_xor_checksum_kernel_cuda_test",
-    srcs = ["buffer_debug_xor_checksum_kernel_cuda_test.cc"],
-    backends = ["gpu"],
-    tags = ["cuda-only"],
-    deps = [
-        ":buffer_debug_xor_checksum_kernel_cuda",
-        "//xla/backends/gpu/runtime:buffer_debug_log_structs",
-        "//xla/stream_executor:device_address",
-        "//xla/stream_executor:launch_dim",
-        "//xla/stream_executor:platform",
-        "//xla/stream_executor:platform_manager",
-        "//xla/stream_executor:stream",
-        "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor:stream_executor_memory_allocator",
-        "//xla/stream_executor:typed_kernel_factory",
-        "//xla/stream_executor/gpu:buffer_debug_log",
-        "//xla/stream_executor/gpu:buffer_debug_xor_checksum_kernel",
-        "//xla/stream_executor/gpu:gpu_kernel_registry",
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/cleanup",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
 cuda_library(
     name = "buffer_debug_float_check_kernel_cuda",
-    srcs = ["buffer_debug_float_check_kernel_cuda.cu.cc"],
+    srcs = [
+        "buffer_debug_float_check_kernel_cuda.cu.cc",
+        "//xla/stream_executor/gpu:buffer_debug_float_check_kernel_lib.cu.h.inc",
+    ],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     tags = [
         "cuda-only",
@@ -506,43 +461,6 @@ cuda_library(
     alwayslink = True,
 )
 
-xla_test(
-    name = "buffer_debug_float_check_kernel_cuda_test",
-    srcs = ["buffer_debug_float_check_kernel_cuda_test.cc"],
-    backends = ["gpu"],
-    tags = ["cuda-only"],
-    deps = [
-        ":buffer_debug_float_check_kernel_cuda",
-        "//xla:types",
-        "//xla/backends/gpu/runtime:buffer_debug_log_structs",
-        "//xla/backends/gpu/runtime:buffer_debug_log_structs_test_matchers",
-        "//xla/backends/gpu/runtime:thunk_id",
-        "//xla/stream_executor:device_address",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:launch_dim",
-        "//xla/stream_executor:platform",
-        "//xla/stream_executor:platform_manager",
-        "//xla/stream_executor:stream",
-        "//xla/stream_executor:stream_executor_address_allocator",
-        "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor:typed_kernel_factory",
-        "//xla/stream_executor/gpu:buffer_debug_float_check_kernel",
-        "//xla/stream_executor/gpu:buffer_debug_log",
-        "//xla/stream_executor/gpu:gpu_kernel_registry",
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/cleanup",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
 cc_library(
     name = "cudnn_plugin",
     srcs = ["cuda_dnn.cc"],
@@ -560,6 +478,7 @@ cc_library(
         ":cudnn_api_wrappers",
         ":cudnn_frontend_helpers",
         ":cudnn_sdpa_score_mod",
+        "//xla/backends/gpu/target_config:cudnn_device_props",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:data_type",
         "//xla/stream_executor:device_address",
@@ -1018,6 +937,7 @@ xla_cc_test(
         "//xla/service:computation_placer_hdr",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_vmm_allocator",
+        "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:memory_space",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
@@ -1358,33 +1278,6 @@ xla_test(
         "@com_google_absl//absl/log:scoped_mock_log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
-    name = "nvshmem",
-    srcs = ["nvshmem.cc"],
-    hdrs = ["nvshmem.h"],
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
-    deps = [
-        "//xla/pjrt/distributed:key_value_store_interface",
-        "//xla/runtime:process_id",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/base:no_destructor",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/time",
-        "@local_config_cuda//cuda:cuda_headers",
-        "@nvshmem//:nvshmem_lib",
     ],
 )
 
@@ -1815,9 +1708,11 @@ xla_test(
         ":cuda_executor_multigpu_test_kernels",
         ":cuda_platform",
         "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_description",
         "//xla/stream_executor:memory_space",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_init",
         "//xla/stream_executor/gpu:multicast_memory",
@@ -2079,7 +1974,6 @@ xla_test(
     backends = ["gpu"],
     tags = ["cuda-only"],
     deps = [
-        ":cuda_executor",
         ":cuda_platform_id",
         ":cuda_timer",
         "//xla/stream_executor:device_address",
@@ -2101,8 +1995,13 @@ cc_library(
     name = "cuda_command_buffer",
     srcs = [
         "cuda_command_buffer.cc",
+    ] + if_cuda_newer_than(
+        "12_9",
+        ["cuda_command_buffer_12_9.cc"],
+    ),
+    hdrs = [
+        "cuda_command_buffer.h",
     ],
-    hdrs = ["cuda_command_buffer.h"],
     tags = [
         "cuda-only",
         "gpu",
@@ -2116,6 +2015,7 @@ cc_library(
         "//xla/stream_executor:bit_pattern",
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_description",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_args",

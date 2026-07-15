@@ -23,13 +23,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -152,6 +156,7 @@ bool IsSupportedAsyncOp(HloInstruction* instr, bool supports_async_start,
   }
   if (check_sync_versions) {
     if (HloPredicateIsOp<HloOpcode::kAllGather, HloOpcode::kAllReduce,
+                         HloOpcode::kReduceScatter, HloOpcode::kRaggedAllToAll,
                          HloOpcode::kCollectivePermute, HloOpcode::kSendDone,
                          HloOpcode::kSend, HloOpcode::kRecvDone,
                          HloOpcode::kRecv>(instr)) {
@@ -446,10 +451,12 @@ bool LegalizeSchedulingAnnotations::KeepSchedulingAnnotation(
 }
 
 bool LegalizeSchedulingAnnotations::RemoveTrivialGroups(
-    const absl::flat_hash_map<
+    absl::flat_hash_map<
         Annotation,
         absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>>&
-        annotation_to_instruction) {
+        annotation_to_instruction,
+    absl::flat_hash_map<HloInstruction*, Annotation>&
+        instruction_to_annotation) {
   absl::flat_hash_map<
       AnnotationGroupId,
       absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>>
@@ -466,9 +473,12 @@ bool LegalizeSchedulingAnnotations::RemoveTrivialGroups(
   }
 
   bool changed = false;
-  for (const auto& [group_id, annotated_instructions] :
+  for (const auto& [group_id, comp_annotated_instructions] :
        group_id_to_instruction) {
-    for (const auto& [comp, annotated_instructions] : annotated_instructions) {
+    absl::flat_hash_set<HloInstruction*> deleted_instructions;
+    std::vector<HloInstruction*> instructions_across_comps;
+    for (const auto& [comp, annotated_instructions] :
+         comp_annotated_instructions) {
       if (annotated_instructions.size() == 1 &&
           !config_.keep_trivial_sync_annotation(annotated_instructions[0])) {
         // Remove annotations from synchronous operations (control flow, TC
@@ -478,10 +488,48 @@ bool LegalizeSchedulingAnnotations::RemoveTrivialGroups(
                 << " from instruction: " << annotated_instructions[0]->name()
                 << " in computation: " << comp->name();
         changed |= RemoveSchedulingAnnotation(annotated_instructions[0]);
-      } else {
-        VLOG(3) << "Retaining nontrivial group: " << group_id;
+        deleted_instructions.insert(annotated_instructions[0]);
+        continue;
+      }
+      instructions_across_comps.insert(instructions_across_comps.end(),
+                                       annotated_instructions.begin(),
+                                       annotated_instructions.end());
+    }
+    // Remove the groups without any async operations across all computations.
+    if (absl::c_none_of(instructions_across_comps, [](HloInstruction* instr) {
+          return IsSupportedAsyncOp(instr, /*supports_async_start=*/true,
+                                    /*check_sync_versions=*/true);
+        })) {
+      for (HloInstruction* instr : instructions_across_comps) {
+        VLOG(1) << "Removing group id: " << group_id
+                << " from instruction: " << instr->name();
+        changed |= RemoveSchedulingAnnotation(instr);
+        deleted_instructions.insert(instr);
       }
     }
+    if (!deleted_instructions.empty()) {
+      for (auto& [annotation, comp_inst_vector] : annotation_to_instruction) {
+        for (auto& [comp, annotated_instructions] : comp_inst_vector) {
+          std::vector<HloInstruction*> updated_annotated_instructions;
+          for (HloInstruction* instr : annotated_instructions) {
+            if (!deleted_instructions.contains(instr)) {
+              updated_annotated_instructions.push_back(instr);
+            } else {
+              instruction_to_annotation.erase(instr);
+            }
+          }
+          if (updated_annotated_instructions.empty()) {
+            comp_inst_vector.erase(comp);
+          } else {
+            comp_inst_vector[comp] = updated_annotated_instructions;
+          }
+        }
+        if (comp_inst_vector.empty()) {
+          annotation_to_instruction.erase(annotation);
+        }
+      }
+    }
+    VLOG(3) << "Retaining nontrivial group: " << group_id;
   }
 
   return changed;
@@ -550,6 +598,64 @@ absl::Status LegalizeSchedulingAnnotations::Verify(HloModule* module) {
   }
 
   return absl::OkStatus();
+}
+
+bool FillSimpleGaps(
+    absl::flat_hash_map<
+        Annotation,
+        absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>>&
+        annotation_to_instruction,
+    absl::flat_hash_map<HloInstruction*, Annotation>&
+        instruction_to_annotation) {
+  bool changed = false;
+  std::vector<HloInstruction*> newly_annotated;
+  for (const auto& [annotation, comp_inst_vector] : annotation_to_instruction) {
+    for (const auto& [comp, annotated_instructions] : comp_inst_vector) {
+      for (const auto& instr : annotated_instructions) {
+        if (instr->users().size() != 1 ||
+            instruction_to_annotation.contains(instr->users()[0]) ||
+            instr->users()[0]->operand_count() != 1) {
+          continue;
+        }
+        absl::flat_hash_set<HloInstruction*> simple_gap;
+        HloInstruction* current = instr->users()[0];
+        bool fill = false;
+        while (true) {
+          if (instruction_to_annotation.contains(current) &&
+              instruction_to_annotation.at(current).group_id ==
+                  annotation.group_id) {
+            fill = true;
+            break;
+          }
+          simple_gap.insert(current);
+          if (current->users().size() != 1) {
+            break;
+          }
+          if (current->operand_count() != 1) {
+            break;
+          }
+          current = current->users()[0];
+        }
+        if (fill) {
+          CHECK_OK(AttachAnnotation(annotation, simple_gap,
+                                    /*dry_run=*/false));
+          newly_annotated.insert(newly_annotated.end(), simple_gap.begin(),
+                                 simple_gap.end());
+          changed = true;
+        }
+      }
+    }
+  }
+  for (HloInstruction* instr : newly_annotated) {
+    absl::StatusOr<std::optional<Annotation>> annotation =
+        GetSchedulingAnnotation(instr);
+    CHECK_OK(annotation.status());
+    CHECK(annotation->has_value());
+    instruction_to_annotation[instr] = *annotation.value();
+    annotation_to_instruction[*annotation.value()][instr->parent()].push_back(
+        instr);
+  }
+  return changed;
 }
 
 void LegalizeSchedulingAnnotations::LogConfig(int64_t level) {
@@ -658,8 +764,10 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::RunImpl(
       return status;
     }
   }
-
-  changed |= RemoveTrivialGroups(annotation_to_instruction);
+  changed |=
+      RemoveTrivialGroups(annotation_to_instruction, instruction_to_annotation);
+  changed |=
+      FillSimpleGaps(annotation_to_instruction, instruction_to_annotation);
 
   // Either propagate the annotation to fill the gaps between instructions with
   // the same annotation ID or check (and return error) if there are gaps.
