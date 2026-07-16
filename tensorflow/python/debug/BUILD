@@ -12,7 +12,6 @@ load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
 
