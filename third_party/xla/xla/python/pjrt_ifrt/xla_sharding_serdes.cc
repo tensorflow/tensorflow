@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.pb.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -58,6 +57,12 @@ class HloShardingSerDes : public llvm::RTTIExtends<HloSharding, SerDes> {
     }
 
     const HloSharding& sharding = llvm::cast<HloSharding>(serializable);
+    if (sharding.xla_hlo_sharding().UseNamedShardingLeaf()) {
+      return absl::InvalidArgumentError(
+          "HloSharding with XLA HloShardingV3 format is not supported for "
+          "serialization");
+    }
+
     HloShardingProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     sharding.devices()->ToProto(*proto.mutable_devices(), version);
