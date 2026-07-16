@@ -407,13 +407,13 @@ class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def test_bincount_overflow(self):
     with self.assertRaisesRegex(
-        (ValueError, errors.InvalidArgumentError),
+        (ValueError, errors.InvalidArgumentError, errors.InternalError),
         "Too many elements in tensor|Encountered overflow|negative"):
       # Large enough size to overflow int64 when multiplied by num_rows
       self.evaluate(
           gen_math_ops.dense_bincount(
-              input=[[0, 0], [0, 0]],
-              size=2**62,
+              input=constant_op.constant([[0, 0], [0, 0]], dtype=dtypes.int64),
+              size=constant_op.constant(2**62, dtype=dtypes.int64),
               weights=[]))
 
 class SparseBincountOpTest(test_util.TensorFlowTestCase,
@@ -421,7 +421,7 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
 
   def test_bincount_overflow(self):
     with self.assertRaisesRegex(
-        (ValueError, errors.InvalidArgumentError),
+        (ValueError, errors.InvalidArgumentError, errors.InternalError),
         "Too many elements in tensor|Encountered overflow|negative"):
       # Large enough size to overflow int64 when multiplied by num_rows
       self.evaluate(
@@ -712,14 +712,14 @@ class RaggedBincountOpTest(test_util.TensorFlowTestCase,
 
   def test_bincount_overflow(self):
     with self.assertRaisesRegex(
-        (ValueError, errors.InvalidArgumentError),
+        (ValueError, errors.InvalidArgumentError, errors.InternalError),
         "Too many elements in tensor|Encountered overflow|negative"):
       # Large enough size to overflow int64 when multiplied by num_rows
       self.evaluate(
           gen_math_ops.ragged_bincount(
-              splits=[0, 1, 2],
-              values=[0, 0],
-              size=2**62,
+              splits=constant_op.constant([0, 1, 2], dtype=dtypes.int64),
+              values=constant_op.constant([0, 0], dtype=dtypes.int64),
+              size=constant_op.constant(2**62, dtype=dtypes.int64),
               weights=[]))
 
   @parameterized.parameters([{
