@@ -20,6 +20,7 @@ import warnings
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import candidate_sampling_ops
@@ -1390,9 +1391,22 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
     weighted_variance = math_ops.div_no_nan(weighted_distsq, sum_of_weights)
 
     if not keep_dims:
-      weighted_mean = array_ops.squeeze(weighted_mean, axis=axes)
+      # `tf.squeeze` requires axis to be a Python list or tuple in eager mode.
+      # Normalize `axes` here so that callers can pass either a Python list, a
+      # numpy array, or a `tf.Tensor` (as documented in the function signature),
+      # matching the behavior of `tf.nn.moments()`. See GitHub issue #101580.
+      squeeze_axes = axes
+      if tensor_util.is_tf_type(squeeze_axes):
+        static_axes = tensor_util.constant_value(squeeze_axes)
+        if static_axes is not None:
+          squeeze_axes = static_axes.tolist()
+      elif hasattr(squeeze_axes, "tolist"):
+        # numpy array or similar - convert to Python list
+        squeeze_axes = squeeze_axes.tolist()
+      weighted_mean = array_ops.squeeze(weighted_mean, axis=squeeze_axes)
       weighted_variance = array_ops.squeeze(
-          weighted_variance, axis=axes)
+          weighted_variance, axis=squeeze_axes
+      )
 
     if needs_cast:
       weighted_mean = math_ops.cast(weighted_mean, dtypes.float16)
