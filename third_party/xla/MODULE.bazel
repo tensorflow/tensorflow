@@ -43,6 +43,7 @@ bazel_dep(name = "rules_ml_toolchain")
 # wget -O temp_module_archive.tar.gz <archive URL>
 # HASH=$(openssl dgst -sha256 -binary temp_module_archive.tar.gz | openssl base64 -A)
 # echo "sha256-${HASH}"
+# TODO: update to newer commit
 archive_override(
     module_name = "rules_ml_toolchain",
     integrity = "sha256-izPVqzV2I7ox7EYzRzcRY6ogeLcHUr4LRP2xMrkWh6A=",
