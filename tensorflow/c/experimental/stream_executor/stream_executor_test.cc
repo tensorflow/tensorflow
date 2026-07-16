@@ -162,7 +162,7 @@ class StreamExecutorTest : public ::testing::Test {
 
   StreamExecutor* GetExecutor(int ordinal) {
     if (!cplatform_) {
-      cplatform_ = absl::make_unique<CPlatform>(
+      cplatform_ = std::make_unique<CPlatform>(
           platform_, test_util::DestroyPlatform, platform_fns_,
           test_util::DestroyPlatformFns, device_fns_, se_, timer_fns_);
     }
