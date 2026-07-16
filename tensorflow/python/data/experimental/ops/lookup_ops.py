@@ -168,6 +168,10 @@ def table_from_dataset(dataset=None,
       vocab_size < 1):
     raise ValueError(f"`vocab_size` must be greater than 0, got {vocab_size}.")
   if not isinstance(vocab_size, tensor.Tensor) and vocab_size is not None:
+    if vocab_size >= dtypes.int64.max:
+      raise ValueError(
+          f"`vocab_size` ({vocab_size}) exceeds the maximum safe value "
+          f"({dtypes.int64.max}).")
     known_cardinality = tensor_util.constant_value(dataset.cardinality())
     if (known_cardinality is not None and
         known_cardinality >= 0 and vocab_size > known_cardinality):
