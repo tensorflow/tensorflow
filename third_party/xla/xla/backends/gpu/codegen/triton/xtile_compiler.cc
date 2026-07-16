@@ -91,6 +91,7 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/ir_printing.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
@@ -279,7 +280,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
     absl::Span<mlir::Type> opaque_args_types, mlir::MLIRContext& mlir_context,
-    bool use_experimental_tiling) {
+    bool use_experimental_tiling, bool enable_same_shape_multi_output_fusion) {
   const HloComputation* computation = fusion.fused_instructions_computation();
 
   if (use_experimental_tiling) {
@@ -300,7 +301,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
     }
     ASSIGN_OR_RETURN(
         llvm::SmallVector<int64_t> tile_sizes,
-        GetTilingSpaceConcreteSizes(*tiling_space, block_level_parameters));
+        GetTilingSpaceConcreteSizes(*tiling_space, block_level_parameters,
+                                    enable_same_shape_multi_output_fusion));
     RETURN_IF_ERROR(
         tiling_space->AssignTileSizes(xtile::GetPaddedTileSizes(tile_sizes)));
 
@@ -351,11 +353,12 @@ absl::StatusOr<TritonKernelSource> CreateTritonModule(
     MLIRContext& mlir_context) {
   RETURN_IF_ERROR(CheckAtLeastAmpere(device_info.gpu_compute_capability()));
 
+  const DebugOptions& debug_options =
+      fusion.GetModule()->config().debug_options();
   bool use_experimental_tiling =
-      fusion.GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_experimental_enable_tiling_propagation();
+      debug_options.xla_gpu_experimental_enable_tiling_propagation();
+  bool enable_same_shape_multi_output_fusion =
+      debug_options.xla_experimental_enable_same_shape_multi_output_fusion();
 
   LoadMlirDialectsForTriton(mlir_context);
 
@@ -404,14 +407,13 @@ absl::StatusOr<TritonKernelSource> CreateTritonModule(
   }
 
   RETURN_IF_ERROR(ValidateF4UseInTritonFusion(*hlo_computation));
+  ASSIGN_OR_RETURN(
+      auto triton_module,
+      TileAndEmitXTileModule(
+          fn_name, fusion, device_info, block_level_parameters,
+          absl::MakeSpan(opaque_args_types), mlir_context,
+          use_experimental_tiling, enable_same_shape_multi_output_fusion));
 
-  ASSIGN_OR_RETURN(auto triton_module,
-                   TileAndEmitXTileModule(
-                       fn_name, fusion, device_info, block_level_parameters,
-                       absl::MakeSpan(opaque_args_types), mlir_context,
-                       use_experimental_tiling));
-
-  const auto debug_options = fusion.GetModule()->config().debug_options();
   if (DumpingEnabledForHloModule(*hlo_computation->parent()) &&
       DumpingEnabledForEmitter("triton-fusion", debug_options)) {
     auto suffix = absl::StrCat(fusion.name(), ".before_validation.ttir.txt");

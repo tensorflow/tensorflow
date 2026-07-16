@@ -155,16 +155,18 @@ class TileAnalysisTest : public HloHardwareIndependentTestBase {
  public:
   TileAnalysisTest() { RegisterSymbolicExprStorage(&mlir_context_); }
 
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_unsupported_enable_triton_multi_output_fusion(
+        true);
+    return debug_options;
+  }
+
   HloInstruction* ParseAndGetRoot(absl::string_view hlo_string) {
     auto module_or = ParseAndReturnVerifiedModule(hlo_string);
     CHECK_OK(module_or);
     module_ = std::move(module_or.value());
-    // TODO: b/502910372 - multi output fusions are not supported yet but to
-    // exercise some of the code paths that deal with multiple roots we allow
-    // them in the test.
-    module_->mutable_config()
-        .mutable_debug_options()
-        .set_xla_gpu_unsupported_enable_triton_multi_output_fusion(true);
     return module_->entry_computation()->root_instruction();
   }
 
@@ -589,33 +591,60 @@ TEST_F(TileAnalysisTest, CollectiveDotBasic) {
   )"));
 }
 
-TEST_F(TileAnalysisTest, DuplicateFusionRoots) {
-  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
-                       ParseAndTile(R"hlo(
+class SameShapeMultiOutputFusionTileAnalysisTest : public TileAnalysisTest {
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = TileAnalysisTest::GetDebugOptionsForTest();
+    debug_options.set_xla_experimental_enable_same_shape_multi_output_fusion(
+        true);
+    debug_options.set_xla_gpu_unsupported_enable_triton_multi_output_fusion(
+        false);
+    return debug_options;
+  }
+};
+
+TEST_F(SameShapeMultiOutputFusionTileAnalysisTest, SimpleMultiOutputFusion) {
+  HloInstruction* root = ParseAndGetRoot(R"hlo(
     fusion {
       p0 = f32[128] parameter(0)
       add0 = f32[128] add(p0, p0)
-      ROOT tuple = (f32[128], f32[128]) tuple(add0, add0)
+      ROOT tuple = (f32[128], f32[128], f32[128]) tuple(p0, add0, add0)
     }
 
     ENTRY e {
       p0 = f32[128] parameter(0)
-      ROOT call = (f32[128], f32[128]) fusion(p0), kind=kLoop, calls=fusion
-    })hlo",
-                                    {128, 128}));
+      ROOT call = (f32[128], f32[128], f32[128]) fusion(p0), kind=kLoop, calls=fusion
+    })hlo");
 
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK(tiling_space->AssignTileSizes({128}));
+  ASSERT_OK_AND_ASSIGN(
+      const TiledHloComputation tiled_computation,
+      TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
+
+  // There should be only one dimension derived from the first root. Tiling
+  // should be reused across all roots.
   EXPECT_THAT(tiled_computation, MatchString(R"(
     Dimensions:
-      0 type: parallel size: 128 tile size: 128 dim ID:0 hlo: %add0 = f32[128]{0} add(%p0, %p0)
-      1 type: parallel size: 128 tile size: 128 dim ID:0 hlo: %add0 = f32[128]{0} add(%p0, %p0)
+      0 type: parallel size: 128 tile size: 128 dim ID:0 hlo: %p0 = f32[128]{0} parameter(0)
     Root tiles:
       0 root tile:  offsets [0] sizes [128] strides [1] upper bounds [128]
       1 root tile:  offsets [0] sizes [128] strides [1] upper bounds [128]
+      2 root tile:  offsets [0] sizes [128] strides [1] upper bounds [128]
 
     Tiled HLO:
+      p0.tile_0 = parameter(0)  offsets [0] sizes [128] strides [1] upper bounds [128]
       p0.1.tile_0 = parameter(0)  offsets [0] sizes [128] strides [1] upper bounds [128]
       add0.tile_0 = add(p0.1.tile_0, p0.1.tile_0)  offsets [0] sizes [128] strides [1] upper bounds [128]
   )"));
+
+  EXPECT_EQ(tiled_computation.roots().size(), 3);
+  EXPECT_EQ(tiled_computation.roots()[0]->tile(),
+            tiled_computation.roots()[1]->tile());
+  EXPECT_EQ(tiled_computation.roots()[0]->tile(),
+            tiled_computation.roots()[2]->tile());
 }
 
 // TODO(b/422676780): Port the remaining tests.

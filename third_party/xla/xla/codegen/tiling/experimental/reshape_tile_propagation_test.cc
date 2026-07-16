@@ -79,10 +79,16 @@ TEST_P(ReshapeTilePropagationTest, PropagateReshape) {
   Shape output_shape = ShapeUtil::MakeShape(F32, param.output_shape);
 
   HloComputation::Builder builder("entry");
-  HloInstruction* p0 = builder.AddInstruction(
+  HloInstruction* p0_builder = builder.AddInstruction(
       HloInstruction::CreateParameter(0, input_shape, "p0"));
-  HloInstruction* reshape =
-      builder.AddInstruction(HloInstruction::CreateReshape(output_shape, p0));
+  builder.AddInstruction(
+      HloInstruction::CreateReshape(output_shape, p0_builder));
+
+  module_ = CreateNewVerifiedModule();
+  HloComputation* entry_computation =
+      module_->AddEntryComputation(builder.Build());
+  HloInstruction* p0 = entry_computation->parameter_instruction(0);
+  HloInstruction* reshape = entry_computation->root_instruction();
 
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<TilingSpace> tiling_space,

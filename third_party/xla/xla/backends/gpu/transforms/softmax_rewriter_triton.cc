@@ -670,7 +670,11 @@ absl::StatusOr<bool> SoftmaxRewriterTriton::MaybeFuseNormalizationDiamond(
   HloFusionAnalysisCache fusion_analysis_cache(device_info_);
   GpuPerformanceModelWithIndexingAnalysis indexing_performance_model(
       &device_info_, &fusion_analysis_cache, shape_size_, mlir_context_,
-      use_experimental_tiling_);
+      use_experimental_tiling_,
+      diamond.root->GetModule()
+          ->config()
+          .debug_options()
+          .xla_experimental_enable_same_shape_multi_output_fusion());
 
   return MaybeFuseDiamondImpl(diamond, indexing_performance_model, device_info_,
                               shape_size_, alias_info_, mlir_context_,
