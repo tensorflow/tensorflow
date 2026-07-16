@@ -19,7 +19,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.framework import errors
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
