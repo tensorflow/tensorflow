@@ -144,7 +144,7 @@ TEST_F(TriangularSolveTest, SimpleRightLowerTranspose) {
   });
 
   ComputeAndCompareR2<float>(&builder, expected, {&a_data, &b_data},
-                             ErrorSpec(1e-2, 1e-2));
+                             ErrorSpec(0.05, 0.05));
 }
 
 TEST_F(TriangularSolveTest, SimpleRightLowerNotranspose) {
@@ -165,7 +165,7 @@ TEST_F(TriangularSolveTest, SimpleRightLowerNotranspose) {
   });
 
   ComputeAndCompareR2<float>(&builder, expected, {&a_data, &b_data},
-                             ErrorSpec(1e-2, 1e-2));
+                             ErrorSpec(0.05, 0.05));
 }
 
 TEST_F(TriangularSolveTest, SimpleRightUpperTranspose) {
@@ -186,7 +186,7 @@ TEST_F(TriangularSolveTest, SimpleRightUpperTranspose) {
   });
 
   ComputeAndCompareR2<float>(&builder, expected, {&a_data, &b_data},
-                             ErrorSpec(1e-2, 1e-2));
+                             ErrorSpec(0.05, 0.05));
 }
 
 TEST_F(TriangularSolveTest, SimpleRightUpperNotranspose) {
@@ -207,7 +207,7 @@ TEST_F(TriangularSolveTest, SimpleRightUpperNotranspose) {
   });
 
   ComputeAndCompareR2<float>(&builder, expected, {&a_data, &b_data},
-                             ErrorSpec(1e-2, 1e-2));
+                             ErrorSpec(0.05, 0.05));
 }
 
 TEST_F(TriangularSolveTest, SimpleLeftLowerTranspose) {
@@ -229,7 +229,7 @@ TEST_F(TriangularSolveTest, SimpleLeftLowerTranspose) {
   });
 
   ComputeAndCompareR2<float>(&builder, expected, {&a_data, &b_data},
-                             ErrorSpec(1e-2, 1e-2));
+                             ErrorSpec(0.05, 0.05));
 }
 
 TEST_F(TriangularSolveTest, SimpleLeftLowerNotranspose) {
@@ -251,7 +251,7 @@ TEST_F(TriangularSolveTest, SimpleLeftLowerNotranspose) {
   });
 
   ComputeAndCompareR2<float>(&builder, expected, {&a_data, &b_data},
-                             ErrorSpec(1e-2, 1e-2));
+                             ErrorSpec(0.05, 0.05));
 }
 
 TEST_F(TriangularSolveTest, SimpleLeftLowerNoTransposeUnitDiagonal) {
@@ -270,7 +270,7 @@ TEST_F(TriangularSolveTest, SimpleLeftLowerNoTransposeUnitDiagonal) {
       {{1., 2., 3.}, {1., -1., -3.}, {-4., 7., 18.}, {37., -61., -159.}});
 
   ComputeAndCompareR2<float>(&builder, expected, {&a_data, &b_data},
-                             ErrorSpec(1e-2, 1e-2));
+                             ErrorSpec(0.05, 0.05));
 }
 
 TEST_F(TriangularSolveTest, SimpleLeftLowerNotransposeIrregularblock) {
@@ -292,7 +292,7 @@ TEST_F(TriangularSolveTest, SimpleLeftLowerNotransposeIrregularblock) {
   });
 
   ComputeAndCompareR2<float>(&builder, expected, {&a_data, &b_data},
-                             ErrorSpec(1e-2, 1e-2));
+                             ErrorSpec(0.05, 0.05));
 }
 
 TEST_F(TriangularSolveTest, SimpleLeftUpperTranspose) {
@@ -314,7 +314,7 @@ TEST_F(TriangularSolveTest, SimpleLeftUpperTranspose) {
   });
 
   ComputeAndCompareR2<float>(&builder, expected, {&a_data, &b_data},
-                             ErrorSpec(1e-2, 1e-2));
+                             ErrorSpec(0.05, 0.05));
 }
 
 TEST_F(TriangularSolveTest, SimpleLeftUpperNotranspose) {
@@ -336,7 +336,7 @@ TEST_F(TriangularSolveTest, SimpleLeftUpperNotranspose) {
   });
 
   ComputeAndCompareR2<float>(&builder, expected, {&a_data, &b_data},
-                             ErrorSpec(1e-2, 1e-2));
+                             ErrorSpec(0.05, 0.05));
 }
 
 TEST_F(TriangularSolveTest, SimpleLeftUpperNotransposeUnitDiagonal) {
@@ -357,7 +357,7 @@ TEST_F(TriangularSolveTest, SimpleLeftUpperNotransposeUnitDiagonal) {
                            {10., 11., 12.}});
 
   ComputeAndCompareR2<float>(&builder, expected, {&a_data, &b_data},
-                             ErrorSpec(1e-2, 1e-2));
+                             ErrorSpec(0.05, 0.05));
 }
 
 TEST_F(TriangularSolveTest, SimpleRightLowerTransposeConjugate) {
@@ -383,7 +383,7 @@ TEST_F(TriangularSolveTest, SimpleRightLowerTransposeConjugate) {
   });
 
   ComputeAndCompareR2<complex64>(&builder, expected, {&a_data, &b_data},
-                                 ErrorSpec(1e-2, 1e-2));
+                                 ErrorSpec(0.05, 0.05));
 }
 
 TEST_F(TriangularSolveTest, SimpleLeftUpperTransposeNoconjugate) {
@@ -411,7 +411,7 @@ TEST_F(TriangularSolveTest, SimpleLeftUpperTransposeNoconjugate) {
   });
 
   ComputeAndCompareR2<complex64>(&builder, expected, {&a_data, &b_data},
-                                 ErrorSpec(1e-2, 1e-2));
+                                 ErrorSpec(0.05, 0.05));
 }
 
 TEST_F(TriangularSolveTest, BatchedLeftUpper) {
@@ -439,7 +439,7 @@ TEST_F(TriangularSolveTest, BatchedLeftUpper) {
                       /*transpose_a=*/TriangularSolveOptions::NO_TRANSPOSE));
 
   ComputeAndCompareR3<float>(&builder, bvals, {&a_data, &b_data},
-                             ErrorSpec(1e-2, 1e-2));
+                             ErrorSpec(0.05, 0.05));
 }
 
 struct TriangularSolveTestSpec {

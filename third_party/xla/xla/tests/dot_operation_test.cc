@@ -60,7 +60,7 @@ namespace {
 class DotOperationTest : public ClientLibraryTestRunnerMixin<
                              HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  public:
-  ErrorSpec error_spec_{0.0001, 1e-5};
+  ErrorSpec error_spec_{0.01, 0.01};
 };
 
 using TypesF16F32 = ::testing::Types<

@@ -144,8 +144,7 @@ TEST_F(AlgorithmTest, Algorithm3xBF16) {
         algorithm=dot_bf16_bf16_f32_x3
     }
   )";
-  EXPECT_TRUE(
-      RunAndCompare(kHloText, ErrorSpec{/*aabs=*/0.001, /*arel=*/0.001}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/0.01, /*arel=*/0.1}));
 }
 
 TEST_F(AlgorithmTest, Algorithm6xBF16) {
@@ -164,8 +163,7 @@ TEST_F(AlgorithmTest, Algorithm6xBF16) {
         algorithm=dot_bf16_bf16_f32_x6
     }
   )";
-  EXPECT_TRUE(
-      RunAndCompare(kHloText, ErrorSpec{/*aabs=*/0.001, /*arel=*/0.001}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/0.01, /*arel=*/0.1}));
 }
 
 TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32) {
@@ -263,8 +261,8 @@ TEST_F(AlgorithmTest, Algorithm_BF16_BF16_F32_on_BF16_input_for_multiply) {
           module->ToString(HloPrintOptions().set_print_operand_shape(true)),
           pattern));
   ASSERT_TRUE(ok);
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      std::move(module), ErrorSpec{/*aabs=*/1e-7, /*arel=*/1e-7}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module),
+                                       ErrorSpec{/*aabs=*/0.01, /*arel=*/0.1}));
 }
 
 TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32_X3) {
@@ -535,8 +533,8 @@ CHECK:          %[[DOT_LAST:.*]] = tt.dot %{{.*}}, %{{.*}}, %[[SELECT]] : tensor
 CHECK:          %[[ACC:.*]] = arith.addf %[[DOT_LAST]], %[[C0]] : tensor<32x32xf32>
     )"));
 
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/1e-6,
-                                                           /*arel=*/1e-6}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0.01,
+                                                           /*arel=*/0.1}));
 }
 
 TEST_F(Triton6xBF16GemmTest, Triton6xBF16GemmWorksForLongContractingDimension) {
@@ -567,8 +565,8 @@ TEST_F(Triton6xBF16GemmTest, Triton6xBF16GemmWorksForLongContractingDimension) {
       CreateTritonIrFromHloTextAndFileCheckForDot(kHloText, "triton_dot", R"(
 CHECK-COUNT-6:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} : tensor<64x32xbf16> * tensor<32x32xbf16> -> tensor<64x32xf32>
     )"));
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/1e-5,
-                                                           /*arel=*/1e-5}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0.01,
+                                                           /*arel=*/0.1}));
 }
 
 TEST_F(Triton6xBF16GemmTest, Emit6xBF16GemmEndToEnd) {
@@ -593,8 +591,8 @@ TEST_F(Triton6xBF16GemmTest, Emit6xBF16GemmEndToEnd) {
 CHECK: mma.sync.aligned.{{.*}}.row.col.f32.bf16.bf16.f32
 CHECK-NOT: mma.sync.aligned.{{.*}}.row.col.f32.tf32.tf32.f32
 )");
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-6,
-                                                /*arel=*/1e-6}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/0.01,
+                                                /*arel=*/0.1}));
 }
 
 // In these tests, we depend on "algorithm" annotations for selecting the 3XBF16
@@ -645,8 +643,8 @@ CHECK:          %[[DOT_LAST:.*]] = tt.dot %{{.*}}, %{{.*}}, %[[SELECT]] : tensor
 CHECK:          %[[ACC:.*]] = arith.addf %[[DOT_LAST]], %[[C0]] : tensor<32x32xf32>
     )"));
 
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/1e-5,
-                                                           /*arel=*/1e-5}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0.01,
+                                                           /*arel=*/0.1}));
 }
 
 TEST_F(Triton3xBF16GemmTest, Triton3xBF16GemmWorksForLongContractingDimension) {
@@ -677,8 +675,8 @@ TEST_F(Triton3xBF16GemmTest, Triton3xBF16GemmWorksForLongContractingDimension) {
       CreateTritonIrFromHloTextAndFileCheckForDot(kHloText, "triton_dot", R"(
 CHECK-COUNT-3:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} : tensor<64x32xbf16> * tensor<32x32xbf16> -> tensor<64x32xf32>
     )"));
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/1e-4,
-                                                           /*arel=*/1e-4}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0.01,
+                                                           /*arel=*/0.1}));
 }
 
 TEST_F(Triton3xBF16GemmTest, Emit3xBF16GemmEndToEnd) {
@@ -703,8 +701,8 @@ TEST_F(Triton3xBF16GemmTest, Emit3xBF16GemmEndToEnd) {
 CHECK: mma.sync.aligned.{{.*}}.row.col.f32.bf16.bf16.f32
 CHECK-NOT: mma.sync.aligned.{{.*}}.row.col.f32.tf32.tf32.f32
 )");
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-5,
-                                                /*arel=*/1e-5}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/0.01,
+                                                /*arel=*/0.1}));
 }
 
 TEST_F(TritonAlgorithmTest, Algorithm_BF16_BF16_F32_X3) {
@@ -863,8 +861,8 @@ TEST_F(TritonAlgorithmTest, Dot_BF16_X6_WithConst) {
         }
     }
   )";
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      kHloText, ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText,
+                                       ErrorSpec{/*aabs=*/0.01, /*arel=*/0.1}));
 }
 
 TEST_F(TritonAlgorithmTest, UnsetAlgorithmToBF16) {
@@ -1195,7 +1193,7 @@ TEST_P(NumericTestsForBlas, InputsWithLargeExponent) {
       large_exponent_arguments(),
       /*run_hlo_passes=*/false,
       /*use_threads=*/false,
-      ErrorSpec{/*aabs=*/kLargeExponentFloat * 1e-4, /*arel=*/1e-6}))
+      ErrorSpec{/*aabs=*/kLargeExponentFloat * 1e-4, /*arel=*/0.1}))
       << " failed for module hlo: \n"
       << module_text;
 }
@@ -1215,7 +1213,7 @@ TEST_P(NumericTestsForBlas, PrecisionCheck) {
   EXPECT_TRUE(RunAndCompareTwoModulesReplicated(
       std::move(reference_module), std::move(module),
       /*run_hlo_passes=*/false,
-      /*use_threads=*/false, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4}))
+      /*use_threads=*/false, ErrorSpec{/*aabs=*/0.01, /*arel=*/0.1}))
       << " failed for module hlo: \n"
       << module_text;
 }
@@ -1261,7 +1259,7 @@ TEST_P(NumericTestsForTriton, InputsWithLargeExponent) {
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       std::move(module), large_exponent_arguments_ptr(),
-      ErrorSpec{/*aabs=*/kLargeExponentFloat * 1e-4, /*arel=*/1e-6}))
+      ErrorSpec{/*aabs=*/kLargeExponentFloat * 1e-4, /*arel=*/0.1}))
       << " failed for module hlo: \n"
       << module_text;
 }

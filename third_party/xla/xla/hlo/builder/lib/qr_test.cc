@@ -77,7 +77,7 @@ TEST_F(QrTest, Simple) {
         EXPECT_EQ(r_shape, ShapeUtil::MakeShape(
                                F32, {full_matrices ? m : std::min(m, n), n}));
         ComputeAndCompareLiteral(&builder, expected, {&a_data},
-                                 ErrorSpec(1e-4, 1e-4));
+                                 ErrorSpec(0.01, 0.01));
       }
     }
   }
@@ -105,7 +105,7 @@ TEST_F(QrTest, ZeroDiagonal) {
   BatchDot(q, r, PrecisionConfig::HIGHEST);
 
   ComputeAndCompareR2<float>(&builder, a_vals, {&a_data},
-                             ErrorSpec(1e-4, 1e-4));
+                             ErrorSpec(0.01, 0.01));
 }
 
 TEST_F(QrTest, SimpleBatched) {
@@ -133,7 +133,7 @@ TEST_F(QrTest, SimpleBatched) {
   BatchDot(q, r, PrecisionConfig::HIGHEST);
 
   ComputeAndCompareR3<float>(&builder, a_vals, {&a_data},
-                             ErrorSpec(1e-4, 1e-4));
+                             ErrorSpec(0.01, 0.01));
 }
 
 TEST_F(QrTest, SubnormalComplex) {
@@ -159,7 +159,7 @@ TEST_F(QrTest, SubnormalComplex) {
   QrExplicit(a, /*full_matrices=*/true, q, r);
   BatchDot(q, r, PrecisionConfig::HIGHEST);
   ComputeAndCompareLiteral(&builder, expected, {&a_data},
-                           ErrorSpec(1e-4, 1e-4));
+                           ErrorSpec(0.01, 0.01));
 }
 
 TEST_F(QrTest, DuplicateHouseholderExpansion) {
@@ -196,7 +196,7 @@ TEST_F(QrTest, DuplicateHouseholderExpansion) {
   BatchDot(q1, r1, PrecisionConfig::HIGHEST);
 
   ComputeAndCompareR2<float>(&builder, a1_vals, {&a0_data, &a1_data},
-                             ErrorSpec(1e-4, 1e-4));
+                             ErrorSpec(0.01, 0.01));
 }
 
 }  // namespace

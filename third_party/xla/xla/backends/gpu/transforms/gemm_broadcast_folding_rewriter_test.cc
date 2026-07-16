@@ -46,6 +46,7 @@ class GemmBroadcastFoldingRewriteTest
     // cuBLAS for them.
     debug_options.set_xla_gpu_enable_triton_gemm(false);
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
+    debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(false);
     return debug_options;
   }
 };

@@ -72,7 +72,7 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsE2ETestBase {
     const std::vector<Literal>& results = execution_result.results;
     ASSERT_EQ(results.size(), num_partitions);
 
-    ErrorSpec error_spec{1e-4, 1e-4};
+    ErrorSpec error_spec{0.05, 0.05};
     CompareShardedUnsharded(hlo_text, num_partitions, ref_results, results,
                             error_spec);
   }

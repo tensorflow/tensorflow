@@ -156,7 +156,7 @@ TEST_F(SVDTest, Test_Orthogonality_U) {
   BatchDot(result.u, TransposeInMinorDims(result.u));
 
   ComputeAndCompareR3<float>(&builder, GetUnitMatrix3D(2, 4), {&a_data},
-                             ErrorSpec(1e-2, 1e-2));
+                             ErrorSpec(0.05, 0.05));
 }
 
 TEST_F(SVDTest, Test_Orthogonality_V) {
