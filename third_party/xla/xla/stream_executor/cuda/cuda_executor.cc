@@ -1842,6 +1842,32 @@ absl::StatusOr<MemorySpace> CudaExecutor::GetPointerMemorySpace(
   }
 }
 
+bool CudaExecutor::IsHostMemoryPinned(const void* ptr, uint64_t size) {
+  if (size == 0) return false;
+  CUdeviceptr pointer = reinterpret_cast<CUdeviceptr>(const_cast<void*>(ptr));
+
+  uint64_t start_addr;
+  uint64_t range_size;
+  unsigned int memory_type;
+  CUpointer_attribute attrs[3] = {CU_POINTER_ATTRIBUTE_MEMORY_TYPE,
+                                  CU_POINTER_ATTRIBUTE_RANGE_START_ADDR,
+                                  CU_POINTER_ATTRIBUTE_RANGE_SIZE};
+  void* results[3] = {&memory_type, &start_addr, &range_size};
+  auto status =
+      cuda::ToStatus(cuPointerGetAttributes(3, attrs, results, pointer));
+
+  if (!status.ok()) {
+    return false;
+  }
+
+  if (memory_type != CU_MEMORYTYPE_HOST) {
+    return false;
+  }
+
+  return reinterpret_cast<const char*>(ptr) + size <=
+         reinterpret_cast<const char*>(start_addr) + range_size;
+}
+
 int CudaExecutor::GetGpuStreamPriority(StreamPriority priority) {
   if (priority == StreamPriority::Default) {
     return 0;

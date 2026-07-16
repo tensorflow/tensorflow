@@ -336,7 +336,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 
   absl::Status DmaUnmap(void* data) override;
 
-  bool IsDmaMapped(const void* data_start, int64_t transfer_size);
+  bool IsHostMemoryPinned(const void* ptr, uint64_t size);
 
   LocalDeviceState& device_state(int device_ordinal) const {
     return *absl::down_cast<PjRtStreamExecutorDevice*>(
@@ -355,7 +355,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
     // using a staging buffer is probably worse than not using one.
     // TODO(phawkins): add chunking for transfers.
     return should_stage_host_to_device_transfers_ &&
-           size < (int64_t{1} << 30) && !IsDmaMapped(data, size);
+           size < (int64_t{1} << 30) && !IsHostMemoryPinned(data, size);
   }
 
   virtual gpu::GpuExecutableRunOptions* gpu_run_options(
@@ -537,10 +537,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 
   tsl::thread::ThreadPool compile_thread_pool_;
   std::unique_ptr<AsyncWorkRunner> async_work_runner_;
-
-  absl::Mutex dma_maps_mutex_;
-  // Maps dma mapped start pointers to their sizes.
-  absl::flat_hash_map<void*, size_t> dma_maps_ ABSL_GUARDED_BY(dma_maps_mutex_);
 };
 
 // Converts a 2D set of Device objects indexed by [replica][partition] into an

@@ -2005,11 +2005,11 @@ TEST(StreamExecutorGpuClientTest, DmaMapUnmap) {
                                     static_cast<std::align_val_t>(alignment));
       });
   TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
-  EXPECT_TRUE(client->IsDmaMapped(host_dma_ptr, dma_size));
-  EXPECT_FALSE(
-      client->IsDmaMapped(reinterpret_cast<char*>(host_dma_ptr) + 5, dma_size));
+  EXPECT_TRUE(client->IsHostMemoryPinned(host_dma_ptr, dma_size));
+  EXPECT_FALSE(client->IsHostMemoryPinned(
+      reinterpret_cast<char*>(host_dma_ptr) + 5, dma_size));
   TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr));
-  EXPECT_FALSE(client->IsDmaMapped(host_dma_ptr, dma_size));
+  EXPECT_FALSE(client->IsHostMemoryPinned(host_dma_ptr, dma_size));
 }
 
 TEST(StreamExecutorGpuClientTest, RawBuffer) {

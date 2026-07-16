@@ -1280,6 +1280,35 @@ absl::StatusOr<MemorySpace> RocmExecutor::GetPointerMemorySpace(
       "failed to query device pointer for memory space: ", ToString(result)));
 }
 
+bool RocmExecutor::IsHostMemoryPinned(const void* ptr, uint64_t size) {
+  if (size == 0) {
+    return false;
+  }
+  // hipDrvPointerGetAttributes does not modify pointer but is nonconst.
+  hipDeviceptr_t pointer =
+      reinterpret_cast<hipDeviceptr_t>(const_cast<void*>(ptr));
+
+  uint64_t start_addr;
+  uint64_t range_size;
+  unsigned int memory_type;
+  hipPointer_attribute attrs[3] = {HIP_POINTER_ATTRIBUTE_MEMORY_TYPE,
+                                   HIP_POINTER_ATTRIBUTE_RANGE_START_ADDR,
+                                   HIP_POINTER_ATTRIBUTE_RANGE_SIZE};
+  void* results[3] = {&memory_type, &start_addr, &range_size};
+  hipError_t result = hipDrvPointerGetAttributes(3, attrs, results, pointer);
+
+  if (result != hipSuccess) {
+    return false;
+  }
+
+  if (memory_type != hipMemoryTypeHost) {
+    return false;
+  }
+
+  return reinterpret_cast<const char*>(ptr) + size <=
+         reinterpret_cast<const char*>(start_addr) + range_size;
+}
+
 absl::StatusOr<const RocmKernel*> RocmExecutor::GetRocmKernel(
     const Kernel* kernel) {
   absl::MutexLock lock{in_memory_modules_mu_};

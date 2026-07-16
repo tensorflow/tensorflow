@@ -980,8 +980,6 @@ absl::Status PjRtStreamExecutorClient::DmaMap(void* data, size_t buffer_size) {
     return absl::InternalError(absl::StrFormat(
         "Failed to register host memory at address: %ps", data));
   }
-  absl::MutexLock lock(dma_maps_mutex_);
-  dma_maps_.insert({data, buffer_size});
   return absl::OkStatus();
 }
 
@@ -998,8 +996,6 @@ absl::Status PjRtStreamExecutorClient::DmaUnmap(void* data) {
     return absl::InternalError(absl::StrFormat(
         "Failed to unregister host memory at address: %ps", data));
   }
-  absl::MutexLock lock(dma_maps_mutex_);
-  dma_maps_.erase(data);
   return absl::OkStatus();
 }
 
@@ -2749,19 +2745,21 @@ PjRtStreamExecutorClient::Load(std::shared_ptr<PjRtExecutable> executable,
   return LoadInternal(std::move(executable), /*dump=*/false);
 }
 
-bool PjRtStreamExecutorClient::IsDmaMapped(const void* data_start,
-                                           int64_t transfer_size) {
-  absl::MutexLock lock(dma_maps_mutex_);
-  if (!dma_maps_.empty()) {
-    void* data_end = (char*)data_start + transfer_size;
-    for (const auto& [map_start, map_size] : dma_maps_) {
-      void* map_end = (char*)map_start + map_size;
-      if (data_start >= map_start && data_end <= map_end) {
-        return true;
-      }
-    }
+bool PjRtStreamExecutorClient::IsHostMemoryPinned(const void* ptr,
+                                                  uint64_t size) {
+  if (addressable_devices_.empty()) {
+    return false;
   }
-  return false;
+  auto* device =
+      tensorflow::down_cast<PjRtStreamExecutorDevice*>(addressable_devices_[0]);
+  auto status_or_device_state = device->GetLocalDeviceState();
+  if (!status_or_device_state.ok()) {
+    return false;
+  }
+  return status_or_device_state.value()
+      ->compute_stream()
+      ->parent()
+      ->IsHostMemoryPinned(ptr, size);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutableAbiVersion>>
