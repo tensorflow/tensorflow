@@ -167,15 +167,14 @@ class CommonPjRtClient : public PjRtClient {
   // for when the linearization is complete.
   virtual absl::StatusOr<PjRtDeviceEventRef> LinearizeInto(
       const LiteralSlice& literal, const xla::Shape& device_shape,
-      HostBufferSemantics host_buffer_semantics, PjRtRawBufferRef raw_buffer) {
-    return absl::UnimplementedError("LinearizeInto is not supported");
-  }
+      HostBufferSemantics host_buffer_semantics, PjRtRawBufferRef raw_buffer);
 
   // Tests if a buffer is eligible for zero copy linearization.
   virtual bool ShouldPerformZeroCopyLinearize(
       const void* data, const xla::Shape& device_shape, PrimitiveType type,
       absl::Span<int64_t const> dims,
-      std::optional<absl::Span<int64_t const>> byte_strides) {
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      PjRtMemorySpace* memory_space) {
     return false;
   }
 
@@ -196,8 +195,8 @@ class CommonPjRtClient : public PjRtClient {
   virtual absl::Status Linearize(absl::Span<uint8_t> dest, const void* data,
                                  absl::Span<const int64_t> byte_strides,
                                  const Shape& device_shape,
-                                 PjRtMemorySpace* memory_space,
-                                 absl::Span<const uint32_t> dynamic_sizes);
+                                 absl::Span<const uint32_t> dynamic_sizes,
+                                 PjRtMemorySpace* memory_space);
 
   absl::StatusOr<PjRtDeviceEventRef> LinearizeIntoImpl(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
@@ -354,9 +353,7 @@ class CommonPjRtClient : public PjRtClient {
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
       absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-      const xla::Shape& device_shape, PjRtRawBufferRef raw_buffer) {
-    return absl::UnimplementedError("LinearizeHostBufferInto is not supported");
-  }
+      const xla::Shape& device_shape, PjRtRawBufferRef raw_buffer);
 
   absl::StatusOr<std::shared_ptr<TransposePlan>> GetTransposePlan(
       const TransposePlan::Options& options);

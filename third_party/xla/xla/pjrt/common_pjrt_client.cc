@@ -171,7 +171,7 @@ CommonPjRtClient::AllocateLinearizeDest(bool sync,
 absl::Status CommonPjRtClient::Linearize(
     absl::Span<uint8_t> dest, const void* data,
     absl::Span<const int64_t> byte_strides, const Shape& device_shape,
-    PjRtMemorySpace* memory_space, absl::Span<const uint32_t> dynamic_sizes) {
+    absl::Span<const uint32_t> dynamic_sizes, PjRtMemorySpace* memory_space) {
   PjRtDynamicShapeKind layout_kind =
       GetDynamicShapeKind(memory_space->kind_id());
   auto requirements =
@@ -221,7 +221,9 @@ absl::Status CommonPjRtClient::Linearize(
   options.elem_size_in_bytes = primitive_util::ByteWidth(type);
   options.dims = dims;
   options.permutation = permutation;
-  options.input_striding = TransposePlan::Striding{byte_strides};
+  if (!byte_strides.empty()) {
+    options.input_striding = TransposePlan::Striding{byte_strides};
+  }
 
   bool should_pack = device_shape.layout().element_size_in_bits() != 0 &&
                      device_shape.layout().element_size_in_bits() <
@@ -234,6 +236,44 @@ absl::Status CommonPjRtClient::Linearize(
 
   transpose->Execute(data, array_dest.data());
   return absl::OkStatus();
+}
+
+absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeHostBufferInto(
+    const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+    std::optional<absl::Span<int64_t const>> byte_strides,
+    HostBufferSemantics host_buffer_semantics,
+    absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+    const xla::Shape& device_shape, PjRtRawBufferRef raw_buffer) {
+  if (device_shape.IsToken()) {
+    return raw_buffer->MakeAllocationReadyEvent();
+  }
+  return LinearizeIntoImpl(data, type, dims, byte_strides,
+                           host_buffer_semantics,
+                           std::move(on_done_with_host_buffer), device_shape,
+                           /*dynamic_sizes=*/{}, raw_buffer);
+}
+
+absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeInto(
+    const LiteralSlice& literal, const xla::Shape& device_shape,
+    HostBufferSemantics host_buffer_semantics, PjRtRawBufferRef raw_buffer) {
+  if (device_shape.IsToken()) {
+    return raw_buffer->MakeAllocationReadyEvent();
+  }
+  absl::InlinedVector<int64_t, 4> strides(literal.shape().dimensions().size());
+  RETURN_IF_ERROR(
+      ShapeUtil::ByteStrides(literal.shape(), absl::MakeSpan(strides)));
+  absl::InlinedVector<uint32_t, 4> dynamic_sizes;
+  if (literal.shape().is_dynamic()) {
+    dynamic_sizes.reserve(literal.shape().dimensions().size());
+    for (int i = 0; i < literal.shape().dimensions().size(); ++i) {
+      dynamic_sizes.push_back(literal.GetDynamicSize(i));
+    }
+  }
+  return LinearizeIntoImpl(literal.untyped_data(), device_shape.element_type(),
+                           device_shape.dimensions(), strides,
+                           host_buffer_semantics,
+                           /*on_done_with_host_buffer=*/nullptr, device_shape,
+                           dynamic_sizes, raw_buffer);
 }
 
 absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeIntoImpl(
@@ -252,7 +292,7 @@ absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeIntoImpl(
       host_buffer_semantics != HostBufferSemantics::kImmutableOnlyDuringCall &&
       dynamic_sizes.empty() &&
       ShouldPerformZeroCopyLinearize(data, device_shape, type, dims,
-                                     byte_strides)) {
+                                     byte_strides, memory_space)) {
     linearized = CreateStagingForZeroCopyLinearize(
         data, device_shape, memory_space, std::move(on_done_with_host_buffer));
   } else {
@@ -274,7 +314,7 @@ absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeIntoImpl(
       RETURN_IF_ERROR(
           Linearize(linearized->data(), data,
                     byte_strides.value_or(absl::Span<const int64_t>()),
-                    device_shape, memory_space, dynamic_sizes));
+                    device_shape, dynamic_sizes, memory_space));
       if (on_done_with_host_buffer) {
         std::move(on_done_with_host_buffer)();
         on_done_with_host_buffer = nullptr;
@@ -308,7 +348,7 @@ absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeIntoImpl(
                 return *error;
               }
               return Linearize(staging_data, data, byte_strides, device_shape,
-                               memory_space, dynamic_sizes);
+                               dynamic_sizes, memory_space);
             }();
             if (on_done_with_host_buffer) {
               std::move(on_done_with_host_buffer)();

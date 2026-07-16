@@ -653,148 +653,67 @@ bool PjRtStreamExecutorClient::IsOnCpu(PjRtMemorySpace* memory_space) {
   return memory_space->kind() == PinnedHostMemorySpace::kKind;
 }
 
-absl::StatusOr<PjRtDeviceEventRef>
-PjRtStreamExecutorClient::LinearizeHostBufferInto(
-    const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+bool PjRtStreamExecutorClient::ShouldPerformZeroCopyLinearize(
+    const void* data, const xla::Shape& device_shape, PrimitiveType type,
+    absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
-    HostBufferSemantics host_buffer_semantics,
-    absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-    const xla::Shape& device_shape, PjRtRawBufferRef raw_buffer) {
-  tsl::profiler::TraceMe traceme(
-      "PjRtStreamExecutorClient::LinearizeHostBufferInto");
-  PjRtMemorySpace* memory_space = raw_buffer->memory_space();
-  PjRtDevice* device = memory_space->devices()[0];
-  ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                   tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
-                       ->GetLocalDeviceState());
-
-  auto* copy_stream = local_device->host_to_device_stream();
-
-  RETURN_IF_ERROR(WaitForAllocation(copy_stream, *raw_buffer));
-  auto definition_event = BufferSequencingEvent::Create(async_work_runner());
-
-  if (type == xla::TOKEN) {
-    RETURN_IF_ERROR(AllocateAndRecordEvent(definition_event, local_device,
-                                           copy_stream,
-                                           "LinearizeHostBufferIntoToken"));
-    return PjRtDeviceEventRef(definition_event);
-  }
-
+    PjRtMemorySpace* memory_space) {
   Shape on_host_shape = ShapeUtil::MakeShape(type, dims);
   absl::InlinedVector<int64_t, 4> tmp_strides;
   if (!byte_strides) {
     tmp_strides.resize(dims.size());
-    RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
-        on_host_shape, absl::MakeSpan(tmp_strides)));
+    if (!ShapeUtil::UnpackedByteStrides(on_host_shape,
+                                        absl::MakeSpan(tmp_strides))
+             .ok()) {
+      return false;
+    }
     byte_strides = tmp_strides;
   }
   int64_t size = ShapeUtil::ByteSizeOf(on_host_shape);
-
-  ASSIGN_OR_RETURN(
-      int64_t packed_size,
-      GetOnDeviceBytesCount(memory_space->kind_id(), device_shape));
-
+  auto packed_size_or =
+      GetOnDeviceBytesCount(memory_space->kind_id(), device_shape);
+  if (!packed_size_or.ok()) {
+    return false;
+  }
+  int64_t packed_size = *packed_size_or;
   absl::InlinedVector<int64_t, 4> shape_strides(
       device_shape.dimensions().size());
-  RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
-      device_shape, absl::MakeSpan(shape_strides)));
+  if (!ShapeUtil::UnpackedByteStrides(device_shape,
+                                      absl::MakeSpan(shape_strides))
+           .ok()) {
+    return false;
+  }
   bool host_and_device_strides_equal =
       (size == 0 || *byte_strides == shape_strides);
 
-  // If necessary, allocate a host-side buffer for staging host-to-device
-  // transfers. On GPU this is a buffer in pinned memory.
-  std::shared_ptr<void> staging_buffer;
-  bool must_use_staging_buffer =
-      host_buffer_semantics == HostBufferSemantics::kImmutableOnlyDuringCall ||
-      !host_and_device_strides_equal || packed_size != size;
-  if (must_use_staging_buffer ||
-      ShouldStageHostToDeviceTransfers(data, packed_size)) {
-    HostMemoryAllocator::AllocateOptions alloc_opts;
-    alloc_opts.numa_node = local_device->executor()->numa_node();
-    alloc_opts.local_device_id = local_device->local_device_id();
-    staging_buffer =
-        GetHostMemoryAllocator()->Allocate(packed_size, alloc_opts);
+  return host_and_device_strides_equal && (packed_size == size) &&
+         !ShouldStageHostToDeviceTransfers(data, size);
+}
+
+absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>>
+PjRtStreamExecutorClient::AllocateLinearizeDest(
+    bool sync, const xla::Shape& device_shape,
+    absl::Span<const int64_t> byte_strides, PjRtRawBufferRef dest_buffer) {
+  if (dest_buffer->GetHostPointer() != nullptr) {
+    return CommonPjRtClient::AllocateLinearizeDest(sync, device_shape,
+                                                   byte_strides, dest_buffer);
   }
+  PjRtMemorySpace* memory_space = dest_buffer->memory_space();
+  ASSIGN_OR_RETURN(size_t size, GetOnDeviceBytesCount(memory_space->kind_id(),
+                                                      device_shape));
 
-  // Copy the buffer into a staging buffer before returning control to the
-  // caller if the caller only guaranteed that the buffer is valid for the
-  // duration of the call. Otherwise, we stage (if necessary) on a separate
-  // thread.
-  if (host_buffer_semantics == HostBufferSemantics::kImmutableOnlyDuringCall) {
-    if (staging_buffer) {
-      RETURN_IF_ERROR(
-          Linearize(absl::MakeSpan(static_cast<uint8_t*>(staging_buffer.get()),
-                                   packed_size),
-                    data, *byte_strides, device_shape,
-                    raw_buffer->memory_space(), /*dynamic_sizes=*/{}));
-    }
-    if (on_done_with_host_buffer) {
-      std::move(on_done_with_host_buffer)();
-      on_done_with_host_buffer = nullptr;
-    }
-  }
+  auto* cpp_buf = dest_buffer->down_cast<PjRtStreamExecutorRawBuffer>();
+  LocalDeviceState* local_device = cpp_buf->local_device();
 
-  // The host to device transfer is performed on a thread pool, mostly because
-  // it includes linearization that may be slow.
-  // TODO(misard) assess if it would be preferable to introduce a heuristic to
-  // put the transfer into the calling thread for small literals.
-  auto transfer_h2d =
-      [this, local_device, data,
-       captured_strides = absl::InlinedVector<int64_t, 4>(byte_strides->begin(),
-                                                          byte_strides->end()),
-       device_shape, memory_space, packed_size, event = definition_event,
-       raw_buffer, staging_buffer{std::move(staging_buffer)},
-       on_done_with_host_buffer =
-           on_done_with_host_buffer
-               ? std::make_shared<absl::AnyInvocable<void() &&>>(
-                     std::move(on_done_with_host_buffer))
-               : nullptr,
-       host_buffer_semantics]() mutable {
-        // This function uses CHECK_OK and value() since we have no way
-        // to report failures from a callback. However, the operations here are
-        // unlikely to fail and not recoverable even if we were to fail: DMAs to
-        // memory that has already been allocated, and a possible Event
-        // allocation.
+  HostMemoryAllocator::AllocateOptions alloc_opts;
+  alloc_opts.numa_node = local_device->executor()->numa_node();
+  alloc_opts.local_device_id = local_device->local_device_id();
+  HostMemoryAllocator::OwnedPtr staging_buffer =
+      GetHostMemoryAllocator()->Allocate(size, alloc_opts);
 
-        auto* cpp_buf = raw_buffer->down_cast<PjRtStreamExecutorRawBuffer>();
-        CHECK(cpp_buf != nullptr) << "Not a StreamExecutor raw buffer";
-        se::DeviceAddressBase device_memory = cpp_buf->device_buffer()->mem();
-
-        // If applicable on the backend, stage the transfer via host memory
-        // allocated via the host_memory_allocator. On GPU, this is pinned
-        // memory.
-        if (staging_buffer) {
-          // If we didn't already copy the input buffer into the staging buffer,
-          // do so now.
-          if (host_buffer_semantics !=
-              HostBufferSemantics::kImmutableOnlyDuringCall) {
-            CHECK_OK(Linearize(
-                absl::MakeSpan(static_cast<uint8_t*>(staging_buffer.get()),
-                               packed_size),
-                data, captured_strides, device_shape, memory_space,
-                /*dynamic_sizes=*/{}));
-          }
-          CHECK_OK(local_device->host_to_device_stream()->Memcpy(
-              &device_memory, staging_buffer.get(), packed_size));
-        } else {
-          CHECK_OK(local_device->host_to_device_stream()->Memcpy(
-              &device_memory, data, packed_size));
-        }
-
-        CHECK_OK(AddDestinationBufferSynchronization(
-            this, local_device, event, local_device->host_to_device_stream()));
-
-        event.AndThen([raw_buffer = std::move(raw_buffer),
-                       staging_buffer{std::move(staging_buffer)},
-                       on_done_with_host_buffer{
-                           std::move(on_done_with_host_buffer)}]() mutable {
-          if (on_done_with_host_buffer) {
-            std::move (*on_done_with_host_buffer)();
-          }
-        });
-      };
-  async_work_runner()->Execute(WrapClosureAsCopyable(std::move(transfer_h2d)));
-  return PjRtDeviceEventRef(definition_event);
+  absl::Span<uint8_t> span(staging_buffer.get(), size);
+  return PjRtStagingBuffer::Create(
+      span, [staging_buffer = std::move(staging_buffer)]() {});
 }
 
 absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
@@ -861,69 +780,6 @@ absl::StatusOr<PjRtDeviceEventRef> PjRtStreamExecutorClient::CreateDeviceEvent(
     local_device->ReturnStreamToPool(std::move(stream));
   });
   return PjRtDeviceEventRef(definition_event);
-}
-
-absl::StatusOr<PjRtDeviceEventRef> PjRtStreamExecutorClient::LinearizeInto(
-    const LiteralSlice& literal, const xla::Shape& device_shape,
-    HostBufferSemantics host_buffer_semantics, PjRtRawBufferRef raw_buffer) {
-  auto* memory_space = raw_buffer->memory_space();
-
-  CHECK_EQ(memory_space->devices().size(), 1);
-  PjRtDevice* device = memory_space->devices().front();
-  auto* cpp_buf = raw_buffer->down_cast<PjRtStreamExecutorRawBuffer>();
-  if (cpp_buf == nullptr) {
-    return absl::InvalidArgumentError("Not a StreamExecutor raw buffer");
-  }
-  auto* local_device = cpp_buf->local_device();
-  auto* copy_stream = local_device->host_to_device_stream();
-  BufferSequencingEventRef event =
-      BufferSequencingEvent::Create(async_work_runner());
-  RETURN_IF_ERROR(WaitForAllocation(copy_stream, *raw_buffer));
-
-  if (literal.shape().IsToken()) {
-    RETURN_IF_ERROR(AllocateAndRecordEvent(event, local_device, copy_stream,
-                                           "LinearizeIntoToken"));
-    return PjRtDeviceEventRef(event);
-  }
-
-  TransferManager* transfer_manager = client()->backend().transfer_manager();
-
-  // The host to device transfer is performed on a thread pool, mostly because
-  // it includes linearization that may be slow.
-  // TODO(misard) assess if it would be preferable to introduce a heuristic to
-  // put the transfer into the calling thread for small literals.
-  auto transfer_h2d = [this, local_client = client(), transfer_manager,
-                       local_device, raw_buffer, device, event, literal,
-                       on_device_shape = device_shape]() mutable {
-    // This function uses CHECK_OK and value() since we have no way
-    // to report failures from a callback. However, the operations here are
-    // unlikely to fail and not recoverable even if we were to fail: DMAs to
-    // memory that has already been allocated, and a possible Event
-    // allocation.
-    auto* cpp_buf = raw_buffer->down_cast<PjRtStreamExecutorRawBuffer>();
-    CHECK(cpp_buf != nullptr) << "Not a StreamExecutor raw buffer";
-    auto device_memory = cpp_buf->device_buffer();
-
-    se::Stream* h2d_stream = local_device->host_to_device_stream();
-
-    ShapedBuffer buffer =
-        device_memory->AsShapedBuffer(device, on_device_shape);
-    CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(h2d_stream, literal,
-                                                            buffer));
-
-    CHECK_OK(AddDestinationBufferSynchronization(this, local_device, event,
-                                                 h2d_stream));
-
-    local_device->ThenRelease(h2d_stream, device_memory).IgnoreError();
-
-    // This can sometimes catch the case where the literal memory has been
-    // freed before the H2D transfer was issued.
-    h2d_stream->RefreshStatus()
-        .IgnoreError();  // Can return error::Unimplemented
-    QCHECK(h2d_stream->ok());
-  };
-  async_work_runner()->Execute(WrapClosureAsCopyable(std::move(transfer_h2d)));
-  return PjRtDeviceEventRef(event);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
