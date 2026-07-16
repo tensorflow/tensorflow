@@ -22,7 +22,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as reader_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import lookup_ops as core_lookup_ops
 from tensorflow.python.ops import string_ops
