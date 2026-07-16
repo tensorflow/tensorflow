@@ -740,6 +740,36 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "gpu_executable_va_remap_allocator_test",
+    srcs = ["gpu_executable_va_remap_allocator_test.cc"],
+    deps = [
+        ":buffer_allocations",
+        ":gpu_executable_buffer_allocator",
+        "//xla:executable_run_options",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/backends/gpu/runtime:thunk",
+        "//xla/backends/gpu/runtime:thunk_executor",
+        "//xla/service:buffer_assignment",
+        "//xla/service:service_executable_run_options",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_address_allocator",
+        "//xla/stream_executor:device_address_vmm_allocator",
+        "//xla/stream_executor:memory_allocation",
+        "//xla/stream_executor:memory_reservation",
+        "//xla/stream_executor:mock_platform",
+        "//xla/stream_executor:mock_stream",
+        "//xla/stream_executor:mock_stream_executor",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "gpu_executable",
     srcs = [

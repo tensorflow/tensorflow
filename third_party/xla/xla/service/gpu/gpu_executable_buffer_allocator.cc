@@ -227,7 +227,7 @@ GpuExecutableBufferAllocator::ExecutionScope::GenerateBufferAllocations(
           run_options->run_options().device_assignment());
 
   const int64_t num_buffers = owner_->allocations_.size();
-  RETURN_IF_ERROR(PrepareReservation(run_options, device_ordinal));
+  RETURN_IF_ERROR(Prepare(run_options, device_ordinal));
 
   std::vector<se::DeviceAddressBase> buffers;
   buffers.reserve(num_buffers);
