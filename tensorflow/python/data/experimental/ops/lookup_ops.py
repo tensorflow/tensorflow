@@ -171,8 +171,7 @@ def table_from_dataset(dataset=None,
     known_cardinality = tensor_util.constant_value(dataset.cardinality())
     if (known_cardinality is not None and
         known_cardinality >= 0 and vocab_size > known_cardinality):
-      raise errors.InvalidArgumentError(
-          None, None,
+      raise ValueError(
           f"`vocab_size` ({vocab_size}) is larger than the known dataset "
           f"cardinality ({known_cardinality}).")
   if (not key_dtype.is_integer) and (dtypes.string != key_dtype.base_dtype):
