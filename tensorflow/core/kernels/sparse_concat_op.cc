@@ -230,11 +230,11 @@ class SparseConcatOp : public OpKernel {
     for (int i = 0; i < N; ++i) {
       const int64_t add = inds[i].dim_size(0);
       OP_REQUIRES(context, add >= 0,
-                  errors::InvalidArgument("Input nnz must be non-negative"));
+                  absl::InvalidArgumentError("Input nnz must be non-negative"));
       OP_REQUIRES(context,
                   output_nnz <=
                       (std::numeric_limits<int64_t>::max() - add),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "Sum of nnz across inputs would overflow int64"));
       output_nnz += add;
     }
