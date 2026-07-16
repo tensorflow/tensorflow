@@ -1693,24 +1693,29 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
       value_or(mem_clock_khz, 0), l2_cache_bytes));
 
   {
-    CUmulticastObjectProp prop = {};
-    prop.handleTypes =
-        CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR | CU_MEM_HANDLE_TYPE_FABRIC;
-    size_t multicast_granularity = 0;
-    if (absl::Status status = cuda::ToStatus(cuMulticastGetGranularity(
-            &multicast_granularity, &prop, CU_MULTICAST_GRANULARITY_MINIMUM));
-        status.ok()) {
-      desc.set_collective_memory_granularity(multicast_granularity);
-      VLOG(1) << "Collective memory granularity: " << multicast_granularity;
+    constexpr uint64_t kDefaultCollectiveMemoryGranularity =
+        2 * 1024 * 1024;  // 2 MiB
+    absl::StatusOr<bool> is_multicast_supported = IsMulticastSupported(device);
+    if (is_multicast_supported.ok() && *is_multicast_supported) {
+      CUmulticastObjectProp prop = {};
+      prop.handleTypes =
+          CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR | CU_MEM_HANDLE_TYPE_FABRIC;
+      size_t multicast_granularity = 0;
+      if (absl::Status status = cuda::ToStatus(cuMulticastGetGranularity(
+              &multicast_granularity, &prop, CU_MULTICAST_GRANULARITY_MINIMUM));
+          status.ok()) {
+        desc.set_collective_memory_granularity(multicast_granularity);
+        VLOG(1) << "Collective memory granularity: " << multicast_granularity;
+      } else {
+        LOG(INFO) << "Falling back to default granularity value of "
+                  << (kDefaultCollectiveMemoryGranularity / (1024 * 1024))
+                  << " MiB. This isn't a production error. Failed to get "
+                     "multicast minimum granularity with status: "
+                  << status;
+        desc.set_collective_memory_granularity(
+            kDefaultCollectiveMemoryGranularity);
+      }
     } else {
-      constexpr uint64_t kDefaultCollectiveMemoryGranularity =
-          2 * 1024 * 1024;  // 2 MiB
-      LOG(INFO) << "Falling back to default granularity value of "
-                << kDefaultCollectiveMemoryGranularity
-                << " MiB. This "
-                   "isn't a production error. Failed "
-                   "to get multicast minimum granularity with status: "
-                << status;
       desc.set_collective_memory_granularity(
           kDefaultCollectiveMemoryGranularity);
     }
