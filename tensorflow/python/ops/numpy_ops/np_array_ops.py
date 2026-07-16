@@ -1438,9 +1438,12 @@ def flip(m, axis=None):  # pylint: disable=missing-docstring
   if axis is None:
     return array_ops.reverse(m, math_ops.range(array_ops.rank(m)))
 
-  axis = np_utils._canonicalize_axis(axis, array_ops.rank(m))  # pylint: disable=protected-access
+  if np_utils.isscalar(axis):
+    axis = [axis]
 
-  return array_ops.reverse(m, [axis])
+  axis = np_utils._canonicalize_axes(axis, array_ops.rank(m))  # pylint: disable=protected-access
+
+  return array_ops.reverse(m, axis)
 
 
 @tf_export.tf_export('experimental.numpy.flipud', v1=[])
