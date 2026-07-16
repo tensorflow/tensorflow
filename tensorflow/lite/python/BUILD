@@ -106,6 +106,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":convert",
+        ":lite",
         "//tensorflow:tensorflow_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/lite/toco/logging:gen_html",
