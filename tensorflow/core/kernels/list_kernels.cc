@@ -360,7 +360,6 @@ class TensorListReserve : public OpKernel {
     TensorList output;
     output.element_shape = element_shape;
     output.element_dtype = element_dtype_;
-    output.max_num_elements = num_elements;
     output.tensors().resize(num_elements, Tensor(DT_INVALID));
     Tensor* result;
     AllocatorAttributes attr;
