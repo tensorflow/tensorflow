@@ -47,8 +47,17 @@ struct EstimateRunTimeData {
   absl::Duration write_time;
   absl::Duration compute_time;
   absl::Duration exec_time;
+
+  // Memory & Cache metrics
   int64_t l2_bytes_read = 0;
   int64_t shared_memory_per_block_bytes = 0;
+
+  // Resource usage metrics
+  int registers_per_thread = 0;
+
+  // Speed of Light (SOL) utilization estimates [0.0, 1.0]. 0.0 means unset.
+  double compute_sol = 0.0;
+  double memory_sol = 0.0;
 
   // Returns an estimate that is guaranteed to be zero.
   static EstimateRunTimeData Zero() {
@@ -60,7 +69,10 @@ struct EstimateRunTimeData {
                                /*compute_time=*/absl::ZeroDuration(),
                                /*exec_time=*/absl::ZeroDuration(),
                                /*l2_bytes_read=*/0,
-                               /*shared_memory_per_block_bytes=*/0};
+                               /*shared_memory_per_block_bytes=*/0,
+                               /*registers_per_thread=*/0,
+                               /*compute_sol=*/0.0,
+                               /*memory_sol=*/0.0};
   }
 
   // Returns an estimate that is guaranteed to be larger than any real runtime.
@@ -74,7 +86,11 @@ struct EstimateRunTimeData {
         /*compute_time=*/absl::InfiniteDuration(),
         /*exec_time=*/absl::InfiniteDuration(),
         /*l2_bytes_read=*/std::numeric_limits<int64_t>::max(),
-        /*shared_memory_per_block_bytes=*/std::numeric_limits<int64_t>::max()};
+        /*shared_memory_per_block_bytes=*/std::numeric_limits<int64_t>::max(),
+        /*registers_per_thread=*/std::numeric_limits<int>::max(),
+        /*compute_sol=*/std::numeric_limits<double>::infinity(),
+        /*memory_sol=*/std::numeric_limits<double>::infinity(),
+    };
   }
 
   // Returns true if the estimate is guaranteed to be larger than any real
@@ -93,11 +109,15 @@ struct EstimateRunTimeData {
         " write_time: %s\n"
         " compute_time: %s\n"
         " exec_time: %s\n"
+        " registers_per_thread: %d\n"
+        " compute_sol: %.2f\n"
+        " memory_sol: %.2f\n"
         "}",
         flops, bytes_read, bytes_written, l2_bytes_read,
         shared_memory_per_block_bytes, absl::FormatDuration(read_time),
         absl::FormatDuration(write_time), absl::FormatDuration(compute_time),
-        absl::FormatDuration(exec_time));
+        absl::FormatDuration(exec_time), registers_per_thread, compute_sol,
+        memory_sol);
   }
 };
 
