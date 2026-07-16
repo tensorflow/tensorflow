@@ -309,7 +309,8 @@ absl::Status ShapeVerifier::HandleConvolution(HloInstruction* convolution) {
           convolution->feature_group_count(), convolution->batch_group_count(),
           convolution->window(), convolution->convolution_dimension_numbers(),
           convolution->sparsity_config(),
-          /*preferred_element_type=*/convolution->shape().element_type()));
+          /*preferred_element_type=*/convolution->shape().element_type(),
+          Cast<HloConvolutionInstruction>(convolution)->convolution_kind()));
 
   return CheckShape(convolution, expected);
 }

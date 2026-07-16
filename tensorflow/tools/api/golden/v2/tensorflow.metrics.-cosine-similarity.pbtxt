@@ -132,6 +132,10 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__call__"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'name\', \'dtype\', \'axis\'], varargs=None, keywords=None, defaults=[\'cosine_similarity\', \'None\', \'-1\'], "
   }
