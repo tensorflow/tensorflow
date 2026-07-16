@@ -1158,7 +1158,11 @@ cc_library(
         "ptx_compiler.h",
         "ptx_compiler_impl.cc",
     ],
-    tags = ["manual"],
+    tags = [
+        "cuda-only",
+        "gpu",
+        "manual",
+    ],
     deps = [
         ":compilation_provider",
         ":cuda_compute_capability",
