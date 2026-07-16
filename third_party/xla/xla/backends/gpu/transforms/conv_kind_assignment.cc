@@ -328,6 +328,16 @@ ConvolutionMatch MatchBackwardInput(HloInstruction* conv) {
   auto kernel_out_features =
       reverse_filter->shape().dimensions(kernel_out_feature_dim);
 
+  // For DGRAD, LHS feature dimension (grad output features) must match RHS
+  // kernel output features. If this check fails, the node is not a DGRAD
+  // convolution.
+  int64_t lhs_feature_dim = dnums.input_feature_dimension();
+  int64_t lhs_features = conv->operand(0)->shape().dimensions(lhs_feature_dim);
+  if (lhs_features % conv->feature_group_count() != 0 ||
+      lhs_features / conv->feature_group_count() != kernel_out_features) {
+    return std::nullopt;
+  }
+
   // For a depthwise convolution, the input features must be equal to the
   // feature_group_count. We can leverage this property to match a depthwise
   // convolution and thunk it to forward conv
