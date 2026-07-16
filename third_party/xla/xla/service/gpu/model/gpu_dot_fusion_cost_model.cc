@@ -366,10 +366,9 @@ absl::Duration CalculatePipelinedLoopTime(int64_t num_stages,
   return prologue_time + overlap_time + epilogue_time + hbm_timing.write_time;
 }
 
-int64_t CalculateHardwareLaunchWaves(int64_t threadblock_count,
-                                     int64_t shared_memory_per_block_bytes,
-                                     int num_warps,
-                                     const se::DeviceDescription& device_info) {
+SmOccupancy CalculateSmOccupancy(int64_t shared_memory_per_block_bytes,
+                                 int64_t num_warps,
+                                 const se::DeviceDescription& device_info) {
   const int64_t hardware_max_shmem = device_info.shared_memory_per_core();
   const int64_t hardware_max_threads = device_info.threads_per_core_limit();
   const int64_t max_blocks_by_shmem =
@@ -379,17 +378,34 @@ int64_t CalculateHardwareLaunchWaves(int64_t threadblock_count,
   const int64_t max_blocks_by_threads =
       hardware_max_threads / (num_warps * device_info.threads_per_warp());
 
-  const int64_t active_blocks_per_sm = std::max<int64_t>(
+  int64_t active_blocks_per_sm = std::max<int64_t>(
       1, std::min(max_blocks_by_shmem, max_blocks_by_threads));
+
+  // Clamp to the physical limit of blocks per SM, if the device provides it.
+  if (device_info.max_blocks_per_multiprocessor() > 0) {
+    active_blocks_per_sm = std::min(
+        active_blocks_per_sm, device_info.max_blocks_per_multiprocessor());
+  }
+
+  return SmOccupancy{active_blocks_per_sm, active_blocks_per_sm * num_warps};
+}
+
+int64_t CalculateHardwareLaunchWaves(int64_t threadblock_count,
+                                     int64_t shared_memory_per_block_bytes,
+                                     int64_t num_warps,
+                                     const se::DeviceDescription& device_info) {
+  const SmOccupancy occupancy = CalculateSmOccupancy(
+      shared_memory_per_block_bytes, num_warps, device_info);
+
   const int64_t total_gpu_capacity =
-      active_blocks_per_sm * device_info.core_count();
+      occupancy.active_blocks_per_sm * device_info.core_count();
   return CeilOfRatio<int64_t>(threadblock_count, total_gpu_capacity);
 }
 
 absl::Duration CalculatePipelinedLoopTimeWithLaunchWaves(
     int64_t num_stages, int64_t k_loop_iterations, int64_t threadblock_count,
     absl::Duration compute_time, const HbmEstimates& hbm_timing,
-    int64_t shared_memory_per_block_bytes, int num_warps,
+    int64_t shared_memory_per_block_bytes, int64_t num_warps,
     const se::DeviceDescription& device_info) {
   if (threadblock_count == 0) {
     return absl::ZeroDuration();
