@@ -85,11 +85,11 @@ se::Stream* ToStream(const Communicator::Executor& executor) {
 }
 
 NcclCapabilities GetCapabilities(std::shared_ptr<NcclCommState> comm_state) {
+#if NCCL_VERSION_CODE >= 22907
   bool support_device_comm = false;
   bool support_one_sided_comm = false;
   std::string one_sided_comm_unsupported_reason = "";
 
-#if NCCL_VERSION_CODE >= 22907
   ncclCommProperties_t props = NCCL_COMM_PROPERTIES_INITIALIZER;
   {
     absl::MutexLock lock(comm_state->mutex);
@@ -888,12 +888,11 @@ absl::Status NcclCommunicator::LaunchPut(se::DeviceAddressBase send_buffer,
   if (cancel_->IsCancelled()) {
     return FailedPrecondition("NcclCommunicator aborted");
   }
+
+#if NCCL_VERSION_CODE >= 22900
   se::Stream* stream = ToStream(executor);
 
   auto& peer_win = absl::down_cast<NcclSymmetricMemory&>(*recv_buffer);
-
-#if NCCL_VERSION_CODE >= 22900
-
   {
     absl::MutexLock lock(comm_->mutex);
     VLOG(3) << absl::StreamFormat(
@@ -923,11 +922,11 @@ absl::Status NcclCommunicator::LaunchSignal(RankId peer,
   if (cancel_->IsCancelled()) {
     return FailedPrecondition("NcclCommunicator aborted");
   }
+
+#if NCCL_VERSION_CODE >= 22900
   se::Stream* stream = ToStream(executor);
 
   const auto& nccl_desc = absl::down_cast<const GpuSignalDesc&>(signal_desc);
-
-#if NCCL_VERSION_CODE >= 22900
   {
     absl::MutexLock lock(comm_->mutex);
     VLOG(3) << absl::StreamFormat(
@@ -957,11 +956,12 @@ absl::Status NcclCommunicator::LaunchWaitSignal(RankId peer, int op_cnt,
   if (cancel_->IsCancelled()) {
     return FailedPrecondition("NcclCommunicator aborted");
   }
+
+#if NCCL_VERSION_CODE >= 22900
   se::Stream* stream = ToStream(executor);
 
   const auto& nccl_desc = absl::down_cast<const GpuSignalDesc&>(signal_desc);
 
-#if NCCL_VERSION_CODE >= 22900
   ncclWaitSignalDesc_t desc;
   desc.peer = peer.value();
   desc.opCnt = op_cnt;
