@@ -476,6 +476,13 @@ absl::StatusOr<int64_t> PjRtStreamExecutorClient::GetOnDeviceBytesCount(
       client()->backend().transfer_manager()->GetByteSizeRequirement(shape);
 
   auto kind = GetDynamicShapeKind(memory_space_kind);
+  // PjRtShapeAndMetadataTransferRequirements::Get->ShapeUtil::ArraySize
+  // requires a layout.
+  if (!shape.IsToken() && !shape.has_layout()) {
+    return absl::FailedPreconditionError(
+        "Buffer's on-device shape has no layout. Cannot determine on-device "
+        "bytes count.");
+  }
   auto requirements =
       PjRtShapeAndMetadataTransferRequirements::Get(shape, kind);
 
