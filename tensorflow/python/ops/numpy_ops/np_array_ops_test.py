@@ -25,6 +25,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -1137,16 +1138,36 @@ class ArrayMethodsTest(test.TestCase):
     for axis1, axis2 in [(-10, -8), (-8, -10), (5, 0), (0, -6)]:
       with self.assertRaisesRegex(ValueError, 'out of bounds'):
         np_array_ops.swapaxes(x, axis1, axis2)
-  
+
   def testSwapaxesNegativeAxisWithJitCompile(self):
     x = np.random.randn(2, 3, 4, 5, 6, 7).astype(np.float32)
     expected = np.swapaxes(x, -3, 1)
 
-    @tf.function(jit_compile=True)
+    @def_function.function(jit_compile=True)
     def f(a):
       return np_array_ops.swapaxes(a, -3, 1)
 
     self.assertAllClose(expected, f(x))
+
+  def testSwapaxesOutOfBoundsDynamicRank(self):
+    # Regression test for #122054: when the rank is only known at
+    # runtime (traced with an unspecified input signature), a static
+    # out-of-bounds axis like -10 must still be rejected, not silently
+    # normalized into another negative (still out-of-bounds) value.
+    # This exercises the `control_flow_assert.Assert` added to the
+    # dynamic branch of `adjust_axes`. Note: this is deliberately *not*
+    # run with `jit_compile=True` — tf2xla lowers `Assert` to a no-op
+    # under XLA compilation, so a fully dynamic-rank bounds violation
+    # is not guaranteed to raise a clean error in that mode.
+    x = np.zeros((1, 4, 32, 32, 8), dtype=np.float32)
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(dtype=dtypes.float32, shape=None)])
+    def f(a):
+      return np_array_ops.swapaxes(a, -10, 0)
+
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      f(x)
 
   def testMoveaxis(self):
 

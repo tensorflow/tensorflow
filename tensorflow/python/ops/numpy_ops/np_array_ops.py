@@ -918,24 +918,42 @@ def swapaxes(a, axis1, axis2):  # pylint: disable=missing-docstring
 
   def adjust_axes(axes, rank):
     def f(x):
-      if isinstance(x, int):
-        # Match np.swapaxes behavior: raise clear error for out-of-bounds
-        # instead of producing a perm with negative entries.
-        # This is the key fix for #122054 — prevents the situation where
-        # eager silently succeeds but jit_compile=True / tf2xla blows up
-        # with an opaque range error.
-        if isinstance(rank, int) and not (-rank <= x < rank):
+      if isinstance(x, int) and isinstance(rank, int):
+        # Fully static case: both the axis and the rank are known Python
+        # ints, so bounds can be validated eagerly, at trace time.
+        # Match np.swapaxes behavior: raise a clear error for an
+        # out-of-bounds axis instead of producing a `perm` with a
+        # leftover negative entry. This is the key fix for #122054 — it
+        # prevents the situation where eager silently "succeeds" (its
+        # `Transpose` kernel re-normalizes negative perm entries) while
+        # `jit_compile=True` / tf2xla crashes with an opaque range error,
+        # since the XLA bridge does not re-normalize.
+        if not (-rank <= x < rank):
           raise ValueError(
               f'axis {x} is out of bounds for array of dimension {rank}'
           )
         if x < 0:
           x = x + rank
       else:
-        # Dynamic (tensor) axis case — normalize at runtime.
-        # We use the parameter `rank` (not the outer `a_rank`) for correctness.
-        x = array_ops.where_v2(
-            x < 0, np_utils.add(x, rank), x
+        # Dynamic case: `x` and/or `rank` is only known at runtime, e.g.
+        # a `Tensor` rank inside a `tf.function` traced with an
+        # unspecified input signature. Static Python-level bounds
+        # checking can't run here, so assert the same bounds at runtime
+        # before normalizing, keeping eager and graph mode consistent.
+        # Note: under `jit_compile=True`, tf2xla lowers `Assert` to a
+        # no-op (see tf2xla/kernels/assert_op.cc), so this check does
+        # not raise inside a fully dynamic-rank XLA-compiled function;
+        # that combination is a separate, pre-existing XLA limitation
+        # this PR #122544 does not attempt to solve.
+        rank_t = ops.convert_to_tensor(rank)
+        x = ops.convert_to_tensor(x)
+        control_flow_assert.Assert(
+            math_ops.reduce_all(
+                math_ops.logical_and(x >= -rank_t, x < rank_t)
+            ),
+            ['axis', x, 'is out of bounds for array of dimension', rank_t],
         )
+        x = array_ops.where_v2(x < 0, np_utils.add(x, rank_t), x)
       return x
 
     return nest.map_structure(f, axes)
