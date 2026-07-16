@@ -1553,10 +1553,10 @@ TEST_F(GpuCompilerTest, NoCudnnVectorizationOnHopperAndBeyond) {
   const HloModule* optimized_module = optimized_module_and_executable.first;
 
   constexpr absl::string_view kVectorizationdExpected = R"(
-    CHECK: (f32[10,64,19,29]{3,2,1,0}, u8[{{[0-9]*}}]{0}) custom-call
+    CHECK: f32[10,64,19,29]{3,2,1,0}{{(, u8\[.*\]\{0\}\) custom-call| convolution)\(}}
   )";
   constexpr absl::string_view kNoVectorizationExpected = R"(
-    CHECK: (f32[10,19,29,64]{3,2,1,0}, u8[{{[0-9]*}}]{0}) custom-call
+    CHECK: f32[10,19,29,64]{3,2,1,0}{{(, u8\[.*\]\{0\}\) custom-call| convolution)\(}}
   )";
   absl::string_view expected =
       is_hopper_or_beyond ? kNoVectorizationExpected : kVectorizationdExpected;
