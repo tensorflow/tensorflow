@@ -25,6 +25,7 @@ from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 
 
@@ -208,9 +209,14 @@ class ELU(Layer):
     if alpha is None:
       raise ValueError('Alpha of an ELU layer cannot be None, '
                        'requires a float. Got %s' % alpha)
-    if not tensor_util.is_tf_type(alpha) and alpha < 0:
-      raise ValueError('The alpha value of an ELU layer '
-                       'should be >= 0, got %s' % alpha)
+    if not (tensor_util.is_tf_type(alpha) or backend.is_keras_tensor(alpha)):
+      if alpha < 0:
+        raise ValueError('The alpha value of an ELU layer '
+                         'should be >= 0, got %s' % alpha)
+    elif tensor_util.is_tf_type(alpha):
+      alpha = check_ops.assert_non_negative(
+          alpha,
+          message='The alpha value of an ELU layer should be >= 0')
     self.supports_masking = True
     self.alpha = backend.cast_to_floatx(alpha)
 
