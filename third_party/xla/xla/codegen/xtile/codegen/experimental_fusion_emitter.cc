@@ -242,10 +242,8 @@ absl::StatusOr<TensorValue> EmitConcatenate(
       if_ops.push_back(if_op);
     }
     const auto& region = tiled_concat.hlo_regions()[i];
-    const ge::TiledHloInstruction* const region_root =
-        region.instructions().back().get();
     ASSIGN_OR_RETURN(std::vector<TensorValue> results,
-                     EmitTiledComputation(emitter_ctx, region, {region_root}));
+                     EmitTiledComputation(emitter_ctx, region, region.roots()));
     TF_RET_CHECK(results.size() == 1)
         << "Concatenation region must have exactly one result"
         << results.size();
@@ -527,17 +525,9 @@ absl::StatusOr<TensorValue> EmitScaledDot(
         dim_info.id, iv, Interval{0, loop_iteration_counts.front() - 1}));
 
     // Emit the dot region.
-    const ge::TiledHloInstruction* lhs_operand = tiled_scaled_dot.operand(0);
-    const ge::TiledHloInstruction* rhs_operand = tiled_scaled_dot.operand(1);
-    const ge::TiledHloInstruction* lhs_scale_operand =
-        tiled_scaled_dot.operand(2);
-    const ge::TiledHloInstruction* rhs_scale_operand =
-        tiled_scaled_dot.operand(3);
-    ASSIGN_OR_RETURN(
-        auto results,
-        EmitTiledComputation(
-            emitter_ctx, tiled_scaled_dot.hlo_regions().front(),
-            {lhs_operand, rhs_operand, lhs_scale_operand, rhs_scale_operand}));
+    const ge::TiledHloRegion& region = tiled_scaled_dot.hlo_regions().front();
+    ASSIGN_OR_RETURN(auto results,
+                     EmitTiledComputation(emitter_ctx, region, region.roots()));
 
     // Emit the partial dot.
     Value acc = for_op.getRegionIterArgs().front();
@@ -1270,9 +1260,9 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
 class TileRequirementsVisitor : public DefaultTileRequirementsVisitor {
  public:
   explicit TileRequirementsVisitor(const ge::TiledHloComputation& computation) {
-    for (const auto& tiled_hlo :
-         computation.tiled_root_region().instructions()) {
-      PopulateMap(tiled_hlo.get());
+    for (const ge::TiledHloInstruction* tiled_hlo :
+         computation.instructions()) {
+      PopulateMap(tiled_hlo);
     }
   }
 
