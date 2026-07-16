@@ -2356,9 +2356,9 @@ struct FuseUnpackAndConcatToReshape
       int64_t output_rank = output_type.getRank();
       int64_t unpack_input_rank =
           mlir::cast<ShapedType>(unpack_op.getInput().getType()).getRank();
-      int64_t unpack_axis = unpack_op.getAxis();
+      int64_t unpack_axis = static_cast<int32_t>(unpack_op.getAxis());
       if (unpack_axis < 0) unpack_axis += unpack_input_rank;
-      int64_t concat_axis = concat_op.getAxis();
+      int64_t concat_axis = static_cast<int32_t>(concat_op.getAxis());
       if (concat_axis < 0) concat_axis += output_rank;
       if (concat_axis != unpack_axis) return failure();
     }
