@@ -1076,7 +1076,10 @@ class UnaryOpsTest(xla_test.XLATestCase):
         where_op = array_ops.where(math_ops.not_equal(x, 6))
         squeezed = array_ops.squeeze(where_op)
         result = sess.run(squeezed, feed_dict={x: [0, 6]})
-        self.assertAllEqual(result, [0])
+        if np.ndim(result) == 0:
+          self.assertEqual(result, 0)
+        else:
+          self.assertAllEqual(result, [0])
 
 
 if __name__ == "__main__":
