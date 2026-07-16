@@ -534,36 +534,20 @@ def isclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):  # pylint: disable=m
         result = result | (math_ops.is_nan(a) & math_ops.is_nan(b))
       return result
     else:
+      try:
+        array_ops.broadcast_static_shape(a.shape, b.shape)
+      except ValueError:
+        return constant_op.constant(False)
       return a == b
 
   return _bin_op(f, a, b)
 
-
-def _static_broadcast_compatible(a, b):
-  if a.shape.rank is None or b.shape.rank is None:
-    return None
-  if not a.shape.is_fully_defined() or not b.shape.is_fully_defined():
-    return None
-  try:
-    array_ops.broadcast_static_shape(a.shape, b.shape)
-  except ValueError:
-    return False
-  return True
-
-
 @tf_export.tf_export('experimental.numpy.allclose', v1=[])
 @np_utils.np_doc('allclose')
 def allclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):
-  a, b = np_array_ops._promote_dtype_binary(a, b)  # pylint: disable=protected-access
-  if (
-      not np.issubdtype(a.dtype.as_numpy_dtype, np.inexact)
-      and _static_broadcast_compatible(a, b) is False
-  ):
-    return constant_op.constant(False)
   return np_array_ops.all(
       isclose(a, b, rtol=rtol, atol=atol, equal_nan=equal_nan)
   )
-
 
 def _tf_gcd(x1, x2):  # pylint: disable=missing-function-docstring
   def _gcd_cond_fn(_, x2):
