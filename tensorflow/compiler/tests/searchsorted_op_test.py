@@ -93,6 +93,62 @@ class SearchSorteddOpTest(xla_test.XLATestCase):
       self._test2DExample(dtype, 'right', sorted_sequence, values, correct_ans)
 
 
+  def testNanInSortedSequence(self):
+    for dtype in self.float_types:
+      sorted_sequence = np.array(
+          [[2.0, 4.0, 8.0, np.nan, np.nan]], dtype)
+      values = np.array(
+          [[3.0, np.nan]], dtype)
+
+      expected_left = np.searchsorted(
+          sorted_sequence[0], values[0], side="left")
+      expected_right = np.searchsorted(
+          sorted_sequence[0], values[0], side="right")
+
+      self._test2DExample(
+          dtype,
+          'left',
+          sorted_sequence,
+          values,
+          expected_left.reshape(1, -1).astype(np.int32),
+      )
+
+      self._test2DExample(
+          dtype,
+          'right',
+          sorted_sequence,
+          values,
+          expected_right.reshape(1, -1).astype(np.int32),
+      )
+
+  def testNanRegression(self):
+    for dtype in self.float_types:
+      sorted_sequence = np.array(
+          [[2.0, 4.0, np.nan, np.nan]], dtype)
+      values = np.array(
+          [[3.0, 5.0, np.nan]], dtype)
+
+      expected_left = np.searchsorted(
+          sorted_sequence[0], values[0], side="left")
+      expected_right = np.searchsorted(
+          sorted_sequence[0], values[0], side="right")
+
+      self._test2DExample(
+          dtype,
+          'left',
+          sorted_sequence,
+          values,
+          expected_left.reshape(1, -1).astype(np.int32),
+      )
+
+      self._test2DExample(
+          dtype,
+          'right',
+          sorted_sequence,
+          values,
+          expected_right.reshape(1, -1).astype(np.int32),
+      )
+
   def testLowerBoundNaN(self):
     sorted_sequence = np.array(
         [[2.0, 4.0, 8.0, 16.0, 32.0, 64.0]],

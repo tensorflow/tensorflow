@@ -18,10 +18,12 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/builder/lib/math.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 
@@ -64,8 +66,21 @@ void BuildLowerUpperBoundOp(XlaOpKernelContext* ctx, DataType out_dtype,
   // The reshapes above leave the tensors with equal rank of 3, so broadcast
   // dimensions are not explicitly specified.
   // Use explicit NaN-aware logic: NaN is treated as the largest value.
-  auto element_is_nan = xla::Ne(sorted_inputs_reshaped, sorted_inputs_reshaped);
-  auto val_is_nan = xla::Ne(values_reshaped, values_reshaped);
+  bool is_fp = tensorflow::DataTypeIsFloating(ctx->InputType("sorted_inputs"));
+  xla::XlaOp element_is_nan;
+  xla::XlaOp val_is_nan;
+  if (is_fp) {
+    auto sorted_inputs_fp32 =
+        XlaHelpers::ConvertElementType(sorted_inputs_reshaped, DT_FLOAT);
+    element_is_nan = xla::IsNan(sorted_inputs_fp32);
+
+    auto values_fp32 =
+        XlaHelpers::ConvertElementType(values_reshaped, DT_FLOAT);
+    val_is_nan = xla::IsNan(values_fp32);
+  } else {
+    element_is_nan = xla::ConstantR0<bool>(ctx->builder(), false);
+    val_is_nan = xla::ConstantR0<bool>(ctx->builder(), false);
+  }
 
   xla::XlaOp comparison;
   if (comparison_direction == xla::ComparisonDirection::kGt) {
