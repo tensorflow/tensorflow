@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/lite_aot/tests/add_aot_example_lib.h"
+#include "xla/backends/cpu/lite_aot/tests/dot_aot_lib.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
@@ -64,6 +65,28 @@ TEST(XlaAotFunctionTest, TestExampleLoadingModelFromLibrary) {
   ASSERT_OK(aot_function->Execute());
 
   EXPECT_EQ(*static_cast<float*>(aot_function->result_data(0)), 3.0f);
+}
+
+TEST(XlaAotFunctionTest, TestGeneratedLibrary) {
+  ASSERT_OK_AND_ASSIGN(auto aot_function,
+                       xla::cpu::Getdot_aot_libAotFunction());
+
+  // 3x4 matrix
+  alignas(xla::cpu::Align()) float a[] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+                                          1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+  // 4x5 matrix
+  alignas(xla::cpu::Align()) float b[] = {
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+
+  aot_function->set_arg_data(0, &a);
+  aot_function->set_arg_data(1, &b);
+
+  ASSERT_OK(aot_function->Execute());
+
+  for (int i = 0; i < 15; ++i) {
+    EXPECT_EQ(static_cast<float*>(aot_function->result_data(0))[i], 4.0f);
+  }
 }
 
 TEST(XlaAotFunctionTest, TestManualModelLoading) {
