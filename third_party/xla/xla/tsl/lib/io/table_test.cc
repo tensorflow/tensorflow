@@ -469,6 +469,40 @@ TEST_F(Harness, ZeroRestartPointsInBlock) {
   delete iter;
 }
 
+// A block whose entry lengths overflow a 32-bit sum must be rejected as
+// corrupt rather than driving an out-of-bounds read in DecodeEntry.
+TEST_F(Harness, DecodeEntryLengthOverflow) {
+  std::string data;
+  data.push_back(0);  // shared = 0
+  // non_shared = 0xFFFFFFFF (5-byte varint).
+  data.push_back('\xFF');
+  data.push_back('\xFF');
+  data.push_back('\xFF');
+  data.push_back('\xFF');
+  data.push_back('\x0F');
+  data.push_back(1);  // value_length = 1
+  // A handful of key/value bytes; far fewer than the lengths above claim.
+  data.append(8, 'x');
+  // Restart array: one restart pointing at offset 0, then num_restarts = 1.
+  for (int i = 0; i < 4; i++) data.push_back(0);
+  data.push_back(1);
+  for (int i = 0; i < 3; i++) data.push_back(0);
+
+  BlockContents contents;
+  contents.data = absl::string_view(data);
+  contents.cacheable = false;
+  contents.heap_allocated = false;
+  Block block(contents);
+  Iterator* iter = block.NewIterator();
+  // non_shared + value_length wraps to 0 in 32 bits and would slip past the
+  // bounds check, so this must surface as corruption instead of reading past
+  // the block buffer.
+  iter->SeekToFirst();
+  ASSERT_TRUE(!iter->Valid());
+  ASSERT_TRUE(!iter->status().ok());
+  delete iter;
+}
+
 // Test the empty key
 TEST_F(Harness, SimpleEmptyKey) {
   for (int i = 0; i < kNumTestArgs; i++) {
