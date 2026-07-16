@@ -721,6 +721,8 @@ TEST(TensorBundleTest, SliceShapeMismatch) {
     Tensor val(DT_FLOAT, kTamperedShape);
     const absl::Status status = reader.Lookup("foo", &val);
     EXPECT_TRUE(absl::IsDataLoss(status)) << status;
+    EXPECT_TRUE(absl::StrContains(status.ToString(), "Stored slice shape"))
+        << status;
   }
 }
 
