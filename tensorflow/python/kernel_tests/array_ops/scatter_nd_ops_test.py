@@ -650,6 +650,19 @@ class ScatterNdTest(test.TestCase, parameterized.TestCase):
         r"Dimensions \[\d\,\d\) of input\[shape="):
       self.scatter_nd(indices, updates, shape)
 
+  def testUpdatesRankSmallerThanIndicesOuterDimsInvalid(self):
+    # Regression test for
+    # https://github.com/tensorflow/tensorflow/issues/93680: updates with
+    # rank smaller than the number of outer dimensions of indices used to
+    # crash with a CHECK failure instead of raising an error.
+    indices = array_ops.zeros([4, 1, 1], dtypes.int32)
+    updates = array_ops.zeros([4], dtypes.int32)
+    shape = np.array([8])
+    with self.assertRaisesWithPredicateMatch(
+        (errors.InvalidArgumentError, ValueError),
+        r"rank at least|must match"):
+      self.scatter_nd(indices, updates, shape)
+
   @parameterized.parameters(set((True, context.executing_eagerly())))
   def testGradientsRank2ElementUpdate(self, use_tape):
     for dtype in GRADIENT_TESTS_DTYPES:
@@ -829,6 +842,20 @@ class ScatterNdNonAliasingAddDeterminismTest(ScatterNdDeterminismTest,
 
 
 class ScatterNdTensorTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testUpdatesRankSmallerThanIndicesOuterDimsInvalid(self):
+    # Regression test for
+    # https://github.com/tensorflow/tensorflow/issues/93680: updates with
+    # rank smaller than the number of outer dimensions of indices used to
+    # crash with a CHECK failure instead of raising an error.
+    indices = constant_op.constant([[[4]], [[3]], [[1]], [[7]]])
+    updates = constant_op.constant([9, 10, 11, 12])
+    t = array_ops.ones([8], dtype=dtypes.int32)
+    with self.assertRaisesWithPredicateMatch(
+        (errors.InvalidArgumentError, ValueError),
+        r"rank at least|must match"):
+      self.evaluate(array_ops.tensor_scatter_update(t, indices, updates))
 
   @test_util.run_in_graph_and_eager_modes
   def testUpdateAddSub(self):
