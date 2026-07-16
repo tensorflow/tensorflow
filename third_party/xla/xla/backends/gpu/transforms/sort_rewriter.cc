@@ -589,6 +589,68 @@ bool IsCubSortFasterOnA100(int bitwidth, int batch_size, int num_elements,
   }
 }
 
+bool IsCubSortFasterOnBlackwell(int bitwidth, int batch_size, int num_elements,
+                                int sm_count, bool has_values) {
+  // TODO(b/527496803): Run a full set of benchmarks to determine the optimal
+  // heuristic, similar to A100 and H100. The heuristic should be independent
+  // and not fallback to H100.
+
+  // Blackwell-tuned heuristics based on systematic sweeps.
+
+  // For small elements, Bitonic sort is always faster due to low overhead.
+  if (num_elements <= 1024) {
+    return false;
+  }
+
+  if (bitwidth == 16) {
+    // For 16-bit keys, CUB is faster starting at 4096 for all configurations.
+    return num_elements >= 4096;
+  }
+
+  if (bitwidth == 32) {
+    // For batch size 1, CUB is much faster starting at 4096.
+    if (batch_size == 1) {
+      return num_elements >= 4096;
+    }
+
+    // For batched sorts, CUB segmented sort can regress for small batches.
+    // Use Hopper-style batch-size thresholds.
+    if (num_elements >= 131072) {  // 1 << 17
+      return batch_size > 26;
+    }
+    if (num_elements >= 65536) {  // 1 << 16
+      return batch_size > 31;
+    }
+    if (num_elements >= 32768) {  // 1 << 15
+      return batch_size > 38;
+    }
+    if (num_elements >= 16384) {  // 1 << 14
+      return batch_size > 44;
+    }
+    if (num_elements >= 8192) {  // 1 << 13
+      return batch_size > 52;
+    }
+    if (num_elements >= 4096) {  // 1 << 12
+      return batch_size > 88 && batch_size < 128;
+    }
+    return false;
+  }
+
+  if (bitwidth == 64) {
+    if (has_values) {
+      // For 64-bit key-value sort (e.g. argsort with 64-bit indices), CUB
+      // offers no speedup over Bitonic on Blackwell even for large sizes,
+      // and can regress.
+      return false;
+    }
+    // For 64-bit key-only sort, CUB is much faster for size >= 16384.
+    return num_elements >= 16384;
+  }
+
+  // Fallback to H100 heuristics for other bitwidths (e.g. 8-bit).
+  return IsCubSortFasterOnH100(bitwidth, batch_size, num_elements, sm_count);
+}
+
 // Returns whether a compatible sort should be rewritten based on the current
 // sort mode and possibly a heuristic.
 bool ShouldRewriteCompatibleSort(se::DeviceDescription device_description,
@@ -610,10 +672,9 @@ bool ShouldRewriteCompatibleSort(se::DeviceDescription device_description,
       int batch_size = Product(operand_shape.dimensions()) / num_elements;
 
       if (cuda_cc->IsBlackwell()) {
-        // TODO(b/410480351): Verify that the H100 heuristic also works well for
-        // Blackwell or implement a custom heuristic.
-        return IsCubSortFasterOnH100(bitwidth, batch_size, num_elements,
-                                     device_description.core_count());
+        return IsCubSortFasterOnBlackwell(bitwidth, batch_size, num_elements,
+                                          device_description.core_count(),
+                                          sort_op->operand_count() == 2);
       }
       if (cuda_cc->IsHopper()) {
         return IsCubSortFasterOnH100(bitwidth, batch_size, num_elements,
