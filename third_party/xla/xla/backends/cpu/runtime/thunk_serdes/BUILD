@@ -210,6 +210,7 @@ cc_library(
 # Utility target to link all thunk serdes implementations.
 cc_library(
     name = "all_thunk_serdes",
+    # LINT.IfChange
     deps = [
         ":collective_thunk_serdes",
         ":convolution_thunk_serdes",
@@ -219,5 +220,6 @@ cc_library(
         ":fft_thunk_serdes",
         ":ynn_fusion_thunk_serdes",
     ],
+    # LINT.ThenChange(//third_party/tensorflow/compiler/xla/backends/cpu/lite_aot/infer_lite_aot_deps_main_lib.cc)
     alwayslink = 1,
 )
