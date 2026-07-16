@@ -28,6 +28,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -51,7 +53,7 @@ absl::StatusOr<std::unique_ptr<HloLiveRange>> HloLiveRange::Run(
     const HloComputation* computation, bool module_scoped_analysis) {
   std::unique_ptr<HloLiveRange> hlo_live_range(
       new HloLiveRange(schedule, alias_analysis, module_scoped_analysis));
-  hlo_live_range->FlattenSchedule(*computation);
+  RETURN_IF_ERROR(hlo_live_range->FlattenSchedule(*computation));
   hlo_live_range->CalculateBufferStartEndMap();
   hlo_live_range->NormalizeAliasedBuffers();
   return hlo_live_range;
@@ -87,16 +89,18 @@ void HloLiveRange::NormalizeAliasedBuffers() {
 
 // FlattenSchedule walks through the computation and tracks down the ordinal
 // number of each instruction in the schedule.
-void HloLiveRange::FlattenSchedule(const HloComputation& computation,
-                                   const HloComputation* async_context) {
+absl::Status HloLiveRange::FlattenSchedule(
+    const HloComputation& computation, const HloComputation* async_context) {
   auto it = schedule_.sequences().find(computation.unique_id());
   if (it == schedule_.sequences().end()) {
     total_order_scheduled_ = false;
-    return;
+    return absl::OkStatus();
   }
 
   // Check if we've already processed this computation.
-  if (computation_span_times_.contains(&computation)) return;
+  if (computation_span_times_.contains(&computation)) {
+    return absl::OkStatus();
+  }
 
   // Mark this computation into the async context, if available.
   if (async_context != nullptr) {
@@ -114,27 +118,28 @@ void HloLiveRange::FlattenSchedule(const HloComputation& computation,
           instruction->opcode() == HloOpcode::kConditional) {
         for (const HloComputation* called_computation :
              instruction->called_computations()) {
-          FlattenSchedule(*called_computation, async_context);
+          RETURN_IF_ERROR(FlattenSchedule(*called_computation, async_context));
         }
-      } else if (instruction->IsAsynchronous() &&
-                 (instruction->opcode() == HloOpcode::kAsyncStart ||
-                  !hlo_instruction_utils::async::AreOperandsAndOutputFullyBound(
-                       instruction->operand(0))
-                       .value_or(false)) &&
-                 hlo_instruction_utils::async::AreOperandsAndOutputFullyBound(
-                     instruction)
-                     .value_or(false)) {
+      } else if (instruction->IsAsynchronous()) {
         // For async operations, the async wrapped computation is flattened
         // before the first async instruction that has its operands and output
         // fully bound.
-        const HloComputation* called_computation =
-            instruction->async_wrapped_computation();
-        FlattenSchedule(*called_computation, called_computation);
+        ASSIGN_OR_RETURN(
+            const bool is_first_fully_bound,
+            hlo_instruction_utils::async::IsFirstFullyBound(instruction));
+        if (is_first_fully_bound) {
+          const HloComputation* called_computation =
+              instruction->async_wrapped_computation();
+          RETURN_IF_ERROR(
+              FlattenSchedule(*called_computation, called_computation));
+        }
       } else if (instruction->opcode() == HloOpcode::kWhile) {
         // Order of flattening matters here: for while loops, the condition
         // must be flattened first, then the body.
-        FlattenSchedule(*instruction->while_condition(), async_context);
-        FlattenSchedule(*instruction->while_body(), async_context);
+        RETURN_IF_ERROR(
+            FlattenSchedule(*instruction->while_condition(), async_context));
+        RETURN_IF_ERROR(
+            FlattenSchedule(*instruction->while_body(), async_context));
       }
     }
 
@@ -145,6 +150,7 @@ void HloLiveRange::FlattenSchedule(const HloComputation& computation,
 
   LogicalTime end_time = flattened_instruction_sequence_.size();
   computation_span_times_[&computation] = {start_time, end_time};
+  return absl::OkStatus();
 }
 
 HloLiveRange::TimeBound HloLiveRange::GetLastPosition(
