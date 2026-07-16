@@ -11,4 +11,5 @@ def repo():
         urls = tf_mirror_urls("https://github.com/google/ruy/archive/2af88863614a8298689cc52b1a47b3fcad7be835.zip"),
         # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/ruy.cmake)
         build_file = "//third_party/ruy:BUILD",
+        patch_file = ["//third_party/ruy:ruy_windows_bazel_bug.patch"],
     )

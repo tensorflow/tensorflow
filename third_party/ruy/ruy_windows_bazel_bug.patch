@@ -1,0 +1,9 @@
+--- ruy/build_defs.oss.bzl
++++ ruy/build_defs.oss.bzl
+@@ -11,5 +11,5 @@
+     # https://github.com/abseil/abseil-cpp/blob/1112609635037a32435de7aa70a9188dcb591458/absl/base/BUILD.bazel#L155
+     return select({
+-        "//tools/cc_target_os:windows": [],
++        "@platforms//os:windows": [],
+         "//conditions:default": ["-pthread"],
+     })
