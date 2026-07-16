@@ -167,6 +167,9 @@ bool IsPositive(const HloInstruction* hlo,
       return IsPositive(hlo->operand(0), options);
 
     case HloOpcode::kMultiply: {
+      if (HasSignedIntegralElementType(hlo)) {
+        return false;
+      }
       return hlo->operand(0) == hlo->operand(1) &&
              IsPositive(hlo->operand(0), options);
     }
