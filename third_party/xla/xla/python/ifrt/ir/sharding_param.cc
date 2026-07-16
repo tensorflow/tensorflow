@@ -151,6 +151,16 @@ absl::Status ShardingParam::MinorToMajor::verify() const {
                        absl::StrJoin(axis_sizes, "x")));
     }
   }
+  // The cumulative product of `axis_sizes` must fit in an `int`, since
+  // ToDeviceList() narrows to it.
+  int cum_size = 1;
+  for (const int size : axis_sizes) {
+    if (__builtin_mul_overflow(cum_size, size, &cum_size)) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("`axis_sizes` product overflows: [",
+                       absl::StrJoin(axis_sizes, "x"), "]"));
+    }
+  }
   return absl::OkStatus();
 }
 
@@ -248,7 +258,17 @@ absl::Status ShardingParam::verify() const {
   // distributed over the device mesh.
   int total_dim_shards_size = 1;
   for (const int dim_shard : dim_shards()) {
-    total_dim_shards_size *= dim_shard;
+    if (dim_shard <= 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("`dim_shards` must be positive, got ", dim_shard,
+                       " in [", absl::StrJoin(dim_shards(), "x"), "]"));
+    }
+    if (__builtin_mul_overflow(total_dim_shards_size, dim_shard,
+                               &total_dim_shards_size)) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("`dim_shards` product overflows: ",
+                       absl::StrJoin(dim_shards(), "x")));
+    }
   }
   if (NumDevices() % total_dim_shards_size != 0) {
     return absl::InvalidArgumentError(absl::StrCat(
@@ -378,8 +398,10 @@ absl::StatusOr<ShardingParam> ShardingParam::FromProto(
     unreduced_axes = std::vector<int>(proto.unreduced_axes().begin(),
                                       proto.unreduced_axes().end());
   }
-  return ShardingParam(std::move(dim_shards), std::move(minor_to_major),
-                       std::move(unreduced_axes));
+  ShardingParam param(std::move(dim_shards), std::move(minor_to_major),
+                      std::move(unreduced_axes));
+  ABSL_RETURN_IF_ERROR(param.verify());
+  return param;
 }
 
 absl::Status ShardingParam::ToProto(ShardingParamProto& proto,

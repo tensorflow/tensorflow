@@ -21,14 +21,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
-#include "absl/types/variant.h"
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "llvm/ADT/StringRef.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/device_type.pb.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "xla/client/compile_only_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/shape.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 
@@ -48,7 +48,7 @@ namespace v2 {
 //  arg_shapes  - The shapes of the args.
 //  arg_core_mapping - Which args go on which cores.
 //  per_core_arg_shapes - For each core, the shapes for each argument.
-//  client - The Xla Compilation client.
+//  compiler - The Xla PjRtCompiler.
 absl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     const std::variant<tpu::MlirToHloArgs, tpu::FunctionToHloArgs>& computation,
     const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
@@ -58,7 +58,7 @@ absl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     const std::vector<tensorflow::TensorShape>& arg_shapes,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
-    xla::CompileOnlyClient* client);
+    xla::PjRtCompiler* compiler = nullptr);
 
 };  // namespace v2
 };  // namespace tf2xla
