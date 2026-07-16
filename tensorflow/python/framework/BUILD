@@ -3383,3 +3383,9 @@ cc_library(
         "@pybind11",
     ],
 )
+
+cc_library(
+    name = "python_api_parameter_converter_alwayslink",
+    deps = [":python_api_parameter_converter"],
+    alwayslink = 1,
+)
