@@ -331,18 +331,20 @@ class DecodeImageV2Op : public OpKernel {
     uint8_t* buffer = jpeg::Uncompress(
         input.data(), input.size(), flags, nullptr /* nwarn */,
         [&](int width, int height, int channels) -> uint8_t* {
-          buffer_size = height * width * channels;
+          const int64_t temp_buffer_size =
+              static_cast<int64_t>(height) * width * channels;
 
           // Bounds check: reject JPEG images requiring excessive memory,
           // consistent with the limit enforced by DecodeBmpV2.
-          if (static_cast<int64_t>(buffer_size) >=
+          if (temp_buffer_size >=
               static_cast<int64_t>(std::numeric_limits<int32_t>::max() / 8)) {
             context->SetStatus(absl::InvalidArgumentError(absl::StrCat(
-                "JPEG image too large: ", buffer_size, " bytes (", height,
+                "JPEG image too large: ", temp_buffer_size, " bytes (", height,
                 "x", width, "x", channels, ").",
-                " Total must be less than 2^30 bytes.")));
+                " Total must be less than 2^28 bytes.")));
             return nullptr;
           }
+          buffer_size = static_cast<int>(temp_buffer_size);
           absl::Status status;
           // By the existing API, we support decoding JPEG with `DecodeGif`
           // op. We need to make sure to return 4-D shapes when using
@@ -539,14 +541,14 @@ class DecodeImageV2Op : public OpKernel {
           buffer_size =
               static_cast<int64_t>(num_frames) * height * width * channels;
 
-          // Bounds check: reject GIFs whose total allocation exceeds 2^30
+          // Bounds check: reject GIFs whose total allocation exceeds 2^28
           // bytes, consistent with the limit enforced by DecodeBmpV2.
           if (buffer_size >=
               static_cast<int64_t>(std::numeric_limits<int32_t>::max() / 8)) {
             context->SetStatus(absl::InvalidArgumentError(absl::StrCat(
                 "GIF image too large: ", buffer_size, " bytes (",
                 num_frames, " frame(s) x ", height, "x", width, "x",
-                channels, "). Total must be less than 2^30 bytes.")));
+                channels, "). Total must be less than 2^28 bytes.")));
             return nullptr;
           }
 
