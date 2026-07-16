@@ -53,7 +53,8 @@ class SnappyInputBuffer : public InputStreamInterface {
   // DATA_LOSS:
   //   If uncompression failed or if the file is corrupted.
   // RESOURCE_EXHAUSTED:
-  //   If input_buffer_ is smaller in size than a compressed block.
+  //   If input_buffer_ is smaller in size than a compressed block, or if
+  //   output_buffer_ is smaller in size than the uncompressed block.
   // others:
   //   If reading from file failed.
   absl::Status ReadNBytes(int64_t bytes_to_read, tstring* result) override;
