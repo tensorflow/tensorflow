@@ -1823,18 +1823,21 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
         buffers_to_release.push_back(cpp_buf->device_buffer());
       }
       definition_event.AndThen(
-          [donated_memory = std::move(result_buffer_or_status->to_be_released),
+          [to_be_released = std::move(result_buffer_or_status->to_be_released),
            se_donated_memory =
                std::move(result_buffer_or_status->se_to_be_released),
            exe = executable, reservation = compute_reservation,
            assignment = device_assignment,
            buffers_to_release{std::move(buffers_to_release)}]() mutable {});
     } else {
-      // Any donated memory returned by the ExecutionOutput can be immediately
-      // freed.
-      definition_event.AndThen([exe = executable,
-                                reservation = compute_reservation,
-                                assignment = device_assignment]() {});
+      std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> buffers_to_release;
+      if (result_buffer_or_status.ok()) {
+        buffers_to_release = std::move(result_buffer_or_status->to_be_released);
+      }
+      definition_event.AndThen(
+          [exe = executable, reservation = compute_reservation,
+           assignment = device_assignment,
+           buffers_to_release = std::move(buffers_to_release)]() {});
     }
     return definition_event;
   };
