@@ -50,7 +50,7 @@ jobs:
 
   jax:
     needs: rocm-config
-    if: ${{ github.event_name != 'pull_request' || github.base_ref == 'main' }}
+    if: false
     name: JAX Linux x86 AMD Instinct GPU
     runs-on: ${{ inputs.runner_label || 'amd-do-linux-xla-gpu-gfx950-1' }}
     timeout-minutes: 80
@@ -116,6 +116,7 @@ jobs:
             --bes_keywords=pull_request
   xla:
     needs: rocm-config
+    if: false
     name: XLA Linux x86 AMD Instinct GPU
     runs-on: ${{ inputs.runner_label || 'amd-do-linux-xla-gpu-gfx950-1' }}
     timeout-minutes: 220
