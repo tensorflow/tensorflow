@@ -973,7 +973,8 @@ absl::Status RunOptimizationPasses(
                                         .xla_gpu_dot_merger_threshold_mb()}
           << 20,
       queue_id);
-  pipeline.AddPass<DotDimensionNormalizer>();
+  pipeline.AddPass<DotDimensionNormalizer>(
+      !debug_options.xla_gpu_enable_triton_gemm());
   // Folding transpose operands into dots can undo the normal form established
   // by DotDecomposer. Subsequent passes must not rely on it from this point on.
   pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot);

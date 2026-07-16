@@ -2808,7 +2808,7 @@ TEST_F(GpuCompilerTest, SymmetricBuffersMultipleCollectives) {
       ar = f32[1024] all-reduce(p0), replica_groups={}, to_apply=add, channel_id=1
       ag = f32[1024] all-gather(p_ag), replica_groups={{0,1}}, dimensions={0}, use_global_device_ids=true, channel_id=2
       ar_large = f32[2048] all-reduce(p1), replica_groups={}, to_apply=add, channel_id=3
-      
+
       ROOT tuple = (f32[1024], f32[1024], f32[2048]) tuple(ar, ag, ar_large)
     }
   )";
@@ -2863,7 +2863,7 @@ TEST_F(GpuCompilerTest, SymmetricBuffersSeveralFilters) {
 
       ar = f32[1024] all-reduce(p0), replica_groups={}, to_apply=add, channel_id=1
       ag = s32[2048] all-gather(p1), replica_groups={{0,1}}, dimensions={0}, use_global_device_ids=true, channel_id=2
-      
+
       ROOT tuple = (f32[1024], s32[2048]) tuple(ar, ag)
     }
   )";
@@ -2925,7 +2925,7 @@ TEST_F(GpuCompilerTest, SymmetricBuffersOverlappingFilters) {
 
       ar_small = f32[1024] all-reduce(p0), replica_groups={}, to_apply=add, channel_id=1
       ar_large = f32[2048] all-reduce(p1), replica_groups={}, to_apply=add, channel_id=2
-      
+
       ROOT tuple = (f32[1024], f32[2048]) tuple(ar_small, ar_large)
     }
   )";
@@ -2968,6 +2968,38 @@ TEST_F(GpuCompilerTest, SymmetricBuffersOverlappingFilters) {
                                                  .set_print_operand_shape(false)
                                                  .set_print_metadata(false)),
                   expected_check),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(GpuCompilerTest, TritonGemmDisabledDotNormalization) {
+  const char* hlo_text = R"(
+HloModule source_dots
+
+ENTRY source_dots_computation {
+  %lhs = bf16[1024,32,128]{2,1,0} parameter(0)
+  %rhs_q = bf16[128,128]{1,0} parameter(1)
+  %rhs_k = bf16[128,128]{1,0} parameter(2)
+  %rhs_v = bf16[128,128]{1,0} parameter(3)
+
+  %dot_q = bf16[1024,32,128]{2,1,0} dot(%lhs, %rhs_q), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  %dot_k = bf16[1024,32,128]{2,1,0} dot(%lhs, %rhs_k), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  %dot_v = bf16[1024,32,128]{2,1,0} dot(%lhs, %rhs_v), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+
+  ROOT %result = (bf16[1024,32,128]{2,1,0}, bf16[1024,32,128]{2,1,0}, bf16[1024,32,128]{2,1,0}) tuple(%dot_q, %dot_k, %dot_v)
+}
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options().set_xla_gpu_enable_triton_gemm(false);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(hlo_text, config));
+
+  constexpr absl::string_view expected_check = R"(
+    // CHECK: custom_call_target="__cublas
+  )";
+
+  EXPECT_THAT(RunFileCheck(optimized_module->ToString(), expected_check),
               absl_testing::IsOkAndHolds(true));
 }
 
