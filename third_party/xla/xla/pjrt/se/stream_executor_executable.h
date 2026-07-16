@@ -123,6 +123,13 @@ class StreamExecutorExecutable : public PjRtExecutable {
   absl::StatusOr<stream_executor::ExecutableAbiVersion>
   ExtractExecutableAbiVersion() const;
 };
+
+// Reads a serialized ExecutableAndOptionsProto from a string. GPU executables
+// are serialized as a custom format that supports executables larger than 2GB
+// (unlike regular protos).
+absl::StatusOr<ExecutableAndOptionsProto> SerializedGpuExecutableFromString(
+    absl::string_view serialized);
+
 }  // namespace xla
 
 #endif  // XLA_PJRT_SE_STREAM_EXECUTOR_EXECUTABLE_H_

@@ -22,8 +22,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -140,6 +143,41 @@ absl::StatusOr<PrimitiveType> GetDotAccumulatorType(
           absl::StrFormat("GetDotAccumulatorType: unsupported algorithm %s",
                           xla::PrecisionConfig::Algorithm_Name(algorithm)));
   }
+}
+
+absl::StatusOr<PrimitiveType> GetDefaultGemmAlgorithmAccumulatorType(
+    const HloInstruction* dot) {
+  TF_RET_CHECK(dot != nullptr);
+  TF_RET_CHECK(dot->opcode() == HloOpcode::kDot);
+
+  PrimitiveType lhs_type = dot->operand(0)->shape().element_type();
+  PrimitiveType rhs_type = dot->operand(1)->shape().element_type();
+  PrimitiveType output_type = dot->shape().element_type();
+
+  if (primitive_util::IsF8Type(lhs_type) &&
+      primitive_util::IsF8Type(rhs_type)) {
+    return F32;
+  }
+
+  if (lhs_type == S8 && rhs_type == S8 && output_type == S32) {
+    return S32;
+  }
+
+  if (lhs_type == F64 && output_type == F64) {
+    return F64;
+  }
+
+  return F32;
+}
+
+absl::StatusOr<PrimitiveType> GetDotAccumulatorType(const HloInstruction* dot) {
+  TF_RET_CHECK(dot != nullptr);
+  TF_RET_CHECK(dot->opcode() == HloOpcode::kDot);
+
+  if (dot->precision_config().algorithm() == PrecisionConfig::ALG_UNSET) {
+    return GetDefaultGemmAlgorithmAccumulatorType(dot);
+  }
+  return GetDotAccumulatorType(dot->precision_config().algorithm());
 }
 
 bool HasTf32InputType(PrecisionConfig::Algorithm algorithm) {
