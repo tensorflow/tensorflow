@@ -230,20 +230,28 @@ class MathTest(test.TestCase, parameterized.TestCase):
         np.isclose(a, b, equal_nan=equal_nan))
 
   @parameterized.named_parameters(
-      ('isclose', np_math_ops.isclose),
-      ('allclose', np_math_ops.allclose),
+      ('isclose_int32', np_math_ops.isclose, np.int32),
+      ('allclose_int32', np_math_ops.allclose, np.int32),
+      ('isclose_float32', np_math_ops.isclose, np.float32),
+      ('allclose_float32', np_math_ops.allclose, np.float32),
   )
-  def testCloseNonBroadcastableShapesXla(self, close_fn):
-    a = ops.convert_to_tensor(np.arange(4, dtype=np.int32))
-    b = ops.convert_to_tensor(np.arange(8, dtype=np.int32))
+  def testCloseNonBroadcastableShapesXla(self, close_fn, dtype):
+    a = ops.convert_to_tensor(np.arange(4, dtype=dtype))
+    b = ops.convert_to_tensor(np.arange(8, dtype=dtype))
 
-    eager_out = close_fn(a, b)
-    xla_out = def_function.function(
+    error_types = (ValueError, errors.InvalidArgumentError)
+    error_pattern = (
+        r'Incompatible shapes|Dimensions must be equal|broadcast'
+    )
+
+    with self.assertRaisesRegex(error_types, error_pattern):
+      close_fn(a, b)
+
+    compiled_close_fn = def_function.function(
         close_fn, jit_compile=True
-    )(a, b)
-
-    self.assertAllEqual(False, eager_out)
-    self.assertAllEqual(eager_out, xla_out)
+    )
+    with self.assertRaisesRegex(error_types, error_pattern):
+      compiled_close_fn(a, b)
 
   def testAverageWrongShape(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):

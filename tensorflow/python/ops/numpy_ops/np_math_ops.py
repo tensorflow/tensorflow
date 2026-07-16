@@ -534,13 +534,10 @@ def isclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):  # pylint: disable=m
         result = result | (math_ops.is_nan(a) & math_ops.is_nan(b))
       return result
     else:
-      try:
-        array_ops.broadcast_static_shape(a.shape, b.shape)
-      except ValueError:
-        return constant_op.constant(False)
-      return a == b
+      return math_ops.equal(a, b)
 
   return _bin_op(f, a, b)
+
 
 @tf_export.tf_export('experimental.numpy.allclose', v1=[])
 @np_utils.np_doc('allclose')
@@ -548,6 +545,7 @@ def allclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):
   return np_array_ops.all(
       isclose(a, b, rtol=rtol, atol=atol, equal_nan=equal_nan)
   )
+
 
 def _tf_gcd(x1, x2):  # pylint: disable=missing-function-docstring
   def _gcd_cond_fn(_, x2):
