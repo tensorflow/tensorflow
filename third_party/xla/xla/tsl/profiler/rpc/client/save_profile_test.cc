@@ -20,6 +20,9 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "absl/strings/string_view.h"
 #include "riegeli/bytes/fd_reader.h"
 #include "riegeli/records/record_reader.h"
 #include "xla/tsl/platform/env.h"
@@ -32,42 +35,38 @@ namespace tsl {
 namespace profiler {
 namespace {
 
+using ::absl_testing::IsOk;
 using ::tensorflow::profiler::XPlane;
 using ::tensorflow::profiler::XSpace;
+using ::testing::Not;
 
-// Verifies that SaveXSpaceChunk correctly writes chunks and handles append
-// mode. Also verifies that the written file size is correctly padded to
-// the 64KB block boundary.
-TEST(SaveProfileTest, SaveXSpaceChunk) {
-  std::string temp_dir = ::testing::TempDir();
-  std::string run = "test_run";
-  std::string host = "test_host";
+TEST(SaveProfileTest, SaveXSpaceChunksVectorSuccessAndPadding) {
+  std::string temp_dir = testing::TmpDir();
+  std::string run = "test_run_batch_vector";
+  std::string host = "test_host_batch_vector";
 
   XSpace space1;
   space1.add_hostnames("host1");
   XPlane* plane1 = space1.add_planes();
   plane1->set_name("plane1");
 
-  // Save chunk 0 (creates new file)
-  ASSERT_OK(SaveXSpaceChunk(temp_dir, run, host, 0, space1));
-
-  std::string file_path =
-      io::JoinPath(temp_dir, run, "test_host.xplane.riegeli");
-  EXPECT_OK(Env::Default()->FileExists(file_path));
-
-  // Save chunk 1 (appends)
   XSpace space2;
   space2.add_hostnames("host2");
   XPlane* plane2 = space2.add_planes();
   plane2->set_name("plane2");
-  ASSERT_OK(SaveXSpaceChunk(temp_dir, run, host, 1, space2));
 
-  // Check file size is multiple of 64KB
+  std::vector<XSpace> spaces = {space1, space2};
+  ASSERT_OK(SaveXSpaceChunks(temp_dir, run, host, &spaces));
+  EXPECT_TRUE(spaces.empty());
+
+  std::string file_path =
+      io::JoinPath(temp_dir, run, "test_host_batch_vector.xplane.riegeli");
+  EXPECT_OK(Env::Default()->FileExists(file_path));
+
   uint64_t file_size = 0;
   ASSERT_OK(Env::Default()->GetFileSize(file_path, &file_size));
   EXPECT_EQ(file_size % (64 * 1024), 0);
 
-  // Read records back
   std::vector<XSpace> read_spaces;
   riegeli::RecordReader<riegeli::FdReader<>> reader{
       riegeli::FdReader<>(file_path)};
@@ -85,9 +84,36 @@ TEST(SaveProfileTest, SaveXSpaceChunk) {
   EXPECT_EQ(read_spaces[1].hostnames(0), "host2");
   EXPECT_EQ(read_spaces[1].planes(0).name(), "plane2");
 
-  // Clean up
   ASSERT_OK(Env::Default()->DeleteFile(file_path));
 }
+
+TEST(SaveProfileTest, SaveXSpaceChunksEmptyVectorReturnsOkWithoutCreatingDir) {
+  std::string temp_dir = testing::TmpDir();
+  std::string run = "test_run_empty_vector";
+  std::string log_dir = io::JoinPath(temp_dir, run);
+  std::vector<XSpace> empty_spaces;
+  EXPECT_OK(SaveXSpaceChunks(temp_dir, run, "host", &empty_spaces));
+  EXPECT_THAT(Env::Default()->FileExists(log_dir), Not(IsOk()));
+  EXPECT_OK(SaveXSpaceChunks(temp_dir, run, "host", nullptr));
+}
+
+TEST(SaveProfileTest, SaveXSpaceChunksInvalidDirectoryDoesNotLeaveTempFile) {
+  std::string temp_dir = testing::TmpDir();
+  std::string file_as_dir = io::JoinPath(temp_dir, "file_as_dir_spaces");
+  ASSERT_OK(WriteStringToFile(Env::Default(), file_as_dir, "content"));
+
+  XSpace space;
+  std::vector<XSpace> spaces = {space};
+  absl::Status status =
+      SaveXSpaceChunks(file_as_dir, "subdir", "host", &spaces);
+  EXPECT_THAT(status, Not(IsOk()));
+
+  std::string expected_out =
+      io::JoinPath(file_as_dir, "subdir", "host.xplane.riegeli");
+  EXPECT_THAT(Env::Default()->FileExists(expected_out), Not(IsOk()));
+  ASSERT_OK(Env::Default()->DeleteFile(file_as_dir));
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tsl
