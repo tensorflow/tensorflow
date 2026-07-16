@@ -465,7 +465,7 @@ def compress(condition, a, axis=None):  # pylint: disable=redefined-outer-name,m
   if cond_len is not None and a_len is not None:
     # Static shapes: keep the slice lengths as Python ints so downstream shape
     # inference (and XLA's static bound) sees the tight `len(condition)` extent.
-    overlap = min(cond_len, a_len)
+    overlap = builtins.min(cond_len, a_len)
   else:
     # Dynamic (`@tf.function` with `None` dims): `condition.shape[0]` /
     # `a.shape[axis]` are `None`, so fall back to symbolic tensor shapes.
