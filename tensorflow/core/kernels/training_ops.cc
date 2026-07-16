@@ -1259,6 +1259,10 @@ class SparseApplyAdadeltaOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 absl::InvalidArgumentError("indices must be one-dimensional"));
 
+    OP_REQUIRES(ctx, grad.dims() == var.dims(),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "grad and var must have the same rank, got ",
+                    grad.dims(), " and ", var.dims())));
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
                   absl::InvalidArgumentError(absl::StrCat(
@@ -3257,6 +3261,10 @@ class SparseApplyMomentumOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 absl::InvalidArgumentError("indices must be one-dimensional"));
 
+    OP_REQUIRES(ctx, grad.dims() == var.dims(),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "grad and var must have the same rank, got ",
+                    grad.dims(), " and ", var.dims())));
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
                   absl::InvalidArgumentError(absl::StrCat(
@@ -3479,6 +3487,10 @@ class SparseApplyKerasMomentumOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 absl::InvalidArgumentError("indices must be one-dimensional"));
 
+    OP_REQUIRES(ctx, grad.dims() == var.dims(),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "grad and var must have the same rank, got ",
+                    grad.dims(), " and ", var.dims())));
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
                   absl::InvalidArgumentError(absl::StrCat(
@@ -4314,6 +4326,10 @@ class SparseApplyRMSPropOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 absl::InvalidArgumentError("indices must be one-dimensional"));
 
+    OP_REQUIRES(ctx, grad.dims() == var.dims(),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "grad and var must have the same rank, got ",
+                    grad.dims(), " and ", var.dims())));
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
                   absl::InvalidArgumentError(absl::StrCat(
@@ -4456,6 +4472,10 @@ class SparseApplyCenteredRMSPropOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 absl::InvalidArgumentError("indices must be one-dimensional"));
 
+    OP_REQUIRES(ctx, grad.dims() == var.dims(),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "grad and var must have the same rank, got ",
+                    grad.dims(), " and ", var.dims())));
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
                   absl::InvalidArgumentError(absl::StrCat(
