@@ -22,6 +22,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as reader_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import lookup_ops as core_lookup_ops
 from tensorflow.python.ops import string_ops
@@ -146,6 +147,22 @@ class DatasetInitializerTest(test.TestCase):
     self.evaluate(core_lookup_ops.tables_initializer())
     result = self.evaluate(output)
     self.assertAllEqual([0, 1, 2], result)
+
+  def test_index_table_from_dataset_oversized_vocab_size(self):
+    ds = dataset_ops.Dataset.from_tensor_slices(
+        ["apple", "banana", "orange"])
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "vocab_size"):
+      lookup_ops.index_table_from_dataset(ds, vocab_size=1000)
+
+  def test_table_from_dataset_oversized_vocab_size(self):
+    keys = dataset_ops.Dataset.from_tensor_slices([2, 3, 4])
+    values = dataset_ops.Dataset.from_tensor_slices(["two", "three", "four"])
+    ds = dataset_ops.Dataset.zip((keys, values))
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "vocab_size"):
+      lookup_ops.table_from_dataset(
+          ds, vocab_size=1000, default_value="n/a", key_dtype=dtypes.int64)
 
 
 if __name__ == "__main__":
