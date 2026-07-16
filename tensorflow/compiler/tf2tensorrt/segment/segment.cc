@@ -675,8 +675,8 @@ void AddSegmentForNode(const grappler::GraphProperties* graph_properties,
                        SimpleNode* node,
                        const DeviceNameUtils::ParsedName& device_name,
                        bool use_implicit_batch) {
-  tensorflow::profiler::TraceMe activity(
-      "AddSegmentForNode", tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("AddSegmentForNode",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   ClusterProperty property(
       GetClusterBatchSizeForNode(graph_properties,
                                  node == nullptr ? nullptr : node->tf_node(),
@@ -691,9 +691,8 @@ Status ExportNonConversionReportToCSV(
     string filename,
     std::map<string, std::map<string, int>>& nonconverted_ops_map,
     string sep = "|") {
-  tensorflow::profiler::TraceMe activity(
-      "ExportNonConversionReportToCSV",
-      tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("ExportNonConversionReportToCSV",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   std::unique_ptr<WritableFile> csv_file;
   auto open_status = Env::Default()->NewWritableFile(filename, &csv_file);
 
@@ -746,8 +745,8 @@ string GenerateNonConversionReport(
   //                        Usage: TF_TRT_SHOW_DETAILED_REPORT=/path/to/file.csv
   // - Else:                Print normal (undetailed) non-conversion report on
   //                        stdout.
-  tensorflow::profiler::TraceMe activity(
-      "GenerateNonConversionReport", tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("GenerateNonConversionReport",
+                                  tsl::profiler::TraceMeLevel::kInfo);
 
   string detailed_report_var;
   TF_CHECK_OK(ReadStringFromEnvVar("TF_TRT_SHOW_DETAILED_REPORT",
@@ -859,8 +858,8 @@ Status SegmentGraph(const Graph* tf_graph,
                     const std::function<bool(const Edge*)>& input_candidate_fn,
                     const std::function<bool(const Edge*)>& output_candidate_fn,
                     const SegmentOptions& options, SegmentVector* segments) {
-  tensorflow::profiler::TraceMe activity(
-      "SegmentGraph", tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("SegmentGraph",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   if (!options.use_implicit_batch && !options.allow_dynamic_non_batch_dim) {
     return errors::Internal(
         "Explicit batch mode should allow dynamic non-batch dimensions");
