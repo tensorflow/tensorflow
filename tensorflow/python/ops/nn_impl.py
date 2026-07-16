@@ -37,7 +37,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import device_context
 from tensorflow.python.util import dispatch
-from tensorflow.python.util import tensor_util
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.deprecation import deprecated_argument_lookup
 from tensorflow.python.util.tf_export import tf_export
@@ -1502,9 +1502,9 @@ def batch_normalization(x,
   with ops.name_scope(name, "batchnorm", [x, mean, variance, scale, offset]):
     if tensor_util.is_tf_type(variance_epsilon):
       with ops.control_dependencies(
-          [check_ops.assert_positive(
+          [check_ops.assert_non_negative(
               variance_epsilon,
-              message=f'variance_epsilon must be positive, got: {variance_epsilon}'  # pylint: disable=g-error-prone-assert-raises
+              message='variance_epsilon must be non-negative.'
           )]):
         variance_epsilon = array_ops.identity(variance_epsilon)
     inv = math_ops.rsqrt(variance + variance_epsilon)

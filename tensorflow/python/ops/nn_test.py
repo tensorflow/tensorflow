@@ -2106,11 +2106,23 @@ class BatchNormalizationTest(test_lib.TestCase):
     epsilon = constant_op.constant(-1e-5)
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        "variance_epsilon must be positive"):
+        "variance_epsilon must be non-negative"):
       out = nn_impl.batch_normalization(
           x, mean, variance, offset=None, scale=None,
           variance_epsilon=epsilon)
       self.evaluate(out)
+
+  @test_util.run_all_in_graph_and_eager_modes
+  def testTensorZeroEpsilonSucceeds(self):
+    """Graph construction and runtime execution succeed with tf.Tensor epsilon == 0.0."""
+    x = array_ops.ones([2, 3])
+    mean = array_ops.zeros([3])
+    variance = array_ops.ones([3])
+    epsilon = constant_op.constant(0.0)
+    out = nn_impl.batch_normalization(
+        x, mean, variance, offset=None, scale=None,
+        variance_epsilon=epsilon)
+    self.evaluate(out)
 
 
 if __name__ == "__main__":
