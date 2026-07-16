@@ -151,7 +151,7 @@ class DatasetInitializerTest(test.TestCase):
     ds = dataset_ops.Dataset.from_tensor_slices(
         ["apple", "banana", "orange"])
     with self.assertRaisesRegex(
-        errors.InvalidArgumentError, "vocab_size"):
+        ValueError, "vocab_size"):
       lookup_ops.index_table_from_dataset(ds, vocab_size=1000)
 
   def test_table_from_dataset_oversized_vocab_size(self):
@@ -159,10 +159,9 @@ class DatasetInitializerTest(test.TestCase):
     values = dataset_ops.Dataset.from_tensor_slices(["two", "three", "four"])
     ds = dataset_ops.Dataset.zip((keys, values))
     with self.assertRaisesRegex(
-        errors.InvalidArgumentError, "vocab_size"):
+        ValueError, "vocab_size"):
       lookup_ops.table_from_dataset(
           ds, vocab_size=1000, default_value="n/a", key_dtype=dtypes.int64)
-
 
 if __name__ == "__main__":
   test.main()
