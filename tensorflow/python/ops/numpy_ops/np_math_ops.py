@@ -534,7 +534,7 @@ def isclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):  # pylint: disable=m
         result = result | (math_ops.is_nan(a) & math_ops.is_nan(b))
       return result
     else:
-      return a == b
+      return math_ops.equal(a, b)
 
   return _bin_op(f, a, b)
 
