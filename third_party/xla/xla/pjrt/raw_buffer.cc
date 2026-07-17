@@ -16,10 +16,12 @@ limitations under the License.
 #include "xla/pjrt/raw_buffer.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
