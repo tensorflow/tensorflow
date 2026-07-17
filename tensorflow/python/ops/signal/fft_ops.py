@@ -92,6 +92,8 @@ def _validate_static_irfft_fft_length(fft_length_static):
   fft_length_static = np.asarray(fft_length_static)
   if fft_length_static.size == 0:
     return
+  if fft_length_static.ndim > 1:
+    return
   fft_length_last = (
       fft_length_static.item()
       if fft_length_static.ndim == 0 else fft_length_static[-1])
@@ -204,7 +206,11 @@ def _irfft_wrapper(ifft_fn, fft_rank, default_name):
       else:
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
       fft_length_static = _tensor_util.constant_value(fft_length)
-      _validate_static_irfft_fft_length(fft_length_static)
+      is_empty = input_tensor.shape.num_elements() == 0
+      wrong_length = (
+          fft_length_static is not None and fft_length_static.size != fft_rank)
+      if not is_empty and not wrong_length:
+        _validate_static_irfft_fft_length(fft_length_static)
       input_tensor = _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length,
                                          is_reverse=True)
       if fft_length_static is not None:
@@ -383,7 +389,8 @@ def _irfftn_wrapper(irfft_n, default_name):
       else:
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
       fft_length_static = _tensor_util.constant_value(fft_length)
-      _validate_static_irfft_fft_length(fft_length_static)
+      if input_tensor.shape.num_elements() != 0:
+        _validate_static_irfft_fft_length(fft_length_static)
       input_tensor = _maybe_pad_for_rfft(
           input_tensor, fft_rank, fft_length, is_reverse=True
       )
