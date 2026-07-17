@@ -7,4 +7,7 @@ package(
 )
 
 # The LICENSE from this package is used during pip package generation.
-exports_files(["LICENSE"])
+exports_files([
+    "LICENSE",
+    "ruy_windows_bazel_bug.patch",
+])

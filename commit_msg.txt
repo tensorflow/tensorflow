@@ -1,5 +1,0 @@
-Bump ruy pin to fix CPU detection null-pointer crashes on Android
-
-Pins ruy to 2af88863614a8298689cc52b1a47b3fcad7be835 (google/ruy), which adds null-pointer guards in the
-CPU-detection path (checks for a null cpuinfo_uarch in cpuinfo.cc) that fix
-crashes during CPU detection on some Android devices.
