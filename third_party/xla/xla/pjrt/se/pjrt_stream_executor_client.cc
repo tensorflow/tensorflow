@@ -2375,36 +2375,11 @@ PjRtStreamExecutorClient::BuildPjRtExecutable(
       memory_spaces()[0]->kind());
 }
 
-namespace {
-absl::StatusOr<ExecutableAndOptionsProto> DeserializeExecutableAndOptionsProto(
-    absl::string_view serialized) {
-  ExecutableAndOptionsProto proto;
-  auto reader = std::make_unique<riegeli::StringReader<>>(serialized);
-  // The serialized string may be of the new SplitProto format (which allows
-  // executables larger than 2GB) or the legacy format which is just a regular
-  // proto.
-  ASSIGN_OR_RETURN(bool is_split_proto, IsSplitProto(*reader));
-  if (is_split_proto) {
-    RETURN_IF_ERROR(ReadSplitProto(std::move(reader), proto));
-    return proto;
-  }
-
-  if (serialized.size() > std::numeric_limits<int>::max()) {
-    return Internal("Proto is too large (>2GB)");
-  }
-  if (!proto.ParseFromString(serialized)) {
-    return Internal("Proto deserialization failed");
-  }
-
-  return proto;
-}
-}  // namespace
-
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
 PjRtStreamExecutorClient::DeserializeExecutable(
     absl::string_view serialized, std::optional<CompileOptions> options) {
   ASSIGN_OR_RETURN(ExecutableAndOptionsProto proto,
-                   DeserializeExecutableAndOptionsProto(serialized));
+                   SerializedGpuExecutableFromString(serialized));
   if (!proto.pjrt_client_name().empty() &&
       proto.pjrt_client_name() != kPjRtClientName) {
     return Internal(
@@ -2420,6 +2395,7 @@ PjRtStreamExecutorClient::DeserializeExecutable(
     ASSIGN_OR_RETURN(compile_options,
                      CompileOptions::FromProto(proto.compile_options()));
   }
+  RETURN_IF_ERROR(compile_options.ApplyAllOptionOverrides());
 
   tsl::profiler::TraceMe traceme(
       "PjRtStreamExecutorClient::DeserializeExecutable");
