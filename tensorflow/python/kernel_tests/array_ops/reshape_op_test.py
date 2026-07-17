@@ -169,6 +169,8 @@ class ReshapeTest(test.TestCase):
     scalar_shapes = (
         constant_op.constant(6),
         variables.Variable(6),
+        6,
+        np.int32(6),
         np.array(6),
     )
     for scalar_shape in scalar_shapes:
