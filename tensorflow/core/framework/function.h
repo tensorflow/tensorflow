@@ -384,7 +384,7 @@ class FunctionRecord : public core::RefCounted {
   const FunctionDef& fdef() const;
   const StackTracesMap& stack_traces() const;
   const OpRegistrationData& op_registration_data() const;
-  const bool finalized() const;
+  bool finalized() const;
 
  private:
   bool finalized_ = false;
@@ -1094,7 +1094,7 @@ class FunctionLibraryRuntime : public core::WeakRefCounted {
 // Returns the device of the `arg_index`-th function input. Update
 // `composite_devices` if the input device is a composite device.
 std::string GetFunctionResourceInputDevice(
-    const Tensor& input, const int arg_index, const FunctionDef& function_def,
+    const Tensor& input, int arg_index, const FunctionDef& function_def,
     absl::flat_hash_map<std::string, std::vector<std::string>>*
         composite_devices);
 
