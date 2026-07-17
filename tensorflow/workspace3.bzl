@@ -52,14 +52,15 @@ def workspace():
         ),
     )
 
+    # TODO: update to latest version.
     # Toolchains for ML projects hermetic builds.
     # Details: https://github.com/google-ml-infra/rules_ml_toolchain
     tf_http_archive(
         name = "rules_ml_toolchain",
-        sha256 = "0b42f693a60c6050d87db1e0a0eaeb84ab3f54191fce094d86334faedc807da0",
-        strip_prefix = "rules_ml_toolchain-398d613aea7a4c294da49b79a6d6f3f8732bd84c",
+        sha256 = "49a0c5981e00bb07078b0685c3e30547a6ad9600c16df8676f306f95b0012b78",
+        strip_prefix = "rules_ml_toolchain-9f3d54b5f3584b27bef1e3e0fa898f2940266efd",
         urls = tf_mirror_urls(
-            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/398d613aea7a4c294da49b79a6d6f3f8732bd84c.tar.gz",
+            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/9f3d54b5f3584b27bef1e3e0fa898f2940266efd.tar.gz",
         ),
     )
 

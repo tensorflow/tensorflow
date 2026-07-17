@@ -1013,6 +1013,10 @@ ENTRY entry {
 }
 )";
 
+  if (!IsHopperAndHigher()) {
+    GTEST_SKIP() << "Test requires Hopper or later.";
+  }
+
   const int64_t kNumReplicas = 2;
   ASSERT_GE(device_count(), kNumReplicas)
       << "Test requires at least " << kNumReplicas << " devices ("
