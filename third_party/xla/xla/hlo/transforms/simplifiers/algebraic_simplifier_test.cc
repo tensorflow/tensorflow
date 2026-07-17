@@ -178,7 +178,7 @@ TEST_F(AlgebraicSimplifierTest,
       }
     )",
                                             op);
-    TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+    ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
     ASSERT_FALSE(AlgebraicSimplifierVisitor::IsNonNegative(
         m->entry_computation()->root_instruction(), default_options_));
   }
@@ -10365,7 +10365,7 @@ m {
 }
 
 TEST_F(AlgebraicSimplifierTest, DoesNotFoldSignedIntegerAbsLtZero) {
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(R"(
 m {
   p = s8[] parameter(0)
   a = s8[] abs(p)
@@ -12113,7 +12113,7 @@ TEST_F(AlgebraicSimplifierTest, AbsEliminationIota) {
 }
 
 TEST_F(AlgebraicSimplifierTest, DoesNotFoldSignedIntegerSquareAbsSelect) {
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(R"(
     HloModule m
     ENTRY test {
       p0 = s8[4]{0} parameter(0)
