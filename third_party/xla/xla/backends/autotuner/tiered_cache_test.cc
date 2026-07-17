@@ -209,5 +209,41 @@ TEST_F(TieredCacheTest, DualInsertion) {
   EXPECT_EQ(result2->codegen_backend, autotuner::Backend::TRITON);
 }
 
+TEST_F(TieredCacheTest, ProcessWideSharingInTieredCache) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo1));
+  const HloInstruction* instr1 =
+      module->entry_computation()->root_instruction();
+
+  AutotuneCacheContext cache_ctx = CreateCacheContext("v1.0");
+  AutotunerCacheInterface::Config config = CreateTestConfig();
+
+  LocalCacheStorage::GetInstance().Clear();
+
+  // Create tiered cache 1 using default process-wide storage.
+  auto persistent_cache1 = std::make_unique<DirectoryCache>(
+      cache_ctx, cache_dir_, CacheMode::kReadWrite, KeyMatchingMode::kStrict);
+  auto local_cache1 = std::make_unique<LocalCache>(
+      cache_ctx, persistent_cache1->GetKeyMatchingMode());
+  TieredCache cache1(std::move(local_cache1), std::move(persistent_cache1));
+
+  EXPECT_OK(cache1.Insert(instr1, config));
+
+  // Create tiered cache 2 using default process-wide storage in same context.
+  auto persistent_cache2 = std::make_unique<DirectoryCache>(
+      cache_ctx, cache_dir_, CacheMode::kReadWrite, KeyMatchingMode::kStrict);
+  auto local_cache2 = std::make_unique<LocalCache>(
+      cache_ctx, persistent_cache2->GetKeyMatchingMode());
+  TieredCache cache2(std::move(local_cache2), std::move(persistent_cache2));
+
+  std::optional<AutotunerCacheInterface::Config> result = cache2.Lookup(instr1);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result->codegen_backend, autotuner::Backend::TRITON);
+
+  // Since it hit local cache directly, the persistent cache inside cache2 was
+  // not queried.
+  EXPECT_EQ(cache2.GetCacheStats().hits, 1);
+}
+
 }  // namespace
 }  // namespace xla

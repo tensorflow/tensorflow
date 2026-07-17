@@ -23,6 +23,10 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "xla/autotuning.pb.h"
+#include "xla/backends/autotuner/autotune_fingerprint.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
@@ -32,6 +36,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/test.h"
+#include "tsl/platform/fingerprint.h"
 
 namespace xla {
 namespace {
@@ -74,9 +79,13 @@ AutotuneCacheContext CreateCacheContext(
 class LocalCacheTest : public HloHardwareIndependentTestBase {
  protected:
   AutotunerCacheInterface::Config CreateTestConfig(
-      autotuner::Backend backend = autotuner::Backend::TRITON) {
+      autotuner::Backend backend = autotuner::Backend::TRITON,
+      int64_t block_m = 0) {
     AutotunerCacheInterface::Config cfg;
     cfg.codegen_backend = backend;
+    if (backend == autotuner::Backend::TRITON && block_m != 0) {
+      cfg.backend_config.mutable_triton()->set_block_m(block_m);
+    }
     return cfg;
   }
 
@@ -263,6 +272,212 @@ TEST_F(LocalCacheTest, DeserializeSkipsCodegenMismatchStrict) {
   std::optional<AutotunerCacheInterface::Config> result =
       cache_dest.Lookup(dot);
   EXPECT_FALSE(result.has_value());
+}
+
+TEST_F(LocalCacheTest, ProcessWideStorageSharing) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo1));
+  const HloInstruction* dot = module->entry_computation()->root_instruction();
+
+  LocalCacheStorage::GetInstance().Clear();
+
+  LocalCache cache1(CreateCacheContext(), KeyMatchingMode::kStrict);
+  LocalCache cache2(CreateCacheContext(), KeyMatchingMode::kStrict);
+
+  AutotunerCacheInterface::Config config = CreateTestConfig();
+  EXPECT_OK(cache1.Insert(dot, config));
+
+  std::optional<AutotunerCacheInterface::Config> result = cache2.Lookup(dot);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result->codegen_backend, autotuner::Backend::TRITON);
+
+  EXPECT_EQ(cache1.GetCacheStats().hits, 1);
+  EXPECT_EQ(cache2.GetCacheStats().hits, 1);
+}
+
+TEST_F(LocalCacheTest, LooseMatchingCrossCompatibility) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo1));
+  const HloInstruction* dot = module->entry_computation()->root_instruction();
+
+  LocalCacheStorage::GetInstance().Clear();
+
+  AutotuneCacheContext context_a =
+      CreateCacheContext("v1.0", 108,
+                         {{autotuner::Backend::TRITON, "triton_v1"},
+                          {autotuner::Backend::CUDNN, "cudnn_v1"}});
+  AutotuneCacheContext context_b = CreateCacheContext(
+      "v1.0", 108, {{autotuner::Backend::TRITON, "triton_v1"}});
+
+  LocalCache cache_a(context_a, KeyMatchingMode::kStrict);
+  LocalCache cache_b_strict(context_b, KeyMatchingMode::kStrict);
+  LocalCache cache_b_loose(context_b, KeyMatchingMode::kLoose);
+
+  AutotunerCacheInterface::Config config =
+      CreateTestConfig(autotuner::Backend::TRITON);
+  EXPECT_OK(cache_a.Insert(dot, config));
+
+  std::optional<AutotunerCacheInterface::Config> result_strict =
+      cache_b_strict.Lookup(dot);
+  EXPECT_FALSE(result_strict.has_value());
+
+  std::optional<AutotunerCacheInterface::Config> result_loose =
+      cache_b_loose.Lookup(dot);
+  ASSERT_TRUE(result_loose.has_value());
+  EXPECT_EQ(result_loose->codegen_backend, autotuner::Backend::TRITON);
+}
+
+TEST_F(LocalCacheTest, LooseInsertLooseLookupSucceeds) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo1));
+  const HloInstruction* dot = module->entry_computation()->root_instruction();
+
+  LocalCacheStorage::GetInstance().Clear();
+
+  AutotuneCacheContext context = CreateCacheContext();
+  LocalCache cache(context, KeyMatchingMode::kLoose);
+
+  AutotunerCacheInterface::Config config = CreateTestConfig();
+  EXPECT_OK(cache.Insert(dot, config));
+
+  std::optional<AutotunerCacheInterface::Config> result = cache.Lookup(dot);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result->codegen_backend, config.codegen_backend);
+}
+
+TEST_F(LocalCacheTest, LooseInsertStrictLookupFails) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo1));
+  const HloInstruction* dot = module->entry_computation()->root_instruction();
+
+  LocalCacheStorage::GetInstance().Clear();
+
+  AutotuneCacheContext context = CreateCacheContext();
+  LocalCache cache_loose(context, KeyMatchingMode::kLoose);
+  LocalCache cache_strict(context, KeyMatchingMode::kStrict);
+
+  AutotunerCacheInterface::Config config = CreateTestConfig();
+  EXPECT_OK(cache_loose.Insert(dot, config));
+
+  std::optional<AutotunerCacheInterface::Config> result =
+      cache_strict.Lookup(dot);
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST_F(LocalCacheTest, TextprotoDeserialization) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo1));
+  const HloInstruction* dot = module->entry_computation()->root_instruction();
+
+  LocalCacheStorage::GetInstance().Clear();
+
+  tsl::Fprint128 hlo_fp = GetHloFingerprint(*dot);
+  std::string hlo_fp_str =
+      absl::StrCat(absl::Hex(hlo_fp.high64, absl::kZeroPad16),
+                   absl::Hex(hlo_fp.low64, absl::kZeroPad16));
+
+  AutotuneCacheContext context = CreateCacheContext();
+
+  std::string textproto =
+      absl::StrFormat(R"pb(
+                        device_scope: "%s"
+                        explicit_version_scope: "v1.0"
+                        entries {
+                          key {
+                            target {
+                              hlo_fingerprint: "%s"
+                              device: "%s"
+                              explicit_version: "v1.0"
+                            }
+                            environment { codegen_version: "fake_env" }
+                          }
+                          value {
+                            optimal_config {
+                              backend: TRITON
+                              backend_config { triton { block_m: 12345 } }
+                            }
+                            optimal_backend_version: "triton_v1"
+                          }
+                        }
+                      )pb",
+                      context.device(), hlo_fp_str, context.device());
+
+  LocalCache cache(context, KeyMatchingMode::kLoose);
+  EXPECT_OK(cache.Deserialize(textproto));
+
+  std::optional<AutotunerCacheInterface::Config> result = cache.Lookup(dot);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result->codegen_backend, autotuner::Backend::TRITON);
+  EXPECT_EQ(result->backend_config.triton().block_m(), 12345);
+}
+
+TEST_F(LocalCacheTest, DeserializationRetainsAllEntries) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo1));
+  const HloInstruction* dot = module->entry_computation()->root_instruction();
+
+  LocalCacheStorage::GetInstance().Clear();
+
+  tsl::Fprint128 hlo_fp = GetHloFingerprint(*dot);
+  std::string hlo_fp_str =
+      absl::StrCat(absl::Hex(hlo_fp.high64, absl::kZeroPad16),
+                   absl::Hex(hlo_fp.low64, absl::kZeroPad16));
+
+  AutotuneCacheContext context_a = CreateCacheContext(
+      "v1.0", 108, {{autotuner::Backend::TRITON, "triton_v1"}}, "device_A");
+  AutotuneCacheContext context_b = CreateCacheContext(
+      "v2.0", 108, {{autotuner::Backend::TRITON, "triton_v1"}}, "device_B");
+
+  std::string textproto = absl::StrFormat(
+      R"pb(
+        entries {
+          key {
+            target {
+              hlo_fingerprint: "%s"
+              device: "%s"
+              explicit_version: "v1.0"
+            }
+            environment { codegen_version: "fake_env" }
+          }
+          value {
+            optimal_config {
+              backend: TRITON
+              backend_config { triton { block_m: 100 } }
+            }
+            optimal_backend_version: "triton_v1"
+          }
+        }
+        entries {
+          key {
+            target {
+              hlo_fingerprint: "%s"
+              device: "%s"
+              explicit_version: "v2.0"
+            }
+            environment { codegen_version: "fake_env" }
+          }
+          value {
+            optimal_config {
+              backend: TRITON
+              backend_config { triton { block_m: 200 } }
+            }
+            optimal_backend_version: "triton_v1"
+          }
+        }
+      )pb",
+      hlo_fp_str, context_a.device(), hlo_fp_str, context_b.device());
+
+  LocalCache cache_a(context_a, KeyMatchingMode::kLoose);
+  EXPECT_OK(cache_a.Deserialize(textproto));
+
+  std::optional<AutotunerCacheInterface::Config> result_a = cache_a.Lookup(dot);
+  ASSERT_TRUE(result_a.has_value());
+  EXPECT_EQ(result_a->backend_config.triton().block_m(), 100);
+
+  LocalCache cache_b(context_b, KeyMatchingMode::kLoose);
+  std::optional<AutotunerCacheInterface::Config> result_b = cache_b.Lookup(dot);
+  ASSERT_TRUE(result_b.has_value());
+  EXPECT_EQ(result_b->backend_config.triton().block_m(), 200);
 }
 
 }  // namespace xla

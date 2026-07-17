@@ -20,10 +20,12 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/const_init.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -38,178 +40,223 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "tsl/platform/fingerprint.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
 namespace {
-struct LocalCacheKey {
-  std::string hlo_fingerprint;
-  std::string codegen_options_fp;
+std::string GetHloFingerprintString(const HloInstruction& instr) {
+  tsl::Fprint128 hlo_fp = GetHloFingerprint(instr);
+  return absl::StrCat(absl::Hex(hlo_fp.high64, absl::kZeroPad16),
+                      absl::Hex(hlo_fp.low64, absl::kZeroPad16));
+}
 
-  std::string ToString(KeyMatchingMode matching_mode) const {
-    if (matching_mode == KeyMatchingMode::kLoose ||
-        codegen_options_fp.empty()) {
-      return hlo_fingerprint;
-    }
-    return absl::StrCat(hlo_fingerprint, "|", codegen_options_fp);
+std::string GetCodegenOptionsFingerprintString(const HloInstruction& instr) {
+  if (instr.GetModule() == nullptr) {
+    LOG(WARNING) << "Could not use DebugOptions for autotune cache key, "
+                    "module is null for instruction: "
+                 << instr.name();
+    return "";
   }
-
-  static LocalCacheKey FromString(absl::string_view key) {
-    LocalCacheKey cache_key;
-    size_t pipe_pos = key.find('|');
-    if (pipe_pos != absl::string_view::npos) {
-      cache_key.hlo_fingerprint = std::string(key.substr(0, pipe_pos));
-      cache_key.codegen_options_fp = std::string(key.substr(pipe_pos + 1));
-    } else {
-      cache_key.hlo_fingerprint = std::string(key);
-    }
-    return cache_key;
-  }
-};
+  return GetCodegenOptionsFingerprint(
+      instr.GetModule()->config().debug_options());
+}
 }  // namespace
+
+LocalCacheStorage& LocalCacheStorage::GetInstance() {
+  static auto* instance = new LocalCacheStorage();
+  return *instance;
+}
 
 LocalCacheStorage& LocalCacheStorage::GetInstance(
     const AutotuneCacheContext& ctx) {
-  static absl::Mutex mu(absl::kConstInit);
-  using StorageMap =
-      absl::flat_hash_map<std::string, std::unique_ptr<LocalCacheStorage>>;
-  static auto* instances = new StorageMap();
+  return GetInstance();
+}
 
-  std::string key = ctx.GetId();
-  absl::MutexLock lock(mu);
-  auto [it, inserted] = instances->try_emplace(key, nullptr);
-  if (inserted) {
-    it->second = std::make_unique<LocalCacheStorage>();
+std::optional<AutotunerCacheInterface::Config> LocalCacheStorage::Lookup(
+    absl::string_view hlo_fingerprint,
+    absl::FunctionRef<std::string()> codegen_options_fp_generator,
+    const AutotuneCacheContext& context, KeyMatchingMode matching_mode) {
+  absl::MutexLock lock(mutex_);
+  auto it = entries_by_hlo_.find(hlo_fingerprint);
+  if (it == entries_by_hlo_.end()) {
+    stats_.misses++;
+    return std::nullopt;
   }
-  return *it->second;
-}
-
-LocalCache::LocalCache(AutotuneCacheContext context,
-                       KeyMatchingMode matching_mode,
-                       LocalCacheStorage* absl_nonnull storage)
-    : matching_mode_(matching_mode),
-      context_(std::move(context)),
-      storage_(storage) {
-  CHECK(storage_ != nullptr) << "LocalCacheStorage cannot be null.";
-}
-
-LocalCache::LocalCache(AutotuneCacheContext context,
-                       KeyMatchingMode matching_mode)
-    : matching_mode_(matching_mode),
-      context_(std::move(context)),
-      storage_(&LocalCacheStorage::GetInstance(context_)) {}
-
-std::string LocalCache::GetCacheKey(const HloInstruction* instr) const {
-  tsl::Fprint128 hlo_fp = GetHloFingerprint(*instr);
-  std::string hlo_fingerprint =
-      absl::StrCat(absl::Hex(hlo_fp.high64, absl::kZeroPad16),
-                   absl::Hex(hlo_fp.low64, absl::kZeroPad16));
-
-  std::string codegen_options_fp = "";
-  if (matching_mode_ != KeyMatchingMode::kLoose) {
-    if (instr->GetModule() == nullptr) {
-      LOG(WARNING) << "Could not use DebugOptions for autotune cache key, "
-                      "module is null for instruction: "
-                   << instr->name();
-    } else {
-      codegen_options_fp = GetCodegenOptionsFingerprint(
-          instr->GetModule()->config().debug_options());
+  std::optional<std::string> codegen_options_fp;
+  for (const autotuner::AutotuneEntry& entry : it->second) {
+    // TargetKey matching
+    if (entry.key().target().device() != context.device() ||
+        entry.key().target().explicit_version() != context.explicit_version()) {
+      continue;
     }
-  }
 
-  return LocalCacheKey{std::move(hlo_fingerprint),
-                       std::move(codegen_options_fp)}
-      .ToString(matching_mode_);
-}
-
-bool LocalCache::IsEntryCompatible(
-    const autotuner::AutotuneEntry& entry) const {
-  if (entry.key().target().device() != context_.device() ||
-      entry.key().target().explicit_version() != context_.explicit_version()) {
-    return false;
-  }
-
-  switch (matching_mode_) {
-    case KeyMatchingMode::kStrict:
-      return entry.key().environment().codegen_version() ==
-             context_.codegen_version();
-    case KeyMatchingMode::kLoose: {
+    if (matching_mode == KeyMatchingMode::kLoose) {
+      if (entry.key().environment().codegen_version() ==
+          context.codegen_version()) {
+        stats_.hits++;
+        return AutotunerCacheInterface::Config{
+            entry.value().optimal_config().backend(),
+            entry.value().optimal_config().backend_config()};
+      }
       autotuner::Backend backend = entry.value().optimal_config().backend();
-      auto it = context_.per_backend_versions().find(backend);
-      return it != context_.per_backend_versions().end() &&
-             it->second == entry.value().optimal_backend_version();
+      auto backend_it = context.per_backend_versions().find(backend);
+      if (backend_it != context.per_backend_versions().end() &&
+          backend_it->second == entry.value().optimal_backend_version()) {
+        stats_.hits++;
+        return AutotunerCacheInterface::Config{
+            backend, entry.value().optimal_config().backend_config()};
+      }
+    } else if (matching_mode == KeyMatchingMode::kStrict) {
+      if (entry.key().environment().codegen_version() ==
+          context.codegen_version()) {
+        if (!codegen_options_fp.has_value()) {
+          codegen_options_fp = codegen_options_fp_generator();
+        }
+        if (entry.key().environment().codegen_options_fingerprint() ==
+            *codegen_options_fp) {
+          stats_.hits++;
+          return AutotunerCacheInterface::Config{
+              entry.value().optimal_config().backend(),
+              entry.value().optimal_config().backend_config()};
+        }
+      }
     }
   }
-  return false;
-}
 
-std::optional<AutotunerCacheInterface::Config> LocalCache::Lookup(
-    const HloInstruction* instr) {
-  std::string key = GetCacheKey(instr);
-  absl::MutexLock lock(storage_->mutex_);
-  auto it = storage_->cache_.find(key);
-  if (it != storage_->cache_.end()) {
-    storage_->stats_.hits++;
-    return it->second;
-  }
-  storage_->stats_.misses++;
+  stats_.misses++;
   return std::nullopt;
 }
 
-absl::Status LocalCache::Insert(const HloInstruction* instr,
-                                const Config& config) {
-  if (instr == nullptr) {
-    return absl::InvalidArgumentError("Instruction cannot be null.");
+absl::Status LocalCacheStorage::Insert(const autotuner::AutotuneEntry& entry) {
+  absl::MutexLock lock(mutex_);
+  auto& entries = entries_by_hlo_[entry.key().target().hlo_fingerprint()];
+  for (auto& existing : entries) {
+    if (existing.key().target().device() == entry.key().target().device() &&
+        existing.key().target().explicit_version() ==
+            entry.key().target().explicit_version() &&
+        existing.key().environment().codegen_version() ==
+            entry.key().environment().codegen_version() &&
+        existing.key().environment().codegen_options_fingerprint() ==
+            entry.key().environment().codegen_options_fingerprint()) {
+      *existing.mutable_value() = entry.value();
+      return absl::OkStatus();
+    }
   }
-  std::string key = GetCacheKey(instr);
-  absl::MutexLock lock(storage_->mutex_);
-  storage_->cache_[key] = config;
+  entries.push_back(entry);
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::string> LocalCache::Serialize(
-    absl::Span<const HloInstruction* const> instructions_to_serialize) {
+absl::Status LocalCacheStorage::Deserialize(
+    absl::string_view serialized_cache) {
   autotuner::AutotuneCache proto_cache;
-  absl::MutexLock lock(storage_->mutex_);
-
-  auto add_entry = [&](absl::string_view key, const Config& config) {
-    LocalCacheKey cache_key = LocalCacheKey::FromString(key);
-
-    autotuner::AutotuneEntry* entry = proto_cache.add_entries();
-    auto* target = entry->mutable_key()->mutable_target();
-    target->set_hlo_fingerprint(cache_key.hlo_fingerprint);
-    target->set_device(context_.device());
-    if (!context_.explicit_version().empty()) {
-      target->set_explicit_version(context_.explicit_version());
+  if (!proto_cache.ParseFromString(serialized_cache)) {
+    if (!tsl::protobuf::TextFormat::ParseFromString(
+            std::string(serialized_cache), &proto_cache)) {
+      return absl::InvalidArgumentError(
+          "Failed to parse AutotuneCache proto (binary or textproto).");
     }
+  }
 
-    auto* env = entry->mutable_key()->mutable_environment();
-    env->set_codegen_version(context_.codegen_version());
-    if (!cache_key.codegen_options_fp.empty()) {
-      env->set_codegen_options_fingerprint(cache_key.codegen_options_fp);
+  absl::MutexLock lock(mutex_);
+  int deserialized_entries = 0;
+  for (const autotuner::AutotuneEntry& entry : proto_cache.entries()) {
+    auto& entries = entries_by_hlo_[entry.key().target().hlo_fingerprint()];
+    bool updated = false;
+    for (auto& existing : entries) {
+      if (existing.key().target().device() == entry.key().target().device() &&
+          existing.key().target().explicit_version() ==
+              entry.key().target().explicit_version() &&
+          existing.key().environment().codegen_version() ==
+              entry.key().environment().codegen_version() &&
+          existing.key().environment().codegen_options_fingerprint() ==
+              entry.key().environment().codegen_options_fingerprint()) {
+        *existing.mutable_value() = entry.value();
+        updated = true;
+        break;
+      }
     }
-
-    auto* value = entry->mutable_value();
-    value->mutable_optimal_config()->set_backend(config.codegen_backend);
-    *value->mutable_optimal_config()->mutable_backend_config() =
-        config.backend_config;
-
-    if (auto it = context_.per_backend_versions().find(config.codegen_backend);
-        it != context_.per_backend_versions().end()) {
-      value->set_optimal_backend_version(it->second);
+    if (!updated) {
+      entries.push_back(entry);
     }
-  };
+    deserialized_entries++;
+  }
+  VLOG(1) << "LocalCacheStorage::Deserialize: Deserialized "
+          << deserialized_entries << " entries, out of "
+          << proto_cache.entries_size() << " entries in the cache.";
+  return absl::OkStatus();
+}
 
-  if (!instructions_to_serialize.empty()) {
-    for (const HloInstruction* instr : instructions_to_serialize) {
-      std::string key = GetCacheKey(instr);
-      if (auto it = storage_->cache_.find(key); it != storage_->cache_.end()) {
-        add_entry(key, it->second);
+absl::StatusOr<std::string> LocalCacheStorage::Serialize(
+    bool as_textproto) const {
+  autotuner::AutotuneCache proto_cache;
+  {
+    absl::MutexLock lock(mutex_);
+    for (const auto& [fp, candidate_entries] : entries_by_hlo_) {
+      for (const auto& entry : candidate_entries) {
+        *proto_cache.add_entries() = entry;
+      }
+    }
+  }
+
+  std::string serialized;
+  if (as_textproto) {
+    if (!tsl::protobuf::TextFormat::PrintToString(proto_cache, &serialized)) {
+      return absl::InternalError(
+          "Failed to serialize AutotuneCache textproto.");
+    }
+  } else {
+    if (!proto_cache.SerializeToString(&serialized)) {
+      return absl::InternalError("Failed to serialize AutotuneCache binary.");
+    }
+  }
+  return serialized;
+}
+
+absl::StatusOr<std::string> LocalCacheStorage::Serialize(
+    absl::Span<const std::string> hlo_fingerprints,
+    const AutotuneCacheContext& context, KeyMatchingMode matching_mode) {
+  autotuner::AutotuneCache proto_cache;
+  proto_cache.set_device_scope(context.device());
+  proto_cache.set_explicit_version_scope(context.explicit_version());
+
+  absl::MutexLock lock(mutex_);
+  auto add_matching_entries =
+      [&](const std::vector<autotuner::AutotuneEntry>& candidate_entries) {
+        for (const auto& entry : candidate_entries) {
+          if (entry.key().target().device() != context.device() ||
+              entry.key().target().explicit_version() !=
+                  context.explicit_version()) {
+            continue;
+          }
+
+          if (matching_mode == KeyMatchingMode::kStrict) {
+            if (entry.key().environment().codegen_version() ==
+                context.codegen_version()) {
+              *proto_cache.add_entries() = entry;
+            }
+          } else if (matching_mode == KeyMatchingMode::kLoose) {
+            autotuner::Backend backend =
+                entry.value().optimal_config().backend();
+            auto backend_it = context.per_backend_versions().find(backend);
+            if (backend_it != context.per_backend_versions().end() &&
+                backend_it->second == entry.value().optimal_backend_version()) {
+              *proto_cache.add_entries() = entry;
+            }
+          }
+        }
+      };
+
+  if (!hlo_fingerprints.empty()) {
+    for (const std::string& fp : hlo_fingerprints) {
+      auto it = entries_by_hlo_.find(fp);
+      if (it != entries_by_hlo_.end()) {
+        add_matching_entries(it->second);
       }
     }
   } else {
-    for (const auto& [key, config] : storage_->cache_) {
-      add_entry(key, config);
+    for (const auto& [fp, candidate_entries] : entries_by_hlo_) {
+      add_matching_entries(candidate_entries);
     }
   }
 
@@ -220,51 +267,94 @@ absl::StatusOr<std::string> LocalCache::Serialize(
   return serialized;
 }
 
-absl::Status LocalCache::Deserialize(absl::string_view serialized_cache) {
-  autotuner::AutotuneCache proto_cache;
-  if (!proto_cache.ParseFromString(serialized_cache)) {
-    return absl::InvalidArgumentError("Failed to parse AutotuneCache proto.");
+AutotunerCacheInterface::CacheStats LocalCacheStorage::GetCacheStats() const {
+  absl::MutexLock lock(mutex_);
+  return stats_;
+}
+
+void LocalCacheStorage::Clear() {
+  absl::MutexLock lock(mutex_);
+  entries_by_hlo_.clear();
+  stats_ = {};
+}
+
+LocalCache::LocalCache(AutotuneCacheContext context,
+                       KeyMatchingMode matching_mode)
+    : matching_mode_(matching_mode),
+      context_(std::move(context)),
+      storage_(&LocalCacheStorage::GetInstance()) {}
+
+LocalCache::LocalCache(AutotuneCacheContext context,
+                       KeyMatchingMode matching_mode,
+                       LocalCacheStorage* absl_nonnull storage)
+    : matching_mode_(matching_mode),
+      context_(std::move(context)),
+      storage_(storage) {
+  CHECK(storage_ != nullptr) << "LocalCacheStorage cannot be null.";
+}
+
+std::optional<AutotunerCacheInterface::Config> LocalCache::Lookup(
+    const HloInstruction* instr) {
+  std::string hlo_fp = GetHloFingerprintString(*instr);
+  return storage_->Lookup(
+      hlo_fp, [instr]() { return GetCodegenOptionsFingerprintString(*instr); },
+      context_, matching_mode_);
+}
+
+absl::Status LocalCache::Insert(const HloInstruction* instr,
+                                const Config& config) {
+  if (instr == nullptr) {
+    return absl::InvalidArgumentError("Instruction cannot be null.");
+  }
+  std::string hlo_fp = GetHloFingerprintString(*instr);
+  autotuner::AutotuneEntry entry;
+  auto* target = entry.mutable_key()->mutable_target();
+  target->set_hlo_fingerprint(hlo_fp);
+  target->set_device(context_.device());
+  if (!context_.explicit_version().empty()) {
+    target->set_explicit_version(context_.explicit_version());
   }
 
-  absl::MutexLock lock(storage_->mutex_);
-  int deserialized_entries = 0;
-  for (const autotuner::AutotuneEntry& entry : proto_cache.entries()) {
-    if (!IsEntryCompatible(entry)) {
-      continue;
+  auto* env = entry.mutable_key()->mutable_environment();
+  env->set_codegen_version(context_.codegen_version());
+  if (matching_mode_ == KeyMatchingMode::kStrict) {
+    std::string codegen_options_fp = GetCodegenOptionsFingerprintString(*instr);
+    if (!codegen_options_fp.empty()) {
+      env->set_codegen_options_fingerprint(codegen_options_fp);
     }
-    deserialized_entries++;
-    LocalCacheKey cache_key{
-        entry.key().target().hlo_fingerprint(),
-        entry.key().environment().codegen_options_fingerprint()};
-    std::string key = cache_key.ToString(matching_mode_);
-
-    AutotunerCacheInterface::Config config;
-    config.codegen_backend = entry.value().optimal_config().backend();
-    config.backend_config = entry.value().optimal_config().backend_config();
-
-    storage_->cache_[key] = config;
-    deserialized_entries++;
   }
-  if (deserialized_entries == 0 && proto_cache.entries_size() > 0) {
-    LOG(WARNING)
-        << "Cannot deserialize any entries from the cache. None of the "
-        << proto_cache.entries_size()
-        << " entries in the cache are compatible with the current context: "
-        << "device='" << context_.device() << "', explicit_version='"
-        << context_.explicit_version() << "', codegen_version='"
-        << context_.codegen_version() << "', matching_mode="
-        << (matching_mode_ == KeyMatchingMode::kStrict ? "strict" : "loose")
-        << ".";
+
+  auto* value = entry.mutable_value();
+  value->mutable_optimal_config()->set_backend(config.codegen_backend);
+  *value->mutable_optimal_config()->mutable_backend_config() =
+      config.backend_config;
+
+  auto it = context_.per_backend_versions().find(config.codegen_backend);
+  if (it != context_.per_backend_versions().end()) {
+    value->set_optimal_backend_version(it->second);
   }
-  VLOG(1) << "LocalCache::Deserialize: Deserialized " << deserialized_entries
-          << " entries, out of " << proto_cache.entries_size() << " entries in "
-          << "the cache.";
-  return absl::OkStatus();
+
+  return storage_->Insert(entry);
+}
+
+absl::StatusOr<std::string> LocalCache::Serialize(
+    absl::Span<const HloInstruction* const> instructions_to_serialize) {
+  std::vector<std::string> fingerprints;
+  fingerprints.reserve(instructions_to_serialize.size());
+  for (const HloInstruction* instr : instructions_to_serialize) {
+    if (instr != nullptr) {
+      fingerprints.push_back(GetHloFingerprintString(*instr));
+    }
+  }
+  return storage_->Serialize(fingerprints, context_, matching_mode_);
+}
+
+absl::Status LocalCache::Deserialize(absl::string_view serialized_cache) {
+  return storage_->Deserialize(serialized_cache);
 }
 
 AutotunerCacheInterface::CacheStats LocalCache::GetCacheStats() const {
-  absl::MutexLock lock(storage_->mutex_);
-  return storage_->stats_;
+  return storage_->GetCacheStats();
 }
 
 }  // namespace xla

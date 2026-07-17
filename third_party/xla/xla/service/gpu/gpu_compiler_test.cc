@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/service/gpu/gpu_compiler.h"
+
 #include <algorithm>
 #include <cstdint>
 #include <iostream>
@@ -43,6 +45,8 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/backends/autotuner/backends.pb.h"
+#include "xla/backends/autotuner/fake_codegen_backend.h"
+#include "xla/backends/autotuner/local_cache.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -78,11 +82,14 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/multi_module_driver.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/platform_util.h"
 #include "xla/service/xla_debug_info_manager.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
@@ -400,6 +407,43 @@ ENTRY e {
 
   std::string xla_gpu_dump_autotune_results_to_;
   std::string xla_gpu_load_autotune_results_from_;
+
+  AutotuneCacheContext CreateCacheContext(
+      std::string explicit_version = "v1.0", int core_count = 108,
+      std::vector<std::pair<autotuner::Backend, std::string>> backends_info =
+          {{autotuner::Backend::TRITON, "triton_v1"}},
+      std::string device_name = "test_gpu") {
+    stream_executor::DeviceDescription device_description;
+    device_description.set_name(device_name);
+    device_description.set_core_count(core_count);
+    device_description.set_clock_rate_ghz(1.41);
+    device_description.set_memory_bandwidth(1555000000000);
+    device_description.set_l2_cache_size(41943040);
+
+    stream_executor::CudaComputeCapability cuda_cc(8, 0);
+    stream_executor::GpuComputeCapability gpu_cc(cuda_cc);
+    device_description.set_gpu_compute_capability(gpu_cc);
+
+    std::vector<std::unique_ptr<CodegenBackend>> backends;
+    for (const auto& [backend, version] : backends_info) {
+      backends.push_back(
+          std::make_unique<FakeCodegenBackend>(backend, version));
+    }
+
+    return AutotuneCacheContext::Create(device_description, backends,
+                                        std::move(explicit_version));
+  }
+
+  AutotunerCacheInterface::Config CreateTestConfig(
+      autotuner::Backend backend = autotuner::Backend::TRITON,
+      int64_t block_m = 0) {
+    AutotunerCacheInterface::Config cfg;
+    cfg.codegen_backend = backend;
+    if (backend == autotuner::Backend::TRITON && block_m != 0) {
+      cfg.backend_config.mutable_triton()->set_block_m(block_m);
+    }
+    return cfg;
+  }
 };
 
 TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
@@ -430,6 +474,81 @@ TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
     EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(autotune_results_str,
                                                            &results));
   }
+}
+
+TEST_F(PersistedAutotuningTest, NewFormatDumpAndLoadResults) {
+  LocalCacheStorage::GetInstance().Clear();
+  AutotunerCache::ClearAutotuneResults();
+
+  AutotuneCacheContext context = CreateCacheContext();
+  LocalCache cache(context, KeyMatchingMode::kLoose);
+
+  HloModuleConfig config;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule t
+
+ENTRY e {
+  p0 = f16[1,16,17,3] parameter(0)
+  p1 = s8[16,17,3] parameter(1)
+  cp1 = f16[16,17,3] convert(p1)
+  ROOT _ = f16[1,16,16] dot(p0, cp1),
+    lhs_contracting_dims={2,3}, rhs_contracting_dims={1,2}
+})",
+                                                    config));
+  const HloInstruction* dot = module->entry_computation()->root_instruction();
+
+  AutotunerCacheInterface::Config test_config = CreateTestConfig();
+  test_config.codegen_backend = autotuner::Backend::TRITON;
+  test_config.backend_config.mutable_triton()->set_block_m(999);
+  EXPECT_OK(cache.Insert(dot, test_config));
+
+  std::string kFilePath = GetUniqueTempFilePath(".textproto");
+  HloModuleConfig dump_config = GetModuleConfigForTest();
+  dump_config.mutable_debug_options().set_xla_gpu_use_new_autotune_cache_format(
+      true);
+  dump_config.mutable_debug_options().set_xla_gpu_dump_autotune_results_to(
+      kFilePath);
+
+  TF_EXPECT_OK(GetOptimizedModuleForExecutable(R"(
+HloModule t
+
+ENTRY e {
+  p0 = f16[1,16,17,3] parameter(0)
+  p1 = s8[16,17,3] parameter(1)
+  cp1 = f16[16,17,3] convert(p1)
+  ROOT _ = f16[1,16,16] dot(p0, cp1),
+    lhs_contracting_dims={2,3}, rhs_contracting_dims={1,2}
+})",
+                                               dump_config)
+                   .status());
+
+  LocalCacheStorage::GetInstance().Clear();
+  EXPECT_FALSE(cache.Lookup(dot).has_value());
+
+  HloModuleConfig load_config = GetModuleConfigForTest();
+  load_config.mutable_debug_options().set_xla_gpu_use_new_autotune_cache_format(
+      true);
+  load_config.mutable_debug_options().set_xla_gpu_load_autotune_results_from(
+      kFilePath);
+
+  TF_EXPECT_OK(GetOptimizedModuleForExecutable(R"(
+HloModule t
+
+ENTRY e {
+  p0 = f16[1,16,17,3] parameter(0)
+  p1 = s8[16,17,3] parameter(1)
+  cp1 = f16[16,17,3] convert(p1)
+  ROOT _ = f16[1,16,16] dot(p0, cp1),
+    lhs_contracting_dims={2,3}, rhs_contracting_dims={1,2}
+})",
+                                               load_config)
+                   .status());
+
+  std::optional<AutotunerCacheInterface::Config> lookup_res = cache.Lookup(dot);
+  ASSERT_TRUE(lookup_res.has_value());
+  EXPECT_EQ(lookup_res->codegen_backend, autotuner::Backend::TRITON);
+  EXPECT_EQ(lookup_res->backend_config.triton().block_m(), 999);
 }
 
 TEST_F(PersistedAutotuningTest, SingleOperationGetsAutotuned) {
