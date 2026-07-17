@@ -77,30 +77,53 @@ void BuildLowerUpperBoundOp(XlaOpKernelContext* ctx, DataType out_dtype,
     val_is_nan = xla::ConstantR0<bool>(ctx->builder(), false);
   }
 
-  xla::XlaOp comparison;
-  if (comparison_direction == xla::ComparisonDirection::kGt) {
-    auto standard_gt = xla::Gt(values_reshaped, sorted_inputs_reshaped);
-    comparison =
-        xla::And(xla::Not(element_is_nan), xla::Or(val_is_nan, standard_gt));
-  } else {
-    auto standard_ge = xla::Ge(values_reshaped, sorted_inputs_reshaped);
-    comparison = xla::Or(val_is_nan,
-                         xla::And(xla::Not(element_is_nan), standard_ge));
-  }
-  const DataType accumulation_type = XlaHelpers::SumAccumulationType(out_dtype);
-
-  // Convert boolean comparison results to integers so we can sum them.
-  auto comparison_int =
-      XlaHelpers::ConvertElementType(comparison, accumulation_type);
-
-  // Sum the comparison results over the inner dimension to find the index for
-  // each value.
   xla::XlaBuilder* builder = ctx->builder();
-  auto reduced =
-      xla::Reduce(comparison_int, XlaHelpers::Zero(builder, accumulation_type),
-                  *ctx->GetOrCreateAdd(accumulation_type), {2});
+  const DataType accumulation_type = XlaHelpers::SumAccumulationType(out_dtype);
+  xla::XlaOp zero = XlaHelpers::Zero(builder, accumulation_type);
 
-  ctx->SetOutput(0, reduced);
+  // Non-NaN mask for sorted_inputs elements: [batch, 1, inputs_size]
+  auto non_nan_mask = xla::Not(element_is_nan);
+
+  // Standard comparisons with NaN elements masked out.
+  // When element is NaN, comparison is false (NaN is largest, no value is >/>= NaN).
+  auto standard_gt = xla::Gt(values_reshaped, sorted_inputs_reshaped);
+  auto standard_ge = xla::Ge(values_reshaped, sorted_inputs_reshaped);
+  auto standard_gt_masked = xla::And(standard_gt, non_nan_mask);
+  auto standard_ge_masked = xla::And(standard_ge, non_nan_mask);
+
+  // Reduce standard comparisons over inputs dimension -> [batch, values_size, 1]
+  auto standard_gt_int = XlaHelpers::ConvertElementType(standard_gt_masked, accumulation_type);
+  auto standard_ge_int = XlaHelpers::ConvertElementType(standard_ge_masked, accumulation_type);
+  auto standard_gt_count =
+      xla::Reduce(standard_gt_int, zero, *ctx->GetOrCreateAdd(accumulation_type), {2});
+  auto standard_ge_count =
+      xla::Reduce(standard_ge_int, zero, *ctx->GetOrCreateAdd(accumulation_type), {2});
+
+  // Special counts for NaN values:
+  // lower_bound (GT): NaN goes after all non-NaN elements -> count non-NaN elements
+  // upper_bound (GE): NaN goes after ALL elements (including NaN) -> count all elements
+  auto non_nan_int = XlaHelpers::ConvertElementType(non_nan_mask, accumulation_type);
+  auto non_nan_count =
+      xla::Reduce(non_nan_int, zero, *ctx->GetOrCreateAdd(accumulation_type), {2});
+  int64_t inputs_size = sorted_inputs_shape.dim_size(1);
+  auto total_count = xla::ConstantR0<int64_t>(builder, inputs_size);
+  total_count = XlaHelpers::ConvertElementType(total_count, accumulation_type);
+  // Broadcast total_count to [batch, values_size, 1] to match standard_*_count
+  auto shape_or = builder->GetShape(standard_gt_count);
+  OP_REQUIRES_OK(ctx, shape_or.status());
+  total_count = xla::Broadcast(total_count, shape_or.value().dimensions());
+
+  // Select based on whether value is NaN: [batch, values_size, 1]
+  xla::XlaOp result_count;
+  if (comparison_direction == xla::ComparisonDirection::kGt) {
+    // LowerBound: if value is NaN use non_nan_count, else use standard_gt_count
+    result_count = xla::Select(val_is_nan, non_nan_count, standard_gt_count);
+  } else {
+    // UpperBound: if value is NaN use total_count, else use standard_ge_count
+    result_count = xla::Select(val_is_nan, total_count, standard_ge_count);
+  }
+
+  ctx->SetOutput(0, result_count);
 }
 
 class LowerBoundOp : public XlaOpKernel {
