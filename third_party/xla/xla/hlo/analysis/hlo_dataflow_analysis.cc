@@ -1355,14 +1355,36 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           // contexts.
           // If the thread is excluded, then we don't track the contained
           // dataflow, and define the destination values too.
-          bool thread_included = HloInstruction::IsThreadIncluded(
+          bool async_thread_included = HloInstruction::IsThreadIncluded(
               instruction->async_execution_thread(), execution_threads_);
           define_all_values([&](const ShapeIndex& index) {
-            return ShapeUtil::GetSubshape(instruction->shape(), index)
-                       .IsTuple() ||
-                   (!thread_included && index.front() == 1) ||
-                   (index.front() > 1);
+            if (!index.empty() && index.front() > 1) {
+              // create values for state contexts
+              return true;
+            }
+
+            if (!index.empty() && index.front() == 1) {
+              // for output subshape, values are created
+              // when the async_wrapped_computation is not included
+              // in the execution thread.
+              return !async_thread_included;
+            }
+
+            if (index.size() > 1 && index.front() == 0) {
+              // don't create values for operands.
+              return false;
+            }
+
+            CHECK(index.empty() || index == ShapeIndex({0}));
+            const Shape& subshape =
+                ShapeUtil::GetSubshape(instruction->shape(), index);
+            CHECK(subshape.IsTuple());
+
+            // create values for the top-level tuple and the tuple for the
+            // holding the operands.
+            return true;
           });
+
           break;
         }
         case HloOpcode::kAsyncUpdate:
@@ -1375,12 +1397,7 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           });
           break;
         case HloOpcode::kAsyncDone:
-          // AsyncDone's output aliases its output. It defines all remaining
-          // tuple-shaped values.
-          define_all_values([&](const ShapeIndex& index) {
-            return ShapeUtil::GetSubshape(instruction->shape(), index)
-                .IsTuple();
-          });
+          // AsyncDone's output aliases its output.
           break;
         case HloOpcode::kCopyStart:
           // CopyStart produces a tuple of {destination buffer, aliased operand,
