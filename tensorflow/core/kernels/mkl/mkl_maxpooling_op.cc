@@ -300,15 +300,22 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
         return;
       }
       bool is_pool2d = (this->ksize_.size() == 4);
+      const int expected_rank = is_pool2d ? 4 : 5;
 
       // Validate that the input tensor rank matches the pooling type.
       if (!orig_input_mkl_shape.IsMklTensor()) {
-        int expected_rank = is_pool2d ? 4 : 5;
         OP_REQUIRES(
             context, orig_input_tensor.dims() == expected_rank,
             absl::InvalidArgumentError(absl::StrCat(
                 "Input must be rank ", expected_rank, " but got rank ",
                 orig_input_tensor.dims())));
+      }
+      if (!grad_mkl_shape.IsMklTensor()) {
+        OP_REQUIRES(
+            context, grad_tensor.dims() == expected_rank,
+            absl::InvalidArgumentError(absl::StrCat(
+                "Expected grad to be rank ", expected_rank, " but got rank ",
+                grad_tensor.dims())));
       }
 
       this->InitMklPoolParameters(context, &pool_params, orig_input_mkl_shape,

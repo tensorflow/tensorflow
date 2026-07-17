@@ -218,6 +218,12 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
           MklGetInput(context, kInputTensorIndexInputShape);
       const Tensor& grad_tensor =
           MklGetInput(context, kInputTensorIndexInputGradient);
+      MklDnnShape orig_input_mkl_shape, grad_mkl_shape;
+      GetMklShape(context, kInputTensorIndexInputShape, &orig_input_mkl_shape,
+                  this->native_format_);
+      GetMklShape(context, kInputTensorIndexInputGradient, &grad_mkl_shape,
+                  this->native_format_);
+      if (!context->status().ok()) return;
 
       // For empty tensor, avg_pool_3d_grad in oneDNN doesn't handle this case.
       // Follow what native TF does in this case.
@@ -236,11 +242,13 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
               "Input must be rank ", expected_rank, " but got rank ",
               output_shape.dims())));
 
-      OP_REQUIRES(
-          context, grad_tensor.dims() == expected_rank,
-          absl::InvalidArgumentError(absl::StrCat(
-              "Expected grad to be rank ", expected_rank, " but got rank ",
-              grad_tensor.dims())));
+      if (!grad_mkl_shape.IsMklTensor()) {
+        OP_REQUIRES(
+            context, grad_tensor.dims() == expected_rank,
+            absl::InvalidArgumentError(absl::StrCat(
+                "Expected grad to be rank ", expected_rank, " but got rank ",
+                grad_tensor.dims())));
+      }
 
       Tensor* output_tensor = nullptr;
       OP_REQUIRES_OK(context,
@@ -297,13 +305,6 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       if (output_shape.num_elements() == 0 || grad_tensor.NumElements() == 0) {
         return;
       }
-      MklDnnShape orig_input_mkl_shape, grad_mkl_shape;
-      GetMklShape(context, kInputTensorIndexInputShape, &orig_input_mkl_shape,
-                  this->native_format_);
-      GetMklShape(context, kInputTensorIndexInputGradient, &grad_mkl_shape,
-                  this->native_format_);
-      if (!context->status().ok()) return;
-
       // Used to allocate output_diff_src/diff_src.
       MklDnnData<T> grad_dnn_data(&cpu_engine_);
       MklPoolParameters pool_params;
