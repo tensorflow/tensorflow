@@ -20,7 +20,7 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load("@rules_java//java:defs.bzl", "java_library", "java_test")
 load("//tensorflow/java:build_defs.bzl", "JAVACOPTS")
-load("//tensorflow/lite:build_def.bzl", "tflite_cc_library_with_c_headers_test", "tflite_jni_linkopts", "tflite_linkopts_no_undefined")
+load("//tensorflow/lite:build_def.bzl", "clean_dep", "tflite_cc_library_with_c_headers_test", "tflite_jni_linkopts", "tflite_linkopts_no_undefined")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "android_library_with_tflite", "cc_library_with_tflite", "java_library_with_tflite", "java_test_with_tflite", "jni_binary_with_tflite")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_android_library")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni", "aar_without_jni")
@@ -1052,12 +1052,15 @@ jni_binary_with_tflite(
         "//tensorflow/lite/delegates/nnapi/java/src/main/native",
         "//tensorflow/lite/java/src/main/native",
     ],
-    deps = [
-        # Note that we explicitly include the C API here for convenience, as it
-        # allows bundling of the C lib w/ AAR distribution.
-        "//tensorflow/lite/c:c_api",
-        "//tensorflow/lite/c:c_api_experimental",
-    ],
+    # copybara:uncomment_begin(google-only)
+    # deps = [
+    # clean_dep("//base:not_global_symbol_compliant"),
+    # # Note that we explicitly include the C API here for convenience, as it
+    # # allows bundling of the C lib w/ AAR distribution.
+    # "//tensorflow/lite/c:c_api",
+    # "//tensorflow/lite/c:c_api_experimental",
+    # ],
+    # copybara:uncomment_end
 )
 
 # JNI shared library containing Java API native code, excluding experimental APIs.
@@ -1071,11 +1074,14 @@ jni_binary_with_tflite(
         "//tensorflow/lite/delegates/nnapi/java/src/main/native",
         "//tensorflow/lite/java/src/main/native:native_stable",
     ],
-    deps = [
-        # Note that we explicitly include the C API here for convenience, as it
-        # allows bundling of the C lib w/ AAR distribution.
-        "//tensorflow/lite/c:c_api",
-    ],
+    # copybara:uncomment_begin(google-only)
+    # deps = [
+    # clean_dep("//base:not_global_symbol_compliant"),
+    # # Note that we explicitly include the C API here for convenience, as it
+    # # allows bundling of the C lib w/ AAR distribution.
+    # "//tensorflow/lite/c:c_api",
+    # ],
+    # copybara:uncomment_end
 )
 
 # EXPERIMENTAL: Native target that supports GPU acceleration.

@@ -311,6 +311,9 @@ def tflite_flex_jni_library(
             ":%s_flex_delegate" % name,
             clean_dep("//tensorflow/lite/java/jni"),
             clean_dep("//tensorflow/lite/delegates/utils:simple_delegate"),
+            # copybara:uncomment_begin(google-only)
+            # clean_dep("//base:not_global_symbol_compliant"),
+            # copybara:uncomment_end
         ] + select({
             clean_dep("//tensorflow:mobile"): [
                 clean_dep("//tensorflow/core:portable_tensorflow_lib_lite"),
