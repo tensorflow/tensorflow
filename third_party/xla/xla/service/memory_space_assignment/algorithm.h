@@ -125,6 +125,17 @@ struct AllocationSegmentContext {
   bool only_extend_existing_allocation;
 };
 
+// Returns the latest schedule time at which `view` (a value colored
+// `view_color`, see Options::dus_view_color) still has its underlying storage
+// read through it: the max schedule time over the transitive closure of the
+// view's readers, following users that are themselves view colored (a bitcast
+// of a view is recolored to the view color and is just another window onto
+// the same storage, not a real reader). Exposed for testing.
+int64_t ViewExtendedTransitiveUseTime(
+    const HloInstruction* view, int64_t view_color,
+    const absl::flat_hash_map<const HloInstruction*, int64_t>&
+        instruction_schedule);
+
 // Compare asynchronous copies such that an earlier start time has the same or
 // earlier end time and an earlier end time has the same or earlier start time.
 bool operator<(const AsynchronousCopy& a, const AsynchronousCopy& b);
@@ -335,6 +346,56 @@ class MsaInstructionFingerprint {
   const HloInstruction* inst_;
   absl::flat_hash_map<const HloInstruction*, HashType>*
       instruction_shape_hash_cache_;
+};
+
+// A segment tree over the time axis [0, size) with lazy range add and range
+// min / max queries, all O(log size). MSA uses it to maintain the peak
+// alternate memory usage per logical time without O(interval length) element
+// walks on every commit, uncommit, and peak memory probe; those walks
+// dominate compile time when live ranges span whole loop bodies.
+class RangeAddMinMaxTree {
+ public:
+  explicit RangeAddMinMaxTree(int64_t size);
+
+  // Adds delta to every element in [start, end] (both inclusive). Bounds are
+  // clamped to [0, size); no op if the clamped range is empty.
+  void AddRange(int64_t start, int64_t end, int64_t delta);
+
+  // Returns the value at index.
+  int64_t At(int64_t index) const;
+
+  // Returns the maximum / minimum value in [start, end] (both inclusive).
+  // The range must be non empty after clamping to [0, size).
+  int64_t MaxInRange(int64_t start, int64_t end) const;
+  int64_t MinInRange(int64_t start, int64_t end) const;
+
+  // Returns the largest index in [start, end] whose value is strictly
+  // greater than threshold, or nullopt if every value in the range is <=
+  // threshold (or the range is empty).
+  std::optional<int64_t> RightmostIndexAbove(int64_t start, int64_t end,
+                                             int64_t threshold) const;
+
+  int64_t size() const { return size_; }
+
+ private:
+  // Stored node min / max include the node's own pending delta but not the
+  // ancestors' pending deltas, so queries add pending deltas along the
+  // descent and updates fold the delta into the covered node's min / max.
+  struct Node {
+    int64_t min = 0;
+    int64_t max = 0;
+    int64_t pending = 0;
+  };
+
+  void AddRangeImpl(int64_t node, int64_t node_start, int64_t node_end,
+                    int64_t start, int64_t end, int64_t delta);
+  int64_t MaxImpl(int64_t node, int64_t node_start, int64_t node_end,
+                  int64_t start, int64_t end) const;
+  int64_t MinImpl(int64_t node, int64_t node_start, int64_t node_end,
+                  int64_t start, int64_t end) const;
+
+  int64_t size_;
+  std::vector<Node> nodes_;
 };
 
 // This class inherits from GlobalDecreasingSizeBestFitHeap with a notion of
@@ -1009,6 +1070,18 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   int64_t GetCorrectedUseTime(const HloUse& use) const;
   int64_t GetCorrectedUseTime(const HloInstruction* instruction) const;
 
+  // Returns the effective time of an HloUse for the purpose of reserving the
+  // used value's alternate-memory chunk. For a "view" use
+  // (options_.dus_view_color is set and use.instruction is a custom-call whose
+  // output carries that color), this is the latest schedule time among the
+  // view's consumers: a view is a zero-copy, possibly sub-region alias into the
+  // used value, and its consumers read the value's storage THROUGH the view at
+  // later times, so the value's chunk must stay reserved through them. For
+  // every other use it is just the use instruction's schedule time. Callers
+  // that bound a chunk reservation by a use time must use this so the
+  // reservation and the all-use-times list agree.
+  int64_t GetViewExtendedUseTime(const HloUse& use) const;
+
   // Returns the required assignment at a particular time, if available.
   std::optional<RequiredMemoryAssignment> RequiredMemoryAssignmentAt(
       const HloValue* buffer, int64_t time) const;
@@ -1034,22 +1107,26 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       RequiredMemoryAssignment::Source required_assignment_source);
 
   // This sets a required assignment. CHECK fails if there is a conflicting
-  // required assignment at the same time.
-  void AddRequiredAssignment(
+  // required assignment at the same time. Returns true if a new requirement
+  // was recorded, false if the same requirement already existed; callers that
+  // retry allocation after adding requirements use this to detect that the
+  // retry cannot see any new state (see the inefficient site handling in
+  // Finish, which would otherwise loop forever).
+  bool AddRequiredAssignment(
       const HloValue* value, const HloInstruction* instruction,
       MemorySpace memory_space, int64_t time,
       RequiredMemoryAssignment::Source required_assignment_source,
       AliasedOffset* offset = nullptr, bool add_to_pending = true);
-  void AddRequiredAssignment(
+  bool AddRequiredAssignment(
       const HloInstruction* instruction, ShapeIndex index,
       MemorySpace memory_space,
       RequiredMemoryAssignment::Source required_assignment_source,
       AliasedOffset* offset = nullptr, bool add_to_pending = true);
-  void AddRequiredAssignment(
+  bool AddRequiredAssignment(
       const HloPosition& position, MemorySpace memory_space,
       RequiredMemoryAssignment::Source required_assignment_source,
       AliasedOffset* offset = nullptr, bool add_to_pending = true);
-  void AddRequiredAssignment(
+  bool AddRequiredAssignment(
       const HloUse& use, MemorySpace memory_space,
       RequiredMemoryAssignment::Source required_assignment_source,
       AliasedOffset* offset = nullptr, bool add_to_pending = true);
@@ -1381,6 +1458,12 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   bool IsPositionColoredInDefaultMemoryAtTime(const HloPosition& position,
                                               int64_t time) const;
 
+  // Memoized alias_analysis_.GetUniqueBufferAt. The buffer coloring checks
+  // above run on hot allocation paths, and the underlying alias analysis
+  // recomputes (and sorts) the buffer set on every query. Alias analysis is
+  // immutable while the algorithm runs, so the mapping is stable.
+  const HloBuffer& GetUniqueBufferAtCached(const HloPosition& position) const;
+
   // Reserves a chunk in alternate memory of size MaxScopedMemorySize() for
   // the entire program duration for scoped memory allocations.
   int64_t ReserveAlternateMemoryForScopedMemoryAllocations();
@@ -1443,8 +1526,10 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // A cache to keep the peak memory usage at each point in the graph. We use
   // this to see if the proposed allocation in the alternate memory would fit
   // ignoring fragmentation, and if not, we can skip the more expensive lookup
-  // in the BufferIntervalTree, which also considers fragmentation.
-  std::vector<int64_t> peak_memory_usage_;
+  // in the BufferIntervalTree, which also considers fragmentation. Kept in a
+  // range add segment tree so commits, uncommits, and peak memory probes over
+  // long intervals cost O(log n) instead of O(interval length).
+  RangeAddMinMaxTree peak_memory_usage_;
   // The data structure that contains AliasedOffset objects and Allocation to
   // AliasedOffset map for efficient lookup.
   std::list<AliasedOffset> aliased_offsets_;
@@ -1511,6 +1596,10 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // be in default memory, to meet buffer coloring requirements.
   absl::flat_hash_map<const HloBuffer*, std::vector<TimeInterval>>
       default_memory_coloring_requirements_;
+
+  // Cache for GetUniqueBufferAtCached.
+  mutable absl::flat_hash_map<HloPosition, const HloBuffer*>
+      unique_buffer_at_position_cache_;
 
   // Set of HloUses that are in the default memory.
   absl::flat_hash_set<HloUse> uses_in_default_memory_set_;

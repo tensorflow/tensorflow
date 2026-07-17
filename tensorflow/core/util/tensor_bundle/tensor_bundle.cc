@@ -1168,6 +1168,24 @@ absl::Status BundleReader::GetSliceValue(
       return status_;
     }
 
+    // The stored slice's recorded shape must match the geometry obtained by
+    // applying "stored_slice" to the full tensor shape. The copy below walks
+    // "stored_slice_tensor" using the latter, so a smaller recorded shape (from
+    // a crafted checkpoint) would read past the backing buffer. This mirrors
+    // the size check in TensorSliceReader::CopySliceData.
+    TensorShape expected_slice_shape;
+    status_ = stored_slice.SliceTensorShape(full_shape, &expected_slice_shape);
+    if (!status_.ok()) return status_;
+    if (stored_slice_shape != expected_slice_shape) {
+      status_ = absl::DataLossError(
+          absl::StrCat("Stored slice shape ", stored_slice_shape.DebugString(),
+                       " for tensor ", full_tensor_key,
+                       " does not match the expected slice shape ",
+                       expected_slice_shape.DebugString(),
+                       " derived from full shape ", full_shape.DebugString()));
+      return status_;
+    }
+
     Tensor stored_slice_tensor(stored_slice_entry.dtype(), stored_slice_shape);
     status_ = GetValue(stored_slice_entry, &stored_slice_tensor);
     if (!status_.ok()) return status_;
