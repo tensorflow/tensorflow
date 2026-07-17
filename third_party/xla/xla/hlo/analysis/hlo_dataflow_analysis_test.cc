@@ -1391,9 +1391,10 @@ TEST_P(HloDataflowAnalysisTest, TupleShapedAsyncOp) {
   const HloInstruction* async_done =
       FindInstruction(module_.get(), "async-done");
 
-  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_start, /*index=*/{1}));
+  // add tests where async_execution_thread is excluded.
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(async_start, /*index=*/{1}));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(async_update, /*index=*/{1}));
-  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_done));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(async_done));
 
   const HloInstruction* p0 = FindInstruction(module_.get(), "p0");
   EXPECT_THAT(HloValuesAt(async_start, {0, 0}),
