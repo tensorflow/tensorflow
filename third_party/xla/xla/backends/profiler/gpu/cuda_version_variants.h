@@ -31,7 +31,7 @@ namespace cuda_versions {
 int GetSafeCudaVersion();
 
 // Currently Driver Callback ID (CBID) related versions for the compilation
-// CUDA toolkit are (11.0), 12.0, 12.8.
+// CUDA toolkit are (11.0), 12.0, 12.3.
 enum CbidCategory {
   kNone,
   kKernel,
@@ -55,7 +55,9 @@ const CbidCategoryMap& EmptyCallbackIdCategories();
 
 const CbidCategoryMap& GetExtraCallbackIdCategories12000();
 
-const CbidCategoryMap& GetExtraCallbackIdCategories12080();
+// Accept an explicit runtime/driver version to test compatibility boundaries.
+const CbidCategoryMap& GetExtraCallbackIdCategories12030(
+    int cuda_version = GetSafeCudaVersion());
 
 // Resource CBIDs impacted only before/after 12.0.
 absl::Span<const CUpti_CallbackIdResource> GetCudaGraphTracingResourceCbids();

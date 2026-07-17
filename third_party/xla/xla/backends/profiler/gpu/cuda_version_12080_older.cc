@@ -21,10 +21,6 @@ namespace xla {
 namespace profiler {
 namespace cuda_versions {
 
-const CbidCategoryMap& GetExtraCallbackIdCategories12080() {
-  return EmptyCallbackIdCategories();
-}
-
 absl::string_view GetExtraActivityOverheadKindString12080(
     CUpti_ActivityOverheadKind kind) {
   return "";

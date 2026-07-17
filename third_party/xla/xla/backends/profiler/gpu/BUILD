@@ -131,6 +131,10 @@ cc_library(
         ["cuda_version_12000_newer.cc"],
         ["cuda_version_12000_older.cc"],
     ) + if_cuda_newer_than(
+        "12_3",
+        ["cuda_version_12030_newer.cc"],
+        ["cuda_version_12030_older.cc"],
+    ) + if_cuda_newer_than(
         "12_8",
         ["cuda_version_12080_newer.cc"],
         ["cuda_version_12080_older.cc"],
@@ -167,8 +171,7 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cuda_runtime",
-        "@tsl//tsl/platform:status_matchers",
-        "@tsl//tsl/platform:test",
+        "@local_config_cuda//cuda:cupti_headers",
     ],
 )
 

@@ -28,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -74,6 +75,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -162,6 +164,26 @@ FusionDecision AwaitFusionDecision(tsl::Future<FusionDecision> future) {
   return *decision;
 }
 
+// Returns the executor to evaluate tiling candidates on, or nullptr to evaluate
+// them inline on the calling thread.
+//
+// Fanning out requires an `MlirContextPool` as well as a thread pool, because
+// each candidate clones the tiling space into its own context. Contexts handed
+// out by that pool are created with `mlir::MLIRContext::Threading::DISABLED`
+// and therefore have no internal locking, so sharing one across concurrent
+// candidates would be a data race rather than merely a bottleneck.
+tsl::Executor* absl_nullable TilingSearchExecutor(
+    tsl::thread::ThreadPool* absl_nullable thread_pool,
+    MlirContextPool* absl_nullable mlir_context_pool) {
+  if (thread_pool == nullptr || mlir_context_pool == nullptr) {
+    return nullptr;
+  }
+  // `PriorityFusion::Run` blocks on the results, so driving it from a thread of
+  // the pool it dispatches to would deadlock.
+  CHECK_EQ(thread_pool->CurrentThreadId(), -1);
+  return thread_pool->AsExecutor();
+}
+
 // An implementation of FusionQueue that determines whether to fuse instructions
 // according to a cost model, and chooses the next fusion candidate according to
 // dynamically updated priorities. The elements in the queue are producer nodes
@@ -182,7 +204,7 @@ class PriorityFusionQueue {
       HloFusionAnalysisCache& fusion_analysis_cache,
       FusionDeduplicationCache& fusion_deduplication_cache,
       bool triton_heroless_fusion_enabled, const AliasInfo* alias_info,
-      bool use_experimental_tiling) {
+      bool use_experimental_tiling, MlirContextPool* mlir_context_pool) {
     auto cost_analysis = std::make_unique<GpuHloCostAnalysis>(
         cost_analysis_options, *device_info);
     VLOG(2) << "Running full HLO cost analysis for " << computation->name();
@@ -192,7 +214,8 @@ class PriorityFusionQueue {
         computation, std::move(cost_analysis), cost_analysis_options,
         device_info, fusion_process_dump, thread_pool, mlir_context,
         fusion_analysis_cache, fusion_deduplication_cache,
-        triton_heroless_fusion_enabled, alias_info, use_experimental_tiling);
+        triton_heroless_fusion_enabled, alias_info, use_experimental_tiling,
+        mlir_context_pool);
 
     std::vector<HloInstruction*> instructions;
     for (auto* instruction : computation->MakeInstructionPostOrder()) {
@@ -221,7 +244,8 @@ class PriorityFusionQueue {
                       HloFusionAnalysisCache& fusion_analysis_cache,
                       FusionDeduplicationCache& fusion_deduplication_cache,
                       bool triton_heroless_fusion_enabled,
-                      const AliasInfo* alias_info, bool use_experimental_tiling)
+                      const AliasInfo* alias_info, bool use_experimental_tiling,
+                      MlirContextPool* mlir_context_pool)
       : computation_(computation),
         device_info_(device_info),
         cost_analysis_(std::move(cost_analysis)),
@@ -231,9 +255,12 @@ class PriorityFusionQueue {
             computation->parent()
                 ->config()
                 .debug_options()
-                .xla_gpu_experimental_enable_same_shape_multi_output_fusion()),
+                .xla_gpu_experimental_enable_same_shape_multi_output_fusion(),
+            mlir_context_pool),
         fusion_process_dump_(fusion_process_dump),
         thread_pool_(thread_pool),
+        tiling_search_executor_(
+            TilingSearchExecutor(thread_pool, mlir_context_pool)),
         fusion_analysis_cache_(fusion_analysis_cache),
         fusion_deduplication_cache_(fusion_deduplication_cache),
         fusion_info_cache_(*device_info_),
@@ -777,7 +804,8 @@ class PriorityFusionQueue {
     //
     // `fusion` is moved into the continuation because the cost model captures
     // the adaptor by reference; it has to outlive the future it returns.
-    combined_gpu_performance_model_.TryFindBestTilingForFusionAsync(fusion_ref)
+    combined_gpu_performance_model_
+        .TryFindBestTilingForFusionAsync(fusion_ref, tiling_search_executor_)
         .OnReady([this, fusion_id, fusion = std::move(fusion),
                   promise = std::move(promise)](
                      const absl::StatusOr<TiledRunTimeDataOrError>&
@@ -1235,6 +1263,11 @@ class PriorityFusionQueue {
 
   tsl::thread::ThreadPool* thread_pool_;
 
+  // Executor that the per-tiling-candidate cost model evaluations are fanned
+  // out onto, or null to evaluate them inline. See `TilingSearchExecutor` for
+  // why fanning out requires both a thread pool and an MLIRContext pool.
+  tsl::Executor* absl_nullable tiling_search_executor_;
+
   HloFusionAnalysisCache& fusion_analysis_cache_;
 
   FusionDeduplicationCache& fusion_deduplication_cache_
@@ -1368,7 +1401,7 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
             fusion_process_dump_.get(), thread_pool_, mlir_context_,
             fusion_analysis_cache_, fusion_deduplication_cache,
             triton_heroless_fusion_enabled, alias_info_,
-            use_experimental_tiling));
+            use_experimental_tiling, mlir_context_pool_));
 
     while (fusion_queue->DequeueNextProducer()) {
       auto producer = fusion_queue->current_producer();
