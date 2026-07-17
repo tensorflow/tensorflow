@@ -201,6 +201,9 @@ struct HloVerifierOpts {
 class ShapeVerifier : public DfsHloVisitor {
  public:
   explicit ShapeVerifier(const HloVerifierOpts& opts) : opts_(opts) {}
+  explicit ShapeVerifier(const HloVerifierOpts&& opts) = delete;
+
+  friend class HloVerifierTestHelper;
 
   // Verifies that entry computation layout matches parameters and root shape of
   // the module's entry computation.
@@ -302,7 +305,8 @@ class ShapeVerifier : public DfsHloVisitor {
 
  protected:
   // Helpers that switch on layout_sensitive_.
-  bool ShapesSame(const Shape& a, const Shape& b, Shape::Equal equal = {});
+  bool ShapesSame(const Shape& a, const Shape& b,
+                  Shape::Equal equal = {}) const;
 
   // Check the instruction's shape against the shape given by ShapeInference
   // and return an appropriate error if there is a mismatch.
@@ -325,6 +329,9 @@ class ShapeVerifier : public DfsHloVisitor {
   absl::Status CheckVariadicShape(const HloInstruction* instruction);
 
  private:
+  // Returns true if shape1 is a prefix of shape2.
+  bool IsShapePrefix(const Shape& shape1, const Shape& shape2) const;
+
   std::string StringifyShape(const Shape& s) {
     return opts_.layout_sensitive ? ShapeUtil::HumanStringWithLayout(s)
                                   : ShapeUtil::HumanString(s);

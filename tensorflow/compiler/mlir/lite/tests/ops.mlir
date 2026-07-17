@@ -1,3 +1,17 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: litert-opt -split-input-file -verify-diagnostics -tfl-runtime-verify %s | FileCheck %s
 
 // Unary math operations
@@ -1646,7 +1660,7 @@ func.func @testBatchMatmulHybridQuant(%arg0 : tensor<1x4x384x32xf32>, %arg1 : te
 // -----
 
 func.func @testBatchMatmulHybridBf16F32(%arg0 : tensor<1x4x384x32xbf16>, %arg1 : tensor<1x4x384x32xbf16>) -> tensor<1x4x384x384xf32> {
-  // expected-error @+1 {{'tfl.batch_matmul' op operand #0 must be tensor of 32-bit float or QI8 type or QI16 type or 8-bit signless integer values}}
+  // expected-error @+1 {{'tfl.batch_matmul' op operand #0 must be tensor of 32-bit float or 16-bit float or QI8 type or QI16 type or 8-bit signless integer values}}
   %0 = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = true} : (tensor<1x4x384x32xbf16>, tensor<1x4x384x32xbf16>) -> tensor<1x4x384x384xf32>
   func.return %0 : tensor<1x4x384x384xf32>
 }
@@ -1748,18 +1762,34 @@ func.func @testConcatBenignDynamicDimSizeOperand(%arg0: tensor<1x?xi32>, %arg1: 
 // -----
 
 // CHECK-LABEL: testResizeBilinear
-func.func @testResizeBilinear(%arg0 : tensor<1x100x100x3xf32>, %arg1 : tensor<4xi32>) -> tensor<?xf32> {
+func.func @testResizeBilinear(%arg0 : tensor<1x100x100x3xf32>, %arg1 : tensor<2xi32>) -> tensor<?xf32> {
   // CHECK: "tfl.resize_bilinear"(%arg0, %arg1) <{align_corners = false, half_pixel_centers = false}>
-  %0 = "tfl.resize_bilinear"(%arg0, %arg1) {align_corners = false, half_pixel_centers = false} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  %0 = "tfl.resize_bilinear"(%arg0, %arg1) {align_corners = false, half_pixel_centers = false} : (tensor<1x100x100x3xf32>, tensor<2xi32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
 }
 
 // -----
 
-func.func @testResizeBilinearInvalidOutputType(%arg0 : tensor<1x100x100x3xf32>, %arg1 : tensor<4xi32>) -> tensor<?xi32> {
+func.func @testResizeBilinearInvalidOutputType(%arg0 : tensor<1x100x100x3xf32>, %arg1 : tensor<2xi32>) -> tensor<?xi32> {
   // expected-error @+1 {{'tfl.resize_bilinear' op failed to verify that input and output must have same element type}}
-  %0 = "tfl.resize_bilinear"(%arg0, %arg1) {align_corners = false} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xi32>
+  %0 = "tfl.resize_bilinear"(%arg0, %arg1) {align_corners = false} : (tensor<1x100x100x3xf32>, tensor<2xi32>) -> tensor<?xi32>
   func.return %0 : tensor<?xi32>
+}
+
+// -----
+
+func.func @testResizeBilinearInvalidSize(%arg0 : tensor<1x100x100x3xf32>, %arg1 : tensor<4xi32>) -> tensor<?xf32> {
+  // expected-error @+1 {{'tfl.resize_bilinear' op failed to verify that operand 1's dimension 0 is dynamic or equals 2}}
+  %0 = "tfl.resize_bilinear"(%arg0, %arg1) {align_corners = false} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// -----
+
+func.func @testResizeNearestNeighborInvalidSize(%arg0 : tensor<1x100x100x3xf32>, %arg1 : tensor<4xi32>) -> tensor<?xf32> {
+  // expected-error @+1 {{'tfl.resize_nearest_neighbor' op failed to verify that operand 1's dimension 0 is dynamic or equals 2}}
+  %0 = "tfl.resize_nearest_neighbor"(%arg0, %arg1) {align_corners = false, half_pixel_centers = false} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // -----

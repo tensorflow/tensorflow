@@ -139,8 +139,10 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
     case HloOpcode::kComplex:
       return type == F32 || type == F64;
     case HloOpcode::kDot:
-    case HloOpcode::kScaledDot:
       return type != PRED;
+    case HloOpcode::kScaledDot:
+      return type == F8E4M3FN || type == F4E2M1FN || type == F8E5M2 ||
+             type == BF16 || type == F8E8M0FNU || type == S8;
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
     case HloOpcode::kBatchNormGrad:
@@ -2428,9 +2430,9 @@ TEST_P(ScaledDotTest, ScaledDotScaleTypes) {
 HloModule ScaledDotOperandTypes
 
 ENTRY triton_computation {
-  lhs = bf16[16, 32] parameter(0)
+  lhs = f8e4m3fn[16, 32] parameter(0)
   lhs_scale = $0[16, 1] parameter(1)
-  rhs = bf16[32, 16] parameter(2)
+  rhs = f8e4m3fn[32, 16] parameter(2)
   rhs_scale = $0[1, 16] parameter(3)
   ROOT dot = f32[16, 16] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
       lhs_contracting_dims={1},

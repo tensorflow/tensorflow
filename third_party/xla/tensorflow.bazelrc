@@ -286,7 +286,7 @@ common:rocm_clang_hermetic --@rules_ml_toolchain//common:enable_sycl=False
 common:rocm_clang_hermetic --@rules_ml_toolchain//common:enable_hermetic_cc=True
 common:rocm_clang_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 common:rocm_clang_hermetic --strategy=CppLink=local
-common:rocm_clang_hermetic --@rules_ml_toolchain//common:static_libcxx=True
+common:rocm_clang_hermetic --@rules_ml_toolchain//common:static_libcxx=False
 
 common:rocm --config=rocm_clang_hermetic
 common:rocm_ci --config=rocm
@@ -295,7 +295,7 @@ common:rocm_ci --@local_config_rocm//rocm:rocm_path_type=hermetic
 common:rocm_ci_hermetic --dynamic_mode=off
 common:rocm_ci_hermetic --config=rocm_clang_hermetic
 common:rocm_ci_hermetic --repo_env=TF_ROCM_AMDGPU_TARGETS="gfx908,gfx90a"
-common:rocm_ci_hermetic --repo_env=ROCM_DISTRO_VERSION="rocm_7.12.0_gfx90a"
+common:rocm_ci_hermetic --repo_env=ROCM_DISTRO_VERSION="rocm_7.13.0_gfx90a"
 common:rocm_ci_hermetic --repo_env=SYSROOT_DIST=linux_glibc_2_31
 common:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 

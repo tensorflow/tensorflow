@@ -26,8 +26,11 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "re2/re2.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
@@ -87,6 +90,14 @@ int32_t NestingDepth(const HloInstruction* hlo) {
     ++level;
   }
   return level;
+}
+
+bool IsTopKStable(const HloCustomCallInstruction* inst) {
+  static const LazyRE2 kUnstableRegex = {R"((?i)is_stable\s*=\s*false)"};
+  if (RE2::PartialMatch(inst->raw_backend_config_string(), *kUnstableRegex)) {
+    return false;
+  }
+  return true;
 }
 
 namespace async {
@@ -219,6 +230,40 @@ absl::StatusOr<bool> AreOperandsAndOutputFullyBound(
 
   return AreOperandsAndOutputFullyBoundImpl(async_op, expected_shape,
                                             async_tuple_shape, index);
+}
+
+std::vector<const HloInstruction*> GetAsyncBoundOperands(
+    const HloAsyncInstruction* async_op) {
+  std::vector<const HloInstruction*> bound_operands;
+  for (const HloInstruction* instr :
+       Cast<HloAsyncStartInstruction>(async_op->async_chain_start())
+           ->GetAsyncChain()) {
+    int start_idx = (instr->opcode() == HloOpcode::kAsyncStart) ? 0 : 1;
+
+    for (int i = start_idx; i < instr->operand_count(); ++i) {
+      bound_operands.push_back(instr->operand(i));
+    }
+    if (instr == async_op) {
+      break;
+    }
+  }
+
+  return bound_operands;
+}
+
+absl::StatusOr<bool> IsFirstFullyBound(const HloInstruction* async_inst) {
+  ASSIGN_OR_RETURN(bool fully_bound,
+                   AreOperandsAndOutputFullyBound(async_inst));
+  if (!fully_bound) {
+    return false;
+  }
+  if (async_inst->opcode() == HloOpcode::kAsyncStart) {
+    return true;
+  }
+
+  ASSIGN_OR_RETURN(bool prev_fully_bound,
+                   AreOperandsAndOutputFullyBound(async_inst->operand(0)));
+  return !prev_fully_bound;
 }
 
 }  // namespace async

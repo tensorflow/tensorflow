@@ -4150,7 +4150,6 @@ SpmdPartitioningVisitor::ProcessUpdatePieceExtractOperand(
     return b_.AddInstruction(std::move(to_add));
   };
 
-  std::vector<int64_t> accumulated_offsets(hlo->shape().dimensions().size(), 0);
   const HloInstruction* actual_update = piece_update_tensor;
   std::optional<ShapeUtil::ShapeEqualityDescriptor> reshape_desc;
   while (actual_update->user_count() == 1) {
@@ -4172,35 +4171,31 @@ SpmdPartitioningVisitor::ProcessUpdatePieceExtractOperand(
       }
     } else if (actual_update->opcode() == HloOpcode::kDynamicUpdateSlice &&
                !reshape_desc.has_value()) {
+      const HloInstruction* update_operand = actual_update->operand(1);
+      bool update_covers_whole_piece = true;
       bool all_constant = true;
-      for (int i = 2; i < actual_update->operand_count(); ++i) {
-        if (actual_update->operand(i)->opcode() != HloOpcode::kConstant) {
-          all_constant = false;
-          break;
-        }
-      }
-      if (!all_constant) {
-        break;
-      }
 
       for (int i = 0; i < actual_update->shape().dimensions().size(); ++i) {
-        auto const_op =
-            DynCast<HloConstantInstruction>(actual_update->operand(2 + i));
-        auto val = const_op->literal().GetIntegralAsS64({});
-
-        if (!val.has_value()) {
+        if (actual_update->operand(2 + i)->opcode() != HloOpcode::kConstant) {
           all_constant = false;
           break;
         }
-
-        accumulated_offsets[i] += *val;
+        if (update_operand->shape().dimensions(i) !=
+            actual_update->shape().dimensions(i)) {
+          update_covers_whole_piece = false;
+          break;
+        }
       }
 
       if (!all_constant) {
         break;
       }
 
-      actual_update = actual_update->operand(1);
+      if (!update_covers_whole_piece) {
+        break;
+      }
+
+      actual_update = update_operand;
     } else {
       break;
     }
@@ -4421,8 +4416,7 @@ SpmdPartitioningVisitor::ProcessUpdatePieceExtractOperand(
             for (int64_t i = 0; i < hlo->shape().dimensions().size(); ++i) {
               int64_t pre_dim = post_to_pre[i];
               if (pre_dim != -1 && ShardCountAtDim(hlo_sharding, i) > 1) {
-                int64_t dus_start =
-                    piece_dus_starts[i] + accumulated_offsets[i];
+                int64_t dus_start = piece_dus_starts[i];
                 int64_t slice_start = slice->slice_starts(pre_dim);
                 int64_t slice_size = slice->shape().dimensions(pre_dim);
                 if (dus_start != slice_start) {
@@ -6523,6 +6517,11 @@ absl::Status SpmdPartitioner::PreprocessSharding(
           hlo->set_sharding(enable_hlo_sharding_v3
                                 ? HloSharding(NamedSharding::SingleDevice(0))
                                 : HloSharding::SingleDevice(0));
+        } else if (hlo->opcode() == HloOpcode::kReverse &&
+                   hlo->operand(0)->has_sharding()) {
+          HloSharding reversed_sharding = hlo_sharding_util::ReverseSharding(
+              hlo->operand(0)->sharding(), hlo->dimensions());
+          hlo->set_sharding(reversed_sharding);
         } else {
           hlo->set_sharding(HloSharding::Single(
               hlo->shape(), enable_hlo_sharding_v3

@@ -91,7 +91,7 @@ TEST(PjRtCApiCpuTest, CreateClientWithInvalidCreateOptions) {
   code_args.struct_size = PJRT_Error_GetCode_Args_STRUCT_SIZE;
   code_args.extension_start = nullptr;
   code_args.error = error;
-  api_->PJRT_Error_GetCode(&code_args);
+  ASSERT_EQ(api_->PJRT_Error_GetCode(&code_args), nullptr);
   EXPECT_EQ(code_args.code, PJRT_Error_Code_INVALID_ARGUMENT);
 
   PJRT_Error_Message_Args message_args;
@@ -138,7 +138,7 @@ TEST(PjRtCApiCpuTest, CreateClientWithUnexpectedCreateOptions) {
   code_args.struct_size = PJRT_Error_GetCode_Args_STRUCT_SIZE;
   code_args.extension_start = nullptr;
   code_args.error = error;
-  api_->PJRT_Error_GetCode(&code_args);
+  ASSERT_EQ(api_->PJRT_Error_GetCode(&code_args), nullptr);
   EXPECT_EQ(code_args.code, PJRT_Error_Code_INVALID_ARGUMENT);
 
   PJRT_Error_Message_Args message_args;
@@ -185,7 +185,7 @@ TEST(PjRtCApiCpuTest, CreateClientWithAsynchronousOption) {
   destroy_args.struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE;
   destroy_args.extension_start = nullptr;
   destroy_args.client = args.client;
-  api_->PJRT_Client_Destroy(&destroy_args);
+  ASSERT_EQ(api_->PJRT_Client_Destroy(&destroy_args), nullptr);
 }
 
 }  // namespace

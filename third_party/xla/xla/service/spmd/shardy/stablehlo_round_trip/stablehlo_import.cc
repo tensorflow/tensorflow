@@ -33,7 +33,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -60,11 +59,11 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/mesh_and_axis.h"
+#include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/service/spmd/shardy/constants.h"
-#include "xla/service/spmd/shardy/round_trip_common/import_sdy_custom_calls.h"
-#include "xla/service/spmd/shardy/round_trip_common/open_while_free_vars_sharding.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -158,13 +157,37 @@ struct MeshAxesAndIds {
   // The device ids for maximal shardings sorted in ascending order
   // without duplicates.
   SmallVector<int64_t> maximalDeviceIds;
+  std::vector<int64_t> meshDeviceIds;
 };
 
 MeshAxesAndIds findMeshAxesAndIds(
     const absl::flat_hash_set<xla::HloSharding>& oldShardings,
     mlir::MLIRContext* context) {
   MeshAxesAndIds result;
-  auto& [namedAxes, maximalDeviceIds] = result;
+  auto& [namedAxes, maximalDeviceIds, meshDeviceIds] = result;
+
+  const xla::NamedSharding* firstNamedSharding = nullptr;
+  for (const xla::HloSharding& hloSharding : oldShardings) {
+    if (hloSharding.UseNamedShardingLeaf()) {
+      firstNamedSharding = &hloSharding.named_sharding();
+      break;
+    }
+  }
+  if (firstNamedSharding != nullptr) {
+    const xla::Mesh& mesh = firstNamedSharding->mesh();
+    namedAxes.reserve(mesh.num_axes());
+    meshDeviceIds.reserve(mesh.device_assignment().array().num_elements());
+    if (mesh.num_axes() > 0) {
+      for (int64_t i = 0; i < mesh.num_axes(); ++i) {
+        auto name = StringAttr::get(context, mesh.axis_names()[i]);
+        namedAxes.push_back(
+            MeshAxisAttr::get(context, name, mesh.axis_size(i)));
+      }
+      for (int64_t device_id : mesh.device_assignment().array()) {
+        meshDeviceIds.push_back(device_id);
+      }
+    }
+  }
 
   // Find common axes of old shardings.
   SmallVector<int64_t> axes;
@@ -174,6 +197,10 @@ MeshAxesAndIds findMeshAxesAndIds(
     // axes but add the device id to `deviceIdsForMaximalMesh`.
     if (hloSharding.IsSingleDevice()) {
       maximalDeviceIdSet.insert(hloSharding.GetUniqueDevice());
+      continue;
+    }
+
+    if (hloSharding.UseNamedShardingLeaf()) {
       continue;
     }
 
@@ -207,10 +234,12 @@ MeshAxesAndIds findMeshAxesAndIds(
 
   // Create a mesh with fake axis names that starts with and underscore so that
   // we can replace the fake axis names with real axis names later.
-  namedAxes.reserve(axes.size());
-  for (auto [axisIndex, axisSize] : llvm::enumerate(axes)) {
-    auto name = StringAttr::get(context, absl::StrCat("_axis_", axisIndex));
-    namedAxes.push_back(MeshAxisAttr::get(context, name, axisSize));
+  if (namedAxes.empty()) {
+    namedAxes.reserve(axes.size());
+    for (auto [axisIndex, axisSize] : llvm::enumerate(axes)) {
+      auto name = StringAttr::get(context, absl::StrCat("_axis_", axisIndex));
+      namedAxes.push_back(MeshAxisAttr::get(context, name, axisSize));
+    }
   }
 
   maximalDeviceIds = llvm::to_vector(maximalDeviceIdSet);
@@ -255,12 +284,14 @@ std::string convertToSdySharding(const xla::OpSharding& opSharding,
   if (hloSharding->IsTuple()) {
     CHECK(shape.IsTuple());
     SmallVector<TensorShardingAttr> sdyShardings;
-    auto [namedAxes, _] =
+    auto [namedAxes, _, meshDeviceIds] =
         findMeshAxesAndIds(absl::flat_hash_set<xla::HloSharding>(
                                hloSharding->tuple_elements().begin(),
                                hloSharding->tuple_elements().end()),
                            &context);
-    MeshAttr meshAttr = MeshAttr::get(&context, namedAxes);
+    MeshAttr meshAttr = meshDeviceIds.empty()
+                            ? MeshAttr::get(&context, namedAxes)
+                            : MeshAttr::get(&context, namedAxes, meshDeviceIds);
     for (auto [indexedShape, elementSharding] :
          llvm::zip_equal(xla::ShapeUtil::GetLeafShapes(shape),
                          hloSharding->tuple_elements())) {
@@ -274,11 +305,14 @@ std::string convertToSdySharding(const xla::OpSharding& opSharding,
         TensorShardingPerValueAttr::get(&context, sdyShardings));
   }
 
-  auto [namedAxes, _] = findMeshAxesAndIds({*hloSharding}, &context);
-  mlir::sdy::TensorShardingAttr sdySharding =
-      convertToSdySharding(*hloSharding, MeshAttr::get(&context, namedAxes),
-                           llvm::SmallDenseMap<int64_t, mlir::StringRef>(),
-                           shape.dimensions().size(), openDims, inlineMesh);
+  auto [namedAxes, _, meshDeviceIds] =
+      findMeshAxesAndIds({*hloSharding}, &context);
+  MeshAttr meshAttr = meshDeviceIds.empty()
+                          ? MeshAttr::get(&context, namedAxes)
+                          : MeshAttr::get(&context, namedAxes, meshDeviceIds);
+  mlir::sdy::TensorShardingAttr sdySharding = convertToSdySharding(
+      *hloSharding, meshAttr, llvm::SmallDenseMap<int64_t, mlir::StringRef>(),
+      shape.dimensions().size(), openDims, inlineMesh);
   return mlir::sdy::attributeToString(
       isSingleArg ? static_cast<mlir::Attribute>(sdySharding)
                   : TensorShardingPerValueAttr::get(&context, sdySharding));
@@ -291,6 +325,78 @@ TensorShardingAttr convertToSdySharding(
     const SmallDenseMap<int64_t, StringRef>& deviceIdToMaximalMeshName,
     int64_t rank, bool openDims, bool inlineMesh) {
   mlir::MLIRContext* ctx = globalMesh.getContext();
+
+  if (hloSharding.UseNamedShardingLeaf()) {
+    const xla::NamedSharding& namedSharding = hloSharding.named_sharding();
+    SmallVector<DimensionShardingAttr, 4> dimShardings;
+    for (const auto& dimSharding : namedSharding.dim_shardings()) {
+      SmallVector<AxisRefAttr, 4> axes;
+      for (const auto& axis : dimSharding.axes()) {
+        int64_t index = axis.mesh_axis_index();
+        if (index < globalMesh.getAxes().size()) {
+          StringRef axisName = globalMesh.getAxes()[index].getName();
+          if (axis.sub_axis_info().has_value()) {
+            axes.push_back(AxisRefAttr::get(ctx, axisName, axis.pre_size(),
+                                            axis.size(namedSharding.mesh())));
+          } else {
+            axes.push_back(AxisRefAttr::get(ctx, axisName));
+          }
+        }
+      }
+      dimShardings.push_back(DimensionShardingAttr::get(
+          ctx, axes, dimSharding.is_closed() || !openDims));
+    }
+
+    SmallVector<AxisRefAttr, 4> replicatedAxes;
+    for (const xla::AxisRef& axis : namedSharding.replicated_axes()) {
+      int64_t index = axis.mesh_axis_index();
+      if (index < globalMesh.getAxes().size()) {
+        StringRef axisName = globalMesh.getAxes()[index].getName();
+        if (axis.sub_axis_info().has_value()) {
+          replicatedAxes.push_back(AxisRefAttr::get(
+              ctx, axisName, axis.pre_size(), axis.size(namedSharding.mesh())));
+        } else {
+          replicatedAxes.push_back(AxisRefAttr::get(ctx, axisName));
+        }
+      }
+    }
+
+    SmallVector<AxisRefAttr, 4> unreducedAxes;
+    for (const xla::AxisRef& axis : namedSharding.unreduced_axes()) {
+      int64_t index = axis.mesh_axis_index();
+      if (index < globalMesh.getAxes().size()) {
+        StringRef axisName = globalMesh.getAxes()[index].getName();
+        if (axis.sub_axis_info().has_value()) {
+          unreducedAxes.push_back(AxisRefAttr::get(
+              ctx, axisName, axis.pre_size(), axis.size(namedSharding.mesh())));
+        } else {
+          unreducedAxes.push_back(AxisRefAttr::get(ctx, axisName));
+        }
+      }
+    }
+
+    mlir::sdy::ReductionOp reductionOp = mlir::sdy::ReductionOp::SUM;
+    switch (namedSharding.reduction_op()) {
+      case xla::NamedSharding::ReductionOp::kSum:
+        reductionOp = mlir::sdy::ReductionOp::SUM;
+        break;
+      case xla::NamedSharding::ReductionOp::kMax:
+        reductionOp = mlir::sdy::ReductionOp::MAX;
+        break;
+      case xla::NamedSharding::ReductionOp::kMin:
+        reductionOp = mlir::sdy::ReductionOp::MIN;
+        break;
+    }
+
+    if (inlineMesh) {
+      return TensorShardingAttr::get(ctx, globalMesh, dimShardings,
+                                     replicatedAxes, unreducedAxes,
+                                     reductionOp);
+    }
+    return TensorShardingAttr::get(ctx, StringAttr::get(ctx, kGlobalMeshName),
+                                   dimShardings, replicatedAxes, unreducedAxes,
+                                   reductionOp);
+  }
 
   // If the sharding is a maximal sharding, return a fully closed sharding.
   // The exact sharding does not matter since the tensor can only exist on one
@@ -399,15 +505,14 @@ TensorShardingAttr convertToSdySharding(
         DimensionShardingAttr::get(ctx, axes, /*is_closed=*/!openDims));
   }
 
+  SmallVector<AxisRefAttr> replicatedAxes;
+  SmallVector<AxisRefAttr> unreducedAxes;
   if (inlineMesh) {
     return TensorShardingAttr::get(ctx, globalMesh, dimShardings,
-                                   /*replicated_axes=*/{},
-                                   /*unreduced_axes=*/{});
+                                   replicatedAxes, unreducedAxes);
   }
   return TensorShardingAttr::get(ctx, StringAttr::get(ctx, kGlobalMeshName),
-                                 dimShardings,
-                                 /*replicated_axes=*/{},
-                                 /*unreduced_axes=*/{});
+                                 dimShardings, replicatedAxes, unreducedAxes);
 }
 
 namespace {
@@ -500,7 +605,8 @@ class ImportShardingsPass
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
 
-    auto [namedAxes, deviceIdsForMaximalMesh] = findMeshAxesAndIds(moduleOp);
+    auto [namedAxes, deviceIdsForMaximalMesh, meshDeviceIds] =
+        findMeshAxesAndIds(moduleOp);
     if (namedAxes.empty() && deviceIdsForMaximalMesh.empty()) {
       // There are no shardings in the `moduleOp`.
       return;
@@ -512,9 +618,12 @@ class ImportShardingsPass
 
     OpBuilder opBuilder = mlir::OpBuilder::atBlockBegin(moduleOp.getBody());
     // Create a global mesh containing all the axes.
-    symbolTable.insert(
-        MeshOp::create(opBuilder, moduleOp.getLoc(), kGlobalMeshName,
-                       MeshAttr::get(moduleOp.getContext(), namedAxes)));
+    MeshAttr globalMesh =
+        meshDeviceIds.empty()
+            ? MeshAttr::get(moduleOp.getContext(), namedAxes)
+            : MeshAttr::get(moduleOp.getContext(), namedAxes, meshDeviceIds);
+    symbolTable.insert(MeshOp::create(opBuilder, moduleOp.getLoc(),
+                                      kGlobalMeshName, globalMesh));
 
     SmallDenseMap<int64_t, StringRef> deviceIdToMaximalMeshName;
     for (int64_t deviceId : deviceIdsForMaximalMesh) {
@@ -531,7 +640,6 @@ class ImportShardingsPass
       // `allowPropagationToArgs` and `allowPropagationToResults` apply
       // only to the main/entry function.
       bool isMain = funcOp.getSymName() == "main";
-      MeshAttr globalMesh = MeshAttr::get(moduleOp.getContext(), namedAxes);
       if (mlir::failed(importShardings(
               funcOp, globalMesh, deviceIdToMaximalMeshName,
               isMain ? allowPropagationToArgs : ArrayRef<bool>(),
@@ -580,10 +688,13 @@ void registerStablehloImportShardingsPass() {
 // This way Shardy XLA Pass tests run the logic that actually runs in prod.
 void addStablehloImportPipeline(mlir::OpPassManager& pm,
                                 ArrayRef<bool> allowPropagationToArgs,
-                                ArrayRef<bool> allowPropagationToResults) {
+                                ArrayRef<bool> allowPropagationToResults,
+                                bool enableHloShardingV3) {
   pm.addPass(createImportShardingsPass(allowPropagationToArgs,
                                        allowPropagationToResults));
-  addSdyRoundTripImportPipeline(pm);
+  addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/true,
+                                /*liftAndDedupMeshes=*/false,
+                                enableHloShardingV3);
 }
 
 void registerStablehloImportPipeline() {

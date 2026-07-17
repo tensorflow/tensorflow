@@ -34,7 +34,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "jpeglib.h"  // from @libjpeg_turbo
 #include "tensorflow/core/lib/jpeg/jpeg_mem.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/pad.h"
@@ -42,7 +41,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/profiling/time.h"
-#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/preprocessing_steps.pb.h"
@@ -53,6 +51,14 @@ namespace {
 
 // We assume 3-channel RGB images.
 constexpr int kNumChannels = 3;
+
+// Extra padding bytes required by XNNPACK.
+constexpr size_t kXnnExtraBytes = 16;
+
+// Returns the unpadded size of the image, accounting for XNNPACK padding.
+inline size_t GetUnpaddedSize(size_t padded_size) {
+  return padded_size >= kXnnExtraBytes ? padded_size - kXnnExtraBytes : 0;
+}
 
 // Returns the offset for the element in the raw image array based on the image
 // height/weight & coordinates of a pixel (h, w, c).
@@ -433,7 +439,8 @@ TfLiteStatus ImagePreprocessingStage::Run() {
           // Only validate against the target size if this is the last sizing
           // step in the preprocessing chain.
           if (image_data.data.size() !=
-              param.cropping_params().target_size().width() *
+              static_cast<size_t>(
+                  param.cropping_params().target_size().width()) *
                   param.cropping_params().target_size().height() *
                   kNumChannels) {
             LOG(ERROR)
@@ -453,7 +460,8 @@ TfLiteStatus ImagePreprocessingStage::Run() {
           // Only validate against the target size if this is the last sizing
           // step in the preprocessing chain.
           if (image_data.data.size() !=
-              param.resizing_params().target_size().width() *
+              static_cast<size_t>(
+                  param.resizing_params().target_size().width()) *
                   param.resizing_params().target_size().height() *
                   kNumChannels) {
             LOG(ERROR)
@@ -474,7 +482,8 @@ TfLiteStatus ImagePreprocessingStage::Run() {
           // Only validate against the target size if this is the last sizing
           // step in the preprocessing chain.
           if (image_data.data.size() !=
-              param.padding_params().target_size().width() *
+              static_cast<size_t>(
+                  param.padding_params().target_size().width()) *
                   param.padding_params().target_size().height() *
                   kNumChannels) {
             LOG(ERROR)
@@ -494,15 +503,13 @@ TfLiteStatus ImagePreprocessingStage::Run() {
   // Converts data to output type.
   if (output_type_ == kTfLiteUInt8) {
     uint8_preprocessed_image_.clear();
-    uint8_preprocessed_image_.resize(image_data.data.size() +
-                                     /*XNN_EXTRA_BYTES=*/16);
+    uint8_preprocessed_image_.resize(image_data.data.size() + kXnnExtraBytes);
     for (size_t i = 0; i < image_data.data.size(); ++i) {
       uint8_preprocessed_image_[i] = static_cast<uint8_t>(image_data.data[i]);
     }
   } else if (output_type_ == kTfLiteInt8) {
     int8_preprocessed_image_.clear();
-    int8_preprocessed_image_.resize(image_data.data.size() +
-                                    /*XNN_EXTRA_BYTES=*/16);
+    int8_preprocessed_image_.resize(image_data.data.size() + kXnnExtraBytes);
     for (size_t i = 0; i < image_data.data.size(); ++i) {
       int8_preprocessed_image_[i] = static_cast<int8_t>(image_data.data[i]);
     }
@@ -531,15 +538,9 @@ size_t ImagePreprocessingStage::GetPreprocessedImageBytes() {
   if (latency_stats_.count() == 0) return 0;
 
   if (output_type_ == kTfLiteUInt8) {
-    return (uint8_preprocessed_image_.size() >= 16
-                ? uint8_preprocessed_image_.size() - 16
-                : 0) *
-           sizeof(uint8_t);
+    return GetUnpaddedSize(uint8_preprocessed_image_.size()) * sizeof(uint8_t);
   } else if (output_type_ == kTfLiteInt8) {
-    return (int8_preprocessed_image_.size() >= 16
-                ? int8_preprocessed_image_.size() - 16
-                : 0) *
-           sizeof(int8_t);
+    return GetUnpaddedSize(int8_preprocessed_image_.size()) * sizeof(int8_t);
   } else if (output_type_ == kTfLiteFloat32) {
     return float_preprocessed_image_.size() * sizeof(float);
   }

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/codegen/xtile/codegen/experimental_fusion_emitter.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -243,9 +242,8 @@ absl::StatusOr<TensorValue> EmitConcatenate(
       if_ops.push_back(if_op);
     }
     const auto& region = tiled_concat.hlo_regions()[i];
-    const ge::TiledHloInstruction* const region_root = region.back().get();
     ASSIGN_OR_RETURN(std::vector<TensorValue> results,
-                     EmitTiledComputation(emitter_ctx, region, {region_root}));
+                     EmitTiledComputation(emitter_ctx, region, region.roots()));
     TF_RET_CHECK(results.size() == 1)
         << "Concatenation region must have exactly one result"
         << results.size();
@@ -527,17 +525,9 @@ absl::StatusOr<TensorValue> EmitScaledDot(
         dim_info.id, iv, Interval{0, loop_iteration_counts.front() - 1}));
 
     // Emit the dot region.
-    const ge::TiledHloInstruction* lhs_operand = tiled_scaled_dot.operand(0);
-    const ge::TiledHloInstruction* rhs_operand = tiled_scaled_dot.operand(1);
-    const ge::TiledHloInstruction* lhs_scale_operand =
-        tiled_scaled_dot.operand(2);
-    const ge::TiledHloInstruction* rhs_scale_operand =
-        tiled_scaled_dot.operand(3);
-    ASSIGN_OR_RETURN(
-        auto results,
-        EmitTiledComputation(
-            emitter_ctx, tiled_scaled_dot.hlo_regions().front(),
-            {lhs_operand, rhs_operand, lhs_scale_operand, rhs_scale_operand}));
+    const ge::TiledHloRegion& region = tiled_scaled_dot.hlo_regions().front();
+    ASSIGN_OR_RETURN(auto results,
+                     EmitTiledComputation(emitter_ctx, region, region.roots()));
 
     // Emit the partial dot.
     Value acc = for_op.getRegionIterArgs().front();
@@ -1136,7 +1126,7 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
 absl::StatusOr<std::vector<TensorValue>> EmitTiledComputation(
     EmitterContext& emitter_ctx, const ge::TiledHloRegion& region,
     absl::Span<const ge::TiledHloInstruction* const> roots) {
-  for (const auto& tiled_hlo : region) {
+  for (const auto& tiled_hlo : region.instructions()) {
     const HloInstruction* hlo = tiled_hlo->hlo();
     VLOG(8) << "Emitting " << hlo->ToString(HloPrintOptions::ShortParsable());
     ASSIGN_OR_RETURN(TensorValue result,
@@ -1208,16 +1198,39 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
             << ExtractInstructionIntoNewModule(fusion)->ToString();
     VLOG(6) << "Tiled computation: \n" << tiled_computation.ToString();
   }
-  Value tile_id = fn.getTileId();
-  EmitterContext emitter_ctx{b,        &fusion, tile_id,
+  Value program_id = fn.getProgramId();
+  Value tile_id = program_id;
+
+  // If there are more than one tile per pid, we need to add a scf.for loop to
+  // iterate through the tiles.
+  int64_t num_tiles_per_pid = schedule.GetNumTilesPerPid();
+  if (num_tiles_per_pid > 1) {
+    Value zero = arith::ConstantIndexOp::create(b, 0);
+    Value one = arith::ConstantIndexOp::create(b, 1);
+    Value num_tiles_per_pid_val =
+        arith::ConstantIndexOp::create(b, num_tiles_per_pid);
+
+    // Loop ub = min(num_tiles_per_pid, num_tiles - pid * num_tiles_per_pid).
+    Value upper_bound = arith::SubIOp::create(
+        b, arith::ConstantIndexOp::create(b, schedule.num_tiles),
+        arith::MulIOp::create(b, program_id, num_tiles_per_pid_val));
+    upper_bound = arith::MinUIOp::create(b, upper_bound, num_tiles_per_pid_val);
+    auto for_op = mlir::scf::ForOp::create(b, zero, num_tiles_per_pid_val, one);
+
+    tile_id = arith::AddIOp::create(
+        b, arith::MulIOp::create(b, program_id, num_tiles_per_pid_val),
+        for_op.getInductionVar());
+    b.setInsertionPointToStart(for_op.getBody());
+  }
+  EmitterContext emitter_ctx{b,        &fusion, program_id,       tile_id,
                              schedule, fn,      tiled_computation};
 
   VLOG(2) << "EmitTiledComputation: " << tiled_computation.ToString();
   EmitFullyTiledSequentialDimensions(b, emitter_ctx, tiled_computation);
-  ASSIGN_OR_RETURN(auto results,
-                   EmitTiledComputation(
-                       emitter_ctx, tiled_computation.tiled_hlo_instructions(),
-                       tiled_computation.roots()));
+  ASSIGN_OR_RETURN(
+      auto results,
+      EmitTiledComputation(emitter_ctx, tiled_computation.tiled_root_region(),
+                           tiled_computation.roots()));
   const HloComputation* computation = fusion.fused_instructions_computation();
   for (const auto& [root, result, arg] :
        llvm::zip(tiled_computation.roots(), results,
@@ -1247,8 +1260,9 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
 class TileRequirementsVisitor : public DefaultTileRequirementsVisitor {
  public:
   explicit TileRequirementsVisitor(const ge::TiledHloComputation& computation) {
-    for (const auto& tiled_hlo : computation.tiled_hlo_instructions()) {
-      PopulateMap(tiled_hlo.get());
+    for (const ge::TiledHloInstruction* tiled_hlo :
+         computation.instructions()) {
+      PopulateMap(tiled_hlo);
     }
   }
 
@@ -1294,7 +1308,7 @@ class TileRequirementsVisitor : public DefaultTileRequirementsVisitor {
   void PopulateMap(const ge::TiledHloInstruction* tiled_hlo) {
     hlo_to_tiled_[tiled_hlo->hlo()] = tiled_hlo;
     for (const auto& region : tiled_hlo->hlo_regions()) {
-      for (const auto& region_instruction : region) {
+      for (const auto& region_instruction : region.instructions()) {
         PopulateMap(region_instruction.get());
       }
     }

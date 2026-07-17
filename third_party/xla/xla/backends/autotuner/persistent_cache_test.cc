@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
+#include "xla/backends/autotuner/autotuning.pb.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/fake_codegen_backend.h"
@@ -198,6 +199,30 @@ TEST_F(PersistentCacheTest, CacheReadOnlyConstraints) {
   AutotunerCacheInterface::Config config = CreateTestConfig();
   EXPECT_EQ(cache_ro.Insert(dot, config).code(),
             absl::StatusCode::kPermissionDenied);
+}
+
+TEST_F(PersistentCacheTest, SerializationAndDeserialization) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo1));
+  const HloInstruction* dot = module->entry_computation()->root_instruction();
+
+  MockPersistentCache cache1(CreateCacheContext(), CacheMode::kReadWrite,
+                             KeyMatchingMode::kStrict, &shared_entries_);
+  AutotunerCacheInterface::Config config = CreateTestConfig();
+  EXPECT_OK(cache1.Insert(dot, config));
+
+  std::vector<const HloInstruction*> instrs = {dot};
+  ASSERT_OK_AND_ASSIGN(std::string serialized, cache1.Serialize(instrs));
+  EXPECT_FALSE(serialized.empty());
+
+  std::vector<autotuner::AutotuneEntry> empty_entries;
+  MockPersistentCache cache2(CreateCacheContext(), CacheMode::kReadWrite,
+                             KeyMatchingMode::kStrict, &empty_entries);
+  EXPECT_OK(cache2.Deserialize(serialized));
+
+  std::optional<AutotunerCacheInterface::Config> result = cache2.Lookup(dot);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result->codegen_backend, autotuner::Backend::TRITON);
 }
 
 }  // namespace

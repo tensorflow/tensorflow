@@ -26,10 +26,19 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 
 namespace xla {
+
+bool FlattenCallGraph::SkipCloningForCalls(const HloComputation& computation) {
+  auto callers = computation.caller_instructions();
+  return absl::c_all_of(callers, [](const HloInstruction* caller) {
+    return caller->opcode() == HloOpcode::kCall;
+  });
+}
+
 absl::StatusOr<bool> FlattenCallGraph::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {

@@ -241,7 +241,7 @@ absl::Status RunRaggedAllToAll(
     const se::DeviceAddressBase& output_offsets_device_buffer,
     CollectiveThunk::CollectivesMode collectives_mode,
     SymmetricMemory* output_symmetric_memory = nullptr,
-    size_t output_base_offset = 0);
+    size_t output_base_offset = 0, int64_t rank = 0);
 
 // Executes an optimized "One-Shot" Ragged All-to-All collective.
 //

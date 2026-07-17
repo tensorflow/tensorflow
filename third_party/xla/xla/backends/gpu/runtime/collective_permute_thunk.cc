@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
@@ -150,11 +151,8 @@ P2PConfig CollectivePermuteThunk::GetP2PConfig(
     int64_t partition_count, bool connected_components_enabled) {
   P2PConfig collective_permute_config;
   auto& config = collective_permute_config.config;
-  config.use_symmetric_buffer =
-      instr->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_experimental_enable_nccl_symmetric_buffers();
+  config.use_symmetric_buffer = IsNcclSymmetricBuffersEnabledForCollective(
+      instr, instr->GetModule()->config().debug_options());
   for (const HloInstruction* operand : instr->operands()) {
     config.operand_element_type.push_back(operand->shape().element_type());
   }

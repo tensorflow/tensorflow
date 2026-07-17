@@ -225,6 +225,27 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
                   this->native_format_);
       if (!context->status().ok()) return;
 
+      // Verify that orig_input_tensor is a 1D vector before calling
+      // .vec<int32>(). A scalar or higher-rank tensor would cause an
+      // assertion crash.
+      OP_REQUIRES(context, orig_input_tensor.dims() == 1,
+                  errors::InvalidArgument(
+                      "orig_input_shape must be a 1D tensor, but got a ",
+                      orig_input_tensor.dims(), "D tensor with shape ",
+                      orig_input_tensor.shape().DebugString()));
+
+      // Defensive validation that ksize has the expected number of
+      // dimensions. The constructor already validates this, but we
+      // check here to guard against potential memory safety issues
+      // if ksize is somehow invalid at Compute time.
+      OP_REQUIRES(
+          context, this->ksize_.size() == 4 || this->ksize_.size() == 5,
+          errors::InvalidArgument("ksize must have 4 or 5 elements, but got ",
+                                  this->ksize_.size()));
+
+      bool is_pool2d = (this->ksize_.size() == 4);
+      int expected_rank = is_pool2d ? 4 : 5;
+
       // For empty tensor, avg_pool_3d_grad in oneDNN doesn't handle this case.
       // Follow what native TF does in this case.
 
@@ -234,20 +255,19 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
         OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(shape_vec(i)));
       }
 
-      bool is_pool2d = (this->ksize_.size() == 4);
-      int expected_rank = is_pool2d ? 4 : 5;
+      // Validate that output_shape and grad_tensor have the expected rank
+      // to prevent CHECK failure in TFShapeToMklDnnDims* functions which
+      // unconditionally access dim_size(N) (see #118354).
       OP_REQUIRES(
           context, output_shape.dims() == expected_rank,
-          absl::InvalidArgumentError(absl::StrCat(
-              "Input must be rank ", expected_rank, " but got rank ",
-              output_shape.dims())));
-
+          errors::InvalidArgument("Expected orig_input shape to represent a ",
+                                  expected_rank, "D shape, but got a ",
+                                  output_shape.dims(), "D shape."));
       if (!grad_mkl_shape.IsMklTensor()) {
-        OP_REQUIRES(
-            context, grad_tensor.dims() == expected_rank,
-            absl::InvalidArgumentError(absl::StrCat(
-                "Expected grad to be rank ", expected_rank, " but got rank ",
-                grad_tensor.dims())));
+        OP_REQUIRES(context, grad_tensor.dims() == expected_rank,
+                    errors::InvalidArgument("Expected grad tensor to be ",
+                                            expected_rank, "D, but got a ",
+                                            grad_tensor.dims(), "D tensor."));
       }
 
       Tensor* output_tensor = nullptr;

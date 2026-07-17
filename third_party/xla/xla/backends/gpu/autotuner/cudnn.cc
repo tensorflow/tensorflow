@@ -270,9 +270,11 @@ GetCudnnFusionConfigs(const HloInstruction& instr,
     }
     stream_executor = nullptr;
   }
-  int plan_count = CuDnnFusionCompiler::GetAvailablePlanCount(
-      stream_executor, target_config.device_description,
-      *DynCast<HloFusionInstruction>(&instr));
+  ASSIGN_OR_RETURN(int plan_count,
+                   CuDnnFusionCompiler::GetAvailablePlanCount(
+                       stream_executor, target_config.device_description,
+                       *DynCast<HloFusionInstruction>(&instr)));
+
   VLOG(2) << "Found " << plan_count << " plans for cudnn fusion.";
   configs.reserve(plan_count);
   for (int plan_id = 0; plan_id < plan_count; ++plan_id) {

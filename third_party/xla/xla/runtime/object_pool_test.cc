@@ -54,19 +54,44 @@ TEST(ObjectPoolTest, GetOrCreate) {
     return std::make_unique<int32_t>(counter++);
   });
 
-  TF_ASSERT_OK_AND_ASSIGN(auto obj0, pool.GetOrCreate());
+  ASSERT_OK_AND_ASSIGN(auto obj0, pool.GetOrCreate());
   ASSERT_EQ(**obj0, 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto obj1, pool.GetOrCreate());
+  ASSERT_OK_AND_ASSIGN(auto obj1, pool.GetOrCreate());
   ASSERT_EQ(**obj1, 1);
 
   auto destroy = [](IntPool::BorrowedObject obj) {};
   destroy(std::move(obj0));
   destroy(std::move(obj1));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto obj2, pool.GetOrCreate());
+  ASSERT_OK_AND_ASSIGN(auto obj2, pool.GetOrCreate());
   ASSERT_EQ(**obj2, 1);
   ASSERT_EQ(counter, 2);
+}
+
+TEST(ObjectPoolTest, Clear) {
+  int32_t counter = 0;
+  IntPool pool([&]() -> absl::StatusOr<std::unique_ptr<int32_t>> {
+    return std::make_unique<int32_t>(counter++);
+  });
+
+  ASSERT_OK_AND_ASSIGN(auto obj0, pool.GetOrCreate());
+  ASSERT_EQ(**obj0, 0);
+
+  ASSERT_OK_AND_ASSIGN(auto obj1, pool.GetOrCreate());
+  ASSERT_EQ(**obj1, 1);
+
+  auto destroy = [](IntPool::BorrowedObject obj) {};
+  destroy(std::move(obj0));
+  destroy(std::move(obj1));
+
+  pool.Clear();
+
+  ASSERT_OK_AND_ASSIGN(auto obj, pool.GetOrCreate());
+  ASSERT_EQ(**obj, 2);
+  ASSERT_EQ(counter, 3);
+  EXPECT_EQ(pool.num_created(), 1);
+  EXPECT_EQ(pool.num_available(), 0);
 }
 
 TEST(ObjectPoolTest, ConstructorPreallocatesWithBuilderArgs) {
@@ -76,8 +101,8 @@ TEST(ObjectPoolTest, ConstructorPreallocatesWithBuilderArgs) {
   EXPECT_EQ(pool.num_created(), 2);
   EXPECT_EQ(pool.num_available(), 2);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto obj0, pool.Get());
-  TF_ASSERT_OK_AND_ASSIGN(auto obj1, pool.Get());
+  ASSERT_OK_AND_ASSIGN(auto obj0, pool.Get());
+  ASSERT_OK_AND_ASSIGN(auto obj1, pool.Get());
   EXPECT_EQ(obj0->value, 42);
   EXPECT_EQ(obj1->value, 42);
   EXPECT_EQ(pool.num_available(), 0);
@@ -104,7 +129,7 @@ TEST(ObjectPoolTest, Preallocate) {
   std::vector<IntPool::BorrowedObject> borrowed;
   std::vector<int32_t> values;
   for (int32_t i = 0; i < 5; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(auto object, pool.Get());
+    ASSERT_OK_AND_ASSIGN(auto object, pool.Get());
     values.push_back(**object);
     borrowed.push_back(std::move(object));
   }
@@ -137,7 +162,7 @@ TEST(ObjectPoolTest, PreallocateReturnsBuilderErrorWithoutChangingPool) {
   EXPECT_EQ(pool.num_created(), 1);
   EXPECT_EQ(pool.num_available(), 1);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto object, pool.Get());
+  ASSERT_OK_AND_ASSIGN(auto object, pool.Get());
   EXPECT_EQ(**object, 0);
   EXPECT_EQ(pool.Get().status().code(), absl::StatusCode::kResourceExhausted);
 }
@@ -154,7 +179,7 @@ TEST(ObjectPoolTest, Get) {
   auto empty = pool.Get();
   EXPECT_EQ(empty.status().code(), absl::StatusCode::kResourceExhausted);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto obj0, pool.GetOrCreate());
+  ASSERT_OK_AND_ASSIGN(auto obj0, pool.GetOrCreate());
   ASSERT_EQ(**obj0, 0);
   EXPECT_EQ(pool.num_created(), 1);
   EXPECT_EQ(pool.num_available(), 0);
@@ -166,7 +191,7 @@ TEST(ObjectPoolTest, Get) {
   destroy(std::move(obj0));
   EXPECT_EQ(pool.num_available(), 1);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto obj1, pool.Get());
+  ASSERT_OK_AND_ASSIGN(auto obj1, pool.Get());
   EXPECT_EQ(**obj1, 0);
   EXPECT_EQ(counter, 1);
   EXPECT_EQ(pool.num_available(), 0);
@@ -178,13 +203,13 @@ TEST(ObjectPoolTest, BorrowedObjectMoveAssignmentReturnsPreviousObject) {
     return std::make_unique<int32_t>(counter++);
   });
 
-  TF_ASSERT_OK_AND_ASSIGN(auto obj0, pool.GetOrCreate());
-  TF_ASSERT_OK_AND_ASSIGN(auto obj1, pool.GetOrCreate());
+  ASSERT_OK_AND_ASSIGN(auto obj0, pool.GetOrCreate());
+  ASSERT_OK_AND_ASSIGN(auto obj1, pool.GetOrCreate());
 
   obj1 = std::move(obj0);
   EXPECT_EQ(pool.num_available(), 1);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto obj2, pool.Get());
+  ASSERT_OK_AND_ASSIGN(auto obj2, pool.Get());
   EXPECT_EQ(**obj1, 0);
   EXPECT_EQ(**obj2, 1);
   EXPECT_EQ(counter, 2);
@@ -196,14 +221,14 @@ TEST(ObjectPoolTest, SupportsNonDefaultConstructibleObjects) {
         return NonDefaultConstructible(value);
       });
 
-  TF_ASSERT_OK_AND_ASSIGN(auto obj0, pool.GetOrCreate(42));
+  ASSERT_OK_AND_ASSIGN(auto obj0, pool.GetOrCreate(42));
   EXPECT_EQ(obj0->value, 42);
 
   auto destroy =
       [](ObjectPool<NonDefaultConstructible, int32_t>::BorrowedObject obj) {};
   destroy(std::move(obj0));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto obj1, pool.Get());
+  ASSERT_OK_AND_ASSIGN(auto obj1, pool.Get());
   EXPECT_EQ(obj1->value, 42);
   EXPECT_EQ(pool.num_created(), 1);
 }
@@ -237,7 +262,7 @@ TEST(ObjectPoolTest, GetOrCreateUnderContention) {
   for (int32_t t = 0; t < num_tasks; ++t) {
     threads.Schedule([&] {
       for (int32_t i = 0; i < num_iters; ++i) {
-        TF_ASSERT_OK_AND_ASSIGN(auto obj, pool.GetOrCreate());
+        ASSERT_OK_AND_ASSIGN(auto obj, pool.GetOrCreate());
         CHECK_EQ((*obj)->users.fetch_add(1), 0);
         ASSERT_GE((*obj)->counter++, 0);
         CHECK_EQ((*obj)->users.fetch_sub(1), 1);

@@ -729,6 +729,19 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
       for (int i = 0; i < permutation.size(); ++i) {
         dst_logical[permutation[i]] = src_logical[i];
       }
+      if (direction == TransformDirection::kOutputToInput) {
+        for (int i = 0; i < permutation.size(); ++i) {
+          if (!src_logical[i].empty() && src_logical[i][0]->slice_start() < 0) {
+            int dst_dim = permutation[i];
+            int major_most_dim = dst->shape().layout().minor_to_major().back();
+            if (dst_dim != major_most_dim) {
+              return FusionDecision::Forbid(
+                  "Transposing sliced concatenate dimension to non-major-most "
+                  "physical position.");
+            }
+          }
+        }
+      }
     } else if (hlo.opcode() == HloOpcode::kBroadcast) {
       const auto* broadcast = Cast<HloBroadcastInstruction>(&hlo);
       dst_logical.resize(broadcast->dimensions().size());
@@ -1046,9 +1059,17 @@ bool IsInputWorthFusing(const HloInstruction& hlo) {
   //   the slice can be fused into the producer instead of here.
   // * AllUsersAreSlicesWithSameShape - slices of the same shape can be
   //   fused into the producer by the multi output fusion pass.
-  if (hlo.opcode() == HloOpcode::kSlice && hlo.operand(0)->user_count() > 1 &&
-      !AllUsersAreSlicesWithSameShape(*hlo.operand(0), hlo.shape())) {
-    return true;
+  if (hlo.opcode() == HloOpcode::kSlice) {
+    const HloInstruction* operand = hlo.operand(0);
+    while (HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kTranspose,
+                            HloOpcode::kReshape>(operand) &&
+           operand->user_count() == 1) {
+      operand = operand->operand(0);
+    }
+    if (operand->user_count() > 1 &&
+        !AllUsersAreSlicesWithSameShape(*operand, hlo.shape())) {
+      return true;
+    }
   }
 
   const bool enable_subchannel_dequantisation_fusion =

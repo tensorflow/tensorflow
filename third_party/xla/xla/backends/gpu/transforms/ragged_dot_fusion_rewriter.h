@@ -29,7 +29,7 @@ namespace gpu {
 // RaggedDotFusionRewriter converts ragged dots to cudnn fusion.
 class RaggedDotFusionRewriter : public HloModulePass {
  public:
-  explicit RaggedDotFusionRewriter() {}
+  explicit RaggedDotFusionRewriter() = default;
 
   absl::string_view name() const override {
     return "ragged_dot_fusion_rewriter";

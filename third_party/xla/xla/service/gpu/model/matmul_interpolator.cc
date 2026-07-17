@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/model/matmul_interpolator.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -41,26 +42,35 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/model/default_matmul_perf_table.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/gpu/model/interpolator.h"
-#include "xla/service/gpu/model/matmul_interpolator_data.h"
 #include "xla/service/gpu/model/matmul_interpolator_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
 
+absl::string_view GetDefaultMatmulPerfTable() {
+  const struct FileToc* toc = config::default_matmul_perf_table_create();
+  for (size_t i = 0; i < config::default_matmul_perf_table_size(); ++i) {
+    if (absl::string_view(toc[i].name) == "default_matmul_perf_table.txtpb") {
+      return absl::string_view(toc[i].data, toc[i].size);
+    }
+  }
+  LOG(FATAL) << "Embedded file not found: default_matmul_perf_table.txtpb";
+}
+
 static const GemmPerfTable& Profile() {
   static const GemmPerfTable* profile = []() {
     auto* profile = new GemmPerfTable();
-    CHECK(tsl::protobuf::TextFormat::ParseFromString(kDefaultMatmulPTable,
-                                                     profile))
+    CHECK(tsl::protobuf::TextFormat::ParseFromString(
+        GetDefaultMatmulPerfTable(), profile))
         << "Cannot parse a default profile.";
     return profile;
   }();

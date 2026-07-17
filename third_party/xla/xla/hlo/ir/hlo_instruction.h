@@ -771,13 +771,14 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateCollectiveBroadcast(
       const Shape& shape, absl::Span<HloInstruction* const> operand,
       std::shared_ptr<CollectiveDeviceListBase> device_list,
-      bool constrain_layout, const std::optional<int64_t>& channel_id);
+      bool constrain_layout, const std::optional<int64_t>& channel_id,
+      bool has_dynamic_root = false);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   static std::unique_ptr<HloInstruction> CreateCollectiveBroadcast(
       const Shape& shape, absl::Span<HloInstruction* const> operand,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const std::optional<int64_t>& channel_id);
+      const std::optional<int64_t>& channel_id, bool has_dynamic_root = false);
 
   // Creates a communication instruction that permutes data cross replicas.
   // Data is sent/received according to the (source_replica_id,
@@ -2578,12 +2579,19 @@ class HloInstruction {
   void CopyOriginalValue(const HloInstruction* instruction, bool clone = false,
                          bool issue_warning = false);
 
+  // TODO(phui): reimplement this method
+  void DetachFromOperands() {
+    for (HloInstruction* operand : operands_) {
+      operand->RemoveUser(this);
+    }
+    RemoveAllOperands();
+  }
+  void RemoveAllOperands() { operands_.clear(); }
+
  protected:
   // Internal constructor for a given opcode/shape, other fields must be
   // filled by factory methods.
   HloInstruction(HloOpcode opcode, const Shape& shape);
-
-  void RemoveAllOperands() { operands_.clear(); }
 
   void RemoveOperandAt(int index) {
     operands_.erase(operands_.begin() + index);

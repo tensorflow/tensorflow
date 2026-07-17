@@ -37,16 +37,10 @@ TfLiteStatus IsPoolingSupported(const TfLiteRegistration* registration,
   const TfLiteTensor& input = context->tensors[node->inputs->data[0]];
   const TfLiteTensor& output = context->tensors[node->outputs->data[0]];
 
-  ynn_type input_ynn_type = GetYnnType(input.type);
-  ynn_type output_ynn_type = GetYnnType(output.type);
-  TF_LITE_ENSURE(context, input_ynn_type != ynn_type_invalid);
-  TF_LITE_ENSURE(context, output_ynn_type != ynn_type_invalid);
+  TF_LITE_ENSURE(context, IsTensorSupported(input));
+  TF_LITE_ENSURE(context, IsTensorSupported(output));
 
   TF_LITE_ENSURE_EQ(context, input.type, output.type);
-
-  TF_LITE_ENSURE(context, IsSupportedQuantization(input));
-  TF_LITE_ENSURE(context, IsSupportedQuantization(output));
-
   TF_LITE_ENSURE(context, QuantizationParamsEqual(input, output));
 
   // We only support NHWC format for 2D pooling, which means 4D tensor. NHWC

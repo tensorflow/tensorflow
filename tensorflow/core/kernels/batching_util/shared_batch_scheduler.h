@@ -265,9 +265,6 @@ class SharedBatchScheduler
     // The padding policy to use.
     //
     // See the documentation for kPadUpPolicy for details.
-    // When `enable_priority_aware_batch_scheduler` is true,
-    // `batch_padding_policy` must be kPadUpPolicy. Batches are formed with as
-    // many requests as possible up to `max_execution_batch_size`.
     std::string batch_padding_policy = std::string(kPadUpPolicy);
 
     // A pointer to a ModelBatchStats instance for this model. To be used for
@@ -583,7 +580,6 @@ class PriorityTaskQueue {
     }
     return tasks_to_schedule;
   }
-
 
   std::optional<uint64_t> EarliestHighPriorityTaskStartTime() const {
     if (tasks_.empty()) {
@@ -1166,12 +1162,14 @@ absl::Status SharedBatchScheduler<TaskType>::AddQueueAfterRewritingOptions(
   if (options.enable_priority_aware_batch_scheduler) {
     if (options.mixed_priority_batching_policy !=
         MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize) {
-      return absl::InvalidArgumentError(
-          absl::StrFormat("If enable_priority_aware_batch_scheduler is true, "
-                          "mixed_priority_batching_policy must be "
-                          "kLowPriorityPaddingWithMaxBatchSize. The "
-                          "mixed_priority_batching_policy is %d.",
-                          options.mixed_priority_batching_policy));
+      LOG(WARNING)
+          << "Mixed priority batching policy is not supported when "
+             "enable_priority_aware_batch_scheduler is true. Priority aware "
+             "batch scheduler's default behavior of padding with low priority "
+             "tasks up to the max batch size will be used. User set policy: "
+          << GetMixedPriorityBatchingPolicyString(
+                 options.mixed_priority_batching_policy)
+                 .value_or("unknown");
     }
     if (options.priority_aware_scheduler_options.max_queue_depth == 0) {
       return absl::InvalidArgumentError(

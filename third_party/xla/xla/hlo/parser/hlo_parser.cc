@@ -356,6 +356,7 @@ class HloParserImpl : public HloParser {
     kMode,
     kConvKind,
     kSparsityConfig,
+    kDebugAttributesTable,
   };
 
   struct AttrConfig {
@@ -645,6 +646,10 @@ class HloParserImpl : public HloParser {
   bool ParseOriginalValueImpl(std::optional<OriginalValue>& original_value);
   bool ParseOriginalValueRecoveryTable(
       OriginalValueRecoveryTable& original_value_recovery_table);
+  bool ParseDebugAttributesTable(
+      absl::btree_map<OriginalArray, std::vector<HloModule::DebugAttributes>>*
+          debug_attributes_map);
+  bool ParseDebugAttributes(HloModule::DebugAttributes* debug_attributes);
   bool ParseCollectiveOpGroupMode(CollectiveOpGroupMode* result);
   bool ParseFileLocationList(StackFrameIndexProto* stack_frame_index);
   bool ParseStackFramesList(StackFrameIndexProto* stack_frame_index);
@@ -1138,6 +1143,9 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   BoolList allow_spmd_sharding_propagation_to_parameters;
   BoolList allow_spmd_sharding_propagation_to_output;
   std::optional<OriginalValueRecoveryTable> original_value_recovery_table;
+  std::optional<
+      absl::btree_map<OriginalArray, std::vector<HloModule::DebugAttributes>>>
+      debug_attributes;
 
   attrs["is_scheduled"] = {/*required=*/false, AttrTy::kBool, &is_scheduled};
   attrs["replica_count"] = {/*required=*/false, AttrTy::kInt64, &replica_count};
@@ -1163,6 +1171,8 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   attrs["origin_recovery_table"] = {/*required=*/false,
                                     AttrTy::kOriginalValueRecoveryTable,
                                     &original_value_recovery_table};
+  attrs["debug_attributes"] = {
+      /*required=*/false, AttrTy::kDebugAttributesTable, &debug_attributes};
 
   if (!parse_module_without_header) {
     if (lexer_.GetKind() != TokKind::kw_HloModule) {
@@ -1271,6 +1281,14 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
     module->set_original_value_recovery_table(
         std::move(*original_value_recovery_table));
   }
+  if (debug_attributes) {
+    for (const auto& [original_array, attributes_list] : *debug_attributes) {
+      for (const auto& attributes : attributes_list) {
+        module->AddDebugAttributes(original_array, attributes);
+      }
+    }
+  }
+
   DeduplicateOriginalValues(module);
 
   return true;
@@ -2047,6 +2065,9 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           *shape, operands, std::move(device_list), channel_id));
     }
     case HloOpcode::kCollectiveBroadcast: {
+      optional<bool> has_dynamic_root;
+      attrs["has_dynamic_root"] = {/*required=*/false, AttrTy::kBool,
+                                   &has_dynamic_root};
       std::unique_ptr<CollectiveDeviceListBase> device_list =
           std::make_unique<CollectiveDeviceList>(std::vector<ReplicaGroup>{});
       attrs["replica_groups"] = {
@@ -2058,7 +2079,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return nullptr;
       }
       return builder->AddInstruction(HloInstruction::CreateCollectiveBroadcast(
-          *shape, operands, std::move(device_list), false, channel_id));
+          *shape, operands, std::move(device_list), false, channel_id,
+          has_dynamic_root ? *has_dynamic_root : false));
     }
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart: {
@@ -2277,8 +2299,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
             HloInstruction::CreateAsyncUpdate(*shape, operands));
         //  We update async_wrapped_computation with the parsed shape,
         //  if there is mismatch, the verifier will catch it.
-        if (async_wrapped_opcode && async_wrapped_opcode != HloOpcode::kCall &&
-            async_wrapped_opcode != HloOpcode::kFusion) {
+        if (async_wrapped_opcode) {
           UpdateAsyncWrappedComputation(
               async_update->async_wrapped_computation(),
               /*result_shape=*/shape->tuple_shapes(1),
@@ -2293,8 +2314,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
 
       const Shape& operand_shape = async_done->operand(0)->shape();
 
-      if (async_wrapped_opcode && async_wrapped_opcode != HloOpcode::kCall &&
-          async_wrapped_opcode != HloOpcode::kFusion) {
+      if (async_wrapped_opcode) {
         UpdateAsyncWrappedComputation(
             async_done->async_wrapped_computation(),
             /*result_shape=*/*shape,
@@ -3924,12 +3944,6 @@ bool HloParserImpl::ParseCollectiveDeviceListBase(
     for (const auto& axis : axes) {
       devices_per_group *= axis.size(*mesh);
     }
-    if (devices_per_group <= 1) {
-      return TokenError(absl::StrCat(
-          "MeshAxesReplicaGroupList must have more than one device per group, "
-          "but got ",
-          devices_per_group));
-    }
     *device_list = std::make_unique<MeshAxesReplicaGroupList>(*mesh, axes);
     return true;
   }
@@ -4192,11 +4206,23 @@ bool HloParserImpl::ParseMesh(std::optional<Mesh>& mesh) {
     if (!ParseToken(TokKind::kRparen, "expected ')' to end device_ids")) {
       return false;
     }
+    // Validate the device_ids count against the mesh size before allocating the
+    // device-id array (using an overflow-checked product of the axis sizes).
+    int64_t num_elements = 1;
+    for (int64_t axis_size : axis_sizes) {
+      if (axis_size < 0 ||
+          (axis_size != 0 &&
+           num_elements > std::numeric_limits<int64_t>::max() / axis_size)) {
+        return TokenError("mesh size overflows int64");
+      }
+      num_elements *= axis_size;
+    }
+    if (static_cast<int64_t>(devices.size()) != num_elements) {
+      return TokenError(absl::StrFormat(
+          "Expected %d device_ids based on mesh axes, but got %d", num_elements,
+          devices.size()));
+    }
     Array<int64_t> device_ids_array(axis_sizes);
-    CHECK_EQ(devices.size(), device_ids_array.num_elements())
-        << absl::StrFormat(
-               "Expected %d device_ids based on mesh axes, but got %d",
-               device_ids_array.num_elements(), devices.size());
     absl::c_copy(devices, device_ids_array.begin());
     mesh.emplace(device_ids_array, axis_names_views);
     return true;
@@ -4220,16 +4246,17 @@ bool HloParserImpl::ParseAxisRef(
   auto it = axis_name_to_idx.find(axis_name_or_index);
   if (it != axis_name_to_idx.end()) {
     axis_index = it->second;
-  } else {
-    CHECK(absl::SimpleAtoi(axis_name_or_index, &axis_index))
-        << "axis '" << axis_name_or_index
-        << "' is not a valid axis name or index in mesh " << mesh.ToString();
+  } else if (!absl::SimpleAtoi(axis_name_or_index, &axis_index)) {
+    return TokenError(absl::StrCat(
+        "axis '", axis_name_or_index,
+        "' is not a valid axis name or index in mesh ", mesh.ToString()));
   }
 
-  CHECK(axis_index >= 0 && axis_index < mesh.axis_names().size())
-      << "axis index " << axis_index << " is out of bounds for mesh "
-      << mesh.ToString() << " which has " << mesh.axis_names().size()
-      << " axes";
+  if (axis_index < 0 || axis_index >= mesh.axis_names().size()) {
+    return TokenError(absl::StrCat(
+        "axis index ", axis_index, " is out of bounds for mesh ",
+        mesh.ToString(), " which has ", mesh.axis_names().size(), " axes"));
+  }
 
   if (!EatIfPresent(TokKind::kColon)) {
     axis = AxisRef(axis_index);
@@ -4384,6 +4411,7 @@ bool HloParserImpl::ParseSingleSharding(
 
   std::vector<AxisRef> replicated_axes;
   std::vector<AxisRef> unreduced_axes;
+  NamedSharding::ReductionOp reduction_op = NamedSharding::ReductionOp::kSum;
   std::vector<AxisRef> manual_axes;
 
   while (lexer_.GetKind() != TokKind::kRbrace) {
@@ -4399,6 +4427,20 @@ bool HloParserImpl::ParseSingleSharding(
         return false;
       }
     } else if (attr_name == "unreduced") {
+      if (lexer_.GetKind() == TokKind::kAttributeName ||
+          lexer_.GetKind() == TokKind::kIdent) {
+        std::string op_str = lexer_.GetStrVal();
+        if (op_str == "sum") {
+          reduction_op = NamedSharding::ReductionOp::kSum;
+        } else if (op_str == "max") {
+          reduction_op = NamedSharding::ReductionOp::kMax;
+        } else if (op_str == "min") {
+          reduction_op = NamedSharding::ReductionOp::kMin;
+        } else {
+          return TokenError("expected sum, max, or min for unreduced op");
+        }
+        lexer_.Lex();
+      }
       if (!ParseAxisRefList(*mesh, unreduced_axes)) {
         return false;
       }
@@ -4417,7 +4459,7 @@ bool HloParserImpl::ParseSingleSharding(
     }
   }
   sharding = NamedSharding(*mesh, dim_shardings, replicated_axes,
-                           unreduced_axes, manual_axes, metadata);
+                           unreduced_axes, manual_axes, metadata, reduction_op);
   return ParseToken(TokKind::kRbrace, "expected '}' to end sharding attribute");
 }
 
@@ -6026,6 +6068,20 @@ bool HloParserImpl::ParseAttributeHelper(
             ->emplace(std::move(result));
         return true;
       }
+      case AttrTy::kDebugAttributesTable: {
+        absl::btree_map<OriginalArray, std::vector<HloModule::DebugAttributes>>
+            result;
+
+        if (!ParseDebugAttributesTable(&result)) {
+          return false;
+        }
+        static_cast<optional<absl::btree_map<
+            OriginalArray, std::vector<HloModule::DebugAttributes>>>*>(
+            attr_out_ptr)
+            ->emplace(std::move(result));
+
+        return true;
+      }
       case AttrTy::kMetadata: {
         OpMetadata result;
         if (!ParseMetadata(result)) {
@@ -7580,7 +7636,104 @@ bool HloParserImpl::ParseOriginalValueImpl(
   return true;
 }
 
-// OriginalValueRecoveryTable ::= '{' OriginalArray ':' OriginalArray ','
+bool HloParserImpl::ParseDebugAttributes(
+    HloModule::DebugAttributes* debug_attributes) {
+  if (!ParseToken(TokKind::kLbrace, "Expects '{' to start debug attributes")) {
+    return false;
+  }
+  do {
+    std::string name;
+    if (!ParseAttributeName(&name)) {
+      return TokenError("Expects attribute name in debug attributes");
+    }
+    if (name == "log_mode") {
+      std::string mode;
+      if (!ParseName(&mode)) {
+        return false;
+      }
+      if (mode == "default") {
+        debug_attributes->log_mode =
+            HloModule::DebugAttributes::DebugLogMode::kDefault;
+      } else if (mode == "fusion_debugger") {
+        debug_attributes->log_mode =
+            HloModule::DebugAttributes::DebugLogMode::kFusionDebugger;
+      } else {
+        return TokenError(absl::StrCat("Invalid debug_log_mode value: ", mode));
+      }
+    } else if (name == "callback_id") {
+      if (!ParseInt64(&debug_attributes->callback_id)) {
+        return false;
+      }
+    } else if (name == "partitioned") {
+      if (!ParseBool(&debug_attributes->partitioned)) {
+        return false;
+      }
+    } else if (name == "op_id") {
+      if (!ParseInt64(&debug_attributes->op_id)) {
+        return false;
+      }
+    } else {
+      return TokenError(absl::StrCat("Unknown debug attribute: ", name));
+    }
+  } while (EatIfPresent(TokKind::kComma));
+
+  if (!ParseToken(TokKind::kRbrace, "Expects '}' to end debug attributes")) {
+    return false;
+  }
+  return true;
+}
+
+bool HloParserImpl::ParseDebugAttributesTable(
+    absl::btree_map<OriginalArray, std::vector<HloModule::DebugAttributes>>*
+        debug_attributes_map) {
+  if (!ParseToken(TokKind::kLbrace, "Expects '{' to start debug_attributes")) {
+    return false;
+  }
+  if (lexer_.GetKind() == TokKind::kRbrace) {
+    return ParseToken(TokKind::kRbrace, "");
+  }
+  do {
+    OriginalArray original_array;
+    if (!ParseOriginalArray(original_array)) {
+      return false;
+    }
+    if (!ParseToken(TokKind::kColon, "Expects ':' in debug_attributes entry")) {
+      return false;
+    }
+    std::vector<HloModule::DebugAttributes> debug_attributes_list;
+    if (lexer_.GetKind() == TokKind::kLparen) {
+      lexer_.Lex();
+      if (lexer_.GetKind() != TokKind::kRparen) {
+        do {
+          HloModule::DebugAttributes debug_attributes;
+          if (!ParseDebugAttributes(&debug_attributes)) {
+            return false;
+          }
+          debug_attributes_list.push_back(debug_attributes);
+        } while (EatIfPresent(TokKind::kComma));
+      }
+      if (!ParseToken(TokKind::kRparen,
+                      "Expects ')' after list of debug_attributes")) {
+        return false;
+      }
+    } else {
+      HloModule::DebugAttributes debug_attributes;
+      if (!ParseDebugAttributes(&debug_attributes)) {
+        return false;
+      }
+      debug_attributes_list.push_back(debug_attributes);
+    }
+    (*debug_attributes_map)[original_array] = std::move(debug_attributes_list);
+  } while (EatIfPresent(TokKind::kComma));
+
+  if (!ParseToken(TokKind::kRbrace, "Expects '}' to end debug_attributes")) {
+    return false;
+  }
+  return true;
+}
+
+// OriginalValueRecoveryTable ::= '{' OriginalArray ':'
+// OriginalArray ','
 //   HloModule | OriginalValueRecoveryTable '}'
 bool HloParserImpl::ParseOriginalValueRecoveryTable(
     OriginalValueRecoveryTable& original_value_recovery_table) {
@@ -7596,11 +7749,11 @@ bool HloParserImpl::ParseOriginalValueRecoveryTable(
       return false;
     }
     std::string errmsg =
-        "Expected format: <original_array>: <original_array>, "
-        "<HloModule>";
+        "Expected format: <original_array>: <original_array>, <HloModule>";
     if (!ParseToken(TokKind::kColon, errmsg)) {
       return false;
     }
+
     if (!ParseOriginalArray(replacing_original_array)) {
       return false;
     }

@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -505,6 +506,194 @@ ENTRY main {
       async::AreOperandsAndOutputFullyBound(start),
       StatusIs(absl::StatusCode::kInvalidArgument,
                ::testing::HasSubstr("has no valid wrapped computation")));
+}
+
+TEST_F(HloInstructionUtilsTest, GetAsyncBoundOperandsTest) {
+  const char* const hlo = R"(
+HloModule test
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  p1 = f32[2,3] parameter(1)
+  ROOT abs = f32[2,3] abs(p0)
+}
+
+ENTRY main {
+  p0 = f32[2,3] parameter(0)
+  p1 = f32[2,3] parameter(1)
+  start = ((f32[2,3]), f32[2,3], s32[]) call-start(p0), to_apply=async_computation
+  update = ((f32[2,3], f32[2,3]), f32[2,3], ()) call-update(start, p1)
+  ROOT done = f32[2,3] call-done(update)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloAsyncInstruction* start =
+      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "start"));
+  HloAsyncInstruction* update =
+      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "update"));
+  HloAsyncInstruction* done =
+      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "done"));
+  HloInstruction* p0 = module->entry_computation()->parameter_instruction(0);
+  HloInstruction* p1 = module->entry_computation()->parameter_instruction(1);
+
+  EXPECT_THAT(async::GetAsyncBoundOperands(start), ::testing::ElementsAre(p0));
+  EXPECT_THAT(async::GetAsyncBoundOperands(update),
+              ::testing::ElementsAre(p0, p1));
+  EXPECT_THAT(async::GetAsyncBoundOperands(done),
+              ::testing::ElementsAre(p0, p1));
+}
+
+TEST_F(HloInstructionUtilsTest, IsFirstFullyBound_LateBinding) {
+  const char* const hlo = R"(
+HloModule test
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  ROOT abs = f32[2,3] abs(p0)
+}
+
+ENTRY main {
+  p0 = f32[2,3] parameter(0)
+  start = ((), (), s32[]) call-start(), to_apply=async_computation
+  update = ((f32[2,3]), f32[2,3], ()) call-update(start, p0)
+  ROOT done = f32[2,3] call-done(update)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloInstruction* start = FindInstruction(module.get(), "start");
+  HloInstruction* update = FindInstruction(module.get(), "update");
+  HloInstruction* done = FindInstruction(module.get(), "done");
+
+  EXPECT_THAT(async::IsFirstFullyBound(start), IsOkAndHolds(false));
+  EXPECT_THAT(async::IsFirstFullyBound(update), IsOkAndHolds(true));
+  EXPECT_THAT(async::IsFirstFullyBound(done), IsOkAndHolds(false));
+}
+
+TEST_F(HloInstructionUtilsTest, IsFirstFullyBound_EarlyBinding) {
+  const char* const hlo = R"(
+HloModule test
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  ROOT abs = f32[2,3] abs(p0)
+}
+
+ENTRY main {
+  p0 = f32[2,3] parameter(0)
+  start = ((f32[2,3]), f32[2,3], s32[]) call-start(p0), to_apply=async_computation
+  ROOT done = f32[2,3] call-done(start)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloInstruction* start = FindInstruction(module.get(), "start");
+  HloInstruction* done = FindInstruction(module.get(), "done");
+
+  EXPECT_THAT(async::IsFirstFullyBound(start), IsOkAndHolds(true));
+  EXPECT_THAT(async::IsFirstFullyBound(done), IsOkAndHolds(false));
+}
+TEST_F(HloInstructionUtilsTest, IsFirstFullyBound_Parameterless) {
+  const char* const hlo = R"(
+HloModule test
+
+async_computation {
+  constant = f32[2,3] constant(1.0)
+  ROOT abs = f32[2,3] abs(constant)
+}
+
+ENTRY main {
+  start = ((), f32[2,3], s32[]) call-start(), to_apply=async_computation
+  ROOT done = f32[2,3] call-done(start)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloInstruction* start = FindInstruction(module.get(), "start");
+  HloInstruction* done = FindInstruction(module.get(), "done");
+
+  EXPECT_THAT(async::IsFirstFullyBound(start), IsOkAndHolds(true));
+  EXPECT_THAT(async::IsFirstFullyBound(done), IsOkAndHolds(false));
+}
+
+TEST_F(HloInstructionUtilsTest, IsFirstFullyBound_LateBinding_MultipleUpdates) {
+  const char* const hlo = R"(
+HloModule test
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  p1 = f32[2,3] parameter(1)
+  ROOT abs = f32[2,3] abs(p0)
+}
+
+ENTRY main {
+  p0 = f32[2,3] parameter(0)
+  p1 = f32[2,3] parameter(1)
+  start = ((), (), s32[]) call-start(), to_apply=async_computation
+  update1 = ((f32[2,3]), (), s32[]) call-update(start, p0)
+  update2 = ((f32[2,3], f32[2,3]), f32[2,3], ()) call-update(update1, p1)
+  ROOT done = f32[2,3] call-done(update2)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloInstruction* start = FindInstruction(module.get(), "start");
+  HloInstruction* update1 = FindInstruction(module.get(), "update1");
+  HloInstruction* update2 = FindInstruction(module.get(), "update2");
+  HloInstruction* done = FindInstruction(module.get(), "done");
+
+  EXPECT_THAT(async::IsFirstFullyBound(start), IsOkAndHolds(false));
+  EXPECT_THAT(async::IsFirstFullyBound(update1), IsOkAndHolds(false));
+  EXPECT_THAT(async::IsFirstFullyBound(update2), IsOkAndHolds(true));
+  EXPECT_THAT(async::IsFirstFullyBound(done), IsOkAndHolds(false));
+}
+
+TEST_F(HloInstructionUtilsTest, IsFirstFullyBound_NonAsyncInstruction) {
+  const char* const hlo = R"(
+HloModule test
+
+ENTRY main {
+  p0 = f32[2,3] parameter(0)
+  ROOT add = f32[2,3] add(p0, p0)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloInstruction* add = FindInstruction(module.get(), "add");
+  EXPECT_THAT(
+      async::IsFirstFullyBound(add),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               ::testing::HasSubstr("Instruction is not asynchronous")));
+}
+
+TEST_F(HloInstructionUtilsTest, IsTopKStable) {
+  const char* const hlo = R"(
+    HloModule test
+
+    compare-gt.1 {
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT, type=TOTALORDER
+    }
+
+    ENTRY main {
+      arg = f32[1024] parameter(0)
+      topk_stable = (f32[24], s32[24]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = true}
+      topk_unstable = (f32[24], s32[24]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = false}
+      topk_default = (f32[24], s32[24]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}
+      ROOT tuple = tuple(topk_stable, topk_unstable, topk_default)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo));
+
+  auto* topk_stable =
+      Cast<HloCustomCallInstruction>(FindInstruction(m.get(), "topk_stable"));
+  auto* topk_unstable =
+      Cast<HloCustomCallInstruction>(FindInstruction(m.get(), "topk_unstable"));
+  auto* topk_default =
+      Cast<HloCustomCallInstruction>(FindInstruction(m.get(), "topk_default"));
+
+  EXPECT_TRUE(IsTopKStable(topk_stable));
+  EXPECT_FALSE(IsTopKStable(topk_unstable));
+  EXPECT_TRUE(IsTopKStable(topk_default));
 }
 }  // namespace
 

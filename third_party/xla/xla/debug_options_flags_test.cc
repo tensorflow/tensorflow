@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -24,7 +25,6 @@ limitations under the License.
 #include "google/protobuf/descriptor.h"
 #include "xla/parse_flags_from_env.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
@@ -79,20 +79,57 @@ TEST(DebugOptions, GetDebugOptionsFromProtoAndFlags_PtxCompilerExtraFlags) {
               ElementsAre("--maxntid=8,8,8", "--register-usage-level=10"));
 }
 
-TEST(DebugOptionsDeathTest, CommandBufferAdaptiveUpdateModeRejected) {
-  int* pargc;
-  std::vector<char*>* pargv;
-  ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
-  tsl::setenv("XLA_FLAGS",
-              "--xla_gpu_command_buffer_update_mode=ADAPTIVE_UPDATE", 1);
+TEST(DebugOptions, CommandBufferUpdateModeDefaultsToAlwaysUpdate) {
+  EXPECT_EQ(
+      DefaultDebugOptionsIgnoringFlags().xla_gpu_command_buffer_update_mode(),
+      DebugOptions::ALWAYS_UPDATE);
+}
 
-  DebugOptions options;
-  std::vector<tsl::Flag> flag_list;
-  MakeDebugOptionsFlags(&flag_list, &options);
+TEST(DebugOptions, CommandBufferUpdateModesParseFromFlags) {
+  for (const auto& [name, expected] : std::vector<
+           std::pair<const char*, DebugOptions::CommandBufferUpdateMode>>{
+           {"ALWAYS_UPDATE", DebugOptions::ALWAYS_UPDATE},
+           {"SKIP_TEMP", DebugOptions::SKIP_TEMP}}) {
+    int* pargc;
+    std::vector<char*>* pargv;
+    ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
+    std::string flag = "--xla_gpu_command_buffer_update_mode=";
+    flag += name;
+    tsl::setenv("XLA_FLAGS", flag.c_str(), 1);
 
-  EXPECT_DEATH(ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_list),
-               "Flag parsing failed");
-  tsl::unsetenv("XLA_FLAGS");
+    DebugOptions proto_options;
+    DebugOptions options = GetDebugOptionsFromProtoAndFlags(&proto_options);
+
+    EXPECT_EQ(options.xla_gpu_command_buffer_update_mode(), expected);
+  }
+}
+
+TEST(DebugOptions, RemovedCommandBufferUpdateModesRejectedByTextProto) {
+  for (const char* name : {"DYNAMIC_ALLOCATE", "VMM_PERSISTENT_TEMP",
+                           "NEVER_UPDATE", "CAPTURE_CMD_NEVER_UPDATE"}) {
+    DebugOptions options;
+    std::string text = "xla_gpu_command_buffer_update_mode: ";
+    text += name;
+    EXPECT_FALSE(tsl::protobuf::TextFormat::ParseFromString(text, &options));
+  }
+}
+
+TEST(DebugOptionsDeathTest, RemovedCommandBufferUpdateModesRejectedByFlags) {
+  for (const char* name : {"DYNAMIC_ALLOCATE", "VMM_PERSISTENT_TEMP",
+                           "NEVER_UPDATE", "CAPTURE_CMD_NEVER_UPDATE"}) {
+    int* pargc;
+    std::vector<char*>* pargv;
+    ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
+    std::string flag = "--xla_gpu_command_buffer_update_mode=";
+    flag += name;
+    tsl::setenv("XLA_FLAGS", flag.c_str(), 1);
+
+    DebugOptions proto_options;
+    EXPECT_DEATH((void)GetDebugOptionsFromProtoAndFlags(&proto_options),
+                 "Flag parsing failed")
+        << name;
+    tsl::unsetenv("XLA_FLAGS");
+  }
 }
 
 TEST(DebugOptions, AllFieldsHavePresence) {

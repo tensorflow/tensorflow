@@ -53,7 +53,6 @@ cc_library(
         "triton_xla_unswitch_loops_pass.cc",
         "unsupported_elementwise_to_triton_pass.cc",
         "xtile_lower_to_triton.cc",
-        "xtile_scalarize_scan_pass.cc",
     ],
     hdrs = [
         "lowering_utils.h",

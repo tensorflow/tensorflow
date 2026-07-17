@@ -211,6 +211,10 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F64;
     case xla::PrimitiveType::F4E2M1FN:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F4E2M1FN;
+    case xla::PrimitiveType::F6E2M3FN:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_F6E2M3FN;
+    case xla::PrimitiveType::F6E3M2FN:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_F6E3M2FN;
     case xla::PrimitiveType::F8E5M2:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E5M2;
     case xla::PrimitiveType::F8E4M3:
@@ -286,6 +290,10 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
       return xla::PrimitiveType::C128;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_F4E2M1FN:
       return xla::PrimitiveType::F4E2M1FN;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_F6E2M3FN:
+      return xla::PrimitiveType::F6E2M3FN;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_F6E3M2FN:
+      return xla::PrimitiveType::F6E3M2FN;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E5M2:
       return xla::PrimitiveType::F8E5M2;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3:

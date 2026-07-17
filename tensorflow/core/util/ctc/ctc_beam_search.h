@@ -109,7 +109,7 @@ class CTCBeamSearchDecoder : public CTCDecoder<T> {
   void Step(const Vector& log_input_t);
 
   template <typename Vector>
-  T GetTopK(const int K, const Vector& input, std::vector<T>* top_k_logits,
+  T GetTopK(int K, const Vector& input, std::vector<T>* top_k_logits,
             std::vector<int>* top_k_indices);
 
   // Retrieve the beam scorer instance used during decoding.

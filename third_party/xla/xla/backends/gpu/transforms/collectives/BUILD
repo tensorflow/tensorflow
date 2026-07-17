@@ -771,6 +771,7 @@ xla_cc_test(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_description_proto_cc",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/status:statusor",
