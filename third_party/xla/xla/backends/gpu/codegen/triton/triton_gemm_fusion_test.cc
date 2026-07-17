@@ -326,7 +326,7 @@ ENTRY e {
   )"));
 }
 
-TEST_F(TritonGemmTest, DoNotUseTensorCoresWithNonDefaultPrecision) {
+TEST_F(TritonGemmTest, UseTensorCoresWithHighPrecision) {
   constexpr absl::string_view kHloText = R"(
 triton_gemm_r {
   parameter_0 = s8[80,15]{1,0} parameter(0)
@@ -352,7 +352,7 @@ ENTRY e {
 
   CompileAndOptionallyVerifyPtx(std::move(module_and_metadata.module),
                                 R"(
-CHECK-NOT: mma
+CHECK: mma
 )");
 }
 
