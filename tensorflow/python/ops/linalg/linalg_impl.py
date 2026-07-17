@@ -69,9 +69,9 @@ triangular_solve = linalg_ops.matrix_triangular_solve
 def logdet(matrix, name=None):
   """Computes log of the determinant of a square matrix.
 
-  Uses LU decomposition via ``tf.linalg.slogdet`` internally, so it works
-  for any non-singular matrix, not just hermitian positive definite (HPD)
-  matrices.
+  Real inputs use LU decomposition via ``tf.linalg.slogdet`` internally, so
+  they may be any non-singular square matrix. Complex inputs retain the
+  historical hermitian positive definite (HPD) behavior and real output dtype.
 
   For real matrices whose determinant is negative the result will be NaN,
   since the logarithm of a negative real number is undefined.  Use
@@ -98,6 +98,12 @@ def logdet(matrix, name=None):
   @end_compatibility
   """
   with ops.name_scope(name, 'logdet', [matrix]):
+    matrix = ops.convert_to_tensor(matrix)
+    if matrix.dtype.is_complex:
+      chol = gen_linalg_ops.cholesky(matrix)
+      return 2.0 * math_ops.reduce_sum(
+          math_ops.log(math_ops.real(array_ops.matrix_diag_part(chol))),
+          axis=[-1])
     sign, log_abs_det = gen_linalg_ops.log_matrix_determinant(matrix)
     return log_abs_det + math_ops.log(sign)
 

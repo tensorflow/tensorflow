@@ -83,6 +83,8 @@ class LogdetTest(test.TestCase):
             #     [_RandomPDMatrix(n, self.rng, np_dtype),
             #      _RandomPDMatrix(n, self.rng, np_dtype)]).astype(np_dtype)
             logdet_tf = linalg.logdet(matrix)
+            self.assertEqual(
+                logdet_tf.dtype, dtypes.as_dtype(np_dtype).real_dtype)
             self.assertAllClose(logdet_np, self.evaluate(logdet_tf), atol=atol)
 
   def test_works_with_underflow_case(self):
