@@ -232,7 +232,7 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
       clip_norm = math_ops.cast(clip_norm, dtype=values.dtype)
       clip_norm_safe = array_ops.where(
           is_clip_norm_inf,
-          constant_op.constant(1.0, dtype=values.dtype),
+          array_ops.ones_like(clip_norm),
           clip_norm)
 
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
@@ -386,7 +386,7 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
       is_clip_norm_inf = math_ops.is_inf(clip_norm)
       clip_norm_safe = array_ops.where(
           is_clip_norm_inf,
-          constant_op.constant(1.0, dtype=use_norm.dtype),
+          array_ops.ones_like(clip_norm),
           clip_norm)
       scale_for_finite = clip_norm_safe * math_ops.minimum(
           1.0 / use_norm,
