@@ -82,6 +82,9 @@ class UndonatableCommonPjRtBuffer : public PjRtBuffer {
 
   ~UndonatableCommonPjRtBuffer() override;
 
+  static absl::StatusOr<std::unique_ptr<PjRtBuffer>> Create(
+      std::unique_ptr<PjRtBuffer> buffer);
+
   // Hold-Free Inference Extensions
 
   // Acquires a reference to the underlying device memory that the caller MUST
