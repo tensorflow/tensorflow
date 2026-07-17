@@ -511,6 +511,10 @@ message DebugOptions {
   // details in http://shortn/_jXJ2VFoyMN.
   optional bool xla_enable_enzyme_comms_opt = 429;
 
+  // Enable experimental support for multi-output Triton fusions where all roots
+  // share the same shape.
+  optional bool xla_experimental_enable_same_shape_multi_output_fusion = 515;
+
   // Denylist for cuDNN convolutions.
   optional string xla_gpu_algorithm_denylist_path = 128;
 
@@ -1675,7 +1679,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 515
+  // Next id: 516
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

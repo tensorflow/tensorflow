@@ -1194,5 +1194,46 @@ TEST_F(TilePropagationTest, CanPropagateToGetTupleElementOp) {
             upper bounds [4]
   )"));
 }
+
+TEST_F(TilePropagationTest, FailsToPropagateToConcatenateThroughBitcast) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[10, 512] parameter(0)
+      p1 = f32[10, 2, 512] parameter(1)
+      reshape = f32[10, 1024] bitcast(p1)
+      ROOT concatenate = f32[10, 1536] concatenate(p0, reshape), dimensions={1}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+
+  std::vector<int64_t> test_sizes(tiling_space->num_dimensions(), 1);
+  test_sizes[1] = 2;
+  ASSERT_OK(tiling_space->AssignTileSizes(test_sizes));
+
+  auto root_tile = tiling_space->tiled_roots()[0];
+  root_tile.Simplify();
+
+  ASSERT_OK_AND_ASSIGN(
+      auto tiled_operands,
+      PropagateTileToInput(*tiling_space, *root, root_tile, 0));
+
+  ASSERT_EQ(tiled_operands.size(), 2);
+
+  ASSERT_OK_AND_ASSIGN(auto output_tiles,
+                       PropagateTileToInput(*tiling_space, *(root->operand(1)),
+                                            tiled_operands[1], 0));
+  EXPECT_THAT(output_tiles, MatchToString(R"(
+    0) (tid_0, tid_1)
+         -> offsets [tid_0, tid_1 / 256 - 1, (tid_1 mod 256) * 2]
+            sizes [1, 1, 2]
+            strides [1, 1, 1]
+            upper bounds [10, tid_1 / 256, (tid_1 mod 256) * 2 + 2]
+  )"));
+}
+
 }  // namespace
 }  // namespace xla::gpu::experimental

@@ -199,6 +199,22 @@ mlir::Value OnesLike(mlir::ImplicitLocOpBuilder& b, mlir::Type type) {
   return cst;
 }
 
+Value ReducePrecision(mlir::ImplicitLocOpBuilder& b, const HloInstruction& hlo,
+                      Value value) {
+  // Check if it's a no-op.
+  auto elem_type =
+      GetPrimitiveType(mlir::getElementTypeOrSelf(value.getType()));
+  if (elem_type.ok() && primitive_util::IsFloatingPointType(*elem_type)) {
+    if (hlo.exponent_bits() == primitive_util::ExponentWidth(*elem_type) &&
+        hlo.mantissa_bits() + 1 ==
+            primitive_util::SignificandWidth(*elem_type)) {
+      return value;
+    }
+  }
+  return mh::reducePrecision<mlir::tensor::BitcastOp>(
+      b.getLoc(), value, hlo.exponent_bits(), hlo.mantissa_bits(), &b);
+}
+
 }  // namespace
 
 SmallVector<int64_t> GetPaddedTileSizes(ArrayRef<int64_t> tile_sizes) {
@@ -556,8 +572,7 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
                   mlir::stablehlo::ComparisonDirection::NE),
           inputs[1], inputs[2]);
     case HloOpcode::kReducePrecision:
-      return mh::reducePrecision<mlir::tensor::BitcastOp>(
-          b.getLoc(), inputs[0], hlo.exponent_bits(), hlo.mantissa_bits(), &b);
+      return ReducePrecision(b, hlo, inputs[0]);
     case HloOpcode::kAcos:
       return mm::AcosOp::create(b, inputs[0]);
     case HloOpcode::kAcosh:

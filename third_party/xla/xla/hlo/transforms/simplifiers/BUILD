@@ -351,6 +351,7 @@ xla_cc_test(
         "//xla/service:call_graph",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:statusor",
     ],

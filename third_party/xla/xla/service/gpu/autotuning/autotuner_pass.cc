@@ -252,8 +252,7 @@ std::unique_ptr<AutotunerCacheInterface> CreateAutotunerCache(
         GetCacheMode(debug_options.xla_gpu_experimental_autotune_cache_mode()),
         KeyMatchingMode::kLoose);
     auto local_cache = std::make_unique<LocalCache>(
-        dir_cache->GetKeyMatchingMode(),
-        &LocalCacheStorage::GetInstance(cache_ctx));
+        cache_ctx, dir_cache->GetKeyMatchingMode());
     return std::make_unique<TieredCache>(std::move(local_cache),
                                          std::move(dir_cache));
   }

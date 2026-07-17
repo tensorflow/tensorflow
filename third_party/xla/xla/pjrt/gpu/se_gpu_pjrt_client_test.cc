@@ -2005,11 +2005,11 @@ TEST(StreamExecutorGpuClientTest, DmaMapUnmap) {
                                     static_cast<std::align_val_t>(alignment));
       });
   TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
-  EXPECT_TRUE(client->IsDmaMapped(host_dma_ptr, dma_size));
-  EXPECT_FALSE(
-      client->IsDmaMapped(reinterpret_cast<char*>(host_dma_ptr) + 5, dma_size));
+  EXPECT_TRUE(client->IsHostMemoryPinned(host_dma_ptr, dma_size));
+  EXPECT_FALSE(client->IsHostMemoryPinned(
+      reinterpret_cast<char*>(host_dma_ptr) + 5, dma_size));
   TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr));
-  EXPECT_FALSE(client->IsDmaMapped(host_dma_ptr, dma_size));
+  EXPECT_FALSE(client->IsHostMemoryPinned(host_dma_ptr, dma_size));
 }
 
 TEST(StreamExecutorGpuClientTest, RawBuffer) {
@@ -2307,22 +2307,18 @@ TEST(StreamExecutorGpuClientTest,
       se_topology->gpu_topology().host_target_machine_options().has_value());
 }
 
-// The "address" allocator must give a dedicated synchronous passthrough
-// StreamExecutorAddressAllocator at the PJRT level and bypass the BFC allocator
-// (MultiDeviceAdapter) entirely.
-TEST(StreamExecutorGpuClientTest, AddressAllocatorIsSynchronousPassthrough) {
+// The "platform" allocator must return a MultiDeviceAdapter wrapping
+// synchronous StreamExecutorMemoryAllocator instances at the PJRT level.
+TEST(StreamExecutorGpuClientTest, PlatformAllocatorIsSynchronousPassthrough) {
   GpuClientOptions options;
-  options.allocator_config.kind = GpuAllocatorConfig::Kind::kAddress;
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kPlatform;
   options.allowed_devices = {0};
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
 
   auto* pjrt_se_client =
       absl::down_cast<PjRtStreamExecutorClient*>(client.get());
-  EXPECT_NE(dynamic_cast<se::StreamExecutorAddressAllocator*>(
-                pjrt_se_client->allocator()),
-            nullptr);
-  EXPECT_EQ(dynamic_cast<se::MultiDeviceAdapter*>(pjrt_se_client->allocator()),
+  EXPECT_NE(dynamic_cast<se::MultiDeviceAdapter*>(pjrt_se_client->allocator()),
             nullptr);
 }
 
@@ -2495,9 +2491,13 @@ class ScopedBufferAllocatorVLog {
  public:
   ScopedBufferAllocatorVLog()
       : old_vlog_level_(
-            absl::SetVLogLevel("gpu_executable_buffer_allocator", 3)) {}
+            absl::SetVLogLevel("gpu_executable_buffer_allocator", 3)),
+        old_va_remap_vlog_level_(
+            absl::SetVLogLevel("gpu_executable_va_remap_allocator", 3)) {}
 
   ~ScopedBufferAllocatorVLog() {
+    absl::SetVLogLevel("gpu_executable_va_remap_allocator",
+                       old_va_remap_vlog_level_);
     absl::SetVLogLevel("gpu_executable_buffer_allocator", old_vlog_level_);
   }
 
@@ -2507,6 +2507,7 @@ class ScopedBufferAllocatorVLog {
 
  private:
   int old_vlog_level_;
+  int old_va_remap_vlog_level_;
 };
 
 TEST_F(VmmTest, CommandBufferSkipTempTwoGemmChain) {
@@ -2529,7 +2530,7 @@ TEST_F(VmmTest, CommandBufferSkipTempTwoGemmChain) {
 TEST_F(VmmTest, CommandBufferSkipTempFallsBackWithoutVmmAllocator) {
   GpuClientOptions options;
   options.allowed_devices = {0};
-  options.allocator_config.kind = GpuAllocatorConfig::Kind::kAddress;
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kPlatform;
   ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
 
   ScopedBufferAllocatorVLog vlog;

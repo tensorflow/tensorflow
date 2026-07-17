@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <iterator>
-#include <memory>
-#include <string>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"

@@ -448,8 +448,21 @@ NamedSharding convertToNamedSharding(
     manualAxesSharding.push_back(AxisRef(axisNameToIndex[axisName]));
   }
 
+  NamedSharding::ReductionOp reductionOp;
+  switch (sdySharding.getReductionOp()) {
+    case mlir::sdy::ReductionOp::SUM:
+      reductionOp = NamedSharding::ReductionOp::kSum;
+      break;
+    case mlir::sdy::ReductionOp::MAX:
+      reductionOp = NamedSharding::ReductionOp::kMax;
+      break;
+    case mlir::sdy::ReductionOp::MIN:
+      reductionOp = NamedSharding::ReductionOp::kMin;
+      break;
+  }
+
   return NamedSharding(mesh, dimShardings, replicatedAxes, unreducedAxes,
-                       manualAxesSharding);
+                       manualAxesSharding, /*metadata=*/{}, reductionOp);
 }
 
 }  // namespace

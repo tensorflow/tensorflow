@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -42,6 +43,28 @@ limitations under the License.
 #include "tsl/platform/numbers.h"
 
 namespace stream_executor {
+
+StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
+    StreamExecutor* executor, int64_t memory_space)
+    : executor_(executor), memory_space_(memory_space) {}
+
+std::string StreamExecutorMemoryAllocator::Name() {
+  return absl::StrCat("SE_", executor_->device_ordinal(), "_space_",
+                      memory_space_);
+}
+
+void* StreamExecutorMemoryAllocator::AllocateRaw(size_t alignment,
+                                                 size_t num_bytes) {
+  auto result = executor_->AllocateArray<char>(num_bytes, memory_space_);
+  return result.opaque();
+}
+
+void StreamExecutorMemoryAllocator::DeallocateRaw(void* ptr) {
+  if (ptr != nullptr) {
+    DeviceAddressBase dev_mem(ptr);
+    executor_->Deallocate(&dev_mem);
+  }
+}
 
 TfAllocatorAdapter::TfAllocatorAdapter(tsl::Allocator* wrapped, Stream* stream,
                                        size_t min_alignment,
@@ -156,8 +179,14 @@ absl::StatusOr<ScopedDeviceAddress<uint8_t>> MultiDeviceAdapter::Allocate(
     int device_ordinal, uint64_t size, bool retry_on_failure,
     int64_t memory_space) {
   auto it = memory_space_to_per_device_allocators_.find(memory_space);
-  CHECK(it != memory_space_to_per_device_allocators_.end());
-  CHECK_LT(device_ordinal, it->second.size());
+  if (it == memory_space_to_per_device_allocators_.end() ||
+      device_ordinal < 0 || device_ordinal >= it->second.size() ||
+      !it->second[device_ordinal]) {
+    return absl::InternalError(absl::StrCat(
+        "No allocator found in MultiDeviceAdapter for device ordinal ",
+        device_ordinal, " and memory space ", memory_space));
+  }
+
   ASSIGN_OR_RETURN(auto result,
                    it->second[device_ordinal]->Allocate(
                        device_ordinal, size, retry_on_failure, memory_space));

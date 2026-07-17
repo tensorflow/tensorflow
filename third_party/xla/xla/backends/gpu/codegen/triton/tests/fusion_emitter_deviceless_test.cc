@@ -160,6 +160,47 @@ ENTRY entry {
                          mlir_context));
 }
 
+TEST_F(TritonEmitterDevicelessTest, RejectsGenericFp4FusionOutput) {
+  constexpr absl::string_view kHloText = R"(
+fusion {
+  p0 = f4e2m1fn[128,256]{1,0:E(4)} parameter(0)
+  ROOT copy = f4e2m1fn[128,256]{1,0:E(4)} copy(p0)
+}
+
+ENTRY entry {
+  p0 = f4e2m1fn[128,256]{1,0:E(4)} parameter(0)
+  ROOT triton_fusion = f4e2m1fn[128,256]{1,0:E(4)} fusion(p0),
+    kind=kCustom, calls=fusion,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "num_warps":"1",
+        "output_tiles":[{"sizes":["1","1"]}],
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  const HloFusionInstruction* triton_fusion = Cast<HloFusionInstruction>(
+      hlo_module->entry_computation()->root_instruction());
+  const se::DeviceDescription dev_info = TestGpuDeviceInfo::B200SXMDeviceInfo();
+  mlir::MLIRContext mlir_context;
+  RegisterSymbolicExprStorage(&mlir_context);
+
+  EXPECT_THAT(
+      CreateTritonModule("test_fn", *triton_fusion, dev_info,
+                         BlockLevelParameters::FromBlockLevelFusionConfig(
+                             triton_fusion->backend_config<GpuBackendConfig>()
+                                 ->fusion_backend_config()
+                                 .block_level_fusion_config()),
+                         mlir_context),
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          ::testing::HasSubstr(
+              "f4e2m1fn storage value must feed scaled-dot operand 0 or 1")));
+}
+
 TEST_F(WarpSpecializationTritonEmitterTest,
        ExtraWarpsAreRequestedForWarpSpecialization) {
   const std::string hlo_text = R"(

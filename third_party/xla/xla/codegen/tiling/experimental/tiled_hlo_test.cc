@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/test_utils.h"
+#include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tile_propagation.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -53,18 +54,6 @@ using ::testing::Property;
 using ::testing::UnorderedElementsAre;
 
 MATCHER_P(IsUniquePointerTo, ptr, "") { return arg.get() == ptr; }
-MATCHER(HasValidRoots, "") {
-  for (const TiledHloInstruction* root : arg.roots()) {
-    if (!absl::c_any_of(
-            arg.tiled_hlo_instructions(),
-            [root](const auto& instr) { return instr.get() == root; })) {
-      *result_listener << "root " << root->ToString()
-                       << " is not in tiled_hlo_instructions()";
-      return false;
-    }
-  }
-  return true;
-}
 
 class TiledHloTest : public HloHardwareIndependentTestBase {
  public:
@@ -110,6 +99,45 @@ TEST_F(TiledHloTest, TestPrinting) {
   )"));
 }
 
+TEST_F(TiledHloTest, TiledHloRegionDefaultConstruction) {
+  TiledHloRegion region;
+  EXPECT_TRUE(region.instructions().empty());
+  EXPECT_TRUE(region.roots().empty());
+}
+
+TEST_F(TiledHloTest, TiledHloRegionMoveConstruction) {
+  TiledHloRegion region;
+  TiledHloRegion moved_region(std::move(region));
+  EXPECT_TRUE(moved_region.instructions().empty());
+  EXPECT_TRUE(moved_region.roots().empty());
+}
+
+TEST_F(TiledHloTest, TiledHloRegionInvalidRootFailsCheck) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      ROOT p0 = f32[10] parameter(0)
+    }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  auto instr =
+      std::make_unique<TiledHloInstruction>(root, Tile(*tiling_space, {}));
+  const TiledHloInstruction* raw_instr = instr.get();
+
+  auto unowned_instr =
+      std::make_unique<TiledHloInstruction>(root, Tile(*tiling_space, {}));
+  const TiledHloInstruction* unowned_raw = unowned_instr.get();
+
+  std::vector<std::unique_ptr<TiledHloInstruction>> instructions;
+  instructions.push_back(std::move(instr));
+
+  EXPECT_DEATH(
+      TiledHloRegion(std::move(instructions), {raw_instr, unowned_raw}),
+      "must be present in the region");
+}
+
 MATCHER_P2(IsHloWithOperands, opcode, operand_opcodes,
            "Check if HLO has given opcode and operands with given opcodes") {
   const TiledHloInstruction& hlo = *arg;
@@ -127,16 +155,18 @@ class TileAnalysisTest : public HloHardwareIndependentTestBase {
  public:
   TileAnalysisTest() { RegisterSymbolicExprStorage(&mlir_context_); }
 
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_unsupported_enable_triton_multi_output_fusion(
+        true);
+    return debug_options;
+  }
+
   HloInstruction* ParseAndGetRoot(absl::string_view hlo_string) {
     auto module_or = ParseAndReturnVerifiedModule(hlo_string);
     CHECK_OK(module_or);
     module_ = std::move(module_or.value());
-    // TODO: b/502910372 - multi output fusions are not supported yet but to
-    // exercise some of the code paths that deal with multiple roots we allow
-    // them in the test.
-    module_->mutable_config()
-        .mutable_debug_options()
-        .set_xla_gpu_unsupported_enable_triton_multi_output_fusion(true);
     return module_->entry_computation()->root_instruction();
   }
 
@@ -184,12 +214,10 @@ Tiled HLO:
   )"));
 
   EXPECT_THAT(
-      tiled_computation.tiled_hlo_instructions(),
+      tiled_computation.tiled_root_region().instructions(),
       Contains(IsHloWithOperands(
           HloOpcode::kReduce, std::vector<HloOpcode>{HloOpcode::kParameter,
                                                      HloOpcode::kConstant})));
-
-  EXPECT_THAT(tiled_computation, HasValidRoots());
 }
 
 TEST_F(TileAnalysisTest, SimpleNormalizationDiamond) {
@@ -231,17 +259,15 @@ Tiled HLO:
   subtract.tile_0 = subtract(p0.2.tile_0, broadcast.tile_0)  offsets [tid_0 * 8, 0] sizes [8, 128] strides [1, 1] upper bounds [16, 97]
   )"));
 
-  EXPECT_THAT(tiled_computation.tiled_hlo_instructions(),
+  EXPECT_THAT(tiled_computation.tiled_root_region().instructions(),
               Contains(IsHloWithOperands(
                   HloOpcode::kSubtract,
                   std::vector<HloOpcode>{HloOpcode::kParameter,
                                          HloOpcode::kBroadcast})));
   EXPECT_THAT(
-      tiled_computation.tiled_hlo_instructions(),
+      tiled_computation.tiled_root_region().instructions(),
       Contains(IsHloWithOperands(HloOpcode::kBroadcast,
                                  std::vector<HloOpcode>{HloOpcode::kReduce})));
-
-  EXPECT_THAT(tiled_computation, HasValidRoots());
 }
 
 TEST_F(TileAnalysisTest, ConcatenateIsSupported) {
@@ -283,12 +309,10 @@ Tiled HLO:
   }
   )"));
 
-  EXPECT_THAT(tiled_computation.tiled_hlo_instructions(),
+  EXPECT_THAT(tiled_computation.tiled_root_region().instructions(),
               Contains(IsHloWithOperands(
                   HloOpcode::kConcatenate,
                   std::vector<HloOpcode>(3, HloOpcode::kParameter))));
-
-  EXPECT_THAT(tiled_computation, HasValidRoots());
 }
 
 TEST_F(TileAnalysisTest, DuplicateRegionRoots) {
@@ -315,8 +339,6 @@ TEST_F(TileAnalysisTest, DuplicateRegionRoots) {
          p0.tile_1 = parameter(0)  offsets [tid_2 * 16, tid_1 * 16] sizes [16, 16] strides [1, 1] upper bounds [128, 128]
        }
   )"));
-
-  EXPECT_THAT(tiled_computation, HasValidRoots());
 }
 
 TEST_F(TileAnalysisTest, Dot) {
@@ -354,11 +376,9 @@ TEST_F(TileAnalysisTest, Dot) {
   )"));
 
   EXPECT_THAT(
-      tiled_computation.tiled_hlo_instructions(),
+      tiled_computation.tiled_root_region().instructions(),
       Contains(IsHloWithOperands(
           HloOpcode::kDot, std::vector<HloOpcode>(2, HloOpcode::kParameter))));
-
-  EXPECT_THAT(tiled_computation, HasValidRoots());
 }
 
 TEST_F(TileAnalysisTest, DotWithFullContractionDimTile) {
@@ -396,11 +416,9 @@ Tiled HLO:
   )"));
 
   EXPECT_THAT(
-      tiled_computation.tiled_hlo_instructions(),
+      tiled_computation.tiled_root_region().instructions(),
       Contains(IsHloWithOperands(
           HloOpcode::kDot, std::vector<HloOpcode>(2, HloOpcode::kParameter))));
-
-  EXPECT_THAT(tiled_computation, HasValidRoots());
 }
 
 TEST_F(TileAnalysisTest, ScaledDot) {
@@ -443,12 +461,10 @@ Tiled HLO:
   }
   )"));
 
-  EXPECT_THAT(tiled_computation.tiled_hlo_instructions(),
+  EXPECT_THAT(tiled_computation.tiled_root_region().instructions(),
               Contains(IsHloWithOperands(
                   HloOpcode::kScaledDot,
                   std::vector<HloOpcode>(4, HloOpcode::kParameter))));
-
-  EXPECT_THAT(tiled_computation, HasValidRoots());
 }
 
 TEST_F(TileAnalysisTest, RuntimeVariablesAreEmittedFirst) {
@@ -491,8 +507,6 @@ Tiled HLO:
                                      Pointee(Property(&HloInstruction::opcode,
                                                       Eq(HloOpcode::kAdd))))),
                     ::testing::_))));
-
-  EXPECT_THAT(tiled_computation, HasValidRoots());
 }
 
 TEST_F(TileAnalysisTest, CSEWorksCorrectly) {
@@ -539,8 +553,6 @@ Tiled HLO:
   d1.tile_1 = dynamic-slice(c0.tile_2, off.tile_0)  offsets [rt_0] sizes [16] strides [1] upper bounds [rt_0 + 10]
   d2.tile_0 = dynamic-slice(d1.tile_1, off2.tile_0)  offsets [0] sizes [16] strides [1] upper bounds [10]
   )"));
-
-  EXPECT_THAT(tiled_computation, HasValidRoots());
 }
 
 TEST_F(TileAnalysisTest, CollectiveDotBasic) {
@@ -577,39 +589,62 @@ TEST_F(TileAnalysisTest, CollectiveDotBasic) {
         p1.1.tile_0 = parameter(1)  offsets [tid_2 * 32, tid_1 * 32] sizes [32, 32] strides [1, 1] upper bounds [256, 512]
       }
   )"));
-
-  EXPECT_THAT(tiled_computation, HasValidRoots());
 }
 
-TEST_F(TileAnalysisTest, DuplicateFusionRoots) {
-  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
-                       ParseAndTile(R"hlo(
+class SameShapeMultiOutputFusionTileAnalysisTest : public TileAnalysisTest {
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = TileAnalysisTest::GetDebugOptionsForTest();
+    debug_options.set_xla_experimental_enable_same_shape_multi_output_fusion(
+        true);
+    debug_options.set_xla_gpu_unsupported_enable_triton_multi_output_fusion(
+        false);
+    return debug_options;
+  }
+};
+
+TEST_F(SameShapeMultiOutputFusionTileAnalysisTest, SimpleMultiOutputFusion) {
+  HloInstruction* root = ParseAndGetRoot(R"hlo(
     fusion {
       p0 = f32[128] parameter(0)
       add0 = f32[128] add(p0, p0)
-      ROOT tuple = (f32[128], f32[128]) tuple(add0, add0)
+      ROOT tuple = (f32[128], f32[128], f32[128]) tuple(p0, add0, add0)
     }
 
     ENTRY e {
       p0 = f32[128] parameter(0)
-      ROOT call = (f32[128], f32[128]) fusion(p0), kind=kLoop, calls=fusion
-    })hlo",
-                                    {128, 128}));
+      ROOT call = (f32[128], f32[128], f32[128]) fusion(p0), kind=kLoop, calls=fusion
+    })hlo");
 
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK(tiling_space->AssignTileSizes({128}));
+  ASSERT_OK_AND_ASSIGN(
+      const TiledHloComputation tiled_computation,
+      TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
+
+  // There should be only one dimension derived from the first root. Tiling
+  // should be reused across all roots.
   EXPECT_THAT(tiled_computation, MatchString(R"(
     Dimensions:
-      0 type: parallel size: 128 tile size: 128 dim ID:0 hlo: %add0 = f32[128]{0} add(%p0, %p0)
-      1 type: parallel size: 128 tile size: 128 dim ID:0 hlo: %add0 = f32[128]{0} add(%p0, %p0)
+      0 type: parallel size: 128 tile size: 128 dim ID:0 hlo: %p0 = f32[128]{0} parameter(0)
     Root tiles:
       0 root tile:  offsets [0] sizes [128] strides [1] upper bounds [128]
       1 root tile:  offsets [0] sizes [128] strides [1] upper bounds [128]
+      2 root tile:  offsets [0] sizes [128] strides [1] upper bounds [128]
 
     Tiled HLO:
+      p0.tile_0 = parameter(0)  offsets [0] sizes [128] strides [1] upper bounds [128]
       p0.1.tile_0 = parameter(0)  offsets [0] sizes [128] strides [1] upper bounds [128]
       add0.tile_0 = add(p0.1.tile_0, p0.1.tile_0)  offsets [0] sizes [128] strides [1] upper bounds [128]
   )"));
 
-  EXPECT_THAT(tiled_computation, HasValidRoots());
+  EXPECT_EQ(tiled_computation.roots().size(), 3);
+  EXPECT_EQ(tiled_computation.roots()[0]->tile(),
+            tiled_computation.roots()[1]->tile());
+  EXPECT_EQ(tiled_computation.roots()[0]->tile(),
+            tiled_computation.roots()[2]->tile());
 }
 
 // TODO(b/422676780): Port the remaining tests.

@@ -177,6 +177,9 @@ class NcclCommunicator : public GpuCommunicator {
   Future<> WaitSignal(RankId peer, int op_cnt, const SignalDesc& signal_desc,
                       const Executor& executor) final;
 
+  Future<> WaitSignals(absl::Span<const PeerWaitDesc> peer_wait_descs,
+                       const Executor& executor) final;
+
   std::string ToString() const final;
 
   std::shared_ptr<NcclCommState> comm_state() const { return comm_; }
@@ -252,6 +255,9 @@ class NcclCommunicator : public GpuCommunicator {
   absl::Status LaunchWaitSignal(RankId peer, int op_cnt,
                                 const SignalDesc& signal_desc,
                                 const Executor& executor) final;
+
+  absl::Status LaunchWaitSignals(absl::Span<const PeerWaitDesc> peer_wait_descs,
+                                 const Executor& executor) final;
 
   absl::Status LaunchMultiGpuBarrier(const Executor& executor) final;
 

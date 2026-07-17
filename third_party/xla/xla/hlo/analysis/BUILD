@@ -593,6 +593,7 @@ xla_cc_test(
     deps = [
         ":logical_buffer_analysis",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",

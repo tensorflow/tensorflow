@@ -130,6 +130,10 @@ class GpuCompiler : public LLVMCompiler {
     return false;
   }
 
+  virtual bool IsScaledDotSupportedByBackend(
+      const HloInstruction* instr,
+      const GpuTargetConfig& gpu_target_config) const;
+
   enum class AlgebraicSimplifierMode {
     kLayoutInsensitive,
     kPostFusionSimplification,

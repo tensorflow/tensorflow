@@ -512,9 +512,12 @@ absl::StatusOr<HloInstruction*> AssignConvKind(
     // If all else fails, try a forward convolution.
     if (conv->batch_group_count() > 1) {
       conv = ConvertBatchGroupedToFeatureGroupedConvolution(conv);
+      Cast<HloConvolutionInstruction>(conv)->set_convolution_kind(
+          CONVOLUTION_KIND_FPROP);
+    } else {
+      conv = CreateGpuConv(CONVOLUTION_KIND_FPROP, conv,
+                           conv->mutable_operand(0), conv->mutable_operand(1));
     }
-    conv = CreateGpuConv(CONVOLUTION_KIND_FPROP, conv, conv->mutable_operand(0),
-                         conv->mutable_operand(1));
   }
   return conv;
 }

@@ -497,6 +497,21 @@ tf_proto_library(
     ],
 )
 
+tf_proto_library(
+    name = "debug_event_proto",
+    srcs = ["debug_event.proto"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:xla_data_proto",
+    ],
+)
+
+xla_py_proto_library(
+    name = "debug_event_pb2",
+    visibility = ["//visibility:public"],
+    deps = [":debug_event_proto"],
+)
+
 xla_py_proto_library(
     name = "run_hlo_module_pb2",
     visibility = ["//visibility:public"],

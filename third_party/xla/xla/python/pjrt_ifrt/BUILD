@@ -110,7 +110,6 @@ cc_library(
         "//xla/python/ifrt:serdes_version",
         "//xla/python/ifrt:sharding_serdes",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -148,6 +147,7 @@ xla_cc_test(
     srcs = ["xla_sharding_serdes_test.cc"],
     deps = [
         ":xla_ifrt",
+        ":xla_sharding_proto_cc",
         ":xla_sharding_serdes",
         "//xla/hlo/ir:hlo",
         "//xla/python/ifrt",
@@ -156,7 +156,9 @@ xla_cc_test(
         "//xla/python/ifrt:serdes_test_util",
         "//xla/python/ifrt:serdes_version",
         "//xla/python/ifrt:sharding_serdes",
+        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
@@ -600,6 +602,48 @@ cc_library(
 alias(
     name = "tfrt_cpu_client_test_lib",
     actual = ":pjrt_cpu_client_test_lib",
+)
+
+cc_library(
+    name = "hash_values_benchmark_lib",
+    testonly = True,
+    srcs = ["hash_values_benchmark_lib.cc"],
+    deps = [
+        ":pjrt_dtype",
+        ":xla_ifrt",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo_sharding",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt:test_util",
+        "//xla/tsl/concurrency:future",
+        "//xla/tsl/platform:status_macros",
+        "//xla/tsl/platform:test_benchmark",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+    alwayslink = True,
+)
+
+xla_cc_test(
+    name = "pjrt_cpu_hash_values_benchmark",
+    srcs = [],
+    args = ["--benchmark_filter=all"],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        ":hash_values_benchmark_lib",
+        ":pjrt_cpu_client_multi_process_test_lib",
+        "//xla/tsl/platform:test_main",
+    ],
 )
 
 cc_library(

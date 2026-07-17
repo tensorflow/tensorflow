@@ -209,7 +209,6 @@ cc_library(
         ":ifrt",
         "//xla:shape_util",
         "//xla:status_macros",
-        "//xla:xla_data_proto_cc",
         "//xla/tsl/lib/strings:proto_serialization",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -218,6 +217,9 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@highwayhash",
+        "@highwayhash//:arch_specific",
+        "@highwayhash//:hh_types",
         "@tsl//tsl/platform:fingerprint",
     ],
 )

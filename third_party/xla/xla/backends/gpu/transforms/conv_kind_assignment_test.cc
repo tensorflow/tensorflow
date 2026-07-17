@@ -752,6 +752,28 @@ TEST_F(ConvKindAssignmentTest, ForwardConvolutionWithWindowDilation) {
               CONVOLUTION_KIND_FPROP);
 }
 
+TEST_F(ConvKindAssignmentTest, BatchGroupedConvolution) {
+  const std::string module_str = R"(
+    HloModule Test
+
+    ENTRY Test {
+      input = bf16[4,4,4,1] parameter(0)
+      filter = bf16[2,2,1,2] parameter(1)
+      ROOT conv = bf16[2,2,2,2] convolution(input, filter), window={size=2x2 stride=2x2}, dim_labels=b01f_01io->b01f, batch_group_count=2
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+
+  EXPECT_TRUE(RunPass(m.get()));
+  for (const HloComputation* comp : m->computations()) {
+    for (const HloInstruction* inst : comp->instructions()) {
+      if (inst->opcode() == HloOpcode::kConvolution) {
+        EXPECT_NE(DynCast<HloConvolutionInstruction>(inst)->convolution_kind(),
+                  CONVOLUTION_KIND_UNSET);
+      }
+    }
+  }
+}
+
 TEST_F(ConvKindAssignmentTest, TestInvalidTypes) {
   const std::string module_str = absl::StrFormat(R"(
     HloModule Test
