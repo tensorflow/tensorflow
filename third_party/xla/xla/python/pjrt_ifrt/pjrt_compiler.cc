@@ -21,9 +21,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#if defined(PLATFORM_GOOGLE)
+#include "xla/python/pjrt_ifrt/google/select_variant_includes.h"
+#endif  // defined(PLATFORM_GOOGLE)
+
 #include "absl/functional/bind_front.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
@@ -104,6 +109,15 @@ tsl::Future<LoadedExecutableRef> PjRtCompiler::CompileAndLoad(
                    GetXlaCompileOptions(std::move(options)));
   RETURN_IF_ERROR(
       TranslateDeviceIds(client_, xla_compile_options->compile_options));
+
+#if defined(PLATFORM_GOOGLE)
+  ASSIGN_OR_RETURN(auto compiler_variant, xla::PickCompilerVariant());
+  xla_compile_options->compile_options.compiler_variant =
+      compiler_variant == xla::CompilerVariant::kLinked
+          ? std::nullopt
+          : std::make_optional(absl::StrCat(compiler_variant));
+#endif  // defined(PLATFORM_GOOGLE)
+
   return PjRtLoadedExecutable::Create(
       client_, std::move(*xla_program).ToMaybeOwningMlirModule(),
       std::move(xla_compile_options->compile_options),
