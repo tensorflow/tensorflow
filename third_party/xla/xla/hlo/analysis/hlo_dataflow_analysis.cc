@@ -1375,12 +1375,7 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           });
           break;
         case HloOpcode::kAsyncDone:
-          // AsyncDone's output aliases its output. It defines all remaining
-          // tuple-shaped values.
-          define_all_values([&](const ShapeIndex& index) {
-            return ShapeUtil::GetSubshape(instruction->shape(), index)
-                .IsTuple();
-          });
+          // AsyncDone's output aliases its output.
           break;
         case HloOpcode::kCopyStart:
           // CopyStart produces a tuple of {destination buffer, aliased operand,
