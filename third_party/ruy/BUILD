@@ -9,7 +9,6 @@ package(
 # The LICENSE from this package is used during pip package generation.
 exports_files([
     "LICENSE",
-    "ruy_windows_bazel_bug.patch",
     "ruy_BUILD",
     "ruy_profiler_BUILD",
     "ruy_test.oss.bzl",
