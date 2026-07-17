@@ -611,6 +611,7 @@ xla_cc_test(
         ":layout_mode",
         ":utils",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
