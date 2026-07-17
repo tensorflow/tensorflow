@@ -2612,6 +2612,7 @@ tf_kernel_library(
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/status",
         "@xla//xla:comparison_util",
+        "@xla//xla/hlo/builder/lib:math",
         "@xla//xla/hlo/builder:xla_builder",
     ],
 )

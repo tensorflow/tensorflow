@@ -70,13 +70,8 @@ void BuildLowerUpperBoundOp(XlaOpKernelContext* ctx, DataType out_dtype,
   xla::XlaOp element_is_nan;
   xla::XlaOp val_is_nan;
   if (is_fp) {
-    auto sorted_inputs_fp32 =
-        XlaHelpers::ConvertElementType(sorted_inputs_reshaped, DT_FLOAT);
-    element_is_nan = xla::IsNan(sorted_inputs_fp32);
-
-    auto values_fp32 =
-        XlaHelpers::ConvertElementType(values_reshaped, DT_FLOAT);
-    val_is_nan = xla::IsNan(values_fp32);
+    element_is_nan = xla::IsNan(sorted_inputs_reshaped);
+    val_is_nan = xla::IsNan(values_reshaped);
   } else {
     element_is_nan = xla::ConstantR0<bool>(ctx->builder(), false);
     val_is_nan = xla::ConstantR0<bool>(ctx->builder(), false);
