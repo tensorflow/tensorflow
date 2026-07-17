@@ -68,12 +68,14 @@ limitations under the License.
 #include "xla/service/mapped_ptr_container_sorter.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
-#include "xla/shape_pool.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
+// clang-format off
+#include "xla/shape_pool.h"
+// clang-format on
 
 namespace xla {
 
@@ -2404,6 +2406,8 @@ class HloInstruction {
   // TODO(b/316622399): Remove usages of this method and replace with
   // device_list()->replica_groups().
   const std::vector<ReplicaGroup>& replica_groups() const;
+
+  // run presubmits
 
   // Delegates to HloCollectiveInstruction::device_list.
   const std::shared_ptr<CollectiveDeviceListBase>& device_list() const;
