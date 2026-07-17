@@ -135,6 +135,11 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(RuntimeError):
       config.set_intra_op_parallelism_threads(1)
 
+  @reset_eager
+  def testIntraOpParallelismThreadsNegative(self):
+    with self.assertRaisesRegex(ValueError, "must be >= 0"):
+      config.set_intra_op_parallelism_threads(-1)
+
     config.set_intra_op_parallelism_threads(10)
 
   @reset_eager
