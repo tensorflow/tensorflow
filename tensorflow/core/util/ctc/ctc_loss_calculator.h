@@ -396,9 +396,12 @@ void CTCLossCalculator<TT>::CalculateForwardVariables(
 
   // Initial alpha values in (GravesTh) Eq 7.5 and Eq 7.6.
   log_alpha->coeffRef(0, 0) = log(y(blank_index_, output_delay_));
-  // Below, l_prime[1] == labels[0]
-  auto label_0 = (l_prime.size() > 1) ? l_prime[1] : blank_index_;
-  log_alpha->coeffRef(1, 0) = log(y(label_0, output_delay_));
+  // Below, l_prime[1] == labels[0]. When the target sequence is empty the
+  // modified sequence l_prime is just a single blank (U == 1), so there is no
+  // second row to initialize; writing it would corrupt the heap.
+  if (U > 1) {
+    log_alpha->coeffRef(1, 0) = log(y(l_prime[1], output_delay_));
+  }
 
   for (int t = 1; t < T; ++t) {
     // If there is not enough time to output the remaining labels or
@@ -451,8 +454,9 @@ void CTCLossCalculator<TT>::CalculateBackwardVariables(
   int U = l_prime.size();
   CHECK_EQ(U, log_beta->rows());
 
-  // Initial beta values in (GravesTh) Eq 7.13: log of probability 1.
-  for (int u = U - 2; u < U; ++u) log_beta->coeffRef(u, T - 1) = 0;
+  // Clamp the lower bound to 0 so an empty target sequence (U == 1) does not
+  // index row -1, which would corrupt the heap.
+  for (int u = std::max(0, U - 2); u < U; ++u) log_beta->coeffRef(u, T - 1) = 0;
 
   for (int t = T - 1 - 1; t >= 0; --t) {
     // If there is not enough time to output the remaining labels or
