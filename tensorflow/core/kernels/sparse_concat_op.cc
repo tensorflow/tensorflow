@@ -104,6 +104,8 @@ class SparseConcatOp : public OpKernel {
     OpInputList inds;
     OP_REQUIRES_OK(context, context->input_list("indices", &inds));
     const int N = inds.size();
+    OP_REQUIRES(context, N > 0,
+                absl::InvalidArgumentError("Input list must not be empty"));
     for (int i = 0; i < N; i++) {
       OP_REQUIRES(context, TensorShapeUtils::IsMatrix(inds[i].shape()),
                   absl::InvalidArgumentError(absl::StrCat(
