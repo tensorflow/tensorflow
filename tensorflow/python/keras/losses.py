@@ -1637,8 +1637,8 @@ def categorical_crossentropy(y_true,
   y_pred = tensor_conversion.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   label_smoothing = tensor_conversion.convert_to_tensor_v2_with_dispatch(
-      label_smoothing, dtype=backend.floatx()
-  )
+      label_smoothing)
+  label_smoothing = math_ops.cast(label_smoothing, y_pred.dtype)
 
   def _smooth_labels():
     num_classes = math_ops.cast(array_ops.shape(y_true)[-1], y_pred.dtype)
@@ -1778,8 +1778,8 @@ def binary_crossentropy(y_true,
   y_pred = tensor_conversion.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   label_smoothing = tensor_conversion.convert_to_tensor_v2_with_dispatch(
-      label_smoothing, dtype=backend.floatx()
-  )
+      label_smoothing)
+  label_smoothing = math_ops.cast(label_smoothing, y_pred.dtype)
 
   def _smooth_labels():
     return y_true * (1.0 - label_smoothing) + 0.5 * label_smoothing

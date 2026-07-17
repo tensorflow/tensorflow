@@ -24,29 +24,29 @@ from tensorflow.python.platform import test as test_lib
 class CategoricalCrossentropyValidationTest(test_lib.TestCase):
 
   def testValidLabelSmoothing(self):
-    y_true = np.array([[0., 1., 0.], [0., 0., 1.]])
-    y_pred = np.array([[0.05, 0.95, 0.], [0.1, 0.8, 0.1]])
+    y_true = np.array([[0., 1., 0.], [0., 0., 1.]], dtype=np.float32)
+    y_pred = np.array([[0.05, 0.95, 0.], [0.1, 0.8, 0.1]], dtype=np.float32)
     loss = losses.categorical_crossentropy(
         y_true, y_pred, label_smoothing=0.5)
     self.assertIsNotNone(loss)
 
   def testInvalidLabelSmoothingNegative(self):
-    y_true = np.array([[0., 1., 0.], [0., 0., 1.]])
-    y_pred = np.array([[0.05, 0.95, 0.], [0.1, 0.8, 0.1]])
+    y_true = np.array([[0., 1., 0.], [0., 0., 1.]], dtype=np.float32)
+    y_pred = np.array([[0.05, 0.95, 0.], [0.1, 0.8, 0.1]], dtype=np.float32)
     with self.assertRaisesRegex(ValueError, r'label_smoothing.*must be in'):
       losses.categorical_crossentropy(
           y_true, y_pred, label_smoothing=-0.1)
 
   def testInvalidLabelSmoothingTooLarge(self):
-    y_true = np.array([[0., 1., 0.], [0., 0., 1.]])
-    y_pred = np.array([[0.05, 0.95, 0.], [0.1, 0.8, 0.1]])
+    y_true = np.array([[0., 1., 0.], [0., 0., 1.]], dtype=np.float32)
+    y_pred = np.array([[0.05, 0.95, 0.], [0.1, 0.8, 0.1]], dtype=np.float32)
     with self.assertRaisesRegex(ValueError, r'label_smoothing.*must be in'):
       losses.categorical_crossentropy(
           y_true, y_pred, label_smoothing=1.1)
 
   def testTensorLabelSmoothingSkipped(self):
-    y_true = np.array([[0., 1., 0.], [0., 0., 1.]])
-    y_pred = np.array([[0.05, 0.95, 0.], [0.1, 0.8, 0.1]])
+    y_true = np.array([[0., 1., 0.], [0., 0., 1.]], dtype=np.float32)
+    y_pred = np.array([[0.05, 0.95, 0.], [0.1, 0.8, 0.1]], dtype=np.float32)
     # Tensor label_smoothing bypasses static validation
     label_smoothing = constant_op.constant(1.5)
     loss = losses.categorical_crossentropy(
