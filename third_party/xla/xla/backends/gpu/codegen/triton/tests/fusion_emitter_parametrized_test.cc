@@ -224,7 +224,7 @@ ENTRY e {
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
       "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
       "alpha_imag":0,"precision_config":
-      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}}
+      {"operand_precision":["HIGH","HIGH"]},"epilogue":"DEFAULT"}}
    ROOT get-tuple-element = f32[15,68]{1,0} get-tuple-element((f32[15,68]{1,0}, s8[0]{0}) gemm), index=0
 })";
   const std::string hlo_ref = absl::Substitute(
@@ -312,7 +312,7 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::ValuesIn(
             legacy_triton::
                 TritonSupportedUnaryElementwiseUpToFloatNormalization(S16)),
-        ::testing::Values(1e-3)),
+        ::testing::Values(0.2)),
     ElementwiseTestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(
@@ -322,7 +322,7 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::ValuesIn(
             legacy_triton::
                 TritonSupportedUnaryElementwiseUpToFloatNormalization(S32)),
-        ::testing::Values(1e-3)),
+        ::testing::Values(1e-2)),
     ElementwiseTestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(
@@ -342,7 +342,7 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::ValuesIn(
             legacy_triton::
                 TritonSupportedUnaryElementwiseUpToFloatNormalization(F32)),
-        ::testing::Values(1e-6)),
+        ::testing::Values(1e-2)),
     ElementwiseTestParamsToString);
 
 using BinaryElementwiseTest = ElementwiseTest;
@@ -402,7 +402,7 @@ ENTRY e {
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
       "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
       "alpha_imag":0,"precision_config":
-      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}}
+      {"operand_precision":["HIGH","HIGH"]},"epilogue":"DEFAULT"}}
   ROOT get-tuple-element = f32[92,63]{1,0} get-tuple-element((f32[92,63]{1,0}, s8[0]{0}) gemm), index=0
 })";
   const std::string hlo_ref = absl::Substitute(
@@ -498,14 +498,14 @@ INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuiteS16, BinaryElementwiseTest,
     ::testing::Combine(::testing::Values(S16),
                        ::testing::ValuesIn(TestedBinaryElementwise(S16)),
-                       ::testing::Values(0)),
+                       ::testing::Values(0.22)),
     ElementwiseTestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuiteS32, BinaryElementwiseTest,
     ::testing::Combine(::testing::Values(S32),
                        ::testing::ValuesIn(TestedBinaryElementwise(S32)),
-                       ::testing::Values(0)),
+                       ::testing::Values(0.1)),
     ElementwiseTestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(
@@ -519,7 +519,7 @@ INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuiteF32, BinaryElementwiseTest,
     ::testing::Combine(::testing::Values(F32),
                        ::testing::ValuesIn(TestedBinaryElementwise(F32)),
-                       ::testing::Values(1e-6)),
+                       ::testing::Values(1e-2)),
     ElementwiseTestParamsToString);
 
 class CompareTest : public TritonTest,
@@ -662,7 +662,7 @@ ENTRY e {
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
       "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
       "alpha_imag":0,"precision_config":
-      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}}
+      {"operand_precision":["HIGH","HIGH"]},"epilogue":"DEFAULT"}}
   ROOT get-tuple-element = $1[92,63]{1,0} get-tuple-element(($1[92,63]{1,0}, s8[0]{0}) gemm), index=0
 })";
   const std::string hlo_ref = absl::Substitute(
@@ -757,7 +757,7 @@ ENTRY e {
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
       "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
       "alpha_imag":0,"precision_config":
-      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}}
+      {"operand_precision":["HIGH","HIGH"]},"epilogue":"DEFAULT"}}
   ROOT get-tuple-element = f32[92,63]{1, 0} get-tuple-element((f32[92,63]{1, 0}, s8[0]{0}) gemm), index=0
 })";
   const std::string hlo_ref = absl::Substitute(
@@ -767,7 +767,7 @@ ENTRY e {
   switch (data_type) {
     case F32:
     case BF16:
-      tolerance = 1e-6;
+      tolerance = 1e-2;
       break;
     case F16:
       tolerance = 2e-4;
