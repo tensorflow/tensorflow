@@ -75,9 +75,14 @@ constexpr char kCacheDataset[] = "CacheDataset";
 constexpr char kIncompleteCacheErrorMessage[] =
     "The calling iterator did not fully read the dataset being cached. In "
     "order to avoid unexpected truncation of the dataset, the partially cached "
-    "contents of the dataset  will be discarded. This can happen if you have "
-    "an input pipeline similar to `dataset.cache().take(k).repeat()`. You "
-    "should use `dataset.take(k).cache().repeat()` instead.";
+    "contents of the dataset will be discarded. This can happen if you have "
+    "an input pipeline similar to `dataset.cache().take(k).repeat()`, or if "
+    "downstream operations drop elements (e.g. `batch(drop_remainder=True)`). "
+    "You should use `dataset.take(k).cache().repeat()` instead, or ensure the "
+    "dataset size is a multiple of the batch size before caching. Another "
+    "common workaround is to place the `.cache()` operation after the "
+    "operation that drops elements (like `.batch(...)`), if caching the "
+    "transformed data is acceptable.";
 }  // namespace
 
 class DatasetRandomAccessCache {
