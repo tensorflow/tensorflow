@@ -10,4 +10,9 @@ package(
 exports_files([
     "LICENSE",
     "ruy_windows_bazel_bug.patch",
+    "ruy_BUILD",
+    "ruy_profiler_BUILD",
+    "ruy_test.oss.bzl",
+    "build_defs.oss_override.bzl",
+    "build_defs_oss.oss_override.bzl",
 ])
