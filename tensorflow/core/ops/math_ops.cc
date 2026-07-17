@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/overflow.h"
 
 // TODO(intel-tf): Move all MKL ops in this file to a separate file,
 // mkl_math_ops.cc.
@@ -1827,6 +1828,13 @@ REGISTER_OP("DenseBincount")
       if (c->Rank(c->input(0)) == 1 || c->Rank(c->input(0)) == 0) {
         c->set_output(0, c->MakeShape({size_val}));
       } else if (c->Rank(c->input(0)) == 2) {
+        int64_t num_rows = c->Value(c->Dim(c->input(0), 0));
+        if (num_rows != InferenceContext::kUnknownDim) {
+          if (MultiplyWithoutOverflow(num_rows, size_val) < 0) {
+            return absl::InvalidArgumentError(
+                "Encountered overflow when multiplying shape dimensions");
+          }
+        }
         c->set_output(0, c->MakeShape({c->Dim(c->input(0), 0), size_val}));
       }
       return absl::OkStatus();
@@ -1879,8 +1887,13 @@ REGISTER_OP("SparseBincount")
       if (shape_tensor->NumElements() == 1) {
         c->set_output(0, c->MakeShape({size_val}));
       } else if (shape_tensor->NumElements() == 2) {
+        int64_t num_rows = shape_tensor->flat<int64_t>()(0);
+        if (MultiplyWithoutOverflow(num_rows, size_val) < 0) {
+          return absl::InvalidArgumentError(
+              "Encountered overflow when multiplying shape dimensions");
+        }
         c->set_output(
-            0, c->MakeShape({shape_tensor->flat<int64_t>()(0), size_val}));
+            0, c->MakeShape({num_rows, size_val}));
       } else {
         return absl::InvalidArgumentError("Input must be less than rank 2");
       }
