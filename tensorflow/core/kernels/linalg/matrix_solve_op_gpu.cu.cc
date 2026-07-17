@@ -35,21 +35,21 @@ typedef Eigen::GpuDevice GPUDevice;
 // singular matrix detection).
 template <typename Scalar>
 __global__ void CheckLUDiagonalForZerosKernel(
-    int nthreads, int n, const Scalar* __restrict__ lu_factor,
+    int64_t nthreads, int64_t n, const Scalar* __restrict__ lu_factor,
     int* __restrict__ info) {
   typedef typename Eigen::NumTraits<Scalar>::Real RealScalar;
-  const int matrix_size = n * n;
-  const int stride = n + 1;
+  const int64_t matrix_size = n * n;
+  const int64_t stride = n + 1;
   GPU_1D_KERNEL_LOOP(batch, nthreads) {
     // Only update info if it was not already set to a positive value
     // (i.e., getrfBatched didn't already detect the singularity).
     if (info[batch] == 0) {
-      int base = matrix_size * batch;
-      for (int i = 0; i < n; ++i) {
+      const int64_t base = matrix_size * batch;
+      for (int64_t i = 0; i < n; ++i) {
         if (Eigen::numext::abs(lu_factor[base + i * stride]) ==
             RealScalar(0)) {
           // Set info to 1-based index of the first zero pivot.
-          info[batch] = i + 1;
+          info[batch] = static_cast<int>(i + 1);
           break;
         }
       }
