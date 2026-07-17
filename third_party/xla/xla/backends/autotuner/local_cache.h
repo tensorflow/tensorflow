@@ -18,10 +18,12 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -45,15 +47,32 @@ class LocalCacheStorage {
   LocalCacheStorage(const LocalCacheStorage&) = delete;
   LocalCacheStorage& operator=(const LocalCacheStorage&) = delete;
 
-  // Returns the process-wide context-specific instance of LocalCacheStorage.
+  // Returns the process-wide shared singleton instance of LocalCacheStorage.
+  static LocalCacheStorage& GetInstance();
+
+  // Backward compatibility overload.
   static LocalCacheStorage& GetInstance(const AutotuneCacheContext& ctx);
+
+  std::optional<AutotunerCacheInterface::Config> Lookup(
+      absl::string_view hlo_fingerprint,
+      absl::FunctionRef<std::string()> codegen_options_fp_generator,
+      const AutotuneCacheContext& context, KeyMatchingMode matching_mode);
+
+  absl::Status Insert(const autotuner::AutotuneEntry& entry);
+  absl::Status Deserialize(absl::string_view serialized_cache);
+  absl::StatusOr<std::string> Serialize(
+      absl::Span<const std::string> hlo_fingerprints,
+      const AutotuneCacheContext& context, KeyMatchingMode matching_mode);
+
+  AutotunerCacheInterface::CacheStats GetCacheStats() const;
+  void Clear();
 
   friend class LocalCache;
 
  private:
   mutable absl::Mutex mutex_;
-  absl::flat_hash_map<std::string, AutotunerCacheInterface::Config> cache_
-      ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<std::string, std::vector<autotuner::AutotuneEntry>>
+      entries_by_hlo_ ABSL_GUARDED_BY(mutex_);
   AutotunerCacheInterface::CacheStats stats_ ABSL_GUARDED_BY(mutex_);
 };
 
@@ -72,12 +91,8 @@ class LocalCache : public AutotunerCacheInterface {
   absl::Status Insert(const HloInstruction* instr,
                       const Config& config) override;
 
-  // If instructions_to_serialize is empty, serializes the entire cache, adding
-  // current context information to each entry.
   absl::StatusOr<std::string> Serialize(absl::Span<const HloInstruction* const>
                                             instructions_to_serialize) override;
-  // Local cache will only deserialize entries that are compatible with the
-  // current context, as other entries will not be used anyway.
   absl::Status Deserialize(absl::string_view serialized_cache) override;
 
   CacheStats GetCacheStats() const override;
@@ -85,9 +100,6 @@ class LocalCache : public AutotunerCacheInterface {
   KeyMatchingMode GetKeyMatchingMode() const override { return matching_mode_; }
 
  private:
-  std::string GetCacheKey(const HloInstruction* instr) const;
-  bool IsEntryCompatible(const autotuner::AutotuneEntry& entry) const;
-
   KeyMatchingMode matching_mode_;
   AutotuneCacheContext context_;
   LocalCacheStorage* absl_nonnull storage_;  // Not owned.

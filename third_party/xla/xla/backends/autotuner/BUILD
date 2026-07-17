@@ -437,6 +437,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -446,6 +447,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:fingerprint",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -453,17 +455,22 @@ xla_cc_test(
     name = "local_cache_test",
     srcs = ["local_cache_test.cc"],
     deps = [
+        ":autotune_fingerprint",
         ":autotuner_cache_interface",
         ":backends_proto_cc",
         ":codegen_backend",
         ":fake_codegen_backend",
         ":local_cache",
+        "//xla:autotuning_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:fingerprint",
     ],
 )
 
