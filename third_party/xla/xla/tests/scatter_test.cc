@@ -44,7 +44,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class ScatterTest : public HloPjRtInterpreterReferenceMixin<HloTestBase> {
+class ScatterTest : public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
   void RunTest(const absl::string_view hlo_text, Literal* const operand,
                Literal* const scatter_indices, Literal* const updates) {

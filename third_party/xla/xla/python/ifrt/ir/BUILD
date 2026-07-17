@@ -274,7 +274,6 @@ cc_library(
         "//xla/python/ifrt/ir/support:module_parsing",
         "//xla/python/ifrt/ir/transforms:passes",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

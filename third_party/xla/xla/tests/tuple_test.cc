@@ -43,7 +43,7 @@ namespace {
 constexpr ErrorSpec kErrorSpec{0.0001};
 
 using TupleTest =
-    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
 
 // Tests a tuple-shaped constant.
 TEST_F(TupleTest, TupleConstant) {

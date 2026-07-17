@@ -26,7 +26,7 @@ namespace xla {
 namespace {
 
 using ReshapeMotionTest =
-    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(ReshapeMotionTest, ElementwiseOfReshapesWithNonSameInputShapes) {
   XlaBuilder builder(TestName());
