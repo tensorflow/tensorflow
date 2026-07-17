@@ -185,6 +185,17 @@ py_library(
     ],
 )
 
+py_test(
+    name = "callbacks_test",
+    srcs = ["callbacks_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":callbacks",
+        "//tensorflow/python/platform:test",
+    ],
+)
+
 py_library(
     name = "combinations",
     srcs = [
