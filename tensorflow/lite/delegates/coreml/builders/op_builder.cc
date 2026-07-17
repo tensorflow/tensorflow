@@ -38,6 +38,10 @@ int TensorID::NodeID() const { return node_; }
 
 int TensorID::OutputID() const { return output_id_; }
 
+GraphBuilder::GraphBuilder(int coreml_version)
+    : coreml_version_(coreml_version) {}
+GraphBuilder::~GraphBuilder() = default;
+
 OpBuilder* GraphBuilder::AddBuilder(int builtin_code, const TfLiteNode* node) {
   switch (builtin_code) {
     case kTfLiteBuiltinAdd:
