@@ -521,9 +521,9 @@ TileAssignment::TileAssignment(const TileAssignment& other) {
 
 TileAssignment::TileAssignment(TileAssignment&& other) {
   absl::MutexLock other_lock(other.mu_);
-  iota_ = other.iota_;
+  iota_ = std::move(other.iota_);
   shared_array_ = std::move(other.shared_array_);
-  array_ = other.array_;
+  array_ = std::exchange(other.array_, nullptr);
 }
 
 TileAssignment& TileAssignment::operator=(const TileAssignment& other) {
@@ -542,13 +542,16 @@ TileAssignment& TileAssignment::operator=(const TileAssignment& other) {
 }
 
 TileAssignment& TileAssignment::operator=(TileAssignment&& other) {
-  iota_ = other.iota_;
+  if (this == &other) {
+    return *this;
+  }
+  iota_ = std::move(other.iota_);
   std::shared_ptr<const Array<int64_t>> shared_array;
   const Array<int64_t>* array;
   {
     absl::MutexLock other_lock(other.mu_);
     shared_array = std::move(other.shared_array_);
-    array = other.array_;
+    array = std::exchange(other.array_, nullptr);
   }
   absl::MutexLock lock(mu_);
   shared_array_ = shared_array;
