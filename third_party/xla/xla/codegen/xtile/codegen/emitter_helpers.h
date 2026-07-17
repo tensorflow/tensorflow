@@ -178,6 +178,10 @@ class TileInfo {
   // type. e.g. predicates are stored as i8 instead of i1.
   mlir::Type storage_type() const { return storage_type_; }
 
+  // Returns true if the tiling is statically guaranteed to be in-bounds and
+  // perfect.
+  bool is_perfect_tiling() const { return is_perfect_tiling_; }
+
  private:
   llvm::SmallVector<mlir::Value> offsets_;
   llvm::SmallVector<int64_t> tile_strides_;
@@ -187,6 +191,7 @@ class TileInfo {
   mlir::Type storage_type_;
   llvm::SmallVector<mlir::Value> replica_id_offsets_;
   llvm::SmallVector<mlir::Value> replica_id_bounds_;
+  bool is_perfect_tiling_;
 
   TileInfo(llvm::SmallVector<mlir::Value> offsets,             //
            llvm::SmallVector<int64_t> tile_strides,            //
@@ -195,7 +200,8 @@ class TileInfo {
            llvm::SmallVector<int64_t> minor_to_major_layout,   //
            mlir::Type storage_type,                            //
            llvm::SmallVector<mlir::Value> replica_id_offsets,  //
-           llvm::SmallVector<mlir::Value> replica_id_bounds    //
+           llvm::SmallVector<mlir::Value> replica_id_bounds,   //
+           bool is_perfect_tiling                              //
            )
       : offsets_(std::move(offsets)),
         tile_strides_(std::move(tile_strides)),
@@ -204,7 +210,8 @@ class TileInfo {
         minor_to_major_layout_(std::move(minor_to_major_layout)),
         storage_type_(std::move(storage_type)),
         replica_id_offsets_(std::move(replica_id_offsets)),
-        replica_id_bounds_(std::move(replica_id_bounds)) {}
+        replica_id_bounds_(std::move(replica_id_bounds)),
+        is_perfect_tiling_(is_perfect_tiling) {}
 };
 
 // Triton requires that all block dimensions are a power of 2.

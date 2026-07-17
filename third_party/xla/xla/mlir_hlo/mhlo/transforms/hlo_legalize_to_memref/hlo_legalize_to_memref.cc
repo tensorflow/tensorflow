@@ -280,8 +280,26 @@ struct DynamicBroadcastInDimOpInterface
     FailureOr<Value> operandBuffer =
         getBuffer(rewriter, broadcastInDimOp.getOperand(), options, state);
     if (failed(operandBuffer)) return failure();
+
+    auto operand = *operandBuffer;
+    auto bufferType = mlir::dyn_cast<MemRefType>(operandBuffer->getType());
+    // If the broadcast operand has a non-identity (non-default) layout, casting
+    // it directly via insertDynamicMemrefCastOp will fail because dynamic cast
+    // expects standard contiguous layout. We force layout normalization by
+    // allocating a default-layout buffer and copying the operand to it.
+    if (bufferType && !bufferType.getLayout().isIdentity()) {
+      FailureOr<Value> tensorAlloc =
+          bufferization::allocateTensorForShapedValue(
+              rewriter, op->getLoc(), *operandBuffer, options, state);
+      if (failed(tensorAlloc)) return failure();
+      auto memrefType =
+          MemRefType::get(bufferType.getShape(), bufferType.getElementType());
+      operand = bufferization::ToBufferOp::create(rewriter, op->getLoc(),
+                                                  memrefType, *tensorAlloc);
+    }
+
     FailureOr<Value> result = insertDynamicMemrefCastOp(
-        broadcastInDimOp, *operandBuffer, rewriter, options, state);
+        broadcastInDimOp, operand, rewriter, options, state);
     if (failed(result)) return failure();
     bufferization::replaceOpWithBufferizedValues(rewriter, op, *result);
     return success();

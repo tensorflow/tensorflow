@@ -1140,5 +1140,25 @@ TEST_F(InstructionFusionTest, SkipReduceComputationsIfFusionEmitters) {
   EXPECT_FALSE(changed);
 }
 
+TEST_F(InstructionFusionTest, FuseLayoutChangingCopy) {
+  constexpr absl::string_view kHloString = R"(
+    HloModule test_module
+
+    ENTRY main {
+      p0 = f32[10,10]{0,1} parameter(0)
+      copy = f32[10,10]{1,0} copy(p0)
+      ROOT exp = f32[10,10]{1,0} exponential(copy)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          CpuInstructionFusion(&alias_info_).Run(module.get()));
+  EXPECT_TRUE(changed);
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kFusion);
+}
+
 }  // namespace
 }  // namespace xla::cpu

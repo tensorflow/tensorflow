@@ -658,6 +658,11 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
   return mlir::arith::BitcastOp::create(b, value_type, value);
 }
 
+static bool IsPerfectTiling(const IndexingMap& indexing_map,
+                            llvm::ArrayRef<int64_t> buffer_shape,
+                            llvm::ArrayRef<int64_t> tile_sizes,
+                            llvm::ArrayRef<int64_t> strides);
+
 /*static */ absl::StatusOr<TileInfo> TileInfo::Construct(
     mlir::ImplicitLocOpBuilder& b, Value pid, ValueRange runtime_values,
     const TiledHloInstruction& tiled_hlo) {
@@ -677,10 +682,19 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
   auto tile_strides = tiled_hlo.tile_strides();
   auto minor_to_major_layout = llvm::to_vector(LayoutUtil::MinorToMajor(shape));
 
+  bool is_perfect_tiling = false;
+  auto tile_offsets_indexing_or = tiled_hlo.tile_offsets_indexing();
+  if (tile_offsets_indexing_or.ok()) {
+    is_perfect_tiling =
+        IsPerfectTiling(*tile_offsets_indexing_or, original_shape,
+                        tiled_hlo.tile_sizes(), tiled_hlo.tile_strides());
+  }
+
   // Replica id is only supported for ge::TiledHloInstruction.
   return TileInfo(offsets, tile_strides, original_shape, padded_tile_sizes,
                   minor_to_major_layout, storage_type,
-                  /*replica_id_offsets=*/{}, /*replica_id_bounds=*/{});
+                  /*replica_id_offsets=*/{}, /*replica_id_bounds=*/{},
+                  is_perfect_tiling);
 }
 
 /*static */ absl::StatusOr<TileInfo> TileInfo::Construct(
@@ -728,7 +742,8 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
   return TileInfo(std::move(offsets), std::move(tile_strides),
                   std::move(original_shape), std::move(tile_sizes),
                   std::move(minor_to_major_layout), storage_type,
-                  std::move(replica_id_offsets), std::move(replica_id_bounds));
+                  std::move(replica_id_offsets), std::move(replica_id_bounds),
+                  /*is_perfect_tiling=*/false);
 }
 
 absl::StatusOr<int64_t> GetConstantIntValue(mlir::Value value) {
@@ -739,6 +754,49 @@ absl::StatusOr<int64_t> GetConstantIntValue(mlir::Value value) {
   return absl::InternalError(absl::StrFormat(
       "Expected constant integer value for replica ID bound, but got: %v",
       value));
+}
+static bool IsPerfectTiling(const IndexingMap& indexing_map,
+                            llvm::ArrayRef<int64_t> buffer_shape,
+                            llvm::ArrayRef<int64_t> tile_sizes,
+                            llvm::ArrayRef<int64_t> strides) {
+  if (buffer_shape.size() != tile_sizes.size() ||
+      buffer_shape.size() != strides.size() ||
+      buffer_shape.size() != indexing_map.GetNumResults()) {
+    return false;
+  }
+
+  RangeEvaluator range_evaluator = indexing_map.GetRangeEvaluator();
+  for (int i = 0; i < buffer_shape.size(); ++i) {
+    int64_t buffer_size = buffer_shape[i];
+    if (mlir::ShapedType::isDynamic(buffer_size)) {
+      return false;
+    }
+
+    int64_t tile_size = tile_sizes[i];
+    int64_t stride = strides[i];
+
+    if (stride == 0) {
+      if (buffer_size < 1) {
+        return false;
+      }
+    } else {
+      int64_t step = tile_size * stride;
+      if (step == 0 || buffer_size % step != 0) {
+        return false;
+      }
+    }
+
+    // Evaluate offset bounds statically.
+    SymbolicExpr offset_expr = indexing_map.GetSymbolicMap().GetResult(i);
+    Interval offset_range = range_evaluator.ComputeExpressionRange(offset_expr);
+    if (offset_range.lower < 0) {
+      return false;
+    }
+    if (offset_range.upper + tile_size * stride > buffer_size) {
+      return false;
+    }
+  }
+  return true;
 }
 
 absl::StatusOr<TensorValue> EmitParameterExtract(mlir::ImplicitLocOpBuilder& b,
@@ -773,9 +831,13 @@ absl::StatusOr<TensorValue> EmitParameterExtract(mlir::ImplicitLocOpBuilder& b,
     source_buffer = b.create<xtile::SelectBufferOp>(spatial_memref_type,
                                                     source_buffer, replica_id);
   }
+  bool is_perfect = tile_info.is_perfect_tiling();
+  std::optional<bool> should_allocate =
+      is_perfect ? std::optional{false} : std::nullopt;
+
   return xla::xtile::ExtractTileOp::create(
       b, tensor_type, source_buffer, tile_info.offsets(),
-      tile_info.padded_tile_sizes(), tile_info.tile_strides());
+      tile_info.padded_tile_sizes(), tile_info.tile_strides(), should_allocate);
 }
 
 absl::StatusOr<TensorValue> EmitScope(

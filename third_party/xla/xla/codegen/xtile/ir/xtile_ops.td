@@ -186,6 +186,7 @@ def SelectBufferOp : XTile_Op<"select_buffer", [Pure]> {
 }
 
 def ExtractTileOp : XTile_Op<"extract", [TiledBufferInterface]> {
+  let skipDefaultBuilders = 1;
   let summary = "Extract a tile from a memref.";
   let description = [{
   }];
@@ -194,9 +195,9 @@ def ExtractTileOp : XTile_Op<"extract", [TiledBufferInterface]> {
     AnyMemRef:$source,
     Variadic<Index>:$offsets,
     DenseI64ArrayAttr:$full_tile_shape,
-    DenseI64ArrayAttr:$strides
+    DenseI64ArrayAttr:$strides,
+    DefaultValuedAttr<BoolAttr, "true">:$should_allocate
   );
-
 
   let results = (outs AnyRankedTensor:$result);
 
@@ -204,6 +205,12 @@ def ExtractTileOp : XTile_Op<"extract", [TiledBufferInterface]> {
     $source `[` $offsets `]` $full_tile_shape $strides
     `:` type($source) `->` type($result) attr-dict
   }];
+
+  let builders = [
+    OpBuilder<(ins "mlir::Type":$result, "mlir::Value":$source, "mlir::ValueRange":$offsets,
+                   "mlir::ArrayRef<int64_t>":$full_tile_shape, "mlir::ArrayRef<int64_t>":$strides,
+                   CArg<"std::optional<bool>", "std::nullopt">:$should_allocate)>
+  ];
 
   let extraClassDeclaration = [{
     mlir::TypedValue<mlir::MemRefType> getBuffer();
@@ -214,6 +221,7 @@ def ExtractTileOp : XTile_Op<"extract", [TiledBufferInterface]> {
 }
 
 def InsertTileOp : XTile_Op<"insert", [TiledBufferInterface]> {
+  let skipDefaultBuilders = 1;
   let summary = "Insert a tile into a memref.";
   let description = [{
   }];
@@ -223,7 +231,8 @@ def InsertTileOp : XTile_Op<"insert", [TiledBufferInterface]> {
     AnyMemRef:$destination,
     Variadic<Index>:$offsets,
     DenseI64ArrayAttr:$full_tile_shape,
-    DenseI64ArrayAttr:$strides
+    DenseI64ArrayAttr:$strides,
+    DefaultValuedAttr<BoolAttr, "true">:$should_allocate
   );
 
   let results = (outs);
@@ -232,6 +241,12 @@ def InsertTileOp : XTile_Op<"insert", [TiledBufferInterface]> {
     $source `into` $destination `[` $offsets `]` $full_tile_shape $strides
     `:` type($source) `->` type($destination) attr-dict
   }];
+
+  let builders = [
+    OpBuilder<(ins "mlir::Value":$source, "mlir::Value":$destination, "mlir::ValueRange":$offsets,
+                   "mlir::ArrayRef<int64_t>":$full_tile_shape, "mlir::ArrayRef<int64_t>":$strides,
+                   CArg<"std::optional<bool>", "std::nullopt">:$should_allocate)>
+  ];
 
   let extraClassDeclaration = [{
     mlir::TypedValue<mlir::MemRefType> getBuffer();
