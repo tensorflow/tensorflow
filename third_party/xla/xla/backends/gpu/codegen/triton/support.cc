@@ -56,6 +56,10 @@ CodegenDecision IsTritonSupportedDataType(
     case S16:
     case S32:
     case S64:
+    case U8:
+    case U16:
+    case U32:
+    case U64:
     case F16:
     case F32:
     case F64:
@@ -103,12 +107,8 @@ absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
     return {HloOpcode::kNot, HloOpcode::kCopy};
   }
 
-  if (element_type == PrimitiveType::S4) {
+  if (element_type == PrimitiveType::S4 || element_type == PrimitiveType::U4) {
     return {};
-  }
-
-  if (element_type == PrimitiveType::U16) {
-    return {HloOpcode::kAbs};
   }
 
   absl::flat_hash_set<HloOpcode> ret{HloOpcode::kAbs, HloOpcode::kCopy};
@@ -204,12 +204,18 @@ CodegenDecision IsTritonSupportedConversion(
     return error_message("Unsupported F8 conversion.");
   }
 
-  if (input == S4 && output != S8 && output != F16 && output != BF16 &&
-      output != F32 && output != F64) {
-    return error_message("Unsupported S4 conversion.");
+  if ((input == S4 || input == U4) && output != S8 && output != U8 &&
+      output != F16 && output != BF16 && output != F32 && output != F64) {
+    return error_message("Unsupported 4-bit integer conversion.");
   }
-  if (output == S4) {
-    return error_message("Unsupported S4 output type.");
+  if (output == S4 || output == U4) {
+    return error_message("Unsupported 4-bit integer output type.");
+  }
+
+  // TODO(b/480995909): Remove this once JAX does not rely on convert from
+  // PRED to U8 not clamping the value to the [0, 1] range.
+  if (input == PRED && output == U8) {
+    return error_message("Unsupported PRED to U8 conversion.");
   }
 
   if (!IsTritonSupportedDataType(input, gpu_version)) {
@@ -229,7 +235,7 @@ CodegenDecision IsTritonSupportedConversion(
 // Set of binary element-wise ops that are genuinely supported by Triton.
 absl::flat_hash_set<HloOpcode> TritonSupportedBinaryElementwiseOps(
     PrimitiveType element_type, const se::GpuComputeCapability& gpu_version) {
-  if (element_type == PrimitiveType::S4 || element_type == PrimitiveType::U16 ||
+  if (element_type == PrimitiveType::S4 || element_type == PrimitiveType::U4 ||
       element_type == PrimitiveType::F8E5M2 ||
       element_type == PrimitiveType::F8E4M3FN ||
       (gpu_version.IsRocm() && element_type == PrimitiveType::F8E5M2FNUZ) ||
@@ -279,7 +285,7 @@ absl::flat_hash_set<HloOpcode> TritonSupportedBinaryElementwiseOps(
 // Set of ternary elementwise ops that are genuinely supported by Triton.
 absl::flat_hash_set<HloOpcode> TritonSupportedTernaryElementwiseOps(
     PrimitiveType element_type, const se::GpuComputeCapability& gpu_version) {
-  if (element_type == PrimitiveType::S4 || element_type == PrimitiveType::U16) {
+  if (element_type == PrimitiveType::S4 || element_type == PrimitiveType::U4) {
     return {};
   }
 
@@ -349,9 +355,11 @@ CodegenDecision IsTritonSupportedAllReduce(
   }
   if (all_reduce.shape().element_type() == PrimitiveType::F8E4M3FN ||
       all_reduce.shape().element_type() == PrimitiveType::F8E5M2 ||
-      all_reduce.shape().element_type() == PrimitiveType::S4) {
+      all_reduce.shape().element_type() == PrimitiveType::S4 ||
+      all_reduce.shape().element_type() == PrimitiveType::U4) {
     return CodegenDecision::Forbid(
-        "S4, F8E4M3FN and F8E5M2 are not supported for all-reduces.");
+        "4-bit integer, F8E4M3FN and F8E5M2 are not supported for "
+        "all-reduces.");
   }
 
   bool is_triton_supported_all_reduce_computation = absl::c_all_of(
@@ -454,20 +462,22 @@ CodegenDecision AreTypesSupportedByAlgUnsetDot(
     return CodegenDecision::Allow();
   }
 
-  if (input_type == S8 && result_type == S32) {
+  if ((input_type == S8 || input_type == U8) &&
+      (result_type == S32 || result_type == U32)) {
     return CodegenDecision::Allow();
   }
 
-  auto partially_supported_signed_types = {S4, S8, S16, S32, S64};
-  if (absl::c_linear_search(partially_supported_signed_types, input_type)) {
-    if (absl::c_linear_search(partially_supported_signed_types, result_type)) {
+  auto partially_supported_integer_types = {S1, S2, S4, S8,  S16, S32, S64, U1,
+                                            U2, U4, U8, U16, U32, U64, PRED};
+  if (absl::c_linear_search(partially_supported_integer_types, input_type)) {
+    if (absl::c_linear_search(partially_supported_integer_types, result_type)) {
       return CodegenDecision::Forbid(
-          "Dot operation does not support these signed integer types.");
+          "Dot operation does not support these integer types.");
     }
     if (primitive_util::IsFloatingPointType(result_type)) {
       return CodegenDecision::Forbid(
-          "Dot operation does not support floating point input and signed "
-          "integer result types.");
+          "Dot operation does not support floating point input and integer "
+          "result types.");
     }
     return CodegenDecision::Allow();
   }
@@ -565,8 +575,8 @@ CodegenDecision IsTritonSupportedDot(
         "Dot operation only supports same types for lhs and rhs.");
   }
 
-  if (result_type == PrimitiveType::S4) {
-    return CodegenDecision::Forbid("S4 is not supported.");
+  if (result_type == PrimitiveType::S4 || result_type == PrimitiveType::U4) {
+    return CodegenDecision::Forbid("4-bit integer is not supported.");
   }
 
   absl::Status status = CheckSupportedCheckDotDimensions(dot);
