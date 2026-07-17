@@ -265,6 +265,10 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   // change in order to efficiently determine the minimum nest level in an
   // interval.
   std::vector<int> while_nest_level_change_;
+  // For each computation nest level, the logical times at exactly that level,
+  // in increasing order. Lets PreferredPrefetchStartTime binary search the
+  // times matching the prefetch end time's nest level instead of scanning.
+  std::vector<std::vector<int64_t>> positions_by_computation_nest_level_;
 
   const CostAnalysis& cost_analysis_;
   float min_overlap_to_async_copy_ratio_;

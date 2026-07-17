@@ -351,6 +351,48 @@ class MsaInstructionFingerprint {
       instruction_shape_hash_cache_;
 };
 
+// Segment tree over the time axis [0, size) with lazy range add plus range
+// min and max queries. MSA tracks peak alternate memory per logical time with
+// it, so a commit, uncommit, or peak probe costs O(log size) instead of
+// walking every time step in the interval.
+class RangeAddMinMaxTree {
+ public:
+  explicit RangeAddMinMaxTree(int64_t size);
+
+  // Adds delta to every element in [start, end] (both inclusive). Bounds are
+  // clamped to [0, size); no op if the clamped range is empty.
+  void AddRange(int64_t start, int64_t end, int64_t delta);
+
+  // Returns the maximum / minimum value in [start, end] (both inclusive).
+  // The range must be non empty after clamping to [0, size).
+  int64_t MaxInRange(int64_t start, int64_t end) const;
+  int64_t MinInRange(int64_t start, int64_t end) const;
+
+  // Largest index in [start, end] whose value is > threshold, or nullopt if
+  // there is none (including when the clamped range is empty).
+  std::optional<int64_t> RightmostIndexAbove(int64_t start, int64_t end,
+                                             int64_t threshold) const;
+
+ private:
+  // min / max include this node's own pending delta but not its ancestors',
+  // so queries accumulate pending along the descent (there is no push down).
+  struct Node {
+    int64_t min = 0;
+    int64_t max = 0;
+    int64_t pending = 0;
+  };
+
+  void AddRangeImpl(int64_t node, int64_t node_start, int64_t node_end,
+                    int64_t start, int64_t end, int64_t delta);
+  int64_t MaxImpl(int64_t node, int64_t node_start, int64_t node_end,
+                  int64_t start, int64_t end) const;
+  int64_t MinImpl(int64_t node, int64_t node_start, int64_t node_end,
+                  int64_t start, int64_t end) const;
+
+  int64_t size_;
+  std::vector<Node> nodes_;
+};
+
 // This class inherits from GlobalDecreasingSizeBestFitHeap with a notion of
 // maximum size.
 //
@@ -1593,6 +1635,10 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   bool IsPositionColoredInDefaultMemoryAtTime(const HloPosition& position,
                                               int64_t time) const;
 
+  // Memoizes alias_analysis_.GetUniqueBufferAt, which rebuilds and sorts a
+  // buffer set per call. Safe because alias analysis is immutable in a run.
+  const HloBuffer& GetUniqueBufferAtCached(const HloPosition& position) const;
+
   // Reserves a chunk in alternate memory of size MaxScopedMemorySize() for
   // the entire program duration for scoped memory allocations.
   int64_t ReserveAlternateMemoryForScopedMemoryAllocations();
@@ -1658,7 +1704,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // this to see if the proposed allocation in the alternate memory would fit
   // ignoring fragmentation, and if not, we can skip the more expensive lookup
   // in the BufferIntervalTree, which also considers fragmentation.
-  std::vector<int64_t> peak_memory_usage_;
+  RangeAddMinMaxTree peak_memory_usage_;
   // The data structure that contains AliasedOffset objects and Allocation to
   // AliasedOffset map for efficient lookup.
   std::list<AliasedOffset> aliased_offsets_;
@@ -1725,6 +1771,9 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // be in default memory, to meet buffer coloring requirements.
   absl::flat_hash_map<const HloBuffer*, std::vector<TimeInterval>>
       default_memory_coloring_requirements_;
+
+  mutable absl::flat_hash_map<HloPosition, const HloBuffer*>
+      unique_buffer_at_position_cache_;
 
   // Set of HloUses that are in the default memory.
   absl::flat_hash_set<HloUse> uses_in_default_memory_set_;
