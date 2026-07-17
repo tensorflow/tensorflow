@@ -354,6 +354,26 @@ class CTCLossTestV2(test.TestCase, parameterized.TestCase):
             logit_length=logit_length,
             blank_index=0))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testSingleClassBlankOnlyLabel(self):
+    inputs = np.zeros((1, 1, 1), dtype=np.float32)
+    inputs_t = constant_op.constant(inputs)
+    labels = SimpleSparseTensorFrom([[0]])
+    seq_lens = np.array([1], dtype=np.int32)
+
+    with backprop.GradientTape() as t:
+      t.watch(inputs_t)
+      loss = _ctc_loss_v2(
+          labels=labels, inputs=inputs_t, sequence_length=seq_lens
+      )
+    grad = t.gradient(loss, [inputs_t])[0]
+
+    tf_loss, tf_grad = self.evaluate([loss, grad])
+    self.assertTrue(np.isfinite(tf_loss).all())
+    self.assertTrue(np.isfinite(tf_grad).all())
+    self.assertEqual(tf_loss.shape, (1,))
+    self.assertEqual(tf_grad.shape, (1, 1, 1))
+
   @test_util.run_v1_only("b/120545219")
   def testCtcLossDenseIsSameAsCtcLoss(self):
     with ops.device("/GPU:0" if test.is_gpu_available() else "/CPU:0"):
