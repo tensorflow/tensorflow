@@ -82,6 +82,7 @@ single_version_override(
     ],
 )
 
+# Changes for testing only.
 bazel_dep(name = "libprotobuf-mutator", version = "1.3", repo_name = "libprotobuf_mutator")
 bazel_dep(name = "rules_ml_toolchain")
 archive_override(
