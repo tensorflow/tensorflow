@@ -4335,6 +4335,7 @@ py_strict_library(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:record",
+        "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:composite_tensor_gradient",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
