@@ -903,7 +903,7 @@ absl::Status RunRaggedAllToAll(
       << "Performing ragged-all-to-all from device ordinal: " << device_ordinal;
   ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
 
-  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
+  auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
   if (gpu_comm->gxl_communicator() != nullptr) {
     GxlCommunicator* gxl_nccl_comm = gpu_comm->gxl_communicator();
     return gxl_nccl_comm->RunRaggedAllToAllGxl(

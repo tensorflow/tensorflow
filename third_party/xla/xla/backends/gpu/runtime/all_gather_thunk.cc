@@ -186,7 +186,7 @@ absl::Status AllGatherThunk::RunCollective(const ExecuteParams& params,
 
   XLA_VLOG_DEVICE(3, device_ordinal) << "AllGather: using host-initiated mode";
   if (device_buffers.size() == 1) {
-    auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
+    auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
     if (gpu_comm->gxl_communicator() != nullptr) {
       GxlCommunicator* gxl_nccl_comm = gpu_comm->gxl_communicator();
 
