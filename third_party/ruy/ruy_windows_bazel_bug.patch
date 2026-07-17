@@ -1,6 +1,79 @@
+--- a/BUILD
++++ b/BUILD
+@@ -1,15 +1,7 @@
+ # Ruy is not BLAS
+ 
+-load("//tools/build_defs/license:license.bzl", "license")
+-
+ package(
+-    default_applicable_licenses = [":license"],
+     licenses = ["notice"],  # Apache 2.0
+ )
+ 
+-license(
+-    name = "license",
+-    package_name = "ruy",
+-)
+-
+ exports_files(["LICENSE"])
+--- a/ruy/BUILD
++++ b/ruy/BUILD
+@@ -2,15 +2,12 @@
+ 
+ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+ load("@bazel_skylib//lib:selects.bzl", "selects")
+-load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
+-load("//third_party/bazel_rules/rules_cc/cc:cc_test.bzl", "cc_test")
+ load(":build_defs.bzl", "ruy_copts", "ruy_copts_avx", "ruy_copts_avx2_fma", "ruy_copts_avx512")
+ load(":build_defs.oss.bzl", "ruy_linkopts_thread_standard_library")
+ load(":ruy_test.bzl", "ruy_benchmark", "ruy_test")
+ load(":ruy_test_ext.oss.bzl", "ruy_test_ext_defines", "ruy_test_ext_deps")
+ 
+ package(
+-    default_applicable_licenses = ["//third_party/ruy:license"],
+     licenses = ["notice"],  # Apache 2.0
+ )
+ 
+--- a/ruy/ruy_test.bzl
++++ b/ruy/ruy_test.bzl
+@@ -1,8 +1,6 @@
+ # Provides the ruy_test macro for type-parametrized tests.
+ """ruy_test is a macro for building a test with multiple paths corresponding to tuples of types for LHS, RHS, accumulator and destination."""
+ 
+-load("//third_party/bazel_rules/rules_cc/cc:cc_binary.bzl", "cc_binary")
+-load("//third_party/bazel_rules/rules_cc/cc:cc_test.bzl", "cc_test")
+ 
+ def ruy_test(name, srcs, lhs_rhs_accum_dst, copts, tags = [], deps = None):
+     for (lhs, rhs, accum, dst) in lhs_rhs_accum_dst:
+--- a/ruy/profiler/BUILD
++++ b/ruy/profiler/BUILD
+@@ -1,11 +1,8 @@
+ # A minimalistic profiler sampling pseudo-stacks
+ 
+ load("//ruy:build_defs.oss.bzl", "ruy_linkopts_thread_standard_library")
+-load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
+-load("//third_party/bazel_rules/rules_cc/cc:cc_test.bzl", "cc_test")
+ 
+ package(
+-    default_applicable_licenses = ["//third_party/ruy:license"],
+     licenses = ["notice"],  # Apache 2.0
+ )
+ 
+--- a/ruy/build_defs.bzl
++++ b/ruy/build_defs.bzl
+@@ -4,7 +4,7 @@
+ # Returns warnings flags to use for all ruy code.
+ def ruy_copts_warnings():
+     return select({
+-        "//tools/cc_target_os:windows": [
++        "@platforms//os:windows": [
+             # We run into trouble on Windows toolchains with warning flags,
+             # as mentioned in the comments below on each flag.
+             # We could be more aggressive in enabling supported warnings on each
 --- a/ruy/build_defs.oss.bzl
 +++ b/ruy/build_defs.oss.bzl
-@@ -11,5 +11,5 @@
+@@ -10,6 +10,6 @@
+     # with Bazel. Instead we do the following, which is copied from
      # https://github.com/abseil/abseil-cpp/blob/1112609635037a32435de7aa70a9188dcb591458/absl/base/BUILD.bazel#L155
      return select({
 -        "//tools/cc_target_os:windows": [],
