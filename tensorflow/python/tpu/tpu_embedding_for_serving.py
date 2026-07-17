@@ -190,7 +190,9 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
       # take the global shape from outside the getter.
       initial_value = functools.partial(initializer, dtype=dtype)
       return tf_variables.Variable(
-          name=name,
+          # Leading underscores are not valid in root name scopes, so strip
+          # them from the variable name.
+          name=name.lstrip("_"),
           initial_value=initial_value,
           shape=None,
           dtype=dtype,
