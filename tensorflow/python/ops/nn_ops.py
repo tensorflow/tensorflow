@@ -2067,10 +2067,8 @@ def conv1d(
     strides = [1] + _get_sequence(stride, 1, channel_index, "stride")
     dilations = [1] + _get_sequence(dilations, 1, channel_index, "dilations")
 
-    # Validate that the output spatial dimension is non-negative for VALID
-    # padding. In graph mode this check is performed during shape inference,
-    # but eager mode silently produces a zero-sized tensor which is almost
-    # never intended and causes confusing downstream errors.
+    # Reject negative output spatial dimensions for VALID padding while
+    # preserving valid zero-sized outputs.
     if isinstance(padding, str) and padding.upper() == "VALID":
       value_shape = value.shape
       filters_shape = filters.shape
@@ -2082,7 +2080,7 @@ def conv1d(
           dilation_rate = dilations[spatial_idx]
           effective_filter_width = filter_width + (filter_width - 1) * (
               dilation_rate - 1)
-          if in_width - effective_filter_width < 0:
+          if in_width - effective_filter_width + strides[spatial_idx] < 0:
             raise ValueError(
                 f"Negative dimension size caused by subtracting "
                 f"{effective_filter_width} from {in_width} for conv1d with "

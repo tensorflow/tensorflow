@@ -86,6 +86,10 @@ class Conv1DTest(test.TestCase):
       with self.assertRaisesRegex(ValueError, "Negative dimension size"):
         nn_ops.conv1d(x, filters, stride=1, padding="VALID")
 
+      zero_output = nn_ops.conv1d(
+          array_ops.zeros([1, 3, 1]), filters, stride=2, padding="VALID")
+      self.assertAllEqual(zero_output.shape.as_list(), [1, 0, 1])
+
       valid_x = array_ops.zeros([1, 5, 1])
       self.evaluate(
           nn_ops.conv1d(valid_x, filters, stride=1, padding="VALID"))
@@ -113,6 +117,14 @@ class Conv1DTest(test.TestCase):
 
     with self.assertRaisesRegex(ValueError, "Negative dimension size"):
       graph_conv_invalid()
+
+    @def_function.function
+    def graph_conv_zero_output():
+      x = array_ops.zeros([1, 3, 1])
+      filters = array_ops.zeros([5, 1, 1])
+      return nn_ops.conv1d(x, filters, stride=2, padding="VALID")
+
+    self.assertAllEqual(graph_conv_zero_output().shape.as_list(), [1, 0, 1])
 
   def testConv1DTranspose(self):
     with self.cached_session():
