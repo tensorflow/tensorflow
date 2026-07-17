@@ -36,6 +36,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -8586,6 +8587,23 @@ AllocationResult MsaAlgorithm::PrefetchWithResourceConstraints(
   if (init_result != AllocationResult::kSuccess) {
     return init_result;
   }
+
+  // The placement probes below all query windows inside [scope_start,
+  // scope_end], so let them share one free chunk snapshot instead of walking
+  // and sorting the interval tree per probe. A query that falls outside just
+  // takes the direct path, so a loose bound here only costs speed.
+  int64_t scope_start =
+      context.prev_allocation_in_default_mem->earliest_available_time();
+  if (request.earliest_prefetch_time) {
+    scope_start = std::max(scope_start, *request.earliest_prefetch_time);
+  }
+  int64_t scope_end = request.end_time;
+  if (!request.all_use_times.empty()) {
+    scope_end = std::max(scope_end, request.all_use_times.back());
+  }
+  BeginFreeChunksSnapshotScope(scope_start, scope_end);
+  absl::Cleanup end_scope = [this] { EndFreeChunksSnapshotScope(); };
+
   AllocationResult check_result = EnsureSomeSpatialPrefetchFitExists(context);
   if (check_result != AllocationResult::kSuccess) {
     return check_result;
@@ -9406,15 +9424,16 @@ bool MsaAlgorithm::IsUseColoredInDefaultMemory(const HloUse& use) const {
 
 bool MsaAlgorithm::IsPositionColoredInAlternateMemoryAtTime(
     const HloPosition& position, int64_t time) const {
+  // With no colorings the loop cannot return true, so skip its alias queries.
+  if (reserved_allocations_for_alt_mem_colorings_.empty()) {
+    return false;
+  }
   // Check if the defining position of the corresponding value is colored in
   // alternate memory at the time of the use or the defining position of an
   // aliasing value is colored in alternate memory at the time of the use.
-  for (const HloValue* value :
-       alias_analysis_.GetUniqueBufferAt(position.instruction, position.index)
-           .values()) {
+  for (const HloValue* value : GetUniqueBufferAtCached(position).values()) {
     HloPosition defining_position = value->defining_position();
-    const HloBuffer& buffer = alias_analysis_.GetUniqueBufferAt(
-        defining_position.instruction, defining_position.index);
+    const HloBuffer& buffer = GetUniqueBufferAtCached(defining_position);
     auto reserved_allocations_it =
         reserved_allocations_for_alt_mem_colorings_.find(&buffer);
     if (reserved_allocations_it !=
@@ -9434,15 +9453,16 @@ bool MsaAlgorithm::IsPositionColoredInAlternateMemoryAtTime(
 
 bool MsaAlgorithm::IsPositionColoredInDefaultMemoryAtTime(
     const HloPosition& position, int64_t time) const {
+  // With no colorings the loop cannot return true, so skip its alias queries.
+  if (default_memory_coloring_requirements_.empty()) {
+    return false;
+  }
   // Check if the defining position of the corresponding value is colored in
   // default memory at the time of the use or the defining position of an
   // aliasing value is colored in default memory at the time of the use.
-  for (const HloValue* value :
-       alias_analysis_.GetUniqueBufferAt(position.instruction, position.index)
-           .values()) {
+  for (const HloValue* value : GetUniqueBufferAtCached(position).values()) {
     HloPosition defining_position = value->defining_position();
-    const HloBuffer& buffer = alias_analysis_.GetUniqueBufferAt(
-        defining_position.instruction, defining_position.index);
+    const HloBuffer& buffer = GetUniqueBufferAtCached(defining_position);
     auto default_memory_colorings_it =
         default_memory_coloring_requirements_.find(&buffer);
     if (default_memory_colorings_it !=
@@ -9458,6 +9478,16 @@ bool MsaAlgorithm::IsPositionColoredInDefaultMemoryAtTime(
     }
   }
   return false;
+}
+
+const HloBuffer& MsaAlgorithm::GetUniqueBufferAtCached(
+    const HloPosition& position) const {
+  const HloBuffer*& buffer = unique_buffer_at_position_cache_[position];
+  if (buffer == nullptr) {
+    buffer = &alias_analysis_.GetUniqueBufferAt(position.instruction,
+                                                position.index);
+  }
+  return *buffer;
 }
 
 int64_t AsynchronousCopyResource::GetScaledIntegerResource(
