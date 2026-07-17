@@ -1640,7 +1640,7 @@ def categorical_crossentropy(y_true,
   )
 
   def _smooth_labels():
-    num_classes = math_ops.cast(array_ops.shape(y_true)[-1], y_pred.dtype)
+    num_classes = math_ops.cast(array_ops.shape(y_true)[axis], y_pred.dtype)
     return y_true * (1.0 - label_smoothing) + (label_smoothing / num_classes)
 
   y_true = smart_cond.smart_cond(label_smoothing, _smooth_labels,
@@ -1774,10 +1774,20 @@ def binary_crossentropy(y_true,
   Returns:
     Binary crossentropy loss value. shape = `[batch_size, d0, .. dN-1]`.
   """
-  if (not tensor_util.is_tf_type(label_smoothing) and
-      not 0 <= label_smoothing <= 1):
-    raise ValueError(
-        f'`label_smoothing` must be in [0, 1], got {label_smoothing}')
+  if not tensor_util.is_tf_type(label_smoothing):
+    try:
+      is_valid = 0 <= label_smoothing <= 1
+    except TypeError:
+      raise TypeError(
+          f"'label_smoothing' must be a scalar or a tensor, "
+          f"got {type(label_smoothing).__name__}")
+    except ValueError:
+      raise ValueError(
+          f"'label_smoothing' must be a scalar or a tensor, "
+          f"got {label_smoothing}")
+    if not is_valid:
+      raise ValueError(
+          f'`label_smoothing` must be in [0, 1], got {label_smoothing}')
   y_pred = tensor_conversion.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   label_smoothing = tensor_conversion.convert_to_tensor_v2_with_dispatch(
