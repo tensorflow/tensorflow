@@ -45,6 +45,9 @@ java_test(
     data = [
         "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],
+    env = {
+        "PRODKERNEL_API_DISABLE_RESTARTABLE_SEQUENCES": "1",
+    },
     javacopts = JAVACOPTS,
     tags = [
         "no_cuda_on_cpu_tap",  # CUDA + flex is not officially supported.
@@ -71,6 +74,9 @@ java_test(
     data = [
         "//tensorflow/lite:testdata/double_flex.bin",
     ],
+    env = {
+        "PRODKERNEL_API_DISABLE_RESTARTABLE_SEQUENCES": "1",
+    },
     javacopts = JAVACOPTS,
     tags = [
         "no_cuda_on_cpu_tap",  # CUDA + flex is not officially supported.
