@@ -113,7 +113,7 @@ TfLiteStatus MaybeSetFeatureValuesFromTensor(const TfLiteTensor& tensor,
   switch (tensor.type) {
     case kTfLiteFloat32:
     case kTfLiteFloat64:
-      feature.mutable_float_list()->mutable_value()->Resize(total_elements, 0);
+      feature.mutable_float_list()->mutable_value()->resize(total_elements, 0);
       return utils::TfLiteTensorToFloat32Array(
           tensor,
           absl::MakeSpan(
@@ -127,7 +127,7 @@ TfLiteStatus MaybeSetFeatureValuesFromTensor(const TfLiteTensor& tensor,
     case kTfLiteUInt32:
     case kTfLiteUInt64:
     case kTfLiteInt64:
-      feature.mutable_int64_list()->mutable_value()->Resize(total_elements, 0);
+      feature.mutable_int64_list()->mutable_value()->resize(total_elements, 0);
       return utils::TfLiteTensorToInt64Array(
           tensor,
           absl::MakeSpan(
