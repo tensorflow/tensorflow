@@ -83,6 +83,7 @@ constexpr char kIncompleteCacheErrorMessage[] =
     "common workaround is to place the `.cache()` operation after the "
     "operation that drops elements (like `.batch(...)`), if caching the "
     "transformed data is acceptable.";
+constexpr size_t kMaxItems = 10000000;  // 10 million
 }  // namespace
 
 class DatasetRandomAccessCache {
@@ -161,6 +162,12 @@ class IteratorRandomAccessCache {
     if (element_position < cache_.size() && !cache_[element_position].empty()) {
       *out_tensors = cache_[element_position];
       return absl::OkStatus();
+    }
+
+    if (element_position >= kMaxItems) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Requested element_position ", element_position, 
+                       " exceeds the maximum allowed cache size of ", kMaxItems));
     }
 
     TF_RETURN_IF_ERROR(input_->Get(ctx, element_position, out_tensors));
@@ -719,7 +726,6 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
   Env* const env_;
   const size_t num_tensors_;
   const size_t tensor_index_padding_size_;
-  static constexpr size_t kMaxItems = 10000000;  // 10 million
   const size_t item_index_padding_size_;
 };  // FileDatasetBase
 

@@ -385,6 +385,15 @@ TEST_F(CacheDatasetOpTest, NegativeIndexTest) {
   EXPECT_EQ(status.message(), "Index out of range [0, 3):-1");
 }
 
+TEST_F(CacheDatasetOpTest, BadAllocCrashTest) {
+  auto params = CacheDatasetParams3();
+  TF_ASSERT_OK(Initialize(params));
+  std::vector<Tensor> out_tensors;
+  absl::Status status = dataset_->Get(AnyContext(iterator_ctx_.get()), 10000000000000ULL, &out_tensors);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_TRUE(absl::StrContains(status.message(), "exceeds the maximum allowed cache size"));
+}
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow
