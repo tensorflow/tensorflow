@@ -65,63 +65,44 @@ void BuildLowerUpperBoundOp(XlaOpKernelContext* ctx, DataType out_dtype,
   // the associated sorted_inputs row.
   // The reshapes above leave the tensors with equal rank of 3, so broadcast
   // dimensions are not explicitly specified.
-  // Use explicit NaN-aware logic: NaN is treated as the largest value.
+  // Use +inf replacement for NaN: NaN in sorted_inputs or values is replaced
+  // with +inf, so standard IEEE 754 comparisons naturally give correct
+  // NaN-as-largest semantics without special-case logic or Select-based fixes.
+  xla::XlaBuilder* builder = ctx->builder();
   bool is_fp = tensorflow::DataTypeIsFloating(ctx->InputType("sorted_inputs"));
-  xla::XlaOp element_is_nan;
-  xla::XlaOp val_is_nan;
+
+  xla::XlaOp sorted_clean;
+  xla::XlaOp values_clean;
   if (is_fp) {
-    element_is_nan = xla::IsNan(sorted_inputs_reshaped);
-    val_is_nan = xla::IsNan(values_reshaped);
+    DataType input_type = ctx->InputType("sorted_inputs");
+    xla::XlaOp pos_inf = XlaHelpers::FloatLiteral(
+        builder, input_type, std::numeric_limits<double>::infinity());
+    sorted_clean = xla::Select(
+        xla::IsNan(sorted_inputs_reshaped),
+        xla::Broadcast(pos_inf, new_sorted_inputs_shape.dim_sizes()),
+        sorted_inputs_reshaped);
+    values_clean = xla::Select(
+        xla::IsNan(values_reshaped),
+        xla::Broadcast(pos_inf, new_values_shape.dim_sizes()),
+        values_reshaped);
   } else {
-    element_is_nan = xla::ConstantR0<bool>(ctx->builder(), false);
-    val_is_nan = xla::ConstantR0<bool>(ctx->builder(), false);
+    sorted_clean = sorted_inputs_reshaped;
+    values_clean = values_reshaped;
   }
 
-  xla::XlaBuilder* builder = ctx->builder();
   const DataType accumulation_type = XlaHelpers::SumAccumulationType(out_dtype);
   xla::XlaOp zero = XlaHelpers::Zero(builder, accumulation_type);
 
-  // Non-NaN mask for sorted_inputs elements: [batch, 1, inputs_size]
-  auto non_nan_mask = xla::Not(element_is_nan);
-
-  // Standard comparisons with NaN elements masked out.
-  // When element is NaN, comparison is false (NaN is largest, no value is >/>= NaN).
-  auto standard_gt = xla::Gt(values_reshaped, sorted_inputs_reshaped);
-  auto standard_ge = xla::Ge(values_reshaped, sorted_inputs_reshaped);
-  auto standard_gt_masked = xla::And(standard_gt, non_nan_mask);
-  auto standard_ge_masked = xla::And(standard_ge, non_nan_mask);
-
-  // Reduce standard comparisons over inputs dimension -> [batch, values_size, 1]
-  auto standard_gt_int = XlaHelpers::ConvertElementType(standard_gt_masked, accumulation_type);
-  auto standard_ge_int = XlaHelpers::ConvertElementType(standard_ge_masked, accumulation_type);
-  auto standard_gt_count =
-      xla::Reduce(standard_gt_int, zero, *ctx->GetOrCreateAdd(accumulation_type), {2});
-  auto standard_ge_count =
-      xla::Reduce(standard_ge_int, zero, *ctx->GetOrCreateAdd(accumulation_type), {2});
-
-  // Special counts for NaN values:
-  // lower_bound (GT): NaN goes after all non-NaN elements -> count non-NaN elements
-  // upper_bound (GE): NaN goes after ALL elements (including NaN) -> count all elements
-  auto non_nan_int = XlaHelpers::ConvertElementType(non_nan_mask, accumulation_type);
-  auto non_nan_count =
-      xla::Reduce(non_nan_int, zero, *ctx->GetOrCreateAdd(accumulation_type), {2});
-  int64_t inputs_size = sorted_inputs_shape.dim_size(1);
-  auto total_count = xla::ConstantR0<int64_t>(builder, inputs_size);
-  total_count = XlaHelpers::ConvertElementType(total_count, accumulation_type);
-  // Broadcast total_count to [batch, values_size, 1] to match standard_*_count
-  auto shape_or = builder->GetShape(standard_gt_count);
-  OP_REQUIRES_OK(ctx, shape_or.status());
-  total_count = xla::Broadcast(total_count, shape_or.value().dimensions());
-
-  // Select based on whether value is NaN: [batch, values_size, 1]
-  xla::XlaOp result_count;
+  xla::XlaOp cmp;
   if (comparison_direction == xla::ComparisonDirection::kGt) {
-    // LowerBound: if value is NaN use non_nan_count, else use standard_gt_count
-    result_count = xla::Select(val_is_nan, non_nan_count, standard_gt_count);
+    cmp = xla::Gt(values_clean, sorted_clean);
   } else {
-    // UpperBound: if value is NaN use total_count, else use standard_ge_count
-    result_count = xla::Select(val_is_nan, total_count, standard_ge_count);
+    cmp = xla::Ge(values_clean, sorted_clean);
   }
+
+  xla::XlaOp cmp_int = XlaHelpers::ConvertElementType(cmp, accumulation_type);
+  xla::XlaOp result_count =
+      xla::Reduce(cmp_int, zero, *ctx->GetOrCreateAdd(accumulation_type), {2});
 
   ctx->SetOutput(0, result_count);
 }
