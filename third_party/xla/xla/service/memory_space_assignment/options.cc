@@ -86,11 +86,7 @@ std::string Options::ToString() const {
                     inefficient_use_to_copy_ratio),
        absl::StrCat("always_spill_to_default_memory: ",
                     always_spill_to_default_memory),
-       absl::StrCat("enable_window_prefetch: ", enable_window_prefetch),
-       absl::StrCat("window_prefetch_mode: ",
-                    window_prefetch_mode == WindowPrefetchMode::kWindowExposure
-                        ? "kWindowExposure"
-                        : "kWindowPrefetch"),
+       absl::StrCat("window_prefetch_mode: ", WindowPrefetchModeToString()),
        absl::StrCat("expanded_scoped_alternate_memory_mode: ",
                     ExpandedScopedAlternateMemoryMode::Value_Name(
                         expanded_scoped_alternate_memory_mode)),
@@ -114,6 +110,25 @@ std::string Options::ToString() const {
        absl::StrCat("msa_sort_order_overrides: \n",
                     msa_sort_order_overrides.DebugString())},
       "\n");
+}
+
+bool Options::IsOpSpanExposureEnabled() const {
+  return window_prefetch_mode >= WindowPrefetchMode::kAllocationOnly;
+}
+
+bool Options::IsWindowPrefetchingEnabled() const {
+  return window_prefetch_mode >= WindowPrefetchMode::kPrefetch;
+}
+
+std::string Options::WindowPrefetchModeToString() const {
+  switch (window_prefetch_mode) {
+    case WindowPrefetchMode::kPrefetch:
+      return "prefetch";
+    case WindowPrefetchMode::kAllocationOnly:
+      return "allocation-only";
+    case WindowPrefetchMode::kNone:
+      return "disabled";
+  }
 }
 
 }  // namespace memory_space_assignment
