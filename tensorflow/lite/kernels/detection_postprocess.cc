@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace ops {
@@ -172,22 +173,19 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                      "detections_per_class must be non-negative");
   TF_LITE_ENSURE_MSG(context, op_data->num_classes > 0,
                      "num_classes must be positive");
-  const int64_t total_regular_detections =
-      static_cast<int64_t>(op_data->max_detections) +
-      static_cast<int64_t>(op_data->detections_per_class);
-  TF_LITE_ENSURE_MSG(
-      context, total_regular_detections <= INT32_MAX,
-      "max_detections + detections_per_class overflows int32");
+  auto check_regular_merge_size =
+      CheckedInt<int>(op_data->max_detections) * 2;
+  TF_LITE_ENSURE_MSG(context,
+                     check_regular_merge_size.Status() == kTfLiteOk,
+                     "2 * max_detections overflows int32");
   // number of detected boxes
-  // Guard against integer overflow: both values come from attacker-controlled
-  // FlexBuffer custom options, so the product can wrap around.
-  const int64_t num_detected_boxes_int64 =
-      static_cast<int64_t>(op_data->max_detections) *
-      static_cast<int64_t>(op_data->max_classes_per_detection);
+  auto check_num_detected_boxes =
+      CheckedInt<int>(op_data->max_detections) *
+      op_data->max_classes_per_detection;
   TF_LITE_ENSURE_MSG(
-      context, num_detected_boxes_int64 <= INT32_MAX,
+      context, check_num_detected_boxes.Status() == kTfLiteOk,
       "max_detections * max_classes_per_detection overflows int32");
-  const int num_detected_boxes = static_cast<int>(num_detected_boxes_int64);
+  const int num_detected_boxes = check_num_detected_boxes.Value();
 
   // Outputs: detection_boxes, detection_scores, detection_classes,
   // num_detections
@@ -328,13 +326,12 @@ TfLiteStatus DecodeCenterSizeBoxes(TfLiteContext* context, TfLiteNode* node,
         // Float
       case kTfLiteFloat32: {
         // Please see DequantizeBoxEncodings function for the support detail.
-        const int64_t box_encoding_idx_int64 =
-            static_cast<int64_t>(idx) *
-            static_cast<int64_t>(input_box_encodings->dims->data[2]);
-        TF_LITE_ENSURE_MSG(context, box_encoding_idx_int64 <= INT32_MAX,
+        auto check_box_encoding_idx =
+            CheckedInt<int>(idx) * input_box_encodings->dims->data[2];
+        TF_LITE_ENSURE_MSG(context,
+                           check_box_encoding_idx.Status() == kTfLiteOk,
                            "box encoding index computation overflows int32");
-        const int box_encoding_idx =
-            static_cast<int>(box_encoding_idx_int64);
+        const int box_encoding_idx = check_box_encoding_idx.Value();
         const float* boxes =
             &(GetTensorData<float>(input_box_encodings)[box_encoding_idx]);
         box_centersize = *reinterpret_cast<const CenterSizeEncoding*>(boxes);
@@ -675,8 +672,11 @@ TfLiteStatus NonMaxSuppressionMultiClassRegularHelper(TfLiteContext* context,
   TF_LITE_ENSURE(context, num_detections_per_class > 0);
 
   int sorted_indices_size = 0;
+  auto check_merge_capacity = CheckedInt<int>(max_detections) * 2;
+  TF_LITE_ENSURE_MSG(context, check_merge_capacity.Status() == kTfLiteOk,
+                     "2 * max_detections overflows int32");
   std::vector<BoxInfo> box_info_after_regular_non_max_suppression(
-      max_detections + num_detections_per_class);
+      static_cast<size_t>(check_merge_capacity.Value()));
   std::vector<int> num_selected(num_classes);
 
   NMSTaskParam nms_task_param{context,
@@ -815,11 +815,12 @@ TfLiteStatus NonMaxSuppressionMultiClassFastHelper(TfLiteContext* context,
   std::vector<float> max_scores;
   max_scores.resize(num_boxes);
   std::vector<int> sorted_class_indices;
-  const int64_t sorted_indices_size =
-      static_cast<int64_t>(num_boxes) * static_cast<int64_t>(num_classes);
-  TF_LITE_ENSURE_MSG(context, sorted_indices_size <= INT32_MAX,
+  auto check_sorted_indices_size = CheckedInt<int>(num_boxes) * num_classes;
+  TF_LITE_ENSURE_MSG(context,
+                     check_sorted_indices_size.Status() == kTfLiteOk,
                      "num_boxes * num_classes overflows int32");
-  sorted_class_indices.resize(static_cast<size_t>(sorted_indices_size));
+  sorted_class_indices.resize(
+      static_cast<size_t>(check_sorted_indices_size.Value()));
   for (int row = 0; row < num_boxes; row++) {
     const float* box_scores =
         scores + row * num_classes_with_background + label_offset;
@@ -901,11 +902,10 @@ TfLiteStatus NonMaxSuppressionMultiClass(TfLiteContext* context,
   // Guard against integer overflow in DequantizeClassPredictions and score
   // indexing. num_boxes comes from tensor dims, num_classes_with_background
   // from tensor dims (but influenced by attacker-controlled num_classes).
-  const int64_t num_boxes_x_classes_with_bg =
-      static_cast<int64_t>(num_boxes) *
-      static_cast<int64_t>(num_classes_with_background);
+  auto check_num_boxes_x_classes_with_bg =
+      CheckedInt<int>(num_boxes) * num_classes_with_background;
   TF_LITE_ENSURE_MSG(
-      context, num_boxes_x_classes_with_bg <= INT32_MAX,
+      context, check_num_boxes_x_classes_with_bg.Status() == kTfLiteOk,
       "num_boxes * num_classes_with_background overflows int32");
 
   const TfLiteTensor* scores;
