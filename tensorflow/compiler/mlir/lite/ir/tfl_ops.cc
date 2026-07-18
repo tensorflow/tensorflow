@@ -86,6 +86,7 @@ limitations under the License.
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_traits.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/arithmetic_count_util.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
@@ -2950,6 +2951,37 @@ LogicalResult GetReshapeOutputType(Value input, Value shape,
       output_ty = RankedTensorType::getChecked(input.getLoc(), output_ty_shape,
                                                new_element_type);
       return success();
+    }
+  }
+  if (quant::UniformQuantizedSubChannelType sub_channel_quant =
+          dyn_cast_or_null<quant::UniformQuantizedSubChannelType>(element_ty)) {
+    if (!sub_channel_quant.getQuantizedDimensions().empty()) {
+      int32_t input_quant_dim = sub_channel_quant.getQuantizedDimensions()[0];
+      auto input_shape = mlir::cast<ShapedType>(input.getType()).getShape();
+      absl::StatusOr<int32_t> new_quant_dim = GetQuantDimensionAfterReshape(
+          input_shape, output_ty_shape, input_quant_dim);
+      if (!new_quant_dim.ok()) return failure();
+      if (*new_quant_dim != input_quant_dim) {
+        llvm::SmallVector<int32_t> new_quant_dims(
+            sub_channel_quant.getQuantizedDimensions().begin(),
+            sub_channel_quant.getQuantizedDimensions().end());
+        new_quant_dims[0] = *new_quant_dim;
+        quant::UniformQuantizedSubChannelType new_element_type =
+            mlir::quant::UniformQuantizedSubChannelType::getChecked(
+                [&]() { return mlir::emitError(input.getLoc()); },
+                sub_channel_quant.getFlags(),
+                sub_channel_quant.getStorageType(),
+                sub_channel_quant.getExpressedType(),
+                sub_channel_quant.getScales(),
+                sub_channel_quant.getZeroPoints(), new_quant_dims,
+                sub_channel_quant.getBlockSizes(),
+                sub_channel_quant.getStorageTypeMin(),
+                sub_channel_quant.getStorageTypeMax());
+
+        output_ty = RankedTensorType::getChecked(
+            input.getLoc(), output_ty_shape, new_element_type);
+        return success();
+      }
     }
   }
   output_ty = tensorflow::GetTypeFromTFTensorShape(output_ty_shape, element_ty);
