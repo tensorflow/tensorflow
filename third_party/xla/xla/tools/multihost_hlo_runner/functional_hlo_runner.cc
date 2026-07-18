@@ -358,20 +358,15 @@ absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutput(
   CHECK(!output_buffers.empty());
   absl::Mutex mu;
   absl::Status status;
-  size_t num_pending_transfers = 0;
+  size_t num_pending_ops = 0;
+  for (const auto& bs : output_buffers) {
+    num_pending_ops += bs.size();
+  }
+
   bool device_0_is_local = false;
   for (PjRtDevice* device : GetLocalDevices(client)) {
     if (device->id() == 0) {
       device_0_is_local = true;
-    }
-  }
-
-  if (module_output_mode == ModuleOutputMode::kReturnDevice0Outputs &&
-      device_0_is_local) {
-    num_pending_transfers = output_buffers[0].size();
-  } else if (module_output_mode == ModuleOutputMode::kReturnOutputs) {
-    for (const auto& bs : output_buffers) {
-      num_pending_transfers += bs.size();
     }
   }
 
@@ -395,7 +390,7 @@ absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutput(
             ShapeUtil::DeviceShapeToHostShape(logical_shape));
         buffer->ToLiteral(&output_slice.back()).OnReady([&](absl::Status s) {
           absl::MutexLock lock(mu);
-          --num_pending_transfers;
+          --num_pending_ops;
           status.Update(s);
         });
       }
@@ -404,17 +399,23 @@ absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutput(
         TF_RET_CHECK(buffer->device() == output_buffers[i][0]->device())
             << "All outputs from a given vector of outputs should be for the "
                "same device";
-        RETURN_IF_ERROR(buffer->GetReadyFuture().Await());
+        buffer->GetReadyFuture().OnReady([&](absl::Status s) {
+          absl::MutexLock lock(mu);
+          --num_pending_ops;
+          status.Update(s);
+        });
       }
     }
   }
+
+  auto cond = [&]() { return num_pending_ops == 0; };
+  absl::MutexLock lock(mu);
+  mu.Await(absl::Condition(&cond));
+  RETURN_IF_ERROR(status);
+
   if (module_output_mode == ModuleOutputMode::kReturnOutputs ||
       (module_output_mode == ModuleOutputMode::kReturnDevice0Outputs &&
        device_0_is_local)) {
-    auto cond = [&]() { return !status.ok() || num_pending_transfers == 0; };
-    absl::MutexLock lock(mu);
-    mu.Await(absl::Condition(&cond));
-    RETURN_IF_ERROR(status);
     if (log_output) {
       for (const PjRtDevice* device : GetLocalDevices(client)) {
         int device_id = device->id();
