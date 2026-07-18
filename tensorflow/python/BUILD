@@ -846,6 +846,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/python/framework:op_def_util_cc",
         "//tensorflow/python/framework:python_api_dispatcher",
         "//tensorflow/python/framework:python_api_info",
+        "//tensorflow/python/framework:python_api_parameter_converter",
         "//tensorflow/python/framework:python_op_gen",
         "//tensorflow/python/framework:python_tensor_converter",
         "//tensorflow/python/grappler:cost_analyzer_lib",
