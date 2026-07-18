@@ -80,6 +80,21 @@ XEventVisitor::XEventVisitor(const XPlaneVisitor* plane, const XLine* line,
       metadata_(plane->GetEventMetadata(event_->metadata_id())),
       type_(plane->GetEventType(event_->metadata_id())) {}
 
+std::optional<XStatVisitor> XEventVisitor::GetEventOrMetadataStat(
+    int64_t stat_type) const {
+  std::optional<XStatVisitor> stat = Metadata().GetStat(stat_type);
+  if (!stat.has_value()) {
+    stat = GetStat(stat_type);
+  }
+  return stat;
+}
+
+int64_t XEventVisitor::GetEventOrMetadataStat(int64_t stat_type,
+                                              int64_t default_val) const {
+  auto stat = GetEventOrMetadataStat(stat_type);
+  return stat.has_value() ? stat->IntOrUintValue() : default_val;
+}
+
 XPlaneVisitor::XPlaneVisitor(const XPlane* plane,
                              const TypeGetterList& event_type_getter_list,
                              const TypeGetterList& stat_type_getter_list)
