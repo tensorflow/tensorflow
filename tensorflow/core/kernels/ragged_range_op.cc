@@ -20,6 +20,8 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"

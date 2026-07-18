@@ -15,7 +15,9 @@ limitations under the License.
 
 // XLA-specific sequence and range Ops.
 
+#include <cmath>
 #include <cstdint>
+#include <limits>
 #include <type_traits>
 
 #include "absl/status/statusor.h"
@@ -62,13 +64,37 @@ absl::StatusOr<xla::XlaOp> CreateRangeTensor(
           "Requires start >= limit when delta < 0: ", start, "/", limit);
     }
   }
-  int64_t size =
-      (std::is_integral<T>::value
-           ? static_cast<T>(
-                 limit == start
-                     ? 0
-                     : (std::abs(limit - start) - 1) / std::abs(delta) + 1)
-           : std::ceil(std::abs((limit - start) / delta)));
+  int64_t size;
+  if constexpr (std::is_integral<T>::value) {
+    if (limit == start) {
+      size = 0;
+    } else {
+      // Compute the size in unsigned arithmetic: `limit - start` can overflow
+      // the signed type, and std::abs(std::numeric_limits<T>::min()) is
+      // undefined behavior.
+      using UT = std::make_unsigned_t<T>;
+      UT range = (limit > start)
+                     ? static_cast<UT>(limit) - static_cast<UT>(start)
+                     : static_cast<UT>(start) - static_cast<UT>(limit);
+      UT abs_delta =
+          (delta > 0) ? static_cast<UT>(delta) : -static_cast<UT>(delta);
+      UT size_unsigned = (range - 1) / abs_delta + 1;
+      if (size_unsigned >
+          static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
+        return errors::InvalidArgument(
+            "Requires ((limit - start) / delta) <= ",
+            std::numeric_limits<int64_t>::max());
+      }
+      size = static_cast<int64_t>(size_unsigned);
+    }
+  } else {
+    auto size_auto = std::ceil(std::abs((limit - start) / delta));
+    if (size_auto > std::numeric_limits<int64_t>::max()) {
+      return errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
+                                     std::numeric_limits<int64_t>::max());
+    }
+    size = static_cast<int64_t>(size_auto);
+  }
 
   return xla::ConstantR0(builder, start) +
          xla::ConstantR0(builder, delta) *
