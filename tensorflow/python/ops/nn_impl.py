@@ -21,6 +21,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import candidate_sampling_ops
@@ -1264,7 +1265,6 @@ def moments(
     keep_dims = False
   if isinstance(axes, (tensor.Tensor, variables.Variable)):
     from tensorflow.python.eager import context
-    from tensorflow.python.framework import tensor_util
     if context.executing_eagerly():
       axes = axes.numpy().tolist()
     else:
@@ -1359,7 +1359,6 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
     keep_dims = False
   if isinstance(axes, (tensor.Tensor, variables.Variable)):
     from tensorflow.python.eager import context
-    from tensorflow.python.framework import tensor_util
     if context.executing_eagerly():
       axes = axes.numpy().tolist()
     else:
