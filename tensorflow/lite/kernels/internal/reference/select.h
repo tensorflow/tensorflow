@@ -237,10 +237,10 @@ void BroadcastSelect5DSlow(const RuntimeShape& input_condition_shape,
                            const T* input_y_data,
                            const RuntimeShape& output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("Select/BroadcastSelectSlow");
-  TFLITE_DCHECK_LE(input_condition_shape.DimensionsCount(), 5);
-  TFLITE_DCHECK_LE(input_x_shape.DimensionsCount(), 5);
-  TFLITE_DCHECK_LE(input_y_shape.DimensionsCount(), 5);
-  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), 5);
+  TFLITE_DCHECK_LE(input_condition_shape.DimensionsCount(), 8);
+  TFLITE_DCHECK_LE(input_x_shape.DimensionsCount(), 8);
+  TFLITE_DCHECK_LE(input_y_shape.DimensionsCount(), 8);
+  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), 8);
 
   BroadcastSelectSimple(input_condition_shape, input_condition_data,
                         input_x_shape, input_x_data, input_y_shape,
