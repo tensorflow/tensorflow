@@ -778,6 +778,12 @@ class ResourceGatherOp : public OpKernel {
             "batch_dims (", batch_dims_, ") must be less than rank(params) (",
             params.dims(), ").")));
 
+    OP_REQUIRES(
+        c, batch_dims_ <= indices.dims(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "Expected batch_dims <= rank(indices) (", indices.dims(),
+            "), but got ", batch_dims_)));
+
     // Check that we have enough index space
     const int64_t N = indices.NumElements();
     OP_REQUIRES(c, params.dim_size(0) <= std::numeric_limits<Index>::max(),
