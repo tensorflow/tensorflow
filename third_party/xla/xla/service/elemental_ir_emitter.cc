@@ -514,6 +514,43 @@ llvm::Value* EmitIntegralToFloating(llvm::Value* integer_value,
   }
 }
 
+llvm::Value* CastPrimitiveValue(llvm::IRBuilderBase* b, llvm::Module* module,
+                                llvm::Value* val, PrimitiveType from_type,
+                                PrimitiveType to_type) {
+  if (from_type == to_type) {
+    return val;
+  }
+  llvm::Type* to_ir_type =
+      llvm_ir::PrimitiveTypeToIrType(to_type, module->getContext());
+
+  if (primitive_util::IsFloatingPointType(from_type) &&
+      primitive_util::IsFloatingPointType(to_type)) {
+    return b->CreateFPCast(val, to_ir_type);
+  }
+  if (primitive_util::IsIntegralType(from_type) &&
+      primitive_util::IsFloatingPointType(to_type)) {
+    return EmitIntegralToFloating(val, from_type, to_type, module, b);
+  }
+  if (primitive_util::IsFloatingPointType(from_type) &&
+      primitive_util::IsSignedIntegralType(to_type)) {
+    return b->CreateFPToSI(val, to_ir_type);
+  }
+  if (primitive_util::IsFloatingPointType(from_type) &&
+      primitive_util::IsUnsignedIntegralType(to_type)) {
+    return b->CreateFPToUI(val, to_ir_type);
+  }
+  if (primitive_util::IsIntegralType(from_type) &&
+      primitive_util::IsIntegralType(to_type)) {
+    return b->CreateIntCast(
+        val, to_ir_type,
+        /*isSigned=*/primitive_util::IsSignedIntegralType(from_type));
+  }
+  if (from_type == PRED && primitive_util::IsIntegralType(to_type)) {
+    return b->CreateZExt(val, to_ir_type);
+  }
+  return val;
+}
+
 llvm::Value* EmitComposeComplex(const HloInstruction* op, llvm::Value* real,
                                 llvm::Value* imag, llvm::Module* module,
                                 llvm::IRBuilderBase* b) {
@@ -3109,6 +3146,33 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalPad(
   return Load(ret_value_addr->getAllocatedType(), ret_value_addr);
 }
 
+absl::StatusOr<PrimitiveType> GetElementalDotAccumulatorType(
+    const HloInstruction* dot) {
+  TF_RET_CHECK(dot != nullptr);
+  TF_RET_CHECK(dot->opcode() == HloOpcode::kDot);
+
+  PrimitiveType lhs_type = dot->operand(0)->shape().element_type();
+  PrimitiveType output_type = dot->shape().element_type();
+
+  // Elemental emitter supports complex and integral types, unlike triton and
+  // cuBLAS, therefore we have the additional checks here.
+  if (primitive_util::IsComplexType(output_type) ||
+      primitive_util::IsComplexType(lhs_type)) {
+    return output_type;
+  }
+
+  if (primitive_util::IsIntegralType(output_type) ||
+      primitive_util::IsIntegralType(lhs_type)) {
+    if (primitive_util::BitWidth(lhs_type) <= 8 &&
+        primitive_util::BitWidth(output_type) >= 32) {
+      return S32;
+    }
+    return output_type;
+  }
+
+  return algorithm_util::GetDotAccumulatorType(dot);
+}
+
 absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
     const HloInstruction* hlo,
     const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator,
@@ -3142,16 +3206,15 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
       index_typed_const(contracted_dim_size), index_typed_const(1), b_);
 
   SetToFirstInsertPoint(inner_loop->GetPreheaderBasicBlock(), b_);
-  PrimitiveType primitive_type = hlo->shape().element_type();
-  llvm::Type* primitive_type_llvm =
-      llvm_ir::PrimitiveTypeToIrType(primitive_type, module_->getContext());
-  if (primitive_type == BF16) {
-    primitive_type_llvm =
-        llvm_ir::PrimitiveTypeToIrType(F32, module_->getContext());
-  }
+  PrimitiveType output_type = hlo->shape().element_type();
+  ASSIGN_OR_RETURN(PrimitiveType accumulator_type,
+                   GetElementalDotAccumulatorType(hlo));
+  llvm::Type* accumulator_type_llvm =
+      llvm_ir::PrimitiveTypeToIrType(accumulator_type, module_->getContext());
   llvm::AllocaInst* accumulator_alloca =
-      llvm_ir::EmitAllocaAtFunctionEntry(primitive_type_llvm, "dot_acc", b_);
-  Store(llvm::Constant::getNullValue(primitive_type_llvm), accumulator_alloca);
+      llvm_ir::EmitAllocaAtFunctionEntry(accumulator_type_llvm, "dot_acc", b_);
+  Store(llvm::Constant::getNullValue(accumulator_type_llvm),
+        accumulator_alloca);
 
   SetToFirstInsertPoint(inner_loop->GetBodyBasicBlock(), b_);
 
@@ -3214,26 +3277,29 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   ASSIGN_OR_RETURN(llvm::Value * lhs_value, lhs_generator(lhs_index));
   ASSIGN_OR_RETURN(llvm::Value * rhs_value, rhs_generator(rhs_index));
 
-  if (primitive_type == BF16) {
-    lhs_value = b_->CreateFPExt(lhs_value, b_->getFloatTy());
-    rhs_value = b_->CreateFPExt(rhs_value, b_->getFloatTy());
-  } else if (algorithm_util::IsBf16ToF32AlgorithmRequested(hlo)) {
-    lhs_value = b_->CreateFPExt(b_->CreateFPTrunc(lhs_value, b_->getBFloatTy()),
-                                b_->getFloatTy());
-    rhs_value = b_->CreateFPExt(b_->CreateFPTrunc(rhs_value, b_->getBFloatTy()),
-                                b_->getFloatTy());
-  }
+  auto prepare_operand = [&](llvm::Value* val,
+                             PrimitiveType type) -> llvm::Value* {
+    if (algorithm_util::IsBf16ToF32AlgorithmRequested(hlo)) {
+      val = b_->CreateFPTrunc(val, b_->getBFloatTy());
+      type = BF16;
+    }
+    return CastPrimitiveValue(b_, module_, val, type, accumulator_type);
+  };
+
+  lhs_value =
+      prepare_operand(lhs_value, hlo->operand(0)->shape().element_type());
+  rhs_value =
+      prepare_operand(rhs_value, hlo->operand(1)->shape().element_type());
 
   llvm::Value* next_accumulator =
-      EmitMulAdd(lhs_value, rhs_value, current_accumulator,
-                 primitive_type == BF16 ? F32 : primitive_type);
+      EmitMulAdd(lhs_value, rhs_value, current_accumulator, accumulator_type);
   Store(next_accumulator, accumulator_alloca);
 
   SetToFirstInsertPoint(inner_loop->GetExitBasicBlock(), b_);
   llvm::Value* result =
       Load(accumulator_alloca->getAllocatedType(), accumulator_alloca);
 
-  return primitive_type == BF16 ? FPTrunc(result, b_->getBFloatTy()) : result;
+  return CastPrimitiveValue(b_, module_, result, accumulator_type, output_type);
 }
 
 absl::StatusOr<std::vector<llvm::Value*>>
