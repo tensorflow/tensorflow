@@ -126,8 +126,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -226,7 +224,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtCpuClient(
       options.allocator ? std::make_unique<CustomAllocator>(options.allocator)
                         : CpuDeviceMemory::MakeDefaultAllocator();
 
-  std::unique_ptr<CpuTopologyDescription> topology = nullptr;
+  std::shared_ptr<CpuTopologyDescription> topology = nullptr;
   if (!options.topology) {
     std::vector<CpuTopology::CpuDevice> cpu_topology_devices;
     cpu_topology_devices.reserve(cpu_device_count);
@@ -235,12 +233,12 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtCpuClient(
           CpuTopology::CpuDevice{options.process_id, i});
     }
 
-    topology = std::make_unique<CpuTopologyDescription>(
+    topology = std::make_shared<CpuTopologyDescription>(
         xla::CpuPlatformId(), xla::CpuPlatformName(), xla::CpuPlatformVersion(),
         CpuTopology(cpu_topology_devices,
                     cpu::TargetMachineOptions(GetDebugOptionsFromFlags())));
   } else {
-    topology = std::make_unique<CpuTopologyDescription>(*options.topology);
+    topology = std::make_shared<CpuTopologyDescription>(*options.topology);
     if (topology->cpu_topology().number_of_devices() != cpu_device_count) {
       return InvalidArgument(
           "Number of devices in topology (%d) does not match "
@@ -286,7 +284,8 @@ PjRtCpuClient::PjRtCpuClient(
     std::shared_ptr<cpu::CpuCollectives> collectives, size_t num_threads,
     bool asynchronous,
     std::function<void(HloModuleConfig&)> customize_hlo_module_config,
-    int max_transpose_threads, std::unique_ptr<CpuTopologyDescription> topology)
+    int max_transpose_threads,
+    std::shared_ptr<const CpuTopologyDescription> topology)
     : process_index_(process_index),
       owned_devices_(std::move(devices)),
       computation_placer_(std::make_unique<ComputationPlacer>()),
@@ -578,7 +577,7 @@ PjRtCpuClient::LoadSerializedExecutable(absl::string_view serialized,
       num_replicas, num_partitions,
       compile_options.parameter_is_tupled_arguments, std::move(input_options),
       std::move(executable), std::move(result_buffer_indices), nullptr,
-      *topology_);
+      topology_);
   RETURN_IF_ERROR(cpu_executable->SetUpDonation(
       compile_options.parameter_is_tupled_arguments));
   return LoadInternal(std::move(cpu_executable), std::move(device_assignment));
@@ -1019,7 +1018,7 @@ PjRtCpuClient::CompileInternal(
       num_replicas, num_partitions, options.parameter_is_tupled_arguments,
       std::move(input_options), std::move(cpu_executable),
       std::move(result_buffer_indices), std::move(unoptimized_hlo_module),
-      *topology_);
+      topology_);
   RETURN_IF_ERROR(
       executable->SetUpDonation(options.parameter_is_tupled_arguments));
 
@@ -1252,7 +1251,7 @@ PjRtCpuExecutable::PjRtCpuExecutable(
     CompileOptions compile_options, std::unique_ptr<Executable> cpu_executable,
     absl::InlinedVector<BufferAllocation::Index, 4> result_buffer_indices,
     std::unique_ptr<HloModule> unoptimized_hlo_module,
-    const CpuTopologyDescription& topology)
+    std::shared_ptr<const CpuTopologyDescription> topology)
     : num_replicas_(num_replicas),
       num_partitions_(num_partitions),
       parameter_is_tupled_arguments_(parameter_is_tupled_arguments),
@@ -1263,7 +1262,7 @@ PjRtCpuExecutable::PjRtCpuExecutable(
           cpu_executable_->module().entry_computation_layout())),
       result_buffer_indices_(std::move(result_buffer_indices)),
       unoptimized_hlo_module_(std::move(unoptimized_hlo_module)),
-      topology_(&topology) {
+      topology_(std::move(topology)) {
   auto hlo_cost_analysis =
       std::make_unique<HloCostAnalysis>(cpu::CpuExecutable::ShapeSizeBytes);
   CHECK_OK(cpu_executable_->module().entry_computation()->Accept(
