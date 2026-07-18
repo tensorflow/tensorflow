@@ -23,9 +23,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/substitute.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
@@ -35,8 +35,8 @@ limitations under the License.
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla.pb.h"
@@ -46,15 +46,13 @@ namespace gpu {
 
 using ::tsl::proto_testing::EqualsProto;
 
-// Counts the number of configs with is_tma_allowed set to true.
-int CountTmaAllowed(
-    const std::vector<std::unique_ptr<BackendConfig>>& configs) {
-  return std::count_if(configs.begin(), configs.end(), [](auto& config) {
-    BlockLevelFusionConfig actual_config;
-    if (!config->UnpackTo(&actual_config)) {
+// Checks if any config has is_tma_allowed set to true.
+bool AnyTmaAllowed(const std::vector<std::unique_ptr<BackendConfig>>& configs) {
+  return std::any_of(configs.begin(), configs.end(), [](const auto& config) {
+    if (!config->has_block_level()) {
       return false;
     }
-    return actual_config.is_tma_allowed();
+    return config->block_level().is_tma_allowed();
   });
 }
 
@@ -67,22 +65,19 @@ class TritonBlockLevelFusionEmitterBackendTest
     : public HloHardwareIndependentTestBase {
  protected:
   TritonBlockLevelFusionEmitterBackendTest()
-      : stream_executor_(PlatformUtil::GetDefaultPlatform()
+      : debug_options_(GetDebugOptionsFromFlags()),
+        stream_executor_(PlatformUtil::GetDefaultPlatform()
                              .value()
                              ->ExecutorForDevice(0)
                              .value()),
         target_config_(stream_executor_),
         backend_(&debug_options_, &compiler_,
-                 compiler_.ShapeSizeBytesFunction(), &target_config_) {
-    // TODO(b/315957220): Remove the experimental flags once TMA is enabled by
-    // default.
-    debug_options_.set_xla_gpu_experimental_enable_triton_tma(true);
-  }
+                 compiler_.ShapeSizeBytesFunction(), &target_config_) {}
 
   DebugOptions debug_options_;
   NVPTXCompiler compiler_;
   se::StreamExecutor* stream_executor_;
-  Compiler::TargetConfig target_config_;
+  Compiler::GpuTargetConfig target_config_;
   BlockLevelEmitterBackend backend_;
 };
 
@@ -126,8 +121,8 @@ ENTRY %main {
       backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction())));
   // Verify that the returned config is indeed a BlockLevelFusionConfig.
-  BlockLevelFusionConfig block_level_fusion_config;
-  ASSERT_TRUE(config->UnpackTo(&block_level_fusion_config));
+  ASSERT_TRUE(config->has_block_level());
+  BlockLevelFusionConfig block_level_fusion_config = config->block_level();
   // Check that the config matches the proto embedded in the instruction.
   EXPECT_THAT(block_level_fusion_config, EqualsProto(R"pb(
                 output_tiles { sizes: 4 sizes: 16 }
@@ -166,176 +161,13 @@ ENTRY %main {
       backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction())));
   // Verify that the returned config is indeed a BlockLevelFusionConfig.
-  BlockLevelFusionConfig block_level_fusion_config;
-  ASSERT_TRUE(config->UnpackTo(&block_level_fusion_config));
+  ASSERT_TRUE(config->has_block_level());
+  BlockLevelFusionConfig block_level_fusion_config = config->block_level();
   // Verify the config is reasonable.
   EXPECT_GE(block_level_fusion_config.output_tiles_size(), 1);
   EXPECT_GE(block_level_fusion_config.num_warps(), 1);
   EXPECT_GE(block_level_fusion_config.num_ctas(), 1);
   EXPECT_GE(block_level_fusion_config.num_stages(), 1);
-}
-
-// Tests that `GetSupportedConfigs` returns a correct list of valid backend
-// configurations for a fusion instruction.
-// The fusion has output shape [64,1,16].
-// The backend should generate a full set of tile configurations for
-// different tile sizes for d0 and d2 while keeping the middle dimension d1
-// fixed at 1.
-TEST_F(TritonBlockLevelFusionEmitterBackendTest, GetSupportedConfigs) {
-  // Build and verify an HLO module containing a fusion with a 3D transpose.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
-HloModule m
-
-%wrapped_transpose_computation {
-  %param_0 = f32[16,1,64]{2,1,0} parameter(0)
-  ROOT %transpose.3.1 = f32[64,1,16]{2,1,0} transpose(%param_0), dimensions={2,1,0}
-}
-
-ENTRY %main {
-  %p0 = f32[16,1,64]{2,1,0} parameter(0), metadata={op_name="a"}
-  ROOT %wrapped_transpose = f32[64,1,16]{2,1,0} fusion(%p0), kind=kInput,
-  calls=%wrapped_transpose_computation
-}
-)"));
-
-  // Call GetSupportedConfigs on the root instruction (the fusion op).
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<BackendConfig>> configs,
-      backend_.GetSupportedConfigs(
-          *(module->entry_computation()->root_instruction())));
-
-  // If device supports TMA, the backend should generate 70 combinations:
-  // (7 x 5) x 2.
-  // Expect 70 total configurations:
-  // - 7 choices for d0 (output dim 0 = 64): 1, 2, 4, 8, 16, 32, 64
-  // - 5 choices for d2 (output dim 2 = 16): 1, 2, 4, 8, 16
-  // - 2 choices for is_tma_allowed: true, false
-  // The middle dimension (d1 = 1) must always have tile size 1.
-  //
-  // If device doesn't support TMA, we currently expect half the number (35).
-  bool is_tma_supported = backend_.target_config()
-                              .device_description.cuda_compute_capability()
-                              .IsAtLeastHopper();
-  if (is_tma_supported) {
-    ASSERT_EQ(configs.size(), 70);
-    // The current TMA autotuning duplicates the given configurations with
-    // is_tma_allowed set to true.
-    EXPECT_EQ(CountTmaAllowed(configs), configs.size() / 2);
-  } else {
-    ASSERT_EQ(configs.size(), 35);
-  }
-
-  int config_idx = 0;
-
-  // Iterate over all expected tile size combinations for d0 and d2.
-  // (d1 is fixed at 1 as per the input shape [16,1,64]).
-  // TMA configurations repeat in the 2nd half of the configs. We already
-  // checked them, so we don't inspect them here.
-  for (int d0 : {1, 2, 4, 8, 16, 32, 64}) {
-    for (int d2 : {1, 2, 4, 8, 16}) {
-      BlockLevelFusionConfig block_level_fusion_config;
-      ASSERT_TRUE(configs[config_idx]->UnpackTo(&block_level_fusion_config));
-
-      // Verify that the config matches the expected proto representation
-      // based on the current d0 and d2 tile size values.
-      // d1 is fixed at 1
-      // Also verify default tuning parameters: 1 warp, 1 CTA, 1 stage.
-      EXPECT_THAT(block_level_fusion_config,
-                  EqualsProto(absl::Substitute(
-                      R"pb(
-                        output_tiles { sizes: $0 sizes: 1 sizes: $1 }
-                        num_warps: 1
-                        num_ctas: 1
-                        num_stages: 1
-                        is_tma_allowed: $2
-                      )pb",
-                      d0, d2, false)));
-      ++config_idx;
-    }
-  }
-}
-
-// Tests that `GetSupportedConfigs` returns the correct subset of tile
-// configurations for fusion operations involving non-power-of-two tensor
-// dimensions, and that it correctly handles zero-sized dimensions.
-//
-// The fusion has output shape [10,0,8].
-// Tile size for the zero-sized dimension must be 0.
-TEST_F(TritonBlockLevelFusionEmitterBackendTest,
-       GetSupportedConfigs_Zero_NonPow2Dim) {
-  // Build and verify an HLO module containing a fusion with a 3D transpose.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
-HloModule m
-
-%wrapped_transpose_computation {
-%param_0 = f32[8,0,10]{2,1,0} parameter(0)
-ROOT %transpose.3.1 = f32[10,0,8]{2,1,0} transpose(%param_0), dimensions={2,1,0}
-}
-
-ENTRY %main {
-%p0 = f32[8,0,10]{2,1,0} parameter(0), metadata={op_name="a"}
-ROOT %wrapped_transpose = f32[10,0,8]{2,1,0} fusion(%p0), kind=kCustom,
-calls=%wrapped_transpose_computation,
-metadata={op_name="a"},
-backend_config={"fusion_backend_config":{"kind":"__triton"}}
-}
-)"));
-
-  // Call GetSupportedConfigs on the root instruction (the fusion op).
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<BackendConfig>> configs,
-      backend_.GetSupportedConfigs(
-          *(module->entry_computation()->root_instruction())));
-
-  // If device supports TMA, expect 40 total configurations:
-  // - 5 choices for d0 (output dim 0 = 10): 1, 2, 4, 8, 16
-  // - 4 choices for d2 (output dim 2 = 8): 1, 2, 4, 8
-  // - 2 choices for is_tma_allowed: true, false
-  // The middle dimension (d1 = 0) must always have tile size 0.
-  //
-  // If device doesn't support TMA, we currently expect half the number (20).
-  bool is_tma_supported = backend_.target_config()
-                              .device_description.cuda_compute_capability()
-                              .IsAtLeastHopper();
-  if (is_tma_supported) {
-    ASSERT_EQ(configs.size(), 40);
-    // The current TMA autotuning duplicates the given configurations with
-    // is_tma_allowed set to true.
-    EXPECT_EQ(CountTmaAllowed(configs), configs.size() / 2);
-  } else {
-    ASSERT_EQ(configs.size(), 20);
-  }
-
-  int i = 0;
-
-  // Iterate over tile size combinations for dimensions 0 and 2.
-  // Dimension 1 (middle) is zero-sized, so its tile size is fixed to 0.
-  // TMA configurations repeat in the 2nd half of the configs. We already
-  // checked them, so we don't inspect them here.
-  for (int d0 : {1, 2, 4, 8, 16}) {
-    for (int d2 : {1, 2, 4, 8}) {
-      BlockLevelFusionConfig block_level_fusion_config;
-      ASSERT_TRUE(configs[i]->UnpackTo(&block_level_fusion_config));
-
-      // Validate that tile shape matches expectations:
-      // - d0: 10 → tile sizes {1, 2, 4, 8, 16}
-      // - d1: 0  → must be tile size 0
-      // - d2: 8  → tile sizes {1, 2, 4, 8}
-      EXPECT_THAT(block_level_fusion_config,
-                  EqualsProto(absl::Substitute(
-                      R"pb(
-                        output_tiles { sizes: $0 sizes: 0 sizes: $1 }
-                        num_warps: 1
-                        num_ctas: 1
-                        num_stages: 1
-                      )pb",
-                      d0, d2)));
-
-      ++i;
-    }
-  }
 }
 
 // Tests that `ApplyConfig` correctly attaches a generated default
@@ -366,8 +198,8 @@ ENTRY %main {
       backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction())));
   // Verify that the returned config is indeed a BlockLevelFusionConfig.
-  BlockLevelFusionConfig block_level_fusion_config;
-  ASSERT_TRUE(config->UnpackTo(&block_level_fusion_config));
+  ASSERT_TRUE(config->has_block_level());
+  BlockLevelFusionConfig block_level_fusion_config = config->block_level();
 
   // Apply the generated config to the fusion instruction.
   EXPECT_THAT(backend_.ApplyConfig(*instr, *config), absl_testing::IsOk());
@@ -453,56 +285,8 @@ ENTRY %main {
   EXPECT_THAT(executable, absl_testing::IsOk());
 }
 
-TEST_F(TritonBlockLevelFusionEmitterBackendTest, UseDefaultConfigFlag) {
-  auto backend = BlockLevelEmitterBackend(
-      &debug_options_, &compiler_, compiler_.ShapeSizeBytesFunction(),
-      &target_config_, /*use_default_config=*/true);
-  // Parse an HLO module containing a kCustom Triton fusion with a backend
-  // config that includes block-level tiling parameters.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
-HloModule m
-%wrapped_transpose_computation {
-  %param_0 = f32[16,64]{1,0} parameter(0)
-  ROOT %transpose.3.1 = f32[64,16]{1,0} transpose(%param_0), dimensions={1,0}
-}
-
-ENTRY %main {
-  %p0 = f32[16,64]{1,0} parameter(0), metadata={op_name="a"}
-  ROOT %wrapped_transpose = f32[64,16]{1,0} fusion(%p0), kind=kCustom,
-  calls=%wrapped_transpose_computation,
-  metadata={op_name="a"},
-  backend_config={
-  "fusion_backend_config": {
-    "kind": "__triton",
-    "block_level_fusion_config": {
-      "output_tiles": [
-        {"sizes": ["4","16"]}
-      ],
-      "num_warps": "2",
-      "num_ctas": 1,
-      "num_stages": 1
-    }
-  }}
-}
-)"));
-  // Call GetSupportedConfigs on the root instruction (the fusion op).`
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<BackendConfig>> configs,
-      backend.GetSupportedConfigs(
-          *(module->entry_computation()->root_instruction())));
-  // With the use_default_config flag set to true, we expect a single config
-  // to be returned.
-  ASSERT_EQ(configs.size(), 1);
-  // We expect this config to be equal to the one in the HLO instruction.
-  BlockLevelFusionConfig block_level_fusion_config;
-  ASSERT_TRUE(configs[0]->UnpackTo(&block_level_fusion_config));
-  EXPECT_THAT(block_level_fusion_config, EqualsProto(R"pb(
-                output_tiles { sizes: 4 sizes: 16 }
-                num_warps: 2
-                num_ctas: 1
-                num_stages: 1
-              )pb"));
+TEST_F(TritonBlockLevelFusionEmitterBackendTest, Version) {
+  EXPECT_NE(backend_.version(), "");
 }
 
 }  // namespace gpu

@@ -25,8 +25,9 @@ namespace {
 // them.
 absl::Status DiscoverDataDependencies(
     const Graph* graph, std::vector<Node*>* collective_nodes,
-    std::vector<int32>* instance_keys,
-    absl::flat_hash_map<Node*, absl::flat_hash_set<int32>>* data_dependencies) {
+    std::vector<int32_t>* instance_keys,
+    absl::flat_hash_map<Node*, absl::flat_hash_set<int32_t>>*
+        data_dependencies) {
   absl::Status s;
   // Algorithm: do Reverse DFS starting at sink.  `node_leave` is called when
   // all parents of `node` have been visited.  At that point,
@@ -69,16 +70,16 @@ absl::Status DiscoverDataDependencies(
 // If there exists an edge a -> b then `dependency_edges[a]` contains `b`
 absl::Status CreateControlDependencies(
     const std::vector<Node*>& collective_nodes,
-    const std::vector<int32>& instance_keys,
-    absl::flat_hash_map<Node*, absl::flat_hash_set<int32>>* data_dependencies,
+    const std::vector<int32_t>& instance_keys,
+    absl::flat_hash_map<Node*, absl::flat_hash_set<int32_t>>* data_dependencies,
     absl::flat_hash_map<Node*, absl::flat_hash_set<Node*>>* dependency_edges) {
   // If there exists some path a -> ... -> b then `all_paths[a]` contains `b`
   absl::flat_hash_map<Node*, absl::flat_hash_set<Node*>> all_paths;
   for (int i = 0; i < collective_nodes.size() - 1; i++) {
     if (!collective_nodes[i]->IsCollective() ||
         collective_nodes[i]->type_string() != "CollectiveReduce") {
-      return errors::Internal("Unexpected node ",
-                              collective_nodes[i]->DebugString());
+      return absl::InternalError(
+          absl::StrCat("Unexpected node ", collective_nodes[i]->DebugString()));
     }
     const auto& deps_i = (*data_dependencies)[collective_nodes[i]];
     for (int j = i + 1; j < collective_nodes.size(); j++) {
@@ -87,10 +88,10 @@ absl::Status CreateControlDependencies(
         continue;
       }
       if (instance_keys[i] == instance_keys[j]) {
-        return errors::Internal("Unexpected same instance_key ",
-                                instance_keys[i],
-                                " on 2 nodes with the same device ",
-                                collective_nodes[i]->requested_device());
+        return absl::InternalError(
+            absl::StrCat("Unexpected same instance_key ", instance_keys[i],
+                         " on 2 nodes with the same device ",
+                         collective_nodes[i]->requested_device()));
       }
       const auto& deps_j = (*data_dependencies)[collective_nodes[j]];
       if (deps_i.find(instance_keys[j]) == deps_i.end() &&
@@ -158,7 +159,7 @@ absl::Status InsertControlDependencies(
   } else if (order_type == GraphCollectiveOrder::kAttrs) {
     // `wait_for` is the inverse of `dependency_edges`, i.e. `wait_for[node]`
     // contains the list of instance keys for which `node` must wait.
-    absl::flat_hash_map<Node*, absl::flat_hash_set<int32>> wait_for;
+    absl::flat_hash_map<Node*, absl::flat_hash_set<int32_t>> wait_for;
     for (const auto& pair : dependency_edges) {
       int32_t src_instance;
       TF_RETURN_IF_ERROR(
@@ -168,13 +169,14 @@ absl::Status InsertControlDependencies(
       }
     }
     for (const auto& pair : wait_for) {
-      std::vector<int32> wait_for_list(pair.second.begin(), pair.second.end());
+      std::vector<int32_t> wait_for_list(pair.second.begin(),
+                                         pair.second.end());
       pair.first->ClearAttr("wait_for");
       pair.first->AddAttr("wait_for", wait_for_list);
     }
   } else {
-    return errors::Internal("Unexpected GraphCollectiveOrder type ",
-                            static_cast<int>(order_type));
+    return absl::InternalError(absl::StrCat(
+        "Unexpected GraphCollectiveOrder type ", static_cast<int>(order_type)));
   }
   return absl::OkStatus();
 }
@@ -184,9 +186,9 @@ absl::Status InsertControlDependencies(
 absl::Status OrderCollectives(Graph* graph, GraphCollectiveOrder order_type) {
   // `instance_keys[i]` corresponds to `collective_nodes[i]`
   std::vector<Node*> collective_nodes;
-  std::vector<int32> instance_keys;
+  std::vector<int32_t> instance_keys;
   // node -> set of collectives on which node depends.
-  absl::flat_hash_map<Node*, absl::flat_hash_set<int32>> data_dependencies;
+  absl::flat_hash_map<Node*, absl::flat_hash_set<int32_t>> data_dependencies;
   TF_RETURN_IF_ERROR(DiscoverDataDependencies(
       graph, &collective_nodes, &instance_keys, &data_dependencies));
 

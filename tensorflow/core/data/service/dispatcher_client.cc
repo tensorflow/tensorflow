@@ -55,7 +55,7 @@ absl::Status DataServiceDispatcherClient::Initialize() {
   TF_RETURN_IF_ERROR(
       CredentialsFactory::CreateClientCredentials(protocol_, &credentials));
   grpc::ChannelArguments args;
-  args.SetMaxReceiveMessageSize(std::numeric_limits<int32>::max());
+  args.SetMaxReceiveMessageSize(std::numeric_limits<int32_t>::max());
   args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, true);
   auto channel = grpc::CreateCustomChannel(address_, credentials, args);
   stub_ = DispatcherService::NewStub(channel);
@@ -72,14 +72,14 @@ absl::Status DataServiceDispatcherClient::Initialize() {
   }
 
   if (resp.version() != kDataServiceVersion) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(absl::StrCat(
         "Version mismatch with tf.data service server. The server is running "
         "version ",
         resp.version(), ", while the client is running version ",
         kDataServiceVersion,
         ". Please ensure that the client and server side are running the "
         "same version of TensorFlow. If you're running an MPM binary, make "
-        "sure the server is running an up-to-date MPM.");
+        "sure the server is running an up-to-date MPM."));
   }
   return absl::OkStatus();
 }
@@ -146,7 +146,7 @@ absl::Status DataServiceDispatcherClient::GetSplit(int64_t iteration_id,
   end_of_splits = resp.end_of_splits();
   if (!end_of_splits) {
     if (!split.FromProto(resp.split())) {
-      return errors::Internal("Failed to parse split tensor proto");
+      return absl::InternalError("Failed to parse split tensor proto");
     }
   }
   return absl::OkStatus();
@@ -194,8 +194,8 @@ absl::Status DataServiceDispatcherClient::GetSnapshotSplit(
     return absl::OkStatus();
   }
   if (!split.FromProto(resp.split())) {
-    return errors::Internal("Failed to parse split tensor proto: ",
-                            resp.split().DebugString());
+    return absl::InternalError(absl::StrCat(
+        "Failed to parse split tensor proto: ", resp.split().DebugString()));
   }
   return absl::OkStatus();
 }
@@ -379,9 +379,9 @@ absl::Status DataServiceDispatcherClient::DisableCompressionAtRuntime(
 }
 
 absl::Status DataServiceDispatcherClient::EnsureInitialized() {
-  return grpc_util::Retry([this] { return Initialize(); },
-                          "Initialize dispatcher client",
-                          /*deadline_micros=*/kint64max);
+  return grpc_util::Retry(
+      [this] { return Initialize(); }, "Initialize dispatcher client",
+      /*deadline_micros=*/std::numeric_limits<int64_t>::max());
 }
 
 }  // namespace data

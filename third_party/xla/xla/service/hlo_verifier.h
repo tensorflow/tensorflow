@@ -19,14 +19,17 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
@@ -175,9 +178,6 @@ struct HloVerifierOpts {
   // cloned (".clone" suffix) or rematted (".remat");
   bool verify_instruction_name_unchanged = false;
 
-  // Check if channel instructions all have unique channel ids.
-  bool verify_unique_channel_ids = true;
-
   // Check if a shape has a host memory space color
   bool verify_no_host_memory_space = false;
 
@@ -201,6 +201,9 @@ struct HloVerifierOpts {
 class ShapeVerifier : public DfsHloVisitor {
  public:
   explicit ShapeVerifier(const HloVerifierOpts& opts) : opts_(opts) {}
+  explicit ShapeVerifier(const HloVerifierOpts&& opts) = delete;
+
+  friend class HloVerifierTestHelper;
 
   // Verifies that entry computation layout matches parameters and root shape of
   // the module's entry computation.
@@ -253,6 +256,7 @@ class ShapeVerifier : public DfsHloVisitor {
   absl::Status HandleGetTupleElement(
       HloInstruction* get_tuple_element) override;
   absl::Status HandleReduce(HloInstruction* reduce) override;
+  absl::Status HandleScan(HloInstruction* scan) override;
   absl::Status HandleBitcast(HloInstruction* bitcast) override;
   absl::Status HandleBroadcast(HloInstruction* broadcast) override;
   absl::Status HandleReshape(HloInstruction* reshape) override;
@@ -301,7 +305,8 @@ class ShapeVerifier : public DfsHloVisitor {
 
  protected:
   // Helpers that switch on layout_sensitive_.
-  bool ShapesSame(const Shape& a, const Shape& b, Shape::Equal equal = {});
+  bool ShapesSame(const Shape& a, const Shape& b,
+                  Shape::Equal equal = {}) const;
 
   // Check the instruction's shape against the shape given by ShapeInference
   // and return an appropriate error if there is a mismatch.
@@ -324,6 +329,9 @@ class ShapeVerifier : public DfsHloVisitor {
   absl::Status CheckVariadicShape(const HloInstruction* instruction);
 
  private:
+  // Returns true if shape1 is a prefix of shape2.
+  bool IsShapePrefix(const Shape& shape1, const Shape& shape2) const;
+
   std::string StringifyShape(const Shape& s) {
     return opts_.layout_sensitive ? ShapeUtil::HumanStringWithLayout(s)
                                   : ShapeUtil::HumanString(s);
@@ -347,10 +355,21 @@ class ShapeVerifier : public DfsHloVisitor {
                                         const HloComputation* computation,
                                         int64_t parameter_number);
 
+  absl::Status CheckAsyncOp(const HloInstruction* async_op);
+  // Checks that the shape of the output of the given async instruction
+  absl::Status CheckAsyncOpOutputShape(const HloInstruction* async_op);
+  // Checks that the shape of the given async op's operands.
+  absl::Status CheckAsyncOpOperands(const HloInstruction* async_op);
+  absl::Status CheckAsyncStartOperands(const HloInstruction* async_start);
+  absl::Status CheckAsyncUpdateOperands(const HloInstruction* async_update);
+  absl::Status CheckAsyncDoneOperands(const HloInstruction* async_done);
+
   // Checks that the shape of async op operands and results match the called
   // computation parameters and root.
-  absl::Status CheckAsyncOpComputationShapes(const HloInstruction* async_op,
-                                             const Shape& async_shape);
+  absl::Status CheckAsyncOpComputationShapes(const HloInstruction* async_op);
+
+  // Checks that the aliasing config of the given async instruction is valid.
+  absl::Status CheckAsyncOpAliasConfig(const HloInstruction* async_op);
 
   // Returns true if the shapes of the two operands have the same element type,
   // and the result shape either has the same element type as the operand shapes
@@ -490,9 +509,8 @@ class HloVerifier : public HloModulePass {
   absl::string_view name() const override { return "hlo-verifier"; }
 
   // Never returns true; no instructions are ever modified by this pass.
-  using HloPassInterface::Run;
-  using HloPassInterface::RunOnModuleGroup;
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

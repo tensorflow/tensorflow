@@ -145,12 +145,16 @@ def current():
   return d
 
 
-def get_host_for_device(device):
+def get_host_for_device(device, device_index=0):
   """Returns the corresponding host device for the given device."""
   spec = tf_device.DeviceSpec.from_string(device)
   return tf_device.DeviceSpec(
-      job=spec.job, replica=spec.replica, task=spec.task,
-      device_type="CPU", device_index=0).to_string()
+      job=spec.job,
+      replica=spec.replica,
+      task=spec.task,
+      device_type="CPU",
+      device_index=device_index,
+  ).to_string()
 
 
 def local_devices_from_num_gpus(num_gpus):

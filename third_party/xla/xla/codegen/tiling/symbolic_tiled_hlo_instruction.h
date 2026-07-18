@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_CODEGEN_TILING_SYMBOLIC_TILED_HLO_INSTRUCTION_H_
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -24,6 +25,8 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
 #include "xla/codegen/tiling/symbolic_tile.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -52,7 +55,8 @@ class SymbolicTiledHloInstruction {
     symbolic_tile_ = std::move(symbolic_tile);
   }
   const SymbolicTile& symbolic_tile() const {
-    CHECK(symbolic_tile_.has_value()) << "Symbolic tile was not computed";
+    CHECK(symbolic_tile_.has_value())
+        << "Symbolic tile was not computed for " << hlo_->ToString();
     return *symbolic_tile_;
   }
 
@@ -76,6 +80,23 @@ class SymbolicTiledHloInstruction {
     operands_.push_back(operand);
   }
 
+  // List of "regions" (i.e. loop bodies or conditional branches) that are
+  // part of this instruction. Regions represent control flow that will be used
+  // later by the emitter. Interpretation of the contents depends on the HLO
+  // opcode.
+  // - dot has a single region for the entire dot loop body (including all its
+  //   operands);
+  // - concatenation has a region per operand.
+  absl::Span<const std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>>
+  regions() const {
+    return regions_;
+  }
+
+  void AddRegion(
+      std::vector<std::unique_ptr<SymbolicTiledHloInstruction>> region) {
+    regions_.push_back(std::move(region));
+  }
+
   // Returns a string representation of the instruction. Used only for error
   // messages and debugging.
   std::string ToString(absl::string_view field_separator = "\n\t") const;
@@ -97,33 +118,12 @@ class SymbolicTiledHloInstruction {
 
   // Tiling of runtime variables of `indexing_map_`.
   std::vector<SymbolicTiledHloInstruction*> runtime_variables_;
+
+  // Regions of instructions that are part of this instruction, e.g. loop body
+  // or conditional branches.
+  llvm::SmallVector<std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>>
+      regions_;
 };
-
-inline bool operator==(const SymbolicTiledHloInstruction& lhs,
-                       const SymbolicTiledHloInstruction& rhs) {
-  return lhs.hlo() == rhs.hlo() && lhs.indexing_map() == rhs.indexing_map() &&
-         lhs.runtime_variables() == rhs.runtime_variables() &&
-         lhs.operands() == rhs.operands();
-}
-
-inline bool operator!=(const SymbolicTiledHloInstruction& lhs,
-                       const SymbolicTiledHloInstruction& rhs) {
-  return !(lhs == rhs);
-}
-
-template <typename H>
-H AbslHashValue(H h, const SymbolicTiledHloInstruction& tiled_hlo_instruction) {
-  h = H::combine(std::move(h), tiled_hlo_instruction.hlo(),
-                 tiled_hlo_instruction.indexing_map());
-  for (const auto& runtime_variable :
-       tiled_hlo_instruction.runtime_variables()) {
-    h = H::combine(std::move(h), runtime_variable);
-  }
-  for (const auto& operand : tiled_hlo_instruction.operands()) {
-    h = H::combine(std::move(h), operand);
-  }
-  return h;
-}
 
 }  // namespace xla
 

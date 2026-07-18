@@ -37,16 +37,17 @@ struct FuseParallelMapAndBatch : public OpRewritePattern<BatchDatasetV2Op> {
 
     // The type of the `num_parallel_calls` argument in ParallelMapDataset
     // and MapAndBatchDataset is different (int32 and int64 respectively)
-    auto num_parallel_calls_op = rewriter.create<CastOp>(
-        op.getLoc(), UnrankedTensorType::get(rewriter.getIntegerType(64)),
+    auto num_parallel_calls_op = CastOp::create(
+        rewriter, op.getLoc(),
+        UnrankedTensorType::get(rewriter.getIntegerType(64)),
         batchInputOp.getNumParallelCalls(), rewriter.getBoolAttr(false));
 
     if (op.getMetadata() != batchInputOp.getMetadata()) {
       return failure();
     }
 
-    auto fused_op = rewriter.create<MapAndBatchDatasetOp>(
-        op.getLoc(), op.getType(), batchInputOp.getInputDataset(),
+    auto fused_op = MapAndBatchDatasetOp::create(
+        rewriter, op.getLoc(), op.getType(), batchInputOp.getInputDataset(),
         batchInputOp.getOtherArguments(), op.getBatchSize(),
         num_parallel_calls_op.getY(), op.getDropRemainder(),
         batchInputOp.getF(), op.getOutputTypes(), op.getOutputShapes(),

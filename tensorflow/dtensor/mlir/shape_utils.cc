@@ -70,7 +70,7 @@ StatusOr<llvm::ArrayRef<int64_t>> ExtractGlobalInputShape(
             llvm::dyn_cast<mlir::TF::DTensorLayout>(input_defining_op)) {
       auto global_shape = layout_op.getGlobalShape();
       if (!global_shape)
-        return errors::Internal("global_shape does not have static rank");
+        return absl::InternalError("global_shape does not have static rank");
       return *global_shape;
     }
     return ExtractGlobalOutputShape(cast<mlir::OpResult>(input_value.get()));
@@ -80,7 +80,7 @@ StatusOr<llvm::ArrayRef<int64_t>> ExtractGlobalInputShape(
   auto op = input_value.getOwner();
   auto enclosing_function = op->getParentOfType<mlir::func::FuncOp>();
   if (!enclosing_function)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         llvm::formatv("Could not find global shape of {0}-th input to op: {1}",
                       operand_index, op->getName())
             .str());
@@ -90,7 +90,7 @@ StatusOr<llvm::ArrayRef<int64_t>> ExtractGlobalInputShape(
       enclosing_function.getArgAttrOfType<mlir::TF::ShapeAttr>(
           block_arg.getArgNumber(), kGlobalShapeDialectAttr);
   if (!global_shape_attr)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "`tf._global_shape` attribute of operation not found.");
 
   return global_shape_attr.getShape();
@@ -106,21 +106,21 @@ StatusOr<llvm::ArrayRef<int64_t>> ExtractGlobalOutputShape(
     if (auto layout_op = mlir::dyn_cast<mlir::TF::DTensorLayout>(user)) {
       auto global_shape = layout_op.getGlobalShape();
       if (!global_shape)
-        return errors::Internal("global_shape does not have static rank");
+        return absl::InternalError("global_shape does not have static rank");
       return *global_shape;
     }
   }
 
   auto global_shape_attr = op->getAttrOfType<mlir::ArrayAttr>(kGlobalShape);
   if (!global_shape_attr)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "`_global_shape` attribute of operation not found.");
 
   const int num_results = op->getNumResults();
   assert(global_shape_attr.size() == num_results);
 
   if (output_index >= op->getNumResults())
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         llvm::formatv("Requested global shape of {0} output but op has only "
                       "{1} return values.",
                       output_index, num_results)
@@ -294,9 +294,9 @@ StatusOr<llvm::ArrayRef<int64_t>> GetShapeOfValue(const mlir::Value& value,
     if (ranked_type.hasStaticShape() || !fail_on_dynamic)
       return ranked_type.getShape();
     else
-      return errors::InvalidArgument("value shape is not static");
+      return absl::InvalidArgumentError("value shape is not static");
   }
-  return errors::InvalidArgument("value type is not a RankedTensorType");
+  return absl::InvalidArgumentError("value type is not a RankedTensorType");
 }
 
 StatusOr<llvm::ArrayRef<int64_t>> GetGlobalShapeOfValueFromDTensorLayout(
@@ -311,7 +311,7 @@ StatusOr<llvm::ArrayRef<int64_t>> GetGlobalShapeOfValueFromDTensorLayout(
         mlir::cast<mlir::TF::DTensorLayout>(*value.getUsers().begin());
     if (layout_op.getGlobalShape()) return layout_op.getGlobalShape().value();
   }
-  return errors::InvalidArgument(
+  return absl::InvalidArgumentError(
       "consumer or producer of value is not a DTensorLayout");
 }
 

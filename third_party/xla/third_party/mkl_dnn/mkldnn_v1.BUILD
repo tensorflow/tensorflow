@@ -1,6 +1,6 @@
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
-load("@local_xla//xla/tsl:tsl.bzl", "tf_openmp_copts")
-load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml", "if_mkldnn_openmp")
+load("@xla//xla/tsl:tsl.bzl", "tf_openmp_copts")
+load("@xla//xla/tsl/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml", "if_mkldnn_openmp")
 
 exports_files(["LICENSE"])
 
@@ -81,7 +81,7 @@ expand_template(
     name = "dnnl_config_h",
     out = "include/oneapi/dnnl/dnnl_config.h",
     substitutions = select({
-        "@local_xla//xla/tsl/mkl:build_with_mkldnn_openmp": _DNNL_RUNTIME_OMP,
+        "@xla//xla/tsl/mkl:build_with_mkldnn_openmp": _DNNL_RUNTIME_OMP,
         "//conditions:default": _DNNL_RUNTIME_THREADPOOL,
     }),
     template = "include/oneapi/dnnl/dnnl_config.h.in",
@@ -116,7 +116,7 @@ expand_template(
 )
 
 _COPTS_LIST = select({
-    "@local_xla//xla/tsl:windows": [],
+    "@xla//xla/tsl:windows": [],
     "//conditions:default": ["-fexceptions"],
 }) + [
     "-UUSE_MKL",
@@ -125,6 +125,11 @@ _COPTS_LIST = select({
     "-DDNNL_ENABLE_ITT_TASKS",
     "-DDNNL_ENABLE_GRAPH_DUMP",
 ] + tf_openmp_copts()
+
+_CXXOPTS_LIST = select({
+    "@xla//xla/tsl:windows": ["/std:c++17"],
+    "//conditions:default": ["-std=c++17"],
+})
 
 _INCLUDES_LIST = [
     "include",
@@ -180,7 +185,17 @@ cc_library(
     copts = [
         "-O1",
         "-U_FORTIFY_SOURCE",
-    ] + _COPTS_LIST,
+    ] + _COPTS_LIST + _CXXOPTS_LIST,
+    includes = _INCLUDES_LIST,
+    textual_hdrs = _TEXTUAL_HDRS_LIST,
+    visibility = ["//visibility:public"],
+)
+
+# Separate out the C-library to limit copts.
+cc_library(
+    name = "onednn_ittnotify",
+    srcs = glob(["src/common/ittnotify/*.c"]),
+    copts = _COPTS_LIST,
     includes = _INCLUDES_LIST,
     textual_hdrs = _TEXTUAL_HDRS_LIST,
     visibility = ["//visibility:public"],
@@ -193,7 +208,6 @@ cc_library(
             "src/common/*.cpp",
             "src/cpu/*.cpp",
             "src/cpu/**/*.cpp",
-            "src/common/ittnotify/*.c",
             "src/cpu/jit_utils/**/*.cpp",
             "src/cpu/x64/**/*.cpp",
             "src/graph/interface/*.cpp",
@@ -213,19 +227,23 @@ cc_library(
             "src/cpu/sycl/**",
         ],
     ),
-    copts = _COPTS_LIST,
+    copts = _COPTS_LIST + _CXXOPTS_LIST,
     includes = _INCLUDES_LIST,
     # TODO(penpornk): Use lrt_if_needed from tensorflow.bzl instead.
     linkopts = select({
-        "@local_xla//xla/tsl:linux_aarch64": ["-lrt"],
-        "@local_xla//xla/tsl:linux_x86_64": ["-lrt"],
-        "@local_xla//xla/tsl:linux_ppc64le": ["-lrt"],
+        "@xla//xla/tsl:linux_aarch64": ["-lrt"],
+        "@xla//xla/tsl:linux_x86_64": ["-lrt"],
+        "@xla//xla/tsl:linux_ppc64le": ["-lrt"],
+        "@xla//xla/tsl:linux_riscv64": ["-lrt"],
         "//conditions:default": [],
     }),
     textual_hdrs = _TEXTUAL_HDRS_LIST,
     visibility = ["//visibility:public"],
-    deps = [":onednn_autogen"] + if_mkl_ml(
-        ["@local_xla//xla/tsl/mkl:intel_binary_blob"],
+    deps = [
+        ":onednn_autogen",
+        ":onednn_ittnotify",
+    ] + if_mkl_ml(
+        ["@xla//xla/tsl/mkl:intel_binary_blob"],
         [],
     ),
 )

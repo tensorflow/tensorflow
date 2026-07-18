@@ -35,7 +35,6 @@ using tsl::str_util::ConsumeLeadingDigits;
 using tsl::str_util::ConsumeNonWhitespace;
 using tsl::str_util::ConsumePrefix;
 using tsl::str_util::ConsumeSuffix;
-using tsl::str_util::CUnescape;
 using tsl::str_util::EndsWith;
 using tsl::str_util::Join;
 using tsl::str_util::Lowercase;
@@ -51,7 +50,6 @@ using tsl::str_util::StringReplace;
 using tsl::str_util::StripPrefix;
 using tsl::str_util::StripSuffix;
 using tsl::str_util::StripTrailingWhitespace;
-using tsl::str_util::Strnlen;
 using tsl::str_util::TitlecaseString;
 using tsl::str_util::Uppercase;
 // NOLINTEND(misc-unused-using-decls)

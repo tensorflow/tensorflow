@@ -52,12 +52,11 @@ class RamFilesystemTest(test_util.TensorFlowTestCase):
     with gfile.GFile('ram://a.txt', 'r') as f:
       self.assertEqual(f.read(), 'Hello, world.' * 2)
 
-  def test_append_file_with_seek(self):
+  def test_append_file(self):
     with gfile.GFile('ram://c.txt', 'w') as f:
       f.write('Hello, world.')
 
-    with gfile.GFile('ram://c.txt', 'w+') as f:
-      f.seek(offset=0, whence=2)
+    with gfile.GFile('ram://c.txt', 'a') as f:
       f.write('Hello, world.')
 
     with gfile.GFile('ram://c.txt', 'r') as f:

@@ -107,10 +107,6 @@ std::optional<CPUFeature> CpuFeatureFromString(absl::string_view cpu_feature) {
   return std::nullopt;
 }
 
-// We deliberately opt-out of the cognitive complexity check because a giant
-// switch statement is the most readable way to express the logic.
-//
-// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 static bool ShouldEnableX86CpuFeature(absl::string_view feature,
                                       CPUFeature max_feature) {
   // x86 CPUs have backward compatibility so newer CPUs have all features of

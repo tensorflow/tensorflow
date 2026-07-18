@@ -36,7 +36,8 @@ namespace tensorflow {
 
 PaddingFIFOQueue::PaddingFIFOQueue(
     int capacity, const DataTypeVector& component_dtypes,
-    const std::vector<PartialTensorShape>& component_shapes, const string& name)
+    const std::vector<PartialTensorShape>& component_shapes,
+    const std::string& name)
     : FIFOQueue(capacity, component_dtypes,
                 ConvertShapesPartialDimensionsToZero(component_shapes), name),
       partial_shapes_(component_shapes) {}
@@ -46,10 +47,10 @@ absl::Status PaddingFIFOQueue::Initialize() {
   if (!s.ok()) return s;
 
   if (component_dtypes_.size() != partial_shapes_.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Shapes must be provided for all components, but received ",
         component_dtypes_.size(), " dtypes and ", partial_shapes_.size(),
-        " shapes.");
+        " shapes."));
   }
 
   return absl::OkStatus();
@@ -111,11 +112,11 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                     absl::Status s = GetElementComponent(
                         attempt->tuples[i], j, attempt->context, &element);
                     if (!s.ok()) {
-                      attempt->context->SetStatus(
-                          errors::DataLoss("Failed to restore element from "
-                                           "partially-dequeued batch "
-                                           "to PaddingFIFOQueue: ",
-                                           s.message()));
+                      attempt->context->SetStatus(absl::DataLossError(
+                          absl::StrCat("Failed to restore element from "
+                                       "partially-dequeued batch "
+                                       "to PaddingFIFOQueue: ",
+                                       s.message())));
                     }
                     queues_[j].push_front(element);
                   }
@@ -134,11 +135,12 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                   if (!enqueue_attempts_.empty()) return kProgress;
                 }
                 if (attempt->context->status().ok()) {
-                  attempt->context->SetStatus(errors::OutOfRange(
-                      "PaddingFIFOQueue '", name_, "' is closed and has ",
-                      "insufficient elements (requested ",
-                      attempt->elements_requested, ", current size ",
-                      queue_size, ")"));
+                  attempt->context->SetStatus(
+                      absl::OutOfRangeError(absl::StrCat(
+                          "PaddingFIFOQueue '", name_, "' is closed and has ",
+                          "insufficient elements (requested ",
+                          attempt->elements_requested, ", current size ",
+                          queue_size, ")")));
                 }
                 return kComplete;
               }
@@ -228,7 +230,7 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
   if (!already_cancelled) {
     FlushUnlocked();
   } else {
-    ctx->SetStatus(errors::Cancelled("Dequeue operation was cancelled"));
+    ctx->SetStatus(absl::CancelledError("Dequeue operation was cancelled"));
     callback(Tuple());
   }
 }
@@ -237,10 +239,10 @@ absl::Status PaddingFIFOQueue::ValidateTuple(const Tuple& tuple) {
   TF_RETURN_IF_ERROR(ValidateTupleCommon(tuple));
   for (size_t i = 0; i < tuple.size(); ++i) {
     if (!partial_shapes_[i].IsCompatibleWith(tuple[i].shape())) {
-      return errors::InvalidArgument("Shape mismatch in tuple component ", i,
-                                     ". Expected ",
-                                     partial_shapes_[i].DebugString(), ", got ",
-                                     tuple[i].shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Shape mismatch in tuple component ", i, ". Expected ",
+                       partial_shapes_[i].DebugString(), ", got ",
+                       tuple[i].shape().DebugString()));
     }
   }
   return absl::OkStatus();
@@ -254,10 +256,10 @@ absl::Status PaddingFIFOQueue::ValidateManyTuple(const Tuple& tuple) {
     const PartialTensorShape expected_shape =
         PartialTensorShape({batch_size}).Concatenate(partial_shapes_[i]);
     if (!expected_shape.IsCompatibleWith(tuple[i].shape())) {
-      return errors::InvalidArgument("Shape mismatch in tuple component ", i,
-                                     ". Expected ",
-                                     expected_shape.DebugString(), ", got ",
-                                     tuple[i].shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Shape mismatch in tuple component ", i, ". Expected ",
+                       expected_shape.DebugString(), ", got ",
+                       tuple[i].shape().DebugString()));
     }
   }
   return absl::OkStatus();
@@ -269,11 +271,11 @@ absl::Status PaddingFIFOQueue::CompatibleNodeDefShapes(
   TF_RETURN_IF_ERROR(GetNodeAttr(node_def, "shapes", &requested_shapes));
   if (!PartialTensorShapeUtils::AreCompatible(requested_shapes,
                                               partial_shapes_)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Shared queue '", name_, "' has component shapes ",
         PartialTensorShapeUtils::PartialShapeListString(partial_shapes_),
         " but requested component shapes were ",
-        PartialTensorShapeUtils::PartialShapeListString(requested_shapes));
+        PartialTensorShapeUtils::PartialShapeListString(requested_shapes)));
   } else {
     return absl::OkStatus();
   }
@@ -282,8 +284,8 @@ absl::Status PaddingFIFOQueue::CompatibleNodeDefShapes(
 absl::Status PaddingFIFOQueue::MatchesNodeDef(const NodeDef& node_def) {
   if (!MatchesNodeDefOp(node_def, "PaddingFIFOQueue").ok() &&
       !MatchesNodeDefOp(node_def, "PaddingFIFOQueueV2").ok()) {
-    return errors::InvalidArgument("Expected PaddingFIFOQueue, found ",
-                                   node_def.op());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected PaddingFIFOQueue, found ", node_def.op()));
   }
   TF_RETURN_IF_ERROR(MatchesNodeDefCapacity(node_def, capacity_));
   TF_RETURN_IF_ERROR(MatchesNodeDefTypes(node_def));
@@ -297,11 +299,11 @@ static absl::Status ValidateElementToLargerSlice(const Tensor& element,
   if (element.NumElements() > (parent->NumElements() / parent->dim_size(0))) {
     TensorShape chip_shape = parent->shape();
     chip_shape.RemoveDim(0);
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "HandleElementToLargerSlice Cannot copy slice: number of entries in "
         "element is greater than number of elements in parent slice.  ",
         "Shapes are: [element]: ", element.shape().DebugString(),
-        ", [parent slice]: ", chip_shape.DebugString());
+        ", [parent slice]: ", chip_shape.DebugString()));
   }
   return absl::OkStatus();
 }
@@ -343,9 +345,9 @@ absl::Status HandleElementToLargerSliceWithRank(const Tensor& element,
     TF_CALL_ALL_TYPES(HANDLE_TYPE);
 #undef HANDLE_TYPE
     default:
-      return errors::Unimplemented(
+      return absl::UnimplementedError(absl::StrCat(
           "HandleElementToLargerSliceWithRank Unhandled data type: ",
-          DataTypeString(element.dtype()));
+          DataTypeString(element.dtype())));
   }
 }
 
@@ -355,10 +357,10 @@ absl::Status PaddingFIFOQueue::CopyElementToLargerSlice(const Tensor& element,
                                                         Tensor* parent,
                                                         int index) {
   if (parent->dims() != element.dims() + 1) {
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "Mismatched ranks.  Element's rank is: ", element.dims(),
         " but element is meant to be a slice in output Tensor having rank: ",
-        parent->dims(), " (should be: ", element.dims() + 1, ")");
+        parent->dims(), " (should be: ", element.dims() + 1, ")"));
   }
 
 #define HANDLE_DIMS(NDIMS)                                                  \
@@ -376,8 +378,8 @@ absl::Status PaddingFIFOQueue::CopyElementToLargerSlice(const Tensor& element,
     HANDLE_DIMS(4);
 #undef HANDLE_DIMS
     default:
-      return errors::Unimplemented("CopyElementToLargerSlice Unhandled rank: ",
-                                   element.dims());
+      return absl::UnimplementedError(absl::StrCat(
+          "CopyElementToLargerSlice Unhandled rank: ", element.dims()));
   }
 }
 
@@ -390,8 +392,9 @@ absl::Status PaddingFIFOQueue::SetElementZero(Tensor* element) {
   }
   TF_CALL_ALL_TYPES(HANDLE_TYPE);
 #undef HANDLE_TYPE
-  return errors::Unimplemented("SetElementZero Unhandled data type: ",
-                               DataTypeString(element->dtype()));
+  return absl::UnimplementedError(
+      absl::StrCat("SetElementZero Unhandled data type: ",
+                   DataTypeString(element->dtype())));
 }
 
 std::vector<TensorShape> PaddingFIFOQueue::ConvertShapesPartialDimensionsToZero(

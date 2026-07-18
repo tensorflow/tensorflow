@@ -521,6 +521,10 @@ void RewriteToPolynomialApproximations(llvm::Module* module,
 
   rewrite_calls("expf", GenerateVF32Exp, /*vector_width=*/1);
   rewrite_calls("llvm.exp.f32", GenerateVF32Exp, /*vector_width=*/1);
+  rewrite_calls("llvm.exp.v2f32", GenerateVF32Exp, /*vector_width=*/2);
+  rewrite_calls("llvm.exp.v4f32", GenerateVF32Exp, /*vector_width=*/4);
+  rewrite_calls("llvm.exp.v8f32", GenerateVF32Exp, /*vector_width=*/8);
+  rewrite_calls("llvm.exp.v16f32", GenerateVF32Exp, /*vector_width=*/16);
   rewrite_calls(kExpV4F32Sym, GenerateVF32Exp, /*vector_width=*/4);
   rewrite_calls(kExpV8F32Sym, GenerateVF32Exp, /*vector_width=*/8);
   rewrite_calls(kExpV16F32Sym, GenerateVF32Exp, /*vector_width=*/16);
@@ -538,6 +542,10 @@ void RewriteToPolynomialApproximations(llvm::Module* module,
 
   rewrite_calls("logf", GenerateVF32Log, /*vector_width=*/1);
   rewrite_calls("llvm.log.f32", GenerateVF32Log, /*vector_width=*/1);
+  rewrite_calls("llvm.log.v2f32", GenerateVF32Log, /*vector_width=*/2);
+  rewrite_calls("llvm.log.v4f32", GenerateVF32Log, /*vector_width=*/4);
+  rewrite_calls("llvm.log.v8f32", GenerateVF32Log, /*vector_width=*/8);
+  rewrite_calls("llvm.log.v16f32", GenerateVF32Log, /*vector_width=*/16);
   rewrite_calls(kLogV4F32Sym, GenerateVF32Log, /*vector_width=*/4);
   rewrite_calls(kLogV8F32Sym, GenerateVF32Log, /*vector_width=*/8);
   rewrite_calls(kLogV16F32Sym, GenerateVF32Log, /*vector_width=*/16);

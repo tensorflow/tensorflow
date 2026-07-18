@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -44,7 +45,7 @@ class Cluster {
   virtual ~Cluster();
 
   // Returns a string that represent the type of cluster that was instantiated.
-  virtual string type() const = 0;
+  virtual std::string type() const = 0;
 
   // Provision the hardware resources needed to run TensorFlow and start a
   // TensorFlow session that can take advantage of these resources.
@@ -76,7 +77,7 @@ class Cluster {
   void SetNumWarmupSteps(int num_steps);
 
   // Set executor type to instantiate
-  void SetExecutorType(const string* executor_type);
+  void SetExecutorType(const std::string* executor_type);
 
   // Returns the number of warmup steps.
   int NumWarmupSteps() const;
@@ -94,13 +95,13 @@ class Cluster {
 
   // Return the list of TensorFlow devices that are available to execute a
   // graph. This is empty until provision() is called.
-  const std::unordered_map<string, DeviceProperties>& GetDevices() const {
+  const std::unordered_map<std::string, DeviceProperties>& GetDevices() const {
     return devices_;
   }
 
   // Convenience method that returns the set of device names. These names are
   // sorted alphabetically.
-  const std::vector<string> GetDeviceNames() const;
+  const std::vector<std::string> GetDeviceNames() const;
 
   // The DeviceSet is not always available, but when it is it contains a
   // superset of the devices listed in GetDevices/GetDeviceNames().
@@ -116,7 +117,7 @@ class Cluster {
   // Returns peak memory of all devices during the session creation and session
   // runs.
   virtual absl::Status GetPeakMemoryUsage(
-      std::unordered_map<string, uint64>* device_peak_memory) const {
+      std::unordered_map<std::string, uint64_t>* device_peak_memory) const {
     return absl::UnimplementedError(
         "GetPeakMemoryUsage is not implemented for this type of cluster.");
   }
@@ -126,10 +127,10 @@ class Cluster {
   virtual absl::Status Initialize(const GrapplerItem& item) = 0;
 
   // Run the specified graph_def and return the corresponding metadata.
-  virtual absl::Status Run(const GraphDef& graph_def,
-                           const std::vector<std::pair<string, Tensor>>& feed,
-                           const std::vector<string>& fetch,
-                           RunMetadata* metadata) = 0;
+  virtual absl::Status Run(
+      const GraphDef& graph_def,
+      const std::vector<std::pair<std::string, Tensor>>& feed,
+      const std::vector<std::string>& fetch, RunMetadata* metadata) = 0;
 
   // Run the specified GrapplerItem and return the corresponding metadata.
   virtual absl::Status Run(const GrapplerItem& item, RunMetadata* metadata) {
@@ -137,7 +138,7 @@ class Cluster {
   }
 
  protected:
-  std::unordered_map<string, DeviceProperties> devices_;
+  std::unordered_map<std::string, DeviceProperties> devices_;
   const int timeout_s_;
   SessionOptions options_;
   RunOptions run_options_;

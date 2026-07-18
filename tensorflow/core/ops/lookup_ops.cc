@@ -90,33 +90,33 @@ REGISTER_OP("LookupTableFind")
 
 absl::Status ValidateTableType(InferenceContext* c,
                                const ShapeAndType& key_shape_and_type,
-                               const string& key_dtype_attr,
+                               const std::string& key_dtype_attr,
                                const ShapeAndType& value_shape_and_type,
-                               const string& value_dtype_attr) {
+                               const std::string& value_dtype_attr) {
   DataType key_dtype;
   TF_RETURN_IF_ERROR(c->GetAttr(key_dtype_attr, &key_dtype));
   if (key_shape_and_type.dtype != key_dtype) {
-    return errors::InvalidArgument(
-        "Trying to read value with wrong dtype. "
-        "Expected ",
-        DataTypeString(key_shape_and_type.dtype), " got ",
-        DataTypeString(key_dtype));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Trying to read value with wrong dtype. "
+                     "Expected ",
+                     DataTypeString(key_shape_and_type.dtype), " got ",
+                     DataTypeString(key_dtype)));
   }
   DataType value_dtype;
   TF_RETURN_IF_ERROR(c->GetAttr(value_dtype_attr, &value_dtype));
   if (value_shape_and_type.dtype != value_dtype) {
-    return errors::InvalidArgument(
-        "Trying to read value with wrong dtype. "
-        "Expected ",
-        DataTypeString(value_shape_and_type.dtype), " got ",
-        DataTypeString(value_dtype));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Trying to read value with wrong dtype. "
+                     "Expected ",
+                     DataTypeString(value_shape_and_type.dtype), " got ",
+                     DataTypeString(value_dtype)));
   }
   return absl::OkStatus();
 }
 
 absl::Status ValidateTableResourceHandle(InferenceContext* c, ShapeHandle keys,
-                                         const string& key_dtype_attr,
-                                         const string& value_dtype_attr,
+                                         const std::string& key_dtype_attr,
+                                         const std::string& value_dtype_attr,
                                          ShapeAndType* output_shape_and_type) {
   auto* handle_data = c->input_handle_shapes_and_types(0);
   if (handle_data == nullptr || handle_data->size() != 2) {
@@ -133,10 +133,10 @@ absl::Status ValidateTableResourceHandle(InferenceContext* c, ShapeHandle keys,
       int keys_rank = c->Rank(keys);
       int key_suffix_rank = c->Rank(key_shape_and_type.shape);
       if (keys_rank < key_suffix_rank) {
-        return errors::InvalidArgument(
-            "Expected keys to have suffix ",
-            c->DebugString(key_shape_and_type.shape),
-            " but saw shape: ", c->DebugString(keys));
+        return absl::InvalidArgumentError(
+            absl::StrCat("Expected keys to have suffix ",
+                         c->DebugString(key_shape_and_type.shape),
+                         " but saw shape: ", c->DebugString(keys)));
       }
       for (int d = 0; d < key_suffix_rank; d++) {
         // Ensure the suffix of keys match what's in the Table.

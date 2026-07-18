@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -91,9 +92,18 @@ bool IsBroadcastOfParameter(const HloInstruction& instr);
 // instructions (bitcast, get-tuple-element).
 bool IsEffectiveParameter(const HloInstruction&);
 
+// Walks past pass-through casts (kCopy, kConvert, kBitcast) and returns the
+// underlying value-producing instruction.
+const HloInstruction* StripCastLike(const HloInstruction* instr);
+
 // Returns first HLO of the computation with the opcode, otherwise nullptr.
 HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,
                                               HloOpcode opcode);
+
+// Returns first HLO of the computation with one of the opcodes, otherwise
+// nullptr.
+HloInstruction* GetFirstInstructionWithOpcode(
+    const HloComputation& computation, absl::Span<const HloOpcode> opcodes);
 
 // Applies `fn` to a collection of instruction with `opcode` for a given
 // `computation`.
@@ -207,6 +217,15 @@ HloInstruction* FindInstruction(const HloComputation* computation,
 // Returns nullptr if no such instruction can be found.
 HloInstruction* FindInstruction(const HloComputation* computation,
                                 HloOpcode opcode);
+
+// Returns true if the instruction is a fusion consisting of a single copy which
+// changes tiling. This is handled by the emitters and effectively are no-ops.
+bool IsChangeTilingCopyFusion(const HloInstruction* instr);
+
+// Returns whether the instruction is a standard forward associative scan:
+// single input and init, and a (output, carry) result tuple where all carry
+// users are dead (which implies that the scan op or its users aren't roots).
+bool IsStandardAssociativeScan(const HloInstruction* instruction);
 
 }  // namespace hlo_query
 }  // namespace xla

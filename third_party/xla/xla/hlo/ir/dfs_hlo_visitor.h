@@ -102,6 +102,9 @@ class DfsHloVisitorBase {
   virtual absl::Status HandleMultiply(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
+  virtual absl::Status HandleMulhi(HloInstructionPtr hlo) {
+    return HandleElementwiseBinary(hlo);
+  }
   virtual absl::Status HandleDot(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleRaggedDot(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleScaledDot(HloInstructionPtr hlo) = 0;
@@ -172,6 +175,9 @@ class DfsHloVisitorBase {
     return HandleElementwiseUnary(hlo);
   }
   virtual absl::Status HandleAsin(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
+  virtual absl::Status HandleAsinh(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
   virtual absl::Status HandleAtan2(HloInstructionPtr hlo) {
@@ -307,6 +313,7 @@ class DfsHloVisitorBase {
   virtual absl::Status HandleRng(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleRngBitGenerator(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleRngGetAndUpdateState(HloInstructionPtr hlo) = 0;
+  virtual absl::Status HandleScan(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleScatter(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleSelectAndScatter(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleSlice(HloInstructionPtr hlo) = 0;
@@ -431,7 +438,7 @@ class DfsHloVisitorBase {
   // own postprocessing.
   virtual absl::Status Postprocess(HloInstructionPtr hlo);
 
-  // This method should be overriden by subclasses that wish to skip some ops
+  // This method should be overridden by subclasses that wish to skip some ops
   // while traversing the HLO graph. If this method returns false, the calls to
   // Preprocess(op), Handle/OpType/(op) and Postprocess(op) are skipped.
   virtual bool ShouldProcessNode(HloInstructionPtr hlo) { return true; }

@@ -54,7 +54,7 @@ TEST(TensorMapTest, Insert) {
   absl::flat_hash_map<TensorKey, Tensor>::iterator map_it =
       tm.tensors().begin();
   EXPECT_EQ(map_it->first, k);
-  test::ExpectTensorEqual<int32>(map_it->second, v);
+  test::ExpectTensorEqual<int32_t>(map_it->second, v);
   map_it++;
   EXPECT_EQ(map_it, tm.tensors().end());
 }
@@ -68,7 +68,7 @@ TEST(TensorMapTest, Lookup) {
   Tensor f = map_it->second;
 
   EXPECT_EQ(map_it->first, k);
-  test::ExpectTensorEqual<int32>(f, v);
+  test::ExpectTensorEqual<int32_t>(f, v);
 }
 
 TEST(TensorMapTest, Erase) {
@@ -91,7 +91,7 @@ TEST(TensorMapTest, SameKeyInsert) {
   EXPECT_EQ(b2, false);
   absl::flat_hash_map<TensorKey, Tensor>::iterator map_it = tm.find(k);
   EXPECT_EQ(map_it->first, k);
-  test::ExpectTensorEqual<int32>(map_it->second, v1);
+  test::ExpectTensorEqual<int32_t>(map_it->second, v1);
 }
 
 TEST(TensorMapTest, Replace) {
@@ -102,7 +102,7 @@ TEST(TensorMapTest, Replace) {
   tm[k] = v2;
   absl::flat_hash_map<TensorKey, Tensor>::iterator map_it = tm.find(k);
   EXPECT_EQ(map_it->first, k);
-  test::ExpectTensorEqual<int32>(map_it->second, v2);
+  test::ExpectTensorEqual<int32_t>(map_it->second, v2);
 }
 
 TEST(TensorMapTest, ListKeys) {
@@ -153,7 +153,7 @@ TEST(TensorMapTest, Copy) {
   EXPECT_NE(tm.find(k), tm.tensors().end());
   EXPECT_NE(tmc.find(k), tmc.tensors().end());
   EXPECT_EQ(tm.find(k)->first, tmc.find(k)->first);
-  test::ExpectTensorEqual<int32>(tm.find(k)->second, tmc.find(k)->second);
+  test::ExpectTensorEqual<int32_t>(tm.find(k)->second, tmc.find(k)->second);
 }
 
 TEST(TensorMapTest, EncodeDecode) {
@@ -169,7 +169,7 @@ TEST(TensorMapTest, EncodeDecode) {
   EXPECT_NE(tm.find(k), tm.tensors().end());
   EXPECT_NE(tmc.find(k), tmc.tensors().end());
   EXPECT_EQ(tm.find(k)->first, tmc.find(k)->first);
-  test::ExpectTensorEqual<int32>(tm.find(k)->second, tmc.find(k)->second);
+  test::ExpectTensorEqual<int32_t>(tm.find(k)->second, tmc.find(k)->second);
 }
 
 }  // namespace

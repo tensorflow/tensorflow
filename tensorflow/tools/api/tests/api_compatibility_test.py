@@ -19,7 +19,7 @@ This test ensures all changes to the public API of TensorFlow are intended.
 
 If this test fails, it means a change has been made to the public API. Backwards
 incompatible changes are not allowed. You can run the test with
-"--update_goldens" flag set to "True" to update goldens when making changes to
+"--update_goldens" flag set to "true" to update goldens when making changes to
 the public TF python API.
 """
 
@@ -177,10 +177,19 @@ def _FilterGoldenFilesByPrefix(golden_file_list, package_prefixes):
   filtered_package_prefixes = ['tensorflow.%s.' % p for p in package_prefixes]
   for f in golden_file_list:
     if any(
-        f.rsplit('/')[-1].startswith(pre) for pre in filtered_package_prefixes):
+        os.path.basename(f).startswith(pre)
+        for pre in filtered_package_prefixes):
       continue
     filtered_file_list.append(f)
   return filtered_file_list
+
+
+def _GetModuleOrClass(api_object):
+  if api_object.HasField('tf_module'):
+    return api_object.tf_module
+  if api_object.HasField('tf_class'):
+    return api_object.tf_class
+  return None
 
 
 def _FilterGoldenProtoDict(golden_proto_dict, omit_golden_symbols_map):
@@ -192,11 +201,7 @@ def _FilterGoldenProtoDict(golden_proto_dict, omit_golden_symbols_map):
     api_object = api_objects_pb2.TFAPIObject()
     api_object.CopyFrom(filtered_proto_dict[key])
     filtered_proto_dict[key] = api_object
-    module_or_class = None
-    if api_object.HasField('tf_module'):
-      module_or_class = api_object.tf_module
-    elif api_object.HasField('tf_class'):
-      module_or_class = api_object.tf_class
+    module_or_class = _GetModuleOrClass(api_object)
     if module_or_class is not None:
       if 'is_instance' in symbol_list:
         del module_or_class.is_instance[:]
@@ -235,7 +240,8 @@ class ApiCompatibilityTest(test.TestCase):
                              verbose=False,
                              update_goldens=False,
                              additional_missing_object_message='',
-                             api_version=2):
+                             api_version=2,
+                             actual_dict_for_update=None):
     """Diff given dicts of protobufs and report differences a readable way.
 
     Args:
@@ -248,7 +254,12 @@ class ApiCompatibilityTest(test.TestCase):
       additional_missing_object_message: Message to print when a symbol is
         missing.
       api_version: TensorFlow API version to test.
+      actual_dict_for_update: Optional unfiltered actual protos to write when
+        update_goldens is true.
     """
+    if actual_dict_for_update is None:
+      actual_dict_for_update = actual_dict
+
     diffs = []
     verbose_diffs = []
     expected_keys = set(expected_dict.keys())
@@ -309,7 +320,8 @@ class ApiCompatibilityTest(test.TestCase):
         for key in only_in_actual | set(updated_keys):
           filepath = _KeyToFilePath(key, api_version)
           file_io.write_string_to_file(
-              filepath, text_format.MessageToString(actual_dict[key]))
+              filepath, text_format.MessageToString(
+                  actual_dict_for_update[key]))
       else:
         # Include the actual differences to help debugging.
         for d, verbose_d in zip(diffs, verbose_diffs):
@@ -406,16 +418,18 @@ class ApiCompatibilityTest(test.TestCase):
     }
     golden_proto_dict = _FilterGoldenProtoDict(golden_proto_dict,
                                                omit_golden_symbols_map)
-    proto_dict = _FilterGoldenProtoDict(proto_dict, omit_golden_symbols_map)
+    filtered_proto_dict = _FilterGoldenProtoDict(proto_dict,
+                                                 omit_golden_symbols_map)
 
     # Diff them. Do not fail if called with update.
     # If the test is run to update goldens, only report diffs but do not fail.
     self._AssertProtoDictEquals(
         golden_proto_dict,
-        proto_dict,
+        filtered_proto_dict,
         verbose=FLAGS.verbose_diffs,
         update_goldens=FLAGS.update_goldens,
-        api_version=api_version)
+        api_version=api_version,
+        actual_dict_for_update=proto_dict)
 
   def testAPIBackwardsCompatibility(self):
     api_version = 1
@@ -457,6 +471,8 @@ class ApiCompatibilityTest(test.TestCase):
     omit_golden_symbols_map.update(
         self._ignored_is_instance_types(['tensorflow.python_io.TFRecordWriter'])
     )
+    # In OSS we have a different version of ABSL.
+    omit_golden_symbols_map['tensorflow.logging'] = ['log_if']
     self._checkBackwardsCompatibility(
         tf.compat.v1,
         golden_file_patterns,

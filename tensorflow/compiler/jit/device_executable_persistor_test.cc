@@ -222,7 +222,7 @@ absl::StatusOr<XlaSerializedCacheEntry> ReadCacheEntryFromFile(
 }
 
 XlaSerializedCacheKey CreateCacheKey(
-    uint64 signature_hash,
+    uint64_t signature_hash,
     const XlaCompiler::CompilationResult& compilation_result,
     const DeviceType& device_type, const std::string& persistence_prefix,
     bool compiled_using_pjrt = false) {
@@ -315,7 +315,7 @@ TEST_F(DeviceExecutionPersistorTest, PersistBuildSerializedExecutable) {
 
   MockXlaCompilerClient mock_client;
   EXPECT_CALL(mock_client, SerializeExecutable(_))
-      .WillOnce(Return(errors::Unimplemented("Unimplemented.")));
+      .WillOnce(Return(absl::UnimplementedError("Unimplemented.")));
   EXPECT_CALL(mock_client, BuildSerializedExecutable(_, _))
       .WillOnce(Return(serialized_xla_executable_));
 
@@ -342,7 +342,7 @@ TEST_F(DeviceExecutionPersistorTest, PersistSerializeExecutableError) {
 
   MockXlaCompilerClient mock_client;
   EXPECT_CALL(mock_client, SerializeExecutable(_))
-      .WillOnce(Return(errors::InvalidArgument("InvalidArgument.")));
+      .WillOnce(Return(absl::InvalidArgumentError("InvalidArgument.")));
 
   TF_ASSERT_OK_AND_ASSIGN(auto executable, BuildSampleExecutable());
   EXPECT_THAT(
@@ -366,7 +366,7 @@ TEST_F(DeviceExecutionPersistorTest, PersistExecutableEmpty) {
       GetExecutableBuildOptions(DefaultXlaOptions(), compilation_result_add_,
                                 0));
   EXPECT_CALL(mock_client, SerializeExecutable(_))
-      .WillOnce(Return(errors::FailedPrecondition("Failed precondition.")));
+      .WillOnce(Return(absl::FailedPreconditionError("Failed precondition.")));
 
   EXPECT_THAT(
       persistor.TryToPersistExecutable(

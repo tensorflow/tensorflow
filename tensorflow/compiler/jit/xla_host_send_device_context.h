@@ -49,7 +49,8 @@ namespace tensorflow {
 class XlaHostSendDeviceContext : public DeviceContext {
  public:
   XlaHostSendDeviceContext(
-      se::Stream* stream, se::DeviceMemoryBase* device_memory_base,
+      se::Stream* stream,
+      stream_executor::DeviceAddressBase* device_memory_base,
       const xla::Shape& shape,
       tsl::AsyncValueRef<std::unique_ptr<se::Event>>& done_event)
       : stream_(stream),
@@ -66,18 +67,18 @@ class XlaHostSendDeviceContext : public DeviceContext {
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
                              absl::string_view tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done) override {
-    done(errors::Internal("host->device copy not implemented."));
+    done(absl::InternalError("host->device copy not implemented."));
   }
 
   void CopyTensorInSameDevice(const Tensor* input_tensor, Device* device,
                               Tensor* output_tensor,
                               StatusCallback done) const override {
-    done(errors::Internal("device->device copy not implemented."));
+    done(absl::InternalError("device->device copy not implemented."));
   }
 
  private:
   se::Stream* stream_;                        // Not owned.
-  se::DeviceMemoryBase* device_memory_base_;  // Not owned.
+  stream_executor::DeviceAddressBase* device_memory_base_;  // Not owned.
   const xla::Shape shape_;
   tsl::AsyncValueRef<std::unique_ptr<se::Event>> done_event_;
 

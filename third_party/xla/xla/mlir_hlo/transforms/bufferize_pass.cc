@@ -16,6 +16,7 @@ limitations under the License.
 // This file implements logic for translating mixed IR to buffer form.
 // Currently it supports MHLO and some operations from the Standard dialect.
 
+#include <cassert>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -93,7 +94,7 @@ static Value materializeToTensor(OpBuilder& builder, TensorType type,
                                  ValueRange inputs, Location loc) {
   assert(inputs.size() == 1);
   assert(mlir::isa<BaseMemRefType>(inputs[0].getType()));
-  return builder.create<bufferization::ToTensorOp>(loc, type, inputs[0]);
+  return bufferization::ToTensorOp::create(builder, loc, type, inputs[0]);
 }
 
 // TODO(pifon): Remove as soon as https://reviews.llvm.org/D93126 is landed.
@@ -129,7 +130,7 @@ class CustomBufferizeTypeConverter : public mlir::TypeConverter {
       }
       if (isa<TensorType>(inputs[0].getType())) {
         // Tensor to MemRef cast.
-        return builder.create<bufferization::ToBufferOp>(loc, type, inputs[0]);
+        return bufferization::ToBufferOp::create(builder, loc, type, inputs[0]);
       }
       llvm_unreachable("only tensor/memref input types supported");
     });
@@ -146,7 +147,7 @@ class CustomBufferizeTypeConverter : public mlir::TypeConverter {
         return inputs[0];
       }
       assert(mlir::isa<TensorType>(inputs[0].getType()));
-      return builder.create<bufferization::ToBufferOp>(loc, type, inputs[0]);
+      return bufferization::ToBufferOp::create(builder, loc, type, inputs[0]);
     });
   }
 };
@@ -156,10 +157,11 @@ static bufferization::BufferizationOptions getPartialBufferizationOptions() {
   options.allowUnknownOps = true;
   options.copyBeforeWrite = true;
   options.unknownTypeConverterFn =
-      [](TensorType type, Attribute memorySpace,
-         const bufferization::BufferizationOptions& options) {
-        return bufferization::getMemRefTypeWithStaticIdentityLayout(
-            type, memorySpace);
+      [](bufferization::TensorLikeType type, Attribute memorySpace,
+         const bufferization::BufferizationOptions&) {
+        return cast<bufferization::BufferLikeType>(
+            bufferization::getMemRefTypeWithStaticIdentityLayout(
+                cast<TensorType>(type), memorySpace));
       };
   options.opFilter.allowDialect<bufferization::BufferizationDialect>();
   return options;
@@ -245,7 +247,19 @@ struct ComputeOpAndFuncBufferizePass
         .addDynamicallyLegalOp<vector::TransferWriteOp, vector::TransferReadOp>(
             isLegalOp);
 
-    return applyPartialConversion(getOperation(), target, std::move(patterns));
+    if (failed(applyPartialConversion(getOperation(), target,
+                                      std::move(patterns))))
+      return failure();
+
+    // All to_buffer ops on constants can be safely marked as read only since
+    // constants are immutable. This fix is for
+    // https://github.com/llvm/llvm-project/pull/172595.
+    getOperation()->walk([](bufferization::ToBufferOp toBuffer) {
+      if (toBuffer.getTensor().getDefiningOp<arith::ConstantOp>()) {
+        toBuffer.setReadOnly(true);
+      }
+    });
+    return success();
   }
 };
 
@@ -288,12 +302,8 @@ struct OneShotBufferizePass
                 bufferization::getMemRefTypeWithStaticIdentityLayout(
                     tensorType, memorySpace));
           }
-          // If not builtin, fallback to TensorLikeType::getBufferType()
-          auto bufferType =
-              type.getBufferType(opts, [&]() { return funcOp->emitError(); });
-          assert(succeeded(bufferType) &&
-                 "a valid buffer is always expected at function boundary");
-          return *bufferType;
+          // If not builtin, fallback to unknown type conversion.
+          return opts.unknownTypeConverterFn(type, memorySpace, opts);
         };
     opts.inferFunctionResultLayout = false;
     opts.bufferAlignment = 64;
@@ -357,7 +367,8 @@ struct FinalBufferizePass
     vector::registerBufferizableOpInterfaceExternalModels(registry);
     if (dialectsCallback) dialectsCallback(registry);
   }
-  // Default alignment_ specified in passes.td
+  using impl::FinalBufferizePassBase<
+      FinalBufferizePass>::FinalBufferizePassBase;
   FinalBufferizePass() = default;
 
   explicit FinalBufferizePass(uint64_t alignment) { alignment_ = alignment; }
@@ -433,20 +444,6 @@ struct FinalBufferizePass
 };
 
 }  // namespace
-
-namespace hlo {
-std::unique_ptr<OperationPass<ModuleOp>> createOneShotBufferizePass() {
-  return std::make_unique<OneShotBufferizePass>();
-}
-}  // namespace hlo
-
-std::unique_ptr<OperationPass<ModuleOp>> createComputeOpAndFuncBufferizePass() {
-  return std::make_unique<ComputeOpAndFuncBufferizePass>();
-}
-
-std::unique_ptr<OperationPass<ModuleOp>> createFinalBufferizePass() {
-  return std::make_unique<FinalBufferizePass>();
-}
 
 std::unique_ptr<OperationPass<ModuleOp>> createFinalBufferizePass(
     uint64_t alignment, BufferizeDialectsCallback dc,

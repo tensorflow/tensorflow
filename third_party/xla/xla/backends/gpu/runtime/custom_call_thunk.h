@@ -16,38 +16,50 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_CUSTOM_CALL_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_CUSTOM_CALL_THUNK_H_
 
-#include <cstddef>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/backends/cpu/target_machine_options.h"
+#include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_memory.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
+#include "xla/ffi/attribute_map.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
+#include "xla/ffi/ffi.h"
+#include "xla/ffi/invoke.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/runtime/object_pool.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/custom_call_status.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/shape.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/service/shaped_slice.h"
+#include "xla/stream_executor/device_address_allocator.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
-// Thunk to run a GPU custom call.
+// Thunk to run an XLA FFI custom call on a GPU.
 //
-// This thunk's `ExecuteOnStream` implementation executes a host function
-// `call_target` which is expected to enqueue operations onto the GPU.
+// This thunk handles custom calls registered via the XLA FFI mechanism, which
+// provides a type-safe API for registering external functions with XLA runtime.
+//
+// For legacy (non-FFI) custom calls, see LegacyCustomCallThunk.
 //
 // Note that not all kCustomCall HLOs in XLA:GPU end up being run by this thunk.
 // XLA itself creates kCustomCall instructions when lowering kConvolution HLOs
@@ -55,89 +67,182 @@ namespace gpu {
 // ConvolutionThunk, not CustomCallThunk.  There's no ambiguity because they
 // have special call target names (e.g. "__cudnn$convForward") that only the
 // compiler is allowed to create.
-class CustomCallThunk : public Thunk {
+//
+// Also implements TracedCommand so it can be recorded directly into command
+// buffers; the default TracedCommand::Record() traces ExecuteOnStream() on the
+// command-buffer trace stream, reusing the FFI invocation logic.
+class CustomCallThunk : public TracedCommand {
  public:
-  using CustomCallTarget =
-      std::function<void(stream_executor::Stream*, void**, const char*, size_t,
-                         XlaCustomCallStatus*)>;
-
-  // We keep buffer allocation slice together with its shape to be able to fill
-  // FFI arguments with required details.
-  struct Slice {
-    BufferAllocation::Slice slice;
-    Shape shape;
+  // An owning equivalent of XLA_FFI_Handler_Bundle that allows using lambdas
+  // with captures.
+  //
+  // The members can be initialized with xla::ffi::Ffi::Bind().To(...).
+  struct OwnedHandlerBundle {
+    std::unique_ptr<xla::ffi::Ffi> initialize;
+    std::unique_ptr<xla::ffi::Ffi> instantiate;
+    std::unique_ptr<xla::ffi::Ffi> prepare;
+    std::unique_ptr<xla::ffi::Ffi> execute;
   };
 
-  using Attribute = ffi::CallFrameBuilder::Attribute;
-  using AttributesMap = ffi::CallFrameBuilder::AttributesMap;
+  // A per-execution state that holds state for prepare and initialize stages.
+  struct PrepareAndInitState {
+    ffi::ExecutionState prepare;
+    ffi::ExecutionState init;
+  };
 
+  // Creates a serializable custom call thunk. The callback is resolved using
+  // XLA FFI.
   static absl::StatusOr<std::unique_ptr<CustomCallThunk>> Create(
       ThunkInfo thunk_info, std::string target_name,
-      CustomCallTarget call_target, std::vector<std::optional<Slice>> operands,
-      std::vector<std::optional<Slice>> results, const std::string& opaque);
+      std::vector<NullableShapedSlice> operands,
+      std::vector<NullableShapedSlice> results,
+      xla::ffi::AttributesMap attributes,
+      const HloComputation* called_computation, absl::string_view platform_name,
+      const se::GpuComputeCapability& gpu_compute_capability,
+      std::unique_ptr<xla::ffi::ExecutionState> execution_state = nullptr,
+      std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options =
+          std::nullopt);
 
+  // Creates a serializable custom call thunk from the given XLA FFI handler
+  // bundle. Note that `target_name` needs to refer to a registered XLA FFI
+  // handler which matches the given bundle.
   static absl::StatusOr<std::unique_ptr<CustomCallThunk>> Create(
       ThunkInfo thunk_info, std::string target_name,
-      XLA_FFI_Handler_Bundle bundle, std::vector<std::optional<Slice>> operands,
-      std::vector<std::optional<Slice>> results, AttributesMap attributes,
-      const HloComputation* called_computation);
+      XLA_FFI_Handler_Bundle bundle, std::vector<NullableShapedSlice> operands,
+      std::vector<NullableShapedSlice> results,
+      xla::ffi::AttributesMap attributes,
+      const HloComputation* called_computation,
+      const se::GpuComputeCapability& gpu_compute_capability,
+      std::unique_ptr<xla::ffi::ExecutionState> execution_state = nullptr,
+      std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options =
+          std::nullopt);
 
-  absl::Status Prepare(const PrepareParams& params,
-                       ResourceRequestsInterface& resource_requests) override;
+  // Creates a custom call thunk from a bundle of handlers created with
+  // xla::ffi::Bind(). Any pointer or reference lambda captures must be valid
+  // for the lifetime of the thunk.
+  static absl::StatusOr<std::unique_ptr<CustomCallThunk>> Create(
+      ThunkInfo thunk_info, std::string target_name, OwnedHandlerBundle bundle,
+      std::vector<NullableShapedSlice> operands,
+      std::vector<NullableShapedSlice> results,
+      xla::ffi::AttributesMap attributes,
+      const HloComputation* called_computation,
+      const se::GpuComputeCapability& gpu_compute_capability,
+      std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options =
+          std::nullopt);
+
+  absl::Status Prepare(const PrepareParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  bool requires_warmup() const override { return true; }
+
   const std::string& target_name() const { return target_name_; }
-  CustomCallTarget call_target() const { return call_target_; }
-  std::optional<XLA_FFI_Handler_Bundle> bundle() const { return bundle_; }
+
+  std::optional<XLA_FFI_Handler_Bundle> bundle() const {
+    const XLA_FFI_Handler_Bundle* c_bundle =
+        std::get_if<XLA_FFI_Handler_Bundle>(&bundle_);
+    return c_bundle ? std::make_optional(*c_bundle) : std::nullopt;
+  }
+
   std::optional<ffi::CallFrame> call_frame() const {
     return call_frame_ ? std::make_optional(call_frame_->Copy()) : std::nullopt;
   }
 
-  const std::vector<std::optional<Slice>>& operands() const {
-    return operands_;
+  std::shared_ptr<ffi::ExecutionState> execution_state() const {
+    return execution_state_;
   }
-  const std::vector<std::optional<Slice>>& results() const { return results_; }
 
-  absl::string_view opaque() const { return opaque_; }
+  const std::vector<NullableShapedSlice>& operands() const { return operands_; }
+  const std::vector<NullableShapedSlice>& results() const { return results_; }
+
+  BufferUses buffer_uses() const override {
+    BufferUses res;
+    res.reserve(operands_.size() + results_.size());
+    for (const NullableShapedSlice& shaped_slice : operands_) {
+      if (!shaped_slice.has_value()) {
+        continue;
+      }
+      res.push_back(BufferUse::Read(shaped_slice->slice, shaped_slice->shape));
+    }
+    for (const NullableShapedSlice& shaped_slice : results_) {
+      if (!shaped_slice.has_value()) {
+        continue;
+      }
+      res.push_back(BufferUse::Write(shaped_slice->slice, shaped_slice->shape));
+    }
+    return res;
+  }
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
+  static absl::StatusOr<std::unique_ptr<CustomCallThunk>> FromProto(
+      ThunkInfo thunk_info, const CustomCallThunkProto& proto,
+      absl::Span<const BufferAllocation> buffer_allocations,
+      const HloModule* absl_nullable hlo_module,
+      absl::string_view platform_name,
+      const se::GpuComputeCapability& gpu_compute_capability,
+      std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options);
 
  private:
-  CustomCallThunk(ThunkInfo thunk_info, std::string target_name,
-                  CustomCallTarget call_target,
-                  std::vector<std::optional<Slice>> operands,
-                  std::vector<std::optional<Slice>> results,
-                  const std::string& opaque);
+  CustomCallThunk(
+      ThunkInfo thunk_info, std::string target_name,
+      std::variant<XLA_FFI_Handler_Bundle, OwnedHandlerBundle> bundle,
+      std::vector<NullableShapedSlice> operands,
+      std::vector<NullableShapedSlice> results, ffi::CallFrame call_frame,
+      xla::ffi::AttributesMap attributes,
+      std::unique_ptr<ffi::ExecutionState> execution_state,
+      const HloComputation* called_computation,
+      std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options);
 
-  CustomCallThunk(ThunkInfo thunk_info, std::string target_name,
-                  XLA_FFI_Handler_Bundle bundle,
-                  std::vector<std::optional<Slice>> operands,
-                  std::vector<std::optional<Slice>> results,
-                  ffi::CallFrame call_frame,
-                  std::unique_ptr<ffi::ExecutionState> execution_state,
-                  const HloComputation* called_computation);
+  absl::StatusOr<ObjectPool<xla::ffi::CallFrame>::BorrowedObject>
+  BuildCallFrame(const BufferAllocations* absl_nullable buffer_allocations);
 
-  absl::Status ExecuteCustomCall(const ExecuteParams& params);
+  xla::ffi::InvokeContext BuildInvokeContext(
+      RunId run_id, se::Stream* absl_nullable stream,
+      Thunk::ExecutionScopedState* absl_nullable execution_scoped_state,
+      const BufferAllocations* absl_nullable buffer_allocations,
+      const CollectiveParams* absl_nullable collective_params,
+      CollectiveCliqueRequests* absl_nullable collective_clique_requests,
+      CollectiveMemoryRequests* absl_nullable collective_memory_requests,
+      const CollectiveCliques* absl_nullable collective_cliques,
+      const CollectiveMemory* absl_nullable collective_memory,
+      const ffi::ExecutionContext* absl_nullable execution_context,
+      absl::Span<se::Stream* const> computation_streams);
 
-  absl::Status ExecuteFfiHandler(RunId run_id, XLA_FFI_Handler* handler,
-                                 XLA_FFI_ExecutionStage stage,
-                                 se::Stream* stream,
-                                 const ffi::ExecutionContext* execution_context,
-                                 const BufferAllocations* buffer_allocations);
+  absl::Status ExecuteFfiHandler(
+      RunId run_id, XLA_FFI_Handler* handler, XLA_FFI_ExecutionStage stage,
+      se::Stream* stream, Thunk::ExecutionScopedState* execution_scoped_state,
+      const ffi::ExecutionContext* execution_context,
+      const BufferAllocations* buffer_allocations,
+      const CollectiveParams* absl_nullable collective_params,
+      CollectiveCliqueRequests* absl_nullable collective_clique_requests,
+      CollectiveMemoryRequests* absl_nullable collective_memory_requests,
+      const CollectiveCliques* absl_nullable collective_cliques,
+      const CollectiveMemory* absl_nullable collective_memory,
+      absl::Span<se::Stream* const> computation_streams);
+
+  absl::Status ExecuteFfiHandler(
+      RunId run_id, xla::ffi::Ffi& handler, xla::ffi::ExecutionStage stage,
+      se::Stream* stream, Thunk::ExecutionScopedState* execution_scoped_state,
+      const ffi::ExecutionContext* execution_context,
+      const BufferAllocations* buffer_allocations,
+      const CollectiveParams* absl_nullable collective_params,
+      CollectiveCliqueRequests* absl_nullable collective_clique_requests,
+      CollectiveMemoryRequests* absl_nullable collective_memory_requests,
+      const CollectiveCliques* absl_nullable collective_cliques,
+      const CollectiveMemory* absl_nullable collective_memory,
+      absl::Span<se::Stream* const> computation_streams);
 
   std::string target_name_;
 
-  std::vector<std::optional<Slice>> operands_;
-  std::vector<std::optional<Slice>> results_;
+  // Nulled shape slices represent null pointer arguments to the thunk.
+  std::vector<NullableShapedSlice> operands_;
+  std::vector<NullableShapedSlice> results_;
 
-  // This is a legacy custom call API that is discouraged, and will be
-  // deprecated once XLA:FFI mechanism is ready.
-  CustomCallTarget call_target_;
-  std::string opaque_;
-
-  // XLA FFI provides a right type safe mechanism for registering external
-  // functions with XLA runtime. It's under construction, and still misses
-  // a lot of features. Long term it will replace legacy custom calls.
-  std::optional<XLA_FFI_Handler_Bundle> bundle_;
+  // XLA FFI handler bundle: either a C API bundle (from the global FFI
+  // registry) or an owned bundle (from xla::ffi::Bind()).
+  std::variant<XLA_FFI_Handler_Bundle, OwnedHandlerBundle> bundle_;
+  std::optional<xla::ffi::AttributesMap> attributes_;
 
   // Reference call frame pre-initialized at construction time.
   std::optional<ffi::CallFrame> call_frame_;
@@ -146,8 +251,8 @@ class CustomCallThunk : public Thunk {
   // copied from the reference call frame and updated with buffer addresses.
   std::optional<ObjectPool<ffi::CallFrame>> call_frames_;
 
-  // Execution state bound to the FFI handler. Optional.
-  std::unique_ptr<ffi::ExecutionState> execution_state_;
+  // Execution state bound to the FFI handler instance. Optional.
+  std::shared_ptr<ffi::ExecutionState> execution_state_;
 
   // TODO(ezhulenev): Currently we assume that HloModule that owns this
   // computation is owned by a GpuExecutable and stays alive for as long as
@@ -158,9 +263,10 @@ class CustomCallThunk : public Thunk {
   // bytecode of the computation serialized to StableHLO. Today we assume that
   // custom calls that access called computation can only be linked statically.
   const HloComputation* called_computation_ = nullptr;
+
+  std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options_;
 };
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_CUSTOM_CALL_THUNK_H_

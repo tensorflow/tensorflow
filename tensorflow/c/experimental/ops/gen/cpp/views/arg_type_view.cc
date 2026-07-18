@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/cpp/views/arg_type_view.h"
 
+#include <string>
+
 #include "tensorflow/c/experimental/ops/gen/model/arg_type.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/types.h"
@@ -24,7 +26,7 @@ namespace cpp {
 
 ArgTypeView::ArgTypeView(ArgType arg_type) : arg_type_(arg_type) {}
 
-string ArgTypeView::TypeName() const {
+std::string ArgTypeView::TypeName() const {
   if (arg_type_.is_read_only()) {
     if (arg_type_.is_list()) {
       return "absl::Span<AbstractTensorHandle* const>";

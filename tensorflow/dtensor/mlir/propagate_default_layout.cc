@@ -53,8 +53,8 @@ void CreateDTensorLayoutOp(const Layout& layout, mlir::Value input,
                            mlir::MLIRContext* context) {
   if (layout.IsEmpty()) return;
 
-  auto layout_op = builder->create<mlir::TF::DTensorLayout>(
-      loc, input, mlir::dtensor::LayoutAttr::get(context, layout),
+  auto layout_op = mlir::TF::DTensorLayout::create(
+      *builder, loc, input, mlir::dtensor::LayoutAttr::get(context, layout),
       mlir::TF::ShapeAttr::get(context, type));
   if (arg_index != nullptr) {
     layout_op->setAttr(kFromArgIndex, arg_index);

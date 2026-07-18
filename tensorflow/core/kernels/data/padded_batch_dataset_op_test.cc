@@ -31,7 +31,7 @@ class PaddedBatchDatasetParams : public DatasetParams {
                            bool drop_remainder, bool parallel_copy,
                            DataTypeVector output_dtypes,
                            std::vector<PartialTensorShape> output_shapes,
-                           int num_padded_shapes, string node_name)
+                           int num_padded_shapes, std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         batch_size_(batch_size),
@@ -62,7 +62,8 @@ class PaddedBatchDatasetParams : public DatasetParams {
     return input_tensors;
   }
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override {
     *input_names = {PaddedBatchDatasetOp::kInputDataset,
                     PaddedBatchDatasetOp::kBatchSize};
     // Create the input names for the input padded_shapes.
@@ -88,7 +89,7 @@ class PaddedBatchDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  string dataset_type() const override {
+  std::string dataset_type() const override {
     return PaddedBatchDatasetOp::kDatasetType;
   }
 

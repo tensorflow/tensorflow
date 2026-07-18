@@ -36,7 +36,7 @@ namespace tensorflow {
 
 FIFOQueue::FIFOQueue(int capacity, const DataTypeVector& component_dtypes,
                      const std::vector<TensorShape>& component_shapes,
-                     const string& name)
+                     const std::string& name)
     : TypedQueue(capacity, component_dtypes, component_shapes, name) {}
 
 void FIFOQueue::DequeueLocked(OpKernelContext* ctx, Tuple* tuple) {

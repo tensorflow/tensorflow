@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TESTS_CLIENT_LIBRARY_TEST_RUNNER_MIXIN_H_
 #define XLA_TESTS_CLIENT_LIBRARY_TEST_RUNNER_MIXIN_H_
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -25,6 +26,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/array4d.h"
@@ -32,11 +34,15 @@ limitations under the License.
 #include "xla/execution_options_util.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_module_util.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_utils.h"
@@ -110,10 +116,27 @@ class ClientLibraryTestRunnerMixin : public T {
     for (const Literal* argument : arguments) {
       argument_shapes.push_back(&argument->shape());
     }
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                        BuildAndVerifyHloModule(computation, argument_shapes,
-                                                &execution_options));
-    return this->Execute(std::move(module), arguments);
+    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     BuildAndVerifyHloModule(computation, argument_shapes,
+                                             &execution_options));
+    const int64_t num_devices = std::max(execution_options.num_replicas(), 1) *
+                                std::max(execution_options.num_partitions(), 1);
+    std::optional<DeviceAssignment> device_assignment;
+    DeviceAssignment* device_assignment_ptr = nullptr;
+    if (num_devices > 1 && execution_options.has_device_assignment()) {
+      device_assignment = module->config().static_device_assignment();
+      device_assignment_ptr = &*device_assignment;
+    }
+
+    HloRunnerInterface::ReplicatedExecuteOptions options;
+    options.num_devices = num_devices;
+    options.arguments = {arguments.begin(), arguments.end()};
+    options.run_hlo_passes = true;
+    options.seed = execution_options.seed();
+    ASSIGN_OR_RETURN(std::vector<Literal> results,
+                     this->test_runner().ExecuteReplicated(
+                         std::move(module), options, device_assignment_ptr));
+    return std::move(results.front());
   }
 
   absl::StatusOr<Literal> ExecuteAndTransfer(
@@ -121,7 +144,7 @@ class ClientLibraryTestRunnerMixin : public T {
       const absl::Span<const Literal* const> arguments,
       const Shape* shape_with_output_layout = nullptr) {
     // Build the computation, as a convenience.
-    TF_ASSIGN_OR_RETURN(XlaComputation computation, builder->Build());
+    ASSIGN_OR_RETURN(XlaComputation computation, builder->Build());
     return ExecuteAndTransfer(std::move(computation), arguments,
                               shape_with_output_layout);
   }
@@ -135,9 +158,8 @@ class ClientLibraryTestRunnerMixin : public T {
         ExecuteAndTransfer(builder, arguments);
     if (!result.ok()) {
       return result.status().ToString();
-    } else {
-      return result.value().ToString();
     }
+    return result->ToString();
   }
 
   // Compare with reference.
@@ -384,6 +406,10 @@ class ClientLibraryTestRunnerMixin : public T {
   DebugOptions* mutable_debug_options() {
     return execution_options_.mutable_debug_options();
   }
+  const ExecutionOptions& execution_options() const {
+    return execution_options_;
+  }
+  ExecutionOptions* mutable_execution_options() { return &execution_options_; }
 
  private:
   absl::StatusOr<std::unique_ptr<HloModule>> BuildAndVerifyHloModule(
@@ -393,16 +419,16 @@ class ClientLibraryTestRunnerMixin : public T {
     if (execution_options == nullptr) {
       execution_options = &execution_options_;
     }
-    TF_ASSIGN_OR_RETURN(const ProgramShape program_shape,
-                        computation.GetProgramShape());
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(const ProgramShape program_shape,
+                     computation.GetProgramShape());
+    ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,
         CreateModuleConfig(program_shape, argument_shapes, execution_options,
                            /*default_num_replicas=*/1));
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         std::unique_ptr<HloModule> module,
         HloModule::CreateFromProto(computation.proto(), *module_config));
-    TF_RETURN_IF_ERROR(this->verifier().Run(module.get()).status());
+    RETURN_IF_ERROR(this->verifier().Run(module.get()).status());
     return module;
   }
 

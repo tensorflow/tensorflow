@@ -16,6 +16,10 @@ limitations under the License.
 // See docs in ../ops/image_ops.cc.
 
 #include <cstdint>
+#include <string>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
@@ -41,14 +45,15 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 static inline void ParseAttributeVec4(OpKernelConstruction* context,
-                                      const string& attr_name,
-                                      std::vector<int32>* attr) {
+                                      const std::string& attr_name,
+                                      std::vector<int32_t>* attr) {
   OP_REQUIRES_OK(context, context->GetAttr(attr_name, attr));
+  OP_REQUIRES(context, (*attr)[0] == 1 && (*attr)[3] == 1,
+              absl::UnimplementedError(
+                  absl::StrCat("Only support ", attr_name, " across space.")));
   OP_REQUIRES(
-      context, (*attr)[0] == 1 && (*attr)[3] == 1,
-      errors::Unimplemented("Only support ", attr_name, " across space."));
-  OP_REQUIRES(context, (*attr)[1] >= 1 && (*attr)[2] >= 1,
-              errors::OutOfRange(attr_name, " is out of range."));
+      context, (*attr)[1] >= 1 && (*attr)[2] >= 1,
+      absl::OutOfRangeError(absl::StrCat(attr_name, " is out of range.")));
 }
 
 template <typename Device, typename T>
@@ -66,9 +71,10 @@ class ExtractImagePatchesOp : public UnaryOp<T> {
     // Input tensor is of the following dimensions:
     // [ batch, in_rows, in_cols, channels ]
     const Tensor& input = context->input(0);
-    OP_REQUIRES(context, input.dims() == 4,
-                errors::InvalidArgument("input must be 4-dimensional",
-                                        input.shape().DebugString()));
+    OP_REQUIRES(
+        context, input.dims() == 4,
+        absl::InvalidArgumentError(absl::StrCat("input must be 4-dimensional",
+                                                input.shape().DebugString())));
 
     const int batch = input.dim_size(0);
     const int in_rows = input.dim_size(1);
@@ -115,9 +121,9 @@ class ExtractImagePatchesOp : public UnaryOp<T> {
   }
 
  private:
-  std::vector<int32> ksizes_;
-  std::vector<int32> strides_;
-  std::vector<int32> rates_;
+  std::vector<int32_t> ksizes_;
+  std::vector<int32_t> strides_;
+  std::vector<int32_t> rates_;
 
   Padding padding_;
 

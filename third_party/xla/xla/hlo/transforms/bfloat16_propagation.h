@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -66,19 +67,13 @@ namespace xla {
 // pass.
 class BFloat16Propagation : public HloModulePass {
  public:
-  explicit BFloat16Propagation(const FloatSupport* bfloat16_support);
+  BFloat16Propagation(const FloatSupport* bfloat16_support,
+                      const AliasInfo* alias_info);
 
   ~BFloat16Propagation() override = default;
 
   static constexpr absl::string_view kName = "bfloat16-propagation";
   absl::string_view name() const override { return kName; }
-
-  // Runs the pass on the given module. Returns whether the module was changed
-  // (precision reductions were added).
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Returns whether we should avoid changing the precision of inst regardless
   // of the producers and users.
@@ -90,6 +85,24 @@ class BFloat16Propagation : public HloModulePass {
 
  protected:
   const FloatSupport* bfloat16_support_;
+
+  const AliasInfo* alias_info_;
+
+  // Returns the original element type of the HLO instruction before
+  // RunImpl starts mutating shapes in-place with changes_to_bf16_.
+  PrimitiveType UnmutatedElementType(const HloInstruction* hlo) const {
+    if (hlo->shape().element_type() == BF16 &&
+        changes_to_bf16_.contains(const_cast<HloInstruction*>(hlo))) {
+      return F32;
+    }
+    return hlo->shape().element_type();
+  }
+
+  // Runs the pass on the given module. Returns whether the module was changed
+  // (precision reductions were added).
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   // ***************************
@@ -124,6 +137,16 @@ class BFloat16Propagation : public HloModulePass {
   //
   // Precondition: hlo->opcode() == kWhile
   void DetermineWhileComputationsPrecision(HloInstruction* while_hlo);
+
+  // Special handling in the opportunity-finding pass for associative scans.
+  // Mirrors DetermineWhileComputationsPrecision because scan carries form a
+  // loop-carried precision equivalence chain across the IR (carry init ->
+  // body parameter -> body root -> result carry).
+  //
+  // Precondition: hlo->opcode() == kScan and the scan is_associative() ==
+  // TRI_STATE_TRUE. Non-associative scans are expanded to while loops by the
+  // ScanExpander pass and are handled by the kWhile path instead.
+  void DetermineScanComputationPrecision(HloInstruction* scan_hlo);
 
   // Special handling in the opportunity-finding pass for conditional branches.
   //
@@ -173,12 +196,40 @@ class BFloat16Propagation : public HloModulePass {
   // by the given HLO.
   void AdjustCalledComputationRoot(HloInstruction* hlo);
 
+  // For an associative scan, aligns the precision of every carry slot across
+  // its four logically-equivalent IR locations:
+  //   * scan operand `num_inputs + i` (the carry init),
+  //   * body parameter `num_inputs + i`,
+  //   * body root tuple slot `num_outputs + i`,
+  //   * scan result tuple slot `num_outputs + i`.
+  // HloVerifier::HandleScan requires these four locations to share the same
+  // element type even though, unlike kWhile.
+  // If any of the four is F32 (after pending changes_to_bf16_),
+  // all four are forced to F32. The standard
+  // ResolveInconsistencyOfAliasingBuffersHelper fixed-point relies on
+  // HloDataflowAnalysis aliases to propagate precision, but no such alias
+  // exists for scan carries, so we enforce this verifier-level constraint
+  // explicitly here. Returns whether any change was made.
+  //
+  // Precondition: hlo->opcode() == kScan and is_associative() ==
+  // TRI_STATE_TRUE.
+  bool AlignScanCarryPrecisions(HloInstruction* scan_hlo);
+
   // ***************************
   // Functions called after changes in changes_to_bf16_ are applied.
 
   // Resolves inconsistencies introduced by this pass for fusions with
   // tuple-type output.
   absl::Status ResolveInconsistentFusions(HloModule* module);
+
+  // Resolves inconsistencies introduced by this pass for associative scans
+  // where the body root tuple slot precision diverged from the scan output
+  // slot precision (e.g. when the underlying body root op had multiple uses
+  // with different precision demands and could not be unilaterally lowered).
+  // Inserts precision-changing converts on the affected body root slots so
+  // that the body root shape matches the scan output shape, satisfying
+  // HloVerifier::HandleScan.
+  absl::Status ResolveInconsistentScans(HloModule* module);
 
   // Converts the literals in kConstant HLOs which have their types changed to
   // BF16 by this pass.

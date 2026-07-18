@@ -105,7 +105,7 @@ class Executor {
     const ConfigProto* session_config = nullptr;
     SessionState* session_state = nullptr;
     // Unique session identifier. Can be empty.
-    string session_handle;
+    std::string session_handle;
     TensorStore* tensor_store = nullptr;
     ScopedStepContainer* step_container = nullptr;
     CollectiveExecutor* collective_executor = nullptr;
@@ -114,7 +114,7 @@ class Executor {
     int64_t start_time_usecs = 0;
     // The deadline for the kernel to complete by. Empty if unspecified.
     absl::optional<absl::Time> deadline;
-    absl::optional<ManagedStackTrace> stack_trace = absl::nullopt;
+    absl::optional<ManagedStackTrace> stack_trace = std::nullopt;
 
     // If true, calls Sync() on the device.
     bool sync_on_finish = false;
@@ -231,7 +231,7 @@ class ExecutorBarrier {
 
     if (error_rendez != nullptr) {
       error_rendez->StartAbort(
-          errors::Aborted("Stopping remaining executors."));
+          absl::AbortedError("Stopping remaining executors."));
       error_rendez->Unref();
     }
 

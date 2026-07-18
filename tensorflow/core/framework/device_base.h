@@ -62,7 +62,7 @@ class TensorProto;
 // OpKernelContext::Params structure wants to fill it in.
 class PerOpGpuDevice {
  public:
-  virtual ~PerOpGpuDevice() {}
+  virtual ~PerOpGpuDevice() = default;
   virtual const Eigen::GpuDevice& device() const = 0;
 };
 
@@ -70,7 +70,7 @@ class PerOpGpuDevice {
 // Device-specific context to OpKernels.
 class DeviceContext : public core::RefCounted {
  public:
-  ~DeviceContext() override {}
+  ~DeviceContext() override = default;
   virtual stream_executor::Stream* stream() const { return nullptr; }
   virtual void MaintainLifetimeOnStream(const Tensor* t,
                                         stream_executor::Stream* stream) const {
@@ -82,7 +82,7 @@ class DeviceContext : public core::RefCounted {
   virtual void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                                      Tensor* device_tensor, StatusCallback done,
                                      bool sync_dst_compute = true) const {
-    done(errors::Internal("Unrecognized device type in CPU-to-device Copy"));
+    done(absl::InternalError("Unrecognized device type in CPU-to-device Copy"));
   }
 
   // Same as CopyCPUTensorToDevice, but in a synchronous way.
@@ -94,7 +94,7 @@ class DeviceContext : public core::RefCounted {
   virtual void CopyTensorInSameDevice(const Tensor* input_tensor,
                                       Device* device, Tensor* output_tensor,
                                       StatusCallback done) const {
-    done(errors::Unimplemented("Copy in same device not implemented."));
+    done(absl::UnimplementedError("Copy in same device not implemented."));
   }
 
   // "device_tensor" is a tensor on a non-CPU device.  Copies
@@ -104,7 +104,7 @@ class DeviceContext : public core::RefCounted {
                                      absl::string_view tensor_name,
                                      Device* device, Tensor* cpu_tensor,
                                      StatusCallback done) {
-    done(errors::Internal("Unrecognized device type in device-to-CPU Copy"));
+    done(absl::InternalError("Unrecognized device type in device-to-CPU Copy"));
   }
 
   // Same as `CopyDeviceTensorToCPU`, but blocks until the copy is done.
@@ -119,7 +119,7 @@ class DeviceContext : public core::RefCounted {
   virtual absl::Status ThenExecute(Device* device,
                                    stream_executor::Stream* stream,
                                    std::function<void()> func) {
-    return errors::Internal("ThenExecute not supported by device");
+    return absl::InternalError("ThenExecute not supported by device");
   }
 
   // check if device is a pluggable device
@@ -259,7 +259,8 @@ class DeviceBase {
   virtual absl::Status MakeTensorFromProto(
       const TensorProto& tensor_proto, const AllocatorAttributes alloc_attrs,
       Tensor* tensor) {
-    return errors::Internal("Device does not implement MakeTensorFromProto()");
+    return absl::InternalError(
+        "Device does not implement MakeTensorFromProto()");
   }
 
   // Some devices (i.e. GPUs) may free device memory prior to its actual use
@@ -269,7 +270,7 @@ class DeviceBase {
   // device memory tagged with an earlier freed-at count is really unencumbered
   // by pending uses.  For this to be useful the device memory allocator must
   // be tagging deallocated memory chunks using the same counter.
-  virtual uint64 SafeAllocFrontier(uint64 old_value) { return 0; }
+  virtual uint64_t SafeAllocFrontier(uint64_t old_value) { return 0; }
 
   // Copies `input_tensor` to `output_tensor`, where both tensors are on this
   // device. This function assumes that `output_tensor` has already been
@@ -283,8 +284,8 @@ class DeviceBase {
                                       Tensor* output_tensor,
                                       const DeviceContext* device_context,
                                       StatusCallback done) {
-    done(errors::Internal("Device ", name(), " does not implement ",
-                          "CopyTensorInSameDevice"));
+    done(absl::InternalError(absl::StrCat(
+        "Device ", name(), " does not implement ", "CopyTensorInSameDevice")));
   }
 
  protected:

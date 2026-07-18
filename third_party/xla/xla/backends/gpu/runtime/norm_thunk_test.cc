@@ -35,10 +35,7 @@ using ::tsl::proto_testing::ParseTextProtoOrDie;
 
 TEST(NormThunkTest, ProtoRoundTrip) {
   auto proto = ParseTextProtoOrDie<ThunkProto>(R"pb(
-    thunk_info {
-      profile_annotation: "norm_thunk_profile"
-      execution_stream_id: 0
-    }
+    thunk_info { profile_annotation: "norm_thunk_profile" }
     norm_thunk {
       norm_descriptor {
         backend_config {
@@ -82,7 +79,11 @@ TEST(NormThunkTest, ProtoRoundTrip) {
           }
           is_dynamic_dimension: [ false, false ]
         }
-        scratch_size: 1024
+        scratch_shape: {
+          element_type: S8
+          dimensions: 1024
+          is_dynamic_dimension: false
+        }
       }
       x { offset: 0 size: 24 buffer_allocation_index: 0 }
       scale { offset: 0 size: 12 buffer_allocation_index: 1 }

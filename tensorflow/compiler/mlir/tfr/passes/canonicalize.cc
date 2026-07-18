@@ -75,12 +75,12 @@ class UnrollSCFForOp : public OpRewritePattern<scf::ForOp> {
     for (auto i = 0; i < trip_count; ++i) {
       if (!iv.use_empty()) {
         // iv' = iv + step * i;
-        Value iter = rewriter.create<arith::ConstantIndexOp>(loc, i);
+        Value iter = arith::ConstantIndexOp::create(rewriter, loc, i);
         Value step_cst =
-            rewriter.create<arith::ConstantIndexOp>(loc, step.getSExtValue());
-        Value stride = rewriter.create<arith::MulIOp>(loc, step_cst, iter);
+            arith::ConstantIndexOp::create(rewriter, loc, step.getSExtValue());
+        Value stride = arith::MulIOp::create(rewriter, loc, step_cst, iter);
         Value iv_unroll =
-            rewriter.create<arith::AddIOp>(loc, mapping.lookup(iv), stride);
+            arith::AddIOp::create(rewriter, loc, mapping.lookup(iv), stride);
         mapping.map(iv, iv_unroll);
       }
 

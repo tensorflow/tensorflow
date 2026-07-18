@@ -18,9 +18,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/client/client.h"
 #include "xla/client/client_library.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -33,7 +35,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
@@ -59,13 +60,12 @@ class ComputeConstantTest : public ::testing::Test {
     if (client_type == ClientType::kLocal) {
       absl::StatusOr<Client*> result =
           ClientLibrary::GetOrCreateLocalClient(platform);
-      TF_CHECK_OK(result.status())
-          << "could not create LocalClient for testing";
+      CHECK_OK(result.status()) << "could not create LocalClient for testing";
       return result.value();
     } else if (client_type == ClientType::kCompileOnly) {
       absl::StatusOr<Client*> result =
           ClientLibrary::GetOrCreateCompileOnlyClient(platform);
-      TF_CHECK_OK(result.status())
+      CHECK_OK(result.status())
           << "could not create CompileOnlyClient for testing";
       return result.value();
     }
@@ -75,9 +75,9 @@ class ComputeConstantTest : public ::testing::Test {
   absl::StatusOr<Literal> ComputeConstantLiteral(
       Client* client, const XlaOp operand, XlaBuilder* builder,
       Layout* output_layout = nullptr) {
-    TF_ASSIGN_OR_RETURN(auto subgraph, builder->BuildConstantSubGraph(operand));
-    TF_ASSIGN_OR_RETURN(auto computed,
-                        client->ComputeConstant(subgraph, output_layout));
+    ASSIGN_OR_RETURN(auto subgraph, builder->BuildConstantSubGraph(operand));
+    ASSIGN_OR_RETURN(auto computed,
+                     client->ComputeConstant(subgraph, output_layout));
     return std::move(computed);
   }
 
@@ -85,8 +85,8 @@ class ComputeConstantTest : public ::testing::Test {
   absl::StatusOr<Scalar> ComputeConstantScalar(Client* client,
                                                const XlaOp operand,
                                                XlaBuilder* builder) {
-    TF_ASSIGN_OR_RETURN(auto literal, ComputeConstantLiteral(client, operand,
-                                                             builder, nullptr));
+    ASSIGN_OR_RETURN(auto literal,
+                     ComputeConstantLiteral(client, operand, builder, nullptr));
     return literal.Get<Scalar>({});
   }
 

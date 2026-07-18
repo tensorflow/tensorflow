@@ -3,7 +3,7 @@ load(
     "gentbl_cc_library",
     "td_library",
 )
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
@@ -225,6 +225,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
@@ -249,7 +250,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
-        "@local_xla//xla/hlo/testlib:test",
+        "@xla//xla/hlo/testlib:test",
     ],
 )
 
@@ -279,14 +280,16 @@ tf_python_pybind_extension(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "composite",
     srcs = ["python/composite.py"],
+    strict_deps = True,
 )
 
-py_strict_library(
+py_library(
     name = "tfr_gen",
     srcs = ["python/tfr_gen.py"],
+    strict_deps = True,
     deps = [
         ":tfr_wrapper",
         "//tensorflow:tensorflow_py",  # buildcleaner: keep
@@ -308,7 +311,7 @@ py_strict_library(
         "//tensorflow/python/framework:op_def_registry",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:tf_inspect",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
@@ -330,16 +333,17 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "op_reg_gen",
     srcs = ["python/op_reg_gen.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/autograph/pyct:transformer",
         "//tensorflow/python/autograph/pyct:transpiler",
         "//tensorflow/python/framework:op_def_registry",
         "//tensorflow/python/util:tf_inspect",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
@@ -355,9 +359,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "test_utils",
     srcs = ["python/test_utils.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/eager:backprop",

@@ -79,12 +79,12 @@ class NodeDefBuilderTest : public ::testing::Test {
   // Calls Finalize() and verifies it returns an error.
   // Each message must appear as a substring of the error.
   void ExpectFailures(NodeDefBuilder& builder,  // NOLINT
-                      const std::vector<string>& messages) {
+                      const std::vector<std::string>& messages) {
     NodeDef node_def;
     absl::Status status = builder.Finalize(&node_def);
     EXPECT_FALSE(status.ok()) << SummarizeNodeDef(node_def);
     if (status.ok()) return;
-    for (const string& message : messages) {
+    for (const std::string& message : messages) {
       EXPECT_TRUE(absl::StrContains(status.message(), message))
           << status << ", " << message;
     }
@@ -93,14 +93,14 @@ class NodeDefBuilderTest : public ::testing::Test {
   // Calls Finalize() and verifies it returns an error.
   // Message must appear as a substring of the error.
   void ExpectFailure(NodeDefBuilder& builder,  // NOLINT
-                     const string& message) {
+                     const std::string& message) {
     ExpectFailures(builder, {message});
   }
 
   // Like ExpectFailure(), except that the error can come from
   // ValidateNodeDef().
   void ExpectInvalid(NodeDefBuilder& builder,  // NOLINT
-                     const string& message) {
+                     const std::string& message) {
     NodeDef node_def;
     absl::Status status = builder.Finalize(&node_def);
     if (status.ok()) {
@@ -822,9 +822,9 @@ TEST_F(NodeDefBuilderTest, AttrManyDefault) {
                     .Input(FakeInput(DT_FLOAT))
                     .Attr("a", "foo")
                     .Attr("e", "foo")
-                    .Attr("b", std::vector<string>({"bar", "baz"}))
+                    .Attr("b", std::vector<std::string>({"bar", "baz"}))
                     .Attr("f", 1.0f),
-                {DT_FLOAT}, {}, R"proto(
+                {DT_FLOAT}, {}, R"pb(
     op: "AttrManyDefaultAndInferred"
     input: "a"
     attr {
@@ -854,7 +854,7 @@ TEST_F(NodeDefBuilderTest, AttrManyDefault) {
     attr {
       key: "d"
       value { f: 0.3 }
-    })proto");
+    })pb");
 }
 
 TEST_F(NodeDefBuilderTest, AttrListDefault) {

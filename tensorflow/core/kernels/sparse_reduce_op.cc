@@ -56,11 +56,11 @@ struct ReduceDetails {
 // }
 // // Set output shape to reduction->reduced_shape.
 absl::StatusOr<ReduceDetails> SparseTensorReduceHelper(const SparseTensor &sp,
-                                       absl::Span<const int32> axes_slice,
+                                       absl::Span<const int32_t> axes_slice,
                                        bool keep_dims) {
   ReduceDetails reduction;
 
-  std::vector<int32> reduction_axes(axes_slice.begin(), axes_slice.end());
+  std::vector<int32_t> reduction_axes(axes_slice.begin(), axes_slice.end());
   int ndims = sp.dims();
   for (int64_t i = 0; i < reduction_axes.size(); ++i) {
     reduction_axes[i] = (reduction_axes[i] + ndims) % ndims;
@@ -114,24 +114,18 @@ absl::StatusOr<ReduceDetails> SparseTensorReduceHelper(const SparseTensor &sp,
 absl::Status ValidateInputs(const Tensor *shape_t, const Tensor *reduction_axes_t) {
   // indices and values are validated in SparseTensor ctor.
   if (!TensorShapeUtils::IsVector(shape_t->shape())) {
-    return errors::InvalidArgument(
-        "Expected input_shape to be a vector; got shape: ",
-        shape_t->shape().DebugString());
+    return absl::InvalidArgumentError(absl::StrCat("Expected input_shape to be a vector; got shape: ", shape_t->shape().DebugString()));
   }
   if (!TensorShapeUtils::IsScalar(reduction_axes_t->shape()) &&
       !TensorShapeUtils::IsVector(reduction_axes_t->shape())) {
-    return errors::InvalidArgument(
-        "Expected reduction_axes to be a scalar or a vector; got shape: ",
-        reduction_axes_t->shape().DebugString());
+    return absl::InvalidArgumentError(absl::StrCat("Expected reduction_axes to be a scalar or a vector; got shape: ", reduction_axes_t->shape().DebugString()));
   }
 
-  const auto reduction_axes_flat = reduction_axes_t->flat<int32>();
+  const auto reduction_axes_flat = reduction_axes_t->flat<int32_t>();
   for (int64_t i = 0; i < reduction_axes_flat.size(); i++) {
     int32_t axis = reduction_axes_flat(i);
     if (axis < -shape_t->NumElements() || axis >= shape_t->NumElements()) {
-      return errors::InvalidArgument("Invalid reduction dimension ", axis,
-                                     ", for input with ",
-                                     shape_t->NumElements(), " dimensions.");
+      return absl::InvalidArgumentError(absl::StrCat("Invalid reduction dimension ", axis, ", for input with ", shape_t->NumElements(), " dimensions."));
     }
   }
 
@@ -188,7 +182,7 @@ class SparseReduceOp : public OpKernel {
         tensor::DeepCopy(*indices_t), tensor::DeepCopy(*values_t),
                     shape, &sp));
     absl::StatusOr<ReduceDetails> reduction_or = SparseTensorReduceHelper(
-        sp, reduction_axes_t->flat<int32>(), keep_dims_);
+        sp, reduction_axes_t->flat<int32_t>(), keep_dims_);
     OP_REQUIRES_OK(ctx, reduction_or.status());
     ReduceDetails reduction = *reduction_or;
 
@@ -215,7 +209,7 @@ class SparseReduceOp : public OpKernel {
     }
 
     auto CoordinatesToFlatIndex = [](absl::Span<const int64_t> coords,
-                                     absl::Span<const int64_t> strides) -> int64 {
+                                     absl::Span<const int64_t> strides) -> int64_t {
       if (strides.empty()) {  // Reduce all.
         return 0;
       }
@@ -235,10 +229,7 @@ class SparseReduceOp : public OpKernel {
       OP_REQUIRES(ctx,
                   output_strides.empty() ||
                   (g.group().size() == output_strides.size()),
-                  errors::Internal(
-                      "Expected group size and output_strides size to match",
-                      ", but got ", g.group().size(), " and ",
-                      output_strides.size()));
+                  absl::InternalError(absl::StrCat("Expected group size and output_strides size to match", ", but got ", g.group().size(), " and ", output_strides.size())));
       const int64_t idx = CoordinatesToFlatIndex(g.group(), output_strides);
       OP_REQUIRES(ctx,
                   idx >= 0 && idx < out_flat.size(),
@@ -296,7 +287,7 @@ class SparseReduceSparseOp : public OpKernel {
                                          tensor::DeepCopy(*values_t),
                     shape, &sp));
     absl::StatusOr<ReduceDetails> reduction_or = SparseTensorReduceHelper(
-        sp, reduction_axes_t->flat<int32>(), keep_dims_);
+        sp, reduction_axes_t->flat<int32_t>(), keep_dims_);
     OP_REQUIRES_OK(ctx, reduction_or.status());
     ReduceDetails reduction = *reduction_or;
 

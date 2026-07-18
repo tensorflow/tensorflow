@@ -8,11 +8,11 @@ add {
 }
 
 fusion {
-  p0 = s4[64,64] parameter(0)
-  convert = s32[64,64] convert(p0)
+  p0 = s4[64,64]{1,0:E(4)} parameter(0)
+  convert = s32[64,64]{1,0} convert(p0)
   c0 = s32[] constant(0)
 
-  reduce = s32[64] reduce(convert, c0), dimensions={1}, to_apply=add
-  ROOT tuple = (s32[64], s32[64,64]) tuple(reduce, convert)
+  reduce = s32[64]{0} reduce(convert, c0), dimensions={1}, to_apply=add
+  ROOT tuple = (s32[64]{0}, s32[64,64]{1,0}) tuple(reduce, convert)
 }
 // CHECK: shuffle_reduce

@@ -13,6 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <ostream>
+
+#include "absl/memory/memory.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/tsl/protobuf/bfc_memory_map.pb.h"
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
@@ -434,7 +444,7 @@ class GPUBFCAllocatorPrivateMethodsTest
 
     std::array<BFCAllocator::BinDebugInfo, BFCAllocator::kNumBins> bin_infos;
     {
-      absl::MutexLock l(&a.mutex_);
+      absl::MutexLock l(a.mutex_);
       bin_infos = a.get_bin_debug_info();
     }
 
@@ -486,7 +496,7 @@ class GPUBFCAllocatorPrivateMethodsTest
       initial_ptrs[i] = nullptr;
     }
     {
-      absl::MutexLock l(&a.mutex_);
+      absl::MutexLock l(a.mutex_);
       bin_infos = a.get_bin_debug_info();
     }
     for (int i = 0; i < BFCAllocator::kNumBins; i++) {
@@ -610,7 +620,7 @@ class GPUBFCAllocatorPrivateMethodsTest_SubAllocatorSpecific
     }
 
     {
-      absl::MutexLock l(&a.mutex_);
+      absl::MutexLock l(a.mutex_);
       // Make sure there are more than 1 regions in preparation for the test.
       EXPECT_LT(1, a.region_manager_.regions().size());
     }
@@ -623,7 +633,7 @@ class GPUBFCAllocatorPrivateMethodsTest_SubAllocatorSpecific
     // Deallocate free regions and there shall be only one region left.
     EXPECT_EQ(true, a.DeallocateFreeRegions(/*rounded_bytes=*/0));
     {
-      absl::MutexLock l(&a.mutex_);
+      absl::MutexLock l(a.mutex_);
       EXPECT_EQ(1, a.region_manager_.regions().size());
     }
 

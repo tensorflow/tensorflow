@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tsl/platform/scanner.h"
 
+#include <string>
+
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/test.h"
 
 namespace tsl {
@@ -23,8 +26,8 @@ namespace strings {
 class ScannerTest : public ::testing::Test {
  protected:
   // Returns a string with all chars that are in <clz>, in byte value order.
-  string ClassStr(Scanner::CharClass clz) {
-    string s;
+  std::string ClassStr(Scanner::CharClass clz) {
+    std::string s;
     for (int i = 0; i < 256; ++i) {
       char ch = i;
       if (Scanner::Matches(clz, ch)) {

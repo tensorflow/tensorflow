@@ -1,4 +1,4 @@
-/* Copyright 2024 The OpenXLA Authors.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,85 +16,126 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_RUNTIME_DOT_LIB_H_
 #define XLA_BACKENDS_CPU_RUNTIME_DOT_LIB_H_
 
+#include <array>
 #include <cstdint>
+#include <utility>
 
-#include "absl/container/inlined_vector.h"
-#include "absl/status/statusor.h"
-#include "xla/runtime/buffer_use.h"
-#include "xla/service/buffer_assignment.h"
-#include "xla/shape.h"
-#include "xla/xla_data.pb.h"
+#include "absl/base/optimization.h"
+#include "absl/functional/any_invocable.h"
 
-namespace xla::cpu {
+#define EIGEN_USE_THREADS
+#include "Eigen/Core"
+#include "unsupported/Eigen/CXX11/Tensor"
 
-// Allocation slices of the dot operation.
-struct DotSlices {
-  BufferAllocation::Slice lhs_buffer;
-  Shape lhs_shape;
+namespace xla::cpu::internal {
 
-  BufferAllocation::Slice rhs_buffer;
-  Shape rhs_shape;
+// Done callback is called when the MatMul computation is complete.
+using DoneCallback = absl::AnyInvocable<void()>;
 
-  BufferAllocation::Slice out_buffer;
-  Shape out_shape;
-};
+// Col-major x Col-major MatMul implementation as Eigen contraction.
+template <typename LhsType, typename RhsType, typename OutType,
+          Eigen::AlignmentType alignment>
+void MatMul(const Eigen::ThreadPoolDevice* device, OutType* out, LhsType* lhs,
+            RhsType* rhs, int64_t m, int64_t n, int64_t k,
+            int32_t transpose_lhs, int32_t transpose_rhs, DoneCallback done);
 
-// Shape of the batched dot operation supported by the XLA:CPU runtime.
-struct DotShape {
-  // Product of batch dimensions.
-  int64_t batch_size;
+// Col-major x Col-major MatMul implementation as Eigen contraction.
+template <typename LhsType, typename RhsType, typename OutType>
+void TypedMatMul(const Eigen::ThreadPoolDevice* device, void* out, void* lhs,
+                 void* rhs, int64_t m, int64_t n, int64_t k, bool transpose_lhs,
+                 bool transpose_rhs, DoneCallback done);
 
-  // Shapes of the non-batch matrix-multiplication for the dot operation
-  Shape lhs_matmul_shape;
-  Shape rhs_matmul_shape;
-  Shape out_matmul_shape;
-};
+//===----------------------------------------------------------------------===//
+// TypedMatMul/MatMul implementation details.
+//===----------------------------------------------------------------------===//
 
-// Dot operation is implemented as a matrix-matrix multiply (row-major x
-// rowm-major or col-major x col-major). For batched dot operations, it is
-// implemented as multiple matrix multiplications repeated for each batch
-// element.
-struct DotCanonicalDims {
-  // The number of rows in the LHS.
-  int64_t m;
+template <typename LhsType, typename RhsType, typename OutType,
+          Eigen::AlignmentType alignment>
+void MatMul(const Eigen::ThreadPoolDevice* device, OutType* out, LhsType* lhs,
+            RhsType* rhs, int64_t m, int64_t n, int64_t k,
+            int32_t transpose_lhs, int32_t transpose_rhs, DoneCallback done) {
+  int64_t lhs_rows = m;
+  int64_t lhs_cols = k;
+  if (transpose_lhs) {
+    std::swap(lhs_rows, lhs_cols);
+  }
 
-  // The number of columns in the LHS, which also must be equal to the
-  // number of rows in the RHS.
-  int64_t k;
+  int64_t rhs_rows = k;
+  int64_t rhs_cols = n;
+  if (transpose_rhs) {
+    std::swap(rhs_rows, rhs_cols);
+  }
 
-  // The number of columns in the RHS.
-  int64_t n;
+  const Eigen::TensorMap<Eigen::Tensor<const LhsType, 2>, alignment> a(
+      lhs, lhs_rows, lhs_cols);
+  const Eigen::TensorMap<Eigen::Tensor<const RhsType, 2>, alignment> b(
+      rhs, rhs_rows, rhs_cols);
+  Eigen::TensorMap<Eigen::Tensor<OutType, 2>, alignment> c(out, m, n);
 
-  // True if the LHS matrix is column major.
-  bool lhs_column_major;
+  typedef typename Eigen::Tensor<LhsType, 2>::DimensionPair DimPair;
+  int lhs_contract_dim = transpose_lhs ? 0 : 1;
+  int rhs_contract_dim = transpose_rhs ? 1 : 0;
 
-  // True if the LHS contraction dimension is 1.
-  bool lhs_canonical;
+  std::array<DimPair, 1> dims({DimPair(lhs_contract_dim, rhs_contract_dim)});
 
-  // True if the RHS matrix is column major.
-  bool rhs_column_major;
+  if (device != nullptr) {
+    c.device(*device, std::move(done)) =
+        a.contract(b, dims).template cast<OutType>();
+  } else {
+    c = a.contract(b, dims).template cast<OutType>();
+    done();
+  }
+}
 
-  // True if the RHS contraction dimension is 0.
-  bool rhs_canonical;
+template <typename LhsType, typename RhsType, typename OutType>
+void TypedMatMul(const Eigen::ThreadPoolDevice* device, void* out, void* lhs,
+                 void* rhs, int64_t m, int64_t n, int64_t k, bool transpose_lhs,
+                 bool transpose_rhs, DoneCallback done) {
+  auto is_16_byte_aligned = [](void* ptr) {
+    return reinterpret_cast<uintptr_t>(ptr) % 16 == 0;
+  };
 
-  // True if the output matrix is column major.
-  bool output_column_major;
-};
+  bool is_aligned = is_16_byte_aligned(lhs) && is_16_byte_aligned(rhs) &&
+                    is_16_byte_aligned(out);
 
-// Returns buffer uses of the dot operation.
-absl::InlinedVector<BufferUse, 4> DotBufferUses(const DotSlices& slices);
+  if (ABSL_PREDICT_TRUE(is_aligned)) {
+    MatMul<LhsType, RhsType, OutType, Eigen::Aligned16>(
+        device, static_cast<OutType*>(out), static_cast<LhsType*>(lhs),
+        static_cast<RhsType*>(rhs), m, n, k, transpose_lhs, transpose_rhs,
+        std::move(done));
+  } else {
+    MatMul<LhsType, RhsType, OutType, Eigen::Unaligned>(
+        device, static_cast<OutType*>(out), static_cast<LhsType*>(lhs),
+        static_cast<RhsType*>(rhs), m, n, k, transpose_lhs, transpose_rhs,
+        std::move(done));
+  }
+}
 
-// Verifies dot dimensions and shapes and returns the shape of the dot operation
-// in a form that is convenient for the runtime implementation.
-absl::StatusOr<DotShape> GetDotShape(const DotDimensionNumbers& dot_dimensions,
-                                     const Shape& lhs_shape,
-                                     const Shape& rhs_shape,
-                                     const Shape& out_shape);
+// Declare TypedMatMul template for all supported data types to enable
+// parallel compilation.
+#define DECLARE_TYPED_MATMUL(T)                                                \
+  extern template void TypedMatMul<T, T, T>(                                   \
+      const Eigen::ThreadPoolDevice* device, void* out, void* lhs, void* rhs,  \
+      int64_t m, int64_t n, int64_t k, bool transpose_lhs, bool transpose_rhs, \
+      DoneCallback done)
 
-// Get canonical dot dimensions for the given dot shape.
-absl::StatusOr<DotCanonicalDims> GetDotCanonicalDims(
-    const DotDimensionNumbers& dot_dimensions, const DotShape& dot_shape);
+DECLARE_TYPED_MATMUL(Eigen::half);
+DECLARE_TYPED_MATMUL(float);
+DECLARE_TYPED_MATMUL(double);
+DECLARE_TYPED_MATMUL(int32_t);
+DECLARE_TYPED_MATMUL(std::complex<float>);
+DECLARE_TYPED_MATMUL(std::complex<double>);
 
-}  // namespace xla::cpu
+#define DECLARE_MIXED_MATMUL(LhsType, RhsType, OutType)                        \
+  extern template void TypedMatMul<LhsType, RhsType, OutType>(                 \
+      const Eigen::ThreadPoolDevice* device, void* out, void* lhs, void* rhs,  \
+      int64_t m, int64_t n, int64_t k, bool transpose_lhs, bool transpose_rhs, \
+      DoneCallback done)
+
+DECLARE_MIXED_MATMUL(int8_t, int8_t, int32_t);
+
+#undef DECLARE_TYPED_MATMUL
+
+}  // namespace xla::cpu::internal
 
 #endif  // XLA_BACKENDS_CPU_RUNTIME_DOT_LIB_H_

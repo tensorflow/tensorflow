@@ -19,10 +19,10 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 #include <iostream>
-#include <numeric>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -59,8 +59,7 @@ MemrefInfoHandler CreateMemrefFromShape(const Shape& shape, const void* buf) {
   result->dtype = shape.element_type();
   result->rank = shape.dimensions().size();
   auto dimensions = shape.dimensions();
-  std::copy(dimensions.begin(), dimensions.end(),
-            absl::MakeSpan(result->dims).begin());
+  absl::c_copy(dimensions, absl::MakeSpan(result->dims).begin());
 
   int64_t stride = 1;
   for (int i : shape.layout().minor_to_major()) {
@@ -203,7 +202,7 @@ absl::StatusOr<dnnl::memory::desc> TransposeLastTwoDims(
     return absl::InvalidArgumentError("Requires at least 2D shape.");
   }
   std::vector<int> permutation(ndims);
-  std::iota(permutation.begin(), permutation.end(), 0);
+  absl::c_iota(permutation, 0);
   std::swap(permutation[ndims - 1], permutation[ndims - 2]);
   return md.permute_axes(permutation);
 }
@@ -224,7 +223,7 @@ Shape MemDescToXlaShapeFlattened(const dnnl::memory::desc& md) {
   auto dtype = md.get_data_type();
   auto element_size = dnnl::memory::data_type_size(dtype);
   int64_t bytes_num = md.get_size();
-  int64_t elements_num = static_cast<int64_t>(bytes_num / element_size);
+  auto elements_num = static_cast<int64_t>(bytes_num / element_size);
   return ShapeUtil::MakeShape(ToXlaPrimitiveType(dtype), {elements_num});
 }
 

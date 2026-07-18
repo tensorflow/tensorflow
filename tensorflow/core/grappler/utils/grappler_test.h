@@ -41,18 +41,19 @@ class GrapplerTest : public ::testing::Test {
   void EnableAllOptimizers();
 
   std::vector<Tensor> EvaluateNodes(
-      const GraphDef& graph, const std::vector<string>& node_names) const;
+      const GraphDef& graph, const std::vector<std::string>& node_names) const;
 
   std::vector<Tensor> EvaluateNodes(
-      const GraphDef& graph, const std::vector<string>& node_names,
-      const std::vector<std::pair<string, Tensor>>& inputs) const;
+      const GraphDef& graph, const std::vector<std::string>& node_names,
+      const std::vector<std::pair<std::string, Tensor>>& inputs) const;
 
   std::vector<Tensor> EvaluateFetchNodes(const GrapplerItem& item) const;
 
-  NodeDef* AddNode(const string& name, const string& op,
-                   const std::vector<string>& inputs,
-                   const std::vector<std::pair<string, AttrValue>>& attributes,
-                   GraphDef* graph) const;
+  NodeDef* AddNode(
+      const std::string& name, const std::string& op,
+      const std::vector<std::string>& inputs,
+      const std::vector<std::pair<std::string, AttrValue>>& attributes,
+      GraphDef* graph) const;
 
   void DisableAllOptimizers(RewriterConfig* cfg);
 
@@ -78,11 +79,11 @@ class GrapplerTest : public ::testing::Test {
 
   // Checks if node 'src' is directly connected to the input($position) of
   // 'dst'.
-  bool IsNodesDirectlyConnected(const NodeMap& node_map, const string& src,
-                                const string& dst, int position = 0);
+  bool IsNodesDirectlyConnected(const NodeMap& node_map, const std::string& src,
+                                const std::string& dst, int position = 0);
 
   // Counts nodes of the given op-type in a graph.
-  int CountOpNodes(const GraphDef& graph, const string& op);
+  int CountOpNodes(const GraphDef& graph, const std::string& op);
 
   // Get a random tensor with given shape.
   template <DataType DTYPE>
@@ -115,7 +116,7 @@ class GrapplerTest : public ::testing::Test {
   }
 
   inline tensorflow::Scope CreateScopeWithDevice(absl::string_view device) {
-    return tensorflow::Scope::NewRootScope().WithDevice(string(device));
+    return tensorflow::Scope::NewRootScope().WithDevice(std::string(device));
   }
 
  private:

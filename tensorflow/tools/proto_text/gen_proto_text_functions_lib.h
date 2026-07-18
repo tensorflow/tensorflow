@@ -22,9 +22,9 @@ limitations under the License.
 namespace tensorflow {
 
 struct ProtoTextFunctionCode {
-  string header;       // for a file named proto_name + ".pb_text.h"
-  string header_impl;  // for a file named proto_name + ".pb_text-impl.h"
-  string cc;           // for a file named proto_name + ".pb_text.cc"
+  std::string header;       // for a file named proto_name + ".pb_text.h"
+  std::string header_impl;  // for a file named proto_name + ".pb_text-impl.h"
+  std::string cc;           // for a file named proto_name + ".pb_text.cc"
 };
 
 // Returns the generated source code for a proto file descriptor.
@@ -46,7 +46,7 @@ struct ProtoTextFunctionCode {
 //      in proto.
 ProtoTextFunctionCode GetProtoTextFunctionCode(
     const tensorflow::protobuf::FileDescriptor& fd,
-    const string& tf_header_prefix);
+    const std::string& tf_header_prefix);
 
 }  // namespace tensorflow
 

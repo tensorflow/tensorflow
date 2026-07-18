@@ -81,9 +81,8 @@ void init_ops(py::module& m) {
       .def("create",
            [](mlir::OpBuilder& opb, mlir::Location loc,
               std::vector<mlir::Value> values) -> mlir::Operation* {
-             return opb
-                 .create<mlir::func::ReturnOp>(
-                     loc, mlir::ArrayRef<mlir::Value>(values))
+             return mlir::func::ReturnOp::create(
+                        opb, loc, mlir::ArrayRef<mlir::Value>(values))
                  .getOperation();
            });
 
@@ -92,7 +91,7 @@ void init_ops(py::module& m) {
       .def("create",
            [](mlir::OpBuilder& opb, mlir::Location loc, mlir::Value x,
               mlir::Value y) -> mlir::Operation* {
-             return opb.create<mlir::TF::AddV2Op>(loc, x, y).getOperation();
+             return mlir::TF::AddV2Op::create(opb, loc, x, y).getOperation();
            });
 
   py::class_<mlir::TF::AnyOp>(m, "Tf_AnyOp")
@@ -100,9 +99,8 @@ void init_ops(py::module& m) {
            [](mlir::OpBuilder& opb, mlir::Location loc, mlir::Value input,
               mlir::Value reduction_indices,
               bool keep_dims = false) -> mlir::Operation* {
-             return opb
-                 .create<mlir::TF::AnyOp>(loc, opb.getI1Type(), input,
-                                          reduction_indices, keep_dims)
+             return mlir::TF::AnyOp::create(opb, loc, opb.getI1Type(), input,
+                                            reduction_indices, keep_dims)
                  .getOperation();
            });
 
@@ -111,7 +109,7 @@ void init_ops(py::module& m) {
       .def("create",
            [](mlir::OpBuilder& opb, mlir::Location loc,
               mlir::Attribute value) -> mlir::Operation* {
-             return opb.create<mlir::TF::ConstOp>(loc, value).getOperation();
+             return mlir::TF::ConstOp::create(opb, loc, value).getOperation();
            });
 
   // mlir::TF::EqualOp
@@ -119,8 +117,8 @@ void init_ops(py::module& m) {
       .def("create",
            [](mlir::OpBuilder& opb, mlir::Location loc, mlir::Value x,
               mlir::Value y) -> mlir::Operation* {
-             return opb
-                 .create<mlir::TF::EqualOp>(loc, x, y, opb.getBoolAttr(true))
+             return mlir::TF::EqualOp::create(opb, loc, x, y,
+                                              opb.getBoolAttr(true))
                  .getOperation();
            });
 
@@ -129,7 +127,7 @@ void init_ops(py::module& m) {
       .def("create",
            [](mlir::OpBuilder& opb, mlir::Location loc, mlir::Value x,
               mlir::Value y) -> mlir::Operation* {
-             return opb.create<mlir::TF::GreaterEqualOp>(loc, x, y)
+             return mlir::TF::GreaterEqualOp::create(opb, loc, x, y)
                  .getOperation();
            });
 
@@ -138,7 +136,7 @@ void init_ops(py::module& m) {
       .def("create",
            [](mlir::OpBuilder& opb, mlir::Location loc, mlir::Value x,
               mlir::Value y) -> mlir::Operation* {
-             return opb.create<mlir::TF::GreaterOp>(loc, x, y).getOperation();
+             return mlir::TF::GreaterOp::create(opb, loc, x, y).getOperation();
            });
 
   // mlir::TF::LegacyCallOp
@@ -147,29 +145,29 @@ void init_ops(py::module& m) {
            [](mlir::OpBuilder& opb, mlir::Location loc,
               std::vector<mlir::Type> output, std::vector<mlir::Value> args,
               std::string f) -> mlir::Operation* {
-             return opb
-                 .create<mlir::TF::LegacyCallOp>(
-                     loc, mlir::ArrayRef<mlir::Type>(output),
-                     mlir::ArrayRef<mlir::Value>(args),
-                     /*args_attrs=*/nullptr,
-                     /*res_attrs=*/nullptr, mlir::StringRef(f))
+             return mlir::TF::LegacyCallOp::create(
+                        opb, loc, mlir::ArrayRef<mlir::Type>(output),
+                        mlir::ArrayRef<mlir::Value>(args),
+                        /*args_attrs=*/nullptr,
+                        /*res_attrs=*/nullptr, mlir::StringRef(f))
                  .getOperation();
            });
 
   // mlir::TF::LessEqualOp
   py::class_<mlir::TF::LessEqualOp>(m, "Tf_LessEqualOp")
-      .def("create",
-           [](mlir::OpBuilder& opb, mlir::Location loc, mlir::Value x,
-              mlir::Value y) -> mlir::Operation* {
-             return opb.create<mlir::TF::LessEqualOp>(loc, x, y).getOperation();
-           });
+      .def(
+          "create",
+          [](mlir::OpBuilder& opb, mlir::Location loc, mlir::Value x,
+             mlir::Value y) -> mlir::Operation* {
+            return mlir::TF::LessEqualOp::create(opb, loc, x, y).getOperation();
+          });
 
   // mlir::TF::LessOp
   py::class_<mlir::TF::LessOp>(m, "Tf_LessOp")
       .def("create",
            [](mlir::OpBuilder& opb, mlir::Location loc, mlir::Value x,
               mlir::Value y) -> mlir::Operation* {
-             return opb.create<mlir::TF::LessOp>(loc, x, y).getOperation();
+             return mlir::TF::LessOp::create(opb, loc, x, y).getOperation();
            });
 
   // mlir::TF::NegOp
@@ -177,15 +175,14 @@ void init_ops(py::module& m) {
       .def("create",
            [](mlir::OpBuilder& opb, mlir::Location loc,
               mlir::Value x) -> mlir::Operation* {
-             return opb.create<mlir::TF::NegOp>(loc, x).getOperation();
+             return mlir::TF::NegOp::create(opb, loc, x).getOperation();
            });
 
   py::class_<mlir::TF::NotEqualOp>(m, "Tf_NotEqualOp")
       .def("create", [](mlir::OpBuilder& opb, mlir::Location loc, mlir::Value x,
                         mlir::Value y) {
-        return opb
-            .create<mlir::TF::NotEqualOp>(
-                loc, x, y, mlir::BoolAttr::get(opb.getContext(), true))
+        return mlir::TF::NotEqualOp::create(
+                   opb, loc, x, y, mlir::BoolAttr::get(opb.getContext(), true))
             .getOperation();
       });
 
@@ -194,6 +191,6 @@ void init_ops(py::module& m) {
       .def("create",
            [](mlir::OpBuilder& opb, mlir::Location loc, mlir::Value x,
               mlir::Value y) -> mlir::Operation* {
-             return opb.create<mlir::TF::SubOp>(loc, x, y).getOperation();
+             return mlir::TF::SubOp::create(opb, loc, x, y).getOperation();
            });
 }

@@ -15,11 +15,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
-#if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#endif
-
-#if GOOGLE_CUDA || TF_HIPBLASLT
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "absl/container/flat_hash_map.h"
 #include "xla/stream_executor/device_memory.h"
@@ -51,15 +47,17 @@ struct BlasLtMatmulPlanParams {
 };
 
 struct PlanAndAlgorithms {
-  static StatusOr<const PlanAndAlgorithms*> GetOrCreate(
+  static absl::StatusOr<const PlanAndAlgorithms*> GetOrCreate(
       se::Stream* stream, const BlasLtMatmulPlanParams& params,
       absl::Mutex** pmu, std::optional<int> max_algorithm_count = std::nullopt);
 
-  Status ExecuteOnStream(
-      se::Stream* stream, const se::DeviceMemoryBase& a,
-      const se::DeviceMemoryBase& b, se::DeviceMemoryBase& c,
-      size_t algorithm_idx, se::ScratchAllocator& scratch_allocator,
-      const se::DeviceMemoryBase& bias = se::DeviceMemoryBase{},
+  absl::Status ExecuteOnStream(
+      se::Stream* stream, const stream_executor::DeviceAddressBase& a,
+      const stream_executor::DeviceAddressBase& b,
+      stream_executor::DeviceAddressBase& c, size_t algorithm_idx,
+      se::ScratchAllocator& scratch_allocator,
+      const stream_executor::DeviceAddressBase& bias =
+          stream_executor::DeviceAddressBase{},
       se::blas::ProfileResult* profile_result = nullptr) const;
 
   se::gpu::BlasLt::MatmulPlanPtr plan;
@@ -83,6 +81,6 @@ H AbslHashValue(H h, const BlasLtMatmulPlanParams& params) {
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA || TF_HIPBLASLT
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #endif  // TENSORFLOW_CORE_KERNELS_MATMUL_UTIL_H_

@@ -41,7 +41,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:RegisterAllPasses",
+        "@llvm-project//mlir:RegisterAllPasses",  # buildcleaner: keep
         "//tensorflow/core/common_runtime:graph_constructor",
         "@llvm-project//mlir:Support",
         "@stablehlo//:register",
@@ -51,8 +51,7 @@ cc_library(
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:tfe_context_internal",
         "//tensorflow/compiler/mlir/tensorflow:mlir_import_options",
-        "@local_xla//xla/mlir/framework/transforms:passes",
-        "@local_xla//xla/mlir_hlo:all_passes",
+        "@xla//xla/mlir_hlo:all_passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:error_util",

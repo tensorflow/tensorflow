@@ -37,6 +37,7 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "grpc/support/time.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/create_channel.h"
@@ -45,15 +46,14 @@
 #include "grpcpp/support/status.h"
 #include "grpcpp/support/sync_stream.h"
 #include "xla/python/ifrt/serdes_version.h"
-#include "xla/python/ifrt_proxy/client/version.h"
 #include "xla/python/ifrt_proxy/common/grpc_credentials.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/test_utils.h"
+#include "xla/python/ifrt_proxy/common/versions.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -64,7 +64,6 @@ namespace proxy {
 namespace {
 
 using ::testing::Not;
-using ::tsl::testing::IsOk;
 
 // Sufficient time for all processing (that are not explicitly waiting for
 // further input) to have finished.
@@ -72,7 +71,8 @@ constexpr absl::Duration kSufficientTime = absl::Seconds(5);
 
 GrpcIfrtSessionMetadata Metadata() {
   GrpcIfrtSessionMetadata metadata;
-  metadata.mutable_version()->set_protocol_version(kClientMaxVersion);
+  metadata.mutable_version()->set_protocol_version(
+      protocol_version::kClientMax);
   metadata.mutable_version()->set_ifrt_serdes_version_number(
       SerDesVersion::current().version_number().value());
   return metadata;
@@ -238,7 +238,7 @@ class ClientAndServer {
     Queue* q = owned_queues_.back().get();
 
     auto req = std::make_unique<IfrtRequest>();
-    TF_RETURN_IF_ERROR(client_session_->Enqueue(
+    RETURN_IF_ERROR(client_session_->Enqueue(
         std::move(req), [q](absl::StatusOr<GrpcClientSession::Response> resp) {
           q->Push(resp.status());
         }));

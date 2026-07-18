@@ -478,26 +478,40 @@ TEST_P(ResizeBilinearOpQuantizationTest, MismatchedQuantizationFails) {
   TensorType tensor_type = GetParam();
   ResizeBilinearOpModel m({tensor_type, {1, 2, 2, 1}, 0.0f, 0.0f, 0.5f, 1},
                           {3, 3}, TestType::kConst);
+  
+  // Set mismatched parameters
   m.SetOutputQuantParams(0.25f, 2);
-  switch (tensor_type) {
-    case TensorType_UINT8:
-      m.SetInput<uint8_t>({1, 2, 3, 4});
-      break;
-    case TensorType_INT8:
-      m.SetInput<int8_t>({1, 2, 3, 4});
-      break;
-    case TensorType_INT16:
-      m.SetInput<int16_t>({1, 2, 3, 4});
-      break;
-    default:
-      break;
-  }
-  EXPECT_EQ(m.Invoke(), kTfLiteError);
+  
+  // Expect failure during allocation (Prepare phase) instead of execution
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
 }
 
 INSTANTIATE_TEST_SUITE_P(QuantizationTests, ResizeBilinearOpQuantizationTest,
                          testing::Values(TensorType_UINT8, TensorType_INT8,
-                                        TensorType_INT16));
+                                         TensorType_INT16));
+TEST(ResizeBilinearOpTest, ModelWithIncorrectSizeTensorShapeIsRejected) {
+#if GTEST_HAS_DEATH_TEST
+  class ResizeBilinearOpModelInvalidSize : public SingleOpModel {
+   public:
+    ResizeBilinearOpModelInvalidSize() {
+      input_ = AddInput({TensorType_FLOAT32, {1, 1, 2, 1}});
+      size_ = AddConstInput(TensorType_INT32, {3}, {1});
+      output_ = AddOutput(TensorType_FLOAT32);
+      SetBuiltinOp(BuiltinOperator_RESIZE_BILINEAR,
+                   BuiltinOptions_ResizeBilinearOptions,
+                   CreateResizeBilinearOptions(builder_, false, false).Union());
+      BuildInterpreter({GetShape(input_)});
+    }
+
+   private:
+    int input_;
+    int size_;
+    int output_;
+  };
+  EXPECT_DEATH(ResizeBilinearOpModelInvalidSize(), "Cannot allocate tensors");
+#endif
+}
+
 
 }  // namespace
 }  // namespace tflite

@@ -72,7 +72,7 @@ Tensor GenerateRandomTensorInRange(const TensorShape& shape, double minval,
 
 void VerifyGraphsEquivalent(const GraphDef& original_graph,
                             const GraphDef& optimized_graph,
-                            const string& func) {
+                            const std::string& func) {
   EXPECT_EQ(original_graph.node_size(), optimized_graph.node_size()) << func;
   GraphView optimized_view(&optimized_graph);
   for (int i = 0; i < original_graph.node_size(); ++i) {
@@ -146,10 +146,10 @@ class AutoMixedPrecisionTest : public GrapplerTest {
 
   void TearDown() override { TF_CHECK_OK(virtual_cluster_->Shutdown()); }
 
-  NodeDef* AddSimpleNode(const string& name, const string& op,
-                         const std::vector<string>& inputs,
+  NodeDef* AddSimpleNode(const std::string& name, const std::string& op,
+                         const std::vector<std::string>& inputs,
                          GraphDef* graph) const {
-    std::vector<std::pair<string, AttrValue>> attributes;
+    std::vector<std::pair<std::string, AttrValue>> attributes;
     if (op == "AddN" || op == "ShapeN") {
       AttrValue num_inputs;
       num_inputs.set_i(inputs.size());
@@ -203,7 +203,8 @@ class AutoMixedPrecisionTest : public GrapplerTest {
     TF_CHECK_OK(s.ToGraphDef(&item.graph));
     auto input_tensor = GenerateRandomTensorInRange<DT_FLOAT>(
         TensorShape({size, size}), input_min, input_max);
-    std::vector<std::pair<string, Tensor>> feed = {{"input", input_tensor}};
+    std::vector<std::pair<std::string, Tensor>> feed = {
+        {"input", input_tensor}};
     auto tensors_expected = EvaluateNodes(item.graph, item.fetch, feed);
 
     AutoMixedPrecision optimizer(mode_);
@@ -564,7 +565,7 @@ TEST_P(AutoMixedPrecisionParamTest, PreserveIdentityAfterVariable) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   auto var1_tensor =
       GenerateConstantTensor<DT_FLOAT>(TensorShape({32, 32}), 3.141593f);
-  std::vector<std::pair<string, Tensor>> feed = {{"var1", var1_tensor}};
+  std::vector<std::pair<std::string, Tensor>> feed = {{"var1", var1_tensor}};
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch, feed);
 
   AutoMixedPrecision optimizer(mode_);
@@ -1035,7 +1036,7 @@ TEST_P(AutoMixedPrecisionParamTest, TensorListThroughFunction) {
   // A separate Tensor List cluster is added to test that it is still changed to
   // DT_HALF.
   FunctionDefLibrary function_lib;
-  const Tensor kShape = test::AsTensor<int32>({32, 32});
+  const Tensor kShape = test::AsTensor<int32_t>({32, 32});
   FunctionDef func1 = FunctionDefHelper::Define(
       "Func1", {"ihandle: variant", "x: float"},
       {"ohandle: variant", "y: float"}, {},
@@ -1120,7 +1121,7 @@ int GetCudaVersion(const Cluster& cluster) {
       const auto& device_env = device_properties.environment();
       auto it = device_env.find("cuda");
       if (it != device_env.end()) {
-        string cuda_version_str = it->second;
+        std::string cuda_version_str = it->second;
         return std::stoi(cuda_version_str);
       }
     }
@@ -1407,7 +1408,7 @@ TEST_F(AutoMixedPrecisionCpuTest, MixedFanout) {
 class AutoMixedPrecisionSimulateGpuTest : public GrapplerTest {
  protected:
   void SetUp() override {
-    std::unordered_map<string, DeviceProperties> devices;
+    std::unordered_map<std::string, DeviceProperties> devices;
     DeviceProperties cpu_device;
     cpu_device.set_type("CPU");
     cpu_device.set_frequency(1000);

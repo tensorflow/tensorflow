@@ -40,6 +40,10 @@ bool IsAllReduce(const HloInstruction* inst) {
          inst->opcode() == HloOpcode::kReduceScatter;
 }
 
+bool IsAllReduceOnly(const HloInstruction* inst) {
+  return inst->opcode() == HloOpcode::kAllReduce;
+}
+
 std::unique_ptr<HloInstruction> CloneAllReduce(
     const HloInstruction* inst, const Shape& shape,
     absl::Span<HloInstruction* const> operands) {
@@ -70,10 +74,13 @@ std::unique_ptr<HloInstruction> CloneAllReduce(
 // Promote 16-bit integer all-reduce and reduce-scatter to 32-bit integer types.
 // {{U16, U32}, {S16, S32}}
 AllReducePromotion::AllReducePromotion(
-    absl::Span<std::pair<PrimitiveType, PrimitiveType> const> from_to_types)
-    : pass_(from_to_types, IsAllReduce, CloneAllReduce) {}
+    absl::Span<std::pair<PrimitiveType, PrimitiveType> const> from_to_types,
+    bool promote_all_reduce_only)
+    : pass_(from_to_types,
+            promote_all_reduce_only ? IsAllReduceOnly : IsAllReduce,
+            CloneAllReduce) {}
 
-absl::StatusOr<bool> AllReducePromotion::Run(
+absl::StatusOr<bool> AllReducePromotion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return pass_.Run(module, execution_threads);

@@ -241,10 +241,10 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
       }
     }
     rewriter.setInsertionPointAfter(op);
-    auto q = rewriter.create<mlir::quant::ir::QuantizeCastOp>(
-        op->getLoc(), cast_type, op.getResult());
-    auto dq = rewriter.create<mlir::quant::ir::DequantizeCastOp>(
-        op->getLoc(), expressed_type, q);
+    auto q = mlir::quant::ir::QuantizeCastOp::create(rewriter, op->getLoc(),
+                                                     cast_type, op.getResult());
+    auto dq = mlir::quant::ir::DequantizeCastOp::create(rewriter, op->getLoc(),
+                                                        expressed_type, q);
     quantize_op->setOperand(quantize_operand_num, dq.getResult());
     return true;
   }

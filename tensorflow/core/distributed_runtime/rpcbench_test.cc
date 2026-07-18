@@ -42,7 +42,7 @@ static const int kWorkers = 60;
 static thread::ThreadPool* worker_threads;
 
 void MakeGRPCCluster(const SessionOptions& options, int n,
-                     std::vector<string>* workers,
+                     std::vector<std::string>* workers,
                      std::vector<DeviceAttributes>* devices) {
   CHECK_GE(n, 1);
 
@@ -100,7 +100,7 @@ void MakeGRPCCluster(const SessionOptions& options, int n,
 
 struct Cluster {
   SessionOptions options;
-  std::vector<string> workers;
+  std::vector<std::string> workers;
   std::vector<DeviceAttributes> devices;  // One per process
 
   Cluster() {
@@ -153,14 +153,14 @@ GraphDef CreateGraphDef(int num_stages, int width, int tensor_size,
   return def;
 }
 
-string DebugString(const Tensor& x, const Tensor& y, int tensor_size) {
+std::string DebugString(const Tensor& x, const Tensor& y, int tensor_size) {
   CHECK_EQ(x.NumElements(), tensor_size);
   CHECK_EQ(y.NumElements(), tensor_size);
   auto x_flat = x.flat<float>();
   auto y_flat = y.flat<float>();
   // Just print the first couple of elements of each tensor
   CHECK_GE(tensor_size, 2);
-  return strings::Printf("x = [%8.6f %8.6f] y = [%8.6f %8.6f]", x_flat(0),
+  return absl::StrFormat("x = [%8.6f %8.6f] y = [%8.6f %8.6f]", x_flat(0),
                          x_flat(1), y_flat(0), y_flat(1));
 }
 

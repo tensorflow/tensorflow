@@ -13,6 +13,15 @@ func.func @test_add(%arg0: tensor<192x192x3xf32>, %arg1: tensor<16x192x192x3xf32
 
 // -----
 
+// CHECK-LABEL: test_add_dynamic
+func.func @test_add_dynamic(%arg0: tensor<?x?x?xf32>, %arg1: tensor<5xf32>) -> tensor<?x?x5xf32> {
+    // CHECK: tosa.add
+    %1 = tfl.add(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<?x?x?xf32>, tensor<5xf32>) -> tensor<?x?x5xf32>
+    func.return %1 : tensor<?x?x5xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_add_qi8
 func.func @test_add_qi8(%arg0: tensor<13x21x1x!quant.uniform<i8:f32, 0.01568480022251606:-1>>, %arg1: tensor<1x13x21x3x!quant.uniform<i8:f32, 0.015686055645346642:-1>>) -> tensor<1x13x21x3x!quant.uniform<i8:f32, 0.031318482011556625:-1>> {
   // CHECK: tosa.add

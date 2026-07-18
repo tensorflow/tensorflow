@@ -15,10 +15,12 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
@@ -40,8 +42,9 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, "sleep_microseconds",
                                                      &sleep_microseconds));
 
-    OP_REQUIRES(ctx, sleep_microseconds >= 0,
-                errors::InvalidArgument("`sleep_microseconds` must be >= 0"));
+    OP_REQUIRES(
+        ctx, sleep_microseconds >= 0,
+        absl::InvalidArgumentError("`sleep_microseconds` must be >= 0"));
 
     *output = new Dataset(ctx, input, sleep_microseconds);
   }
@@ -60,7 +63,7 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
     ~Dataset() override { input_->Unref(); }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       return std::make_unique<Iterator>(
           Iterator::Params{this, absl::StrCat(prefix, "::Sleep")});
     }
@@ -72,7 +75,9 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    string DebugString() const override { return "SleepDatasetOp::Dataset"; }
+    std::string DebugString() const override {
+      return "SleepDatasetOp::Dataset";
+    }
 
     int64_t CardinalityInternal(CardinalityOptions options) const override {
       return input_->Cardinality(options);
@@ -146,7 +151,7 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
                 dataset()->sleep_microseconds_ * EnvTime::kMicrosToNanos);
         RecordStart(ctx);
         if (cancelled) {
-          return errors::Cancelled("Operation was cancelled");
+          return absl::CancelledError("Operation was cancelled");
         }
         return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
       }

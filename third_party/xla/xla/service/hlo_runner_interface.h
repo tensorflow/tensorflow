@@ -17,12 +17,12 @@ limitations under the License.
 #define XLA_SERVICE_HLO_RUNNER_INTERFACE_H_
 
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/die_if_null.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/computation_placer.h"
 #include "xla/shape.h"
 #include "xla/util.h"
@@ -80,6 +81,8 @@ class HloRunnerPropertyTag final {
   static constexpr Type kCpu = 2;
   // Indicates that the runner is using CUDA.
   static constexpr Type kUsingGpuCuda = 3;
+  // Indicates that this is a oneAPI (sycl) runner.
+  static constexpr Type kUsingGpuOneAPI = 4;
 
  private:
   HloRunnerPropertyTag() = default;
@@ -164,9 +167,17 @@ class OpaqueExecutable {
 class HloRunnerInterface {
  public:
   // The options used to configure an ExecuteReplicated() call.
+  //
+  // NOTE: This is not strictly limited to "replicated" executions. Indeed, it
+  // is perfectly correct to use ReplicatedExecuteOptions for single-device
+  // executions. In the future it would be good to rename this to better capture
+  // this reality.
+  //
+  // The ExecuteReplicated() methods are the only way to use infeed/outfeed and
+  // to set the execution seed without setting it via the HloModule.
   struct ReplicatedExecuteOptions {
     // The number of devices the HLO module should be replicated onto.
-    int64_t num_replicas = 1;
+    int64_t num_devices = 1;
 
     // The arguments to be fed to each replica. Since this is used for a
     // replicated execution, all the arguments are the same for all replicas.
@@ -198,9 +209,13 @@ class HloRunnerInterface {
     // another run will likely cause errors.
     bool run_hlo_passes = false;
 
-    // If true, executes on multiple threads using se::Stream::ExecuteOnStream.
-    // Otherwise, executes using xla::Executable::ExecuteOnStreams.
-    bool use_threads = false;
+    // The seed to use for PRNGs during execution. Keeping with XLA convention,
+    // the default value of 0 represents a random seed.
+    int64_t seed = 0;
+
+    // The HLO output callbacks for PjRt execution. These callbacks are used to
+    // receive reconstructed HLO instruction output literals.
+    absl::Span<const HloOutputCallback> hlo_output_callbacks;
   };
 
   HloRunnerInterface() = default;
@@ -290,10 +305,20 @@ class HloRunnerInterface {
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment) = 0;
 
+  virtual absl::StatusOr<std::vector<Literal>> ExecuteReplicatedWithExecutable(
+      OpaqueExecutable* absl_nonnull executable,
+      const ReplicatedExecuteOptions& options) = 0;
+
+  // Same as above, but with specified device assignment.
+  virtual absl::StatusOr<std::vector<Literal>> ExecuteReplicatedWithExecutable(
+      OpaqueExecutable* absl_nonnull executable,
+      const ReplicatedExecuteOptions& options,
+      DeviceAssignment* device_assignment) = 0;
+
   virtual absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      std::function<OpaqueExecutable*(int64_t)> executable_provider,
-      std::function<int64_t(int64_t)> argument_count_provider,
-      std::function<const Literal*(int64_t, int64_t)> argument_provider,
+      absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
+      absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
+      absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment) = 0;
 

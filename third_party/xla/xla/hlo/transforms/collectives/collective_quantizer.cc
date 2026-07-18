@@ -15,21 +15,25 @@ limitations under the License.
 
 #include "xla/hlo/transforms/collectives/collective_quantizer.h"
 
-#include <algorithm>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/hlo_replication_analysis.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
@@ -141,10 +145,10 @@ absl::StatusOr<bool> InstrIsReplicated(
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(auto replication_analysis,
-                      HloReplicationAnalysis::RunWithPartialReplication(
-                          module,
-                          /*cross_partition_spmd=*/true));
+  ASSIGN_OR_RETURN(auto replication_analysis,
+                   HloReplicationAnalysis::RunWithPartialReplication(
+                       module,
+                       /*cross_partition_spmd=*/true));
   return replication_analysis->HloInstructionIsReplicatedAt(instr, {},
                                                             replica_groups);
 }
@@ -168,7 +172,8 @@ std::vector<HloInstruction*> FindDequantizationSubgraphRecursive(
   if (instr->operand_count() == 1 || instr->opcode() == HloOpcode::kDivide) {
     return FindDequantizationSubgraphRecursive(instr->mutable_operand(0),
                                                visited_instrs, subgraph);
-  } else if (instr->opcode() == HloOpcode::kMultiply) {
+  }
+  if (instr->opcode() == HloOpcode::kMultiply) {
     for (HloInstruction* operand : instr->unique_operands()) {
       auto binary_subgraph = FindDequantizationSubgraphRecursive(
           operand, visited_instrs, subgraph);
@@ -192,7 +197,7 @@ std::optional<ConversionSubgraph> IsSupportedDequantization(
   std::vector<HloInstruction*> candidate_subgraph =
       FindDequantizationSubgraphRecursive(instr, visited_instrs,
                                           std::vector<HloInstruction*>{});
-  std::reverse(candidate_subgraph.begin(), candidate_subgraph.end());
+  absl::c_reverse(candidate_subgraph);
 
   // In the dequantization case, the type conversion is followed by a
   // multiplication or division by a broadcasted scalar.
@@ -316,13 +321,15 @@ absl::StatusOr<bool> MatchDequantization(HloInstruction* instr) {
     // participating in the collective. The group mode of the collective must be
     // kCrossPartition or kFlattenedID since the replication is verified aross
     // partitions, not replicas.
-    TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
-                        GetCollectiveOpGroupMode(instr));
-    if (group_mode != CollectiveOpGroupMode::kCrossPartition &&
-        group_mode != CollectiveOpGroupMode::kFlattenedID) {
+    ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                     GetCollectiveOpGroupMode(instr));
+    if (group_mode !=
+            CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION &&
+        group_mode !=
+            CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID) {
       return false;
     }
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         bool scale_is_replicated,
         InstrIsReplicated(instr->parent()->parent(), subgraph->scale_bcast,
                           instr->opcode() == HloOpcode::kCollectivePermute
@@ -358,7 +365,7 @@ absl::StatusOr<bool> MatchDequantization(HloInstruction* instr) {
         new_convert->shape(), {new_convert, new_scale_bcast}));
   }
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       instr->ReplaceAllUsesWith(subgraph->binary ? new_binary : new_convert));
 
   VLOG(5) << "Collective " << instr->ToString() << " has been replaced with "
@@ -385,13 +392,15 @@ absl::StatusOr<bool> MatchQuantization(HloInstruction* instr) {
     // participating in the collective. The group mode of the collective must be
     // kCrossPartition or kFlattenedID since the replication is verified aross
     // partitions, not replicas.
-    TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
-                        GetCollectiveOpGroupMode(instr));
-    if (group_mode != CollectiveOpGroupMode::kCrossPartition &&
-        group_mode != CollectiveOpGroupMode::kFlattenedID) {
+    ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                     GetCollectiveOpGroupMode(instr));
+    if (group_mode !=
+            CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION &&
+        group_mode !=
+            CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID) {
       return false;
     }
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         bool scale_is_replicated,
         InstrIsReplicated(instr->parent()->parent(), subgraph->scale_bcast,
                           instr->opcode() == HloOpcode::kCollectivePermute
@@ -432,7 +441,7 @@ absl::StatusOr<bool> MatchQuantization(HloInstruction* instr) {
 
   // Insert the collected unary ops after the new collective.
   new_collective = ApplyUnaries(new_collective, subgraph->unaries);
-  TF_RETURN_IF_ERROR(subgraph->convert->ReplaceAllUsesWith(new_collective));
+  RETURN_IF_ERROR(subgraph->convert->ReplaceAllUsesWith(new_collective));
 
   VLOG(5) << "Collective " << instr->ToString() << " has been replaced with "
           << new_collective->ToString();
@@ -442,7 +451,7 @@ absl::StatusOr<bool> MatchQuantization(HloInstruction* instr) {
 
 }  // namespace
 
-absl::StatusOr<bool> CollectiveQuantizer::Run(
+absl::StatusOr<bool> CollectiveQuantizer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -450,9 +459,9 @@ absl::StatusOr<bool> CollectiveQuantizer::Run(
   for (HloComputation* comp : module->MakeComputationPostOrder()) {
     for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
       if (IsSupportedCollective(instr)) {
-        TF_ASSIGN_OR_RETURN(bool instr_changed, MatchDequantization(instr));
+        ASSIGN_OR_RETURN(bool instr_changed, MatchDequantization(instr));
         if (!instr_changed) {
-          TF_ASSIGN_OR_RETURN(instr_changed, MatchQuantization(instr));
+          ASSIGN_OR_RETURN(instr_changed, MatchQuantization(instr));
         }
         changed |= instr_changed;
       }

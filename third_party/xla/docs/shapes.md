@@ -1,11 +1,65 @@
 # Shapes and layout
 
+## Structure of an XLA Op
+
+Consider an example HLO:
+
+```
+add.936 = bf16[8,1,1280,16384]{3,2,0,1:T(8,128)(2,1)}
+          add(exponential.183, broadcast.3115)
+```
+
+This consists of the following components:
+
+*   Op Name: `add.936`
+    *   This is the unique name for the operation.
+*   Shape: `bf16[8,1,1280,16384]`
+    *   This is the output shape of the Op. Here the dtype is
+        [bf16](https://en.wikipedia.org/wiki/Bfloat16_floating-point_format) and
+        the shape is `[8,1,1280,16384]`.
+*   Layout (with Tiling): `3,2,0,1:T(8,128)(2,1)`
+    *   This describes how the array is stored in memory. `3,2,0,1` denotes the
+        order of the axes in memory (i.e., column major, row major, etc.) and
+        `T(8,128)(2,1)` denotes the tiling & padding used.
+    *   Layout is optional. If not specified, there is no tiling and the
+        dimensions are assumed to be ordered from most-major to most-minor.
+*   Operation: `add`
+    *   The operation being performed. Here, it is
+        [Add](operation_semantics.md#add), which is also mentioned in the Op
+        name.
+*   Arguments: `exponential.183`, `broadcast.3115`
+    *   This operation takes two arguments, specified with their unique names.
+
+Let's consider another example, a fusion Op:
+
+```
+%fusion.3 = bf16[32,32,4096]{2,1,0:T(8,128)(2,1)S(1)}
+            fusion(bf16[32,32,8192]{2,1,0:T(8,128)(2,1)S(1)} %fusion.32),
+            kind=kCustom, calls=%all-reduce-scatter.3
+```
+
+In addition to the previously described components, this consists of:
+
+*   Attributes: `kind` and `calls`
+    *   These provide more information about the operation being performed, in
+        this case: fusion.
+*   Memory location (memory space identifier): `S(1)`
+    *   This denotes the memory space/location where the array is stored. `S(1)`
+        here denotes this array lives in VMEM (on a TPU).
+*   Shape and layout details for the input argument `%fusion.32`
+
+The following sections describe Shapes, [Layout](#layout), and
+[Memory Space Identifiers](#memory-space-identifiers). You can learn more about
+Tiling in [Tiled Layout](tiled_layout.md).
+
+## Shapes
+
 The XLA `ShapeProto` proto
 ([xla_data.proto](https://github.com/openxla/xla/tree/main/xla/xla_data.proto))
 describes the number of dimensions, size, and data type of an N-dimensional
 array (*array* in short).
 
-## Terminology, notation, and conventions
+### Terminology, notation, and conventions
 
 NOTE: in the past, XLA has used the term "rank" to mean the number of dimensions
 of an array. We have stopped this usage as it's inconsistent with the matrix
@@ -137,3 +191,14 @@ index for each dimension. Linear indices are a single `int64` value which
 indexes into the buffer holding the array. See `shape_util.h` and
 `layout_util.h` in the same directory for utilities that simplify creation and
 manipulation of shapes and layouts.
+
+## Memory Space Identifiers
+
+In HLO, each array may be annotated with a memory space identifier, written as
+S(n).
+
+*   `S(0)` (often omitted) denotes device high bandwidth memory (HBM).
+*   `S(1)` represents on device virtual memory (VMEM).
+*   `S(2)`, `S(3)`, etc., correspond to additional device specific memory
+    spaces.
+*   `S(5)` indicates host memory.

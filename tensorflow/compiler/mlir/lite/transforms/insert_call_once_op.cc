@@ -51,7 +51,7 @@ void InsertCallOnceOpFromSessionInitializerPass::runOnOperation() {
 
       OpBuilder builder(func.getContext());
       builder.setInsertionPointToStart(&func.getBlocks().front());
-      builder.create<TFL::CallOnceOp>(func.getLoc(), init_func_op.getName());
+      TFL::CallOnceOp::create(builder, func.getLoc(), init_func_op.getName());
     }
   }
 }

@@ -1395,6 +1395,29 @@ class SavedModelTest(SavedModelTestBase):
         except ValueError:
           self.fail("Fingerprint read failed.")
 
+  def testFingerprintInTextFormatModel(self):
+    """Tests that fingerprinting works with as_text saved models."""
+    self.skipTest("TF1 fingerprinting disabled in OSS.")
+    export_dir = self._get_export_dir("fingerprint_pbtxt")
+    builder = saved_model_builder._SavedModelBuilder(export_dir)
+
+    with ops.Graph().as_default():
+      with self.session(graph=ops.Graph()) as sess:
+        builder.add_meta_graph_and_variables(sess, ["foo"])
+
+      # Setting as_text to True.
+      builder.save(as_text=True)
+
+      # Restore the graph with tag "foo", whose variables were saved.
+      with self.session(graph=ops.Graph()) as sess:
+        loader.load(sess, ["foo"], export_dir)
+
+        # Load the model's fingerprint.
+        try:
+          fingerprinting.read_fingerprint(export_dir)
+        except ValueError:
+          self.fail("Fingerprint read failed.")
+
 
 class SavedModelV1Test(SavedModelTestBase):
 

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Instructions.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
-#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -65,6 +65,9 @@ limitations under the License.
 #include "xla/codegen/emitters/type_util.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -129,11 +132,11 @@ bool Needs64BitIndices(const HloComputation* computation) {
 
 }  // namespace
 
-using mlir::AffineExpr;
-
-IndexingMap GetDefaultIndexingMap(absl::Span<const int64_t> thread_tile_sizes,
-                                  absl::Span<const int64_t> shape,
-                                  mlir::MLIRContext* mlir_context) {
+IndexingMap GetDefaultIndexingMap(
+    absl::Span<const int64_t> thread_tile_sizes,
+    absl::Span<const int64_t> shape,
+    // TODO: b/451959933 - Use reference or absl_nullable pointer.
+    mlir::MLIRContext* mlir_context) {
   CHECK_EQ(thread_tile_sizes.size(), shape.size())
       << "thread_tile_sizes and shape must have the same size";
   SmallVector<int64_t> thread_tile_counts;
@@ -142,15 +145,16 @@ IndexingMap GetDefaultIndexingMap(absl::Span<const int64_t> thread_tile_sizes,
     thread_tile_counts.push_back(CeilDiv(dim_size, tile_size));
   }
   // Delinearize thread_expr w.r.t. number of thread tiles per dimension.
-  auto thread_expr = mlir::getAffineDimExpr(0, mlir_context);
-  SmallVector<AffineExpr, 4> thread_ids =
+  auto thread_expr = CreateDimExpr(0, mlir_context);
+  SmallVector<SymbolicExpr, 4> thread_ids =
       DelinearizeInBoundsIndex(thread_expr, thread_tile_counts);
-  SmallVector<AffineExpr, 4> result;
+  SmallVector<SymbolicExpr> result;
   result.reserve(thread_ids.size());
-  auto linear_index = mlir::getAffineSymbolExpr(0, mlir_context);
-  SmallVector<AffineExpr, 4> indices_in_tile =
+  auto linear_index =
+      CreateSymbolExpr(/*symbol_id=*/0, /*num_dims=*/1, mlir_context);
+  SmallVector<SymbolicExpr, 4> indices_in_tile =
       DelinearizeInBoundsIndex(linear_index, thread_tile_sizes);
-  SmallVector<std::pair<AffineExpr, Interval>, 4> constraints;
+  SmallVector<std::pair<SymbolicExpr, Interval>, 4> constraints;
   constraints.reserve(thread_ids.size());
   for (auto [tile_size, thread_id, index_in_tile, dim] :
        llvm::zip(thread_tile_sizes, thread_ids, indices_in_tile, shape)) {
@@ -160,10 +164,10 @@ IndexingMap GetDefaultIndexingMap(absl::Span<const int64_t> thread_tile_sizes,
   int64_t num_threads = Product(thread_tile_counts);
   int64_t num_tile_elements = Product(thread_tile_sizes);
 
-  auto affine_map = mlir::AffineMap::get(/*num_dims=*/1, /*num_symbols=*/1,
-                                         result, mlir_context);
+  auto symbolic_map = SymbolicMap::Get(mlir_context, /*num_dimensions=*/1,
+                                       /*num_symbols=*/1, result);
   return IndexingMap(
-      affine_map, {IndexingMap::Variable({0, num_threads - 1, "thread_id"})},
+      symbolic_map, {IndexingMap::Variable({0, num_threads - 1, "thread_id"})},
       {IndexingMap::Variable({0, num_tile_elements - 1, "linear_index"})}, {},
       constraints);
 }
@@ -181,13 +185,12 @@ absl::StatusOr<mlir::func::FuncOp> EmitEntryFunctionApi(
   absl::string_view module_name(fusion_module.getName().value());
   mlir::OpBuilder builder(context);
   auto loc = mlir::NameLoc::get(builder.getStringAttr(module_name));
-  TF_ASSIGN_OR_RETURN(
-      std::vector<KernelApiIrBuilder::KernelParameter> arguments,
-      KernelApiIrBuilder::GetKernelArgumentsParameters(&fusion,
-                                                       &buffer_assignment));
-  TF_ASSIGN_OR_RETURN(std::vector<KernelApiIrBuilder::KernelParameter> results,
-                      KernelApiIrBuilder::GetKernelResultsParameters(
-                          &fusion, &buffer_assignment));
+  ASSIGN_OR_RETURN(std::vector<KernelApiIrBuilder::KernelParameter> arguments,
+                   KernelApiIrBuilder::GetKernelArgumentsParameters(
+                       &fusion, &buffer_assignment));
+  ASSIGN_OR_RETURN(std::vector<KernelApiIrBuilder::KernelParameter> results,
+                   KernelApiIrBuilder::GetKernelResultsParameters(
+                       &fusion, &buffer_assignment));
 
   // TBD: Annotate tensors with the buffer indices. This way, the buffer
   // propagation pass can clean them up later.
@@ -212,21 +215,20 @@ absl::StatusOr<mlir::func::FuncOp> EmitEntryFunctionApi(
 
   for (const auto& [index, arg] : llvm::enumerate(arguments)) {
     param_types.push_back(emitters::TensorShapeToMlirType(arg.shape, builder));
-    TF_ASSIGN_OR_RETURN(
-        arg_attrs.emplace_back(),
-        get_arg_attrs(index - 1, arg.slice, /*is_result=*/false));
+    ASSIGN_OR_RETURN(arg_attrs.emplace_back(),
+                     get_arg_attrs(index - 1, arg.slice, /*is_result=*/false));
   }
 
   auto result_types = emitters::ShapeToMlirTypes(fusion.shape(), builder);
   param_types.append(result_types.begin(), result_types.end());
   for (const auto& [index, result] : llvm::enumerate(results)) {
-    TF_ASSIGN_OR_RETURN(arg_attrs.emplace_back(),
-                        get_arg_attrs(index, result.slice, /*is_result=*/true));
+    ASSIGN_OR_RETURN(arg_attrs.emplace_back(),
+                     get_arg_attrs(index, result.slice, /*is_result=*/true));
   }
 
   builder.setInsertionPointToStart(fusion_module.getBody());
-  auto entry_func = builder.create<FuncOp>(
-      loc, entry_function_name,
+  auto entry_func = FuncOp::create(
+      builder, loc, entry_function_name,
       mlir::FunctionType::get(context, param_types, result_types),
       /*sym_visibility=*/mlir::StringAttr{},
       mlir::ArrayAttr::get(context, arg_attrs),
@@ -238,7 +240,6 @@ absl::StatusOr<mlir::func::FuncOp> EmitEntryFunctionApi(
   return entry_func;
 }
 
-// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 absl::StatusOr<emitters::CallTargetProvider> EmitCallTargets(
     mlir::ModuleOp module, const HloFusionInstruction& fusion,
     const emitters::PartitionedComputations& computations,
@@ -271,17 +272,19 @@ absl::StatusOr<emitters::CallTargetProvider> EmitCallTargets(
   for (const auto& comp : computations.partitioned_computations()) {
     for (const auto& subgraph : comp.subgraphs()) {
       if (subgraph_to_mlir_fn.contains(&subgraph)) {
-        TF_RETURN_IF_ERROR(emitters::SubgraphToMlirFunction(
-            comp, subgraph, subgraph_to_mlir_fn[&subgraph], call_targets));
+        RETURN_IF_ERROR(emitters::SubgraphToMlirFunction(
+            comp, subgraph, subgraph_to_mlir_fn[&subgraph], call_targets,
+            computations.mlir_context()));
       }
     }
   }
   for (const auto& epilogue : computations.epilogues()) {
     if (epilogue.roots.empty()) continue;
-    TF_RETURN_IF_ERROR(emitters::SubgraphToMlirFunction(
+    RETURN_IF_ERROR(emitters::SubgraphToMlirFunction(
         computations.FindPartitionedComputation(
             fusion.fused_instructions_computation()),
-        epilogue, subgraph_to_mlir_fn[&epilogue], call_targets));
+        epilogue, subgraph_to_mlir_fn[&epilogue], call_targets,
+        computations.mlir_context()));
   }
 
   return call_targets;
@@ -291,7 +294,7 @@ int64_t CeilDiv(int64_t a, int64_t b) { return (a + b - 1) / b; }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateNamedMlirModuleOp(
     const HloFusionInstruction& fusion, mlir::Builder& builder) {
-  TF_ASSIGN_OR_RETURN(std::string fusion_name, GetFusionName(fusion));
+  ASSIGN_OR_RETURN(std::string fusion_name, GetFusionName(fusion));
   auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion_name));
   return llvm_ir::CreateMlirModuleOp(loc, fusion_name);
 }
@@ -303,9 +306,9 @@ absl::StatusOr<std::string> GetFusionName(const HloFusionInstruction& fusion) {
           ->config()
           .debug_options()
           .xla_cpu_generate_unique_c_style_kernel_entry_points()) {
-    TF_ASSIGN_OR_RETURN(fusion_name, ConvertToCName(absl::StrCat(
-                                         fusion.parent()->parent()->name(), "_",
-                                         fusion.name())));
+    ASSIGN_OR_RETURN(fusion_name, ConvertToCName(absl::StrCat(
+                                      fusion.parent()->parent()->name(), "_",
+                                      fusion.name())));
   }
   return fusion_name;
 }

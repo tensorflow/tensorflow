@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -67,14 +68,14 @@ static constexpr absl::string_view kCollBytesTransferred =
 template <typename T>
 absl::StatusOr<int64_t> NumRanks(const T& instr) {
   const HloModuleConfig& config = instr.GetModule()->config();
-  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
-                      GetCollectiveOpGroupMode(instr.channel_id().has_value(),
-                                               instr.use_global_device_ids()));
+  ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                   GetCollectiveOpGroupMode(instr.channel_id().has_value(),
+                                            instr.use_global_device_ids()));
 
   // Get number of ranks for this instruction based on replica groups and mode.
   int64_t num_devices = config.num_partitions();
   int64_t num_replicas = config.replica_count();
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<int64_t> participant_counts,
       GetPariticipantCountsForReplicaGroups(
           num_replicas, num_devices, instr.replica_groups(), group_mode));
@@ -110,7 +111,7 @@ int64_t ShapeSize(const Shape& shape,
 // TODO TJ this needs to be hosted somewhere more centralized.
 
 absl::Status GpuHloCostAnalysis::Preprocess(const HloInstruction* hlo) {
-  TF_RETURN_IF_ERROR(HloCostAnalysis::Preprocess(hlo));
+  RETURN_IF_ERROR(HloCostAnalysis::Preprocess(hlo));
 
   current_properties_[kIRSizeKey] = 1;
   return absl::OkStatus();
@@ -266,12 +267,12 @@ bool GpuHloCostAnalysis::ProducerConsumerMergedTooLarge(
 
 absl::Status GpuHloCostAnalysis::HandleCustomCall(
     const HloInstruction* custom_call) {
-  if (IsCublasGemm(*custom_call)) {
+  if (IsCublasLtGemm(*custom_call)) {
     // The naming conventions and meanings of gemm parameters are documented
     // here:
     // https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-gemm
-    TF_ASSIGN_OR_RETURN(auto gpu_config,
-                        custom_call->backend_config<gpu::GpuBackendConfig>());
+    ASSIGN_OR_RETURN(auto gpu_config,
+                     custom_call->backend_config<gpu::GpuBackendConfig>());
     const gpu::GemmBackendConfig& gemm_config =
         gpu_config.gemm_backend_config();
     // Technically, in addition to the dot product (A * B), cuBLAS gemm also
@@ -300,6 +301,14 @@ absl::Status GpuHloCostAnalysis::HandleCustomCall(
     current_properties_[kFlopsKey] =
         GetDotFlops(custom_call->operand(0)->shape(), output_shape,
                     gemm_config.dot_dimension_numbers());
+    // cublas custom-calls return a tuple (real_output, temp_bytes). Cost model
+    // should only care about the real output size.
+    // Update both output_bytes_accessed and bytes_accessed accordingly.
+    int64_t output_size = options_.shape_size(output_shape);
+    current_properties_[kBytesAccessedKey] -=
+        current_properties_.output_bytes_accessed();
+    current_properties_[kBytesAccessedKey] += output_size;
+    current_properties_.set_output_bytes_accessed(output_size);
     return absl::OkStatus();
   }
 
@@ -360,7 +369,7 @@ int64_t GpuHloCostAnalysis::GetConvolutionFlops(
 }
 
 int64_t GpuHloCostAnalysis::GetFlopsPerElementwiseOpElement(
-    const PrimitiveType type, const HloOpcode opcode) {
+    const PrimitiveType type, const HloOpcode opcode) const {
   // Elementwise instructions typically take at least a few clock cycles.
   constexpr int64_t kDefaultFlopsPerElement = 3;
   return FindOrDefault(hlo_elementwise_op_profile_,
@@ -368,21 +377,21 @@ int64_t GpuHloCostAnalysis::GetFlopsPerElementwiseOpElement(
 }
 
 int64_t GpuHloCostAnalysis::GetFlopsForElementwiseOp(const HloOpcode op_code,
-                                                     const Shape& shape) {
+                                                     const Shape& shape) const {
   int64_t flop_per_element =
       GetFlopsPerElementwiseOpElement(shape.element_type(), op_code);
   return flop_per_element * ShapeUtil::ElementsInRecursive(shape);
 }
 
 int64_t GpuHloCostAnalysis::GetFlopsForElementwiseOp(
-    const HloInstruction* instr) {
+    const HloInstruction* instr) const {
   return GetFlopsForElementwiseOp(instr->opcode(), instr->shape());
 }
 
 absl::Status GpuHloCostAnalysis::HandleAllReduce(
     const HloInstruction* allreduce) {
-  TF_ASSIGN_OR_RETURN(int64_t num_ranks,
-                      NumRanks(*Cast<HloAllReduceInstruction>(allreduce)));
+  ASSIGN_OR_RETURN(int64_t num_ranks,
+                   NumRanks(*Cast<HloAllReduceInstruction>(allreduce)));
 
   VLOG(5) << "Computing cost for " << num_ranks << " ranks in "
           << allreduce->ToString();
@@ -404,21 +413,13 @@ absl::Status GpuHloCostAnalysis::HandleAllReduce(
   current_properties_.set_output_bytes_accessed(output_bytes_accessed);
   current_properties_[kCollBytesTransferred] = output_bytes_accessed;
   current_properties_[kBytesAccessedKey] = bytes_accessed;
-  current_properties_[kCollNumDevicesKey] = num_ranks;
   // Since allreduce has compute, we need to get flops for the compute
   // part which is an elementwise op.
   current_properties_[kFlopsKey] = GetFlopsForElementwiseOp(
       allreduce->to_apply()->root_instruction()->opcode(), allreduce->shape());
 
-  // TODO TJ support multi-node case, we need to know how many nodes there are.
-  int num_intra_steps = 2 * (num_ranks - 1);
-  // Compute algorithmic scaling ratio, this can be used to be multiplied with
-  // bus bandwidth to get the effective bandwidth of the algorithm. The scaling
-  // ratio differs based on what algorithm NCCL chooses to use. This is the
-  // scaling factor for ring since NCCL will only use ring for single-node, need
-  // to add support for tree algo in multi-node case.
-  float scaling_ratio = (1.0 * num_ranks) / num_intra_steps;
-  current_properties_[kCollAlgoScaleRatioKey] = scaling_ratio;
+  SetRingCollectiveProperties(num_ranks,
+                              /*num_intra_steps=*/2 * (num_ranks - 1));
 
   return absl::OkStatus();
 }
@@ -450,7 +451,7 @@ absl::Status GpuHloCostAnalysis::HandleConcatenate(const HloInstruction* hlo) {
 absl::Status GpuHloCostAnalysis::HandleReduce(const HloInstruction* hlo) {
   // HloCostAnalysis::HandleReduce computes FLOPs for the computation correctly,
   // but `bytes_accessed` estimates are different for GPU.
-  TF_RETURN_IF_ERROR(HloCostAnalysis::HandleReduce(hlo));
+  RETURN_IF_ERROR(HloCostAnalysis::HandleReduce(hlo));
 
   const HloReduceInstruction* reduce = DynCast<HloReduceInstruction>(hlo);
   auto output_shape = reduce->shape().IsArray()
@@ -492,20 +493,39 @@ absl::Status GpuHloCostAnalysis::HandleReduce(const HloInstruction* hlo) {
   return absl::OkStatus();
 }
 
+void GpuHloCostAnalysis::SetRingCollectiveProperties(int64_t num_ranks,
+                                                     int64_t num_intra_steps) {
+  current_properties_[kCollNumDevicesKey] = num_ranks;
+  // TODO TJ support multi-node case, we need to know how many nodes there are.
+  // Compute algorithmic scaling ratio, this can be used to be multiplied with
+  // bus bandwidth to get the effective bandwidth of the algorithm. The scaling
+  // ratio differs based on what algorithm NCCL chooses to use. This is the
+  // scaling factor for ring since NCCL will only use ring for single-node, need
+  // to add support for tree algo in multi-node case.
+  current_properties_[kCollAlgoScaleRatioKey] =
+      num_intra_steps > 0 ? static_cast<float>(num_ranks) / num_intra_steps : 0;
+}
+
 absl::Status GpuHloCostAnalysis::HandleAllReduceStart(
     const HloInstruction* hlo) {
+  ASSIGN_OR_RETURN(int64_t num_ranks,
+                   NumRanks(*Cast<HloAllReduceInstruction>(hlo)));
+
   int64_t bytes_transferred = ShapeSize(hlo->shape(), options_.shape_size);
 
   current_properties_[kFlopsKey] = GetFlopsForElementwiseOp(
       hlo->to_apply()->root_instruction()->opcode(), hlo->shape());
   current_properties_[kBytesAccessedKey] = bytes_transferred;
   current_properties_[kCollBytesTransferred] = bytes_transferred;
+  SetRingCollectiveProperties(num_ranks,
+                              /*num_intra_steps=*/2 * (num_ranks - 1));
+
   return absl::OkStatus();
 }
 
 absl::Status GpuHloCostAnalysis::HandleAllGather(const HloInstruction* hlo) {
-  TF_ASSIGN_OR_RETURN(int64_t num_ranks,
-                      NumRanks(*Cast<HloAllGatherInstruction>(hlo)));
+  ASSIGN_OR_RETURN(int64_t num_ranks,
+                   NumRanks(*Cast<HloAllGatherInstruction>(hlo)));
 
   int64_t bytes_transferred = ShapeSize(hlo->shape(), options_.shape_size);
   int64_t rank_size_bytes = bytes_transferred / num_ranks;
@@ -514,14 +534,15 @@ absl::Status GpuHloCostAnalysis::HandleAllGather(const HloInstruction* hlo) {
 
   current_properties_[kBytesAccessedKey] = write_bytes + read_bytes;
   current_properties_[kCollBytesTransferred] = bytes_transferred;
+  SetRingCollectiveProperties(num_ranks, /*num_intra_steps=*/num_ranks - 1);
 
   return absl::OkStatus();
 }
 
 absl::Status GpuHloCostAnalysis::HandleAllGatherStart(
     const HloInstruction* hlo) {
-  TF_ASSIGN_OR_RETURN(int64_t num_ranks,
-                      NumRanks(*Cast<HloAllGatherInstruction>(hlo)));
+  ASSIGN_OR_RETURN(int64_t num_ranks,
+                   NumRanks(*Cast<HloAllGatherInstruction>(hlo)));
 
   int64_t bytes_transferred =
       ShapeSize(hlo->shape(), options_.shape_size, /*index_to_skip=*/0);
@@ -531,13 +552,14 @@ absl::Status GpuHloCostAnalysis::HandleAllGatherStart(
 
   current_properties_[kBytesAccessedKey] = write_bytes + read_bytes;
   current_properties_[kCollBytesTransferred] = bytes_transferred;
+  SetRingCollectiveProperties(num_ranks, /*num_intra_steps=*/num_ranks - 1);
 
   return absl::OkStatus();
 }
 
 absl::Status GpuHloCostAnalysis::HandleAsyncStart(const HloInstruction* hlo) {
   auto* async_start = DynCast<HloAsyncStartInstruction>(hlo);
-  TF_RETURN_IF_ERROR(hlo->async_wrapped_instruction()->Accept(this));
+  RETURN_IF_ERROR(hlo->async_wrapped_instruction()->Accept(this));
   if (async_start->async_wrapped_opcode() == HloOpcode::kReduceScatter) {
     return HandleReduceScatter(async_start->async_wrapped_instruction());
   }
@@ -549,8 +571,8 @@ absl::Status GpuHloCostAnalysis::HandleAsyncStart(const HloInstruction* hlo) {
 
 absl::Status GpuHloCostAnalysis::HandleReduceScatter(
     const HloInstruction* hlo) {
-  TF_ASSIGN_OR_RETURN(int64_t num_ranks,
-                      NumRanks(*Cast<HloReduceScatterInstruction>(hlo)));
+  ASSIGN_OR_RETURN(int64_t num_ranks,
+                   NumRanks(*Cast<HloReduceScatterInstruction>(hlo)));
 
   int64_t bytes_transferred = 0;
   for (HloInstruction* operand : hlo->operands()) {
@@ -564,6 +586,7 @@ absl::Status GpuHloCostAnalysis::HandleReduceScatter(
   current_properties_[kCollBytesTransferred] = bytes_transferred;
   current_properties_[kFlopsKey] = GetFlopsForElementwiseOp(
       hlo->to_apply()->root_instruction()->opcode(), hlo->shape());
+  SetRingCollectiveProperties(num_ranks, /*num_intra_steps=*/num_ranks - 1);
 
   return absl::OkStatus();
 }
@@ -571,6 +594,20 @@ absl::Status GpuHloCostAnalysis::HandleReduceScatter(
 absl::Status GpuHloCostAnalysis::HandleAllToAll(const HloInstruction* hlo) {
   int64_t bytes_transferred = ShapeSize(hlo->shape(), options_.shape_size);
   current_properties_[kCollBytesTransferred] = bytes_transferred;
+  return absl::OkStatus();
+}
+
+absl::Status GpuHloCostAnalysis::HandleCollectivePermute(
+    const HloInstruction* hlo) {
+  current_properties_[kCollBytesTransferred] +=
+      ShapeUtil::ByteSizeOf(hlo->operand(0)->shape());
+  return absl::OkStatus();
+}
+
+absl::Status GpuHloCostAnalysis::HandleCollectivePermuteStart(
+    const HloInstruction* hlo) {
+  current_properties_[kCollBytesTransferred] +=
+      ShapeUtil::ByteSizeOf(hlo->operand(0)->shape());
   return absl::OkStatus();
 }
 

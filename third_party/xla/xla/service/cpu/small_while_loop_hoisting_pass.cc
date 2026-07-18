@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -39,16 +40,24 @@ limitations under the License.
 namespace xla::cpu {
 
 static bool InstructionIsUnavailable(const HloInstruction* instr) {
-  // The following instructions are not currently supported by the call thunk
-  // emitter due to how the legacy & thunk emitters interact; specifically,
-  // how the run options are passed.
   switch (instr->opcode()) {
+    // The following instructions are not currently supported by the call thunk
+    // emitter due to how the legacy & thunk emitters interact; specifically,
+    // how the run options are passed.
     case HloOpcode::kCustomCall:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kScatter:
+    case HloOpcode::kSort:
     case HloOpcode::kFft:
+    case HloOpcode::kPartitionId:
+    case HloOpcode::kReplicaId:
       return true;
+
+    // Legacy call emitter does not support custom fusions.
+    case HloOpcode::kFusion:
+      return instr->fusion_kind() == HloInstruction::FusionKind::kCustom;
+
     default:
       return IsCollective(instr);
   }
@@ -83,7 +92,7 @@ SmallWhileLoopHoistingPass::SmallWhileLoopHoistingPass(
     int64_t small_buffer_access_size)
     : small_buffer_access_size_(small_buffer_access_size) {}
 
-absl::StatusOr<bool> SmallWhileLoopHoistingPass::Run(
+absl::StatusOr<bool> SmallWhileLoopHoistingPass::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::vector<HloInstruction*> while_instrs;
@@ -99,7 +108,7 @@ absl::StatusOr<bool> SmallWhileLoopHoistingPass::Run(
       continue;
     }
 
-    TF_ASSIGN_OR_RETURN(bool is_small_call_site, IsSmall(while_instr));
+    ASSIGN_OR_RETURN(bool is_small_call_site, IsSmall(while_instr));
     if (!is_small_call_site) {
       continue;
     }
@@ -109,10 +118,10 @@ absl::StatusOr<bool> SmallWhileLoopHoistingPass::Run(
     std::vector<HloInstruction*> parameters;
     parameters.reserve(while_instr->operand_count());
     for (HloInstruction* operand : while_instr->operands()) {
-      TF_ASSIGN_OR_RETURN(HloInstruction * parameter,
-                          builder.AddParameter(HloInstruction::CreateParameter(
-                              while_instr->operand_index(operand),
-                              operand->shape(), operand->name())));
+      ASSIGN_OR_RETURN(HloInstruction * parameter,
+                       builder.AddParameter(HloInstruction::CreateParameter(
+                           while_instr->operand_index(operand),
+                           operand->shape(), operand->name())));
       parameters.push_back(parameter);
     }
     builder.AddInstruction(
@@ -124,9 +133,9 @@ absl::StatusOr<bool> SmallWhileLoopHoistingPass::Run(
             module->AddEmbeddedComputation(builder.Build())));
     call_instruction->add_frontend_attribute("xla_cpu_small_call", "true");
 
-    TF_RETURN_IF_ERROR(while_instr->ReplaceAllUsesWith(call_instruction));
-    TF_RETURN_IF_ERROR(while_instr->SafelyDropAllControlDependencies());
-    TF_RETURN_IF_ERROR(while_instr->parent()->RemoveInstruction(while_instr));
+    RETURN_IF_ERROR(while_instr->ReplaceAllUsesWith(call_instruction));
+    RETURN_IF_ERROR(while_instr->SafelyDropAllControlDependencies());
+    RETURN_IF_ERROR(while_instr->parent()->RemoveInstruction(while_instr));
 
     changed = true;
   }
@@ -137,7 +146,7 @@ absl::StatusOr<bool> SmallWhileLoopHoistingPass::Run(
 absl::StatusOr<bool> SmallWhileLoopHoistingPass::IsSmall(
     const HloInstruction* instr) {
   HloCostAnalysis cost_analysis(&CpuExecutable::ShapeSizeBytes);
-  TF_RETURN_IF_ERROR(cost_analysis.RevisitInstruction(instr));
+  RETURN_IF_ERROR(cost_analysis.RevisitInstruction(instr));
   return cost_analysis.bytes_accessed(*instr) < small_buffer_access_size_;
 }
 

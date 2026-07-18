@@ -44,15 +44,15 @@ class SingleMachine : public Cluster {
   SingleMachine(int timeout_s, int num_cpu_cores, int num_gpus);
   ~SingleMachine() override;
 
-  string type() const override { return "single_machine"; }
+  std::string type() const override { return "single_machine"; }
 
   absl::Status Provision() override;
   absl::Status Shutdown() override;
 
   absl::Status Initialize(const GrapplerItem& item) override;
   absl::Status Run(const GraphDef& item,
-                   const std::vector<std::pair<string, Tensor>>& feed,
-                   const std::vector<string>& fetch,
+                   const std::vector<std::pair<std::string, Tensor>>& feed,
+                   const std::vector<std::string>& fetch,
                    RunMetadata* metadata) override;
 
   const DeviceSet* GetDeviceSet() const override { return device_set_.get(); }
@@ -60,16 +60,16 @@ class SingleMachine : public Cluster {
   absl::Status EnablePeakMemoryStats() override;
 
   // It requires EnableAllocatorStats(true) be called before Provision().
-  absl::Status GetPeakMemoryUsage(
-      std::unordered_map<string, uint64>* device_peak_memory) const override;
+  absl::Status GetPeakMemoryUsage(std::unordered_map<std::string, uint64_t>*
+                                      device_peak_memory) const override;
 
  private:
   absl::Status RunWithTimeout(
-      const std::vector<std::pair<string, Tensor>>& feed,
-      const std::vector<string>& fetch, RunMetadata* run_metadata);
+      const std::vector<std::pair<std::string, Tensor>>& feed,
+      const std::vector<std::string>& fetch, RunMetadata* run_metadata);
   absl::Status RunWithTimeout(
-      const std::vector<std::pair<string, Tensor>>& feed,
-      const std::vector<string>& fetch, RunMetadata* run_metadata,
+      const std::vector<std::pair<std::string, Tensor>>& feed,
+      const std::vector<std::string>& fetch, RunMetadata* run_metadata,
       int64_t timeout_s);
   absl::Status ResetSession();
   absl::Status CloseSession(bool use_timeout);
@@ -81,10 +81,10 @@ class SingleMachine : public Cluster {
 
   std::unique_ptr<Session> session_;
   std::vector<QueueRunnerDef> queue_runner_defs_;
-  string last_graph_id_;
+  std::string last_graph_id_;
   mutex last_graph_mu_;
   const GraphDef* last_graph_ TF_GUARDED_BY(last_graph_mu_) = nullptr;
-  std::vector<string> init_ops_;
+  std::vector<std::string> init_ops_;
   int64_t expected_init_time_s_;
   std::unique_ptr<Coordinator> coordinator_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;

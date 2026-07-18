@@ -34,7 +34,7 @@ class ClientSession::Impl {
   Impl(Session* session, std::shared_ptr<Graph> graph)
       : session_(session), graph_(std::move(graph)) {}
 
-  static SessionOptions MakeDefaultSessionOptions(const string& target);
+  static SessionOptions MakeDefaultSessionOptions(const std::string& target);
   absl::Status MaybeExtendGraph() const;
 
   std::unique_ptr<Session> session_;
@@ -44,7 +44,7 @@ class ClientSession::Impl {
   mutable int last_num_graph_nodes_ TF_GUARDED_BY(mu_) = 0;
 };
 
-ClientSession::ClientSession(const Scope& scope, const string& target)
+ClientSession::ClientSession(const Scope& scope, const std::string& target)
     : ClientSession(scope, Impl::MakeDefaultSessionOptions(target)) {}
 
 ClientSession::ClientSession(const Scope& scope) : ClientSession(scope, "") {}
@@ -64,7 +64,7 @@ ClientSession::ClientSession(const Scope& scope,
 ClientSession::~ClientSession() {}
 
 SessionOptions ClientSession::Impl::MakeDefaultSessionOptions(
-    const string& target) {
+    const std::string& target) {
   SessionOptions options;
   options.env = Env::Default();
   options.target = target;
@@ -108,7 +108,7 @@ absl::Status ClientSession::Run(const RunOptions& run_options,
                                 const std::vector<Operation>& run_outputs,
                                 std::vector<Tensor>* outputs,
                                 RunMetadata* run_metadata) const {
-  std::vector<std::pair<string, Tensor>> feeds;
+  std::vector<std::pair<std::string, Tensor>> feeds;
   feeds.reserve(inputs.size());
   for (auto const& feed : inputs) {
     TF_RETURN_IF_ERROR(feed.second.status);
@@ -117,12 +117,12 @@ absl::Status ClientSession::Run(const RunOptions& run_options,
                        std::forward_as_tuple(feed.second.tensor));
   }
 
-  std::vector<string> output_tensor_names;
+  std::vector<std::string> output_tensor_names;
   output_tensor_names.reserve(fetch_outputs.size());
   for (auto const& output : fetch_outputs) {
     output_tensor_names.push_back(output.name());
   }
-  std::vector<string> target_node_names;
+  std::vector<std::string> target_node_names;
   target_node_names.reserve(run_outputs.size());
   for (auto const& output : run_outputs) {
     target_node_names.push_back(output.node()->name());
@@ -138,17 +138,17 @@ absl::Status ClientSession::Run(
     const std::vector<Operation>& run_outputs, std::vector<Tensor>* outputs,
     RunMetadata* run_metadata,
     const thread::ThreadPoolOptions& threadpool_options) const {
-  std::vector<std::pair<string, Tensor>> feeds;
+  std::vector<std::pair<std::string, Tensor>> feeds;
   for (auto const& feed : inputs) {
     TF_RETURN_IF_ERROR(feed.second.status);
     feeds.emplace_back(feed.first.name(), feed.second.tensor);
   }
-  std::vector<string> output_tensor_names;
+  std::vector<std::string> output_tensor_names;
   output_tensor_names.reserve(fetch_outputs.size());
   for (auto const& output : fetch_outputs) {
     output_tensor_names.push_back(output.name());
   }
-  std::vector<string> target_node_names;
+  std::vector<std::string> target_node_names;
   target_node_names.reserve(run_outputs.size());
   for (auto const& output : run_outputs) {
     target_node_names.push_back(output.node()->name());

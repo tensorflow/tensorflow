@@ -26,33 +26,45 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/base/call_once.h"
 #include "absl/base/casts.h"
+#include "absl/cleanup/cleanup.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
+#include "xla/stream_executor/cuda/cuda_executor.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/cuda/host_callback_registry.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_common.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/env_var.h"  // IWYU pragma: keep
 #include "tsl/profiler/lib/nvtx_utils.h"
+#include "tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/lib/traceme_encode.h"
+
+using tsl::profiler::TraceMe;
+using tsl::profiler::TraceMeEncode;
+using tsl::profiler::TraceMeLevel;
 
 namespace stream_executor {
 namespace gpu {
 
 namespace {
+
 absl::Status WaitStreamOnEvent(StreamExecutor* executor, CUstream stream,
                                CUevent event) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
@@ -66,21 +78,6 @@ absl::Status RecordGpuEvent(StreamExecutor* executor, CUevent event,
                         "Error recording CUDA event");
 }
 
-int GetGpuStreamPriority(stream_executor::StreamPriority stream_priority) {
-  if (stream_priority == stream_executor::StreamPriority::Default) {
-    return 0;
-  }
-  int lowest, highest;
-  auto status = cuda::ToStatus(cuCtxGetStreamPriorityRange(&lowest, &highest));
-  if (!status.ok()) {
-    LOG(ERROR)
-        << "Could not query stream priority range. Returning default priority.";
-    return 0;
-  }
-  return stream_priority == stream_executor::StreamPriority::Highest ? highest
-                                                                     : lowest;
-}
-
 absl::StatusOr<CUstream> CreateStream(StreamExecutor* executor, int priority) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
   CUstream stream;
@@ -88,10 +85,10 @@ absl::StatusOr<CUstream> CreateStream(StreamExecutor* executor, int priority) {
   // the default priority for backward compatibility. Probably there is no
   // difference in using the new api call but leaving it as is for now.
   if (priority == 0) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         cuda::ToStatus(cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING)));
   } else {
-    TF_RETURN_IF_ERROR(cuda::ToStatus(
+    RETURN_IF_ERROR(cuda::ToStatus(
         cuStreamCreateWithPriority(&stream, CU_STREAM_NON_BLOCKING, priority)));
   }
 
@@ -104,8 +101,8 @@ absl::StatusOr<bool> StreamIsCapturing(CUstream stream) {
   VLOG(2) << "Checking if stream " << stream << " is capturing";
 
   CUstreamCaptureStatus status;
-  TF_RETURN_IF_ERROR(cuda::ToStatus(cuStreamIsCapturing(stream, &status),
-                                    "Failed to check stream capturing status"));
+  RETURN_IF_ERROR(cuda::ToStatus(cuStreamIsCapturing(stream, &status),
+                                 "Failed to check stream capturing status"));
 
   return status == CU_STREAM_CAPTURE_STATUS_ACTIVE;
 }
@@ -115,7 +112,7 @@ absl::Status AsynchronousMemcpyD2H(StreamExecutor* executor, void* host_dst,
                                    CUstream stream) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       cuda::ToStatus(cuMemcpyDtoHAsync(host_dst, gpu_src, size, stream)));
 
   VLOG(2) << "successfully enqueued async memcpy d2h of " << size
@@ -128,7 +125,7 @@ absl::Status AsynchronousMemcpyH2D(StreamExecutor* executor,
                                    CUdeviceptr gpu_dst, const void* host_src,
                                    uint64_t size, CUstream stream) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       cuda::ToStatus(cuMemcpyHtoDAsync(gpu_dst, host_src, size, stream)));
 
   VLOG(2) << "successfully enqueued async memcpy h2d of " << size << " bytes"
@@ -144,12 +141,12 @@ absl::Status AsynchronousMemcpyD2D(StreamExecutor* executor,
 
   // In graph capture mode we never have operations that access peer memory, so
   // we can always make a call to cuMemcpyDtoDAsync.
-  TF_ASSIGN_OR_RETURN(bool is_capturing, StreamIsCapturing(stream));
+  ASSIGN_OR_RETURN(bool is_capturing, StreamIsCapturing(stream));
 
   if ((gpu_dst == 0 || gpu_src == 0) || is_capturing) {
     // GetContextMap()->GetAnyContext() doesn't work when ptr == 0.
     // This happens when the size is 0.
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         cuda::ToStatus(cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream)));
   } else {
     // Any context work here.
@@ -161,10 +158,10 @@ absl::Status AsynchronousMemcpyD2D(StreamExecutor* executor,
     if (dst_context == src_context) {
       // Since the CUDA context is the same, the src and dst are within the same
       // GPU. So we can use cuMemcpyDtoD.
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           cuda::ToStatus(cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream)));
     } else {
-      TF_RETURN_IF_ERROR(cuda::ToStatus(cuMemcpyPeerAsync(
+      RETURN_IF_ERROR(cuda::ToStatus(cuMemcpyPeerAsync(
           gpu_dst, dst_context, gpu_src, src_context, size, stream)));
     }
   }
@@ -175,34 +172,123 @@ absl::Status AsynchronousMemcpyD2D(StreamExecutor* executor,
   return absl::OkStatus();
 }
 
+absl::Status SynchronizeStream(StreamExecutor* executor, CUstream stream) {
+  TraceMe trace(
+      [] { return TraceMeEncode("CudaStream::SynchronizeStream", {}); },
+      /*level=*/TraceMeLevel::kVerbose);
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
+  CHECK(stream != nullptr);
+  return cuda::ToStatus(cuStreamSynchronize(stream),
+                        "Could not synchronize CUDA stream");
+}
+
 }  // namespace
 
+/*static*/ absl::StatusOr<CudaStream::CaptureHandle>
+CudaStream::CaptureHandle::BeginCapture(CudaStream* stream, CUgraph graph,
+                                        const CUgraphNode* dependencies,
+                                        const CUgraphEdgeData* dependency_data,
+                                        size_t num_dependencies,
+                                        CUstreamCaptureMode mode) {
+  if (stream->type_ == CudaStreamType::kCudaGraphCapture) {
+    return absl::FailedPreconditionError(
+        "Cannot begin capture on a capture stream.");
+  }
+
+  absl::call_once(stream->capture_stream_once_, [stream]() {
+    auto* executor = static_cast<CudaExecutor*>(stream->parent());
+    stream->capture_stream_ = executor->CreateStream(
+        stream->priority(), CudaStreamType::kCudaGraphCapture);
+  });
+  if (!stream->capture_stream_.ok()) {
+    return stream->capture_stream_.status();
+  }
+  CudaStream* capture_stream = stream->capture_stream_->get();
+  ASSIGN_OR_RETURN(bool is_capturing,
+                   StreamIsCapturing(capture_stream->stream_handle_));
+  if (is_capturing) {
+    return absl::FailedPreconditionError("Capture stream is already capturing");
+  }
+  RETURN_IF_ERROR(cuda::ToStatus(
+      cuStreamBeginCaptureToGraph(capture_stream->stream_handle_, graph,
+                                  /*dependencies=*/dependencies,
+                                  /*dependencyData=*/dependency_data,
+                                  /*numDependencies=*/num_dependencies, mode),
+      "Failed to begin stream capture to graph"));
+  return CudaStream::CaptureHandle(capture_stream, graph);
+}
+
+CudaStream::CaptureHandle::CaptureHandle(CaptureHandle&& other)
+    : stream_(other.stream_), graph_(other.graph_) {
+  other.stream_ = nullptr;
+  other.graph_ = nullptr;
+}
+
+absl::Status CudaStream::CaptureHandle::EndCapture() {
+  if (stream_ != nullptr && graph_ != nullptr) {
+    absl::Cleanup cleanup = [this] {
+      stream_ = nullptr;
+      graph_ = nullptr;
+    };
+    CUgraph captured_graph;
+    RETURN_IF_ERROR(cuda::ToStatus(
+        cuStreamEndCapture(stream_->stream_handle_, &captured_graph),
+        "Failed to end stream capture"));
+    if (captured_graph != graph_) {
+      return absl::InternalError(
+          "Stream capture should update the graph passed to BeginCapture");
+    }
+  }
+  return absl::OkStatus();
+}
+
+CudaStream::CaptureHandle::~CaptureHandle() { EndCapture().IgnoreError(); }
+
+CudaStream::CudaStream(
+    CudaExecutor* executor, CudaEvent completed_event,
+    std::optional<std::variant<StreamPriority, int>> priority,
+    CUstream stream_handle, CudaStreamType type)
+    : StreamCommon(executor, priority),
+      executor_(executor),
+      completed_event_(std::move(completed_event)),
+      stream_handle_(stream_handle),
+      type_(type),
+      callback_registry_handle_(
+          type == CudaStreamType::kCudaGraphCapture
+              ? nullptr
+              : executor->GetHostCallbackRegistry()->CreateHandle(
+                    /*synchronization_callback=*/
+                    [this]() {
+                      return SynchronizeStream(executor_, stream_handle_);
+                    },
+                    /*status_callback=*/[this] { return RefreshStatus(); })) {}
+
 absl::StatusOr<std::unique_ptr<CudaStream>> CudaStream::Create(
-    StreamExecutor* executor,
-    std::optional<std::variant<StreamPriority, int>> priority) {
+    CudaExecutor* executor,
+    std::optional<std::variant<StreamPriority, int>> priority,
+    CudaStreamType type) {
   int stream_priority = [&]() {
     if (priority.has_value() && std::holds_alternative<int>(priority.value())) {
       return std::get<int>(priority.value());
     }
     std::unique_ptr<ActivateContext> activation = executor->Activate();
-    return GetGpuStreamPriority(
+    return executor->GetGpuStreamPriority(
         std::get<StreamPriority>(priority.value_or(StreamPriority::Default)));
   }();
-  TF_ASSIGN_OR_RETURN(auto stream_handle,
-                      CreateStream(executor, stream_priority));
+  ASSIGN_OR_RETURN(auto stream_handle, CreateStream(executor, stream_priority));
 
-  TF_ASSIGN_OR_RETURN(auto completed_event,
-                      CudaEvent::Create(executor,
-                                        /*allow_timing=*/false));
+  ASSIGN_OR_RETURN(auto completed_event,
+                   CudaEvent::Create(executor,
+                                     /*allow_timing=*/false));
 
   return std::unique_ptr<CudaStream>(new CudaStream(
-      executor, std::move(completed_event), priority, stream_handle));
+      executor, std::move(completed_event), priority, stream_handle, type));
 }
 
 absl::Status CudaStream::WaitFor(Stream* other) {
   CudaStream* other_stream = static_cast<CudaStream*>(other);
 
-  TF_RETURN_IF_ERROR(other_stream->RecordCompletedEvent());
+  RETURN_IF_ERROR(other_stream->RecordCompletedEvent());
   return WaitStreamOnEvent(executor_, stream_handle_,
                            other_stream->completed_event_.GetHandle());
 }
@@ -243,29 +329,63 @@ void DestroyStream(StreamExecutor* executor, CUstream stream) {
   }
 }
 
-absl::Status SynchronizeStream(StreamExecutor* executor, CUstream stream) {
-  std::unique_ptr<ActivateContext> activation = executor->Activate();
-  CHECK(stream != nullptr);
-  return cuda::ToStatus(cuStreamSynchronize(stream),
-                        "Could not synchronize CUDA stream");
-}
 }  // namespace
 
 CudaStream::~CudaStream() {
-  BlockHostUntilDone().IgnoreError();
+  // Ensure that all pending host callbacks are handled before the stream is
+  // destroyed.
+  callback_registry_handle_.reset();
   executor_->DeallocateStream(this);
-
   DestroyStream(executor_, stream_handle_);
 }
 
 absl::Status CudaStream::BlockHostUntilDone() {
-  TF_RETURN_IF_ERROR(SynchronizeStream(executor_, stream_handle_));
-  absl::MutexLock lock(mutex_);
-  mutex_.Await(absl::Condition(&no_pending_host_callbacks_));
+  if (type_ == CudaStreamType::kCudaGraphCapture) {
+    return absl::FailedPreconditionError(
+        "BlockHostUntilDone is not allowed on capture streams.");
+  }
+  CHECK_NE(callback_registry_handle_, nullptr);
+  TraceMe trace(
+      [] { return TraceMeEncode("CudaStream::BlockHostUntilDone", {}); },
+      /*level=*/TraceMeLevel::kVerbose);
+  // SynchronizeStream will wait for any pending host callbacks, but if the
+  // stream is itself poisoned, it will fail without waiting. So we force fail
+  // them to be called before returning.
+  absl::Status status = SynchronizeStream(executor_, stream_handle_);
+  if (!status.ok()) {
+    callback_registry_handle_->FailAll(status);
+    return status;
+  }
+  // TSAN complains of cuda host callbacks racing for data accessed
+  // after BlockHostUntilDone even though they are synchronized. This
+  // annotation establishes the happens-after relationship.
+  (void)tsan_proxy_.load(std::memory_order_acquire);
   return absl::OkStatus();
 }
 
-absl::Status CudaStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
+absl::Status CudaStream::RefreshStatus() {
+  if (type_ == CudaStreamType::kCudaGraphCapture) {
+    return absl::FailedPreconditionError(
+        "RefreshStatus is not allowed on capture streams.");
+  }
+  TraceMe trace([] { return TraceMeEncode("CudaStream::RefreshStatus", {}); },
+                /*level=*/TraceMeLevel::kVerbose);
+  std::unique_ptr<ActivateContext> activation = executor_->Activate();
+  // Backup check in case capturing was started using raw CUDA APIs.
+  // In that case, refresh will return ok and monitoring must wait until capture
+  // has ended.
+  ASSIGN_OR_RETURN(bool is_capturing, StreamIsCapturing(stream_handle_));
+  if (is_capturing) {
+    return absl::OkStatus();
+  }
+  CUresult res = cuStreamQuery(stream_handle_);
+  if (res == CUDA_SUCCESS || res == CUDA_ERROR_NOT_READY) {
+    return absl::OkStatus();
+  }
+  return cuda::ToStatus(res, "Error querying CUDA stream status");
+}
+
+absl::Status CudaStream::Memset32(DeviceAddressBase* location, uint32_t pattern,
                                   uint64_t size) {
   if (absl::bit_cast<uintptr_t>(location->opaque()) % alignof(uint32_t) != 0) {
     return absl::InvalidArgumentError("location must be 4 byte aligned.");
@@ -280,7 +400,7 @@ absl::Status CudaStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
       "Failed to enqueue async memset operation");
 }
 
-absl::Status CudaStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
+absl::Status CudaStream::MemZero(DeviceAddressBase* location, uint64_t size) {
   if (reinterpret_cast<uintptr_t>(location->opaque()) % alignof(uint32_t) ==
           0 &&
       size % sizeof(uint32_t) == 0) {
@@ -294,22 +414,23 @@ absl::Status CudaStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
   }
 }
 
-absl::Status CudaStream::Memcpy(DeviceMemoryBase* gpu_dst,
-                                const DeviceMemoryBase& gpu_src,
+absl::Status CudaStream::Memcpy(DeviceAddressBase* gpu_dst,
+                                const DeviceAddressBase& gpu_src,
                                 uint64_t size) {
   return AsynchronousMemcpyD2D(
       executor_, absl::bit_cast<CUdeviceptr>(gpu_dst->opaque()),
       absl::bit_cast<CUdeviceptr>(gpu_src.opaque()), size, stream_handle_);
 }
 
-absl::Status CudaStream::Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
-                                uint64_t size) {
+absl::Status CudaStream::Memcpy(DeviceAddressBase* gpu_dst,
+                                const void* host_src, uint64_t size) {
   return AsynchronousMemcpyH2D(executor_,
                                absl::bit_cast<CUdeviceptr>(gpu_dst->opaque()),
                                host_src, size, stream_handle_);
 }
 
-absl::Status CudaStream::Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
+absl::Status CudaStream::Memcpy(void* host_dst,
+                                const DeviceAddressBase& gpu_src,
                                 uint64_t size) {
   return AsynchronousMemcpyD2H(executor_, host_dst,
                                absl::bit_cast<CUdeviceptr>(gpu_src.opaque()),
@@ -317,43 +438,73 @@ absl::Status CudaStream::Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
 }
 
 namespace {
-void InternalHostCallback(void* data) {
-  auto* callback = reinterpret_cast<absl::AnyInvocable<void() &&>*>(data);
-  std::move (*callback)();
-  delete callback;
+#if CUDA_VERSION >= 13020
+bool UseSpinwaitHostCallback() {
+  static bool use_spinwait = []() {
+    bool use_spinwait = false;
+    tsl::ReadBoolFromEnvVar("XLA_CUDA_HOST_CALLBACK_SPINWAIT", false,
+                            &use_spinwait)
+        .IgnoreError();
+    if (!use_spinwait) return false;
+    int driver_version = 0;
+    cuDriverGetVersion(&driver_version);
+    use_spinwait = driver_version >= 13020;
+    if (use_spinwait) {
+      LOG(INFO) << "Using spinwait host callback (cuLaunchHostFunc_v2).";
+    }
+    return use_spinwait;
+  }();
+  return use_spinwait;
 }
+#endif
 }  // namespace
 
 absl::Status CudaStream::DoHostCallbackWithStatus(
     absl::AnyInvocable<absl::Status() &&> callback) {
-  auto callback_ptr = new absl::AnyInvocable<void() &&>(
-      [cb = std::move(callback), this]() mutable {
-        absl::Status s = (std::move(cb))();
-        if (!s.ok()) {
-          LOG(ERROR) << "Host callback failed: " << s;
-        }
-        int num_pending_host_callbacks = num_pending_host_callbacks_.fetch_sub(
-                                             1, std::memory_order_acq_rel) -
-                                         1;
-        // num_pending_host_callbacks_ can theoretically reach -1 if this
-        // callback gets executed before we increase the counter on the main
-        // thread.
-        if (num_pending_host_callbacks == 0) {
-          absl::MutexLock lock(mutex_);
-          no_pending_host_callbacks_ = num_pending_host_callbacks_ <= 0;
-        }
-      });
-  TF_RETURN_IF_ERROR(cuda::ToStatus(
-      cuLaunchHostFunc(stream_handle_, InternalHostCallback, callback_ptr)));
-  int num_pending_host_callbacks =
-      num_pending_host_callbacks_.fetch_add(1, std::memory_order_acq_rel) + 1;
-  if (num_pending_host_callbacks == 1) {
-    // num_pending_host_callbacks == 1 means we had no pending host callbacks
-    // before this one.
-    absl::MutexLock lock(mutex_);
-    no_pending_host_callbacks_ = num_pending_host_callbacks_ <= 0;
+  return DoHostCallbackWithStatus(std::move(callback), nullptr);
+}
+
+absl::Status CudaStream::DoHostCallbackWithStatus(
+    absl::AnyInvocable<absl::Status() &&> callback,
+    absl::AnyInvocable<void(absl::Status) &&> error_cb) {
+  if (type_ == CudaStreamType::kCudaGraphCapture) {
+    return absl::FailedPreconditionError(
+        "Host callbacks are not allowed on capture streams.");
   }
-  return absl::OkStatus();
+  CHECK_NE(callback_registry_handle_, nullptr);
+  auto enqueue_cb =
+      [stream_handle = stream_handle_](
+          HostCallbackRegistry::RegistryHandle::DeviceCb device_cb,
+          void* data) -> absl::Status {
+// cuHostLaunchFunc is regressed in cuda 12.9 and later. It can result in long
+// blocking stalls in the cuda driver. Mitigation is to use cuLaunchHostFunc_v2
+// with CU_HOST_TASK_SPINWAIT mode if possible.
+#if CUDA_VERSION >= 13020
+    if (UseSpinwaitHostCallback()) {
+      CUhostTaskSyncMode mode = CU_HOST_TASK_SPINWAIT;
+      TraceMe trace("cuLaunchHostFunc_v2(spin)");
+      return cuda::ToStatus(
+          cuLaunchHostFunc_v2(stream_handle, device_cb, data, mode));
+    }
+#endif
+    TraceMe trace("cuLaunchHostFunc");
+    return cuda::ToStatus(cuLaunchHostFunc(stream_handle, device_cb, data));
+  };
+  const auto annotate_cb = [this](auto&& cb) {
+    return [this, cb = std::forward<decltype(cb)>(cb)](auto&&... args) mutable {
+      // TSAN complains of cuda host callbacks racing for data accessed
+      // after BlockHostUntilDone even though they are  synchronized. This
+      // annotation establishes the happens-before relationship.
+      auto cleanup = absl::MakeCleanup(
+          [this] { tsan_proxy_.fetch_add(1, std::memory_order_release); });
+      return std::forward<decltype(cb)>(cb)(
+          std::forward<decltype(args)>(args)...);
+    };
+  };
+  return callback_registry_handle_->AddCallback(
+      annotate_cb(std::move(callback)),
+      error_cb ? annotate_cb(std::move(error_cb)) : std::move(error_cb),
+      enqueue_cb);
 }
 
 namespace {
@@ -362,96 +513,89 @@ absl::Status LaunchCudaKernel(
     CUfunction function, unsigned int grid_dim_x, unsigned int grid_dim_y,
     unsigned int grid_dim_z, unsigned int block_dim_x, unsigned int block_dim_y,
     unsigned int block_dim_z, unsigned int shared_mem_bytes, CUstream stream,
-    void** kernel_params, void** extra) {
-  std::unique_ptr<ActivateContext> activation = executor->Activate();
-  VLOG(2) << "launching kernel: " << kernel_name << "; gdx: " << grid_dim_x
-          << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
-          << " bdx: " << block_dim_x << " bdy: " << block_dim_y
-          << " bdz: " << block_dim_z
-          << "; shared_mem_bytes: " << shared_mem_bytes;
+    void** kernel_params, void** extra, std::optional<ClusterDim> cluster_dims,
+    bool use_pdl) {
+  TraceMe trace0([] { return TraceMeEncode("LaunchCudaKernel", {}); },
+                 /*level=*/TraceMeLevel::kVerbose);
 
-  // TODO(ezhulenev): Why do we do it on every call to launch kernel? This
-  // should be moved one level up to se::Kernel level, and done just once (or
-  // updated once we get a new larger shared memory request).
-  if (shared_mem_bytes != 0) {
-    TF_RETURN_IF_ERROR(cuda::ToStatus(
-        cuFuncSetAttribute(function,
-                           CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
-                           shared_mem_bytes),
-        "Failed to set shared memory size"));
-    TF_RETURN_IF_ERROR(cuda::ToStatus(
-        cuFuncSetCacheConfig(function, CU_FUNC_CACHE_PREFER_SHARED)));
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
+
+  if (VLOG_IS_ON(2)) {
+    std::string msg = absl::StrCat("launching kernel: ", kernel_name);
+    if (cluster_dims.has_value()) {
+      absl::StrAppend(&msg, "; cdx: ", cluster_dims->x,
+                      " cdy: ", cluster_dims->y, " cdz: ", cluster_dims->z);
+    }
+    absl::StrAppend(&msg, "; gdx: ", grid_dim_x, " gdy: ", grid_dim_y,
+                    " gdz: ", grid_dim_z, " bdx: ", block_dim_x,
+                    " bdy: ", block_dim_y, " bdz: ", block_dim_z,
+                    "; shared_mem_bytes: ", shared_mem_bytes);
+    VLOG(2) << msg;
   }
 
-  return cuda::ToStatus(
-      cuLaunchKernel(function, grid_dim_x, grid_dim_y, grid_dim_z, block_dim_x,
-                     block_dim_y, block_dim_z, shared_mem_bytes, stream,
-                     kernel_params, extra),
-      absl::StrCat("Failed to launch CUDA kernel: ", kernel_name,
-                   "; block dims: ", block_dim_x, "x", block_dim_y, "x",
-                   block_dim_z, "; grid dims: ", grid_dim_x, "x", grid_dim_y,
-                   "x", grid_dim_z,
-                   "; shared memory size: ", shared_mem_bytes));
-}
+  auto to_status = [&](CUresult result) {
+    if (result == CUDA_SUCCESS) {
+      return absl::OkStatus();
+    }
+    std::string msg =
+        absl::StrCat("Failed to launch CUDA kernel: ", kernel_name);
+    if (cluster_dims.has_value()) {
+      absl::StrAppend(&msg, "; cluster dims: ", cluster_dims->x, "x",
+                      cluster_dims->y, "x", cluster_dims->z);
+    }
+    absl::StrAppend(&msg, "; block dims: ", block_dim_x, "x", block_dim_y, "x",
+                    block_dim_z, "; grid dims: ", grid_dim_x, "x", grid_dim_y,
+                    "x", grid_dim_z,
+                    "; shared memory size: ", shared_mem_bytes);
+    return cuda::ToStatus(result, msg);
+  };
 
-absl::Status LaunchCudaKernel(
-    StreamExecutor* executor, absl::string_view kernel_name,
-    CUfunction function, unsigned int cluster_dim_x, unsigned int cluster_dim_y,
-    unsigned int cluster_dim_z, unsigned int grid_dim_x,
-    unsigned int grid_dim_y, unsigned int grid_dim_z, unsigned int block_dim_x,
-    unsigned int block_dim_y, unsigned int block_dim_z,
-    unsigned int shared_mem_bytes, CUstream stream, void** kernel_params,
-    void** extra) {
-  std::unique_ptr<ActivateContext> activation = executor->Activate();
-  VLOG(2) << "launching kernel: " << kernel_name << "; cdx: " << cluster_dim_x
-          << " cdy: " << cluster_dim_y << " cdz: " << cluster_dim_z
-          << " gdx: " << grid_dim_x << " gdy: " << grid_dim_y
-          << " gdz: " << grid_dim_z << " bdx: " << block_dim_x
-          << " bdy: " << block_dim_y << " bdz: " << block_dim_z
-          << "; shared_mem_bytes: " << shared_mem_bytes;
+  if (cluster_dims.has_value() || use_pdl) {
+    CUlaunchConfig launch_config;
+    memset(&launch_config, 0, sizeof(launch_config));
+    launch_config.blockDimX = block_dim_x;
+    launch_config.blockDimY = block_dim_y;
+    launch_config.blockDimZ = block_dim_z;
+    launch_config.gridDimX = grid_dim_x;
+    launch_config.gridDimY = grid_dim_y;
+    launch_config.gridDimZ = grid_dim_z;
+    launch_config.hStream = stream;
+    launch_config.sharedMemBytes = shared_mem_bytes;
 
-  // TODO(ezhulenev): Why do we do it on every call to launch kernel? This
-  // should be moved one level up to se::Kernel level, and done just once (or
-  // updated once we get a new larger shared memory request).
-  if (shared_mem_bytes != 0) {
-    TF_RETURN_IF_ERROR(cuda::ToStatus(
-        cuFuncSetAttribute(function,
-                           CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
-                           shared_mem_bytes),
-        "Failed to set shared memory size"));
-    TF_RETURN_IF_ERROR(cuda::ToStatus(
-        cuFuncSetCacheConfig(function, CU_FUNC_CACHE_PREFER_SHARED)));
+    absl::InlinedVector<CUlaunchAttribute, 2> attrs;
+
+    if (cluster_dims.has_value()) {
+      CUlaunchAttribute attr{};
+      attr.id = CU_LAUNCH_ATTRIBUTE_CLUSTER_DIMENSION;
+      attr.value.clusterDim.x = static_cast<unsigned int>(cluster_dims->x);
+      attr.value.clusterDim.y = static_cast<unsigned int>(cluster_dims->y);
+      attr.value.clusterDim.z = static_cast<unsigned int>(cluster_dims->z);
+      attrs.push_back(attr);
+    }
+
+    if (use_pdl) {
+      CUlaunchAttribute attr{};
+      attr.id = CU_LAUNCH_ATTRIBUTE_PROGRAMMATIC_STREAM_SERIALIZATION;
+      attr.value.programmaticStreamSerializationAllowed = 1;
+      attrs.push_back(attr);
+    }
+
+    launch_config.attrs = attrs.data();
+    launch_config.numAttrs = attrs.size();
+
+    TraceMe trace(
+        [] { return TraceMeEncode("LaunchCudaKernel/cuLaunchKernelEx", {}); },
+        /*level=*/TraceMeLevel::kVerbose);
+    return to_status(
+        cuLaunchKernelEx(&launch_config, function, kernel_params, extra));
   }
 
-  CUlaunchConfig launch_config;
-  memset(&launch_config, 0, sizeof(launch_config));
-  launch_config.blockDimX = block_dim_x;
-  launch_config.blockDimY = block_dim_y;
-  launch_config.blockDimZ = block_dim_z;
-  launch_config.gridDimX = grid_dim_x;
-  launch_config.gridDimY = grid_dim_y;
-  launch_config.gridDimZ = grid_dim_z;
-  launch_config.hStream = stream;
-  launch_config.sharedMemBytes = shared_mem_bytes;
-
-  CUlaunchAttribute cluster_dims;
-  memset(&cluster_dims, 0, sizeof(cluster_dims));
-  cluster_dims.id = CU_LAUNCH_ATTRIBUTE_CLUSTER_DIMENSION;
-  cluster_dims.value.clusterDim.x = cluster_dim_x;
-  cluster_dims.value.clusterDim.y = cluster_dim_y;
-  cluster_dims.value.clusterDim.z = cluster_dim_z;
-
-  launch_config.attrs = &cluster_dims;
-  launch_config.numAttrs = 1;
-
-  return cuda::ToStatus(
-      cuLaunchKernelEx(&launch_config, function, kernel_params, extra),
-      absl::StrCat("Failed to launch CUDA kernel: ", kernel_name,
-                   "; cluster dims: ", cluster_dim_x, "x", cluster_dim_y, "x",
-                   cluster_dim_z, "; block dims: ", block_dim_x, "x",
-                   block_dim_y, "x", block_dim_z, "; grid dims: ", grid_dim_x,
-                   "x", grid_dim_y, "x", grid_dim_z,
-                   "; shared memory size: ", shared_mem_bytes));
+  TraceMe trace(
+      [&] { return TraceMeEncode("LaunchCudaKernel/cuLaunchKernel", {}); },
+      /*level=*/TraceMeLevel::kVerbose);
+  return to_status(cuLaunchKernel(
+      function, grid_dim_x, grid_dim_y, grid_dim_z, block_dim_x, block_dim_y,
+      block_dim_z, shared_mem_bytes, stream, kernel_params, extra));
 }
 
 }  // namespace
@@ -459,27 +603,29 @@ absl::Status LaunchCudaKernel(
 absl::Status CudaStream::LaunchKernel(
     const ThreadDim& thread_dims, const BlockDim& block_dims,
     const std::optional<ClusterDim>& cluster_dims, void* function,
-    absl::string_view name, void** args, int64_t shmem_bytes) {
-  if (cluster_dims.has_value()) {
-    return LaunchCudaKernel(executor_, name, static_cast<CUfunction>(function),
-                            cluster_dims->x, cluster_dims->y, cluster_dims->z,
-                            block_dims.x, block_dims.y, block_dims.z,
-                            thread_dims.x, thread_dims.y, thread_dims.z,
-                            shmem_bytes, stream_handle_, args,
-                            /*extra=*/nullptr);
-  } else {
-    return LaunchCudaKernel(executor_, name, static_cast<CUfunction>(function),
-                            block_dims.x, block_dims.y, block_dims.z,
-                            thread_dims.x, thread_dims.y, thread_dims.z,
-                            shmem_bytes, stream_handle_, args,
-                            /*extra=*/nullptr);
-  }
+    absl::string_view name, void** args, int64_t shmem_bytes, bool use_pdl) {
+  TraceMe trace([] { return TraceMeEncode("CudaStream::LaunchKernel", {}); },
+                /*level=*/TraceMeLevel::kVerbose);
+
+  return LaunchCudaKernel(executor_, name, static_cast<CUfunction>(function),
+                          block_dims.x, block_dims.y, block_dims.z,
+                          thread_dims.x, thread_dims.y, thread_dims.z,
+                          shmem_bytes, stream_handle_, args,
+                          /*extra=*/nullptr, cluster_dims, use_pdl);
 }
 
 void CudaStream::SetName(std::string name) {
   tsl::profiler::NameStream(
       absl::bit_cast<tsl::profiler::StreamHandle>(stream_handle_), name);
   StreamCommon::SetName(std::move(name));
+}
+
+absl::StatusOr<CudaStream::CaptureHandle> CudaStream::BeginCapture(
+    CUgraph graph, const CUgraphNode* dependencies,
+    const CUgraphEdgeData* dependency_data, size_t num_dependencies,
+    CUstreamCaptureMode mode) {
+  return CudaStream::CaptureHandle::BeginCapture(
+      this, graph, dependencies, dependency_data, num_dependencies, mode);
 }
 
 }  // namespace gpu

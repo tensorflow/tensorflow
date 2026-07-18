@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <memory>
 #include <type_traits>
 #include <vector>
 
@@ -27,16 +28,20 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "Eigen/Core"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_handle.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/gpu/buffer_comparator_kernel.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -46,10 +51,11 @@ namespace gpu {
 struct ComparisonParams {
   double relative_tol = 0.1;
   bool verbose = true;
+  bool run_host_compare = true;
   const Shape* shape = nullptr;
   se::Stream* stream = nullptr;
-  se::DeviceMemoryBase current{};
-  se::DeviceMemoryBase expected{};
+  se::DeviceAddressBase current{};
+  se::DeviceAddressBase expected{};
 };
 
 // Compares two buffers on the GPU.
@@ -59,20 +65,21 @@ template <typename ElementT>
 static absl::StatusOr<bool> DeviceCompare(const ComparisonParams& params) {
   se::StreamExecutor* executor = params.stream->parent();
 
-  se::DeviceMemoryHandle out(executor, executor->AllocateScalar<uint64_t>());
+  ASSIGN_OR_RETURN(std::unique_ptr<se::MemoryAllocation> allocation,
+                   executor->HostMemoryAllocate(sizeof(uint64_t)));
+  se::DeviceAddressBase out_addr = allocation->address();
 
-  TF_RETURN_IF_ERROR(
-      params.stream->MemZero(out.memory_ptr(), sizeof(uint64_t)));
+  RETURN_IF_ERROR(params.stream->MemZero(&out_addr, sizeof(uint64_t)));
   if (params.current.size() != params.expected.size()) {
     return Internal("Mismatched buffer size: %d bytes vs. %d bytes",
                     params.current.size(), params.expected.size());
   }
 
-  se::DeviceMemory<ElementT> current_typed(params.current);
-  se::DeviceMemory<ElementT> expected_typed(params.expected);
+  se::DeviceAddress<ElementT> current_typed(params.current);
+  se::DeviceAddress<ElementT> expected_typed(params.expected);
   uint64_t buffer_size = current_typed.ElementCount();
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto comparison_kernel,
       stream_executor::gpu::GpuKernelRegistry::GetGlobalRegistry()
           .LoadKernel<stream_executor::gpu::BufferComparatorKernel<ElementT>>(
@@ -83,18 +90,25 @@ static absl::StatusOr<bool> DeviceCompare(const ComparisonParams& params) {
 
   LaunchDimensions dim =
       CalculateLaunchDimensions(*params.shape, gpu_device_info);
+  // Limit # of blocks to some meaningful number which is large enough to
+  // occupy all GPU cores if necessary but not too large to reduce # of idle
+  // blocks
+  dim = LaunchDimensions(
+      se::BlockDim(std::min(dim.num_blocks(),
+                            BufferComparator::kMaxNumThreadBlocksForKernel),
+                   1, 1),
+      dim.thread_counts_per_block());
 
-  se::DeviceMemory<uint64_t> as_uint64(out.memory());
-  TF_RETURN_IF_ERROR(comparison_kernel.Launch(
+  se::DeviceAddress<uint64_t> as_uint64(out_addr);
+  RETURN_IF_ERROR(comparison_kernel.Launch(
       dim.thread_counts_per_block(), dim.block_counts(), params.stream,
       current_typed, expected_typed, static_cast<float>(params.relative_tol),
       buffer_size, as_uint64));
 
   uint64_t result = -1;
-  CHECK_EQ(out.memory().size(), sizeof(result));
-  TF_RETURN_IF_ERROR(
-      params.stream->Memcpy(&result, out.memory(), sizeof(result)));
-  TF_RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
+  CHECK_EQ(out_addr.size(), sizeof(result));
+  RETURN_IF_ERROR(params.stream->Memcpy(&result, out_addr, sizeof(result)));
+  RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
   return result == 0;
 }
 
@@ -106,11 +120,11 @@ template <typename ElementType, typename ComparisonType>
 static absl::StatusOr<bool> HostCompare(const ComparisonParams& params) {
   int64_t n = params.current.size() / sizeof(ElementType);
   std::vector<ElementType> host_current(n), host_expected(n);
-  TF_RETURN_IF_ERROR(params.stream->Memcpy(host_current.data(), params.current,
-                                           params.current.size()));
-  TF_RETURN_IF_ERROR(params.stream->Memcpy(
-      host_expected.data(), params.expected, params.expected.size()));
-  TF_RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
+  RETURN_IF_ERROR(params.stream->Memcpy(host_current.data(), params.current,
+                                        params.current.size()));
+  RETURN_IF_ERROR(params.stream->Memcpy(host_expected.data(), params.expected,
+                                        params.expected.size()));
+  RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
 
   const auto canonicalize = [](ComparisonType a) -> ComparisonType {
     if (std::is_same<ElementType, Eigen::half>::value && a) {
@@ -145,7 +159,9 @@ static absl::StatusOr<bool> HostCompare(const ComparisonParams& params) {
                         std::abs(expected_value_canonical)) +
                1) <
           params.relative_tol)) {
-      if (!params.verbose) return false;  // Return immediately if not verbose.
+      if (!params.verbose) {
+        return false;  // Return immediately if not verbose.
+      }
       ++differences_seen;
       LOG(ERROR) << "Difference at " << i << ": " << current_value
                  << ", expected " << expected_value;
@@ -158,29 +174,27 @@ template <typename ElementT, typename ComparisonT>
 static absl::StatusOr<bool> CompareEqualParameterized(
     const ComparisonParams& params) {
   XLA_SCOPED_LOGGING_TIMER("BufferComparator::CompareEqual");
-  TF_ASSIGN_OR_RETURN(bool result, DeviceCompare<ElementT>(params));
-  if (result) {
-    return true;
-  }
+  ASSIGN_OR_RETURN(bool result, DeviceCompare<ElementT>(params));
+  if (result) return true;
+  if (!params.run_host_compare) return false;
 
-  TF_ASSIGN_OR_RETURN(bool host_return,
-                      (HostCompare<ElementT, ComparisonT>(params)));
+  ASSIGN_OR_RETURN(bool host_return,
+                   (HostCompare<ElementT, ComparisonT>(params)));
   CHECK_EQ(host_return, result)
       << "Host comparison succeeded even though GPU comparison failed.";
   return false;
 }
 
 absl::StatusOr<bool> BufferComparator::CompareEqual(
-    se::Stream* stream, se::DeviceMemoryBase current,
-    se::DeviceMemoryBase expected) const {
-  ComparisonParams params{relative_tol_, verbose_, &shape_,
+    se::Stream* stream, const se::DeviceAddressBase& current,
+    const se::DeviceAddressBase& expected) const {
+  ComparisonParams params{relative_tol_, verbose_, run_host_compare_, &shape_,
                           stream,        current,  expected};
 
   auto do_compare = [&](auto cst_type) {
     using ElementT = primitive_util::NativeTypeOf<cst_type>;
     using ComparisonT =
-        std::conditional_t<std::is_same_v<ElementT, double>,
-                           double, float>;
+        std::conditional_t<std::is_same_v<ElementT, double>, double, float>;
     return CompareEqualParameterized<ElementT, ComparisonT>(params);
   };
 
@@ -204,8 +218,11 @@ absl::StatusOr<bool> BufferComparator::CompareEqual(
 }
 
 BufferComparator::BufferComparator(const Shape& shape, double tolerance,
-                                   bool verbose)
-    : shape_(shape), relative_tol_(tolerance), verbose_(verbose) {
+                                   bool verbose, bool run_host_compare)
+    : shape_(shape),
+      relative_tol_(tolerance),
+      verbose_(verbose),
+      run_host_compare_(run_host_compare) {
   // Normalize complex shapes: since we treat the passed array as a contiguous
   // storage it does not matter which dimension are we doubling.
   auto double_dim_size = [&]() {

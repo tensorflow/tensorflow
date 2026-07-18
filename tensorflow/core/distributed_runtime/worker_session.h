@@ -51,8 +51,8 @@ class WorkerSession {
 
   DynamicDeviceMgr* remote_device_mgr() { return remote_device_mgr_.get(); }
 
-  const string& session_name() const { return session_name_; }
-  const string& worker_name() const { return worker_name_; }
+  const std::string& session_name() const { return session_name_; }
+  const std::string& worker_name() const { return worker_name_; }
 
   WorkerCacheInterface* worker_cache() const {
     tf_shared_lock l(worker_session_state_mu_);
@@ -64,7 +64,7 @@ class WorkerSession {
     return cluster_flr_.get();
   }
 
-  WorkerSession(const string& session_name, const string& worker_name,
+  WorkerSession(const std::string& session_name, const std::string& worker_name,
                 std::unique_ptr<WorkerCacheInterface> worker_cache,
                 std::unique_ptr<DeviceMgr> device_mgr,
                 std::unique_ptr<GraphMgr> graph_mgr,
@@ -72,7 +72,7 @@ class WorkerSession {
                 DistributedFunctionLibraryRuntimeCreator cluster_flr_creator);
 
   static std::shared_ptr<WorkerSession> CreateWithBorrowedDeviceMgr(
-      const string& session_name, const string& worker_name,
+      const std::string& session_name, const std::string& worker_name,
       std::unique_ptr<WorkerCacheInterface> worker_cache,
       DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
       std::unique_ptr<DynamicDeviceMgr> remote_device_mgr,
@@ -98,7 +98,7 @@ class WorkerSession {
   ~WorkerSession();
 
  private:
-  WorkerSession(const string& session_name, const string& worker_name,
+  WorkerSession(const std::string& session_name, const std::string& worker_name,
                 std::unique_ptr<WorkerCacheInterface> worker_cache,
                 DeviceMgr* borrowed_device_mgr,
                 std::unique_ptr<GraphMgr> graph_mgr,
@@ -106,10 +106,10 @@ class WorkerSession {
                 DistributedFunctionLibraryRuntimeCreator cluster_flr_creator);
 
   // The name of the session.
-  const string session_name_;
+  const std::string session_name_;
 
   // The name of the worker. E.g., /job:mnist/replica:0/task:1.
-  const string worker_name_;
+  const std::string worker_name_;
 
   mutable mutex worker_session_state_mu_;
   // Object from which WorkerInterface instances can be obtained.

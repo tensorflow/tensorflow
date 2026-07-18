@@ -21,21 +21,32 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/compilation_provider_options.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
-#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/cuda_root_path.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/platform.h"
 
 namespace stream_executor::cuda {
 
 namespace {
 using ::testing::AllOf;
 using ::testing::HasSubstr;
-using ::tsl::testing::StatusIs;
+
+TEST(AssembleCompilationProviderTest, CandidateCudaRootsConsidersCUDA_HOME) {
+  const std::string cuda_home = "/my/cuda/home";
+  tsl::setenv("CUDA_HOME", cuda_home.c_str(), 1);
+  if (!tsl::kIsOpenSource) {
+    GTEST_SKIP()
+        << "CUDA_HOME is only being considered in the OSS build of XLA.";
+  }
+  EXPECT_THAT(tsl::CandidateCudaRoots(), ::testing::Contains(cuda_home));
+}
 
 TEST(AssembleCompilationProviderTest,
      ReturnsErrorIfNoCompilationProviderIsAvailable) {
@@ -48,7 +59,6 @@ TEST(AssembleCompilationProviderTest,
   CompilationProviderOptions options{
       CompilationProviderOptions::NvJitLinkMode::kDisabled,
       /*enable_libnvptxcompiler=*/false,
-      /*enable_llvm_module_compilation_parallelism=*/false,
       /*enable_driver_compilation=*/false,
       /*cuda_data_dir=*/"/does/not/exist",
   };
@@ -67,7 +77,6 @@ TEST(AssembleCompilationProviderTest,
   CompilationProviderOptions options{
       CompilationProviderOptions::NvJitLinkMode::kDisabled,
       /*enable_libnvptxcompiler=*/false,
-      /*enable_llvm_module_compilation_parallelism=*/false,
       /*enable_driver_compilation=*/true,
       /*cuda_data_dir=*/"/does/not/exist",
   };
@@ -91,7 +100,6 @@ TEST(AssembleCompilationProviderTest,
   CompilationProviderOptions options{
       CompilationProviderOptions::NvJitLinkMode::kDisabled,
       /*enable_libnvptxcompiler=*/false,
-      /*enable_llvm_module_compilation_parallelism=*/false,
       /*enable_driver_compilation=*/false,
       /*cuda_data_dir=*/cuda_dir,
   };
@@ -114,7 +122,6 @@ TEST(
   CompilationProviderOptions options{
       CompilationProviderOptions::NvJitLinkMode::kEnabled,
       /*enable_libnvptxcompiler=*/false,
-      /*enable_llvm_module_compilation_parallelism=*/false,
       /*enable_driver_compilation=*/false,
       /*cuda_data_dir=*/"/does/not/exist",
   };
@@ -140,7 +147,6 @@ TEST(AssembleCompilationProviderTest,
   CompilationProviderOptions options{
       CompilationProviderOptions::NvJitLinkMode::kEnabled,
       /*enable_libnvptxcompiler=*/true,
-      /*enable_llvm_module_compilation_parallelism=*/false,
       /*enable_driver_compilation=*/false,
       /*cuda_data_dir=*/"/does/not/exist",
   };

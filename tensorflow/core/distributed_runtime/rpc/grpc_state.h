@@ -55,7 +55,7 @@ class UntypedStreamingRPCState : public core::RefCounted {
   virtual void ResponseReadCompleted(bool ok) = 0;
   virtual void CallFinished(bool ok) = 0;
 
-  virtual string DebugString() const = 0;
+  virtual std::string DebugString() const = 0;
 
   class Tag : public GrpcClientCQTag {
    public:
@@ -98,7 +98,7 @@ class Exchange {
   };
 
   Exchange(const ::grpc::ByteBuffer& request_buf, protobuf::Message* response,
-           StatusCallback cb, string debug_string)
+           StatusCallback cb, std::string debug_string)
       : state_(State::kExchangeCreated),
         request_buf_(request_buf),
         response_(response),
@@ -128,7 +128,7 @@ class Exchange {
 
   const State& state() const { return state_; }
 
-  string DebugString() const;
+  std::string DebugString() const;
 
  private:
   State state_;
@@ -136,7 +136,7 @@ class Exchange {
   ::grpc::ByteBuffer response_buf_;
   protobuf::Message* response_;
   StatusCallback cb_;
-  string debug_string_;
+  std::string debug_string_;
 };
 
 const char* ToString(Exchange::State s);
@@ -192,7 +192,7 @@ class ExchangeQueue {
 
   // Returns a string containing addresses and states of all exchanges in this
   // queue.
-  string DebugString() const;
+  std::string DebugString() const;
 
   // Swaps the contents of this and `other`.
   void Swap(ExchangeQueue* other);
@@ -353,16 +353,16 @@ class StreamingRPCState : public UntypedStreamingRPCState {
 
     absl::Status s = FromGrpcStatus(call_status_);
     if (s.ok() && !ok) {
-      s.Update(
-          errors::Internal("GRPC status is okay but CompletionQueueStatus is "
-                           "not.  This should never happen.",
-                           context_->debug_error_string()));
+      s.Update(absl::InternalError(
+          absl::StrCat("GRPC status is okay but CompletionQueueStatus is "
+                       "not.  This should never happen.",
+                       context_->debug_error_string())));
     }
     // unlocks mu_
     MarkDoneAndCompleteExchanges(s);
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     mutex_lock l(mu_);
     return exchanges_.DebugString();
   }
@@ -495,7 +495,7 @@ class StreamingRPCDispatcher {
     is_call_alive = state_->SendNextRequest(request, response, done);
     if (!is_call_alive) {
       // Consider retrying to create and start a call few more times.
-      done(errors::Unknown("gRPC call failed right after it was created"));
+      done(absl::UnknownError("gRPC call failed right after it was created"));
     }
   }
 

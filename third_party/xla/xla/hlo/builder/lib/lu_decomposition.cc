@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -32,7 +33,7 @@ namespace xla {
 LuDecompositionResult LuDecomposition(XlaOp a) {
   XlaBuilder* builder = a.builder();
   XlaOp result = builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+    ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     const int ndims = a_shape.dimensions().size();
     TF_RET_CHECK(ndims >= 2);
     const int64_t m = ShapeUtil::GetDimension(a_shape, -2);

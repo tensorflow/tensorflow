@@ -38,10 +38,10 @@ typedef Eigen::GpuDevice GPUDevice;
 template <typename Tin, typename Tout>
 __global__ void CurtHealthKernel(const Tin* __restrict__ data, int size,
                                  Tout output[1]) {
-  const int32 thread_id = blockIdx.x * blockDim.x + threadIdx.x;
-  const int32 total_thread_count = gridDim.x * blockDim.x;
+  const int32_t thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+  const int32_t total_thread_count = gridDim.x * blockDim.x;
 
-  int32 offset = thread_id;
+  int32_t offset = thread_id;
   while (offset < size) {
     if (Eigen::numext::isinf(data[offset]) ||
         Eigen::numext::isnan(data[offset])) {
@@ -56,10 +56,10 @@ __global__ void CurtHealthKernel(const Tin* __restrict__ data, int size,
 template <typename Tin, typename Tout>
 __global__ void ConciseHealthKernel(const Tin* __restrict__ data, int size,
                                     Tout output[3]) {
-  const int32 thread_id = blockIdx.x * blockDim.x + threadIdx.x;
-  const int32 total_thread_count = gridDim.x * blockDim.x;
+  const int32_t thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+  const int32_t total_thread_count = gridDim.x * blockDim.x;
 
-  int32 offset = thread_id;
+  int32_t offset = thread_id;
   Tout accum[3] = {0.0, 0.0, 0.0};
 
   while (offset < size) {
@@ -87,10 +87,10 @@ __global__ void ConciseHealthKernel(const Tin* __restrict__ data, int size,
 template <typename Tin, typename Tout>
 __global__ void FullHealthKernel(const Tin* __restrict__ data, int size,
                                  Tout output[6]) {
-  const int32 thread_id = blockIdx.x * blockDim.x + threadIdx.x;
-  const int32 total_thread_count = gridDim.x * blockDim.x;
+  const int32_t thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+  const int32_t total_thread_count = gridDim.x * blockDim.x;
 
-  int32 offset = thread_id;
+  int32_t offset = thread_id;
   Tout accum[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 
   while (offset < size) {
@@ -130,10 +130,10 @@ __global__ void FullHealthKernel(const Tin* __restrict__ data, int size,
 template <typename Tin, typename Tout>
 __global__ void ReduceInfNanThreeSlotsKernel(const Tin* __restrict__ data,
                                              int size, Tout output[3]) {
-  const int32 thread_id = blockIdx.x * blockDim.x + threadIdx.x;
-  const int32 total_thread_count = gridDim.x * blockDim.x;
+  const int32_t thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+  const int32_t total_thread_count = gridDim.x * blockDim.x;
 
-  int32 offset = thread_id;
+  int32_t offset = thread_id;
 
   while (offset < size) {
     if (Eigen::numext::isinf(data[offset])) {
@@ -155,8 +155,8 @@ __global__ void ReduceInfNanThreeSlotsKernel(const Tin* __restrict__ data,
 template <typename Tin, typename Tout>
 struct CurtHealthLaunch {
   void Run(const GPUDevice& d, const Tin* data, int size, Tout output[1]) {
-    const int32 block_size = d.maxGpuThreadsPerBlock();
-    const int32 num_blocks =
+    const int32_t block_size = d.maxGpuThreadsPerBlock();
+    const int32_t num_blocks =
         (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
         block_size;
 
@@ -168,19 +168,19 @@ struct CurtHealthLaunch {
 template struct CurtHealthLaunch<Eigen::half, float>;
 template struct CurtHealthLaunch<float, float>;
 template struct CurtHealthLaunch<double, float>;
-template struct CurtHealthLaunch<int16, float>;
-template struct CurtHealthLaunch<int32, float>;
+template struct CurtHealthLaunch<int16_t, float>;
+template struct CurtHealthLaunch<int32_t, float>;
 template struct CurtHealthLaunch<Eigen::half, double>;
 template struct CurtHealthLaunch<float, double>;
 template struct CurtHealthLaunch<double, double>;
-template struct CurtHealthLaunch<int16, double>;
-template struct CurtHealthLaunch<int32, double>;
+template struct CurtHealthLaunch<int16_t, double>;
+template struct CurtHealthLaunch<int32_t, double>;
 
 template <typename Tin, typename Tout>
 struct ConciseHealthLaunch {
   void Run(const GPUDevice& d, const Tin* data, int size, Tout output[3]) {
-    const int32 block_size = d.maxGpuThreadsPerBlock();
-    const int32 num_blocks =
+    const int32_t block_size = d.maxGpuThreadsPerBlock();
+    const int32_t num_blocks =
         (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
         block_size;
 
@@ -192,19 +192,19 @@ struct ConciseHealthLaunch {
 template struct ConciseHealthLaunch<Eigen::half, float>;
 template struct ConciseHealthLaunch<float, float>;
 template struct ConciseHealthLaunch<double, float>;
-template struct ConciseHealthLaunch<int16, float>;
-template struct ConciseHealthLaunch<int32, float>;
+template struct ConciseHealthLaunch<int16_t, float>;
+template struct ConciseHealthLaunch<int32_t, float>;
 template struct ConciseHealthLaunch<Eigen::half, double>;
 template struct ConciseHealthLaunch<float, double>;
 template struct ConciseHealthLaunch<double, double>;
-template struct ConciseHealthLaunch<int16, double>;
-template struct ConciseHealthLaunch<int32, double>;
+template struct ConciseHealthLaunch<int16_t, double>;
+template struct ConciseHealthLaunch<int32_t, double>;
 
 template <typename Tin, typename Tout>
 struct FullHealthLaunch {
   void Run(const GPUDevice& d, const Tin* data, int size, Tout output[6]) {
-    const int32 block_size = d.maxGpuThreadsPerBlock();
-    const int32 num_blocks =
+    const int32_t block_size = d.maxGpuThreadsPerBlock();
+    const int32_t num_blocks =
         (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
         block_size;
 
@@ -216,19 +216,19 @@ struct FullHealthLaunch {
 template struct FullHealthLaunch<Eigen::half, float>;
 template struct FullHealthLaunch<float, float>;
 template struct FullHealthLaunch<double, float>;
-template struct FullHealthLaunch<int16, float>;
-template struct FullHealthLaunch<int32, float>;
+template struct FullHealthLaunch<int16_t, float>;
+template struct FullHealthLaunch<int32_t, float>;
 template struct FullHealthLaunch<Eigen::half, double>;
 template struct FullHealthLaunch<float, double>;
 template struct FullHealthLaunch<double, double>;
-template struct FullHealthLaunch<int16, double>;
-template struct FullHealthLaunch<int32, double>;
+template struct FullHealthLaunch<int16_t, double>;
+template struct FullHealthLaunch<int32_t, double>;
 
 template <typename Tin, typename Tout>
 struct ReduceInfNanThreeSlotsLaunch {
   void Run(const GPUDevice& d, const Tin* data, int size, Tout output[3]) {
-    const int32 block_size = d.maxGpuThreadsPerBlock();
-    const int32 num_blocks =
+    const int32_t block_size = d.maxGpuThreadsPerBlock();
+    const int32_t num_blocks =
         (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
         block_size;
 
@@ -241,13 +241,13 @@ struct ReduceInfNanThreeSlotsLaunch {
 template struct ReduceInfNanThreeSlotsLaunch<Eigen::half, float>;
 template struct ReduceInfNanThreeSlotsLaunch<float, float>;
 template struct ReduceInfNanThreeSlotsLaunch<double, float>;
-template struct ReduceInfNanThreeSlotsLaunch<int16, float>;
-template struct ReduceInfNanThreeSlotsLaunch<int32, float>;
+template struct ReduceInfNanThreeSlotsLaunch<int16_t, float>;
+template struct ReduceInfNanThreeSlotsLaunch<int32_t, float>;
 template struct ReduceInfNanThreeSlotsLaunch<Eigen::half, double>;
 template struct ReduceInfNanThreeSlotsLaunch<float, double>;
 template struct ReduceInfNanThreeSlotsLaunch<double, double>;
-template struct ReduceInfNanThreeSlotsLaunch<int16, double>;
-template struct ReduceInfNanThreeSlotsLaunch<int32, double>;
+template struct ReduceInfNanThreeSlotsLaunch<int16_t, double>;
+template struct ReduceInfNanThreeSlotsLaunch<int32_t, double>;
 
 }  // namespace tensorflow
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

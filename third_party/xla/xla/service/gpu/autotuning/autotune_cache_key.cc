@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <cmath>
 #include <string>
-#include <variant>
 
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -55,14 +55,17 @@ std::string AutotuneCacheKey::HloInstructionToCanonicalString(
 std::string AutotuneCacheKey::DeviceDescriptionToCacheKey(
     const se::DeviceDescription& device_description) {
   std::string compute_capability;
-  if (auto* ccc = std::get_if<se::CudaComputeCapability>(
-          &device_description.gpu_compute_capability())) {
+  if (auto* ccc = device_description.gpu_compute_capability()
+                      .cuda_compute_capability()) {
     compute_capability = absl::StrCat("CUDA: ", ccc->major, ".", ccc->minor);
-  } else {
-    auto* rcc = std::get_if<se::RocmComputeCapability>(
-        &device_description.gpu_compute_capability());
-    CHECK(rcc != nullptr) << "Unknown compute capability type";
+  } else if (auto* rcc = device_description.gpu_compute_capability()
+                             .rocm_compute_capability()) {
     compute_capability = absl::StrCat("ROCM: ", rcc->gfx_version());
+  } else if (auto* oneapi_cc = device_description.gpu_compute_capability()
+                                   .oneapi_compute_capability()) {
+    compute_capability = absl::StrCat("oneAPI: ", oneapi_cc->ToString());
+  } else {
+    LOG(FATAL) << "Unknown compute capability type";
   }
 
   // The string below should include only as much information as is needed to

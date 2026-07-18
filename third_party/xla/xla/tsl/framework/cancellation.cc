@@ -15,11 +15,18 @@ limitations under the License.
 
 #include "xla/tsl/framework/cancellation.h"
 
+#include <atomic>
 #include <forward_list>
+#include <functional>
+#include <memory>
+#include <string>
+#include <utility>
 
-#include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/errors.h"
+#include "absl/synchronization/notification.h"
+#include "xla/tsl/lib/gtl/flatmap.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/status.h"
 
@@ -48,7 +55,7 @@ void CancellationManager::StartCancelWithStatus(const absl::Status& status) {
   std::forward_list<CancellationManager*> children_to_cancel;
   absl::Notification* cancelled_notification = nullptr;
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     if (is_cancelled_.load(std::memory_order_relaxed) || is_cancelling_) {
       return;
     }
@@ -87,7 +94,7 @@ void CancellationManager::StartCancelWithStatus(const absl::Status& status) {
     child->StartCancelWithStatus(status);
   }
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     is_cancelling_ = false;
     is_cancelled_.store(true, std::memory_order_release);
   }
@@ -112,11 +119,11 @@ bool CancellationManager::RegisterCallbackWithErrorLogging(
 bool CancellationManager::RegisterCallbackConfig(CancellationToken token,
                                                  CallbackConfiguration config) {
   DCHECK_LT(token, next_cancellation_token_) << "Invalid cancellation token";
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   bool should_register = !is_cancelled_ && !is_cancelling_;
   if (should_register) {
     if (!state_) {
-      state_ = absl::make_unique<State>();
+      state_ = std::make_unique<State>();
     }
     std::swap(state_->callbacks[token], config);
   }
@@ -124,14 +131,14 @@ bool CancellationManager::RegisterCallbackConfig(CancellationToken token,
 }
 
 bool CancellationManager::DeregisterCallback(CancellationToken token) {
-  mu_.Lock();
+  mu_.lock();
   if (is_cancelled_) {
-    mu_.Unlock();
+    mu_.unlock();
     return false;
   } else if (is_cancelling_) {
     absl::Notification* cancelled_notification =
         state_ ? &state_->cancelled_notification : nullptr;
-    mu_.Unlock();
+    mu_.unlock();
     // Wait for all of the cancellation callbacks to be called. This
     // wait ensures that the caller of DeregisterCallback does not
     // return immediately and free objects that may be used in the
@@ -144,20 +151,20 @@ bool CancellationManager::DeregisterCallback(CancellationToken token) {
     if (state_) {
       state_->callbacks.erase(token);
     }
-    mu_.Unlock();
+    mu_.unlock();
     return true;
   }
 }
 
 bool CancellationManager::RegisterChild(CancellationManager* child) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   if (is_cancelled_.load(std::memory_order_relaxed) || is_cancelling_) {
     child->is_removed_from_parent_ = true;
     return true;
   }
 
   if (!state_) {
-    state_ = absl::make_unique<State>();
+    state_ = std::make_unique<State>();
   }
 
   // Push `child` onto the front of the list of children.
@@ -176,7 +183,7 @@ void CancellationManager::DeregisterChild(CancellationManager* child) {
   DCHECK_EQ(child->parent_, this);
   absl::Notification* cancelled_notification = nullptr;
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     if (!child->is_removed_from_parent_) {
       // Remove the child from this manager's list of children.
       DCHECK(state_);
@@ -209,7 +216,7 @@ void CancellationManager::DeregisterChild(CancellationManager* child) {
 }
 
 bool CancellationManager::TryDeregisterCallback(CancellationToken token) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (is_cancelled_ || is_cancelling_) {
     return false;
   } else {
@@ -230,7 +237,7 @@ CancellationManager::~CancellationManager() {
 }
 
 bool CancellationManager::IsCancelling() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   return is_cancelling_;
 }
 
@@ -240,7 +247,7 @@ absl::Status RegisterCancellationCallback(
   if (cancellation_manager) {
     CancellationToken token = cancellation_manager->get_cancellation_token();
     if (!cancellation_manager->RegisterCallback(token, std::move(callback))) {
-      return errors::Cancelled("Operation was cancelled");
+      return absl::CancelledError("Operation was cancelled");
     }
     *deregister_fn = [cancellation_manager, token]() {
       cancellation_manager->DeregisterCallback(token);

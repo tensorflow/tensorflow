@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <string>
 
-#include "xla/stream_executor/tpu/tpu_api.h"
-#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/tpu/tpu_api.h"
+#include "xla/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 
 namespace tensorflow {
@@ -61,7 +61,7 @@ class TpuEmbeddingEngineStateInterface : public ResourceBase {
     return new TpuEmbeddingEngineStateInterface(state);
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return "TpuEmbeddingEngineStateInterface";
   }
 

@@ -266,6 +266,22 @@ def MHLO_AsinOp : MHLO_UnaryElementwiseOp<"asin",
   let hasFolder = 1;
 }
 
+def MHLO_AsinhOp : MHLO_UnaryElementwiseOp<"asinh",
+    [HLO_CompatibleOperandsAndResultType], HLO_AnyFpOrComplexTensor> {
+  let summary = "Asinh operation";
+
+  let description = [{
+     Performs element-wise asinh operation on `operand` tensor and produces a
+    `result` tensor.
+
+    Example:
+    ```mlir
+    %result = mhlo.asinh %operand : tensor<2x2xf32>
+    ```
+  }];
+  let hasFolder = 1;
+}
+
 def MHLO_CbrtOp: MHLO_UnaryElementwiseOp<"cbrt",
     [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Cbrt operation";
@@ -1013,6 +1029,16 @@ def MHLO_MulOp : MHLO_BinaryElementwiseOp<"multiply",
   let hasFolder = 1;
 }
 
+def MHLO_MulhiOp : MHLO_BinaryElementwiseOp<"mulhi",
+      [Commutative, Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntTensor> {
+  let summary = "Mulhi operation";
+  let description = [{
+    Performs element-wise multiplication of two integer tensors `lhs` and `rhs`,
+    returning the most significant bits of the product.
+  }];
+  let hasCustomHLOConverter = 1;
+}
+
 def MHLO_PowOp : MHLO_BinaryElementwiseOp<"power",
       [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexOrQuantizedIntTensor> {
   let summary = "Pow operation";
@@ -1617,6 +1643,10 @@ def MHLO_WhileOp: MHLO_Op<"while", [
   let hasVerifier = 1;
 }
 
+def MHLO_ReplicaGroups : AnyAttrOf<[I64ElementsAttr, MHLO_ReplicaGroupMeshAxes]> {
+  let description = "Attribute that models the replica groups (either tensor or ReplicaGroupMeshAxes)";
+}
+
 def MHLO_AllGatherOp : MHLO_Op<"all_gather", [SameOperandsAndResultElementType]> {
   string summary = "AllGather operation";
   string description = [{
@@ -1643,7 +1673,7 @@ def MHLO_AllGatherOp : MHLO_Op<"all_gather", [SameOperandsAndResultElementType]>
   let arguments = (ins
     Variadic<MHLO_Tensor>:$operands,
     ConfinedAttr<I64Attr, [IntNonNegative]>:$all_gather_dim,
-    I64ElementsAttr:$replica_groups,
+    MHLO_ReplicaGroups:$replica_groups,
     OptionalAttr<MHLO_ChannelHandle>:$channel_handle,
     UnitAttr:$use_global_device_ids
   );
@@ -1654,7 +1684,7 @@ def MHLO_AllGatherOp : MHLO_Op<"all_gather", [SameOperandsAndResultElementType]>
     OpBuilder<(ins
       "::mlir::Type":$result_type, "::mlir::Value":$operand,
       "::mlir::IntegerAttr":$all_gather_dim,
-      "::mlir::DenseIntElementsAttr":$replica_groups,
+      "::mlir::Attribute":$replica_groups,
       "::mlir::mhlo::ChannelHandleAttr":$channel_handle)>];
 
   let hasCustomHLOConverter = 1;
@@ -1692,7 +1722,7 @@ def MHLO_AllReduceOp : MHLO_Op<"all_reduce", [
 
   let arguments = (ins
     Variadic<MHLO_Tensor>:$operands,
-    I64ElementsAttr:$replica_groups,
+    MHLO_ReplicaGroups:$replica_groups,
     OptionalAttr<MHLO_ChannelHandle>:$channel_handle,
     UnitAttr:$use_global_device_ids
   );
@@ -1702,12 +1732,12 @@ def MHLO_AllReduceOp : MHLO_Op<"all_reduce", [
   let builders = [
     OpBuilder<(ins
       "::mlir::Type":$result_type, "::mlir::Value":$operand,
-      "::mlir::DenseIntElementsAttr":$replica_groups,
+      "::mlir::Attribute":$replica_groups,
       "::mlir::mhlo::ChannelHandleAttr":$channel_handle,
       CArg<"bool", "false">:$use_global_device_ids)>,
      OpBuilder<(ins
       "::mlir::Value":$operand,
-      "::mlir::DenseIntElementsAttr":$replica_groups,
+      "::mlir::Attribute":$replica_groups,
       "::mlir::mhlo::ChannelHandleAttr":$channel_handle,
       CArg<"bool", "false">:$use_global_device_ids)>,
  ];
@@ -1745,7 +1775,7 @@ def MHLO_ReduceScatterOp : MHLO_Op<"reduce_scatter", []> {
   let arguments = (ins
     MHLO_Tensor:$operand,
     ConfinedAttr<I64Attr, [IntNonNegative]>:$scatter_dimension,
-    I64ElementsAttr:$replica_groups,
+    MHLO_ReplicaGroups:$replica_groups,
     OptionalAttr<MHLO_ChannelHandle>:$channel_handle,
     UnitAttr:$use_global_device_ids
   );
@@ -1757,7 +1787,7 @@ def MHLO_ReduceScatterOp : MHLO_Op<"reduce_scatter", []> {
     OpBuilder<(ins
       "::mlir::Type":$result_type, "::mlir::Value":$operand,
       "::mlir::IntegerAttr":$scatter_dimension,
-      "::mlir::DenseIntElementsAttr":$replica_groups,
+      "::mlir::Attribute":$replica_groups,
       "::mlir::mhlo::ChannelHandleAttr":$channel_handle)>];
 
   let hasCustomHLOConverter = 1;
@@ -1796,7 +1826,7 @@ def MHLO_AllToAllOp : MHLO_Op<"all_to_all",
     OptionalAttr<ConfinedAttr<I64Attr, [IntNonNegative]>>:$split_dimension,
     OptionalAttr<ConfinedAttr<I64Attr, [IntNonNegative]>>:$concat_dimension,
     OptionalAttr<ConfinedAttr<I64Attr, [IntPositive]>>:$split_count,
-    I64ElementsAttr:$replica_groups,
+    MHLO_ReplicaGroups:$replica_groups,
     OptionalAttr<MHLO_ChannelHandle>:$channel_handle
   );
   let results = (outs Variadic<MHLO_Tensor>);
@@ -1810,13 +1840,13 @@ def MHLO_AllToAllOp : MHLO_Op<"all_to_all",
       "::mlir::IntegerAttr": $split_dimension,
       "::mlir::IntegerAttr": $concat_dimension,
       "::mlir::IntegerAttr": $split_count,
-      "::mlir::DenseIntElementsAttr": $replica_groups)>,
+      "::mlir::Attribute": $replica_groups)>,
     OpBuilder<(ins
       "::mlir::TypeRange":$result_type, "::mlir::ValueRange":$operand,
       "::mlir::IntegerAttr": $split_dimension,
       "::mlir::IntegerAttr": $concat_dimension,
       "::mlir::IntegerAttr": $split_count,
-      "::mlir::DenseIntElementsAttr": $replica_groups)>];
+      "::mlir::Attribute": $replica_groups)>];
 }
 
 def MHLO_ReduceOp: MHLO_ShapedInterfaceOp<"reduce", [
@@ -1869,6 +1899,55 @@ def MHLO_ReduceOp: MHLO_ShapedInterfaceOp<"reduce", [
 
   // TODO(b/129422361): ReduceOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
+}
+
+def MHLO_ScanOp: MHLO_Op<"scan", [
+      AttrSizedOperandSegments,
+      AttrSizedResultSegments,
+      InferTensorType,
+      IsolatedFromAbove,
+      OpAsmOpInterface,
+      RecursiveMemoryEffects
+    ]> {
+  let summary = "Scan operation";
+  let description = [{
+    Applies a reduction function `body` to `inputs` and `inits` along the
+    `dimension` and produces `results` (comprising `outputs` and `carries`).
+
+    If `is_reverse` is true, the scan is performed in reverse order.
+    `is_associative` indicates whether the reduction function is associative.
+
+    See: https://www.tensorflow.org/xla/operation_semantics#scan
+  }];
+  let arguments = (ins
+    Variadic<MHLO_Tensor>:$inputs,
+    Variadic<MHLO_Tensor>:$inits,
+    ConfinedAttr<I64Attr, [IntNonNegative]>:$dimension,
+    OptionalAttr<ConfinedAttr<I64Attr, [IntNonNegative]>>:$scan_dim_size,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_reverse,
+    OptionalAttr<BoolAttr>:$is_associative
+  );
+
+  let results = (outs
+    Variadic<MHLO_Tensor>:$outputs,
+    Variadic<MHLO_Tensor>:$carries
+  );
+
+  let regions = (region SizedRegion<1>:$body);
+
+  let extraClassDeclaration = [{
+    void getAsmBlockArgumentNames(Region &region, OpAsmSetValueNameFn setNameFn) {
+      for (size_t i = 0; i < region.getNumArguments(); ++i) {
+        setNameFn(region.getArgument(i), i < getInputs().size() ? "input" : "carry");
+      }
+    }
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return mlir::hlo::isCompatibleForHloTypeInference(l, r);
+    }
+  }];
+
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2448,7 +2527,7 @@ def MHLO_CollectiveBroadcastOp: MHLO_Op<"collective_broadcast",
 
   let arguments = (ins
     MHLO_Tensor:$operand,
-    I64ElementsAttr:$replica_groups,
+    MHLO_ReplicaGroups:$replica_groups,
     OptionalAttr<MHLO_ChannelHandle>:$channel_handle
   );
   let results = (outs MHLO_Tensor);
@@ -2459,7 +2538,7 @@ def MHLO_CollectiveBroadcastOp: MHLO_Op<"collective_broadcast",
   let builders = [
     OpBuilder<(ins
       "::mlir::Type":$result_type, "::mlir::Value":$operand,
-      "::mlir::DenseIntElementsAttr":$replica_groups)>];
+      "::mlir::Attribute":$replica_groups)>];
 }
 
 def MHLO_CollectivePermuteOp: MHLO_Op<"collective_permute",
@@ -2531,9 +2610,25 @@ def MHLO_CompositeOp : MHLO_Op<"composite", [DeclareOpInterfaceMethods<SymbolUse
     FlatSymbolRefAttr:$decomposition,
     DefaultValuedOptionalAttr<I32Attr, "0">:$version
   );
+  let regions = (region VariadicRegion<AnyRegion>:$composite_regions);
   let results = (outs Variadic<MHLO_TensorOrTokenOrTuple>);
+
+  let builders = [
+    OpBuilder<(ins
+      "::mlir::TypeRange":$resultTypes, "::mlir::ValueRange":$inputs,
+      "::mlir::StringRef":$name, "::mlir::DictionaryAttr":$attributes,
+      "::mlir::StringRef":$decomposition, "uint32_t":$version
+    ), [{
+      build($_builder, $_state, resultTypes, inputs, name, attributes,
+            decomposition, version, /*regionsCount=*/0);
+    }]>
+  ];
+
   let hasCustomHLOConverter = 1;
-  let assemblyFormat = "$name $inputs attr-dict `:` functional-type(operands, results)";
+  let assemblyFormat = [{
+    $name operands (` ` `(` $composite_regions^ `)`)? attr-dict
+    `:` functional-type(operands, results)
+  }];
 }
 
 def MHLO_ConvolutionOp : MHLO_Op<"convolution", [Pure]> {
@@ -2723,7 +2818,8 @@ def MHLO_CustomCallOp: MHLO_Op<"custom_call",
         TypedArrayAttrBase<
             MHLO_OutputOperandAlias,
             "Aliasing attribute for outputs and operands of CustomCall">,
-        "{}">:$output_operand_aliases
+        "{}">:$output_operand_aliases,
+    OptionalAttr<MHLO_ArrayOfTilingAttr>:$result_tilings
   );
   let results = (outs Variadic<MHLO_CustomCallValue>);
   let hasCustomHLOConverter = 1;
@@ -2740,7 +2836,8 @@ def MHLO_CustomCallOp: MHLO_Op<"custom_call",
       "::mlir::mhlo::CustomCallApiVersionAttr":$api_version,
       "::mlir::ArrayAttr":$called_computations,
       "::mlir::ArrayAttr":$operand_layouts,
-      "::mlir::ArrayAttr":$result_layouts)>];
+      "::mlir::ArrayAttr":$result_layouts,
+      "::mlir::ArrayAttr":$result_tilings)>];
 
   let assemblyFormat = [{
     custom<CustomCallTarget>($call_target_name) `(` $inputs `)`
@@ -3259,6 +3356,10 @@ def MHLO_TopKOp : MHLO_Op<"topk", [RecursiveMemoryEffects, InferTensorType]> {
     dimension of the operand if `largest=true` or the bottom `k` values if
     `largest=false`.
 
+    If `is_stable=true` (the default), the original relative order of equal
+    elements is preserved. If `is_stable=false`, the order of equal elements
+    is undefined, which may allow for more efficient execution on some backends.
+
     See:
     https://www.tensorflow.org/xla/operation_semantics#top-k
 
@@ -3272,13 +3373,14 @@ def MHLO_TopKOp : MHLO_Op<"topk", [RecursiveMemoryEffects, InferTensorType]> {
   let arguments = (ins
     MHLO_Tensor:$operand,
     I64Attr:$k,
-    DefaultValuedOptionalAttr<BoolAttr, "true">:$largest
+    DefaultValuedOptionalAttr<BoolAttr, "true">:$largest,
+    DefaultValuedOptionalAttr<BoolAttr, "true">:$is_stable
   );
   let results = (outs MHLO_Tensor:$values,
                       MHLO_Tensor:$indices);
 
   let assemblyFormat = [{
-    `(`$operand `,` `k` `=` $k (`,` `largest` `=` $largest^)? `)` attr-dict `:`
+    `(`$operand `,` `k` `=` $k (`,` `largest` `=` $largest^)? (`,` `is_stable` `=` $is_stable^)? `)` attr-dict `:`
     type($operand) `->` `(`type($values)`,` type($indices)`)`
   }];
   let hasCustomHLOConverter = 1;

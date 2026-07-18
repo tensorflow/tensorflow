@@ -62,7 +62,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
@@ -75,7 +75,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
@@ -164,7 +164,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
           // Clear the output tensor list since there were errors with Filter
           // prediction result.
           out_tensors->clear();
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               "Filter predicate `f` must return a scalar bool.");
         }
         matched = result[0].scalar<bool>()();
@@ -254,10 +254,10 @@ class FilterDatasetOp::Dataset : public DatasetBase {
       data::TraceMeMetadata result;
       result.push_back(std::make_pair(
           "passed",
-          strings::Printf("%lld", static_cast<long long>(filtered_elements_))));
+          absl::StrFormat("%lld", static_cast<long long>(filtered_elements_))));
       result.push_back(std::make_pair(
           "filtered",
-          strings::Printf("%lld", static_cast<long long>(dropped_elements_))));
+          absl::StrFormat("%lld", static_cast<long long>(dropped_elements_))));
       return result;
     }
 
@@ -278,7 +278,7 @@ FilterDatasetOp::FilterDatasetOp(OpKernelConstruction* ctx)
   OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kPredicate, /*params=*/{},
                                                &func_metadata_));
   OP_REQUIRES(ctx, func_metadata_->short_circuit_info().indices.size() <= 1,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(
                   "predicate function has more than one return value."));
 }
 

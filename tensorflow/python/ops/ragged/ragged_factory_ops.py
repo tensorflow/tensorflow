@@ -30,9 +30,9 @@ from tensorflow.python.util.numpy_compat import np_reshape
 from tensorflow.python.util.tf_export import tf_export
 
 
-#===============================================================================
+# ===============================================================================
 # Op to construct a constant RaggedTensor from a nested Python list.
-#===============================================================================
+# ===============================================================================
 @tf_export("ragged.constant")
 @dispatch.add_dispatch_support
 def constant(
@@ -57,15 +57,16 @@ def constant(
 
   Args:
     pylist: A nested `list`, `tuple` or `np.ndarray`.  Any nested element that
-      is not a `list`, `tuple` or `np.ndarray` must be a scalar value
-      compatible with `dtype`.
+      is not a `list`, `tuple` or `np.ndarray` must be a scalar value compatible
+      with `dtype`.
     dtype: The type of elements for the returned `RaggedTensor`.  If not
       specified, then a default is chosen based on the scalar values in
-      `pylist`.
+      `pylist`. If there are no scalar values in `pylist`, then the default is
+      `tf.float32`.
     ragged_rank: An integer specifying the ragged rank of the returned
       `RaggedTensor`.  Must be nonnegative and less than `K`. Defaults to
-      `max(0, K - 1)` if `inner_shape` is not specified.  Defaults to
-      `max(0, K - 1 - len(inner_shape))` if `inner_shape` is specified.
+      `max(0, K - 1)` if `inner_shape` is not specified.  Defaults to `max(0, K
+      - 1 - len(inner_shape))` if `inner_shape` is specified.
     inner_shape: A tuple of integers specifying the shape for individual inner
       values in the returned `RaggedTensor`.  Defaults to `()` if `ragged_rank`
       is not specified.  If `ragged_rank` is specified, then a default is chosen

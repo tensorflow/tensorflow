@@ -20,9 +20,9 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/core:lib",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:str_util",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/dtensor/cc:constants",
         "//tensorflow/dtensor/cc:dstatus",
@@ -56,7 +56,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/tsl/util:env_var",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/tsl/util:env_var",
     ],
 )

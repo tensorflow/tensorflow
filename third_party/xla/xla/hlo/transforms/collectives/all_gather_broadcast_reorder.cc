@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -35,9 +36,9 @@ limitations under the License.
 
 namespace xla {
 
-absl::StatusOr<bool> AllGatherBroadcastReorder::Run(
-    HloModule *module,
-    const absl::flat_hash_set<absl::string_view> &execution_threads) {
+absl::StatusOr<bool> AllGatherBroadcastReorder::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (hlo_query::ContainsLayoutConstrainedCollective(*module,
                                                      HloOpcode::kAllGather)) {
     VLOG(1) << "Skip AllGatherBroadcastReorder because the module contains "
@@ -204,8 +205,8 @@ absl::StatusOr<bool> AllGatherBroadcastReorder::Run(
             HloInstruction::CreateReshape(ag->shape(), bcast));
       }
 
-      TF_RETURN_IF_ERROR(ag->ReplaceAllUsesWith(replacement));
-      TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(ag));
+      RETURN_IF_ERROR(ag->ReplaceAllUsesWith(replacement));
+      RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(ag));
       changed = true;
     }
   }

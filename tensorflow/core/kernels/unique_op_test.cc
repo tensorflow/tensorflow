@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <functional>
-#include <memory>
+#include <cstdint>
+#include <cstdlib>
+#include <string>
 
+#include "absl/log/check.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -84,7 +86,7 @@ void BM_Unique_INT32(::testing::benchmark::State& state) {
                   "SINGLE_THREADED_EXECUTOR", /*old_benchmark_api*/ false)
       .Run(state);
   state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * dim *
-                          sizeof(int32));
+                          sizeof(int32_t));
 }
 
 void BM_Unique_INT32_Repeat(::testing::benchmark::State& state) {
@@ -108,7 +110,7 @@ void BM_Unique_INT32_Repeat(::testing::benchmark::State& state) {
                   "SINGLE_THREADED_EXECUTOR", /*old_benchmark_api*/ false)
       .Run(state);
   state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * dim * 200 *
-                          sizeof(int32));
+                          sizeof(int32_t));
 }
 
 TensorProto GetRandomStringsTensorProto(int dim, int max_str_len) {
@@ -118,7 +120,7 @@ TensorProto GetRandomStringsTensorProto(int dim, int max_str_len) {
   tensor_proto.mutable_tensor_shape()->set_unknown_rank(false);
   for (int i = 0; i < dim; ++i) {
     const int len = std::rand() % max_str_len + 1;
-    string rand_str;
+    std::string rand_str;
     rand_str.resize(len);
     for (int j = 0; j < len; ++j) {
       rand_str[j] = static_cast<char>(j % 256);

@@ -46,16 +46,16 @@ class CollectivePermuteCombiner : public HloModulePass {
     return "collective-permute-combiner";
   }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   // Combine collective permute ops up to this threshold.
   int64_t combine_threshold_in_bytes_;
 
   // Combine collective permute ops up to this threshold (number of operands).
   int64_t combine_threshold_count_;
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
 
 }  // namespace xla

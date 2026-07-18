@@ -50,6 +50,13 @@ class Event {
   virtual absl::Status WaitForEventOnExternalStream(std::intptr_t stream) {
     return absl::UnimplementedError("Not supported for this Event.");
   }
+
+  // Blocks the calling host thread until the event has been recorded.
+  // Wraps the underlying platform-specific synchronization (e.g.
+  // cuEventSynchronize for CUDA).
+  virtual absl::Status Synchronize() {
+    return absl::UnimplementedError("Not supported for this Event.");
+  }
 };
 
 }  // namespace stream_executor

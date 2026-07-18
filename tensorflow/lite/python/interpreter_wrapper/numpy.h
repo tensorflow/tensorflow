@@ -49,8 +49,8 @@ limitations under the License.
 
 #include <Python.h>
 
-#include "numpy/arrayobject.h"
-#include "numpy/ufuncobject.h"
+#include "numpy/arrayobject.h"  // IWYU pragma: export
+#include "numpy/ufuncobject.h"  // IWYU pragma: export
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/string_util.h"
 
@@ -71,6 +71,11 @@ TfLiteType TfLiteTypeFromPyArray(PyArrayObject* array);
 
 bool FillStringBufferWithPyArray(PyObject* value,
                                  DynamicBuffer* dynamic_buffer);
+
+// Helper function to pack int8/uint8 numpy array data into an INT4/UINT4
+// tensor.
+PyObject* Set4BitTensor(TfLiteTensor* tensor, PyArrayObject* array,
+                        int tensor_index);
 
 }  // namespace python_utils
 }  // namespace tflite

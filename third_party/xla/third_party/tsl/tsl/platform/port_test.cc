@@ -13,12 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <condition_variable>
+#include <cstddef>
+#include <cstdint>
+#include <ctime>
+#include <new>
 
+#include "absl/log/log.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/env_time.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/cpu_info.h"
+#include "tsl/platform/host_info.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/mutex.h"
 
@@ -27,7 +33,7 @@ namespace port {
 
 TEST(Port, AlignedMalloc) {
   for (size_t alignment = 1; alignment <= 1 << 20; alignment <<= 1) {
-    void* p = AlignedMalloc(1, alignment);
+    void* p = AlignedMalloc(1, static_cast<std::align_val_t>(alignment));
     ASSERT_TRUE(p != nullptr) << "AlignedMalloc(1, " << alignment << ")";
     uintptr_t pval = reinterpret_cast<uintptr_t>(p);
     EXPECT_EQ(pval % alignment, 0);
@@ -185,6 +191,13 @@ TEST(TestCPUFeature, TestFeature) {
   LOG(INFO) << "has_avx = " << has_avx;
   const bool has_avx2 = TestCPUFeature(CPUFeature::AVX2);
   LOG(INFO) << "has_avx2 = " << has_avx2;
+}
+
+TEST(StripDomainAndPort, Cases) {
+  EXPECT_EQ(StripDomainAndPort("foo.example.com:80"), "foo");
+  EXPECT_EQ(StripDomainAndPort("foo:80"), "foo");
+  EXPECT_EQ(StripDomainAndPort("foo.example.com"), "foo");
+  EXPECT_EQ(StripDomainAndPort("foo"), "foo");
 }
 
 }  // namespace port

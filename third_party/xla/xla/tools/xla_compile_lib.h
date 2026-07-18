@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TOOLS_XLA_COMPILE_LIB_H_
 #define XLA_TOOLS_XLA_COMPILE_LIB_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -32,16 +33,22 @@ limitations under the License.
 namespace xla {
 
 // Compiles the provided module for the given platform.
-// When compiling for GPU, if the target config is provided, the compilation
-// will be AOT. If it is not provided, an attached GPU will be used. When
-// compiling for CPU, the compilation will always be AOT. If a result is
+// When compiling for GPU, if the target config or target platform version is
+// provided, the compilation will be  deviceless AOT. If use_attached_device is
+// set to true, we still compile AOT but provide access to the attached GPU. If
+// none of the above is provided, an attached GPU will be used.
+
+// When compiling for CPU, the compilation will always be AOT. If a result is
 // provided, the post-optimization module will be stored in it.
 //
 // This is the expected entry point to the compilation functionality.
 absl::StatusOr<std::string> CompileExecutable(
     std::unique_ptr<HloModule> hlo_module, BackendType backend,
-    std::optional<Compiler::TargetConfig> target_config,
-    CompilationResult& result);
+    std::optional<Compiler::GpuTargetConfig> gpu_target_config,
+    std::optional<Compiler::CpuTargetConfig> cpu_target_config,
+    int32_t num_partitions, int32_t num_replicas, CompilationResult& result,
+    absl::string_view target_platform_version = "",
+    bool use_attached_device = false);
 
 // Merges the measured duration into compilation_result and writes
 // compilation_result to result_output_file in the wire format.
@@ -56,9 +63,14 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModule(
 struct XlaCompileOptions {
   // Fully backend-independent options.
   std::string module_path;
+  std::string module_config_path;
   std::string output_file;
   std::string platform;
   std::string result_output_file;
+  bool use_shardy_partitioner = false;
+  bool force_auto_layout = false;
+  int32_t num_partitions = 1;
+  int32_t num_replicas = 1;
 
   // Options for SymbolRepository lookup.
   struct SymbolRepoOptions {
@@ -73,10 +85,19 @@ struct XlaCompileOptions {
     std::string gpu_target_config_path;
     bool use_attached_device = false;
     std::string autotune_results_path;
+    std::string target_platform_version;
+  };
+
+  // CPU-specific options.
+  struct CpuOptions {
+    std::string target_cpu;
+    std::string target_features;
+    std::string target_triple;
   };
 
   SymbolRepoOptions repo_options;
   GpuOptions gpu_options;
+  CpuOptions cpu_options;
 };
 
 // Full entry point if you want to wrap a binary around this functionality. See

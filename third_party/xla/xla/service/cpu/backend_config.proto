@@ -1,8 +1,24 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
 syntax = "proto3";
 
 package xla.cpu;
 
-import "xla/backends/cpu/xnnpack_config.proto";
+import "xla/backends/cpu/xnn_fusion_options.proto";
+import "xla/backends/cpu/ynn_fusion_options.proto";
 import "xla/service/cpu/onednn_config.proto";
 
 // Backend config for a general custom call instruction, e.g. XLA FFI.
@@ -19,7 +35,9 @@ message CustomCallBackendConfig {
 message FusionBackendConfig {
   string kind = 1;
   oneof custom_fusion_config_oneof {
-    XnnFusionBackendConfig xnn_fusion_config = 2;
+    // TODO: b/467367981, this is deprecated and should be removed.
+    XnnFusionOptions xnn_fusion_options = 2;
+    YnnFusionOptions ynn_fusion_options = 3;
   }
 }
 

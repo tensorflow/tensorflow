@@ -1,7 +1,7 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_contrib_test", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -146,7 +146,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",
-        "@local_xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -161,7 +161,7 @@ tf_gen_op_wrapper_py(
     ],
     # Prevent unintentionally generating Python wrappers for all TF ops.
     op_allowlist = ["CustomAggregator"],
-    py_lib_rule = py_strict_library,
+    py_lib_rule = py_library,
     visibility = ["//visibility:private"],
     deps = [":custom_aggregator_op"],
 )
@@ -204,7 +204,7 @@ tf_kernel_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:env",
     ],
 )
 
@@ -221,9 +221,9 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:status",
-        "@local_xla//xla/tsl/platform:status_matchers",
+        "@xla//xla/tsl/platform:errors",
     ],
 )

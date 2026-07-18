@@ -19,7 +19,7 @@ pytype_strict_library(
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
-        "@pypi_typing_extensions//:pkg",
+        "@pypi//typing_extensions",
     ],
 )
 
@@ -62,7 +62,7 @@ pytype_strict_library(
         ":core",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
-        "@pypi_typing_extensions//:pkg",
+        "@pypi//typing_extensions",
     ],
 )
 

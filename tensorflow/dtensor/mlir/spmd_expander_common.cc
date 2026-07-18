@@ -85,13 +85,13 @@ StatusOr<mlir::TensorType> LocalTypeFromGlobalType(
   for (int output_axis = 0; output_axis < shape.size(); ++output_axis) {
     if (shape[output_axis] != mlir::ShapedType::kDynamic) {
       if (shape[output_axis] % shard_values[output_axis] != 0) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "The sharding spec for axis ", output_axis, " splits among ",
             shard_values[output_axis],
             " values, which does not evenly divide the length of that axis "
             "(",
             shape[output_axis], "). The full requested layout is ",
-            layout.ToString(), ".");
+            layout.ToString(), "."));
       }
       shape[output_axis] /= shard_values[output_axis];
     }
@@ -125,8 +125,8 @@ absl::Status CreateSplitOp(const int num_split, const int split_dimension,
       mlir::RankedTensorType::get({}, builder->getIntegerType(32));
   auto split_dimension_attr =
       mlir::DenseElementsAttr::get(split_dim_type, split_dimension);
-  auto split_dimension_op = builder->create<mlir::TF::ConstOp>(
-      location, split_dim_type, split_dimension_attr);
+  auto split_dimension_op = mlir::TF::ConstOp::create(
+      *builder, location, split_dim_type, split_dimension_attr);
 
   // Correctly set output shapes of split op output if input shape is statically
   // known.
@@ -139,7 +139,7 @@ absl::Status CreateSplitOp(const int num_split, const int split_dimension,
     } else {
       auto shape = llvm::to_vector<4>(input_type.getShape());
       if (shape[split_dimension] % num_split != 0) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             llvm::formatv(
                 "incorrect input sharding configuration received. "
                 "{0}-th dimension of the input must be evenly divisible by {1}",
@@ -157,8 +157,9 @@ absl::Status CreateSplitOp(const int num_split, const int split_dimension,
 
   // Creates a split op that splits |src_input| along |split_dimension|.
   llvm::SmallVector<mlir::Type, 4> output_types(num_split, output_type);
-  *split_op = builder->create<mlir::TF::SplitOp>(
-      location, output_types, split_dimension_op.getOutput(), src_input);
+  *split_op =
+      mlir::TF::SplitOp::create(*builder, location, output_types,
+                                split_dimension_op.getOutput(), src_input);
   return absl::OkStatus();
 }
 
@@ -217,7 +218,7 @@ StatusOr<Layout> GetBroadcastLayoutForElementWise(
     int64_t dims_to_ignore, std::vector<std::string>& to_split_a,
     std::vector<std::string>& to_split_b) {
   if (layout_a.mesh() != layout_b.mesh())
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "layout_a and layout_b cannot be broadcast as they are on different "
         "meshes.");
 
@@ -227,7 +228,7 @@ StatusOr<Layout> GetBroadcastLayoutForElementWise(
   const int rank_offset_b = std::max(0, rank_a - rank_b);
   absl::flat_hash_map<std::string, int> mesh_dim_map_a;
   absl::flat_hash_map<std::string, int> mesh_dim_map_b;
-  std::vector<string> output_layout_specs;
+  std::vector<std::string> output_layout_specs;
 
   auto unsharded_specs = [](const int new_size) -> std::vector<std::string> {
     std::vector<std::string> spec_strs(new_size, Layout::kUnshardedDim);
@@ -530,8 +531,8 @@ StatusOr<mlir::Value> GetMeshCoordinatesFromCluster(
   // First try to find a FloorMod op with kMeshCoordinatesAttr attribute that
   // has the given mesh in it. If it exists, simply return that op's value.
   TF_ASSIGN_OR_RETURN(const auto mesh, ExtractDeviceMeshFromOp(cluster));
-  if (!mesh) return errors::InvalidArgument("missing mesh on cluster");
-  string serialized_mesh = mesh->ToString();
+  if (!mesh) return absl::InvalidArgumentError("missing mesh on cluster");
+  std::string serialized_mesh = mesh->ToString();
   mlir::Value ret_val;
   auto result = cluster.walk([&](mlir::TF::FloorModOp op) -> mlir::WalkResult {
     if (op->hasAttrOfType<mlir::StringAttr>(kMeshCoordinatesAttr) &&
@@ -547,12 +548,12 @@ StatusOr<mlir::Value> GetMeshCoordinatesFromCluster(
 
   // We didn't find a FloorModOp for the given mesh, so we must produce the
   // FloorModOp and add the attr so we can find it on next call.
-  std::vector<int32> mesh_shape(mesh->rank());
+  std::vector<int32_t> mesh_shape(mesh->rank());
   for (int i = 0; i < mesh->rank(); ++i) mesh_shape[i] = mesh->dim(i).size;
 
   // This product represents the [b*c*d, c*d, d, 1] from the function
   // documentation.
-  std::vector<int32> running_product(mesh->rank());
+  std::vector<int32_t> running_product(mesh->rank());
   running_product[mesh->rank() - 1] = 1;
   for (int i = mesh->rank() - 1; i > 0; --i)
     running_product[i - 1] = running_product[i] * mesh_shape[i];
@@ -591,7 +592,7 @@ StatusOr<Mesh> GetMeshOnParentCluster(mlir::Operation* op) {
   if (mesh_attr) {
     return Mesh::FromString(mesh_attr.getValue().str());
   }
-  return errors::InvalidArgument("missing mesh attribute on cluster.");
+  return absl::InvalidArgumentError("missing mesh attribute on cluster.");
 }
 
 mlir::LogicalResult ValidateMetadataAttributes(mlir::Operation* op) {
@@ -685,13 +686,13 @@ namespace {
 // used. In order to ensure that all branch functions of TF control flow ops are
 // unique, we keep track of atomic counter for each control flow functions.
 // See b/174253694 for more details.
-std::atomic<int32> dtensor_controlflow_function_counter{0};
+std::atomic<int32_t> dtensor_controlflow_function_counter{0};
 
 }  // namespace
 
 mlir::StringAttr GetUniqueControlflowFnName(const std::string& prefix,
                                             mlir::OpBuilder& builder) {
-  int32 unique_id = dtensor_controlflow_function_counter++;
+  int32_t unique_id = dtensor_controlflow_function_counter++;
   return builder.getStringAttr(
       absl::StrCat(prefix, "_dtensor_function_", unique_id));
 }
@@ -709,9 +710,10 @@ absl::Status SetBuilderInsertionAfterValue(mlir::Value value,
     if (!new_cluster) continue;
     if (!cluster) cluster = new_cluster;
     if (cluster != new_cluster)
-      return errors::Internal("value has multiple uses in different clusters");
+      return absl::InternalError(
+          "value has multiple uses in different clusters");
   }
-  if (!cluster) return errors::Internal("value not used in any cluster");
+  if (!cluster) return absl::InternalError("value not used in any cluster");
 
   builder.setInsertionPointToStart(cluster.SingleBlock::getBody());
   return absl::OkStatus();
@@ -740,10 +742,11 @@ absl::Status ExtractConstStringVectorFromValue(
     mlir::Value value, llvm::SmallVectorImpl<std::string>& out_vector) {
   value = GetForwardedDTensorLayoutInput(value);
   if (mlir::isa<mlir::BlockArgument>(value))
-    return errors::Internal("Unable get constant value from block argument.");
+    return absl::InternalError(
+        "Unable get constant value from block argument.");
   mlir::DenseStringElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) {
-    return errors::Internal(
+    return absl::InternalError(
         llvm::formatv("failed to extract constant string vector from : {0}",
                       value)
             .str());
@@ -757,16 +760,17 @@ absl::Status ExtractConstStringVectorFromValue(
 StatusOr<std::string> ExtractConstScalarStringFromValue(mlir::Value value) {
   value = GetForwardedDTensorLayoutInput(value);
   if (mlir::isa<mlir::BlockArgument>(value))
-    return errors::Internal("Unable get constant value from block argument.");
+    return absl::InternalError(
+        "Unable get constant value from block argument.");
   mlir::DenseStringElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) {
-    return errors::Internal(absl::StrCat("required constant value for ",
-                                         OpName(value.getDefiningOp())));
+    return absl::InternalError(absl::StrCat("required constant value for ",
+                                            OpName(value.getDefiningOp())));
   }
   if (attr.size() != 1) {
-    return errors::Internal(absl::StrCat("expected 1 element, got ",
-                                         attr.size(), " for ",
-                                         OpName(value.getDefiningOp())));
+    return absl::InternalError(absl::StrCat("expected 1 element, got ",
+                                            attr.size(), " for ",
+                                            OpName(value.getDefiningOp())));
   }
   return std::string(*attr.getRawStringData().begin());
 }

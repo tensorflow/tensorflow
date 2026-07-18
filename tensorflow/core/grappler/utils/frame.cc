@@ -31,7 +31,7 @@ template <typename GraphViewT>
 inline absl::Status FrameView::InferFromGraphViewT(
     const GraphViewT& graph_view) {
   if (is_inferred_) {
-    return errors::Internal("FrameView was already inferred from the graph");
+    return absl::InternalError("FrameView was already inferred from the graph");
   }
   is_inferred_ = true;
 
@@ -49,12 +49,13 @@ inline absl::Status FrameView::InferFromGraphViewT(
 
   // We assign unique int id to each frame, and use this map to track what
   // frames we've already seen in the graph.
-  absl::flat_hash_map<string, int> frame_name_to_id;
+  absl::flat_hash_map<std::string, int> frame_name_to_id;
 
-  auto process_fanout = [this, graph](
-                            absl::flat_hash_map<string, int>* frame_name_to_id,
-                            std::deque<int>* ready_node_indices,
-                            const NodeDef* ready_node, int fanout_node_index) {
+  auto process_fanout = [this, graph](absl::flat_hash_map<std::string, int>*
+                                          frame_name_to_id,
+                                      std::deque<int>* ready_node_indices,
+                                      const NodeDef* ready_node,
+                                      int fanout_node_index) {
     const NodeDef* fanout_node = &graph->node(fanout_node_index);
     if (!node_to_frames_.contains(fanout_node)) {
       // If we have never seen this node before, we add all frames from the
@@ -70,12 +71,12 @@ inline absl::Status FrameView::InferFromGraphViewT(
             AttrSlice(*fanout_node).Find("frame_name");
 
         if (!frame_name_attr) {
-          return errors::InvalidArgument(
-              "Missing frame name for the Enter node: ",
-              SummarizeNodeDef(*fanout_node));
+          return absl::InvalidArgumentError(
+              absl::StrCat("Missing frame name for the Enter node: ",
+                           SummarizeNodeDef(*fanout_node)));
         }
 
-        const string& frame_name = frame_name_attr->s();
+        const std::string& frame_name = frame_name_attr->s();
         int frame_id;
 
         if (frame_name_to_id->contains(frame_name)) {
@@ -107,9 +108,9 @@ inline absl::Status FrameView::InferFromGraphViewT(
       }
 
       if (frame_ids_node != frame_ids_fanout) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Invalid graph: Frame ids for node ", ready_node->name(),
-            " does not match frame ids for it's fanout ", fanout_node->name());
+            " does not match frame ids for it's fanout ", fanout_node->name()));
       }
     }
     return absl::OkStatus();

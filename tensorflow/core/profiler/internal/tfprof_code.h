@@ -41,13 +41,13 @@ class PprofProfile {
  public:
   virtual ~PprofProfile() = default;
 
-  virtual uint64 AddLocation(const CodeNode* callee,
-                             const CodeNode* caller) = 0;
+  virtual uint64_t AddLocation(const CodeNode* callee,
+                               const CodeNode* caller) = 0;
 
   virtual void AddSample(const CodeNode* leaf,
-                         std::vector<uint64>* call_ids) = 0;
+                         std::vector<uint64_t>* call_ids) = 0;
 
-  virtual absl::Status WritePprofProfile(const string& filename) = 0;
+  virtual absl::Status WritePprofProfile(const std::string& filename) = 0;
 };
 
 class TFCode : public TFMultiShow {
@@ -67,7 +67,7 @@ class TFCode : public TFMultiShow {
                                     Timeline* timeline) override;
 
   std::vector<CodeNode*> SearchRoot(std::vector<CodeNode*> roots,
-                                    const std::vector<string>& regexes);
+                                    const std::vector<std::string>& regexes);
 
   std::vector<CodeNode*> PrintScope(std::vector<CodeNode*> roots,
                                     const Options& opts, int depth,
@@ -77,18 +77,19 @@ class TFCode : public TFMultiShow {
                                  const Options& opts);
 
   void Format(const CodeNode* root, const std::vector<CodeNode*>& nodes,
-              const Options& opts, string* display_str,
-              MultiGraphNodeProto* proto, std::vector<uint64>* call_ids);
+              const Options& opts, std::string* display_str,
+              MultiGraphNodeProto* proto, std::vector<uint64_t>* call_ids);
 
-  string FormatNode(CodeNode* node, const Options& opts, int64_t indent) const;
-  string FormatNodeMemory(CodeNode* node, int64_t bytes,
-                          int64_t total_bytes) const;
+  std::string FormatNode(CodeNode* node, const Options& opts,
+                         int64_t indent) const;
+  std::string FormatNodeMemory(CodeNode* node, int64_t bytes,
+                               int64_t total_bytes) const;
 
   std::unique_ptr<CodeNode> root_;
   std::unique_ptr<TFMultiGraphNode> graph_root_;
   std::unique_ptr<PprofProfile> pprof_profile_;
-  std::map<string, std::vector<TFGraphNode*>> grad_nodes_;
-  std::map<string, TFGraphNode*> forward_nodes_;
+  std::map<std::string, std::vector<TFGraphNode*>> grad_nodes_;
+  std::map<std::string, TFGraphNode*> forward_nodes_;
 };
 }  // namespace tfprof
 }  // namespace tensorflow

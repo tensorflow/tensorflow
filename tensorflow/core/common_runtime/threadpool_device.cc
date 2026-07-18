@@ -54,7 +54,7 @@ info. It does not have any negative impact on performance. */
 namespace tensorflow {
 
 ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
-                                   const string& name, Bytes memory_limit,
+                                   const std::string& name, Bytes memory_limit,
                                    const DeviceLocality& locality,
                                    Allocator* allocator)
     : LocalDevice(options, Device::BuildDeviceAttributes(
@@ -128,8 +128,8 @@ absl::Status ThreadPoolDevice::MakeTensorFromProto(
       return absl::OkStatus();
     }
   }
-  return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                 tensor_proto.DebugString());
+  return absl::InvalidArgumentError(absl::StrCat(
+      "Cannot parse tensor from proto: ", tensor_proto.DebugString()));
 }
 
 void ThreadPoolDevice::CopyTensorInSameDevice(

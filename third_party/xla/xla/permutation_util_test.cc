@@ -15,13 +15,14 @@ limitations under the License.
 
 #include "xla/permutation_util.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
+#include "absl/types/span.h"
 #include "xla/hlo/testlib/test.h"
 
 namespace xla {
@@ -53,11 +54,11 @@ TEST(PermutationUtilTest, IsIdentityPermutation_TrueCases) {
 
 TEST(PermutationUtilTest, IsIdentityPermutation_FalseCases) {
   std::vector<int> v{0, 1, 2, 3};
-  std::next_permutation(v.begin(), v.end());
+  absl::c_next_permutation(v);
 
   do {
     EXPECT_FALSE(IsIdentityPermutation(v));
-  } while (std::next_permutation(v.begin(), v.end()));
+  } while (absl::c_next_permutation(v));
 }
 
 TEST(PermutationUtilTest, PermuteInverse) {
@@ -90,7 +91,21 @@ TEST(PermutationUtilTest, ComposeAndInversePermutations) {
 
   do {
     EXPECT_EQ(ComposePermutations(InversePermutation(p), p), id);
-  } while (std::next_permutation(p.begin(), p.end()));
+  } while (absl::c_next_permutation(p));
+}
+
+TEST(PermutationUtilTest, MoveSingleElement) {
+  std::vector<int64_t> p1 = {0, 1, 2, 3, 4};
+  MoveSingleElement(absl::MakeSpan(p1), 1, 3);
+  EXPECT_THAT(p1, ElementsAre(0, 2, 3, 1, 4));
+
+  std::vector<int64_t> p2 = {0, 1, 2, 3, 4};
+  MoveSingleElement(absl::MakeSpan(p2), 3, 1);
+  EXPECT_THAT(p2, ElementsAre(0, 3, 1, 2, 4));
+
+  std::vector<int64_t> p3 = {0, 1, 2, 3, 4};
+  MoveSingleElement(absl::MakeSpan(p3), 2, 2);
+  EXPECT_THAT(p3, ElementsAre(0, 1, 2, 3, 4));
 }
 
 }  // namespace

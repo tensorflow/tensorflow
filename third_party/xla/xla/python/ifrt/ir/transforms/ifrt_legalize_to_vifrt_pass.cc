@@ -80,11 +80,11 @@ mlir::FailureOr<mlir::StringAttr> getAttrNameFromIfrtToVifrt(
             attr.getValue().getContext(),
             absl::StrCat(VifrtDialect::getDialectNamespace().str(), ".",
                          name_without_dialect.substr(dot_pos + 1)));
-      } else {
-        return mlir::failure();
       }
-    } else if (dialect->getNamespace() !=
-               mlir::BuiltinDialect::getDialectNamespace()) {
+      return mlir::failure();
+    }
+    if (dialect->getNamespace() !=
+        mlir::BuiltinDialect::getDialectNamespace()) {
       return mlir::failure();
     }
   }
@@ -113,7 +113,7 @@ mlir::Attribute convertGeneric(mlir::Attribute ifrt_attr,
     return VifrtDevicesV1Attr::get(attr.getContext(), attr.getIds());
   }
   if (auto attr = llvm::dyn_cast<IfrtShardingParamAttr>(ifrt_attr)) {
-    return VifrtShardingParamV1Attr::get(attr.getContext(), attr.getSharding());
+    return VifrtShardingParamV2Attr::get(attr.getContext(), attr.getSharding());
   }
   if (auto attr = llvm::dyn_cast<IfrtUnspecifiedShardingAttr>(ifrt_attr)) {
     return VifrtUnspecifiedShardingV1Attr::get(attr.getContext());
@@ -185,10 +185,9 @@ mlir::Attribute convertGeneric(mlir::Attribute ifrt_attr,
     // raw data. One should use `ArrayAttr` instead for such arrays.
     if (mlir::isa<mlir::IntegerType, mlir::FloatType>(attr.getElementType())) {
       return ifrt_attr;
-    } else {
-      LLVM_DEBUG(llvm::dbgs() << "Failed to convert: " << attr << '\n');
-      return {};
     }
+    LLVM_DEBUG(llvm::dbgs() << "Failed to convert: " << attr << '\n');
+    return {};
   }
   if (auto attr = llvm::dyn_cast<mlir::DictionaryAttr>(ifrt_attr)) {
     llvm::SmallVector<mlir::NamedAttribute> vifrt_attrs;
@@ -259,9 +258,13 @@ class IfrtToVifrtTypeConverter : public VifrtTypeConverterBuiltin {
                                 << array.getDevicesAttr() << '\n');
         return {};
       }
-      return VifrtArrayV1Type::get(array.getContext(), array.getShape(),
-                                   sharding_attr, devices_attr,
-                                   memory_kind_attr, layout_attr);
+      mlir::RankedTensorType shape = array.getShape();
+      if (llvm::isa<IfrtTokenType>(shape.getElementType())) {
+        shape = mlir::RankedTensorType::get(
+            {}, VifrtTokenV1Type::get(array.getContext()));
+      }
+      return VifrtArrayV1Type::get(array.getContext(), shape, sharding_attr,
+                                   devices_attr, memory_kind_attr, layout_attr);
     });
     addConversion([](IfrtControlType type) -> mlir::Type {
       return VifrtControlV1Type::get(type.getContext());
@@ -288,9 +291,16 @@ mlir::LogicalResult addDefaultAttrs(
         convertGeneric(ifrt_attr, pattern.getTypeConverter()));
   };
 
-  if constexpr (std::is_same<IfrtOpTy, ReshardOp>::value ||
-                std::is_same<IfrtOpTy, CopyArraysOp>::value ||
-                std::is_same<IfrtOpTy, RemapArraysOp>::value) {
+  if constexpr (std::is_same<IfrtOpTy, CopyArraysOp>::value) {
+    if (!ifrt_op.getDonatedAttr()) {
+      add_default_attr("donated", builder.getBoolAttr(false));
+    }
+    if (!ifrt_op.getReuseAttr()) {
+      add_default_attr("reuse", builder.getBoolAttr(false));
+    }
+  } else if constexpr (std::is_same<IfrtOpTy, ReshardOp>::value ||
+                       std::is_same<IfrtOpTy, RemapArraysOp>::value ||
+                       std::is_same<IfrtOpTy, BitcastArraysOp>::value) {
     if (!ifrt_op.getDonatedAttr()) {
       add_default_attr("donated", builder.getBoolAttr(false));
     }
@@ -396,8 +406,8 @@ class IfrtToVifrtOpConverter : public mlir::OpConversionPattern<IfrtOpTy> {
     mlir::ValueRange vifrt_operands = adaptor.getOperands();
 
     // Convert the IFRT op to a VIFRT equivalent op.
-    IfrtToVifrtOp<IfrtOpTy> vifrt_op = rewriter.create<IfrtToVifrtOp<IfrtOpTy>>(
-        ifrt_op.getLoc(), vifrt_types, vifrt_operands, vifrt_attrs);
+    IfrtToVifrtOp<IfrtOpTy> vifrt_op = IfrtToVifrtOp<IfrtOpTy>::create(
+        rewriter, ifrt_op.getLoc(), vifrt_types, vifrt_operands, vifrt_attrs);
 
     // Convert the IFRT region types to VIFRT region types.
     for (auto [ifrt_region, vifrt_region] :
@@ -406,8 +416,9 @@ class IfrtToVifrtOpConverter : public mlir::OpConversionPattern<IfrtOpTy> {
                                   vifrt_region.end());
       if (mlir::failed(rewriter.convertRegionTypes(
               &vifrt_region, *this->getTypeConverter(),
-              /*entryConversion=*/nullptr)))
+              /*entryConversion=*/nullptr))) {
         return mlir::failure();
+      }
     }
     rewriter.replaceOp(ifrt_op, vifrt_op);
     return mlir::success();
@@ -433,11 +444,7 @@ struct IfrtLegalizeToVifrtPass
         [](mlir::func::FuncOp func_op) {
           // FuncOps that are not IFRT functions are either VIFRT functions or
           // legal because they will be removed by DCE.
-          if (func_op->hasAttr(kIfrtFunctionAttrName)) {
-            return false;
-          } else {
-            return true;
-          }
+          return !IsIfrtFunction(func_op);
         });
     target->addDynamicallyLegalOp<mlir::func::CallOp>(
         [](mlir::func::CallOp call_op) {
@@ -446,15 +453,11 @@ struct IfrtLegalizeToVifrtPass
           auto func_op =
               mlir::SymbolTable::lookupNearestSymbolFrom<mlir::func::FuncOp>(
                   call_op, call_op.getCalleeAttr());
-          if (func_op->hasAttr(kIfrtFunctionAttrName)) {
-            return false;
-          } else {
-            return true;
-          }
+          return !IsIfrtFunction(func_op);
         });
     target->addDynamicallyLegalOp<mlir::func::ReturnOp>(
         [](mlir::func::ReturnOp return_op) {
-          if (return_op->getParentOp()->hasAttr(kIfrtFunctionAttrName) ||
+          if (IsIfrtFunction(return_op->getParentOp()) ||
               return_op->getParentOp()->hasAttr(kVifrtFunctionAttrName)) {
             return false;
           }

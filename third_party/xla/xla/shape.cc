@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/primitive_util.h"
@@ -112,7 +113,7 @@ absl::StatusOr<Shape> Shape::FromProto(const ShapeProto& shape_proto) {
   } else if (auto* const state = shape.if_tuple_state()) {
     state->tuple_shapes.reserve(shape_proto.tuple_shapes_size());
     for (const ShapeProto& element_shape : shape_proto.tuple_shapes()) {
-      TF_ASSIGN_OR_RETURN(Shape tuple_shape, Shape::FromProto(element_shape));
+      ASSIGN_OR_RETURN(Shape tuple_shape, Shape::FromProto(element_shape));
       state->tuple_shapes.push_back(std::move(tuple_shape));
     }
   } else if (auto* const state = shape.if_buffer_state()) {
@@ -120,8 +121,8 @@ absl::StatusOr<Shape> Shape::FromProto(const ShapeProto& shape_proto) {
       return absl::InvalidArgumentError(
           "Buffer shape must have exactly one tuple shape.");
     }
-    TF_ASSIGN_OR_RETURN(Shape buffer_shape,
-                        Shape::FromProto(shape_proto.tuple_shapes(0)));
+    ASSIGN_OR_RETURN(Shape buffer_shape,
+                     Shape::FromProto(shape_proto.tuple_shapes(0)));
     if (!buffer_shape.IsArrayExcludingBuffer()) {
       return absl::InvalidArgumentError("Buffer shape must have array shape.");
     }
@@ -131,14 +132,24 @@ absl::StatusOr<Shape> Shape::FromProto(const ShapeProto& shape_proto) {
     TF_RET_CHECK(shape.IsArray()) << "Malformed shape proto: element_type "
                                   << PrimitiveType_Name(shape.element_type())
                                   << " should not have a layout.";
-    TF_ASSIGN_OR_RETURN(*shape.mutable_layout(),
-                        Layout::FromProto(shape_proto.layout()));
+    ASSIGN_OR_RETURN(*shape.mutable_layout(),
+                     Layout::FromProto(shape_proto.layout()));
   }
   return shape;
 }
 
+void Shape::ToProto(ShapeProto& proto) const {
+  proto.Clear();
+  SaveToEmptyProto(proto);
+}
+
 ShapeProto Shape::ToProto() const {
   ShapeProto proto;
+  SaveToEmptyProto(proto);
+  return proto;
+}
+
+void Shape::SaveToEmptyProto(ShapeProto& proto) const {
   proto.set_element_type(element_type_);
 
   if (const auto* const state = if_array_state()) {
@@ -150,17 +161,16 @@ ShapeProto Shape::ToProto() const {
       proto.add_is_dynamic_dimension(dynamic);
     }
     if (state->layout.has_value()) {
-      *proto.mutable_layout() = state->layout->ToProto();
+      state->layout->ToProto(*proto.mutable_layout());
     }
   } else if (const auto* const state = if_tuple_state()) {
     proto.mutable_tuple_shapes()->Reserve(state->tuple_shapes.size());
     for (const Shape& shape : state->tuple_shapes) {
-      *proto.add_tuple_shapes() = shape.ToProto();
+      shape.ToProto(*proto.add_tuple_shapes());
     }
   } else if (const auto* const state = if_buffer_state()) {
-    *proto.add_tuple_shapes() = state->buffer_shape->ToProto();
+    state->buffer_shape->ToProto(*proto.add_tuple_shapes());
   }
-  return proto;
 }
 
 Shape::BufferState::BufferState() : buffer_shape(std::make_unique<Shape>()) {}
@@ -338,17 +348,8 @@ void Shape::CheckStateIsEmpty() const {
 }
 
 void Shape::Clear() {
-  // Before setting the element type to invalid, we need to clear the state
-  // because the state may be non-empty if the shape was previously valid.
-  // Without this step, set_element_type() may CHECK-fail.
-  if (auto* const state = if_array_state()) {
-    *state = ArrayState();
-  } else if (auto* const state = if_tuple_state()) {
-    *state = TupleState();
-  } else if (auto* const state = if_buffer_state()) {
-    *state = BufferState();
-  }
-  set_element_type(PRIMITIVE_TYPE_INVALID);
+  state_ = InvalidState();
+  element_type_ = PRIMITIVE_TYPE_INVALID;
 }
 
 void Shape::set_element_type(const PrimitiveType value) {
@@ -537,24 +538,28 @@ absl::StatusOr<ProgramShape> ProgramShape::FromProto(
   for (int i = 0; i < num_params; ++i) {
     const std::string& name =
         i < num_param_names ? program_shape_proto.parameter_names(i) : "";
-    TF_ASSIGN_OR_RETURN(Shape shape,
-                        Shape::FromProto(program_shape_proto.parameters(i)));
+    ASSIGN_OR_RETURN(Shape shape,
+                     Shape::FromProto(program_shape_proto.parameters(i)));
     program_shape.AddParameter(shape, name);
   }
-  TF_ASSIGN_OR_RETURN(*program_shape.mutable_result(),
-                      Shape::FromProto(program_shape_proto.result()));
+  ASSIGN_OR_RETURN(*program_shape.mutable_result(),
+                   Shape::FromProto(program_shape_proto.result()));
   return program_shape;
+}
+
+void ProgramShape::ToProto(ProgramShapeProto& proto) const {
+  for (const Shape& shape : parameters()) {
+    shape.ToProto(*proto.add_parameters());
+  }
+  result().ToProto(*proto.mutable_result());
+  for (const std::string& name : parameter_names()) {
+    proto.add_parameter_names(name);
+  }
 }
 
 ProgramShapeProto ProgramShape::ToProto() const {
   ProgramShapeProto proto;
-  for (const Shape& shape : parameters()) {
-    *proto.add_parameters() = shape.ToProto();
-  }
-  *proto.mutable_result() = result().ToProto();
-  for (const std::string& name : parameter_names()) {
-    proto.add_parameter_names(name);
-  }
+  ToProto(proto);
   return proto;
 }
 

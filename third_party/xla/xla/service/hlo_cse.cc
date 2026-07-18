@@ -30,41 +30,22 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/literal.h"
+#include "xla/service/hlo_cse_constant_key.h"
 #include "xla/service/hlo_domain_map.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
-
 namespace {
-
-template <bool kIsLayoutSensitive>
-struct ConstantKey {
-  template <typename H>
-  friend H AbslHashValue(H h, const ConstantKey& key) {
-    h = H::combine(std::move(h), key.domain);
-    return Literal::Hash<H, kIsLayoutSensitive, /*kByteLimit=*/64>(
-        std::move(h), key.hlo->literal());
-  }
-  friend bool operator==(const ConstantKey& lhs, const ConstantKey& rhs) {
-    return lhs.domain == rhs.domain &&
-           (kIsLayoutSensitive ? Shape::Equal()
-                               : Shape::Equal().IgnoreLayout())(
-               lhs.hlo->shape(), rhs.hlo->shape()) &&
-           lhs.hlo->literal().Equal(rhs.hlo->literal(), kIsLayoutSensitive);
-  }
-  HloConstantInstruction* hlo;
-  int64_t domain;
-};
 
 // Find and combine identical constants. Constants are identical if they have
 // the same type and value.
@@ -83,13 +64,15 @@ absl::StatusOr<bool> CombineConstants(
                      [&](const HloInstruction* instr) {
                        return instr->opcode() == HloOpcode::kDomain;
                      })) {
-    TF_ASSIGN_OR_RETURN(domain_map, HloDomainMap::Create(computation, ""));
+    ASSIGN_OR_RETURN(domain_map, HloDomainMap::Create(computation, ""));
   }
 
   // Map from the literal hash of a constant or the shape hash of an iota all
   // equivalent instructions. This avoids extreme quadratic behavior with many
   // scalar constants.
-  absl::flat_hash_set<ConstantKey<kIsLayoutSensitive>> constants;
+  absl::flat_hash_map<CseConstantKey<kIsLayoutSensitive>,
+                      HloConstantInstruction*>
+      constants;
   int64_t combined = 0;
   auto inst_it = computation->instructions().begin();
   while (inst_it != computation->instructions().end()) {
@@ -106,18 +89,21 @@ absl::StatusOr<bool> CombineConstants(
 
     HloInstruction* match = nullptr;
     if (auto* constant_inst = DynCast<HloConstantInstruction>(instruction)) {
-      auto insert_result = constants.insert(ConstantKey<kIsLayoutSensitive>{
-          constant_inst,
-          (domain_map != nullptr ? domain_map->GetDomainId(instruction) : 0)});
-      if (!insert_result.second) {
-        match = insert_result.first->hlo;
+      auto [it, did_insert] = constants.insert(
+          {CseConstantKey<kIsLayoutSensitive>{
+               constant_inst->literal(), constant_inst->shape(),
+               (domain_map != nullptr ? domain_map->GetDomainId(instruction)
+                                      : 0)},
+           constant_inst});
+      if (!did_insert) {
+        match = it->second;
       }
     }
 
     if (match != nullptr) {
       // Match found, replace this instruction with the one in the set.
-      TF_CHECK_OK(instruction->ReplaceAllUsesWith(match));
-      TF_CHECK_OK(computation->RemoveInstruction(instruction));
+      CHECK_OK(instruction->ReplaceAllUsesWith(match));
+      CHECK_OK(computation->RemoveInstruction(instruction));
       ++combined;
     }
   }
@@ -248,12 +234,23 @@ struct CseKey {
 
 /*static*/
 bool HloCSE::ShouldEliminateInstruction(const HloInstruction* instruction) {
+  const FrontendAttributes& frontend_attributes =
+      instruction->frontend_attributes();
+
   // If the instruction has zero operands (constants, parameters, etc.) skip
   // over it.
   if (instruction->operand_count() == 0 &&
       instruction->opcode() != HloOpcode::kPartitionId &&
-      instruction->opcode() != HloOpcode::kReplicaId) {
+      instruction->opcode() != HloOpcode::kReplicaId &&
+      (!frontend_attributes.IsInitialized() ||
+       !frontend_attributes.map().contains(kXlaCseSafeZeroOperandAttr))) {
     return false;
+  }
+
+  if (frontend_attributes.IsInitialized()) {
+    if (frontend_attributes.map().contains(kMustFuseAttr)) {
+      return false;
+    }
   }
 
   // Skip instructions which have side effects.
@@ -264,32 +261,18 @@ bool HloCSE::ShouldEliminateInstruction(const HloInstruction* instruction) {
   return true;
 }
 
-absl::StatusOr<bool> HloCSE::Run(
-    HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  bool changed = false;
-
-  for (auto* computation : module->computations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool computation_changed,
-                        RunOnComputation(computation));
-    changed |= computation_changed;
-  }
-  return changed;
-}
-
 absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
   if (should_eliminate_computation_ &&
       !should_eliminate_computation_(computation)) {
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(
-      bool changed,
-      is_layout_sensitive_
-          ? CombineConstants<true>(computation,
-                                   std::move(should_combine_constant_))
-          : CombineConstants<false>(computation,
-                                    std::move(should_combine_constant_)));
+  ASSIGN_OR_RETURN(bool changed,
+                   is_layout_sensitive_
+                       ? CombineConstants<true>(
+                             computation, std::move(should_combine_constant_))
+                       : CombineConstants<false>(
+                             computation, std::move(should_combine_constant_)));
 
   const auto eq_instructions = [&](const HloInstruction* a,
                                    const HloInstruction* b) {
@@ -338,9 +321,8 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
     auto pair = representatives.insert(CseKey{instruction});
     if (!pair.second) {
       HloInstruction* equivalent_instruction = pair.first->hlo;
-      TF_RETURN_IF_ERROR(
-          instruction->ReplaceAllUsesWith(equivalent_instruction));
-      TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
+      RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(equivalent_instruction));
+      RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
           instruction, /*cleanup=*/std::nullopt, ignore_control_dependencies_));
       VLOG(4) << "Replaced " << instruction->name() << " with "
               << equivalent_instruction->name();
@@ -357,10 +339,10 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
         if (a == b || !eq_instructions(a, b)) {
           continue;
         }
-        TF_RETURN_IF_ERROR(instruction->ReplaceOperandWith(j, a));
+        RETURN_IF_ERROR(instruction->ReplaceOperandWith(j, a));
         changed = true;
         if (b->IsDead()) {
-          TF_RETURN_IF_ERROR(computation->RemoveInstruction(b));
+          RETURN_IF_ERROR(computation->RemoveInstruction(b));
         }
       }
     }
@@ -389,6 +371,18 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
         }
       }
     }
+  }
+  return changed;
+}
+
+absl::StatusOr<bool> HloCSE::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  bool changed = false;
+
+  for (auto* computation : module->computations(execution_threads)) {
+    ASSIGN_OR_RETURN(bool computation_changed, RunOnComputation(computation));
+    changed |= computation_changed;
   }
   return changed;
 }

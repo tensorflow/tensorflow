@@ -1,3 +1,17 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: tf-tfrt-opt -split-input-file -tfrt-sink-in-invariant-ops %s | FileCheck %s --dump-input=fail --dump-input-filter=all
 
 module attributes {tf_saved_model.semantics} {
@@ -195,6 +209,28 @@ func.func @sink_in_stateful_call(%arg0: tensor<i32> {tf_saved_model.index_path =
   func.return %2 : tensor<i32>
 }
 
+// Test VarHandleOp getting sinked when it is used by the called function and returned by the called function.
+
+// CHECK: func private @func_use_and_return_varhandle([[arg0:.+]]: tensor<!tf_type.resource<tensor<i32>>>)
+func.func private @func_use_and_return_varhandle(%arg0: tensor<!tf_type.resource<tensor<i32>>>) -> (tensor<i32>, tensor<!tf_type.resource<tensor<i32>>>) {
+  // CHECK: tf.VarHandleOp
+  // CHECK-NEXT: tf.ReadVariableOp
+  %0 = "tf.ReadVariableOp"(%arg0) {device = "cpu"} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
+
+  func.return %0, %arg0 : tensor<i32>, tensor<!tf_type.resource<tensor<i32>>>
+}
+
+// CHECK-LABEL: func @sink_in_stateful_call_varhandle_return
+func.func @sink_in_stateful_call_varhandle_return(%arg0: tensor<i32> {tf_saved_model.index_path = ["input"]}) -> (tensor<i32> {tf_saved_model.index_path = ["r"]})
+  attributes {tf_saved_model.exported_names = ["test_sink_in_stateful_call_varhandle_return"]} {
+  // CHECK: tf.VarHandleOp
+  %0 = "tf.VarHandleOp"() {container = "", shared_name = "x"} : () -> tensor<!tf_type.resource<tensor<i32>>>
+  // CHECK: "tf.StatefulPartitionedCall"(%0)
+  %1:2 = "tf.StatefulPartitionedCall"(%0) {device = "/CPU:0", config = "", config_proto = "", executor_type = "", f = @func_use_and_return_varhandle} : (tensor<!tf_type.resource<tensor<i32>>>) -> (tensor<i32>, tensor<!tf_type.resource<tensor<i32>>>)
+  %2 = "tf.AddV2"(%arg0, %1#0) {device = "/CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  func.return %2 : tensor<i32>
+}
+
 // CHECK-LABEL: func @sink_in_if
 func.func @sink_in_if(%arg0: tensor<i32> {tf_saved_model.index_path = ["input"]}) -> (tensor<i32> {tf_saved_model.index_path = ["r"]})
   attributes {tf_saved_model.exported_names = ["test_sink_in_if"]} {
@@ -349,13 +385,15 @@ func.func private @nested_else_func(
   func.return %0 : tensor<i32>
 }
 
-// CHECK-LABEL: func private @nested_then_func
+// CHECK-LABEL: func private @nested_then_func(
+// CHECK-SAME:                                 [[arg0:%.*]]: tensor<i1>,
+// CHECK-SAME:                                 [[arg1:%.*]]: tensor<!tf_type.resource<tensor<i32>>>)
 func.func private @nested_then_func(
     %cond: tensor<i1>,
     %arg: tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32> {
   // CHECK-NOT: tf.VarHandleOp
   // CHECK: [[const:%.*]] = "tf.Const"
-  // CHECK: "tf.If"([[const]], [[const]]
+  // CHECK: "tf.If"([[const]], [[arg0]], [[arg1]])
   %0 = "tf.If"(%cond, %cond, %arg) {then_branch = @then_func, else_branch = @else_func, is_stateless = false} : (tensor<i1>, tensor<i1>, tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
   func.return %0 : tensor<i32>
 }
@@ -374,3 +412,91 @@ func.func @nested_sink_in_if(%arg: tensor<i32> {tf_saved_model.index_path = ["in
 }
 
 }
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+// Test sinks crossing nested tf.While and BatchFunction, while the sinkable ops are only copied at the target.
+
+// CHECK-LABEL: func private @batched_function
+func.func private @batched_function(%arg0: tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
+  attributes {tf._input_shapes = [#tf_type.shape<1x3>, #tf_type.shape<*>], tf.signature.is_stateful} {
+  // CHECK: tf.VarHandleOp
+  // CHECK-NEXT: tf.ReadVariableOp
+  %1 = "tf.ReadVariableOp"(%arg0) {device = "/device:CPU:0"} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
+  %2 = "tf.Identity"(%1) {device = "/device:CPU:0"} : (tensor<i32>) -> tensor<i32>
+  func.return %2 : tensor<i32>
+}
+
+// CHECK-LABEL: func private @while_cond_func
+func.func private @while_cond_func(
+    %arg0: tensor<i32>,
+    %arg1: tensor<i32>,
+    %arg: tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32> {
+  // CHECK: [[handle:%.*]] = "tf.VarHandleOp"()
+  // CHECK: "tf.ReadVariableOp"([[handle]])
+  %0 = "tf.ReadVariableOp"(%arg) {device = "cpu"} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
+  func.return %0 : tensor<i32>
+}
+
+// CHECK-LABEL: func private @while_body_func
+func.func private @while_body_func(
+    %arg0: tensor<i32>,
+    %arg1: tensor<i32>,
+    %arg2: tensor<!tf_type.resource<tensor<i32>>>) -> (tensor<i32>, tensor<i32>, tensor<!tf_type.resource<tensor<i32>>>) {
+  // CHECK: "tf.BatchFunction"(%arg2)
+  %0 = "tf.BatchFunction"(%arg2) {allowed_batch_sizes = [6], batch_timeout_micros = 100000 : i64, batching_queue = "", container = "", device = "/device:CPU:0", enable_large_batch_splitting = false, f = @batched_function, max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64, num_batch_threads = 1 : i64, operandSegmentSizes = array<i32: 1, 0>, shared_name = "batch/"} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
+  func.return %0, %arg0, %arg2 : tensor<i32>, tensor<i32>, tensor<!tf_type.resource<tensor<i32>>>
+}
+
+// CHECK-LABEL: func @nested_sink_in_while_and_batch_functions
+func.func @nested_sink_in_while_and_batch_functions(%arg: tensor<i32> {tf_saved_model.index_path = ["input"]}) -> (tensor<i32> {tf_saved_model.index_path = ["r"]})
+  attributes {tf_saved_model.exported_names = ["test_sink_in_while_and_batch_functions"]} {
+  // CHECK: [[handle:%.*]] = "tf.VarHandleOp"()
+  %handle = "tf.VarHandleOp"() {container = "", shared_name = "x"} : () -> tensor<!tf_type.resource<tensor<i32>>>
+  // CHECK: [[cond:%.*]] = "tf.Const"()
+  %cond = "tf.Const"() {device = "/CPU:0", value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: "tf.While"([[cond]], [[cond]], [[handle]])
+  %x:3 = "tf.While"(%cond, %cond, %handle) {body = @while_body_func, cond = @while_cond_func, is_stateless = false, parallel_iterations = 10 : i64, shape_invariant} : (tensor<i32>, tensor<i32>, tensor<!tf_type.resource<tensor<i32>>>) -> (tensor<i32>, tensor<i32>, tensor<!tf_type.resource<tensor<i32>>>)
+  func.return %x#0 : tensor<i32>
+}
+
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+// Test sinks in var handle op to WhileOp with unranked loop signature.
+// This verifies that the pass does not corrupt the return type of the loop body
+// when the resource is also returned (pass-through).
+
+// CHECK-LABEL: func private @while_cond
+func.func private @while_cond(%arg0: tensor<i32>, %arg1: tensor<*x!tf_type.resource>) -> tensor<i1> {
+  %cst = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+  func.return %cst : tensor<i1>
+}
+
+// CHECK-LABEL: func private @while_body
+// CHECK: (%arg0: tensor<i32>, %arg1: tensor<*x!tf_type.resource>) -> (tensor<i32>, tensor<*x!tf_type.resource>)
+func.func private @while_body(%arg0: tensor<i32>, %arg1: tensor<*x!tf_type.resource>) -> (tensor<i32>, tensor<*x!tf_type.resource>) {
+  // CHECK: [[sunk_handle:%.*]] = "tf.VarHandleOp"()
+  // CHECK: "tf.ReadVariableOp"([[sunk_handle]])
+  %0 = "tf.ReadVariableOp"(%arg1) {device = "cpu"} : (tensor<*x!tf_type.resource>) -> tensor<i32>
+  %1 = "tf.AddV2"(%arg0, %0) {device = "cpu"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  // CHECK: return {{.*}}, %arg1
+  func.return %1, %arg1 : tensor<i32>, tensor<*x!tf_type.resource>
+}
+
+// CHECK-LABEL: func @main
+func.func @main(%arg0: tensor<i32> {tf_saved_model.index_path = ["input"]}) -> (tensor<i32> {tf_saved_model.index_path = ["r"]})
+  attributes {tf_saved_model.exported_names = ["main"]} {
+  %handle = "tf.VarHandleOp"() {container = "", shared_name = "x"} : () -> tensor<!tf_type.resource<tensor<i32>>>
+  // CHECK: "tf.While"
+  %x:2 = "tf.While"(%arg0, %handle) {body = @while_body, cond = @while_cond, is_stateless = false, parallel_iterations = 10 : i64} : (tensor<i32>, tensor<!tf_type.resource<tensor<i32>>>) -> (tensor<i32>, tensor<!tf_type.resource<tensor<i32>>>)
+  func.return %x#0 : tensor<i32>
+}
+
+}
+

@@ -34,7 +34,6 @@ namespace tensorflow {
 namespace strings {
 // NOLINTBEGIN(misc-unused-using-decls)
 using tsl::strings::Appendf;
-using tsl::strings::Appendv;
 using tsl::strings::Printf;
 // NOLINTEND(misc-unused-using-decls)
 }  // namespace strings

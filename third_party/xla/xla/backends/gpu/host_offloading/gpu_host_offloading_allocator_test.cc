@@ -43,7 +43,7 @@ TEST(GpuHostOffloadingAllocatorTest, AllocateTransferBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto memory_type,
       stream_executor->GetPointerMemorySpace(buffer->untyped_data()));
-  EXPECT_EQ(memory_type, se::MemoryType::kHost);
+  EXPECT_EQ(memory_type, stream_executor::MemorySpace::kHost);
 }
 
 TEST(GpuHostOffloadingAllocatorTest, AllocateStagingBuffer) {

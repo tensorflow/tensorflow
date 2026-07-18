@@ -38,19 +38,19 @@ TEST(SparseTensorToCSRSparseMatrix, SingleBatchConversion) {
       test::AsTensor<int64_t>({0, 0, 2, 3, 2, 4, 3, 0}, TensorShape({4, 2}));
   Tensor batch_ptr(DT_INT32, {2});
   Tensor csr_col_ind(DT_INT32, {4});
-  auto csr_row_ptr = test::AsTensor<int32>({0, 0, 0, 0, 0});
+  auto csr_row_ptr = test::AsTensor<int32_t>({0, 0, 0, 0, 0});
 
   functor::SparseTensorToCSRSparseMatrixCPUFunctor coo_to_csr;
   TF_EXPECT_OK(coo_to_csr(/*batch_size=*/1, /*num_rows=*/4, /*num_cols=*/5,
                           indices.template matrix<int64_t>(),
-                          batch_ptr.vec<int32>(), csr_row_ptr.vec<int32>(),
-                          csr_col_ind.vec<int32>()));
+                          batch_ptr.vec<int32_t>(), csr_row_ptr.vec<int32_t>(),
+                          csr_col_ind.vec<int32_t>()));
 
-  test::ExpectTensorEqual<int32>(batch_ptr, test::AsTensor<int32>({0, 4}));
-  test::ExpectTensorEqual<int32>(csr_row_ptr,
-                                 test::AsTensor<int32>({0, 1, 1, 3, 4}));
-  test::ExpectTensorEqual<int32>(csr_col_ind,
-                                 test::AsTensor<int32>({0, 3, 4, 0}));
+  test::ExpectTensorEqual<int32_t>(batch_ptr, test::AsTensor<int32_t>({0, 4}));
+  test::ExpectTensorEqual<int32_t>(csr_row_ptr,
+                                   test::AsTensor<int32_t>({0, 1, 1, 3, 4}));
+  test::ExpectTensorEqual<int32_t>(csr_col_ind,
+                                   test::AsTensor<int32_t>({0, 3, 4, 0}));
 }
 
 TEST(SparseTensorToCSRSparseMatrix, BatchConversion) {
@@ -63,21 +63,22 @@ TEST(SparseTensorToCSRSparseMatrix, BatchConversion) {
   Tensor csr_col_ind(DT_INT32, {3});
   // row pointers have size = batch_size * (num_rows + 1) = 3 * 4 = 12
   Tensor csr_row_ptr(DT_INT32, {12});
-  test::FillFn<int32>(&csr_row_ptr, [](int unused) { return 0; });
+  test::FillFn<int32_t>(&csr_row_ptr, [](int unused) { return 0; });
 
   functor::SparseTensorToCSRSparseMatrixCPUFunctor coo_to_csr;
   TF_EXPECT_OK(coo_to_csr(/*batch_size=*/3, /*num_rows=*/3, /*num_cols=*/4,
                           indices.template matrix<int64_t>(),
-                          batch_ptr.vec<int32>(), csr_row_ptr.vec<int32>(),
-                          csr_col_ind.vec<int32>()));
+                          batch_ptr.vec<int32_t>(), csr_row_ptr.vec<int32_t>(),
+                          csr_col_ind.vec<int32_t>()));
 
-  test::ExpectTensorEqual<int32>(batch_ptr,
-                                 test::AsTensor<int32>({0, 2, 2, 3}));
-  test::ExpectTensorEqual<int32>(csr_row_ptr,
-                                 test::AsTensor<int32>({0, 1, 1, 2,  //
-                                                        0, 0, 0, 0,  //
-                                                        0, 1, 1, 1}));
-  test::ExpectTensorEqual<int32>(csr_col_ind, test::AsTensor<int32>({0, 3, 1}));
+  test::ExpectTensorEqual<int32_t>(batch_ptr,
+                                   test::AsTensor<int32_t>({0, 2, 2, 3}));
+  test::ExpectTensorEqual<int32_t>(csr_row_ptr,
+                                   test::AsTensor<int32_t>({0, 1, 1, 2,  //
+                                                            0, 0, 0, 0,  //
+                                                            0, 1, 1, 1}));
+  test::ExpectTensorEqual<int32_t>(csr_col_ind,
+                                   test::AsTensor<int32_t>({0, 3, 1}));
 }
 
 TEST(SparseTensorToCSRSparseMatrix, InvalidBatchThrowsIllegalArgument) {
@@ -90,13 +91,13 @@ TEST(SparseTensorToCSRSparseMatrix, InvalidBatchThrowsIllegalArgument) {
   Tensor csr_col_ind(DT_INT32, {3});
   // row pointers have size = batch_size * (num_rows + 1) = 3 * 4 = 12
   Tensor csr_row_ptr(DT_INT32, {12});
-  test::FillFn<int32>(&csr_row_ptr, [](int unused) { return 0; });
+  test::FillFn<int32_t>(&csr_row_ptr, [](int unused) { return 0; });
 
   functor::SparseTensorToCSRSparseMatrixCPUFunctor coo_to_csr;
   EXPECT_THAT(
       coo_to_csr(/*batch_size=*/3, /*num_rows=*/3, /*num_cols=*/4,
-                 indices.template matrix<int64_t>(), batch_ptr.vec<int32>(),
-                 csr_row_ptr.vec<int32>(), csr_col_ind.vec<int32>()),
+                 indices.template matrix<int64_t>(), batch_ptr.vec<int32_t>(),
+                 csr_row_ptr.vec<int32_t>(), csr_col_ind.vec<int32_t>()),
       absl_testing::StatusIs(tsl::error::Code::INVALID_ARGUMENT,
                              ::testing::ContainsRegex(
                                  "Batch index .* is outside of valid range")));
@@ -111,13 +112,13 @@ TEST(SparseTensorToCSRSparseMatrix, InvalidRowThrowsIllegalArgument) {
   Tensor csr_col_ind(DT_INT32, {3});
   // row pointers have size = batch_size * (num_rows + 1) = 3 * 4 = 12
   Tensor csr_row_ptr(DT_INT32, {12});
-  test::FillFn<int32>(&csr_row_ptr, [](int unused) { return 0; });
+  test::FillFn<int32_t>(&csr_row_ptr, [](int unused) { return 0; });
 
   functor::SparseTensorToCSRSparseMatrixCPUFunctor coo_to_csr;
   EXPECT_THAT(
       coo_to_csr(/*batch_size=*/3, /*num_rows=*/3, /*num_cols=*/4,
-                 indices.template matrix<int64_t>(), batch_ptr.vec<int32>(),
-                 csr_row_ptr.vec<int32>(), csr_col_ind.vec<int32>()),
+                 indices.template matrix<int64_t>(), batch_ptr.vec<int32_t>(),
+                 csr_row_ptr.vec<int32_t>(), csr_col_ind.vec<int32_t>()),
       absl_testing::StatusIs(
           tsl::error::Code::INVALID_ARGUMENT,
           ::testing::ContainsRegex("Row index .* is outside of valid range")));
@@ -132,13 +133,13 @@ TEST(SparseTensorToCSRSparseMatrix, InvalidColThrowsIllegalArgument) {
   Tensor csr_col_ind(DT_INT32, {3});
   // row pointers have size = batch_size * (num_rows + 1) = 3 * 4 = 12
   Tensor csr_row_ptr(DT_INT32, {12});
-  test::FillFn<int32>(&csr_row_ptr, [](int unused) { return 0; });
+  test::FillFn<int32_t>(&csr_row_ptr, [](int unused) { return 0; });
 
   functor::SparseTensorToCSRSparseMatrixCPUFunctor coo_to_csr;
   EXPECT_THAT(
       coo_to_csr(/*batch_size=*/3, /*num_rows=*/3, /*num_cols=*/4,
-                 indices.template matrix<int64_t>(), batch_ptr.vec<int32>(),
-                 csr_row_ptr.vec<int32>(), csr_col_ind.vec<int32>()),
+                 indices.template matrix<int64_t>(), batch_ptr.vec<int32_t>(),
+                 csr_row_ptr.vec<int32_t>(), csr_col_ind.vec<int32_t>()),
       absl_testing::StatusIs(tsl::error::Code::INVALID_ARGUMENT,
                              ::testing::ContainsRegex(
                                  "Column index .* is outside of valid range")));
@@ -154,13 +155,13 @@ TEST(SparseTensorToCSRSparseMatrix, InvalidRankIllegalArgument) {
   Tensor csr_col_ind(DT_INT32, {3});
   // row pointers have size = batch_size * (num_rows + 1) = 3 * 4 = 12
   Tensor csr_row_ptr(DT_INT32, {12});
-  test::FillFn<int32>(&csr_row_ptr, [](int unused) { return 0; });
+  test::FillFn<int32_t>(&csr_row_ptr, [](int unused) { return 0; });
 
   functor::SparseTensorToCSRSparseMatrixCPUFunctor coo_to_csr;
   EXPECT_THAT(
       coo_to_csr(/*batch_size=*/3, /*num_rows=*/3, /*num_cols=*/4,
-                 indices.template matrix<int64_t>(), batch_ptr.vec<int32>(),
-                 csr_row_ptr.vec<int32>(), csr_col_ind.vec<int32>()),
+                 indices.template matrix<int64_t>(), batch_ptr.vec<int32_t>(),
+                 csr_row_ptr.vec<int32_t>(), csr_col_ind.vec<int32_t>()),
       absl_testing::StatusIs(tsl::error::Code::INVALID_ARGUMENT,
                              ::testing::ContainsRegex(
                                  "Indices must have either 2 or 3 columns.")));

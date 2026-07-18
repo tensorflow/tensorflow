@@ -42,7 +42,7 @@ struct RaiseCustomOpsPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(RaiseCustomOpsPass)
 
-  explicit RaiseCustomOpsPass() {}
+  explicit RaiseCustomOpsPass() = default;
   explicit RaiseCustomOpsPass(const std::vector<std::string> &target_ops) {
     this->target_ops_ = target_ops;
   }
@@ -80,8 +80,8 @@ void RaiseCustomOpsPass::runOnOperation() {
   for (auto *op : custom_ops) {
     builder.setInsertionPoint(op);
     Location loc = op->getLoc();
-    auto custom_op = builder.create<CustomTfOp>(loc, op->getResultTypes(),
-                                                op->getOperands());
+    auto custom_op = CustomTfOp::create(builder, loc, op->getResultTypes(),
+                                        op->getOperands());
     Region region;
     Block *new_block = new Block;
     region.push_back(new_block);
@@ -95,7 +95,7 @@ void RaiseCustomOpsPass::runOnOperation() {
       inner_op->setOperand(idx_args.index(), idx_args.value());
     }
     custom_op->setAttrs(inner_op->getAttrs());
-    builder.create<YieldOp>(loc, inner_op->getResults());
+    YieldOp::create(builder, loc, inner_op->getResults());
     custom_op.getBody().takeBody(region);
 
     op->replaceAllUsesWith(custom_op);

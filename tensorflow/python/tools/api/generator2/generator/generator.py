@@ -80,7 +80,7 @@ _FILE_PREFIXES_TO_STRIP = flags.DEFINE_list(
 _PACKAGES_TO_IGNORE = flags.DEFINE_list(
     'packages_to_ignore',
     [],
-    'Comma seperated list of packages to ignore tf_exports from. Ex:'
+    'Comma separated list of packages to ignore tf_exports from. Ex:'
     ' packages_to_ignore="tensorflow.python.framework.test_ops"'
     ' will not export any tf_exports from test_ops',
 )

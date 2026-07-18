@@ -18,14 +18,18 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/AffineMap.h"
 #include "xla/codegen/tiling/constraint_expression.h"
+#include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
+#include "xla/codegen/xtile/codegen/tiled_emitter_constraints.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/service/decision.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -50,7 +54,7 @@ class TritonEmitterConstraints : public EmitterSpecificConstraints {
   // Holds a constraint expression over derived parameters (d'0, ..., d'm) where
   //   (d'0, ..., d'm) = tile_parameters_transform(tile_parameters).
   struct CustomConstraints {
-    mlir::AffineMap tile_parameters_transform;
+    SymbolicMap tile_parameters_transform;
     ConstraintExpression constraints;
   };
 
@@ -58,20 +62,22 @@ class TritonEmitterConstraints : public EmitterSpecificConstraints {
   // constraint that they are either powers of 2, or equal to the dimension
   // size.
   struct RootTileInfo {
-    mlir::AffineMap size_map;
+    SymbolicMap size_map;
     std::vector<int64_t> dim_sizes;
   };
 
   explicit TritonEmitterConstraints(
-      llvm::SmallVector<mlir::AffineMap, 4> tile_size_maps,
+      llvm::SmallVector<SymbolicMap, 4> tile_size_maps,
       llvm::SmallVector<RootTileInfo, 2> roots,
       std::vector<CustomConstraints> custom_constraints,
-      const Shape& root_shape, const se::DeviceDescription& device_info)
+      const Shape& root_shape, const se::DeviceDescription& device_info,
+      std::unique_ptr<TiledEmitterConstraints> tiled_emitter_constraints)
       : tile_size_maps_(std::move(tile_size_maps)),
         roots_(std::move(roots)),
         custom_constraints_(std::move(custom_constraints)),
         root_shape_(root_shape),
-        device_info_(device_info) {}
+        device_info_(device_info),
+        tiled_emitter_constraints_(std::move(tiled_emitter_constraints)) {}
 
   // Derives a vector of `CustomConstraints` to be checked within
   // `ParametersSatisfyConstraints` from a vector of
@@ -100,7 +106,7 @@ class TritonEmitterConstraints : public EmitterSpecificConstraints {
   //
   // Different `TiledHloInstruction`s often have the same size map, so we keep a
   // collection of unique maps to improve compilation time.
-  llvm::SmallVector<mlir::AffineMap, 4> tile_size_maps_;
+  llvm::SmallVector<SymbolicMap, 4> tile_size_maps_;
 
   // Holds the info for all fusion roots necessary to check whether the tile
   // sizes evaluate to powers of 2 or have the same size as the dimension.
@@ -114,7 +120,16 @@ class TritonEmitterConstraints : public EmitterSpecificConstraints {
   Shape root_shape_;
 
   se::DeviceDescription device_info_;
+
+  std::unique_ptr<TiledEmitterConstraints> tiled_emitter_constraints_;
 };
+
+namespace experimental {
+
+Decision VerifyTritonConstraints(const TiledHloComputation& tiled_computation,
+                                 const se::DeviceDescription& device_info);
+
+}  // namespace experimental
 
 }  // namespace gpu
 }  // namespace xla

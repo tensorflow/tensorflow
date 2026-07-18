@@ -24,10 +24,13 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
 #include "xla/backends/profiler/gpu/cuda_test.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
 namespace profiler {
 namespace test {
+
+using tsl::profiler::ScopedAnnotation;
 
 namespace {
 
@@ -175,11 +178,19 @@ void CudaGraphCreateAndExecute() {
   memcpy_params.extent.width = kNumBytes;
   memcpy_params.extent.height = 1;
   memcpy_params.extent.depth = 1;
-  cudaGraphAddMemcpyNode(&nodes[0], graph, nullptr, 0, &memcpy_params);
+  {
+    ScopedAnnotation memcpy_1_annotation(
+        "Thunk:#name=my_module/prep,hlo_op=memcpy.1#");
+    cudaGraphAddMemcpyNode(&nodes[0], graph, nullptr, 0, &memcpy_params);
+  }
 
   memcpy_params.srcPtr.ptr = vec_b.data();
   memcpy_params.dstPtr.ptr = d_b;
-  cudaGraphAddMemcpyNode(&nodes[1], graph, nullptr, 0, &memcpy_params);
+  {
+    ScopedAnnotation memcpy_2_annotation(
+        "Thunk:#name=my_module/prep,hlo_op=memcpy.2#");
+    cudaGraphAddMemcpyNode(&nodes[1], graph, nullptr, 0, &memcpy_params);
+  }
 
   // Init kernel params.
   int num = kNumElements;
@@ -191,25 +202,37 @@ void CudaGraphCreateAndExecute() {
   kernel_params.sharedMemBytes = 0;
   kernel_params.kernelParams = (void **)kernelArgs;
   kernel_params.extra = nullptr;
-
-  cudaGraphAddKernelNode(&nodes[2], graph, &nodes[0], 2, &kernel_params);
+  {
+    ScopedAnnotation add_1_annotation(
+        "Thunk:#name=my_module/body,hlo_op=add.1#");
+    cudaGraphAddKernelNode(&nodes[2], graph, &nodes[0], 2, &kernel_params);
+  }
 
   kernel_params.func = (void *)VecSub;
-  cudaGraphAddKernelNode(&nodes[3], graph, &nodes[2], 1, &kernel_params);
-
+  {
+    ScopedAnnotation sub_1_annotation(
+        "Thunk:#name=my_module/body,hlo_op=sub.1#");
+    cudaGraphAddKernelNode(&nodes[3], graph, &nodes[2], 1, &kernel_params);
+  }
   memcpy_params.kind = cudaMemcpyDeviceToHost;
   memcpy_params.srcPtr.ptr = d_c;
   memcpy_params.dstPtr.ptr = vec_c.data();
   memcpy_params.extent.width = kNumBytes;
   memcpy_params.extent.height = 1;
   memcpy_params.extent.depth = 1;
-  cudaGraphAddMemcpyNode(&nodes[4], graph, &nodes[3], 1, &memcpy_params);
-
+  {
+    ScopedAnnotation memcpy_3_annotation(
+        "Thunk:#name=my_module/post,hlo_op=memcpy.3#");
+    cudaGraphAddMemcpyNode(&nodes[4], graph, &nodes[3], 1, &memcpy_params);
+  }
   cudaGraphClone(&cloned_graph, graph);
 
-  cudaGraphInstantiate(&graph_exec, cloned_graph, nullptr, nullptr, 0);
+  cudaGraphInstantiate(&graph_exec, graph, nullptr, nullptr, 0);
 
-  cudaGraphLaunch(graph_exec, stream);
+  {
+    ScopedAnnotation module_annotation("Thunk:#name=my_module,hlo_op=call.1#");
+    cudaGraphLaunch(graph_exec, stream);
+  }
 
   cudaStreamSynchronize(stream);
 

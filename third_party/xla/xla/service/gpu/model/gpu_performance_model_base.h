@@ -21,15 +21,17 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
@@ -45,6 +47,8 @@ struct EstimateRunTimeData {
   absl::Duration write_time;
   absl::Duration compute_time;
   absl::Duration exec_time;
+  int64_t l2_bytes_read = 0;
+  int64_t shared_memory_per_block_bytes = 0;
 
   // Returns an estimate that is guaranteed to be zero.
   static EstimateRunTimeData Zero() {
@@ -54,7 +58,9 @@ struct EstimateRunTimeData {
                                /*read_time=*/absl::ZeroDuration(),
                                /*write_time=*/absl::ZeroDuration(),
                                /*compute_time=*/absl::ZeroDuration(),
-                               /*exec_time=*/absl::ZeroDuration()};
+                               /*exec_time=*/absl::ZeroDuration(),
+                               /*l2_bytes_read=*/0,
+                               /*shared_memory_per_block_bytes=*/0};
   }
 
   // Returns an estimate that is guaranteed to be larger than any real runtime.
@@ -66,7 +72,9 @@ struct EstimateRunTimeData {
         /*read_time=*/absl::InfiniteDuration(),
         /*write_time=*/absl::InfiniteDuration(),
         /*compute_time=*/absl::InfiniteDuration(),
-        /*exec_time=*/absl::InfiniteDuration()};
+        /*exec_time=*/absl::InfiniteDuration(),
+        /*l2_bytes_read=*/std::numeric_limits<int64_t>::max(),
+        /*shared_memory_per_block_bytes=*/std::numeric_limits<int64_t>::max()};
   }
 
   // Returns true if the estimate is guaranteed to be larger than any real
@@ -76,55 +84,66 @@ struct EstimateRunTimeData {
   std::string ToString() const {
     return absl::StrFormat(
         "EstimateRunTimeData{\n"
-        " flops: %d\n"
-        " bytes_read: %d\n"
-        " bytes_written: %d\n"
+        " flops: %v\n"
+        " bytes_read: %v\n"
+        " bytes_written: %v\n"
+        " l2_bytes_read: %v\n"
+        " shared_memory_per_block_bytes: %v\n"
         " read_time: %s\n"
         " write_time: %s\n"
         " compute_time: %s\n"
         " exec_time: %s\n"
         "}",
-        flops, bytes_read, bytes_written, absl::FormatDuration(read_time),
+        flops, bytes_read, bytes_written, l2_bytes_read,
+        shared_memory_per_block_bytes, absl::FormatDuration(read_time),
         absl::FormatDuration(write_time), absl::FormatDuration(compute_time),
         absl::FormatDuration(exec_time));
   }
 };
 
+// This class is thread-safe.
 class GpuPerformanceModelCache {
  public:
   // Returns cached runtime data for the instruction or producer-consumer pair.
   // Returns nullopt if there is no data in cache.
-  std::optional<EstimateRunTimeData> Get(const HloInstruction& instruction);
+  std::optional<EstimateRunTimeData> Get(const HloInstruction& instruction)
+      ABSL_LOCKS_EXCLUDED(mutex_);
   std::optional<absl::Duration> Get(const HloInstruction& producer,
-                                    const HloInstruction& consumer);
-  const absl::flat_hash_map<const HloInstruction*, absl::Duration>&
+                                    const HloInstruction& consumer)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
   // Returns cache entries for all consumers of this producer.
-  GetAllConsumers(const HloInstruction& producer);
+  absl::flat_hash_map<const HloInstruction*, absl::Duration> GetAllConsumers(
+      const HloInstruction& producer) ABSL_LOCKS_EXCLUDED(mutex_);
+
   // Checks if producer-consumer pair cache entries exist for this producer.
-  bool ContainsConsumers(const HloInstruction& producer);
+  bool ContainsConsumers(const HloInstruction& producer)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
   // Sets cache value for the instruction or producer-consumer pair.
   void Set(const HloInstruction& instruction,
-           const EstimateRunTimeData& runtime_data);
+           const EstimateRunTimeData& runtime_data) ABSL_LOCKS_EXCLUDED(mutex_);
   void Set(const HloInstruction& producer, const HloInstruction& consumer,
-           absl::Duration runtime);
+           absl::Duration runtime) ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Removes all cache entries for this instruction. The cache contains entries
   // for individual instructions in instruction_runtime_data_ and for
   // producer-consumer pairs in fusion_runtime_data_.
-  void Invalidate(const HloInstruction& instruction);
+  void Invalidate(const HloInstruction& instruction)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
   absl::Mutex mutex_;
 
   // Stores unfused runtime data for individual instructions.
   absl::flat_hash_map<const HloInstruction*, EstimateRunTimeData>
-      instruction_runtime_data_;
+      instruction_runtime_data_ ABSL_GUARDED_BY(mutex_);
 
   // Stores fused runtime data for producer-consumer pairs.
   absl::flat_hash_map<
       const HloInstruction*,
       absl::flat_hash_map<const HloInstruction*, absl::Duration>>
-      fusion_runtime_data_;
+      fusion_runtime_data_ ABSL_GUARDED_BY(mutex_);
 };
 
 class GpuPerformanceModelBase {
@@ -155,7 +174,7 @@ class GpuPerformanceModelBase {
   // Uses HloFusionAnalysis for computing the actual number of threads and
   // blocks that the IR emitter will use.
   static LaunchDimensions EstimateFusionLaunchDimensions(
-      const HloFusionAnalysis& fusion_analysis, mlir::MLIRContext* ctx);
+      const HloFusionAnalysis& fusion_analysis);
 
   // Returns bytes accessed of operand output by instruction. Returns 0, if the
   // operand is not used by the instruction.
@@ -208,6 +227,14 @@ class GpuPerformanceModelBase {
       const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
       int64_t num_threads_per_block);
 
+  // Estimates peak performance on the provided dtype using accelerated compute
+  // (i.e. Tensor Cores/Matrix Cores). The number is calculated assuming each
+  // FMA is 2 operations.
+  // Falls back to non-accelerated estimates if the provided device info does
+  // not have matrix unit information.
+  static int64_t CalculatePeakMatrixOpsPerNs(
+      const se::DeviceDescription& gpu_device_info, xla::PrimitiveType dtype);
+
   static absl::Duration ComputeTime(
       const se::DeviceDescription& gpu_device_info, int64_t flops,
       int64_t num_blocks, int64_t num_threads_per_block);
@@ -219,6 +246,11 @@ class GpuPerformanceModelBase {
   static void VLogOperandRead(const HloInstruction* operand,
                               int64_t n_bytes_total, int64_t n_bytes_net,
                               bool coalesced);
+
+  // Returns ReificationCost with the runtime data.
+  static ReificationCost MakeReificationCostFromRuntime(
+      const EstimateRunTimeData& data, const se::DeviceDescription& device_info,
+      std::optional<absl::string_view> name = std::nullopt);
 };
 
 // Given an element type and whether the read is coalesced, returns the

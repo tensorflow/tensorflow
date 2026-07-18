@@ -132,8 +132,8 @@ bool SendAsProtosWhenPossible() {
   return send_as_protos_when_possible;
 }
 
-const string& DeviceNameOrUnspecified(Device* device) {
-  static string* unspecified_string = new string("<unspecified>");
+const std::string& DeviceNameOrUnspecified(Device* device) {
+  static std::string* unspecified_string = new std::string("<unspecified>");
   return (device == nullptr) ? *unspecified_string : device->name();
 }
 
@@ -158,7 +158,7 @@ absl::Status CopyInputToExpectedDevice(EagerContext* ctx, EagerOperation* op,
   // Should only be called when these don't match
   DCHECK(expected_input_device != handle_device);
   *result = nullptr;
-  const string& op_device_name = DeviceNameOrUnspecified(op_device);
+  const std::string& op_device_name = DeviceNameOrUnspecified(op_device);
 
   switch (ctx->GetDevicePlacementPolicy()) {
     case DEVICE_PLACEMENT_SILENT_FOR_INT32:
@@ -240,8 +240,8 @@ absl::Status ValidateInputTypeAndPlacement(
                                   tsl::profiler::TraceMeLevel::kInfo);
   const int n_inputs = op->Inputs().size();
   if (kernel->num_inputs() != n_inputs) {
-    return errors::InvalidArgument("expected ", kernel->num_inputs(),
-                                   " inputs, got ", n_inputs);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "expected ", kernel->num_inputs(), " inputs, got ", n_inputs));
   }
   const bool is_function = kernel->IsFunction();
   if (n_inputs > 0) {
@@ -282,10 +282,10 @@ absl::Status ValidateInputTypeAndPlacement(
         handle->Unref();
       }
       if (handle->dtype != input_types[i]) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "cannot compute ", op->Name(), " as input #", i, "(zero-based)",
             " was expected to be a ", DataTypeString(input_types[i]),
-            " tensor but is a ", DataTypeString(handle->dtype), " tensor");
+            " tensor but is a ", DataTypeString(handle->dtype), " tensor"));
       }
     }
   }
@@ -314,7 +314,7 @@ absl::Status GetDeviceForInput(const EagerOperation& op,
                                const bool is_host_memory_arg,
                                TensorHandle* tensor_handle, Device** result) {
   Device* cpu_device = ctx.HostCPU();
-  string device_name;
+  std::string device_name;
   if (tensor_handle->Type() != TensorHandle::LOCAL) {
     Device* device = tensor_handle->device();
     device_name = device != nullptr ? device->name() : cpu_device->name();
@@ -326,7 +326,7 @@ absl::Status GetDeviceForInput(const EagerOperation& op,
     // TODO(fishx): Avoid blocking here.
     TF_RETURN_IF_ERROR(tensor_handle->Tensor(&tensor));
     if (tensor->NumElements() == 0) {
-      return errors::InvalidArgument("Empty resource handle");
+      return absl::InvalidArgumentError("Empty resource handle");
     }
     const ResourceHandle& handle = tensor->flat<ResourceHandle>()(0);
     device_name = handle.device();
@@ -382,7 +382,8 @@ absl::Status GetFuncAttr(const EagerOperation* op, const EagerContext& ctx,
 
   const FunctionDef* function_def = op->GetFunctionDef();
   if (function_def == nullptr) {
-    return errors::NotFound("Failed to find function '", op->Name(), "'");
+    return absl::NotFoundError(
+        absl::StrCat("Failed to find function '", op->Name(), "'"));
   }
 
   status = GetNodeAttr(AttrSlice(&function_def->attr()), attr_name, value);
@@ -407,7 +408,8 @@ absl::Status HasTPUReplication(const EagerOperation& op,
 
   const FunctionDef* function_def = op.GetFunctionDef();
   if (function_def == nullptr) {
-    return errors::NotFound("Failed to find function '", op.Name(), "'");
+    return absl::NotFoundError(
+        absl::StrCat("Failed to find function '", op.Name(), "'"));
   }
   for (const NodeDef& node : function_def->node_def()) {
     if (node.op() == "TPUReplicateMetadata") {
@@ -473,7 +475,7 @@ absl::Status MustCompileWithXLA(const EagerOperation* op,
 // `has_jit_compile` and `device`.
 absl::Status HasNestedJitCompile(const EagerOperation& op,
                                  const EagerContext& ctx, bool* has_jit_compile,
-                                 string* device) {
+                                 std::string* device) {
   *has_jit_compile = false;
 
   const std::string kStatefulPartitionedCallOp = "StatefulPartitionedCall";
@@ -488,11 +490,12 @@ absl::Status HasNestedJitCompile(const EagerOperation& op,
   const FunctionLibraryDefinition* func_lib_def = op.FuncLibDef();
 
   while (!function_names.empty()) {
-    const string& function_name = function_names.front();
+    const std::string& function_name = function_names.front();
 
     const FunctionDef* function_def = func_lib_def->Find(function_name);
     if (function_def == nullptr) {
-      return errors::NotFound("Failed to find function '", function_name, "'");
+      return absl::NotFoundError(
+          absl::StrCat("Failed to find function '", function_name, "'"));
     }
     function_names.pop();
     for (const NodeDef& node : function_def->node_def()) {
@@ -518,8 +521,8 @@ absl::Status HasNestedJitCompile(const EagerOperation& op,
   return absl::OkStatus();
 }
 
-string CanonicalizeDeviceType(std::string_view device_type) {
-  string canonical_device_type = "Unknown";
+std::string CanonicalizeDeviceType(std::string_view device_type) {
+  std::string canonical_device_type = "Unknown";
   if (device_type == "XLA_CPU" || device_type == tensorflow::DEVICE_CPU) {
     canonical_device_type = tensorflow::DEVICE_CPU;
   }
@@ -542,11 +545,12 @@ absl::Status UpdateCompileCounter(const EagerOperation* op,
     return absl::OkStatus();
   }
 
-  string device_type = CanonicalizeDeviceType(op->GetDeviceParsedName().type);
-  string compilation_option = kDisabled;
+  std::string device_type =
+      CanonicalizeDeviceType(op->GetDeviceParsedName().type);
+  std::string compilation_option = kDisabled;
   if (!compile_with_xla) {
     bool nested_jit_compile = false;
-    string device;
+    std::string device;
     if (!ctx.FuncLibDef()->HasOptimizedFunctionGraph(op->Name())) {
       TF_RETURN_IF_ERROR(
           HasNestedJitCompile(*op, ctx, &nested_jit_compile, &device));
@@ -555,8 +559,8 @@ absl::Status UpdateCompileCounter(const EagerOperation* op,
       if (!device.empty()) {
         tsl::DeviceNameUtils::ParsedName device_parsed_name;
         if (!DeviceNameUtils::ParseFullName(device, &device_parsed_name)) {
-          return errors::InvalidArgument("Malformed device specification: '",
-                                         device);
+          return absl::InvalidArgumentError(
+              absl::StrCat("Malformed device specification: '", device));
         }
         VLOG(1) << "Compilation Device Type: " << device_parsed_name.type;
 
@@ -586,14 +590,14 @@ absl::Status UpdateCompileCounter(const EagerOperation* op,
 
 using ProtoArgListType = protobuf::RepeatedPtrField<OpDef_ArgDef>;
 
-string EscapeOrigName(const string& orig_name) {
+std::string EscapeOrigName(const std::string& orig_name) {
   // Replace _ with __ in the original name to avoid name conflicts.
   return absl::StrReplaceAll(orig_name, {{"_", "__"}});
 }
 
 // Variadic args are flattened during wrapping. This utility returns the name
 // of a flattened arg/attr.
-string GetFlatName(const string orig_name, int index) {
+std::string GetFlatName(const std::string orig_name, int index) {
   return absl::StrCat(EscapeOrigName(orig_name), "_", index);
 }
 
@@ -607,13 +611,14 @@ string GetFlatName(const string orig_name, int index) {
 // IdentityN[T:[DT_FLOAT, DT_INT64]] -> __wrapped__IdentityN_T_2
 // Concat[N:2, T:DT_FLOAT] -> __wrapped__Concat_N_2
 absl::Status BuildWrappedOpName(EagerOperation* op, const OpDef& opdef,
-                                const AbstractOpAttrs* op_attrs, string* name) {
-  string fname = absl::StrCat("__wrapped__", EscapeOrigName(op->Name()));
+                                const AbstractOpAttrs* op_attrs,
+                                std::string* name) {
+  std::string fname = absl::StrCat("__wrapped__", EscapeOrigName(op->Name()));
   // For every variadic arg in `args`, populates `attr_to_len` with
   // (attr_name, len(arg)).
   auto FillAttrToLen = [op_attrs, op](
                            const ProtoArgListType& args,
-                           absl::btree_map<string, int>* attr_to_len) {
+                           absl::btree_map<std::string, int>* attr_to_len) {
     for (const auto& arg : args) {
       if (!arg.type_list_attr().empty()) {
         absl::InlinedVector<DataType, 4UL> type_list;
@@ -623,15 +628,16 @@ absl::Status BuildWrappedOpName(EagerOperation* op, const OpDef& opdef,
       } else if (!arg.number_attr().empty()) {
         int64_t number_attr;
         if (!op_attrs->GetInt(arg.number_attr(), &number_attr)) {
-          return errors::Internal("Unable to read attr ", arg.number_attr(),
-                                  " for op ", op->Name());
+          return absl::InternalError(absl::StrCat("Unable to read attr ",
+                                                  arg.number_attr(), " for op ",
+                                                  op->Name()));
         }
         (*attr_to_len)[arg.number_attr()] = number_attr;
       }
     }
     return absl::OkStatus();
   };
-  absl::btree_map<string, int> attr_to_len;
+  absl::btree_map<std::string, int> attr_to_len;
   TF_RETURN_IF_ERROR(FillAttrToLen(opdef.input_arg(), &attr_to_len));
   TF_RETURN_IF_ERROR(FillAttrToLen(opdef.output_arg(), &attr_to_len));
   for (auto& name_len : attr_to_len) {
@@ -768,7 +774,8 @@ absl::Status BuildWrappedOpName(EagerOperation* op, const OpDef& opdef,
 // Note that the N attr is preserved so that it can get copied to the
 // inner op via a placeholder. This allows additional verification.
 absl::Status BuildWrappedOpSignature(EagerOperation* op, const OpDef& opdef,
-                                     const string& fname, OpDef& signature) {
+                                     const std::string& fname,
+                                     OpDef& signature) {
   signature = opdef;
   signature.clear_input_arg();
   signature.clear_output_arg();
@@ -777,7 +784,7 @@ absl::Status BuildWrappedOpSignature(EagerOperation* op, const OpDef& opdef,
   auto FillSignatureArgs = [op_attrs, op](
                                const ProtoArgListType& opdef_args,
                                ProtoArgListType* sig_args,
-                               absl::flat_hash_set<string>& new_attrs) {
+                               absl::flat_hash_set<std::string>& new_attrs) {
     for (const auto& arg : opdef_args) {
       if (!arg.type_list_attr().empty()) {
         absl::InlinedVector<DataType, 4UL> type_list;
@@ -793,8 +800,9 @@ absl::Status BuildWrappedOpSignature(EagerOperation* op, const OpDef& opdef,
       } else if (!arg.number_attr().empty()) {
         int64_t number_attr;
         if (!op_attrs->GetInt(arg.number_attr(), &number_attr)) {
-          return errors::Internal("Unable to read attr ", arg.number_attr(),
-                                  " for op ", op->Name());
+          return absl::InternalError(absl::StrCat("Unable to read attr ",
+                                                  arg.number_attr(), " for op ",
+                                                  op->Name()));
         }
         for (int64_t i = 0; i < number_attr; i++) {
           auto arg_def = sig_args->Add();
@@ -817,7 +825,7 @@ absl::Status BuildWrappedOpSignature(EagerOperation* op, const OpDef& opdef,
     }
     return absl::OkStatus();
   };
-  absl::flat_hash_set<string> new_attrs;
+  absl::flat_hash_set<std::string> new_attrs;
   TF_RETURN_IF_ERROR(FillSignatureArgs(
       opdef.input_arg(), signature.mutable_input_arg(), new_attrs));
   TF_RETURN_IF_ERROR(FillSignatureArgs(
@@ -838,7 +846,7 @@ absl::Status AddMixedTypeListAttrs(EagerOperation* wrapped_op,
                                    const OpDef& opdef) {
   auto FillAttrsToAdd =
       [op_attrs](const ProtoArgListType& opdef_args,
-                 absl::flat_hash_map<string, DataType>* attrs_to_add) {
+                 absl::flat_hash_map<std::string, DataType>* attrs_to_add) {
         for (const auto& arg : opdef_args) {
           if (!arg.type_list_attr().empty()) {
             absl::InlinedVector<DataType, 4UL> type_list;
@@ -852,7 +860,7 @@ absl::Status AddMixedTypeListAttrs(EagerOperation* wrapped_op,
         }
         return absl::OkStatus();
       };
-  absl::flat_hash_map<string, DataType> attrs_to_add;
+  absl::flat_hash_map<std::string, DataType> attrs_to_add;
   TF_RETURN_IF_ERROR(FillAttrsToAdd(opdef.input_arg(), &attrs_to_add));
   TF_RETURN_IF_ERROR(FillAttrsToAdd(opdef.output_arg(), &attrs_to_add));
   for (auto& name_type : attrs_to_add) {
@@ -867,7 +875,8 @@ absl::Status AddMixedTypeListAttrs(EagerOperation* wrapped_op,
 // outputs which need to be flattened.
 absl::Status PopulateRetMap(FunctionDef* fdef, const AbstractOpAttrs* op_attrs,
                             const EagerOperation* op, const OpDef& opdef,
-                            const OpDef& signature, const string& node_name) {
+                            const OpDef& signature,
+                            const std::string& node_name) {
   int next_sig_output = 0;
   for (size_t i = 0; i < opdef.output_arg_size(); i++) {
     const auto& output_arg = opdef.output_arg(i);
@@ -882,9 +891,9 @@ absl::Status PopulateRetMap(FunctionDef* fdef, const AbstractOpAttrs* op_attrs,
     } else if (!output_arg.number_attr().empty()) {
       int64_t number_attr;
       if (!op_attrs->GetInt(output_arg.number_attr(), &number_attr)) {
-        return errors::Internal("Unable to read attr ",
-                                output_arg.number_attr(), " for op ",
-                                op->Name());
+        return absl::InternalError(absl::StrCat("Unable to read attr ",
+                                                output_arg.number_attr(),
+                                                " for op ", op->Name()));
       }
       for (int j = 0; j < number_attr; j++) {
         (*fdef->mutable_ret())[signature.output_arg(next_sig_output++).name()] =
@@ -916,15 +925,16 @@ absl::Status WrapInCallOp(EagerOperation* op, EagerOperation** wrapped_op) {
   // TODO(srbs): Support list inputs/outputs.
   auto verify_wrappable_in_call_op = [](const OpDef& opdef,
                                         EagerOperation* op) -> absl::Status {
-    absl::flat_hash_set<string> opdef_attrs;
+    absl::flat_hash_set<std::string> opdef_attrs;
     for (const auto& attr : opdef.attr()) {
       opdef_attrs.insert(attr.name());
     }
     const auto& node_def = op->MutableAttrs()->BuildNodeDef();
     for (const auto& attr : node_def.attr()) {
       if (opdef_attrs.find(attr.first) == opdef_attrs.end()) {
-        return errors::Unimplemented("EagerOperation: ", op->Name(),
-                                     " has a private attr '", attr.first, "'.");
+        return absl::UnimplementedError(
+            absl::StrCat("EagerOperation: ", op->Name(),
+                         " has a private attr '", attr.first, "'."));
       }
     }
     return absl::OkStatus();
@@ -941,7 +951,7 @@ absl::Status WrapInCallOp(EagerOperation* op, EagerOperation** wrapped_op) {
   // This can be avoided by introducing a dict in EagerContext that stores a
   // mapping from the eager op's name to its unique FunctionDef name.
   auto op_attrs = op->GetOpAttrs();
-  string fname;
+  std::string fname;
   TF_RETURN_IF_ERROR(BuildWrappedOpName(op, opdef, op_attrs, &fname));
   if (!op->EagerContext().GetFunctionDef(fname)) {
     FunctionDef fdef;
@@ -989,7 +999,7 @@ absl::Status WrapInCallOp(EagerOperation* op, EagerOperation** wrapped_op) {
   for (auto t : op->Inputs()) {
     TF_RETURN_IF_ERROR(call_op->AddInput(t));
   }
-  *wrapped_op = down_cast<EagerOperation*>(call_op.release());
+  *wrapped_op = absl::down_cast<EagerOperation*>(call_op.release());
   // Attributes on the elementary eager operation are applied to the call op and
   // to the NodeDef inside the FunctionDef. This allows us to have a single
   // FunctionDef for different attribute values. When the function is
@@ -1033,7 +1043,7 @@ absl::StatusOr<BoolTensorInputs> GetBoolInputs(EagerOperation* op,
     absl::Status s;
     const char* input_device = handle->DeviceType(&s);
     if (!s.ok() || !absl::StrContains(input_device, "CPU")) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Expecting boolean tensor to be on host when "
           "small_constants_optimizer is enabled.");
     }
@@ -1168,7 +1178,8 @@ absl::StatusOr<Fprint128> GetKernelCacheKey(
 absl::Status ExtractFunctionInputInfo(
     EagerOperation* op, const KernelDef* kernel_def,
     std::vector<Device*>& input_device_ptrs,
-    absl::flat_hash_map<string, const std::vector<string>*>& composite_devices,
+    absl::flat_hash_map<std::string, const std::vector<std::string>*>&
+        composite_devices,
     std::unordered_map<int, DtypeAndPartialTensorShape>&
         input_resource_variable_dtypes_and_shapes) {
   tsl::profiler::TraceMe activity("EagerCopyToDevice",
@@ -1268,7 +1279,7 @@ absl::Status GetOrCreateKernelAndDevice(
   if (is_small_constant_optimization_enabled(*op)) {
     TF_ASSIGN_OR_RETURN(BoolTensorInputs bool_inputs,
                         GetBoolInputs(op, /*delete_inputs=*/false));
-    string folded_name = op->Name();
+    std::string folded_name = op->Name();
     for (const auto& [input_name, input_value] : bool_inputs) {
       folded_name = small_constants_optimizer::FoldedFunctionName(
           folded_name, input_name, input_value);
@@ -1320,7 +1331,8 @@ absl::Status GetOrCreateKernelAndDevice(
       (ctx.RunEagerOpAsFunction() && !op->is_function());
 
   std::vector<Device*> input_device_ptrs;
-  absl::flat_hash_map<string, const std::vector<string>*> composite_devices;
+  absl::flat_hash_map<std::string, const std::vector<std::string>*>
+      composite_devices;
   std::unordered_map<int, DtypeAndPartialTensorShape>
       input_resource_variable_dtypes_and_shapes;
   const KernelDef* kernel_def = nullptr;
@@ -1380,7 +1392,7 @@ absl::Status GetOrCreateKernelAndDevice(
     bool run_function_with_flr = false;
     bool function_runs_at_most_once = FunctionRunsAtMostOnce(op, ctx);
 
-    std::optional<string> xla_compile_device_type;
+    std::optional<std::string> xla_compile_device_type;
     if (op->is_function()) {
       bool compile_with_xla;
       // By default we should run functions with FunctionLibraryRuntime.
@@ -1474,7 +1486,8 @@ absl::Status GetOrCreateKernelAndDevice(
         // Check if any of the Op's output_arg(s) are pinned to Host.
         if (kernel_def == nullptr) return false;
         const OpDef& op_def = OpRegistry::Global()->LookUp(op->Name())->op_def;
-        for (const string& host_memory_arg : kernel_def->host_memory_arg()) {
+        for (const std::string& host_memory_arg :
+             kernel_def->host_memory_arg()) {
           for (const auto& output_arg : op_def.output_arg()) {
             if (output_arg.name() == host_memory_arg) {
               return false;
@@ -1497,9 +1510,9 @@ absl::Status GetOrCreateKernelAndDevice(
     FunctionLibraryRuntime* flr =
         device == nullptr ? nullptr : ctx.func_lib(device);
     if (device != nullptr && flr == nullptr) {
-      return errors::NotFound(
+      return absl::NotFoundError(absl::StrCat(
           "Unable to find a FunctionLibraryRuntime corresponding to device ",
-          device->name());
+          device->name()));
     }
     auto runner = (flr != nullptr && flr->runner() != nullptr) ? flr->runner()
                                                                : ctx.runner();
@@ -1586,9 +1599,9 @@ absl::Status GetOrCreateKernelAndDevice(
 
   int num_outputs = kernel->num_outputs();
   if (num_outputs > *num_retvals) {
-    return errors::InvalidArgument("Expecting ", num_outputs,
-                                   " outputs, but *num_retvals is ",
-                                   *num_retvals);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expecting ", num_outputs,
+                     " outputs, but *num_retvals is ", *num_retvals));
   }
   *num_retvals = num_outputs;
 
@@ -1610,15 +1623,16 @@ absl::Status CreateUnshapedOutput(
   if (eager_func_params.has_value()) {
     op_id = eager_func_params.value().op_id;
   } else {
-    return errors::InvalidArgument(
-        "Unable to find a remote op id for a remote output of ", kernel.name());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unable to find a remote op id for a remote output of ",
+                     kernel.name()));
   }
-  string remote_task;
+  std::string remote_task;
   if (!DeviceNameUtils::GetTaskName(output_device->parsed_name(),
                                     &remote_task)) {
-    return errors::InvalidArgument(
-        "Unable to find remote task corresponding to device ",
-        output_device->name());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unable to find remote task corresponding to device ",
+                     output_device->name()));
   }
   if (ctx->RemoteMgr()->IsMaster()) {
     *output = TensorHandle::CreateUnshapedRemoteHandle(
@@ -1762,8 +1776,8 @@ absl::Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
   TF_RETURN_IF_ERROR(ValidateInputTypeAndPlacement(&ctx, op, kernel));
 
   if (ctx.LogDevicePlacement() || VLOG_IS_ON(1)) {
-    string msg = absl::StrCat("Executing op ", op->Name(), " in device ",
-                              kernel->device()->name());
+    std::string msg = absl::StrCat("Executing op ", op->Name(), " in device ",
+                                   kernel->device()->name());
     if (!logging::LogToListeners(msg)) {
       LOG(INFO) << msg;
     }
@@ -1828,19 +1842,19 @@ absl::Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   // TODO(fishx): Remove following code when lazy tensor copy is ready.
   if (op->Device() == kVariantDeviceNull) {
     tensorflow::Device* device = nullptr;
-    string device_name = op->DeviceName();
+    std::string device_name = op->DeviceName();
     TF_RETURN_IF_ERROR(ctx.FindDeviceFromName(device_name.c_str(), &device));
     op->SetDevice(device);
   }
 
   core::RefCountPtr<eager::EagerClient> eager_client;
-  uint64 context_id = ctx.GetContextId();
+  uint64_t context_id = ctx.GetContextId();
   TF_RETURN_IF_ERROR(ctx.GetClient(op->GetDeviceParsedName(), &eager_client));
-  string remote_task;
+  std::string remote_task;
   if (!DeviceNameUtils::GetTaskName(op->GetDeviceParsedName(), &remote_task)) {
-    return errors::InvalidArgument(
-        "Unable to find remote task corresponding to device ",
-        op->DeviceName());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unable to find remote task corresponding to device ",
+                     op->DeviceName()));
   }
 
   std::unique_ptr<eager::EnqueueRequest> request(new eager::EnqueueRequest);
@@ -1859,7 +1873,7 @@ absl::Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
       tensorflow::TensorHandle* input = (*inputs)[i];
       tensorflow::Device* input_device = input->device();
       tensorflow::Device* input_device_or_cpu = input->DeviceOrHostCPU(ctx);
-      const string* input_device_name = &input_device_or_cpu->name();
+      const std::string* input_device_name = &input_device_or_cpu->name();
       bool serialize_resource_dtype_and_shape = false;
       if (op_device != input_device &&
           // If the expected and actual devices are on the same task, don't
@@ -1981,12 +1995,12 @@ absl::Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
 
   const size_t num_outputs = output_dtypes.size();
   if (num_outputs != *num_retvals) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "num_retvals does not match expected output dtypes");
   }
   *num_retvals = num_outputs;
 
-  const tensorflow::uint64 id = remote_op->id();
+  const uint64_t id = remote_op->id();
   for (size_t i = 0; i < num_outputs; ++i) {
     // TODO(nareshmodi): Change the callback to instead add the decref to a
     // list of pending decrefs that we can send as a batch with the next
@@ -2015,10 +2029,10 @@ absl::Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
          TensorHandle** retvals) -> absl::Status {
     if (remote_op.name() == "VarHandleOp") {
       if (output_dtypes.size() != 1) {
-        return errors::Internal("VarHandleOp should only have one output.");
+        return absl::InternalError("VarHandleOp should only have one output.");
       }
       if (output_dtypes[0] != DT_RESOURCE) {
-        return errors::Internal(
+        return absl::InternalError(
             "The output of VarHandleOp should be a DT_RESOURCE.");
       }
       AttrSlice attr_slice = AttrSlice(&remote_op.attrs());
@@ -2048,7 +2062,7 @@ absl::Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
       {retvals, num_outputs}));
 
   if (op->EagerContext().LogDevicePlacement() || VLOG_IS_ON(1)) {
-    string msg = absl::StrCat(
+    std::string msg = absl::StrCat(
         "Executing op ", op->Name(), " on task ",
         DeviceNameUtils::ParsedNameToString(op->GetDeviceParsedName()));
     if (!logging::LogToListeners(msg)) {
@@ -2100,13 +2114,13 @@ absl::Status GetKernelOutputs(
     } else {
       if (!kernel->IsFunction() &&
           TF_PREDICT_FALSE(kernel->device() != retvals[i]->op_device())) {
-        return errors::Internal(
+        return absl::InternalError(
             "Kernel output tensor handle has a different op device than the "
             "kernel. This should never happen.");
       }
       if (TF_PREDICT_FALSE(ctx->CanonicalDevice(kernel->OutputDevice(i)) !=
                            retvals[i]->device())) {
-        return errors::Internal(
+        return absl::InternalError(
             "Kernel output tensor handle locates on a different device than "
             "the specified kernel output device. This should never happen.");
       }
@@ -2234,11 +2248,11 @@ absl::Status EagerKernelExecute(
   }
 
   if (TF_PREDICT_FALSE(retvals.size() != outputs.size())) {
-    return errors::Internal(
-        "EagerKernelExecute returns a list of ", outputs.size(),
-        " tensors but ", retvals.size(),
-        " is expected. This should never "
-        "happen. Please file a bug with the TensorFlow team.");
+    return absl::InternalError(
+        absl::StrCat("EagerKernelExecute returns a list of ", outputs.size(),
+                     " tensors but ", retvals.size(),
+                     " is expected. This should never "
+                     "happen. Please file a bug with the TensorFlow team."));
   }
   return GetKernelOutputs(&outputs, retvals.size(), retvals.data(), ctx,
                           kernel.get(), eager_func_params);
@@ -2362,7 +2376,7 @@ absl::Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
     return errors::Unimplemented(
         "Eager's remote execution is not available on mobile devices.");
 #else   // !IS_MOBILE_PLATFORM
-    uint64 recv_op_id = 0;
+    uint64_t recv_op_id = 0;
     if (receiver_is_local) {
       Device* d = ctx->CanonicalDevice(device);
       // TODO(gjn): Need to add support for async execution. Note if receiver
@@ -2403,11 +2417,11 @@ absl::Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
           return absl::OkStatus();
         }
       }
-      string remote_task;
+      std::string remote_task;
       if (!DeviceNameUtils::GetTaskName(device->parsed_name(), &remote_task)) {
-        return errors::InvalidArgument(
-            "Unable to find remote task corresponding to device ",
-            device->name());
+        return absl::InvalidArgumentError(
+            absl::StrCat("Unable to find remote task corresponding to device ",
+                         device->name()));
       }
       recv_op_id = ctx->RemoteMgr()->NextOpId();
       if (mirror) {
@@ -2493,7 +2507,7 @@ void EagerKernelExecuteAsync(
 void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
                             int* num_retvals, StatusCallback done) {
   if (!op->IsLocal()) {
-    done(errors::InvalidArgument(
+    done(absl::InvalidArgumentError(
         "Remote execution is not supported in async EagerLocalExecuteAsync"));
     return;
   }
@@ -2523,8 +2537,8 @@ void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
   }
 
   if (ctx.LogDevicePlacement() || VLOG_IS_ON(1)) {
-    string msg = absl::StrCat("Executing op ", op->Name(), " in device ",
-                              kernel->device()->name());
+    std::string msg = absl::StrCat("Executing op ", op->Name(), " in device ",
+                                   kernel->device()->name());
     if (!logging::LogToListeners(msg)) {
       LOG(INFO) << msg;
     }

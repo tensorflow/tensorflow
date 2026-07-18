@@ -1,0 +1,58 @@
+/* Copyright 2025 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package xla.gpu;
+
+message BufferDebugLogEntryProto {
+  // The ID of the thunk that produced this entry, as returned by
+  // ThunkInfo::thunk_id().
+  uint64 thunk_id = 1;
+
+  // The index of the buffer within the list of thunk buffers returned by
+  // Thunk::buffer_uses().
+  uint64 buffer_idx = 2;
+
+  // The checksum of the buffer.
+  uint32 checksum = 3;
+
+  // If true, the entry refers to a thunk input buffer, and the checksum is
+  // calculated based on the buffer value before the thunk execution.
+  //
+  // If false, it refers to thunk output, and the checksum is calculated based
+  // on the buffer value after the thunk execution.
+  bool is_input_buffer = 4;
+
+  // ID of the thunk execution that produced this entry. Entries with the same
+  // (thunk_id, execution_id) describe buffers used by a single execution of a
+  // thunk.
+  uint32 execution_id = 5;
+
+  // The type of check that produced this entry.
+  enum CheckType {
+    CHECK_TYPE_UNSPECIFIED = 0;
+    CHECK_TYPE_CHECKSUM = 1;
+    CHECK_TYPE_FLOAT_CHECKS = 2;
+  }
+
+  CheckType check_type = 6;
+}
+
+// A dump of a `BufferDebugLog` contents.
+message BufferDebugLogProto {
+  // The list of entries in the log.
+  repeated BufferDebugLogEntryProto entries = 1;
+}

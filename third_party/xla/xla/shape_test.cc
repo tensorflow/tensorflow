@@ -86,6 +86,22 @@ TEST_F(ShapeTest, ShapeToFromProto) {
   }
 }
 
+TEST_F(ShapeTest, ShapeToFromProtoInplace) {
+  for (const Shape& shape :
+       {opaque_, token_, scalar_, matrix_, matrix2_, matrix_buffer_, tuple_,
+        nested_tuple_, dynamic_matrix_, unbounded_}) {
+    //  Start from a non-empty proto to verify that `ToProto` clears the given
+    //  proto first.
+    ShapeProto shape_proto;
+    shape_proto.set_element_type(F32);
+    shape.ToProto(shape_proto);
+    auto shape_copy = Shape::FromProto(shape_proto);
+    TF_ASSERT_OK(shape_copy);
+    EXPECT_TRUE(ShapeUtil::Equal(shape, *shape_copy))
+        << shape_proto.DebugString();
+  }
+}
+
 TEST_F(ShapeTest, ShapeToString) {
   EXPECT_EQ("opaque[]", opaque_.ToString());
   EXPECT_EQ("token[]", token_.ToString());
@@ -333,6 +349,11 @@ TEST_F(ShapeTest, SupportsAbslHash) {
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
       {opaque_, token_, scalar_, scalar_with_tile_, matrix_, matrix2_,
        matrix_buffer_, tuple_, nested_tuple_, dynamic_matrix_}));
+}
+
+TEST(Shape, ClearBuffer) {
+  Shape shape(BUFFER);
+  shape.Clear();
 }
 
 //===----------------------------------------------------------------------===//

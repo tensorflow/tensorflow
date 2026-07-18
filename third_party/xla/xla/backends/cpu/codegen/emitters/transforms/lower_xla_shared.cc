@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -42,10 +41,10 @@ limitations under the License.
 
 namespace xla::cpu {
 
-namespace {
-
 #define GEN_PASS_DEF_LOWERXLASHAREDPASS
 #include "xla/backends/cpu/codegen/emitters/transforms/passes.h.inc"
+
+namespace {
 
 struct LowerForall : mlir::OpRewritePattern<mlir::scf::ForallOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -138,9 +137,4 @@ struct LowerXlaSharedPass final
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateLowerXlaSharedPass() {
-  return std::make_unique<LowerXlaSharedPass>();
-}
-
 }  // namespace xla::cpu

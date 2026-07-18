@@ -13,23 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <optional>
+#include <string>
+#include <vector>
 
-#include "xla/execution_options_util.h"
-#include "xla/hlo/builder/xla_computation.h"
+#include "absl/status/status.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/transforms/despecializer.h"
 #include "xla/hlo/transforms/simplifiers/float_normalization.h"
-#include "xla/status_macros.h"
-#include "xla/tests/client_library_test_base.h"
 #include "xla/tests/conv_depthwise_common.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
 class DepthwiseConvolution2DTest
-    : public HloTestBase,
+    : public HloPjRtInterpreterReferenceMixin<HloTestBase>,
       public ::testing::WithParamInterface<
           ::testing::tuple<DepthwiseConvolution2DSpec, bool>> {};
 
@@ -93,7 +99,7 @@ TEST_P(DepthwiseConvolution2DTest, DoIt) {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{0.01, 0.01},
                             [](HloModule* module) -> absl::Status {
                               BFloat16MixedPrecisionRemoval remover;
-                              TF_RETURN_IF_ERROR(remover.Run(module).status());
+                              RETURN_IF_ERROR(remover.Run(module).status());
                               Despecializer despecializer;
                               return despecializer.Run(module).status();
                             }));

@@ -607,16 +607,6 @@ InterpreterValue Shuffle(InterpreterState& state, vector::ShuffleOp shuffle,
   return result;
 }
 
-InterpreterValue Splat(InterpreterState&, vector::SplatOp op,
-                       const InterpreterValue& in) {
-  auto out = in.AsUnitTensor(/*is_vector=*/true);
-  auto& view = out.View();
-  view.sizes = llvm::to_vector(
-      mlir::cast<ShapedType>(op->getResultTypes()[0]).getShape());
-  view.strides = SmallVector<int64_t>(view.sizes.size(), 0);
-  return out;
-}
-
 void Store(InterpreterState& state, vector::StoreOp,
            const InterpreterValue& src, InterpreterValue dst,
            ArrayRef<int64_t> offsets) {
@@ -817,7 +807,6 @@ REGISTER_MLIR_INTERPRETER_OP(OuterProduct);
 REGISTER_MLIR_INTERPRETER_OP(Reduction);
 REGISTER_MLIR_INTERPRETER_OP(ShapeCast);
 REGISTER_MLIR_INTERPRETER_OP(Shuffle);
-REGISTER_MLIR_INTERPRETER_OP(Splat);
 REGISTER_MLIR_INTERPRETER_OP(Store);
 REGISTER_MLIR_INTERPRETER_OP(TransferRead);
 REGISTER_MLIR_INTERPRETER_OP(TransferWrite);

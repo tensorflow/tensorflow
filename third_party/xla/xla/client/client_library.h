@@ -36,7 +36,7 @@ limitations under the License.
 #include "xla/client/local_client.h"
 #include "xla/service/compile_only_service.h"
 #include "xla/service/local_service.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"

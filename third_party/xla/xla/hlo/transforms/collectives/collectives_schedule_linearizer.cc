@@ -22,17 +22,14 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/tsl/platform/errors.h"
+#include "xla/hlo/utils/hlo_query.h"
 
 namespace xla {
-
-// TODO(b/181653482): Fix for interprocedural collectives as well.
-absl::StatusOr<bool> CollectivesScheduleLinearizer::Run(
+absl::StatusOr<bool> CollectivesScheduleLinearizer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (is_enabled_ && !is_enabled_(module)) {
@@ -44,10 +41,12 @@ absl::StatusOr<bool> CollectivesScheduleLinearizer::Run(
     std::unique_ptr<HloReachabilityMap> reachability;
     HloInstruction* prev_done = nullptr;
     for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
-      auto* next = DynCast<HloCollectiveInstruction>(inst);
-      if (!next) {
+      if (!hlo_query::IsCollectiveCommunicationOp(inst->opcode()) &&
+          !hlo_query::IsAsyncCollectiveStartOp(inst,
+                                               /*include_send_recv=*/false)) {
         continue;
       }
+      auto* next = inst;
       // Build reachability map on demand if we actually see collectives.
       if (!reachability) {
         reachability = HloReachabilityMap::Build(computation);
@@ -73,7 +72,7 @@ absl::StatusOr<bool> CollectivesScheduleLinearizer::Run(
 
       if (prev_done && !reachability->IsConnected(start, prev_done)) {
         // If prev_done and start are independent, enforce ordering.
-        TF_RETURN_IF_ERROR(prev_done->AddControlDependencyTo(next));
+        RETURN_IF_ERROR(prev_done->AddControlDependencyTo(next));
         // Adding control dependency does not update the reachability map.
         reachability->UpdateReachabilityThroughInstruction(start);
 

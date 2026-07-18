@@ -170,8 +170,8 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
     abort_checked->Notify();
   }
 
-  string src_worker_;
-  string src_rel_device_;
+  std::string src_worker_;
+  std::string src_rel_device_;
   WorkerInterface* wi_;  // Not owned.
   AllocatorAttributes alloc_attrs_;
   Device* dst_device_;
@@ -245,8 +245,8 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
   // key.src_device identifies a remote device.
   if (!DeviceNameUtils::SplitDeviceName(parsed.src_device, &call->src_worker_,
                                         &call->src_rel_device_)) {
-    s = errors::Internal(parsed.src_device,
-                         " is invalid remote source device.");
+    s = absl::InternalError(
+        absl::StrCat(parsed.src_device, " is invalid remote source device."));
   }
   WorkerSession* sess = session();
   std::shared_ptr<WorkerCacheInterface> worker_cache =
@@ -256,7 +256,8 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
   // initialized) or `call->ReleaseWorker()` (if it has been initialized).
   WorkerInterface* rwi = worker_cache->GetOrCreateWorker(call->src_worker_);
   if (s.ok() && rwi == nullptr) {
-    s = errors::Internal("No worker known as ", call->src_worker_);
+    s = absl::InternalError(
+        absl::StrCat("No worker known as ", call->src_worker_));
   }
 
   Device* dst_device;

@@ -31,7 +31,6 @@ limitations under the License.
 #include "llvm/TargetParser/Triple.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/compiler.h"
@@ -50,9 +49,10 @@ absl::StatusOr<unsigned int> GetTargetVectorRegisterByteSize(
   // Unfortunately we need a lot of boilerplate to get to an
   // llvm::TargetMachine.
 
+  llvm::Triple target_triple(triple);
   std::string error;
   const llvm::Target* target =
-      llvm::TargetRegistry::lookupTarget(triple, error);
+      llvm::TargetRegistry::lookupTarget(target_triple, error);
   if (target == nullptr) {
     return Internal("TargetRegistry::lookupTarget failed: %s", error);
   }
@@ -65,7 +65,7 @@ absl::StatusOr<unsigned int> GetTargetVectorRegisterByteSize(
 
   std::unique_ptr<llvm::TargetMachine> target_machine =
       absl::WrapUnique(target->createTargetMachine(
-          /*TT=*/llvm::Triple(triple), /*CPU=*/"", /*Features=*/"",
+          /*TT=*/target_triple, /*CPU=*/"", /*Features=*/"",
           llvm::TargetOptions{},
           /*RM=*/std::nullopt));
   cpu::TargetMachineFeatures target_machine_features(target_machine.get());
@@ -118,7 +118,7 @@ ENTRY main {
       cpu::CpuAotCompilationOptions::RelocationModel::BigPic);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<AotCompilationResult>> aot_compilation_result,
+      std::vector<std::unique_ptr<CompiledModule>> aot_compilation_result,
       cpu_compiler.CompileAheadOfTime(std::move(hlo_module),
                                       aot_compilation_options));
   EXPECT_EQ(aot_compilation_result.size(), 1);

@@ -72,8 +72,8 @@ void FuseGetResourceOps(mlir::OpBuilder& builder, mlir::Block& block) {
     old_values.append(op.result_begin(), op.result_end());
   }
 
-  auto new_op = builder.create<tf_mlrt::GetResourceOp>(
-      first_get.getLoc(), result_types, builder.getArrayAttr(indices));
+  auto new_op = tf_mlrt::GetResourceOp::create(
+      builder, first_get.getLoc(), result_types, builder.getArrayAttr(indices));
 
   for (auto [old_value, new_value] :
        llvm::zip(old_values, new_op.getResults())) {
@@ -114,7 +114,7 @@ void FuseAwaitOps(mlir::OpBuilder& builder, mlir::Block& block) {
       }
 
       auto await_all =
-          builder.create<AwaitAllOpType>(op.getLoc(), result_types, futures);
+          AwaitAllOpType::create(builder, op.getLoc(), result_types, futures);
 
       if constexpr (!std::is_same_v<ValueType, void>) {
         for (auto [await_op, new_value] :
@@ -142,9 +142,9 @@ void FusePromiseReturn(mlir::OpBuilder& builder, mlir::Block& block) {
   if (!promise_op) return;
 
   builder.setInsertionPointAfter(return_op);
-  builder.create<tf_mlrt::PromiseReturnOp>(return_op->getLoc(),
-                                           promise_op->getResultTypes(),
-                                           promise_op->getOperands());
+  tf_mlrt::PromiseReturnOp::create(builder, return_op->getLoc(),
+                                   promise_op->getResultTypes(),
+                                   promise_op->getOperands());
   return_op->erase();
   promise_op->erase();
 }

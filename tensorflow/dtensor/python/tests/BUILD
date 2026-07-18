@@ -1,6 +1,5 @@
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_test")
-load("//tensorflow:tensorflow.bzl", "if_google")
+load("//tensorflow:tensorflow.bzl", "if_google", "py_test")
 load(
     "//tensorflow/dtensor:build_defs.bzl",
     "ALL_BACKENDS",
@@ -38,7 +37,6 @@ pytype_strict_library(
     deps = [
         "//tensorflow/dtensor/python:api",
         "//tensorflow/dtensor/python:config",
-        "//tensorflow/dtensor/python:dtensor_device",
         "//tensorflow/dtensor/python:layout",
         "//tensorflow/dtensor/python:numpy_util",
         "//tensorflow/dtensor/python:tpu_util",
@@ -65,15 +63,17 @@ pytype_strict_library(
         "//tensorflow/python/util:numpy_compat",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
         "@absl_py//absl/testing:parameterized",
     ],
 )
 
-py_strict_test(
+py_test(
     name = "api_test",
     srcs = [
         "api_test.py",
     ],
+    strict_deps = True,
     deps = [
         ":test_util",
         "//tensorflow/dtensor/python:api",
@@ -305,11 +305,12 @@ dtensor_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "input_util_test",
     size = "medium",
     srcs = ["input_util_test.py"],
     shard_count = 8,
+    strict_deps = True,
     deps = [
         ":test_util",
         "//tensorflow/dtensor/python:api",
@@ -332,7 +333,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "multi_client_input_util_test",
     timeout = "long",
     srcs = ["multi_client_input_util_test.py"],
@@ -340,6 +341,7 @@ py_strict_test(
         "TF2_BEHAVIOR": "1",
     },
     shard_count = 8,
+    strict_deps = True,
     tags = [
         # ThreadSanitizer does not support starting new threads after multi-threaded fork.
         "notsan",
@@ -486,7 +488,7 @@ pytype_strict_library(
         ":test_util",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/flags",
-        "@pypi_portpicker//:pkg",
+        "@pypi//portpicker",
     ],
 )
 
@@ -724,6 +726,7 @@ dtensor_test(
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
+        "@absl_py//absl/logging",
         "@absl_py//absl/testing:parameterized",
     ],
 )

@@ -78,7 +78,7 @@ class OptimizationPassTest : public ::testing::Test {
                   OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, options));
   }
 
-  const FunctionDef* GetFunctionDef(const string& func) const {
+  const FunctionDef* GetFunctionDef(const std::string& func) const {
     return flib_def_->Find(func);
   }
 

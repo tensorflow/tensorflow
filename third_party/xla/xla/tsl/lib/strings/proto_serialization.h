@@ -26,7 +26,7 @@ namespace tsl {
 // See the following for more details:
 // https://github.com/google/protobuf/blob/a1bb147e96b6f74db6cdf3c3fcb00492472dbbfa/src/google/protobuf/io/coded_stream.h#L834
 bool SerializeToStringDeterministic(const protobuf::MessageLite& msg,
-                                    string* result);
+                                    std::string* result);
 
 // As above, but takes a pre-allocated buffer wrapped by result.
 // PRECONDITION: size == msg.ByteSizeLong() && size <= INT_MAX.
@@ -39,9 +39,9 @@ bool AreSerializedProtosEqual(const protobuf::MessageLite& x,
                               const protobuf::MessageLite& y);
 
 // Computes Hash64 of the output of SerializeToBufferDeterministic().
-uint64 DeterministicProtoHash64(const protobuf::MessageLite& proto);
-uint64 DeterministicProtoHash64(const protobuf::MessageLite& proto,
-                                uint64 seed);
+uint64_t DeterministicProtoHash64(const protobuf::MessageLite& proto);
+uint64_t DeterministicProtoHash64(const protobuf::MessageLite& proto,
+                                  uint64_t seed);
 
 }  // namespace tsl
 

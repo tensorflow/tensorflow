@@ -281,7 +281,7 @@ StatusOr<mlir::Operation*> ExpandFFTN(mlir::Operation* fft_op,
   } else {
     TF_ASSIGN_OR_RETURN(auto fft_length_vec, ExtractFFTLengthFromOp(fft_op));
     mlir::Value fft_length = IntConst(
-        builder, location, (int32)fft_length_vec[num_transform_axes - 1]);
+        builder, location, (int32_t)fft_length_vec[num_transform_axes - 1]);
     llvm::ArrayRef<int64_t> rfft_shape =
         mlir::dyn_cast<mlir::TensorType>(intermediate.getType()).getShape();
     std::vector<int64_t> rfft_shape_vec = rfft_shape.vec();
@@ -380,7 +380,7 @@ StatusOr<mlir::Operation*> ExpandIFFTN(mlir::Operation* ifft_op,
                         ExtractFFTLengthFromOp(ifft_op));
     mlir::Value ifft_length =
         IntConst(builder, location,
-                 (int32)complex_fft_length_vec[num_transform_axes - 1]);
+                 (int32_t)complex_fft_length_vec[num_transform_axes - 1]);
     // IRFFT for the last axis.
     mlir::TF::IRFFTOp irfft_output_op = mlir::TF::IRFFTOp::create(
         builder, location, ifft_op->getResult(0).getType(), transposed_output,

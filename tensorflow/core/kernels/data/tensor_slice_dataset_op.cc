@@ -14,15 +14,23 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/tensor_slice_dataset_op.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/split_utils.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
@@ -67,7 +75,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
   }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
@@ -85,7 +93,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
     return partial_shapes_;
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
@@ -100,12 +108,12 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
 
   absl::Status CheckExternalState() const override { return absl::OkStatus(); }
 
-  absl::Status Get(OpKernelContext* ctx, int64 index,
+  absl::Status Get(OpKernelContext* ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
     return Get(AnyContext(ctx), index, out_tensors);
   }
 
-  absl::Status Get(AnyContext ctx, int64 index,
+  absl::Status Get(AnyContext ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     out_tensors->clear();
@@ -185,6 +193,11 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
       }
 
       Tensor split;
+      if (split_provider_ == nullptr) {
+        return absl::FailedPreconditionError(
+            "`Initialize` should be called before calling `GetNext` on an "
+            "Iterator.");
+      }
       TF_RETURN_IF_ERROR(split_provider_->GetNext(&split, end_of_sequence));
       if (*end_of_sequence) {
         return absl::OkStatus();
@@ -217,6 +230,11 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
                                  IteratorStateReader* reader) override {
       if (ctx->restored_element_count().has_value()) {
         return global_shuffle_iterator_.Restore(prefix(), ctx, reader);
+      }
+      if (split_provider_ == nullptr) {
+        return absl::FailedPreconditionError(
+            "`Initialize` should be called before restoring from tf.data "
+            "checkpoints.");
       }
       return split_provider_->Restore(
           [this](const std::string& key) { return full_name(key); }, reader);
@@ -253,18 +271,21 @@ void TensorSliceDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(ctx, ctx->input_list(kComponents, &inputs));
   std::vector<Tensor> components;
   components.reserve(inputs.size());
-  OP_REQUIRES(
-      ctx, inputs[0].dims() > 0,
-      errors::InvalidArgument("All components must be at least 1-dimensional"));
+  OP_REQUIRES(ctx, inputs.size() > 0,
+              absl::InvalidArgumentError(
+                  "All components must be at least 1-dimensional"));
+  OP_REQUIRES(ctx, inputs[0].dims() > 0,
+              absl::InvalidArgumentError(
+                  "All components must be at least 1-dimensional"));
   const int64_t num_slices = inputs[0].dim_size(0);
   for (const Tensor& t : inputs) {
     components.push_back(t);
     OP_REQUIRES(ctx, t.dims() > 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "All components must be at least 1-dimensional"));
     OP_REQUIRES(
         ctx, t.dim_size(0) == num_slices,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(
             "All components must have the same size in the 0th dimension"));
   }
   *output =

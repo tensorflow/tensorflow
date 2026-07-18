@@ -19,12 +19,14 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <string>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
@@ -43,7 +45,7 @@ namespace tensorflow {
 
 // LINT.IfChange
 absl::Status DistributedTPURewriteHelpers::GetSystemDevice(
-    const string& system_spec_string, const DeviceSet& device_set,
+    const std::string& system_spec_string, const DeviceSet& device_set,
     DeviceNameUtils::ParsedName* system_spec, Device** system_device) {
   if (!DeviceNameUtils::ParseFullName(system_spec_string, system_spec)) {
     system_spec->Clear();
@@ -63,25 +65,25 @@ absl::Status DistributedTPURewriteHelpers::GetSystemDevice(
   device_set.FindMatchingDevices(*system_spec, &system_devices);
   if (system_devices.empty()) {
     if (system_spec_string.empty()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "No TPU_SYSTEM device found. Please ensure that you're connected to "
           "a host with a TPU_SYSTEM device.");
     }
-    return errors::InvalidArgument("No matching devices found for '",
-                                   system_spec_string, "'");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "No matching devices found for '", system_spec_string, "'"));
   } else if (system_devices.size() > 1) {
     // Validate that all system devices are part of the same job.
-    std::unordered_set<string> job_names;
+    std::unordered_set<std::string> job_names;
     for (auto device : system_devices) {
       const auto& parsed_name = device->parsed_name();
       TF_RET_CHECK(parsed_name.has_job);
       job_names.insert(parsed_name.job);
     }
     if (job_names.size() > 1) {
-      return errors::InvalidArgument(
-          "System devices cannot be part "
-          "of multiple different jobs.  Found: ",
-          absl::StrJoin(job_names, ","));
+      return absl::InvalidArgumentError(
+          absl::StrCat("System devices cannot be part "
+                       "of multiple different jobs.  Found: ",
+                       absl::StrJoin(job_names, ",")));
     }
 
     // Identify the lexicographically first device from the list of
@@ -100,9 +102,9 @@ absl::Status DistributedTPURewriteHelpers::GetSystemDevice(
 
   *system_device = system_devices[0];
   if (!DeviceNameUtils::ParseFullName((*system_device)->name(), system_spec)) {
-    return errors::InvalidArgument("Unable to re-parse system device name ",
-                                   (*system_device)->name(),
-                                   " as a device spec.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unable to re-parse system device name ",
+                     (*system_device)->name(), " as a device spec."));
   }
   return absl::OkStatus();
 }
@@ -135,18 +137,18 @@ absl::Status DistributedTPURewriteHelpers::GetHostSystemDevices(
 
   // Check that all the devices belong to the same job.
   TF_RET_CHECK((*host_system_devices)[0]->parsed_name().has_job);
-  const string& job_name = (*host_system_devices)[0]->parsed_name().job;
+  const std::string& job_name = (*host_system_devices)[0]->parsed_name().job;
   int replica = (*host_system_devices)[0]->parsed_name().replica;
   for (const auto host_device : *host_system_devices) {
     const auto& parsed_name = host_device->parsed_name();
     TF_RET_CHECK(parsed_name.has_job);
     if (parsed_name.job != job_name) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "All TPU host devices must be in the same job");
     }
     TF_RET_CHECK(parsed_name.has_replica);
     if (parsed_name.replica != replica) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "All TPU host devices must be in the same replica");
     }
   }
@@ -203,9 +205,9 @@ absl::Status DistributedTPURewriteHelpers::GetTPUDevices(
     } else if (*num_tpus_per_host != host_tpu_devices.size()) {
       // Subsequent iterations: check the number of TPUs match the number on
       // the first host.
-      return errors::InvalidArgument(
-          "Mismatched number of TPU devices in cluster ", *num_tpus_per_host,
-          " vs. ", host_tpu_devices.size());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Mismatched number of TPU devices in cluster ",
+                       *num_tpus_per_host, " vs. ", host_tpu_devices.size()));
     }
     tpu_devices->push_back(std::move(host_tpu_devices));
   }
@@ -214,10 +216,10 @@ absl::Status DistributedTPURewriteHelpers::GetTPUDevices(
 // LINT.ThenChange(//tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.cc)
 
 absl::Status DistributedTPURewriteHelpers::ForConfigurationNodeMatchingType(
-    const string& node_type, Graph* graph, const DeviceSet& device_set,
+    const std::string& node_type, Graph* graph, const DeviceSet& device_set,
     const std::function<
         absl::Status(const NodeDef& configuration_node_def,
-                     const string& configuration_device_name,
+                     const std::string& configuration_device_name,
                      const std::vector<Device*>& host_devices,
                      const std::vector<Node*>& input_dependencies,
                      const std::vector<OutputDependency>& output_dependencies,
@@ -231,12 +233,12 @@ absl::Status DistributedTPURewriteHelpers::ForConfigurationNodeMatchingType(
   }
 
   for (Node* node : nodes) {
-    string spec_string = node->requested_device();
+    std::string spec_string = node->requested_device();
     DeviceNameUtils::ParsedName spec;
     Device* device;
     TF_RETURN_IF_ERROR(
         GetSystemDevice(spec_string, device_set, &spec, &device));
-    const string& device_name = device->name();
+    const std::string& device_name = device->name();
 
     std::vector<Device*> host_devices;
     TF_RETURN_IF_ERROR(GetHostSystemDevices(spec, device_set, &host_devices));

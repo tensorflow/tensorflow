@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/const_init.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -29,8 +30,10 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/ffi.h"
 #include "xla/ffi/ffi.h"
-#include "xla/ffi/ffi_api.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/service/collective_ops_utils.h"
@@ -41,13 +44,17 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/lib/io/record_writer.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/host_info.h"
+#include "tsl/platform/path.h"
 
 namespace xla {
-
 namespace {
 
 std::string GetGpuPlatformName() {
@@ -65,9 +72,8 @@ absl::Status AssertionCustomCall(
   int8_t expected = false;
   int64_t byte_size = sizeof(int8_t);
   CHECK_EQ(byte_size, ShapeUtil::ByteSizeOfPrimitiveType(PrimitiveType::PRED));
-  TF_RETURN_IF_ERROR(
-      stream->Memcpy(&expected, buffer.device_memory(), byte_size));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  RETURN_IF_ERROR(stream->Memcpy(&expected, buffer.device_memory(), byte_size));
+  RETURN_IF_ERROR(stream->BlockHostUntilDone());
   if (!static_cast<bool>(expected)) {
     return Internal("%s", error_msg);
   }
@@ -79,6 +85,23 @@ void NopReturnTokenCustomCall(void* stream_handle, void** buffers,
                               const char* opaque, int opaque_len,
                               XlaCustomCallStatus* status) {
   VLOG(1) << "NopReturnTokenCustomCall called.";
+}
+
+absl::StatusOr<Literal> ConvertToLiteral(se::Stream* stream,
+                                         const ffi::AnyBuffer& arg) {
+  Shape shape = ShapeUtil::MakeShape(arg.element_type(), arg.dimensions());
+  LayoutUtil::SetToDefaultLayout(&shape);
+
+  ASSIGN_OR_RETURN(Literal literal, Literal::Make(shape));
+
+  int64_t size_bytes = arg.size_bytes();
+  ASSIGN_OR_RETURN(std::unique_ptr<se::MemoryAllocation> host_buffer,
+                   stream->parent()->HostMemoryAllocate(size_bytes));
+  RETURN_IF_ERROR(
+      stream->Memcpy(literal.untyped_data(), arg.device_memory(), size_bytes));
+  RETURN_IF_ERROR(stream->BlockHostUntilDone());
+
+  return literal;
 }
 
 absl::Status DebugPrintCustomCall(se::Stream* stream, ffi::RemainingArgs args,
@@ -107,23 +130,57 @@ absl::Status DebugPrintCustomCall(se::Stream* stream, ffi::RemainingArgs args,
       return absl::FailedPreconditionError(absl::Substitute(
           "Missing formatter for argument $0 in debug print custom call", i));
     }
-    const ffi::AnyBuffer& arg = args_buffers[i];
-    int64_t size_bytes = arg.size_bytes();
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::MemoryAllocation> host_buffer,
-                        stream->parent()->HostMemoryAllocate(size_bytes));
-    TF_RETURN_IF_ERROR(
-        stream->Memcpy(host_buffer->opaque(), arg.device_memory(), size_bytes));
-    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+    ASSIGN_OR_RETURN(Literal literal,
+                     ConvertToLiteral(stream, args_buffers[i]));
 
-    Shape shape = ShapeUtil::MakeShape(arg.element_type(), arg.dimensions());
-    LayoutUtil::SetToDefaultLayout(&shape);
-    MutableBorrowingLiteral literal(static_cast<char*>(host_buffer->opaque()),
-                                    shape);
     formatted =
         absl::StrReplaceAll(formatted, {{to_substitute, literal.ToString()}});
   }
 
   LOG(INFO) << formatted;
+
+  return absl::OkStatus();
+}
+
+std::string GetUniqueFilenameForHost() {
+  return absl::StrCat(tsl::port::Hostname(), tsl::port::JobName(),
+                      tsl::port::TaskId(), tsl::port::JobUid(), ".tfrecord");
+}
+
+// This custom call copies its argument to the host and appends it to file.
+absl::Status AppendToFileCustomCall(se::Stream* stream, ffi::AnyBuffer buffer,
+                                    absl::string_view dir,
+                                    absl::string_view metadata,
+                                    ffi::Result<ffi::Buffer<xla::TOKEN>> res) {
+  if (!stream) {
+    return Internal("Stream is nullptr.");
+  }
+  static absl::Mutex host_mutex{absl::kConstInit};
+
+  ASSIGN_OR_RETURN(Literal literal, ConvertToLiteral(stream, buffer));
+
+  auto* env = tsl::Env::Default();
+  std::string destination{dir};
+  RETURN_IF_ERROR(env->RecursivelyCreateDir(destination));
+  std::string path = tsl::io::JoinPath(destination, GetUniqueFilenameForHost());
+
+  // Supports tensors 2+GB. Should not be serialized as proto.
+  ASSIGN_OR_RETURN(std::string serialized, literal.SerializeAsString());
+
+  std::unique_ptr<tsl::WritableFile> file;
+  std::string filename(path);
+
+  {
+    absl::MutexLock lock(host_mutex);
+
+    RETURN_IF_ERROR(env->NewAppendableFile(filename, &file));
+    tsl::io::RecordWriter writer(file.get());
+
+    RETURN_IF_ERROR(writer.WriteRecord(metadata));
+    RETURN_IF_ERROR(writer.WriteRecord(serialized));
+
+    RETURN_IF_ERROR(writer.Close());
+  }
 
   return absl::OkStatus();
 }
@@ -143,6 +200,17 @@ XLA_FFI_DEFINE_HANDLER(kXlaGpuDebugPrintCustomCall, DebugPrintCustomCall,
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), kXlaGpuDebugPrintCustomCallTag,
                          GetGpuPlatformName(), kXlaGpuDebugPrintCustomCall);
+
+XLA_FFI_DEFINE_HANDLER(kXlaGpuAppendToFileCustomCall, AppendToFileCustomCall,
+                       ffi::Ffi::Bind()
+                           .Ctx<ffi::Stream>()
+                           .Arg<ffi::AnyBuffer>()
+                           .Attr<absl::string_view>("dir")
+                           .Attr<absl::string_view>("metadata")
+                           .Ret<xla::ffi::Buffer<xla::TOKEN>>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), kXlaGpuAppendToFileCustomCallTag,
+                         GetGpuPlatformName(), kXlaGpuAppendToFileCustomCall);
 
 XLA_FFI_DEFINE_HANDLER(kXlaGpuAssertCustomCall, AssertionCustomCall,
                        ffi::Ffi::Bind()

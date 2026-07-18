@@ -14,11 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/image_ops.cc
+#include <algorithm>
+#include <cstdlib>
+#include <limits>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #define EIGEN_USE_THREADS
-
-#include "tensorflow/core/kernels/image/scale_and_translate_op.h"
-
-#include <memory>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
@@ -29,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/image/sampling_kernels.h"
+#include "tensorflow/core/kernels/image/scale_and_translate_op.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
@@ -70,7 +77,7 @@ absl::Status ComputeSpansCore(OpKernelContext* context, const Kernel& kernel,
   TF_RETURN_IF_ERROR(context->allocate_temp(
       tensorflow::DT_INT32, tensorflow::TensorShape({output_size}),
       &spans->starts, alloc_attr));
-  auto starts_vec = spans->starts.vec<int32>();
+  auto starts_vec = spans->starts.vec<int32_t>();
   TF_RETURN_IF_ERROR(context->allocate_temp(
       tensorflow::DT_FLOAT,
       tensorflow::TensorShape({spans->span_size * output_size}),
@@ -99,8 +106,8 @@ absl::Status ComputeSpansCore(OpKernelContext* context, const Kernel& kernel,
     span_end = Clamp(static_cast<int64_t>(0), input_size - 1, span_end) + 1;
     const int this_span_size = span_end - span_start;
     if (this_span_size > spans->span_size) {
-      return errors::Internal(Printf("Span is too large: %d vs %d.",
-                                     this_span_size, spans->span_size));
+      return absl::InternalError(absl::StrFormat(
+          "Span is too large: %d vs %d.", this_span_size, spans->span_size));
     }
     float total_weight_sum = 0.0f;
     temp_weights.clear();
@@ -135,7 +142,7 @@ absl::Status ComputeGradSpansCore(OpKernelContext* context, const Spans& spans,
   };
   std::vector<std::vector<GradComponent>> grad_components(forward_input_size);
   auto weights_vec = spans.weights.vec<float>();
-  auto starts_vec = spans.starts.vec<int32>();
+  auto starts_vec = spans.starts.vec<int32_t>();
   for (int output_index = 0; output_index < forward_output_size;
        ++output_index) {
     int input_index = starts_vec(output_index);
@@ -163,7 +170,7 @@ absl::Status ComputeGradSpansCore(OpKernelContext* context, const Spans& spans,
   TF_RETURN_IF_ERROR(context->allocate_temp(
       tensorflow::DT_INT32, tensorflow::TensorShape({forward_input_size}),
       &grad_spans->starts, alloc_attr));
-  auto grad_starts_vec = grad_spans->starts.vec<int32>();
+  auto grad_starts_vec = grad_spans->starts.vec<int32_t>();
   TF_RETURN_IF_ERROR(context->allocate_temp(
       tensorflow::DT_FLOAT,
       tensorflow::TensorShape({grad_spans->span_size * forward_input_size}),
@@ -228,8 +235,8 @@ absl::Status ComputeSpans(OpKernelContext* context,
                               input_size, scale, translate, antialias, spans);
     }
     default:
-      return errors::InvalidArgument(Printf("Unrecognized kernel type: %d",
-                                            static_cast<int>(kernel_type)));
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "Unrecognized kernel type: %d", static_cast<int>(kernel_type)));
   }
   return absl::OkStatus();
 }
@@ -256,11 +263,11 @@ void GetValues(OpKernelContext* context, int input_index, float* v_1,
   // Tensor mutable_input(int index, False);
   const Tensor& t = context->input(input_index);
   OP_REQUIRES(context, t.dims() == 1,
-              errors::InvalidArgument("t must be 1-dimensional",
-                                      t.shape().DebugString()));
+              absl::InvalidArgumentError(absl::StrCat(
+                  "t must be 1-dimensional", t.shape().DebugString())));
   OP_REQUIRES(context, t.NumElements() == 2,
-              errors::InvalidArgument("t must have two elements",
-                                      t.shape().DebugString()));
+              absl::InvalidArgumentError(absl::StrCat(
+                  "t must have two elements", t.shape().DebugString())));
 
   auto data_vec = t.flat<float>().data();
   *v_1 = data_vec[0];
@@ -273,54 +280,59 @@ class ScaleAndTranslateOp : public OpKernel {
   explicit ScaleAndTranslateOp(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("antialias", &antialias_));
-    string kernel_type_str;
+    std::string kernel_type_str;
     OP_REQUIRES_OK(context, context->GetAttr("kernel_type", &kernel_type_str));
     kernel_type_ = functor::SamplingKernelTypeFromString(kernel_type_str);
     OP_REQUIRES(context, kernel_type_ != functor::SamplingKernelTypeEnd,
-                errors::InvalidArgument("Unrecognized kernel type: " +
-                                        kernel_type_str));
+                absl::InvalidArgumentError("Unrecognized kernel type: " +
+                                           kernel_type_str));
   }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
-    OP_REQUIRES(context, input.dims() == 4,
-                errors::InvalidArgument("input must be 4-dimensional",
-                                        input.shape().DebugString()));
+    OP_REQUIRES(
+        context, input.dims() == 4,
+        absl::InvalidArgumentError(absl::StrCat("input must be 4-dimensional",
+                                                input.shape().DebugString())));
     const Tensor& output_shape_t = context->input(1);
     OP_REQUIRES(context, output_shape_t.dims() == 1,
-                errors::InvalidArgument("output_shape_t must be 1-dimensional",
-                                        output_shape_t.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("output_shape_t must be 1-dimensional",
+                                 output_shape_t.shape().DebugString())));
     OP_REQUIRES(context, output_shape_t.NumElements() == 2,
-                errors::InvalidArgument("output_shape_t must have two elements",
-                                        output_shape_t.shape().DebugString()));
-    auto output_shape_vec = output_shape_t.vec<int32>();
+                absl::InvalidArgumentError(
+                    absl::StrCat("output_shape_t must have two elements",
+                                 output_shape_t.shape().DebugString())));
+    auto output_shape_vec = output_shape_t.vec<int32_t>();
     const int64_t output_height = internal::SubtleMustCopy(output_shape_vec(0));
     const int64_t output_width = internal::SubtleMustCopy(output_shape_vec(1));
 
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input.dim_size(1), std::numeric_limits<int32>::max()) &&
-            FastBoundsCheck(input.dim_size(2),
-                            std::numeric_limits<int32>::max()),
-        errors::InvalidArgument("input sizes must be between 0 and max int32"));
+    OP_REQUIRES(context,
+                FastBoundsCheck(input.dim_size(1),
+                                std::numeric_limits<int32_t>::max()) &&
+                    FastBoundsCheck(input.dim_size(2),
+                                    std::numeric_limits<int32_t>::max()),
+                absl::InvalidArgumentError(
+                    "input sizes must be between 0 and max int32"));
 
     const int64_t batch_size = input.dim_size(0);
     const int64_t input_height = input.dim_size(1);
     const int64_t input_width = input.dim_size(2);
     const int64_t channels = input.dim_size(3);
-    OP_REQUIRES(context, output_height > 0 && output_width > 0,
-                errors::InvalidArgument("output dimensions must be positive"));
+    OP_REQUIRES(
+        context, output_height > 0 && output_width > 0,
+        absl::InvalidArgumentError("output dimensions must be positive"));
     OP_REQUIRES(
         context, channels > 0,
-        errors::InvalidArgument("image must have at least one channel"));
+        absl::InvalidArgumentError("image must have at least one channel"));
     OP_REQUIRES(
         context, input.dim_size(1) > 0 && input.dim_size(2) > 0,
-        errors::InvalidArgument("input image must be of non-zero size"));
+        absl::InvalidArgumentError("input image must be of non-zero size"));
 
     float row_scale, col_scale;
     GetValues(context, 2, &row_scale, &col_scale);
     OP_REQUIRES(context, row_scale > 0 && col_scale > 0,
-                errors::InvalidArgument("Scale must be greater than zero."));
+                absl::InvalidArgumentError("Scale must be greater than zero."));
     float row_translation, col_translation;
     GetValues(context, 3, &row_translation, &col_translation);
 
@@ -359,13 +371,13 @@ class ScaleAndTranslateOp : public OpKernel {
         intermediate_t.tensor<float, 4>();
 
     const functor::Spans& const_row_spans = row_spans;
-    typename TTypes<int32, 1>::ConstTensor row_starts(
-        const_row_spans.starts.tensor<int32, 1>());
+    typename TTypes<int32_t, 1>::ConstTensor row_starts(
+        const_row_spans.starts.tensor<int32_t, 1>());
     typename TTypes<float, 1>::ConstTensor row_weights(
         const_row_spans.weights.tensor<float, 1>());
     const functor::Spans& const_col_spans = col_spans;
-    typename TTypes<int32, 1>::ConstTensor col_starts(
-        const_col_spans.starts.tensor<int32, 1>());
+    typename TTypes<int32_t, 1>::ConstTensor col_starts(
+        const_col_spans.starts.tensor<int32_t, 1>());
     typename TTypes<float, 1>::ConstTensor col_weights(
         const_col_spans.weights.tensor<float, 1>());
 
@@ -384,30 +396,33 @@ class ScaleAndTranslateGradOp : public OpKernel {
   explicit ScaleAndTranslateGradOp(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("antialias", &antialias_));
-    string kernel_type_str;
+    std::string kernel_type_str;
     OP_REQUIRES_OK(context, context->GetAttr("kernel_type", &kernel_type_str));
     kernel_type_ = functor::SamplingKernelTypeFromString(kernel_type_str);
     OP_REQUIRES(context, kernel_type_ != functor::SamplingKernelTypeEnd,
-                errors::InvalidArgument("Unrecognized kernel type: " +
-                                        kernel_type_str));
+                absl::InvalidArgumentError("Unrecognized kernel type: " +
+                                           kernel_type_str));
   }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
     const Tensor& original_image = context->input(1);
 
-    OP_REQUIRES(context, input.dims() == 4,
-                errors::InvalidArgument("input_grad must be 4-dimensional",
-                                        input.shape().DebugString()));
+    OP_REQUIRES(
+        context, input.dims() == 4,
+        absl::InvalidArgumentError(absl::StrCat(
+            "input_grad must be 4-dimensional", input.shape().DebugString())));
     // Resizers always produce float images, so input gradient must
     // always be a float.
     OP_REQUIRES(context, input.dtype() == DT_FLOAT,
-                errors::InvalidArgument("input_grad must be of type float",
-                                        DataTypeString(input.dtype())));
+                absl::InvalidArgumentError(
+                    absl::StrCat("input_grad must be of type float",
+                                 DataTypeString(input.dtype()))));
 
     OP_REQUIRES(context, original_image.dims() == 4,
-                errors::InvalidArgument("original_image must be 4-dimensional",
-                                        original_image.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("original_image must be 4-dimensional",
+                                 original_image.shape().DebugString())));
 
     // Allocate output and initialize to zeros.
     const int64_t batch_size = input.dim_size(0);
@@ -417,10 +432,10 @@ class ScaleAndTranslateGradOp : public OpKernel {
 
     OP_REQUIRES(context,
                 FastBoundsCheck(forward_input_height,
-                                std::numeric_limits<int32>::max()) &&
+                                std::numeric_limits<int32_t>::max()) &&
                     FastBoundsCheck(forward_input_width,
-                                    std::numeric_limits<int32>::max()),
-                errors::InvalidArgument(
+                                    std::numeric_limits<int32_t>::max()),
+                absl::InvalidArgumentError(
                     "original sizes must be between 0 and max int32"));
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(
@@ -432,7 +447,7 @@ class ScaleAndTranslateGradOp : public OpKernel {
     float row_scale, col_scale;
     GetValues(context, 2, &row_scale, &col_scale);
     OP_REQUIRES(context, row_scale > 0 && col_scale > 0,
-                errors::InvalidArgument("Scale must be greater than zero."));
+                absl::InvalidArgumentError("Scale must be greater than zero."));
     float row_translation, col_translation;
     GetValues(context, 3, &row_translation, &col_translation);
 
@@ -464,13 +479,13 @@ class ScaleAndTranslateGradOp : public OpKernel {
         intermediate_t.tensor<float, 4>();
 
     const functor::Spans& const_row_spans = row_spans;
-    typename TTypes<int32, 1>::ConstTensor row_starts =
-        const_row_spans.starts.tensor<int32, 1>();
+    typename TTypes<int32_t, 1>::ConstTensor row_starts =
+        const_row_spans.starts.tensor<int32_t, 1>();
     typename TTypes<float, 1>::ConstTensor row_weights(
         const_row_spans.weights.tensor<float, 1>());
     const functor::Spans& const_col_spans = col_spans;
-    typename TTypes<int32, 1>::ConstTensor col_starts(
-        const_col_spans.starts.tensor<int32, 1>());
+    typename TTypes<int32_t, 1>::ConstTensor col_starts(
+        const_col_spans.starts.tensor<int32_t, 1>());
     typename TTypes<float, 1>::ConstTensor col_weights(
         const_col_spans.weights.tensor<float, 1>());
 
@@ -485,8 +500,8 @@ class ScaleAndTranslateGradOp : public OpKernel {
 };
 
 template <typename T>
-void GatherColumns(OpKernelContext* context, int span_size, const int32* starts,
-                   const float* weights, const T* image,
+void GatherColumns(OpKernelContext* context, int span_size,
+                   const int32_t* starts, const float* weights, const T* image,
                    const int64_t input_height, const int64_t input_width,
                    const int64_t output_height, const int64_t output_width,
                    const int channels, float* output) {
@@ -538,7 +553,7 @@ inline void AddScaledVector(const T* in_vec, int vec_len, float weight,
 }
 
 template <typename T>
-void GatherRows(OpKernelContext* context, int span_size, const int32* starts,
+void GatherRows(OpKernelContext* context, int span_size, const int32_t* starts,
                 const float* weights, const T* image,
                 const int64_t input_height, const int64_t input_width,
                 const int64_t output_height, const int64_t output_width,
@@ -581,10 +596,10 @@ template <typename T>
 struct GatherSpans<CPUDevice, T> {
   void operator()(OpKernelContext* context, const CPUDevice& d,
                   int row_span_size,
-                  typename TTypes<int32, 1>::ConstTensor row_starts,
+                  typename TTypes<int32_t, 1>::ConstTensor row_starts,
                   typename TTypes<float, 1>::ConstTensor row_weights,
                   int col_span_size,
-                  typename TTypes<int32, 1>::ConstTensor col_starts,
+                  typename TTypes<int32_t, 1>::ConstTensor col_starts,
                   typename TTypes<float, 1>::ConstTensor col_weights,
                   typename TTypes<T, 4>::ConstTensor images,
                   typename TTypes<float, 4>::Tensor intermediate_buffer,

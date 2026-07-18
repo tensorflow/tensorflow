@@ -81,7 +81,8 @@ JitRunner::JitRunner(std::unique_ptr<llvm::Module> module,
   auto jit_builder = llvm::orc::LLJITBuilder();
   if (perf_listener_ != nullptr) {
     jit_builder = std::move(jit_builder.setObjectLinkingLayerCreator(
-        [&](llvm::orc::ExecutionSession& ES) {
+        [&](llvm::orc::ExecutionSession& ES,
+            llvm::jitlink::JITLinkMemoryManager& /*MemMgr*/) {
           auto obj_layer =
               std::make_unique<llvm::orc::RTDyldObjectLinkingLayer>(
                   ES, [](const llvm::MemoryBuffer& _) {
@@ -238,12 +239,12 @@ llvm::Expected<void*> JitRunner::CreateVectorWrapperWithLoop(
 
 std::unique_ptr<llvm::TargetMachine> CreateHostTargetMachine() {
   initializeNativeTargets();
-  const std::string triple = llvm::sys::getDefaultTargetTriple();
+  const llvm::Triple triple(llvm::sys::getDefaultTargetTriple());
   llvm::StringRef cpu = llvm::sys::getHostCPUName();
   llvm::StringMap<bool> features = llvm::sys::getHostCPUFeatures();
   std::string errors = "";
   const llvm::Target* target =
-      llvm::TargetRegistry::lookupTarget(llvm::StringRef(triple), errors);
+      llvm::TargetRegistry::lookupTarget(triple, errors);
   LOG_IF(FATAL, !target) << "Failed to lookup target: " << errors;
   std::string feature_str;
   for (const auto& [feature, value] : features) {
@@ -253,8 +254,8 @@ std::unique_ptr<llvm::TargetMachine> CreateHostTargetMachine() {
   }
   llvm::TargetOptions target_options;
   std::unique_ptr<llvm::TargetMachine> target_machine(
-      target->createTargetMachine(llvm::Triple(triple), cpu, feature_str,
-                                  target_options, std::nullopt, std::nullopt));
+      target->createTargetMachine(triple, cpu, feature_str, target_options,
+                                  std::nullopt, std::nullopt));
   LOG_IF(FATAL, !target_machine) << "Failed to create target machine";
   return target_machine;
 }

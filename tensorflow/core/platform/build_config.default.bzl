@@ -3,11 +3,11 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
-    "@local_xla//xla/tsl:tsl.bzl",
+    "@xla//xla/tsl:tsl.bzl",
     "if_libtpu",
 )
 load(
-    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "@xla//xla/tsl/mkl:build_defs.bzl",
     "if_mkl_ml",
 )
 load(
@@ -29,12 +29,12 @@ def tf_additional_binary_deps():
         Label("//tensorflow/core/kernels:lookup_util"),
         Label("//tensorflow/core/util/tensor_bundle"),
     ] + if_cuda([
-        Label("@local_xla//xla/stream_executor:cuda_platform"),
+        Label("@xla//xla/stream_executor:cuda_platform"),
     ]) + if_rocm([
-        "@local_xla//xla/stream_executor:rocm_platform",
+        "@xla//xla/stream_executor:rocm_platform",
         "@local_config_rocm//rocm:rocm_rpath",
     ]) + if_mkl_ml([
-        Label("@local_xla//xla/tsl/mkl:intel_binary_blob"),
+        Label("@xla//xla/tsl/mkl:intel_binary_blob"),
     ])
 
 def tf_protos_all():
@@ -42,9 +42,9 @@ def tf_protos_all():
         extra_deps = [
             Label("//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl"),
             Label("//tensorflow/core:protos_all_cc_impl"),
-            "@local_xla//xla:autotune_results_proto_cc_impl",
-            "@local_xla//xla:autotuning_proto_cc_impl",
-            "@local_xla//xla/tsl/protobuf:protos_all_cc_impl",
+            "@xla//xla:autotune_results_proto_cc_impl",
+            "@xla//xla:autotuning_proto_cc_impl",
+            "@xla//xla/tsl/protobuf:protos_all_cc_impl",
         ],
         otherwise = [Label("//tensorflow/core:protos_all_cc")],
     )

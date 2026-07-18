@@ -57,7 +57,7 @@ void MakeDatasetHelper(OpKernelContext* ctx,
   // The vector stores the graduated experiment names which will be turned on
   // for all input pipelines.
   // clang-format off
-  std::vector<string> graduated_experiments = {
+  std::vector<std::string> graduated_experiments = {
     "disable_intra_op_parallelism",
     "use_private_thread_pool"
   };

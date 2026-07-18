@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 // Needed for encoding and decoding ResourceDeleter Variant.
@@ -209,7 +210,7 @@ class FunctionRegistry {
     auto result = registered_methods_.insert(
         std::pair<std::string, FunctionMetadata>(method, fn_metadata));
     if (!result.second) {
-      return tensorflow::errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           absl::StrCat(method, " is already registered."));
     }
     return absl::OkStatus();
@@ -220,7 +221,7 @@ class FunctionRegistry {
     mutex_lock l(mu_);
     auto it = registered_methods_.find(method);
     if (it == registered_methods_.end()) {
-      return tensorflow::errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           absl::StrCat(method, " is not registered."));
     }
 
@@ -341,7 +342,7 @@ class RpcServer : public ResourceBase {
                         const StructuredValue& output_specs) {
     mutex_lock m(mu_);
     if (server_started_) {
-      return tensorflow::errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           "All methods must be registered before starting the server. Method "
           "registration after starting the server is not supported.");
     }
@@ -375,10 +376,11 @@ class GrpcPollingThread {
   explicit GrpcPollingThread(std::string thread_name) {
     // Thread name can only have alpha numeric characters. Remove special
     // characters from input thread_name.
-    thread_name.erase(
-        std::remove_if(thread_name.begin(), thread_name.end(),
-                       [](auto const c) -> bool { return !std::isalnum(c); }),
-        thread_name.end());
+    thread_name.erase(std::remove_if(thread_name.begin(), thread_name.end(),
+                                     [](unsigned char const c) -> bool {
+                                       return !absl::ascii_isalnum(c);
+                                     }),
+                      thread_name.end());
     thread_.reset(Env::Default()->StartThread(
         ThreadOptions(), absl::StrCat("GrpcPollingThread", thread_name),
         [this]() {
@@ -406,7 +408,7 @@ class GrpcPollingThread {
 class RpcClient : public ResourceBase {
  public:
   explicit RpcClient(std::string address, std::string resource_name,
-                     int64 timeout_in_ms)
+                     int64_t timeout_in_ms)
       : server_address_(address),
         thread_(resource_name),
         timeout_in_ms_(timeout_in_ms) {
@@ -428,7 +430,7 @@ class RpcClient : public ResourceBase {
 
   void CallAsync(const std::string& method_name,
                  const std::vector<Tensor>& inputs, CallResponse* response,
-                 StatusCallback callback, int64 timeout_in_ms) {
+                 StatusCallback callback, int64_t timeout_in_ms) {
     CallRequest request;
     request.set_method(method_name);
     for (const auto& t : inputs) {
@@ -436,7 +438,7 @@ class RpcClient : public ResourceBase {
     }
     ::grpc::ClientContext context;
     // Use per call timeout if specified, otherwise use default client timeout.
-    int64 timeout = timeout_in_ms > 0 ? timeout_in_ms : timeout_in_ms_;
+    int64_t timeout = timeout_in_ms > 0 ? timeout_in_ms : timeout_in_ms_;
     new RPCState<CallResponse>(
         stub_.get(), cq_, "/tensorflow.rpc.RpcService/Call", request, response,
         /*done=*/std::move(callback),
@@ -468,7 +470,7 @@ class RpcClient : public ResourceBase {
   ::grpc::CompletionQueue* cq_;
   GrpcPollingThread thread_;
   std::unique_ptr<thread::ThreadPool> callback_threadpool_;
-  int64 timeout_in_ms_;
+  int64_t timeout_in_ms_;
 };
 
 class RpcFutureResource : public ResourceBase {
@@ -641,23 +643,23 @@ RpcServerRegisterOp::RpcServerRegisterOp(OpKernelConstruction* ctx)
   OP_REQUIRES_OK(ctx, ctx->GetAttr("output_specs", &output_specs_string));
 
   OP_REQUIRES(ctx, output_specs_.ParseFromString(output_specs_string),
-              tensorflow::errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "Unable to parse StructuredValue output_spec string: ",
-                  output_specs_string));
+                  output_specs_string)));
 
   std::string input_specs_string;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("input_specs", &input_specs_string));
 
   OP_REQUIRES(ctx, input_specs_.ParseFromString(input_specs_string),
-              tensorflow::errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "Unable to parse StructuredValue output_spec string: ",
-                  input_specs_string));
+                  input_specs_string)));
 }
 
 void RpcServerRegisterOp::Compute(OpKernelContext* ctx) {
   FunctionLibraryRuntime* lib = ctx->function_library();
   OP_REQUIRES(ctx, lib != nullptr,
-              errors::Internal("No function library is provided"));
+              absl::InternalError("No function library is provided"));
 
   const Tensor* method_name;
   OP_REQUIRES_OK(ctx, ctx->input("method_name", &method_name));
@@ -677,7 +679,7 @@ void RpcServerRegisterOp::Compute(OpKernelContext* ctx) {
   const FunctionDef* fdef =
       lib->GetFunctionLibraryDefinition()->Find(func_.name());
   OP_REQUIRES(ctx, fdef != nullptr,
-              errors::Internal("Failed to find function."));
+              absl::InternalError("Failed to find function."));
   int num_args = fdef->signature().input_arg_size();
 
   const int num_non_captured_inputs = num_args - captured.size();
@@ -685,7 +687,7 @@ void RpcServerRegisterOp::Compute(OpKernelContext* ctx) {
     instantiate_opts.input_devices.push_back(ctx->device()->name());
   }
 
-  absl::flat_hash_map<string, std::vector<string>> composite_devices;
+  absl::flat_hash_map<std::string, std::vector<std::string>> composite_devices;
   for (int i = 0; i < captured.size(); ++i) {
     if (captured[i].dtype() == DT_RESOURCE) {
       instantiate_opts.input_devices.push_back(GetFunctionResourceInputDevice(
@@ -778,9 +780,9 @@ void RpcCheckStatusOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     auto status = LookupResource(ctx, handle, &future_resource);
     if (!status.ok()) {
       if (absl::IsNotFound(status)) {
-        ctx->SetStatus(tensorflow::errors::NotFound(
-            absl::StrCat("Future resource no longer exists. Please make sure "
-                         "resource is not already deleted.")));
+        ctx->SetStatus(absl::NotFoundError(
+            "Future resource no longer exists. Please make sure "
+            "resource is not already deleted."));
         done();
         return;
       } else {
@@ -813,9 +815,9 @@ void RpcGetValueOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     auto status = LookupResource(ctx, handle, &future_resource);
     if (!status.ok()) {
       if (absl::IsNotFound(status)) {
-        ctx->SetStatus(tensorflow::errors::NotFound(
-            absl::StrCat("Future resource no longer exists. Please ensure "
-                         "resource is not already deleted.")));
+        ctx->SetStatus(absl::NotFoundError(
+            "Future resource no longer exists. Please ensure "
+            "resource is not already deleted."));
         done();
         return;
       } else {
@@ -831,7 +833,7 @@ void RpcGetValueOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
           ctx->SetStatus(status);
         } else {
           if (ctx->num_outputs() != response.output_tensors().size()) {
-            ctx->SetStatus(tensorflow::errors::InvalidArgument(absl::StrCat(
+            ctx->SetStatus(absl::InvalidArgumentError(absl::StrCat(
                 "Incorrect number of output types specified.",
                 ctx->num_outputs(), " ", response.output_tensors().size())));
           } else {
@@ -839,8 +841,8 @@ void RpcGetValueOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
             for (const auto& t_proto : response.output_tensors()) {
               Tensor t;
               if (!t.FromProto(t_proto)) {
-                ctx->SetStatus(tensorflow::errors::Internal(
-                    absl::StrCat("Invalid Tensor Proto response returned.")));
+                ctx->SetStatus(absl::InternalError(
+                    "Invalid Tensor Proto response returned."));
               }
               ctx->set_output(i++, std::move(t));
             }

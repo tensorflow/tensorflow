@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -48,7 +49,7 @@ struct RawType<qint8> {
   // spacetodepth_op_gpu.cu.cc does not instantiate SpaceToDepthOpFunctor for
   // int8, so we map qint8 to uint8. Instantiating int8 could slow down
   // compilation and the code generated is almost the same as for uint8.
-  using type = uint8;
+  using type = uint8_t;
 };
 }  // namespace
 
@@ -59,21 +60,21 @@ template <typename Device, typename T>
 class SpaceToDepthOp : public OpKernel {
  public:
   explicit SpaceToDepthOp(OpKernelConstruction* context) : OpKernel(context) {
-    string data_format_str;
+    std::string data_format_str;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format_str));
     OP_REQUIRES(context, FormatFromString(data_format_str, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
+                absl::InvalidArgumentError("Invalid data format"));
 
     OP_REQUIRES_OK(context, context->GetAttr("block_size", &block_size_));
     OP_REQUIRES(context, block_size_ > 1,
-                errors::InvalidArgument("Block size should be > 1, but was: ",
-                                        block_size_));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Block size should be > 1, but was: ", block_size_)));
 
     if (std::is_same<Device, CPUDevice>::value) {
-      OP_REQUIRES(
-          context, data_format_ == FORMAT_NHWC,
-          errors::InvalidArgument(
-              "Only NHWC data_format supported on CPU. Got ", data_format_str));
+      OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Only NHWC data_format supported on CPU. Got ",
+                      data_format_str)));
     }
   }
 
@@ -84,13 +85,13 @@ class SpaceToDepthOp : public OpKernel {
     const bool is_int8x4 = (data_format_ == FORMAT_NCHW_VECT_C);
     const int vect = is_int8x4 ? 4 : 1;
     if (is_int8x4) {
-      OP_REQUIRES(
-          context, dims == 5,
-          errors::InvalidArgument("Input rank should be 5 instead of ", dims));
+      OP_REQUIRES(context, dims == 5,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Input rank should be 5 instead of ", dims)));
     } else {
-      OP_REQUIRES(
-          context, dims == 4,
-          errors::InvalidArgument("Input rank should be 4 instead of ", dims));
+      OP_REQUIRES(context, dims == 4,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Input rank should be 4 instead of ", dims)));
     }
 
     constexpr int kNumSpatialDims = 2;
@@ -107,9 +108,9 @@ class SpaceToDepthOp : public OpKernel {
     // Both width and height must be divisible by block_size.
     OP_REQUIRES(context,
                 (width % block_size_) == 0 && (height % block_size_) == 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Image width ", width, " and height ", height,
-                    " should be divisible by block_size: ", block_size_));
+                    " should be divisible by block_size: ", block_size_)));
 
     // The 'spatial' block of size block_size_ X block_size_ will be moved
     // to depth.
@@ -131,28 +132,32 @@ class SpaceToDepthOp : public OpKernel {
       using RT = typename RawType<T>::type;
       if (data_format_ == FORMAT_NCHW_VECT_C) {
         // NCHW_VECT_C with 4 x qint8 can be treated as NCHW int32.
-        auto Tinput_v = input.template reinterpret_last_dimension<int32, 4>();
-        auto Toutput_v = outputs_tensor->reinterpret_last_dimension<int32, 4>();
-        functor::SpaceToDepthOpFunctor<Device, int32, FORMAT_NCHW> functor;
-        functor(context->eigen_device<Device>(), Tinput_v, block_size_,
-                Toutput_v);
+        auto Tinput_v = input.template reinterpret_last_dimension<int32_t, 4>();
+        auto Toutput_v =
+            outputs_tensor->reinterpret_last_dimension<int32_t, 4>();
+        functor::SpaceToDepthOpFunctor<Device, int32_t, FORMAT_NCHW> functor;
+        OP_REQUIRES_OK(context, functor(context->eigen_device<Device>(),
+                                        Tinput_v, block_size_, Toutput_v));
       } else if (data_format_ == FORMAT_NCHW) {
         CHECK((std::is_same<T, RT>::value));
         functor::SpaceToDepthOpFunctor<Device, RT, FORMAT_NCHW> functor;
-        functor(context->eigen_device<Device>(), input.tensor<RT, 4>(),
-                block_size_, outputs_tensor->tensor<RT, 4>());
+        OP_REQUIRES_OK(context, functor(context->eigen_device<Device>(),
+                                        input.tensor<RT, 4>(), block_size_,
+                                        outputs_tensor->tensor<RT, 4>()));
       } else {
         CHECK((std::is_same<T, RT>::value));
         functor::SpaceToDepthOpFunctor<Device, RT, FORMAT_NHWC> functor;
-        functor(context->eigen_device<Device>(), input.tensor<RT, 4>(),
-                block_size_, outputs_tensor->tensor<RT, 4>());
+        OP_REQUIRES_OK(context, functor(context->eigen_device<Device>(),
+                                        input.tensor<RT, 4>(), block_size_,
+                                        outputs_tensor->tensor<RT, 4>()));
       }
     } else {
       // NOTE: Assumes data_format_ == FORMAT_NHWC here, since we have rejected
       // (CPU && data_format_ != FORMAT_NHWC) in the constructor.
       functor::SpaceToDepthOpFunctor<Device, T, FORMAT_NHWC> functor;
-      functor(context->eigen_device<Device>(), input.tensor<T, 4>(),
-              block_size_, outputs_tensor->tensor<T, 4>());
+      OP_REQUIRES_OK(context, functor(context->eigen_device<Device>(),
+                                      input.tensor<T, 4>(), block_size_,
+                                      outputs_tensor->tensor<T, 4>()));
     }
   };
 
@@ -165,8 +170,10 @@ class SpaceToDepthOp : public OpKernel {
 namespace functor {
 template <typename T>
 struct SpaceToDepthOpFunctor<CPUDevice, T, FORMAT_NHWC> {
-  void operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
-                  int block_size, typename TTypes<T, 4>::Tensor output) {
+  absl::Status operator()(const CPUDevice& d,
+                          typename TTypes<T, 4>::ConstTensor input,
+                          int block_size,
+                          typename TTypes<T, 4>::Tensor output) {
     const int batch_size = output.dimension(0);
     const int input_height = input.dimension(1);
     const int input_width = input.dimension(2);
@@ -187,6 +194,7 @@ struct SpaceToDepthOpFunctor<CPUDevice, T, FORMAT_NHWC> {
         }
       }
     }
+    return absl::OkStatus();
   }
 };
 }  // namespace functor
@@ -217,8 +225,8 @@ REGISTER_KERNEL_BUILDER(
     Name("SpaceToDepth").Device(DEVICE_GPU).TypeConstraint<qint8>("T"),
     SpaceToDepthOp<GPUDevice, qint8>);
 REGISTER_KERNEL_BUILDER(
-    Name("SpaceToDepth").Device(DEVICE_GPU).TypeConstraint<uint8>("T"),
-    SpaceToDepthOp<GPUDevice, uint8>);
+    Name("SpaceToDepth").Device(DEVICE_GPU).TypeConstraint<uint8_t>("T"),
+    SpaceToDepthOp<GPUDevice, uint8_t>);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow

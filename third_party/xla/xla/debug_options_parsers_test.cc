@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "xla/debug_options_parsers.h"
 
+#include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -29,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "google/protobuf/repeated_field.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/debug_options_flags.h"
 #include "xla/parse_flags_from_env.h"
 #include "xla/service/dump.h"
@@ -42,8 +45,11 @@ namespace {
 
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
+using ::testing::Contains;
 using ::testing::ElementsAre;
 using ::testing::IsEmpty;
+using ::testing::Not;
+using ::xla::details::ParseIntRangeInclusive;
 using ::xla::details::ParseRepeatedEnumModifiers;
 using ::xla::details::RepeatedFlagModifier;
 
@@ -54,11 +60,11 @@ void SetXlaFlagsEnvVar(const std::string& value) {
   tsl::setenv("XLA_FLAGS", value.c_str(), true /*overwrite*/);
 }
 
-// Test that the xla_backend_extra_options flag is parsed correctly.
-TEST(DebugOptionsFlags, ParseXlaBackendExtraOptions) {
+// Test that the comma-separated flags can be parsed correctly.
+TEST(DebugOptionsFlags, ParseCommaSeparatedValues) {
   absl::flat_hash_map<std::string, std::string> test_map;
   std::string test_string = "aa=bb,cc,dd=,ee=ff=gg";
-  parse_xla_backend_extra_options(&test_map, test_string);
+  parse_comma_separated_values(&test_map, test_string);
   EXPECT_EQ(test_map.size(), 4);
   EXPECT_EQ(test_map.at("aa"), "bb");
   EXPECT_EQ(test_map.at("cc"), "");
@@ -385,66 +391,18 @@ TEST(ParseRepeatedEnumModifiersTest, Invalid) {
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-TEST(ParseRepeatedEnumFlagsTest, GenericTritonEmitterFeatures) {
-  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
-  const auto& enabled_features =
-      debug_options.xla_gpu_unsupported_generic_triton_emitter_features();
-
-  // Check that the default setting is empty.
-  ASSERT_THAT(
-      enabled_features,
-      ElementsAre(DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM));
-
-  // Initialize the flag objects.
-  std::vector<tsl::Flag> flag_objects;
-  MakeDebugOptionsFlags(&flag_objects, &debug_options);
-
-  // Adding options.
-  SetXlaFlagsEnvVar(
-      "--xla_gpu_unsupported_generic_triton_emitter_features=+allow_all_gemm_"
-      "shapes");
-  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-  EXPECT_EQ(enabled_features.size(), 2);
-  EXPECT_THAT(
-      enabled_features,
-      ElementsAre(DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM,
-                  DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES));
-
-  // Overwriting options.
-  SetXlaFlagsEnvVar(
-      "--xla_gpu_unsupported_generic_triton_emitter_features=disable_legacy_"
-      "gemm,allow_all_ops_in_gemm_fusion");
-  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-  EXPECT_EQ(enabled_features.size(), 2);
-  EXPECT_THAT(
-      enabled_features,
-      ElementsAre(
-          DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM,
-          DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION));
-
-  // More adding/removing options. Do not add duplicates.
-  SetXlaFlagsEnvVar(
-      "--xla_gpu_unsupported_generic_triton_emitter_features=-disable_legacy_"
-      "gemm,-unspecified,+enable_nested_gemm,+allow_all_ops_in_gemm_fusion");
-  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-  EXPECT_EQ(enabled_features.size(), 2);
-  EXPECT_THAT(
-      enabled_features,
-      ElementsAre(
-          DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION,
-          DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM));
-}
-
 TEST(ParseRepeatedEnumFlagsTest, CommandBufferCmdType) {
   DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
 
-  // Check that the default setting has 5 types.
+  // Check that the default setting has 6 types.
   const auto& enabled_types = debug_options.xla_gpu_enable_command_buffer();
-  ASSERT_EQ(enabled_types.size(), 5);
-  ASSERT_THAT(enabled_types,
-              ElementsAre(DebugOptions::FUSION, DebugOptions::CUBLAS,
-                          DebugOptions::CUBLASLT, DebugOptions::CUSTOM_CALL,
-                          DebugOptions::CUDNN));
+  ASSERT_EQ(enabled_types.size(), 7);
+  ASSERT_THAT(
+      enabled_types,
+      ElementsAre(DebugOptions::CONDITIONAL, DebugOptions::CUBLAS,
+                  DebugOptions::CUBLASLT, DebugOptions::CUDNN,
+                  DebugOptions::CUSTOM_CALL, DebugOptions::DYNAMIC_SLICE_FUSION,
+                  DebugOptions::FUSION));
 
   // Initialize the flag objects.
   std::vector<tsl::Flag> flag_objects;
@@ -453,26 +411,30 @@ TEST(ParseRepeatedEnumFlagsTest, CommandBufferCmdType) {
   // Removing options from the existing setting.
   SetXlaFlagsEnvVar("--xla_gpu_enable_command_buffer=-fusion,-cublas");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-  EXPECT_EQ(enabled_types.size(), 3);
+  EXPECT_EQ(enabled_types.size(), 5);
   EXPECT_THAT(enabled_types,
-              ElementsAre(DebugOptions::CUBLASLT, DebugOptions::CUSTOM_CALL,
-                          DebugOptions::CUDNN));
+              ElementsAre(DebugOptions::CONDITIONAL, DebugOptions::CUBLASLT,
+                          DebugOptions::CUDNN, DebugOptions::CUSTOM_CALL,
+                          DebugOptions::DYNAMIC_SLICE_FUSION));
 
   // Removing an option that isn't there and adding a duplicate.
   SetXlaFlagsEnvVar("--xla_gpu_enable_command_buffer=+cublaslt,-fusion");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-  EXPECT_EQ(enabled_types.size(), 3);
+  EXPECT_EQ(enabled_types.size(), 5);
   EXPECT_THAT(enabled_types,
-              ElementsAre(DebugOptions::CUBLASLT, DebugOptions::CUSTOM_CALL,
-                          DebugOptions::CUDNN));
+              ElementsAre(DebugOptions::CONDITIONAL, DebugOptions::CUBLASLT,
+                          DebugOptions::CUDNN, DebugOptions::CUSTOM_CALL,
+                          DebugOptions::DYNAMIC_SLICE_FUSION));
 
   // Adding an option.
   SetXlaFlagsEnvVar("--xla_gpu_enable_command_buffer=+cublas");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-  EXPECT_EQ(enabled_types.size(), 4);
-  EXPECT_THAT(enabled_types,
-              ElementsAre(DebugOptions::CUBLASLT, DebugOptions::CUSTOM_CALL,
-                          DebugOptions::CUDNN, DebugOptions::CUBLAS));
+  EXPECT_EQ(enabled_types.size(), 6);
+  EXPECT_THAT(
+      enabled_types,
+      ElementsAre(DebugOptions::CONDITIONAL, DebugOptions::CUBLASLT,
+                  DebugOptions::CUDNN, DebugOptions::CUSTOM_CALL,
+                  DebugOptions::DYNAMIC_SLICE_FUSION, DebugOptions::CUBLAS));
 
   // Overwriting the default setting.
   SetXlaFlagsEnvVar("--xla_gpu_enable_command_buffer=custom_call,fusion");
@@ -485,6 +447,37 @@ TEST(ParseRepeatedEnumFlagsTest, CommandBufferCmdType) {
   SetXlaFlagsEnvVar("--xla_gpu_enable_command_buffer=''");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
   EXPECT_THAT(enabled_types, IsEmpty());
+}
+
+TEST(ParseRepeatedEnumFlagsTest, CollectivesCommandBufferFilter) {
+  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
+
+  const auto& filter =
+      debug_options.xla_gpu_enable_collectives_command_buffer_filter();
+  ASSERT_EQ(filter.size(), 1);
+  ASSERT_THAT(filter, ElementsAre(DebugOptions::ALLCOLLECTIVES));
+
+  std::vector<tsl::Flag> flag_objects;
+  MakeDebugOptionsFlags(&flag_objects, &debug_options);
+
+  SetXlaFlagsEnvVar(
+      "--xla_gpu_enable_collectives_command_buffer_filter=-allcollectives");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_THAT(filter, IsEmpty());
+
+  SetXlaFlagsEnvVar(
+      "--xla_gpu_enable_collectives_command_buffer_filter=+allreduce,+"
+      "allgather");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_EQ(filter.size(), 2);
+  EXPECT_THAT(filter,
+              ElementsAre(DebugOptions::ALLREDUCE, DebugOptions::ALLGATHER));
+
+  SetXlaFlagsEnvVar(
+      "--xla_gpu_enable_collectives_command_buffer_filter=reducescatter");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_EQ(filter.size(), 1);
+  EXPECT_THAT(filter, ElementsAre(DebugOptions::REDUCESCATTER));
 }
 
 // Common function to test oneDNN and XNN fusion type.
@@ -543,6 +536,107 @@ TEST(ParseRepeatedEnumFlagsTest, OneDnnFusionType) {
 
 TEST(ParseRepeatedEnumFlagsTest, XnnFusionType) {
   TestLibraryFusionType("xnn");
+}
+
+TEST(ParseRepeatedEnumFlagsTest, AutotuneBackend) {
+  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
+  std::vector<tsl::Flag> flag_objects;
+  MakeDebugOptionsFlags(&flag_objects, &debug_options);
+
+  // Check that the default setting is populated.
+  ASSERT_THAT(debug_options.xla_gpu_experimental_autotune_backends(),
+              Not(IsEmpty()));
+
+  // Overwriting the default setting.
+  SetXlaFlagsEnvVar("--xla_gpu_experimental_autotune_backends=cudnn,triton");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_THAT(
+      debug_options.xla_gpu_experimental_autotune_backends(),
+      ElementsAre(autotuner::Backend::CUDNN, autotuner::Backend::TRITON));
+
+  // Adding / removing options from the existing setting.
+  SetXlaFlagsEnvVar(
+      "--xla_gpu_experimental_autotune_backends=+cublaslt,-triton");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_THAT(
+      debug_options.xla_gpu_experimental_autotune_backends(),
+      ElementsAre(autotuner::Backend::CUDNN, autotuner::Backend::CUBLASLT));
+
+  // Test starting from defaults and applying modifiers.
+  debug_options = DefaultDebugOptionsIgnoringFlags();
+  SetXlaFlagsEnvVar("--xla_gpu_experimental_autotune_backends=-triton");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_THAT(debug_options.xla_gpu_experimental_autotune_backends(),
+              Not(Contains(autotuner::Backend::TRITON)));
+  EXPECT_THAT(debug_options.xla_gpu_experimental_autotune_backends(),
+              Not(IsEmpty()));
+  // It should still contain CUDNN (which was in defaults).
+  EXPECT_THAT(debug_options.xla_gpu_experimental_autotune_backends(),
+              Contains(autotuner::Backend::CUDNN));
+}
+
+TEST(CollectivesModeParsingTest, CaseInsensitive) {
+  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
+  std::vector<tsl::Flag> flag_objects;
+  MakeDebugOptionsFlags(&flag_objects, &debug_options);
+
+  SetXlaFlagsEnvVar("--xla_gpu_collective_permute_mode=private");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_EQ(debug_options.xla_gpu_collective_permute_mode(),
+            DebugOptions::COLLECTIVES_PRIVATE_MEMORY);
+
+  SetXlaFlagsEnvVar("--xla_gpu_collective_permute_mode=Symmetric");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_EQ(debug_options.xla_gpu_collective_permute_mode(),
+            DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY);
+
+  SetXlaFlagsEnvVar("--xla_gpu_collective_permute_mode=Peer");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_EQ(debug_options.xla_gpu_collective_permute_mode(),
+            DebugOptions::COLLECTIVES_PEER_MEMORY);
+}
+
+TEST(ParseIntRangeInclusiveTest, SingleInteger) {
+  IntRangeInclusive range;
+  EXPECT_TRUE(ParseIntRangeInclusive("10", range));
+  EXPECT_EQ(range.first(), 10);
+  EXPECT_EQ(range.last(), 10);
+}
+
+TEST(ParseIntRangeInclusiveTest, Range) {
+  IntRangeInclusive range;
+  EXPECT_TRUE(ParseIntRangeInclusive("10:20", range));
+  EXPECT_EQ(range.first(), 10);
+  EXPECT_EQ(range.last(), 20);
+}
+
+TEST(ParseIntRangeInclusiveTest, HalfOpenRangeWithMin) {
+  IntRangeInclusive range;
+  EXPECT_TRUE(ParseIntRangeInclusive("10:", range));
+  EXPECT_EQ(range.first(), 10);
+  EXPECT_EQ(range.last(), std::numeric_limits<int64_t>::max());
+}
+
+TEST(ParseIntRangeInclusiveTest, HalfOpenRangeWithMax) {
+  IntRangeInclusive range;
+  EXPECT_TRUE(ParseIntRangeInclusive(":100", range));
+  EXPECT_EQ(range.first(), std::numeric_limits<int64_t>::min());
+  EXPECT_EQ(range.last(), 100);
+}
+
+TEST(ParseIntRangeInclusiveTest, InvalidRange) {
+  IntRangeInclusive range;
+  EXPECT_FALSE(ParseIntRangeInclusive("10:20:30", range));
+}
+
+TEST(ParseIntRangeInclusiveTest, InvalidHalfOpenRange) {
+  IntRangeInclusive range;
+  EXPECT_FALSE(ParseIntRangeInclusive(":", range));
+}
+
+TEST(ParseIntRangeInclusiveTest, ReversedRange) {
+  IntRangeInclusive range;
+  EXPECT_FALSE(ParseIntRangeInclusive("20:10", range));
 }
 
 }  // namespace

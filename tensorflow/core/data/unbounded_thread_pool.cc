@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/lib/core/notification.h"
@@ -59,7 +59,7 @@ class UnboundedThreadPool::LogicalThreadFactory : public ThreadFactory {
  public:
   explicit LogicalThreadFactory(UnboundedThreadPool* pool) : pool_(pool) {}
 
-  std::unique_ptr<Thread> StartThread(const string& name,
+  std::unique_ptr<Thread> StartThread(const std::string& name,
                                       std::function<void()> fn) override {
     auto done = std::make_shared<absl::Notification>();
     pool_->ScheduleOnWorkQueue(std::move(fn), done);

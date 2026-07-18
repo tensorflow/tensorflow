@@ -20,7 +20,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel.h"
 
 namespace stream_executor::gpu {
@@ -34,18 +34,22 @@ struct Ptrs3 {
 namespace internal {
 
 struct AddI32Kernel {
-  using KernelType = TypedKernel<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
-                                 DeviceMemory<int32_t>>;
+  using KernelType = TypedKernel<DeviceAddress<int32_t>, DeviceAddress<int32_t>,
+                                 DeviceAddress<int32_t>>;
+};
+
+struct IncrementBy5I32KernelWithCustomArgsPacking {
+  using KernelType = TypedKernel<DeviceAddress<int32_t>>;
 };
 
 struct MulI32Kernel {
-  using KernelType = TypedKernel<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
-                                 DeviceMemory<int32_t>>;
+  using KernelType = TypedKernel<DeviceAddress<int32_t>, DeviceAddress<int32_t>,
+                                 DeviceAddress<int32_t>>;
 };
 
 struct IncAndCmpKernel {
-  using KernelType = TypedKernel<DeviceMemory<int32_t>, DeviceMemory<bool>,
-                                 DeviceMemory<int32_t>>;
+  using KernelType = TypedKernel<DeviceAddress<int32_t>, DeviceAddress<bool>,
+                                 DeviceAddress<int32_t>>;
 };
 
 struct AddI32Ptrs3Kernel {
@@ -54,7 +58,7 @@ struct AddI32Ptrs3Kernel {
 
 struct CopyKernel {
   using KernelType =
-      TypedKernel<DeviceMemory<std::byte>, std::array<std::byte, 16>>;
+      TypedKernel<DeviceAddress<std::byte>, std::array<std::byte, 16>>;
 };
 
 }  // namespace internal

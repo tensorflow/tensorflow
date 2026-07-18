@@ -21,13 +21,13 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
-        "@local_xla//xla/tsl/lib/math:math_util",
+        "@xla//xla/tsl/lib/math:math_util",
     ],
 )
 
 # Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
-    name = "mobile_srcs_only_runtime",
+    name = "mobile_hdrs_only_runtime",
     srcs = [
         "math_util.h",
     ],

@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/legalize_tf.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_compilation.pb.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_constants.h"
@@ -53,10 +55,12 @@ limitations under the License.
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -85,8 +89,7 @@ uint64_t MlirModuleFingerprint(mlir::ModuleOp module) {
 absl::StatusOr<uint64_t> Tf2HloArg::Fingerprint() const {
   uint64_t fingerprint = tsl::Fingerprint64(platform_name);
   if (topology) {
-    TF_ASSIGN_OR_RETURN(std::string serialized_topology, topology->Serialize());
-    fingerprint = tsl::Fingerprint64(serialized_topology);
+    TF_ASSIGN_OR_RETURN(fingerprint, topology->Fingerprint());
   }
   if (platform_name != xla::CudaName() && !topology) {
     return absl::FailedPreconditionError(
@@ -100,8 +103,9 @@ absl::StatusOr<uint64_t> Tf2HloArg::Fingerprint() const {
         tsl::Fingerprint64(tensorflow::DataType_Name(dtype_and_shape.dtype)));
 
     std::string serialized_shape;
-    if (!tsl::SerializeToStringDeterministic(dtype_and_shape.shape.AsProto(),
-                                             &serialized_shape)) {
+    if (!tsl::SerializeToStringDeterministic(
+            dtype_and_shape.GetShapeForCompilation().AsProto(),
+            &serialized_shape)) {
       return absl::InternalError("Failed to serialize shape");
     }
 
@@ -117,15 +121,34 @@ absl::StatusOr<uint64_t> Tf2HloArg::Fingerprint() const {
   }
   fingerprint = tsl::FingerprintCat64(
       fingerprint, tsl::Fingerprint64(serialized_compile_metadata));
+  fingerprint = tsl::FingerprintCat64(
+      fingerprint,
+      tsl::Fingerprint64(populate_layout_in_xla_input_shapes ? "1" : "0"));
   return fingerprint;
 }
 
-Tf2HLOResultProto Tf2HloResult::ToProto() const {
+absl::StatusOr<Tf2HLOResultProto> Tf2HloResult::ToProto() const {
   Tf2HLOResultProto proto;
   *proto.mutable_hlo_module_proto() = hlo_module_proto;
   *proto.mutable_compile_metadata() = compile_metadata;
   *proto.mutable_host_compute_metadata() = host_compute_metadata;
+  for (const auto& shape : xla_input_shapes) {
+    *proto.add_xla_input_shapes() = shape.ToProto();
+  }
   return proto;
+}
+
+/*static*/ absl::StatusOr<Tf2HloResult> Tf2HloResult::FromProto(
+    const Tf2HLOResultProto& proto) {
+  Tf2HloResult result;
+  result.hlo_module_proto = proto.hlo_module_proto();
+  result.compile_metadata = proto.compile_metadata();
+  result.host_compute_metadata = proto.host_compute_metadata();
+  for (const auto& shape : proto.xla_input_shapes()) {
+    TF_ASSIGN_OR_RETURN(xla::Shape xla_shape, xla::Shape::FromProto(shape));
+    result.xla_input_shapes.push_back(std::move(xla_shape));
+  }
+  return result;
 }
 
 absl::Status UpdateCompileMetadata(
@@ -133,13 +156,13 @@ absl::Status UpdateCompileMetadata(
     absl::Span<const DtypeAndShape> inputs) {
   VLOG(3) << "TpuCompileMetadata before shape is populated " << metadata;
   if (metadata.num_replicas() < 1 || metadata.num_cores_per_replica() < 1) {
-    return absl::InternalError(
+    return absl::InvalidArgumentError(
         absl::StrCat("Number of replicas ", metadata.num_replicas(),
                      " and number of cores per replica ",
                      metadata.num_cores_per_replica(), " must be >= 1"));
   }
   if (metadata.args_size() != inputs.size()) {
-    return absl::InternalError(
+    return absl::InvalidArgumentError(
         absl::StrCat("Number of inputs mismatched! Expected ",
                      metadata.args_size(), " got ", inputs.size()));
   }
@@ -147,18 +170,19 @@ absl::Status UpdateCompileMetadata(
   for (int i = 0; i < metadata.args_size(); ++i) {
     if (metadata.args(i).kind() !=
         tensorflow::tpu::TPUCompileMetadataProto::Arg::PARAMETER) {
-      return absl::InternalError(absl::StrCat(
+      return absl::FailedPreconditionError(absl::StrCat(
           "Only support PARAMETER, but got ", metadata.args(i).kind()));
     }
 
     if (metadata.args(i).dtype() != inputs[i].dtype) {
-      return absl::InternalError(absl::StrCat("Dtype mismatched! Expected ",
-                                              metadata.args(i).dtype(), " got ",
-                                              inputs[i].dtype));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Dtype mismatched! Expected ", metadata.args(i).dtype(),
+                       " got ", inputs[i].dtype));
     }
 
     // Update shape.
-    *metadata.mutable_args(i)->mutable_shape() = inputs[i].shape.AsProto();
+    *metadata.mutable_args(i)->mutable_shape() =
+        inputs[i].GetShapeForCompilation().AsProto();
   }
   return absl::OkStatus();
 }
@@ -220,13 +244,6 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg) {
   }
   VLOG(1) << "device_type: " << device_type;
 
-  tpu::MlirToHloArgs mlir_to_hlo_args;
-  std::string module_str = tensorflow::SerializeMlirModule(arg.module);
-  mlir_to_hlo_args.mlir_module = module_str;
-  // Use fallback bridge as other modes may get deprecated.
-  mlir_to_hlo_args.rollout_state =
-      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED;
-
   TF_ASSIGN_OR_RETURN(
       auto* platform,
       stream_executor::PlatformManager::PlatformWithName("Host"));
@@ -237,8 +254,23 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg) {
   std::vector<TensorShape> arg_shapes;
   arg_shapes.reserve(arg.input_dtypes_and_shapes.size());
   for (const auto& input : arg.input_dtypes_and_shapes) {
-    arg_shapes.push_back(input.shape);
+    arg_shapes.push_back(input.GetShapeForCompilation());
   }
+
+  llvm::SmallVector<tensorflow::TensorOrResourceShape>
+      arg_tensor_or_resource_shapes;
+  for (const auto& shape : arg_shapes) {
+    arg_tensor_or_resource_shapes.push_back({shape});
+  }
+
+  TF_RETURN_IF_ERROR(
+      tensorflow::RefineShapes(arg_tensor_or_resource_shapes, arg.module));
+  tpu::MlirToHloArgs mlir_to_hlo_args;
+  std::string module_str = tensorflow::SerializeMlirModule(arg.module);
+  mlir_to_hlo_args.mlir_module = module_str;
+  // Use fallback bridge as other modes may get deprecated.
+  mlir_to_hlo_args.rollout_state =
+      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED;
 
   bool use_tuple_args = false;
   std::vector<tpu::ShardingAndIndex> arg_core_mapping;
@@ -266,9 +298,14 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg) {
   }
 
   Tf2HloResult result;
-  result.hlo_module_proto = compilation_result.computation->proto();
+  if (arg.populate_layout_in_xla_input_shapes) {
+    result.xla_input_shapes = std::move(compilation_result.xla_input_shapes);
+  }
+
+  result.hlo_module_proto = std::move(compilation_result.computation->proto());
   result.compile_metadata = arg.compile_metadata;
-  result.host_compute_metadata = compilation_result.host_compute_metadata;
+  result.host_compute_metadata =
+      std::move(compilation_result.host_compute_metadata);
 
   return result;
 }

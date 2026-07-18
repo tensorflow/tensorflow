@@ -44,16 +44,6 @@ e {
                                      /*expect_change=*/false));
 }
 
-TEST_F(SubByteCollectiveNormalizationTest, SkipNonMinorMost) {
-  TF_ASSERT_OK(RunAndCheckHloRewrite(R"(
-e {
- a = s4[32,16]{0,1:E(4)} parameter(0)
- b = s4[32,16]{0,1:E(4)} all-gather(a), dimensions={0}
-})",
-                                     SubByteCollectiveNormalization(),
-                                     /*expect_change=*/false));
-}
-
 TEST_F(SubByteCollectiveNormalizationTest, SkipOddElementCount) {
   TF_ASSERT_OK(RunAndCheckHloRewrite(R"(
 e {
@@ -88,6 +78,23 @@ CHECK-NEXT: s8[4,4]{1,0} bitcast-convert
 CHECK-NEXT: s8[8,4]{1,0} all-gather
 CHECK-NEXT: s4[8,4,2]{2,1,0:E(4)} bitcast-convert
 CHECK-NEXT: s4[8,8]{1,0:E(4)} bitcast
+)");
+}
+
+TEST_F(SubByteCollectiveNormalizationTest,
+       TransformAllGatherWithNonMinorMostLastDim) {
+  RunAndFilecheckHloRewrite(R"(
+e {
+ a = s4[32,16]{0,1:E(4)} parameter(0)
+ b = s4[32,16]{0,1:E(4)} all-gather(a), dimensions={0}
+})",
+                            SubByteCollectiveNormalization(), R"(
+CHECK: s4[32,16]{0,1:E(4)} parameter
+CHECK-NEXT: s4[16,16,2]{2,0,1:E(4)} bitcast
+CHECK-NEXT: s8[16,16]{0,1} bitcast-convert
+CHECK-NEXT: s8[16,16]{0,1} all-gather
+CHECK-NEXT: s4[16,16,2]{2,0,1:E(4)} bitcast-convert
+CHECK-NEXT: s4[32,16]{0,1:E(4)} bitcast
 )");
 }
 

@@ -19,10 +19,20 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/histogram_op.h"
 
+#include <cmath>
+#include <limits>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -48,23 +58,32 @@ struct HistogramFixedWidthFunctor<CPUDevice, T, Tout> {
 
     Tensor index_to_bin_tensor;
     TF_RETURN_IF_ERROR(context->forward_input_or_allocate_temp(
-        {0}, DataTypeToEnum<int32>::value, TensorShape({values.size()}),
+        {0}, DataTypeToEnum<int32_t>::value, TensorShape({values.size()}),
         &index_to_bin_tensor));
-    auto index_to_bin = index_to_bin_tensor.flat<int32>();
+    auto index_to_bin = index_to_bin_tensor.flat<int32_t>();
 
     // Avoid overflow in step computation.
     const double step =
         static_cast<double>(value_range(1)) / static_cast<double>(nbins) -
         static_cast<double>(value_range(0)) / static_cast<double>(nbins);
+    if (!std::isfinite(step)) {
+      return absl::InvalidArgumentError("Step is not finite");
+    }
+    if (step <= 0.0) {
+      return absl::InvalidArgumentError(
+          "Step size in histogram computation must be positive. Check if "
+          "value_range is too narrow or suffers from precision loss.");
+    }
     const double nbins_minus_1 = static_cast<double>(nbins - 1);
 
     // We cannot handle NANs in the algorithm below (due to the cast to int32)
-    const Eigen::Tensor<int32, 1, 1> nans_tensor =
-        values.isnan().template cast<int32>();
-    const Eigen::Tensor<int32, 0, 1> reduced_tensor = nans_tensor.sum();
+    const Eigen::Tensor<int32_t, 1, 1> nans_tensor =
+        values.isnan().template cast<int32_t>();
+    const Eigen::Tensor<int32_t, 0, 1> reduced_tensor = nans_tensor.sum();
     const int num_nans = reduced_tensor(0);
     if (num_nans > 0) {
-      return errors::InvalidArgument("Histogram values must not contain NaN");
+      return absl::InvalidArgumentError(
+          "Histogram values must not contain NaN");
     }
 
     // The calculation is done by finding the slot of each value in `values`.
@@ -82,11 +101,17 @@ struct HistogramFixedWidthFunctor<CPUDevice, T, Tout> {
                                static_cast<double>(value_range(0))) /
                               step)
                                  .cwiseMin(nbins_minus_1)
-                                 .template cast<int32>();
+                                 .template cast<int32_t>();
 
     out.setZero();
     for (int32_t i = 0; i < index_to_bin.size(); i++) {
-      out(index_to_bin(i)) += Tout(1);
+      int32_t bin_index = index_to_bin(i);
+      if (bin_index >= 0 && bin_index < nbins) {
+        out(bin_index) += Tout(1);
+      } else {
+        return absl::InvalidArgumentError(
+            "Histogram value generated an out-of-bound bin index");
+      }
     }
     return absl::OkStatus();
   }
@@ -105,16 +130,16 @@ class HistogramFixedWidthOp : public OpKernel {
     const Tensor& nbins_tensor = ctx->input(2);
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(value_range_tensor.shape()),
-                errors::InvalidArgument("value_range should be a vector."));
+                absl::InvalidArgumentError("value_range should be a vector."));
     OP_REQUIRES(ctx, (value_range_tensor.shape().num_elements() == 2),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "value_range should be a vector of 2 elements."));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(nbins_tensor.shape()),
-                errors::InvalidArgument("nbins should be a scalar."));
+                absl::InvalidArgumentError("nbins should be a scalar."));
 
     const auto values = values_tensor.flat<T>();
     const auto value_range = value_range_tensor.flat<T>();
-    const auto nbins = nbins_tensor.scalar<int32>()();
+    const auto nbins = nbins_tensor.scalar<int32_t>()();
 
     OP_REQUIRES(
         ctx, value_range(0) < value_range(1),
@@ -123,8 +148,11 @@ class HistogramFixedWidthOp : public OpKernel {
                                 value_range(0), ", ", value_range(1), "]'"));
     OP_REQUIRES(
         ctx, nbins > 0,
-        errors::InvalidArgument("nbins should be a positive number, but got '",
-                                nbins, "'"));
+        absl::InvalidArgumentError(absl::StrCat(
+            "nbins should be a positive number, but got '", nbins, "'")));
+    OP_REQUIRES(ctx, nbins < std::numeric_limits<int32_t>::max(),
+                absl::InvalidArgumentError(
+                    "nbins + 1 must not exceed the maximum value of int32_t"));
 
     Tensor* out_tensor;
     OP_REQUIRES_OK(ctx,

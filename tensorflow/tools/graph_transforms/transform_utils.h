@@ -33,12 +33,13 @@ namespace graph_transforms {
 
 // Used to quickly look up nodes in the graph def from a name.
 void MapNamesToNodes(const GraphDef& graph_def,
-                     std::map<string, const NodeDef*>* result);
+                     std::map<std::string, const NodeDef*>* result);
 
 // For every node in the graph create a list of the nodes that use it as an
 // input.
-void MapNodesToOutputs(const GraphDef& graph_def,
-                       std::map<string, std::vector<const NodeDef*>>* result);
+void MapNodesToOutputs(
+    const GraphDef& graph_def,
+    std::map<std::string, std::vector<const NodeDef*>>* result);
 
 // NodeDef input strings can contain other information besides the name of an
 // input node. These include:
@@ -48,32 +49,32 @@ void MapNodesToOutputs(const GraphDef& graph_def,
 // This function takes a raw string, and breaks it into those component parts.
 // The rules for inputs in function libraries are a bit more complex, and
 // aren't handled by this routine.
-void NodeNamePartsFromInput(const string& input_name, string* prefix,
-                            string* node_name, string* suffix);
+void NodeNamePartsFromInput(const std::string& input_name, std::string* prefix,
+                            std::string* node_name, std::string* suffix);
 
 // Adds a ':0' port to any inputs with no suffix, to make comparisons easier.
-string CanonicalInputName(const string& input_name);
+std::string CanonicalInputName(const std::string& input_name);
 
 // Convenience function to strip the optional prefix and suffix components from
 // a string pulled from a NodeDef input, and return the plain node name.
-string NodeNameFromInput(const string& input_name);
+std::string NodeNameFromInput(const std::string& input_name);
 
 // Returns a stable hash for the contents of the NodeDef, so that equivalent
 // nodes should have equal hashes.
-uint64 HashNodeDef(const NodeDef& node);
+uint64_t HashNodeDef(const NodeDef& node);
 
 // Adds the given node name to the end of the node's inputs.
-void AddNodeInput(const string& input_name, NodeDef* node);
+void AddNodeInput(const std::string& input_name, NodeDef* node);
 
 // Copies an attribute from one NodeDef to another.
-void CopyNodeAttr(const NodeDef& source, const string& source_key,
-                  const string& dest_key, NodeDef* dest);
+void CopyNodeAttr(const NodeDef& source, const std::string& source_key,
+                  const std::string& dest_key, NodeDef* dest);
 
 // Inserts a value into a NodeDef's map of attributes.
 // This is a bit different than AddNodeAttr in node_def_util.h because it
 // overwrites any existing attributes with the same key.
 template <class T>
-inline void SetNodeAttr(const string& key, const T& value, NodeDef* node) {
+inline void SetNodeAttr(const std::string& key, const T& value, NodeDef* node) {
   AttrValue attr_value;
   SetAttrValue(value, &attr_value);
   auto* attr_map = node->mutable_attr();
@@ -81,7 +82,7 @@ inline void SetNodeAttr(const string& key, const T& value, NodeDef* node) {
 }
 
 template <class T>
-inline void SetNodeTensorAttr(const string& key, const Tensor& tensor,
+inline void SetNodeTensorAttr(const std::string& key, const Tensor& tensor,
                               NodeDef* node) {
   TensorProto tensor_proto;
   tensor.AsProtoTensorContent(&tensor_proto);
@@ -90,7 +91,7 @@ inline void SetNodeTensorAttr(const string& key, const Tensor& tensor,
 
 // Inserts a Tensor into the specified attribute of a NodeDef.
 template <class T>
-inline void SetNodeTensorAttr(const string& key, const TensorShape& shape,
+inline void SetNodeTensorAttr(const std::string& key, const TensorShape& shape,
                               const std::vector<T>& values, NodeDef* node) {
   const DataType dtype = DataTypeToEnum<T>::v();
   CHECK_EQ(shape.num_elements(), values.size());
@@ -101,7 +102,7 @@ inline void SetNodeTensorAttr(const string& key, const TensorShape& shape,
 }
 
 // Retrieves a tensor value from a NodeDef attribute.
-Tensor GetNodeTensorAttr(const NodeDef& node, const string& key);
+Tensor GetNodeTensorAttr(const NodeDef& node, const std::string& key);
 
 // Creates a copy of the input GraphDef, but only containing the nodes where the
 // supplied selector function returned true.
@@ -112,7 +113,7 @@ void FilterGraphDef(const GraphDef& input_graph_def,
 // Creates a copy of the input graph, with all occurrences of the attributes
 // with the names in the argument removed from the node defs.
 void RemoveAttributes(const GraphDef& input_graph_def,
-                      const std::vector<string>& attributes,
+                      const std::vector<std::string>& attributes,
                       GraphDef* output_graph_def);
 
 // For a lot of replacement and matching operations it's useful to have the
@@ -122,8 +123,9 @@ absl::Status SortByExecutionOrder(const GraphDef& input_graph_def,
                                   GraphDef* output_graph_def);
 
 // Finds inputs that refer to nodes that are not in the graph.
-void FindInvalidInputs(const GraphDef& graph_def,
-                       std::vector<std::pair<string, string>>* invalid_inputs);
+void FindInvalidInputs(
+    const GraphDef& graph_def,
+    std::vector<std::pair<std::string, std::string>>* invalid_inputs);
 
 // Returns a descriptive error status if there are problems spotted with the
 // graph.
@@ -134,7 +136,7 @@ absl::Status GetInOutTypes(const NodeDef& node_def, DataTypeVector* inputs,
                            DataTypeVector* outputs);
 
 // Takes a comma-separated string of numbers and parses them into a shape.
-absl::Status TensorShapeFromString(const string& shape_string,
+absl::Status TensorShapeFromString(const std::string& shape_string,
                                    TensorShape* result);
 
 // This is used to spot particular subgraphs in a larger model. To use it,
@@ -146,9 +148,9 @@ absl::Status TensorShapeFromString(const string& shape_string,
 // match any op. You can also use | as a separator to match multiple op names,
 // like "Reshape|Concat|Conv2D".
 struct OpTypePattern {
-  string op;
+  std::string op;
   std::vector<OpTypePattern> inputs;
-  string DebugString() const;
+  std::string DebugString() const;
 };
 
 // Returns a sub-graph of nodes that match a pattern.
@@ -156,7 +158,7 @@ struct NodeMatch {
   NodeMatch() : node() {}
   NodeDef node;
   std::vector<NodeMatch> inputs;
-  string DebugString() const;
+  std::string DebugString() const;
 };
 
 // Utility class to spot subgraphs matching particular patterns.
@@ -173,11 +175,11 @@ class GraphMatcher {
 
  private:
   bool DoesOpTypeMatch(const NodeDef& node, const OpTypePattern& pattern,
-                       const std::set<string>& previously_matched_nodes,
+                       const std::set<std::string>& previously_matched_nodes,
                        NodeMatch* match);
 
   GraphDef graph_def_;
-  std::map<string, const NodeDef*> node_map_;
+  std::map<std::string, const NodeDef*> node_map_;
 };
 
 struct ReplaceMatchingOpTypesOptions {
@@ -198,9 +200,9 @@ struct ReplaceMatchingOpTypesOptions {
 // to others. There's more comprehensive usage documentation in the README.
 absl::Status ReplaceMatchingOpTypes(
     const GraphDef& input_graph_def, const OpTypePattern& pattern,
-    const std::function<absl::Status(const NodeMatch&, const std::set<string>&,
-                                     const std::set<string>&,
-                                     std::vector<NodeDef>*)>& node_generator,
+    const std::function<absl::Status(
+        const NodeMatch&, const std::set<std::string>&,
+        const std::set<std::string>&, std::vector<NodeDef>*)>& node_generator,
     const ReplaceMatchingOpTypesOptions& options, GraphDef* output_graph_def);
 
 // Returns a list of the unique nodes found in this match.
@@ -208,10 +210,11 @@ void MatchedNodesAsArray(const NodeMatch& match, std::vector<NodeDef>* result);
 
 // Changes all input references to a particular node name. Any nodes with names
 // listed in nodes_to_ignore will not have their inputs rewritten.
-absl::Status RenameNodeInputs(const GraphDef& input_graph_def,
-                              const std::map<string, string>& inputs_to_rename,
-                              const std::unordered_set<string>& nodes_to_ignore,
-                              GraphDef* output_graph_def);
+absl::Status RenameNodeInputs(
+    const GraphDef& input_graph_def,
+    const std::map<std::string, std::string>& inputs_to_rename,
+    const std::unordered_set<std::string>& nodes_to_ignore,
+    GraphDef* output_graph_def);
 
 // Utility function that copies all the nodes found in a match into the
 // new_nodes list. This is useful in replacement functions when you decide to
@@ -219,42 +222,44 @@ absl::Status RenameNodeInputs(const GraphDef& input_graph_def,
 void CopyOriginalMatch(const NodeMatch& match, std::vector<NodeDef>* new_nodes);
 
 // Holds information that's needed for transform functions.
-typedef std::map<string, std::vector<string>> TransformFuncParameters;
+typedef std::map<std::string, std::vector<std::string>> TransformFuncParameters;
 struct TransformFuncContext {
-  std::vector<string> input_names;
-  std::vector<string> output_names;
+  std::vector<std::string> input_names;
+  std::vector<std::string> output_names;
   TransformFuncParameters params;
 
   // Returns how many occurrences of the given parameter are present.
-  int CountParameters(const string& name) const;
+  int CountParameters(const std::string& name) const;
 
   // Gets a single instance of a parameter, using a default if it's not present.
-  absl::Status GetOneStringParameter(const string& name,
-                                     const string& default_value,
-                                     string* result) const;
+  absl::Status GetOneStringParameter(const std::string& name,
+                                     const std::string& default_value,
+                                     std::string* result) const;
 
   // Gets a single occurrence of a parameter as a 32-bit integer, falling back
   // to a default if it isn't present and returning an error if it isn't
   // convertible to a number.
-  absl::Status GetOneInt32Parameter(const string& name, int32_t default_value,
-                                    int32* result) const;
+  absl::Status GetOneInt32Parameter(const std::string& name,
+                                    int32_t default_value,
+                                    int32_t* result) const;
 
   // Gets a single occurrence of a parameter as a 64-bit integer, falling back
   // to a default if it isn't present and returning an error if it isn't
   // convertible to a number.
-  absl::Status GetOneInt64Parameter(const string& name, int64_t default_value,
+  absl::Status GetOneInt64Parameter(const std::string& name,
+                                    int64_t default_value,
                                     int64_t* result) const;
 
   // Gets a single occurrence of a parameter as a floating point number, falling
   // back to a default if it isn't present and returning an error if it isn't
   // convertible to a number.
-  absl::Status GetOneFloatParameter(const string& name, float default_value,
-                                    float* result) const;
+  absl::Status GetOneFloatParameter(const std::string& name,
+                                    float default_value, float* result) const;
 
   // Gets a single occurrence of a parameter as a boolean, falling back to a
   // default if it isn't present and returning an error if it's not one of
   // "true", "1", "false", or "0".
-  absl::Status GetOneBoolParameter(const string& name, bool default_value,
+  absl::Status GetOneBoolParameter(const std::string& name, bool default_value,
                                    bool* result) const;
 };
 
@@ -270,11 +275,11 @@ typedef std::function<absl::Status(
 // just need to link in the .cc file with your registration call to have access
 // to it through the command line tool.
 // The rest of the machinery below is to enable that automagical registration.
-typedef std::map<string, TransformFunc> TransformRegistry;
+typedef std::map<std::string, TransformFunc> TransformRegistry;
 TransformRegistry* GetTransformRegistry();
 class TransformRegistrar {
  public:
-  TransformRegistrar(const string& name, TransformFunc transform_func) {
+  TransformRegistrar(const std::string& name, TransformFunc transform_func) {
     TransformRegistry* transform_registry = GetTransformRegistry();
     (*transform_registry)[name] = transform_func;
   }

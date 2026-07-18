@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstdint>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
@@ -32,7 +34,7 @@ class BucketizeOp : public XlaOpKernel {
   explicit BucketizeOp(OpKernelConstruction* context) : XlaOpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("boundaries", &boundaries_));
     OP_REQUIRES(context, std::is_sorted(boundaries_.begin(), boundaries_.end()),
-                errors::InvalidArgument("Expected sorted boundaries"));
+                absl::InvalidArgumentError("Expected sorted boundaries"));
   }
 
   void Compile(XlaOpKernelContext* context) override {
@@ -55,7 +57,7 @@ class BucketizeOp : public XlaOpKernel {
                                         /*broadcast_dimensions=*/{0}),
                                 xla::S32);
     xla::XlaOp buckets = xla::Reduce(
-        comparison, /*init_value=*/xla::ConstantR0<int32>(builder, 0),
+        comparison, /*init_value=*/xla::ConstantR0<int32_t>(builder, 0),
         /*computation=*/xla::CreateScalarAddComputation(xla::S32, builder),
         /*dimensions_to_reduce=*/{0});
     context->SetOutput(0, buckets);

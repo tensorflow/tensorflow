@@ -1,6 +1,6 @@
 """Build macros for TF Lite."""
 
-load("//tensorflow:strict.default.bzl", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "if_oss", "tf_binary_additional_srcs", "tf_cc_shared_object")
 load("//tensorflow/lite:special_rules.bzl", "tflite_copts_extra")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
@@ -8,6 +8,7 @@ load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 # buildifier: disable=out-of-order-load
 def register_extension_info(**kwargs):
@@ -236,9 +237,7 @@ def tflite_jni_binary(
         clean_dep("//tensorflow:windows"): [],
         "//conditions:default": [
             "-Wl,--version-script,$(location {})".format(linkscript),
-            # copybara:uncomment_begin(google-only)
-            # "-Wl,--undefined-version",
-            # copybara:uncomment_end
+            "-Wl,--undefined-version",
             "-Wl,-soname," + name,
         ],
     })
@@ -483,7 +482,7 @@ def gen_model_coverage_test(
 
         # Avoid coverage timeouts for large/enormous tests.
         coverage_tags = ["nozapfhahn"] if size in ["large", "enormous"] else []
-        py_strict_test(
+        py_test(
             name = "model_coverage_test_%s_%s" % (name, target_op_sets.lower().replace(",", "_")),
             srcs = [src],
             main = src,
@@ -746,12 +745,15 @@ def tflite_custom_c_library(
         **kwargs
     )
 
+def _is_bzlmod_enabled():
+    """Check if with bzlmod enabled"""
+    return str(Label("@//:BUILD.bazel")).startswith("@@")
+
 # TODO(b/254126721): Move tflite_combine_cc_tests macro to lite/testing/build_def.bzl.
 def tflite_combine_cc_tests(
         name,
         deps_conditions,
-        extra_cc_test_tags = [],
-        extra_build_test_tags = [],
+        build_test_tags = [],
         generate_cc_library = False,
         **kwargs):
     """Combine certain cc_tests into a single cc_test and a build_test.
@@ -775,6 +777,10 @@ def tflite_combine_cc_tests(
           can plugin their own test driver and entry point.
       **kwargs: kwargs to pass to the cc_test rule of the test suite.
     """
+    cc_test_args = dict(kwargs)
+    size = cc_test_args.pop("size", "large")
+    extra_deps = cc_test_args.pop("deps", [])
+
     combined_test_srcs = {}
     combined_test_deps = {}
     for r in native.existing_rules().values():
@@ -804,22 +810,27 @@ def tflite_combine_cc_tests(
         combined_test_deps.update({d: True for d in r["deps"]})
 
     if combined_test_srcs:
-        # Use native.cc_test here because cc_test adds duplicated deps in OSS.
-        native.cc_test(
+        # Using native.existing_rule to combine cc_test's deps duplicates link_extra_lib. Remove it.
+        if _is_bzlmod_enabled():
+            combined_test_deps.pop(str(Label("@rules_cc" + "//:link_extra_lib")), None)
+        else:
+            combined_test_deps.pop("@@rules_cc" + "//:link_extra_lib", None)
+
+        # Merge explicitly provided extra dependencies
+        for d in extra_deps:
+            combined_test_deps[d] = True
+
+        cc_test(
             name = name,
-            size = "large",
+            size = size,
             srcs = list(combined_test_srcs),
-            tags = ["manual", "notap"] + extra_cc_test_tags,
             deps = list(combined_test_deps),
-            **kwargs
+            **cc_test_args
         )
         build_test(
             name = "%s_build_test" % name,
             targets = [":%s" % name],
-            tags = [
-                "manual",
-                "tflite_portable_build_test",
-            ] + extra_build_test_tags,
+            tags = build_test_tags,
         )
         if generate_cc_library:
             cc_library(

@@ -17,19 +17,19 @@ limitations under the License.
 
 #include <cstdint>
 #include <limits>
-#include <numeric>
 #include <sstream>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/hash/hash_testing.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.pb.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -39,7 +39,6 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
-using ::tsl::testing::StatusIs;
 
 TEST(ShapeTest, LargeDim) {
   Shape shape({std::numeric_limits<int64_t>::max()});
@@ -49,7 +48,7 @@ TEST(ShapeTest, LargeDim) {
 TEST(ShapeTest, ManyDims) {
   const int kNumDims = 65536;  // Arbitrarily large number.
   std::vector<int64_t> dims(kNumDims);
-  std::iota(dims.begin(), dims.end(), 0);
+  absl::c_iota(dims, 0);
   Shape shape(dims);
   EXPECT_THAT(shape.dims(), ElementsAreArray(dims));
 }
@@ -116,7 +115,10 @@ TEST_P(ShapeSerDesTest, ToFromProto) {
 
 INSTANTIATE_TEST_SUITE_P(
     SerDesVersion, ShapeSerDesTest,
-    testing::ValuesIn(test_util::AllSupportedSerDesVersions()));
+    testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
+    [](const testing::TestParamInfo<SerDesVersion>& info) {
+      return absl::StrCat(info.param.version_number().value());
+    });
 
 TEST(ShapeTest, Hash) {
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
@@ -148,7 +150,10 @@ TEST_P(BoundedDynamicShapeTagSerDesTest, ToFromProto) {
 
 INSTANTIATE_TEST_SUITE_P(
     SerDesVersion, BoundedDynamicShapeTagSerDesTest,
-    testing::ValuesIn(test_util::AllSupportedSerDesVersions()));
+    testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
+    [](const testing::TestParamInfo<SerDesVersion>& info) {
+      return absl::StrCat(info.param.version_number().value());
+    });
 
 TEST(DynamicShapeTest, SizeMismatch) {
   Shape shape({1, 2, 3});
@@ -215,7 +220,10 @@ TEST_P(DynamicShapeSerDesTest, ToFromProto) {
 
 INSTANTIATE_TEST_SUITE_P(
     SerDesVersion, DynamicShapeSerDesTest,
-    testing::ValuesIn(test_util::AllSupportedSerDesVersions()));
+    testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
+    [](const testing::TestParamInfo<SerDesVersion>& info) {
+      return absl::StrCat(info.param.version_number().value());
+    });
 
 TEST(DynamicShapeTest, ToString) {
   {

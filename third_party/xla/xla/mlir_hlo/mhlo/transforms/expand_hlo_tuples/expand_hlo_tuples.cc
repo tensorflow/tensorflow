@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <iterator>
-#include <memory>
-#include <string>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -43,11 +41,8 @@ namespace {
 class ExpandHloTuplesPass
     : public impl::ExpandHloTuplesPassBase<ExpandHloTuplesPass> {
  public:
-  ExpandHloTuplesPass() = default;
-  ExpandHloTuplesPass(const ExpandHloTuplesPass&) = default;
-  explicit ExpandHloTuplesPass(const std::string& entryFunctionName) {
-    entry_function_name_ = entryFunctionName;
-  }
+  using impl::ExpandHloTuplesPassBase<
+      ExpandHloTuplesPass>::ExpandHloTuplesPassBase;
 
   // Expands the mhlo.tuple used in return op. Also updates function
   // signature accordingly.
@@ -93,7 +88,7 @@ class ExpandHloTuplesPass
         OpBuilder builder(func.getBody());
         builder.setInsertionPointToStart(&func.getBody().front());
         auto newTuple =
-            builder.create<mhlo::TupleOp>(loc, tupleType, flattenedOperands);
+            mhlo::TupleOp::create(builder, loc, tupleType, flattenedOperands);
         func.getArgument(originalArgumentIndex).replaceAllUsesWith(newTuple);
 
         // Now the original argument has been rewired, we should be able to
@@ -129,8 +124,8 @@ class ExpandHloTuplesPass
       return success();
     }
 
-    builder.create<mlir::func::ReturnOp>(returnOp.getLoc(),
-                                         expandedReturnOperands);
+    mlir::func::ReturnOp::create(builder, returnOp.getLoc(),
+                                 expandedReturnOperands);
     returnOp.erase();
     auto newFuncType = FunctionType::get(
         oldFuncType.getContext(), expandedInputTypes, expandedResultTypes);
@@ -160,11 +155,6 @@ class ExpandHloTuplesPass
 };
 
 }  // end namespace
-
-std::unique_ptr<OperationPass<ModuleOp>> createExpandHloTuplesPass(
-    const std::string& entryFunctionName) {
-  return std::make_unique<ExpandHloTuplesPass>(entryFunctionName);
-}
 
 }  // namespace mhlo
 }  // namespace mlir

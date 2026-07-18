@@ -19,6 +19,7 @@ limitations under the License.
 #include <deque>
 #include <iostream>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -315,16 +316,16 @@ absl::Status GraphAnalyzer::CollateResult() {
   return absl::OkStatus();
 }
 
-std::vector<string> GraphAnalyzer::DumpRawSubgraphs() {
-  std::vector<string> result;
+std::vector<std::string> GraphAnalyzer::DumpRawSubgraphs() {
+  std::vector<std::string> result;
   for (const auto& it : result_) {
     result.emplace_back(it->Dump());
   }
   return result;
 }
 
-std::vector<string> GraphAnalyzer::DumpSubgraphs() {
-  std::vector<string> result;
+std::vector<std::string> GraphAnalyzer::DumpSubgraphs() {
+  std::vector<std::string> result;
   for (auto ptr : ordered_collation_) {
     result.emplace_back(
         absl::StrFormat("%d %s", ptr->count, ptr->sig->ToString()));

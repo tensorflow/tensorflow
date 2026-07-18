@@ -35,7 +35,8 @@ struct InferredShape {
   DataType handle_type = DT_INVALID;
   PartialTensorShape handle_shape;
 };
-typedef std::unordered_map<string, std::vector<InferredShape>> GraphShapeInfo;
+typedef std::unordered_map<std::string, std::vector<InferredShape>>
+    GraphShapeInfo;
 
 // Infer shapes for all Tensors in a graph, and save them in a map.  The vector
 // for a Node contains the information about each of its outputs.

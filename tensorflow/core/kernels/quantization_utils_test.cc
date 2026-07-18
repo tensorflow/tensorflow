@@ -60,7 +60,7 @@ void TestRequantizeMany(Eigen::ThreadPoolDevice* eigen_device, float input_min,
         &o_tensor);
   }
 
-  const string tolerance_str = absl::StrCat("+-", tolerance);
+  const std::string tolerance_str = absl::StrCat("+-", tolerance);
   for (size_t value_index = 0; value_index < values_count; ++value_index) {
     int e = expected_values[value_index];
     int v = output_values(value_index);
@@ -96,7 +96,7 @@ void TestRequantizeMany8To32Bit(float input_min, float input_max,
                            input_max, output_min, output_max,
                            output_values.data());
 
-  const string tolerance_str = absl::StrCat("+-", tolerance);
+  const std::string tolerance_str = absl::StrCat("+-", tolerance);
   for (int value_index = 0; value_index < values_count; ++value_index) {
     const qint32 e = expected_values[value_index];
     const qint32 v = output_values(value_index);
@@ -143,7 +143,7 @@ void TestRequantizeManyInNewRange32To8Bit(
     qint32 high = Eigen::NumTraits<qint32>::highest();
     std::vector<qint32> vals{low, high};
     int num_steps = 14419;
-    qint32 step = static_cast<int32>((1LL << 32) / num_steps);
+    qint32 step = static_cast<int32_t>((1LL << 32) / num_steps);
     qint32 v = low + static_cast<qint32>(1);
     for (int i = 0; i < num_steps; ++i) {
       vals.push_back(v);
@@ -405,7 +405,7 @@ void TestQuantizedToFloatInPlaceUsingEigen(
         input_array(i) = Eigen::NumTraits<T>::lowest() + i;
       } else {
         int64_t offset = static_cast<int64_t>(q_range / values_count * i);
-        input_array(i) = static_cast<int32>(
+        input_array(i) = static_cast<int32_t>(
             std::min<int64_t>(Eigen::NumTraits<T>::lowest() + offset,
                               Eigen::NumTraits<T>::highest()));
       }
@@ -662,8 +662,8 @@ void TestOverflowWithEigen() {
   // because the implementation does a bounds check using float, not int32.
   test::FillValues<qint32>(
       &expected,
-      {static_cast<int32>(-2147483648), static_cast<int32>(-2147483648),
-       static_cast<int32>(2147483520), static_cast<int32>(2147483520)});
+      {static_cast<int32_t>(-2147483648), static_cast<int32_t>(-2147483648),
+       static_cast<int32_t>(2147483520), static_cast<int32_t>(2147483520)});
 
   FloatToQuantizedStruct<qint32> f2q(input_min, input_max);
   Tensor output(DT_QINT32, shape);

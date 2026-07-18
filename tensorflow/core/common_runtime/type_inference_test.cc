@@ -16,8 +16,11 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/type_inference.h"
 
 #include <functional>
+#include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
+#include "absl/status/status.h"
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -29,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -60,7 +64,6 @@ TEST(TypeInferenceTest, BasicStraightline) {
 
   Node* ds;
   TensorShapeProto shape;
-  shape.mutable_dim();
   shape.set_unknown_rank(false);
   TF_ASSERT_OK(NodeBuilder("ds", "RangeDataset", &root.graph()->flib_def())
                    .Input({NodeBuilder::NodeOut(start.node())})
@@ -100,7 +103,6 @@ TEST(TypeInferenceTest, CyclicGraphWithV1ControlFlow) {
 
   Node* ds;
   TensorShapeProto shape;
-  shape.mutable_dim();
   shape.set_unknown_rank(false);
   TF_ASSERT_OK(NodeBuilder("ds", "RangeDataset", &root.graph()->flib_def())
                    .Input({NodeBuilder::NodeOut(start.node())})
@@ -443,7 +445,6 @@ TEST(ReverseTypeInferenceTest, BasicVDependency) {
 
   Node* ds;  // This node has a type constructor.
   TensorShapeProto shape;
-  shape.mutable_dim();
   shape.set_unknown_rank(false);
   TF_ASSERT_OK(NodeBuilder("ds", "RangeDataset", &root.graph()->flib_def())
                    .Input({NodeBuilder::NodeOut(start.node())})
@@ -491,7 +492,6 @@ TEST(ReverseTypeInferenceTest, FromUnsetType) {
 
   Node* it;
   TensorShapeProto shape;
-  shape.mutable_dim();
   shape.set_unknown_rank(false);
   TF_ASSERT_OK(
       NodeBuilder("it", "AnonymousIteratorV2", &root.graph()->flib_def())

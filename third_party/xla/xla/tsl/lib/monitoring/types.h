@@ -17,6 +17,8 @@ limitations under the License.
 #define XLA_TSL_LIB_MONITORING_TYPES_H_
 
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include "xla/tsl/platform/types.h"
@@ -38,8 +40,8 @@ struct PercentilePoint {
 
 struct Percentiles {
   UnitOfMeasure unit_of_measure = UnitOfMeasure::kNumber;
-  uint64 start_nstime = 0;
-  uint64 end_nstime = 0;
+  uint64_t start_nstime = 0;
+  uint64_t end_nstime = 0;
   double min_value = NAN;
   double max_value = NAN;
   double mean = NAN;

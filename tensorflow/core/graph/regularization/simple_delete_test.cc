@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/graph/regularization/simple_delete.h"
 
+#include <cstdint>
 #include <string>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/regularization/util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
@@ -45,6 +47,17 @@ absl::StatusOr<SavedModel> ReadSavedModel(absl::string_view file_dir) {
   return saved_model_pb;
 }
 
+TEST(SimpleDeleteTest, MissingFAttributeDoesNotCrash) {
+  GraphDef graph_def;
+  NodeDef* node = graph_def.add_node();
+  node->set_op("PartitionedCall");
+  node->set_name("my_node");
+  // Do not add the "f" attribute.
+
+  // This should not crash.
+  SimpleDelete(graph_def);
+}
+
 // Test that SimpleDelete algorithm returns the same hash for two models saved
 // by calling `tf.saved_model.save` twice in a row in the same program.
 TEST(SimpleDeleteTest, TestSimpleDeleteModelSavedTwice) {
@@ -57,7 +70,7 @@ TEST(SimpleDeleteTest, TestSimpleDeleteModelSavedTwice) {
   MetaGraphDef* metagraph = saved_model_pb.mutable_meta_graphs(0);
   GraphDef* graph_def = metagraph->mutable_graph_def();
   SimpleDelete(*graph_def);
-  uint64 hash1 = ComputeHash(*graph_def);
+  uint64_t hash1 = ComputeHash(*graph_def);
 
   const std::string export_dir2 =
       io::JoinPath(testing::TensorFlowSrcRoot(),
@@ -67,7 +80,7 @@ TEST(SimpleDeleteTest, TestSimpleDeleteModelSavedTwice) {
   const MetaGraphDef& metagraph2 = saved_model_pb2.meta_graphs(0);
   GraphDef graph_def2 = metagraph2.graph_def();
   SimpleDelete(graph_def2);
-  uint64 hash2 = ComputeHash(graph_def2);
+  uint64_t hash2 = ComputeHash(graph_def2);
 
   EXPECT_EQ(hash1, hash2);
 }

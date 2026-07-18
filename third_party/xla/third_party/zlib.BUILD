@@ -1,3 +1,5 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # BSD/MIT-like license (for zlib)
@@ -27,17 +29,24 @@ cc_library(
         "trees.c",
         "trees.h",
         "uncompr.c",
-        "zconf.h",
         "zutil.c",
         "zutil.h",
     ],
-    hdrs = ["zlib.h"],
+    hdrs = [
+        "zconf.h",
+        "zlib.h",
+    ],
     copts = select({
-        "@local_xla//xla/tsl:windows": [],
+        "@xla//xla/tsl:windows": [],
         "//conditions:default": [
             "-Wno-shift-negative-value",
             "-DZ_HAVE_UNISTD_H",
         ],
     }),
     includes = ["."],
+)
+
+alias(
+    name = "zlib-ng",
+    actual = ":zlib",
 )

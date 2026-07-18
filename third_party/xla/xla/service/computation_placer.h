@@ -25,8 +25,8 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "xla/array2d.h"
-#include "xla/service/global_device_id.h"
-#include "xla/stream_executor/platform.h"
+#include "xla/runtime/device_id.h"
+#include "xla/stream_executor/platform_id.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -100,13 +100,13 @@ class ComputationPlacer {
   using CreationFunction = std::function<std::unique_ptr<ComputationPlacer>()>;
 
   // Registers a computation placer creation function for a particular platform.
-  static void RegisterComputationPlacer(se::Platform::Id platform_id,
+  static void RegisterComputationPlacer(se::PlatformId platform_id,
                                         CreationFunction creation_function);
 
   // Returns the computation placer singleton pointer if it is available for the
   // given platform, or an error status if it is not.
   static absl::StatusOr<ComputationPlacer*> GetForPlatform(
-      const se::Platform* platform);
+      se::PlatformId platform_id);
 
  private:
   ComputationPlacer(const ComputationPlacer&) = delete;

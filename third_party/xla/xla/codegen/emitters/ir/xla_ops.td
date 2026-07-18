@@ -195,15 +195,15 @@ def ApplyIndexingOp : XLA_Op<"apply_indexing", [Pure]> {
                    "const IndexingMap&":$indexing_map)>,
     OpBuilder<(ins "mlir::ValueRange":$operands,
                    "const IndexingMap&":$indexing_map)>,
-    OpBuilder<(ins "mlir::ValueRange":$operands, "mlir::AffineMap":$affine_map,
+    OpBuilder<(ins "mlir::ValueRange":$operands, "xla::SymbolicMap":$symbolic_map,
                "llvm::ArrayRef<IndexingMap::Variable>":$dim_vars,
                "llvm::ArrayRef<IndexingMap::Variable>":$range_vars)>,
   ];
   let extraClassDeclaration = [{
     // Returns the indexing map constructed from IndexingMapAttr.
     xla::IndexingMap getIndexingMap();
-    // Extracts the affine map from the attribute.
-    mlir::AffineMap getAffineMap() { return getIndexingMapAttr().getMap(); }
+    // Extracts the symbolic map from the attribute.
+    xla::SymbolicMap getSymbolicMap() { return getIndexingMapAttr().getMap(); }
   }];
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
@@ -298,6 +298,19 @@ def WorkGroupIdOp : XLA_Op<"workgroup_id", [
   let results = (outs Index);
 }
 
+def GetDynamicDimSizeOp : XLA_Op<"get_dynamic_dim_size", [
+    Pure,
+  ]> {
+  let summary = "Returns the dynamic size of a dimension. The dynamic sizes are "
+                "stored in the same buffer, after the main values as an array "
+                "of s32. The `dim` argument can be larger than `tensor`'s rank, "
+                "because XLA has passes like flatten_tensors that only change "
+                "the view of the memory.";
+  let arguments =(ins AnyStaticShapeTensor:$tensor, I64Attr:$dim);
+  let results = (outs I32:$result);
+
+  let assemblyFormat = "$tensor $dim attr-dict `:` type($tensor)";
+}
 
 #endif // XLA_CODEGEN_EMITTERS_IR_XLA_OPS
 

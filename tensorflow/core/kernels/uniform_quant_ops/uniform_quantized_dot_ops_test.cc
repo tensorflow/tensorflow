@@ -53,13 +53,13 @@ TEST_F(UniformQuantizedDotTest, PerTensorQuantized) {
   AddInputFromArray<qint8>(TensorShape({2, 3}), {1, 2, 3, 4, 5, 6});
   // lhs scales and zero_points.
   AddInputFromArray<float>(TensorShape({}), {0.5});
-  AddInputFromArray<int32>(TensorShape({}), {1});
+  AddInputFromArray<int32_t>(TensorShape({}), {1});
   // rhs scales and zero_points.
   AddInputFromArray<float>(TensorShape({}), {2.0});
-  AddInputFromArray<int32>(TensorShape({}), {2});
+  AddInputFromArray<int32_t>(TensorShape({}), {2});
   // output scales and zero_points.
   AddInputFromArray<float>(TensorShape({}), {0.25});
-  AddInputFromArray<int32>(TensorShape({}), {-20});
+  AddInputFromArray<int32_t>(TensorShape({}), {-20});
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QINT32, TensorShape({2, 3}));
@@ -99,13 +99,13 @@ TEST_F(UniformQuantizedDotTest, PerChannelQuantized) {
   AddInputFromArray<qint8>(TensorShape({2, 3}), {1, 4, 3, 4, 7, 6});
   // lhs scales and zero_points.
   AddInputFromArray<float>(TensorShape({}), {0.5});
-  AddInputFromArray<int32>(TensorShape({}), {1});
+  AddInputFromArray<int32_t>(TensorShape({}), {1});
   // rhs scales and zero_points.
   AddInputFromArray<float>(TensorShape({3}), {2.0, 4.0, 2.0});
-  AddInputFromArray<int32>(TensorShape({3}), {2, 4, 2});
+  AddInputFromArray<int32_t>(TensorShape({3}), {2, 4, 2});
   // output scales and zero_points.
   AddInputFromArray<float>(TensorShape({}), {0.25});
-  AddInputFromArray<int32>(TensorShape({}), {-20});
+  AddInputFromArray<int32_t>(TensorShape({}), {-20});
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QINT32, TensorShape({2, 3}));
@@ -144,14 +144,14 @@ TEST_F(UniformQuantizedDotTest, PerTensorQuantizedEffectiveMultiplierOne) {
   AddInputFromArray<qint8>(TensorShape({2, 3}), {1, 2, 3, 4, 5, 6});
   // lhs scales and zero_points.
   AddInputFromArray<float>(TensorShape({}), {0.5});
-  AddInputFromArray<int32>(TensorShape({}), {1});
+  AddInputFromArray<int32_t>(TensorShape({}), {1});
   // rhs scales and zero_points.
   AddInputFromArray<float>(TensorShape({}), {0.5});
-  AddInputFromArray<int32>(TensorShape({}), {2});
+  AddInputFromArray<int32_t>(TensorShape({}), {2});
   // output scales and zero_points, where
   // output_scalar_scale = lhs_scalar_scale * rhs_scalar_scale
   AddInputFromArray<float>(TensorShape({}), {0.25});
-  AddInputFromArray<int32>(TensorShape({}), {-4});
+  AddInputFromArray<int32_t>(TensorShape({}), {-4});
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QINT32, TensorShape({2, 3}));
@@ -191,14 +191,14 @@ TEST_F(UniformQuantizedDotTest, PerChannelQuantizedEffectiveMultiplierOne) {
   AddInputFromArray<qint8>(TensorShape({2, 3}), {1, 2, 3, 4, 5, 6});
   // lhs scales and zero_points.
   AddInputFromArray<float>(TensorShape({}), {0.5});
-  AddInputFromArray<int32>(TensorShape({}), {1});
+  AddInputFromArray<int32_t>(TensorShape({}), {1});
   // rhs scales and zero_points.
   AddInputFromArray<float>(TensorShape({3}), {0.5, 1.0, 0.5});
-  AddInputFromArray<int32>(TensorShape({3}), {2, 4, 2});
+  AddInputFromArray<int32_t>(TensorShape({3}), {2, 4, 2});
   // output scales and zero_points, where
   // [output_scales] = lhs_scalar_scale * [rhs_scales]
   AddInputFromArray<float>(TensorShape({3}), {0.25, 0.5, 0.25});
-  AddInputFromArray<int32>(TensorShape({3}), {4, 8, 4});
+  AddInputFromArray<int32_t>(TensorShape({3}), {4, 8, 4});
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QINT32, TensorShape({2, 3}));
@@ -228,7 +228,7 @@ TEST_F(UniformQuantizedDotTest, HybridPerTensorQuantized) {
   AddInputFromArray<qint8>(TensorShape({2, 3}), {1, 2, 3, 4, 5, 6});
   // rhs output scales and zero_points.
   AddInputFromArray<float>(TensorShape({}), {2.0});
-  AddInputFromArray<int32>(TensorShape({}), {2});
+  AddInputFromArray<int32_t>(TensorShape({}), {2});
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 3}));
@@ -259,7 +259,7 @@ TEST_F(UniformQuantizedDotTest, HybridPerChannelQuantized) {
   AddInputFromArray<qint8>(TensorShape({2, 3}), {1, 2, 3, 4, 5, 6});
   // rhs output scales and zero_points.
   AddInputFromArray<float>(TensorShape({3}), {2.0, 4.0, 2.0});
-  AddInputFromArray<int32>(TensorShape({3}), {2, 4, 2});
+  AddInputFromArray<int32_t>(TensorShape({3}), {2, 4, 2});
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 3}));

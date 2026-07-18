@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/translate/hlo_to_mhlo/async_importer.h"
 
 #include <cassert>
+#include <cstddef>
 #include <functional>
 #include <optional>
 #include <string>
@@ -23,9 +24,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -53,21 +57,62 @@ namespace xla {
 
 namespace {
 
-// ============
-// Imports an old-style async start op. E.g. an HLO all-gather-start
-// instruction is imported as an async-start associated with an all-gather
-// computation.
-//
-// Eventually, old-style async ops (e.g. all-gather-start) and new-style async
-// ops (i.e. async-start, async-update and async-done) will converge on the
-// HLO side, so we decided to not introduce new MHLO ops for all-gather-start
-// and friends.
-//
-// In the end, there may be new ops added in the old-style because they're not
-// compatible with the new-style async semantics, but those should be handled
-// on their own, rather than this function which "upgrades" ops to the
-// new-style async API.
-// ============
+std::string TypeToString(mlir::Type t) {
+  std::string s;
+  llvm::raw_string_ostream stream(s);
+  t.print(stream);
+  stream.flush();
+  return s;
+}
+
+template <typename sync_op>
+absl::StatusOr<mlir::Operation*> ImportStablehloAsyncStart(
+    mlir::SymbolTable& symbol_table,
+    llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes,
+    const llvm::SmallVectorImpl<mlir::Value>& operands, mlir::Location loc,
+    mlir::Type result_type, mlir::OpBuilder* builder, std::string func_name,
+    std::function<absl::Status(sync_op)> mutate_op) {
+  // Validate that the async collective start operation returns a tuple with at
+  // least two elements. The first element is the input type, and the second
+  // element is the output type. For example, an async all-gather across two
+  // devices would have a result_type like (f32[2, 2], f32[4, 2]).
+  if (!llvm::isa<mlir::TupleType>(result_type)) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("async collective start must return tuple; got ",
+                     TypeToString(result_type)));
+  }
+  auto result_types = mlir::cast<mlir::TupleType>(result_type).getTypes();
+  if (std::size_t n = result_types.size(); n < 2) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "async collective start must return at least two values; got ", n));
+  }
+
+  // Construct future types.
+  mlir::Type output_type = result_types[1];
+  auto context = builder->getContext();
+  mlir::Type future_type =
+      mlir::stablehlo::FutureType::get(context, output_type);
+
+  // Construct the AsyncStartOp and associated region.
+  auto async_start = mlir::stablehlo::AsyncStartOp::create(
+      *builder, loc, future_type, operands);
+  mlir::Region& region = async_start.getBody();
+  auto async_builder = mlir::OpBuilder(&region);
+  llvm::SmallVector<mlir::Location, 1> locs(operands.size(), loc);
+  llvm::SmallVector<mlir::Type> operand_types;
+  for (auto operand : operands) {
+    operand_types.push_back(operand.getType());
+  }
+  auto* body = async_builder.createBlock(&region, {}, operand_types, locs);
+  auto sync_operands = body->getArguments();
+  auto sync_operation = sync_op::create(async_builder, loc, output_type,
+                                        sync_operands, attributes);
+  mlir::stablehlo::ReturnOp::create(async_builder, loc,
+                                    sync_operation->getResults());
+  RETURN_IF_ERROR(mutate_op(sync_operation));
+  return async_start.getOperation();
+}
+
 template <typename sync_op>
 absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncStart(
     mlir::SymbolTable& symbol_table,
@@ -77,12 +122,12 @@ absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncStart(
     std::function<absl::Status(sync_op)> mutate_op) {
   auto context = builder->getContext();
   if (!llvm::isa<mlir::TupleType>(result_type)) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "expected async_bundle tuple result type");
   }
   auto result_types = mlir::cast<mlir::TupleType>(result_type).getTypes();
   if (result_types.size() < 2) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "async_bundle must contain at least two values");
   }
   auto func_type = mlir::FunctionType::get(context, Untuple(result_types[0]),
@@ -127,19 +172,33 @@ absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncStart(
       async_builder
           .createBlock(&function.getBody(), {}, Untuple(result_types[0]), locs)
           ->getArguments();
-  auto sync_operation = async_builder.create<sync_op>(
-      loc, Untuple(result_types[1]), sync_operand, attributes);
-  async_builder.create<mlir::func::ReturnOp>(loc, sync_operation->getResults());
-  TF_RETURN_IF_ERROR(mutate_op(sync_operation));
+  auto sync_operation = sync_op::create(
+      async_builder, loc, Untuple(result_types[1]), sync_operand, attributes);
+  mlir::func::ReturnOp::create(async_builder, loc,
+                               sync_operation->getResults());
+  RETURN_IF_ERROR(mutate_op(sync_operation));
 
   function->setAttr(kExecutionThread, builder->getStringAttr("main"));
 
   auto bundle_result_type =
       mlir::mhlo::AsyncBundleType::get(context, result_types);
-  return builder
-      ->create<mlir::mhlo::AsyncStartOp>(loc, bundle_result_type, operands,
-                                         async_attributes)
+  return mlir::mhlo::AsyncStartOp::create(*builder, loc, bundle_result_type,
+                                          operands, async_attributes)
       .getOperation();
+}
+
+absl::StatusOr<mlir::Operation*> ImportStablehloAsyncDone(
+    const llvm::SmallVectorImpl<mlir::Value>& operands, mlir::Location loc,
+    mlir::Type result_type, mlir::OpBuilder* builder) {
+  if (operands.size() != 1) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "HLO async done op got ", operands.size(), " arguments; want 1"));
+  }
+  auto future_type =
+      llvm::cast<mlir::stablehlo::FutureType>(operands[0].getType());
+  auto op = mlir::stablehlo::AsyncDoneOp::create(
+      *builder, loc, future_type.getTypes(), operands);
+  return op.getOperation();
 }
 
 absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncDone(
@@ -150,7 +209,9 @@ absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncDone(
   assert(operands.size() == 1 &&
          "*-done ops must take only a single async_bundle operand");
   auto async_start = operands[0].getDefiningOp<mlir::mhlo::AsyncStartOp>();
-  if (!async_start) return InvalidArgument("*-start requires *-done as input");
+  if (!async_start) {
+    return InvalidArgument("*-start requires *-done as input");
+  }
   attributes.push_back(builder->getNamedAttr(
       "called_computation",
       mlir::FlatSymbolRefAttr::get(builder->getContext(),
@@ -164,16 +225,14 @@ absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncDone(
   auto start_tuple =
       llvm::dyn_cast<mlir::TupleType>(async_bundle.getTypes()[1]);
   if (start_tuple && llvm::isa<mlir::TupleType>(start_tuple.getType(0))) {
-    auto op = builder->create<mlir::mhlo::AsyncDoneOp>(loc, result_type,
-                                                       operands, attributes);
+    auto op = mlir::mhlo::AsyncDoneOp::create(*builder, loc, result_type,
+                                              operands, attributes);
     return {op};
-  } else {
-    if (useBundleResult) result_type = async_bundle.getTypes()[1];
-    auto op = builder->create<mlir::mhlo::AsyncDoneOp>(
-        loc, Untuple(result_type), operands, attributes);
-    return CreateTupleFromOpResults(builder, loc, op.getOperation(),
-                                    result_type);
   }
+  if (useBundleResult) result_type = async_bundle.getTypes()[1];
+  auto op = mlir::mhlo::AsyncDoneOp::create(*builder, loc, Untuple(result_type),
+                                            operands, attributes);
+  return CreateTupleFromOpResults(builder, loc, op.getOperation(), result_type);
 }
 
 }  // namespace
@@ -213,8 +272,9 @@ absl::StatusOr<mlir::Operation*> ImportSend(
     // `send-done` ops to use the new-style async API, we need to reorder the
     // arguments to be in (args, token, sync flag) order.
     auto result_types = mlir::cast<mlir::TupleType>(result_type).getTypes();
-    if (result_types.size() != 3)
+    if (result_types.size() != 3) {
       return InvalidArgument("send should return a 3-tuple");
+    }
     auto async_arg_type = mlir::TupleType::get(
         builder->getContext(), {result_types[0], result_types[2]});
     auto async_bundled_tuple = mlir::TupleType::get(
@@ -232,9 +292,8 @@ absl::StatusOr<mlir::Operation*> ImportSend(
   if (args.size() == 2 && IsEmptyTuple(args[0].getType())) {
     args = args.drop_front(1);
   }
-  auto send = builder
-                  ->create<mlir::stablehlo::SendOp>(loc, token.getType(), args,
-                                                    attributes)
+  auto send = mlir::stablehlo::SendOp::create(*builder, loc, token.getType(),
+                                              args, attributes)
                   .getOperation();
   if (instruction->has_sharding()) {
     const HloSharding& sharding = instruction->sharding();
@@ -276,8 +335,9 @@ absl::StatusOr<mlir::Operation*> ImportRecv(
   // Currently only consolidates async recv with result, 0-result recv uses old
   // style, unclear if this support is needed.
   auto result_types = llvm::cast<mlir::TupleType>(result_type).getTypes();
-  if (result_types.size() != 3)
+  if (result_types.size() != 3) {
     return InvalidArgument("recv should return a 3-tuple");
+  }
 
   bool isPipelined =
       instruction->users().front()->opcode() != HloOpcode::kRecvDone;
@@ -303,8 +363,9 @@ absl::StatusOr<mlir::Operation*> ImportRecv(
 
   // Return recv op for non-pipelined send, skip empty tuple result type
   if (!IsEmptyTuple(result_types[0])) {
-    auto recv = builder->create<mlir::stablehlo::RecvOp>(
-        loc, llvm::SmallVector<mlir::Type>{result_types[0], result_types[2]},
+    auto recv = mlir::stablehlo::RecvOp::create(
+        *builder, loc,
+        llvm::SmallVector<mlir::Type>{result_types[0], result_types[2]},
         operands, attributes);
     if (instruction->has_sharding()) {
       const HloSharding& sharding = instruction->sharding();
@@ -326,14 +387,14 @@ absl::StatusOr<mlir::Operation*> ImportRecv(
 
   // Recv with no result, only token.
   // To keep parity, if op only returns token, wrap in tuple<tuple<>, token>
-  auto recv = builder->create<mlir::stablehlo::RecvOp>(
-      loc, llvm::SmallVector<mlir::Type>{result_types[2]}, operands,
+  auto recv = mlir::stablehlo::RecvOp::create(
+      *builder, loc, llvm::SmallVector<mlir::Type>{result_types[2]}, operands,
       attributes);
-  auto empty_tuple = builder->create<mlir::stablehlo::TupleOp>(
-      loc, llvm::ArrayRef<mlir::Value>{});
+  auto empty_tuple = mlir::stablehlo::TupleOp::create(
+      *builder, loc, llvm::ArrayRef<mlir::Value>{});
 
-  return builder->create<mlir::stablehlo::TupleOp>(
-      loc,
+  return mlir::stablehlo::TupleOp::create(
+      *builder, loc,
       llvm::ArrayRef<mlir::Value>{empty_tuple.getResult(), recv.getResult(0)});
 }
 
@@ -350,15 +411,18 @@ absl::StatusOr<mlir::Operation*> ImportAllGatherStart(
       "all_gather_dim",
       builder->getI64IntegerAttr(all_gather_start->all_gather_dimension())));
   attributes.push_back(
-      ConvertReplicaGroups(all_gather_start->replica_groups(), builder));
-  if (all_gather_start->channel_id().has_value())
+      ConvertReplicaGroups(all_gather_start, &symbol_table, builder));
+  if (all_gather_start->channel_id().has_value()) {
     attributes.push_back(stablehlo::ConvertChannelHandle(
         all_gather_start->channel_id().value(), builder));
-  if (all_gather_start->use_global_device_ids())
+  }
+  if (all_gather_start->use_global_device_ids()) {
     attributes.push_back(ConvertUseGlobalDeviceIds(builder));
-  if (all_gather_start->operands().size() > 1)
+  }
+  if (all_gather_start->operands().size() > 1) {
     return InvalidArgument(
         "Async tuple all-gather is not supported in StableHLO");
+  }
 
   if (!llvm::isa<mlir::TupleType>(result_type)) {
     // Async AllGather's output type is bundle<input_type,output_type>
@@ -369,7 +433,7 @@ absl::StatusOr<mlir::Operation*> ImportAllGatherStart(
                                        {operands[0].getType(), result_type});
   }
 
-  return ImportOldStyleAsyncStart<mlir::stablehlo::AllGatherOp>(
+  return ImportStablehloAsyncStart<mlir::stablehlo::AllGatherOp>(
       symbol_table, attributes, operands, loc, result_type, builder,
       "all_gather_", [](auto) { return absl::OkStatus(); });
 }
@@ -383,15 +447,18 @@ absl::StatusOr<mlir::Operation*> ImportAllReduceStart(
     mlir::SymbolTable& symbol_table) {
   auto all_reduce_start = Cast<HloAllReduceInstruction>(instruction);
   attributes.push_back(
-      ConvertReplicaGroups(all_reduce_start->replica_groups(), builder));
-  if (all_reduce_start->channel_id().has_value())
+      ConvertReplicaGroups(all_reduce_start, &symbol_table, builder));
+  if (all_reduce_start->channel_id().has_value()) {
     attributes.push_back(stablehlo::ConvertChannelHandle(
         all_reduce_start->channel_id().value(), builder));
-  if (all_reduce_start->use_global_device_ids())
+  }
+  if (all_reduce_start->use_global_device_ids()) {
     attributes.push_back(ConvertUseGlobalDeviceIds(builder));
-  if (all_reduce_start->operands().size() > 1)
+  }
+  if (all_reduce_start->operands().size() > 1) {
     return InvalidArgument(
         "Async tuple all-reduce is not supported in StableHLO");
+  }
 
   if (!llvm::isa<mlir::TupleType>(result_type)) {
     // Async AllReduce's output type is bundle<input_type,output_type>
@@ -402,7 +469,7 @@ absl::StatusOr<mlir::Operation*> ImportAllReduceStart(
                                        {operands[0].getType(), result_type});
   }
 
-  return ImportOldStyleAsyncStart<mlir::stablehlo::AllReduceOp>(
+  return ImportStablehloAsyncStart<mlir::stablehlo::AllReduceOp>(
       symbol_table, attributes, operands, loc, result_type, builder,
       "all_reduce_", mutate_op);
 }
@@ -417,6 +484,10 @@ absl::StatusOr<mlir::Operation*> ImportCollectivePermuteStart(
     mlir::SymbolTable& symbol_table) {
   attributes.push_back(
       ConvertSourceTargetPairs(instruction->source_target_pairs(), builder));
+  if (instruction->channel_id().has_value()) {
+    attributes.push_back(stablehlo::ConvertChannelHandle(
+        instruction->channel_id().value(), builder));
+  }
   if (!llvm::isa<mlir::TupleType>(result_type)) {
     // Async CollectivePermute's output type is bundle<input_type,output_type>
     // There are some instances where the output type is not a tuple, this seems
@@ -425,7 +496,7 @@ absl::StatusOr<mlir::Operation*> ImportCollectivePermuteStart(
     result_type = mlir::TupleType::get(builder->getContext(),
                                        {operands[0].getType(), result_type});
   }
-  return ImportOldStyleAsyncStart<mlir::stablehlo::CollectivePermuteOp>(
+  return ImportStablehloAsyncStart<mlir::stablehlo::CollectivePermuteOp>(
       symbol_table, attributes, operands, loc, result_type, builder,
       "collective_permute_", [&](auto) { return absl::OkStatus(); });
 }
@@ -470,6 +541,10 @@ absl::StatusOr<mlir::Operation*> ImportAsyncOpDone(
   if (consolidate_if_parent.has_value() &&
       instruction->operand(0)->opcode() == consolidate_if_parent.value()) {
     return operands[0].getDefiningOp();
+  }
+  if (!operands.empty() &&
+      llvm::isa<mlir::stablehlo::FutureType>(operands[0].getType())) {
+    return ImportStablehloAsyncDone(operands, loc, result_type, builder);
   }
   return ImportOldStyleAsyncDone(attributes, operands, loc, result_type,
                                  builder);

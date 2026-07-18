@@ -95,8 +95,8 @@ class MergeConsecutiveQuantizeCast
         q_op.getArg().getDefiningOp<mlir::quant::ir::QuantizeCastOp>();
     if (!preceding_qcast) return failure();
 
-    auto new_qcast = rewriter.create<mlir::quant::ir::QuantizeCastOp>(
-        q_op.getLoc(), q_op.getType(), preceding_qcast.getArg());
+    auto new_qcast = mlir::quant::ir::QuantizeCastOp::create(
+        rewriter, q_op.getLoc(), q_op.getType(), preceding_qcast.getArg());
     new_qcast->setAttr(kVolatileOpAttrName, rewriter.getUnitAttr());
     q_op->replaceAllUsesWith(new_qcast);
     return success();

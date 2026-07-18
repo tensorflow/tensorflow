@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/clusters/cluster.h"
 
 #include <algorithm>
+#include <string>
 #include <vector>
 
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -48,7 +49,7 @@ void Cluster::SetNumWarmupSteps(int num_steps) {
 }
 
 // Set executor type to instantiate
-void Cluster::SetExecutorType(const string* executor_type) {
+void Cluster::SetExecutorType(const std::string* executor_type) {
   options_.config.mutable_experimental()->set_executor_type(*executor_type);
 }
 
@@ -100,8 +101,8 @@ void Cluster::DisableOptimizer(bool disable) {
   }
 }
 
-const std::vector<string> Cluster::GetDeviceNames() const {
-  std::vector<string> device_names;
+const std::vector<std::string> Cluster::GetDeviceNames() const {
+  std::vector<std::string> device_names;
   device_names.reserve(devices_.size());
   for (const auto& device : devices_) {
     device_names.push_back(device.first);

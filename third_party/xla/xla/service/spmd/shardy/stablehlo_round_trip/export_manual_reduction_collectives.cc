@@ -19,13 +19,15 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <utility>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringMap.h"
+#include "llvm/Support/CommandLine.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
@@ -69,6 +71,7 @@ using ::mlir::StringRef;
 using ::mlir::Value;
 
 using ::mlir::sdy::AxisRefAttr;
+using ::mlir::sdy::AxisRefListAttr;
 using ::mlir::sdy::ManualComputationOp;
 using ::mlir::sdy::MeshAttr;
 using ::mlir::sdy::TensorShardingAttr;
@@ -99,69 +102,11 @@ bool inputHasUnreducedAxes(CollectiveTy collective) {
   return false;
 }
 
-// Builds the replica groups for `reductionAxesAttr`.
-//
-// For example, given:
-//
-// - reductionAxesAttr = ["y"]
-// - mesh = ["x"=2, "y"=2]
-//
-// Returns `[[0, 1], [2, 3]]`.
-mlir::DenseIntElementsAttr getReplicaGroups(
-    sdy::AxisRefListAttr reductionAxesAttr, MeshAttr mesh,
-    OpBuilder& rewriter) {
-  SmallVector<AxisRefAttr> meshAxisRefs =
-      getOrderedAxisRefs(reductionAxesAttr, mesh);
-
-  ArrayRef<AxisRefAttr> reductionAxes = reductionAxesAttr.getValue();
-  int64_t groupSize = 1;
-  llvm::SmallDenseMap<AxisRefAttr, int64_t> axisRefToReductionIndex;
-  axisRefToReductionIndex.reserve(reductionAxes.size());
-  for (auto [index, axis] : llvm::enumerate(reductionAxes)) {
-    groupSize *= axis.getSize(mesh);
-    axisRefToReductionIndex[axis] = index;
-  }
-  int64_t totalSize = mesh.getTotalSize();
-  int64_t numGroups = totalSize / groupSize;
-
-  SmallVector<int64_t> transposePerm(meshAxisRefs.size());
-  SmallVector<int64_t> reshapeDims;
-  reshapeDims.reserve(meshAxisRefs.size());
-
-  int64_t nonReductionIndex = 0;
-  int64_t nonReductionCount = meshAxisRefs.size() - reductionAxes.size();
-  for (auto [meshIndex, axis] : llvm::enumerate(meshAxisRefs)) {
-    reshapeDims.push_back(axis.getSize(mesh));
-    auto reductionIndexIt = axisRefToReductionIndex.find(axis);
-    if (reductionIndexIt == axisRefToReductionIndex.end()) {
-      // Axis is not a reduction axis.
-      transposePerm[nonReductionIndex++] = meshIndex;
-    } else {
-      transposePerm[nonReductionCount + reductionIndexIt->second] = meshIndex;
-    }
-  }
-
-  // TODO(b/410040098): output V2 if possible, and maybe canonicalize.
-
-  Array<int64_t> array(reshapeDims);
-  if (mesh.getDeviceIds().empty()) {
-    array.FillIota(0);
-  } else {
-    array.SetValues(mesh.getDeviceIds());
-  }
-  array.TransposeDimensions(transposePerm);
-  array.Reshape({totalSize});
-  auto replicaGroupsType = RankedTensorType::get({numGroups, groupSize},
-                                                 rewriter.getIntegerType(64));
-  return mlir::DenseIntElementsAttr::get(replicaGroupsType,
-                                         llvm::to_vector(array));
-}
-
 // Creates a manual computation, with all axes in `mesh` as manual, and
 // populates its body via the `bodyPopulator` function.
 ManualComputationOp createFullyManualComputation(
     mlir::Location loc, Value input, TensorShardingAttr outSharding,
-    MeshAttr mesh, OpBuilder& builder,
+    MeshAttr mesh, OpBuilder& builder, ArrayRef<AxisRefAttr> unreducedAxes,
     std::function<Value(mlir::BlockArgument arg, OpBuilder& blockBuilder)>
         bodyPopulator) {
   SmallVector<mlir::StringAttr> manualAxes;
@@ -170,8 +115,11 @@ ManualComputationOp createFullyManualComputation(
     manualAxes.push_back(builder.getStringAttr(axis.getName()));
   }
   TensorShardingAttr inSharding = sdy::getOrCreateSharding(input, mesh);
-  auto op = builder.create<ManualComputationOp>(
-      loc, input.getType(), input, inSharding, outSharding, manualAxes);
+  if (!unreducedAxes.empty()) {
+    inSharding = inSharding.replaceUnreducedAxes(unreducedAxes);
+  }
+  auto op = ManualComputationOp::create(builder, loc, input.getType(), input,
+                                        inSharding, outSharding, manualAxes);
 
   mlir::Block& block = op.getBody().emplaceBlock();
   auto globalType = mlir::dyn_cast<RankedTensorType>(input.getType());
@@ -181,9 +129,10 @@ ManualComputationOp createFullyManualComputation(
   CHECK(localType) << kNonDivisibleShardingError;
 
   OpBuilder blockBuilder = OpBuilder::atBlockBegin(&block);
-  blockBuilder.create<sdy::ReturnOp>(
-      loc, bodyPopulator(block.addArgument(localType, input.getLoc()),
-                         blockBuilder));
+  sdy::ReturnOp::create(
+      blockBuilder, loc,
+      bodyPopulator(block.addArgument(localType, input.getLoc()),
+                    blockBuilder));
   return op;
 }
 
@@ -193,22 +142,37 @@ void convertAllReduce(sdy::AllReduceOp op, int64_t channelId,
   rewriter.setInsertionPoint(op);
   ManualComputationOp manualComputation = createFullyManualComputation(
       op.getLoc(), op.getTensor(), op.getOutSharding(), mesh, rewriter,
+      /*unreducedAxes=*/{},
       [&](mlir::BlockArgument arg, OpBuilder& blockBuilder) {
         // Channel type is DEVICE_TO_DEVICE.
         auto channelHandle = stablehlo::ChannelHandleAttr::get(
             op->getContext(), /*handle=*/channelId, /*type=*/1);
         // Setting `use_global_device_ids=true` as we are targeting the
         // `CollectiveOpGroupMode::kFlattenedID` mode.
-        auto newAllReduce = blockBuilder.create<stablehlo::AllReduceOp>(
-            op.getLoc(), arg.getType(), arg,
+        auto newAllReduce = stablehlo::AllReduceOp::create(
+            blockBuilder, op.getLoc(), arg.getType(), arg,
             getReplicaGroups(op.getReductionAxesAttr(), mesh, blockBuilder),
             channelHandle,
             /*use_global_device_ids=*/true);
         // No need to add a sharding to the all-reduce, since it's inside a
         // fully manual computation.
-        stablehlo::buildReduceBody<stablehlo::AddOp>(
-            mlir::cast<mlir::ShapedType>(arg.getType()).getElementType(),
-            newAllReduce.getComputation(), blockBuilder);
+        switch (op.getReductionOp()) {
+          case sdy::ReductionOp::SUM:
+            stablehlo::buildReduceBody<stablehlo::AddOp>(
+                mlir::cast<mlir::ShapedType>(arg.getType()).getElementType(),
+                newAllReduce.getComputation(), blockBuilder);
+            break;
+          case sdy::ReductionOp::MAX:
+            stablehlo::buildReduceBody<stablehlo::MaxOp>(
+                mlir::cast<mlir::ShapedType>(arg.getType()).getElementType(),
+                newAllReduce.getComputation(), blockBuilder);
+            break;
+          case sdy::ReductionOp::MIN:
+            stablehlo::buildReduceBody<stablehlo::MinOp>(
+                mlir::cast<mlir::ShapedType>(arg.getType()).getElementType(),
+                newAllReduce.getComputation(), blockBuilder);
+            break;
+        }
         return newAllReduce.getResult(0);
       });
   rewriter.replaceOp(op, manualComputation);
@@ -218,9 +182,16 @@ int64_t convertReduceScatter(sdy::ReduceScatterOp op, int64_t nextChannelId,
                              mlir::IRRewriter& rewriter) {
   MeshAttr mesh = op.getOutSharding().getMesh(op);
   rewriter.setInsertionPoint(op);
+  SmallVector<AxisRefAttr> unreducedAxes;
+  for (mlir::Attribute dimAxesAttr : op.getReduceScatterAxes()) {
+    if (auto dimAxes = mlir::dyn_cast<AxisRefListAttr>(dimAxesAttr)) {
+      llvm::append_range(unreducedAxes, dimAxes.getValue());
+    }
+  }
+  sortAndMergeAxes(unreducedAxes, mesh);
   ManualComputationOp manualComputation = createFullyManualComputation(
       op.getLoc(), op.getTensor(), op.getOutSharding(), mesh, rewriter,
-      [&](mlir::BlockArgument arg, OpBuilder& blockBuilder) {
+      unreducedAxes, [&](mlir::BlockArgument arg, OpBuilder& blockBuilder) {
         Value curInput = arg;
         auto inputType = mlir::cast<RankedTensorType>(curInput.getType());
         SmallVector<int64_t> curShape = llvm::to_vector(inputType.getShape());
@@ -239,23 +210,175 @@ int64_t convertReduceScatter(sdy::ReduceScatterOp op, int64_t nextChannelId,
               op->getContext(), /*handle=*/nextChannelId++, /*type=*/1);
           // Setting `use_global_device_ids=true` as we are targeting the
           // `CollectiveOpGroupMode::kFlattenedID` mode.
-          auto newReduceScatter =
-              blockBuilder.create<stablehlo::ReduceScatterOp>(
-                  op.getLoc(),
-                  RankedTensorType::get(curShape, inputType.getElementType()),
-                  curInput, dim, replicaGroups, channelHandle,
-                  /*use_global_device_ids=*/true);
+          auto newReduceScatter = stablehlo::ReduceScatterOp::create(
+              blockBuilder, op.getLoc(),
+              RankedTensorType::get(curShape, inputType.getElementType()),
+              curInput, dim, replicaGroups, channelHandle,
+              /*use_global_device_ids=*/true);
           // No need to add a sharding to the reduce-scatter, since it's inside
           // a fully manual computation.
-          stablehlo::buildReduceBody<stablehlo::AddOp>(
-              mlir::cast<mlir::ShapedType>(arg.getType()).getElementType(),
-              newReduceScatter.getComputation(), blockBuilder);
+          switch (op.getReductionOp()) {
+            case sdy::ReductionOp::SUM:
+              stablehlo::buildReduceBody<stablehlo::AddOp>(
+                  mlir::cast<mlir::ShapedType>(arg.getType()).getElementType(),
+                  newReduceScatter.getComputation(), blockBuilder);
+              break;
+            case sdy::ReductionOp::MAX:
+              stablehlo::buildReduceBody<stablehlo::MaxOp>(
+                  mlir::cast<mlir::ShapedType>(arg.getType()).getElementType(),
+                  newReduceScatter.getComputation(), blockBuilder);
+              break;
+            case sdy::ReductionOp::MIN:
+              stablehlo::buildReduceBody<stablehlo::MinOp>(
+                  mlir::cast<mlir::ShapedType>(arg.getType()).getElementType(),
+                  newReduceScatter.getComputation(), blockBuilder);
+              break;
+          }
           curInput = newReduceScatter.getResult();
         }
         return curInput;
       });
   rewriter.replaceOp(op, manualComputation);
   return nextChannelId;
+}
+
+std::pair<llvm::StringMap<Value>, llvm::StringMap<Value>>
+getAxesCoordinateAndSize(OpBuilder& builder, mlir::Location loc,
+                         MeshAttr mesh) {
+  Value partitionId = stablehlo::PartitionIdOp::create(builder, loc);
+  Value currentRem = stablehlo::ConvertOp::create(
+      builder, loc, RankedTensorType::get({}, builder.getIntegerType(32)),
+      partitionId);
+  llvm::StringMap<Value> axisSizes, axisCoordinates;
+  for (sdy::MeshAxisAttr axis : llvm::reverse(mesh.getAxes())) {
+    Value axisSize = stablehlo::ConstantOp::create(
+        builder, loc, builder.getI32IntegerAttr(axis.getSize()));
+    axisSizes[axis.getName()] = axisSize;
+    axisCoordinates[axis.getName()] =
+        stablehlo::RemOp::create(builder, loc, currentRem, axisSize);
+    currentRem = stablehlo::DivOp::create(builder, loc, currentRem, axisSize);
+  }
+  return {axisCoordinates, axisSizes};
+}
+
+void convertShardedToUnreduced(sdy::ShardedToUnreducedOp op,
+                               mlir::IRRewriter& rewriter) {
+  TensorShardingAttr outSharding = op.getOutSharding();
+  CHECK_EQ(outSharding.getReductionOp(), sdy::ReductionOp::SUM);
+  MeshAttr mesh = outSharding.getMesh(op);
+  // If the mesh does not have iota device ids, we need an extra step to convert
+  // partition id to logical device id. We do not support this case for now.
+  CHECK(mesh.getDeviceIds().empty());
+
+  mlir::Location loc = op.getLoc();
+  rewriter.setInsertionPoint(op);
+
+  ManualComputationOp manualComputation = createFullyManualComputation(
+      loc, op.getTensor(), outSharding, mesh, rewriter,
+      /*unreducedAxes=*/{},
+      [&](mlir::BlockArgument arg, OpBuilder& blockBuilder) {
+        RankedTensorType fullType =
+            mlir::cast<RankedTensorType>(op.getResult().getType());
+        RankedTensorType inputType =
+            sdy::getSharding(op.getTensor())
+                .getLocalTensorType(fullType, mesh,
+                                    /*allowNonDivisible=*/false);
+        CHECK(inputType) << kNonDivisibleShardingError;
+        RankedTensorType outputType =
+            outSharding.getLocalTensorType(fullType, mesh);
+
+        Value zero = stablehlo::ConstantOp::create(
+            blockBuilder, loc,
+            blockBuilder.getZeroAttr(outputType.getElementType()));
+        Value broadcast = stablehlo::BroadcastOp::create(
+            blockBuilder, loc, outputType, zero, outputType.getShape());
+
+        auto [axisCoordinates, axisSizes] =
+            getAxesCoordinateAndSize(blockBuilder, loc, mesh);
+
+        SmallVector<Value> offsets;
+        offsets.reserve(outputType.getRank());
+        Value zeroOffset = stablehlo::ConstantOp::create(
+            blockBuilder, loc, blockBuilder.getI32IntegerAttr(0));
+        for (int64_t dim = 0; dim < outputType.getRank(); ++dim) {
+          if (op.getAxes()[dim].empty()) {
+            offsets.push_back(zeroOffset);
+            continue;
+          }
+
+          Value offset, prevAxisSize;
+          for (AxisRefAttr axis : op.getAxes()[dim].getValue()) {
+            CHECK(!axis.getSubAxisInfo()) << "Sub-axes not supported in "
+                                             "ShardedToUnreducedOp.";
+            StringRef axisName = axis.getName();
+            if (prevAxisSize == nullptr) {
+              offset = axisCoordinates[axisName];
+            } else {
+              offset = stablehlo::MulOp::create(blockBuilder, loc, offset,
+                                                prevAxisSize);
+              offset = stablehlo::AddOp::create(blockBuilder, loc, offset,
+                                                axisCoordinates[axisName]);
+            }
+
+            prevAxisSize = axisSizes[axisName];
+          }
+
+          Value localDimSize = stablehlo::ConstantOp::create(
+              blockBuilder, loc,
+              blockBuilder.getI32IntegerAttr(inputType.getDimSize(dim)));
+          offset =
+              stablehlo::MulOp::create(blockBuilder, loc, offset, localDimSize);
+          offsets.push_back(offset);
+        }
+
+        return stablehlo::DynamicUpdateSliceOp::create(
+            blockBuilder, loc, outputType, broadcast, arg, offsets);
+      });
+  rewriter.replaceOp(op, manualComputation);
+}
+
+void convertReplicatedToUnreduced(sdy::ReplicatedToUnreducedOp op,
+                                  mlir::IRRewriter& rewriter) {
+  TensorShardingAttr outSharding = op.getOutSharding();
+  CHECK_EQ(outSharding.getReductionOp(), sdy::ReductionOp::SUM);
+  MeshAttr mesh = outSharding.getMesh(op);
+
+  mlir::Location loc = op.getLoc();
+  rewriter.setInsertionPoint(op);
+
+  ManualComputationOp manualComputation = createFullyManualComputation(
+      loc, op.getTensor(), outSharding, mesh, rewriter,
+      /*unreducedAxes=*/{},
+      [&](mlir::BlockArgument arg, OpBuilder& blockBuilder) {
+        auto [axisCoordinates, axisSizes] =
+            getAxesCoordinateAndSize(blockBuilder, loc, mesh);
+        (void)axisSizes;
+
+        Value i32Zero = stablehlo::ConstantOp::create(
+            blockBuilder, loc, blockBuilder.getI32IntegerAttr(0));
+        Value pred = nullptr;
+        for (AxisRefAttr axis : op.getAxes()) {
+          CHECK(!axis.getSubAxisInfo()) << "Sub-axes not supported in "
+                                           "ReplicatedToUnreducedOp.";
+          Value coord = axisCoordinates[axis.getName()];
+          Value isZero =
+              stablehlo::CompareOp::create(blockBuilder, loc, coord, i32Zero,
+                                           stablehlo::ComparisonDirection::EQ);
+          pred = pred
+                     ? stablehlo::AndOp::create(blockBuilder, loc, pred, isZero)
+                     : isZero;
+        }
+        CHECK(pred != nullptr) << "No replicated-to-unreduced axes.";
+
+        RankedTensorType type = mlir::cast<RankedTensorType>(arg.getType());
+        Value zeroVal = stablehlo::ConstantOp::create(
+            blockBuilder, loc, blockBuilder.getZeroAttr(type.getElementType()));
+        Value zeroBroadcast = stablehlo::BroadcastOp::create(
+            blockBuilder, loc, type, zeroVal, type.getShape());
+        return stablehlo::SelectOp::create(blockBuilder, loc, pred, arg,
+                                           zeroBroadcast);
+      });
+  rewriter.replaceOp(op, manualComputation);
 }
 
 void syncInOutUnreducedAxes(mlir::Operation* op) {
@@ -296,9 +419,48 @@ class StablehloExportManualReductionCollectivesPass
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
       StablehloExportManualReductionCollectivesPass)
 
+  StablehloExportManualReductionCollectivesPass() = default;
+
+  explicit StablehloExportManualReductionCollectivesPass(
+      bool exportAllReduceScatter) {
+    this->exportAllReduceScatter = exportAllReduceScatter;
+  }
+
+  StablehloExportManualReductionCollectivesPass(
+      const StablehloExportManualReductionCollectivesPass& other)
+      : PassWrapper(other) {}
+
+  Option<bool> exportAllReduceScatter{
+      *this, "export-all-reduce-scatter",
+      llvm::cl::desc("Whether to export all sdy.reduce_scatter as native "
+                     "stablehlo.reduce_scatter. If false, only ops with "
+                     "unreduced axes are exported this way."),
+      llvm::cl::init(false)};
+
+ protected:
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
     mlir::IRRewriter rewriter(moduleOp.getContext());
+
+    moduleOp.walk([&](mlir::Operation* op) {
+      if (auto constant = mlir::dyn_cast<sdy::ConstantOp>(op)) {
+        TensorShardingAttr oldSharding = sdy::getSharding(constant);
+        if (!oldSharding || oldSharding.getUnreducedAxes().empty()) {
+          return;
+        }
+
+        TensorShardingAttr newSharding = oldSharding.replaceUnreducedAxes({});
+        sdy::setSharding(constant, newSharding);
+
+        rewriter.setInsertionPointAfter(constant);
+        sdy::ReplicatedToUnreducedOp replicatedToUnreduced =
+            sdy::ReplicatedToUnreducedOp::create(
+                rewriter, constant.getLoc(), constant,
+                oldSharding.getUnreducedAxes(), oldSharding);
+        rewriter.replaceAllUsesExcept(constant, replicatedToUnreduced,
+                                      replicatedToUnreduced);
+      }
+    });
 
     // Do very restricted backward propagation of unreduced axes along specific
     // ops that don't modify the data.
@@ -318,22 +480,32 @@ class StablehloExportManualReductionCollectivesPass
         }
       } else if (auto reduceScatter =
                      mlir::dyn_cast<sdy::ReduceScatterOp>(op)) {
-        if (inputHasUnreducedAxes(reduceScatter)) {
+        if (exportAllReduceScatter || inputHasUnreducedAxes(reduceScatter)) {
           nextChannelId =
               convertReduceScatter(reduceScatter, nextChannelId, rewriter);
         }
+      } else if (auto shardedToUnreduced =
+                     mlir::dyn_cast<sdy::ShardedToUnreducedOp>(op)) {
+        convertShardedToUnreduced(shardedToUnreduced, rewriter);
+      } else if (auto replicatedToUnreduced =
+                     mlir::dyn_cast<sdy::ReplicatedToUnreducedOp>(op)) {
+        convertReplicatedToUnreduced(replicatedToUnreduced, rewriter);
       }
     });
   }
 
+ public:
   StringRef getArgument() const override {
     return "xla-sdy-stablehlo-export-manual-reduction-collectives";
   }
 
   StringRef getDescription() const override {
-    return "Exports `sdy.all_reduce`, that originate from user defined "
-           "shardings with unreduced axes, to `stablehlo.all_reduce` inside a "
-           "fully manual `sdy.manual_computation`";
+    return "Exports `sdy.all_reduce`, `sdy.reduce_scatter`, "
+           "`sdy.sharded_to_unreduced` and `sdy.replicated_to_unreduced` "
+           "that originate from user-defined shardings with unreduced axes "
+           "(sdy.reduce_scatter can also be optionally exported "
+           "unconditionally). The exported ops are inside a full manual "
+           "`sdy.manual_computation`.";
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
@@ -343,12 +515,16 @@ class StablehloExportManualReductionCollectivesPass
 
 }  // namespace
 
-std::unique_ptr<Pass> createStablehloExportManualReductionCollectivesPass() {
-  return std::make_unique<StablehloExportManualReductionCollectivesPass>();
+std::unique_ptr<Pass> createStablehloExportManualReductionCollectivesPass(
+    bool exportAllReduceScatter) {
+  return std::make_unique<StablehloExportManualReductionCollectivesPass>(
+      exportAllReduceScatter);
 }
 
 void registerStablehloExportManualReductionCollectivesPass() {
-  mlir::registerPass(createStablehloExportManualReductionCollectivesPass);
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+    return std::make_unique<StablehloExportManualReductionCollectivesPass>();
+  });
 }
 
 }  // namespace sdy

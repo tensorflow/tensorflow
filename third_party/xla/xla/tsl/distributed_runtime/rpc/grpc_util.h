@@ -21,13 +21,14 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/support/byte_buffer.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/distributed_runtime_payloads.pb.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/stringpiece.h"
-#include "tsl/platform/stringprintf.h"
+#include "tsl/platform/tstring.h"
 
 namespace tsl {
 
@@ -98,8 +99,8 @@ inline ::grpc::Status ToGrpcStatus(const absl::Status& s) {
   } else {
     if (s.message().size() > 3072 /* 3k bytes */) {
       // TODO(b/62947679): Remove truncation once the gRPC issue is resolved.
-      string scratch = strings::Printf("%.3072s ... [truncated]",
-                                       absl::StatusMessageAsCStr(s));
+      std::string scratch = absl::StrFormat("%.3072s ... [truncated]",
+                                            absl::StatusMessageAsCStr(s));
       LOG(ERROR) << "Truncated error message: " << s;
       return ::grpc::Status(static_cast<::grpc::StatusCode>(s.code()), scratch,
                             SerializePayloads(s));
@@ -119,11 +120,11 @@ typedef std::shared_ptr<::grpc::Channel> SharedGrpcChannelPtr;
 bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, protobuf::Message* dst);
 
 // Copy string src to grpc buffer *dst.
-::grpc::Status GrpcMaybeUnparseProto(const string& src,
+::grpc::Status GrpcMaybeUnparseProto(const std::string& src,
                                      ::grpc::ByteBuffer* dst);
 
 // Copy grpc buffer src to string *dst.
-bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, string* dst);
+bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, std::string* dst);
 
 // Copy grpc buffer src to tstring *dst.
 bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, tstring* dst);

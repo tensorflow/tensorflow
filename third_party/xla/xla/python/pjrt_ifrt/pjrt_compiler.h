@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/compiler.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/topology.h"
+#include "xla/tsl/concurrency/future.h"
 
 namespace xla {
 namespace ifrt {
@@ -39,17 +39,17 @@ class PjRtClient;
 // requirement of `PjRtClient`, which will enable ahead-of-time compilation.
 class PjRtCompiler final : public llvm::RTTIExtends<PjRtCompiler, Compiler> {
  public:
-  explicit PjRtCompiler(PjRtClient* client) : client_(client) {}
+  explicit PjRtCompiler(PjRtClient* client);
 
   // Compiler implementation.
 
   ~PjRtCompiler() override = default;
 
-  absl::StatusOr<LoadedExecutableRef> CompileAndLoad(
+  tsl::Future<LoadedExecutableRef> CompileAndLoad(
       std::unique_ptr<Program> program,
       std::unique_ptr<CompileOptions> options) override;
 
-  absl::StatusOr<ExecutableRef> Compile(
+  tsl::Future<ExecutableRef> Compile(
       std::unique_ptr<Program> program, const Topology& topology,
       std::unique_ptr<CompileOptions> options) override;
 
@@ -59,7 +59,7 @@ class PjRtCompiler final : public llvm::RTTIExtends<PjRtCompiler, Compiler> {
     return absl::UnimplementedError("Not implemented");
   }
 
-  absl::StatusOr<LoadedExecutableRef> DeserializeLoadedExecutable(
+  tsl::Future<LoadedExecutableRef> DeserializeLoadedExecutable(
       absl::string_view serialized,
       std::unique_ptr<DeserializeExecutableOptions> options) override;
 

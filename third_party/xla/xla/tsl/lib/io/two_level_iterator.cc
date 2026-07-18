@@ -77,7 +77,7 @@ class TwoLevelIterator : public Iterator {
   Iterator* data_iter_;  // May be NULL
   // If data_iter_ is non-NULL, then "data_block_handle_" holds the
   // "index_value" passed to block_function_ to create the data_iter_.
-  string data_block_handle_;
+  std::string data_block_handle_;
 };
 
 TwoLevelIterator::TwoLevelIterator(Iterator* index_iter,

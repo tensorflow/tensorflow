@@ -57,9 +57,9 @@ class EagerOperation : public ImmediateExecutionOperation {
     return Reset(op, raw_device_name, false, nullptr);
   }
 
-  const string& Name() const override { return attrs_.op_name(); }
+  const std::string& Name() const override { return attrs_.op_name(); }
 
-  const string& DeviceName() const override { return device_name_; }
+  const std::string& DeviceName() const override { return device_name_; }
 
   ImmediateExecutionContext* GetContext() const override { return &ctx_; }
 
@@ -87,7 +87,8 @@ class EagerOperation : public ImmediateExecutionOperation {
     last_set_device_name_ = "\177";  // DEL (an invalid value)
   }
 
-  absl::Status SetAttrValue(const char* attr_name, const AttrValue& value);
+  absl::Status SetAttrValue(const char* attr_name,
+                            const AttrValue& value) override;
 
   absl::Status AddInput(AbstractTensorHandle* input) override;
   absl::Status AddInputList(
@@ -196,7 +197,7 @@ class EagerOperation : public ImmediateExecutionOperation {
 
   // This is useful if we want the EagerOperation to point to a different
   // function.
-  void UpdateName(const string& name) {
+  void UpdateName(const std::string& name) {
     attrs_.set_op_name(name);
     op_name_ = attrs_.op_name();
   }
@@ -236,13 +237,13 @@ class EagerOperation : public ImmediateExecutionOperation {
             kInvalidOpId, /*is_component_function=*/false, step_id};
       }
     } else {
-      LOG(WARNING) << "SetStepId() should not receive a gloabl rendezvous id.";
+      LOG(WARNING) << "SetStepId() should not receive a global rendezvous id.";
     }
   }
 
   EagerExecutor& Executor() { return *executor_; }
 
-  string DebugString() const;
+  std::string DebugString() const;
 
   const absl::optional<EagerFunctionParams>& eager_func_params() const {
     return eager_func_params_;
@@ -289,12 +290,12 @@ class EagerOperation : public ImmediateExecutionOperation {
   // The last device name given to SetDeviceName.
   // This is used to avoid having to re-process the same device in repeated
   // calls to SetDeviceName.
-  string last_set_device_name_;
+  std::string last_set_device_name_;
 
   // The operation's device name.
   // This contains the named passed to SetDeviceName until device_ is set,
   // at which point it contains the device_ name.
-  string device_name_;
+  std::string device_name_;
 
   // The parsed device name.
   // This will always contain the result of
@@ -334,12 +335,12 @@ inline void EagerOperation::UpdateInput(int i, TensorHandle* h) {
 
 inline EagerOperation* OperationFromInterface(
     ImmediateExecutionOperation* operation) {
-  return down_cast<EagerOperation*>(operation);
+  return absl::down_cast<EagerOperation*>(operation);
 }
 
 inline const EagerOperation* OperationFromInterface(
     const ImmediateExecutionOperation* operation) {
-  return down_cast<const EagerOperation*>(operation);
+  return absl::down_cast<const EagerOperation*>(operation);
 }
 
 }  // namespace tensorflow

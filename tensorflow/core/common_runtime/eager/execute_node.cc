@@ -23,7 +23,7 @@ namespace tensorflow {
 #if !defined(IS_MOBILE_PLATFORM)
 bool ExecuteNodeArgs::IsRemote(EagerContext* ctx, Device* input_device,
                                TensorHandle* handle) {
-  uint64 context_view_id = ctx->GetContextViewId();
+  uint64_t context_view_id = ctx->GetContextViewId();
   if (handle->Type() == TensorHandle::REMOTE ||
       handle->HasRemoteMirror(input_device, context_view_id)) {
     if (!has_remote_inputs_) {
@@ -57,7 +57,7 @@ absl::Status ExecuteNodeArgs::InitPackedHandle(const int index,
       }
 #endif  // IS_MOBILE_PLATFORM
       if (h->Type() == TensorHandle::PACKED) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Nested packed handles are not supported");
       }
       return status;
@@ -139,8 +139,9 @@ absl::Status ExecuteNodeArgs::GetLocalArg(const FunctionArgIndex& index,
       *val = *arg;
       return absl::OkStatus();
     } else {
-      return errors::NotFound("Argument (", index.index, ",", index.sub_index,
-                              ") has no local tensor.");
+      return absl::NotFoundError(absl::StrCat("Argument (", index.index, ",",
+                                              index.sub_index,
+                                              ") has no local tensor."));
     }
   } else {
     return s;

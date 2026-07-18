@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -220,6 +221,10 @@ absl::StatusOr<bool> UnifyAccumulatorWithInput(
     if (!is_while_body(while_instr->parent())) {
       continue;
     }
+    // TODO(b/260601110): Properly handle non-flat graphs.
+    if (while_instr->while_body()->caller_instructions().size() > 1) {
+      continue;
+    }
     auto acc_input_pairs =
         FindAccumulatorInputPairs(dataflow_analysis, while_instr, loop_config);
     for (const auto& [acc, input] : acc_input_pairs) {
@@ -232,12 +237,12 @@ absl::StatusOr<bool> UnifyAccumulatorWithInput(
       VLOG(3) << while_instr->name() << " -> " << "<accumulator_@"
               << acc->tuple_index() << ": " << acc->name() << ", " << "input_@"
               << input->tuple_index() << ": " << input->name() << ">";
-      TF_RETURN_IF_ERROR(input->ReplaceAllUsesWith(acc));
-      TF_RETURN_IF_ERROR(while_instr->while_init()->ReplaceOperandWith(
+      RETURN_IF_ERROR(input->ReplaceAllUsesWith(acc));
+      RETURN_IF_ERROR(while_instr->while_init()->ReplaceOperandWith(
           acc->tuple_index(),
           while_instr->while_init()->mutable_operand(input->tuple_index())));
       if (input->user_count() == 0) {
-        TF_RETURN_IF_ERROR(while_instr->while_body()->RemoveInstruction(input));
+        RETURN_IF_ERROR(while_instr->while_body()->RemoveInstruction(input));
       }
       unified = true;
     }
@@ -247,14 +252,14 @@ absl::StatusOr<bool> UnifyAccumulatorWithInput(
 
 }  // namespace
 
-absl::StatusOr<bool> ScanLoopAccumulatorInputUnification::Run(
+absl::StatusOr<bool> ScanLoopAccumulatorInputUnification::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "HLO module before ScanLoopAccumulatorInputUnification:";
   XLA_VLOG_LINES(2, module->ToString());
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
-                      HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
+                   HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
 
   // This pass can only be applied to unrollable loops since we need to find the
   // accumulators and inputs that are by definition updated and read fully via
@@ -265,15 +270,15 @@ absl::StatusOr<bool> ScanLoopAccumulatorInputUnification::Run(
 
   // TODO(b/337883537): We might want to simplify compare instructions before
   // this. It helps us identify more inputs and accumulators.
-  TF_ASSIGN_OR_RETURN(bool changed, UnifyAccumulatorWithInput(
-                                        *dataflow_analysis, unrollable_loops));
+  ASSIGN_OR_RETURN(bool changed, UnifyAccumulatorWithInput(*dataflow_analysis,
+                                                           unrollable_loops));
 
   if (changed) {
     for (auto& [while_instr, loop_config] : unrollable_loops) {
-      TF_RETURN_IF_ERROR(TryRemoveDeadWhileParams(while_instr).status());
+      RETURN_IF_ERROR(TryRemoveDeadWhileParams(while_instr).status());
     }
-    TF_RETURN_IF_ERROR(TupleSimplifier{}.Run(module).status());
-    TF_RETURN_IF_ERROR(module->RemoveUnusedComputations());
+    RETURN_IF_ERROR(TupleSimplifier{}.Run(module).status());
+    RETURN_IF_ERROR(module->RemoveUnusedComputations());
 
     VLOG(2) << "HLO module after ScanLoopAccumulatorInputUnification:";
     XLA_VLOG_LINES(2, module->ToString());

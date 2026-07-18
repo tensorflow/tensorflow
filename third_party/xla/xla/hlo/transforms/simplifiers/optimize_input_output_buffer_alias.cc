@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout_util.h"
@@ -128,9 +129,9 @@ absl::StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
         donee_vector_index += 1;
       } else {
         // The current donor and donee match.
-        TF_RETURN_IF_ERROR(alias_config->SetUpAlias(
+        RETURN_IF_ERROR(alias_config->SetUpAlias(
             donee.index, donor.param_number, donor.index));
-        TF_RETURN_IF_ERROR(buffer_donor_config->RemoveBufferDonor(
+        RETURN_IF_ERROR(buffer_donor_config->RemoveBufferDonor(
             donor.param_number, donor.index));
         donor_vector_index += 1;
         donee_vector_index += 1;
@@ -142,7 +143,7 @@ absl::StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
   return changed;
 }
 
-absl::StatusOr<bool> OptimizeInputOutputBufferAlias::Run(
+absl::StatusOr<bool> OptimizeInputOutputBufferAlias::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // We exactly follow HloInputOutputAliasConfig::Verify to create input_shapes
@@ -159,9 +160,9 @@ absl::StatusOr<bool> OptimizeInputOutputBufferAlias::Run(
       &module->input_output_alias_config();
   HloBufferDonorConfig* buffer_donor_config = &module->buffer_donor_config();
 
-  TF_ASSIGN_OR_RETURN(bool changed, Build(input_shapes, output_shape,
-                                          alias_config, buffer_donor_config));
-  TF_RETURN_IF_ERROR(alias_config->Verify(*module, shape_size_fn_));
+  ASSIGN_OR_RETURN(bool changed, Build(input_shapes, output_shape, alias_config,
+                                       buffer_donor_config));
+  RETURN_IF_ERROR(alias_config->Verify(*module, shape_size_fn_));
 
   return changed;
 }

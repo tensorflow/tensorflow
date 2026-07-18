@@ -91,7 +91,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
     ~Dataset() override { input_->Unref(); }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       return std::make_unique<Iterator>(
           Iterator::Params{this, absl::StrCat(prefix, "::GroupByWindow")});
     }
@@ -103,7 +103,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() const override {
+    std::string DebugString() const override {
       return "GroupByWindowDatasetOp::Dataset";
     }
 
@@ -246,7 +246,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
                   key_func_output[0].dtype() != DT_INT64 ||
                   key_func_output[0].NumElements() != 1) {
                 // TODO(b/78665031): Support non-int64 keys.
-                return errors::InvalidArgument(
+                return absl::InvalidArgumentError(
                     "`key_func` must return a scalar int64.");
               }
               const int64_t key = key_func_output[0].scalar<int64_t>()();
@@ -263,15 +263,15 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
                     window_size_func_output[0].dtype() != DT_INT64 ||
                     window_size_func_output[0].NumElements() != 1) {
                   // TODO(mrry): Support non-int64 window sizes.
-                  return errors::InvalidArgument(
+                  return absl::InvalidArgumentError(
                       "`window_size_func` must return a scalar int64.");
                 }
                 const int64_t window_size =
                     window_size_func_output[0].scalar<int64_t>()();
                 if (window_size <= 0) {
-                  return errors::InvalidArgument(
+                  return absl::InvalidArgumentError(absl::StrCat(
                       "Window size must be greater than zero, but got ",
-                      window_size, ".");
+                      window_size, "."));
                 }
                 window_sizes_[key] = window_size;
               }
@@ -435,7 +435,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       }
 
      private:
-      absl::Status SaveGroup(IteratorStateWriter* writer, const string& name,
+      absl::Status SaveGroup(IteratorStateWriter* writer,
+                             const std::string& name,
                              const std::vector<std::vector<Tensor>>& group)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         TF_RETURN_IF_ERROR(
@@ -452,7 +453,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       }
 
       absl::Status RestoreGroup(IteratorContext* ctx,
-                                IteratorStateReader* reader, const string& name,
+                                IteratorStateReader* reader,
+                                const std::string& name,
                                 std::vector<std::vector<Tensor>>* group)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         int64_t group_size;
@@ -509,7 +511,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
         if (!(return_values.size() == 1 &&
               return_values[0].dtype() == DT_VARIANT &&
               TensorShapeUtils::IsScalar(return_values[0].shape()))) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               "`reduce_func` must return a single scalar of dtype "
               "DT_VARIANT.");
         }

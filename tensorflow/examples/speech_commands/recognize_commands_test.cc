@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/examples/speech_commands/recognize_commands.h"
 
 #include <cstdint>
+#include <string>
 
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -32,7 +33,7 @@ TEST(RecognizeCommandsTest, Basic) {
   Tensor results(DT_FLOAT, {3});
   test::FillValues<float>(&results, {1.0f, 0.0f, 0.0f});
 
-  string found_command;
+  std::string found_command;
   float score;
   bool is_new_command;
   TF_EXPECT_OK(recognize_commands.ProcessLatestResults(
@@ -46,9 +47,9 @@ TEST(RecognizeCommandsTest, FindCommands) {
 
   test::FillValues<float>(&results, {0.0f, 1.0f, 0.0f});
   bool has_found_new_command = false;
-  string new_command;
+  std::string new_command;
   for (int i = 0; i < 10; ++i) {
-    string found_command;
+    std::string found_command;
     float score;
     bool is_new_command;
     int64_t current_time_ms = 0 + (i * 100);
@@ -67,7 +68,7 @@ TEST(RecognizeCommandsTest, FindCommands) {
   has_found_new_command = false;
   new_command = "";
   for (int i = 0; i < 10; ++i) {
-    string found_command;
+    std::string found_command;
     float score;
     bool is_new_command;
     int64_t current_time_ms = 1000 + (i * 100);
@@ -89,7 +90,7 @@ TEST(RecognizeCommandsTest, BadInputLength) {
   Tensor bad_results(DT_FLOAT, {2});
   test::FillValues<float>(&bad_results, {1.0f, 0.0f});
 
-  string found_command;
+  std::string found_command;
   float score;
   bool is_new_command;
   EXPECT_FALSE(recognize_commands
@@ -104,7 +105,7 @@ TEST(RecognizeCommandsTest, BadInputTimes) {
   Tensor results(DT_FLOAT, {3});
   test::FillValues<float>(&results, {1.0f, 0.0f, 0.0f});
 
-  string found_command;
+  std::string found_command;
   float score;
   bool is_new_command;
   TF_EXPECT_OK(recognize_commands.ProcessLatestResults(

@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/thread_pool_task_runner.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -41,7 +42,9 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -160,11 +163,11 @@ AddI32Thunk::AddI32Thunk(std::string name,
 absl::Status AddI32Thunk::Execute(const BufferAllocations* allocations,
                                   BufferAllocation::Slice src_slice,
                                   BufferAllocation::Slice dst_slice) {
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase src,
-                      allocations->GetDeviceAddress(src_slice));
+  ASSIGN_OR_RETURN(se::DeviceAddressBase src,
+                   allocations->GetDeviceAddress(src_slice));
 
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase dst,
-                      allocations->GetDeviceAddress(dst_slice));
+  ASSIGN_OR_RETURN(se::DeviceAddressBase dst,
+                   allocations->GetDeviceAddress(dst_slice));
 
   CHECK_EQ(src.size() % sizeof(int32_t), 0);
   CHECK_EQ(dst.size() % sizeof(int32_t), 0);
@@ -189,7 +192,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> AddI32Thunk::Execute(
   auto execute = [&]() -> absl::Status {
     CHECK_EQ(srcs_.size(), dsts_.size());
     for (int i = 0; i < srcs_.size(); ++i) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           Execute(params.buffer_allocations, srcs_.at(i), dsts_.at(i)));
     }
     return absl::OkStatus();
@@ -235,17 +238,21 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> AddI32Thunk::Execute(
     return tsl::MakeErrorAsyncValueRef(absl::InternalError("Injected error"));
   }
 
-  TF_RETURN_IF_ERROR(execute());
+  RETURN_IF_ERROR(execute());
   return Thunk::OkExecuteEvent();
 }
 
 AddI32Thunk::BufferUses AddI32Thunk::buffer_uses() const {
   BufferUses buffer_uses;
   for (const auto& src : srcs_) {
-    buffer_uses.push_back(BufferUse::Read(src));
+    buffer_uses.push_back(BufferUse::Read(
+        src, ShapeUtil::MakeShape(
+                 S32, {src.size() / ShapeUtil::ByteSizeOfPrimitiveType(S32)})));
   }
   for (const auto& dst : dsts_) {
-    buffer_uses.push_back(BufferUse::Write(dst));
+    buffer_uses.push_back(BufferUse::Write(
+        dst, ShapeUtil::MakeShape(
+                 S32, {dst.size() / ShapeUtil::ByteSizeOfPrimitiveType(S32)})));
   }
   return buffer_uses;
 }
@@ -505,12 +512,15 @@ TEST(ThunkExecutorTest, Execute) {
 // execution on a non blocking IO callbacks thread pool.
 class NoOpAsyncThunk : public Thunk {
  public:
-  NoOpAsyncThunk(std::string name, BufferAllocation::Slice slice)
-      : Thunk(Kind::kKernel, Info{std::move(name)}), slice_(slice) {}
+  NoOpAsyncThunk(std::string name, BufferAllocation::Slice slice, Shape shape)
+      : Thunk(Kind::kKernel, Info{std::move(name)}),
+        slice_(slice),
+        shape_(shape) {}
 
   static std::unique_ptr<NoOpAsyncThunk> Create(std::string name,
-                                                BufferAllocation::Slice slice) {
-    return std::make_unique<NoOpAsyncThunk>(std::move(name), slice);
+                                                BufferAllocation::Slice slice,
+                                                Shape shape) {
+    return std::make_unique<NoOpAsyncThunk>(std::move(name), slice, shape);
   }
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams&) final {
@@ -523,7 +533,7 @@ class NoOpAsyncThunk : public Thunk {
   }
 
   BufferUses buffer_uses() const override {
-    return BufferUses{BufferUse::Write(slice_)};
+    return BufferUses{BufferUse::Write(slice_, shape_)};
   }
 
   bool ExecutesOnExternalThreadPool() const override { return true; }
@@ -536,11 +546,13 @@ class NoOpAsyncThunk : public Thunk {
   }
 
   BufferAllocation::Slice slice_;
+  Shape shape_;
 };
 
 TEST(ThunkExecutorTest, ExecuteOnCorrectThreadPool) {
   BufferAllocation alloc(/*index=*/0, /*size=*/60, /*color=*/0);
 
+  Shape shape = ShapeUtil::MakeShape(S32, {5});
   BufferAllocation::Slice slice0(&alloc, /*offset=*/0, /*size=*/20);
   BufferAllocation::Slice slice1(&alloc, /*offset=*/20, /*size=*/20);
   BufferAllocation::Slice slice2(&alloc, /*offset=*/40, /*size=*/20);
@@ -549,7 +561,8 @@ TEST(ThunkExecutorTest, ExecuteOnCorrectThreadPool) {
 
   ThunkSequence sequence;
   for (int i = 0; i < 100; ++i) {
-    sequence.push_back(NoOpAsyncThunk::Create(absl::StrCat(i), slices[i % 3]));
+    sequence.push_back(
+        NoOpAsyncThunk::Create(absl::StrCat(i), slices[i % 3], shape));
   }
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -650,7 +663,7 @@ GenerateThunkSequence(size_t num_elements, size_t num_thunks,
     // Pre-compute expected result while building the thunk sequence.
     BufferAllocations allocations =
         CreateBufferAllocations(absl::MakeSpan(g->expected_literals));
-    TF_RETURN_IF_ERROR(AddI32Thunk::Execute(&allocations, src, dst));
+    RETURN_IF_ERROR(AddI32Thunk::Execute(&allocations, src, dst));
 
     auto use_resource = [&]() -> std::optional<Resource::Kind> {
       switch (shared_resource_use.kind) {

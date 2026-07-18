@@ -406,10 +406,100 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
 
 TfLiteStatus InterpreterBuilder::ParseQuantization(
     const QuantizationParameters* src_quantization,
-    TfLiteQuantization* quantization, const std::vector<int>& dims) {
+    TfLiteQuantization* quantization, const std::vector<int>& dims,
+    size_t num_tensors) {
+  quantization->type = kTfLiteNoQuantization;
+  quantization->params = nullptr;
+  if (!src_quantization) {
+    return kTfLiteOk;
+  }
+
+  auto validate_tensor_index = [&](int32_t tensor_index, const char* name,
+                                   bool optional) {
+    if (optional && tensor_index == -1) {
+      return kTfLiteOk;
+    }
+    if (tensor_index < 0 || static_cast<size_t>(tensor_index) >= num_tensors) {
+      TF_LITE_REPORT_ERROR(
+          error_reporter_,
+          "MultiAxisQuantization %s tensor index must be in range [0, %d)%s. "
+          "Was %d.",
+          name, static_cast<int>(num_tensors),
+          optional ? ", or -1 if optional" : "", tensor_index);
+      return kTfLiteError;
+    }
+    return kTfLiteOk;
+  };
+
+  // Multi-axis quantization.
+  if (src_quantization->details_type() ==
+      QuantizationDetails_MultiAxisQuantization) {
+    auto* src_quant = src_quantization->details_as_MultiAxisQuantization();
+    if (!src_quant || !src_quant->quantized_dimensions()) {
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "Invalid MultiAxisQuantization parameters.");
+      return kTfLiteError;
+    }
+    TF_LITE_ENSURE_STATUS(
+        validate_tensor_index(src_quant->scales(), "scales", false));
+    TF_LITE_ENSURE_STATUS(
+        validate_tensor_index(src_quant->zero_points(), "zero_points", true));
+    if (src_quant->block_size() < 0) {
+      TF_LITE_REPORT_ERROR(
+          error_reporter_,
+          "MultiAxisQuantization block_size must be non-negative. Was %d.",
+          src_quant->block_size());
+      return kTfLiteError;
+    }
+
+    const auto* quantized_dimensions = src_quant->quantized_dimensions();
+    if (quantized_dimensions->empty()) {
+      TF_LITE_REPORT_ERROR(
+          error_reporter_,
+          "MultiAxisQuantization must have at least one quantized dimension.");
+      return kTfLiteError;
+    }
+    for (int i = 0; i < quantized_dimensions->size(); ++i) {
+      const int32_t quantized_dimension = quantized_dimensions->Get(i);
+      if (quantized_dimension < 0 ||
+          (!dims.empty() &&
+           static_cast<size_t>(quantized_dimension) >= dims.size())) {
+        TF_LITE_REPORT_ERROR(
+            error_reporter_,
+            "MultiAxisQuantization quantized_dimensions must be in range [0, "
+            "%d). Value %d at index %d is invalid.",
+            static_cast<int>(dims.size()), quantized_dimension, i);
+        return kTfLiteError;
+      }
+    }
+
+    auto* multi_axis_quantization =
+        reinterpret_cast<TfLiteMultiAxisQuantization*>(
+            malloc(sizeof(TfLiteMultiAxisQuantization)));
+    if (!multi_axis_quantization) {
+      return kTfLiteError;
+    }
+    multi_axis_quantization->scales = src_quant->scales();
+    multi_axis_quantization->zero_points = src_quant->zero_points();
+    multi_axis_quantization->blocksize = src_quant->block_size();
+    multi_axis_quantization->quantized_dimensions =
+        TfLiteIntArrayCreate(static_cast<int>(quantized_dimensions->size()));
+    if (!multi_axis_quantization->quantized_dimensions) {
+      free(multi_axis_quantization);
+      return kTfLiteError;
+    }
+    for (int i = 0; i < quantized_dimensions->size(); ++i) {
+      multi_axis_quantization->quantized_dimensions->data[i] =
+          quantized_dimensions->Get(i);
+    }
+    quantization->type = kTfLiteMultiAxisQuantization;
+    quantization->params = reinterpret_cast<void*>(multi_axis_quantization);
+    return kTfLiteOk;
+  }
+
   // Blockwise quantization.
-  if (src_quantization && src_quantization->details_type() ==
-                              QuantizationDetails_BlockwiseQuantization) {
+  if (src_quantization->details_type() ==
+      QuantizationDetails_BlockwiseQuantization) {
     auto* src_quant = src_quantization->details_as_BlockwiseQuantization();
     quantization->type = kTfLiteBlockwiseQuantization;
     auto* blockwise_quantization =
@@ -423,10 +513,7 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
     quantization->params = reinterpret_cast<void*>(blockwise_quantization);
     return kTfLiteOk;
   }
-  quantization->type = kTfLiteNoQuantization;
-  quantization->params = nullptr;
-  if (!src_quantization || !src_quantization->scale() ||
-      src_quantization->scale()->size() == 0) {
+  if (!src_quantization->scale() || src_quantization->scale()->empty()) {
     return kTfLiteOk;
   }
   if (!src_quantization->zero_point()) {
@@ -451,13 +538,19 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
 
   const size_t num_scales = src_quantization->scale()->size();
   const size_t num_zero_points = src_quantization->zero_point()->size();
-  // If all of the zero points are the same, only store one to avoid large,
-  // redundant allocations.
-  bool all_zero_points_same = true;
-  int32_t zero_point = src_quantization->zero_point()->data()[0];
-  for (int i = 1; i < num_zero_points && all_zero_points_same; ++i) {
-    all_zero_points_same &=
-        (src_quantization->zero_point()->data()[i] == zero_point);
+  // If all of the zero points are the same, we can store a single value to
+  // avoid large, redundant allocations. This is guarded by an experimental
+  // option for compatibility with external delegates that may assume
+  // per-change zero-point arrays.
+  bool all_zero_points_same = false;
+  int32_t zero_point = 0;
+  if (options_.GetCompressQuantizationZeroPoints() && num_zero_points > 0) {
+    all_zero_points_same = true;
+    zero_point = src_quantization->zero_point()->data()[0];
+    for (int i = 1; i < num_zero_points && all_zero_points_same; ++i) {
+      all_zero_points_same &=
+          (src_quantization->zero_point()->data()[i] == zero_point);
+    }
   }
 
   // Ensure that the quantization dimension is valid.
@@ -595,24 +688,16 @@ TfLiteStatus InterpreterBuilder::ParseSignatureDefs(
                            "Missing exported method name for SignatureDef");
       return kTfLiteError;
     }
-    if (fb_signature_def->inputs() == nullptr) {
-      TF_LITE_REPORT_ERROR(error_reporter_,
-                           "NULL SignatureDef inputs for exported method %s",
-                           fb_signature_def->signature_key()->c_str());
-      return kTfLiteError;
-    }
-    if (fb_signature_def->outputs() == nullptr) {
-      TF_LITE_REPORT_ERROR(error_reporter_,
-                           "NULL SignatureDef outputs for exported method %s",
-                           fb_signature_def->signature_key()->c_str());
-      return kTfLiteError;
-    }
     signature_defs.resize(signature_defs.size() + 1);
     auto& signature_def = signature_defs.back();
-    signature_def.inputs = GetMapFromTensorMap(fb_signature_def->inputs());
-    signature_def.outputs = GetMapFromTensorMap(fb_signature_def->outputs());
     signature_def.signature_key = fb_signature_def->signature_key()->c_str();
     signature_def.subgraph_index = fb_signature_def->subgraph_index();
+    if (fb_signature_def->inputs()) {
+      signature_def.inputs = GetMapFromTensorMap(fb_signature_def->inputs());
+    }
+    if (fb_signature_def->outputs()) {
+      signature_def.outputs = GetMapFromTensorMap(fb_signature_def->outputs());
+    }
   }
   interpreter->SetSignatureDef(std::move(signature_defs));
   return kTfLiteOk;
@@ -691,7 +776,8 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
 
     const auto* src_quantization = tensor->quantization();
     TfLiteQuantization quantization{};
-    if (ParseQuantization(src_quantization, &quantization, dims) != kTfLiteOk) {
+    if (ParseQuantization(src_quantization, &quantization, dims,
+                          tensors->size()) != kTfLiteOk) {
       TF_LITE_REPORT_ERROR(error_reporter_,
                            "Tensor %d has invalid quantization parameters.", i);
       status = kTfLiteError;
@@ -705,11 +791,12 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
 
     bool is_variable = tensor->is_variable();
     if (buffer_ptr) {
-      if (is_variable) {
-        TF_LITE_REPORT_ERROR(error_reporter_,
-                             "Tensor %d is a variable tensor with buffer. "
-                             "It's not supported now.\n",
-                             i);
+      if (is_variable || tensor->external_buffer() != 0) {
+        TF_LITE_REPORT_ERROR(
+            error_reporter_,
+            "Tensor %d is a variable tensor with buffer or external buffer. "
+            "It's not supported now.\n",
+            i);
         status = kTfLiteError;
       }
 
@@ -725,7 +812,8 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
       if (subgraph->SetTensorParametersReadOnly(
               i, type, get_name(tensor), dims, quantization, buffer_ptr,
               buffer_size, allocation_, sparsity,
-              /*buffer_identifier=*/tensor->buffer()) != kTfLiteOk) {
+              /*buffer_identifier=*/tensor->buffer(),
+              /*external_buffer_id=*/tensor->external_buffer()) != kTfLiteOk) {
         TF_LITE_REPORT_ERROR(error_reporter_,
                              "Tensor %d is invalidly specified in schema.\n",
                              i);
@@ -734,7 +822,7 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     } else {
       if (subgraph->SetTensorParametersReadWrite(
               i, type, get_name(tensor), dims, quantization, is_variable,
-              dims_signature) != kTfLiteOk) {
+              dims_signature, tensor->external_buffer()) != kTfLiteOk) {
         TF_LITE_REPORT_ERROR(error_reporter_,
                              "Tensor %d is invalidly specified in schema.\n",
                              i);

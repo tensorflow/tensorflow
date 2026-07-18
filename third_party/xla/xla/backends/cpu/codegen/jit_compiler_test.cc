@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/Orc/AbsoluteSymbols.h"
@@ -35,9 +36,11 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/CoreContainers.h"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorAddress.h"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
+#include "llvm/ExecutionEngine/Orc/TaskDispatch.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Target/TargetMachine.h"
@@ -45,6 +48,8 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/runtime/function_library.h"
+#include "xla/backends/cpu/target_machine_options.h"
+#include "xla/debug_options_flags.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -97,9 +102,12 @@ TEST(JitCompilerTest, Compile) {
     thread_pool.Schedule(std::move(task));
   };
 
-  std::unique_ptr<IrCompiler> ir_compiler =
-      IrCompiler::Create(llvm::TargetOptions(), IrCompiler::Options(),
-                         IrCompiler::CompilationHooks());
+  std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
+      llvm::TargetOptions(),
+      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::None,
+                          /*optimize_for_size=*/false,
+                          TargetMachineOptions(GetDebugOptionsFromFlags())},
+      IrCompiler::CompilationHooks());
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto compiler,
@@ -124,9 +132,9 @@ TEST(JitCompilerTest, Compile) {
 
   auto add_module = [&](absl::string_view ir, absl::string_view name,
                         size_t dylib_index) -> absl::Status {
-    TF_ASSIGN_OR_RETURN(llvm::orc::ThreadSafeModule tsm,
-                        ParseModule(tsc, ir, name));
-    TF_RETURN_IF_ERROR(compiler.AddModule(std::move(tsm), dylib_index));
+    ASSIGN_OR_RETURN(llvm::orc::ThreadSafeModule tsm,
+                     ParseModule(tsc, ir, name));
+    RETURN_IF_ERROR(compiler.AddModule(std::move(tsm), dylib_index));
     return absl::OkStatus();
   };
 
@@ -193,9 +201,12 @@ TEST(JitCompilerTest, ExternalDefinitionGenerator) {
     return std::make_unique<ExternalDefinitionGenerator>();
   };
 
-  std::unique_ptr<IrCompiler> ir_compiler =
-      IrCompiler::Create(llvm::TargetOptions(), IrCompiler::Options(),
-                         IrCompiler::CompilationHooks());
+  std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
+      llvm::TargetOptions(),
+      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::None,
+                          /*optimize_for_size=*/false,
+                          TargetMachineOptions(GetDebugOptionsFromFlags())},
+      IrCompiler::CompilationHooks());
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto compiler,
@@ -230,6 +241,104 @@ TEST(JitCompilerTest, ExternalDefinitionGenerator) {
   float value = 1.0f;
   call_external_fn(&value);
   EXPECT_EQ(value, 2.0f);
+}
+
+class JitCompilerTestFixture : public ::testing::Test {
+ protected:
+  // Access to private inner class types.
+  using TaskDispatcher = JitCompiler::TaskDispatcher;
+  using Task = JitCompiler::Task;
+};
+
+TEST_F(JitCompilerTestFixture, TaskMemoryReleasedWhenTaskRetainedByQueue) {
+  // A minimal task that flags when its resource is freed.
+  class TrackedTask : public llvm::orc::Task {
+   public:
+    explicit TrackedTask(bool* free_resource_flag, int* tasks_run)
+        : free_resource_flag_(free_resource_flag), tasks_run_(tasks_run) {}
+    void printDescription(llvm::raw_ostream&) override {}
+    void run() override { (*tasks_run_)++; }
+    ~TrackedTask() override { *free_resource_flag_ = true; }
+
+   private:
+    bool* free_resource_flag_ = nullptr;
+    int* tasks_run_ = nullptr;
+  };
+
+  // Simulate the thread pool's internal storage.
+  std::vector<JitCompiler::Task> thread_pool_storage;
+  // The worker runs a queued task by copying it to its local stack, but leaving
+  // the original in the queue as an optimization.
+  JitCompiler::TaskRunner worker_thread =
+      [&thread_pool_storage](JitCompiler::Task task) {
+        thread_pool_storage.push_back(std::move(task));  // Enqueue
+
+        // Copy to local stack (simulating thread-local execution)
+        JitCompiler::Task local_task = thread_pool_storage.back();
+        local_task();
+      };
+
+  auto dispatcher = std::make_unique<TaskDispatcher>(std::move(worker_thread));
+
+  bool task_resource_freed = false;
+  int tasks_run = 0;
+  dispatcher->dispatch(
+      std::make_unique<TrackedTask>(&task_resource_freed, &tasks_run));
+
+  ASSERT_EQ(tasks_run, 1);
+  // The task has run, but the thread pool still holds a reference to the task
+  // wrapper.
+  EXPECT_FALSE(thread_pool_storage.empty());
+  // The task's resources must have been freed, otherwise a use-after free can
+  // occur when the task wrapper is eventually destroyed from the thread pool.
+  EXPECT_TRUE(task_resource_freed)
+      << "The Queue is keeping the Task resource alive!";
+}
+
+TEST(JitCompilerTest, CompileWithHighAlignment) {
+  auto context = std::make_unique<llvm::LLVMContext>();
+  llvm::orc::ThreadSafeContext tsc(std::move(context));
+
+  JitCompiler::Options options;
+  std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
+      llvm::TargetOptions(),
+      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::None,
+                          /*optimize_for_size=*/false,
+                          TargetMachineOptions(GetDebugOptionsFromFlags())},
+      IrCompiler::CompilationHooks());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto compiler,
+      JitCompiler::Create(std::move(options), std::move(ir_compiler),
+                          /*task_runner=*/nullptr));
+
+  // An LLVM IR module requesting an 8KB alignment (which is larger than the
+  // typical 4KB page size) on a constant global variable. This tests that the
+  // ContiguousSectionMemoryManager correctly supports alignments larger than
+  // the page size.
+  constexpr absl::string_view high_align_ir = R"(
+    @aligned_constant = private constant <2048 x float> zeroinitializer, align 8192
+
+    define void @UseAligned(ptr %arg) {
+      %v0 = load <2048 x float>, ptr @aligned_constant, align 8192
+      ret void
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(llvm::orc::ThreadSafeModule tsm,
+                          ParseModule(tsc, high_align_ir, "UseAligned"));
+
+  TF_ASSERT_OK(compiler.AddModule(std::move(tsm)));
+
+  using Fn = void(float*);
+  std::vector<FunctionLibrary::Symbol> symbols = {
+      FunctionLibrary::Sym<Fn>("UseAligned")};
+
+  TF_ASSERT_OK_AND_ASSIGN(auto function_library,
+                          Compile(std::move(compiler), symbols));
+
+  TF_ASSERT_OK_AND_ASSIGN(Fn * use_aligned,
+                          function_library->ResolveFunction<Fn>("UseAligned"));
+  EXPECT_NE(use_aligned, nullptr);
 }
 
 }  // namespace xla::cpu

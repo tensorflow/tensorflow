@@ -25,27 +25,23 @@ limitations under the License.
 #include "oneapi/dnnl/dnnl_types.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/backend_config.pb.h"
-#include "xla/service/cpu/runtime_lightweight_check.h"
 // Below must come after `onednn_threadpool.h`
 #include "unsupported/Eigen/CXX11/Tensor"  // NOLINT
 
 namespace xla {
 namespace cpu {
 
-void ExecuteOneDnnSoftmax(absl::Span<MemrefInfoHandler> arguments,
-                          absl::Span<MemrefInfoHandler> results,
-                          OneDnnSoftmaxConfig softmax_config,
+void ExecuteOneDnnSoftmax(OneDnnSoftmaxConfig softmax_config,
                           const dnnl::engine& cpu_engine,
                           dnnl::stream& onednn_stream,
-                          OneDnnResources& resources) {
-  MemrefInfo input_minfo(arguments[0].get());
-  MemrefInfo result_minfo(results[0].get());
+                          OneDnnPrimResources& resources) {
+  MemrefInfo input_minfo(resources.arg_memrefs[0].get());
+  MemrefInfo result_minfo(resources.result_memrefs[0].get());
 
   auto src_md = input_minfo.GetOneDnnMemDesc();
   auto dst_md = result_minfo.GetOneDnnMemDesc();
 
-  resources.src_mem = dnnl::memory(src_md, cpu_engine, input_minfo.Data());
-  resources.dst_mem = dnnl::memory(dst_md, cpu_engine, result_minfo.Data());
+  resources.dst_mem = dnnl::memory(src_md, cpu_engine, input_minfo.Data());
 
   int axis = softmax_config.softmax_axis();
 
@@ -56,7 +52,7 @@ void ExecuteOneDnnSoftmax(absl::Span<MemrefInfoHandler> arguments,
   resources.primitive = dnnl::primitive(softmax_pd);
 
   std::unordered_map<int, dnnl::memory> softmax_args = {
-      {DNNL_ARG_SRC, resources.src_mem},
+      {DNNL_ARG_SRC, resources.dst_mem},
       {DNNL_ARG_DST, resources.dst_mem},
   };
 

@@ -29,8 +29,8 @@ limitations under the License.
 namespace xla {
 
 template <typename T>
-void parse_xla_backend_extra_options(T* extra_options_map,
-                                     std::string comma_separated_values) {
+void parse_comma_separated_values(T* extra_options_map,
+                                  std::string comma_separated_values) {
   std::vector<std::string> extra_options_parts =
       absl::StrSplit(comma_separated_values, ',');
 
@@ -99,6 +99,19 @@ struct RepeatedFlagModifier {
 //   -> [(add, "A"), (remove, "B"), (add, "C")]
 absl::StatusOr<std::vector<RepeatedFlagModifier>> ParseRepeatedEnumModifiers(
     absl::string_view flag_value, absl::string_view add_prefix = "");
+
+// Parses a string representation of an inclusive range into `range`.
+//
+// The string representation can be either:
+// - a single integer x,
+// - a range min:max,
+// - a half-open range min: or :max.
+// The range is inclusive on both ends.
+//
+// Returns true if the string is a valid range representation.
+bool ParseIntRangeInclusive(absl::string_view string_value,
+                            IntRangeInclusive& range);
+
 }  // namespace details
 
 }  // namespace xla

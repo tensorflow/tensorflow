@@ -33,7 +33,7 @@ limitations under the License.
 
 namespace tensorflow::graph_regularization {
 
-uint64 ComputeHash(const GraphDef& graph_def) {
+uint64_t ComputeHash(const GraphDef& graph_def) {
   std::string graph_def_string;
   SerializeToStringDeterministic(graph_def, &graph_def_string);
   return tensorflow::Fingerprint64(graph_def_string);
@@ -44,7 +44,7 @@ absl::StatusOr<int64_t> GetSuffixUID(absl::string_view function_name) {
 
   int64_t uid;
   if (!absl::SimpleAtoi(v.back(), &uid)) {
-    return errors::InvalidArgument(absl::StrCat(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Function name: `", function_name, "` does not end in an integer."));
   }
 

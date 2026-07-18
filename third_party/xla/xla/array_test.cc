@@ -67,6 +67,26 @@ TEST(ArrayTest, InitializerListCtor) {
   EXPECT_EQ(arr(1, 2), 6);
 }
 
+TEST(ArrayTest, SpanCtor) {
+  Array<int> arr1d({3}, {10, 20, 30});
+  EXPECT_EQ(arr1d.dim(0), 3);
+  EXPECT_EQ(arr1d(0), 10);
+  EXPECT_EQ(arr1d(1), 20);
+  EXPECT_EQ(arr1d(2), 30);
+
+  Array<int> arr2d({2, 3}, {1, 2, 3, 4, 5, 6});
+
+  EXPECT_EQ(arr2d.dim(0), 2);
+  EXPECT_EQ(arr2d.dim(1), 3);
+
+  EXPECT_EQ(arr2d(0, 0), 1);
+  EXPECT_EQ(arr2d(0, 1), 2);
+  EXPECT_EQ(arr2d(0, 2), 3);
+  EXPECT_EQ(arr2d(1, 0), 4);
+  EXPECT_EQ(arr2d(1, 1), 5);
+  EXPECT_EQ(arr2d(1, 2), 6);
+}
+
 TEST(ArrayTest, Transpose1DNoOp) {
   Array<int> arr({3});
   arr.FillWithMultiples(10);  // {0, 10, 20}
@@ -444,6 +464,19 @@ TEST(ArrayTest, UpdateSlice) {
  [4, 0, 3, 7],
  [8, 6, 9, 11]])";
   EXPECT_EQ(expected, arr.ToString());
+}
+
+TEST(ArrayTest, ReshapeWithLowerRank) {
+  Array<int64_t> arr({1, 1, 24});
+  EXPECT_EQ(arr.num_dimensions(), 3);
+  // Reshape to 1D using a sub-span of its own dimensions.
+  // The dropped dimensions are all 1, so the number of elements stays the same.
+  // This triggers reallocation of sizes_ (3 -> 1) while new_dimensions aliases
+  // it.
+  arr.Reshape(arr.dimensions().subspan(2, 1));
+  EXPECT_EQ(arr.num_dimensions(), 1);
+  EXPECT_EQ(arr.dim(0), 24);
+  EXPECT_EQ(arr.num_elements(), 24);
 }
 
 }  // namespace

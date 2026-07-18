@@ -49,17 +49,17 @@ absl::Status Concat(OpKernelContext* context,
   for (size_t i = 0; i < inputs.size(); ++i) {
     const Tensor& input = inputs[i];
     if (input.dims() != input_dims) {
-      return errors::InvalidArgument(
-          "Ranks of all input tensors should match: shape[0] = ",
-          input_shape.DebugString(), " vs. shape[", i,
-          "] = ", input.shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Ranks of all input tensors should match: shape[0] = ",
+                       input_shape.DebugString(), " vs. shape[", i,
+                       "] = ", input.shape().DebugString()));
     }
     for (int j = 1; j < input_dims; ++j) {
       if (input.dim_size(j) != input_shape.dim_size(j)) {
-        return errors::InvalidArgument(
-            "Dimensions of inputs should match: shape[0] = ",
-            input_shape.DebugString(), " vs. shape[", i,
-            "] = ", input.shape().DebugString());
+        return absl::InvalidArgumentError(
+            absl::StrCat("Dimensions of inputs should match: shape[0] = ",
+                         input_shape.DebugString(), " vs. shape[", i,
+                         "] = ", input.shape().DebugString()));
       }
     }
     if (input.NumElements() > 0) {
@@ -81,7 +81,7 @@ absl::Status Concat(OpKernelContext* context,
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
     if (std::is_same<Device, GPUDevice>::value) {
       ConcatGPU<T>(context, inputs_flat, output, &output_flat);
-      return OkStatus();
+      return absl::OkStatus();
     }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     ConcatCPU<T>(context->device(), inputs_flat, &output_flat);
@@ -101,10 +101,11 @@ inline absl::Status Concat(OpKernelContext* context,
   case DataTypeToEnum<type>::value:                        \
     concat_status = Concat<type>(context, inputs, output); \
     break;
-    TF_CALL_ALL_TYPES(CASE);
+    TF_CALL_ALL_TYPES(CASE) TF_CALL_float8_e4m3fn(CASE);
 #undef CASE
     default:
-      concat_status = errors::InvalidArgument("Unsupported data type: ", type);
+      concat_status = absl::InvalidArgumentError(
+          absl::StrCat("Unsupported data type: ", type));
       break;
   }
   return concat_status;
@@ -128,7 +129,7 @@ absl::Status SplitEasyCases(OpKernelContext* context, const Tensor& input,
     total_size += size;
   }
   if (total_size > input.shape().dim_size(0)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Sum of split sizes must not exceed dim0-size of input tensor");
   }
 
@@ -198,9 +199,9 @@ absl::Status SplitCPU(OpKernelContext* context, const Tensor& input,
 
 // Handles the general case, on GPU.
 template <typename T>
-Status SplitGPU(OpKernelContext* context, const Tensor& input,
-                const gtl::ArraySlice<int64_t>& sizes,
-                std::vector<Tensor>* outputs) {
+absl::Status SplitGPU(OpKernelContext* context, const Tensor& input,
+                      const absl::Span<const int64_t>& sizes,
+                      std::vector<Tensor>* outputs) {
   // TODO(olston, apassos): Implement this.
   LOG(FATAL) << "Not yet implemented";  // Crash ok
 }
@@ -238,10 +239,11 @@ inline absl::Status Split(OpKernelContext* context, const Tensor& input,
   case DataTypeToEnum<type>::value:                             \
     split_status = Split<type>(context, input, sizes, outputs); \
     break;
-    TF_CALL_ALL_TYPES(CASE);
+    TF_CALL_ALL_TYPES(CASE) TF_CALL_float8_e4m3fn(CASE);
 #undef CASE
     default:
-      split_status = errors::InvalidArgument("Unsupported data type: ", type);
+      split_status = absl::InvalidArgumentError(
+          absl::StrCat("Unsupported data type: ", type));
       break;
   }
   return split_status;

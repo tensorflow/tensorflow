@@ -1,4 +1,5 @@
-load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -8,29 +9,32 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "profiler",
     srcs = ["__init__.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/core/profiler:profiler_analysis_proto_py",
         "//tensorflow/python/util:all_util",
-        "@local_tsl//tsl/profiler/protobuf:trace_events_proto_py",
+        "@tsl//tsl/profiler/protobuf:trace_events_proto_py",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "profiler_analysis_pb2_grpc",
     srcs = ["profiler_analysis_pb2_grpc.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/core/profiler:profiler_analysis_proto_py"],
 )
 
-py_strict_library(
+py_library(
     name = "capture_tpu_profile_lib",
     srcs = [
         "capture_tpu_profile.py",
         "version.py",
     ],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/framework:errors",
@@ -41,17 +45,18 @@ py_strict_library(
         "//tensorflow/python/profiler:profiler_v2",
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
-        "@pypi_packaging//:pkg",
+        "@pypi//packaging",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "capture_tpu_profile_bin",
     srcs = ["capture_tpu_profile.py"],
     main = "capture_tpu_profile.py",
+    strict_deps = True,
     deps = [
         ":capture_tpu_profile_lib",
         "@absl_py//absl/flags",
-        "@pypi_packaging//:pkg",
+        "@pypi//packaging",
     ],
 )

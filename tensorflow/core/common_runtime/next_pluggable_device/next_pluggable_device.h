@@ -36,13 +36,13 @@ class NextPluggableDevice : public PjRtBaseDevice {
  public:
   struct Options {
     // The device name's prefix (e.g., "/task:7")
-    string device_name_prefix;
+    std::string device_name_prefix;
 
     // The name of the  device (e.g., "GPU")
-    string device_name;
+    std::string device_name;
 
     // The name of the compilation device (e.g., "XLA_TPU_JIT");
-    string compilation_device_name;
+    std::string compilation_device_name;
 
     // The TfDeviceId.
     int device_ordinal = -1;

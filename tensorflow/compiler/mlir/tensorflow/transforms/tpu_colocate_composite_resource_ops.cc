@@ -47,13 +47,13 @@ struct TPUColocateCompositeResourceOps
 void WrapOpInLaunch(OpBuilder* builder, Location loc, Operation* op,
                     llvm::StringRef device) {
   builder->setInsertionPoint(op);
-  auto launch = builder->create<tf_device::LaunchOp>(
-      loc, builder->getStringAttr(device), op->getResultTypes());
+  auto launch = tf_device::LaunchOp::create(
+      *builder, loc, builder->getStringAttr(device), op->getResultTypes());
   launch.getBody().push_back(new Block);
   op->replaceAllUsesWith(launch);
 
   builder->setInsertionPointToEnd(&launch.GetBody());
-  builder->create<tf_device::ReturnOp>(loc, op->getResults());
+  tf_device::ReturnOp::create(*builder, loc, op->getResults());
 
   // Move op inside cluster.
   op->moveBefore(launch.GetBody().getTerminator());

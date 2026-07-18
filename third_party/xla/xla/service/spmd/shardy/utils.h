@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_SPMD_SHARDY_UTILS_H_
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 
@@ -32,10 +33,13 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/Support/LLVM.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/mesh_and_axis.h"
 
 namespace xla {
 namespace sdy {
@@ -51,6 +55,11 @@ mlir::DictionaryAttr getFrontendAttrs(mlir::Operation* op);
 mlir::DictionaryAttr getFuncArgFrontendAttrs(mlir::func::FuncOp funcOp,
                                              unsigned int index);
 
+// Returns a vector of attributes from `frontendAttributes` dict excluding
+// `excludedAttribute` one.
+llvm::SmallVector<mlir::NamedAttribute> getExistingFrontendAttributes(
+    mlir::DictionaryAttr frontendAttributes, mlir::StringRef excludedAttribute);
+
 // Adds `name` into the frontend attributes of `op` with value `value`. If
 // `name` already exists, it will be overwritten. Note that `value` will be
 // turned into a `StringAttr`.
@@ -62,6 +71,17 @@ void setFrontendAttribute(mlir::Operation* op, mlir::StringRef name,
 // that `value` will be turned into a `StringAttr`.
 void setFrontendAttribute(mlir::func::FuncOp funcOp, mlir::StringRef name,
                           mlir::Attribute value, int64_t argNum);
+
+// Sets `funcOp` argument at `index` w/ frontend attributes to `frontendAttrs`.
+void setFuncArgFrontendAttrs(
+    mlir::func::FuncOp funcOp, unsigned int index,
+    llvm::ArrayRef<mlir::NamedAttribute> frontendAttrs);
+
+// Remove `attributeName` from `frontendAttributes`.
+void removeFrontendAttribute(
+    mlir::DictionaryAttr frontendAttributes, mlir::StringRef attributeName,
+    std::function<void(llvm::ArrayRef<mlir::NamedAttribute>)> setAttr,
+    std::function<void()> removeAttr);
 
 // Remove `attributeName` from the frontend attributes of `op`.
 void removeFrontendAttribute(mlir::Operation* op,
@@ -103,7 +123,8 @@ AttrTy parseStringAttr(llvm::StringRef escapedValue,
       absl::string_view(escapedValue.data(), escapedValue.size()),
       &unescapedValue, &error))
       << error;
-  return mlir::cast<AttrTy>(mlir::parseAttribute(unescapedValue, context));
+  return mlir::dyn_cast_or_null<AttrTy>(
+      mlir::parseAttribute(unescapedValue, context));
 }
 
 // Parses `attrName` from `dictAttr` to an attribute of type `AttrTy`.
@@ -111,9 +132,10 @@ template <typename AttrTy>
 AttrTy parseStringAttr(mlir::DictionaryAttr dictAttr,
                        llvm::StringRef attrName) {
   if (mlir::Attribute stringAttr = dictAttr.get(attrName)) {
-    return parseStringAttr<AttrTy>(
-        mlir::cast<mlir::StringAttr>(stringAttr).getValue(),
-        stringAttr.getContext());
+    if (auto stringAttrCasted = mlir::dyn_cast<mlir::StringAttr>(stringAttr)) {
+      return parseStringAttr<AttrTy>(stringAttrCasted.getValue(),
+                                     stringAttr.getContext());
+    }
   }
   return nullptr;
 }
@@ -142,22 +164,20 @@ bool isPythonCallbackCustomCall(mlir::stablehlo::CustomCallOp op);
 
 // Parses `shardingsFrontendAttr` as a `TensorShardingPerValueAttr`, duplicates
 // the shardings at the specified indices, and returns the result as a string.
-std::string duplicateShardingsAtIndices(
+absl::StatusOr<std::string> duplicateShardingsAtIndices(
     mlir::StringRef shardingsFrontendAttr,
     const llvm::BitVector& indicesToDuplicate);
-
-// Return all axes or sub-axes in the `mesh`, such that sub-axes are derived
-// from `shardingOrAxisList` (including unreduced axes but not replicated)
-// and sorted by their order in the mesh. For example, given mesh <"x"=2,
-// "y"=16, "z"=4> and axis refs [{"x"}, {"y":2(2)}], we would return ["x",
-// "y":1(2), "y":2(2), "y":4(4), "z"].
-mlir::SmallVector<mlir::sdy::AxisRefAttr> getOrderedAxisRefs(
-    mlir::Attribute shardingOrAxisList, mlir::sdy::MeshAttr mesh);
 
 // Returns true if the module has at least one GSPMD attribute or op, like an
 // `mhlo.sharding` attribute or `Sharding` custom call.
 // TODO(b/420837831): delete this once we don't fall back to GSPMD.
 bool hasGspmdAttrsOrOps(mlir::ModuleOp module);
+
+// Returns true if the module has frontend_attributes containing mhlo.sharding.
+bool hasFrontendMhloShardings(mlir::ModuleOp module);
+
+// Returns true if the module has frontend_attributes containing xla.sdy.meshes.
+bool hasFrontendMeshes(mlir::ModuleOp module);
 
 // Check if the module has any sort of Shardy mesh:
 // - `mesh`
@@ -165,6 +185,30 @@ bool hasGspmdAttrsOrOps(mlir::ModuleOp module);
 // - `empty_mesh`
 // TODO(b/420837831): delete this once we don't fall back to GSPMD.
 bool hasShardyMesh(mlir::ModuleOp module);
+
+// Converts an XLA Mesh to an SDY MeshAttr.
+mlir::sdy::MeshAttr toSdyMeshAttr(const Mesh& mesh, mlir::MLIRContext* context);
+
+// Converts an XLA AxisRef to an SDY AxisRefAttr.
+mlir::sdy::AxisRefAttr toSdyAxisRefAttr(const AxisRef& axisRef,
+                                        const Mesh& mesh,
+                                        mlir::MLIRContext* context);
+
+// Converts a non-tuple XLA HloSharding to an SDY TensorShardingAttr.
+mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
+    const HloSharding& hloSharding, mlir::MLIRContext* context);
+
+// Converts a tuple XLA HloSharding to an SDY TensorShardingPerValueAttr.
+mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
+    const HloSharding& hloSharding, mlir::MLIRContext* context);
+
+// Returns whether the call is on a manual computation.
+bool isManualComputation(mlir::func::CallOp callOp);
+// Returns whether the `funcName` is a manual computation. Returns false for an
+// 'inlineable' manual computation if `isInlineable` is false. Returns whether
+// the func is an 'inlineable' manual computation if `isInlineable` is true.
+bool isManualComputationOnName(mlir::StringRef funcName,
+                               bool isInlineable = false);
 
 }  // namespace sdy
 }  // namespace xla

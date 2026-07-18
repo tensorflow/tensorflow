@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -54,7 +55,6 @@ limitations under the License.
 #include "xla/codegen/emitters/utils.h"
 #include "xla/codegen/hlo_fusion_spec.h"
 #include "xla/codegen/kernel_spec.h"
-#include "xla/codegen/mlir_kernel_definition.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -73,8 +73,10 @@ limitations under the License.
 
 namespace xla::emitters {
 
+using ::mlir::MLIRContext;
+
 ConcatenateFusionKernelEmitter::ConcatenateFusionKernelEmitter(
-    mlir::MLIRContext& mlir_context, const HloFusionInstruction& fusion,
+    MLIRContext& mlir_context, const HloFusionInstruction& fusion,
     const HloFusionSpec& fusion_spec, const BufferAssignment* buffer_assignment,
     KernelArguments::BufferAlignment buffer_alignment,
     WorkDimensions work_dimensions, absl::string_view entry_function_name,
@@ -89,7 +91,7 @@ ConcatenateFusionKernelEmitter::ConcatenateFusionKernelEmitter(
       entry_function_name_(entry_function_name),
       backend_kind_(backend_kind) {}
 
-absl::StatusOr<MlirKernelDefinition>
+absl::StatusOr<ConcatenateFusionKernelEmitter::KernelDefinition>
 ConcatenateFusionKernelEmitter::EmitKernelDefinition() {
   mlir::OpBuilder builder(&mlir_context_);
   auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion_.name()));
@@ -99,29 +101,28 @@ ConcatenateFusionKernelEmitter::EmitKernelDefinition() {
   bool force_64_bit = backend_kind_ == BackendKind::kCpu;
   emitters::SetIndexDataLayout(*module, fusion_, force_64_bit);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       mlir::func::FuncOp entry_func,
       emitters::EmitKernelApi(*module, fusion_, buffer_assignment_,
                               buffer_alignment_, entry_function_name_));
   SetBackendKind(&mlir_context_, entry_func, backend_kind_);
 
   std::vector<emitters::EpilogueSpecification> epilogues =
-      GetEpilogues(fusion_, module->getContext());
+      GetEpilogues(fusion_, &mlir_context_);
   emitters::PartitionedComputations computations(
-      fusion_.fused_instructions_computation(), module->getContext(),
-      epilogues);
-  TF_ASSIGN_OR_RETURN(auto call_targets, emitters::EmitPartitionedComputations(
-                                             *module, computations));
+      fusion_.fused_instructions_computation(), &mlir_context_, epilogues);
+  ASSIGN_OR_RETURN(auto call_targets, emitters::EmitPartitionedComputations(
+                                          *module, computations));
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       EmitEntryFunction(computations, call_targets, entry_func, fusion_));
 
-  TF_ASSIGN_OR_RETURN(auto kernel_spec,
-                      GetKernelSpec(entry_function_name_, fusion_,
-                                    buffer_assignment_, work_dimensions_));
+  ASSIGN_OR_RETURN(auto kernel_spec,
+                   GetKernelSpec(entry_function_name_, fusion_,
+                                 buffer_assignment_, work_dimensions_));
 
-  return MlirKernelDefinition(std::move(kernel_spec),
-                              MlirKernelSource(std::move(module)));
+  return KernelDefinition(std::move(kernel_spec),
+                          MlirKernelSource(std::move(module)));
 }
 
 const Shape& ConcatenateFusionKernelEmitter::GetIndexingShape(
@@ -151,12 +152,12 @@ int ConcatenateFusionKernelEmitter::GetValidUnrollFactor(
 
 IndexingMap ConcatenateFusionKernelEmitter::ComputeWorkItemIdToOutputIndexing(
     const WorkDimensions& work_dimensions, const Shape& largest_shape,
-    mlir::MLIRContext* ctx) {
+    MLIRContext* ctx) {
   return GetDefaultWorkItemIndexingMap(work_dimensions, largest_shape, ctx);
 }
 
 IndexingMap ConcatenateFusionKernelEmitter::ComputeWorkItemIdToOutputIndexing(
-    mlir::MLIRContext* ctx) const {
+    MLIRContext* ctx) const {
   return ComputeWorkItemIdToOutputIndexing(work_dimensions_, largest_shape_,
                                            ctx);
 }
@@ -169,7 +170,6 @@ absl::Status ConcatenateFusionKernelEmitter::EmitEntryFunction(
   const auto& root_computation = computations.FindPartitionedComputation(
       fusion.fused_instructions_computation());
 
-  mlir::MLIRContext* context = entry_function.getContext();
   mlir::ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
   builder.setInsertionPointToStart(entry_function.addEntryBlock());
 
@@ -185,9 +185,10 @@ absl::Status ConcatenateFusionKernelEmitter::EmitEntryFunction(
   llvm::SmallVector<mlir::Value> result_tensors{output_tensor_args.begin(),
                                                 output_tensor_args.end()};
 
-  auto work_item_id_to_input_map = ComputeWorkItemIdToOutputIndexing(context);
+  auto work_item_id_to_input_map =
+      ComputeWorkItemIdToOutputIndexing(&mlir_context_);
   auto epilogue_indexing = ComputeEpilogueInputToOutputIndexing(
-      fusion_spec_.fusion_hero(0), fusion_spec_.fusion_root(0), context);
+      fusion_spec_.fusion_hero(0), fusion_spec_.fusion_root(0), &mlir_context_);
 
   const auto* concat = &fusion_spec_.fusion_hero(0).instruction();
 
@@ -208,7 +209,7 @@ absl::Status ConcatenateFusionKernelEmitter::EmitEntryFunction(
     for (auto [operand_index, operand] : llvm::enumerate(concat->operands())) {
       IndexingMap input_to_output_map =
           ComputeInputToOutputIndexing(concat, /*input_id=*/operand_index,
-                                       context)
+                                       &mlir_context_)
               .indexing_maps.front()
               .begin()
               ->map();
@@ -260,7 +261,8 @@ absl::Status ConcatenateFusionKernelEmitter::EmitEntryFunction(
       llvm::SmallVector<mlir::OpFoldResult> offsets(output_tensor.getRank(),
                                                     nested_b.getIndexAttr(0));
       llvm::SmallVector<mlir::OpFoldResult> sizes =
-          mlir::getAsIndexOpFoldResult(context, output_tensor.getShape());
+          mlir::getAsIndexOpFoldResult(&mlir_context_,
+                                       output_tensor.getShape());
       llvm::SmallVector<mlir::OpFoldResult> strides(output_tensor.getRank(),
                                                     nested_b.getIndexAttr(1));
       nested_b.create<mlir::tensor::ParallelInsertSliceOp>(
@@ -270,7 +272,7 @@ absl::Status ConcatenateFusionKernelEmitter::EmitEntryFunction(
 
   const NumWorkItems& num_work_items = work_dimensions_.num_work_items;
   llvm::SmallVector<mlir::OpFoldResult> upper_bounds =
-      mlir::getAsIndexOpFoldResult(context,
+      mlir::getAsIndexOpFoldResult(&mlir_context_,
                                    {static_cast<int64_t>(num_work_items.x),
                                     static_cast<int64_t>(num_work_items.y),
                                     static_cast<int64_t>(num_work_items.z)});
@@ -284,8 +286,8 @@ absl::Status ConcatenateFusionKernelEmitter::EmitEntryFunction(
 }
 
 std::vector<emitters::EpilogueSpecification>
-ConcatenateFusionKernelEmitter::GetEpilogues(
-    const HloFusionInstruction& fusion, mlir::MLIRContext* mlir_context) const {
+ConcatenateFusionKernelEmitter::GetEpilogues(const HloFusionInstruction& fusion,
+                                             MLIRContext* mlir_context) const {
   return {emitters::EpilogueSpecification::FromIdentityIndexing(
       &fusion_spec_.fusion_hero(0).instruction(),
       &fusion_spec_.fusion_root(0).instruction(), mlir_context)};

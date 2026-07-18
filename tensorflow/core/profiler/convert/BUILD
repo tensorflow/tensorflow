@@ -22,10 +22,10 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
-        "@local_xla//xla/tsl/profiler/utils:math_utils",
-        "@local_xla//xla/tsl/profiler/utils:tf_xplane_visitor",
         "@org_xprof//xprof/utils:gpu_event_stats",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@xla//xla/tsl/profiler/utils:math_utils",
+        "@xla//xla/tsl/profiler/utils:tf_xplane_visitor",
     ],
 )
 
@@ -38,7 +38,6 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = [
         "//learning/deepmind/jax/statix:__subpackages__",
-        "//platforms/xla/tools/shardy_migration:__subpackages__",
         "//smartass/brain/tpu_worker:__subpackages__",
         "//tensorflow/core/profiler:internal",
     ],

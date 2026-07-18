@@ -288,31 +288,31 @@ void CloneEmptyIfWithPredicate(mlir::TF::IfRegionOp if_region, const Mesh& mesh,
       absl::StrCat(kSendRecvKeyPrefix, *num_send_recvs);
   *num_send_recvs += 1;
 
-  builder.create<mlir::TF::DTensorSend>(
-      if_region.getLoc(), if_region.getCond(),
-      builder.getStringAttr(send_recv_key),
-      mlir::dtensor::MeshAttr::get(context, mesh));
+  mlir::TF::DTensorSend::create(builder, if_region.getLoc(),
+                                if_region.getCond(),
+                                builder.getStringAttr(send_recv_key),
+                                mlir::dtensor::MeshAttr::get(context, mesh));
 
   // Create new cluster op that contains cloned if operation.
-  auto new_cluster = builder.create<mlir::tf_device::ClusterOp>(
-      if_region.getLoc(), llvm::SmallVector<mlir::Type, 4>{});
+  auto new_cluster = mlir::tf_device::ClusterOp::create(
+      builder, if_region.getLoc(), llvm::SmallVector<mlir::Type, 4>{});
   new_cluster.getBody().push_back(new mlir::Block);
   builder.setInsertionPointToEnd(&new_cluster.GetBody());
-  auto return_op = builder.create<mlir::tf_device::ReturnOp>(
-      if_region.getLoc(), llvm::SmallVector<mlir::Value, 4>{});
+  auto return_op = mlir::tf_device::ReturnOp::create(
+      builder, if_region.getLoc(), llvm::SmallVector<mlir::Value, 4>{});
 
   // Add DTensorRecv op inside new cluster that receives the cluster.
   builder.setInsertionPoint(return_op);
-  auto recv_op = builder.create<mlir::TF::DTensorRecv>(
-      if_region.getLoc(), predicate_tensor_type,
+  auto recv_op = mlir::TF::DTensorRecv::create(
+      builder, if_region.getLoc(), predicate_tensor_type,
       builder.getStringAttr(send_recv_key),
       mlir::TF::ShapeAttr::get(context, predicate_tensor_type),
       mlir::dtensor::MeshAttr::get(context, mesh));
 
   // Clone tf.IfRegion op inside newly created cluster and make sure
   // that the predicate tensor is from DTensorRecv op created above.
-  auto host_side_if = builder.create<mlir::TF::IfRegionOp>(
-      if_region.getLoc(), llvm::SmallVector<mlir::Type, 4>{},
+  auto host_side_if = mlir::TF::IfRegionOp::create(
+      builder, if_region.getLoc(), llvm::SmallVector<mlir::Type, 4>{},
       recv_op.getOutput(), if_region.getIsStateless(),
       GetUniqueControlflowFnName("cloned_if_then", builder),
       GetUniqueControlflowFnName("cloned_if_else", builder));
@@ -322,15 +322,15 @@ void CloneEmptyIfWithPredicate(mlir::TF::IfRegionOp if_region, const Mesh& mesh,
   auto& then_branch = host_side_if.getThenBranch();
   then_branch.push_back(new mlir::Block);
   builder.setInsertionPointToEnd(&then_branch.front());
-  builder.create<mlir::TF::YieldOp>(if_region.getLoc(),
-                                    /*operands=*/llvm::ArrayRef<mlir::Value>{});
+  mlir::TF::YieldOp::create(builder, if_region.getLoc(),
+                            /*operands=*/llvm::ArrayRef<mlir::Value>{});
 
   // Create empty else branch region.
   auto& else_branch = host_side_if.getElseBranch();
   else_branch.push_back(new mlir::Block);
   builder.setInsertionPointToEnd(&else_branch.front());
-  builder.create<mlir::TF::YieldOp>(if_region.getLoc(),
-                                    /*operands=*/llvm::ArrayRef<mlir::Value>{});
+  mlir::TF::YieldOp::create(builder, if_region.getLoc(),
+                            /*operands=*/llvm::ArrayRef<mlir::Value>{});
   new_cluster->setAttr(kMeshAttr, builder.getStringAttr(mesh.ToString()));
 }
 
@@ -550,8 +550,8 @@ mlir::LogicalResult MergeClusters(mlir::ModuleOp module) {
 
     // Create a single cluster op contains merged computations for `mesh`.
     builder.setInsertionPoint(&func_block.front());
-    auto new_cluster = builder.create<mlir::tf_device::ClusterOp>(
-        module.getLoc(), merged_return_types);
+    auto new_cluster = mlir::tf_device::ClusterOp::create(
+        builder, module.getLoc(), merged_return_types);
     new_cluster.getBody().push_back(new mlir::Block);
     new_cluster->setAttr(kMeshAttr, builder.getStringAttr(mesh.ToString()));
 
@@ -578,8 +578,8 @@ mlir::LogicalResult MergeClusters(mlir::ModuleOp module) {
     }
 
     builder.setInsertionPointToEnd(&new_cluster.GetBody());
-    builder.create<mlir::tf_device::ReturnOp>(new_cluster.getLoc(),
-                                              merged_return_values);
+    mlir::tf_device::ReturnOp::create(builder, new_cluster.getLoc(),
+                                      merged_return_values);
 
     // Replace return value usages.
     for (auto it :

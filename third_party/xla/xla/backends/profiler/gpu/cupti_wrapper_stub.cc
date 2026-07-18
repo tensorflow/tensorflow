@@ -13,11 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <type_traits>
+#include <cstddef>
+#include <cstdint>
 
-#include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_profiler_target.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_result.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_target.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
 #include "xla/backends/profiler/gpu/cupti_wrapper.h"
 
@@ -59,6 +63,40 @@ CUptiResult CuptiWrapperStub::ActivityRegisterCallbacks(
   return CUPTI_SUCCESS;
 }
 
+CUptiResult CuptiWrapperStub::ActivityRegisterCallbacksV2(
+    CUpti_SubscriberHandle /*subscriber*/,
+    CuptiBuffersCallbackRequestFuncV2 /*func_buffer_requested*/,
+    CuptiBuffersCallbackCompleteFuncV2 /*func_buffer_completed*/) {
+  return CUPTI_SUCCESS;
+}
+
+CUptiResult CuptiWrapperStub::ActivityEnableV2(
+    CUpti_SubscriberHandle /*subscriber*/, CUpti_ActivityKind /*kind*/,
+    void* /*cfg*/) {
+  return CUPTI_SUCCESS;
+}
+
+CUptiResult CuptiWrapperStub::ActivityDisableV2(
+    CUpti_SubscriberHandle /*subscriber*/, CUpti_ActivityKind /*kind*/,
+    void* /*cfg*/) {
+  return CUPTI_SUCCESS;
+}
+
+CUptiResult CuptiWrapperStub::ActivitySetAttributeV2(
+    CUpti_SubscriberHandle /*subscriber*/, CUpti_ActivityAttribute /*attr*/,
+    size_t* /*valueSize*/, void* /*value*/) {
+  return CUPTI_SUCCESS;
+}
+
+CUptiResult CuptiWrapperStub::ActivityUseSystemThreadIdV2(
+    CUpti_SubscriberHandle /*subscriber*/) {
+  return CUPTI_SUCCESS;
+}
+
+CUptiResult CuptiWrapperStub::ActivityUsePerThreadBufferV2() {
+  return CUPTI_SUCCESS;
+}
+
 CUptiResult CuptiWrapperStub::ActivityUsePerThreadBuffer() {
   return CUPTI_SUCCESS;
 }
@@ -97,6 +135,12 @@ CUptiResult CuptiWrapperStub::Subscribe(CUpti_SubscriberHandle* subscriber,
   return CUPTI_SUCCESS;
 }
 
+CUptiResult CuptiWrapperStub::SubscribeV2(CUpti_SubscriberHandle* subscriber,
+                                          CUpti_CallbackFunc callback,
+                                          void* userdata) {
+  return CUPTI_SUCCESS;
+}
+
 CUptiResult CuptiWrapperStub::Unsubscribe(CUpti_SubscriberHandle subscriber) {
   return CUPTI_SUCCESS;
 }
@@ -132,6 +176,10 @@ CUptiResult CuptiWrapperStub::GetGraphExecId(CUgraphExec graph_exec,
 }
 
 CUptiResult CuptiWrapperStub::SetThreadIdType(CUpti_ActivityThreadIdType type) {
+  return CUPTI_SUCCESS;
+}
+
+CUptiResult CuptiWrapperStub::ActivityEnableHWTrace(bool enable) {
   return CUPTI_SUCCESS;
 }
 

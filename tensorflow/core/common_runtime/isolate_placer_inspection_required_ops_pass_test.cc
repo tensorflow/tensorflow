@@ -67,11 +67,11 @@ void RunPassAndCompare(const GraphDef& original,
   GraphDef rewritten;
   RunPass(original, &rewritten);
 
-  std::vector<string> errors;
+  std::vector<std::string> errors;
   errors.push_back(absl::StrCat("Graphs did not match.\n  Rewritten graph:\n",
                                 SummarizeGraphDef(rewritten)));
   for (const GraphDef& alternative : expected_alternatives) {
-    string diff;
+    std::string diff;
     bool graphs_equal = EqualGraphDef(rewritten, alternative, &diff);
     if (graphs_equal) {
       return;

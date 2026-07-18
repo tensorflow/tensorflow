@@ -118,10 +118,11 @@ class TFRInlinerInterface : public DialectInlinerInterface {
     auto result_itype = llvm::cast<IntegerType>(result_type);
     if (input_itype.getWidth() == result_itype.getWidth()) return nullptr;
     if (input_itype.getWidth() > result_itype.getWidth()) {
-      return builder.create<arith::TruncIOp>(conversion_loc, result_type,
-                                             input);
+      return arith::TruncIOp::create(builder, conversion_loc, result_type,
+                                     input);
     } else {
-      return builder.create<arith::ExtSIOp>(conversion_loc, result_type, input);
+      return arith::ExtSIOp::create(builder, conversion_loc, result_type,
+                                    input);
     }
   }
 };
@@ -148,11 +149,11 @@ TFRDialect::TFRDialect(MLIRContext *context)
 Operation *TFRDialect::materializeConstant(OpBuilder &builder, Attribute value,
                                            Type type, Location loc) {
   if (arith::ConstantOp::isBuildableWith(value, type))
-    return builder.create<arith::ConstantOp>(loc, type,
-                                             llvm::cast<TypedAttr>(value));
+    return arith::ConstantOp::create(builder, loc, type,
+                                     llvm::cast<TypedAttr>(value));
   if (func::ConstantOp::isBuildableWith(value, type))
-    return builder.create<func::ConstantOp>(
-        loc, type, llvm::cast<FlatSymbolRefAttr>(value));
+    return func::ConstantOp::create(builder, loc, type,
+                                    llvm::cast<FlatSymbolRefAttr>(value));
   return nullptr;
 }
 
@@ -421,9 +422,10 @@ class ConvertConstToTensorConst : public OpRewritePattern<ConstantTensorOp> {
           {static_cast<int64_t>(array.size())}, *all_types.begin());
       DenseElementsAttr attr =
           DenseElementsAttr::get(new_out_type, array.getValue());
-      new_cst = rewriter.create<TF::ConstOp>(loc, new_out_type, attr);
+      new_cst = TF::ConstOp::create(rewriter, loc, new_out_type, attr);
       if (isa<TFRTensorType>(out_type)) {
-        new_cst = rewriter.create<CastOp>(loc, out_type, new_cst->getResult(0));
+        new_cst =
+            CastOp::create(rewriter, loc, out_type, new_cst->getResult(0));
       }
       rewriter.replaceOp(cst_tensor_op, new_cst->getResult(0));
       return success();
@@ -432,9 +434,10 @@ class ConvertConstToTensorConst : public OpRewritePattern<ConstantTensorOp> {
     TypedAttr scalar;
     if (matchPattern(cst_tensor_op.getArg(), m_Constant(&scalar))) {
       Type new_out_type = RankedTensorType::get({}, scalar.getType());
-      new_cst = rewriter.create<TF::ConstOp>(loc, new_out_type, scalar);
+      new_cst = TF::ConstOp::create(rewriter, loc, new_out_type, scalar);
       if (isa<TFRTensorType>(out_type)) {
-        new_cst = rewriter.create<CastOp>(loc, out_type, new_cst->getResult(0));
+        new_cst =
+            CastOp::create(rewriter, loc, out_type, new_cst->getResult(0));
       }
       rewriter.replaceOp(cst_tensor_op, new_cst->getResult(0));
       return success();
@@ -481,8 +484,8 @@ class RemoveRedundantCast : public OpRewritePattern<CastOp> {
     if ((input_tensor_type.getElementType() !=
          output_tensor_type.getElementType()) &&
         !isQuantizedType(input_type) && !isQuantizedType(output_type)) {
-      auto new_tfr_cast = rewriter.create<TFR::CastOp>(
-          cast_op.getLoc(),
+      auto new_tfr_cast = TFR::CastOp::create(
+          rewriter, cast_op.getLoc(),
           output_tensor_type.clone(input_tensor_type.getElementType()),
           cast_op.getArg());
       rewriter.replaceOpWithNewOp<TF::CastOp>(cast_op, output_type,
@@ -652,8 +655,9 @@ class RemoveRawDataOp : public OpRewritePattern<TFRQuantRawDataOp> {
       new_list_values.push_back(redundant_cast.getArg());
     }
 
-    auto new_list = rewriter.create<BuildListOp>(
-        raw_data_op.getLoc(), preceding_list.getType(), new_list_values);
+    auto new_list =
+        BuildListOp::create(rewriter, raw_data_op.getLoc(),
+                            preceding_list.getType(), new_list_values);
     raw_data_op.getOutput().replaceAllUsesWith(new_list.getOut());
     return success();
   }
@@ -679,11 +683,11 @@ class RemoveQParamsOp : public OpRewritePattern<TFRQuantQParamsOp> {
     rewriter.setInsertionPoint(qparams_op);
     Location loc = qparams_op->getLoc();
     if (auto qtype = llvm::dyn_cast<quant::UniformQuantizedType>(cast_qtype)) {
-      scale_op = rewriter.create<TF::ConstOp>(
-          loc, RankedTensorType::get({}, rewriter.getF32Type()),
+      scale_op = TF::ConstOp::create(
+          rewriter, loc, RankedTensorType::get({}, rewriter.getF32Type()),
           rewriter.getF32FloatAttr(qtype.getScale()));
-      zp_op = rewriter.create<TF::ConstOp>(
-          loc, RankedTensorType::get({}, rewriter.getI32Type()),
+      zp_op = TF::ConstOp::create(
+          rewriter, loc, RankedTensorType::get({}, rewriter.getI32Type()),
           rewriter.getI32IntegerAttr(qtype.getZeroPoint()));
     } else if (auto qtype = llvm::dyn_cast<quant::UniformQuantizedPerAxisType>(
                    cast_qtype)) {
@@ -697,20 +701,20 @@ class RemoveQParamsOp : public OpRewritePattern<TFRQuantQParamsOp> {
           {static_cast<int64_t>(num_channels)}, rewriter.getF32Type());
       auto scales_attr =
           DenseElementsAttr::get(scales_type, llvm::ArrayRef(scales));
-      scale_op = rewriter.create<TF::ConstOp>(loc, scales_attr);
+      scale_op = TF::ConstOp::create(rewriter, loc, scales_attr);
 
       auto zps_type = RankedTensorType::get(
           {static_cast<int64_t>(num_channels)}, rewriter.getI32Type());
       auto zps_attr = DenseElementsAttr::get(zps_type, llvm::ArrayRef(zps));
-      zp_op = rewriter.create<TF::ConstOp>(loc, zps_attr);
+      zp_op = TF::ConstOp::create(rewriter, loc, zps_attr);
     }
     if (!scale_op || !zp_op) {
       return failure();
     }
-    auto scale_cast = rewriter.create<CastOp>(
-        loc, qparams_op.getScale().getType(), scale_op.getOutput());
-    auto zp_cast = rewriter.create<CastOp>(loc, qparams_op.getZp().getType(),
-                                           zp_op.getOutput());
+    auto scale_cast = CastOp::create(
+        rewriter, loc, qparams_op.getScale().getType(), scale_op.getOutput());
+    auto zp_cast = CastOp::create(rewriter, loc, qparams_op.getZp().getType(),
+                                  zp_op.getOutput());
 
     qparams_op.getScale().replaceAllUsesWith(scale_cast.getOut());
     qparams_op.getZp().replaceAllUsesWith(zp_cast.getOut());
@@ -787,10 +791,11 @@ class RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
     }
     rewriter.setInsertionPoint(scale_factor_op);
     const Location loc = scale_factor_op->getLoc();
-    auto result_scale_op = rewriter.create<TF::ConstOp>(
-        loc, DenseElementsAttr::get(scale_type, llvm::ArrayRef(scale_factors)));
-    auto result_scale_cast_op = rewriter.create<CastOp>(
-        loc, scale_factor_op.getType(), result_scale_op.getOutput());
+    auto result_scale_op = TF::ConstOp::create(
+        rewriter, loc,
+        DenseElementsAttr::get(scale_type, llvm::ArrayRef(scale_factors)));
+    auto result_scale_cast_op = CastOp::create(
+        rewriter, loc, scale_factor_op.getType(), result_scale_op.getOutput());
     scale_factor_op.getScaleFactor().replaceAllUsesWith(
         result_scale_cast_op.getOut());
     return success();
@@ -812,50 +817,55 @@ class RemoveRescaleOp : public OpRewritePattern<TFRQuantRescaleOp> {
     const Location loc = rescale_op->getLoc();
     const auto result_types = rescale_op->getResultTypes();
     auto c_false =
-        rewriter.create<arith::ConstantOp>(loc, rewriter.getBoolAttr(false));
+        arith::ConstantOp::create(rewriter, loc, rewriter.getBoolAttr(false));
     TypeAttr f32_attr = TypeAttr::get(rewriter.getF32Type());
     TFRAttrType output_type = TFRAttrType::get(rewriter.getContext());
-    auto constant_f32_op = rewriter.create<ConstOp>(loc, output_type, f32_attr);
+    auto constant_f32_op =
+        ConstOp::create(rewriter, loc, output_type, f32_attr);
     TypeAttr i32_attr = TypeAttr::get(rewriter.getI32Type());
-    auto constant_i32_op = rewriter.create<ConstOp>(loc, output_type, i32_attr);
+    auto constant_i32_op =
+        ConstOp::create(rewriter, loc, output_type, i32_attr);
 
     IntegerAttr zp_attr;
     if (!matchPattern(zp, m_Constant(&zp_attr))) {
       return failure();
     }
     rewriter.setInsertionPoint(zp.getDefiningOp());
-    auto zp_tensor = rewriter.create<TF::ConstOp>(
-        loc, RankedTensorType::get({}, zp.getType()), zp_attr);
-    auto zp_cast = rewriter.create<CastOp>(
-        loc, rewriter.getType<TFRTensorType>(), zp_tensor.getOutput());
+    auto zp_tensor = TF::ConstOp::create(
+        rewriter, loc, RankedTensorType::get({}, zp.getType()), zp_attr);
+    auto zp_cast =
+        CastOp::create(rewriter, loc, rewriter.getType<TFRTensorType>(),
+                       zp_tensor.getOutput());
 
     rewriter.setInsertionPoint(rescale_op);
-    auto cast_input_to_float_op = rewriter.create<CallOp>(
-        loc, result_types,
-        SymbolRefAttr::get(rewriter.getContext(), "tf__cast"),
-        ArrayRef<Value>{input, constant_f32_op, c_false},
-        /*args_attrs=*/nullptr, /*res_attrs=*/nullptr);
-    auto input_x_scale_op = rewriter.create<CallOp>(
-        loc, result_types, SymbolRefAttr::get(rewriter.getContext(), "tf__mul"),
+    auto cast_input_to_float_op =
+        CallOp::create(rewriter, loc, result_types,
+                       SymbolRefAttr::get(rewriter.getContext(), "tf__cast"),
+                       ArrayRef<Value>{input, constant_f32_op, c_false},
+                       /*args_attrs=*/nullptr, /*res_attrs=*/nullptr);
+    auto input_x_scale_op = CallOp::create(
+        rewriter, loc, result_types,
+        SymbolRefAttr::get(rewriter.getContext(), "tf__mul"),
         ArrayRef<Value>{cast_input_to_float_op.getResult(0), scale},
         /*args_attrs=*/nullptr, /*res_attrs=*/nullptr);
-    auto round_rescaled_op = rewriter.create<CallOp>(
-        loc, result_types,
-        SymbolRefAttr::get(rewriter.getContext(), "tf__round"),
-        ArrayRef<Value>{input_x_scale_op->getResult(0)},
-        /*args_attrs=*/nullptr, /*res_attrs=*/nullptr);
-    auto cast_zp_to_float_op = rewriter.create<CallOp>(
-        loc, result_types,
-        SymbolRefAttr::get(rewriter.getContext(), "tf__cast"),
-        ArrayRef<Value>{zp_cast, constant_f32_op, c_false},
-        /*args_attrs=*/nullptr, /*res_attrs=*/nullptr);
-    auto recentered_op = rewriter.create<CallOp>(
-        loc, result_types, SymbolRefAttr::get(rewriter.getContext(), "tf__add"),
-        ArrayRef<Value>{round_rescaled_op->getResult(0),
-                        cast_zp_to_float_op->getResult(0)},
-        /*args_attrs=*/nullptr, /*res_attrs=*/nullptr);
-    auto cast_output_to_i32 = rewriter.create<CallOp>(
-        loc, result_types,
+    auto round_rescaled_op =
+        CallOp::create(rewriter, loc, result_types,
+                       SymbolRefAttr::get(rewriter.getContext(), "tf__round"),
+                       ArrayRef<Value>{input_x_scale_op->getResult(0)},
+                       /*args_attrs=*/nullptr, /*res_attrs=*/nullptr);
+    auto cast_zp_to_float_op =
+        CallOp::create(rewriter, loc, result_types,
+                       SymbolRefAttr::get(rewriter.getContext(), "tf__cast"),
+                       ArrayRef<Value>{zp_cast, constant_f32_op, c_false},
+                       /*args_attrs=*/nullptr, /*res_attrs=*/nullptr);
+    auto recentered_op =
+        CallOp::create(rewriter, loc, result_types,
+                       SymbolRefAttr::get(rewriter.getContext(), "tf__add"),
+                       ArrayRef<Value>{round_rescaled_op->getResult(0),
+                                       cast_zp_to_float_op->getResult(0)},
+                       /*args_attrs=*/nullptr, /*res_attrs=*/nullptr);
+    auto cast_output_to_i32 = CallOp::create(
+        rewriter, loc, result_types,
         SymbolRefAttr::get(rewriter.getContext(), "tf__cast"),
         ArrayRef<Value>{recentered_op->getResult(0), constant_i32_op, c_false},
         /*args_attrs=*/nullptr, /*res_attrs=*/nullptr);

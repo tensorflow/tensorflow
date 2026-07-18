@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <cstddef>
+#include <initializer_list>
 #include <limits>
 #ifndef TF_LITE_STATIC_MEMORY
 #include <string>
@@ -332,6 +334,9 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
 // Return the size of given type in bytes. Return 0 in case of string.
 int TfLiteTypeGetSize(TfLiteType type);
 
+// Return the size of given type in bits. Returns 0 in case of string.
+int TfLiteTypeGetSizeBits(TfLiteType type);
+
 // Whether the current platform is mobile (Android or iOS).
 bool IsMobilePlatform();
 
@@ -344,6 +349,22 @@ bool HasUnspecifiedDimension(const TfLiteTensor* tensor);
 TfLiteStatus CheckQuantizationParams(TfLiteContext* context,
                                      const TfLiteTensor* input,
                                      const TfLiteTensor* output);
+
+/**
+ * Calculates the product of the given dimensions. Returns an error if any of
+ * the dimensions is negative or if the product overflows.
+ * @param context The context to use for error reporting.
+ * @param dims The dimensions to multiply.
+ * @param error_message The error message to use if an error is encountered.
+ * @param product The output parameter to store the product.
+ */
+TfLiteStatus CheckedShapeProduct(TfLiteContext* context,
+                                 std::initializer_list<int> dims,
+                                 const char* error_message, size_t& product);
+
+TfLiteStatus CheckedShapeProduct(TfLiteContext* context, const int* dims,
+                                 int count, const char* error_message,
+                                 size_t& product);
 
 }  // namespace tflite
 

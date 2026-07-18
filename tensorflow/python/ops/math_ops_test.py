@@ -1277,6 +1277,32 @@ class SignTest(test_util.TensorFlowTestCase):
       self.assertAllClose(
           t.gradient(y, x), math_ops.complex(0.353553, -0.353553))
 
+  def test_complex_sign_tiny_no_underflow(self):
+    # Regression test for tf#116945: tf.math.sign returned 0 for small complex64
+    # inputs because complex_abs computed |z|^2 in float32, which underflows to
+    # 0 for |z| < ~1.08e-19. With the fix, the entire computation is promoted
+    # to complex128 and the result is cast back to the input dtype.
+    with context.eager_mode():
+      # |z| = sqrt(2) * 1e-20 ~= 1.41e-20, well below float32 underflow.
+      tiny = 1e-20
+      for dtype, expected_dtype in [
+          (np.complex64, np.complex64),
+          (np.complex128, np.complex128),
+      ]:
+        x = constant_op.constant(tiny + tiny * 1j, dtype=dtype)
+        y = math_ops.sign(x)
+        # Result should be x/|x| = (1+1j)/sqrt(2), not 0.
+        # Use builtin complex() instead of np.complex (deprecated in NumPy 1.20+).
+        expected = np.array(
+            complex(tiny, tiny) / abs(complex(tiny, tiny)), dtype=expected_dtype
+        )
+        self.assertAllClose(y.numpy(), expected, atol=1e-6)
+        self.assertEqual(y.dtype.base_dtype, expected_dtype)
+
+      # Also verify zero still returns zero (no division by zero crash).
+      z = constant_op.constant(0 + 0j, dtype=np.complex64)
+      self.assertAllEqual(math_ops.sign(z).numpy(), np.complex64(0))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class ReciprocalNoNanTest(test_util.TensorFlowTestCase):
@@ -1379,7 +1405,7 @@ class ErfcinvTest(test_util.TensorFlowTestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class ArgMaxMinTest(test_util.TensorFlowTestCase):
+class ArgMaxMinTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def _generateRandomTensor(self, dtype, shape):
     if dtype.is_integer:
@@ -1427,18 +1453,35 @@ class ArgMaxMinTest(test_util.TensorFlowTestCase):
             tf_values, axis=axis, output_type=dtypes.uint16)
         self.assertAllEqual(tf_max, np_max)
 
-  def testArgMaxInt16(self):
+  @parameterized.parameters(
+      dtypes.int8,
+      dtypes.uint8,
+      dtypes.int16,
+      dtypes.uint16,
+      dtypes.int32,
+      dtypes.int64,
+  )
+  def testArgMaxWithIntegerDtypes(self, dtype):
     shape = (24, 8)
-    tf_values = self._generateRandomTensor(dtypes.int16, shape)
+    tf_values = self._generateRandomTensor(dtype, shape)
     np_values = self.evaluate(tf_values)
-    for axis in range(0, len(shape)):
+    for axis in range(len(shape)):
       np_max = np.argmax(np_values, axis=axis)
       tf_max = math_ops.argmax(
           tf_values,
-          axis=constant_op.constant(axis, dtype=dtypes.int16),
+          axis=constant_op.constant(axis, dtype=dtype),
           output_type=dtypes.int32,
       )
       self.assertAllEqual(tf_max, np_max)
+
+  def testArgMaxRaisesInvalidDtype(self):
+    invalid_axis = constant_op.constant(1, dtype=dtypes.float32)
+    with self.assertRaises(TypeError):
+      math_ops.argmax(
+          constant_op.constant([1, 2, 3]),
+          axis=invalid_axis,
+          output_type=dtypes.int32,
+      )
 
   def testArgMin(self):
     shape = (24, 8)

@@ -14,12 +14,16 @@
 # ==============================================================================
 """Tests for dynamic sharding."""
 import collections
+import time
 
+from absl import logging
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.core.protobuf import service_config_pb2
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import data_service_ops
+from tensorflow.python.data.experimental.service import server_lib
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.kernel_tests import tf_record_test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -379,6 +383,73 @@ class DynamicShardingTest(data_service_test_base.TestBase,
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_workers=[1, 3])))
+  def testTake(self, num_workers):
+    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
+    a = dataset_ops.Dataset.range(3).repeat().take(5)
+    b = dataset_ops.Dataset.range(100, 103).repeat().take(5)
+    ds = a.concatenate(b)
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
+
+    assert_items_equal = num_workers > 1
+    if num_workers == 1:
+      expected = [0, 1, 2, 0, 1, 100, 101, 102, 100, 101]
+    else:
+      expected = [0, 1, 2] * 5 + [100, 101, 102] * 5
+    self.assertDatasetProduces(
+        ds, expected, assert_items_equal=assert_items_equal
+    )
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_workers=[1, 3])))
+  def testTakeWithRestartedWorker(self, num_workers):
+    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
+    a = dataset_ops.Dataset.range(3).repeat()
+    b = dataset_ops.Dataset.range(0)
+    c = dataset_ops.Dataset.range(100, 103).repeat()
+    a = a.apply(
+        data_service_ops.distribute(
+            data_service_ops.ShardingPolicy.DYNAMIC,
+            cluster.dispatcher_address(),
+            job_name="job_a",
+        )
+    )
+    b = b.apply(
+        data_service_ops.distribute(
+            data_service_ops.ShardingPolicy.DYNAMIC,
+            cluster.dispatcher_address(),
+            job_name="job_b",
+        )
+    )
+    c = c.apply(
+        data_service_ops.distribute(
+            data_service_ops.ShardingPolicy.DYNAMIC,
+            cluster.dispatcher_address(),
+            job_name="job_c",
+        )
+    )
+    a = a.take(5)
+    b = b.take(5)
+    c = c.take(5)
+    ds = a.concatenate(b).concatenate(c)
+    ds = ds.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+
+    output = []
+    get_next = self.getNext(ds)
+    for _ in range(5):
+      output.append(self.evaluate(get_next()))
+    cluster.workers[0].restart(use_same_port=True)
+
+    output.extend(self.getIteratorOutput(get_next))
+    logging.info("Dataset output: %s", output)
+
+    # 5 elements from each of a and b.
+    self.assertTrue(all(x < 100 for x in output[:5]))
+    self.assertTrue(all(x >= 100 for x in output[5:]))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
                          combinations.combine(already_written=[True, False])))
   def testSnapshot(self, already_written):
     num_workers = 3
@@ -458,12 +529,9 @@ class DynamicShardingTest(data_service_test_base.TestBase,
     output = []
     iter1 = self.getNext(dataset1)
     iter2 = self.getNext(dataset2)
-    for _ in range(5):
-      output.append(self.evaluate(iter1()))
-      output.append(self.evaluate(iter2()))
     output.extend(self.getIteratorOutput(iter1))
     output.extend(self.getIteratorOutput(iter2))
-    self.assertEqual(sorted(output), list(range(100)))
+    self.assertCountEqual(output, list(range(100)))
 
   @combinations.generate(test_base.default_test_combinations())
   def testDifferentDatasetIdsForSameJob(self):
@@ -502,6 +570,46 @@ class DynamicShardingTest(data_service_test_base.TestBase,
     # Produces 2 copies of the dataset because `from_dataset_id` prepends the
     # dataset ID to the job name.
     self.assertCountEqual(output, list(range(100)) * 2)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testGcDynamicShardingJobIfRequested(self):
+    dispatcher = server_lib.DispatchServer(
+        service_config_pb2.DispatcherConfig(
+            protocol="grpc",
+            job_gc_check_interval_ms=50,
+            job_gc_timeout_ms=20,
+            gc_dynamic_sharding_jobs=True,
+        )
+    )
+    dispatcher_address = dispatcher.target.split("://")[1]
+    worker = server_lib.WorkerServer(
+        server_lib.WorkerConfig(
+            dispatcher_address=dispatcher_address, heartbeat_interval_ms=100
+        )
+    )
+
+    num_elements = 1000
+    dataset = dataset_ops.Dataset.range(num_elements)
+    dataset = dataset.apply(
+        data_service_ops._distribute(
+            processing_mode=data_service_ops.ShardingPolicy.DYNAMIC,
+            service=dispatcher.target,
+        )
+    )
+    it = iter(dataset)
+    self.assertEqual(self.evaluate(next(it)), 0)
+    self.assertEqual(worker._num_tasks(), 1)
+    del it
+    while worker._num_tasks() > 0:
+      time.sleep(0.1)
+
+    # If re-creating the iterator with the same job, the elements are revisited.
+    it = iter(dataset)
+    self.assertEqual(self.evaluate(next(it)), 0)
+    del it
+    while worker._num_tasks() > 0:
+      time.sleep(0.1)
+    del worker
 
 
 class DynamicShardingFilesTest(data_service_test_base.TestBase,

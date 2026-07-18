@@ -14,9 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/lib/data_format.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -31,15 +34,15 @@ namespace {
 class DepthToSpaceOp : public XlaOpKernel {
  public:
   explicit DepthToSpaceOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    string data_format_str;
+    std::string data_format_str;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
     OP_REQUIRES(ctx, FormatFromString(data_format_str, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
+                absl::InvalidArgumentError("Invalid data format"));
 
     OP_REQUIRES_OK(ctx, ctx->GetAttr("block_size", &block_size_));
-    OP_REQUIRES(
-        ctx, block_size_ > 1,
-        errors::InvalidArgument("Block size should be > 1: ", block_size_));
+    OP_REQUIRES(ctx, block_size_ > 1,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Block size should be > 1: ", block_size_)));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -56,8 +59,8 @@ class DepthToSpaceOp : public XlaOpKernel {
     }
 
     OP_REQUIRES(ctx, data_format == FORMAT_NCHW || data_format == FORMAT_NHWC,
-                errors::InvalidArgument("Unsupported data format ",
-                                        ToString(data_format_)));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Unsupported data format ", ToString(data_format_))));
 
     xla::XlaBuilder* builder = input.builder();
     auto input_xla_shape = builder->GetShape(input);
@@ -67,9 +70,10 @@ class DepthToSpaceOp : public XlaOpKernel {
     int input_rank = input_shape.size();
 
     static const int kRequiredDims = 4;
-    OP_REQUIRES(ctx, kRequiredDims == input_rank,
-                errors::InvalidArgument("Input rank should be ", kRequiredDims,
-                                        "; got: ", input_rank));
+    OP_REQUIRES(
+        ctx, kRequiredDims == input_rank,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Input rank should be ", kRequiredDims, "; got: ", input_rank)));
 
     int feature_dim = GetTensorFeatureDimIndex(input_rank, data_format);
     int num_spatial_dims = GetTensorSpatialDims(input_rank, data_format);
@@ -143,10 +147,10 @@ class DepthToSpaceOp : public XlaOpKernel {
     //       depth / (block_size_ * block_size_)]
     OP_REQUIRES(ctx,
                 input_shape[feature_dim] % (block_size_ * block_size_) == 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input depth dimension (", input_shape[3],
                     ") is not divisible by square of the block size (",
-                    block_size_, ")"));
+                    block_size_, ")")));
 
     xla::XlaOp reshaped = xla::Reshape(input, reshaped_shape);
 

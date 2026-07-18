@@ -128,11 +128,11 @@ class WhereCPUOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
 
-    OP_REQUIRES(
-        context, input.dtype() != DT_HALF,
-        errors::Unimplemented("No WhereOp available for float16/half type on "
-                              "CPU; dying in CPU WhereOp to avoid silently "
-                              "creating costly copies from device."));
+    OP_REQUIRES(context, input.dtype() != DT_HALF,
+                absl::UnimplementedError(
+                    "No WhereOp available for float16/half type on "
+                    "CPU; dying in CPU WhereOp to avoid silently "
+                    "creating costly copies from device."));
 
     const int input_dims = input.dims();
 
@@ -172,18 +172,18 @@ class WhereCPUOp : public OpKernel {
 
       default:
         OP_REQUIRES(context, false,
-                    errors::InvalidArgument(
-                        "WhereOp : Unhandled input dimensions: ", input_dims));
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "WhereOp : Unhandled input dimensions: ", input_dims)));
     }
 #undef HANDLE_DIM
 
     OP_REQUIRES(
         context, found_true == num_true_t(),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "WhereOp: Race condition between counting the number of true "
             "elements and writing them.  When counting, saw ",
             num_true_t(), " elements; but when writing their indices, saw ",
-            found_true, " elements."));
+            found_true, " elements.")));
   }
 
  private:
@@ -259,8 +259,8 @@ class WhereGPUOp : public AsyncOpKernel {
     const Tensor& input = context->input(0);
     const int input_dims = input.dims();
 
-    if (input.NumElements() < std::numeric_limits<int32>::max()) {
-      ComputeAsyncType<int32>(input, input_dims, context, done);
+    if (input.NumElements() < std::numeric_limits<int32_t>::max()) {
+      ComputeAsyncType<int32_t>(input, input_dims, context, done);
     } else {
       ComputeAsyncType<int64_t>(input, input_dims, context, done);
     }
@@ -282,7 +282,7 @@ class WhereGPUOp : public AsyncOpKernel {
 
     // Push kernel to stream to get number of true elements.
     const GPUDevice& d = context->eigen_device<GPUDevice>();
-    Status s = functor::NumTrue<GPUDevice, T, Tindex>::Compute(
+    absl::Status s = functor::NumTrue<GPUDevice, T, Tindex>::Compute(
         context, d, input.flat<T>(), num_true_t);
     OP_REQUIRES_OK_ASYNC(context, s, done);
 
@@ -329,8 +329,8 @@ class WhereGPUOp : public AsyncOpKernel {
           default:
             OP_REQUIRES_ASYNC(
                 context, false,
-                errors::InvalidArgument("WhereOp: Unhandled input dimensions: ",
-                                        input_dims),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "WhereOp: Unhandled input dimensions: ", input_dims)),
                 done);
         }
 #undef HANDLE_DIM
@@ -374,9 +374,9 @@ TF_CALL_WHERE_GPU_TYPES(REGISTER_GPU_WHERE_OP);
 
 REGISTER_KERNEL_BUILDER(Name("Where")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("input")
                             .HostMemory("index"),
-                        WhereCPUOp<int32>);
+                        WhereCPUOp<int32_t>);
 
 }  // namespace tensorflow

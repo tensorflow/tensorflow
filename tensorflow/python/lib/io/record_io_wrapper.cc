@@ -13,11 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -27,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/pybind11_absl.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
@@ -52,15 +56,20 @@ class PyRecordReader {
   ~PyRecordReader() { Close(); }
 
   absl::Status ReadNextRecord(tensorflow::tstring* out) {
-    if (IsClosed()) {
-      return tensorflow::errors::FailedPrecondition("Reader is closed.");
+    tensorflow::mutex_lock lock(mutex_);
+    if (IsClosedInternal()) {
+      return absl::FailedPreconditionError("Reader is closed.");
     }
     return reader_->ReadRecord(&offset_, out);
   }
 
-  bool IsClosed() const { return file_ == nullptr && reader_ == nullptr; }
+  bool IsClosed() const {
+    tensorflow::mutex_lock lock(mutex_);
+    return IsClosedInternal();
+  }
 
   void Close() {
+    tensorflow::mutex_lock lock(mutex_);
     reader_ = nullptr;
     file_ = nullptr;
   }
@@ -74,8 +83,9 @@ class PyRecordReader {
   // allows the file to be polled continuously using the same iterator, even as
   // it grows, which supports use cases such as TensorBoard.
   absl::Status Reopen() {
-    if (!IsClosed()) {
-      return tensorflow::errors::FailedPrecondition("Reader is not closed.");
+    tensorflow::mutex_lock lock(mutex_);
+    if (!IsClosedInternal()) {
+      return absl::FailedPreconditionError("Reader is not closed.");
     }
     TF_RETURN_IF_ERROR(
         tensorflow::Env::Default()->NewRandomAccessFile(filename_, &file_));
@@ -85,7 +95,11 @@ class PyRecordReader {
   }
 
  private:
-  static constexpr tensorflow::uint64 kReaderBufferSize = 16 * 1024 * 1024;
+  bool IsClosedInternal() const {
+    return file_ == nullptr && reader_ == nullptr;
+  }
+
+  static constexpr uint64_t kReaderBufferSize = 16 * 1024 * 1024;
 
   PyRecordReader(const std::string& filename,
                  const std::string& compression_type)
@@ -106,9 +120,10 @@ class PyRecordReader {
 
   const std::string filename_;
   const tensorflow::io::RecordReaderOptions options_;
-  tensorflow::uint64 offset_;
+  uint64_t offset_;
   std::unique_ptr<tensorflow::RandomAccessFile> file_;
   std::unique_ptr<tensorflow::io::RecordReader> reader_;
+  mutable tensorflow::mutex mutex_;
 
   PyRecordReader(const PyRecordReader&) = delete;
   void operator=(const PyRecordReader&) = delete;
@@ -133,24 +148,31 @@ class PyRecordRandomReader {
   PyRecordRandomReader() = delete;
   ~PyRecordRandomReader() { Close(); }
 
-  absl::Status ReadRecord(tensorflow::uint64* offset,
-                          tensorflow::tstring* out) {
-    if (IsClosed()) {
-      return tensorflow::errors::FailedPrecondition(
-          "Random TFRecord Reader is closed.");
+  absl::Status ReadRecord(uint64_t* offset, tensorflow::tstring* out) {
+    tensorflow::mutex_lock lock(mutex_);
+    if (IsClosedInternal()) {
+      return absl::FailedPreconditionError("Random TFRecord Reader is closed.");
     }
     return reader_->ReadRecord(offset, out);
   }
 
-  bool IsClosed() const { return file_ == nullptr && reader_ == nullptr; }
+  bool IsClosed() const {
+    tensorflow::mutex_lock lock(mutex_);
+    return IsClosedInternal();
+  }
 
   void Close() {
+    tensorflow::mutex_lock lock(mutex_);
     reader_ = nullptr;
     file_ = nullptr;
   }
 
  private:
-  static constexpr tensorflow::uint64 kReaderBufferSize = 16 * 1024 * 1024;
+  bool IsClosedInternal() const {
+    return file_ == nullptr && reader_ == nullptr;
+  }
+
+  static constexpr uint64_t kReaderBufferSize = 16 * 1024 * 1024;
 
   PyRecordRandomReader(std::unique_ptr<tensorflow::RandomAccessFile> file,
                        std::unique_ptr<tensorflow::io::RecordReader> reader)
@@ -158,6 +180,7 @@ class PyRecordRandomReader {
 
   std::unique_ptr<tensorflow::RandomAccessFile> file_;
   std::unique_ptr<tensorflow::io::RecordReader> reader_;
+  mutable tensorflow::mutex mutex_;
 
   PyRecordRandomReader(const PyRecordRandomReader&) = delete;
   void operator=(const PyRecordRandomReader&) = delete;
@@ -181,15 +204,17 @@ class PyRecordWriter {
   ~PyRecordWriter() { (void)Close(); }
 
   absl::Status WriteRecord(absl::string_view record) {
-    if (IsClosed()) {
-      return tensorflow::errors::FailedPrecondition("Writer is closed.");
+    tensorflow::mutex_lock lock(mutex_);
+    if (IsClosedInternal()) {
+      return absl::FailedPreconditionError("Writer is closed.");
     }
     return writer_->WriteRecord(record);
   }
 
   absl::Status Flush() {
-    if (IsClosed()) {
-      return tensorflow::errors::FailedPrecondition("Writer is closed.");
+    tensorflow::mutex_lock lock(mutex_);
+    if (IsClosedInternal()) {
+      return absl::FailedPreconditionError("Writer is closed.");
     }
 
     auto status = writer_->Flush();
@@ -201,9 +226,13 @@ class PyRecordWriter {
     return status;
   }
 
-  bool IsClosed() const { return file_ == nullptr && writer_ == nullptr; }
+  bool IsClosed() const {
+    tensorflow::mutex_lock lock(mutex_);
+    return IsClosedInternal();
+  }
 
   absl::Status Close() {
+    tensorflow::mutex_lock lock(mutex_);
     if (writer_ != nullptr) {
       auto status = writer_->Close();
       writer_ = nullptr;
@@ -218,18 +247,21 @@ class PyRecordWriter {
   }
 
  private:
+  bool IsClosedInternal() const { return writer_ == nullptr; }
+
   PyRecordWriter(std::unique_ptr<tensorflow::WritableFile> file,
                  std::unique_ptr<tensorflow::io::RecordWriter> writer)
       : file_(std::move(file)), writer_(std::move(writer)) {}
 
   std::unique_ptr<tensorflow::WritableFile> file_;
   std::unique_ptr<tensorflow::io::RecordWriter> writer_;
+  mutable tensorflow::mutex mutex_;
 
   PyRecordWriter(const PyRecordWriter&) = delete;
   void operator=(const PyRecordWriter&) = delete;
 };
 
-PYBIND11_MODULE(_pywrap_record_io, m) {
+PYBIND11_MODULE(_pywrap_record_io, m, pybind11::mod_gil_not_used()) {
   py::class_<PyRecordReader>(m, "RecordIterator")
       .def(py::init(
           [](const std::string& filename, const std::string& compression_type) {
@@ -245,7 +277,12 @@ PYBIND11_MODULE(_pywrap_record_io, m) {
       .def("__iter__", [](const py::object& self) { return self; })
       .def("__next__",
            [](PyRecordReader* self) {
-             if (self->IsClosed()) {
+             bool is_closed;
+             {
+               py::gil_scoped_release release;
+               is_closed = self->IsClosed();
+             }
+             if (is_closed) {
                throw py::stop_iteration();
              }
 
@@ -264,7 +301,11 @@ PYBIND11_MODULE(_pywrap_record_io, m) {
              tsl::MaybeRaiseRegisteredFromStatus(status);
              return py::bytes(record);
            })
-      .def("close", [](PyRecordReader* self) { self->Close(); })
+      .def("close",
+           [](PyRecordReader* self) {
+             py::gil_scoped_release release;
+             self->Close();
+           })
       .def("reopen", [](PyRecordReader* self) {
         absl::Status status;
         {
@@ -286,8 +327,8 @@ PYBIND11_MODULE(_pywrap_record_io, m) {
         return self;
       }))
       .def("read",
-           [](PyRecordRandomReader* self, tensorflow::uint64 offset) {
-             tensorflow::uint64 temp_offset = offset;
+           [](PyRecordRandomReader* self, uint64_t offset) {
+             uint64_t temp_offset = offset;
              tensorflow::tstring record;
              absl::Status status;
              {
@@ -301,7 +342,10 @@ PYBIND11_MODULE(_pywrap_record_io, m) {
              tsl::MaybeRaiseRegisteredFromStatus(status);
              return py::make_tuple(py::bytes(record), temp_offset);
            })
-      .def("close", [](PyRecordRandomReader* self) { self->Close(); });
+      .def("close", [](PyRecordRandomReader* self) {
+        py::gil_scoped_release release;
+        self->Close();
+      });
 
   using tensorflow::io::ZlibCompressionOptions;
   py::class_<ZlibCompressionOptions>(m, "ZlibCompressionOptions")
@@ -342,7 +386,12 @@ PYBIND11_MODULE(_pywrap_record_io, m) {
       .def("__enter__", [](const py::object& self) { return self; })
       .def("__exit__",
            [](PyRecordWriter* self, py::args) {
-             tsl::MaybeRaiseRegisteredFromStatus(self->Close());
+             absl::Status status;
+             {
+               py::gil_scoped_release release;
+               status = self->Close();
+             }
+             tsl::MaybeRaiseRegisteredFromStatus(status);
            })
       .def(
           "write",
@@ -357,10 +406,20 @@ PYBIND11_MODULE(_pywrap_record_io, m) {
           py::arg("record"))
       .def("flush",
            [](PyRecordWriter* self) {
-             tsl::MaybeRaiseRegisteredFromStatus(self->Flush());
+             absl::Status status;
+             {
+               py::gil_scoped_release release;
+               status = self->Flush();
+             }
+             tsl::MaybeRaiseRegisteredFromStatus(status);
            })
       .def("close", [](PyRecordWriter* self) {
-        tsl::MaybeRaiseRegisteredFromStatus(self->Close());
+        absl::Status status;
+        {
+          py::gil_scoped_release release;
+          status = self->Close();
+        }
+        tsl::MaybeRaiseRegisteredFromStatus(status);
       });
 }
 

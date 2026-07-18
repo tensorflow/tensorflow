@@ -77,7 +77,7 @@ static void TFDConstantTensor(tfrt::Argument<int32_t> value,
   // it causes a missing typeinfo error when using -fno-rtti. Investigate
   // if we can make it work with no-rtti.
   Tensor out(DT_INT32, TensorShape({}));
-  out.flat<int32>()(0) = value.get();
+  out.flat<int32_t>()(0) = value.get();
   tensor.Emplace(out);
 }
 

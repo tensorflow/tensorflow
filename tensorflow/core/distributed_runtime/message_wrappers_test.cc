@@ -27,13 +27,13 @@ namespace {
 
 Tensor TensorA() {
   Tensor a_tensor(DT_INT32, TensorShape({2, 2}));
-  test::FillValues<int32>(&a_tensor, {3, 2, -1, 0});
+  test::FillValues<int32_t>(&a_tensor, {3, 2, -1, 0});
   return a_tensor;
 }
 
 Tensor TensorB() {
   Tensor b_tensor(DT_INT32, TensorShape({1, 2}));
-  test::FillValues<int32>(&b_tensor, {1, 2});
+  test::FillValues<int32_t>(&b_tensor, {1, 2});
   return b_tensor;
 }
 
@@ -57,9 +57,9 @@ void CheckRunStepRequest(const RunStepRequestWrapper& request) {
   EXPECT_EQ("feed_b:0", request.feed_name(1));
   Tensor val;
   TF_EXPECT_OK(request.FeedValue(0, &val));
-  test::ExpectTensorEqual<int32>(TensorA(), val);
+  test::ExpectTensorEqual<int32_t>(TensorA(), val);
   TF_EXPECT_OK(request.FeedValue(1, &val));
-  test::ExpectTensorEqual<int32>(TensorB(), val);
+  test::ExpectTensorEqual<int32_t>(TensorB(), val);
 
   EXPECT_EQ(2, request.num_fetches());
   EXPECT_EQ("fetch_x:0", request.fetch_name(0));
@@ -92,9 +92,9 @@ void CheckRunGraphRequest(const RunGraphRequestWrapper& request) {
   EXPECT_EQ(2, request.num_sends());
   Tensor val;
   TF_EXPECT_OK(request.SendValue(0, &val));
-  test::ExpectTensorEqual<int32>(TensorA(), val);
+  test::ExpectTensorEqual<int32_t>(TensorA(), val);
   TF_EXPECT_OK(request.SendValue(1, &val));
-  test::ExpectTensorEqual<int32>(TensorB(), val);
+  test::ExpectTensorEqual<int32_t>(TensorB(), val);
   EXPECT_TRUE(request.is_partial());
   EXPECT_FALSE(request.is_last_partial_run());
 }
@@ -117,9 +117,9 @@ void CheckRunGraphResponse(MutableRunGraphResponseWrapper* response) {
   EXPECT_EQ("recv_3", response->recv_key(1));
   Tensor val;
   TF_EXPECT_OK(response->RecvValue(0, &val));
-  test::ExpectTensorEqual<int32>(TensorA(), val);
+  test::ExpectTensorEqual<int32_t>(TensorA(), val);
   TF_EXPECT_OK(response->RecvValue(1, &val));
-  test::ExpectTensorEqual<int32>(TensorB(), val);
+  test::ExpectTensorEqual<int32_t>(TensorB(), val);
   ASSERT_EQ(1, response->mutable_step_stats()->dev_stats_size());
   EXPECT_EQ("/cpu:0", response->mutable_step_stats()->dev_stats(0).device());
   ASSERT_EQ(1, response->mutable_cost_graph()->node_size());
@@ -152,9 +152,9 @@ void CheckRunStepResponse(const MutableRunStepResponseWrapper& response) {
   EXPECT_EQ("fetch_y:0", response.tensor_name(1));
   Tensor val;
   TF_EXPECT_OK(response.TensorValue(0, &val));
-  test::ExpectTensorEqual<int32>(TensorA(), val);
+  test::ExpectTensorEqual<int32_t>(TensorA(), val);
   TF_EXPECT_OK(response.TensorValue(1, &val));
-  test::ExpectTensorEqual<int32>(TensorB(), val);
+  test::ExpectTensorEqual<int32_t>(TensorB(), val);
   ASSERT_EQ(1, response.metadata().step_stats().dev_stats_size());
   EXPECT_EQ("/cpu:0", response.metadata().step_stats().dev_stats(0).device());
   ASSERT_EQ(1, response.metadata().partition_graphs_size());

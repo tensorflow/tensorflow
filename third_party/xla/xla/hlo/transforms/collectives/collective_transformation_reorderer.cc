@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -91,6 +92,15 @@ GetAllGatherTransformations(HloInstruction* all_gather) {
       ++reshaped_all_gather_dimension;
     }
     if (reshaped_num_strides != all_gather_num_strides) {
+      return std::nullopt;
+    }
+    // The loop above can exit with reshaped_all_gather_dimension equal to the
+    // rank when all reshape dimensions are consumed to reach the stride count
+    // (e.g. a size-1 all-gather dimension). In that case there is no reshaped
+    // all-gather dimension; guard against the out-of-bounds dimensions() access
+    // below.
+    if (reshaped_all_gather_dimension >=
+        transformation_hlo->shape().dimensions().size()) {
       return std::nullopt;
     }
     // Additionally, we make sure the reshape does not change the size of the
@@ -229,7 +239,7 @@ CollectiveTransformationReorder::ReorderAllGatherTransformations(
             new_all_gather_shape, {all_gather_operand}, all_gather_dimension,
             all_gather->device_list(), all_gather->constrain_layout(),
             all_gather->channel_id(), all_gather->use_global_device_ids()));
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         transformations.back().hlo->ReplaceAllUsesWith(new_all_gather));
     if (computation->root_instruction() == transformations.back().hlo) {
       computation->set_root_instruction(new_all_gather);
@@ -285,23 +295,22 @@ CollectiveTransformationReorder::ReorderAllReduceTransformations(
       cur_operand = computation->AddInstruction(
           HloInstruction::CreateReshape(reshapes[i]->shape(), cur_operand));
     }
-    TF_RETURN_IF_ERROR(
-        computation->ReplaceInstruction(all_reduce, cur_operand));
+    RETURN_IF_ERROR(computation->ReplaceInstruction(all_reduce, cur_operand));
   }
   return true;
 }
 
-absl::StatusOr<bool> CollectiveTransformationReorder::Run(
+absl::StatusOr<bool> CollectiveTransformationReorder::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  TF_ASSIGN_OR_RETURN(bool ag_changed, ReorderAllGatherTransformations(
-                                           module, execution_threads));
-  TF_ASSIGN_OR_RETURN(bool ar_changed, ReorderAllReduceTransformations(
-                                           module, execution_threads));
+  ASSIGN_OR_RETURN(bool ag_changed,
+                   ReorderAllGatherTransformations(module, execution_threads));
+  ASSIGN_OR_RETURN(bool ar_changed,
+                   ReorderAllReduceTransformations(module, execution_threads));
   if (ag_changed || ar_changed) {
     // Remove the original all-gathers/all-reduces and reshapes.
     HloDCE dce;
-    TF_RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
+    RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
   }
   return ag_changed || ar_changed;
 }

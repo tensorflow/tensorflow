@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_PLATFORM_ID_H_
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_PLATFORM_ID_H_
 
-#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_id.h"
 
 namespace stream_executor {
 namespace cuda {
@@ -26,7 +26,7 @@ namespace cuda {
 // instantiating a CudaPlatform object.
 // This is broken out here to avoid a circular dependency between CudaPlatform
 // and CudaExecutor.
-extern const Platform::Id kCudaPlatformId;
+extern const PlatformId kCudaPlatformId;
 
 }  // namespace cuda
 }  // namespace stream_executor

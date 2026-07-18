@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/service/copy_insertion.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -78,7 +78,7 @@ ENTRY main {
   ROOT while.0 = (s32[], s32[], s32[], s32[]) while(while_tuple.0), body=body, condition=condition
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   WhileLoopPipelineUnroller wlpu;
   ASSERT_IS_OK(wlpu.Run(module.get()).status());
   AliasInfo alias_info;
@@ -147,7 +147,7 @@ ENTRY main {
   ROOT root.0 = get-tuple-element(while.0), index=0
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   WhileLoopPipelineUnroller wlpu;
   ASSERT_IS_OK(wlpu.Run(module.get()).status());
   AliasInfo alias_info;
@@ -184,6 +184,105 @@ ENTRY main {
       }
     }
   }
+}
+
+TEST_F(WhileLoopPipelineUnrollerTest, FailureRecovery) {
+  constexpr absl::string_view hlo = R"hlo(
+HloModule main
+
+body {
+  input_tuple.0 = (s32[], s32[], s32[], s32[]) parameter(0)
+  arg.0 = get-tuple-element(input_tuple.0), index=0
+  arg.1 = get-tuple-element(input_tuple.0), index=1
+  arg.2 = get-tuple-element(input_tuple.0), index=2
+  arg.3 = get-tuple-element(input_tuple.0), index=3
+
+  one.0 = s32[] constant(1)
+  out.0 = add(arg.0, one.0)
+
+  add.0 = add(arg.3, one.0)
+  ROOT output_tuple.0 = tuple(arg.1, arg.2, out.0, add.0)
+}
+
+condition {
+  input_tuple.0 = (s32[], s32[], s32[], s32[]) parameter(0)
+  arg.3 = get-tuple-element(input_tuple.0), index=3
+  three.0 = s32[] constant(3)
+  ROOT pred.0 = compare(arg.3, three.0), direction=LT
+}
+
+ENTRY main {
+  tuple.0 = (s32[], s32[], s32[], s32[]) parameter(0)
+  while-pass.0 = (s32[], s32[], s32[], s32[]) while(tuple.0), body={
+    tuple.0 = (s32[], s32[], s32[], s32[]) parameter(0)
+    arg.0 = get-tuple-element(tuple.0), index=0
+    arg.1 = get-tuple-element(tuple.0), index=1
+    arg.2 = get-tuple-element(tuple.0), index=2
+    arg.3 = get-tuple-element(tuple.0), index=3
+
+    one.0 = s32[] constant(1)
+    add.0 = add(arg.0, one.0)
+
+    add.1 = add(arg.3, one.0)
+    ROOT output_tuple.0 = tuple(arg.1, arg.2, add.0, add.1)
+  }, condition={
+    tuple.0 = (s32[], s32[], s32[], s32[]) parameter(0)
+    arg.3 = get-tuple-element(tuple.0), index=3
+    three.0 = s32[] constant(3)
+    ROOT pred.0 = compare(arg.3, three.0), direction=LT
+  }
+  ROOT while-fail.0 = (s32[], s32[], s32[], s32[]) while(while-pass.0), body={
+    tuple.0 = (s32[], s32[], s32[], s32[]) parameter(0)
+    arg.0 = get-tuple-element(tuple.0), index=0
+    arg.1 = get-tuple-element(tuple.0), index=1
+    arg.2 = get-tuple-element(tuple.0), index=2
+    arg.3 = get-tuple-element(tuple.0), index=3
+
+    one.0 = s32[] constant(1)
+    add.0 = add(arg.0, one.0)
+
+    add.1 = add(arg.3, one.0)
+    ROOT output_tuple.0 = tuple(arg.1, arg.2, add.0, add.1)
+  }, condition={
+    tuple.0 = (s32[], s32[], s32[], s32[]) parameter(0)
+    arg.3 = get-tuple-element(tuple.0), index=3
+    three.0 = s32[] constant(3)
+    pred.0 = compare(arg.3, three.0), direction=LT
+    true.0 = pred[] constant(true)
+    ROOT and.0 = and(pred.0, true.0)
+  }
+}
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  WhileLoopPipelineUnroller wlpu;
+  ASSERT_IS_OK(wlpu.Run(module.get()).status());
+  AliasInfo alias_info;
+  CopyInsertion copy_insertion(&alias_info,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+
+  const HloInstruction* pass_original_loop =
+      FindInstruction(module.get(), "while-pass.0");
+  // The rolled passing loop should have 3 copies.
+  // arg.1 moves to index 0.
+  // arg.2 moves to index 1.
+  // out.0 moves to index 2.
+  EXPECT_EQ(Count(HloOpcode::kCopy, *pass_original_loop->while_body()), 3);
+
+  const HloInstruction* unrolled_loop = pass_original_loop->operand(0);
+  ASSERT_EQ(unrolled_loop->opcode(), HloOpcode::kWhile);
+  // There should be no copies inserted into the unrolled loop.
+  EXPECT_EQ(Count(HloOpcode::kCopy, *unrolled_loop->while_body()), 0);
+
+  const HloInstruction* fail_loop =
+      FindInstruction(module.get(), "while-fail.0");
+  // The rolled failing loop should have 3 copies.
+  // arg.1 moves to index 0.
+  // arg.2 moves to index 1.
+  // out.0 moves to index 2.
+  EXPECT_EQ(Count(HloOpcode::kCopy, *fail_loop->while_body()), 3);
+  // The failing loop should not have been unrolled.
+  EXPECT_EQ(fail_loop->users().size(), 0);
 }
 
 }  // namespace

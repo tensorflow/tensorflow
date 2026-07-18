@@ -73,7 +73,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
         op_version_(op_version),
         traceme_metadata_(
             {{"batch_size",
-              strings::Printf("%lld", static_cast<long long>(batch_size))},
+              absl::StrFormat("%lld", static_cast<long long>(batch_size))},
              {"drop_remainder", drop_remainder ? "true" : "false"},
              {"parallel_copy", parallel_copy ? "true" : "false"}}) {
     input_->Ref();
@@ -106,7 +106,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     name_utils::IteratorPrefixParams params;
     params.op_version = op_version_;
     return std::make_unique<Iterator>(Iterator::Params{
@@ -121,7 +121,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     return output_shapes_;
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
     params.op_version = op_version_;
     params.set_args(batch_size_);
@@ -146,12 +146,12 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     return input_->CheckExternalState();
   }
 
-  absl::Status Get(OpKernelContext* ctx, int64 index,
+  absl::Status Get(OpKernelContext* ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
-    const int64 cardinality = Cardinality();
+    const int64_t cardinality = Cardinality();
     if (index < 0 || index >= cardinality) {
-      return errors::OutOfRange("Index out of range [0, ", cardinality,
-                                "):", index);
+      return absl::OutOfRangeError(
+          absl::StrCat("Index out of range [0, ", cardinality, "):", index));
     }
     int batch_start_index = batch_size_ * index;
     std::vector<std::vector<Tensor>> batch_elements;
@@ -349,8 +349,9 @@ void BatchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   int64_t batch_size = 0;
   OP_REQUIRES_OK(ctx,
                  ParseScalarArgument<int64_t>(ctx, kBatchSize, &batch_size));
-  OP_REQUIRES(ctx, batch_size > 0,
-              errors::InvalidArgument("Batch size must be greater than zero."));
+  OP_REQUIRES(
+      ctx, batch_size > 0,
+      absl::InvalidArgumentError("Batch size must be greater than zero."));
 
   bool drop_remainder = false;
   if (op_version_ > 1) {

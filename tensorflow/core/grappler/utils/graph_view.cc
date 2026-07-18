@@ -88,9 +88,9 @@ GraphView::GraphView(const GraphDef* graph, absl::Status* status)
   nodes_.reserve(num_nodes);
   for (const NodeDef& node : graph->node()) {
     if (!AddUniqueNodeInternal(&node)) {
-      *status = errors::InvalidArgument(
+      *status = absl::InvalidArgumentError(absl::StrCat(
           kGraphViewError, "graph has multiple nodes with the name '",
-          node.name(), "'.");
+          node.name(), "'."));
       Reset();
       return;
     }
@@ -120,25 +120,27 @@ bool GraphView::AddUniqueNodeInternal(const NodeDef* node) {
 absl::Status GraphView::CheckAndAddFaninsInternal(NodeView* node_view) {
   bool has_observed_control = false;
   const NodeDef* node = node_view->node();
-  const string& node_name = node->name();
+  const std::string& node_name = node->name();
   const int node_index = node_view->node_index_;
   node_view->fanins_set_.reserve(node->input_size());
-  for (const string& input : node->input()) {
+  for (const std::string& input : node->input()) {
     TensorId fanin_id = ParseTensorName(input);
     if (fanin_id.node() == node_name) {
-      return errors::InvalidArgument(kGraphViewError, "node '", node_name,
-                                     "' has self cycle fanin '", input, "'.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(kGraphViewError, "node '", node_name,
+                       "' has self cycle fanin '", input, "'."));
     }
     bool is_control = IsTensorIdControl(fanin_id);
     if (!is_control && has_observed_control) {
-      return errors::InvalidArgument(kGraphViewError, "node '", node_name,
-                                     "' has regular fanin '", input,
-                                     "' after controlling fanins.");
+      return absl::InvalidArgumentError(absl::StrCat(
+          kGraphViewError, "node '", node_name, "' has regular fanin '", input,
+          "' after controlling fanins."));
     }
     auto it = node_index_by_name_.find(fanin_id.node());
     if (it == node_index_by_name_.end()) {
-      return errors::InvalidArgument(kGraphViewError, "node '", node_name,
-                                     "' has missing fanin '", input, "'.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(kGraphViewError, "node '", node_name,
+                       "' has missing fanin '", input, "'."));
     }
     const int fanin_node_index = it->second;
     NodeView& fanin_node_view = nodes_[fanin_node_index];
@@ -224,17 +226,17 @@ Mutation::Mutation(MutableGraphView* graph_view) : graph_view_(graph_view) {}
 
 MutationNewNode Mutation::AddNode(NodeDef&& node, absl::Status* status) {
   bool has_observed_control = false;
-  const string& node_name = node.name();
+  const std::string& node_name = node.name();
   std::vector<SafeTensorId> regular_fanins;
-  absl::flat_hash_set<string> controlling_fanins;
+  absl::flat_hash_set<std::string> controlling_fanins;
   const int num_fanins = node.input_size();
   for (int i = 0; i < num_fanins; ++i) {
-    const string& input = node.input(i);
+    const std::string& input = node.input(i);
     TensorId fanin_id = ParseTensorName(input);
     if (fanin_id.node() == node_name) {
-      *status =
-          errors::InvalidArgument(kMutationAddNodeError, "node '", node_name,
-                                  "' has self cycle fanin '", input, "'.");
+      *status = absl::InvalidArgumentError(
+          absl::StrCat(kMutationAddNodeError, "node '", node_name,
+                       "' has self cycle fanin '", input, "'."));
       return MutationNewNode(this, mutation_counter_, internal::kMissingIndex);
     }
     bool is_control = IsTensorIdControl(fanin_id);
@@ -242,9 +244,9 @@ MutationNewNode Mutation::AddNode(NodeDef&& node, absl::Status* status) {
       has_observed_control = true;
       controlling_fanins.emplace(fanin_id.node());
     } else if (has_observed_control) {
-      *status = errors::InvalidArgument(kMutationAddNodeError, "node '",
-                                        node_name, "' has regular fanin '",
-                                        input, "' after controlling fanins.");
+      *status = absl::InvalidArgumentError(absl::StrCat(
+          kMutationAddNodeError, "node '", node_name, "' has regular fanin '",
+          input, "' after controlling fanins."));
       return MutationNewNode(this, mutation_counter_, internal::kMissingIndex);
     } else {
       regular_fanins.emplace_back(fanin_id);
@@ -468,9 +470,9 @@ MutableGraphView::MutableGraphView(GraphDef* graph, absl::Status* status)
   nodes_.reserve(num_nodes);
   for (NodeDef& node : *graph->mutable_node()) {
     if (!AddUniqueNodeInternal(&node)) {
-      *status = errors::InvalidArgument(
+      *status = absl::InvalidArgumentError(absl::StrCat(
           kMutableGraphViewError, "graph has multiple nodes with the name '",
-          node.name(), "'.");
+          node.name(), "'."));
       Reset();
       return;
     }
@@ -506,26 +508,26 @@ absl::Status MutableGraphView::CheckFaninsInternal(
   for (int i = 0; i < num_nodes; ++i) {
     bool has_observed_control = false;
     const NodeDef* node = nodes_[i].node();
-    const string& node_name = node->name();
+    const std::string& node_name = node->name();
     std::vector<TensorId> node_fanins;
     node_fanins.reserve(node->input_size());
-    for (const string& input : node->input()) {
+    for (const std::string& input : node->input()) {
       TensorId fanin_id = ParseTensorName(input);
       if (fanin_id.node() == node_name) {
-        return errors::InvalidArgument(kMutableGraphViewError, "node '",
-                                       node_name, "' has self cycle fanin '",
-                                       input, "'.");
+        return absl::InvalidArgumentError(
+            absl::StrCat(kMutableGraphViewError, "node '", node_name,
+                         "' has self cycle fanin '", input, "'."));
       }
       bool is_control = IsTensorIdControl(fanin_id);
       if (!is_control && has_observed_control) {
-        return errors::InvalidArgument(kMutableGraphViewError, "node '",
-                                       node_name, "' has regular fanin '",
-                                       input, "' after controlling fanins.");
+        return absl::InvalidArgumentError(absl::StrCat(
+            kMutableGraphViewError, "node '", node_name,
+            "' has regular fanin '", input, "' after controlling fanins."));
       }
       if (!node_index_by_name_.contains(fanin_id.node())) {
-        return errors::InvalidArgument(kMutableGraphViewError, "node '",
-                                       node_name, "' has missing fanin '",
-                                       input, "'.");
+        return absl::InvalidArgumentError(
+            absl::StrCat(kMutableGraphViewError, "node '", node_name,
+                         "' has missing fanin '", input, "'."));
       }
       if (is_control) {
         has_observed_control = true;
@@ -613,20 +615,20 @@ absl::Status MutableGraphView::GetNodeNamesAndPartitionUpdatedNodes(
   for (const auto& diff : mutation_.updated_nodes_) {
     if (diff.update_name) {
       const int index = diff.node_index;
-      const string& node_name = nodes_[index].GetName();
+      const std::string& node_name = nodes_[index].GetName();
       node_names->emplace(node_name, index);
     }
   }
 
   for (int node_index : mutation_.removed_nodes_) {
-    const string& node_name = nodes_[node_index].GetName();
+    const std::string& node_name = nodes_[node_index].GetName();
     node_names->emplace(node_name, node_index);
   }
 
   auto name_conflict = [](const absl::string_view node_name) {
-    return errors::InvalidArgument(kMutableGraphViewApplyError,
-                                   "multiple nodes with the name: '", node_name,
-                                   "' exists in Mutation.");
+    return absl::InvalidArgumentError(absl::StrCat(
+        kMutableGraphViewApplyError, "multiple nodes with the name: '",
+        node_name, "' exists in Mutation."));
   };
 
   // Partition updated nodes by if they will be renamed or not.
@@ -641,7 +643,7 @@ absl::Status MutableGraphView::GetNodeNamesAndPartitionUpdatedNodes(
       continue;
     }
     // Get name of updated node after potential mutation.
-    const string& node_name =
+    const std::string& node_name =
         diff.update_name ? diff.name : nodes_[diff.node_index].GetName();
     auto it = node_names->insert({node_name, internal::kNodeNamePresent});
     if (!it.second) {
@@ -670,7 +672,7 @@ absl::Status MutableGraphView::GetNodeNamesAndPartitionUpdatedNodes(
 
   // Get names of new nodes after potential mutation.
   for (const auto& new_node : mutation_.new_nodes_) {
-    const string& node_name = new_node.node.name();
+    const std::string& node_name = new_node.node.name();
     auto it = node_names->insert({node_name, internal::kNodeNamePresent});
     if (it.second) {
       continue;
@@ -694,9 +696,9 @@ absl::Status MutableGraphView::RemovedOrMissingNodeFanoutsWellFormed(
     const std::vector<RenamedOrOverwrittenNode>& renamed_nodes) {
   auto bad_fanout = [](absl::string_view fanout_node_name,
                        absl::string_view node_name) {
-    return errors::InvalidArgument(
-        kMutableGraphViewApplyError, "fanout '", fanout_node_name,
-        "' exist for missing node '", node_name, "'.");
+    return absl::InvalidArgumentError(
+        absl::StrCat(kMutableGraphViewApplyError, "fanout '", fanout_node_name,
+                     "' exist for missing node '", node_name, "'."));
   };
 
   // Lookup nodes to be overwritten.
@@ -779,25 +781,26 @@ absl::Status MutableGraphView::CheckNodeNamesAndFanins(
   for (auto& inplace_node : inplace_nodes) {
     auto& diff = mutation_.updated_nodes_[inplace_node];
     if (!internal::IsWellFormed(&diff, node_names)) {
-      return errors::InvalidArgument(
-          kMutableGraphViewApplyError, "inplace updated node '",
-          nodes_[diff.node_index].GetName(), "' is ill-formed.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(kMutableGraphViewApplyError, "inplace updated node '",
+                       nodes_[diff.node_index].GetName(), "' is ill-formed."));
     }
   }
   for (auto& renamed_node : renamed_nodes) {
     auto& diff = mutation_.updated_nodes_[renamed_node.renamed_update_index_];
     if (!internal::IsWellFormed(&diff, node_names)) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           kMutableGraphViewApplyError, "renamed updated node '", diff.name,
-          "' ('", nodes_[diff.node_index].GetName(), "') is ill-formed.");
+          "' ('", nodes_[diff.node_index].GetName(), "') is ill-formed."));
     }
   }
 
   // Check if new nodes and their fanins are valid.
   for (auto& new_node : mutation_.new_nodes_) {
     if (!internal::IsWellFormed(&new_node, node_names)) {
-      return errors::InvalidArgument(kMutableGraphViewApplyError, "new node '",
-                                     new_node.node.name(), "' is ill-formed.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(kMutableGraphViewApplyError, "new node '",
+                       new_node.node.name(), "' is ill-formed."));
     }
   }
 
@@ -821,7 +824,8 @@ absl::Status MutableGraphView::CheckKernelRegisteredForNodes() {
       gtl::InsertOrUpdate(&(*diff.processed_attrs), attr_to_add.first,
                           attr_to_add.second);
     }
-    const string& device = diff.update_device ? diff.device : node->device();
+    const std::string& device =
+        diff.update_device ? diff.device : node->device();
     DeviceNameUtils::ParsedName name;
     if (device.empty() || !DeviceNameUtils::ParseFullName(device, &name) ||
         !name.has_type) {
@@ -892,7 +896,7 @@ void MutableGraphView::ReplaceNodeFanouts(MutableNodeView* node, T* fanouts) {
 
 void MutableGraphView::FixRenamedNodes(
     std::vector<RenamedOrOverwrittenNode>* renamed_nodes,
-    absl::flat_hash_map<string, NodeViewFanouts>* renamed_fanouts,
+    absl::flat_hash_map<std::string, NodeViewFanouts>* renamed_fanouts,
     std::vector<bool>* overwritten_name_removed_nodes) {
   // Extract all renamed node fanouts.
   renamed_fanouts->reserve(renamed_nodes->size());
@@ -944,7 +948,7 @@ void MutableGraphView::FixRenamedNodes(
 }
 
 void MutableGraphView::AddNewNodes(
-    absl::flat_hash_map<string, NodeViewFanouts>* renamed_fanouts,
+    absl::flat_hash_map<std::string, NodeViewFanouts>* renamed_fanouts,
     std::vector<int>* new_node_indices) {
   new_node_indices->reserve(mutation_.new_nodes_.size());
   for (auto& new_node : mutation_.new_nodes_) {
@@ -982,7 +986,7 @@ void MutableGraphView::AddNewNodes(
 }
 
 void MutableGraphView::FixRenamedFanouts(
-    const absl::flat_hash_map<string, NodeViewFanouts>& renamed_fanouts) {
+    const absl::flat_hash_map<std::string, NodeViewFanouts>& renamed_fanouts) {
   // Leftover fanouts in renamed_fanouts are due to nodes not existing anymore
   // or a node being renamed without another node taking its place. For these
   // leftover fanouts, mark their respective fanin fanout_index_ to
@@ -1175,7 +1179,7 @@ inline void MutableGraphView::AddControllingFaninInternal(
     MutableNodeView* node_view, absl::string_view fanin_node_name) {
   NodeDef* node = node_view->node();
   // Add controlling fanin to NodeDef.
-  node->add_input(AsControlDependency(string(fanin_node_name)));
+  node->add_input(AsControlDependency(std::string(fanin_node_name)));
   MutableNodeView* fanin_node_view = GetNode(fanin_node_name);
   const int index = node_view->controlling_fanins_.size();
   fanin_node_view->controlled_fanouts_.emplace_back(
@@ -1283,7 +1287,7 @@ void MutableGraphView::SetNewNodesFanins(
       AddRegularFaninInternal(&new_node_view, fanin);
       new_node_def->add_input(SafeTensorIdToString(fanin));
     }
-    for (const string& control_to_add : new_node->controlling_fanins) {
+    for (const std::string& control_to_add : new_node->controlling_fanins) {
       AddControllingFaninInternal(&new_node_view, control_to_add);
     }
     ++new_node;
@@ -1429,8 +1433,8 @@ absl::Status MutableGraphView::SortTopologically(
   if (!mutation_.updated_nodes_.empty() || !mutation_.new_nodes_.empty()) {
     // Cannot sort when there is an active mutation due to indices possibly
     // being changed or invalidated.
-    return errors::InvalidArgument(kMutableGraphViewSortTopologicallyError,
-                                   "active mutation exists.");
+    return absl::InvalidArgumentError(absl::StrCat(
+        kMutableGraphViewSortTopologicallyError, "active mutation exists."));
   }
 
   const int num_nodes = nodes_.size();
@@ -1442,8 +1446,9 @@ absl::Status MutableGraphView::SortTopologically(
         extra_dependency.from_ == extra_dependency.to_ ||
         extra_dependency.from_ < 0 || extra_dependency.from_ >= num_nodes ||
         extra_dependency.to_ < 0 || extra_dependency.to_ >= num_nodes) {
-      return errors::InvalidArgument(kMutableGraphViewSortTopologicallyError,
-                                     "invalid extra dependencies.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(kMutableGraphViewSortTopologicallyError,
+                       "invalid extra dependencies."));
     }
     extra_dependencies_by_parent[extra_dependency.from_].push_back(
         extra_dependency.to_);
@@ -1555,25 +1560,25 @@ absl::Status MutableGraphView::SortTopologically(
   }
 
   if (!ignore_cycles && !edges_in_cycle.empty()) {
-    std::vector<string> edges_formatted;
+    std::vector<std::string> edges_formatted;
     edges_formatted.reserve(edges_in_cycle.size());
     for (const auto& edge : edges_in_cycle) {
       edges_formatted.push_back(
           absl::StrCat("'", graph_->node(edge.from).name(), "' -> '",
                        graph_->node(edge.to).name(), "'"));
     }
-    const string edges_str =
+    const std::string edges_str =
         absl::StrCat("{", absl::StrJoin(edges_formatted, ", "), "}");
-    return errors::InvalidArgument(kMutableGraphViewSortTopologicallyError,
-                                   "detected edge(s) creating cycle(s) ",
-                                   edges_str, ".");
+    return absl::InvalidArgumentError(
+        absl::StrCat(kMutableGraphViewSortTopologicallyError,
+                     "detected edge(s) creating cycle(s) ", edges_str, "."));
   }
   if (curr_pos != kTopologicalSortDone) {
     // Not all nodes were processed.
     if (!ignore_cycles) {
-      return errors::InvalidArgument(
-          kMutableGraphViewSortTopologicallyError,
-          "was not able to sort all nodes topologically.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(kMutableGraphViewSortTopologicallyError,
+                       "was not able to sort all nodes topologically."));
     }
     // Otherwise process all nodes regardless of cycles.
     for (const auto& node : nodes_) {
@@ -1593,7 +1598,7 @@ absl::Status MutableGraphView::SortTopologically(
   for (MutableNodeView& node_view : nodes_) {
     const int prev_node_index = node_view.node_index_;
     if (prev_node_index != order[prev_node_index]) {
-      const string& node_name = graph_->node(prev_node_index).name();
+      const std::string& node_name = graph_->node(prev_node_index).name();
       node_view.node_index_ = order[prev_node_index];
       node_index_by_name_.find(node_name)->second = node_view.node_index_;
     }
@@ -1668,7 +1673,7 @@ absl::Status MutableGraphView::ApplyMutationInternal() {
   }
 
   // Node name and associated fanouts.
-  absl::flat_hash_map<string, NodeViewFanouts> renamed_fanouts;
+  absl::flat_hash_map<std::string, NodeViewFanouts> renamed_fanouts;
   // Removed nodes where name was overwritten by a renamed node.
   std::vector<bool> overwritten_name_removed_nodes(nodes_.size());
   // Fix renaming of existing nodes by swapping fanouts and rehashing names.

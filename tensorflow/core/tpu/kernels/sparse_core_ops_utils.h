@@ -33,11 +33,11 @@ namespace tensorflow {
 // Pad value used for SparseCore mini batching logic.
 const int32_t kXlaPadValue = std::numeric_limits<int32_t>::max();
 
-std::vector<int> ConvertBinarySplitsToBucketSplits(int64 split,
+std::vector<int> ConvertBinarySplitsToBucketSplits(int64_t split,
                                                    int max_division_level);
 
-int64 ConvertBucketSplitsToBinarySplits(std::vector<int> bucket_splits,
-                                        int max_division_level);
+int64_t ConvertBucketSplitsToBinarySplits(std::vector<int> bucket_splits,
+                                          int max_division_level);
 
 absl::Status ValidateInputCombiner(const std::string& combiner);
 

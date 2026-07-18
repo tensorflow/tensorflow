@@ -19,14 +19,14 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "xla/backends/profiler/plugin/plugin_tracer.h"
 #include "xla/backends/profiler/plugin/profiler_c_api.h"
 #include "xla/backends/profiler/plugin/profiler_error.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
+#include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
@@ -90,6 +90,9 @@ TEST(PluginTracerTest, TestPluginWithPluginTracer) {
   api.start = &PLUGIN_Profiler_Start;
   api.stop = &PLUGIN_Profiler_Stop;
   api.collect_data = &PLUGIN_Profiler_CollectData;
+  api.consume = &PLUGIN_Profiler_Consume;
+  api.consume_result_destroy = &PLUGIN_Profiler_ConsumeResult_Destroy;
+  api.serialize = &PLUGIN_Profiler_Serialize;
   api.destroy = &PLUGIN_Profiler_Destroy;
   api.error_destroy = &PLUGIN_Profiler_Error_Destroy;
   api.error_message = &PLUGIN_Profiler_Error_Message;
@@ -111,10 +114,16 @@ TEST(PluginTracerTest, TestPluginWithPluginTracer) {
 
   EXPECT_TRUE(tracer.CollectData(&xspace).ok());
 
-  ASSERT_THAT(xspace.planes(), testing::SizeIs(1));
-  ASSERT_THAT(xspace.planes(0).stats(), testing::SizeIs(1));
+  int num_expected_planes = 1;
 
-  tsl::profiler::XPlaneVisitor visitor(&xspace.planes(0));
+  ASSERT_THAT(xspace.planes(), testing::SizeIs(num_expected_planes));
+
+  const tensorflow::profiler::XPlane* plane =
+      tsl::profiler::FindPlaneWithName(xspace, "GpuBackendTracer");
+  ASSERT_NE(plane, nullptr);
+  ASSERT_THAT(plane->stats(), testing::SizeIs(1));
+
+  tsl::profiler::XPlaneVisitor visitor(plane);
   std::optional<tsl::profiler::XStatVisitor> stat =
       visitor.GetStat(0, *visitor.GetStatMetadata(0));
 

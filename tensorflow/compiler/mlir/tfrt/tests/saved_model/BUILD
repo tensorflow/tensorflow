@@ -32,9 +32,9 @@ tf_cc_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@local_xla//xla/tsl/platform:statusor",
         "@tf_runtime//:bef",
         "@tf_runtime//:hostcontext",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 

@@ -69,6 +69,9 @@ class Flags {
                   "graphs.")
   TF_DECLARE_FLAG(enable_graph_debug_info_caching_for_stack_frames, true,
                   "If true, graph debug info will cache the stack frames.")
+  TF_DECLARE_FLAG(
+      enable_fatal_error_on_collective_abort, false,
+      "If true, a fatal error will be raised when a collective is aborted.")
   // LINT.ThenChange(//tensorflow/core/config/flags_api_wrapper.cc)
 };
 

@@ -60,7 +60,7 @@ class CondBuilder {
  private:
   // Returns unique name containing the name of the If op being rewritten
   // (name_), infix and a suffix to ensure it is unique within the graph.
-  string NewName(const string& infix);
+  std::string NewName(const std::string& infix);
 
   // Adds input to both the then and else nodes from src:src_output.
   absl::Status AddInput(Node* src, int src_output);
@@ -102,7 +102,7 @@ class CondBuilder {
   // executed for the side effects.
   Node* branch_executed_node_;
   Graph* graph_;
-  string name_;
+  std::string name_;
   bool keep_node_fetchable_;
 
   NodeDebugInfo debug_info_;
@@ -172,8 +172,8 @@ absl::Status CondBuilder::CreatePivotNodes() {
   return absl::OkStatus();
 }
 
-string CondBuilder::NewName(const string& infix) {
-  return graph_->NewName(strings::StrCat(name_, "/", infix));
+std::string CondBuilder::NewName(const std::string& infix) {
+  return graph_->NewName(absl::StrCat(name_, "/", infix));
 }
 
 absl::Status CondBuilder::AddInput(Node* src, int src_output) {
@@ -303,11 +303,11 @@ absl::Status RewriteIfNode(Node* n, Graph* g, bool keep_node_fetchable) {
 
   const AttrValue* then_attr = n->attrs().Find("then_branch");
   if (then_attr == nullptr) {
-    return errors::InvalidArgument("Then branch function missing");
+    return absl::InvalidArgumentError("Then branch function missing");
   }
   const AttrValue* else_attr = n->attrs().Find("else_branch");
   if (else_attr == nullptr) {
-    return errors::InvalidArgument("Else branch function missing");
+    return absl::InvalidArgumentError("Else branch function missing");
   }
 
   CondBuilder cb(n, then_attr->func(), else_attr->func(), keep_node_fetchable,

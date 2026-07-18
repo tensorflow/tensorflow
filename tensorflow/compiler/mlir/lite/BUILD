@@ -13,7 +13,7 @@ load(
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -384,7 +384,7 @@ cc_library(
     srcs = ["utils/attribute_utils.cc"],
     hdrs = ["utils/attribute_utils.h"],
     deps = [
-        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -478,6 +478,7 @@ cc_library(
         "ir/tfl_ops.h",
     ],
     deps = [
+        ":attribute_utils",
         ":converter_inc",
         ":cost_estimators",
         ":shape_and_size_utils",
@@ -497,11 +498,13 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
@@ -587,6 +590,8 @@ cc_library(
         ":cleanup_optimization_barrier",
         ":converter_inc",
         ":cost_estimators",
+        ":downcast_x64",
+        ":elements_attr_roundtrip_pass",
         ":optimize_broadcast_like_pass",
         ":optimize_broadcast_like_pass_options",
         ":optimize_pass_options",
@@ -736,7 +741,29 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "elements_attr_roundtrip_pass",
+    srcs = [
+        "transforms/utilities/elements_attr_roundtrip_pass.cc",
+    ],
+    hdrs = [
+        "transforms/utilities/elements_attr_roundtrip_pass.h",
+    ],
+    deps = [
+        ":pass",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -747,6 +774,31 @@ cc_library(
     ],
     hdrs = [
         "utils/low_bit_utils.h",
+    ],
+    deps = [
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "low_bit_utils_test",
+    size = "small",
+    srcs = ["utils/low_bit_utils_test.cc"],
+    deps = [
+        ":low_bit_utils",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -848,7 +900,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:status",
+        "@tsl//tsl/platform:status",
     ],
 )
 
@@ -964,6 +1016,26 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
+    name = "downcast_x64",
+    srcs = [
+        "transforms/downcast_x64_pass.cc",
+    ],
+    hdrs = [
+        "transforms/downcast_x64_pass.h",
+    ],
+    deps = [
+        ":pass",
+        ":pass_options",
+        ":tensorflow_lite_ops",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -1085,6 +1157,7 @@ cc_library(
         "transforms/generated_lower_static_tensor_list.inc",
         "transforms/generated_prepare_tf.inc",
         "transforms/get_arithmetic_count.cc",
+        "transforms/gpu_compatibility.cc",
         "transforms/if_outline.cc",
         "transforms/insert_call_once_op.cc",
         "transforms/legalize_hashtables.cc",
@@ -1099,6 +1172,7 @@ cc_library(
         "transforms/prepare_composite_functions_tf.cc",
         "transforms/prepare_tf.cc",
         "transforms/raise_custom_ops.cc",
+        "transforms/rank_reduction.cc",
         "transforms/reduce_type_precision.cc",
         "transforms/reduce_while_operands.cc",
         "transforms/runtime_verify.cc",
@@ -1114,6 +1188,8 @@ cc_library(
         ":constant_utils",
         ":convert_type",
         ":cost_estimators",
+        ":downcast_x64",
+        ":elements_attr_roundtrip_pass",
         ":fake_quant_utils",
         ":lstm_utils",
         ":nms_utils",
@@ -1183,10 +1259,10 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
-        "@local_xla//xla/mlir_hlo",
-        "@local_xla//xla/mlir_hlo:type_conversion",
-        "@local_xla//xla/mlir_hlo:unfuse_batch_norm",
         "@stablehlo//:stablehlo_ops",
+        "@xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo:type_conversion",
+        "@xla//xla/mlir_hlo:unfuse_batch_norm",
     ],
 )
 
@@ -1381,6 +1457,8 @@ cc_library(
     ],
     deps = [
         "convert_type",
+        ":downcast_x64",
+        ":elements_attr_roundtrip_pass",
         ":op_quant_spec_getters_inc",
         ":optimize_broadcast_like_pass_options",
         ":shape_and_size_utils",
@@ -1422,8 +1500,8 @@ cc_library(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
         "@stablehlo//:stablehlo_ops",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -1570,10 +1648,10 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@local_tsl//tsl/platform:status",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:vhlo_ops",
         "@stablehlo//:vhlo_types",
+        "@tsl//tsl/platform:status",
     ],
 )
 
@@ -1606,6 +1684,7 @@ cc_library(
         "flatbuffer_export_flags.h",
     ],
     deps = [
+        ":const_tensor_utils",
         ":control_edges",
         ":convert_type",
         ":converter_flags_proto_cc",
@@ -1643,7 +1722,10 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -1654,10 +1736,9 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:fingerprint",
-        "@local_tsl//tsl/platform:tstring",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:vhlo_ops",
+        "@tsl//tsl/platform:tstring",
     ],
 )
 
@@ -1699,6 +1780,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -1713,11 +1795,10 @@ cc_library(
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TranslateLib",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:status",
-        "@local_xla//xla/tsl/platform:statusor",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:vhlo_ops",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -1770,7 +1851,6 @@ tf_cc_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:TransformUtils",
         "@stablehlo//:stablehlo_ops",
     ],
 )
@@ -1808,8 +1888,12 @@ cc_library(
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
     ],
@@ -1905,6 +1989,7 @@ tf_cc_binary(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -1915,10 +2000,10 @@ tf_cc_binary(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_xla//xla/hlo/translate/hlo_to_mhlo:translate",
-        "@local_xla//xla/mlir_hlo",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
+        "@xla//xla/hlo/translate/hlo_to_mhlo:translate",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -1932,6 +2017,7 @@ cc_library(
         ":common",
         ":converter_flags_proto_cc",
         ":converter_pass_options_setter",
+        ":downcast_x64",
         ":fake_quant_utils",
         ":optimize_broadcast_like_pass",
         ":pass",
@@ -1969,9 +2055,9 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_xla//xla/mlir_hlo:mhlo_passes",
-        "@local_xla//xla/mlir_hlo:stablehlo_extension_passes",
         "@stablehlo//:stablehlo_passes",
+        "@xla//xla/mlir_hlo:mhlo_passes",
+        "@xla//xla/mlir_hlo:stablehlo_extension_passes",
     ],
 )
 
@@ -1990,7 +2076,6 @@ cc_library(
         ":tf_tfl_passes",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
-        "//tensorflow/compiler/mlir/lite/core:macros",
         "//tensorflow/compiler/mlir/lite/debug",
         "//tensorflow/compiler/mlir/lite/experimental/remat:metadata_util",
         "//tensorflow/compiler/mlir/lite/metrics:converter_error_data_proto_cc",
@@ -2040,9 +2125,9 @@ cc_library(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:protobuf",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:vhlo_ops",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -2074,7 +2159,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:statusor",
     ],
 )
 
@@ -2105,7 +2190,10 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/compiler/mlir/lite/core/api:error_reporter"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/core/api:error_reporter",
+        "//tensorflow/lite:util",
+    ],
 )
 
 exports_files(srcs = ["utils/control_edges.h"])
@@ -2212,10 +2300,8 @@ tf_proto_library(
     srcs = ["converter_flags.proto"],
     make_default_target_header_only = True,
     protodeps = [
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto",
-        "//tensorflow/compiler/mlir/lite/debug:debug_options_proto",
         ":types_proto",
+        "//tensorflow/compiler/mlir/lite/debug:debug_options_proto",
     ],
     visibility = ["//visibility:public"],
 )

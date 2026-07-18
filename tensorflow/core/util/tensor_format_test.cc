@@ -144,24 +144,24 @@ constexpr FilterDimMap DimMaps::kFdmHWIO[4];
 constexpr FilterDimMap DimMaps::kFdmOIHW[4];
 
 TEST(TensorFormatTest, FormatEnumsAndStrings) {
-  const string prefix = "FORMAT_";
+  const std::string prefix = "FORMAT_";
   for (auto& test_data_format : test_data_formats) {
     const char* stringified_format_enum = test_data_format.second;
     LOG(INFO) << stringified_format_enum << " = " << test_data_format.first;
-    string expected_format_str = &stringified_format_enum[prefix.size()];
+    std::string expected_format_str = &stringified_format_enum[prefix.size()];
     TensorFormat format;
     EXPECT_TRUE(FormatFromString(expected_format_str, &format));
-    string format_str = ToString(format);
+    std::string format_str = ToString(format);
     EXPECT_EQ(expected_format_str, format_str);
     EXPECT_EQ(test_data_format.first, format);
   }
   for (auto& test_filter_format : test_filter_formats) {
     const char* stringified_format_enum = test_filter_format.second;
     LOG(INFO) << stringified_format_enum << " = " << test_filter_format.first;
-    string expected_format_str = &stringified_format_enum[prefix.size()];
+    std::string expected_format_str = &stringified_format_enum[prefix.size()];
     FilterTensorFormat format;
     EXPECT_TRUE(FilterFormatFromString(expected_format_str, &format));
-    string format_str = ToString(format);
+    std::string format_str = ToString(format);
     EXPECT_EQ(expected_format_str, format_str);
     EXPECT_EQ(test_filter_format.first, format);
   }

@@ -178,7 +178,8 @@ Value BuildDotOperandFlattenedShapeOp(Value operand,
                                       ImplicitLocOpBuilder& builder,
                                       bool is_lhs) {
   auto operand_type = mlir::cast<ShapedType>(operand.getType());
-  auto operand_shape = builder.create<TFL::ShapeOp>(
+  auto operand_shape = TFL::ShapeOp::create(
+      builder,
       RankedTensorType::get(static_cast<int32_t>(operand_type.getRank()),
                             builder.getIntegerType(32)),
       operand);
@@ -197,27 +198,29 @@ Value BuildDotOperandFlattenedShapeOp(Value operand,
   }
   auto seg_prod_result_type =
       RankedTensorType::get(static_cast<int32_t>(1), builder.getI32Type());
-  auto out_segids_cst = builder.create<TFL::ConstOp>(
-      builder.getI32TensorAttr(flattened_out_segids));
-  auto contracting_segids_cst = builder.create<TFL::ConstOp>(
-      builder.getI32TensorAttr(flattened_contracting_segids));
-  auto num_segids_tensor =
-      builder.create<TFL::ConstOp>(DenseIntElementsAttr::get(
-          RankedTensorType::get({}, builder.getIntegerType(32)), 1));
-  auto flattened_out_dims = builder.create<TFL::UnsortedSegmentProdOp>(
-      seg_prod_result_type, operand_shape, out_segids_cst, num_segids_tensor);
-  auto flattened_contracting_dims = builder.create<TFL::UnsortedSegmentProdOp>(
-      seg_prod_result_type, operand_shape, contracting_segids_cst,
+  auto out_segids_cst = TFL::ConstOp::create(
+      builder, builder.getI32TensorAttr(flattened_out_segids));
+  auto contracting_segids_cst = TFL::ConstOp::create(
+      builder, builder.getI32TensorAttr(flattened_contracting_segids));
+  auto num_segids_tensor = TFL::ConstOp::create(
+      builder, DenseIntElementsAttr::get(
+                   RankedTensorType::get({}, builder.getIntegerType(32)), 1));
+  auto flattened_out_dims = TFL::UnsortedSegmentProdOp::create(
+      builder, seg_prod_result_type, operand_shape, out_segids_cst,
+      num_segids_tensor);
+  auto flattened_contracting_dims = TFL::UnsortedSegmentProdOp::create(
+      builder, seg_prod_result_type, operand_shape, contracting_segids_cst,
       num_segids_tensor);
   llvm::SmallVector<Value, 3> flattend_shape_values;
   // Gather the batch dimensions.
   if (!dot_dimensions_info.batch_dimensions().AxesArray().empty()) {
     if (ShapedType::isDynamicShape(
             dot_dimensions_info.batch_dimensions().SizesArray())) {
-      auto batch_axes_tensor =
-          builder.create<TFL::ConstOp>(builder.getI64TensorAttr(
-              dot_dimensions_info.batch_dimensions().AxesArray()));
-      auto batch_dims = builder.create<TFL::GatherOp>(
+      auto batch_axes_tensor = TFL::ConstOp::create(
+          builder, builder.getI64TensorAttr(
+                       dot_dimensions_info.batch_dimensions().AxesArray()));
+      auto batch_dims = TFL::GatherOp::create(
+          builder,
           RankedTensorType::get(
               {static_cast<int>(
                   dot_dimensions_info.batch_dimensions().AxesArray().size())},
@@ -230,8 +233,8 @@ Value BuildDotOperandFlattenedShapeOp(Value operand,
            dot_dimensions_info.batch_dimensions().SizesArray()) {
         batch_i32_vec.push_back(static_cast<int32_t>(element));
       }
-      auto batch_dims =
-          builder.create<TFL::ConstOp>(builder.getI32TensorAttr(batch_i32_vec));
+      auto batch_dims = TFL::ConstOp::create(
+          builder, builder.getI32TensorAttr(batch_i32_vec));
       flattend_shape_values.push_back(batch_dims);
     }
   }
@@ -247,9 +250,9 @@ Value BuildDotOperandFlattenedShapeOp(Value operand,
       builder.getIntegerType(32));
   // Concatenate the batch dimensions, flattened out dimension and flattened
   // contracting dimension.
-  return builder.create<TFL::ConcatenationOp>(
-      concat_result_type, flattend_shape_values, /*axis*/ 0,
-      /*fused_activation_function*/ "NONE");
+  return TFL::ConcatenationOp::create(builder, concat_result_type,
+                                      flattend_shape_values, /*axis*/ 0,
+                                      /*fused_activation_function*/ "NONE");
 }
 }  // namespace
 
@@ -280,8 +283,8 @@ Value ConvertDot(PatternRewriter& rewriter, Value lhs, Value rhs,
       lhs_dot_dimensions_info.batch_dimensions().SizesArray(),
       lhs_dot_dimensions_info.out_dimensions().SizesArray(),
       lhs_dot_dimensions_info.contracting_dimensions().SizesArray());
-  auto lhs_transposed = rewriter.create<mhlo::TransposeOp>(
-      loc,
+  auto lhs_transposed = mhlo::TransposeOp::create(
+      rewriter, loc,
       RankedTensorType::get(lhs_transposed_shape, lhs_type.getElementType()),
       lhs,
       DenseIntElementsAttr::get(
@@ -298,8 +301,8 @@ Value ConvertDot(PatternRewriter& rewriter, Value lhs, Value rhs,
       rhs_dot_dimensions_info.batch_dimensions().SizesArray(),
       rhs_dot_dimensions_info.contracting_dimensions().SizesArray(),
       rhs_dot_dimensions_info.out_dimensions().SizesArray());
-  auto rhs_transposed = rewriter.create<mhlo::TransposeOp>(
-      loc,
+  auto rhs_transposed = mhlo::TransposeOp::create(
+      rewriter, loc,
       RankedTensorType::get(rhs_transposed_shape, rhs_type.getElementType()),
       rhs,
       DenseIntElementsAttr::get(
@@ -314,15 +317,15 @@ Value ConvertDot(PatternRewriter& rewriter, Value lhs, Value rhs,
           lhs_dot_dimensions_info.FlattenedContractingDimensionSize()});
   Value lhs_flattend;
   if (lhs_type.hasStaticShape()) {
-    lhs_flattend = rewriter.create<mhlo::ReshapeOp>(
-        loc,
+    lhs_flattend = mhlo::ReshapeOp::create(
+        rewriter, loc,
         RankedTensorType::get(lhs_flattened_shape, lhs_type.getElementType()),
         lhs_transposed.getResult());
   } else {
     auto lhs_flattend_shape_op = BuildDotOperandFlattenedShapeOp(
         lhs, lhs_dot_dimensions_info, builder, /*is_lhs=*/true);
-    lhs_flattend = rewriter.create<mhlo::DynamicReshapeOp>(
-        loc,
+    lhs_flattend = mhlo::DynamicReshapeOp::create(
+        rewriter, loc,
         RankedTensorType::get(lhs_flattened_shape, lhs_type.getElementType()),
         lhs_transposed, lhs_flattend_shape_op);
   }
@@ -336,15 +339,15 @@ Value ConvertDot(PatternRewriter& rewriter, Value lhs, Value rhs,
           rhs_dot_dimensions_info.FlattenedOutDimensionSize()});
   Value rhs_flattend;
   if (rhs_type.hasStaticShape()) {
-    rhs_flattend = rewriter.create<mhlo::ReshapeOp>(
-        loc,
+    rhs_flattend = mhlo::ReshapeOp::create(
+        rewriter, loc,
         RankedTensorType::get(rhs_flattened_shape, rhs_type.getElementType()),
         rhs_transposed.getResult());
   } else {
     auto rhs_flattend_shape_op = BuildDotOperandFlattenedShapeOp(
         rhs, rhs_dot_dimensions_info, builder, /*is_lhs=*/false);
-    rhs_flattend = rewriter.create<mhlo::DynamicReshapeOp>(
-        loc,
+    rhs_flattend = mhlo::DynamicReshapeOp::create(
+        rewriter, loc,
         RankedTensorType::get(rhs_flattened_shape, rhs_type.getElementType()),
         rhs_transposed, rhs_flattend_shape_op);
   }
@@ -357,44 +360,46 @@ Value ConvertDot(PatternRewriter& rewriter, Value lhs, Value rhs,
                       llvm::ArrayRef<int64_t>{
                           rhs_dot_dimensions_info.FlattenedOutDimensionSize()});
   BoolAttr false_attr = rewriter.getBoolAttr(false);
-  auto matmul = rewriter.create<TFL::BatchMatMulOp>(
-      loc, RankedTensorType::get(matmul_shape, result_type.getElementType()),
+  auto matmul = TFL::BatchMatMulOp::create(
+      rewriter, loc,
+      RankedTensorType::get(matmul_shape, result_type.getElementType()),
       lhs_flattend, rhs_flattend, /*adj_x*/ false_attr, /*adj_y*/ false_attr,
       /*asym_quant_input*/ false_attr);
   if (result_type.hasStaticShape()) {
     auto reshaped =
-        rewriter.create<mhlo::ReshapeOp>(loc, result_type, matmul.getResult());
+        mhlo::ReshapeOp::create(rewriter, loc, result_type, matmul.getResult());
     return reshaped.getResult();
   }
 
   // Reshape for dynamic shaped operands. The result shape is
   // [lhs_batch_dimensions, lhs_out_dimensions, rhs_out_dimensions].
-  auto lhs_shape = rewriter.create<TFL::ShapeOp>(
-      loc,
+  auto lhs_shape = TFL::ShapeOp::create(
+      rewriter, loc,
       RankedTensorType::get(static_cast<int32_t>(lhs_type.getRank()),
                             builder.getIntegerType(32)),
       lhs);
-  auto rhs_shape = rewriter.create<TFL::ShapeOp>(
-      loc,
+  auto rhs_shape = TFL::ShapeOp::create(
+      rewriter, loc,
       RankedTensorType::get(static_cast<int32_t>(rhs_type.getRank()),
                             builder.getIntegerType(32)),
       rhs);
   llvm::SmallVector<int64_t, 4> lhs_batch_and_out =
       Concat<int64_t>(lhs_dot_dimensions_info.batch_dimensions().AxesArray(),
                       lhs_dot_dimensions_info.out_dimensions().AxesArray());
-  auto lhs_batch_and_out_cst = rewriter.create<TFL::ConstOp>(
-      loc, rewriter.getI64TensorAttr(lhs_batch_and_out));
-  auto lhs_batch_and_out_dims = rewriter.create<TFL::GatherOp>(
-      loc,
+  auto lhs_batch_and_out_cst = TFL::ConstOp::create(
+      rewriter, loc, rewriter.getI64TensorAttr(lhs_batch_and_out));
+  auto lhs_batch_and_out_dims = TFL::GatherOp::create(
+      rewriter, loc,
       RankedTensorType::get({static_cast<int>(lhs_batch_and_out.size())},
                             rewriter.getIntegerType(32)),
       lhs_shape, lhs_batch_and_out_cst,
       /*axis*/ 0, /*batch_dims*/ 0);
-  auto rhs_out_cst = rewriter.create<TFL::ConstOp>(
-      loc, rewriter.getI64TensorAttr(
-               rhs_dot_dimensions_info.out_dimensions().AxesArray()));
-  auto rhs_out_dims = rewriter.create<TFL::GatherOp>(
-      loc,
+  auto rhs_out_cst = TFL::ConstOp::create(
+      rewriter, loc,
+      rewriter.getI64TensorAttr(
+          rhs_dot_dimensions_info.out_dimensions().AxesArray()));
+  auto rhs_out_dims = TFL::GatherOp::create(
+      rewriter, loc,
       RankedTensorType::get(
           {static_cast<int32_t>(
               rhs_dot_dimensions_info.out_dimensions().AxesArray().size())},
@@ -407,12 +412,12 @@ Value ConvertDot(PatternRewriter& rewriter, Value lhs, Value rhs,
           lhs_dot_dimensions_info.out_dimensions().AxesArray().size() +
           rhs_dot_dimensions_info.out_dimensions().AxesArray().size())},
       rewriter.getIntegerType(32));
-  auto result_shape = rewriter.create<TFL::ConcatenationOp>(
-      loc, result_shape_type, ValueRange{lhs_batch_and_out_dims, rhs_out_dims},
-      0, "NONE");
+  auto result_shape = TFL::ConcatenationOp::create(
+      rewriter, loc, result_shape_type,
+      ValueRange{lhs_batch_and_out_dims, rhs_out_dims}, 0, "NONE");
 
-  auto reshaped = rewriter.create<mhlo::DynamicReshapeOp>(
-      loc, result_type, matmul.getResult(), result_shape);
+  auto reshaped = mhlo::DynamicReshapeOp::create(
+      rewriter, loc, result_type, matmul.getResult(), result_shape);
   return reshaped.getResult();
 }
 

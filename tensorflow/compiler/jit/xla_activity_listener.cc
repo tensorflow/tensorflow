@@ -84,7 +84,7 @@ absl::Status BroadcastOptimizationRemark(
 
 absl::Status BroadcastOptimizationRemark(
     XlaOptimizationRemark::Warning optimization_warning,
-    string debug_information) {
+    std::string debug_information) {
   XlaOptimizationRemark remark;
   remark.set_warning(optimization_warning);
   remark.set_debug_information(std::move(debug_information));

@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -55,7 +56,6 @@ limitations under the License.
 #include "xla/service/gpu/model/matmul_interpolator_utils.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -127,10 +127,8 @@ struct StaticSpec {
     const HloInstructionProto& instr = profile.instruction();
     CHECK_EQ(instr.opcode(), HloOpcodeString(HloOpcode::kDot));
     const DotDimensionNumbers& dot_dims = instr.dot_dimension_numbers();
-    TF_ASSIGN_OR_RETURN(Shape lhs,
-                        Shape::FromProto(profile.operands(0).shape()));
-    TF_ASSIGN_OR_RETURN(Shape rhs,
-                        Shape::FromProto(profile.operands(1).shape()));
+    ASSIGN_OR_RETURN(Shape lhs, Shape::FromProto(profile.operands(0).shape()));
+    ASSIGN_OR_RETURN(Shape rhs, Shape::FromProto(profile.operands(1).shape()));
     int b = 1, m = 1, n = 1, k = 1;
     for (int dim : dot_dims.lhs_batch_dimensions()) {
       b *= ShapeUtil::GetDimension(lhs, dim);
@@ -189,12 +187,14 @@ std::unique_ptr<HloModule> GetModule(absl::string_view lhs_dtype,
   )",
                        lhs_dtype, rhs_dtype, out_dtype, m, n, k, b);
 
-  auto parsed = ParseAndReturnUnverifiedModule(text);
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsFromFlags());
+  auto parsed = ParseAndReturnUnverifiedModule(text, config);
   CHECK_OK(parsed.status());
   return *std::move(parsed);
 }
 
-void Measure(HloRunner& runner, OpaqueExecutable* executable,
+void Measure(HloRunnerInterface& runner, OpaqueExecutable* executable,
              const std::vector<Literal>& args_small,
              const std::vector<Literal>& args_large) {
   CHECK_OK(runner.ExecuteWithExecutable(executable, args_small).status());
@@ -531,9 +531,6 @@ DeviceHloInstructionProfiles MatmulPerfTableGen::ComputeTable() {
   std::minstd_rand0 engine;
   std::shuffle(specs.begin(), specs.end(), engine);
 
-  auto& device_info =
-      runner_.backend().stream_executors()[0]->GetDeviceDescription();
-
   for (int i = 0; i < specs.size(); i++) {
     ExplicitSpec& spec = specs[i];
 
@@ -555,7 +552,7 @@ DeviceHloInstructionProfiles MatmulPerfTableGen::ComputeTable() {
     HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
     int64_t fmas = GetFlops(*dot);
     absl::Duration time = Profile(std::move(module));
-    entry.set_clock_cycles(device_info.clock_rate_ghz() *
+    entry.set_clock_cycles(device_description_.clock_rate_ghz() *
                            absl::ToInt64Nanoseconds(time));
     entry.set_flops(fmas * 1e9 / absl::ToInt64Nanoseconds(time));
 
@@ -563,7 +560,8 @@ DeviceHloInstructionProfiles MatmulPerfTableGen::ComputeTable() {
 
     ReportProgress("Profiling progress", i + 1, specs.size());
   }
-  std::string device_key = gpu::HloOpProfiles::GetProfileName(device_info);
+  std::string device_key =
+      gpu::HloOpProfiles::GetDeviceSpecificProfileName(device_description_);
   device_profiles.mutable_entries()->insert({device_key, profile_list});
   return device_profiles;
 }
@@ -578,7 +576,7 @@ DeviceHloInstructionProfiles MatmulPerfTableGen::ComputeTable() {
     absl::btree_map<std::array<int64_t, 4>, GemmPerfTableEntry>
         gemm_perf_table_entry;
     for (const HloInstructionProfile& profile : profile_list.entries()) {
-      TF_ASSIGN_OR_RETURN(StaticSpec spec, StaticSpec::FromDotProfile(profile));
+      ASSIGN_OR_RETURN(StaticSpec spec, StaticSpec::FromDotProfile(profile));
 
       std::array<int64_t, 4> key = {spec.b, spec.m, spec.k, spec.n};
       if (!gemm_perf_table_entry.contains(key)) {
@@ -615,7 +613,7 @@ absl::Status MatmulPerfTableGen::Dump(
 
   DeviceHloInstructionProfiles file;
   if (tsl::Env::Default()->FileExists(config_.output).ok()) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         tsl::ReadTextOrBinaryProto(tsl::Env::Default(), config_.output, &file));
   }
 
@@ -627,12 +625,12 @@ absl::Status MatmulPerfTableGen::Dump(
     }
 
     if (absl::StrContains(config_.output, ".pbtxt")) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           tsl::WriteTextProto(tsl::Env::Default(), config_.output, file));
       continue;
     }
     if (absl::StrContains(config_.output, ".pb")) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           tsl::WriteBinaryProto(tsl::Env::Default(), config_.output, file));
       continue;
     }

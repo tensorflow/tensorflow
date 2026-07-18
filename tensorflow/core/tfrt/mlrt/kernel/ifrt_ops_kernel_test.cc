@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/tsl/concurrency/future.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_restore_context.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
+#include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/executable.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/builtin_kernels.h"
@@ -115,6 +117,14 @@ std::string EncodeTruncateInCast(int num_outputs) {
   return std::string(buffer.data(), buffer.size());
 }
 
+std::string EncodeReturnedTensorNames() {
+  mlrt::bc::Buffer buffer;
+  mlrt::bc::Allocator allocator(&buffer);
+
+  mlrt::bc::New<mlrt::bc::Vector<mlrt::bc::String>>(&allocator, 0);
+  return std::string(buffer.data(), buffer.size());
+}
+
 mlrt::bc::Buffer CreateExecutableForIfrtRestoreVariableOp(
     int num_variables = 1) {
   mlrt::bc::Buffer buffer;
@@ -132,7 +142,7 @@ mlrt::bc::Buffer CreateExecutableForIfrtRestoreVariableOp(
   kernels.Def(kernel_names);
 
   static constexpr int kNumAttributes =
-      5;  // Size of attributes when there are 1 variable.
+      6;  // Size of attributes when there are 1 variable.
   mlrt::testing::AttributeTable attributes(executable_ctor.construct_attributes(
       kNumAttributes + 2 * (num_variables - 1)));
 
@@ -140,6 +150,7 @@ mlrt::bc::Buffer CreateExecutableForIfrtRestoreVariableOp(
   attributes.Add("restore_dtypes", restore_dtypes);
   std::vector<bool> truncate_in_cast(num_variables, false);
   attributes.Add("truncate_in_cast", EncodeTruncateInCast(num_variables));
+  attributes.Add("returned_tensor_names", EncodeReturnedTensorNames());
 
   for (int i = 0; i < num_variables; ++i) {
     attributes.Add(
@@ -233,8 +244,9 @@ mlrt::bc::Buffer CreateExecutableForIfrtRestoreVariableOp(
       restore_ctor.set_code(kernels.Use("tf_mlrt.ifrt_restore_variable"));
       restore_ctor.construct_arguments(args.size()).Assign(regs.Use(args));
       restore_ctor.construct_results(0);
-      restore_ctor.construct_attributes(2).Assign(
+      restore_ctor.construct_attributes(3).Assign(
           {attributes.GetHandle("restore_dtypes"),
+           attributes.GetHandle("returned_tensor_names"),
            attributes.GetHandle("truncate_in_cast")});
       kernel_index++;
     }
@@ -390,11 +402,14 @@ class KernelTest : public ::testing::TestWithParam<bool> {
             /*model_metadata=*/std::nullopt,
             &fallback_state_->process_function_library_runtime());
 
+    h2d_transfer_executor_factory_ =
+        std::make_unique<ifrt_serving::H2DTransferExecutorFactory>();
     TF_ASSERT_OK_AND_ASSIGN(client_, xla::ifrt::test_util::GetClient());
     resource_context_
         .CreateResource<tensorflow::ifrt_serving::IfrtModelContext>(
             "IfrtModelContext", client_, ifrt_core_selector_.get(),
-            &GetThreadPool(), /*compilation_environment_proto=*/nullptr);
+            &GetThreadPool(), /*compilation_environment_proto=*/nullptr,
+            h2d_transfer_executor_factory_.get());
 
     tf_context_ = std::make_unique<Context>(fallback_request_state_.get(),
                                             &resource_context_);
@@ -437,6 +452,8 @@ class KernelTest : public ::testing::TestWithParam<bool> {
   std::shared_ptr<xla::ifrt::Client> client_;
   std::unique_ptr<tfd::KernelFallbackCompatRequestState>
       fallback_request_state_;
+  std::unique_ptr<ifrt_serving::H2DTransferExecutorFactory>
+      h2d_transfer_executor_factory_;
   std::unique_ptr<Context> tf_context_;
   tensorflow::ifrt_serving::IfrtModelContext* ifrt_model_context_;
 };
@@ -505,11 +522,13 @@ TEST_P(KernelTest, IfrtLoadVariableOp) {
   TF_CHECK_OK(tensorflow::Tensor::BuildTensor(DT_INT32, {}, &input_tensor));
   input_tensor.scalar<int32_t>()() = 1234;
   auto [input_tensor_promise, input_tensor_future] =
-      tsl::Future<tensorflow::Tensor>::MakePromise();
+      tsl::MakePromise<tensorflow::Tensor>();
   ifrt_serving::IfrtRestoreTensorRegistry::RestoredTensorInfo
-      restore_tensor_info{.dtype_and_shape = {.dtype = input_tensor.dtype(),
-                                              .shape = input_tensor.shape()},
-                          .tensor_future = input_tensor_future};
+      restore_tensor_info{
+          .dtype_and_shape = tsl::Future<ifrt_serving::DtypeAndShape>(
+              ifrt_serving::DtypeAndShape{.dtype = input_tensor.dtype(),
+                                          .shape = input_tensor.shape()}),
+          .tensor_future = input_tensor_future};
   input_tensor_promise.Set(input_tensor);
   TF_ASSERT_OK(ifrt_model_context_->GetRestoreTensorRegistry().TryRegister(
       kVariableRuntimeName, restore_tensor_info));
@@ -555,11 +574,13 @@ TEST_P(KernelTest, DuplicateIfrtLoadVariableOpShallSucceed) {
   TF_CHECK_OK(tensorflow::Tensor::BuildTensor(DT_INT32, {}, &input_tensor));
   input_tensor.scalar<int32_t>()() = 1234;
   auto [input_tensor_promise, input_tensor_future] =
-      tsl::Future<tensorflow::Tensor>::MakePromise();
+      tsl::MakePromise<tensorflow::Tensor>();
   ifrt_serving::IfrtRestoreTensorRegistry::RestoredTensorInfo
-      restore_tensor_info{.dtype_and_shape = {.dtype = input_tensor.dtype(),
-                                              .shape = input_tensor.shape()},
-                          .tensor_future = input_tensor_future};
+      restore_tensor_info{
+          .dtype_and_shape = tsl::Future<ifrt_serving::DtypeAndShape>(
+              ifrt_serving::DtypeAndShape{.dtype = input_tensor.dtype(),
+                                          .shape = input_tensor.shape()}),
+          .tensor_future = input_tensor_future};
   input_tensor_promise.Set(input_tensor);
   TF_ASSERT_OK(ifrt_model_context_->GetRestoreTensorRegistry().TryRegister(
       kVariableRuntimeName, restore_tensor_info));
@@ -632,6 +653,7 @@ TEST_P(KernelTest, IfrtRestoreVariableOp) {
 
   std::vector<uint8_t> last_uses = {true, true, true};
   std::vector<mlrt::Value> results;
+  std::vector<mlrt::Value> returned_tensor_names;
 
   absl::Notification notification;
   execution_context.set_exit_handler(

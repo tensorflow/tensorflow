@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/bias_op_gpu.h"
 
 #include <algorithm>
+#include <limits>
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/reduction_ops_common.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 
@@ -57,23 +59,23 @@ struct AccumulatorType<Eigen::bfloat16> {
 // Definition of the GPU implementations declared in bias_op.cc.
 
 template <typename T>
-__global__ void BiasNHWCKernel(int32 nthreads, const T* __restrict__ input,
+__global__ void BiasNHWCKernel(int32_t nthreads, const T* __restrict__ input,
                                const T* __restrict__ bias,
-                               T* __restrict__ output, int32 bias_size) {
+                               T* __restrict__ output, int32_t bias_size) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
-    int32 bias_offset = index % bias_size;
+    int32_t bias_offset = index % bias_size;
     output[index] = ldg(input + index) + ldg(bias + bias_offset);
   }
 }
 
 template <typename T>
-__global__ void BiasNCHWKernel(int32 nthreads, const T* __restrict__ input,
+__global__ void BiasNCHWKernel(int32_t nthreads, const T* __restrict__ input,
                                const T* __restrict__ bias,
-                               T* __restrict__ output, int32 bias_size,
-                               int32 image_size) {
+                               T* __restrict__ output, int32_t bias_size,
+                               int32_t image_size) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
-    int32 index2 = index / image_size;
-    int32 bias_offset = index2 % bias_size;
+    int32_t index2 = index / image_size;
+    int32_t bias_offset = index2 % bias_size;
     output[index] = ldg(input + index) + ldg(bias + bias_offset);
   }
 }
@@ -81,14 +83,28 @@ __global__ void BiasNCHWKernel(int32 nthreads, const T* __restrict__ input,
 // Add "bias" to "input", broadcasting it on all dimensions but the bias
 // dimension.
 template <typename T>
-void BiasGPU<T>::compute(const GPUDevice& d, const T* input, const T* bias,
-                         T* output, int32 batch, int32 height, int32 width,
-                         int depth, int32 channel, TensorFormat data_format) {
-  const int32 bias_size = channel;
-  const int32 image_size = height * width * depth;
-  const int32 total_count = batch * bias_size * image_size;
+absl::Status BiasGPU<T>::compute(const GPUDevice& d, const T* input,
+                                 const T* bias, T* output, int32_t batch,
+                                 int32_t height, int32_t width, int depth,
+                                 int32_t channel, TensorFormat data_format) {
+  const int32_t bias_size = channel;
+  int64_t image_size_64 =
+      MultiplyWithoutOverflow(MultiplyWithoutOverflow(height, width), depth);
+  int64_t total_count_64 = MultiplyWithoutOverflow(
+      MultiplyWithoutOverflow(batch, bias_size), image_size_64);
+
+  if (total_count_64 < 0 ||
+      total_count_64 > std::numeric_limits<int32_t>::max() ||
+      image_size_64 < 0 ||
+      image_size_64 > std::numeric_limits<int32_t>::max()) {
+    return absl::InternalError("BiasGPU: dimensions exceed int32 bounds");
+  }
+
+  const int32_t image_size = image_size_64;
+  const int32_t total_count = total_count_64;
+
   if (total_count == 0) {
-    return;
+    return absl::OkStatus();
   }
   if (data_format == FORMAT_NHWC) {
     GpuLaunchConfig config =
@@ -105,53 +121,54 @@ void BiasGPU<T>::compute(const GPUDevice& d, const T* input, const T* bias,
                                 config.virtual_thread_count, input, bias,
                                 output, bias_size, image_size));
   }
+  return absl::OkStatus();
 }
 
 // A naive implementation that is functional on all cases.
 template <typename T>
-__global__ void BiasGradNHWC_Naive(int32 nthreads,
+__global__ void BiasGradNHWC_Naive(int32_t nthreads,
                                    const T* __restrict__ output_backprop,
                                    T* __restrict__ bias_backprop,
-                                   int32 bias_size) {
+                                   int32_t bias_size) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
-    int32 bias_offset = index % bias_size;
+    int32_t bias_offset = index % bias_size;
     GpuAtomicAdd(bias_backprop + bias_offset, ldg(output_backprop + index));
   }
 }
 
 // A naive implementation that is functional on all cases.
 template <typename T>
-__global__ void BiasGradNCHW_Naive(int32 nthreads,
+__global__ void BiasGradNCHW_Naive(int32_t nthreads,
                                    const T* __restrict__ output_backprop,
                                    T* __restrict__ bias_backprop,
-                                   int32 bias_size, int32 image_size) {
+                                   int32_t bias_size, int32_t image_size) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
-    int32 index2 = index / image_size;
-    int32 bias_offset = index2 % bias_size;
+    int32_t index2 = index / image_size;
+    int32_t bias_offset = index2 % bias_size;
     GpuAtomicAdd(bias_backprop + bias_offset, ldg(output_backprop + index));
   }
 }
 
 template <typename T>
 __global__ void BiasGradNHWC_SharedAtomics(
-    int32 nthreads, const T* __restrict__ output_backprop,
-    T* __restrict__ bias_backprop, int32 bias_size) {
+    int32_t nthreads, const T* __restrict__ output_backprop,
+    T* __restrict__ bias_backprop, int32_t bias_size) {
   typedef typename AccumulatorType<T>::type AccT;
   GPU_DYNAMIC_SHARED_MEM_DECL(8, char, s_buf);
   AccT* s_data = reinterpret_cast<AccT*>(s_buf);
-  for (int32 index = threadIdx.x; index < bias_size; index += blockDim.x) {
+  for (int32_t index = threadIdx.x; index < bias_size; index += blockDim.x) {
     s_data[index] = AccT(0);
   }
   __syncthreads();
 
-  for (int32 index = blockIdx.x * blockDim.x + threadIdx.x; index < nthreads;
+  for (int32_t index = blockIdx.x * blockDim.x + threadIdx.x; index < nthreads;
        index += blockDim.x * gridDim.x) {
-    int32 bias_offset = index % bias_size;
+    int32_t bias_offset = index % bias_size;
     GpuAtomicAdd(s_data + bias_offset, AccT(ldg(output_backprop + index)));
   }
   __syncthreads();
 
-  for (int32 index = threadIdx.x; index < bias_size; index += blockDim.x) {
+  for (int32_t index = threadIdx.x; index < bias_size; index += blockDim.x) {
     GpuAtomicAdd(bias_backprop + index, T(s_data[index]));
   }
 }
@@ -159,26 +176,26 @@ __global__ void BiasGradNHWC_SharedAtomics(
 template <typename T>
 __global__ void BiasGradNCHW_SharedAtomics(
     const T* __restrict__ output_backprop, T* __restrict__ bias_backprop,
-    int32 batch, int32 bias_size, int32 image_size, int group_size) {
+    int32_t batch, int32_t bias_size, int32_t image_size, int group_size) {
   // Initialize the shared memory.
   typedef typename AccumulatorType<T>::type AccT;
-  const int32 kSDataSize = 32;
+  const int32_t kSDataSize = 32;
   __shared__ AccT s_data[kSDataSize];
-  for (int32 index = threadIdx.x; index < kSDataSize; index += blockDim.x) {
+  for (int32_t index = threadIdx.x; index < kSDataSize; index += blockDim.x) {
     s_data[index] = AccT(0);
   }
   __syncthreads();
 
   // Accumulate all the values within this thread. They all have the same bias
   // index.
-  int32 bias_index = blockIdx.x % bias_size;
-  int32 group_index = blockIdx.x / bias_size;
-  int32 total_count = batch * image_size;
+  int32_t bias_index = blockIdx.x % bias_size;
+  int32_t group_index = blockIdx.x / bias_size;
+  int32_t total_count = batch * image_size;
   AccT sum(0);
-  for (int32 index = group_index * blockDim.x + threadIdx.x;
+  for (int32_t index = group_index * blockDim.x + threadIdx.x;
        index < total_count; index += blockDim.x * group_size) {
-    int32 image_offset = index % image_size;
-    int32 batch = index / image_size;
+    int32_t image_offset = index % image_size;
+    int32_t batch = index / image_size;
     T val = ldg(output_backprop +
                 (batch * bias_size + bias_index) * image_size + image_offset);
     sum += AccT(val);
@@ -192,11 +209,11 @@ __global__ void BiasGradNCHW_SharedAtomics(
 
   // Accumulate the results in the shared memory into the first element.
   // No syncthreads is needed since this is only in the same warp.
-  int32 thread_index = threadIdx.x;
+  int32_t thread_index = threadIdx.x;
 #if GOOGLE_CUDA
   if (thread_index < 32) {
     AccT data = s_data[thread_index];
-    for (int32 delta = warpSize / 2; delta > 0; delta /= 2) {
+    for (int32_t delta = warpSize / 2; delta > 0; delta /= 2) {
       data += GpuShuffleXorSync(kCudaWarpAll, data, delta);
     }
     if (thread_index == 0) {
@@ -218,21 +235,36 @@ __global__ void BiasGradNCHW_SharedAtomics(
 }
 
 template <typename T>
-void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
-                             T* bias_backprop, int32 batch, int32 height,
-                             int32 width, int32 depth, int32 channel,
-                             TensorFormat data_format) {
-  const int32 bias_size = channel;
-  const int32 image_size = height * width * depth;
-  const int32 total_count = batch * bias_size * image_size;
-  if (total_count == 0) {
-    return;
+absl::Status BiasGradGPU<T>::compute(const GPUDevice& d,
+                                     const T* output_backprop, T* bias_backprop,
+                                     int32_t batch, int32_t height,
+                                     int32_t width, int32_t depth,
+                                     int32_t channel,
+                                     TensorFormat data_format) {
+  const int32_t bias_size = channel;
+  int64_t image_size_64 =
+      MultiplyWithoutOverflow(MultiplyWithoutOverflow(height, width), depth);
+  int64_t total_count_64 = MultiplyWithoutOverflow(
+      MultiplyWithoutOverflow(batch, bias_size), image_size_64);
+
+  if (total_count_64 < 0 ||
+      total_count_64 > std::numeric_limits<int32_t>::max() ||
+      image_size_64 < 0 ||
+      image_size_64 > std::numeric_limits<int32_t>::max()) {
+    return absl::InternalError("BiasGradGPU: dimensions exceed int32 bounds");
   }
-  static constexpr int32 kWarpSize = 32;
+
+  const int32_t image_size = image_size_64;
+  const int32_t total_count = total_count_64;
+
+  if (total_count == 0) {
+    return absl::OkStatus();
+  }
+  static constexpr int32_t kWarpSize = 32;
   GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
 
   const int max_shared_memory_size = d.sharedMemPerBlock() / 2;
-  int32 shared_memory_size = 0;
+  int32_t shared_memory_size = 0;
   if (data_format == FORMAT_NHWC) {
     shared_memory_size = bias_size * sizeof(typename AccumulatorType<T>::type);
   }
@@ -270,6 +302,7 @@ void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
                                   bias_size, image_size));
     }
   }
+  return absl::OkStatus();
 }
 
 template <typename T>
@@ -299,7 +332,7 @@ void BiasGradGPU<T>::DoColReduction(OpKernelContext* context, T* output,
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
 
 // No BiasGrad kernel for int32.
-template struct BiasGPU<int32>;
+template struct BiasGPU<int32_t>;
 
 }  // end namespace tensorflow
 

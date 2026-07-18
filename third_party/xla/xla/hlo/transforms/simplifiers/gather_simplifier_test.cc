@@ -59,6 +59,29 @@ TEST_F(GatherSimplifierTest, TransformsStartIndices) {
   )");
 }
 
+TEST_F(GatherSimplifierTest, RewritesScalarOperandGatherToBroadcast) {
+  // A gather from a scalar (rank-0) operand selects that scalar for every
+  // index, so it is rewritten to a broadcast of the operand. Previously
+  // IsSimplifiedGather dereferenced the empty offset_dims out of bounds.
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule gather_simplifier
+
+    ENTRY kernel_entry {
+      operand = f32[] parameter(0)
+      indices = s32[7,0] parameter(1)
+      ROOT gather = f32[7] gather(operand, indices),
+          offset_dims={},
+          collapsed_slice_dims={},
+          start_index_map={},
+          index_vector_dim=1,
+          slice_sizes={}
+    })";
+
+  RunAndFilecheckHloRewrite(kModuleStr, GatherSimplifier(), R"(
+      CHECK: ROOT {{.*}} = f32[7]{0} broadcast(%operand), dimensions={}
+  )");
+}
+
 TEST_F(GatherSimplifierTest, RemovesCollapsedSliceDims) {
   // Verifies that GatherSimplifier sets the collapsed_slice_dims parameter to
   // the empty list.
@@ -84,8 +107,8 @@ TEST_F(GatherSimplifierTest, RemovesCollapsedSliceDims) {
   )");
 }
 
-TEST_F(GatherSimplifierTest, MakesStartIndexMapIdentity) {
-  // Verifies that GatherSimplifier ensures start_index_map is {0, 1, ...}.
+TEST_F(GatherSimplifierTest, KeepsStartIndexIntact) {
+  // Verifies that GatherSimplifier does not change the start_index_map.
   constexpr absl::string_view kModuleStr = R"(
     HloModule gather_simplifier
 
@@ -100,13 +123,8 @@ TEST_F(GatherSimplifierTest, MakesStartIndexMapIdentity) {
           slice_sizes={1,2,3}
     })";
 
-  RunAndFilecheckHloRewrite(kModuleStr, GatherSimplifier(), R"(
-  %operand = f32[33,34,35]{2,1,0} parameter(0)
-           CHECK: %[[OPERAND:.*]] = f32[35,33,34]{2,1,0} transpose(%operand)
-           CHECK: %[[GATHER:.*]] = f32[42,3,1,2]{{.*}} gather(%[[OPERAND]],
-      CHECK-SAME:    start_index_map={0,1,2},
-           CHECK: ROOT {{.*}} = f32[42,1,2,3]{{.*}} transpose(%[[GATHER]])
-  )");
+  // Expect unchanged.
+  RunAndFilecheckHloRewrite(kModuleStr, GatherSimplifier(), std::nullopt);
 }
 
 TEST_F(GatherSimplifierTest, CollapsesSomeDims) {
@@ -176,8 +194,8 @@ TEST_F(GatherSimplifierTest, ZeroSizeSlice) {
 
   // The shape check is sufficient.
   RunAndFilecheckHloRewrite(kModuleStr, GatherSimplifier(), R"(
-      CHECK: %[[ZERO:.*]] = f32[] constant(0) 
-      CHECK: ROOT {{.*}} = f32[3,2]{1,0} broadcast(%[[ZERO]]), dimensions={} 
+      CHECK: %[[ZERO:.*]] = f32[] constant(0)
+      CHECK: ROOT {{.*}} = f32[3,2]{1,0} broadcast(%[[ZERO]]), dimensions={}
   )");
 }
 

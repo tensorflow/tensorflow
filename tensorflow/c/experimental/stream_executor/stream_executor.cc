@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/c_api_macros_internal.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "xla/stream_executor/generic_memory_allocator.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_allocator.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -56,6 +58,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_common.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/device/device_utils.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/stringpiece.h"
@@ -166,8 +169,8 @@ absl::Status ValidateSEPlatformRegistrationParams(
 }
 #undef TF_VALIDATE_NOT_NULL
 
-DeviceMemoryBase DeviceMemoryBaseFromC(const SP_DeviceMemoryBase& mem) {
-  DeviceMemoryBase base(mem.opaque, mem.size);
+DeviceAddressBase DeviceMemoryBaseFromC(const SP_DeviceMemoryBase& mem) {
+  DeviceAddressBase base(mem.opaque, mem.size);
   base.SetPayload(mem.payload);
   return base;
 }
@@ -224,7 +227,7 @@ class CStreamExecutor : public StreamExecutorCommon {
 
   absl::Status Init() override { return absl::OkStatus(); }
 
-  DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override {
+  DeviceAddressBase Allocate(uint64_t size, int64_t memory_space) override {
     SP_DeviceMemoryBase mem = {SP_DEVICE_MEMORY_BASE_STRUCT_SIZE};
     stream_executor_->allocate(&device_, size, memory_space, &mem);
     absl::Status status = ValidateSPDeviceMemoryBase(mem);
@@ -233,11 +236,11 @@ class CStreamExecutor : public StreamExecutorCommon {
     }
     return DeviceMemoryBaseFromC(mem);
   }
-  DeviceMemoryBase Allocate(uint64_t size) {
+  DeviceAddressBase Allocate(uint64_t size) {
     return Allocate(size, /*memory_space=*/0);
   }
 
-  void Deallocate(DeviceMemoryBase* mem) override {
+  void Deallocate(DeviceAddressBase* mem) override {
     SP_DeviceMemoryBase device_memory_base = DeviceMemoryBaseToC(mem);
     stream_executor_->deallocate(&device_, &device_memory_base);
   }
@@ -284,14 +287,7 @@ class CStreamExecutor : public StreamExecutorCommon {
     }
     return true;
   }
-  absl::Status SynchronousMemZero(DeviceMemoryBase* location,
-                                  uint64_t size) override {
-    // TODO(annarev): figure out if we should support memzero/memset
-    // functionality by allocating on host and then copying to device.
-    return tsl::errors::Unimplemented(
-        "SynchronousMemZero is not supported by pluggable device.");
-  }
-  absl::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
+  absl::Status SynchronousMemcpy(DeviceAddressBase* gpu_dst,
                                  const void* host_src, uint64_t size) override {
     OwnedTFStatus c_status(TF_NewStatus());
     SP_DeviceMemoryBase device_memory_base = DeviceMemoryBaseToC(gpu_dst);
@@ -300,7 +296,7 @@ class CStreamExecutor : public StreamExecutorCommon {
     return StatusFromTF_Status(c_status.get());
   }
   absl::Status SynchronousMemcpy(void* host_dst,
-                                 const DeviceMemoryBase& gpu_src,
+                                 const DeviceAddressBase& gpu_src,
                                  uint64_t size) override {
     OwnedTFStatus c_status(TF_NewStatus());
     SP_DeviceMemoryBase device_memory_base = DeviceMemoryBaseToC(&gpu_src);
@@ -320,7 +316,7 @@ class CStreamExecutor : public StreamExecutorCommon {
   }
 
   absl::Status EnablePeerAccessTo(StreamExecutor* other) override {
-    return tsl::errors::Unimplemented(
+    return absl::UnimplementedError(
         "EnablePeerAccessTo is not supported by pluggable device.");
   }
   bool CanEnablePeerAccessTo(StreamExecutor* other) override { return false; }
@@ -375,14 +371,20 @@ class CStreamExecutor : public StreamExecutorCommon {
 
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
       std::optional<std::variant<StreamPriority, int>> priority) override {
+    SP_StreamOptions options{SP_STREAM_OPTIONS_STRUCT_SIZE};
+    options.has_priority = priority.has_value();
+    if (priority.has_value()) {
+      options.priority =
+          std::visit([](auto p) { return static_cast<int>(p); }, *priority);
+    }
     auto stream = std::make_unique<CStream>(&device_, stream_executor_, this);
-    TF_RETURN_IF_ERROR(stream->Create());
+    TF_RETURN_IF_ERROR(stream->Create(&options));
     return std::move(stream);
   }
 
   absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
-      MemoryType type) override {
-    if (type == MemoryType::kUnified) {
+      MemorySpace type) override {
+    if (type == MemorySpace::kUnified) {
       return std::make_unique<GenericMemoryAllocator>(
           [this](uint64_t size)
               -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
@@ -396,7 +398,7 @@ class CStreamExecutor : public StreamExecutorCommon {
                   stream_executor_->unified_memory_deallocate(&device_, ptr);
                 });
           });
-    } else if (type == MemoryType::kHost) {
+    } else if (type == MemorySpace::kHost) {
       return std::make_unique<GenericMemoryAllocator>(
           [this](uint64_t size)
               -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
@@ -430,7 +432,8 @@ CPlatform::CPlatform(SP_Platform platform,
       device_fns_(std::move(device_fns)),
       stream_executor_(std::move(stream_executor)),
       timer_fns_(std::move(timer_fns)),
-      name_(platform.name) {}
+      name_(platform_.name),
+      platform_id_info_(platform_.name) {}
 
 CPlatform::~CPlatform() {
   platform_fns_.destroy_device_fns(&platform_, &device_fns_);
@@ -442,11 +445,8 @@ CPlatform::~CPlatform() {
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 CPlatform::DescriptionForDevice(int ordinal) const {
-  // TODO(annarev): see if we can get StreamExecutor instance
-  // and call GetDeviceDescription. executor_cache_.Get would need
-  // to be made const for it to work.
-  DeviceDescription desc;
-  desc.set_name(name_);
+  TF_ASSIGN_OR_RETURN(StreamExecutor * executor, executor_cache_.Get(ordinal));
+  DeviceDescription desc = executor->GetDeviceDescription();
   return std::make_unique<DeviceDescription>(std::move(desc));
 }
 absl::StatusOr<StreamExecutor*> CPlatform::FindExisting(int ordinal) {
@@ -473,7 +473,7 @@ absl::StatusOr<std::unique_ptr<StreamExecutor>> CPlatform::GetUncachedExecutor(
 
   return std::make_unique<CStreamExecutor>(this, std::move(device),
                                            &device_fns_, &stream_executor_,
-                                           &platform_, &platform_fns_, name_);
+                                           &platform_, &platform_fns_, Name());
 }
 
 absl::Status InitStreamExecutorPlugin(void* dso_handle,

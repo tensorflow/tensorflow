@@ -39,8 +39,8 @@ absl::Status GetInitOp(const string& export_dir,
     const auto& sig_def_outputs_it =
         sig_def_outputs.find(kSavedModelInitOpSignatureKey);
     if (sig_def_outputs_it == sig_def_outputs.end()) {
-      return errors::FailedPrecondition("Could not find output ",
-                                        kSavedModelInitOpSignatureKey);
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Could not find output ", kSavedModelInitOpSignatureKey));
     }
     *init_op_name = sig_def_outputs_it->second.name();
     return absl::OkStatus();
@@ -58,7 +58,7 @@ absl::Status GetInitOp(const string& export_dir,
   const auto init_op_it = collection_def_map.find(init_op_collection_key);
   if (init_op_it != collection_def_map.end()) {
     if (init_op_it->second.node_list().value_size() != 1) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           strings::StrCat("Expected exactly one main op in : ", export_dir));
     }
     *init_op_name = init_op_it->second.node_list().value(0);

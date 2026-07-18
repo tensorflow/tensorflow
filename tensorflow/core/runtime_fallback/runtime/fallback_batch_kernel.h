@@ -67,7 +67,7 @@ class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
   void SetAdaptiveBatchSchedulerOptions(OpKernelConstruction* c,
                                         int32_t num_batch_threads);
 
-  static int32 NumBatchThreadsFromEnvironmentWithDefault(
+  static int32_t NumBatchThreadsFromEnvironmentWithDefault(
       int default_num_batch_threads);
   static thread::ThreadPool* GetOrCreateBatchThreadsPool();
   static constexpr int64_t kBatchThreadPoolSize = 128;
@@ -80,15 +80,19 @@ class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
   int32_t batch_timeout_micros_;
   int32_t max_enqueued_batches_;
   std::vector<int32_t> allowed_batch_sizes_;
-  int32 low_priority_max_batch_size_;
-  int32 low_priority_batch_timeout_micros_;
-  int32 low_priority_max_enqueued_batches_;
-  std::vector<int32> low_priority_allowed_batch_sizes_;
+  int32_t low_priority_max_batch_size_;
+  int32_t low_priority_batch_timeout_micros_;
+  int32_t low_priority_max_enqueued_batches_;
+  std::vector<int32_t> low_priority_allowed_batch_sizes_;
   std::string mixed_priority_policy_;
   bool enable_large_batch_splitting_;
   bool has_attribute_enable_large_batch_splitting_;
   bool disable_padding_;
   std::string batch_padding_policy_;
+  bool enable_priority_aware_batch_scheduler_ = false;
+  bool enable_priority_aware_batch_scheduler_resplit_ = false;
+  bool enable_batching_task_lazy_cancellation_ = false;
+  int32_t num_warmup_batch_threads_ = 0;
 
   // Parameters for adaptive batch scheduler only.
   // Note 'num_batch_threads_' above is shared by two implementations of batch
@@ -100,10 +104,10 @@ class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
   static constexpr int64_t kMaxInflightBatches = 64;
   bool enable_adaptive_batch_threads_ = false;
   struct AdaptiveBatchSchedulerOptions {
-    int32 min_in_flight_batches_limit = kMinInflightBatches;
-    int32 initial_in_flight_batches_limit = kInitialInflightBatches;
-    int32 max_in_flight_batches_limit = kMaxInflightBatches;
-    int32 batches_to_average_over = kBatchesToAverageOver;
+    int32_t min_in_flight_batches_limit = kMinInflightBatches;
+    int32_t initial_in_flight_batches_limit = kInitialInflightBatches;
+    int32_t max_in_flight_batches_limit = kMaxInflightBatches;
+    int32_t batches_to_average_over = kBatchesToAverageOver;
   };
   std::optional<AdaptiveBatchSchedulerOptions>
       adaptive_batch_scheduler_options_ = std::nullopt;
@@ -140,7 +144,7 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
                     BatchResourceType::GetClientGraphResourceContext(c));
   OP_REQUIRES_ASYNC(
       c, client_graph_resource_context != nullptr,
-      errors::FailedPrecondition("client graph resource context not found"),
+      absl::FailedPreconditionError("client graph resource context not found"),
       done);
   std::function<
       absl::StatusOr<tensorflow::core::RefCountPtr<BatchResourceType>>()>
@@ -229,6 +233,14 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
           low_priority_max_enqueued_batches_;
       batch_resource_options.low_priority_allowed_batch_sizes =
           low_priority_allowed_batch_sizes_;
+      batch_resource_options.enable_priority_aware_batch_scheduler =
+          enable_priority_aware_batch_scheduler_;
+      batch_resource_options.enable_priority_aware_batch_scheduler_resplit =
+          enable_priority_aware_batch_scheduler_resplit_;
+      batch_resource_options.enable_batching_task_lazy_cancellation =
+          enable_batching_task_lazy_cancellation_;
+      batch_resource_options.num_warmup_batch_threads =
+          num_warmup_batch_threads_;
 
       serving::ModelBatchStats& model_batch_stats =
           serving::GlobalBatchStatsRegistry().model(

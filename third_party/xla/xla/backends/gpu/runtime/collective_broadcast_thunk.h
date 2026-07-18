@@ -1,3 +1,11 @@
+#include <memory>
+
+#include "absl/strings/string_view.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/runtime/buffer_use.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/xla_data.pb.h"
 /* Copyright 2024 The OpenXLA Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,13 +34,12 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/stream.h"
 
 namespace xla::gpu {
 
 // Thunk that performs a collective broadcast.
-class CollectiveBroadcastStartThunk : public CollectiveThunk {
+class CollectiveBroadcastThunk : public CollectiveThunk {
  public:
   static absl::Status CheckImplementable(const HloInstruction* instr,
                                          int64_t replica_count,
@@ -42,27 +49,37 @@ class CollectiveBroadcastStartThunk : public CollectiveThunk {
       const HloCollectiveBroadcastInstruction* inst);
 
   const CollectiveConfig& config() const override { return config_; }
-  absl::Span<const Buffer> buffers() const { return buffers_; }
 
-  static const char* GetHloOpName() { return "collective-broadcast-start"; }
+  static absl::string_view GetHloOpName() {
+    return "collective-broadcast-start";
+  }
 
-  CollectiveBroadcastStartThunk(ThunkInfo thunk_info,
-                                const HloCollectiveBroadcastInstruction* instr,
-                                std::vector<Buffer> buffers,
-                                bool p2p_memcpy_enabled = false);
+  CollectiveBroadcastThunk(ThunkInfo thunk_info,
+                           const HloCollectiveBroadcastInstruction* instr,
+                           std::vector<Buffer> buffers,
+                           bool p2p_memcpy_enabled = false);
+  CollectiveBroadcastThunk(ThunkInfo thunk_info, CollectiveConfig config,
+                           std::vector<Buffer> buffers);
+
+  static absl::StatusOr<std::unique_ptr<CollectiveBroadcastThunk>> FromProto(
+      ThunkInfo thunk_info, const CollectiveBroadcastThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
 
  protected:
-  absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
-                                     se::Stream& stream,
-                                     CommunicatorHandle comm_handle) override;
+  bool RequiresRendezvous() const override { return true; }
+
+  absl::Status RunCollective(const ExecuteParams& params,
+                             const GpuCliqueKey& clique_key, se::Stream& stream,
+                             Communicator& comm) override;
 
  private:
   const CollectiveConfig config_;
-  const std::vector<Buffer> buffers_;
 };
 
 absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
-                                    se::Stream& stream, Communicator* comm);
+                                    se::Stream& stream, Communicator& comm);
 
 }  // namespace xla::gpu
 

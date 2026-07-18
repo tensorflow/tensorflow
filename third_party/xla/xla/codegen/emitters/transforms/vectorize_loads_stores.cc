@@ -18,9 +18,9 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 
 #include "absl/log/check.h"
+#include "absl/numeric/bits.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -36,7 +36,6 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
@@ -44,25 +43,30 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "google/protobuf/text_format.h"
 #include "xla/codegen/device_spec.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/transforms/atomic_rmw_utils.h"
 #include "xla/codegen/emitters/transforms/passes.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/status.h"
+#include "xla/stream_executor/device_description.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace emitters {
-namespace {
 
 #define GEN_PASS_DEF_VECTORIZELOADSANDSTORESPASS
 #include "xla/codegen/emitters/transforms/passes.h.inc"
+
+namespace {
 
 using mlir::Value;
 
 namespace arith = ::mlir::arith;
 namespace ml = ::mlir::LLVM;
 namespace scf = mlir::scf;
+namespace se = stream_executor;
 
 // Tries to find the stride of a symbol or dimension in an affine expression.
 // Returns std::nullopt if the stride could not be determined.
@@ -72,13 +76,12 @@ namespace scf = mlir::scf;
 //
 // Example: the stride of `d0` in `(d0 + d1)` is 1.
 // Example: the stride of `d0` in `d0 * 2` is unknown (nullopt).
-std::optional<int> GetStride(mlir::AffineExpr expr,
-                             mlir::AffineExpr dim_or_sym) {
-  if (auto binop = mlir::dyn_cast_or_null<mlir::AffineBinaryOpExpr>(expr)) {
-    auto lhs_stride = GetStride(binop.getLHS(), dim_or_sym);
-    auto rhs_stride = GetStride(binop.getRHS(), dim_or_sym);
+std::optional<int> GetStride(SymbolicExpr expr, SymbolicExpr dim_or_sym) {
+  if (expr.IsBinaryOp()) {
+    auto lhs_stride = GetStride(expr.GetLHS(), dim_or_sym);
+    auto rhs_stride = GetStride(expr.GetRHS(), dim_or_sym);
 
-    if (binop.getKind() == mlir::AffineExprKind::Add) {
+    if (expr.GetType() == SymbolicExprType::kAdd) {
       if (lhs_stride && rhs_stride) {
         return *lhs_stride + *rhs_stride;
       }
@@ -94,36 +97,35 @@ std::optional<int> GetStride(mlir::AffineExpr expr,
   return expr == dim_or_sym ? 1 : 0;
 }
 
-int64_t GetAlignmentOfRemainder(mlir::AffineExpr expr,
-                                mlir::AffineExpr dim_or_sym) {
-  if (auto binop = mlir::dyn_cast_or_null<mlir::AffineBinaryOpExpr>(expr)) {
-    auto lhs_align = GetAlignmentOfRemainder(binop.getLHS(), dim_or_sym);
-    auto rhs_align = GetAlignmentOfRemainder(binop.getRHS(), dim_or_sym);
+int64_t GetAlignmentOfRemainder(SymbolicExpr expr, SymbolicExpr dim_or_sym) {
+  if (expr.IsBinaryOp()) {
+    auto lhs_align = GetAlignmentOfRemainder(expr.GetLHS(), dim_or_sym);
+    auto rhs_align = GetAlignmentOfRemainder(expr.GetRHS(), dim_or_sym);
 
     std::optional<int64_t> rhs_cst = std::nullopt;
-    if (binop.getRHS().getKind() == mlir::AffineExprKind::Constant) {
-      rhs_cst = mlir::cast<mlir::AffineConstantExpr>(binop.getRHS()).getValue();
+    if (expr.GetRHS().GetType() == SymbolicExprType::kConstant) {
+      rhs_cst = expr.GetRHS().GetValue();
     }
 
-    switch (binop.getKind()) {
-      case mlir::AffineExprKind::Add:
-        if (binop.getLHS() == dim_or_sym) return rhs_align;
-        if (binop.getRHS() == dim_or_sym) return lhs_align;
+    switch (expr.GetType()) {
+      case SymbolicExprType::kAdd:
+        if (expr.GetLHS() == dim_or_sym) return rhs_align;
+        if (expr.GetRHS() == dim_or_sym) return lhs_align;
         return std::gcd(lhs_align, rhs_align);
-      case mlir::AffineExprKind::Mul:
+      case SymbolicExprType::kMul:
         return lhs_align * rhs_align;
-      case mlir::AffineExprKind::FloorDiv:
-      case mlir::AffineExprKind::CeilDiv:
+      case SymbolicExprType::kFloorDiv:
+      case SymbolicExprType::kCeilDiv:
         return 1;
-      case mlir::AffineExprKind::Mod:
+      case SymbolicExprType::kMod:
         // (a * c) % (b * c) = (a % b) * c.
         return std::gcd(lhs_align, rhs_align);
       default:
         llvm_unreachable("expr is none of the binary expressions");
     }
   }
-  if (auto cst = mlir::dyn_cast<mlir::AffineConstantExpr>(expr)) {
-    return cst.getValue();
+  if (expr.GetType() == SymbolicExprType::kConstant) {
+    return expr.GetValue();
   }
   return 1;
 }
@@ -131,7 +133,7 @@ int64_t GetAlignmentOfRemainder(mlir::AffineExpr expr,
 // Attempts to extract the vector type for the given loop. This means:
 // - checks that the lower bound is 0
 // - checks that the step is 1
-// - checks that the upper bound is 2, 4, or 8.
+// - checks that the upper bound is a power of 2 between 2 and 32.
 // Returns a vector type with the given upper bound and the tensor's element
 // type.
 // All tensors are 1D after flatten-tensors pass.
@@ -150,10 +152,14 @@ mlir::VectorType GetVectorType(mlir::RankedTensorType tensor_type,
       mlir::getConstantIntValue(loop.getLowerBound()) != 0) {
     return nullptr;
   }
-  std::optional<int> vector_size =
+  std::optional<int64_t> vector_size =
       mlir::getConstantIntValue(loop.getUpperBound());
-  if (vector_size != 2 && vector_size != 4 && vector_size != 8) {
+  if (vector_size < 2 || vector_size > 32 ||
+      !absl::has_single_bit(static_cast<unsigned int>(*vector_size))) {
     return nullptr;  // Unsupported vector size.
+  }
+  if (tensor_type.getElementTypeBitWidth() * *vector_size > 256) {
+    return nullptr;  // Vector size is too large.
   }
   if (tensor_type.getShape().back() % *vector_size) {
     return nullptr;  // Misaligned start indices.
@@ -199,7 +205,7 @@ std::optional<Value> GetVectorBaseIndices(Value index, scf::ForOp loop,
                                           mlir::ImplicitLocOpBuilder& b) {
   Value induction_var = loop.getInductionVar();
   if (index == induction_var) {
-    return b.create<arith::ConstantIndexOp>(0);
+    return arith::ConstantIndexOp::create(b, 0);
   }
 
   auto apply_indexing =
@@ -212,10 +218,10 @@ std::optional<Value> GetVectorBaseIndices(Value index, scf::ForOp loop,
   if (apply_indexing->getNumResults() != 1) {
     return std::nullopt;
   }
-  mlir::AffineMap map = apply_indexing.getAffineMap();
+  auto map = apply_indexing.getSymbolicMap();
 
   int induction_var_operand_index;
-  mlir::AffineExpr induction_var_expr = nullptr;
+  SymbolicExpr induction_var_expr;
   for (auto [index, operand] : llvm::enumerate(apply_indexing.getOperands())) {
     if (operand == induction_var) {
       if (induction_var_expr) {
@@ -223,10 +229,7 @@ std::optional<Value> GetVectorBaseIndices(Value index, scf::ForOp loop,
         return std::nullopt;
       }
       induction_var_operand_index = index;
-      induction_var_expr = index < map.getNumDims()
-                               ? mlir::getAffineDimExpr(index, b.getContext())
-                               : mlir::getAffineSymbolExpr(
-                                     index - map.getNumDims(), b.getContext());
+      induction_var_expr = CreateSymbolicVariable(index, b.getContext());
     } else if (!operand.getParentRegion()->isProperAncestor(
                    &loop.getBodyRegion())) {
       // If the operand is defined inside the loop, we can't hoist the
@@ -238,20 +241,20 @@ std::optional<Value> GetVectorBaseIndices(Value index, scf::ForOp loop,
     return std::nullopt;
   }
 
-  if (GetStride(map.getResult(0), induction_var_expr) != 1) {
+  if (GetStride(map.GetResult(0), induction_var_expr) != 1) {
     // The indexing map is not contiguous in the vectorized dimension.
     return std::nullopt;
   }
 
-  if (GetAlignmentOfRemainder(map.getResult(0), induction_var_expr) %
+  if (GetAlignmentOfRemainder(map.GetResult(0), induction_var_expr) %
       vector_type.getNumElements()) {
     return std::nullopt;
   }
 
   auto operands = llvm::to_vector(apply_indexing.getOperands());
-  operands[induction_var_operand_index] = b.create<arith::ConstantIndexOp>(0);
+  operands[induction_var_operand_index] = arith::ConstantIndexOp::create(b, 0);
 
-  return b.create<ApplyIndexingOp>(operands, apply_indexing.getIndexingMap())
+  return ApplyIndexingOp::create(b, operands, apply_indexing.getIndexingMap())
       ->getResult(0);
 }
 
@@ -261,7 +264,10 @@ bool IsConflictFree(mlir::tensor::ExtractOp op) {
 }
 
 struct VectorizeLoad : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
-  using OpRewritePattern::OpRewritePattern;
+ public:
+  VectorizeLoad(mlir::MLIRContext* context, const DeviceSpec& device_spec)
+      : OpRewritePattern<mlir::tensor::ExtractOp>(context),
+        device_spec_(device_spec) {}
 
   mlir::LogicalResult matchAndRewrite(
       mlir::tensor::ExtractOp op,
@@ -280,6 +286,19 @@ struct VectorizeLoad : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
       return rewriter.notifyMatchFailure(op, "not a vectorizable loop");
     }
 
+    // Disable vectorization for sub-byte types (4/2-bit) on Intel GPUs. These
+    // types are packed (e.g., 2 int4s per byte) and are currently not
+    // supported in the LLVM SPIR-V backend as vector load operations.
+    auto element_type = vector_type.getElementType();
+    if (device_spec_.IsIntelGpu() && element_type.isIntOrFloat()) {
+      int bit_width = element_type.getIntOrFloatBitWidth();
+      if (bit_width == 2 || bit_width == 4) {
+        return rewriter.notifyMatchFailure(
+            op,
+            "sub-byte types are not supported for vector loads on Intel GPU");
+      }
+    }
+
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     b.setInsertionPoint(loop);
     auto vector_index =
@@ -288,13 +307,16 @@ struct VectorizeLoad : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
       return rewriter.notifyMatchFailure(
           op, "the instruction does not access contiguous elements");
     }
-    auto loaded_vector = b.create<mlir::vector::TransferReadOp>(
-        vector_type, op.getTensor(), *vector_index, /*padding=*/std::nullopt,
+    auto loaded_vector = mlir::vector::TransferReadOp::create(
+        b, vector_type, op.getTensor(), *vector_index, /*padding=*/std::nullopt,
         llvm::ArrayRef<bool>{true});
     rewriter.replaceOpWithNewOp<mlir::vector::ExtractOp>(
         op, loaded_vector, loop.getInductionVar());
     return mlir::success();
   }
+
+ private:
+  const DeviceSpec& device_spec_;
 };
 
 // Verifies that the insertions happening in the loop can all safely be batched
@@ -357,15 +379,15 @@ class VectorizeAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
     }
 
     auto init =
-        b.create<arith::ConstantOp>(b.getZeroAttr(vector_type)).getResult();
+        arith::ConstantOp::create(b, b.getZeroAttr(vector_type)).getResult();
 
     auto yield_fn = [&](mlir::OpBuilder& yield_b, mlir::Location yield_loc,
                         llvm::ArrayRef<mlir::BlockArgument> bbarg) {
       auto induction_var =
           mlir::cast<scf::ForOp>(bbarg.front().getOwner()->getParentOp())
               .getInductionVar();
-      auto insert_op = yield_b.create<mlir::vector::InsertOp>(
-          yield_loc, atomic_modifier_parameters->first, bbarg.front(),
+      auto insert_op = mlir::vector::InsertOp::create(
+          yield_b, yield_loc, atomic_modifier_parameters->first, bbarg.front(),
           induction_var);
       return llvm::SmallVector<Value>{insert_op.getResult()};
     };
@@ -378,14 +400,14 @@ class VectorizeAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
     rewriter.replaceOp(op, op->getOpOperand(0).get());
 
     auto filled_vector = new_for->getResults().back();
-    auto new_atomic_rmw = b.create<AtomicRMWOp>(
-        new_for.getInits()[result_index], *vector_index, vector_type);
+    auto new_atomic_rmw = AtomicRMWOp::create(
+        b, new_for.getInits()[result_index], *vector_index, vector_type);
     mlir::ImplicitLocOpBuilder body_builder(new_atomic_rmw.getLoc(),
                                             new_atomic_rmw.getBodyBuilder());
-    auto addf_op = body_builder.create<arith::AddFOp>(
-        body_builder.getLoc(), vector_type, new_atomic_rmw.getCurrentValue(),
-        filled_vector);
-    body_builder.create<xla::YieldOp>(addf_op.getResult());
+    auto addf_op =
+        arith::AddFOp::create(body_builder, body_builder.getLoc(), vector_type,
+                              new_atomic_rmw.getCurrentValue(), filled_vector);
+    xla::YieldOp::create(body_builder, addf_op.getResult());
     new_for->getResult(result_index)
         .replaceAllUsesWith(new_atomic_rmw.getResult());
 
@@ -396,7 +418,10 @@ class VectorizeAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
 };
 
 struct VectorizeStore : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
-  using OpRewritePattern::OpRewritePattern;
+ public:
+  VectorizeStore(mlir::MLIRContext* context, const DeviceSpec& device_spec)
+      : OpRewritePattern<mlir::tensor::InsertOp>(context),
+        device_spec_(device_spec) {}
 
   mlir::LogicalResult matchAndRewrite(
       mlir::tensor::InsertOp op,
@@ -413,6 +438,19 @@ struct VectorizeStore : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
       return rewriter.notifyMatchFailure(op, "loop is not vectorizable");
     }
 
+    // Disable vectorization for sub-byte types (4/2-bit) on Intel GPUs. These
+    // types are packed (e.g., 2 int4s per byte) and are currently not
+    // supported in the LLVM SPIR-V backend as vector store operations.
+    auto element_type = vector_type.getElementType();
+    if (device_spec_.IsIntelGpu() && element_type.isIntOrFloat()) {
+      int bit_width = element_type.getIntOrFloatBitWidth();
+      if (bit_width == 2 || bit_width == 4) {
+        return rewriter.notifyMatchFailure(
+            op,
+            "sub-byte types are not supported for vector stores on Intel GPU");
+      }
+    }
+
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     b.setInsertionPoint(loop);
     auto vector_index =
@@ -423,15 +461,15 @@ struct VectorizeStore : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
     }
 
     auto init =
-        b.create<arith::ConstantOp>(b.getZeroAttr(vector_type)).getResult();
+        arith::ConstantOp::create(b, b.getZeroAttr(vector_type)).getResult();
 
     auto yield_fn = [&](mlir::OpBuilder& yield_b, mlir::Location yield_loc,
                         llvm::ArrayRef<mlir::BlockArgument> bbarg) {
       auto induction_var =
           mlir::cast<scf::ForOp>(bbarg.front().getOwner()->getParentOp())
               .getInductionVar();
-      auto insert_op = yield_b.create<mlir::vector::InsertOp>(
-          yield_loc, op.getScalar(), bbarg.front(), induction_var);
+      auto insert_op = mlir::vector::InsertOp::create(
+          yield_b, yield_loc, op.getScalar(), bbarg.front(), induction_var);
       return llvm::SmallVector<Value>{insert_op.getResult()};
     };
     int result_index = op->use_begin()->getOperandNumber();
@@ -443,13 +481,16 @@ struct VectorizeStore : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
     rewriter.replaceOp(op, op.getDest());
 
     auto filled_vector = new_for->getResults().back();
-    auto written = b.create<mlir::vector::TransferWriteOp>(
-        filled_vector, new_for.getInits()[result_index], *vector_index,
+    auto written = mlir::vector::TransferWriteOp::create(
+        b, filled_vector, new_for.getInits()[result_index], *vector_index,
         llvm::ArrayRef<bool>{true});
     new_for->getResult(result_index).replaceAllUsesWith(written.getResult());
 
     return mlir::success();
   }
+
+ private:
+  const DeviceSpec& device_spec_;
 };
 
 struct FoldVectorInsertExtractPairs
@@ -508,7 +549,7 @@ struct FoldVectorInsertExtractPairs
     auto bbarg = mlir::cast<mlir::BlockArgument>(insert.getDest());
     int64_t result_index = bbarg.getArgNumber() - 1;
     if (auto transfer_read =
-            extract.getVector().getDefiningOp<mlir::vector::TransferReadOp>()) {
+            extract.getSource().getDefiningOp<mlir::vector::TransferReadOp>()) {
       if (transfer_read.getBase().getType().getNumElements() ==
           vector_type.getNumElements()) {
         return rewriter.notifyMatchFailure(
@@ -540,7 +581,7 @@ struct FoldVectorInsertExtractPairs
       yield_op->setOperand(result_index, insert.getDest());
     });
     rewriter.replaceAllUsesWith(loop->getResult(result_index),
-                                extract.getVector());
+                                extract.getSource());
     return mlir::success();
   }
 };
@@ -549,6 +590,8 @@ class VectorizeLoadsAndStoresPass
     : public impl::VectorizeLoadsAndStoresPassBase<
           VectorizeLoadsAndStoresPass> {
  public:
+  VectorizeLoadsAndStoresPass() = default;
+
   explicit VectorizeLoadsAndStoresPass(
       const VectorizeLoadsAndStoresPassOptions& options)
       : VectorizeLoadsAndStoresPassBase(options) {}
@@ -564,7 +607,7 @@ class VectorizeLoadsAndStoresPass
                                                        &device_info));
       absl::StatusOr<se::DeviceDescription> device_description =
           se::DeviceDescription::FromProto(device_info);
-      TF_CHECK_OK(device_description.status());
+      CHECK_OK(device_description.status());
       *device_spec_.mutable_type() = *device_description;
     } else if (target_type_ == "cpu") {
       CHECK(gpu_device_info_.empty());
@@ -572,8 +615,8 @@ class VectorizeLoadsAndStoresPass
     }
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
-    patterns.add<VectorizeLoad, VectorizeStore, FoldVectorInsertExtractPairs>(
-        mlir_context);
+    patterns.add<VectorizeLoad, VectorizeStore>(mlir_context, device_spec_);
+    patterns.add<FoldVectorInsertExtractPairs>(mlir_context);
     patterns.add<VectorizeAtomicRMW>(mlir_context, device_spec_);
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
@@ -586,15 +629,7 @@ class VectorizeLoadsAndStoresPass
 
 }  // namespace
 
-std::unique_ptr<::mlir::Pass> CreateVectorizeLoadsAndStoresPass(
-    const std::string& target_type, const std::string& gpu_device_info) {
-  VectorizeLoadsAndStoresPassOptions options;
-  options.gpu_device_info_ = gpu_device_info;
-  options.target_type_ = target_type;
-  return std::make_unique<VectorizeLoadsAndStoresPass>(options);
-}
-
-std::unique_ptr<mlir::Pass> CreateVectorizeLoadsAndStoresPass(
+std::unique_ptr<mlir::Pass> createVectorizeLoadsAndStoresPass(
     const se::DeviceDescription& device_description) {
   return std::make_unique<VectorizeLoadsAndStoresPass>(device_description);
 }

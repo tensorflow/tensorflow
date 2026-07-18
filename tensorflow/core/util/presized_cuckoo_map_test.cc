@@ -45,17 +45,17 @@ TEST(PresizedCuckooMapTest, Prefetch) {
 TEST(PresizedCuckooMapTest, TooManyItems) {
   static constexpr int kTableSize = 1000;
   PresizedCuckooMap<int> pscm(kTableSize);
-  for (uint64 i = 0; i < kTableSize; i++) {
-    uint64 key =
-        Fingerprint64(string(reinterpret_cast<char *>(&i), sizeof(int64_t)));
+  for (uint64_t i = 0; i < kTableSize; i++) {
+    uint64_t key = Fingerprint64(
+        std::string(reinterpret_cast<char*>(&i), sizeof(int64_t)));
     ASSERT_TRUE(pscm.InsertUnique(key, i));
   }
   // Try to over-fill the table.  A few of these
   // inserts will succeed, but should start failing.
-  uint64 failed_at = 0;
-  for (uint64 i = kTableSize; i < (2 * kTableSize); i++) {
-    uint64 key =
-        Fingerprint64(string(reinterpret_cast<char *>(&i), sizeof(int64_t)));
+  uint64_t failed_at = 0;
+  for (uint64_t i = kTableSize; i < (2 * kTableSize); i++) {
+    uint64_t key = Fingerprint64(
+        std::string(reinterpret_cast<char*>(&i), sizeof(int64_t)));
     if (!pscm.InsertUnique(key, i)) {
       failed_at = i;
       break;
@@ -66,10 +66,10 @@ TEST(PresizedCuckooMapTest, TooManyItems) {
 
   // Requirement 2:  Table must preserve all items inserted prior
   // to the failure.
-  for (uint64 i = 0; i < failed_at; i++) {
+  for (uint64_t i = 0; i < failed_at; i++) {
     int out;
-    uint64 key =
-        Fingerprint64(string(reinterpret_cast<char *>(&i), sizeof(int64_t)));
+    uint64_t key = Fingerprint64(
+        std::string(reinterpret_cast<char*>(&i), sizeof(int64_t)));
     EXPECT_TRUE(pscm.Find(key, &out));
     EXPECT_EQ(out, i);
   }
@@ -78,7 +78,7 @@ TEST(PresizedCuckooMapTest, TooManyItems) {
 TEST(PresizedCuckooMapTest, ZeroSizeMap) {
   PresizedCuckooMap<int> pscm(0);
   int out;
-  for (uint64 i = 0; i < 100; i++) {
+  for (uint64_t i = 0; i < 100; i++) {
     EXPECT_FALSE(pscm.Find(i, &out));
   }
 }
@@ -102,13 +102,13 @@ TEST(PresizedCuckooMapTest, RepeatedClear) {
 void RunFill(int64_t table_size) {
   PresizedCuckooMap<int> pscm(table_size);
   for (int64_t i = 0; i < table_size; i++) {
-    uint64 key =
-        Fingerprint64(string(reinterpret_cast<char *>(&i), sizeof(int64_t)));
+    uint64_t key = Fingerprint64(
+        std::string(reinterpret_cast<char*>(&i), sizeof(int64_t)));
     EXPECT_TRUE(pscm.InsertUnique(key, i));
   }
   for (int64_t i = 0; i < table_size; i++) {
-    uint64 key =
-        Fingerprint64(string(reinterpret_cast<char *>(&i), sizeof(int64_t)));
+    uint64_t key = Fingerprint64(
+        std::string(reinterpret_cast<char*>(&i), sizeof(int64_t)));
     int out;
     EXPECT_TRUE(pscm.Find(key, &out));
     EXPECT_EQ(out, i);
@@ -125,24 +125,24 @@ TEST(PresizedCuckooMapTest, Duplicates) {
   static constexpr int kSmallTableSize = 1000;
   PresizedCuckooMap<int> pscm(kSmallTableSize);
 
-  for (uint64 i = 0; i < kSmallTableSize; i++) {
-    uint64 key =
-        Fingerprint64(string(reinterpret_cast<char *>(&i), sizeof(uint64)));
+  for (uint64_t i = 0; i < kSmallTableSize; i++) {
+    uint64_t key = Fingerprint64(
+        std::string(reinterpret_cast<char*>(&i), sizeof(uint64_t)));
     EXPECT_TRUE(pscm.InsertUnique(key, i));
   }
 
-  for (uint64 i = 0; i < kSmallTableSize; i++) {
-    uint64 key =
-        Fingerprint64(string(reinterpret_cast<char *>(&i), sizeof(uint64)));
+  for (uint64_t i = 0; i < kSmallTableSize; i++) {
+    uint64_t key = Fingerprint64(
+        std::string(reinterpret_cast<char*>(&i), sizeof(uint64_t)));
     EXPECT_FALSE(pscm.InsertUnique(key, i));
   }
 }
 
-static void CalculateKeys(uint64 num, std::vector<uint64> *dst) {
+static void CalculateKeys(uint64_t num, std::vector<uint64_t>* dst) {
   dst->resize(num);
-  for (uint64 i = 0; i < num; i++) {
-    uint64 key =
-        Fingerprint64(string(reinterpret_cast<char *>(&i), sizeof(uint64)));
+  for (uint64_t i = 0; i < num; i++) {
+    uint64_t key = Fingerprint64(
+        std::string(reinterpret_cast<char*>(&i), sizeof(uint64_t)));
     dst->at(i) = key;
   }
 }
@@ -150,12 +150,12 @@ static void CalculateKeys(uint64 num, std::vector<uint64> *dst) {
 void BM_CuckooFill(::testing::benchmark::State &state) {
   const int arg = state.range(0);
 
-  uint64 table_size = arg;
-  std::vector<uint64> calculated_keys;
+  uint64_t table_size = arg;
+  std::vector<uint64_t> calculated_keys;
   CalculateKeys(table_size, &calculated_keys);
   for (auto s : state) {
     PresizedCuckooMap<int> pscm(table_size);
-    for (uint64 i = 0; i < table_size; i++) {
+    for (uint64_t i = 0; i < table_size; i++) {
       pscm.InsertUnique(calculated_keys[i], i);
     }
   }
@@ -166,18 +166,18 @@ BENCHMARK(BM_CuckooFill)->Arg(1000)->Arg(10000000);
 void BM_CuckooRead(::testing::benchmark::State &state) {
   const int arg = state.range(0);
 
-  uint64 table_size = arg;
-  std::vector<uint64> calculated_keys;
+  uint64_t table_size = arg;
+  std::vector<uint64_t> calculated_keys;
   CalculateKeys(table_size, &calculated_keys);
   PresizedCuckooMap<int> pscm(table_size);
-  for (uint64 i = 0; i < table_size; i++) {
+  for (uint64_t i = 0; i < table_size; i++) {
     pscm.InsertUnique(calculated_keys[i], i);
   }
 
   int i = 0;
   for (auto s : state) {
     // Avoid using '%', which is expensive.
-    uint64 key_index = i;
+    uint64_t key_index = i;
     ++i;
     if (i == table_size) i = 0;
 

@@ -57,28 +57,29 @@ class TFGraph : public TFShow {
     return true;
   }
 
-  GraphNode* CreateParentNode(const string& name);
+  GraphNode* CreateParentNode(const std::string& name);
 
   std::vector<GraphNode*> SearchRoot(const std::vector<GraphNode*>& roots,
-                                     const std::vector<string>& regexes,
-                                     std::set<string>* visited);
+                                     const std::vector<std::string>& regexes,
+                                     std::set<std::string>* visited);
 
   std::vector<GraphNode*> PrintGraph(std::vector<GraphNode*> roots,
                                      const Options& opts, int depth,
-                                     int last_ident, std::set<string>* visits);
+                                     int last_ident,
+                                     std::set<std::string>* visits);
 
   std::vector<GraphNode*> Account(const std::vector<GraphNode*>& roots,
                                   const Options& opts,
-                                  std::set<string>* visits);
+                                  std::set<std::string>* visits);
 
-  void Format(std::vector<GraphNode*> roots, string* display_str,
+  void Format(std::vector<GraphNode*> roots, std::string* display_str,
               GraphNodeProto* proto);
 
   MemoryTracker memory_tracker_;
   GraphNode* root_;
   std::vector<std::unique_ptr<NodeDef>> node_defs_;
-  std::map<string, std::unique_ptr<TFGraphNode>> parent_nodes_;
-  std::map<string, std::unique_ptr<GraphNode>> nodes_map_;
+  std::map<std::string, std::unique_ptr<TFGraphNode>> parent_nodes_;
+  std::map<std::string, std::unique_ptr<GraphNode>> nodes_map_;
 };
 
 }  // namespace tfprof

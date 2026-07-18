@@ -34,7 +34,7 @@ namespace tensorflow {
 class MirrorPadOpTest : public OpsTestBase {
  protected:
   template <typename T>
-  void MakeOp(const string& mode) {
+  void MakeOp(const std::string& mode) {
     TF_EXPECT_OK(NodeDefBuilder("mirror_pad_op", "MirrorPad")
                      .Input(FakeInput(DataTypeToEnum<T>::value))
                      .Input(FakeInput(DT_INT32))
@@ -79,11 +79,11 @@ REGISTER_TEST(double)
 REGISTER_TEST(quint8)
 REGISTER_TEST(qint8)
 REGISTER_TEST(qint32)
-REGISTER_TEST(uint8)
-REGISTER_TEST(uint16)
-REGISTER_TEST(int8)
-REGISTER_TEST(int16)
-REGISTER_TEST(int32)
+REGISTER_TEST(uint8_t)
+REGISTER_TEST(uint16_t)
+REGISTER_TEST(int8_t)
+REGISTER_TEST(int16_t)
+REGISTER_TEST(int32_t)
 REGISTER_TEST(int64_t)
 
 #undef REGISTER_TEST
@@ -102,8 +102,8 @@ TEST_F(MirrorPadOpTest, TestMirrorPadReflectLargeInput) {
   //  0, 1, 2, ..., 999
   AddInput<float>(TensorShape({1, kInput, kInput, 1}),
                   [=](int i) -> float { return i % kInput; });
-  AddInputFromArray<int32>(TensorShape({4, 2}),
-                           {0, 0, kPad, kPad, kPad, kPad, 0, 0});
+  AddInputFromArray<int32_t>(TensorShape({4, 2}),
+                             {0, 0, kPad, kPad, kPad, kPad, 0, 0});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, kOutput, kOutput, 1}));
@@ -136,8 +136,8 @@ TEST_F(MirrorPadOpTest, TestMirrorPadSymmetricLargeInput) {
   //  0, 1, 2, ..., 999
   AddInput<float>(TensorShape({1, kInput, kInput, 1}),
                   [=](int i) -> float { return i % kInput; });
-  AddInputFromArray<int32>(TensorShape({4, 2}),
-                           {0, 0, kPad, kPad, kPad, kPad, 0, 0});
+  AddInputFromArray<int32_t>(TensorShape({4, 2}),
+                             {0, 0, kPad, kPad, kPad, kPad, 0, 0});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, kOutput, kOutput, 1}));
@@ -159,7 +159,7 @@ TEST_F(MirrorPadOpTest, TestMirrorPadSymmetricLargeInput) {
 class MirrorPadGradOpTest : public OpsTestBase {
  protected:
   template <typename T>
-  void MakeOp(const string& mode) {
+  void MakeOp(const std::string& mode) {
     TF_EXPECT_OK(NodeDefBuilder("mirror_pad_grad_op", "MirrorPadGrad")
                      .Input(FakeInput(DataTypeToEnum<T>::value))
                      .Input(FakeInput(DT_INT32))
@@ -196,11 +196,11 @@ class MirrorPadGradOpTest : public OpsTestBase {
 
 REGISTER_TEST(float)
 REGISTER_TEST(double)
-REGISTER_TEST(uint8)
-REGISTER_TEST(uint16)
-REGISTER_TEST(int8)
-REGISTER_TEST(int16)
-REGISTER_TEST(int32)
+REGISTER_TEST(uint8_t)
+REGISTER_TEST(uint16_t)
+REGISTER_TEST(int8_t)
+REGISTER_TEST(int16_t)
+REGISTER_TEST(int32_t)
 REGISTER_TEST(int64_t)
 
 #undef REGISTER_TEST

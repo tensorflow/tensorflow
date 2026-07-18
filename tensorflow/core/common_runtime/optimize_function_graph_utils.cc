@@ -62,15 +62,15 @@ namespace tensorflow {
 namespace {
 absl::Status ValidateNoListArguments(
     const protobuf::RepeatedPtrField<OpDef::ArgDef>& args, const char* arg_type,
-    const string& function_name) {
+    const std::string& function_name) {
   for (const OpDef::ArgDef& arg : args) {
     if (!arg.number_attr().empty() || !arg.type_list_attr().empty()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Function ", function_name, " has an ", arg_type, " named \"",
           arg.name(),
           "\" that is a list of tensors."
           " Multi-device functions support only single-tensor inputs "
-          " and outputs");
+          " and outputs"));
     }
   }
   return absl::OkStatus();
@@ -87,26 +87,26 @@ absl::Status ValidateMultiDeviceOptions(
                                              signature.name()));
   if (fdef.attr().count(FunctionLibraryDefinition::kIntsOnDeviceAttr) != 0 &&
       fdef.attr().at(FunctionLibraryDefinition::kIntsOnDeviceAttr).b()) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(absl::StrCat(
         "Function '", signature.name(), "' has `",
         FunctionLibraryDefinition::kIntsOnDeviceAttr,
         "` attribute set. This attribute is not currently supported by "
-        "multi-device functions.");
+        "multi-device functions."));
   }
   if (options.input_devices.size() != signature.input_arg_size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "InstantiateOptions.input_devices must have the same length "
         "as the number of arguments: input_devices length = ",
         options.input_devices.size(),
-        " number of arguments = ", signature.input_arg_size());
+        " number of arguments = ", signature.input_arg_size()));
   }
   if (!options.output_devices.empty() &&
       options.output_devices.size() != signature.output_arg_size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "InstantiateOptions.output_devices must either be empty or have the "
         "same length as the number of arguments: output_devices length = ",
         options.output_devices.size(),
-        " number of arguments = ", signature.output_arg_size());
+        " number of arguments = ", signature.output_arg_size()));
   }
   return absl::OkStatus();
 }
@@ -138,7 +138,7 @@ absl::Status SetArgShape(
   return absl::OkStatus();
 }
 
-const string* AssignedOrRequestedDeviceName(const Node& node) {
+const std::string* AssignedOrRequestedDeviceName(const Node& node) {
   if (node.has_assigned_device_name()) {
     return &node.assigned_device_name();
   }
@@ -147,7 +147,7 @@ const string* AssignedOrRequestedDeviceName(const Node& node) {
 
 // Sets `group` to the first colocation group specified in `node`. If no
 // group is specified, does not touch `group`.
-void GetColocationGroup(const Node* node, string* group) {
+void GetColocationGroup(const Node* node, std::string* group) {
   // We hoist the conversion from C-style string literal to string here,
   // so that we can avoid the many repeated calls to strlen().
   static const absl::string_view kColocationAttrNameStringPiece(
@@ -168,7 +168,7 @@ absl::Status WriteToCache(
   const absl::Time cache_writing_start_time = absl::Now();
 
   OptimizedFunctionGraph optimized_function_graph_proto;
-  string optimized_function_graph_proto_str;
+  std::string optimized_function_graph_proto_str;
   optimized_function_graph_proto =
       OptimizedFunctionGraphInfo::ToProto(optimized_function_graph_info);
   optimized_function_graph_proto.SerializeToString(
@@ -211,11 +211,11 @@ absl::Status WriteToCache(
 // Retrieves the OptimizedFunctionGraphInfo from a cache file.
 // Returns error if cache file loading fails.
 absl::StatusOr<OptimizedFunctionGraphInfo> ReadFromCache(
-    const string& file_name, Env* env) {
+    const std::string& file_name, Env* env) {
   absl::Time cache_reading_start_time = absl::Now();
 
   OptimizedFunctionGraph optimized_function_graph_proto;
-  string optimized_function_graph_proto_str;
+  std::string optimized_function_graph_proto_str;
   TF_RETURN_IF_ERROR(tsl::ReadFileToString(
       env, file_name, &optimized_function_graph_proto_str));
 
@@ -244,12 +244,14 @@ absl::StatusOr<OptimizedFunctionGraphInfo> ReadFromCache(
 // 2) Task ID.
 // 3) Function name (without UUID suffix).
 // 4) TF graph node count.
-string GetFileCacheName(const string& dir_name, const string& function_name,
-                        const FunctionDef* fdef) {
-  string plain_func_name = function_name;
+std::string GetFileCacheName(const std::string& dir_name,
+                             const std::string& function_name,
+                             const FunctionDef* fdef) {
+  std::string plain_func_name = function_name;
   // Remove the random UUID in the function name.
   if (absl::StrContains(function_name, "_")) {
-    std::vector<string> func_name_tokens = absl::StrSplit(function_name, '_');
+    std::vector<std::string> func_name_tokens =
+        absl::StrSplit(function_name, '_');
     func_name_tokens.pop_back();
     plain_func_name = absl::StrJoin(func_name_tokens, "_");
   }
@@ -261,22 +263,20 @@ string GetFileCacheName(const string& dir_name, const string& function_name,
 
 // Generates graph and return information given the input function name,
 // attributes and function definition.
-absl::Status GetGraphAndArgRets(const string& function_name, AttrSlice attrs,
-                                core::RefCountPtr<FunctionRecord>&& fdef,
-                                const FunctionLibraryDefinition* lib_def,
-                                std::unique_ptr<Graph>* graph,
-                                std::vector<Node*>* arg_nodes,
-                                std::vector<Node*>* ret_nodes,
-                                std::vector<string>* ret_node_names,
-                                DataTypeVector* ret_types,
-                                std::vector<string>* control_ret_node_names) {
+absl::Status GetGraphAndArgRets(
+    const std::string& function_name, AttrSlice attrs,
+    core::RefCountPtr<FunctionRecord>&& fdef,
+    const FunctionLibraryDefinition* lib_def, std::unique_ptr<Graph>* graph,
+    std::vector<Node*>* arg_nodes, std::vector<Node*>* ret_nodes,
+    std::vector<std::string>* ret_node_names, DataTypeVector* ret_types,
+    std::vector<std::string>* control_ret_node_names) {
   std::unique_ptr<FunctionBody> fbody;
   TF_RETURN_IF_ERROR(
       FunctionDefToBodyHelper(std::move(fdef), attrs, lib_def, &fbody));
   if (!fbody) {
     LOG(ERROR) << "Failed to get FunctionBody for \"" << function_name << "\"";
-    return errors::Internal("Failed to construct FunctionBody for ",
-                            function_name);
+    return absl::InternalError(
+        absl::StrCat("Failed to construct FunctionBody for ", function_name));
   }
   *graph = std::unique_ptr<Graph>(fbody->graph);
   arg_nodes->reserve(fbody->arg_nodes.size());
@@ -301,8 +301,8 @@ absl::Status GetGraphAndArgRets(const string& function_name, AttrSlice attrs,
 }
 }  // namespace
 
-absl::Status PinArgsAndRets(const std::vector<string>& input_devices,
-                            const std::vector<string>& output_devices,
+absl::Status PinArgsAndRets(const std::vector<std::string>& input_devices,
+                            const std::vector<std::string>& output_devices,
                             const DeviceSet& device_set,
                             const std::vector<Node*>& arg_nodes,
                             const std::vector<Node*>& ret_nodes,
@@ -338,8 +338,9 @@ absl::Status PinArgsAndRets(const std::vector<string>& input_devices,
         if (it->IsControlEdge()) continue;
 
         Node* src_node = it->src();
-        const string* src_device = AssignedOrRequestedDeviceName(*src_node);
-        string colocation_group = "";
+        const std::string* src_device =
+            AssignedOrRequestedDeviceName(*src_node);
+        std::string colocation_group = "";
         GetColocationGroup(src_node, &colocation_group);
         VLOG(3) << "Considering src: " << src_node->name()
                 << " src_device: " << *src_device
@@ -369,7 +370,7 @@ absl::Status PinArgsAndRets(const std::vector<string>& input_devices,
         if (!colocation_group.empty()) {
           AttrValue::ListValue colo_attr;
           colo_attr.add_s(colocation_group);
-          std::vector<string> colo_slice = {colocation_group};
+          std::vector<std::string> colo_slice = {colocation_group};
           node->AddAttr(kColocationAttrName, colo_slice);
         } else if (!src_device->empty() && can_use_src_node_device) {
           // Do not copy device from src node for variants, unless it is a no-op
@@ -383,8 +384,8 @@ absl::Status PinArgsAndRets(const std::vector<string>& input_devices,
           // matching device in the device_set.
           DeviceNameUtils::ParsedName parsed;
           if (!DeviceNameUtils::ParseFullName(*src_device, &parsed)) {
-            return errors::InvalidArgument(
-                "Failed to parse explicit device specification ", *src_device);
+            return absl::InvalidArgumentError(absl::StrCat(
+                "Failed to parse explicit device specification ", *src_device));
           }
           std::vector<Device*> matching_devices;
           device_set.FindMatchingDevices(parsed, &matching_devices);
@@ -392,8 +393,8 @@ absl::Status PinArgsAndRets(const std::vector<string>& input_devices,
             if (default_device != nullptr) {
               matching_devices.push_back(default_device);
             } else {
-              return errors::InvalidArgument(
-                  "Unable to find any devices for spec ", *src_device);
+              return absl::InvalidArgumentError(absl::StrCat(
+                  "Unable to find any devices for spec ", *src_device));
             }
           } else if (matching_devices.size() != 1) {
             bool on_same_task = true;
@@ -429,7 +430,7 @@ absl::Status PinArgsAndRets(const std::vector<string>& input_devices,
             }
             // Convert a vector of devices to a string.
             // Using absl::StrJoin did not work in Android builds.
-            string devices = "[";
+            std::string devices = "[";
             for (Device* device : matching_devices) {
               devices.append(device->name());
               devices.append(", ");
@@ -439,13 +440,13 @@ absl::Status PinArgsAndRets(const std::vector<string>& input_devices,
             }
             devices.append("]");
 
-            return errors::InvalidArgument(
+            return absl::InvalidArgumentError(absl::StrCat(
                 *src_device,
                 "When FunctionLibraryRuntime::Options.output_devices are "
                 "not specified for a multi-device function, the device "
                 "specification on the output node must match exactly one "
                 "device. Matched devices are ",
-                devices);
+                devices));
           }
           VLOG(3) << "Setting output device to " << matching_devices[0]->name()
                   << " for node " << SummarizeNode(*node);
@@ -470,7 +471,7 @@ absl::Status PinArgsAndRets(const std::vector<string>& input_devices,
 }
 
 absl::StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
-    const string& function_name, AttrSlice attrs,
+    const std::string& function_name, AttrSlice attrs,
     const FunctionLibraryRuntime::InstantiateOptions& options,
     const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
     const std::vector<CompositeDevice*>& composite_devices, Device* cpu_device,
@@ -490,9 +491,9 @@ absl::StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
 
   std::unique_ptr<Graph> graph;
   std::vector<Node*> arg_nodes, ret_nodes;
-  std::vector<string> ret_node_names;
+  std::vector<std::string> ret_node_names;
   DataTypeVector ret_types;
-  std::vector<string> control_ret_node_names;
+  std::vector<std::string> control_ret_node_names;
 
   TF_RETURN_IF_ERROR(GetGraphAndArgRets(
       function_name, attrs, fdef.GetNewRef(), lib_def, &graph, &arg_nodes,
@@ -555,7 +556,7 @@ absl::StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
   }
 
   // Mapping from a function body node name to the control output name.
-  std::unordered_map<string, string> node_name_to_control_ret;
+  std::unordered_map<std::string, std::string> node_name_to_control_ret;
 
   bool control_rets_updated = false;
   if (should_run_optimization_passes) {
@@ -664,7 +665,7 @@ absl::StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
 
 absl::StatusOr<OptimizedFunctionGraphInfo>
 OptimizeFunctionGraphOrReadFromFileCache(
-    const string& function_name, AttrSlice attrs,
+    const std::string& function_name, AttrSlice attrs,
     const FunctionLibraryRuntime::InstantiateOptions& options,
     const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
     const std::vector<CompositeDevice*>& composite_devices, Device* cpu_device,
@@ -676,7 +677,8 @@ OptimizeFunctionGraphOrReadFromFileCache(
   // (3) This function is eligible for caching and its cache does not exist.
 
   // Get the caching directory from Env variable.
-  const string dir_name = absl::StrCat(getenv(kGraphCachingEnvVariableName));
+  const std::string dir_name =
+      absl::StrCat(getenv(kGraphCachingEnvVariableName));
 
   // Scenario (1): Not eligible for caching. Run the optimization passes.
   if (dir_name.empty() || options.is_component_function) {
@@ -696,7 +698,7 @@ OptimizeFunctionGraphOrReadFromFileCache(
         "Failed to find function ", function_name,
         " in function library: ", lib_def->ToProto().DebugString()));
   }
-  const string file_name = GetFileCacheName(dir_name, function_name, fdef);
+  const std::string file_name = GetFileCacheName(dir_name, function_name, fdef);
 
   // Scenario (2): File cache exists for this function; restore from the cache.
   if (env->FileExists(file_name).ok()) {
@@ -782,7 +784,7 @@ OptimizeFunctionGraphOrReadFromFileCache(
 }
 
 absl::StatusOr<
-    std::unique_ptr<std::unordered_map<string, std::unique_ptr<Graph>>>>
+    std::unique_ptr<std::unordered_map<std::string, std::unique_ptr<Graph>>>>
 PreprocessAndPartitionGraph(
     const std::string& function_name,
     OptimizedFunctionGraphInfo& input_optimized_graph,
@@ -815,8 +817,8 @@ PreprocessAndPartitionGraph(
                                  &input_optimized_graph.lib_def, VLOG_IS_ON(4));
 
   // Partition the graph.
-  auto device_name_to_subgraphs =
-      std::make_unique<std::unordered_map<string, std::unique_ptr<Graph>>>();
+  auto device_name_to_subgraphs = std::make_unique<
+      std::unordered_map<std::string, std::unique_ptr<Graph>>>();
   TF_RETURN_IF_ERROR(PartitionFunctionGraph(dev_set, std::move(graph),
                                             device_name_to_subgraphs.get()));
 

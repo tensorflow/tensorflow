@@ -61,7 +61,7 @@ absl::Status AnalyzeDeadness(Graph* graph,
   return DeadnessAnalysis::Run(*graph, result);
 }
 
-ops::Switch CreateSwitch(const Scope& root, const string& prefix) {
+ops::Switch CreateSwitch(const Scope& root, const std::string& prefix) {
   Output value = ops::Placeholder(root.WithOpName(prefix + "/value"), DT_FLOAT);
   Output predicate =
       ops::Placeholder(root.WithOpName(prefix + "/pred"), DT_BOOL);
@@ -76,7 +76,7 @@ void VLogGraphIfAsked(const Graph& graph) {
   if (VLOG_IS_ON(3)) {
     GraphDef graph_def;
     graph.ToGraphDef(&graph_def);
-    string serialized;
+    std::string serialized;
     ::tensorflow::protobuf::TextFormat::PrintToString(graph_def, &serialized);
     LOG(INFO) << serialized;
   }
@@ -127,8 +127,8 @@ struct InductionVarInfo {
 //    +-----> |     Exit      |
 //            +---------------+
 InductionVarInfo CreateInductionVariable(const Scope& root,
-                                         const string& prefix,
-                                         const string& frame_name,
+                                         const std::string& prefix,
+                                         const std::string& frame_name,
                                          const Output& initial_value) {
   Output enter_initial_value = ops::internal::Enter(
       root.WithOpName(prefix + "/enter"), initial_value, frame_name);
@@ -158,8 +158,8 @@ InductionVarInfo CreateInductionVariable(const Scope& root,
 }
 
 InductionVarInfo CreateInductionVariable(const Scope& root,
-                                         const string& prefix,
-                                         const string& frame_name,
+                                         const std::string& prefix,
+                                         const std::string& frame_name,
                                          int32_t init) {
   return CreateInductionVariable(
       root, prefix, frame_name,
@@ -201,7 +201,7 @@ struct DependentInductionVar {
 };
 
 DependentInductionVar CreateDependentLoopInvariantValue(
-    const Scope& root, const string& prefix, const string& frame_name,
+    const Scope& root, const std::string& prefix, const std::string& frame_name,
     const Output& loop_cond, const Output& value) {
   Output enter_value = ops::internal::Enter(root.WithOpName(prefix + "/enter"),
                                             value, frame_name);
@@ -218,7 +218,7 @@ DependentInductionVar CreateDependentLoopInvariantValue(
 }
 
 DependentInductionVar CreateDependentLoopInvariantValue(
-    const Scope& root, const string& prefix, const string& frame_name,
+    const Scope& root, const std::string& prefix, const std::string& frame_name,
     const Output& loop_cond, int32_t value) {
   return CreateDependentLoopInvariantValue(
       root, prefix, frame_name, loop_cond,

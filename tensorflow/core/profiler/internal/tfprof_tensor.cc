@@ -22,7 +22,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfprof {
-void TFProfTensor::Display(string* formatted_str,
+void TFProfTensor::Display(std::string* formatted_str,
                            TFProfTensorProto* tfprof_tensor_pb) {
   if (formatted_str) {
     if (formatted_str_.length() >= kTFProfTenosrMaxDisplayLen) {
@@ -58,7 +58,7 @@ void TFProfTensor::Build() {
     case DataType::DT_INT64: {
       std::vector<int64_t> values_vec;
       if (tensor_->dtype() == DataType::DT_INT32) {
-        GetValueVec<int32, int64_t>(&values_vec);
+        GetValueVec<int32_t, int64_t>(&values_vec);
       } else if (tensor_->dtype() == DataType::DT_INT64) {
         GetValueVec<int64_t, int64_t>(&values_vec);
       }

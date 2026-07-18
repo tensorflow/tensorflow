@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/tests/auto_clustering_test_helper.h"
 
+#include <memory>
+
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
@@ -33,7 +35,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-absl::StatusOr<string> SummarizeClustering(
+absl::StatusOr<std::string> SummarizeClustering(
     const GraphDef& auto_clustered_graph_def) {
   testing::ResetClusterSequenceNumber();
   Graph graph(OpRegistry::Global());
@@ -45,7 +47,7 @@ absl::StatusOr<string> SummarizeClustering(
 
   // cluster_id -> (operation name -> # of operations)
   const int kNoCluster = -1;
-  std::map<int, std::map<string, int>> clusters;
+  std::map<int, std::map<std::string, int>> clusters;
   std::map<int, int> cluster_size;
   int clustered_nodes = 0;
   for (Node* n : graph.op_nodes()) {
@@ -60,7 +62,7 @@ absl::StatusOr<string> SummarizeClustering(
     cluster_size[cluster]++;
   }
 
-  string result =
+  std::string result =
       absl::StrCat("Clustered nodes: ", clustered_nodes,
                    "\nUnclustered nodes: ", cluster_size[kNoCluster],
                    "\nNumber of clusters: ", clusters.size() - 1, "\n\n");
@@ -89,7 +91,7 @@ absl::Status AssertGraphDefIsUnclustered(const GraphDef& graphdef) {
   for (const NodeDef& node : graphdef.node()) {
     if (node.attr().count(kXlaClusterAttr) ||
         node.attr().count(kXlaAlreadyClusteredAttr)) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Input files are already clustered, you probably copied in "
           "mark_for_compilation_<n>.pbtxt when you should have copied in "
           "before_mark_for_compilation_<n>.pbtxt");
@@ -99,10 +101,10 @@ absl::Status AssertGraphDefIsUnclustered(const GraphDef& graphdef) {
   return absl::OkStatus();
 }
 
-absl::Status ReadTextProtoFromString(Env* env, const string& data,
+absl::Status ReadTextProtoFromString(Env* env, const std::string& data,
                                      ::tensorflow::protobuf::Message* proto) {
   if (!::tensorflow::protobuf::TextFormat::ParseFromString(data, proto)) {
-    return errors::DataLoss("Can't parse input data as text proto");
+    return absl::DataLossError("Can't parse input data as text proto");
   }
   return absl::OkStatus();
 }
@@ -141,7 +143,8 @@ absl::Status AutoClusteringTest::RunAutoClusteringTestImpl(
     graphdef = std::move(next);
   }
 
-  TF_ASSIGN_OR_RETURN(string clustering_summary, SummarizeClustering(graphdef));
+  TF_ASSIGN_OR_RETURN(std::string clustering_summary,
+                      SummarizeClustering(graphdef));
 
   // To update golden files flip this to true and run
   //
@@ -149,13 +152,15 @@ absl::Status AutoClusteringTest::RunAutoClusteringTestImpl(
   //   tensorflow/compiler/jit/tests:auto_clustering_test
   bool update_golden = false;
   if (update_golden) {
-    TF_RETURN_IF_ERROR(WriteStringToFile(
-        Env::Default(), string(golden_summary_file_path), clustering_summary));
+    TF_RETURN_IF_ERROR(WriteStringToFile(Env::Default(),
+                                         std::string(golden_summary_file_path),
+                                         clustering_summary));
   }
 
-  string golden_file_contents;
-  TF_RETURN_IF_ERROR(ReadFileToString(
-      Env::Default(), string(golden_summary_file_path), &golden_file_contents));
+  std::string golden_file_contents;
+  TF_RETURN_IF_ERROR(ReadFileToString(Env::Default(),
+                                      std::string(golden_summary_file_path),
+                                      &golden_file_contents));
 
   EXPECT_EQ(golden_file_contents, clustering_summary);
 
@@ -167,7 +172,7 @@ absl::Status AutoClusteringTest::RunAutoClusteringTestWithPbtxt(
     absl::string_view golden_summary_file_path) {
   GraphDef graphdef;
   TF_RETURN_IF_ERROR(
-      ReadTextProto(Env::Default(), string(pbtxt_file_path), &graphdef));
+      ReadTextProto(Env::Default(), std::string(pbtxt_file_path), &graphdef));
   return RunAutoClusteringTestImpl(std::move(graphdef),
                                    golden_summary_file_path);
 }
@@ -177,10 +182,10 @@ absl::Status AutoClusteringTest::RunAutoClusteringTestWithGzippedPbtxt(
     absl::string_view golden_summary_file_path) {
   Env* env = Env::Default();
   std::unique_ptr<RandomAccessFile> file_reader;
-  TF_RETURN_IF_ERROR(
-      env->NewRandomAccessFile(string(gzipped_pbtxt_file_path), &file_reader));
-  std::unique_ptr<io::RandomAccessInputStream> input_stream(
-      new io::RandomAccessInputStream(file_reader.get()));
+  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(
+      std::string(gzipped_pbtxt_file_path), &file_reader));
+  std::unique_ptr<io::RandomAccessInputStream> input_stream =
+      std::make_unique<io::RandomAccessInputStream>(file_reader.get());
   constexpr int k_buffer_size = 256 << 10;  // 256kb
   io::ZlibInputStream in(input_stream.get(),
                          /*input_buffer_bytes=*/k_buffer_size,
@@ -206,7 +211,7 @@ absl::Status BenchmarkMarkForCompilation(absl::string_view graph_def_path,
                                          benchmark::State& state) {
   GraphDef graph_def;
   TF_RETURN_IF_ERROR(
-      ReadTextProto(Env::Default(), string(graph_def_path), &graph_def));
+      ReadTextProto(Env::Default(), std::string(graph_def_path), &graph_def));
 
   OptimizationPassRunner runner;
   TF_RETURN_IF_ERROR(runner.SetJitLevel(tensorflow::OptimizerOptions::ON_2));

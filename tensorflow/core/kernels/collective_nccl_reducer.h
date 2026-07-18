@@ -23,7 +23,8 @@ namespace tensorflow {
 class NcclReducer : public NcclBase {
  public:
   NcclReducer() : NcclBase(REDUCTION_COLLECTIVE, "NcclReduce") {}
-  NcclReducer(CollectiveType type, const string& name) : NcclBase(type, name) {}
+  NcclReducer(CollectiveType type, const std::string& name)
+      : NcclBase(type, name) {}
   ~NcclReducer() override = default;
 
   // Hands off all reduce to NcclManager.

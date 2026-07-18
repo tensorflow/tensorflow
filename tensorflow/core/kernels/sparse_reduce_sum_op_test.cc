@@ -60,7 +60,7 @@ TEST_F(SparseReduceSumOpTest, SimpleReduce) {
   AddInputFromArray<int64_t>(indices_shape, indices);
   AddInputFromArray<float>(TensorShape({4}), {1, 2, 3, 4});
   AddInputFromArray<int64_t>(TensorShape({2}), shape);
-  AddInputFromArray<int32>(TensorShape({1}), {0});  // reduction axes
+  AddInputFromArray<int32_t>(TensorShape({1}), {0});  // reduction axes
 
   TF_ASSERT_OK(RunOpKernel());
 
@@ -102,7 +102,7 @@ TEST_F(SparseReduceSumSparseOpTest, SimpleReduce) {
   AddInputFromArray<int64_t>(indices_shape, indices);
   AddInputFromArray<float>(TensorShape({4}), {2, 2, 3, 4});
   AddInputFromArray<int64_t>(TensorShape({2}), shape);
-  AddInputFromArray<int32>(TensorShape({1}), {0});  // reduction axes
+  AddInputFromArray<int32_t>(TensorShape({1}), {0});  // reduction axes
 
   TF_ASSERT_OK(RunOpKernel());
 

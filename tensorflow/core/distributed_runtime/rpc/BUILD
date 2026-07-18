@@ -52,7 +52,7 @@ cc_library(
         # Required to be able to overload TensorResponse parsing.
         "//tensorflow/core/distributed_runtime:tensor_coding",
         "//tensorflow/core:lib_internal",
-        "@local_xla//xla/tsl/distributed_runtime/rpc:grpc_util",
+        "@xla//xla/tsl/distributed_runtime/rpc:grpc_util",
     ] + tf_grpc_dependencies() + tf_grpc_cc_dependencies(),
 )
 
@@ -62,7 +62,7 @@ cc_library(
     hdrs = ["grpc_client_cq_tag.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
-        "@local_xla//xla/tsl/distributed_runtime/rpc:grpc_client_cq_tag",
+        "@xla//xla/tsl/distributed_runtime/rpc:grpc_client_cq_tag",
     ],
 )
 
@@ -79,7 +79,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:tensor_coding",
         "@com_google_absl//absl/strings:str_format",
-        "@local_xla//xla/tsl/distributed_runtime/rpc:grpc_state",
+        "@xla//xla/tsl/distributed_runtime/rpc:grpc_state",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -110,7 +110,7 @@ cc_library(
     hdrs = ["grpc_channel.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
-        "@local_xla//xla/tsl/distributed_runtime/rpc:grpc_channel",
+        "@xla//xla/tsl/distributed_runtime/rpc:grpc_channel",
     ],
 )
 
@@ -214,9 +214,9 @@ tf_cuda_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/tsl/distributed_runtime/rpc:async_service_interface",
-        "@local_xla//xla/tsl/distributed_runtime/rpc:grpc_call",
-        "@local_xla//xla/tsl/protobuf:rpc_options_proto_cc",
+        "@xla//xla/tsl/distributed_runtime/rpc:async_service_interface",
+        "@xla//xla/tsl/distributed_runtime/rpc:grpc_call",
+        "@xla//xla/tsl/protobuf:rpc_options_proto_cc",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -247,8 +247,8 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/protobuf:master_proto_cc",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:retrying_utils",
-        "@local_xla//xla/tsl/platform:env",
+        "@tsl//tsl/platform:retrying_utils",
+        "@xla//xla/tsl/platform:env",
     ],
     alwayslink = 1,
 )
@@ -266,8 +266,8 @@ cc_library(
         "//tensorflow/core/distributed_runtime:master",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/protobuf:master_proto_cc",
-        "@local_xla//xla/tsl/distributed_runtime/rpc:async_service_interface",
-        "@local_xla//xla/tsl/distributed_runtime/rpc:grpc_call",
+        "@xla//xla/tsl/distributed_runtime/rpc:async_service_interface",
+        "@xla//xla/tsl/distributed_runtime/rpc:grpc_call",
     ] + tf_grpc_cc_dependencies(),
     alwayslink = 1,
 )
@@ -337,8 +337,8 @@ cc_library(
         "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core/profiler/rpc:profiler_service_impl",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service",
-        "@local_xla//xla/tsl/distributed_runtime/rpc:async_service_interface",
+        "@xla//xla/tsl/distributed_runtime/coordination:coordination_service",
+        "@xla//xla/tsl/distributed_runtime/rpc:async_service_interface",
     ] + tf_protos_profiler_service() + tf_grpc_dependencies() + tf_grpc_cc_dependencies(),
     alwayslink = 1,
 )

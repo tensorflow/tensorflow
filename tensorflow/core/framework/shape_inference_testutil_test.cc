@@ -49,8 +49,9 @@ REGISTER_OP("OpTwoOut")
     .Attr("T: numbertype")
     .SetShapeFn([](InferenceContext* c) { return (*global_fn_ptr)(c); });
 
-string RunInferShapes(const string& op_name, const string& ins,
-                      const string& expected_outs, OpShapeInferenceFn fn) {
+std::string RunInferShapes(const std::string& op_name, const std::string& ins,
+                           const std::string& expected_outs,
+                           OpShapeInferenceFn fn) {
   ShapeInferenceTestOp op(op_name);
   const int num_inputs = 1 + std::count(ins.begin(), ins.end(), ';');
   std::vector<NodeDefBuilder::NodeOut> src_list;
@@ -91,7 +92,7 @@ TEST(ShapeInferenceTestutilTest, Failures) {
     c->set_output(0, c->Matrix(InferenceContext::kUnknownDim, 2));
     return absl::OkStatus();
   };
-  const string& op = "OpOneOut";
+  const std::string& op = "OpOneOut";
 
   EXPECT_EQ("Shape inference should have returned error",
             RunInferShapes(op, "[1];[2];[1]", "e", fn_copy_input_0));
@@ -143,7 +144,7 @@ TEST(ShapeInferenceTestutilTest, Failures) {
                                    c->UnknownDim(), c->Dim(c->input(2), 0)}));
     return absl::OkStatus();
   };
-  const string ins = "[0,1,?];[2];[1]";
+  const std::string ins = "[0,1,?];[2];[1]";
   EXPECT_CONTAINS(RunInferShapes(op, ins, "[?,2,?,d2_0]", fn),
                   "Output dim 0,0 expected to be an unknown");
   EXPECT_CONTAINS(RunInferShapes(op, ins, "[0,2,?,d2_0]", fn),

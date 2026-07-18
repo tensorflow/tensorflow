@@ -968,7 +968,13 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
         https://en.wikipedia.org/wiki/Positive-definite_matrix\
             #Extension_for_non_symmetric_matrices
       is_square:  Expect that this operator acts like square [batch] matrices.
+        Should not be `False` now. 
       name:  A name to prepend to all ops created by this class.
+
+    Raises:
+      ValueError:  If `is_square` is `False`.
+      ValueError:  If the dtype of `spectrum` is not complex and
+        `is_self_adjoint` is `False`.
     """
     parameters = dict(
         spectrum=spectrum,

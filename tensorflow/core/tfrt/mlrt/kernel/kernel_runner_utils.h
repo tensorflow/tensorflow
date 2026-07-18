@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/base/optimization.h"
 #include "absl/cleanup/cleanup.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_utils.h"
@@ -117,7 +118,11 @@ void ExecuteKernelRunner(
     }
 
     if (ABSL_PREDICT_FALSE(!op_kernel_context.status().ok())) {
-      frame.execution_context().Fail(op_kernel_context.status());
+      absl::Status status = op_kernel_context.status();
+      tsl::errors::AppendToMessage(
+          &status, absl::StrCat("Error from kernel: ",
+                                kernel_runner.op_kernel()->name_view()));
+      frame.execution_context().Fail(std::move(status));
       return;
     }
 

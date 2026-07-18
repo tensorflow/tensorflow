@@ -38,21 +38,21 @@ static absl::Status StatelessRandomPermuteShape(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(2), 1, &max_index_shape));
 
   // Figure out if the output is a scalar or tensor.
-  const int32 index_rank = c->Rank(index_shape);
-  const int32 seed_rank = c->Rank(seed_shape);
-  const int32 max_index_rank = c->Rank(max_index_shape);
+  const int32_t index_rank = c->Rank(index_shape);
+  const int32_t seed_rank = c->Rank(seed_shape);
+  const int32_t max_index_rank = c->Rank(max_index_shape);
 
   // Check that last dimension of seed is 3.
   if (seed_rank == 1 && c->Value(c->Dim(seed_shape, 0)) != 3) {
-    return errors::InvalidArgument(
-        "Seed must have shape [3] or [n, 3] but got [",
-        c->Value(c->Dim(seed_shape, 0)), "].");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Seed must have shape [3] or [n, 3] but got [",
+                     c->Value(c->Dim(seed_shape, 0)), "]."));
   }
   if (seed_rank == 2 && c->Value(c->Dim(seed_shape, 1)) != 3) {
-    return errors::InvalidArgument(
-        "Seed must have shape [3] or [n, 3] but got [",
-        c->Value(c->Dim(seed_shape, 0)), ", ", c->Value(c->Dim(seed_shape, 1)),
-        "].");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Seed must have shape [3] or [n, 3] but got [",
+                     c->Value(c->Dim(seed_shape, 0)), ", ",
+                     c->Value(c->Dim(seed_shape, 1)), "]."));
   }
 
   // Below we handle 3 cases:
@@ -96,9 +96,9 @@ static absl::Status StatelessRandomPermuteShape(InferenceContext* c) {
       num_outputs = num_seeds;
     } else if (num_outputs > 1 && num_seeds != InferenceContext::kUnknownDim &&
                num_seeds > 1 && num_seeds != num_outputs) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Seed has shape [", num_seeds, ", 3] but must have shape [",
-          num_outputs, ", 3]. since index had shape [", num_outputs, "].");
+          num_outputs, ", 3]. since index had shape [", num_outputs, "]."));
     }
   }
 
@@ -110,9 +110,9 @@ static absl::Status StatelessRandomPermuteShape(InferenceContext* c) {
     } else if (num_outputs > 1 &&
                num_max_indices != InferenceContext::kUnknownDim &&
                num_max_indices > 1 && num_max_indices != num_outputs) {
-      return errors::InvalidArgument("Max index has shape [", num_max_indices,
-                                     "] but must have shape [", num_outputs,
-                                     "].");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Max index has shape [", num_max_indices,
+                       "] but must have shape [", num_outputs, "]."));
     }
   }
 

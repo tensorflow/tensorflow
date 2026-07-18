@@ -23,6 +23,8 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -31,8 +33,7 @@ limitations under the License.
 #include "xla/service/logical_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/lib/gtl/map_util.h"
 
 namespace xla {
 
@@ -51,13 +52,28 @@ void GatherFusionInstructions(
   fusion_instructions->push_back(instruction);
 }
 
+bool IsEmptyOutputSubshapeInAsync(const Shape& shape, const ShapeIndex& index) {
+  if (index.empty()) {
+    return false;
+  }
+  if (index.front() != 1) {
+    return false;
+  }
+
+  CHECK(ShapeUtil::IndexIsValid(shape, index));
+
+  const Shape& subshape = ShapeUtil::GetSubshape(shape, index);
+  return subshape.IsTuple() && subshape.tuple_shapes().empty();
+}
+
 }  // namespace
 
 /* static */ absl::StatusOr<std::unique_ptr<LogicalBufferAnalysis>>
-LogicalBufferAnalysis::Run(const HloModule* module) {
+LogicalBufferAnalysis::Run(const HloModule* module,
+                           bool alias_buffer_across_dataflow) {
   std::unique_ptr<LogicalBufferAnalysis> analysis(
-      new LogicalBufferAnalysis(module));
-  TF_RETURN_IF_ERROR(analysis->Analyze());
+      new LogicalBufferAnalysis(module, alias_buffer_across_dataflow));
+  RETURN_IF_ERROR(analysis->Analyze());
   return analysis;
 }
 
@@ -73,7 +89,7 @@ absl::Status LogicalBufferAnalysis::Analyze() {
   // fusion computations, and we don't want to try to assign buffers to those.
   std::vector<HloInstruction*> fusion_instructions;
   for (auto* computation : module_->MakeNonfusionComputations()) {
-    TF_RETURN_IF_ERROR(computation->Accept(this));
+    RETURN_IF_ERROR(computation->Accept(this));
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() != HloOpcode::kFusion) {
         continue;
@@ -82,19 +98,31 @@ absl::Status LogicalBufferAnalysis::Analyze() {
     }
   }
   for (auto* instruction : fusion_instructions) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         instruction->fused_instructions_computation()->Accept(this));
   }
   return absl::OkStatus();
 }
 
-LogicalBuffer& LogicalBufferAnalysis::GetBuffer(LogicalBuffer::Id id) const {
-  return *logical_buffers_[id];
+absl::StatusOr<LogicalBuffer*> LogicalBufferAnalysis::GetBuffer(
+    LogicalBuffer::Id id) const {
+  if (id < 0 || id >= logical_buffers_.size()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid logical buffer ID: ", id));
+  }
+  return logical_buffers_[id].get();
 }
 
-LogicalBuffer& LogicalBufferAnalysis::GetBuffer(HloInstruction* instruction,
-                                                const ShapeIndex& index) const {
-  return *output_buffers_.at(std::make_pair(instruction, index));
+absl::StatusOr<LogicalBuffer*> LogicalBufferAnalysis::GetBuffer(
+    HloInstruction* instruction, const ShapeIndex& index) const {
+  LogicalBuffer* buffer = tsl::gtl::FindPtrOrNull(
+      output_buffers_, std::make_pair(instruction, index));
+  if (buffer == nullptr) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("No buffer defined by ", instruction->name(), " at index ",
+                     index.ToString()));
+  }
+  return buffer;
 }
 
 void LogicalBufferAnalysis::NewLogicalBuffer(HloInstruction* instruction,
@@ -227,6 +255,78 @@ absl::Status LogicalBufferAnalysis::HandleFusion(HloInstruction* fusion) {
                                }
                              });
   return absl::OkStatus();
+}
+
+absl::Status LogicalBufferAnalysis::HandleAsyncStart(
+    HloInstruction* async_start) {
+  const Shape& async_start_shape = async_start->shape();
+  absl::flat_hash_set<ShapeIndex> aliased_outputs;
+  for (const auto& pair : Cast<HloAsyncStartInstruction>(async_start)
+                              ->output_to_operand_aliasing()) {
+    aliased_outputs.insert(pair.first);
+  }
+
+  ShapeUtil::ForEachSubshape(
+      async_start_shape, [&](const Shape& shape, const ShapeIndex& index) {
+        bool has_implicit_alias = (index.size() >= 2 && index.front() == 0);
+        bool has_explicit_alias = aliased_outputs.contains(index);
+        if (!has_implicit_alias &&
+            (!has_explicit_alias ||
+             IsEmptyOutputSubshapeInAsync(async_start_shape, index))) {
+          NewLogicalBuffer(async_start, index);
+        }
+      });
+  return absl::OkStatus();
+}
+
+absl::Status LogicalBufferAnalysis::HandleAsyncUpdate(
+    HloInstruction* async_update) {
+  const Shape& async_update_shape = async_update->shape();
+  const HloInstruction* prev_async_op = async_update->operand(0);
+  const Shape& prev_async_op_shape = prev_async_op->shape();
+
+  HloInstruction* async_start = async_update->async_chain_start();
+  absl::flat_hash_set<ShapeIndex> explicitly_aliased_outputs;
+  for (const auto& pair : Cast<HloAsyncStartInstruction>(async_start)
+                              ->output_to_operand_aliasing()) {
+    explicitly_aliased_outputs.insert(pair.first);
+  }
+
+  ShapeUtil::ForEachSubshape(async_update_shape, [&](const Shape& subshape,
+                                                     const ShapeIndex& index) {
+    // Operands, ignore.
+    if (index.size() >= 2 && index.front() == 0) {
+      return;
+    }
+
+    // if explicitly aliased, and not an empty tuple, ignore (we want to avoid
+    // creating values for buffer not bound yet).
+    bool has_explicit_alias = explicitly_aliased_outputs.contains(index);
+    if (has_explicit_alias &&
+        !IsEmptyOutputSubshapeInAsync(async_update_shape, index)) {
+      return;
+    }
+
+    // If compatible with a subshape of the previous async op, ignore, because
+    // it is forwarded from the previous async op.
+    if (!index.empty() && ShapeUtil::IndexIsValid(prev_async_op_shape, index)) {
+      const Shape& prev_subshape =
+          ShapeUtil::GetSubshape(prev_async_op_shape, index);
+      if (ShapeUtil::Compatible(prev_subshape, subshape)) {
+        return;
+      }
+    }
+
+    // Otherwise, new output or new tuple container
+    NewLogicalBuffer(async_update, index);
+  });
+
+  return absl::OkStatus();
+}
+
+absl::Status LogicalBufferAnalysis::HandleAsyncDone(
+    HloInstruction* async_done) {
+  return DefaultAction(async_done);
 }
 
 }  // namespace xla

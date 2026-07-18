@@ -15,11 +15,14 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <numeric>
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -111,14 +114,14 @@ class RGBToHSVOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* context) override {
     const TensorShape input_shape = context->InputShape(0);
     OP_REQUIRES(context, input_shape.dims() >= 1,
-                errors::InvalidArgument("input must be at least 1D",
-                                        input_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "input must be at least 1D", input_shape.DebugString())));
     int channel_dim = input_shape.dims() - 1;
     int64_t channels = input_shape.dim_size(channel_dim);
-    OP_REQUIRES(
-        context, channels == 3,
-        errors::FailedPrecondition("input must have 3 channels but input has ",
-                                   channels, " channels."));
+    OP_REQUIRES(context, channels == 3,
+                absl::FailedPreconditionError(
+                    absl::StrCat("input must have 3 channels but input has ",
+                                 channels, " channels.")));
 
     xla::XlaBuilder* b = context->builder();
     xla::XlaOp input = context->Input(0);
@@ -149,14 +152,14 @@ class HSVToRGBOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* context) override {
     const TensorShape input_shape = context->InputShape(0);
     OP_REQUIRES(context, input_shape.dims() >= 1,
-                errors::InvalidArgument("input must be at least 1D",
-                                        input_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "input must be at least 1D", input_shape.DebugString())));
     int channel_dim = input_shape.dims() - 1;
     int64_t channels = input_shape.dim_size(channel_dim);
-    OP_REQUIRES(
-        context, channels == 3,
-        errors::FailedPrecondition("input must have 3 channels but input has ",
-                                   channels, " channels."));
+    OP_REQUIRES(context, channels == 3,
+                absl::FailedPreconditionError(
+                    absl::StrCat("input must have 3 channels but input has ",
+                                 channels, " channels.")));
 
     xla::XlaBuilder* b = context->builder();
     xla::XlaOp input = context->Input(0);
@@ -187,17 +190,19 @@ class AdjustContrastOpV2 : public XlaOpKernel {
     const TensorShape& input_shape = context->InputShape(0);
     const TensorShape& factor_shape = context->InputShape(1);
     OP_REQUIRES(context, input_shape.dims() >= 3,
-                errors::InvalidArgument("input must be at least 3-D, got shape",
-                                        input_shape.DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("input must be at least 3-D, got shape",
+                                 input_shape.DebugString())));
     int height_dim = input_shape.dims() - 3;
     int width_dim = input_shape.dims() - 2;
     int channel_dim = input_shape.dims() - 1;
     const int64_t height = input_shape.dim_size(height_dim);
     const int64_t width = input_shape.dim_size(width_dim);
 
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(factor_shape),
-                errors::InvalidArgument("contrast_factor must be scalar: ",
-                                        factor_shape.DebugString()));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(factor_shape),
+        absl::InvalidArgumentError(absl::StrCat(
+            "contrast_factor must be scalar: ", factor_shape.DebugString())));
 
     xla::XlaBuilder* b = context->builder();
     DataType type = context->input_type(0);
@@ -236,17 +241,18 @@ class AdjustSaturationOp : public XlaOpKernel {
     const TensorShape& input_shape = context->InputShape(0);
     const TensorShape& scale_shape = context->InputShape(1);
     OP_REQUIRES(context, input_shape.dims() >= 3,
-                errors::InvalidArgument("input must be at least 3-D, got shape",
-                                        input_shape.DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("input must be at least 3-D, got shape",
+                                 input_shape.DebugString())));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(scale_shape),
-                errors::InvalidArgument("scale must be scalar: ",
-                                        scale_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "scale must be scalar: ", scale_shape.DebugString())));
     const int channel_dim = input_shape.dims() - 1;
     const int64_t channels = input_shape.dim_size(channel_dim);
-    OP_REQUIRES(
-        context, channels == 3,
-        errors::InvalidArgument("input must have 3 channels but instead has ",
-                                channels, " channels."));
+    OP_REQUIRES(context, channels == 3,
+                absl::InvalidArgumentError(
+                    absl::StrCat("input must have 3 channels but instead has ",
+                                 channels, " channels.")));
 
     xla::XlaBuilder* b = context->builder();
     xla::XlaOp input =
@@ -290,17 +296,18 @@ class AdjustHueOp : public XlaOpKernel {
     const TensorShape& input_shape = context->InputShape(0);
     const TensorShape& delta_shape = context->InputShape(1);
     OP_REQUIRES(context, input_shape.dims() >= 3,
-                errors::InvalidArgument("input must be at least 3-D, got shape",
-                                        input_shape.DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("input must be at least 3-D, got shape",
+                                 input_shape.DebugString())));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(delta_shape),
-                errors::InvalidArgument("delta must be scalar: ",
-                                        delta_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "delta must be scalar: ", delta_shape.DebugString())));
     const int channel_dim = input_shape.dims() - 1;
     const int64_t channels = input_shape.dim_size(channel_dim);
-    OP_REQUIRES(
-        context, channels == 3,
-        errors::InvalidArgument("input must have 3 channels but instead has ",
-                                channels, " channels."));
+    OP_REQUIRES(context, channels == 3,
+                absl::InvalidArgumentError(
+                    absl::StrCat("input must have 3 channels but instead has ",
+                                 channels, " channels.")));
 
     xla::XlaBuilder* b = context->builder();
     xla::XlaOp input =
@@ -352,10 +359,11 @@ struct WhileCondFn {
                                         xla::XlaBuilder* cond_builder) const {
     xla::XlaOp row_idx = values[0];
     xla::XlaOp row_in_bounds =
-        xla::Lt(row_idx, xla::ConstantR0<int32>(cond_builder, num_boxes));
+        xla::Lt(row_idx, xla::ConstantR0<int32_t>(cond_builder, num_boxes));
     xla::XlaOp num_outputs_so_far = values[1];
-    xla::XlaOp results_not_full = xla::Lt(
-        num_outputs_so_far, xla::ConstantR0<int32>(cond_builder, output_size));
+    xla::XlaOp results_not_full =
+        xla::Lt(num_outputs_so_far,
+                xla::ConstantR0<int32_t>(cond_builder, output_size));
     return xla::And(row_in_bounds, results_not_full);
   }
 };
@@ -375,7 +383,7 @@ struct SuppressBodyFn {
     auto num_outputs_so_far = values[1];
     auto iou_mask = values[2];
     auto included_iou = values[3];
-    auto zero = xla::ConstantR0<int32>(builder, 0);
+    auto zero = xla::ConstantR0<int32_t>(builder, 0);
     // Determine if current elem is active using a slice.
     // TODO(b/118437727): The only reason we need an explicit vector is because
     // some old GCCs can't deduce the right type for MakeConstSpan, and
@@ -386,7 +394,7 @@ struct SuppressBodyFn {
     active_elem = xla::Reshape(active_elem, {});
     // Increment output count iff current elem is not suppressed.
     num_outputs_so_far = xla::Select(
-        active_elem, num_outputs_so_far + xla::ConstantR0<int32>(builder, 1),
+        active_elem, num_outputs_so_far + xla::ConstantR0<int32_t>(builder, 1),
         num_outputs_so_far);
     // Slice out the row_idx.
     auto row_iou = xla::DynamicSlice(iou_mask, {row_idx, zero}, {1, num_boxes});
@@ -412,7 +420,7 @@ struct SuppressBodyFn {
     }
     included_iou =
         xla::Select(cond, xla::And(included_iou, supp_mask), included_iou);
-    row_idx = row_idx + xla::ConstantR0<int32>(builder, 1);
+    row_idx = row_idx + xla::ConstantR0<int32_t>(builder, 1);
     return std::vector<xla::XlaOp>{row_idx, num_outputs_so_far, iou_mask,
                                    included_iou};
   }
@@ -429,7 +437,7 @@ class NonMaxSuppressionOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* context) override {
     // TODO(b/111646731): Improve scalability of this op, using blocking.
     OP_REQUIRES(context, pad_to_max_output_size_,
-                errors::Unimplemented(
+                absl::UnimplementedError(
                     "XLA compilation requires pad_to_max_output_size == True"));
 
     xla::XlaOp selected_indices, num_valid;
@@ -438,28 +446,31 @@ class NonMaxSuppressionOp : public XlaOpKernel {
   static void ComputeResult(XlaOpKernelContext* context,
                             bool pad_to_max_output_size = false) {
     const TensorShape& boxes_shape = context->InputShape("boxes");
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsMatrix(boxes_shape),
-        errors::InvalidArgument("boxes must be 2-D, currently: [",
-                                std::to_string(boxes_shape.dim_size(0)), ",",
-                                std::to_string(boxes_shape.dim_size(1)), "]"));
+    OP_REQUIRES(context, TensorShapeUtils::IsMatrix(boxes_shape),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "boxes must be 2-D, currently: [",
+                    std::to_string(boxes_shape.dim_size(0)), ",",
+                    std::to_string(boxes_shape.dim_size(1)), "]")));
     const int64_t num_boxes = boxes_shape.dim_size(0);
-    OP_REQUIRES(
-        context, boxes_shape.dim_size(1) == 4,
-        errors::InvalidArgument("boxes must have 4 columns, currently: ",
-                                std::to_string(boxes_shape.dim_size(1))));
+    OP_REQUIRES(context, boxes_shape.dim_size(1) == 4,
+                absl::InvalidArgumentError(
+                    absl::StrCat("boxes must have 4 columns, currently: ",
+                                 std::to_string(boxes_shape.dim_size(1)))));
     const TensorShape& scores_shape = context->InputShape("scores");
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(scores_shape),
-                errors::InvalidArgument("scores must be 1-D, currently: ",
-                                        scores_shape.DebugString()));
-    OP_REQUIRES(context, scores_shape.dim_size(0) == num_boxes,
-                errors::InvalidArgument(
-                    "scores size ", std::to_string(scores_shape.dim_size(0)),
-                    " must equal number of boxes ", std::to_string(num_boxes)));
-    OP_REQUIRES(context, num_boxes <= kint32max,
-                errors::InvalidArgument("XLA compilation requires number of "
-                                        "boxes to be <= kint32max, got ",
-                                        num_boxes));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsVector(scores_shape),
+        absl::InvalidArgumentError(absl::StrCat(
+            "scores must be 1-D, currently: ", scores_shape.DebugString())));
+    OP_REQUIRES(
+        context, scores_shape.dim_size(0) == num_boxes,
+        absl::InvalidArgumentError(absl::StrCat(
+            "scores size ", std::to_string(scores_shape.dim_size(0)),
+            " must equal number of boxes ", std::to_string(num_boxes))));
+    OP_REQUIRES(context, num_boxes <= std::numeric_limits<int32_t>::max(),
+                absl::InvalidArgumentError(
+                    absl::StrCat("XLA compilation requires number of "
+                                 "boxes to be <= kint32max, got ",
+                                 num_boxes)));
     xla::PrimitiveType boxes_xla_type = context->InputXlaType("boxes");
     xla::PrimitiveType scores_xla_type = context->InputXlaType("scores");
     const xla::XlaOp boxes_input = context->Input("boxes");
@@ -468,18 +479,18 @@ class NonMaxSuppressionOp : public XlaOpKernel {
     OP_REQUIRES(
         context,
         TensorShapeUtils::IsScalar(context->InputShape("max_output_size")),
-        errors::InvalidArgument("Max Output Size isn't a scalar"));
+        absl::InvalidArgumentError("Max Output Size isn't a scalar"));
     OP_REQUIRES(
         context,
         TensorShapeUtils::IsScalar(context->InputShape("iou_threshold")),
-        errors::InvalidArgument("IOU Threshold isn't a scalar"));
+        absl::InvalidArgumentError("IOU Threshold isn't a scalar"));
     OP_REQUIRES_OK(context, context->ConstantInputAsIntScalar(2, &output_size));
-    OP_REQUIRES(
-        context, output_size >= 0,
-        errors::InvalidArgument("Need output_size >= 0, got ", output_size));
-    OP_REQUIRES(context, output_size <= kint32max,
-                errors::InvalidArgument("Need output_size <= kint32Max, got ",
-                                        output_size));
+    OP_REQUIRES(context, output_size >= 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Need output_size >= 0, got ", output_size)));
+    OP_REQUIRES(context, output_size <= std::numeric_limits<int32_t>::max(),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Need output_size <= kint32Max, got ", output_size)));
     const xla::XlaOp score_thresh = context->Input("score_threshold");
     const xla::XlaOp iou_thresh = context->Input("iou_threshold");
     xla::XlaBuilder* const builder = context->builder();
@@ -564,8 +575,8 @@ class NonMaxSuppressionOp : public XlaOpKernel {
 
     std::vector<xla::XlaOp> init_values;
     init_values.reserve(4);
-    init_values.push_back(xla::ConstantR0<int32>(builder, 0));  // col_idx
-    init_values.push_back(xla::ConstantR0<int32>(builder, 0));  // num_outputs
+    init_values.push_back(xla::ConstantR0<int32_t>(builder, 0));  // col_idx
+    init_values.push_back(xla::ConstantR0<int32_t>(builder, 0));  // num_outputs
     init_values.push_back(iou_thresh_mask);
     init_values.push_back(included_iou);
 
@@ -595,8 +606,8 @@ class NonMaxSuppressionOp : public XlaOpKernel {
     // can be suppressed by score threshold.
     xla::XlaOp ones_included = xla::Select(
         included,
-        xla::Broadcast(xla::ConstantR0<int32>(builder, 1), {num_boxes}),
-        xla::Broadcast(xla::ConstantR0<int32>(builder, 0), {num_boxes}));
+        xla::Broadcast(xla::ConstantR0<int32_t>(builder, 1), {num_boxes}),
+        xla::Broadcast(xla::ConstantR0<int32_t>(builder, 0), {num_boxes}));
     // num_valid is scalar. Value should be bound by output_size.
 
     xla::XlaOp num_valid_total = xla::Reduce(
@@ -604,8 +615,8 @@ class NonMaxSuppressionOp : public XlaOpKernel {
         /*init_value=*/xla::ConstantR0<int>(builder, 0),
         /*computation=*/CreateScalarAddComputation(xla::S32, builder),
         /*dimensions_to_reduce=*/{0});
-    xla::XlaOp num_valid =
-        xla::Min(num_valid_total, xla::ConstantR0<int32>(builder, output_size));
+    xla::XlaOp num_valid = xla::Min(
+        num_valid_total, xla::ConstantR0<int32_t>(builder, output_size));
 
     // Re-index into the original scores input tensor, using a Gather.
     // Boxes were suppressed in the sorted domain.

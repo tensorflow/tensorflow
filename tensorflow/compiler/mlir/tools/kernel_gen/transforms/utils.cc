@@ -35,7 +35,7 @@ FlatSymbolRefAttr GetOrInsertLLVMFunction(StringRef func_name, Type func_type,
   if (!tf_func) {
     OpBuilder::InsertionGuard guard(*b);
     b->setInsertionPointToStart(module.getBody());
-    tf_func = b->create<LLVMFuncOp>(b->getUnknownLoc(), func_name, func_type);
+    tf_func = LLVMFuncOp::create(*b, b->getUnknownLoc(), func_name, func_type);
   }
   return SymbolRefAttr::get(b->getContext(), func_name);
 }
@@ -55,11 +55,12 @@ Value CreateOrFindGlobalStringConstant(Location loc, StringRef global_name,
     StringRef symbol_name = global_op.getName();
     Type symbol_type = global_op.getType();
     Type ptr_type = LLVM::LLVMPointerType::get(b->getContext());
-    Value global_ptr = b->create<LLVM::AddressOfOp>(loc, ptr_type, symbol_name);
+    Value global_ptr =
+        LLVM::AddressOfOp::create(*b, loc, ptr_type, symbol_name);
     Value c0 =
-        b->create<LLVM::ConstantOp>(loc, b->getI64Type(), b->getIndexAttr(0));
-    return b->create<LLVM::GEPOp>(loc, ptr_type, symbol_type, global_ptr,
-                                  ValueRange{c0, c0});
+        LLVM::ConstantOp::create(*b, loc, b->getI64Type(), b->getIndexAttr(0));
+    return LLVM::GEPOp::create(*b, loc, ptr_type, symbol_type, global_ptr,
+                               ValueRange{c0, c0});
   }
   return LLVM::createGlobalString(loc, *b, global_name, content,
                                   LLVM::Linkage::Internal);

@@ -133,7 +133,7 @@ absl::Status SetTypeAttribute(absl::string_view name, ContainerT types,
     type_list.add_type(dtype);
   }
 
-  auto result = values->insert({string(name), value});
+  auto result = values->insert({std::string(name), value});
   assert(result.second && "cannot have multiple attributes with the same name");
   (void)result;
 
@@ -164,7 +164,7 @@ void SetShapeAttribute(absl::string_view name, ContainerT shapes,
   // If shape is already set, override it. This can happen if we import
   // without shape inference enabled and so couldn't be removed on import and
   // are not explicitly dropped later.
-  (*values)[string(name)] = value;
+  (*values)[std::string(name)] = value;
 }
 
 // Collects all the unregistered attributes for an TF dialect operation.

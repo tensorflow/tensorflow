@@ -113,7 +113,7 @@ tf_cc_binary(
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/log:check",
-        "@local_xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/platform:status",
     ],
 )
 

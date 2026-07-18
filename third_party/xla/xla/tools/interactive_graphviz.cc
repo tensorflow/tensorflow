@@ -28,8 +28,10 @@ limitations under the License.
 #include <stdio.h>
 
 #include <cstdint>
+#include <functional>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
@@ -37,8 +39,11 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -46,6 +51,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -61,20 +67,25 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tools/hlo_extractor.h"
+#include "xla/tools/platform/xprof_loader.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/subprocess.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/tsl/util/command_line_flags.h"
+#include "xla/util.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/platform.h"
 #if defined(PLATFORM_GOOGLE)
 #include "util/readline/readline.h"
 #endif
 
 #if defined(PLATFORM_WINDOWS)
 #include <io.h>
+
 #define isatty _isatty
 #endif
 
@@ -99,8 +110,12 @@ struct Options {
   std::string hlo_proto;
   std::string hlo_module_proto;
   std::string hlo_text;
+  std::string xprof_session_id;
+  int64_t xprof_hlo_program_id{-1};  // -1 means use the biggest HLO module.
   std::string platform;
   std::string browser;
+  // Help flag to print usage.
+  bool help{false};
 };
 
 const char* const kUsage = R"(
@@ -139,6 +154,9 @@ constexpr int64_t kDefaultMaxNumNodesInAllPaths = 100;
 using absl::EqualsIgnoreCase;
 
 HloRenderOptions hlo_render_options;
+
+// Whether to print metadata when extracting modules.
+bool print_metadata = true;
 
 HloInstruction* FindInstruction(const HloModule& module,
                                 std::string node_name) {
@@ -186,6 +204,8 @@ void DoHelpCommand() {
     Renders all nodes in <computation>.
   backend_config [on|off]
     Controls whether backend operation configuration information is printed.
+  metadata [on|off]
+    Controls whether metadata is included when extracting modules.
   show_fusion_subcomputations [on|off]
     Controls whether fusion subcomputations are shown.
   list [name|op_name|op_type] <pattern>
@@ -207,32 +227,46 @@ void DoHelpCommand() {
             << std::endl;
 }
 
+// Parse "on" or "off" from the command tokens.
+std::optional<bool> GetOnOff(const std::vector<std::string>& tokens) {
+  if (tokens.size() == 2 && absl::AsciiStrToLower(tokens[1]) == "on") {
+    return true;
+  }
+  if (tokens.size() == 2 && absl::AsciiStrToLower(tokens[1]) == "off") {
+    return false;
+  }
+  if (tokens.size() != 1) {
+    std::cerr << "(Illegal value.  Use either 'on' or 'off'.)" << std::endl;
+  }
+  return std::nullopt;
+}
+
 // Turn metadata-printing on or off.
 void DoBackendConfigCommand(const std::vector<std::string>& tokens) {
-  if (tokens.size() == 2 && tokens[1] == "on") {
-    hlo_render_options.show_backend_config = true;
-  } else if (tokens.size() == 2 && tokens[1] == "off") {
-    hlo_render_options.show_backend_config = false;
-  } else if (tokens.size() != 1) {
-    std::cerr << "(Illegal backend_config value.  Use either 'on' or 'off'.)"
-              << std::endl;
+  std::optional<bool> on_off = GetOnOff(tokens);
+  if (on_off.has_value()) {
+    hlo_render_options.show_backend_config = *on_off;
   }
   std::cout << "Backend configuration display "
             << (hlo_render_options.show_backend_config ? "ON" : "OFF")
             << std::endl;
 }
 
+void DoMetadataCommand(const std::vector<std::string>& tokens) {
+  std::optional<bool> on_off = GetOnOff(tokens);
+  if (on_off.has_value()) {
+    print_metadata = *on_off;
+  }
+  std::cout << "Print metadata " << (print_metadata ? "ON" : "OFF")
+            << std::endl;
+}
+
 // Turn fusion computation display on or off.
 void DoShowFusionSubcomputationsCommand(
     const std::vector<std::string>& tokens) {
-  if (tokens.size() == 2 && tokens[1] == "on") {
-    hlo_render_options.show_fusion_subcomputations = true;
-  } else if (tokens.size() == 2 && tokens[1] == "off") {
-    hlo_render_options.show_fusion_subcomputations = false;
-  } else if (tokens.size() != 1) {
-    std::cerr << "(Illegal show_fusion_subcomputations value.  Use either "
-                 "'on' or 'off'.)"
-              << std::endl;
+  std::optional<bool> on_off = GetOnOff(tokens);
+  if (on_off.has_value()) {
+    hlo_render_options.show_fusion_subcomputations = *on_off;
   }
   std::cout << "Fusion subcomputations display "
             << (hlo_render_options.show_fusion_subcomputations ? "ON" : "OFF")
@@ -421,12 +455,13 @@ void DoExtractCommand(const HloModule& module,
 
   auto extracted_module = ExtractModule(instr, height);
   std::string module_str = extracted_module->ToString(
-      HloPrintOptions::ShortParsable().set_print_backend_config(
-          hlo_render_options.show_backend_config));
+      HloPrintOptions::ShortParsable()
+          .set_print_backend_config(hlo_render_options.show_backend_config)
+          .set_print_metadata(print_metadata));
 
   std::string outfile_name =
       tsl::io::GetTempFilename(absl::StrCat(node_name, "-extracted.hlo"));
-  TF_CHECK_OK(
+  CHECK_OK(
       tsl::WriteStringToFile(tsl::Env::Default(), outfile_name, module_str));
   std::cout << outfile_name << std::endl;
 }
@@ -672,6 +707,8 @@ void InteractiveDumpGraphs(const Options& opts, const HloModule& module) {
       DoHelpCommand();
     } else if (tokens[0] == "backend_config") {
       DoBackendConfigCommand(tokens);
+    } else if (tokens[0] == "metadata") {
+      DoMetadataCommand(tokens);
     } else if (tokens[0] == "show_fusion_subcomputations") {
       DoShowFusionSubcomputationsCommand(tokens);
     } else if (tokens[0] == "list") {
@@ -692,6 +729,21 @@ void InteractiveDumpGraphs(const Options& opts, const HloModule& module) {
   }
 }
 
+absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromXprof(
+    std::string xprof_session_id, int64_t xprof_hlo_program_id,
+    const DebugOptions& debug_options) {
+  std::cout << "Reading module from Xprof session: " << xprof_session_id
+            << std::endl;
+  XLA_SCOPED_LOGGING_TIMER_LEVEL("ReadModuleFromXprof", 0);
+  const std::optional<uint64_t> xprof_hlo_program_id_optional =
+      xprof_hlo_program_id >= 0 ? std::make_optional(xprof_hlo_program_id)
+                                : std::nullopt;
+  ASSIGN_OR_RETURN(
+      auto hlo_module_proto,
+      LoadHloModuleFromXprof(xprof_session_id, xprof_hlo_program_id_optional));
+  return CreateModuleFromProto(hlo_module_proto, debug_options);
+}
+
 void CheckFlags(const Options& opts) {
   int nonempty_flags_amount = 0;
   if (!opts.hlo_proto.empty()) {
@@ -706,11 +758,15 @@ void CheckFlags(const Options& opts) {
   if (!opts.hlo_module_proto.empty()) {
     ++nonempty_flags_amount;
   }
+  if (!opts.xprof_session_id.empty()) {
+    ++nonempty_flags_amount;
+  }
   if (nonempty_flags_amount == 1) {
     return;
   }
   LOG(FATAL) << "Can only specify one and only one of '--hlo_proto', "
-                "'--hlo_snapshot', '--hlo_text', '--hlo_module_proto' flags.";
+                "'--hlo_snapshot', '--hlo_text', '--hlo_module_proto' or "
+                "'--xprof_session_id' flags.";
 }
 
 void RealMain(const Options& opts) {
@@ -725,7 +781,7 @@ void RealMain(const Options& opts) {
   std::unique_ptr<HloModule> module;
   if (!opts.hlo_snapshot.empty()) {
     HloSnapshot snapshot;
-    TF_CHECK_OK(
+    CHECK_OK(
         tsl::ReadBinaryProto(tsl::Env::Default(), opts.hlo_snapshot, &snapshot))
         << "Can't open, read, or parse HloSnapshot proto at "
         << opts.hlo_snapshot;
@@ -747,6 +803,11 @@ void RealMain(const Options& opts) {
     module = ReadModuleFromModuleBinaryProtofile(
                  opts.hlo_module_proto, xla::GetDebugOptionsFromFlags())
                  .value();
+  } else if (!opts.xprof_session_id.empty()) {
+    module =
+        ReadModuleFromXprof(opts.xprof_session_id, opts.xprof_hlo_program_id,
+                            xla::GetDebugOptionsFromFlags())
+            .value();
   }
 
   // If a platform was specified, compile the module for that platform.
@@ -756,7 +817,7 @@ void RealMain(const Options& opts) {
 
     se::StreamExecutor* executor =
         platform->ExecutorForDevice(/*ordinal=*/0).value();
-    auto compiler = Compiler::GetForPlatform(platform).value();
+    auto compiler = Compiler::GetForPlatform(platform->id()).value();
     module = compiler
                  ->RunHloPasses(std::move(module), executor,
                                 /*device_allocator=*/nullptr)
@@ -771,15 +832,8 @@ void RealMain(const Options& opts) {
   }
 }
 
-}  // namespace
-}  // namespace tools
-}  // namespace xla
-
-int main(int argc, char** argv) {
-  xla::tools::Options opts;
-  opts.browser = "/usr/bin/sensible-browser";
-  bool need_help = false;
-  const std::vector<tsl::Flag> flag_list = {
+std::vector<tsl::Flag> GetFlagList(xla::tools::Options& opts) {
+  std::vector<tsl::Flag> flag_list = {
       tsl::Flag("hlo_snapshot", &opts.hlo_snapshot,
                 "HloSnapshot proto to interactively dump to graphviz"),
       tsl::Flag("hlo_proto", &opts.hlo_proto,
@@ -792,12 +846,36 @@ int main(int argc, char** argv) {
                 "Platform to compile for: CPU, CUDA, etc"),
       tsl::Flag("browser", &opts.browser,
                 "Path to web browser used to display produced graphs."),
-      tsl::Flag("help", &need_help, "Prints this help message"),
+      tsl::Flag("help", &opts.help, "Prints this help message"),
   };
+  if constexpr (!tsl::kIsOpenSource) {
+    flag_list.push_back(
+        tsl::Flag("xprof_session_id", &opts.xprof_session_id,
+                  "XProf session ID to pull HLO proto from and interactively "
+                  "dump to graphviz. Not valid for OSS."));
+    flag_list.push_back(tsl::Flag(
+        "xprof_hlo_program_id", &opts.xprof_hlo_program_id,
+        "The Program ID of the HLO module to pull from the XProf session. "
+        "Modules in Xprof are identified by <Name>(<Id>). For example, "
+        "'jit_prefill(1175)'. Here 1175 is the program id. "
+        "If not specified, the tool will try to find the largest program by "
+        "HLO bytes size."));
+  }
+  return flag_list;
+}
+
+}  // namespace
+}  // namespace tools
+}  // namespace xla
+
+int main(int argc, char** argv) {
+  xla::tools::Options opts;
+  opts.browser = "/usr/bin/sensible-browser";
+  const auto flag_list = xla::tools::GetFlagList(opts);
   std::string usage = tsl::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   tsl::port::InitMain(argv[0], &argc, &argv);
-  if (argc != 1 || !parse_ok || need_help) {
+  if (argc != 1 || !parse_ok || opts.help) {
     LOG(QFATAL) << usage;
   }
   xla::tools::RealMain(opts);

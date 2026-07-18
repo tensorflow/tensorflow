@@ -24,9 +24,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -480,6 +482,7 @@ TEST_F(MemorySpacePropagationTest, RunOnComputationPropagateFromParameters) {
   MemorySpacePropagation memory_space_propagation(std::move(dataflow_analysis));
   HloComputation* computation =
       module->GetComputationWithName("fused_computation");
+  ASSERT_NE(computation, nullptr);
   EXPECT_TRUE(memory_space_propagation.RunOnComputation(computation));
   TF_ASSERT_OK_AND_ASSIGN(auto ref,
                           ParseAndReturnVerifiedModule(expected_hlo_string));
@@ -541,6 +544,7 @@ TEST_F(MemorySpacePropagationTest, RunOnComputationFromParametersNestedFusion) {
   MemorySpacePropagation memory_space_propagation(std::move(dataflow_analysis));
   HloComputation* computation =
       module->GetComputationWithName("fused_computation");
+  ASSERT_NE(computation, nullptr);
   EXPECT_TRUE(memory_space_propagation.RunOnComputation(computation));
   TF_ASSERT_OK_AND_ASSIGN(auto ref,
                           ParseAndReturnVerifiedModule(expected_hlo_string));
@@ -586,10 +590,68 @@ TEST_F(MemorySpacePropagationTest, RunOnComputationPropagateFromOutput) {
   MemorySpacePropagation memory_space_propagation(std::move(dataflow_analysis));
   HloComputation* computation =
       module->GetComputationWithName("fused_computation");
+  ASSERT_NE(computation, nullptr);
   EXPECT_TRUE(memory_space_propagation.RunOnComputation(computation));
   TF_ASSERT_OK_AND_ASSIGN(auto ref,
                           ParseAndReturnVerifiedModule(expected_hlo_string));
   EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
+}
+
+// This test tests that the memory space propagation works correctly when there
+// is a nested fusion with a shape mismatch. In this test, S(1) must propagate
+// from the parameter of the nested fusion fusion.505 to its output shape, and
+// from there to the root of the nested fusion %copy.4014.
+TEST_F(MemorySpacePropagationTest, NestedFusionShapeMismatchBug) {
+  absl::string_view hlo_string =
+      R"(HloModule jit_insert.fusion.21.isolated, is_scheduled=true
+
+%copy_fusion.20.clone {
+  %input.20 = s4[8,32768,1,256]{3,1,0,2:T(64,128)(8,1)E(4)S(1)} parameter(0)
+  ROOT %copy.4014 = s4[8,32768,1,256]{3,1,0,2:T(8,128)(8,1)E(4)} copy(%input.20)
+}
+
+%fused_computation.434.clone {
+  %param_0.777 = s4[8,32768,1,256]{3,1,0,2:T(64,128)(8,1)E(4)S(1)} parameter(0)
+  %fusion.505 = s4[8,32768,1,256]{3,1,0,2:T(8,128)(8,1)E(4)} fusion(%param_0.777), kind=kLoop, output_to_operand_aliasing={{}: (0, {})}, calls=%copy_fusion.20.clone
+  %param_3.751 = pred[]{:T(512)} parameter(3)
+  %broadcast.1846 = pred[1,16384,1,256]{3,1,0,2:T(8,128)(4,1)} broadcast(%param_3.751), dimensions={}, metadata={op_name="jit(insert)/jit(main)/pjit/jit(insert)/jit(main)/jit(insert)/pjit/jit(insert)/jit(main)/jit(insert)/jit(insert)/dynamic_update_slice" stack_frame_id=146}
+  %param_2.1768 = s4[1,16384,1,256]{3,1,0,2:T(8,128)(8,1)E(4)S(1)} parameter(2)
+  %param_1.980 = s32[]{:T(128)S(6)} parameter(1)
+  %constant.9791 = s32[]{:T(128)} constant(0), metadata={op_name="jit(insert)/jit(main)/pjit/jit(insert)/jit(main)/jit(insert)/pjit"}
+  %dynamic-slice.2042 = s4[1,16384,1,256]{3,1,0,2:T(8,128)(8,1)E(4)} dynamic-slice(%fusion.505, %param_1.980, %constant.9791, %constant.9791, %constant.9791), dynamic_slice_sizes={1,16384,1,256}, metadata={op_name="jit(insert)/jit(main)/pjit/jit(insert)/jit(main)/jit(insert)/pjit/jit(insert)/jit(main)/jit(insert)/jit(insert)/dynamic_update_slice" stack_frame_id=146}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"indices_config":{"index_known_bits":[{"zeroes":"0","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"}],"is_index_aligned":[true,true,true,true]},"used_scoped_memory_configs":[]}
+  %select.912 = s4[1,16384,1,256]{3,1,0,2:T(8,128)(8,1)E(4)} select(%broadcast.1846, %param_2.1768, %dynamic-slice.2042), metadata={op_name="jit(insert)/jit(main)/pjit/jit(insert)/jit(main)/jit(insert)/pjit/jit(insert)/jit(main)/jit(insert)/jit(insert)/dynamic_update_slice" stack_frame_id=146}
+  ROOT %dynamic-update-slice.455 = s4[8,32768,1,256]{3,1,0,2:T(64,128)(8,1)E(4)S(1)} dynamic-update-slice(%fusion.505, %select.912, %param_1.980, %constant.9791, %constant.9791, /*index=5*/%constant.9791), metadata={op_name="jit(insert)/jit(main)/pjit/jit(insert)/jit(main)/jit(insert)/pjit/jit(insert)/jit(main)/jit(insert)/jit(insert)/dynamic_update_slice" stack_frame_id=146}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"indices_config":{"index_known_bits":[{"zeroes":"0","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"}],"is_index_aligned":[true,true,true,true]},"used_scoped_memory_configs":[]}
+}
+
+ENTRY %jit_insert.fusion.21.isolated.root {
+  %bitcast.1556.hbm = s4[8,32768,1,256]{3,1,0,2:T(64,128)(8,1)E(4)} parameter(0)
+  %select.32 = s32[]{:T(128)S(6)} parameter(1)
+  %collective-permute.56.hbm = s4[1,16384,1,256]{3,1,0,2:T(8,128)(8,1)E(4)} parameter(2)
+  %and.74 = pred[]{:T(512)} parameter(3)
+  %copy = s4[8,32768,1,256]{3,1,0,2:T(64,128)(8,1)E(4)S(1)} copy(%bitcast.1556.hbm)
+  %copy.1 = s4[1,16384,1,256]{3,1,0,2:T(8,128)(8,1)E(4)S(1)} copy(%collective-permute.56.hbm)
+  %fusion.21 = s4[8,32768,1,256]{3,1,0,2:T(64,128)(8,1)E(4)S(1)} fusion(%copy, %select.32, %copy.1, %and.74), kind=kLoop, calls=%fused_computation.434.clone, metadata={op_name="jit(insert)/jit(main)/pjit/jit(insert)/jit(main)/jit(insert)/pjit/jit(insert)/jit(main)/jit(insert)/jit(insert)/dynamic_update_slice" stack_frame_id=146}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"used_scoped_memory_configs":[],"aliasing_operands":{"lists":[{"indices":["0","4"]}]}}
+  ROOT %copy.2 = s4[8,32768,1,256]{3,1,0,2:T(64,128)(8,1)E(4)} copy(%fusion.21)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  MemorySpacePropagation memory_space_propagation;
+  // %copy.4014 output memory space must get modified to match %fusion.505
+  // output shape.
+  EXPECT_TRUE(memory_space_propagation.Run(module.get()).value());
+  HloComputation* computation =
+      module->GetComputationWithName("copy_fusion.20.clone");
+  ASSERT_NE(computation, nullptr);
+  const HloInstruction* copy = computation->GetInstructionWithName("copy.4014");
+  ASSERT_NE(copy, nullptr);
+  EXPECT_EQ(copy->shape().layout().memory_space(), 1);
+  computation = module->GetComputationWithName("fused_computation.434.clone");
+  ASSERT_NE(computation, nullptr);
+  const HloInstruction* fusion =
+      computation->GetInstructionWithName("fusion.505");
+  ASSERT_NE(fusion, nullptr);
+  EXPECT_EQ(fusion->shape().layout().memory_space(), 1);
+  TF_EXPECT_OK(Verify(module.get()));
 }
 
 }  // namespace

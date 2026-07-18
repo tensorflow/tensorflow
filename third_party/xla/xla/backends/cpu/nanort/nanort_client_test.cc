@@ -25,11 +25,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/array2d.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
@@ -42,8 +44,10 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/plugin_names.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/computation_placer.h"
@@ -72,13 +76,13 @@ using Results = absl::InlinedVector<NanoRtExecutable::Result, 8>;
 absl::StatusOr<std::unique_ptr<NanoRtExecutable>> GetExecutable(
     const XlaComputation& computation, bool export_executable) {
   NanoRtClient client;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<NanoRtExecutable> executable,
-                      client.Compile(computation));
+  ASSIGN_OR_RETURN(std::unique_ptr<NanoRtExecutable> executable,
+                   client.Compile(computation));
 
   if (export_executable) {
-    TF_ASSIGN_OR_RETURN(auto exported, client.Export(executable.get()));
+    ASSIGN_OR_RETURN(auto exported, client.Export(executable.get()));
     CpuAotCompilationResult* aot_compilation_result =
-        tsl::down_cast<CpuAotCompilationResult*>(exported.get());
+        absl::down_cast<CpuAotCompilationResult*>(exported.get());
     return NanoRtExecutable::Create(aot_compilation_result->proto(),
                                     executable->program_shape());
   }
@@ -162,8 +166,9 @@ TEST_P(NanoRtClientTest, CompileAndRunTupledComputation) {
   // Prepare executable parameters, results and temp storage.
   Arguments arguments = {{&p0_value, 1}, {&p1_value, 1}};
   Results results = {{&r0_value, 1}, {&r1_value, 1}};
+  NanoRtExecutable::ManagedTemp<32> temp(executable->temp_buffer_size());
 
-  auto event = executable->Execute(arguments, results);
+  auto event = executable->Execute(arguments, results, temp);
   tsl::BlockUntilReady(event);
 
   ASSERT_TRUE(event.IsConcrete());
@@ -577,8 +582,11 @@ BENCHMARK_CAPTURE(BM_NanoRtFibonacci, no_thread_pool, std::nullopt);
 BENCHMARK_CAPTURE(BM_NanoRtFibonacci, thread_pool,
                   std::make_optional<Eigen::ThreadPool>(2));
 
-static void BM_PjRtAddScalars(benchmark::State& state) {
-  auto client = GetXlaPjrtCpuClient(/*options=*/{});
+static void BM_PjRtAddScalars(benchmark::State& state,
+                              bool use_c_api_sandwich) {
+  auto client = use_c_api_sandwich
+                    ? xla::GetCApiClient(kCpuPjrtName, /*create_options=*/{})
+                    : GetXlaPjrtCpuClient(/*options=*/{});
   PjRtDevice* device = (*client)->devices().front();
   PjRtMemorySpace* memory_space = *device->default_memory_space();
 
@@ -609,10 +617,13 @@ static void BM_PjRtAddScalars(benchmark::State& state) {
   }
 }
 
-BENCHMARK(BM_PjRtAddScalars);
+BENCHMARK_CAPTURE(BM_PjRtAddScalars, Direct, false);
+BENCHMARK_CAPTURE(BM_PjRtAddScalars, CSandwich, true);
 
-static void BM_PjRtFibonacci(benchmark::State& state) {
-  auto client = GetXlaPjrtCpuClient(/*options=*/{});
+static void BM_PjRtFibonacci(benchmark::State& state, bool use_c_api_sandwich) {
+  auto client = use_c_api_sandwich
+                    ? xla::GetCApiClient(kCpuPjrtName, /*create_options=*/{})
+                    : GetXlaPjrtCpuClient(/*options=*/{});
   PjRtDevice* device = (*client)->devices().front();
   PjRtMemorySpace* memory_space = *device->default_memory_space();
 
@@ -643,7 +654,8 @@ static void BM_PjRtFibonacci(benchmark::State& state) {
   }
 }
 
-BENCHMARK(BM_PjRtFibonacci);
+BENCHMARK_CAPTURE(BM_PjRtFibonacci, Direct, false);
+BENCHMARK_CAPTURE(BM_PjRtFibonacci, CSandwich, true);
 
 }  // namespace
 }  // namespace xla::cpu

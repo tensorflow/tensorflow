@@ -41,14 +41,14 @@ class EncodeJpegOp : public OpKernel {
       flags_.format = jpeg::FORMAT_RGB;
     } else {
       OP_REQUIRES(context, false,
-                  errors::InvalidArgument(
-                      "format must be '', grayscale or rgb, got ", format_));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "format must be '', grayscale or rgb, got ", format_)));
     }
 
     OP_REQUIRES_OK(context, context->GetAttr("quality", &flags_.quality));
     OP_REQUIRES(context, 0 <= flags_.quality && flags_.quality <= 100,
-                errors::InvalidArgument("quality must be in [0,100], got ",
-                                        flags_.quality));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "quality must be in [0,100], got ", flags_.quality)));
     OP_REQUIRES_OK(context,
                    context->GetAttr("progressive", &flags_.progressive));
     OP_REQUIRES_OK(
@@ -56,7 +56,7 @@ class EncodeJpegOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("chroma_downsampling",
                                              &flags_.chroma_downsampling));
 
-    string density_unit;
+    std::string density_unit;
     OP_REQUIRES_OK(context, context->GetAttr("density_unit", &density_unit));
     if (density_unit == "in") {
       flags_.density_unit = 1;
@@ -64,8 +64,8 @@ class EncodeJpegOp : public OpKernel {
       flags_.density_unit = 2;
     } else {
       OP_REQUIRES(context, false,
-                  errors::InvalidArgument("density_unit must be 'in' or 'cm'",
-                                          density_unit));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "density_unit must be 'in' or 'cm'", density_unit)));
     }
 
     OP_REQUIRES_OK(context, context->GetAttr("x_density", &flags_.x_density));
@@ -76,19 +76,20 @@ class EncodeJpegOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& image = context->input(0);
-    OP_REQUIRES(context, image.dims() == 3,
-                errors::InvalidArgument("image must be 3-dimensional",
-                                        image.shape().DebugString()));
-
     OP_REQUIRES(
-        context,
-        FastBoundsCheck(image.NumElements(), std::numeric_limits<int32>::max()),
-        errors::InvalidArgument(
-            "Cannot encode images with >= max int32 elements"));
+        context, image.dims() == 3,
+        absl::InvalidArgumentError(absl::StrCat("image must be 3-dimensional",
+                                                image.shape().DebugString())));
 
-    const int32_t dim_size0 = static_cast<int32>(image.dim_size(0));
-    const int32_t dim_size1 = static_cast<int32>(image.dim_size(1));
-    const int32_t dim_size2 = static_cast<int32>(image.dim_size(2));
+    OP_REQUIRES(context,
+                FastBoundsCheck(image.NumElements(),
+                                std::numeric_limits<int32_t>::max()),
+                absl::InvalidArgumentError(
+                    "Cannot encode images with >= max int32 elements"));
+
+    const int32_t dim_size0 = static_cast<int32_t>(image.dim_size(0));
+    const int32_t dim_size1 = static_cast<int32_t>(image.dim_size(1));
+    const int32_t dim_size2 = static_cast<int32_t>(image.dim_size(2));
 
     // Autodetect format if desired, otherwise make sure format and
     // image channels are consistent.
@@ -101,10 +102,10 @@ class EncodeJpegOp : public OpKernel {
       } else if (channels == 3) {
         adjusted_flags.format = jpeg::FORMAT_RGB;
       } else {
-        OP_REQUIRES(
-            context, false,
-            errors::InvalidArgument("image must have 1 or 3 channels, got ",
-                                    image.shape().DebugString()));
+        OP_REQUIRES(context, false,
+                    absl::InvalidArgumentError(
+                        absl::StrCat("image must have 1 or 3 channels, got ",
+                                     image.shape().DebugString())));
       }
     } else {
       if (flags_.format == jpeg::FORMAT_GRAYSCALE) {
@@ -113,24 +114,25 @@ class EncodeJpegOp : public OpKernel {
         channels = 3;
       }
       OP_REQUIRES(context, channels == dim_size2,
-                  errors::InvalidArgument("format ", format_, " expects ",
-                                          channels, " channels, got ",
-                                          image.shape().DebugString()));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "format ", format_, " expects ", channels,
+                      " channels, got ", image.shape().DebugString())));
     }
 
     // Encode image to jpeg string
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape({}), &output));
-    OP_REQUIRES(context,
-                jpeg::Compress(image.flat<uint8>().data(), dim_size1, dim_size0,
-                               adjusted_flags, &output->scalar<tstring>()()),
-                errors::Internal("JPEG encoding failed"));
+    OP_REQUIRES(
+        context,
+        jpeg::Compress(image.flat<uint8_t>().data(), dim_size1, dim_size0,
+                       adjusted_flags, &output->scalar<tstring>()()),
+        absl::InternalError("JPEG encoding failed"));
   }
 
  private:
-  string format_;
-  string xmp_metadata_;  // Owns data referenced by flags_
+  std::string format_;
+  std::string xmp_metadata_;  // Owns data referenced by flags_
   jpeg::CompressFlags flags_;
 };
 REGISTER_KERNEL_BUILDER(Name("EncodeJpeg").Device(DEVICE_CPU), EncodeJpegOp);
@@ -142,33 +144,35 @@ class EncodeJpegVariableQualityOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& image = context->input(0);
-    OP_REQUIRES(context, image.dims() == 3,
-                errors::InvalidArgument("image must be 3-dimensional",
-                                        image.shape().DebugString()));
-
     OP_REQUIRES(
-        context,
-        FastBoundsCheck(image.NumElements(), std::numeric_limits<int32>::max()),
-        errors::InvalidArgument(
-            "Cannot encode images with >= max int32 elements"));
+        context, image.dims() == 3,
+        absl::InvalidArgumentError(absl::StrCat("image must be 3-dimensional",
+                                                image.shape().DebugString())));
 
-    const int32_t dim_size0 = static_cast<int32>(image.dim_size(0));
-    const int32_t dim_size1 = static_cast<int32>(image.dim_size(1));
-    const int32_t dim_size2 = static_cast<int32>(image.dim_size(2));
+    OP_REQUIRES(context,
+                FastBoundsCheck(image.NumElements(),
+                                std::numeric_limits<int32_t>::max()),
+                absl::InvalidArgumentError(
+                    "Cannot encode images with >= max int32 elements"));
+
+    const int32_t dim_size0 = static_cast<int32_t>(image.dim_size(0));
+    const int32_t dim_size1 = static_cast<int32_t>(image.dim_size(1));
+    const int32_t dim_size2 = static_cast<int32_t>(image.dim_size(2));
 
     // Use default jpeg compression flags except for format and quality.
     jpeg::CompressFlags adjusted_flags;
 
     // Get jpeg encoding quality.
     const Tensor& quality = context->input(1);
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(quality.shape()),
-                errors::InvalidArgument("quality must be scalar: ",
-                                        quality.shape().DebugString()));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(quality.shape()),
+        absl::InvalidArgumentError(absl::StrCat(
+            "quality must be scalar: ", quality.shape().DebugString())));
     adjusted_flags.quality = quality.scalar<int>()();
-    OP_REQUIRES(context,
-                0 <= adjusted_flags.quality && adjusted_flags.quality <= 100,
-                errors::InvalidArgument("quality must be in [0,100], got ",
-                                        adjusted_flags.quality));
+    OP_REQUIRES(
+        context, 0 <= adjusted_flags.quality && adjusted_flags.quality <= 100,
+        absl::InvalidArgumentError(absl::StrCat(
+            "quality must be in [0,100], got ", adjusted_flags.quality)));
 
     // Autodetect format.
     int channels;
@@ -178,20 +182,21 @@ class EncodeJpegVariableQualityOp : public OpKernel {
     } else if (channels == 3) {
       adjusted_flags.format = jpeg::FORMAT_RGB;
     } else {
-      OP_REQUIRES(
-          context, false,
-          errors::InvalidArgument("image must have 1 or 3 channels, got ",
-                                  image.shape().DebugString()));
+      OP_REQUIRES(context, false,
+                  absl::InvalidArgumentError(
+                      absl::StrCat("image must have 1 or 3 channels, got ",
+                                   image.shape().DebugString())));
     }
 
     // Encode image to jpeg string
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape({}), &output));
-    OP_REQUIRES(context,
-                jpeg::Compress(image.flat<uint8>().data(), dim_size1, dim_size0,
-                               adjusted_flags, &output->scalar<tstring>()()),
-                errors::Internal("JPEG encoding failed"));
+    OP_REQUIRES(
+        context,
+        jpeg::Compress(image.flat<uint8_t>().data(), dim_size1, dim_size0,
+                       adjusted_flags, &output->scalar<tstring>()()),
+        absl::InternalError("JPEG encoding failed"));
   }
 };
 REGISTER_KERNEL_BUILDER(Name("EncodeJpegVariableQuality").Device(DEVICE_CPU),

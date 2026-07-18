@@ -38,13 +38,16 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tsl/lib/gtl/int_type.h"
+
+// TODO(ezhulenev): Remove this once transitive dependencies are fixed.
+#include "xla/stream_executor/device_memory.h"
 
 namespace stream_executor {
 
@@ -143,20 +146,20 @@ class Stream {
   // Entrain onto the stream: a memcpy to a host destination from a GPU source
   // of the given target size. host_dst must be a pointer to host memory
   // allocated by StreamExecutor::HostMemoryAllocate.
-  virtual absl::Status Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
+  virtual absl::Status Memcpy(void* host_dst, const DeviceAddressBase& gpu_src,
                               uint64_t size) = 0;
 
   // Entrain onto the stream: a memcpy to a GPU destination from a host source
   // of the given target size. host_src must be a pointer to host memory
   // allocated by StreamExecutor::HostMemoryAllocate.
-  virtual absl::Status Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
+  virtual absl::Status Memcpy(DeviceAddressBase* gpu_dst, const void* host_src,
                               uint64_t size) = 0;
 
   // Alternative interface for memcpying from device to host that takes an
   // array slice. Checks that the destination size can accommodate the host
   // slice size.
   template <typename T>
-  absl::Status MemcpyD2H(const DeviceMemory<T>& gpu_src,
+  absl::Status MemcpyD2H(const DeviceAddress<T>& gpu_src,
                          absl::Span<T> host_dst) {
     auto host_size = host_dst.size() * sizeof(T);
     if (gpu_src.size() == 0 || host_size >= gpu_src.size()) {
@@ -170,7 +173,7 @@ class Stream {
   // slice size.
   template <typename T>
   absl::Status MemcpyH2D(absl::Span<const T> host_src,
-                         DeviceMemory<T>* gpu_dst) {
+                         DeviceAddress<T>* gpu_dst) {
     auto host_size = host_src.size() * sizeof(T);
     if (gpu_dst->size() == 0 || gpu_dst->size() >= host_size) {
       return Memcpy(gpu_dst, host_src.begin(), host_size);
@@ -181,28 +184,28 @@ class Stream {
   // Entrain onto the stream: a memcpy to a GPU destination from a GPU source
   // of the given target size. gpu_src/dst must be pointers to GPU memory and
   // peer access must be enabled between their owning StreamExecutors.
-  virtual absl::Status Memcpy(DeviceMemoryBase* gpu_dst,
-                              const DeviceMemoryBase& gpu_src, uint64_t size) {
+  virtual absl::Status Memcpy(DeviceAddressBase* gpu_dst,
+                              const DeviceAddressBase& gpu_src, uint64_t size) {
     return absl::UnimplementedError(
         "Memcpy from device to device is not implemented for this "
         "stream.");
   }
 
-  absl::Status MemcpyD2D(DeviceMemoryBase* gpu_dst,
-                         const DeviceMemoryBase& gpu_src, uint64_t size) {
+  absl::Status MemcpyD2D(DeviceAddressBase* gpu_dst,
+                         const DeviceAddressBase& gpu_src, uint64_t size) {
     return Memcpy(gpu_dst, gpu_src, size);
   }
 
   // Entrain onto the stream: a memset of zero at a device location of size
   // bytes. The location must not be null.
-  virtual absl::Status MemZero(DeviceMemoryBase* location, uint64_t size) {
+  virtual absl::Status MemZero(DeviceAddressBase* location, uint64_t size) {
     return absl::UnimplementedError("MemZero is not supported on this stream.");
   }
 
   // Entrain onto the stream: a memset of a 32-bit pattern at device location of
   // size bytes, where bytes must be evenly 32-bit sized (i.e. evenly divisible
   // by 4). The location must not be null.
-  virtual absl::Status Memset32(DeviceMemoryBase* location, uint32_t pattern,
+  virtual absl::Status Memset32(DeviceAddressBase* location, uint32_t pattern,
                                 uint64_t size) {
     return absl::UnimplementedError(
         "Memset32 is not supported on this stream.");
@@ -230,6 +233,17 @@ class Stream {
     });
   }
 
+  absl::Status DoHostCallback(
+      absl::AnyInvocable<void() &&> callback,
+      absl::AnyInvocable<void(absl::Status) &&> error_cb) {
+    return DoHostCallbackWithStatus(
+        [cb = std::move(callback)]() mutable {
+          std::move(cb)();
+          return absl::OkStatus();
+        },
+        std::move(error_cb));
+  }
+
   // Entrains onto the stream a callback to the host (from the device).
   // Host callbacks block/occupy the stream just as device functions
   // (execute one at a time, block later stream operations).
@@ -241,6 +255,21 @@ class Stream {
   virtual absl::Status DoHostCallbackWithStatus(
       absl::AnyInvocable<absl::Status() &&> callback) = 0;
 
+  // In case the callback cannot be scheduled, error_cb is called with
+  // the status with which scheduling failed.
+  //
+  // In case the host callback fails, error_cb is called with the status from
+  // the callback.
+  //
+  // Error_cb invocation must be implemented by subclasses.
+  // Default implementation does not use error_cb.
+  virtual absl::Status DoHostCallbackWithStatus(
+      absl::AnyInvocable<absl::Status() &&> callback,
+      absl::AnyInvocable<void(absl::Status) &&> error_cb) {
+    (void)error_cb;  // Default implementation does not use error_cb.
+    return DoHostCallbackWithStatus(std::move(callback));
+  }
+
   // Returns the StreamExecutor (parent object) associated with this stream.
   virtual StreamExecutor* parent() const = 0;
 
@@ -249,6 +278,9 @@ class Stream {
 
   // Returns the RocmComputeCapability for this stream.
   virtual RocmComputeCapability GetRocmComputeCapability() const = 0;
+
+  // Returns the OneAPIComputeCapability for this stream.
+  virtual OneAPIComputeCapability GetOneAPIComputeCapability() const = 0;
 
   // Gets priority for a stream.
   virtual std::variant<StreamPriority, int> priority() const = 0;
@@ -276,38 +308,39 @@ class Stream {
   virtual absl::Status LaunchKernel(
       const ThreadDim& thread_dims, const BlockDim& block_dims,
       const std::optional<ClusterDim>& cluster_dims, void* function,
-      absl::string_view name, void** args, int64_t shmem_bytes) {
+      absl::string_view name, void** args, int64_t shmem_bytes, bool use_pdl) {
     return absl::UnimplementedError("Not implemented");
   }
 
   // Returns a pointer to the resource of the given type, or nullptr if resource
-  // of the given type is not attached to this stream executor.
-  template <typename ConcreteResource>
-  ConcreteResource* GetOrNullResource() {
-    static_assert(std::is_base_of_v<Resource, ConcreteResource>);
-    return static_cast<ConcreteResource*>(
-        GetOrNullResource(GetResourceTypeId<ConcreteResource>()));
+  // of the given type is not attached to this stream.
+  template <typename R>
+  R* GetOrNullResource() {
+    static_assert(std::is_base_of_v<Resource, R>);
+    return static_cast<R*>(GetOrNullResource(GetResourceTypeId<R>()));
   }
 
   // Returns a pointer to the resource of the given type, or creates a new
-  // resource of the given type and attaches it to this stream executor.
-  template <typename ConcreteResource>
-  ConcreteResource* GetOrCreateResource(
-      absl::FunctionRef<std::unique_ptr<ConcreteResource>()> create) {
-    static_assert(std::is_base_of_v<Resource, ConcreteResource>);
-    return static_cast<ConcreteResource*>(GetOrCreateResource(
-        GetResourceTypeId<ConcreteResource>(), [&] { return create(); }));
+  // resource of the given type and attaches it to this stream.
+  template <typename R>
+  R* GetOrCreateResource(absl::FunctionRef<std::unique_ptr<R>()> create) {
+    static_assert(std::is_base_of_v<Resource, R>);
+    return static_cast<R*>(
+        GetOrCreateResource(GetResourceTypeId<R>(), [&] { return create(); }));
   }
 
   // Returns a pointer to the resource of the given type, or creates a new
-  // resource of the given type and attaches it to this stream executor.
-  template <typename ConcreteResource>
-  ConcreteResource* GetOrCreateResource() {
-    return GetOrCreateResource<ConcreteResource>(
-        [] { return std::make_unique<ConcreteResource>(); });
+  // resource of the given type and attaches it to this stream.
+  // Constructor arguments are forwarded to std::make_unique<R>.
+  template <typename R, typename... Args>
+  R* GetOrConstructResource(Args&&... args) {
+    return GetOrCreateResource<R>(
+        [&] { return std::make_unique<R>(std::forward<Args>(args)...); });
   }
 
  private:
+  friend class StreamTest;
+
   // We use ResourceTypeId to distinguish between different resource types.
   TSL_LIB_GTL_DEFINE_INT_TYPE(ResourceTypeId, int64_t);
 

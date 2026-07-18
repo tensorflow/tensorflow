@@ -19,11 +19,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -48,8 +50,11 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::mlir::MLIRContext;
+
 class GpuPerformanceModelTest : public HloHardwareIndependentTestBase {
  public:
+  GpuPerformanceModelTest() = default;
   GpuPerformanceModel::RunTimes EstimateRunTimes(
       const HloInstruction* producer,
       std::vector<HloInstruction*> fused_consumers = {}) {
@@ -62,7 +67,6 @@ class GpuPerformanceModelTest : public HloHardwareIndependentTestBase {
                                                    fused_consumers);
   }
 
-  mlir::MLIRContext mlir_context_;
   GpuHloCostAnalysis::Options options_{.count_multiple_input_accesses = true};
   // The reference times in the test cases below are measured
   // on A6000 by profiling the execution of the HLOs.
@@ -71,12 +75,7 @@ class GpuPerformanceModelTest : public HloHardwareIndependentTestBase {
   GpuHloCostAnalysis analysis_{options_, device_info_};
   GpuPerformanceModelCache gpu_performance_model_cache_;
   GpuPerformanceModel gpu_performance_model_{
-      device_info_, fusion_analysis_cache_, gpu_performance_model_cache_,
-      &mlir_context_};
-
-  GpuPerformanceModelWithIndexingAnalysis indexing_cost_model_{
-      &device_info_, &fusion_analysis_cache_, HloCostAnalysis::DefaultShapeSize,
-      &mlir_context_};
+      device_info_, fusion_analysis_cache_, gpu_performance_model_cache_};
 };
 
 TEST_F(GpuPerformanceModelTest, LargeWrite) {
@@ -92,17 +91,13 @@ ENTRY e {
   ROOT r.1 = f32[10000000] fusion(), kind=kLoop, calls=f
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
   auto t = EstimateRunTimes(root);
   // Dominated by the DRAM bandwidth.
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 53, 10);
-
-  auto indexing_t = indexing_cost_model_.EstimateRunTimes(root);
-  EXPECT_NEAR(absl::ToInt64Microseconds(indexing_t.time_unfused), 53, 10);
 }
 
 TEST_F(GpuPerformanceModelTest, SmallReadWrite) {
@@ -121,8 +116,7 @@ ENTRY e {
   ROOT r.1 = f32[1000] fusion(p0, p1), kind=kLoop, calls=f
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(root->Accept(&analysis_));
 
@@ -135,9 +129,6 @@ ENTRY e {
       root->backend_config<GpuBackendConfig>()->reification_cost()[0];
   EXPECT_NEAR(reification_cost.end_to_end_cycles(), 38.4, 0.1);
   EXPECT_NEAR(reification_cost.exec_time_us(), 0, 1);
-
-  auto indexing_t = indexing_cost_model_.EstimateRunTimes(root);
-  EXPECT_NEAR(absl::ToInt64Microseconds(indexing_t.time_unfused), 1, 1);
 }
 
 TEST_F(GpuPerformanceModelTest, LargeReadWrite) {
@@ -156,8 +147,7 @@ ENTRY e {
  ROOT r.1 = f32[10000000] fusion(p0, p1), kind=kLoop, calls=f
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(root->Accept(&analysis_));
 
@@ -192,8 +182,7 @@ ENTRY e {
   ROOT r.1 = f32[10000000] fusion(p0, p1), kind=kLoop, calls=f
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(root->Accept(&analysis_));
 
@@ -221,8 +210,7 @@ ENTRY e {
   ROOT r.1 = f32[10000000] fusion(p0, p1), kind=kLoop, calls=f
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(root->Accept(&analysis_));
 
@@ -296,7 +284,7 @@ ENTRY fusion {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
   auto run = [&](absl::string_view reduce_name_1,
@@ -310,10 +298,10 @@ ENTRY fusion {
     return EstimateRunTimes(producer, consumers);
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(auto large_small_reduce_runtime,
-                          run("reduce.1", "reduce.2"));
-  TF_ASSERT_OK_AND_ASSIGN(auto small_large_reduce_runtime,
-                          run("reduce.3", "reduce.4"));
+  ASSERT_OK_AND_ASSIGN(auto large_small_reduce_runtime,
+                       run("reduce.1", "reduce.2"));
+  ASSERT_OK_AND_ASSIGN(auto small_large_reduce_runtime,
+                       run("reduce.3", "reduce.4"));
 
   // Ignoring memory access patterns and occupancy, the runtime should be about
   // the same.
@@ -340,7 +328,7 @@ ENTRY fusion {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
   auto* producer =
@@ -382,7 +370,7 @@ ENTRY fusion {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
   auto* producer =
@@ -413,7 +401,7 @@ ENTRY fusion {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
   auto* producer =
@@ -467,7 +455,7 @@ ENTRY main {
   ROOT tuple = (f32[1073741824], f32[1024]) tuple(dus1, dus2)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
   auto* operand0 = module->entry_computation()->root_instruction()->operand(0);
@@ -514,8 +502,7 @@ ENTRY e2 {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   HloComputation* computation_without_fusion =
       module->GetComputationWithName("e1");
@@ -554,7 +541,7 @@ ENTRY fusion {
   ROOT divide = f32[] divide(reduce, p1)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
   auto* producer =
@@ -601,7 +588,7 @@ ENTRY fusion {
   ROOT fusion.1 = f32[4,8,8] fusion(exp), kind=kInput, calls=fused_computation.1
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
   auto* fusion_0 =
@@ -643,7 +630,7 @@ ENTRY fusion {
   ROOT reduce = f32[4,32] reduce(fusion, c0), to_apply=add, dimensions={1}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
   auto* fusion = module->entry_computation()->GetInstructionWithName("fusion");
@@ -656,7 +643,7 @@ ENTRY fusion {
 
 TEST_F(GpuPerformanceModelTest,
        EstimateRunTimeForFusion_InfiniteProducer_ReturnsInfinite) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule testmodule
 
 ENTRY fusion {
@@ -683,7 +670,7 @@ ENTRY fusion {
 
 TEST_F(GpuPerformanceModelTest,
        EstimateRunTimeForFusion_InfiniteConsumer_ReturnsInfinite) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule testmodule
 
 ENTRY fusion {
@@ -710,7 +697,7 @@ ENTRY fusion {
 
 TEST_F(GpuPerformanceModelTest,
        EstimateRunTimeForFusion_MultiOutputWrite_ReturnsCorrectTime) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 fused_power {
@@ -759,8 +746,8 @@ ENTRY entry_computation.1 {
 
   auto t = gpu_performance_model_.EstimateRunTimesForMultiOutputFusion(
       producer, consumer, &analysis_);
-  EXPECT_NEAR(absl::ToInt64Milliseconds(t.time_unfused), 162, 1);
-  EXPECT_NEAR(absl::ToInt64Milliseconds(t.time_fused), 145, 1);
+  EXPECT_NEAR(absl::ToInt64Milliseconds(t.time_unfused), 120, 1);
+  EXPECT_NEAR(absl::ToInt64Milliseconds(t.time_fused), 103, 1);
 }
 
 }  // namespace

@@ -42,7 +42,8 @@ TFRTOpKernelConstruction::TFRTOpKernelConstruction(
     : attributes_(std::move(attributes)) {}
 
 absl::Status MissingAttributeError(absl::string_view attr_name) {
-  return errors::InvalidArgument("Missing attribute: ", attr_name);
+  return absl::InvalidArgumentError(
+      absl::StrCat("Missing attribute: ", attr_name));
 }
 
 template <>
@@ -81,9 +82,9 @@ absl::Status TFRTOpKernelConstruction::GetAttr(absl::string_view attr_name,
 
 template <>
 absl::Status TFRTOpKernelConstruction::GetAttr(
-    absl::string_view attr_name, std::vector<int32>* value) const {
-  llvm::ArrayRef<int32> arrayref;
-  bool success = attributes_.GetArray<int32>(
+    absl::string_view attr_name, std::vector<int32_t>* value) const {
+  llvm::ArrayRef<int32_t> arrayref;
+  bool success = attributes_.GetArray<int32_t>(
       llvm::StringRef(attr_name.data(), attr_name.size()), &arrayref);
   if (!success) {
     return MissingAttributeError(attr_name);
@@ -216,6 +217,7 @@ namespace {
 DataType ParseInputOutputSpec(absl::string_view spec) {
   std::vector<absl::string_view> name_type =
       absl::StrSplit(spec, absl::MaxSplits(':', 2));
+  assert(name_type.size() > 1);
   DataType data_type;
   bool success =
       DataTypeFromString(absl::StripAsciiWhitespace(name_type[1]), &data_type);
@@ -239,7 +241,7 @@ TFRTOpMetaBuilder& TFRTOpMetaBuilder::Attr(absl::string_view attr_spec) {
   return *this;
 }
 
-const string& TFRTOpMetaBuilder::op_name() const { return op_name_; }
+const std::string& TFRTOpMetaBuilder::op_name() const { return op_name_; }
 
 TFRTOpMeta TFRTOpMetaBuilder::BuildMeta() const {
   return TFRTOpMeta(output_types_);
@@ -289,15 +291,15 @@ absl::Status ValidKernelAttr(absl::string_view kernel_class_name,
     DataType type;
     absl::Status s = construction->GetAttr(attr_name, &type);
     if (!s.ok()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Kernel ", kernel_class_name,
-          " has constraint for unset tfdtype attribute ", attr_name, ".");
+          " has constraint for unset tfdtype attribute ", attr_name, "."));
     }
     if (type != constraint.second) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Kernel ", kernel_class_name, " with type constraint ", attr_name,
           ": ", DataTypeString(constraint.second),
-          " does not match attribute type ", DataTypeString(type), ".");
+          " does not match attribute type ", DataTypeString(type), "."));
     }
   }
   return absl::OkStatus();
@@ -309,8 +311,8 @@ std::unique_ptr<TFRTOpKernel> TFRTOpKernelFactories::CreateKernel(
   auto it = factories_.find(std::string(kernel_class_name));
   if (it == factories_.end()) {
     // Could not find kernel in the registry
-    op_kernel_construction->CtxFailure(errors::NotFound(
-        "Could not find kernel ", kernel_class_name, " in the registry."));
+    op_kernel_construction->CtxFailure(absl::NotFoundError(absl::StrCat(
+        "Could not find kernel ", kernel_class_name, " in the registry.")));
     return std::unique_ptr<TFRTOpKernel>(nullptr);
   }
   absl::Status status;

@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "xla/tsl/distributed_runtime/rpc/grpc_util.h"
 
-#include <algorithm>
+#include <string>
 #include <vector>
 
-#include "grpcpp/impl/codegen/proto_utils.h"
-#include "tsl/platform/protobuf.h"
+#include "grpcpp/impl/proto_utils.h"
+#include "grpcpp/support/byte_buffer.h"
+#include "grpcpp/support/slice.h"
+#include "grpcpp/support/status.h"
+#include "google/protobuf/message.h"
+#include "tsl/platform/tstring.h"
 
 namespace tsl {
 
@@ -39,7 +43,8 @@ bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, protobuf::Message* dst) {
 
 // GrpcMaybeUnparseProto from a string simply copies the string to the
 // ByteBuffer.
-::grpc::Status GrpcMaybeUnparseProto(const string& src, grpc::ByteBuffer* dst) {
+::grpc::Status GrpcMaybeUnparseProto(const std::string& src,
+                                     grpc::ByteBuffer* dst) {
   ::grpc::Slice s(src.data(), src.size());
   ::grpc::ByteBuffer buffer(&s, 1);
   dst->Swap(&buffer);
@@ -47,7 +52,7 @@ bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, protobuf::Message* dst) {
 }
 
 // GrpcMaybeParseProto simply copies bytes into the string.
-bool GrpcMaybeParseProto(grpc::ByteBuffer* src, string* dst) {
+bool GrpcMaybeParseProto(grpc::ByteBuffer* src, std::string* dst) {
   dst->clear();
   dst->reserve(src->Length());
   std::vector<::grpc::Slice> slices;

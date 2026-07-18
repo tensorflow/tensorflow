@@ -35,14 +35,16 @@ OpSegment::~OpSegment() {
   for (const auto& kv : sessions_) delete kv.second;
 }
 
-absl::Status OpSegment::FindOrCreate(const string& session_handle,
-                                     const string& node_name, OpKernel** kernel,
+absl::Status OpSegment::FindOrCreate(const std::string& session_handle,
+                                     const std::string& node_name,
+                                     OpKernel** kernel,
                                      CreateKernelFn create_fn) {
   {
     mutex_lock l(mu_);
     auto item = gtl::FindPtrOrNull(sessions_, session_handle);
     if (item == nullptr) {
-      return errors::NotFound("Session ", session_handle, " is not found.");
+      return absl::NotFoundError(
+          absl::StrCat("Session ", session_handle, " is not found."));
     }
     *kernel = gtl::FindPtrOrNull(item->name_kernel, node_name);
     if (*kernel != nullptr) {
@@ -58,7 +60,8 @@ absl::Status OpSegment::FindOrCreate(const string& session_handle,
     mutex_lock l(mu_);
     auto item = gtl::FindPtrOrNull(sessions_, session_handle);
     if (item == nullptr) {
-      return errors::NotFound("Session ", session_handle, " is not found.");
+      return absl::NotFoundError(
+          absl::StrCat("Session ", session_handle, " is not found."));
     }
     OpKernel** p_kernel = &(item->name_kernel[node_name]);
     if (*p_kernel == nullptr) {
@@ -71,7 +74,7 @@ absl::Status OpSegment::FindOrCreate(const string& session_handle,
   return absl::OkStatus();
 }
 
-void OpSegment::AddHold(const string& session_handle) {
+void OpSegment::AddHold(const std::string& session_handle) {
   mutex_lock l(mu_);
   Item** item = &sessions_[session_handle];
   if (*item == nullptr) {
@@ -81,7 +84,7 @@ void OpSegment::AddHold(const string& session_handle) {
   }
 }
 
-void OpSegment::RemoveHold(const string& session_handle) {
+void OpSegment::RemoveHold(const std::string& session_handle) {
   Item* item = nullptr;
   {
     mutex_lock l(mu_);
@@ -101,7 +104,7 @@ void OpSegment::RemoveHold(const string& session_handle) {
 }
 
 bool OpSegment::ShouldOwnKernel(FunctionLibraryRuntime* lib,
-                                const string& node_op) {
+                                const std::string& node_op) {
   // OpSegment should not own kernel if the node is stateless, or a function.
   return lib->IsStateful(node_op) &&
          lib->GetFunctionLibraryDefinition()->Find(node_op) == nullptr &&

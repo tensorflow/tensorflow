@@ -19,7 +19,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-const string LogMemory::kLogMemoryLabel = "__LOG_MEMORY__";
+const std::string LogMemory::kLogMemoryLabel = "__LOG_MEMORY__";
 
 bool LogMemory::IsEnabled() { return VLOG_IS_ON(2); }
 
@@ -28,23 +28,23 @@ namespace {
 // Write the proto entry to LOG(INFO).
 template <typename T>
 void OutputToLog(const T& proto) {
-  string type_name(proto.GetTypeName());
+  std::string type_name(proto.GetTypeName());
   const size_t index = type_name.find_last_of('.');
-  if (index != string::npos) type_name = type_name.substr(index + 1);
+  if (index != std::string::npos) type_name = type_name.substr(index + 1);
   LOG(INFO) << LogMemory::kLogMemoryLabel << " " << type_name << " { "
             << proto.ShortDebugString() << " }";
 }
 
 }  // namespace
 
-void LogMemory::RecordStep(const int64_t step_id, const string& handle) {
+void LogMemory::RecordStep(const int64_t step_id, const std::string& handle) {
   MemoryLogStep step;
   step.set_step_id(step_id);
   step.set_handle(handle);
   OutputToLog(step);
 }
 
-void LogMemory::RecordTensorAllocation(const string& kernel_name,
+void LogMemory::RecordTensorAllocation(const std::string& kernel_name,
                                        const int64_t step_id,
                                        const Tensor& tensor) {
   MemoryLogTensorAllocation allocation;
@@ -55,14 +55,14 @@ void LogMemory::RecordTensorAllocation(const string& kernel_name,
 }
 
 void LogMemory::RecordTensorDeallocation(const int64_t allocation_id,
-                                         const string& allocator_name) {
+                                         const std::string& allocator_name) {
   MemoryLogTensorDeallocation deallocation;
   deallocation.set_allocation_id(allocation_id);
   deallocation.set_allocator_name(allocator_name);
   OutputToLog(deallocation);
 }
 
-void LogMemory::RecordTensorOutput(const string& kernel_name,
+void LogMemory::RecordTensorOutput(const std::string& kernel_name,
                                    const int64_t step_id, const int index,
                                    const Tensor& tensor) {
   MemoryLogTensorOutput output;
@@ -73,7 +73,7 @@ void LogMemory::RecordTensorOutput(const string& kernel_name,
   OutputToLog(output);
 }
 
-void LogMemory::RecordRawAllocation(const string& operation,
+void LogMemory::RecordRawAllocation(const std::string& operation,
                                     const int64_t step_id, size_t num_bytes,
                                     void* ptr, Allocator* allocator) {
   MemoryLogRawAllocation allocation;
@@ -86,7 +86,7 @@ void LogMemory::RecordRawAllocation(const string& operation,
   OutputToLog(allocation);
 }
 
-void LogMemory::RecordRawDeallocation(const string& operation,
+void LogMemory::RecordRawDeallocation(const std::string& operation,
                                       const int64_t step_id, void* ptr,
                                       Allocator* allocator, bool deferred) {
   MemoryLogRawDeallocation deallocation;

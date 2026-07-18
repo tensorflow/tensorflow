@@ -14,11 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
-#include <cctype>
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
 #include <iterator>
-#include <memory>
 #include <utility>
 
+#include "llvm/ADT/StringExtras.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/passes.h"
 #include "mhlo/transforms/rewriters.h"
@@ -48,7 +50,7 @@ struct EinsumToDotGeneralPattern : public OpRewritePattern<EinsumOp> {
     enum EquationVariable { kIsLhs, kIsRhs, kIsResult };
     EquationVariable currentVariable = kIsLhs;
     while (index < equation.size()) {
-      if (std::isalpha(equation[index])) {
+      if (llvm::isAlpha(equation[index])) {
         if (currentVariable == kIsLhs) {
           lhsTokens.push_back(equation[index]);
         } else if (currentVariable == kIsRhs) {
@@ -156,10 +158,10 @@ struct EinsumToDotGeneralPattern : public OpRewritePattern<EinsumOp> {
     auto dimNumbers = mhlo::DotDimensionNumbersAttr::get(
         rewriter.getContext(), lhsBatchingDims, rhsBatchingDims,
         lhsContractingDims, rhsContractingDims);
-    auto dotGeneralOp = rewriter.create<DotGeneralOp>(
-        einsum.getLoc(), dotGeneralResultType, einsum.getLhs(), einsum.getRhs(),
-        dimNumbers,
-        /*precision_config=*/ArrayAttr{}, /*dot_algorithm=*/DotAlgorithmAttr{});
+    auto dotGeneralOp = DotGeneralOp::create(
+        rewriter, einsum.getLoc(), dotGeneralResultType, einsum.getLhs(),
+        einsum.getRhs(), dimNumbers,
+        /*precision_config=*/ArrayAttr{}, /*algorithm=*/DotAlgorithmAttr{});
 
     if (isNaturalOrder) {
       // The dot_general is already in an appropriate result order.
@@ -189,11 +191,6 @@ struct LegalizeEinsumToDotGeneralPass
 void populateEinsumToDotGeneralPatterns(mlir::MLIRContext *context,
                                         RewritePatternSet *patterns) {
   patterns->add<EinsumToDotGeneralPattern>(context);
-}
-
-std::unique_ptr<OperationPass<func::FuncOp>>
-createLegalizeEinsumToDotGeneralPass() {
-  return std::make_unique<LegalizeEinsumToDotGeneralPass>();
 }
 
 }  // namespace mhlo

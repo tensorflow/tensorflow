@@ -123,7 +123,7 @@ class Predicate {
  public:
   enum class Kind { kAnd, kOr, kNot, kAndRecurrence, kSymbol, kIntSymbol };
 
-  virtual string ToString() const = 0;
+  virtual std::string ToString() const = 0;
 
   // An ID assigned to the Predicate at construction time.  Conceptually like a
   // pointer, except that it is stable across runs.
@@ -156,12 +156,12 @@ class AndPredicate : public Predicate {
   explicit AndPredicate(int64_t id, std::vector<Predicate*> operands)
       : Predicate(id), operands_(std::move(operands)) {}
 
-  string ToString() const override {
+  std::string ToString() const override {
     if (operands().empty()) {
       return "#true";
     }
 
-    std::vector<string> operands_str;
+    std::vector<std::string> operands_str;
     std::transform(operands().begin(), operands().end(),
                    std::back_inserter(operands_str),
                    [](Predicate* pred) { return pred->ToString(); });
@@ -186,12 +186,12 @@ class OrPredicate : public Predicate {
   explicit OrPredicate(int64_t id, std::vector<Predicate*> operands)
       : Predicate(id), operands_(std::move(operands)) {}
 
-  string ToString() const override {
+  std::string ToString() const override {
     if (operands().empty()) {
       return "#false";
     }
 
-    std::vector<string> operands_str;
+    std::vector<std::string> operands_str;
     std::transform(operands().begin(), operands().end(),
                    std::back_inserter(operands_str),
                    [](Predicate* pred) { return pred->ToString(); });
@@ -215,7 +215,7 @@ class NotPredicate : public Predicate {
   explicit NotPredicate(int64_t id, Predicate* operand)
       : Predicate(id), operands_({operand}) {}
 
-  string ToString() const override {
+  std::string ToString() const override {
     return absl::StrCat("~", operand()->ToString());
   }
 
@@ -251,14 +251,14 @@ class NotPredicate : public Predicate {
 class AndRecurrencePredicate : public Predicate {
  public:
   explicit AndRecurrencePredicate(int64_t id, Predicate* start, Predicate* step,
-                                  std::vector<string> frame)
+                                  std::vector<std::string> frame)
       : Predicate(id), operands_({start, step}), frame_(std::move(frame)) {}
 
   Predicate* start() const { return operands_[0]; }
   Predicate* step() const { return operands_[1]; }
-  absl::Span<const string> frame() const { return frame_; }
+  absl::Span<const std::string> frame() const { return frame_; }
 
-  string ToString() const override {
+  std::string ToString() const override {
     return absl::StrCat("{", start()->ToString(), ",&,", step()->ToString(),
                         "}<", absl::StrJoin(frame(), ";"), ">");
   }
@@ -271,7 +271,7 @@ class AndRecurrencePredicate : public Predicate {
 
  private:
   std::array<Predicate*, 2> operands_;
-  std::vector<string> frame_;
+  std::vector<std::string> frame_;
 };
 
 // Represents an uninterpreted symbol in a logical predicate.
@@ -286,7 +286,7 @@ class SymbolPredicate : public Predicate {
         tensor_id_(std::move(tensor_id)),
         must_be_true_(must_be_true) {}
 
-  string ToString() const override {
+  std::string ToString() const override {
     return must_be_true() ? absl::StrCat("*", tensor_id_.ToString())
                           : tensor_id_.ToString();
   }
@@ -320,7 +320,7 @@ class IntSymbolPredicate : public Predicate {
         tensor_id_(std::move(tensor_id)),
         must_have_value_(must_have_value) {}
 
-  string ToString() const override {
+  std::string ToString() const override {
     return must_have_value().has_value()
                ? absl::StrCat(tensor_id_.ToString(), "=", *must_have_value_)
                : tensor_id_.ToString();
@@ -396,7 +396,7 @@ class PredicateFactory {
   }
 
   Predicate* MakeAndRecurrencePredicate(Predicate* start, Predicate* step,
-                                        std::vector<string> frame) {
+                                        std::vector<std::string> frame) {
     SignatureForAndRec signature(start, step, std::move(frame));
     auto it = interned_and_rec_instances_.find(signature);
     if (it != interned_and_rec_instances_.end()) {
@@ -463,8 +463,8 @@ class PredicateFactory {
       Tensor tensor(proto->dtype());
       TF_RET_CHECK(tensor.FromProto(*proto));
 
-      *predicate = tensor.scalar<int32>()() == *must_have_value ? MakeTrue()
-                                                                : MakeFalse();
+      *predicate = tensor.scalar<int32_t>()() == *must_have_value ? MakeTrue()
+                                                                  : MakeFalse();
       return absl::OkStatus();
     }
     SignatureForIntSymbol signature = {tensor_id, must_have_value};
@@ -559,9 +559,9 @@ class PredicateFactory {
       std::pair<Predicate::Kind, absl::Span<Predicate* const>>;
   using SignatureForNot = Predicate*;
   using SignatureForAndRec =
-      std::tuple<Predicate*, Predicate*, std::vector<string>>;
+      std::tuple<Predicate*, Predicate*, std::vector<std::string>>;
   using SignatureForSymbol = std::pair<SafeTensorId, bool>;
-  using SignatureForIntSymbol = std::pair<SafeTensorId, std::optional<int32>>;
+  using SignatureForIntSymbol = std::pair<SafeTensorId, std::optional<int32_t>>;
 
   struct HashSignatureForAndOr {
     size_t operator()(const SignatureForAndOr& signature) const {
@@ -586,7 +586,7 @@ class PredicateFactory {
           SafeTensorId::Hasher()(signature.first),
           Hash64Combine(
               ::tensorflow::hash<bool>()(signature.second.has_value()),
-              ::tensorflow::hash<int32>()(
+              ::tensorflow::hash<int32_t>()(
                   signature.second.has_value() ? *signature.second : 0)));
     }
   };
@@ -830,8 +830,8 @@ class DeadnessAnalysisImpl : public DeadnessAnalysis {
   absl::StatusOr<DeadnessAnalysis::DeadnessPredicate> GetPredicateFor(
       Node* n, int oidx) const override;
   void Print() const override;
-  absl::flat_hash_map<TensorId, string, TensorId::Hasher> PredicateMapAsString()
-      const;
+  absl::flat_hash_map<TensorId, std::string, TensorId::Hasher>
+  PredicateMapAsString() const;
 
  private:
   enum class EdgeKind { kDataAndControl, kDataOnly, kControlOnly };
@@ -916,10 +916,10 @@ absl::Status DeadnessAnalysisImpl::GetInputPreds(
 
         // If we didn't return with an error above then the graph is probably
         // fine and we have a bug in deadness analysis.
-        return errors::Internal("Could not find input ", in_edge->DebugString(),
-                                " to ", n->name(),
-                                " when visiting the graph in post-order.  Most "
-                                "likely indicates a bug in deadness analysis.");
+        return absl::InternalError(absl::StrCat(
+            "Could not find input ", in_edge->DebugString(), " to ", n->name(),
+            " when visiting the graph in post-order.  Most "
+            "likely indicates a bug in deadness analysis."));
       }
       result->push_back(it->second);
     }
@@ -958,7 +958,7 @@ absl::Status DeadnessAnalysisImpl::HandleSwitch(
     for (int i = 0; i < n->num_outputs() - 1; i++) {
       TF_RETURN_IF_ERROR(predicate_factory_.MakeSymbolPredicate(
           pred_edge->src(), pred_edge->src_output(),
-          /*must_have_value=*/std::optional<int32>(i), &branch_pred));
+          /*must_have_value=*/std::optional<int32_t>(i), &branch_pred));
       input_preds.push_back(branch_pred);
       SetPredicate(n, i, predicate_factory_.MakeAndPredicate(input_preds),
                    should_revisit);
@@ -982,16 +982,16 @@ absl::Status DeadnessAnalysisImpl::HandleSwitch(
 
 namespace {
 absl::Status CreateMultipleNextIterationInputsError(Node* merge) {
-  std::vector<string> backedges;
+  std::vector<std::string> backedges;
   for (const Edge* backedge : merge->in_edges()) {
     if (backedge->src()->IsNextIteration()) {
       backedges.push_back(absl::StrCat("  ", SummarizeNode(*backedge->src())));
     }
   }
-  return errors::InvalidArgument(
+  return absl::InvalidArgumentError(absl::StrCat(
       "Multiple NextIteration inputs to merge node ",
       FormatNodeForError(*merge), ": \n", absl::StrJoin(backedges, "\n"),
-      "\nMerge nodes can have at most one incoming NextIteration edge.");
+      "\nMerge nodes can have at most one incoming NextIteration edge."));
 }
 
 absl::Status FindUniqueBackedge(Node* merge, const Edge** result) {
@@ -1058,14 +1058,14 @@ Predicate* DeduceStepPredicate(PredicateFactory* predicate_factory,
 
 absl::Status GetFullFrame(const Node* n,
                           absl::Span<const ControlFlowInfo> cfi_infos,
-                          std::vector<string>* frame) {
+                          std::vector<std::string>* frame) {
   int depth = 0;
   for (const ControlFlowInfo* cfi_iter = &cfi_infos[n->id()]; !n->IsSource();
        n = cfi_iter->parent_frame, cfi_iter = &cfi_infos[n->id()]) {
     frame->push_back(cfi_iter->frame_name);
 
     if (depth++ > 5000) {
-      return errors::Internal(
+      return absl::InternalError(
           "Frame of depth > 5000:  Probably malformed graph or a bug in "
           "BuildControlFlowInfo");
     }
@@ -1086,7 +1086,7 @@ absl::Status GetRootFrame(const Node* n,
     cfi_iter = &cfi_infos[n->id()];
 
     if (depth++ > 5000) {
-      return errors::Internal(
+      return absl::InternalError(
           "Frame of depth > 5000:  Probably malformed graph or a bug in "
           "BuildControlFlowInfo");
     }
@@ -1174,7 +1174,7 @@ absl::Status DeadnessAnalysisImpl::HandleMerge(
 
         Predicate* start =
             predicate_factory_.MakeOrPredicate(non_recurrent_inputs);
-        std::vector<string> frame;
+        std::vector<std::string> frame;
         TF_RETURN_IF_ERROR(GetFullFrame(n, control_flow_info_, &frame));
         Predicate* and_rec = predicate_factory_.MakeAndRecurrencePredicate(
             start, step, std::move(frame));
@@ -1338,7 +1338,7 @@ absl::Status DeadnessAnalysisImpl::GetFrameBasedTopologicalOrder(
   }
 
   if (!ready_enters_per_frame.empty() || !ready_exits.empty()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Some enters/exits have never been visited in the traversal."
         " Most probably the input graph is malformed.");
   }
@@ -1358,7 +1358,7 @@ absl::Status DeadnessAnalysisImpl::GetFrameBasedTopologicalOrder(
 // nested while, as there is no clean cut for separating them in the topological
 // order.
 absl::Status DeadnessAnalysisImpl::Populate(bool enable_optimistic) {
-  std::vector<string> unreachable_nodes;
+  std::vector<std::string> unreachable_nodes;
   // Compute the loop structure of the graph.
   TF_RETURN_IF_ERROR(
       BuildControlFlowInfo(&graph_, &control_flow_info_, &unreachable_nodes));
@@ -1370,10 +1370,10 @@ absl::Status DeadnessAnalysisImpl::Populate(bool enable_optimistic) {
                               unreachable_nodes.end());
     }
 
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Found unreachable nodes, most likely source and sink nodes not "
         "connected: ",
-        absl::StrJoin(unreachable_nodes, ", "));
+        absl::StrJoin(unreachable_nodes, ", ")));
   }
 
   std::vector<Node*> topo;
@@ -1582,9 +1582,9 @@ DeadnessAnalysis::~DeadnessAnalysis() {}
   return absl::OkStatus();
 }
 
-absl::flat_hash_map<TensorId, string, TensorId::Hasher>
+absl::flat_hash_map<TensorId, std::string, TensorId::Hasher>
 DeadnessAnalysisImpl::PredicateMapAsString() const {
-  absl::flat_hash_map<TensorId, string, TensorId::Hasher> result;
+  absl::flat_hash_map<TensorId, std::string, TensorId::Hasher> result;
   for (const auto& kv_pair : predicate_map_) {
     CHECK(result.insert({kv_pair.first, kv_pair.second->ToString()}).second);
   }
@@ -1603,7 +1603,7 @@ absl::Status ComputePredicates(const Graph& graph,
 
 }  // namespace deadness_analysis_internal
 
-string DeadnessAnalysis::DebugString(DeadnessPredicate predicate) const {
+std::string DeadnessAnalysis::DebugString(DeadnessPredicate predicate) const {
   return static_cast<Predicate*>(predicate.pred_)->ToString();
 }
 

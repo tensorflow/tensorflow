@@ -124,17 +124,17 @@ static absl::Status ValidateInputTypes(
   const size_t n_inputs = input_tf_tensors.size();
 
   if (input_types.size() != n_inputs) {
-    return tensorflow::errors::InvalidArgument("expected ", input_types.size(),
-                                               " inputs, got ", n_inputs);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "expected ", input_types.size(), " inputs, got ", n_inputs));
   }
 
   for (size_t i = 0; i < n_inputs; ++i) {
     if (input_tf_tensors[i].dtype() != input_types[i]) {
-      return tensorflow::errors::InvalidArgument(
-          "cannot compute ", op_name.str(), " as input #", i, "(zero-based)",
-          " was expected to be a ", DataTypeString(input_types[i]),
-          " tensor but is a ", DataTypeString(input_tf_tensors[i].dtype()),
-          " tensor");
+      return absl::InvalidArgumentError(
+          absl::StrCat("cannot compute ", op_name.str(), " as input #", i,
+                       "(zero-based)", " was expected to be a ",
+                       DataTypeString(input_types[i]), " tensor but is a ",
+                       DataTypeString(input_tf_tensors[i].dtype()), " tensor"));
     }
   }
 
@@ -265,7 +265,7 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackExecuteCompatCoreRuntimeDispatch(
 
   auto expected_input_tf_tensors = ConvertInputTensors(arguments);
   if (!expected_input_tf_tensors) {
-    status = tensorflow::errors::Internal(
+    status = absl::InternalError(
         tfrt::StrCat(expected_input_tf_tensors.takeError()));
     KernelFallbackEmitError(exec_ctx, &fallback_request_state, op_name,
                             &op_chain, results, status);
@@ -427,9 +427,9 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
       [&]() { return GetTracingMetadata(args, exec_ctx, kernel_runner); });
 
   if (fallback_request_state.log_device_placement() || VLOG_IS_ON(1)) {
-    string msg =
-        strings::StrCat("Executing op ", frame.op_name().GetValue().str(),
-                        " in device ", frame.device().GetValue().str());
+    std::string msg =
+        absl::StrCat("Executing op ", frame.op_name().GetValue().str(),
+                     " in device ", frame.device().GetValue().str());
     if (!logging::LogToListeners(msg)) {
       LOG(INFO) << msg;
     }
@@ -485,7 +485,7 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOp(
     KernelFallbackEmitError(
         exec_ctx, /*fallback_request_state=*/nullptr,
         frame.op_name().GetValue(), op_chain, results,
-        tensorflow::errors::NotFound(
+        absl::NotFoundError(
             "KernelFallbackCompatRequestState not found in RequestContext."));
     return;
   }
@@ -687,7 +687,7 @@ void KernelFallbackExecuteOpCustomAllocatorInternal(
     KernelFallbackEmitError(
         exec_ctx, /*fallback_request_state=*/nullptr,
         attr_frame.op_name().GetValue(), op_chain, results,
-        tensorflow::errors::NotFound(
+        absl::NotFoundError(
             "KernelFallbackCompatRequestState not found in RequestContext."));
     return;
   }
@@ -866,10 +866,10 @@ llvm::Expected<bool> Predicate(
 
       CASE(float);
       CASE(double);
-      CASE(uint8);
-      CASE(int8);
-      CASE(int16);
-      CASE(int32);
+      CASE(uint8_t);
+      CASE(int8_t);
+      CASE(int16_t);
+      CASE(int32_t);
       CASE(int64_t);
       CASE(bool);
 #undef CASE
@@ -898,7 +898,7 @@ void BatchFunction(
     KernelFallbackEmitError(
         exec_ctx, /*fallback_request_state=*/nullptr, kTfKernelNameToFallback,
         /*op_chain=*/nullptr, results.values(),
-        tensorflow::errors::NotFound(
+        absl::NotFoundError(
             "KernelFallbackCompatRequestState not found in RequestContext."));
     return;
   }

@@ -86,16 +86,14 @@ class GpuKernelToBlobPass
   absl::StatusOr<std::vector<uint8_t>> GetGpuBinaryBlob(
       gpu::GPUModuleOp gpu_module) {
     if (architectures_.empty()) {
-      return tensorflow::errors::Internal(
-          "Expected at least one GPU architecture.");
+      return absl::InternalError("Expected at least one GPU architecture.");
     }
 
     // Lower to LLVM module.
     llvm::LLVMContext llvmContext;
     auto llvmModule = translateModuleToLLVMIR(gpu_module, llvmContext);
     if (!llvmModule) {
-      return tensorflow::errors::Internal(
-          "Could not translate MLIR module to LLVM IR");
+      return absl::InternalError("Could not translate MLIR module to LLVM IR");
     }
     llvmModule->setModuleIdentifier(gpu_module.getName());
 
@@ -163,9 +161,11 @@ class GpuKernelToBlobPass
         target->Options.AllowFPOpFusion =
             llvm::FPOpFusion::FPOpFusionMode::Fast;
       };
-      TF_ASSIGN_OR_RETURN(std::string ptx, xla::gpu::nvptx::CompileToPtx(
-                                               llvm_module_copy.get(), cc,
-                                               options, enable_fusion));
+      TF_ASSIGN_OR_RETURN(
+          std::string ptx,
+          xla::gpu::nvptx::CompileToPtx(
+              llvm_module_copy.get(), stream_executor::GpuComputeCapability(cc),
+              options, enable_fusion));
       if (print_ptx_) {
         llvm::dbgs() << "Generated PTX code for module '"
                      << gpu_module.getName() << "' on architecture sm_" << arch
@@ -222,14 +222,13 @@ class GpuKernelToBlobPass
     } else if (absl::ConsumePrefix(&consumable_arch, "sm_")) {
       is_compute_profile = false;
     } else {
-      return tensorflow::errors::Internal(
+      return absl::InternalError(
           "Could not parse cuda architecture prefix (expected sm_ or "
           "compute_)");
     }
     int arch;
     if (!absl::SimpleAtoi(consumable_arch, &arch)) {
-      return tensorflow::errors::Internal(
-          "Could not parse cuda architecture number");
+      return absl::InternalError("Could not parse cuda architecture number");
     }
     return std::pair<bool, int>(is_compute_profile, arch);
   }

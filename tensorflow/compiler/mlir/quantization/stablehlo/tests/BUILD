@@ -43,6 +43,6 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto_cc",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:protobuf",
     ],
 )

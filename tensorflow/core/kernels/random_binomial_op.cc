@@ -30,6 +30,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/resource_handle.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/rng_alg.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -342,49 +344,50 @@ class RandomBinomialOp : public OpKernel {
                             /*fewer_dims_optimization=*/false,
                             /*return_flattened_batch_indices=*/true);
     OP_REQUIRES(ctx, bcast.IsValid(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "counts and probs must have compatible batch dimensions: ",
                     counts_tensor.shape().DebugString(), " vs. ",
-                    probs_tensor.shape().DebugString()));
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsVector(shape_tensor.shape()),
-        errors::InvalidArgument("Input shape should be a vector, got shape: ",
-                                shape_tensor.shape().DebugString()));
+                    probs_tensor.shape().DebugString())));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(shape_tensor.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input shape should be a vector, got shape: ",
+                                 shape_tensor.shape().DebugString())));
     OP_REQUIRES(ctx,
                 (shape_tensor.dtype() == DataType::DT_INT32 ||
                  shape_tensor.dtype() == DataType::DT_INT64),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Input shape should have dtype {int32, int64}."));
 
     // Let's check that the shape tensor dominates the broadcasted tensor.
     TensorShape bcast_shape = BCast::ToShape(bcast.output_shape());
     TensorShape output_shape;
     if (shape_tensor.dtype() == DataType::DT_INT32) {
-      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(shape_tensor.vec<int32>(),
-                                                      &output_shape));
+      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(
+                              shape_tensor.vec<int32_t>(), &output_shape));
     } else {
       OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(
                               shape_tensor.vec<int64_t>(), &output_shape));
     }
     OP_REQUIRES(ctx, TensorShapeUtils::EndsWith(output_shape, bcast_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Shape passed in must end with broadcasted shape."));
     // Now that we have a guarantee, we can get the additional dimensions added
     // by sampling.
     OP_REQUIRES(ctx, alg_tensor.dims() == 0,
-                errors::InvalidArgument("algorithm must be of shape [], not ",
-                                        alg_tensor.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("algorithm must be of shape [], not ",
+                                 alg_tensor.shape().DebugString())));
     Algorithm alg = Algorithm(alg_tensor.flat<int64_t>()(0));
 
     int64_t samples_per_batch = 1;
     const int64_t num_sample_dims =
         (shape_tensor.dim_size(0) - bcast.output_shape().size());
     for (int64_t i = 0; i < num_sample_dims; ++i) {
-      samples_per_batch *= shape_tensor.flat<int32>()(i);
+      samples_per_batch *= shape_tensor.flat<int32_t>()(i);
     }
     int64_t num_batches = 1;
     for (int64_t i = num_sample_dims; i < shape_tensor.dim_size(0); ++i) {
-      num_batches *= shape_tensor.flat<int32>()(i);
+      num_batches *= shape_tensor.flat<int32_t>()(i);
     }
     const int64_t num_elements = num_batches * samples_per_batch;
 
@@ -392,29 +395,33 @@ class RandomBinomialOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &samples_tensor));
 
     core::RefCountPtr<Var> var;
-    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &var));
+    ResourceHandle handle;
+    OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 0, &handle));
+    OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &var));
 
     Tensor* var_tensor = var->tensor();
-    OP_REQUIRES(
-        ctx, var_tensor->dtype() == STATE_ELEMENT_DTYPE,
-        errors::InvalidArgument("dtype of RNG state variable must be ",
-                                DataTypeString(STATE_ELEMENT_DTYPE), ", not ",
-                                DataTypeString(var_tensor->dtype())));
+    OP_REQUIRES(ctx, var_tensor->dtype() == STATE_ELEMENT_DTYPE,
+                absl::InvalidArgumentError(
+                    absl::StrCat("dtype of RNG state variable must be ",
+                                 DataTypeString(STATE_ELEMENT_DTYPE), ", not ",
+                                 DataTypeString(var_tensor->dtype()))));
     OP_REQUIRES(ctx, var_tensor->dims() == 1,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "RNG state must have one and only one dimension, not ",
-                    var_tensor->dims()));
+                    var_tensor->dims())));
     auto var_tensor_flat = var_tensor->flat<StateElementType>();
     OP_REQUIRES(ctx, alg == RNG_ALG_PHILOX,
-                errors::InvalidArgument("Unsupported algorithm id: ", alg));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Unsupported algorithm id: ", alg)));
     static_assert(std::is_same<StateElementType, int64_t>::value,
                   "StateElementType must be int64");
-    static_assert(std::is_same<PhiloxRandom::ResultElementType, uint32>::value,
-                  "PhiloxRandom::ResultElementType must be uint32");
+    static_assert(
+        std::is_same<PhiloxRandom::ResultElementType, uint32_t>::value,
+        "PhiloxRandom::ResultElementType must be uint32");
     OP_REQUIRES(ctx, var_tensor_flat.size() >= PHILOX_MIN_STATE_SIZE,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "For Philox algorithm, the size of state must be at least ",
-                    PHILOX_MIN_STATE_SIZE, "; got ", var_tensor_flat.size()));
+                    PHILOX_MIN_STATE_SIZE, "; got ", var_tensor_flat.size())));
 
     OP_REQUIRES_OK(ctx, PrepareToUpdateVariable<Device, StateElementType>(
                             ctx, var_tensor, var->copy_on_read_mode.load()));
@@ -452,40 +459,41 @@ class StatelessRandomBinomialOp : public OpKernel {
     const Tensor& probs_tensor = ctx->input(3);
 
     OP_REQUIRES(ctx, seed_tensor.dims() == 1 && seed_tensor.dim_size(0) == 2,
-                errors::InvalidArgument("seed must have shape [2], not ",
-                                        seed_tensor.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("seed must have shape [2], not ",
+                                 seed_tensor.shape().DebugString())));
 
     tensorflow::BCast bcast(counts_tensor.shape().dim_sizes(),
                             probs_tensor.shape().dim_sizes(),
                             /*fewer_dims_optimization=*/false,
                             /*return_flattened_batch_indices=*/true);
     OP_REQUIRES(ctx, bcast.IsValid(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "counts and probs must have compatible batch dimensions: ",
                     counts_tensor.shape().DebugString(), " vs. ",
-                    probs_tensor.shape().DebugString()));
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsVector(shape_tensor.shape()),
-        errors::InvalidArgument("Input shape should be a vector, got shape: ",
-                                shape_tensor.shape().DebugString()));
+                    probs_tensor.shape().DebugString())));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(shape_tensor.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input shape should be a vector, got shape: ",
+                                 shape_tensor.shape().DebugString())));
     OP_REQUIRES(ctx,
                 (shape_tensor.dtype() == DataType::DT_INT32 ||
                  shape_tensor.dtype() == DataType::DT_INT64),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Input shape should have dtype {int32, int64}."));
 
     // Let's check that the shape tensor dominates the broadcasted tensor.
     TensorShape bcast_shape = BCast::ToShape(bcast.output_shape());
     TensorShape output_shape;
     if (shape_tensor.dtype() == DataType::DT_INT32) {
-      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(shape_tensor.vec<int32>(),
-                                                      &output_shape));
+      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(
+                              shape_tensor.vec<int32_t>(), &output_shape));
     } else {
       OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(
                               shape_tensor.vec<int64_t>(), &output_shape));
     }
     OP_REQUIRES(ctx, TensorShapeUtils::EndsWith(output_shape, bcast_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Shape passed in must end with broadcasted shape."));
     // Now that we have a guarantee, we can get the additional dimensions added
     // by sampling.
@@ -494,14 +502,14 @@ class StatelessRandomBinomialOp : public OpKernel {
         (shape_tensor.dim_size(0) - bcast.output_shape().size());
     for (int64_t i = 0; i < num_sample_dims; ++i) {
       samples_per_batch *= shape_tensor.dtype() == DataType::DT_INT32
-                               ? shape_tensor.flat<int32>()(i)
-                               : shape_tensor.flat<int64>()(i);
+                               ? shape_tensor.flat<int32_t>()(i)
+                               : shape_tensor.flat<int64_t>()(i);
     }
     int64_t num_batches = 1;
     for (int64_t i = num_sample_dims; i < shape_tensor.dim_size(0); ++i) {
       num_batches *= shape_tensor.dtype() == DataType::DT_INT32
-                         ? shape_tensor.flat<int32>()(i)
-                         : shape_tensor.flat<int64>()(i);
+                         ? shape_tensor.flat<int32_t>()(i)
+                         : shape_tensor.flat<int64_t>()(i);
     }
     const int64_t num_elements = num_batches * samples_per_batch;
 
@@ -557,7 +565,7 @@ class StatelessRandomBinomialOp : public OpKernel {
 REGISTER_ALL(Eigen::half);
 REGISTER_ALL(float);
 REGISTER_ALL(double);
-REGISTER_ALL(int32);
+REGISTER_ALL(int32_t);
 REGISTER_ALL(int64_t);
 
 #undef REGISTER

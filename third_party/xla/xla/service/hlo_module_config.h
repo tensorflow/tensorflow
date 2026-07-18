@@ -451,11 +451,28 @@ class HloModuleConfig {
     use_shardy_partitioner_ = use_shardy_partitioner;
   }
 
+  // Number of devices in a fast-interconnect domain.
+  int64_t partition_size() const { return partition_size_; }
+  void set_partition_size(int64_t partition_size) {
+    partition_size_ = partition_size;
+  }
+
   // Do channel IDs in this module carry semantic information.
   bool ChannelIdSensitive() const {
     // TODO(b/430952564): Base this on num_partitions / num_replicas instead
     // of use_spmd_partitioning.
     return !use_spmd_partitioning_;
+  }
+
+  // Page size in kibibytes for usage in multi-page buffer assignment and/or
+  // lowering.
+  int64_t page_size_kib() const { return page_size_kib_; }
+
+  // Sets the page size in kibibytes for usage in multi-page buffer
+  // assignment and/or lowering. A value of 0 means no multi-page buffer
+  // assignment and/or lowering will take place.
+  void set_page_size_kib(int64_t page_size_kib) {
+    page_size_kib_ = page_size_kib;
   }
 
  private:
@@ -625,6 +642,9 @@ class HloModuleConfig {
 
   bool use_shardy_partitioner_ = false;
 
+  // Number of devices in a fast-interconnect domain.
+  int64_t partition_size_ = 0;
+
   // Sharding configuration, where sharding_config_.nodes[v] controls the
   // sharding of operation v.
   ShardingConfig sharding_config_;
@@ -632,6 +652,12 @@ class HloModuleConfig {
   // Schedule configuration, where schedule_config_.sequence is the sequence of
   // instructions to be scheduled.
   ScheduleConfig schedule_config_;
+
+  // Page size in kibibytes for usage in multi-page buffer assignment. A value
+  // of 0 means no multi-page buffer assignment and/or lowering will take place.
+  // Pages are subdivisions of the shared memory space, with the constraint that
+  // a buffer will never cross a page boundary.
+  int64_t page_size_kib_ = 0;
 
   // LINT.ThenChange(//tensorflow/compiler/xla/xla.proto)
 };

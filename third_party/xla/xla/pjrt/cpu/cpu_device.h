@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/pjrt/cpu/execution_stream_event_map.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_device_description.h"
 #include "xla/pjrt/semaphore.h"
 
@@ -57,12 +56,12 @@ class PjRtCpuDevice final : public PjRtDevice {
     return process_index() == client()->process_index();
   }
 
-  PjRtLocalDeviceId local_device_id() const override {
-    return PjRtLocalDeviceId(local_hardware_id().value());
+  LocalDeviceId local_device_id() const override {
+    return LocalDeviceId(local_hardware_id().value());
   }
 
-  PjRtLocalHardwareId local_hardware_id() const override {
-    return PjRtLocalHardwareId(description_.local_hardware_id());
+  LocalChipId local_hardware_id() const override {
+    return LocalChipId(description_.local_hardware_id());
   }
 
   absl::Status TransferToInfeed(const LiteralSlice& literal) override;

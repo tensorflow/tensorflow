@@ -20,8 +20,31 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 
 namespace xla {
+// The payload attached to the absl::Status returned by the compilation
+// service when the compilation fails due to compilation errors.
+inline constexpr absl::string_view kCompilationErrorPayload =
+    "type.googleapis.com/xla.CompilationError";
+
+bool HasCompilationErrorPayload(const absl::Status& status) {
+  return status.GetPayload(kCompilationErrorPayload).has_value();
+}
+
 absl::Status SetCompilationErrorWithPayload(absl::Status status) {
   status.SetPayload(kCompilationErrorPayload, absl::Cord(""));
+  return status;
+}
+
+// The payload attached to the absl::Status when execution or allocation
+// fails due to out-of-memory errors.
+inline constexpr absl::string_view kOomErrorPayload =
+    "type.googleapis.com/pjrt.OOM";
+
+bool HasOomErrorPayload(const absl::Status& status) {
+  return status.GetPayload(kOomErrorPayload).has_value();
+}
+
+absl::Status SetOomErrorWithPayload(absl::Status status) {
+  status.SetPayload(kOomErrorPayload, absl::Cord(""));
   return status;
 }
 }  // namespace xla

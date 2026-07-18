@@ -27,13 +27,14 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/collectives/in_process_collectives.h"
-#include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
-#include "xla/backends/cpu/runtime/xnnpack/xnn_threadpool.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_threadpool.h"
 #include "xla/executable_run_options.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
-#include "xla/service/global_device_id.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -80,14 +81,16 @@ absl::string_view Thunk::KindToString(Kind kind) {
       return "replica-id";
     case Kind::kRngGetAndUpdateState:
       return "rng-get-and-update-state";
+    case Kind::kRngSeed:
+      return "rng-seed";
     case Kind::kSort:
       return "sort";
     case Kind::kTopK:
       return "topk";
     case Kind::kWhile:
       return "while";
-    case Kind::kXnnFusion:
-      return "xnn-fusion";
+    case Kind::kYnnFusion:
+      return "ynn-fusion";
     case Kind::kOneDnnFusion:
       return "onednn-fusion";
   }
@@ -158,14 +161,14 @@ Thunk::CustomCallExecuteParams::CustomCallExecuteParams(
       intra_op_thread_pool(intra_op_thread_pool),
       ffi_execution_context(ffi_execution_context) {}
 
-absl::StatusOr<Thunk::XnnParams> Thunk::XnnParams::Create(
+absl::StatusOr<Thunk::YnnParams> Thunk::YnnParams::Create(
     const ExecutableRunOptions* run_options) {
-  TF_ASSIGN_OR_RETURN(XnnThreadpool threadpool,
-                      CreateXnnThreadpool(run_options->intra_op_thread_pool()));
-  return XnnParams(std::move(threadpool));
+  ASSIGN_OR_RETURN(YnnThreadpool threadpool,
+                   CreateYnnThreadpool(run_options->intra_op_thread_pool()));
+  return YnnParams(std::move(threadpool));
 }
 
-Thunk::XnnParams::XnnParams(XnnThreadpool threadpool)
+Thunk::YnnParams::YnnParams(YnnThreadpool threadpool)
     : threadpool(std::move(threadpool)) {}
 
 Thunk::ExecuteSession::ExecuteSession(int64_t max_workers,
@@ -231,9 +234,9 @@ static void ForEach(const ThunkSequence& sequence,
 static absl::Status ForEach(const ThunkSequence& sequence,
                             absl::FunctionRef<absl::Status(const Thunk&)> fn) {
   for (auto& thunk : sequence) {
-    TF_RETURN_IF_ERROR(fn(*thunk));
+    RETURN_IF_ERROR(fn(*thunk));
     for (auto& [name, nested] : thunk->nested_thunks()) {
-      TF_RETURN_IF_ERROR(ForEach(*nested, fn));
+      RETURN_IF_ERROR(ForEach(*nested, fn));
     }
   }
   return absl::OkStatus();

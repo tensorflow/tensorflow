@@ -28,16 +28,16 @@ class AttrView {
  public:
   explicit AttrView(AttrSpec attr) : attr_(attr) {}
 
-  string VariableName() const;
-  string VariableType() const;
-  string AttrNameString() const;
-  string VariableStrLen() const;
-  string VariableSpanData() const;
-  string VariableSpanLen() const;
-  string DefaultValue() const;
-  string InputArg(bool with_default_value) const;
-  string SetterMethod() const;
-  std::vector<string> SetterArgs() const;
+  std::string VariableName() const;
+  std::string VariableType() const;
+  std::string AttrNameString() const;
+  std::string VariableStrLen() const;
+  std::string VariableSpanData() const;
+  std::string VariableSpanLen() const;
+  std::string DefaultValue() const;
+  std::string InputArg(bool with_default_value) const;
+  std::string SetterMethod() const;
+  std::vector<std::string> SetterArgs() const;
 
  private:
   AttrSpec attr_;

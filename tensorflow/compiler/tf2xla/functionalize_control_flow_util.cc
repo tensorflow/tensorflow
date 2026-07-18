@@ -42,7 +42,7 @@ absl::StatusOr<Node*> BuildRetvalNode(Graph* graph, DataType type, int index) {
 
 absl::Status ExtractWhileLoopFrames(
     const std::vector<ControlFlowInfo>& cf_info, const Graph* graph,
-    std::unordered_map<string, WhileLoopFrame>* frames,
+    std::unordered_map<std::string, WhileLoopFrame>* frames,
     const NodeFilter& node_filter) {
   for (Node* node : graph->op_nodes()) {
     const ControlFlowInfo& cf = cf_info[node->id()];
@@ -92,8 +92,9 @@ absl::Status CheckNodeNotInCycle(const Node* node, const int num_nodes) {
     visited[current_node->id()] = true;
     for (const Edge* out : current_node->out_edges()) {
       if (out->dst() == node) {
-        return errors::Internal("Detected a cycle: ", FormatNodeForError(*node),
-                                " (", node->def().op(), ") feeds into itself.");
+        return absl::InternalError(
+            absl::StrCat("Detected a cycle: ", FormatNodeForError(*node), " (",
+                         node->def().op(), ") feeds into itself."));
       } else if (!visited[out->dst()->id()]) {
         ready.push_back(out->dst());
       }

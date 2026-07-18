@@ -48,7 +48,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 
 using absl::StrAppend;
@@ -307,24 +306,37 @@ bool ComputeRelativeLocation::AddControlDependenceForUnorderedOps() {
   PredecessorHloOrdering* ordering =
       dynamic_cast<PredecessorHloOrdering*>(ordering_);
   if (ordering == nullptr) {
-    // Support force ordering of unordered-ops only when using predecssor
+    // Support force ordering of unordered-ops only when using predecessor
     // ordering.
     return false;
   }
+  // NOLINTNEXTLINE computation order is not important for correctness.
   for (const auto& comp_it : ctrl_deps_) {
     HloComputation* parent = comp_it.first;
     HloReachabilityMap& reachability_map = ordering->reachability_map(parent);
+    absl::flat_hash_map<const HloInstruction*,
+                        absl::flat_hash_set<const HloInstruction*>>
+        to_update;
+    // NOLINTNEXTLINE the loop aggregation is order independent.
     for (const auto& instr_it : comp_it.second) {
-      HloInstruction* entry1 = instr_it.first;
-      for (HloInstruction* entry2 : instr_it.second) {
-        VLOG(3) << "   Adding control dependence between:";
-        VLOG(3) << "     predecessor: " << entry2->name();
-        VLOG(3) << "       successor: " << entry1->name();
-        TF_CHECK_OK(entry2->AddControlDependencyTo(entry1));
+      HloInstruction* successor = instr_it.first;
+      for (HloInstruction* predecessor : instr_it.second) {
+        VLOG(3) << "   Adding control dependence between predecessor: "
+                << predecessor->name()
+                << " and successor: " << successor->name();
+        CHECK_OK(predecessor->AddControlDependencyTo(successor));
+        to_update[successor].insert(predecessor);
       }
-      reachability_map.UpdateReachabilityThroughInstruction(entry1);
-      for (HloInstruction* entry2 : instr_it.second) {
-        DCHECK(ordering_->GetExecutionConstraint(entry1, entry2) ==
+    }
+    // Adding all control dependencies and updating in one go is more efficient
+    // than calling UpdateReachabilityThroughInstruction for each new
+    // dependence.
+    reachability_map.UpdateMultipleInstructions(std::move(to_update));
+    // NOLINTNEXTLINE the order has no effect on the correctness.
+    for (const auto& instr_it : comp_it.second) {
+      const HloInstruction* successor = instr_it.first;
+      for (const HloInstruction* predecessor : instr_it.second) {
+        DCHECK(ordering_->GetExecutionConstraint(successor, predecessor) ==
                HloOrdering::ExecutionConstraint::kRunAfter);
       }
     }
@@ -347,8 +359,9 @@ bool ComputeRelativeLocation::ForceRuntimeOrder(
                "kBeforeStart or kAfterEnd";
     return false;
   }
-  auto ModifiesNonCopy = [](HloInstruction* instr, const HloInstruction* op) {
-    auto in_place = HloDataflowAnalysis::GetInPlaceInputOutputPairs(instr);
+  auto ModifiesNonCopy = [this](HloInstruction* instr,
+                                const HloInstruction* op) {
+    auto in_place = alias_info_->GetInPlaceInputOutputPairs(instr);
     if (in_place.empty()) {
       return false;
     }
@@ -436,7 +449,7 @@ bool ComputeRelativeLocation::InstructionCanIntercept(
     // If the instruction only uses the value, it can intercept only if it
     // modifies the buffer in place.
     for (const auto& operand_and_output_index :
-         HloDataflowAnalysis::GetInPlaceInputOutputPairs(instr)) {
+         alias_info_->GetInPlaceInputOutputPairs(instr)) {
       const HloOperandIndex& operand_index = operand_and_output_index.first;
       if (region.contains(
               instr->mutable_operand(operand_index.operand_number))) {
@@ -577,21 +590,28 @@ Relation::RuntimeOrder ComputeRelativeLocation::ComputeRuntimeOrdering(
         }
         return false;
       };
-      if (!ctrl_deps_.empty()) {
-        auto ctrl_deps = ctrl_deps_[instr1->parent()];
-        if (absl::c_any_of(ctrl_deps[instr2], [&](HloInstruction* pred2) {
-              return ControlDependenceBefore(instr1, pred2);
-            })) {
-          VLOG(2) << "control-dependent: " << instr1->name() << " vs "
-                  << instr2->name();
-          return Save(instr1, instr2, Relation::kBeforeStart);
+      if (auto ctrl_deps_it = ctrl_deps_.find(instr1->parent());
+          ctrl_deps_it != ctrl_deps_.end()) {
+        const auto& ctrl_deps = ctrl_deps_it->second;
+        if (auto instr2_deps = ctrl_deps.find(instr2);
+            instr2_deps != ctrl_deps.end()) {
+          if (absl::c_any_of(instr2_deps->second, [&](HloInstruction* pred2) {
+                return ControlDependenceBefore(instr1, pred2);
+              })) {
+            VLOG(2) << "control-dependent: " << instr1->name() << " vs "
+                    << instr2->name();
+            return Save(instr1, instr2, Relation::kBeforeStart);
+          }
         }
-        if (absl::c_any_of(ctrl_deps[instr1], [&](HloInstruction* pred1) {
-              return ControlDependenceBefore(instr2, pred1);
-            })) {
-          VLOG(2) << "control-dependent: " << instr2->name() << " vs "
-                  << instr1->name();
-          return Save(instr1, instr2, Relation::kAfterEnd);
+        if (auto instr1_deps = ctrl_deps.find(instr1);
+            instr1_deps != ctrl_deps.end()) {
+          if (absl::c_any_of(instr1_deps->second, [&](HloInstruction* pred1) {
+                return ControlDependenceBefore(instr2, pred1);
+              })) {
+            VLOG(2) << "control-dependent: " << instr2->name() << " vs "
+                    << instr1->name();
+            return Save(instr1, instr2, Relation::kAfterEnd);
+          }
         }
       }
       // Don't save the result for unordered operations, so they can be
@@ -661,8 +681,17 @@ CopyRemover::CopyRemover(
         }
       };
 
-  CHECK(module.has_entry_computation());
-  assign_ids_dfs(module.entry_computation());
+  // Generate instruction ids for all instructions in the module, starting at
+  // the entry computation, processing instructions post-order and recursing
+  // depth-first into called computations, then iterate through all computations
+  // and call assign_ids_dfs on any that haven't been visited yet.
+  if (module.has_entry_computation()) {
+    assign_ids_dfs(module.entry_computation());
+  }
+  for (HloComputation* computation :
+       module.MakeComputationSorted(execution_threads)) {
+    assign_ids_dfs(computation);
+  }
 
   // Construct a list for each HLO buffer in the alias analysis. Maintain a
   // map from HloValue to the respective list element representing that
@@ -695,9 +724,19 @@ CopyRemover::CopyRemover(
           if (a == b) {
             return false;
           }
-          const bool a_has_smaller_id =
-              instruction_ids.at(a->defining_instruction()->unique_id()) <
-              instruction_ids.at(b->defining_instruction()->unique_id());
+
+          // instrion_ids does not contain entries for instructions in dead
+          // computations.
+          int64_t a_id =
+              a->defining_instruction()->parent()->IsDeadComputation()
+                  ? 0
+                  : instruction_ids.at(a->defining_instruction()->unique_id());
+          int64_t b_id =
+              b->defining_instruction()->parent()->IsDeadComputation()
+                  ? 0
+                  : instruction_ids.at(b->defining_instruction()->unique_id());
+
+          const bool a_has_smaller_id = a_id < b_id;
           // Use a_has_smaller_id as a hint for the order between a and b. In
           // case it's right, there is no need for two IsDefinedBefore() tests.
           if (a_has_smaller_id) {
@@ -731,7 +770,7 @@ CopyRemover::CopyRemover(
   CreateCopyMap(module, value_to_node);
 
   XLA_VLOG_LINES(3, ToString());
-  TF_DCHECK_OK(Verify());
+  DCHECK_OK(Verify());
 }
 
 // Add a list containing the given values to CopyRemover. This
@@ -857,7 +896,13 @@ LiveRangeRegions CopyRemover::ComputeLiveRangeRegions(const ValueNode* head) {
 // and true is returned. Returns false otherwise.
 bool CopyRemover::TryElideCopy(
     const HloInstruction* copy, int64_t* region_analysis_limit,
-    bool insert_post_scheduling_control_dependencies) {
+    bool insert_post_scheduling_control_dependencies,
+    std::function<bool(const HloInstruction* copy)> should_skip_removal) {
+  if (should_skip_removal != nullptr && should_skip_removal(copy)) {
+    VLOG(2) << copy->name()
+            << " is skipped due to should_skip_removal function.";
+    return false;
+  }
   VLOG(3) << "TryElideCopy starting for: " << copy->name();
   CHECK_NE(region_analysis_limit, nullptr);
 
@@ -1193,7 +1238,7 @@ bool CopyRemover::TryElideCopy(
   RemoveCopyValue(copy_node.dest);
 
   XLA_VLOG_LINES(4, ToString());
-  TF_DCHECK_OK(Verify());
+  DCHECK_OK(Verify());
   VLOG(3) << "TryElideCopy succeeded for: " << copy->name();
   return true;
 }
@@ -1294,7 +1339,7 @@ bool CopyRemover::ValuesInterfere(const ValueNode* src, const ValueNode* dest,
   VLOG(5) << "    ValuesInterfere destination live range:\n"
           << dest_live_range.ToString();
 
-  ComputeRelativeLocation relative_location_analysis(ordering_);
+  ComputeRelativeLocation relative_location_analysis(ordering_, alias_info_);
   auto rel1 = relative_location_analysis.ComputeBetweenLiveRangeRegions(
       src_live_range, dest_live_range);
   VLOG(3) << "    ValuesInterfere - location of dest in relation to src: ";

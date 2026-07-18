@@ -18,7 +18,7 @@ from absl.testing import absltest
 import numpy as np
 
 from google.protobuf.message import DecodeError
-from local_xla.xla import xla_data_pb2
+from xla import xla_data_pb2
 from tensorflow.python.compiler.xla.experimental import xla_sharding
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -46,7 +46,7 @@ class ShardingTest(test_util.TensorFlowTestCase):
                           xla_sharding.Sharding)
     self.assertIsInstance(xla_sharding.Sharding.manual(), xla_sharding.Sharding)
     self.assertIsInstance(
-        xla_sharding.Sharding.assign_device(0), xla_sharding.Sharding)
+        xla_sharding.Sharding.single_device(0), xla_sharding.Sharding)
     self.assertIsInstance(
         xla_sharding.Sharding.tile(np.ones([3], dtype=int)),
         xla_sharding.Sharding)

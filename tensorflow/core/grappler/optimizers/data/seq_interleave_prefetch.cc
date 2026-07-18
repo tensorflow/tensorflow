@@ -192,7 +192,7 @@ absl::Status CreateAndAppendPrefetchNode(MutableGraphView* graph,
   // 1. Find the position for the `prefetch` node.
   const NodeDef* add_after = get_last_dataset_op_node();
   if (add_after == nullptr) {
-    return errors::NotFound(
+    return absl::NotFoundError(
         "Could not find any dataset node to append `Prefetch` at its output in "
         "`seq_interleave_prefetch` rewrite");
   }
@@ -252,10 +252,10 @@ absl::Status CreateAndAppendPrefetchNode(MutableGraphView* graph,
   return absl::OkStatus();
 }
 
-absl::Status AddInterleaveNode(MutableGraphView* graph,
-                               const NodeDef& parallel_interleave_node,
-                               const std::string& interleave_map_func_name,
-                               absl::flat_hash_set<string>& nodes_to_delete) {
+absl::Status AddInterleaveNode(
+    MutableGraphView* graph, const NodeDef& parallel_interleave_node,
+    const std::string& interleave_map_func_name,
+    absl::flat_hash_set<std::string>& nodes_to_delete) {
   NodeDef interleave_node;
   interleave_node.set_op(kInterleaveDatasetOpName);
   graph_utils::SetUniqueGraphNodeName(
@@ -327,7 +327,7 @@ absl::Status SeqInterleavePrefetch::OptimizeAndCollectStats(
     OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
-  absl::flat_hash_set<string> nodes_to_delete;
+  absl::flat_hash_set<std::string> nodes_to_delete;
   FunctionLibraryDefinition fld(OpRegistry::Global(), item.graph.library());
 
   for (const NodeDef& node : item.graph.node()) {

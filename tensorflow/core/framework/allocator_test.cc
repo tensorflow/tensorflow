@@ -34,7 +34,7 @@ namespace tensorflow {
 
 static void CheckStats(Allocator* a, int64_t num_allocs, int64_t bytes_in_use,
                        int64_t peak_bytes_in_use, int64_t largest_alloc_size) {
-  absl::optional<AllocatorStats> stats = a->GetStats();
+  std::optional<AllocatorStats> stats = a->GetStats();
   EXPECT_TRUE(stats);
   if (!stats) {
     return;
@@ -210,7 +210,7 @@ TEST(CPUAllocatorTest, Sizes) {
 
 TEST(CPUAllocatorTest, ProfilerReporting) {
   // TODO(b/196611863): Make debugging work even without GetAllocatedSize.
-  void* p = port::AlignedMalloc(8, 1);
+  void* p = tsl::port::AlignedMalloc(8, static_cast<std::align_val_t>(1));
   const std::size_t alloc_size = port::MallocExtension_GetAllocatedSize(p);
   port::AlignedFree(p);
   if (alloc_size == 0) {
@@ -255,7 +255,7 @@ TEST(CPUAllocatorTest, ProfilerReporting) {
   EXPECT_EQ(e0.Name(), "MemoryAllocation")
       << "XSpace: " << xspace.DebugString();
   {
-    absl::optional<std::string> bytes_allocated, peak_bytes_in_use,
+    std::optional<std::string> bytes_allocated, peak_bytes_in_use,
         requested_bytes, allocation_bytes;
     e0.ForEachStat([&](const ::tensorflow::profiler::XStatVisitor& stat) {
       LOG(ERROR) << "STAT " << stat.Name() << ": " << stat.ToString();
@@ -282,7 +282,7 @@ TEST(CPUAllocatorTest, ProfilerReporting) {
   EXPECT_EQ(e1.Name(), "MemoryDeallocation")
       << "XSpace: " << xspace.DebugString();
   {
-    absl::optional<std::string> bytes_allocated, peak_bytes_in_use,
+    std::optional<std::string> bytes_allocated, peak_bytes_in_use,
         allocation_bytes;
     e1.ForEachStat([&](const ::tensorflow::profiler::XStatVisitor& stat) {
       if (stat.Name() == "bytes_allocated") {

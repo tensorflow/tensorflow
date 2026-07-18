@@ -40,20 +40,20 @@ namespace tensorflow {
 
 // "Dense" feature configuration.
 struct FixedLenFeature {
-  string key;
+  std::string key;
   DataType dtype;
   TensorShape shape;
   Tensor default_value;
-  string values_output_tensor_name;
+  std::string values_output_tensor_name;
 };
 
 // "Sparse" feature configuration.
 struct VarLenFeature {
-  string key;
+  std::string key;
   DataType dtype;
-  string values_output_tensor_name;
-  string indices_output_tensor_name;
-  string shapes_output_tensor_name;
+  std::string values_output_tensor_name;
+  std::string indices_output_tensor_name;
+  std::string shapes_output_tensor_name;
 };
 
 // Given a single tensorflow::Example, with an optional example name
@@ -77,7 +77,7 @@ struct VarLenFeature {
 // CopyIntoSparseTensor can be used to copy from the temporary vector
 // into the final allocated tensors.
 absl::Status SingleExampleProtoToTensors(
-    const Example& example, const string& name, int batch_index,
+    const Example& example, const std::string& name, int batch_index,
     const std::vector<FixedLenFeature>& fixed_len_features,
     const std::vector<VarLenFeature>& var_len_features,
     std::vector<Tensor*>* output_dense_values_tensor,
@@ -111,7 +111,7 @@ absl::Status GetSparseTensorShapes(const VarLenFeature& var_len_feature,
 // allocated using a provided Allocator within this method.
 absl::Status BatchExampleProtoToTensors(
     const std::vector<const Example*>& examples,
-    const std::vector<string>& names,
+    const std::vector<std::string>& names,
     const std::vector<FixedLenFeature>& fixed_len_features,
     const std::vector<VarLenFeature>& var_len_features, Allocator* allocator,
     std::vector<Tensor>* output_dense_values_tensor,
@@ -130,8 +130,8 @@ absl::Status CheckTypesMatch(const Feature& feature, const DataType& dtype,
 
 // For a single Example, copy a dense feature value into an output
 // dense value tensor Out at the provided out_index offset.
-absl::Status FeatureDenseCopy(std::size_t out_index, const string& name,
-                              const string& key, const DataType& dtype,
+absl::Status FeatureDenseCopy(std::size_t out_index, const std::string& name,
+                              const std::string& key, const DataType& dtype,
                               const TensorShape& shape, const Feature& feature,
                               Tensor* out);
 
@@ -142,7 +142,7 @@ void RowDenseCopy(const std::size_t& out_index, const DataType& dtype,
 
 // For a single Example, and given sparse feature return a temporary output
 // Tensor suitable for being collected in the temporary sparse value vector.
-Tensor FeatureSparseCopy(std::size_t batch, const string& key,
+Tensor FeatureSparseCopy(std::size_t batch, const std::string& key,
                          const DataType& dtype, const Feature& feature);
 
 // Copy a temporary Tensor into the final sparse indices and values
@@ -183,7 +183,8 @@ struct ParseExampleAttrs {
             ctx->GetAttr("ragged_split_types", &ragged_split_types));
         break;
       default:
-        return errors::InvalidArgument("Unexpected op_version", op_version);
+        return absl::InvalidArgumentError(
+            absl::StrCat("Unexpected op_version", op_version));
     }
     return FinishInit(op_version);
   }
@@ -221,9 +222,10 @@ struct ParseSingleExampleAttrs {
     int num_sparse;
     TF_RETURN_IF_ERROR(ctx->GetAttr("num_sparse", &num_sparse));
     if (num_sparse != sparse_keys.size() || num_sparse != sparse_types.size()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "num_sparse (", num_sparse, ") must match the size of sparse_keys (",
-          sparse_keys.size(), ") and sparse_types (", sparse_types.size(), ")");
+          sparse_keys.size(), ") and sparse_types (", sparse_types.size(),
+          ")"));
     }
 
     TF_RETURN_IF_ERROR(
@@ -251,10 +253,10 @@ struct ParseSequenceExampleAttrs {
   absl::Status Init(ContextType* ctx, int op_version = 1) {
     switch (op_version) {
       case 1: {
-        std::vector<string> missing_empty_vector;
+        std::vector<std::string> missing_empty_vector;
         TF_RETURN_IF_ERROR(ctx->GetAttr(
             "feature_list_dense_missing_assumed_empty", &missing_empty_vector));
-        for (const string& feature : missing_empty_vector) {
+        for (const std::string& feature : missing_empty_vector) {
           feature_list_dense_missing_assumed_empty.insert(feature);
         }
       }
@@ -279,7 +281,8 @@ struct ParseSequenceExampleAttrs {
                                         &feature_list_ragged_split_types));
         break;
       default:
-        return errors::InvalidArgument("Unexpected op_version", op_version);
+        return absl::InvalidArgumentError(
+            absl::StrCat("Unexpected op_version", op_version));
     }
     TF_RETURN_IF_ERROR(
         ctx->GetAttr("context_sparse_types", &context_sparse_types));
@@ -300,7 +303,7 @@ struct ParseSequenceExampleAttrs {
     return FinishInit(op_version);
   }
 
-  std::unordered_set<string> feature_list_dense_missing_assumed_empty;
+  std::unordered_set<std::string> feature_list_dense_missing_assumed_empty;
   int64_t num_context_sparse;
   int64_t num_context_dense;
   int64_t num_context_ragged;

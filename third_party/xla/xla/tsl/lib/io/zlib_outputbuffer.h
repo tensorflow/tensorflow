@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef XLA_TSL_LIB_IO_ZLIB_OUTPUTBUFFER_H_
 #define XLA_TSL_LIB_IO_ZLIB_OUTPUTBUFFER_H_
 
-#include <zlib.h>
-
 #include <string>
 
 #include "xla/tsl/lib/io/zlib_compression_options.h"
@@ -27,6 +25,10 @@ limitations under the License.
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/stringpiece.h"
+
+struct z_stream_s;
+typedef z_stream_s z_stream;
+typedef unsigned char Bytef;
 
 namespace tsl {
 namespace io {
@@ -126,7 +128,7 @@ class ZlibOutputBuffer : public WritableFile {
   void AddToInputBuffer(absl::string_view data);
 
   // Returns the total space available in z_input_stream_ buffer.
-  int32 AvailableInputSpace() const;
+  int32_t AvailableInputSpace() const;
 
   // Deflate contents in z_stream_input_ and store results in z_stream_output_.
   // The contents of output stream are written to file if more space is needed.
@@ -145,9 +147,7 @@ class ZlibOutputBuffer : public WritableFile {
   // Calls `deflate()` and returns DataLoss Status if it failed.
   absl::Status Deflate(int flush);
 
-  static bool IsSyncOrFullFlush(uint8 flush_mode) {
-    return flush_mode == Z_SYNC_FLUSH || flush_mode == Z_FULL_FLUSH;
-  }
+  static bool IsSyncOrFullFlush(uint8_t flush_mode);
 
   ZlibOutputBuffer(const ZlibOutputBuffer&) = delete;
   void operator=(const ZlibOutputBuffer&) = delete;

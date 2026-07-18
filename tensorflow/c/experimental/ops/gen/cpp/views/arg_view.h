@@ -29,9 +29,9 @@ class ArgView {
  public:
   explicit ArgView(ArgSpec arg);
 
-  string VariableName() const;
-  string SetterMethod() const;
-  std::vector<string> SetterArgs() const;
+  std::string VariableName() const;
+  std::string SetterMethod() const;
+  std::vector<std::string> SetterArgs() const;
   int Position() const;
 
   bool IsList() const;

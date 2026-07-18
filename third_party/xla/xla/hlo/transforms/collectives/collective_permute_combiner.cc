@@ -21,6 +21,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
@@ -28,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/collective_combiner_utils.h"
@@ -55,9 +58,21 @@ absl::Status CombineCollectivePermutes(
   HloComputation& computation = *to_combine.back()->parent();
 
   // Create a single bigger CollectivePermute of the operands of the smaller
-  // CollectivePermutes.
+  // CollectivePermutes, deduplicating identical operands if
+  // xla_enable_enzyme_comms_opt is true.
   std::vector<HloInstruction*> operands;
   std::vector<const Shape*> operand_shapes;
+
+  const bool enable_enzyme_comms_opt = to_combine.front()
+                                           ->parent()
+                                           ->parent()
+                                           ->config()
+                                           .debug_options()
+                                           .xla_enable_enzyme_comms_opt();
+
+  absl::flat_hash_map<HloInstruction*, int64_t> op_to_index;
+  std::vector<int64_t> forward_indices;
+
   const auto source_target_pairs = to_combine.at(0)->source_target_pairs();
   VLOG(1) << "Combining set";
   for (HloInstruction* hlo : to_combine) {
@@ -65,25 +80,69 @@ absl::Status CombineCollectivePermutes(
     TF_RET_CHECK(hlo->opcode() == HloOpcode::kCollectivePermute);
     TF_RET_CHECK(hlo->operand_count() == 1);
     TF_RET_CHECK(hlo->shape().IsArray());
-    TF_RET_CHECK(hlo->source_target_pairs() == source_target_pairs);
-    operands.push_back(hlo->operands().front());
-    operand_shapes.push_back(&hlo->operands().front()->shape());
+
+    if (hlo->parent()
+            ->parent()
+            ->config()
+            .debug_options()
+            .xla_enable_enzyme_comms_opt()) {
+      std::vector<std::pair<int64_t, int64_t>> sorted_source_target_pairs =
+          source_target_pairs;
+      absl::c_sort(sorted_source_target_pairs);
+      std::vector<std::pair<int64_t, int64_t>> sorted_hlo_source_target_pairs =
+          hlo->source_target_pairs();
+      absl::c_sort(sorted_hlo_source_target_pairs);
+      TF_RET_CHECK(sorted_source_target_pairs ==
+                   sorted_hlo_source_target_pairs);
+    } else {
+      TF_RET_CHECK(hlo->source_target_pairs() == source_target_pairs);
+    }
+    HloInstruction* op = hlo->operands().front();
+    if (enable_enzyme_comms_opt) {
+      auto it = op_to_index.find(op);
+      if (it == op_to_index.end()) {
+        int64_t new_index = operands.size();
+        op_to_index[op] = new_index;
+        operands.push_back(op);
+        operand_shapes.push_back(&op->shape());
+        forward_indices.push_back(new_index);
+      } else {
+        forward_indices.push_back(it->second);
+      }
+    } else {
+      operands.push_back(op);
+      operand_shapes.push_back(&op->shape());
+    }
   }
 
   HloInstruction* combined;
-  // CollectivePermute ops with more than one operand produce a tuple.
-  TF_RET_CHECK(operands.size() >= 2);
-  combined = computation.AddInstruction(HloInstruction::CreateCollectivePermute(
-      ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes), operands,
-      source_target_pairs, to_combine.front()->channel_id()));
+  if (operands.size() == 1) {
+    combined =
+        computation.AddInstruction(HloInstruction::CreateCollectivePermute(
+            to_combine.front()->shape(), operands.front(), source_target_pairs,
+            to_combine.front()->channel_id()));
+  } else {
+    combined =
+        computation.AddInstruction(HloInstruction::CreateCollectivePermute(
+            ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes), operands,
+            source_target_pairs, to_combine.front()->channel_id()));
+  }
 
-  // Replace all the smaller CollectivePermutes with elements of the tuple
-  // output of the single bigger CollectivePermute.
+  combined->set_metadata(MergeMetadata(to_combine));
+  combined->set_frontend_attributes(MergeFrontendAttributes(to_combine));
+
+  // Replace all the smaller CollectivePermutes with either the combined
+  // CollectivePermute or elements of the tuple output.
   for (int64_t i = 0; i < to_combine.size(); ++i) {
-    auto replace_with = HloInstruction::CreateGetTupleElement(
-        to_combine[i]->shape(), combined, i);
-    TF_RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
-        to_combine[i], std::move(replace_with)));
+    if (operands.size() == 1) {
+      RETURN_IF_ERROR(computation.ReplaceInstruction(to_combine[i], combined));
+    } else {
+      int64_t index = enable_enzyme_comms_opt ? forward_indices[i] : i;
+      auto replace_with = HloInstruction::CreateGetTupleElement(
+          to_combine[i]->shape(), combined, index);
+      RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
+          to_combine[i], std::move(replace_with)));
+    }
   }
   return absl::OkStatus();
 }
@@ -94,7 +153,7 @@ CollectivePermuteCombiner::CollectivePermuteCombiner(
     : combine_threshold_in_bytes_(combine_threshold_in_bytes),
       combine_threshold_count_(combine_threshold_count) {}
 
-absl::StatusOr<bool> CollectivePermuteCombiner::Run(
+absl::StatusOr<bool> CollectivePermuteCombiner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "Running CollectivePermuteCombiner with threshold of "
@@ -116,7 +175,7 @@ absl::StatusOr<bool> CollectivePermuteCombiner::Run(
       return GetCollectivePermuteKey(instruction);
     };
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         bool computation_changed,
         CombineInstructionsByKey<CollectivePermuteKey>(
             computation, key_fn, &CombineCollectivePermutes,

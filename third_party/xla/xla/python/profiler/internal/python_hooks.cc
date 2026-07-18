@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
+#include "xla/python/profiler/internal/traceme_state.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
@@ -138,6 +139,19 @@ PythonHooks* PythonHooks::GetSingleton() {
   return singleton;
 }
 
+PythonHookContext::~PythonHookContext() {
+  if (Py_IsInitialized()) {
+    PyGILState_STATE gil_state = PyGILState_Ensure();
+    for (auto& shard : entry_shards_) {
+#ifdef Py_GIL_DISABLED
+      absl::MutexLock lock(&shard.mu);
+#endif  // Py_GIL_DISABLED
+      shard.entries.clear();
+    }
+    PyGILState_Release(gil_state);
+  }
+}
+
 void PythonHookContext::Start(const PythonHooksOptions& options) {
   if (!Py_IsInitialized()) {
     return;
@@ -148,7 +162,7 @@ void PythonHookContext::Start(const PythonHooksOptions& options) {
   if (options_.enable_python_traceme || options_.enable_trace_python_function) {
     PyGILState_STATE gil_state = PyGILState_Ensure();
     if (options_.enable_python_traceme) {
-      EnableTraceMe(true);
+      traceme_enabled = true;
     }
     if (options_.enable_trace_python_function) {
       SetProfilerInAllThreads();
@@ -187,7 +201,7 @@ void PythonHookContext::Stop() {
       ClearProfilerInAllThreads();
     }
     if (options_.enable_python_traceme) {
-      EnableTraceMe(false);
+      traceme_enabled = false;
     }
     PyGILState_Release(gil_state);
   }
@@ -406,17 +420,6 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
 
   // And notify the threading library that we're done.
   ThreadingSetProfile(py::none());
-}
-
-/*static*/ void PythonHookContext::EnableTraceMe(bool enable) {
-  const char* kModuleName =
-      "tensorflow.python.profiler.trace";
-  try {
-    auto trace_module = py::module::import(kModuleName);
-    trace_module.attr("enabled") = py::bool_(enable);
-  } catch (const py::error_already_set& e) {
-    LOG(INFO) << "Can't import " << kModuleName;
-  }
 }
 
 }  // namespace profiler

@@ -2,7 +2,7 @@
 # Tensorflow default op definitions.
 
 load(
-    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "@xla//xla/tsl/mkl:build_defs.bzl",
     "if_mkl",
 )
 load(
@@ -98,6 +98,7 @@ tf_gen_op_libs(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -418,16 +419,37 @@ cc_library(
 
 filegroup(
     name = "portable_op_registrations_and_gradients",
+    srcs = [
+        ":mobile_hdrs",
+        ":mobile_srcs",
+    ],
+)
+
+filegroup(
+    name = "mobile_srcs",
     srcs = ["//tensorflow/c/kernels:portable_all_ops"] + glob(
         [
             "**/*.cc",
-            "**/*.h",
         ],
         exclude = [
             "**/*test.cc",
             "**/*testutil*",
             "**/*testlib*",
             "**/*main.cc",
+            "**/tpu_*",
+        ],
+    ),
+)
+
+filegroup(
+    name = "mobile_hdrs",
+    srcs = glob(
+        [
+            "**/*.h",
+        ],
+        exclude = [
+            "**/*testutil*",
+            "**/*testlib*",
             "**/tpu_*",
         ],
     ),

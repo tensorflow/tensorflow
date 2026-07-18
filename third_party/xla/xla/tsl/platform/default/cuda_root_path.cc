@@ -36,14 +36,35 @@ limitations under the License.
 #endif
 #include "xla/tsl/platform/logging.h"
 
+#ifndef CUDA_NVCC_REPO_NAME
+#define CUDA_NVCC_REPO_NAME "cuda_nvcc"
+#endif
+
+#ifndef CUDA_NVDISASM_REPO_NAME
+#define CUDA_NVDISASM_REPO_NAME "cuda_nvdisasm"
+#endif
+
+#ifndef NVIDIA_NVSHMEM_REPO_NAME
+#define NVIDIA_NVSHMEM_REPO_NAME "nvidia_nvshmem"
+#endif
+
+#ifndef CUDA_NVVM_REPO_NAME
+#define CUDA_NVVM_REPO_NAME "cuda_nvvm"
+#endif
+
+#ifndef CUDA_CUDART_REPO_NAME
+#define CUDA_CUDART_REPO_NAME "cuda_cudart"
+#endif
+
 namespace tsl {
 
 std::vector<std::string> CandidateCudaRoots() {
 #if !defined(PLATFORM_GOOGLE)
   auto roots = std::vector<std::string>{};
   std::string runfiles_suffix = "runfiles";
-  std::vector<std::string> cuda_dir_names = {"cuda_nvcc", "cuda_nvdisasm",
-                                             "nvidia_nvshmem", "cuda_nvvm"};
+  std::vector<std::string> cuda_dir_names = {
+      CUDA_NVCC_REPO_NAME, CUDA_NVDISASM_REPO_NAME, NVIDIA_NVSHMEM_REPO_NAME,
+      CUDA_NVVM_REPO_NAME, CUDA_CUDART_REPO_NAME};
 
   // The CUDA candidate root for c++ targets.
   std::string executable_path = tsl::Env::Default()->GetExecutablePath();
@@ -56,14 +77,23 @@ std::vector<std::string> CandidateCudaRoots() {
   // The CUDA candidate root for python targets.
   std::string runfiles_dir = tsl::Env::Default()->GetRunfilesDir();
   std::size_t runfiles_ind = runfiles_dir.rfind(runfiles_suffix);
-  for (const std::string& cuda_dir_name : cuda_dir_names) {
-    std::string cuda_dir = io::JoinPath(
-        runfiles_dir.substr(0, runfiles_ind + runfiles_suffix.length()),
-        cuda_dir_name);
-    roots.push_back(cuda_dir);
+  if (runfiles_ind != std::string::npos) {
+    for (const std::string& cuda_dir_name : cuda_dir_names) {
+      std::string cuda_dir = io::JoinPath(
+          runfiles_dir.substr(0, runfiles_ind + runfiles_suffix.length()),
+          cuda_dir_name);
+      roots.push_back(cuda_dir);
+    }
   }
 
-  roots.push_back(TF_CUDA_TOOLKIT_PATH);
+  const char* cuda_home = getenv("CUDA_HOME");
+  if (cuda_home) {
+    roots.emplace_back(cuda_home);
+  }
+  std::string cuda_toolkit_path = TF_CUDA_TOOLKIT_PATH;
+  if (!cuda_toolkit_path.empty()) {
+    roots.push_back(std::move(cuda_toolkit_path));
+  }
   roots.emplace_back(std::string("/usr/local/cuda"));
   roots.emplace_back(std::string("/opt/cuda"));
 
@@ -101,12 +131,15 @@ std::vector<std::string> CandidateCudaRoots() {
     // $CONDA_PREFIX/lib/python3.12/site-packages/pkg_name, so if we want
     // to add $CONDA_PREFIX to the candidate roots dirs we need to add
     // ../../../..
-    for (auto path : {"../../../..", "../../../../.."})
+    for (auto path : {"../../../..", "../../../../.."}) {
       roots.emplace_back(io::JoinPath(dir, path));
+    }
   }
 #endif  // defined(PLATFORM_POSIX) && !defined(__APPLE__)
 
-  for (auto root : roots) VLOG(3) << "CUDA root = " << root;
+  for (auto root : roots) {
+    VLOG(3) << "CUDA root = " << root;
+  }
   return roots;
 #else   // !defined(PLATFORM_GOOGLE)
   return {};

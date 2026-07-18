@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <optional>
 
-#include "xla/stream_executor/tpu/tpu_api.h"
-#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/tpu/tpu_api.h"
+#include "xla/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_ordinal_selector_interface.h"
 
 namespace tensorflow {
@@ -39,7 +39,7 @@ class TPUOrdinalSelector : TPUOrdinalSelectorInterface {
     stream_executor::tpu::OpsApiFn()->TfTpuOrdinalSelector_DestroyFn(
         ordinal_selector_);
   }
-  int64_t GetOrdinal(std::optional<uint64> key, int64_t* req_id) override {
+  int64_t GetOrdinal(std::optional<uint64_t> key, int64_t* req_id) override {
     int64_t ordinal;
     stream_executor::tpu::OpsApiFn()->TfTpuOrdinalSelector_GetOrdinalFn(
         ordinal_selector_, key, req_id, &ordinal);

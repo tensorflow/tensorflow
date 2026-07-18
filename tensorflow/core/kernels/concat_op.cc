@@ -15,7 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
-#include <limits>
+#include <memory>
+#include <type_traits>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
@@ -69,29 +71,29 @@ class ConcatBaseOp : public OpKernel {
                 (TensorShapeUtils::IsScalar(concat_dim_tensor.shape()) ||
                  (TensorShapeUtils::IsVector(concat_dim_tensor.shape()) &&
                   concat_dim_tensor.shape().dim_size(0) == 1)),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     axis_attribute_name_,
                     " tensor should be a scalar integer, but got shape ",
-                    concat_dim_tensor.shape().DebugString()));
+                    concat_dim_tensor.shape().DebugString())));
     int64_t concat_dim;
     // In case of ConcatV2, "axis" could be int32 or int64
     if (AxisArgName == NAME_IS_AXIS) {
-      OP_REQUIRES(
-          c,
-          (concat_dim_tensor.dtype() == DT_INT32 ||
-           concat_dim_tensor.dtype() == DT_INT64),
-          errors::InvalidArgument(axis_attribute_name_,
-                                  " tensor should be int32 or int64, but got ",
-                                  DataTypeString(concat_dim_tensor.dtype())));
+      OP_REQUIRES(c,
+                  (concat_dim_tensor.dtype() == DT_INT32 ||
+                   concat_dim_tensor.dtype() == DT_INT64),
+                  absl::InvalidArgumentError(
+                      absl::StrCat(axis_attribute_name_,
+                                   " tensor should be int32 or int64, but got ",
+                                   DataTypeString(concat_dim_tensor.dtype()))));
     } else {
       OP_REQUIRES(c, (concat_dim_tensor.dtype() == DT_INT32),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       axis_attribute_name_, " tensor should be int32, but got ",
-                      DataTypeString(concat_dim_tensor.dtype())));
+                      DataTypeString(concat_dim_tensor.dtype()))));
     }
     if (concat_dim_tensor.dtype() == DT_INT32) {
       concat_dim =
-          internal::SubtleMustCopy(concat_dim_tensor.scalar<int32>()());
+          internal::SubtleMustCopy(concat_dim_tensor.scalar<int32_t>()());
     } else {
       concat_dim =
           internal::SubtleMustCopy(concat_dim_tensor.scalar<int64_t>()());
@@ -105,10 +107,10 @@ class ConcatBaseOp : public OpKernel {
     int32_t axis = concat_dim < 0 ? concat_dim + input_dims : concat_dim;
     // concat_dim==0 allows concatenating a list of scalars into a vector.
     OP_REQUIRES(c, (0 <= axis && axis < input_dims) || concat_dim == 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "ConcatOp : Expected concatenating dimensions in the range "
                     "[",
-                    -input_dims, ", ", input_dims, "), but got ", concat_dim));
+                    -input_dims, ", ", input_dims, "), but got ", concat_dim)));
     // Note that we reduce the concat of n-dimensional tensors into a two
     // dimensional concat. Assuming the dimensions of any input/output
     // tensor are {x0, x1,...,xn-1, y0, y1,...,ym-1}, where the concat is along
@@ -125,25 +127,25 @@ class ConcatBaseOp : public OpKernel {
       const auto& in = c->input(values_input_start_index_ + i);
       OP_REQUIRES(
           c, in.dims() > 0,
-          errors::InvalidArgument("ConcatOp : Can't concatenate scalars "
-                                  "(use tf.stack instead)"));
+          absl::InvalidArgumentError("ConcatOp : Can't concatenate scalars "
+                                     "(use tf.stack instead)"));
       OP_REQUIRES(
           c, in.dims() == input_dims,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "ConcatOp : Ranks of all input tensors should match: shape[0] = ",
               input_shape.DebugString(), " vs. shape[", i,
-              "] = ", in.shape().DebugString()));
+              "] = ", in.shape().DebugString())));
       for (int j = 0; j < input_dims; ++j) {
         if (j == axis) {
           continue;
         }
-        OP_REQUIRES(
-            c, in.dim_size(j) == input_shape.dim_size(j),
-            errors::InvalidArgument("ConcatOp : Dimension ", j,
-                                    " in both shapes must be equal: "
-                                    "shape[0] = ",
-                                    input_shape.DebugString(), " vs. shape[", i,
-                                    "] = ", in.shape().DebugString()));
+        OP_REQUIRES(c, in.dim_size(j) == input_shape.dim_size(j),
+                    absl::InvalidArgumentError(
+                        absl::StrCat("ConcatOp : Dimension ", j,
+                                     " in both shapes must be equal: "
+                                     "shape[0] = ",
+                                     input_shape.DebugString(), " vs. shape[",
+                                     i, "] = ", in.shape().DebugString())));
       }
       if (in.NumElements() > 0) {
         int64_t inputs_flat_dim1 = in.NumElements() / inputs_flat_dim0;
@@ -238,18 +240,18 @@ TF_CALL_float8_e4m3fn(REGISTER_GPU);
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Concat")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("concat_dim")
                             .HostMemory("values")
                             .HostMemory("output"),
-                        ConcatOp<CPUDevice, int32>);
+                        ConcatOp<CPUDevice, int32_t>);
 REGISTER_KERNEL_BUILDER(Name("ConcatV2")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("values")
                             .HostMemory("axis")
                             .HostMemory("output"),
-                        ConcatV2Op<CPUDevice, int32>);
+                        ConcatV2Op<CPUDevice, int32_t>);
 
 template <typename ShapeType>
 class ConcatOffsetOp : public OpKernel {
@@ -291,7 +293,8 @@ class ConcatOffsetOp : public OpKernel {
     const int32_t N = ctx->num_inputs() - 1;
     const Tensor& inp0 = ctx->input(1);
     auto inp0_vec = inp0.vec<ShapeType>();
-    const int64_t cdim = internal::SubtleMustCopy(concat_dim.scalar<int32>()());
+    const int64_t cdim =
+        internal::SubtleMustCopy(concat_dim.scalar<int32_t>()());
     const int64_t dims = inp0.NumElements();
     int32_t axis = cdim < 0 ? cdim + dims : cdim;
     OP_REQUIRES(ctx, FastBoundsCheck(axis, dims),
@@ -328,25 +331,27 @@ class ConcatOffsetOp : public OpKernel {
   bool IsExpensive() override { return false; }
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("ConcatOffset").Device(DEVICE_CPU).TypeConstraint<int32>("shape_type"),
-    ConcatOffsetOp<int32>);
+REGISTER_KERNEL_BUILDER(Name("ConcatOffset")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<int32_t>("shape_type"),
+                        ConcatOffsetOp<int32_t>);
 REGISTER_KERNEL_BUILDER(Name("ConcatOffset")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("shape_type")
+                            .TypeConstraint<int32_t>("shape_type")
                             .HostMemory("concat_dim")
                             .HostMemory("shape")
                             .HostMemory("offset"),
-                        ConcatOffsetOp<int32>);
-REGISTER_KERNEL_BUILDER(
-    Name("ConcatOffset").Device(DEVICE_CPU).TypeConstraint<int64>("shape_type"),
-    ConcatOffsetOp<int64>);
+                        ConcatOffsetOp<int32_t>);
+REGISTER_KERNEL_BUILDER(Name("ConcatOffset")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<int64_t>("shape_type"),
+                        ConcatOffsetOp<int64_t>);
 REGISTER_KERNEL_BUILDER(Name("ConcatOffset")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int64>("shape_type")
+                            .TypeConstraint<int64_t>("shape_type")
                             .HostMemory("concat_dim")
                             .HostMemory("shape")
                             .HostMemory("offset"),
-                        ConcatOffsetOp<int64>);
+                        ConcatOffsetOp<int64_t>);
 
 }  // namespace tensorflow

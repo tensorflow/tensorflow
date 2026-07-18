@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/tsl/platform/errors.h"
@@ -29,12 +30,12 @@ template <typename Visitor>
 absl::Status VisitInstAndCalledButNotOperands(Visitor& visitor,
                                               const HloInstruction& inst) {
   // Visit the given instruction, and the things it calls, but not its operands.
-  TF_RETURN_IF_ERROR(visitor.DefaultAction(&inst));
+  RETURN_IF_ERROR(visitor.DefaultAction(&inst));
   for (const HloComputation* called : inst.called_computations()) {
     const HloInstruction* const root = called->root_instruction();
-    TF_RETURN_IF_ERROR(root->Accept(&visitor, /*call_finish_visit=*/false,
-                                    /*ignore_control_predecessors=*/true,
-                                    /*cross_computation=*/true));
+    RETURN_IF_ERROR(root->Accept(&visitor, /*call_finish_visit=*/false,
+                                 /*ignore_control_predecessors=*/true,
+                                 /*cross_computation=*/true));
   }
   return absl::OkStatus();
 }

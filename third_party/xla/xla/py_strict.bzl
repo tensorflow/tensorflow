@@ -1,9 +1,9 @@
 """Default (OSS) build versions of Python strict rules."""
 
-load("@local_xla//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load("@rules_python//python:py_binary.bzl", "py_binary")
 load("@rules_python//python:py_library.bzl", "py_library")
 load("@rules_python//python:py_test.bzl", "py_test")
+load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
 

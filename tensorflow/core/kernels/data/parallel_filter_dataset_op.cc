@@ -14,19 +14,30 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/parallel_filter_dataset_op.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <deque>
+#include <functional>
+#include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -77,7 +88,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
@@ -90,7 +101,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
@@ -116,7 +127,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(captured_func_->AddToGraph(ctx, b, &other_arguments,
                                                   &other_arguments_types));
     Node* num_parallel_calls = nullptr;
-    TF_RETURN_IF_ERROR(b->AddScalar(static_cast<int32>(num_parallel_calls_),
+    TF_RETURN_IF_ERROR(b->AddScalar(static_cast<int32_t>(num_parallel_calls_),
                                     &num_parallel_calls));
     AttrValue deterministic_attr;
     b->BuildAttrValue(deterministic_.String(), &deterministic_attr);
@@ -184,7 +195,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
           RecordStart(ctx);
         }
         if (cancelled_) {
-          return errors::Cancelled("Iterator was cancelled");
+          return absl::CancelledError("Iterator was cancelled");
         }
       }
       tsl::profiler::TraceMe traceme([&] {
@@ -213,7 +224,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
         cond_var_->wait(l);
       }
       if (num_calls_ != 0) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(
             "Unexpected outstanding calls encountered.");
       }
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
@@ -286,10 +297,10 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
           "parallelism",
           parallelism == -1
               ? kTraceInfoUnavailable
-              : strings::Printf("%lld", static_cast<long long>(parallelism))));
+              : absl::StrFormat("%lld", static_cast<long long>(parallelism))));
       result.push_back(std::make_pair(
           "interleave_depth",
-          strings::Printf("%lld", static_cast<long long>(interleave_depth_))));
+          absl::StrFormat("%lld", static_cast<long long>(interleave_depth_))));
       return result;
     }
 
@@ -306,7 +317,9 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
     };
 
     void CancelThreads(bool wait) TF_LOCKS_EXCLUDED(mu_) {
-      cancellation_manager_->StartCancel();
+      if (cancellation_manager_ != nullptr) {
+        cancellation_manager_->StartCancel();
+      }
       mutex_lock l(*mu_);
       cancelled_ = true;
       cond_var_->notify_all();
@@ -358,7 +371,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
         if (status.ok() && (result->predicate_values.size() != 1 ||
                             result->predicate_values[0].dtype() != DT_BOOL ||
                             result->predicate_values[0].NumElements() != 1)) {
-          result->status.Update(errors::InvalidArgument(
+          result->status.Update(absl::InvalidArgumentError(
               "Filter predicate `predicate` must return a scalar bool."));
         }
         RecordBufferEnqueue(ctx.get(), result->return_values);
@@ -411,9 +424,9 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
       if (absl::IsOutOfRange(result->status)) {
         // `predicate` may deliberately raise `errors::OutOfRange` to indicate
         // that we should terminate the iteration early.
-        return errors::InvalidArgument(
-            "Function invocation produced OutOfRangeError: ",
-            result->status.message());
+        return absl::InvalidArgumentError(
+            absl::StrCat("Function invocation produced OutOfRangeError: ",
+                         result->status.message()));
       }
       *end_of_sequence = result->end_of_input;
       return result->status;
@@ -545,8 +558,9 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(reader->ReadScalar(prefix, kSize, &size));
       size_t num_return_values = static_cast<size_t>(size);
       if (num_return_values != size) {
-        return errors::InvalidArgument(prefix, ",", kSize, ": ", size,
-                                       " is not a valid value of type size_t.");
+        return absl::InvalidArgumentError(
+            absl::StrCat(prefix, ",", kSize, ": ", size,
+                         " is not a valid value of type size_t."));
       }
       values->reserve(num_return_values);
       for (size_t j = 0; j < num_return_values; j++) {
@@ -622,7 +636,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
     // root node to this node (not including this node) in the input pipeline
     // tree. We record the interleave depth so that it can be included in the
     // trace metadata.
-    int64 interleave_depth_ = -1;
+    int64_t interleave_depth_ = -1;
     std::unique_ptr<Thread> runner_thread_ TF_GUARDED_BY(*mu_);
   };
 
@@ -637,7 +651,7 @@ ParallelFilterDatasetOp::ParallelFilterDatasetOp(OpKernelConstruction* ctx)
   OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kPredicate, /*params=*/{},
                                                &func_metadata_));
   OP_REQUIRES(ctx, func_metadata_->short_circuit_info().indices.size() <= 1,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(
                   "predicate function has more than one return value."));
   std::string deterministic;
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kDeterministic, &deterministic));

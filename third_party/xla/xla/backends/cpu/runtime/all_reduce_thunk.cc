@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/runtime/collective_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -68,13 +69,13 @@ AllReduceThunk::AllReduceThunk(Info info, ReductionKind reduction_kind,
 
 tsl::AsyncValueRef<AllReduceThunk::ExecuteEvent> AllReduceThunk::Execute(
     const ExecuteParams& params) {
-  TF_ASSIGN_OR_RETURN(OpDeviceMemory data, GetOpDeviceMemory(params));
+  ASSIGN_OR_RETURN(OpDeviceMemory data, GetOpDeviceMemory(params));
 
   VLOG(3) << absl::StreamFormat(
       "AllReduce: #source_buffers=%d, #destination_buffers=%d, "
-      "reduction_kind=%s, single_replica=%v",
-      data.source.size(), data.destination.size(),
-      ReductionKindToString(reduction_kind_), single_replica_);
+      "reduction_kind=%v, single_replica=%v",
+      data.source.size(), data.destination.size(), reduction_kind_,
+      single_replica_);
 
   for (int i = 0; i < data.source.size(); ++i) {
     VLOG(3) << absl::StreamFormat(

@@ -34,6 +34,7 @@ cc_library(
     deps = [
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:c_api_macros",
+        "//tensorflow/c:tf_buffer",
         "//tensorflow/c:tf_buffer_internal",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
@@ -46,8 +47,8 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/status",
-        "@local_xla//xla/tsl/platform:env",
-        "@local_xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -71,6 +72,6 @@ tf_cc_test(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/log:check",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )

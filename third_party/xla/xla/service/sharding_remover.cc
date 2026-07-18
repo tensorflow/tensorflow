@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -36,7 +37,7 @@ namespace xla {
 
 // Remove Sharding custom-call instruction by assigning its users to
 // to its operand.
-absl::StatusOr<bool> ShardingRemover::Run(
+absl::StatusOr<bool> ShardingRemover::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -68,11 +69,11 @@ absl::StatusOr<bool> ShardingRemover::Run(
       // ShardingGroupOp is dangling so we just remove it.
       if (instruction->custom_call_target() ==
           sdy::kShardingGroupCustomCallTargetName) {
-        TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
+        RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
         continue;
       }
 
-      TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(
+      RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(
           instruction->mutable_operand(0), name()));
       changed = true;
 
@@ -88,7 +89,7 @@ absl::StatusOr<bool> ShardingRemover::Run(
         auto copy = computation->AddInstruction(
             HloInstruction::CreateUnary(instruction->shape(), HloOpcode::kCopy,
                                         instruction->mutable_operand(0)));
-        TF_RETURN_IF_ERROR(computation->ReplaceInstruction(instruction, copy));
+        RETURN_IF_ERROR(computation->ReplaceInstruction(instruction, copy));
         instruction = copy;
       }
     }

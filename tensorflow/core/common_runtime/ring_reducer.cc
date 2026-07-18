@@ -17,9 +17,16 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <atomic>
+#include <cstdint>
 #include <functional>
+#include <limits>
+#include <string>
 #include <utility>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/collective_rma_local.h"
 #include "tensorflow/core/common_runtime/collective_util.h"
@@ -65,9 +72,15 @@ void RingReducer::Run(StatusCallback done) {
   num_subdivs_ = static_cast<int>(
       col_params_->instance.impl_details.subdiv_permutations.size());
   CHECK_GT(num_subdivs_, 0);
+  if (static_cast<int64_t>(group_size_) * static_cast<int64_t>(num_subdivs_) >
+      std::numeric_limits<int32_t>::max()) {
+    done_(absl::InvalidArgumentError(
+        "group_size * num_subdivs exceeds int32 limit"));
+    return;
+  }
 
   if (VLOG_IS_ON(1)) {
-    string buf;
+    std::string buf;
     for (int r = 0; r < col_params_->group.members.size(); ++r) {
       strings::StrAppend(&buf, "dev ", r, " : ",
                          col_params_->group.members[r].device.name(), "\n");
@@ -75,10 +88,10 @@ void RingReducer::Run(StatusCallback done) {
     for (int sd = 0;
          sd < col_params_->instance.impl_details.subdiv_permutations.size();
          ++sd) {
-      strings::StrAppend(&buf, "\nsubdiv ", sd, " perm: ");
+      absl::StrAppend(&buf, "\nsubdiv ", sd, " perm: ");
       for (auto x :
            col_params_->instance.impl_details.subdiv_permutations[sd]) {
-        strings::StrAppend(&buf, x, ", ");
+        absl::StrAppend(&buf, x, ", ");
       }
     }
     VLOG(1) << "RingReducer::Run for device " << col_ctx_->device_name
@@ -129,9 +142,9 @@ void RingReducer::ContinueAfterInputCopy() {
     // can be provided to the kernel in host memory?
     Tensor group_size_val = ca_->Scalar(group_size_);
     if (col_params_->group.device_type != "CPU") {
-      uint64 safe_alloc_frontier = col_ctx_->device->SafeAllocFrontier(0);
+      uint64_t safe_alloc_frontier = col_ctx_->device->SafeAllocFrontier(0);
       AllocationAttributes aa;
-      std::function<uint64()> freed_by_func = [this, &safe_alloc_frontier]() {
+      std::function<uint64_t()> freed_by_func = [this, &safe_alloc_frontier]() {
         safe_alloc_frontier =
             col_ctx_->device->SafeAllocFrontier(safe_alloc_frontier);
         return safe_alloc_frontier;
@@ -206,7 +219,7 @@ bool RingReducer::RunAsyncParts() {
     } else {
       mutex_lock l(status_mu_);
       status_ =
-          errors::Internal("Failed to dispatch ThenExecute in RingReducer");
+          absl::InternalError("Failed to dispatch ThenExecute in RingReducer");
       return false;
     }
   }

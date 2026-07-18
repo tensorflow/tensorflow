@@ -29,9 +29,7 @@ limitations under the License.
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/side_effect_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -57,21 +55,22 @@ TEST_F(AsyncCollectiveCreatorTest, SplitsSingleAllReduce) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_all_reduce = HloPredicateTrue;
+  config.use_generic_async_start_done = true;
   config.all_reduce_min_threshold_in_bytes = 4096;
-  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+  ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
 
   HloComputation* computation = hlo_module->entry_computation();
   ASSERT_THAT(computation, NotNull());
   ASSERT_EQ(computation->instruction_count(), 3);
   const HloInstruction* done = computation->root_instruction();
-  EXPECT_EQ(done->opcode(), HloOpcode::kAllReduceDone);
+  EXPECT_EQ(done->opcode(), HloOpcode::kAsyncDone);
   ASSERT_THAT(done->operands(), SizeIs(1));
   const HloInstruction* start = done->operand(0);
-  EXPECT_EQ(start->opcode(), HloOpcode::kAllReduceStart);
+  EXPECT_EQ(start->opcode(), HloOpcode::kAsyncStart);
 }
 
 TEST_F(AsyncCollectiveCreatorTest, SplitsSingleAllGather) {
@@ -83,20 +82,21 @@ TEST_F(AsyncCollectiveCreatorTest, SplitsSingleAllGather) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_all_gather = HloPredicateTrue;
-  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+  config.use_generic_async_start_done = true;
+  ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
 
   HloComputation* computation = hlo_module->entry_computation();
   ASSERT_THAT(computation, NotNull());
   ASSERT_EQ(computation->instruction_count(), 3);
   const HloInstruction* done = computation->root_instruction();
-  EXPECT_EQ(done->opcode(), HloOpcode::kAllGatherDone);
+  EXPECT_EQ(done->opcode(), HloOpcode::kAsyncDone);
   ASSERT_THAT(done->operands(), SizeIs(1));
   const HloInstruction* start = done->operand(0);
-  EXPECT_EQ(start->opcode(), HloOpcode::kAllGatherStart);
+  EXPECT_EQ(start->opcode(), HloOpcode::kAsyncStart);
 }
 
 TEST_F(AsyncCollectiveCreatorTest, CombinedCollectivePermute) {
@@ -112,10 +112,10 @@ TEST_F(AsyncCollectiveCreatorTest, CombinedCollectivePermute) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
-  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+  ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
 }
 
 TEST_F(AsyncCollectiveCreatorTest, SplitsSingleCollectivePermute) {
@@ -127,11 +127,11 @@ TEST_F(AsyncCollectiveCreatorTest, SplitsSingleCollectivePermute) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_collective_permute = HloPredicateTrue;
-  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+  ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
 
   HloComputation* computation = hlo_module->entry_computation();
   ASSERT_THAT(computation, NotNull());
@@ -157,11 +157,11 @@ ENTRY %module_spmd () -> f32[4,4,128] {
 }
 )");
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_collective_permute = HloPredicateTrue;
-  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+  ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
 
   HloComputation* computation = hlo_module->entry_computation();
   ASSERT_THAT(computation, NotNull());
@@ -182,14 +182,14 @@ TEST_F(AsyncCollectiveCreatorTest, SplitsSingleCollectivePermuteScheduled) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   const int64_t original_instr_sequence_size =
       hlo_module->schedule().sequence(hlo_module->entry_computation()).size();
 
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_collective_permute = HloPredicateTrue;
-  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+  ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
 
   HloComputation* computation = hlo_module->entry_computation();
   ASSERT_THAT(computation, NotNull());
@@ -212,12 +212,12 @@ TEST_F(AsyncCollectiveCreatorTest, SplitsSingleCollectiveBroadcast) {
     ROOT cb = f32[8,16] collective-broadcast(p0), replica_groups={{7,0,1,2,3,4,5,6}}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_collective_broadcast = HloPredicateTrue;
-  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+  ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
 
   HloComputation* computation = hlo_module->entry_computation();
   ASSERT_THAT(computation, NotNull());
@@ -240,11 +240,11 @@ TEST_F(AsyncCollectiveCreatorTest, SplitsSingleAllToAll) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_all_to_all = HloPredicateTrue;
-  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+  ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
   XLA_VLOG_LINES(0, hlo_module->ToString());
 
   HloComputation* computation = hlo_module->entry_computation();
@@ -273,11 +273,11 @@ TEST_F(AsyncCollectiveCreatorTest, SplitsSingleReduceScatter) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_reduce_scatter = HloPredicateTrue;
-  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+  ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
   XLA_VLOG_LINES(0, hlo_module->ToString());
 
   HloComputation* computation = hlo_module->entry_computation();
@@ -308,11 +308,11 @@ ENTRY RA2A {
 }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_ragged_all_to_all = HloPredicateTrue;
-  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+  ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
   XLA_VLOG_LINES(0, hlo_module->ToString());
 
   HloComputation* computation = hlo_module->entry_computation();
@@ -338,24 +338,24 @@ TEST_F(AsyncCollectiveCreatorTest, ControlPredecessor) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_all_gather = HloPredicateTrue;
+  config.use_generic_async_start_done = true;
   config.all_gather_min_threshold_in_bytes = 4096;
-  TF_ASSERT_OK(
+  ASSERT_OK(
       RunHloPass(AsyncCollectiveCreator(config), hlo_module.get()).status());
   SCOPED_TRACE(hlo_module->ToString());
 
   HloInstruction* start;
   HloInstruction* done;
-  ASSERT_THAT(
-      hlo_module->entry_computation()->root_instruction(),
-      GmockMatch(m::Add(m::Op(),
-                        m::Op(&done)
-                            .WithOpcode(HloOpcode::kAllGatherDone)
-                            .WithOperand(0, m::Op(&start).WithOpcode(
-                                                HloOpcode::kAllGatherStart)))));
+  ASSERT_THAT(hlo_module->entry_computation()->root_instruction(),
+              GmockMatch(m::Add(
+                  m::Op(), m::Op(&done)
+                               .WithOpcode(HloOpcode::kAsyncDone)
+                               .WithOperand(0, m::Op(&start).WithOpcode(
+                                                   HloOpcode::kAsyncStart)))));
   EXPECT_EQ(start->control_successors().size(), 0);
   ASSERT_EQ(start->control_predecessors().size(), 1);
   EXPECT_THAT(start->control_predecessors()[0], GmockMatch(m::Parameter(0)));
@@ -374,11 +374,12 @@ TEST_F(AsyncCollectiveCreatorTest, PreserveFrontendAttributesAllGather) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_all_gather = HloPredicateTrue;
-  TF_ASSERT_OK(
+  config.use_generic_async_start_done = true;
+  ASSERT_OK(
       RunHloPass(AsyncCollectiveCreator(config), hlo_module.get()).status());
 
   HloInstruction* done = hlo_module->entry_computation()->root_instruction();
@@ -407,11 +408,11 @@ TEST_F(AsyncCollectiveCreatorTest, PreserveFrontendAttributesAllReduce) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_all_reduce = HloPredicateTrue;
-  TF_ASSERT_OK(
+  ASSERT_OK(
       RunHloPass(AsyncCollectiveCreator(config), hlo_module.get()).status());
 
   HloInstruction* done = hlo_module->entry_computation()->root_instruction();
@@ -436,11 +437,11 @@ TEST_F(AsyncCollectiveCreatorTest,
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_collective_permute = HloPredicateTrue;
-  TF_ASSERT_OK(
+  ASSERT_OK(
       RunHloPass(AsyncCollectiveCreator(config), hlo_module.get()).status());
 
   HloInstruction* done = hlo_module->entry_computation()->root_instruction();
@@ -464,11 +465,11 @@ TEST_F(AsyncCollectiveCreatorTest, PreserveFrontendAttributesAllToAll) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_all_to_all = HloPredicateTrue;
-  TF_ASSERT_OK(
+  ASSERT_OK(
       RunHloPass(AsyncCollectiveCreator(config), hlo_module.get()).status());
 
   HloInstruction* done = hlo_module->entry_computation()->root_instruction();
@@ -482,5 +483,33 @@ TEST_F(AsyncCollectiveCreatorTest, PreserveFrontendAttributesAllToAll) {
   EXPECT_EQ(start->frontend_attributes().map().at(kXlaSchedulingGroupIdAttr),
             "0");
 }
+
+TEST_F(AsyncCollectiveCreatorTest, SplitsMultiOperandAllGather) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[1] parameter(0)
+    ROOT ag = (f32[8], f32[8]) all-gather(p0, p0), dimensions={0}, replica_groups={{0,1,2,3,4,5,6,7}}
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  AsyncCollectiveCreator::CollectiveCreatorConfig config;
+  config.convert_all_gather = HloPredicateTrue;
+  config.use_generic_async_start_done = true;
+  ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+
+  HloComputation* computation = hlo_module->entry_computation();
+  ASSERT_THAT(computation, NotNull());
+  ASSERT_EQ(computation->instruction_count(), 3);
+  const HloInstruction* done = computation->root_instruction();
+  EXPECT_EQ(done->opcode(), HloOpcode::kAsyncDone);
+  ASSERT_THAT(done->operands(), SizeIs(1));
+  const HloInstruction* start = done->operand(0);
+  EXPECT_EQ(start->opcode(), HloOpcode::kAsyncStart);
+  EXPECT_EQ(start->operand_count(), 2);
+}
+
 }  // namespace
 }  // namespace xla

@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/sort_json.h"
 
 #include <algorithm>
-#include <cctype>
 #include <cstddef>
 #include <memory>
 #include <string>
@@ -26,15 +25,17 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace {
 
 void SkipWhitespace(absl::string_view json, size_t& index) {
-  while (index < json.size() && std::isspace(json[index])) {
+  while (index < json.size() && absl::ascii_isspace(json[index])) {
     ++index;
   }
 }
@@ -51,7 +52,7 @@ absl::Status CheckNotEndOfString(absl::string_view json, int index,
 absl::Status Consume(absl::string_view json, size_t& index, char c,
                      bool optional = false) {
   SkipWhitespace(json, index);
-  TF_RETURN_IF_ERROR(CheckNotEndOfString(json, index, std::string(1, c)));
+  RETURN_IF_ERROR(CheckNotEndOfString(json, index, std::string(1, c)));
   if (json[index] == c) {
     ++index;
     SkipWhitespace(json, index);
@@ -87,23 +88,23 @@ template <typename T, char begin, char end, const char* name, typename ElemFn>
 absl::StatusOr<std::unique_ptr<T>> ParseSequence(absl::string_view outer_json,
                                                  size_t& index,
                                                  ElemFn elem_fn) {
-  TF_RETURN_IF_ERROR(Consume(outer_json, index, begin));
-  TF_RETURN_IF_ERROR(CheckNotEndOfString(outer_json, index, name));
+  RETURN_IF_ERROR(Consume(outer_json, index, begin));
+  RETURN_IF_ERROR(CheckNotEndOfString(outer_json, index, name));
 
   auto seq = std::make_unique<T>();
   while (outer_json[index] != end) {
-    TF_ASSIGN_OR_RETURN(auto elem, elem_fn(outer_json, index));
+    ASSIGN_OR_RETURN(auto elem, elem_fn(outer_json, index));
     seq->elements.emplace_back(std::move(elem));
-    TF_RETURN_IF_ERROR(Consume(outer_json, index, ',', /*optional=*/true));
-    TF_RETURN_IF_ERROR(CheckNotEndOfString(outer_json, index, name));
+    RETURN_IF_ERROR(Consume(outer_json, index, ',', /*optional=*/true));
+    RETURN_IF_ERROR(CheckNotEndOfString(outer_json, index, name));
   }
-  TF_RETURN_IF_ERROR(Consume(outer_json, index, end));
+  RETURN_IF_ERROR(Consume(outer_json, index, end));
   return seq;
 }
 
 absl::Status EnsureValidLiteralStart(char c) {
   if (c != '"' && c != '+' && c != '-' && c != 'f' && c != 't' && c != 'n' &&
-      (c < '0' || c > '9')) {
+      !absl::ascii_isdigit(c)) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Invalid first character of literal: '", std::string(1, c), "'."));
   }
@@ -134,17 +135,17 @@ bool LiteralIsFinished(absl::string_view outer_json, size_t& index,
     return c == '"';
   }
 
-  return std::isspace(c) || c == ',' || c == '{' || c == '}' || c == '[' ||
-         c == ']' || c == ':';
+  return absl::ascii_isspace(c) || c == ',' || c == '{' || c == '}' ||
+         c == '[' || c == ']' || c == ':';
 }
 
 absl::StatusOr<absl::string_view> ParseLiteral(absl::string_view outer_json,
                                                size_t& index) {
   SkipWhitespace(outer_json, index);
-  TF_RETURN_IF_ERROR(CheckNotEndOfString(outer_json, index, "literal"));
+  RETURN_IF_ERROR(CheckNotEndOfString(outer_json, index, "literal"));
 
   auto c = outer_json[index];
-  TF_RETURN_IF_ERROR(EnsureValidLiteralStart(c));
+  RETURN_IF_ERROR(EnsureValidLiteralStart(c));
   bool is_string_literal = c == '"';
   size_t start_index = index;
   bool is_escaped = false;
@@ -169,20 +170,20 @@ absl::StatusOr<JsonValue> ParseValue(absl::string_view outer_json,
                                      size_t& index) {
   JsonValue value;
   SkipWhitespace(outer_json, index);
-  TF_RETURN_IF_ERROR(CheckNotEndOfString(outer_json, index, "value"));
+  RETURN_IF_ERROR(CheckNotEndOfString(outer_json, index, "value"));
   auto c = outer_json[index];
   if (c == '{') {
     constexpr static char kObject[] = "object";
     auto seq = ParseSequence<JsonObject, '{', '}', kObject>(outer_json, index,
                                                             ParseField);
-    TF_ASSIGN_OR_RETURN(value, std::move(seq));
+    ASSIGN_OR_RETURN(value, std::move(seq));
   } else if (c == '[') {
     constexpr static char kArray[] = "array";
     auto seq = ParseSequence<JsonArray, '[', ']', kArray>(outer_json, index,
                                                           ParseValue);
-    TF_ASSIGN_OR_RETURN(value, std::move(seq));
+    ASSIGN_OR_RETURN(value, std::move(seq));
   } else {
-    TF_ASSIGN_OR_RETURN(value, ParseLiteral(outer_json, index));
+    ASSIGN_OR_RETURN(value, ParseLiteral(outer_json, index));
   }
   return value;
 }
@@ -190,9 +191,9 @@ absl::StatusOr<JsonValue> ParseValue(absl::string_view outer_json,
 absl::StatusOr<JsonField> ParseField(absl::string_view outer_json,
                                      size_t& index) {
   JsonField field;
-  TF_ASSIGN_OR_RETURN(field.name, ParseLiteral(outer_json, index));
-  TF_RETURN_IF_ERROR(Consume(outer_json, index, ':'));
-  TF_ASSIGN_OR_RETURN(field.value, ParseValue(outer_json, index));
+  ASSIGN_OR_RETURN(field.name, ParseLiteral(outer_json, index));
+  RETURN_IF_ERROR(Consume(outer_json, index, ':'));
+  ASSIGN_OR_RETURN(field.value, ParseValue(outer_json, index));
   return field;
 }
 
@@ -245,7 +246,7 @@ void Serialize(const JsonField& field, std::string& result) {
 namespace xla {
 absl::StatusOr<std::string> SortJson(absl::string_view json) {
   size_t index = 0;
-  TF_ASSIGN_OR_RETURN(auto value, ParseValue(json, index));
+  ASSIGN_OR_RETURN(auto value, ParseValue(json, index));
   SkipWhitespace(json, index);
   if (index < json.size()) {
     return absl::InvalidArgumentError("Found trailing characters in JSON.");

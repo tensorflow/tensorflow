@@ -17,16 +17,17 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_AUTOTUNER_NATIVE_EMITTER_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/compiler.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -40,9 +41,9 @@ class NativeEmitterBackend : public GpuCodegenBackend {
  public:
   explicit NativeEmitterBackend(const DebugOptions* absl_nonnull debug_options,
                                 Compiler* absl_nonnull compiler,
-                                const Compiler::TargetConfig* target_config)
-      : GpuCodegenBackend("NativeEmitter", debug_options, compiler,
-                          target_config) {}
+                                const Compiler::GpuTargetConfig* target_config)
+      : GpuCodegenBackend(autotuner::Backend::NATIVE_EMITTER, debug_options,
+                          compiler, target_config) {}
 
   // Returns all supported configurations for the given instruction.
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
@@ -55,6 +56,13 @@ class NativeEmitterBackend : public GpuCodegenBackend {
   // Applies a given fusion config to the instruction.
   absl::Status ApplyConfig(HloInstruction& instr,
                            const BackendConfig& config) override;
+
+  // Update manually if some change affects native emitters performance
+  // significantly.
+  std::string version() const override { return "v1"; }
+
+ private:
+  bool IsSupported(const HloInstruction& instr) override;
 };
 
 }  // namespace gpu

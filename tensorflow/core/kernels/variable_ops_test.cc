@@ -13,8 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+#include <vector>
+
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -31,7 +35,7 @@ namespace {
 void ManyManyVariablesHelper(int threads, int variables,
                              ::testing::benchmark::State& state) {
   Graph g(OpRegistry::Global());
-  std::vector<string> targets;
+  std::vector<std::string> targets;
   for (int i = 0; i < variables; ++i) {
     Node* v;
     TF_CHECK_OK(

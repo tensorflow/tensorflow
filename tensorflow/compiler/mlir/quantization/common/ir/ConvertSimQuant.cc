@@ -88,8 +88,8 @@ class FakeQuantRewrite : public OpRewritePattern<FakeQuantOp> {
 
     // TODO: Map to a qbarrier with an attribute like [Forced] to signal that
     // this is a forced/hard-coded constraint.
-    auto qbarrier = rewriter.create<QuantizeCastOp>(op.getLoc(), quantizedType,
-                                                    op.getInputs());
+    auto qbarrier = QuantizeCastOp::create(rewriter, op.getLoc(), quantizedType,
+                                           op.getInputs());
     rewriter.replaceOpWithNewOp<DequantizeCastOp>(op, converter.input_type,
                                                   qbarrier.getResult());
 

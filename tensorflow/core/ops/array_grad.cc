@@ -149,13 +149,13 @@ absl::Status ConcatGradHelper(const AttrSlice& attrs, FunctionDef* g,
   DataType T;
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "T", &T));
 
-  std::vector<string> shape_i;
-  std::vector<string> offset_i;
-  std::vector<string> dx_i;
+  std::vector<std::string> shape_i;
+  std::vector<std::string> offset_i;
+  std::vector<std::string> dx_i;
   for (int i = 0; i < N; ++i) {
-    shape_i.push_back(strings::StrCat("shapes:output:", i));
-    offset_i.push_back(strings::StrCat("offset:offset:", i));
-    dx_i.push_back(strings::StrCat("dx_", i, ":output:0"));
+    shape_i.push_back(absl::StrCat("shapes:output:", i));
+    offset_i.push_back(absl::StrCat("offset:offset:", i));
+    dx_i.push_back(absl::StrCat("dx_", i, ":output:0"));
   }
 
   // ConcatGrad(dim, x, dy):
@@ -175,7 +175,7 @@ absl::Status ConcatGradHelper(const AttrSlice& attrs, FunctionDef* g,
   // For each dx[i], we take a slice of dy. The offset and size of the
   // slice is given by offset[i] and shape[i].
   for (int i = 0; i < N; ++i) {
-    nodes.push_back({{strings::StrCat("dx_", i)},
+    nodes.push_back({{absl::StrCat("dx_", i)},
                      "Slice",
                      {"dy", offset_i[i], shape_i[i]},
                      {{"T", "$T"}, {"Index", DT_INT32}}});
@@ -270,10 +270,10 @@ REGISTER_OP_GRADIENT("SplitV", SplitVGrad);
 absl::Status ArrayToListGrad(const AttrSlice& attrs, FunctionDef* g) {
   int N;
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "N", &N));
-  std::vector<string> dys;
+  std::vector<std::string> dys;
   dys.reserve(N);
   for (int i = 0; i < N; ++i) {
-    dys.push_back(strings::StrCat("dy:", i));
+    dys.push_back(absl::StrCat("dy:", i));
   }
   // clang-format off
   *g = FDH::Define(
@@ -418,7 +418,7 @@ absl::Status ReverseV2Grad(const AttrSlice& attrs, FunctionDef* g) {
   DataType itype;
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "Tidx", &itype));
   if (itype != DT_INT32) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "ReverseV2Grad for int64 index are not supported.");
   }
   *g = FDH::Define(
@@ -442,7 +442,7 @@ absl::Status SliceGrad(const AttrSlice& attrs, FunctionDef* g) {
   DataType itype;
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "Index", &itype));
   if (itype != DT_INT32) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "SliceGrad for int64 index are not supported.");
   }
   *g = FDH::Define(
@@ -477,7 +477,7 @@ absl::Status StridedSliceGrad(const AttrSlice& attrs, FunctionDef* g) {
   DataType itype;
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "Index", &itype));
   if (itype != DT_INT32) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "SliceGrad for int64 index are not supported.");
   }
 
@@ -514,7 +514,7 @@ absl::Status StridedSliceGradGrad(const AttrSlice& attrs, FunctionDef* g) {
   DataType itype;
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "Index", &itype));
   if (itype != DT_INT32) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "SliceGrad for int64 index are not supported.");
   }
 
@@ -556,7 +556,7 @@ absl::Status BroadcastToGrad(const AttrSlice& attrs, FunctionDef* g) {
   DataType itype;
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "Tidx", &itype));
   if (itype != DT_INT32) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "BroadcastToGrad for int64 index are not supported.");
   }
   std::vector<FDH::Node> nodes = {

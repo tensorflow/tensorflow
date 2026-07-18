@@ -18,23 +18,30 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/tools/collective_perf_table_gen.h"
 #include "xla/tsl/util/command_line_flags.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/init_main.h"
+#include "tsl/platform/path.h"
 
 namespace {
 
@@ -72,6 +79,18 @@ to 4 GPUs.
   (--tensor_size_bytes_spec)
 * AllReduce will run across all 8 devices.
   (--collective_devices_spec, HloShardingV2 format)
+
+This tool can also merge new profiles (either generated or loaded using
+--merge or --merge_path) into the static performance table defined in
+a C++ header file, e.g. `collective_interpolator_data.h`.
+Use `--update_header_path` to specify header file to update in-place.
+
+Example for generating COLLECTIVE_PERMUTE profiles:
+  CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 bazel run --config=cuda  -- \
+    tools:collective_perf_table_gen_main  \
+    --num_nodes=1 --task_id=0 --collectives=COLLECTIVE_PERMUTE \
+    --collective_devices_spec='[1,8]<=[8]' \
+    --tensor_size_bytes_spec='start=1024,stop=2147483648,factor=2'
 )";
 
 constexpr absl::string_view kDefaultCoordinatorAddress = "127.0.0.1:1234";
@@ -110,6 +129,29 @@ std::vector<CollectivePerfTableGen::CollectiveType> ParseCollectives(
     if (token == "ALL_TO_ALL") {
       types.push_back(CollectivePerfTableGen::CollectiveType::ALL_TO_ALL);
       continue;
+    }
+    if (token == "COLLECTIVE_PERMUTE") {
+      types.push_back(
+          CollectivePerfTableGen::CollectiveType::COLLECTIVE_PERMUTE);
+      continue;
+    }
+  }
+  CHECK_GT(types.size(), 0);
+  return types;
+}
+
+std::vector<xla::PrimitiveType> ParseDataTypes(absl::string_view unparsed) {
+  std::vector<xla::PrimitiveType> types;
+  if (unparsed.empty()) {
+    return {xla::F32};  // Default to F32
+  }
+  for (absl::string_view token : absl::StrSplit(unparsed, ',')) {
+    std::string lower_token = absl::AsciiStrToLower(token);
+    auto type_or = xla::primitive_util::StringToPrimitiveType(lower_token);
+    if (type_or.ok()) {
+      types.push_back(type_or.value());
+    } else {
+      LOG(FATAL) << "Unsupported data type: " << token;
     }
   }
   CHECK_GT(types.size(), 0);
@@ -156,10 +198,20 @@ std::string DefaultCollectiveDevicesIfEmpty(
   return collective_devices_spec_unparsed;
 }
 
+// Helper to get full path if running under bazel run.
+std::string GetFullPath(const std::string& path) {
+  if (tsl::io::IsAbsolutePath(path)) {
+    return path;
+  }
+  const char* build_workspace_dir = getenv("BUILD_WORKSPACE_DIRECTORY");
+  if (build_workspace_dir != nullptr) {
+    return tsl::io::JoinPath(build_workspace_dir, path);
+  }
+  return path;  // Fallback to relative path if not in bazel run
+}
+
 }  // namespace
 
-// TODO(b/390097558): Add an option to generate perf table for collective which
-// gets overlap to model resource contention.
 int main(int argc, char* argv[]) {
   // Default args.
   int32_t num_nodes = 1;
@@ -175,6 +227,9 @@ int main(int argc, char* argv[]) {
   std::string output = std::string(CollectivePerfTableGen::Config::kStdout);
   std::string merge_path;
   std::vector<std::string> merge_files;
+  std::string update_header_path;
+  std::string data_types_unparsed = "F32";
+  bool test_2d_shapes = false;
 
   // Parse flags.
   std::vector<tsl::Flag> flag_list = {
@@ -188,7 +243,7 @@ int main(int argc, char* argv[]) {
       tsl::Flag("collectives", &collectives_unparsed,
                 "Comma separated list of collectives to generate perf table "
                 "for. Allowed values: ALL_REDUCE, ALL_GATHER, REDUCE_SCATTER, "
-                "ALL_TO_ALL."),
+                "ALL_TO_ALL, COLLECTIVE_PERMUTE."),
       tsl::Flag("tensor_size_bytes_spec", &tensor_size_bytes_spec_unparsed,
                 "Spec for a search sweep over transfer sizes. Format example: "
                 "start=1,stop=8,factor=2 generates {1,2,4,8}."),
@@ -216,6 +271,16 @@ int main(int argc, char* argv[]) {
           "none",
           "Path to individual DeviceHloInstructionProfiles files. If "
           "specified, these files will be merged into a single one."),
+      tsl::Flag(
+          "update_header_path", &update_header_path,
+          "Path to C++ header file to update in-place with new profiles."),
+      tsl::Flag("data_types", &data_types_unparsed,
+                "Comma separated list of data types to test. "
+                "Allowed values: S4, U4, F32, F16, BF16, F8E4M3FN, F8E5M2. "
+                "Defaults to F32."),
+      tsl::Flag("test_2d_shapes", &test_2d_shapes,
+                "Whether to test 2D shapes for all-gather operations. "
+                "Defaults to false (1D shapes only)."),
   };
 
   std::string kUsageString =
@@ -238,6 +303,56 @@ int main(int argc, char* argv[]) {
   cfg.replica_groups_list =
       CollectiveDeviceLists(collective_devices_spec_unparsed);
   cfg.output = output;
+  cfg.data_types = ParseDataTypes(data_types_unparsed);
+  cfg.test_2d_shapes = test_2d_shapes;
+
+  // Validate ALL_GATHER-only features (2D shapes and 4-bit types)
+  bool has_4bit_types = absl::c_any_of(
+      cfg.data_types,
+      [](xla::PrimitiveType t) { return t == xla::S4 || t == xla::U4; });
+
+  if (test_2d_shapes || has_4bit_types) {
+    bool has_all_gather = false;
+    bool has_other_collectives = false;
+    for (const auto& collective_type : cfg.collective_types) {
+      if (collective_type ==
+          CollectivePerfTableGen::CollectiveType::ALL_GATHER) {
+        has_all_gather = true;
+      } else {
+        has_other_collectives = true;
+      }
+    }
+
+    if (!has_all_gather) {
+      if (test_2d_shapes && has_4bit_types) {
+        LOG(FATAL) << "--test_2d_shapes=true and U4/S4 data types require "
+                   << "ALL_GATHER to be included in --collectives.";
+      } else if (test_2d_shapes) {
+        LOG(FATAL) << "--test_2d_shapes=true requires ALL_GATHER to be "
+                   << "included in --collectives. 2D shapes are only "
+                   << "supported for ALL_GATHER operations.";
+      } else {
+        LOG(FATAL) << "U4/S4 data types require ALL_GATHER to be included in "
+                   << "--collectives. 4-bit data types are only supported for "
+                   << "ALL_GATHER operations.";
+      }
+    }
+
+    if (has_other_collectives) {
+      if (has_4bit_types) {
+        LOG(FATAL) << "U4/S4 data types are only supported for ALL_GATHER "
+                   << "operations. Please remove other collective types from "
+                   << "--collectives or remove U4/S4 from --data_types.";
+      }
+      if (test_2d_shapes) {
+        LOG(WARNING)
+            << "--test_2d_shapes=true is set, but other collective "
+            << "types besides ALL_GATHER are also specified. 2D "
+            << "shapes will only be tested for ALL_GATHER "
+            << "operations. Other collectives will use 1D shapes only.";
+      }
+    }
+  }
 
   std::unique_ptr<CollectivePerfTableGen> gen =
       CollectivePerfTableGen::Create(cfg);
@@ -245,10 +360,15 @@ int main(int argc, char* argv[]) {
   if (!merge_path.empty()) {
     profiles = gen->Merge(merge_path);
   } else if (!merge_files.empty()) {
-    profiles = gen->Merge(merge_files);
+    std::vector<std::string> full_path_merge_files;
+    full_path_merge_files.reserve(merge_files.size());
+    absl::c_transform(merge_files, std::back_inserter(full_path_merge_files),
+                      GetFullPath);
+    profiles = gen->Merge(full_path_merge_files);
   } else {
     profiles = gen->ComputeTable();
   }
+
   CHECK_OK(gen->Dump(profiles));
   return 0;
 }

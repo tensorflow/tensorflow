@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_norm_runner.h"
 
+#include "xla/service/gpu/gpu_norm_runner.pb.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
@@ -70,7 +71,11 @@ TEST(GpuNormRunnerTest, GpuNormDescriptorToFromProto) {
       }
       is_dynamic_dimension: [ false, false ]
     }
-    scratch_size: 1024
+    scratch_shape: {
+      element_type: S8
+      dimensions: 1024
+      is_dynamic_dimension: false
+    }
   )pb");
 
   TF_ASSERT_OK_AND_ASSIGN(GpuNormDescriptor descriptor,

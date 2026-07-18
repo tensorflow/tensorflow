@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel.h"
 
 namespace stream_executor::gpu {
@@ -27,8 +27,8 @@ namespace stream_executor::gpu {
 // and look up the kernel in the GPU kernel registry.
 struct MakeBatchPointersKernel {
   using KernelType =
-      stream_executor::TypedKernel<stream_executor::DeviceMemoryBase, size_t,
-                                   size_t, stream_executor::DeviceMemoryBase>;
+      stream_executor::TypedKernel<stream_executor::DeviceAddressBase, size_t,
+                                   size_t, stream_executor::DeviceAddressBase>;
 };
 
 }  // namespace stream_executor::gpu

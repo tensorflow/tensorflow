@@ -24,18 +24,21 @@ namespace tensorflow {
 
 absl::Status GetNodeAttr(const NodeDef& node_def, absl::string_view attr_name,
                          MirrorPadMode* value) {
-  string str_value;
+  std::string str_value;
   TF_RETURN_IF_ERROR(GetNodeAttr(node_def, attr_name, &str_value));
   if (str_value == "REFLECT") {
     *value = MirrorPadMode::REFLECT;
   } else if (str_value == "SYMMETRIC") {
     *value = MirrorPadMode::SYMMETRIC;
   } else {
-    return errors::NotFound(str_value, " is not an allowed padding mode.");
+    return absl::NotFoundError(
+        absl::StrCat(str_value, " is not an allowed padding mode."));
   }
   return absl::OkStatus();
 }
 
-string GetMirrorPadModeAttrString() { return "mode: {'REFLECT', 'SYMMETRIC'}"; }
+std::string GetMirrorPadModeAttrString() {
+  return "mode: {'REFLECT', 'SYMMETRIC'}";
+}
 
 }  // end namespace tensorflow

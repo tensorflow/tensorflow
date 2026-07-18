@@ -53,7 +53,7 @@ class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
     ~Dataset() override { input_->Unref(); }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       return std::make_unique<Iterator>(
           Iterator::Params{this, absl::StrCat(prefix, "::NonSerializable")});
     }
@@ -65,7 +65,7 @@ class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() const override {
+    std::string DebugString() const override {
       return "NonSerializableDatasetOp::Dataset";
     }
 
@@ -83,8 +83,8 @@ class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
     absl::Status AsGraphDefInternal(SerializationContext* ctx,
                                     DatasetGraphDefBuilder* b,
                                     Node** output) const override {
-      return errors::Unimplemented(DebugString(),
-                                   " does not support serialization.");
+      return absl::UnimplementedError(
+          absl::StrCat(DebugString(), " does not support serialization."));
     }
 
     int64_t CardinalityInternal(CardinalityOptions options) const override {

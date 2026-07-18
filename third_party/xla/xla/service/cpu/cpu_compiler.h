@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/executable.pb.h"
@@ -47,8 +48,15 @@ namespace mlir {
 class DialectRegistry;
 }  // namespace mlir
 
+namespace tsl {
+class Executor;
+}  // namespace tsl
+
 namespace xla {
 namespace cpu {
+
+// Returns a global (per-process) thread pool for XLA CPU compilation tasks.
+tsl::Executor* GetCpuCompilationThreadPool();
 
 // CPU-targeting implementation of the XLA Compiler interface.
 //
@@ -73,7 +81,7 @@ class CpuCompiler : public LLVMCompiler {
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
 
-  absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
   CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                      const AotCompilationOptions& options) override;
 
@@ -81,16 +89,15 @@ class CpuCompiler : public LLVMCompiler {
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;
 
-  absl::StatusOr<std::unique_ptr<AotCompilationResult>> Export(
-      Executable* executable) const override;
+  absl::StatusOr<std::unique_ptr<CompiledModule>> Export(
+      Executable* executable) override;
 
   // Returns a (deserialized) AotCompilationResult from a serialized
   // AotCompilationResult.
-  absl::StatusOr<std::unique_ptr<AotCompilationResult>>
-  LoadAotCompilationResult(const std::string& serialized_aot_result) override;
+  absl::StatusOr<std::unique_ptr<CompiledModule>> LoadAotCompilationResult(
+      const std::string& serialized_aot_result) override;
 
-  absl::StatusOr<HloSchedule> CreateHloSchedule(
-      const HloModule& hlo_module) const;
+  absl::StatusOr<HloSchedule> CreateHloSchedule(HloModule& hlo_module) const;
 
   absl::StatusOr<std::unique_ptr<BufferAssignment>> CreateBufferAssignment(
       const HloModule& module) const;
@@ -123,8 +130,7 @@ class CpuCompiler : public LLVMCompiler {
       const llvm::PICLevel::Level& pic_level = llvm::PICLevel::NotPIC,
       const llvm::PIELevel::Level& pie_level = llvm::PIELevel::Default);
 
-  absl::StatusOr<std::unique_ptr<AotCompilationResult>>
-  CompileAheadOfTimeThunks(
+  absl::StatusOr<std::unique_ptr<CompiledModule>> CompileAheadOfTimeThunks(
       std::unique_ptr<HloModule> module,
       IrCompiler::TargetMachineBuilder target_machine_builder,
       const CpuAotCompilationOptions& aot_options, const llvm::Triple& triple,

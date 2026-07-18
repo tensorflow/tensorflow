@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Constants.h"
@@ -235,9 +236,9 @@ absl::Status VerifyKernelParameters(
   // memory (or aliased memory). We conservatively do not emit noalias metadata
   // for buffers coming from parameter allocations.
 
-  TF_RETURN_IF_ERROR(VerifyKernelArgumentsNonOverlapping(arguments));
-  TF_RETURN_IF_ERROR(VerifyKernelResultsNonOverlapping(results));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(VerifyKernelArgumentsNonOverlapping(arguments));
+  RETURN_IF_ERROR(VerifyKernelResultsNonOverlapping(results));
+  RETURN_IF_ERROR(
       VerifyKernelResultsNonOverlappingWithArguments(arguments, results));
 
   return absl::OkStatus();
@@ -281,7 +282,7 @@ KernelApiIrBuilder::GetKernelArgumentsParameters(
 
   for (HloInstruction* operand : instruction->operands()) {
     for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           BufferAllocation::Slice slice,
           GetUniqueSlice(buffer_assignment, operand, indexed.index));
       arguments.push_back(KernelParameter{indexed.shape, slice});
@@ -296,7 +297,7 @@ KernelApiIrBuilder::GetKernelResultsParameters(
     const BufferAssignment* buffer_assignment) {
   std::vector<KernelParameter> results;
   for (auto& indexed : ShapeUtil::GetLeafShapes(instruction->shape())) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         BufferAllocation::Slice slice,
         GetUniqueSlice(buffer_assignment, instruction, indexed.index));
     results.push_back(KernelParameter{indexed.shape, slice});
@@ -329,14 +330,14 @@ KernelApiIrBuilder::KernelApiIrBuilder(llvm::LLVMContext& context,
 auto KernelApiIrBuilder::EmitKernelPrototype(
     llvm::Module& module, const HloInstruction* instr,
     const BufferAssignment* buffer_assignment,
-    const std::string& generating_emitter_name, absl::string_view suffix)
+    absl::string_view generating_emitter_name, absl::string_view suffix)
     -> absl::StatusOr<KernelPrototype> {
-  TF_ASSIGN_OR_RETURN(std::vector<KernelParameter> arguments,
-                      GetKernelArgumentsParameters(instr, buffer_assignment));
-  TF_ASSIGN_OR_RETURN(std::vector<KernelParameter> results,
-                      GetKernelResultsParameters(instr, buffer_assignment));
+  ASSIGN_OR_RETURN(std::vector<KernelParameter> arguments,
+                   GetKernelArgumentsParameters(instr, buffer_assignment));
+  ASSIGN_OR_RETURN(std::vector<KernelParameter> results,
+                   GetKernelResultsParameters(instr, buffer_assignment));
 
-  TF_ASSIGN_OR_RETURN(std::string name, GetKernelName(instr, suffix));
+  ASSIGN_OR_RETURN(std::string name, GetKernelName(instr, suffix));
 
   return EmitKernelPrototype(
       module, name, arguments, results,
@@ -347,7 +348,7 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
     llvm::Module& module, absl::string_view name,
     absl::Span<const KernelParameter> arguments,
     absl::Span<const KernelParameter> results,
-    const std::string& module_memory_region_name)
+    absl::string_view module_memory_region_name)
     -> absl::StatusOr<KernelPrototype> {
   CHECK(&module.getContext() == &context_) << "Module context mismatch";
 
@@ -366,7 +367,7 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
   }
 
   if (buffer_validation_ == BufferValidation::kDisjoint) {
-    TF_RETURN_IF_ERROR(VerifyKernelParameters(arguments, results));
+    RETURN_IF_ERROR(VerifyKernelParameters(arguments, results));
   }
 
   MemoryDependencyAnalyzer memory_dependency_analyzer(context_, name, results);
@@ -437,16 +438,6 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
   b.CreateRet(
       llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(context_)));
 
-  absl::InlinedVector<BufferAllocation::Slice, 8> argument_buffers;
-  for (const KernelParameter& argument : arguments) {
-    argument_buffers.push_back(argument.slice);
-  }
-
-  absl::InlinedVector<BufferAllocation::Slice, 8> result_buffers;
-  for (const KernelParameter& result : results) {
-    result_buffers.push_back(result.slice);
-  }
-
   return KernelPrototype{function,
                          return_block,
                          kernel_workgroup_dim,
@@ -454,8 +445,8 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
                          std::move(ir_arguments),
                          std::move(ir_results),
                          std::move(invariant_arguments),
-                         std::move(argument_buffers),
-                         std::move(result_buffers)};
+                         {arguments.begin(), arguments.end()},
+                         {results.begin(), results.end()}};
 }
 
 absl::StatusOr<std::string> KernelApiIrBuilder::GetKernelName(

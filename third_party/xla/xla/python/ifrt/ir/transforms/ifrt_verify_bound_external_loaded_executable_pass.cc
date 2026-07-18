@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -22,10 +23,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Casting.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -41,8 +42,8 @@ limitations under the License.
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
+#include "xla/python/ifrt/ir/support/sharding_conversions.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
-#include "xla/python/ifrt/support/sharding_conversions.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -91,16 +92,12 @@ absl::Status IfrtVerifyBoundExternalLoadedExecutablePass::VerifyShardingsEqual(
     absl::string_view sharding_type) {
   for (const auto& it : llvm::enumerate(llvm::zip(types, shardings))) {
     const auto& [param_type, sharding] = it.value();
-    TF_ASSIGN_OR_RETURN(auto hlo_sharding,
-                        xla::HloSharding::FromProto(sharding));
-    auto array_type = llvm::dyn_cast<IfrtArrayType>(param_type);
-    CHECK(array_type);
-    auto array_sharding =
-        llvm::dyn_cast<IfrtShardingParamAttr>(array_type.getShardingAttr());
-    CHECK(array_sharding);
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(auto hlo_sharding, xla::HloSharding::FromProto(sharding));
+    IfrtArrayType array_type = GetArrayType(param_type);
+    IfrtShardingParamAttr sharding_attr = GetShardingParamAttr(array_type);
+    ASSIGN_OR_RETURN(
         const xla::HloSharding hlo_type_sharding,
-        xla::ifrt::support::ToHloSharding(array_sharding.getSharding()));
+        xla::ifrt::support::ToHloSharding(sharding_attr.getSharding()));
     if (hlo_sharding != hlo_type_sharding) {
       return absl::InvalidArgumentError(absl::StrCat(
           "expects an executable with ", sharding_type, " #", it.index(),
@@ -122,60 +119,70 @@ void IfrtVerifyBoundExternalLoadedExecutablePass::runOnOperation() {
     if (exec_it != bound_executable_map_->end()) {
       if (loaded_exec_op.getDevices().size() !=
           exec_it->second->num_devices()) {
-        return loaded_exec_op.emitOpError()
-               << "expects an executable with "
-               << loaded_exec_op.getDevices().size()
-               << " devices, but was bound to an executable with "
-               << exec_it->second->num_devices() << " devices";
+        loaded_exec_op.emitOpError()
+            << "expects an executable with "
+            << loaded_exec_op.getDevices().size()
+            << " devices, but was bound to an executable with "
+            << exec_it->second->num_devices() << " devices";
+        return mlir::WalkResult::interrupt();
       }
 
       auto func_type = loaded_exec_op.getFunctionType();
-      if (!exec_it->second->GetParameterShardings().has_value()) {
-        return loaded_exec_op.emitOpError()
-               << "cannot be bound to an executable without parameter "
-                  "shardings";
+      std::optional<std::vector<xla::OpSharding>> parameter_shardings;
+      if (func_type.getNumInputs() == 0) {
+        parameter_shardings.emplace();
+      } else if (loaded_exec_op.getDevices().size() == 1) {
+        parameter_shardings.emplace(func_type.getNumInputs());
+      } else {
+        parameter_shardings = exec_it->second->GetParameterShardings();
       }
-      if (!exec_it->second->GetOutputShardings().has_value()) {
-        return loaded_exec_op.emitOpError()
-               << "cannot be bound to an executable without output shardings";
+      if (!parameter_shardings.has_value()) {
+        loaded_exec_op.emitOpError()
+            << "cannot be bound to an executable without parameter "
+               "shardings";
+        return mlir::WalkResult::interrupt();
       }
-      if (func_type.getNumInputs() !=
-          exec_it->second->GetParameterShardings()->size()) {
-        return loaded_exec_op.emitOpError()
-               << "expects an executable with " << func_type.getNumInputs()
-               << " inputs, but was bound to an executable with "
-               << exec_it->second->GetParameterShardings()->size() << " inputs";
+      std::optional<std::vector<xla::OpSharding>> output_shardings;
+      if (func_type.getNumResults() == 0) {
+        output_shardings.emplace();
+      } else if (loaded_exec_op.getDevices().size() == 1) {
+        output_shardings.emplace(func_type.getNumResults());
+      } else {
+        output_shardings = exec_it->second->GetOutputShardings();
       }
-      if (func_type.getNumResults() !=
-          exec_it->second->GetOutputShardings()->size()) {
-        return loaded_exec_op.emitOpError()
-               << "expects an executable with " << func_type.getNumResults()
-               << " results, but was bound to an executable with "
-               << exec_it->second->GetOutputShardings()->size() << " results";
+      if (!output_shardings.has_value()) {
+        loaded_exec_op.emitOpError()
+            << "cannot be bound to a multi-device executable without output "
+               "shardings";
+        return mlir::WalkResult::interrupt();
+      }
+      if (func_type.getNumInputs() != parameter_shardings->size()) {
+        loaded_exec_op.emitOpError()
+            << "expects an executable with " << func_type.getNumInputs()
+            << " inputs, but was bound to an executable with "
+            << parameter_shardings->size() << " inputs";
+        return mlir::WalkResult::interrupt();
+      }
+      if (func_type.getNumResults() != output_shardings->size()) {
+        loaded_exec_op.emitOpError()
+            << "expects an executable with " << func_type.getNumResults()
+            << " results, but was bound to an executable with "
+            << output_shardings->size() << " results";
+        return mlir::WalkResult::interrupt();
       }
       // Verify that the input and output shardings of the LoadedExecutableOp
       // are the same as the shardings of the bound executable.
-      if (!exec_it->second->GetParameterShardings().has_value()) {
-        return loaded_exec_op.emitOpError()
-               << "cannot be bound to an executable without parameter "
-                  "shardings";
-      }
-      if (!exec_it->second->GetOutputShardings().has_value()) {
-        return loaded_exec_op.emitOpError()
-               << "cannot be bound to an executable without output "
-                  "shardings";
-      }
       auto sharding_equal_status = VerifyShardingsEqual(
-          func_type.getInputs(), *exec_it->second->GetParameterShardings(),
-          "input");
+          func_type.getInputs(), *parameter_shardings, "input");
       if (!sharding_equal_status.ok()) {
-        return loaded_exec_op.emitOpError() << sharding_equal_status.message();
+        loaded_exec_op.emitOpError() << sharding_equal_status.message();
+        return mlir::WalkResult::interrupt();
       }
-      sharding_equal_status = VerifyShardingsEqual(
-          func_type.getResults(), *exec_it->second->GetOutputShardings(),
-          "output");
+      sharding_equal_status = VerifyShardingsEqual(func_type.getResults(),
+                                                   *output_shardings, "output");
       if (!sharding_equal_status.ok()) {
-        return loaded_exec_op.emitOpError() << sharding_equal_status.message();
+        loaded_exec_op.emitOpError() << sharding_equal_status.message();
+        return mlir::WalkResult::interrupt();
       }
     }
     return mlir::WalkResult::advance();

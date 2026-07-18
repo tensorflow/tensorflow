@@ -15,19 +15,19 @@ limitations under the License.
 
 #include <string>
 #include <tuple>
-#include <variant>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/primitive_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -36,7 +36,6 @@ namespace {
 
 using ::stream_executor::SemanticVersion;
 using ::testing::Combine;
-using ::testing::HasSubstr;
 using ::testing::TestParamInfo;
 using ::testing::Values;
 using ::testing::WithParamInterface;
@@ -96,7 +95,8 @@ std::string TestParamsToString(
       primitive_util::LowercasePrimitiveTypeName(params.rhs_storage_type),
       primitive_util::LowercasePrimitiveTypeName(params.output_storage_type),
       params.min_cuda_capability.major, params.min_cuda_capability.minor,
-      params.min_rocm_version.major(), params.min_rocm_version.minor(),
+      params.min_rocm_version.major_version(),
+      params.min_rocm_version.minor_version(),
       BackendRestrictionToString(params.backend_restriction),
       params.sizes.contracting_size, params.sizes.non_contracting_size);
 }
@@ -110,22 +110,29 @@ std::string TestParamsToString(
 // the usage of ::testing::ConvertGenerator, which broke the build in some OSS
 // configurations.
 class DotAlgorithmSupportTest
-    : public HloTestBase,
+    : public HloPjRtGpuTestBase,
       public WithParamInterface<TestParams::TupleType> {
  public:
-  se::DeviceDescription GetDeviceDescription() {
-    return backend().default_stream_executor()->GetDeviceDescription();
+  se::DeviceDescription GetDeviceDescription() const {
+    return device_description();
   }
-  se::GpuComputeCapability GetGpuComputeCapability() {
+  se::GpuComputeCapability GetGpuComputeCapability() const {
     return GetDeviceDescription().gpu_compute_capability();
   }
 
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloPjRtGpuTestBase::GetDebugOptionsForTest();
     // Setting this explicitly to make sure that we also test the case when the
     // dot's dimensions are under the rewrite size threshold:
     // (2 * non_contracting_size * contracting_size < threshold).
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(100);
+    const TestParams params(GetParam());
+    // TF32 support on ROCm comes from hipBLASLt
+    if (GetGpuComputeCapability().IsRocm() &&
+        (params.algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32 ||
+         params.algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3)) {
+      debug_options.set_xla_gpu_enable_cublaslt(true);
+    }
     return debug_options;
   }
 };
@@ -158,11 +165,21 @@ TEST_P(DotAlgorithmSupportTest, AlgorithmIsSupportedFromCudaCapability) {
   bool is_algorithm_supported = false;
   auto gpu_cc = GetGpuComputeCapability();
 
-  if (const auto* ccc = std::get_if<se::CudaComputeCapability>(&gpu_cc)) {
+  if (const auto* ccc = gpu_cc.cuda_compute_capability()) {
     is_algorithm_supported =
         ccc->SupportsAllFeaturesOf(params.min_cuda_capability);
-  } else if (const auto* rcc =
-                 std::get_if<se::RocmComputeCapability>(&gpu_cc)) {
+
+    // CublasLt does not support FP8 fast accumulation.
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    if (debug_options.xla_gpu_enable_cublaslt() &&
+        params.algorithm ==
+            PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM &&
+        params.lhs_storage_type == F8E4M3FN &&
+        params.rhs_storage_type == F8E4M3FN &&
+        params.output_storage_type == F8E5M2) {
+      is_algorithm_supported = false;
+    }
+  } else if (const auto* rcc = gpu_cc.rocm_compute_capability()) {
     is_algorithm_supported = rcc->gfx9_mi100_or_later();
     if (GetDeviceDescription().runtime_version() < params.min_rocm_version &&
         (params.lhs_storage_type == F8E5M2 ||
@@ -175,7 +192,14 @@ TEST_P(DotAlgorithmSupportTest, AlgorithmIsSupportedFromCudaCapability) {
     if (params.backend_restriction == BackendRestriction::kTritonOnly) {
       GTEST_SKIP() << "TODO: Triton unsupported in ROCm";
     }
+    if (rcc->gfx9_mi200() &&
+        (params.algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6 ||
+         params.algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9)) {
+      GTEST_SKIP() << AlgorithmToString(params.algorithm)
+                   << " not supported on MI200.";
+    }
   }
+
   if (is_algorithm_supported) {
     EXPECT_TRUE(Run(hlo_text)) << "Failed to run HLO: " << hlo_text;
 
@@ -188,7 +212,7 @@ TEST_P(DotAlgorithmSupportTest, AlgorithmIsSupportedFromCudaCapability) {
     )");
     }
   } else {
-    EXPECT_THAT(Run(hlo_text).message(), HasSubstr("Unsupported algorithm"));
+    EXPECT_FALSE(Run(hlo_text));
   }
 }
 

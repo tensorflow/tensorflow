@@ -80,12 +80,13 @@ class HttpRequest {
     virtual ~RequestStats() = default;
 
     /// RecordRequest is called right before a request is sent on the wire.
-    virtual void RecordRequest(const HttpRequest* request, const string& uri,
+    virtual void RecordRequest(const HttpRequest* request,
+                               const std::string& uri,
                                RequestMethod method) = 0;
 
     /// RecordResponse is called after the response has been received.
-    virtual void RecordResponse(const HttpRequest* request, const string& uri,
-                                RequestMethod method,
+    virtual void RecordResponse(const HttpRequest* request,
+                                const std::string& uri, RequestMethod method,
                                 const absl::Status& result) = 0;
   };
 
@@ -93,27 +94,27 @@ class HttpRequest {
   virtual ~HttpRequest() {}
 
   /// Sets the request URI.
-  virtual void SetUri(const string& uri) = 0;
+  virtual void SetUri(const std::string& uri) = 0;
 
   /// \brief Sets the Range header.
   ///
   /// Used for random seeks, for example "0-999" returns the first 1000 bytes
   /// (note that the right border is included).
-  virtual void SetRange(uint64 start, uint64 end) = 0;
+  virtual void SetRange(uint64_t start, uint64_t end) = 0;
 
   /// Sets a request header.
-  virtual void AddHeader(const string& name, const string& value) = 0;
+  virtual void AddHeader(const std::string& name, const std::string& value) = 0;
 
   /// Sets a DNS resolve mapping (to skip DNS resolution).
   ///
   /// Note: because GCS is available over HTTPS, we cannot replace the hostname
   /// in the URI with an IP address, as that will cause the certificate check
   /// to fail.
-  virtual void AddResolveOverride(const string& hostname, int64_t port,
-                                  const string& ip_addr) = 0;
+  virtual void AddResolveOverride(const std::string& hostname, int64_t port,
+                                  const std::string& ip_addr) = 0;
 
   /// Sets the 'Authorization' header to the value of 'Bearer ' + auth_token.
-  virtual void AddAuthBearerHeader(const string& auth_token) = 0;
+  virtual void AddAuthBearerHeader(const std::string& auth_token) = 0;
 
   /// Sets the RequestStats object to use to record the request and response.
   virtual void SetRequestStats(RequestStats* stats) = 0;
@@ -125,7 +126,7 @@ class HttpRequest {
   ///
   /// The request body will be taken from the specified file starting from
   /// the given offset.
-  virtual absl::Status SetPutFromFile(const string& body_filepath,
+  virtual absl::Status SetPutFromFile(const std::string& body_filepath,
                                       size_t offset) = 0;
 
   /// Makes the request a PUT request with an empty body.
@@ -162,10 +163,10 @@ class HttpRequest {
   /// \brief Returns the response headers of a completed request.
   ///
   /// If the header is not found, returns an empty string.
-  virtual string GetResponseHeader(const string& name) const = 0;
+  virtual std::string GetResponseHeader(const std::string& name) const = 0;
 
   /// Returns the response code of a completed request.
-  virtual uint64 GetResponseCode() const = 0;
+  virtual uint64_t GetResponseCode() const = 0;
 
   /// \brief Sends the formed request.
   ///
@@ -174,7 +175,7 @@ class HttpRequest {
   virtual absl::Status Send() = 0;
 
   // Url encodes str and returns a new string.
-  virtual string EscapeString(const string& str) = 0;
+  virtual std::string EscapeString(const std::string& str) = 0;
 
   /// \brief Set timeouts for this request.
   ///
@@ -183,8 +184,8 @@ class HttpRequest {
   /// we should wait between additional responses from the server. Finally the
   /// total parameter controls the maximum total connection time to prevent
   /// hanging indefinitely.
-  virtual void SetTimeouts(uint32 connection, uint32 inactivity,
-                           uint32 total) = 0;
+  virtual void SetTimeouts(uint32_t connection, uint32_t inactivity,
+                           uint32_t total) = 0;
 
   HttpRequest(const HttpRequest&) = delete;
   void operator=(const HttpRequest&) = delete;

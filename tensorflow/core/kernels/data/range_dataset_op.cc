@@ -14,23 +14,33 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
 
-#include <cstdlib>
+#include <cstdint>
 #include <functional>
+#include <limits>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/status/status.h"
-#include "xla/tsl/platform/types.h"
+#include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/split_utils.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/framework/partial_tensor_shape.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
+#include "tensorflow/core/framework/model.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tsl/platform/mutex.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
@@ -53,7 +63,8 @@ constexpr char kSlash[] = "/";
 constexpr char kSplitProvider[] = "split_provider";
 
 absl::Status ConvertOutputTypes(const tensorflow::DataTypeVector& output_dtypes,
-                                std::vector<Tensor>* out_tensors, int64 value) {
+                                std::vector<Tensor>* out_tensors,
+                                int64_t value) {
   switch (output_dtypes[0]) {
 #define HANDLE_TYPE(type)                                \
   case DataTypeToEnum<type>::value: {                    \
@@ -63,8 +74,8 @@ absl::Status ConvertOutputTypes(const tensorflow::DataTypeVector& output_dtypes,
     TF_CALL_NUMBER_TYPES(HANDLE_TYPE);
 #undef HANDLE_TYPE
     default:
-      return errors::InvalidArgument("Unsupported data type: ",
-                                     DataTypeString(output_dtypes[0]));
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Unsupported data type: ", DataTypeString(output_dtypes[0])));
   }
   return absl::OkStatus();
 }
@@ -73,7 +84,7 @@ int64_t sgn(int64_t val) { return (0 < val) - (val < 0); }
 
 int64_t RangeCardinality(int64_t start, int64_t stop, int64_t step) {
   // `enumerate` uses int max to simulate an infinite range dataset.
-  if (stop >= tsl::kint64max) {
+  if (stop >= std::numeric_limits<int64_t>::max()) {
     return kInfiniteCardinality;
   }
 
@@ -196,7 +207,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
   }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
@@ -211,7 +222,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
     return *shapes;
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
     params.set_args(start_, stop_, step_);
     return name_utils::DatasetDebugString(kDatasetType, params);
@@ -236,12 +247,12 @@ class RangeDatasetOp::Dataset : public DatasetBase {
 
   absl::Status CheckExternalState() const override { return absl::OkStatus(); }
 
-  absl::Status Get(OpKernelContext* ctx, int64 index,
+  absl::Status Get(OpKernelContext* ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
     return Get(AnyContext(ctx), index, out_tensors);
   }
 
-  absl::Status Get(AnyContext ctx, int64 index,
+  absl::Status Get(AnyContext ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     return ConvertOutputTypes(output_dtypes(), out_tensors,
@@ -321,7 +332,12 @@ class RangeDatasetOp::Dataset : public DatasetBase {
 
     absl::Status SaveInternal(SerializationContext* ctx,
                               IteratorStateWriter* writer) override {
-      if (split_provider_) {
+      if (split_provider_ == nullptr && counter_ == nullptr) {
+        return absl::FailedPreconditionError(
+            "`Initialize` should be called before saving/restoring from "
+            "tf.data checkpoints.");
+      }
+      if (split_provider_ != nullptr) {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(prefix(), kHasSplitProvider, true));
         TF_RETURN_IF_ERROR(split_provider_->Save(
@@ -339,6 +355,11 @@ class RangeDatasetOp::Dataset : public DatasetBase {
 
     absl::Status RestoreInternal(IteratorContext* ctx,
                                  IteratorStateReader* reader) override {
+      if (split_provider_ == nullptr && counter_ == nullptr) {
+        return absl::FailedPreconditionError(
+            "`Initialize` should be called before saving/restoring from "
+            "tf.data checkpoints.");
+      }
       if (ctx->restored_element_count().has_value()) {
         return global_shuffle_iterator_.Restore(prefix(), ctx, reader);
       }
@@ -391,7 +412,7 @@ void RangeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
   int64_t step;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kStep, &step));
   OP_REQUIRES(ctx, step != 0,
-              errors::InvalidArgument("step must be a non-zero integer."));
+              absl::InvalidArgumentError("step must be a non-zero integer."));
 
   *output =
       new Dataset(ctx, start, stop, step, output_types_, replicate_on_split_);

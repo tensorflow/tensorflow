@@ -64,13 +64,14 @@ class XStatVisitor {
 
   int64_t IntValue() const { return stat_->int64_value(); }
 
-  uint64 UintValue() const { return stat_->uint64_value(); }
+  uint64_t UintValue() const { return stat_->uint64_value(); }
 
   absl::string_view BytesValue() const { return stat_->bytes_value(); }
 
-  uint64 IntOrUintValue() const {
-    return ValueCase() == XStat::kUint64Value ? UintValue()
-                                              : static_cast<uint64>(IntValue());
+  uint64_t IntOrUintValue() const {
+    return ValueCase() == XStat::kUint64Value
+               ? UintValue()
+               : static_cast<uint64_t>(IntValue());
   }
 
   double DoubleValue() const { return stat_->double_value(); }
@@ -122,6 +123,17 @@ class XStatsOwner {
     return std::nullopt;  // type does not exist in this owner.
   }
 
+  // Shortcut to get a specific stat by its metadata, nullopt if absent.
+  std::optional<XStatVisitor> GetStat(
+      const XStatMetadata& stat_metadata) const {
+    for (const XStat& stat : stats_owner_->stats()) {
+      if (stat.metadata_id() == stat_metadata.id()) {
+        return XStatVisitor(plane_, &stat, &stat_metadata, std::nullopt);
+      }
+    }
+    return std::nullopt;
+  }
+
  protected:
   const XPlaneVisitor* plane() const { return plane_; }
   const T* stats_owner() const { return stats_owner_; }
@@ -150,7 +162,6 @@ class XEventMetadataVisitor : public XStatsOwner<XEventMetadata> {
   template <typename ForEachChildFunc>
   void ForEachChild(ForEachChildFunc&& for_each_child) const;
 
- private:
   const XEventMetadata* metadata() const { return stats_owner(); }
 };
 
@@ -167,6 +178,8 @@ class XEventVisitor : public XStatsOwner<XEvent> {
   int64_t Id() const { return event_->metadata_id(); }
 
   absl::string_view Name() const { return metadata_->name(); }
+
+  absl::string_view LineName() const { return line_->name(); }
 
   std::optional<int64_t> Type() const { return type_; }
 
@@ -297,6 +310,7 @@ class XPlaneVisitor : public XStatsOwner<XPlane> {
       for_each_line(XLineVisitor(this, &line));
     }
   }
+
   template <typename ThreadBundle, typename ForEachLineFunc>
   void ForEachLineInParallel(ForEachLineFunc&& for_each_line) const {
     ThreadBundle bundle;

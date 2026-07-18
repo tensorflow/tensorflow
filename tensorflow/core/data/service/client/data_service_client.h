@@ -48,7 +48,7 @@ namespace data {
 class DataServiceContext {
  public:
   virtual ~DataServiceContext() = default;
-  virtual std::unique_ptr<Thread> StartThread(const string& name,
+  virtual std::unique_ptr<Thread> StartThread(const std::string& name,
                                               std::function<void()> fn) = 0;
   virtual void RecordBufferEnqueue(const std::vector<Tensor>& element) = 0;
   virtual void RecordBufferDequeue(const std::vector<Tensor>& element) = 0;
@@ -171,7 +171,9 @@ class DataServiceClient {
   void RecordTFMetrics(const ClientHeartbeatResponse& resp);
   void UpdateBufferSize();
   void UpdateWorkerThreads();
-  void RunWorkerThread(std::function<void()> done);
+  // `thread_index` is the index of the running worker thread in
+  // `worker_threads_`, used for observability.
+  void RunWorkerThread(int64_t thread_index, std::function<void()> done);
   // Reports whether we can request another element without violating
   // `max_outstanding_requests_`.
   bool ShouldProcessTask();
@@ -186,12 +188,14 @@ class DataServiceClient {
                                  std::shared_ptr<Result> result, Task& task);
   absl::Status GetElementTraced(Task* task, int64_t deadline_micros,
                                 bool enqueue_result, bool allow_skip,
-                                std::shared_ptr<Result> result);
+                                std::shared_ptr<Result> result,
+                                int64_t thread_index = -1);
   absl::Status MaybeRemoveTask(Task& task, int64_t deadline_micros,
                                Result& result);
   absl::Status GetElement(Task* task, int64_t deadline_micros,
                           bool enqueue_result, bool allow_skip,
-                          std::shared_ptr<Result> result);
+                          std::shared_ptr<Result> result,
+                          int64_t thread_index = -1);
   bool ResultReady() const;
   std::shared_ptr<Result> PopNextResult();
   bool IsCoordinatedRead() const;

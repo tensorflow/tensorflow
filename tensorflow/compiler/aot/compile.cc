@@ -34,7 +34,6 @@ limitations under the License.
 #include "llvm-c/Target.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "tensorflow/compiler/aot/codegen.h"
-#include "tensorflow/compiler/aot/embedded_constant_buffers.h"
 #include "tensorflow/compiler/aot/flags.h"
 #include "tensorflow/compiler/aot/quantize.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
@@ -52,6 +51,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/util/embedded_constant_buffers.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -84,8 +84,8 @@ absl::Status CompileXla(xla::CompileOnlyClient* client,
   absl::StatusOr<std::unique_ptr<xla::ProgramShape>> pshape_or =
       client->GetComputationShape(computation);
   if (!pshape_or.ok()) {
-    return errors::Unknown("Couldn't get XLA program shape: ",
-                           pshape_or.status().message());
+    return absl::UnknownError(absl::StrCat("Couldn't get XLA program shape: ",
+                                           pshape_or.status().message()));
   }
   compile_result->program_shape = pshape_or.value()->ToProto();
   xla::ProgramShapeProto* pshape = &compile_result->program_shape;
@@ -106,11 +106,11 @@ absl::Status CompileXla(xla::CompileOnlyClient* client,
   TF_ASSIGN_OR_RETURN(xla::Shape result_shape,
                       xla::Shape::FromProto(pshape->result()));
   instance.result_layout = &result_shape;
-  absl::StatusOr<std::vector<std::unique_ptr<xla::AotCompilationResult>>>
-      aot_or = client->CompileAheadOfTime(instance, aot_opts);
+  absl::StatusOr<std::vector<std::unique_ptr<xla::CompiledModule>>> aot_or =
+      client->CompileAheadOfTime(instance, aot_opts);
   if (!aot_or.ok()) {
-    return errors::Unknown("XLA compilation failed: ",
-                           aot_or.status().message());
+    return absl::UnknownError(
+        absl::StrCat("XLA compilation failed: ", aot_or.status().message()));
   }
   compile_result->aot =
       xla::unique_ptr_down_cast<xla::cpu::CpuAotCompilationResult>(
@@ -164,7 +164,8 @@ absl::Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
       if (component == "Bridge") {
         use_mlir_bridge = true;
       } else {
-        return errors::Unknown("Unknown mlir_component ", component);
+        return absl::UnknownError(
+            absl::StrCat("Unknown mlir_component ", component));
       }
     }
   }
@@ -212,7 +213,7 @@ absl::Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
   return CompileXla(client, computation, aot_opts, compile_result);
 }
 
-static absl::Status ReadProtoFile(const string& fname,
+static absl::Status ReadProtoFile(const std::string& fname,
                                   protobuf::Message* proto) {
   if (absl::EndsWith(fname, ".pbtxt")) {
     return ReadTextProto(Env::Default(), fname, proto);
@@ -292,12 +293,12 @@ absl::Status Main(const MainFlags& flags) {
   // Process config.
   tf2xla::Config config;
   if (flags.config.empty()) {
-    return errors::InvalidArgument("Must specify --config");
+    return absl::InvalidArgumentError("Must specify --config");
   }
   TF_RETURN_IF_ERROR(ReadProtoFile(flags.config, &config));
   TF_RETURN_IF_ERROR(ValidateConfig(config));
   if (flags.dump_fetch_nodes) {
-    std::set<string> nodes;
+    std::set<std::string> nodes;
     for (const tf2xla::Fetch& fetch : config.fetch()) {
       nodes.insert(fetch.id().node_name());
     }
@@ -307,7 +308,7 @@ absl::Status Main(const MainFlags& flags) {
 
   // Read and initialize the graph.
   if (flags.graph.empty()) {
-    return errors::InvalidArgument("Must specify --graph");
+    return absl::InvalidArgumentError("Must specify --graph");
   }
   GraphDef graph_def;
   TF_RETURN_IF_ERROR(ReadProtoFile(flags.graph, &graph_def));
@@ -344,14 +345,14 @@ absl::Status Main(const MainFlags& flags) {
   }
 
   if (flags.cpp_class.empty()) {
-    return errors::InvalidArgument("Must specify --cpp_class");
+    return absl::InvalidArgumentError("Must specify --cpp_class");
   }
   codegen_opts.gen_hlo_profile_printer_data =
       xla::GetDebugOptionsFromFlags().xla_hlo_profile();
   TF_RETURN_IF_ERROR(ParseCppClass(flags.cpp_class, &codegen_opts.class_name,
                                    &codegen_opts.namespaces));
 
-  EmbeddedConstantBuffers embedded_constant_buffers;
+  xla::EmbeddedConstantBuffers embedded_constant_buffers;
   if (flags.out_constant_buffers_object.empty()) {
     return absl::InvalidArgumentError(
         "Must specify --out_constant_buffers_object when using AOT thunks");
@@ -368,7 +369,7 @@ absl::Status Main(const MainFlags& flags) {
       GenerateMetadata(codegen_opts, compile_result, &metadata_result));
   TF_RETURN_IF_ERROR(WriteStringToFile(env, flags.out_metadata_object,
                                        metadata_result.object_file_data));
-  string header;
+  std::string header;
   TF_RETURN_IF_ERROR(GenerateHeader(codegen_opts, config, compile_result,
                                     metadata_result, embedded_constant_buffers,
                                     &header));

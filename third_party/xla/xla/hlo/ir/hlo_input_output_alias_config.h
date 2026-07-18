@@ -41,8 +41,8 @@ class HloModule;
 // parameter index in the entry computation.
 class HloInputOutputAliasConfig {
  public:
-  // The kind of aliases which can be set. A kMayAlias is one setup at
-  // compilation time by the user, and has to be respected. A kMustAlias one
+  // The kind of aliases which can be set. A kMustAlias is one setup at
+  // compilation time by the user, and has to be respected. A kMayAlias one
   // might be setup by the compiler, if it decides it is convenient to do so.
   enum AliasKind {
     kMayAlias,

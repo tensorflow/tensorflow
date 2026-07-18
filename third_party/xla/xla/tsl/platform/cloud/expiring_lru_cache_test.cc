@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/strings/string_view.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/cloud/now_seconds_env.h"
 #include "xla/tsl/platform/test.h"
@@ -25,7 +26,7 @@ namespace tsl {
 namespace {
 
 TEST(ExpiringLRUCacheTest, MaxAge) {
-  const string key = "a";
+  constexpr absl::string_view key = "a";
   std::unique_ptr<NowSecondsEnv> env(new NowSecondsEnv);
   ExpiringLRUCache<int> cache(1, 0, env.get());
   env->SetNowSeconds(1);
@@ -92,9 +93,9 @@ TEST(ExpiringLRUCacheTest, MaxEntries) {
 
 TEST(ExpiringLRUCacheTest, LookupOrCompute) {
   // max_age of 0 means we should always compute.
-  uint64 num_compute_calls = 0;
+  uint64_t num_compute_calls = 0;
   ExpiringLRUCache<int>::ComputeFunc compute_func =
-      [&num_compute_calls](const string& key, int* value) {
+      [&num_compute_calls](absl::string_view key, int* value) {
         *value = num_compute_calls;
         num_compute_calls++;
         return absl::OkStatus();

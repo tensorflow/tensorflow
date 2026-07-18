@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/hlo/translate/register.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/test.h"
 
 // This file should contain tests for interfaces that can't be tested at the
@@ -37,7 +36,6 @@ namespace {
 using testing::_;
 using testing::AllOf;
 using testing::HasSubstr;
-using tsl::testing::StatusIs;
 
 TEST(ConvertMlirHloToHloModuleTest, PropagatesDiagnostics) {
   const std::string mlir_source = R"mlir(
@@ -104,5 +102,39 @@ func.func @main(%arg0: tensor<3x3x3x3xf32>, %arg1: tensor<3x3x3x3xf32>) -> tenso
 
   TF_ASSERT_OK(ConvertMlirHloToHloModule(*module));
 }
+TEST(ConvertMlirHloToHloModuleTest, ConvertsReplicaGroupMeshAxes) {
+  const std::string kMlirModule = R"mlir(
+    module @main {
+      sdy.mesh @mesh = <["a"=2, "b"=2], device_ids=[0, 1, 2, 3]>
+      func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
+        %0 = "stablehlo.all_reduce"(%arg0) <{
+          channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>,
+          replica_groups = #stablehlo.replica_group_mesh_axes<
+            mesh = @mesh,
+            axes = [#stablehlo.axis_ref<name = "a">, #stablehlo.axis_ref<name = "b">]
+          >,
+          use_global_device_ids
+        }> ({
+        ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+          %1 = "stablehlo.add"(%arg1, %arg2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+          "stablehlo.return"(%1) : (tensor<f32>) -> ()
+        }) : (tensor<f32>) -> tensor<f32>
+        return %0 : tensor<f32>
+      }
+    }
+  )mlir";
+
+  mlir::DialectRegistry registry;
+  xla::RegisterMlirToHloDependentDialects(registry);
+  mlir::MLIRContext context(registry);
+
+  mlir::BaseScopedDiagnosticHandler handler(&context);
+  auto module = mlir::parseSourceString<mlir::ModuleOp>(kMlirModule, &context);
+  TF_ASSERT_OK(handler.ConsumeStatus());
+  ASSERT_TRUE(module);
+  auto hlo_module = ConvertMlirHloToHloModule(*module);
+  TF_EXPECT_OK(hlo_module.status());
+}
+
 }  // namespace
 }  // namespace mlir

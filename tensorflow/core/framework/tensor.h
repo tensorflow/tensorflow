@@ -108,6 +108,9 @@ class TensorBuffer : public core::RefCounted {
     return AllocatorMemoryType::kUnknown;
   }
 
+  /// \brief Whether this TensorBuffer allocates an opaque handle.
+  virtual bool AllocatesOpaqueHandle() const { return false; }
+
  private:
   void* const data_;
 };
@@ -217,11 +220,11 @@ class Tensor {
       : Tensor(scalar_value, host_scalar_tag{}) {}
   explicit Tensor(int32_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
-  explicit Tensor(uint32 scalar_value)
+  explicit Tensor(uint32_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
-  explicit Tensor(uint16 scalar_value)
+  explicit Tensor(uint16_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
-  explicit Tensor(uint8 scalar_value)
+  explicit Tensor(uint8_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
   explicit Tensor(int16_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
@@ -235,7 +238,7 @@ class Tensor {
       : Tensor(scalar_value, host_scalar_tag{}) {}
   explicit Tensor(int64_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
-  explicit Tensor(uint64 scalar_value)
+  explicit Tensor(uint64_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
   explicit Tensor(bool scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
@@ -642,6 +645,17 @@ class Tensor {
   /// REQUIRES: `DataTypeCanUseMemcpy(dtype())`.
   absl::string_view tensor_data() const;
   void* data() const;
+
+  /// \brief Returns an `absl::Cord` mapping the current tensor's buffer.
+  ///
+  /// Like `tensor_data()`, the returned `Cord` may reference memory on
+  /// devices that the CPU cannot address directly. Unlike `tensor_data()`,
+  /// the returned `Cord` holds its own reference to the underlying tensor
+  /// buffer, so the buffer is kept alive for as long as the `Cord` (or any
+  /// copy of it) exists, even if the originating `Tensor` is destroyed.
+  ///
+  /// REQUIRES: `DataTypeCanUseMemcpy(dtype())`.
+  absl::Cord tensor_data_cord() const;
 
   /// Copy the other tensor into this tensor, reshape it and reinterpret the
   /// buffer's datatype. If an ok Status is returned, the two tensors now share
@@ -1095,9 +1109,10 @@ void Tensor::ValueAndTensorBuffer<T>::HostScalarTensorBuffer::operator delete(
 
 template <typename T>
 Tensor::Tensor(T value, host_scalar_tag tag) {
-  auto* value_and_buf = static_cast<Tensor::ValueAndTensorBuffer<T>*>(
-      port::AlignedMalloc(sizeof(typename Tensor::ValueAndTensorBuffer<T>),
-                          EIGEN_MAX_ALIGN_BYTES));
+  auto* value_and_buf =
+      static_cast<Tensor::ValueAndTensorBuffer<T>*>(tsl::port::AlignedMalloc(
+          sizeof(typename Tensor::ValueAndTensorBuffer<T>),
+          static_cast<std::align_val_t>(EIGEN_MAX_ALIGN_BYTES)));
   new (&value_and_buf->value) T(std::move(value));
   new (&value_and_buf->tensor_buffer)
       typename Tensor::ValueAndTensorBuffer<T>::HostScalarTensorBuffer(

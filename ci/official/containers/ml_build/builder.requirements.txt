@@ -5,6 +5,9 @@ id
 urllib3
 requests
 
+# For XLA
+pyyaml
+
 # For JAX
 build ~= 1.2.2
 # uv is faster than pip for installing Python packages.
@@ -12,3 +15,6 @@ uv ~= 0.5.30
 
 # For running wheel verification script
 immutabledict ~= 4.2.1
+
+# For MLIR's stubgen.py script
+typing-extensions

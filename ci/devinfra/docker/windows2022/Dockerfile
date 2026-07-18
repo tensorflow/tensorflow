@@ -1,10 +1,25 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # This Dockerfile creates an image that has:
 # - the correct MTU setting for networking from inside the container to work.
 # - Visual Studio 2022 Build Tools
 # - MSVC 14.39
 # - LLVM/Clang 18.1.4
 # - MSYS2 + curl, git, patch, vim, unzip, zip
-# - Python 3.9 - 3.13
+# - Python 3.9 - 3.14
 # - Bazelisk 1.22.1
 # - JDK 21 (Azul Zulu)
 
@@ -108,7 +123,8 @@ RUN function Install-Python { \
         @{ version = '3.10.11'; prependPath = 0 }, \
         @{ version = '3.11.9'; prependPath = 0 }, \
         @{ version = '3.12.8'; prependPath = 0 }, \
-        @{ version = '3.13.1'; prependPath = 1 } \
+        @{ version = '3.13.1'; prependPath = 0 } \
+        @{ version = '3.14.3'; prependPath = 1 } \
     ); \
     foreach ($v in $versions) { \
         Install-Python -version $v.version -prependPath $v.prependPath; \

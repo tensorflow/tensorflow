@@ -69,8 +69,8 @@ LogicalResult CanonicalizeScatterUpdates(
   auto permutation_and_shape = GetPermutationAndTransposedShape(
       permutation_array, updates_type, rewriter);
 
-  auto transposed_updates = rewriter.create<mhlo::TransposeOp>(
-      scatter_op->getLoc(), permutation_and_shape.shape, updates,
+  auto transposed_updates = mhlo::TransposeOp::create(
+      rewriter, scatter_op->getLoc(), permutation_and_shape.shape, updates,
       permutation_and_shape.permutation);
 
   updates = transposed_updates;
@@ -163,9 +163,9 @@ LogicalResult ConvertScatterOp<BinaryOp, TfOp>::matchAndRewrite(
       permutation_array, operand_type, rewriter);
 
   Location loc = scatter_op.getLoc();
-  auto transposed_operand = rewriter.create<mhlo::TransposeOp>(
-      loc, permutation_and_shape.shape, operands[0],
-      permutation_and_shape.permutation);
+  auto transposed_operand =
+      mhlo::TransposeOp::create(rewriter, loc, permutation_and_shape.shape,
+                                operands[0], permutation_and_shape.permutation);
 
   Value new_indices = indices;
   int64_t index_depth =
@@ -181,8 +181,8 @@ LogicalResult ConvertScatterOp<BinaryOp, TfOp>::matchAndRewrite(
         builder, rewriter,
         llvm::SmallVector<int64_t>({num_updates, index_depth}),
         rewriter.getI32Type());
-    new_indices = rewriter.create<TF::ReshapeOp>(
-        loc,
+    new_indices = TF::ReshapeOp::create(
+        rewriter, loc,
         RankedTensorType::get({num_updates, index_depth},
                               indices_type.getElementType()),
         indices, indices_shape);
@@ -190,8 +190,8 @@ LogicalResult ConvertScatterOp<BinaryOp, TfOp>::matchAndRewrite(
         builder, rewriter,
         llvm::SmallVector<int64_t>({num_updates, updates_type.getDimSize(0)}),
         rewriter.getI32Type());
-    new_updates = rewriter.create<TF::ReshapeOp>(
-        loc,
+    new_updates = TF::ReshapeOp::create(
+        rewriter, loc,
         RankedTensorType::get({1, updates_type.getDimSize(0)},
                               updates_type.getElementType()),
         new_updates, updates_shape);
@@ -200,8 +200,8 @@ LogicalResult ConvertScatterOp<BinaryOp, TfOp>::matchAndRewrite(
   // Apply TF scatter to update the trailing dimensions of the
   // transposed operand.
   auto tf_scatter_op =
-      rewriter.create<TfOp>(loc, permutation_and_shape.shape,
-                            transposed_operand, new_indices, new_updates);
+      TfOp::create(rewriter, loc, permutation_and_shape.shape,
+                   transposed_operand, new_indices, new_updates);
 
   // Reverse the earlier transpose.
   auto inverse_permutation = GetInversePermutation(permutation_array, rewriter);

@@ -25,7 +25,7 @@ cc_library(
         "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:histogram_proto_cc",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform:thread_annotations",
     ],
     alwayslink = True,
 )
@@ -35,6 +35,13 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "histogram.cc",
+    ],
+    visibility = internal_visibility(["//tensorflow/core/lib/histogram:__pkg__"]),
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
         "histogram.h",
     ],
     visibility = internal_visibility(["//tensorflow/core/lib/histogram:__pkg__"]),

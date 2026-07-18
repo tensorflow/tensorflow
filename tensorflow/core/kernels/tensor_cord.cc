@@ -40,7 +40,7 @@ void TensorCord::Encode(VariantTensorData* data) const {
 }
 
 bool TensorCord::Decode(VariantTensorData data) {
-  auto* str = new string(std::move(data.metadata_string()));
+  auto* str = new std::string(std::move(data.metadata_string()));
   Cleanup();
   chunks_.push_back(new CordRep(absl::string_view(*str), &StringReleaser, str));
   return true;
@@ -57,7 +57,7 @@ void TensorCord::TensorBufReleaser(void* tensor_buffer) {
 }
 
 void TensorCord::StringReleaser(void* str_ptr) {
-  delete static_cast<string*>(str_ptr);
+  delete static_cast<std::string*>(str_ptr);
 }
 
 namespace {
@@ -76,8 +76,8 @@ struct ResizeUninitializedTraits {
 // __resize_default_init is provided by libc++ >= 8.0.
 template <typename string_type>
 struct ResizeUninitializedTraits<
-    string_type, absl::void_t<decltype(std::declval<string_type&>()
-                                           .__resize_default_init(237))> > {
+    string_type, std::void_t<decltype(std::declval<string_type&>()
+                                          .__resize_default_init(237))> > {
   using HasMember = std::true_type;
   static void Resize(string_type* s, size_t new_size) {
     s->__resize_default_init(new_size);
@@ -85,14 +85,15 @@ struct ResizeUninitializedTraits<
 };
 
 // Resize string `s` to `new_size`, leaving the data uninitialized.
-static inline void STLStringResizeUninitialized(string* s, size_t new_size) {
-  ResizeUninitializedTraits<string>::Resize(s, new_size);
+static inline void STLStringResizeUninitialized(std::string* s,
+                                                size_t new_size) {
+  ResizeUninitializedTraits<std::string>::Resize(s, new_size);
 }
 
 }  // namespace
 
-TensorCord::operator string() const {
-  string out;
+TensorCord::operator std::string() const {
+  std::string out;
   STLStringResizeUninitialized(&out, size());
   char* data = const_cast<char*>(out.data());
   for (auto* rep : chunks_) {

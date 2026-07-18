@@ -61,13 +61,13 @@ struct FusedComputationArgs {
 
 struct FusedComputationPattern {
   FusedComputationType fused_computation;
-  std::vector<string> fused_ops;
+  std::vector<std::string> fused_ops;
 };
 
 // Parse attributes from the kernel construction context, and verifies that they
 // specify valid fused computation pattern.
 absl::Status InitializeFusedComputation(
-    OpKernelConstruction* context, const string& kernel_name,
+    OpKernelConstruction* context, const std::string& kernel_name,
     const std::vector<FusedComputationPattern>& patterns,
     FusedComputationType* fused_computation,
     FusedComputationArgs* fused_computation_args);
@@ -415,8 +415,8 @@ absl::Status InitBiasAddArgs(OpKernelContext* context, BiasAddArgs<T>* args,
   const Tensor& bias = context->input(2);
 
   if (bias.dims() != 1)
-    return errors::InvalidArgument("bias must be 1-dimensional",
-                                   bias.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("bias must be 1-dimensional", bias.shape().DebugString()));
 
   const auto data_ptr = [](const Tensor& tensor) -> const T* {
     return reinterpret_cast<const T*>(tensor.tensor_data().data());
@@ -441,17 +441,19 @@ absl::Status InitFusedBatchNormArgs(OpKernelContext* context, float epsilon,
   const Tensor& estimated_variance = context->input(5);
 
   if (scale.dims() != 1)
-    return errors::InvalidArgument("scale must be 1-dimensional",
-                                   scale.shape().DebugString());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "scale must be 1-dimensional", scale.shape().DebugString()));
   if (offset.dims() != 1)
-    return errors::InvalidArgument("offset must be 1-dimensional",
-                                   offset.shape().DebugString());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "offset must be 1-dimensional", offset.shape().DebugString()));
   if (estimated_mean.dims() != 1)
-    return errors::InvalidArgument("estimated_mean must be 1-dimensional",
-                                   estimated_mean.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("estimated_mean must be 1-dimensional",
+                     estimated_mean.shape().DebugString()));
   if (estimated_variance.dims() != 1)
-    return errors::InvalidArgument("estimated_variance must be 1-dimensional",
-                                   estimated_variance.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("estimated_variance must be 1-dimensional",
+                     estimated_variance.shape().DebugString()));
 
   const auto data_ptr = [](const Tensor& tensor) -> const T* {
     return reinterpret_cast<const T*>(tensor.tensor_data().data());

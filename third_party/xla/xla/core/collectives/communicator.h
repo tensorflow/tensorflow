@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_CORE_COLLECTIVES_COMMUNICATOR_H_
 #define XLA_CORE_COLLECTIVES_COMMUNICATOR_H_
 
+#include <array>
 #include <cstddef>
 #include <optional>
 #include <ostream>
@@ -26,9 +27,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/core/collectives/reduction_kind.h"
+#include "xla/core/collectives/symmetric_memory.h"
 #include "xla/future.h"
-#include "xla/service/collective_ops_utils.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -54,22 +56,25 @@ class Communicator {
     virtual ~Executor() = default;
   };
 
-  // An RAII handle for buffers registered with the communicator. Child classes
-  // are responsible for unregistering the buffer when the handle is destroyed.
-  class RegisteredBufferHandle {
+  // Backend-specific descriptor used to identify a signal. It must outlive any
+  // operation that uses it; communicators do not take ownership.
+  class SignalDesc {
    public:
-    virtual ~RegisteredBufferHandle() = default;
-    virtual absl::Status Unregister() = 0;
+    virtual ~SignalDesc() = default;
+  };
+
+  // Describes a counted wait for signals from a peer. `signal_desc` is not
+  // owned and must remain valid until the Future returned by WaitSignals
+  // becomes ready.
+  struct PeerWaitDesc {
+    RankId peer;
+    int op_cnt;
+    const SignalDesc& signal_desc;
   };
 
   // Register `buffer_range` once for efficient collective operations (i.e. on
   // NCCL backend it registers the buffer for zero-copy collective operations).
   //
-  virtual absl::Status RegisterBufferOnce(se::DeviceMemoryBase buffer_range,
-                                          int device_ordinal,
-                                          bool use_symmetric_buffer) {
-    return Unimplemented("User-managed buffer registration is not supported");
-  }
 
   // Abort any uncompleted operations and destroys the underlying communicator
   // object. It is undefined behavior to use the communicator after calling
@@ -91,40 +96,40 @@ class Communicator {
 
   // Reduce buffers of length `count` in `send_buff` using `reduction_kind`
   // reduction and leaves identical copies of the result on each `recv_buff`.
-  virtual Future<> AllReduce(stream_executor::DeviceMemoryBase send_buffer,
-                             stream_executor::DeviceMemoryBase recv_buffer,
+  virtual Future<> AllReduce(stream_executor::DeviceAddressBase send_buffer,
+                             stream_executor::DeviceAddressBase recv_buffer,
                              PrimitiveType dtype, size_t count,
                              ReductionKind reduction_kind,
                              const Executor& executor) = 0;
 
   // Copy data in `send_buff` from the root device to the `recv_buff` on
   // all other devices.
-  virtual Future<> Broadcast(se::DeviceMemoryBase send_buffer,
-                             se::DeviceMemoryBase recv_buffer,
+  virtual Future<> Broadcast(se::DeviceAddressBase send_buffer,
+                             se::DeviceAddressBase recv_buffer,
                              PrimitiveType dtype, size_t count, RankId root,
                              const Executor& executor) = 0;
 
   // Reduce data in `send_buff` from all devices using the `reduction_kind`
   // operation and leave the reduced result scattered over the devices so that
   // the `recv_buff` on rank `i` will contain the i-th block of the result.
-  virtual Future<> ReduceScatter(se::DeviceMemoryBase send_buffer,
-                                 se::DeviceMemoryBase recv_buffer,
+  virtual Future<> ReduceScatter(se::DeviceAddressBase send_buffer,
+                                 se::DeviceAddressBase recv_buffer,
                                  PrimitiveType dtype, size_t count,
                                  ReductionKind reduction_kind,
                                  const Executor& executor) = 0;
 
   // Gather `count` values from all devices into `recv_buffer`, receiving data
   // from rank `i` at offset `i * sendcount`.
-  virtual Future<> AllGather(se::DeviceMemoryBase send_buffer,
-                             se::DeviceMemoryBase recv_buffer,
+  virtual Future<> AllGather(se::DeviceAddressBase send_buffer,
+                             se::DeviceAddressBase recv_buffer,
                              PrimitiveType dtype, size_t count,
                              const Executor& executor) = 0;
 
   // Sends data from `send_buffer` to `target_ranks` and receives data from
   // `source_rank` into `recv_buffer`. If `source_rank` is not specified, the
   // output is filled with zeros.
-  virtual Future<> CollectivePermute(se::DeviceMemoryBase send_buffer,
-                                     se::DeviceMemoryBase recv_buffer,
+  virtual Future<> CollectivePermute(se::DeviceAddressBase send_buffer,
+                                     se::DeviceAddressBase recv_buffer,
                                      PrimitiveType dtype, size_t count,
                                      std::optional<RankId> source_rank,
                                      absl::Span<const RankId> target_ranks,
@@ -133,32 +138,71 @@ class Communicator {
   // Sends `count` values from `send_buffers` to other ranks and receives data
   // from other ranks into `recv_buffers`.
   virtual Future<> AllToAll(
-      absl::InlinedVector<se::DeviceMemoryBase, 4> send_buffers,
-      absl::InlinedVector<se::DeviceMemoryBase, 4> recv_buffers,
+      absl::InlinedVector<se::DeviceAddressBase, 4> send_buffers,
+      absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers,
       PrimitiveType dtype, size_t count, const Executor& executor) = 0;
 
   // Send data from `send_buff` to rank `peer`.
-  virtual Future<> Send(se::DeviceMemoryBase send_buffer, PrimitiveType dtype,
+  virtual Future<> Send(se::DeviceAddressBase send_buffer, PrimitiveType dtype,
                         size_t count, RankId peer,
                         const Executor& executor) = 0;
 
   // Receive data from rank `peer` into `recv_buff`.
-  virtual Future<> Recv(se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+  virtual Future<> Recv(se::DeviceAddressBase recv_buffer, PrimitiveType dtype,
                         size_t count, RankId peer,
                         const Executor& executor) = 0;
 
   // Send data from `send_buff` to rank `recv_buff` (one-way send).
-  virtual Future<> Send(se::DeviceMemoryBase recv_buffer,
-                        se::DeviceMemoryBase send_buffer, PrimitiveType dtype,
+  virtual Future<> Send(se::DeviceAddressBase recv_buffer,
+                        se::DeviceAddressBase send_buffer, PrimitiveType dtype,
                         size_t count, RankId peer, const Executor& executor) {
     return Unimplemented("One-way send is not implemented");
   }
 
   // Receive data from rank `peer` into `recv_buff` (one-way recv).
-  virtual Future<> Recv(se::DeviceMemoryBase recv_buffer,
-                        se::DeviceMemoryBase send_buffer, PrimitiveType dtype,
+  virtual Future<> Recv(se::DeviceAddressBase recv_buffer,
+                        se::DeviceAddressBase send_buffer, PrimitiveType dtype,
                         size_t count, RankId peer, const Executor& executor) {
     return Unimplemented("One-way recv is not implemented");
+  }
+
+  // One-sided write: copies data from send_buffer to the peer's symmetric
+  // memory at recv_buffer + offset (count bytes). Used for RMA patterns such as
+  // ragged all-to-all. Does not send signal metadata; use Signal for that.
+  virtual Future<> Put(se::DeviceAddressBase send_buffer,
+                       SymmetricMemory* recv_buffer, size_t offset,
+                       size_t count, RankId peer, const Executor& executor) {
+    return Unimplemented("Put is not implemented");
+  }
+
+  // Sends a signal to peer without transferring data. Can be used as a barrier
+  // or to notify peer that prior Puts (and Signals) to the same descriptor have
+  // completed. signal_desc carries backend-specific signal identity (e.g.
+  // sigIdx, ctx).
+  virtual Future<> Signal(RankId peer, const SignalDesc& signal_desc,
+                          const Executor& executor) {
+    return Unimplemented("Signal is not implemented");
+  }
+
+  // Enqueues a counted wait that blocks subsequent work on the executor until
+  // this rank has received op_cnt signals from peer that match signal_desc
+  // (e.g. same sigIdx/ctx). Used to synchronize after Put/Signal; the backend
+  // uses signal_desc to match which signals to wait for.
+  // `signal_desc` must remain valid until the returned Future becomes ready.
+  virtual Future<> WaitSignal(RankId peer, int op_cnt,
+                              const SignalDesc& signal_desc,
+                              const Executor& executor) {
+    return Unimplemented("WaitSignal is not implemented");
+  }
+
+  // Enqueues counted waits that block subsequent work on the executor until
+  // every wait in `peer_wait_descs` has received the requested number of
+  // matching signals. The descriptor array is consumed before this method
+  // returns; the SignalDesc objects it references must remain valid until the
+  // returned Future becomes ready.
+  virtual Future<> WaitSignals(absl::Span<const PeerWaitDesc> peer_wait_descs,
+                               const Executor& executor) {
+    return Unimplemented("WaitSignals is not implemented");
   }
 
   // Returns the number of ranks in the communicator.

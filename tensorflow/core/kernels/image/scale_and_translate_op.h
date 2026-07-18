@@ -60,10 +60,10 @@ struct Spans {
 template <typename Device, typename T>
 struct GatherSpans {
   void operator()(OpKernelContext* context, const Device& d, int row_span_size,
-                  typename TTypes<int32, 1>::ConstTensor row_starts,
+                  typename TTypes<int32_t, 1>::ConstTensor row_starts,
                   typename TTypes<float, 1>::ConstTensor row_weights,
                   int col_span_size,
-                  typename TTypes<int32, 1>::ConstTensor col_starts,
+                  typename TTypes<int32_t, 1>::ConstTensor col_starts,
                   typename TTypes<float, 1>::ConstTensor col_weights,
                   typename TTypes<T, 4>::ConstTensor input_images,
                   typename TTypes<float, 4>::Tensor intermediate_buffer,

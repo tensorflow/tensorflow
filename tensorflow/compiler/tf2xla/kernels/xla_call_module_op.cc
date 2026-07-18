@@ -166,13 +166,13 @@ class XlaCallModuleOp : public XlaOpKernel {
   explicit XlaCallModuleOp(OpKernelConstruction *ctx) : XlaOpKernel(ctx) {
     int version;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("version", &version));
-    string module_str;
+    std::string module_str;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("module", &module_str));
     std::vector<PartialTensorShape> expected_output_shapes;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("Sout", &expected_output_shapes));
     std::vector<DataType> expected_output_dtypes;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("Tout", &expected_output_dtypes));
-    std::vector<string> dim_args_spec;
+    std::vector<std::string> dim_args_spec;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dim_args_spec", &dim_args_spec));
     OP_REQUIRES(ctx, dim_args_spec.empty(),
                 absl::UnimplementedError(
@@ -183,9 +183,9 @@ class XlaCallModuleOp : public XlaOpKernel {
                     "The size of Sout (", expected_output_shapes.size(),
                     ") must match the size of Tout (",
                     expected_output_dtypes.size(), ")")));
-    std::vector<string> disabled_checks;
+    std::vector<std::string> disabled_checks;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("disabled_checks", &disabled_checks));
-    std::vector<string> platforms;
+    std::vector<std::string> platforms;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("platforms", &platforms));
     // TODO(necula): change this to OP_REQUIRES_OK when 6 months have passed
     // since we added the function_list and has_token_input_output
@@ -222,7 +222,7 @@ class XlaCallModuleOp : public XlaOpKernel {
                                })
               << "])";
     }
-    string compilation_device_type = ctx->device_type().type_string();
+    std::string compilation_device_type = ctx->device_type().type_string();
     compilation_platform_ = "";
     if (compilation_device_type == DEVICE_CPU_XLA_JIT) {
       compilation_platform_ = "CPU";
@@ -293,7 +293,7 @@ class XlaCallModuleOp : public XlaOpKernel {
     xla::XlaOp token_input;
     if (!op_token_input_nodes_.empty()) {
       std::vector<xla::XlaOp> token_inputs;
-      for (const string &node_name : op_token_input_nodes_) {
+      for (const std::string& node_name : op_token_input_nodes_) {
         auto token = compiler->GetNodeToken(node_name);
         OP_REQUIRES_OK(ctx, token.status());
         token_inputs.push_back(token.value());
@@ -519,7 +519,7 @@ class XlaCallModuleOp : public XlaOpKernel {
         } else if (options.add_token_input_output) {
           // Add a dummy token if the inner computation takes a token but the
           // custom call doesn't have a token argument.
-          args.push_back(builder.create<mlir::stablehlo::CreateTokenOp>(loc));
+          args.push_back(mlir::stablehlo::CreateTokenOp::create(builder, loc));
         }
 
         input_args.reserve(result.input_mapping.size());
@@ -530,7 +530,7 @@ class XlaCallModuleOp : public XlaOpKernel {
 
       // Call the lowered function.
       auto call =
-          builder.create<mlir::func::CallOp>(loc, main_func, input_args);
+          mlir::func::CallOp::create(builder, loc, main_func, input_args);
 
       // Unpack the result tuple (`options.always_return_tuple` is true). If
       // `has_tuple_input_output` is true, the first result is a token type.
@@ -548,7 +548,7 @@ class XlaCallModuleOp : public XlaOpKernel {
             mlir::Value token = results.back();
             if (!token.use_empty()) {
               token.replaceAllUsesWith(
-                  builder.create<mlir::stablehlo::CreateTokenOp>(loc));
+                  mlir::stablehlo::CreateTokenOp::create(builder, loc));
             }
             results.pop_back();
           }

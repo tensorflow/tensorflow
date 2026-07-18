@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -87,9 +88,9 @@ HloInstruction* AllGatherDecomposer::TranslateAllGatherToAllReducePerOperand(
 
 absl::Status AllGatherDecomposer::DecomposeAllGather(
     HloAllGatherInstruction* ag, HloComputation* comp) {
-  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
-                      GetCollectiveOpGroupMode(ag->channel_id().has_value(),
-                                               ag->use_global_device_ids()));
+  ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                   GetCollectiveOpGroupMode(ag->channel_id().has_value(),
+                                            ag->use_global_device_ids()));
   if (ag->operand_count() > 1) {
     std::vector<HloInstruction*> tuple_inputs;
     for (int i = 0; i < ag->operand_count(); ++i) {
@@ -101,18 +102,18 @@ absl::Status AllGatherDecomposer::DecomposeAllGather(
       tuple_inputs.push_back(ar);
     }
     auto tup = comp->AddInstruction(HloInstruction::CreateTuple(tuple_inputs));
-    TF_RETURN_IF_ERROR(ag->ReplaceAllUsesWith(tup));
+    RETURN_IF_ERROR(ag->ReplaceAllUsesWith(tup));
   } else {
     auto* ar = TranslateAllGatherToAllReducePerOperand(
         group_mode, *ag, ag->shape(), ag->mutable_operand(0), comp,
         ag->all_gather_dimension());
-    TF_RETURN_IF_ERROR(ag->ReplaceAllUsesWith(ar));
+    RETURN_IF_ERROR(ag->ReplaceAllUsesWith(ar));
   }
-  TF_RETURN_IF_ERROR(comp->RemoveInstructionAndUnusedOperands(ag));
+  RETURN_IF_ERROR(comp->RemoveInstructionAndUnusedOperands(ag));
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> AllGatherDecomposer::Run(
+absl::StatusOr<bool> AllGatherDecomposer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -123,7 +124,7 @@ absl::StatusOr<bool> AllGatherDecomposer::Run(
       }
       auto ag = Cast<HloAllGatherInstruction>(hlo);
       if (ShouldDecompose(*ag)) {
-        TF_RETURN_IF_ERROR(DecomposeAllGather(ag, comp));
+        RETURN_IF_ERROR(DecomposeAllGather(ag, comp));
         changed = true;
       }
     }

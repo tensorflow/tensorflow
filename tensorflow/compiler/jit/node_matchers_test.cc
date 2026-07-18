@@ -41,7 +41,7 @@ using testing::matchers::Op;
 using testing::matchers::Out;
 
 template <typename M, typename T>
-string Explain(const T& t, const M& m) {
+std::string Explain(const T& t, const M& m) {
   ::testing::StringMatchResultListener listener;
   EXPECT_THAT(t, ::testing::Not(m));  // For the error message.
   EXPECT_FALSE(m.MatchAndExplain(t, &listener));

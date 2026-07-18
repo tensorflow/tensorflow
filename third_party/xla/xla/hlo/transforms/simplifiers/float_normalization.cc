@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -148,7 +149,7 @@ absl::StatusOr<HloInstruction*> FloatNormalizationVisitor::ConvertType(
       to == LowPrecisionType() && from == HighPrecisionType()) {
     return hlo->mutable_operand(0);
   }
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto new_hlo,
       computation->DeepCopyInstructionWithCustomCopier(
           hlo, [&](HloInstruction* leaf, const ShapeIndex& leaf_index,
@@ -173,13 +174,13 @@ absl::Status FloatNormalizationVisitor::InsertConvertAfterOutput(
   bool is_root = computation->root_instruction() == hlo;
   std::vector<HloInstruction*> materialized_users = hlo->users();
 
-  TF_ASSIGN_OR_RETURN(auto new_hlo, ConvertType(hlo, from, to, computation));
+  ASSIGN_OR_RETURN(auto new_hlo, ConvertType(hlo, from, to, computation));
   if (new_hlo == hlo) {
     return absl::OkStatus();
   }
 
   for (auto* user : materialized_users) {
-    TF_RETURN_IF_ERROR(hlo->ReplaceUseWithDifferentShape(user, new_hlo));
+    RETURN_IF_ERROR(hlo->ReplaceUseWithDifferentShape(user, new_hlo));
   }
   if (is_root) {
     computation->set_root_instruction(new_hlo, /*accept_different_shape=*/true);
@@ -222,7 +223,7 @@ absl::Status FloatNormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
       });
   float_normalization_->UpdateLayout(hlo->mutable_shape());
   std::vector<HloInstruction*> materialized_users = hlo->users();
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto new_hlo,
       computation->DeepCopyInstructionWithCustomCopier(
           hlo, [&](HloInstruction* leaf, const ShapeIndex& leaf_index,
@@ -262,11 +263,11 @@ absl::Status FloatNormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
         from == LowPrecisionType()) {
       conversions_to_simplify.push_back(user);
     } else {
-      TF_RETURN_IF_ERROR(hlo->ReplaceUseWithDifferentShape(user, new_hlo));
+      RETURN_IF_ERROR(hlo->ReplaceUseWithDifferentShape(user, new_hlo));
     }
   }
   for (auto* convert : conversions_to_simplify) {
-    TF_RETURN_IF_ERROR(convert->ReplaceAllUsesWith(hlo));
+    RETURN_IF_ERROR(convert->ReplaceAllUsesWith(hlo));
   }
   if (is_root) {
     computation->set_root_instruction(new_hlo, /*accept_different_shape=*/true);
@@ -282,12 +283,12 @@ absl::Status FloatNormalizationVisitor::InsertConvertBeforeOperand(
     HloInstruction* hlo, int64_t operand_idx, PrimitiveType from,
     PrimitiveType to, HloComputation* computation) {
   auto operand = hlo->mutable_operand(operand_idx);
-  TF_ASSIGN_OR_RETURN(auto new_operand,
-                      ConvertType(operand, from, to, computation));
+  ASSIGN_OR_RETURN(auto new_operand,
+                   ConvertType(operand, from, to, computation));
   if (new_operand == operand) {
     return absl::OkStatus();
   }
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       hlo->ReplaceOperandWithDifferentShape(operand_idx, new_operand));
   changed_ = true;
   return absl::OkStatus();
@@ -311,13 +312,13 @@ absl::Status FloatNormalizationVisitor::ConvertCalledComputations(
   });
   for (auto& comp_pair : cloned_computations) {
     auto comp = comp_pair.second;
-    TF_RETURN_IF_ERROR(InsertConvertAfterOutput(comp->root_instruction(),
-                                                LowPrecisionType(),
-                                                HighPrecisionType(), comp));
+    RETURN_IF_ERROR(InsertConvertAfterOutput(comp->root_instruction(),
+                                             LowPrecisionType(),
+                                             HighPrecisionType(), comp));
     for (auto* param : comp->parameter_instructions()) {
       // This changes the parameter to high-precision then inserts a convert
       // after it.
-      TF_RETURN_IF_ERROR(ChangeOutputTypeThenInsertConvertBack(
+      RETURN_IF_ERROR(ChangeOutputTypeThenInsertConvertBack(
           param, LowPrecisionType(), HighPrecisionType(), comp));
     }
   }
@@ -385,7 +386,7 @@ absl::Status FloatNormalizationVisitor::HandleMultipleOutputs(
 
   for (int64_t i = 0; i < hlo->operand_count(); ++i) {
     if (should_convert_operand(i)) {
-      TF_RETURN_IF_ERROR(InsertConvertBeforeOperand(
+      RETURN_IF_ERROR(InsertConvertBeforeOperand(
           hlo, i, LowPrecisionType(), HighPrecisionType(), computation_));
       high_prec_count += 1;
       low_prec_count -= 1;
@@ -451,7 +452,7 @@ absl::Status FloatNormalizationVisitor::HandleMultipleOutputs(
   // ReplaceUseWith.
   *tuple->mutable_shape() = hlo->shape();
   for (auto* user : materialized_users) {
-    TF_RETURN_IF_ERROR(hlo->ReplaceUseWith(user, tuple));
+    RETURN_IF_ERROR(hlo->ReplaceUseWith(user, tuple));
   }
   bool is_root = computation_->root_instruction() == hlo;
   if (is_root) {
@@ -516,7 +517,7 @@ absl::Status FloatNormalizationVisitor::HandleInstruction(HloInstruction* hlo) {
         hlo->operand(i)->shape(), LowPrecisionType());
     if (low_prec_count_in_operand > 0 &&
         !float_support_->SupportsLowPrecisionOperand(*hlo, i)) {
-      TF_RETURN_IF_ERROR(InsertConvertBeforeOperand(
+      RETURN_IF_ERROR(InsertConvertBeforeOperand(
           hlo, i, LowPrecisionType(), HighPrecisionType(), computation_));
       low_prec_count -= low_prec_count_in_operand;
       high_prec_count += low_prec_count_in_operand;
@@ -528,7 +529,7 @@ absl::Status FloatNormalizationVisitor::HandleInstruction(HloInstruction* hlo) {
     int64_t low_prec_count_in_hlo =
         CountSubshapesWithMatchingType(hlo->shape(), LowPrecisionType());
     if (low_prec_count_in_hlo > 0) {
-      TF_RETURN_IF_ERROR(ChangeOutputTypeThenInsertConvertBack(
+      RETURN_IF_ERROR(ChangeOutputTypeThenInsertConvertBack(
           hlo, LowPrecisionType(), HighPrecisionType(), computation_));
       low_prec_count -= low_prec_count_in_hlo;
       high_prec_count += low_prec_count_in_hlo;
@@ -564,16 +565,16 @@ absl::Status FloatNormalizationVisitor::HandleInstruction(HloInstruction* hlo) {
     }
     if (can_use_low_prec) {
       for (int i = 0; i < hlo->operand_count(); ++i) {
-        TF_RETURN_IF_ERROR(InsertConvertBeforeOperand(
+        RETURN_IF_ERROR(InsertConvertBeforeOperand(
             hlo, i, HighPrecisionType(), LowPrecisionType(), computation_));
       }
       return absl::OkStatus();
     }
   }
-  TF_RETURN_IF_ERROR(ChangeOutputTypeThenInsertConvertBack(
+  RETURN_IF_ERROR(ChangeOutputTypeThenInsertConvertBack(
       hlo, LowPrecisionType(), HighPrecisionType(), computation_));
   for (int i = 0; i < hlo->operand_count(); ++i) {
-    TF_RETURN_IF_ERROR(InsertConvertBeforeOperand(
+    RETURN_IF_ERROR(InsertConvertBeforeOperand(
         hlo, i, LowPrecisionType(), HighPrecisionType(), computation_));
   }
   return ConvertCalledComputations(hlo, low_precision_called_comps);
@@ -669,10 +670,10 @@ CloneComputationsForNonNormalizingInstructions(
 }
 }  // namespace
 
-absl::StatusOr<bool> FloatNormalization::Run(
+absl::StatusOr<bool> FloatNormalization::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_VLOG_LINES(2, "FloatNormalization::Run() for " +
+  XLA_VLOG_LINES(2, "FloatNormalization::RunImpl() for " +
                         primitive_util::LowercasePrimitiveTypeName(
                             float_support_->LowPrecisionType()) +
                         ", before:\n" + module->ToString());
@@ -684,17 +685,17 @@ absl::StatusOr<bool> FloatNormalization::Run(
   FloatNormalizationVisitor visitor(float_support_, this);
   for (auto* comp : computations_to_visit) {
     if (computations_to_skip.contains(comp)) continue;
-    TF_RETURN_IF_ERROR(comp->Accept(&visitor));
+    RETURN_IF_ERROR(comp->Accept(&visitor));
   }
-  XLA_VLOG_LINES(2, "FloatNormalization::Run() for " +
+  XLA_VLOG_LINES(2, "FloatNormalization::RunImpl() for " +
                         primitive_util::LowercasePrimitiveTypeName(
                             float_support_->LowPrecisionType()) +
                         ", after:\n" + module->ToString());
   if (visitor.changed()) {
     TupleSimplifier tuple_simplifier;
-    TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
+    RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
     HloDCE dce;
-    TF_RETURN_IF_ERROR(dce.Run(module).status());
+    RETURN_IF_ERROR(dce.Run(module).status());
   }
   return visitor.changed();
 }

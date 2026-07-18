@@ -39,7 +39,7 @@ enum class MirrorPadMode {
 
 // Return the string containing the list of valid padding modes, that can be
 // used as an Attr() in REGISTER_OP.
-string GetMirrorPadModeAttrString();
+std::string GetMirrorPadModeAttrString();
 
 // Forward declaration to avoid including core/framework/graph.proto.
 class NodeDef;

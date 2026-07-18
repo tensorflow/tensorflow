@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -230,9 +231,9 @@ StatusOr<Layout> MergeLayouts(
   for (const auto& consumer : consumers) {
     const Layout& consumer_layout = consumer.second;
     if (consumer_layout.rank() != layout_rank)
-      return errors::InvalidArgument(
-          "found two consumer layout of different ranks: ",
-          consumer_layout.rank(), " and ", layout_rank);
+      return absl::InvalidArgumentError(
+          absl::StrCat("found two consumer layout of different ranks: ",
+                       consumer_layout.rank(), " and ", layout_rank));
   }
 
   // Merge consumer layouts.
@@ -273,9 +274,9 @@ StatusOr<Layout> MergeLayouts(
   }
 
   if (producer->rank() != layout_rank) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "producer and consumer layout have different ranks: ", producer->rank(),
-        " and ", layout_rank);
+        " and ", layout_rank));
   }
 
   // For the producer merge, first we define mesh dims used by the producer to
@@ -733,9 +734,9 @@ mlir::LogicalResult InsertDTensorLayoutOps(
     mlir::Type value_type = GetSubtypeOrSelf(merged_layout.first);
 
     if (auto type = mlir::dyn_cast<mlir::TensorType>(value_type)) {
-      auto layout_op = builder.create<mlir::TF::DTensorLayout>(
-          merged_layout.first.getLoc(), merged_layout.first, layout_attr,
-          mlir::TF::ShapeAttr::get(builder.getContext(), type));
+      auto layout_op = mlir::TF::DTensorLayout::create(
+          builder, merged_layout.first.getLoc(), merged_layout.first,
+          layout_attr, mlir::TF::ShapeAttr::get(builder.getContext(), type));
       llvm::SmallPtrSet<mlir::Operation*, 4> exception{layout_op};
       merged_layout.first.replaceAllUsesExcept(layout_op.getOutput(),
                                                exception);
@@ -1234,30 +1235,26 @@ mlir::LogicalResult InsertRelayoutForWhileLoops(
       mlir::TF::ShapeAttr global_shape = mlir::TF::ShapeAttr::get(
           builder.getContext(),
           mlir::cast<mlir::TensorType>(yield_op->getOperand(i).getType()));
-      mlir::TF::RelayoutOp first_relayout =
-          builder.create<mlir::TF::RelayoutOp>(
-              op.getLoc(), yield_op->getOperand(i).getType(),
-              yield_op->getOperand(i), input_layout.ToString());
-      mlir::TF::DTensorLayout first_layout_op =
-          builder.create<mlir::TF::DTensorLayout>(
-              op.getLoc(), first_relayout.getOutput(),
-              mlir::dtensor::LayoutAttr::get(builder.getContext(),
-                                             input_layout),
-              global_shape);
+      mlir::TF::RelayoutOp first_relayout = mlir::TF::RelayoutOp::create(
+          builder, op.getLoc(), yield_op->getOperand(i).getType(),
+          yield_op->getOperand(i), input_layout.ToString());
+      mlir::TF::DTensorLayout first_layout_op = mlir::TF::DTensorLayout::create(
+          builder, op.getLoc(), first_relayout.getOutput(),
+          mlir::dtensor::LayoutAttr::get(builder.getContext(), input_layout),
+          global_shape);
       yield_op->setOperand(i, first_layout_op.getOutput());
 
       // Insert the second relayout op after the loop itself.
       builder.setInsertionPointAfter(op);
       mlir::TF::DTensorLayout second_layout_op =
-          builder.create<mlir::TF::DTensorLayout>(
-              op.getLoc(), op->getResult(i),
+          mlir::TF::DTensorLayout::create(
+              builder, op.getLoc(), op->getResult(i),
               mlir::dtensor::LayoutAttr::get(builder.getContext(),
                                              input_layout),
               global_shape);
-      mlir::TF::RelayoutOp second_relayout =
-          builder.create<mlir::TF::RelayoutOp>(
-              op.getLoc(), second_layout_op.getOutput().getType(),
-              second_layout_op.getOutput(), output_layout.ToString());
+      mlir::TF::RelayoutOp second_relayout = mlir::TF::RelayoutOp::create(
+          builder, op.getLoc(), second_layout_op.getOutput().getType(),
+          second_layout_op.getOutput(), output_layout.ToString());
       op->getResult(i).replaceAllUsesExcept(
           second_relayout.getOutput(), llvm::SmallPtrSet<mlir::Operation*, 1>{
                                            second_layout_op.getOperation()});
@@ -1372,7 +1369,7 @@ absl::Status RunOneIteration(
   if (mlir::failed(
           MergeAndGetUpdatedLayouts(is_locked, is_updated, producer_request,
                                     consumer_requests, merged_layouts)))
-    return errors::Internal(
+    return absl::InternalError(
         "MergeAndGetUpdatedLayouts failed to merge layouts.");
 
   // Compile a list of operations with updated inputs or outputs.
@@ -1389,7 +1386,8 @@ absl::Status RunOneIteration(
     if (mlir::failed(UpdateLayoutsForOp(op, producers, merged_layouts,
                                         producer_request, consumer_requests,
                                         is_updated)))
-      return errors::Internal("UpdateLayoutsForOp failed to update layouts.");
+      return absl::InternalError(
+          "UpdateLayoutsForOp failed to update layouts.");
   }
   ++(*steps);
   return absl::OkStatus();
@@ -1402,14 +1400,14 @@ absl::Status CompareMergedLayouts(
     const llvm::DenseMap<mlir::Value, Layout>& merged_b,
     llvm::DenseSet<mlir::Value>& changed) {
   if (merged_a.size() != merged_b.size())
-    return errors::Internal(
+    return absl::InternalError(
         "Both merged_layouts did not have the same number of set layouts.");
   for (const auto& value_and_layout : merged_a) {
     const mlir::Value value = value_and_layout.getFirst();
     const Layout& layout = value_and_layout.getSecond();
     auto value_and_layout_in_b = merged_b.find(value);
     if (value_and_layout_in_b == merged_b.end())
-      return errors::Internal(
+      return absl::InternalError(
           "Comparing merged_layouts that contain different mlir::Value's.");
     if (value_and_layout_in_b->second != layout) {
       changed.insert(value);

@@ -64,7 +64,7 @@ def global_step(sess, global_step_tensor):
   """
   if context.executing_eagerly():
     return int(global_step_tensor.numpy())
-  return int(sess.run(global_step_tensor))
+  return sess.run(global_step_tensor).item()
 
 
 @tf_export(v1=['train.get_global_step'])

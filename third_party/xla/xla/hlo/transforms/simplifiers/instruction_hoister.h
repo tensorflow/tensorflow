@@ -24,25 +24,33 @@ limitations under the License.
 
 namespace xla {
 
-// HLO pass that hoists parameters and constants to increase opportunities for
-// prefetching.
+// HLO pass that hoists parameters, constants, bitcasts and GetTupleElement
+// operations to increase opportunities for prefetching.
 class InstructionHoister : public HloModulePass {
  public:
   explicit InstructionHoister(bool hoist_parameters = true,
-                              bool host_constants = true)
-      : hoist_parameters_(hoist_parameters), host_constants_(host_constants) {}
+                              bool host_constants = true,
+                              bool hoist_bitcasts = false,
+                              bool hoist_gtes = false)
+      : hoist_parameters_(hoist_parameters),
+        host_constants_(host_constants),
+        hoist_bitcasts_(hoist_bitcasts),
+        hoist_gtes_(hoist_gtes) {}
 
   ~InstructionHoister() override = default;
 
   absl::string_view name() const override { return "instruction-hoister"; }
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   bool hoist_parameters_;
   bool host_constants_;
+  bool hoist_bitcasts_;
+  bool hoist_gtes_;
 };
 
 }  // namespace xla

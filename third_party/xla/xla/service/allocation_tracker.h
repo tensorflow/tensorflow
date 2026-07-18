@@ -26,11 +26,12 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/service/backend.h"
 #include "xla/service/shaped_buffer.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
@@ -49,13 +50,13 @@ class AllocationTracker {
   // handle that can be used for talking to XLA clients. The given shaped buffer
   // will be treated as the buffer corresponding to the only replica.
   absl::StatusOr<GlobalDataHandle> Register(ScopedShapedBuffer shaped_buffer,
-                                            const std::string& tag);
+                                            absl::string_view tag);
 
   // Registers a vector of shaped buffers of device memory, one per replica, and
   // returns a corresponding handle that can be used for talking to XLA clients.
   absl::StatusOr<GlobalDataHandle> RegisterReplicatedBuffers(
       std::vector<ScopedShapedBuffer> replicated_buffers,
-      const std::string& tag);
+      absl::string_view tag);
 
   // Unregister the allocation for the given data handle.
   absl::Status Unregister(const GlobalDataHandle& data);
@@ -80,7 +81,7 @@ class AllocationTracker {
   // Data structure encapsulating single memory allocation on the device.
   struct Allocation {
     // The pointer to this allocation.
-    se::OwningDeviceMemory device_memory;
+    se::ScopedDeviceAddress<uint8_t> device_memory;
 
     // This is the number of times this memory allocation is referred to by
     // registered data handles.
@@ -98,18 +99,18 @@ class AllocationTracker {
   // object -- presumably this is a call from DeconstructTuple.
   template <typename ShapedBufferTy>
   absl::StatusOr<GlobalDataHandle> RegisterInternal(
-      std::vector<ShapedBufferTy> replicated_buffers, const std::string& tag)
+      std::vector<ShapedBufferTy> replicated_buffers, absl::string_view tag)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Adds the given device address to the allocation tracker, or if it already
   // exists, then increment its reference count.
-  void AddAllocationOrIncrementRefCount(se::DeviceMemoryBase device_memory,
+  void AddAllocationOrIncrementRefCount(se::DeviceAddressBase device_memory,
                                         int device_ordinal)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Decrements the reference count of the given device memory. Then, if it is
   // zero, deallocate the memory.
-  absl::Status DecrementRefCount(se::DeviceMemoryBase device_memory,
+  absl::Status DecrementRefCount(se::DeviceAddressBase device_memory,
                                  int device_ordinal)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 

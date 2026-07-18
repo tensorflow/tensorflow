@@ -16,10 +16,9 @@ limitations under the License.
 #include "xla/service/gpu/fusion_dispatch_pipeline.h"
 
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/transforms/fusion_block_level_rewriter.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
-#include "xla/service/gpu/transforms/fusion_block_level_rewriter.h"
-#include "xla/service/gpu/transforms/fusion_dynamic_memcpy_rewriter.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
@@ -35,7 +34,6 @@ HloPassPipeline FusionDispatchPipeline(
   pipeline.AddPass<HloDCE>();
   pipeline.AddPass<FusionBlockLevelRewriter>(device_description, shape_size_fn,
                                              mlir_context);
-  pipeline.AddPass<FusionDynamicMemcpyRewriter>();
   return pipeline;
 }
 

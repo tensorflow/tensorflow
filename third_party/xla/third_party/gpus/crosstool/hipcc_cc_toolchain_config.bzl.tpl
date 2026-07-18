@@ -2,6 +2,8 @@
 
 load(
     "@bazel_tools//tools/cpp:cc_toolchain_config_lib.bzl",
+    "env_entry",
+    "env_set",
     "feature",
     "feature_set",
     "flag_group",
@@ -11,6 +13,7 @@ load(
     "with_feature_set",
 )
 load("@bazel_tools//tools/build_defs/cc:action_names.bzl", "ACTION_NAMES")
+load("@rules_cc//cc/toolchains:cc_toolchain_config_info.bzl", "CcToolchainConfigInfo")
 
 all_compile_actions = [
     ACTION_NAMES.c_compile,
@@ -90,6 +93,23 @@ def _impl(ctx):
     supports_start_end_lib_feature = feature(
         name = "supports_start_end_lib",
         enabled = True,
+    )
+
+    # Set environment variables from action_env dict
+    env_entries = []
+    if ctx.attr.action_env:
+        for key, value in ctx.attr.action_env.items():
+            env_entries.append(env_entry(key = key, value = value))
+
+    compiler_env_feature = feature(
+        name = "compiler_env",
+        enabled = True,
+        env_sets = [
+            env_set(
+                actions = all_compile_actions + all_link_actions,
+                env_entries = env_entries,
+            ),
+        ] if env_entries else [],
     )
 
     default_compile_flags_feature = feature(
@@ -381,6 +401,10 @@ def _impl(ctx):
         provides = ["profile"],
     )
 
+    # Targets can set features = ["no_solib_rpaths"] to suppress the
+    # automatic solib RPATH entries and rely on their own linkopts instead.
+    no_solib_rpaths_feature = feature(name = "no_solib_rpaths")
+
     runtime_library_search_directories_feature = feature(
         name = "runtime_library_search_directories",
         flag_sets = [
@@ -408,7 +432,10 @@ def _impl(ctx):
                     ),
                 ],
                 with_features = [
-                    with_feature_set(features = ["static_link_cpp_runtimes"]),
+                    with_feature_set(
+                        features = ["static_link_cpp_runtimes"],
+                        not_features = ["no_solib_rpaths"],
+                    ),
                 ],
             ),
             flag_set(
@@ -429,7 +456,7 @@ def _impl(ctx):
                 ],
                 with_features = [
                     with_feature_set(
-                        not_features = ["static_link_cpp_runtimes"],
+                        not_features = ["static_link_cpp_runtimes", "no_solib_rpaths"],
                     ),
                 ],
             ),
@@ -1064,6 +1091,22 @@ def _impl(ctx):
         ],
     )
 
+    clang_compiler_path_feature = feature(
+        name = "clang-compiler-path",
+        enabled = ctx.attr.clang_compiler_path != "",
+        env_sets = [
+            env_set(
+                actions = all_compile_actions + all_link_actions,
+                env_entries = [
+                    env_entry(
+                        key = "HOST_COMPILER",
+                        value = ctx.attr.clang_compiler_path,
+                    ),
+                ],
+            ),
+        ] if ctx.attr.clang_compiler_path else [],
+    )
+
     features = [
         dependency_file_feature,
         random_seed_feature,
@@ -1083,6 +1126,7 @@ def _impl(ctx):
         shared_flag_feature,
         linkstamps_feature,
         output_execpath_flags_feature,
+        no_solib_rpaths_feature,
         runtime_library_search_directories_feature,
         library_search_directories_feature,
         archiver_flags_feature,
@@ -1091,6 +1135,8 @@ def _impl(ctx):
         strip_debug_symbols_feature,
         coverage_feature,
         supports_pic_feature,
+        compiler_env_feature,
+        clang_compiler_path_feature,
     ] + (
         [
             supports_start_end_lib_feature,
@@ -1155,6 +1201,8 @@ cc_toolchain_config = rule(
         "host_compiler_path": attr.string(),
         "host_compiler_prefix": attr.string(),
         "linker_bin_path": attr.string(),
+        "action_env": attr.string_dict(),
+        "clang_compiler_path": attr.string(),
     },
     provides = [CcToolchainConfigInfo],
 )

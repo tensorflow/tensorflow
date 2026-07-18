@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -39,8 +40,9 @@ class RaggedTensorToSparseOp : public OpKernel {
     OP_REQUIRES_OK(
         context, context->input_list("rt_nested_splits", &rt_nested_splits_in));
     const int rt_nested_splits_len = rt_nested_splits_in.size();
-    OP_REQUIRES(context, rt_nested_splits_len > 0,
-                errors::InvalidArgument("rt_nested_splits must be non empty"));
+    OP_REQUIRES(
+        context, rt_nested_splits_len > 0,
+        absl::InvalidArgumentError("rt_nested_splits must be non empty"));
     std::vector<ConstFlatSplits> rt_nested_splits;
     rt_nested_splits.reserve(rt_nested_splits_len);
     for (int i = 0; i < rt_nested_splits_len; ++i) {
@@ -81,8 +83,8 @@ class RaggedTensorToSparseOp : public OpKernel {
     // Each iteration through the loop, we increment pos[-1], and add indices
     // for all the values corresponding to
     // rt_nested_splits[-1][pos[-1]:pos[-1]+1].
-    int next_index = 0;
-    int max_final_pos = rt_nested_splits.back().size() - 1;
+    int64_t next_index = 0;
+    int64_t max_final_pos = rt_nested_splits.back().size() - 1;
     for (; final_pos < max_final_pos; ++final_pos) {
       // Update `pos` to skip over completed elements (i.e., elements where
       // we have already generated indices for all contained values).
@@ -94,7 +96,7 @@ class RaggedTensorToSparseOp : public OpKernel {
 
       // Update index_prefix.
       for (int dim = 0; dim < index_prefix.size(); ++dim) {
-        int start = dim > 0 ? rt_nested_splits[dim - 1](pos[dim - 1]) : 0;
+        int64_t start = dim > 0 ? rt_nested_splits[dim - 1](pos[dim - 1]) : 0;
         index_prefix[dim] = pos[dim] - start;
       }
 
@@ -159,10 +161,11 @@ class RaggedTensorToSparseOp : public OpKernel {
       const Tensor& rt_dense_values_in) {
     for (int i = 0; i < rt_nested_splits.size(); ++i) {
       if (rt_nested_splits[i].size() == 0) {
-        return InvalidArgument("ragged splits may not be empty.");
+        return absl::InvalidArgumentError("ragged splits may not be empty.");
       }
       if (rt_nested_splits[i](0) != 0) {
-        return InvalidArgument("First value of ragged splits must be 0.");
+        return absl::InvalidArgumentError(
+            "First value of ragged splits must be 0.");
       }
       for (int j = 1; j < rt_nested_splits[i].size(); ++j) {
         if (rt_nested_splits[i](j) < rt_nested_splits[i](j - 1)) {
@@ -176,7 +179,7 @@ class RaggedTensorToSparseOp : public OpKernel {
         SPLITS_TYPE last_split =
             rt_nested_splits[i - 1](rt_nested_splits[i - 1].size() - 1);
         if (rt_nested_splits[i].size() != last_split + 1) {
-          return InvalidArgument(
+          return absl::InvalidArgumentError(
               "Final value of ragged splits must match the length "
               "the corresponding ragged values.");
         }
@@ -184,7 +187,7 @@ class RaggedTensorToSparseOp : public OpKernel {
     }
     if (rt_dense_values_in.dim_size(0) !=
         rt_nested_splits.back()(rt_nested_splits.back().size() - 1)) {
-      return InvalidArgument(
+      return absl::InvalidArgumentError(
           "Final value of ragged splits must match the length "
           "the corresponding ragged values.");
     }
@@ -228,8 +231,8 @@ class RaggedTensorToSparseOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("RaggedTensorToSparse")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<int32>("Tsplits"),
-                        RaggedTensorToSparseOp<int32>);
+                            .TypeConstraint<int32_t>("Tsplits"),
+                        RaggedTensorToSparseOp<int32_t>);
 
 REGISTER_KERNEL_BUILDER(Name("RaggedTensorToSparse")
                             .Device(DEVICE_CPU)

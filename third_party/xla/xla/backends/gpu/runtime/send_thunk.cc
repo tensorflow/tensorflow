@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/send_thunk.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -23,23 +24,27 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/collective_ops_utils.h"
-#include "xla/service/computation_placer.h"
-#include "xla/service/global_device_id.h"
-#include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -47,101 +52,145 @@ namespace gpu {
 SendThunk::SendThunk(ThunkInfo thunk_info, const HloSendInstruction* instr,
                      int64_t replica_count, int64_t partition_count,
                      const Buffer& buffer)
-    : CollectiveThunk(Thunk::kSend, thunk_info,
-                      /*is_sync=*/false, GetStreamKindForP2P(instr)),
-      config_(GetP2PConfigForSendRecv(instr, instr->operand(0)->shape(),
-                                      replica_count, partition_count)),
-      buffer_(buffer),
-      execution_counters_(config_.validation_kind ==
-                                  P2PConfig::ValidationKind::kConditional
-                              ? new ExecutionCounters()
-                              : nullptr),
-      hlo_name_(instr->name()) {}
+    : SendThunk(std::move(thunk_info),
+                GetP2PConfigForSendRecv(instr, instr->operand(0)->shape(),
+                                        replica_count, partition_count),
+                buffer, instr->name()) {}
+
+SendThunk::SendThunk(ThunkInfo thunk_info, const P2PConfig& config,
+                     const Buffer& buffer, absl::string_view instr_name)
+    : CollectiveThunk(Thunk::kSend, thunk_info, {buffer}, CommunicationId(1)),
+      config_(config),
+      hlo_name_(instr_name) {}
 
 absl::Status SendThunk::Initialize(const InitializeParams& params) {
-  TF_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
-  if (execution_counters_) {
-    TF_RETURN_IF_ERROR(execution_counters_->Initialize(
-        params.executor, params.collective_params->run_id));
-  }
+  RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
-                                              se::Stream& stream,
-                                              CommunicatorHandle comm_handle) {
-  TF_ASSIGN_OR_RETURN(
-      std::vector<DeviceBufferPair> device_buffers,
-      ConvertToDeviceBuffers(params, {buffer_},
-                             config_.config.operand_element_type));
-  TF_RET_CHECK(device_buffers.size() == 1) << "Expected one buffer pair.";
+absl::StatusOr<const se::CommandBuffer::Command*> SendThunk::Record(
+    const ExecuteParams& execute_params, const RecordParams& record_params,
+    RecordAction record_action, se::CommandBuffer* command_buffer) {
+  if (execute_params.collective_params == nullptr) {
+    return absl::InvalidArgumentError(
+        "SendThunk requires collective parameters");
+  }
 
-  GlobalDeviceId global_device_id = params.collective_params->global_device_id;
+  ASSIGN_OR_RETURN(
+      const int64_t current_id,
+      GetCollectiveCurrentId(execute_params.collective_params, config_));
+  const P2PConfig::SourceTargetMapEntry source_target =
+      P2PConfig::GetSourceTarget(config_.id_to_source_target, current_id);
 
-  TF_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID current_logical_id,
-                      params.collective_params->device_assn->LogicalIdForDevice(
-                          global_device_id));
-  const int64_t current_id =
-      config_.config.group_mode == CollectiveOpGroupMode::kCrossReplica
-          ? current_logical_id.replica_id
-          : current_logical_id.computation_id;
+  if (!source_target.target.has_value()) {
+    VLOG(3) << "[" << execute_params.stream->parent()->device_ordinal()
+            << "] Skipping Send";
+    return nullptr;
+  }
+
+  return CollectiveThunk::Record(execute_params, record_params,
+                                 std::move(record_action), command_buffer);
+}
+
+absl::StatusOr<std::unique_ptr<SendThunk>> SendThunk::FromProto(
+    ThunkInfo thunk_info, const SendThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  ASSIGN_OR_RETURN(CollectiveThunk::Buffer buffer,
+                   CollectiveThunk::Buffer::FromProto(thunk_proto.buffer(),
+                                                      buffer_allocations));
+
+  CollectiveConfig config =
+      CollectiveConfig::FromProto(thunk_proto.collective_config());
+
+  P2PConfig::IdToSourceTargetMap id_to_source_target;
+  for (const SourceTarget& source_target : thunk_proto.source_target_pairs()) {
+    id_to_source_target.insert({source_target.target(), {}})
+        .first->second.source = source_target.source();
+    id_to_source_target.insert({source_target.source(), {}})
+        .first->second.target = source_target.target();
+  }
+
+  return std::make_unique<SendThunk>(
+      std::move(thunk_info), P2PConfig{config, std::move(id_to_source_target)},
+      buffer, thunk_proto.instruction_name());
+}
+
+absl::StatusOr<ThunkProto> SendThunk::ToProto() const {
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
+  SendThunkProto* thunk_proto = proto.mutable_send_thunk();
+
+  *thunk_proto->mutable_collective_config() = config_.config.ToProto();
+  ASSIGN_OR_RETURN(*thunk_proto->mutable_buffer(), buffer().ToProto());
+  std::vector<SourceTarget> sorted_pairs =
+      GetSortedSourceTargetPairs(config_.id_to_source_target);
+  thunk_proto->mutable_source_target_pairs()->Assign(sorted_pairs.begin(),
+                                                     sorted_pairs.end());
+
+  thunk_proto->set_instruction_name(hlo_name_);
+  return proto;
+}
+
+absl::Status RunSend(DeviceBufferPair& buffer, se::Stream& stream,
+                     Communicator& comm, int64_t current_id, int64_t target_id,
+                     absl::string_view device_string) {
+  // Determine the target IDs for this instance. The target ID is the ID
+  // to which this instance will copy its data.
+  int device_ordinal = stream.parent()->device_ordinal();
+  se::DeviceAddressBase src_addr = buffer.source_buffer;
+
+  XLA_VLOG_DEVICE(3, device_ordinal) << absl::StreamFormat(
+      "%s : id = %d, target_id = %d", device_string, current_id, target_id);
+
+  // Send source buffer to target peer if needed.
+  XLA_VLOG_DEVICE(3, device_ordinal)
+      << absl::StreamFormat("target_id = %d, call comm.Send()", target_id);
+  auto future = comm.Send(src_addr, buffer.element_type, buffer.element_count,
+                          RankId(target_id), GpuCollectives::On(stream));
+  RETURN_IF_ERROR(future.Await());
+  return absl::OkStatus();
+}
+
+absl::Status SendThunk::RunCollective(const ExecuteParams& params,
+                                      const GpuCliqueKey&, se::Stream& stream,
+                                      Communicator& comm) {
+  auto send_buffer = buffers()[0];
+  DeviceBufferPair device_buffer_pair{
+      config_.config.operand_element_type[0],
+      send_buffer.element_count,
+      params.buffer_allocations->GetDeviceAddress(
+          send_buffer.source_buffer.slice),
+      params.buffer_allocations->GetDeviceAddress(
+          send_buffer.destination_buffer.slice),
+      send_buffer.source_memory_space,
+      send_buffer.destination_memory_space};
+
+  ASSIGN_OR_RETURN(const int64_t current_id,
+                   GetCollectiveCurrentId(params.collective_params, config_));
   std::string device_string = GetDeviceString(*params.collective_params);
 
   const P2PConfig::SourceTargetMapEntry source_target =
       P2PConfig::GetSourceTarget(config_.id_to_source_target, current_id);
-  DeviceBufferPair& buffer = device_buffers[0];
 
-  // Determine the target IDs for this instance. The target ID is the ID
-  // to which this instance will copy its data.
   int device_ordinal = stream.parent()->device_ordinal();
-  VLOG(3) << "[" << device_ordinal << "] Performing Send "
-          << ", current_id: " << current_id << ", group mode: "
-          << CollectiveOpGroupModeToString(config_.config.group_mode) << " ("
-          << hlo_name_ << ")";
 
-  const std::optional<int64_t> target_id = source_target.target;
-  se::DeviceMemoryBase src_addr = buffer.source_buffer;
+  std::optional<int64_t> target_id = source_target.target;
 
-  VLOG(3) << absl::StreamFormat("[%d] %s : id = %d, target_id = %d",
-                                device_ordinal, device_string, current_id,
-                                target_id.value_or(-1));
-
-  // Send source buffer to target peer if needed.
-  if (target_id) {
-    bool should_run =
-        config_.validation_kind == P2PConfig::ValidationKind::kInvalid ? false
-                                                                       : true;
-    if (config_.validation_kind == P2PConfig::ValidationKind::kConditional) {
-      se::StreamExecutor* executor = params.stream->parent();
-      TF_ASSIGN_OR_RETURN(int64_t* counter,
-                          execution_counters_->GetCounter(
-                              executor, params.collective_params->run_id));
-      auto it = config_.source_target_to_bounds.find(
-          std::make_pair(current_id, *source_target.target));
-      if (it == config_.source_target_to_bounds.end()) {
-        return absl::InternalError("Missing bounds for conditional Send");
-      }
-      if (*counter < it->second.first || *counter > it->second.second) {
-        should_run = false;
-      }
-      VLOG(3) << "[" << device_ordinal << "] RunCollective counter " << *counter
-              << " " << should_run;
-      ++(*counter);
-    }
-
-    if (should_run) {
-      TF_RETURN_IF_ERROR(
-          MaybeRegisterBuffers(stream.parent(), {buffer}, comm_handle.comm));
-      auto future = comm_handle.comm->Send(
-          src_addr, buffer.element_type, buffer.element_count,
-          RankId(*target_id), GpuCollectives::On(stream));
-      TF_RETURN_IF_ERROR(future.Await());
-    } else {
-      VLOG(3) << "[" << device_ordinal << "] Skipping Send";
-    }
+  if (!target_id) {
+    XLA_VLOG_DEVICE(3, device_ordinal)
+        << absl::StreamFormat("%s : Skipping Send", device_string);
+    return absl::OkStatus();
   }
 
-  return false;
+  XLA_VLOG_DEVICE(3, device_ordinal)
+      << "Performing Send "
+      << ", current_id: " << current_id << ", group mode: "
+      << CollectiveOpGroupModeToString(config_.config.group_mode)
+      << ", hlo_name=(" << hlo_name_ << ")";
+
+  return RunSend(device_buffer_pair, stream, comm, current_id, *target_id,
+                 device_string);
 }
 
 }  // namespace gpu

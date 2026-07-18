@@ -36,10 +36,9 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
-#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/async_work_runner.h"
+#include "xla/pjrt/cpu/cpu_device_memory.h"
 #include "xla/pjrt/cpu/cpu_event.h"
-#include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/shape.h"
@@ -78,21 +77,6 @@ class MarkEventReadyOnExit {
 
 class AbstractCpuBuffer {
  public:
-  // Allocates a new `TrackedCpuDeviceBuffer` with the given shape and
-  // definition events.
-  static absl::StatusOr<std::unique_ptr<TrackedCpuDeviceBuffer>>
-  AllocateTrackedDeviceBuffer(
-      const Shape& on_device_shape,
-      absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events);
-
-  // Allocates new cpu events to `avs` and `definition_events`. If `shape` is a
-  // tuple, multiple events will be allocated. Otherwise, `avs` and
-  // `definition_events` will only contain one event.
-  static void AllocateAvsAndEvents(
-      const Shape& shape,
-      absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4>* avs,
-      absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>* definition_events);
-
   // A helper function to determine if a BufferFromHostBuffer call is eligible
   // for zero copy construction.
   static bool BufferFromHostBufferSupportsZeroCopy(

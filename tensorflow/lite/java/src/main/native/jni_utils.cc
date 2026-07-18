@@ -42,9 +42,7 @@ void ThrowException(JNIEnv* env, const char* clazz, const char* fmt, ...) {
   } else {
     env->ThrowNew(env->FindClass(clazz), "");
   }
-  if (message) {
-    free(message);
-  }
+  free(message);
   va_end(args);
 }
 

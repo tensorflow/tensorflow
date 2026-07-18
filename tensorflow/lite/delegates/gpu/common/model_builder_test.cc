@@ -1437,9 +1437,7 @@ class StubTfLiteContext : public TfLiteContext {
     for (auto& node : nodes_) {
       TfLiteIntArrayFree(node.inputs);
       TfLiteIntArrayFree(node.outputs);
-      if (node.builtin_data) {
-        free(node.builtin_data);
-      }
+      free(node.builtin_data);
     }
     for (auto& tensor : tensors_) {
       TfLiteIntArrayFree(tensor.dims);
@@ -2607,6 +2605,8 @@ TEST(ResamplerOperationParserTest, TestIsSupported) {
                                                 /*op_version=*/1,
                                                 /*num_inputs=*/2);
   context->registration()->custom_name = "Resampler";
+  const int warp_shape_id = context->node()->inputs->data[1];
+  context->tensors[warp_shape_id].dims->data[3] = 2;
   ASSERT_TRUE(
       parser
           ->IsSupported(context.get(), context->node(), context->registration())
@@ -3189,9 +3189,7 @@ TEST(OneHotOperationParserTest, TestIsSupported) {
   auto* params =
       reinterpret_cast<TfLiteOneHotParams*>(malloc(sizeof(TfLiteOneHotParams)));
   params->axis = -1;
-  if (context->node(1)->builtin_data) {
-    free(context->node(1)->builtin_data);
-  }
+  free(context->node(1)->builtin_data);
   context->node(1)->builtin_data = params;
   ASSERT_FALSE(
       parser

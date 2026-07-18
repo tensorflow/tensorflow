@@ -33,20 +33,20 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
     // step-local container, and return it as the output.
     OP_REQUIRES(
         ctx, input->output_dtypes().size() == 1,
-        errors::InvalidArgument("DenseToSparseBatchDataset only supports "
-                                "inputs with a single component."));
+        absl::InvalidArgumentError("DenseToSparseBatchDataset only supports "
+                                   "inputs with a single component."));
 
     int64_t batch_size;
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument<int64_t>(ctx, "batch_size", &batch_size));
     OP_REQUIRES(
         ctx, batch_size > 0,
-        errors::InvalidArgument("Batch size must be greater than zero."));
+        absl::InvalidArgumentError("Batch size must be greater than zero."));
 
     const Tensor* row_shape_t;
     OP_REQUIRES_OK(ctx, ctx->input("row_shape", &row_shape_t));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(row_shape_t->shape()),
-                errors::InvalidArgument("row_shape must be a vector"));
+                absl::InvalidArgumentError("row_shape must be a vector"));
     PartialTensorShape row_shape;
     OP_REQUIRES_OK(ctx, PartialTensorShape::MakePartialShape(
                             row_shape_t->vec<int64_t>().data(),
@@ -65,9 +65,9 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
 #undef HANDLE_TYPE
       default:
         OP_REQUIRES(ctx, false,
-                    errors::Unimplemented(
+                    absl::UnimplementedError(absl::StrCat(
                         "DenseToSparseBatchDataset unhandled data type: ",
-                        input->output_dtypes()[0]));
+                        input->output_dtypes()[0])));
     }
   }
 
@@ -93,7 +93,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
     ~Dataset() override { input_->Unref(); }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       return std::make_unique<Iterator>(typename Iterator::Params{
           this, absl::StrCat(prefix, "::DenseToSparseBatch")});
     }
@@ -107,7 +107,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() const override {
+    std::string DebugString() const override {
       return absl::StrCat("DenseToSparseBatchDatasetOp(", batch_size_,
                           ")::Dataset");
     }
@@ -204,11 +204,11 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
               // TODO(mrry): Investigate how to hoist this check when we
               // have static information that renders it unnecessary.
               if (batch_element_tuple[0].shape().dims() != row_ndims) {
-                return errors::InvalidArgument(
-                    "Input element had shape (",
-                    batch_element_tuple[0].shape().DebugString(),
-                    ") that is incompatible with the row shape (",
-                    row_shape.DebugString(), ").");
+                return absl::InvalidArgumentError(
+                    absl::StrCat("Input element had shape (",
+                                 batch_element_tuple[0].shape().DebugString(),
+                                 ") that is incompatible with the row shape (",
+                                 row_shape.DebugString(), ")."));
               }
               for (int j = 0; j < row_ndims; ++j) {
                 // Take the maximum in the dimension if -1 is given.
@@ -218,11 +218,11 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
                                dense_shape_vec(j + 1));
                 } else if (batch_element_tuple[0].dim_size(j) >
                            row_shape.dim_size(j)) {
-                  return errors::DataLoss(
-                      "Input element had shape (",
-                      batch_element_tuple[0].shape().DebugString(),
-                      ") that is larger than the row shape (",
-                      row_shape.DebugString(), ").");
+                  return absl::DataLossError(
+                      absl::StrCat("Input element had shape (",
+                                   batch_element_tuple[0].shape().DebugString(),
+                                   ") that is larger than the row shape (",
+                                   row_shape.DebugString(), ")."));
                 }
               }
             }

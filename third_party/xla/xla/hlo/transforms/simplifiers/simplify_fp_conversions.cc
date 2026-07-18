@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -50,10 +51,10 @@ absl::StatusOr<bool> RunOnComputation(HloComputation& computation) {
     }
 
     if (instruction->shape().element_type() == input->shape().element_type()) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           instruction->parent()->ReplaceInstruction(instruction, input));
     } else {
-      TF_RETURN_IF_ERROR(instruction->parent()->ReplaceWithNewInstruction(
+      RETURN_IF_ERROR(instruction->parent()->ReplaceWithNewInstruction(
           instruction,
           HloInstruction::CreateConvert(instruction->shape(), input)));
     }
@@ -64,21 +65,21 @@ absl::StatusOr<bool> RunOnComputation(HloComputation& computation) {
 
 }  // namespace
 
-absl::StatusOr<bool> SimplifyFPConversions::Run(
+absl::StatusOr<bool> SimplifyFPConversions::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
-      2, absl::StrFormat("SimplifyFPConversions::Run() with before:\n%s",
+      2, absl::StrFormat("SimplifyFPConversions::RunImpl() with before:\n%s",
                          module->ToString()));
   bool changed = false;
   for (HloComputation* computation :
        module->MakeComputationPostOrder(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool comp_changed, RunOnComputation(*computation));
+    ASSIGN_OR_RETURN(bool comp_changed, RunOnComputation(*computation));
     changed |= comp_changed;
   }
-  XLA_VLOG_LINES(2,
-                 absl::StrFormat("SimplifyFPConversions::Run() with after:\n%s",
-                                 module->ToString()));
+  XLA_VLOG_LINES(
+      2, absl::StrFormat("SimplifyFPConversions::RunImpl() with after:\n%s",
+                         module->ToString()));
   return changed;
 }
 

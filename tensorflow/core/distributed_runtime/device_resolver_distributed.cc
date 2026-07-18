@@ -28,28 +28,28 @@ DeviceResolverDistributed::DeviceResolverDistributed(const DeviceMgr* dev_mgr) {
 }
 
 absl::Status DeviceResolverDistributed::GetDeviceAttributes(
-    const string& device, DeviceAttributes* attributes) {
+    const std::string& device, DeviceAttributes* attributes) {
   mutex_lock l(mu_);
   auto it = attr_table_.find(device);
   if (it == attr_table_.end()) {
-    return errors::NotFound(device, " not found");
+    return absl::NotFoundError(absl::StrCat(device, " not found"));
   }
   *attributes = it->second;
   return absl::OkStatus();
 }
 
 absl::Status DeviceResolverDistributed::GetAllDeviceAttributes(
-    const string& task, std::vector<DeviceAttributes>* attributes) {
+    const std::string& task, std::vector<DeviceAttributes>* attributes) {
   mutex_lock l(mu_);
   attributes->clear();
   for (const auto& it : attr_table_) {
-    const string& device_name = it.first;
+    const std::string& device_name = it.first;
     if (DeviceNameUtils::IsSameAddressSpace(task, device_name)) {
       attributes->push_back(it.second);
     }
   }
   if (attributes->empty()) {
-    return errors::NotFound(task, " not found in the cache");
+    return absl::NotFoundError(absl::StrCat(task, " not found in the cache"));
   }
   return absl::OkStatus();
 }
@@ -64,10 +64,10 @@ absl::Status DeviceResolverDistributed::UpdateDeviceAttributes(
     // Returns error if the device already exists in the cache and has a
     // different incarnation.
     if (!success && it->second.incarnation() != attr.incarnation()) {
-      return errors::FailedPrecondition(
-          attr.name(),
-          "exists in cache with a different incarnation. "
-          "This usually means the remote worker has restarted");
+      return absl::FailedPreconditionError(
+          absl::StrCat(attr.name(),
+                       "exists in cache with a different incarnation. "
+                       "This usually means the remote worker has restarted"));
     }
   }
   return absl::OkStatus();

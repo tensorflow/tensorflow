@@ -59,9 +59,10 @@ class TopK : public OpKernel {
     int k = k_;
     if (num_inputs() >= 2) {
       const auto& k_in = context->input(1);
-      OP_REQUIRES(context, TensorShapeUtils::IsScalar(k_in.shape()),
-                  errors::InvalidArgument("k must be scalar, got shape ",
-                                          k_in.shape().DebugString()));
+      OP_REQUIRES(
+          context, TensorShapeUtils::IsScalar(k_in.shape()),
+          absl::InvalidArgumentError(absl::StrCat(
+              "k must be scalar, got shape ", k_in.shape().DebugString())));
       switch (k_in.dtype()) {
         case DT_INT16:
           k = k_in.scalar<int16_t>()();
@@ -74,21 +75,23 @@ class TopK : public OpKernel {
           break;
         default:
           OP_REQUIRES(context, false,
-                      errors::InvalidArgument(
+                      absl::InvalidArgumentError(absl::StrCat(
                           "k must have dtype in {int16, int32, int64}, got  ",
-                          k_in.dtype()));
+                          k_in.dtype())));
       }
     }
-    OP_REQUIRES(context, k >= 0,
-                errors::InvalidArgument("Need k >= 0, got ", k));
+    OP_REQUIRES(
+        context, k >= 0,
+        absl::InvalidArgumentError(absl::StrCat("Need k >= 0, got ", k)));
     const auto& input_in = context->input(0);
     OP_REQUIRES(context, input_in.dims() >= 1,
-                errors::InvalidArgument("input must be >= 1-D, got shape ",
-                                        input_in.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("input must be >= 1-D, got shape ",
+                                 input_in.shape().DebugString())));
     OP_REQUIRES(context, input_in.dim_size(input_in.dims() - 1) >= k,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "input must have at least k columns. Had ",
-                    input_in.dim_size(input_in.dims() - 1), ", needed ", k));
+                    input_in.dim_size(input_in.dims() - 1), ", needed ", k)));
 
     const auto& input = input_in.flat_inner_dims<T>();
 
@@ -244,9 +247,10 @@ struct TopKFunctor<CPUDevice, T, Tidx> {
     const double sort_cost = (k == num_cols) ? base_cost : 4 * base_cost;
     const double copy_cost = 2 * k * Eigen::TensorOpCost::AddCost<T>();
     const double total_cost = sort_cost + copy_cost;
-    const int64_t final_cost = (total_cost >= static_cast<double>(kint64max))
-                                   ? kint64max
-                                   : static_cast<int64_t>(total_cost);
+    const int64_t final_cost =
+        (total_cost >= static_cast<double>(std::numeric_limits<int64_t>::max()))
+            ? std::numeric_limits<int64_t>::max()
+            : static_cast<int64_t>(total_cost);
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
     Shard(worker_threads.num_threads, worker_threads.workers, num_rows,
           final_cost, SortIndices);

@@ -41,7 +41,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
 #include "xla/xla.pb.h"
@@ -304,13 +304,11 @@ class Service {
   // Same as BuildExecutable() above, but builds a list of
   // AotCompilationResult(s), which can be persisted to later load Executable
   // objects.
-  absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  BuildAotResults(const HloModuleProto* module_proto,
-                  std::unique_ptr<HloModuleConfig> module_config,
-                  Backend* backend,
-                  std::vector<std::vector<se::StreamExecutor*>> executors,
-                  const Compiler::CompileOptions& options,
-                  bool run_backend_only = false);
+  absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>> BuildAotResults(
+      const HloModuleProto* module_proto,
+      std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
+      std::vector<std::vector<se::StreamExecutor*>> executors,
+      const Compiler::CompileOptions& options, bool run_backend_only = false);
 
   // Runs the given executable with the given arguments and register the result
   // in the allocation tracker. The handle of the result from the tracker is
@@ -320,7 +318,7 @@ class Service {
       Executable* executable,
       absl::Span<const std::vector<const ShapedBuffer*>> arguments,
       Backend* backend, const DeviceHandle& device_handle,
-      const std::string& result_tag, ExecutionProfile* profile);
+      absl::string_view result_tag, ExecutionProfile* profile);
 
   // Returns the stream executors assigned to the replicas represented by the
   // given device handle. Each device_handle is a virtual replicated device that

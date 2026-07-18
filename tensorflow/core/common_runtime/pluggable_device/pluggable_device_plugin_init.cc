@@ -49,7 +49,7 @@ static absl::Status InitDeviceModule(stream_executor::SEInitPluginFn init_fn) {
     return absl::OkStatus();
   }
 
-  string device_type, platform_name;
+  std::string device_type, platform_name;
   TF_RETURN_IF_ERROR(stream_executor::InitStreamExecutorPlugin(
       init_fn, &device_type, &platform_name));
 

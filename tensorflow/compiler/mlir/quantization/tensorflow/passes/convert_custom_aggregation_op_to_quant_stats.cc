@@ -95,8 +95,9 @@ class ConvertCustomAggregationOpToQuantStats
     IntegerAttr axis;
 
     mlir::quant::ir::StatisticsOp stats_op =
-        rewriter.create<mlir::quant::ir::StatisticsOp>(
-            op->getLoc(), op.getInput(), layer_stats, axis_stats, axis);
+        mlir::quant::ir::StatisticsOp::create(rewriter, op->getLoc(),
+                                              op.getInput(), layer_stats,
+                                              axis_stats, axis);
     op.getOutput().replaceAllUsesWith(stats_op.getResult());
     return success();
   }

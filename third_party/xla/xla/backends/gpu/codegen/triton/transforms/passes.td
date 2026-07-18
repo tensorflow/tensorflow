@@ -28,12 +28,15 @@ def TritonXLAExtractInsertToTritonPass : Pass<"triton-xla-extract-insert-to-trit
   let options = [
     Option<"allow_tma_", "allow_tma", "bool", "false",
            "Whether to permit lowering to TMA.">,
+    Option<"allow_tdm_", "allow_tdm", "bool", "false",
+           "Whether to permit lowering to TDM (device-side tensor descriptors).">,
+    Option<"num_stages_", "num_stages", "int", "1",
+           "Number of stages for pipelining.">,
   ];
   let dependentDialects = [
     "triton::TritonDialect",
     "::xla::XlaDialect"
   ];
-  let constructor = "CreateTritonXLAExtractInsertToTritonPass()";
 }
 
 def TritonXLASqueezeDimsPass : Pass<"triton-xla-squeeze-dims", "mlir::ModuleOp"> {
@@ -43,13 +46,14 @@ def TritonXLASqueezeDimsPass : Pass<"triton-xla-squeeze-dims", "mlir::ModuleOp">
   }];
   let dependentDialects = [
     "::mlir::triton::xla::XlaTritonDialect",
-    "triton::TritonDialect"
+    "::mlir::triton::TritonDialect",
+    "::xla::xtile::XTileDialect",
+    "::mlir::memref::MemRefDialect",
   ];
   let options = [
     Option<"finalize_", "finalize", "bool", "true",
            "Convert squeeze_dims back to reshape. Disable for testing only.">,
   ];
-  let constructor = "CreateTritonXLASqueezeDimsPass()";
 }
 
 def TritonXLAFoldTransposePass : Pass<"triton-xla-fold-transpose", "mlir::ModuleOp"> {
@@ -58,9 +62,9 @@ def TritonXLAFoldTransposePass : Pass<"triton-xla-fold-transpose", "mlir::Module
     This pass tries to remove transposes by folding them into loads.
   }];
   let dependentDialects = [
-    "::mlir::triton::xla::XlaTritonDialect"
+    "::mlir::triton::xla::XlaTritonDialect",
+    "::mlir::memref::MemRefDialect",
   ];
-  let constructor = "CreateTritonXLAFoldTransposePass()";
 }
 
 def GeneralizeKernelSignaturePass
@@ -70,7 +74,6 @@ def GeneralizeKernelSignaturePass
     Rewrite signatures of kernel functions from global pointers to generic
     pointers and cast them to global ones within the kernel.
   }];
-  let constructor = "CreateGeneralizeKernelSignaturePass()";
 }
 
 def ExtractTmaInfoPass
@@ -81,7 +84,6 @@ def ExtractTmaInfoPass
     pass extracts the information while it still exists and copies it into XLA's
     tma_descriptor attribute to be read at the LLVM IR level.
   }];
-  let constructor = "CreateExtractTmaInfoPass()";
 }
 
 def LoadInt4RewritePass
@@ -110,7 +112,6 @@ def RoundF32ToTF32ForTf32DotRewritePass
     by default does truncation. As a result, the dot with tf32 algorithm has too
     small precision. It is even less than for the dot with BF16 arguments.
   }];
-  let constructor = "CreateRoundF32ToTF32ForTf32DotRewritePass()";
 }
 
 def TritonXLALowerGetTidPass
@@ -120,7 +121,6 @@ def TritonXLALowerGetTidPass
     This pass lowers get_tid to the PTX intrinsic by loading the thread ID from
     the register and returning it.
   }];
-  let constructor = "CreateTritonXLALowerGetTidPass()";
 }
 
 def TritonXLALowerAtomicsPass
@@ -130,7 +130,6 @@ def TritonXLALowerAtomicsPass
     This pass lowers atomic operations to the PTX intrinsic with the given
     memory semantics.
   }];
-  let constructor = "CreateTritonXLALowerAtomicsPass()";
 }
 
 def TritonXLALowerBlockBarrierPass
@@ -140,7 +139,6 @@ def TritonXLALowerBlockBarrierPass
     This pass lowers a block barrier to Triton IR using atomic write and
     spin-wait operations.
   }];
-  let constructor = "CreateTritonXLALowerBlockBarrierPass()";
 }
 
 def TritonXLAConvertUnsupportedTypesPass
@@ -161,7 +159,6 @@ def TritonXLAConvertUnsupportedTypesPass
     replacement it performs do not preserve semantics in a vacuum (but may for
     specific ops, such as loads, stores, or bitcasts).
   }];
-  let constructor = "CreateTritonXLAConvertUnsupportedTypesPass()";
 }
 
 def TritonXLALowerRemoteAccessPass
@@ -170,7 +167,6 @@ def TritonXLALowerRemoteAccessPass
   let description = [{
     This pass lowers collective operations (get_rank, get_peer).
   }];
-  let constructor = "CreateTritonXLALowerRemoteAccessPass()";
 }
 
 def TritonXLAUnswitchLoopsPass :
@@ -187,17 +183,121 @@ def TritonXLAUnswitchLoopsPass :
     "mlir::func::FuncDialect", "mlir::scf::SCFDialect"
   ];
 
-  let constructor = "CreateTritonXLAUnswitchLoopsPass()";
+}
+
+def TritonXLALowerXTilePass :
+   Pass<"triton-xla-lower-xtile", "mlir::ModuleOp"> {
+  let summary = "Lowers xtile ops to Triton ops.";
+
+  let dependentDialects = [
+    "mlir::func::FuncDialect",
+    "mlir::memref::MemRefDialect",
+    "mlir::triton::xla::XlaTritonDialect",
+    "triton::TritonDialect",
+  ];
+
 }
 
 def StableHLOLowerToTritonPass
     : Pass<"stablehlo-lower-to-triton", "mlir::ModuleOp"> {
   let summary = "Lowers StableHLO operations to their Triton equivalent.";
   let dependentDialects = [
-    "stablehlo::StablehloDialect",
+    "::mlir::stablehlo::StablehloDialect",
+    "::mlir::triton::TritonDialect",
+    "::mlir::triton::xla::XlaTritonDialect",
+    "::xla::xtile::XTileDialect",
+  ];
+  let options = [
+    Option<"warp_specialization_allowed_", "warp_specialization_allowed",
+           "bool", "",
+           "Whether to allow warp specializations.">,
+  ];
+}
+
+def TensorLowerToTritonPass
+    : Pass<"tensor-lower-to-triton", "mlir::ModuleOp"> {
+  let summary = "Lowers tensor operations to their Triton equivalent.";
+  let dependentDialects = [
+    "tensor::TensorDialect",
+    "triton::TritonDialect",
+    "::xla::xtile::XTileDialect",
+  ];
+}
+
+def TritonXLAMathToLibdevicePass
+    : Pass<"triton-xla-math-to-libdevice", "mlir::ModuleOp"> {
+  let summary = "Lowers math operations to tt.extern_elementwise calls to their libdevice equivalent.";
+  let dependentDialects = [
+    "tensor::TensorDialect",
     "triton::TritonDialect"
   ];
-  let constructor = "CreateStableHLOLowerToTritonPass()";
+  let options = [
+    Option<"libdevice_path_", "libdevice_path", "std::string", "",
+           "Path to the libdevice library.">,
+    Option<"triple_string_", "triple", "std::string", "",
+           "Device triple string.">,
+  ];
+}
+
+def XTileLowerToTritonPass
+    : Pass<"xtile-lower-to-triton", "mlir::ModuleOp"> {
+  let summary = "Lowers XTile operations to their Triton equivalent.";
+  let dependentDialects = [
+    "::mlir::triton::TritonDialect",
+    "::xla::xtile::XTileDialect",
+  ];
+}
+
+def ArithFP8ConversionToTritonPass
+    : Pass<"arith-fp8-conversion-to-triton", "mlir::ModuleOp"> {
+  let summary =
+    "Converts arith extf and truncf operations to their Triton equivalent.";
+  let dependentDialects = [
+    "::mlir::triton::TritonDialect",
+  ];
+}
+def UnsupportedElementwiseToTritonPass
+    : Pass<"unsupported-elementwise-to-triton"> {
+  let summary =
+    "Converts unsupported elementwise operations to their Triton equivalent.";
+  let dependentDialects = [
+    "::mlir::arith::ArithDialect",
+  ];
+}
+
+def TritonXLAImplementExternElementWisePass
+    : Pass<"triton-xla-implement-extern-element-wise", "mlir::ModuleOp"> {
+  let summary = "Implement extern_elementwise functions for GPU target.";
+  let description = [{
+    This pass implements custom atomic functions declared by tt.extern_elementwise
+    operations using LLVM IR intrinsics and atomic operations with proper memory
+    ordering and sync scopes. It supports CUDA (NVPTX) and ROCM backends.
+    It runs in the Triton pipeline after MLIR has been converted to LLVM dialect.
+    The target backend must be specified via the target option.
+  }];
+  let options = [
+    Option<"target_", "target", "TargetBackend", "TargetBackend::CUDA",
+           "Target backend (CUDA or ROCm).",
+           [{llvm::cl::values(
+               clEnumValN(TargetBackend::CUDA, "cuda", "CUDA (NVPTX) backend"),
+               clEnumValN(TargetBackend::ROCM, "rocm", "ROCm (AMDGPU) backend")
+           )}]>,
+  ];
+}
+
+def TritonXLAFoldReshapeAroundForLoopPass
+    : Pass<"triton-xla-fold-reshape-around-for-loop", "mlir::ModuleOp"> {
+  let summary = "Lifts tt.reshape operations out of scf.for loops.";
+  let description = [{
+    This pass identifies loops where a result is reshaped before being yielded,
+    and 'sinks' the equivalent reshape into the loop initialization.
+    This ensures the loop body operates strictly in the lower-rank space
+    (e.g. 2D hardware space), hoisting the rank fixup to the loop boundaries.
+  }];
+  let dependentDialects = [
+    "::mlir::scf::SCFDialect",
+    "::mlir::triton::TritonDialect"
+  ];
 }
 
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_PASSES_TD_

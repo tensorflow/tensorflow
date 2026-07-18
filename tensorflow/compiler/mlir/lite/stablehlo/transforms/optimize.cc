@@ -269,9 +269,9 @@ LogicalResult LiftDotConcatLHS(mhlo::ConcatenateOp concat,
         mlir::dyn_cast<ShapedType>(v.getType()).getShape()[new_concat_dim];
   }
 
-  auto new_concat = rewriter.create<mhlo::ConcatenateOp>(
-      concat->getLoc(), concat.getType().clone(new_concat_shape), all_dot_lhs,
-      rewriter.getI64IntegerAttr(new_concat_dim));
+  auto new_concat = mhlo::ConcatenateOp::create(
+      rewriter, concat->getLoc(), concat.getType().clone(new_concat_shape),
+      all_dot_lhs, rewriter.getI64IntegerAttr(new_concat_dim));
   rewriter.replaceOpWithNewOp<mhlo::DotGeneralOp>(
       concat, concat.getType(), new_concat, first_dot.getRhs(),
       first_dot.getDotDimensionNumbers(), first_dot.getPrecisionConfigAttr(),
@@ -368,11 +368,11 @@ LogicalResult LiftDotConcatLHSAndRHS(mhlo::ConcatenateOp concat,
         mlir::dyn_cast<ShapedType>(v.getType()).getShape()[rhs_batch_dim];
   }
 
-  auto lhs_new_concat = rewriter.create<mhlo::ConcatenateOp>(
-      concat->getLoc(), concat.getType().clone(lhs_new_concat_shape),
+  auto lhs_new_concat = mhlo::ConcatenateOp::create(
+      rewriter, concat->getLoc(), concat.getType().clone(lhs_new_concat_shape),
       all_dot_lhs, rewriter.getI64IntegerAttr(lhs_batch_dim));
-  auto rhs_new_concat = rewriter.create<mhlo::ConcatenateOp>(
-      concat->getLoc(), concat.getType().clone(rhs_new_concat_shape),
+  auto rhs_new_concat = mhlo::ConcatenateOp::create(
+      rewriter, concat->getLoc(), concat.getType().clone(rhs_new_concat_shape),
       all_dot_rhs, rewriter.getI64IntegerAttr(rhs_batch_dim));
   rewriter.replaceOpWithNewOp<mhlo::DotGeneralOp>(
       concat, concat.getType(), lhs_new_concat, rhs_new_concat,
@@ -439,7 +439,8 @@ LogicalResult FuseSliceConcat(mhlo::ConcatenateOp concat,
     new_slice_shape.push_back(second_limit - first_start);
   }
 
-  auto new_slice = rewriter.create<mhlo::SliceOp>(
+  auto new_slice = mhlo::SliceOp::create(
+      rewriter,
       FusedLoc::get(first->getContext(), {first.getLoc(), second.getLoc()}),
       first.getType().clone(new_slice_shape), first.getOperand(),
       /*start_indices=*/rewriter.getI64TensorAttr(new_start),
@@ -730,8 +731,8 @@ class SimplifyBroadcastInDimsReshape
 
     auto new_broadcast_input_type = RankedTensorType::get(
         new_broadcast_input_shape, broadcast_type.getElementType());
-    auto new_broadcast_input = rewriter.create<mhlo::ReshapeOp>(
-        op->getLoc(), new_broadcast_input_type, op.getOperand());
+    auto new_broadcast_input = mhlo::ReshapeOp::create(
+        rewriter, op->getLoc(), new_broadcast_input_type, op.getOperand());
     auto new_broadcast_dims_attr =
         rewriter.getI64TensorAttr(new_broadcast_dims);
 

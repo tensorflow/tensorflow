@@ -16,68 +16,31 @@ limitations under the License.
 #ifndef XLA_CODEGEN_IR_EMISSION_UTILS_H_
 #define XLA_CODEGEN_IR_EMISSION_UTILS_H_
 
-#include <cstdint>
 #include <functional>
 #include <optional>
+#include <string>
 #include <vector>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Types.h"
+#include "mlir/IR/Value.h"
 #include "xla/codegen/hlo_fusion_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 
-// Returns the bitwidth of the given primitive type. Unfortunately,
-// primitive_util::BitWidth(PRED) return 1 instead of 8.
-int GetBitwidth(PrimitiveType type);
-
-/// Description of how to emit a given transposition.
-struct TransposeDescription {
-  // Transpose instruction.
-  const HloInstruction* instr;
-
-  // Normalized transpose dimensions.
-  absl::InlinedVector<int64_t, 3> dimensions;
-
-  // Permutations of normalized transpose dimensions.
-  absl::InlinedVector<int64_t, 3> permutation;
-
-  // Required amount of shared memory in bytes.
-  int64_t shmem_usage = 0;
-
-  TransposeDescription(const HloInstruction* instr,
-                       absl::InlinedVector<int64_t, 3> dimensions,
-                       absl::InlinedVector<int64_t, 3> permutation,
-                       int64_t shmem_usage)
-      : instr(instr),
-        dimensions(dimensions),
-        permutation(permutation),
-        shmem_usage(shmem_usage) {}
-
-  // Transpose instruction input shape.
-  const Shape& input_shape() const { return instr->operand(0)->shape(); }
-
-  // Returns true, if both descriptions have the same dimensions and
-  // permutation, even if they're produced by different instructions.
-  bool IsEquivalent(const TransposeDescription& other) const {
-    return dimensions == other.dimensions && permutation == other.permutation &&
-           GetBitwidth(instr->shape().element_type()) ==
-               GetBitwidth(other.instr->shape().element_type());
-  }
-};
-
 // Checks if the instruction is elementwise.
 bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);
 
-// Find the first gero that statises the given predicate.
+// Find the first hero that satisfies the given predicate.
 std::optional<HloInstructionAdaptor> FindHero(
     const HloInstructionAdaptor& root,
     absl::AnyInvocable<bool(const HloInstruction&)> predicate);
@@ -113,5 +76,37 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlace(
     const BufferAssignment* buffer_assignment, const HloInstruction* fusion);
 
 }  // namespace xla
+
+namespace mlir {
+namespace detail {
+
+// Returns a string representation of the given MLIR entity.
+template <typename T>
+std::string MlirToString(const T& value) {
+  std::string result;
+  llvm::raw_string_ostream os(result);
+  value.print(os);
+  return result;
+}
+
+}  // namespace detail
+
+// ADL for mlir types for absl::StrFormat and friends.
+template <typename Sink>
+void AbslStringify(Sink& sink, const mlir::Value& value) {
+  sink.Append(detail::MlirToString(value));
+}
+
+template <typename Sink>
+void AbslStringify(Sink& sink, const mlir::Type& value) {
+  sink.Append(detail::MlirToString(value));
+}
+
+template <typename Sink>
+void AbslStringify(Sink& sink, const mlir::Attribute& value) {
+  sink.Append(detail::MlirToString(value));
+}
+
+}  // namespace mlir
 
 #endif  // XLA_CODEGEN_IR_EMISSION_UTILS_H_

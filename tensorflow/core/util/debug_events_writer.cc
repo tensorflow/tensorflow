@@ -38,7 +38,8 @@ void MaybeSetDebugEventTimestamp(DebugEvent* debug_event, Env* env) {
 }
 }  // namespace
 
-SingleDebugEventFileWriter::SingleDebugEventFileWriter(const string& file_path)
+SingleDebugEventFileWriter::SingleDebugEventFileWriter(
+    const std::string& file_path)
     : env_(Env::Default()),
       file_path_(file_path),
       num_outstanding_events_(0),
@@ -60,8 +61,8 @@ absl::Status SingleDebugEventFileWriter::Init() {
       "Creating writable file ", file_path_);
   record_writer_ = std::make_unique<io::RecordWriter>(writable_file_.get());
   if (record_writer_ == nullptr) {
-    return errors::Unknown("Could not create record writer at path: ",
-                           file_path_);
+    return absl::UnknownError(
+        absl::StrCat("Could not create record writer at path: ", file_path_));
   }
   num_outstanding_events_.store(0);
   VLOG(1) << "Successfully opened debug events file: " << file_path_;
@@ -89,7 +90,8 @@ absl::Status SingleDebugEventFileWriter::Flush() {
     return absl::OkStatus();
   }
   if (writable_file_ == nullptr) {
-    return errors::Unknown("Unexpected NULL file for path: ", file_path_);
+    return absl::UnknownError(
+        absl::StrCat("Unexpected NULL file for path: ", file_path_));
   }
 
   {
@@ -120,7 +122,7 @@ absl::Status SingleDebugEventFileWriter::Close() {
   return status;
 }
 
-const string SingleDebugEventFileWriter::FileName() { return file_path_; }
+const std::string SingleDebugEventFileWriter::FileName() { return file_path_; }
 
 mutex DebugEventsWriter::factory_mu_(LINKER_INITIALIZED);
 
@@ -128,11 +130,11 @@ DebugEventsWriter::~DebugEventsWriter() { Close().IgnoreError(); }
 
 // static
 DebugEventsWriter* DebugEventsWriter::GetDebugEventsWriter(
-    const string& dump_root, const string& tfdbg_run_id,
+    const std::string& dump_root, const std::string& tfdbg_run_id,
     int64_t circular_buffer_size) {
   mutex_lock l(DebugEventsWriter::factory_mu_);
-  std::unordered_map<string, std::unique_ptr<DebugEventsWriter>>* writer_pool =
-      DebugEventsWriter::GetDebugEventsWriterMap();
+  std::unordered_map<std::string, std::unique_ptr<DebugEventsWriter>>*
+      writer_pool = DebugEventsWriter::GetDebugEventsWriterMap();
   if (writer_pool->find(dump_root) == writer_pool->end()) {
     std::unique_ptr<DebugEventsWriter> writer(
         new DebugEventsWriter(dump_root, tfdbg_run_id, circular_buffer_size));
@@ -143,13 +145,13 @@ DebugEventsWriter* DebugEventsWriter::GetDebugEventsWriter(
 
 // static
 absl::Status DebugEventsWriter::LookUpDebugEventsWriter(
-    const string& dump_root, DebugEventsWriter** debug_events_writer) {
+    const std::string& dump_root, DebugEventsWriter** debug_events_writer) {
   mutex_lock l(DebugEventsWriter::factory_mu_);
-  std::unordered_map<string, std::unique_ptr<DebugEventsWriter>>* writer_pool =
-      DebugEventsWriter::GetDebugEventsWriterMap();
+  std::unordered_map<std::string, std::unique_ptr<DebugEventsWriter>>*
+      writer_pool = DebugEventsWriter::GetDebugEventsWriterMap();
   if (writer_pool->find(dump_root) == writer_pool->end()) {
-    return errors::FailedPrecondition(
-        "No DebugEventsWriter has been created at dump root ", dump_root);
+    return absl::FailedPreconditionError(absl::StrCat(
+        "No DebugEventsWriter has been created at dump root ", dump_root));
   }
   *debug_events_writer = (*writer_pool)[dump_root].get();
   return absl::OkStatus();
@@ -171,7 +173,7 @@ absl::Status DebugEventsWriter::Init() {
 
   int64_t time_in_seconds = env_->NowMicros() / 1e6;
   file_prefix_ = io::JoinPath(
-      dump_root_, strings::Printf("%s.%010lld.%s", kFileNamePrefix,
+      dump_root_, absl::StrFormat("%s.%010lld.%s", kFileNamePrefix,
                                   static_cast<long long>(time_in_seconds),
                                   port::Hostname().c_str()));
   TF_RETURN_IF_ERROR(InitNonMetadataFile(SOURCE_FILES));
@@ -182,18 +184,19 @@ absl::Status DebugEventsWriter::Init() {
   metadata_writer_.reset();
 
   // The metadata file should be created.
-  string metadata_filename = GetFileNameInternal(METADATA);
+  std::string metadata_filename = GetFileNameInternal(METADATA);
   metadata_writer_ =
       std::make_unique<SingleDebugEventFileWriter>(metadata_filename);
   if (metadata_writer_ == nullptr) {
-    return errors::Unknown("Could not create debug event metadata file writer");
+    return absl::UnknownError(
+        "Could not create debug event metadata file writer");
   }
 
   DebugEvent debug_event;
   DebugMetadata* metadata = debug_event.mutable_debug_metadata();
   metadata->set_tensorflow_version(TF_VERSION_STRING);
   metadata->set_file_version(
-      strings::Printf("%s%d", kVersionPrefix, kCurrentFormatVersion));
+      absl::StrFormat("%s%d", kVersionPrefix, kCurrentFormatVersion));
   metadata->set_tfdbg_run_id(tfdbg_run_id_);
   TF_RETURN_IF_ERROR(SerializeAndWriteDebugEvent(&debug_event, METADATA));
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
@@ -243,7 +246,7 @@ absl::Status DebugEventsWriter::WriteExecution(Execution* execution) {
     DebugEvent debug_event;
     MaybeSetDebugEventTimestamp(&debug_event, env_);
     debug_event.set_allocated_execution(execution);
-    string serialized;
+    std::string serialized;
     debug_event.SerializeToString(&serialized);
 
     mutex_lock l(execution_buffer_mu_);
@@ -268,7 +271,7 @@ absl::Status DebugEventsWriter::WriteGraphExecutionTrace(
     DebugEvent debug_event;
     MaybeSetDebugEventTimestamp(&debug_event, env_);
     debug_event.set_allocated_graph_execution_trace(graph_execution_trace);
-    string serialized;
+    std::string serialized;
     debug_event.SerializeToString(&serialized);
 
     mutex_lock l(graph_execution_trace_buffer_mu_);
@@ -281,8 +284,8 @@ absl::Status DebugEventsWriter::WriteGraphExecutionTrace(
 }
 
 absl::Status DebugEventsWriter::WriteGraphExecutionTrace(
-    const string& tfdbg_context_id, const string& device_name,
-    const string& op_name, int32_t output_slot, int32_t tensor_debug_mode,
+    const std::string& tfdbg_context_id, const std::string& device_name,
+    const std::string& op_name, int32_t output_slot, int32_t tensor_debug_mode,
     const Tensor& tensor_value) {
   std::unique_ptr<GraphExecutionTrace> trace(new GraphExecutionTrace());
   trace->set_tfdbg_context_id(tfdbg_context_id);
@@ -301,16 +304,16 @@ absl::Status DebugEventsWriter::WriteGraphExecutionTrace(
 }
 
 void DebugEventsWriter::WriteSerializedNonExecutionDebugEvent(
-    const string& debug_event_str, DebugEventFileType type) {
+    const std::string& debug_event_str, DebugEventFileType type) {
   std::unique_ptr<SingleDebugEventFileWriter>* writer = nullptr;
   SelectWriter(type, &writer);
   (*writer)->WriteSerializedDebugEvent(debug_event_str);
 }
 
 void DebugEventsWriter::WriteSerializedExecutionDebugEvent(
-    const string& debug_event_str, DebugEventFileType type) {
+    const std::string& debug_event_str, DebugEventFileType type) {
   const std::unique_ptr<SingleDebugEventFileWriter>* writer = nullptr;
-  std::deque<string>* buffer = nullptr;
+  std::deque<std::string>* buffer = nullptr;
   mutex* mu = nullptr;
   switch (type) {
     case EXECUTION:
@@ -340,7 +343,7 @@ void DebugEventsWriter::WriteSerializedExecutionDebugEvent(
   }
 }
 
-int DebugEventsWriter::RegisterDeviceAndGetId(const string& device_name) {
+int DebugEventsWriter::RegisterDeviceAndGetId(const std::string& device_name) {
   mutex_lock l(device_mu_);
   int& device_id = device_name_to_id_[device_name];
   if (device_id == 0) {
@@ -350,7 +353,7 @@ int DebugEventsWriter::RegisterDeviceAndGetId(const string& device_name) {
     DebuggedDevice* debugged_device = debug_event.mutable_debugged_device();
     debugged_device->set_device_name(device_name);
     debugged_device->set_device_id(device_id);
-    string serialized;
+    std::string serialized;
     debug_event.SerializeToString(&serialized);
     graphs_writer_->WriteSerializedDebugEvent(serialized);
   }
@@ -403,7 +406,7 @@ absl::Status DebugEventsWriter::FlushExecutionFiles() {
   return absl::OkStatus();
 }
 
-string DebugEventsWriter::FileName(DebugEventFileType type) {
+std::string DebugEventsWriter::FileName(DebugEventFileType type) {
   if (file_prefix_.empty()) {
     Init().IgnoreError();
   }
@@ -418,7 +421,7 @@ absl::Status DebugEventsWriter::Close() {
     }
   }
 
-  std::vector<string> failed_to_close_files;
+  std::vector<std::string> failed_to_close_files;
 
   if (metadata_writer_ != nullptr) {
     if (!metadata_writer_->Close().ok()) {
@@ -465,23 +468,23 @@ absl::Status DebugEventsWriter::Close() {
   if (failed_to_close_files.empty()) {
     return absl::OkStatus();
   } else {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(absl::StrCat(
         "Failed to close %d debug-events files associated with tfdbg",
-        failed_to_close_files.size());
+        failed_to_close_files.size()));
   }
 }
 
 // static
-std::unordered_map<string, std::unique_ptr<DebugEventsWriter>>*
+std::unordered_map<std::string, std::unique_ptr<DebugEventsWriter>>*
 DebugEventsWriter::GetDebugEventsWriterMap() {
-  static std::unordered_map<string, std::unique_ptr<DebugEventsWriter>>*
-      writer_pool =
-          new std::unordered_map<string, std::unique_ptr<DebugEventsWriter>>();
+  static std::unordered_map<std::string,
+                            std::unique_ptr<DebugEventsWriter>>* writer_pool =
+      new std::unordered_map<std::string, std::unique_ptr<DebugEventsWriter>>();
   return writer_pool;
 }
 
-DebugEventsWriter::DebugEventsWriter(const string& dump_root,
-                                     const string& tfdbg_run_id,
+DebugEventsWriter::DebugEventsWriter(const std::string& dump_root,
+                                     const std::string& tfdbg_run_id,
                                      int64_t circular_buffer_size)
     : env_(Env::Default()),
       dump_root_(dump_root),
@@ -499,13 +502,13 @@ DebugEventsWriter::DebugEventsWriter(const string& dump_root,
 absl::Status DebugEventsWriter::InitNonMetadataFile(DebugEventFileType type) {
   std::unique_ptr<SingleDebugEventFileWriter>* writer = nullptr;
   SelectWriter(type, &writer);
-  const string filename = GetFileNameInternal(type);
+  const std::string filename = GetFileNameInternal(type);
   writer->reset();
 
   *writer = std::make_unique<SingleDebugEventFileWriter>(filename);
   if (*writer == nullptr) {
-    return errors::Unknown("Could not create debug event file writer for ",
-                           filename);
+    return absl::UnknownError(absl::StrCat(
+        "Could not create debug event file writer for ", filename));
   }
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       (*writer)->Init(), "Initializing debug event writer at path ", filename);
@@ -521,14 +524,14 @@ absl::Status DebugEventsWriter::SerializeAndWriteDebugEvent(
   if (writer != nullptr) {
     // Timestamp is in seconds, with double precision.
     MaybeSetDebugEventTimestamp(debug_event, env_);
-    string str;
+    std::string str;
     debug_event->AppendToString(&str);
     (*writer)->WriteSerializedDebugEvent(str);
     return absl::OkStatus();
   } else {
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "Unable to find debug events file writer for DebugEventsFileType ",
-        type);
+        type));
   }
 }
 
@@ -557,7 +560,7 @@ void DebugEventsWriter::SelectWriter(
   }
 }
 
-const string DebugEventsWriter::GetSuffix(DebugEventFileType type) {
+const std::string DebugEventsWriter::GetSuffix(DebugEventFileType type) {
   switch (type) {
     case METADATA:
       return kMetadataSuffix;
@@ -572,14 +575,14 @@ const string DebugEventsWriter::GetSuffix(DebugEventFileType type) {
     case GRAPH_EXECUTION_TRACES:
       return kGraphExecutionTracesSuffix;
     default:
-      string suffix;
+      std::string suffix;
       return suffix;
   }
 }
 
-string DebugEventsWriter::GetFileNameInternal(DebugEventFileType type) {
-  const string suffix = GetSuffix(type);
-  return strings::StrCat(file_prefix_, ".", suffix);
+std::string DebugEventsWriter::GetFileNameInternal(DebugEventFileType type) {
+  const std::string suffix = GetSuffix(type);
+  return absl::StrCat(file_prefix_, ".", suffix);
 }
 
 }  // namespace tfdbg

@@ -136,10 +136,10 @@ LogicalResult ConvertWhitespaceTokenizer(func::FuncOp func, llvm::StringRef api,
   func->setAttr(kTFImplements, attr);
   OpBuilder builder(func.getBody());
   std::string empty_option_buffer;
-  auto op = builder.create<CustomOp>(
-      func.getLoc(), func.getFunctionType().getResults(), func.getArguments(),
-      api, CustomOption(&builder, empty_option_buffer));
-  builder.create<func::ReturnOp>(func.getLoc(), op.getResults());
+  auto op = CustomOp::create(
+      builder, func.getLoc(), func.getFunctionType().getResults(),
+      func.getArguments(), api, CustomOption(&builder, empty_option_buffer));
+  func::ReturnOp::create(builder, func.getLoc(), op.getResults());
   return success();
 }
 
@@ -267,10 +267,10 @@ LogicalResult ConvertNgrams(func::FuncOp func, llvm::StringRef api,
                                       custom_option_buffer))) {
     return failure();
   }
-  auto op = builder.create<CustomOp>(
-      func.getLoc(), func.getFunctionType().getResults(), func.getArguments(),
-      api, CustomOption(&builder, custom_option_buffer));
-  builder.create<func::ReturnOp>(func.getLoc(), op.getResults());
+  auto op = CustomOp::create(
+      builder, func.getLoc(), func.getFunctionType().getResults(),
+      func.getArguments(), api, CustomOption(&builder, custom_option_buffer));
+  func::ReturnOp::create(builder, func.getLoc(), op.getResults());
   return success();
 }
 
@@ -350,10 +350,10 @@ LogicalResult ConvertSgnnProjection(func::FuncOp func, llvm::StringRef api,
                                               custom_option_buffer))) {
     return failure();
   }
-  auto op = builder.create<CustomOp>(
-      func.getLoc(), func.getFunctionType().getResults(), func.getArguments(),
-      api, CustomOption(&builder, custom_option_buffer));
-  builder.create<func::ReturnOp>(func.getLoc(), op.getResults());
+  auto op = CustomOp::create(
+      builder, func.getLoc(), func.getFunctionType().getResults(),
+      func.getArguments(), api, CustomOption(&builder, custom_option_buffer));
+  func::ReturnOp::create(builder, func.getLoc(), op.getResults());
   return success();
 }
 }  // namespace

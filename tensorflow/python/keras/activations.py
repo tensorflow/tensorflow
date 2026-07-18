@@ -32,6 +32,7 @@ from tensorflow.python.util import dispatch
 # canonical name.
 _TF_ACTIVATIONS_V2 = {
     'softmax_v2': 'softmax',
+    'log_softmax_v2': 'log_softmax',
 }
 
 

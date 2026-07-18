@@ -114,12 +114,6 @@ TEST(OneDnnOpThunkTest, SimpleOneDnnMatMulThunk) {
 // Input: 1x3x3x1, Kernel: 2x2x1x1 with values [[1,0],[0,1]] (HWIO).
 // Output (valid conv): each element = top-left + bottom-right of 2x2 patch:
 // [[1+5, 2+6], [4+8, 5+9]] = [[6, 8], [12, 14]].
-// Layout metadata uses one-based spatial dim indices.
-// Window parameter encoding (matches runtime expectations defined in
-// onednn_contraction_rewriter.cc):
-//   strides stored as (actual + 1)
-//   pads stored as (actual + 1)
-//   dilations stored as (actual + 1).
 TEST(OneDnnOpThunkTest, SimpleOneDnnConvolutionThunk) {
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 4);
   Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
@@ -176,19 +170,17 @@ TEST(OneDnnOpThunkTest, SimpleOneDnnConvolutionThunk) {
   OneDnnDataLayoutProto* inp_data = inp->mutable_data();
   inp_data->set_batch_dim(0);
   inp_data->set_feature_dim(3);
-  // Spatial dims stored as one-based (so 1->2, 2->3).
+  inp_data->add_spatial_dims(1);
   inp_data->add_spatial_dims(2);
-  inp_data->add_spatial_dims(3);
 
   // Kernel layout assumed HWIO (H,W,In,Out):
   OneDnnTensorLayoutProto* ker = conv_config.mutable_kernel();
   ker->set_dims(4);
   OneDnnFilterLayoutProto* filter = ker->mutable_filter();
-  filter->set_input_feature_dim(2);   // zero-based index of IC
-  filter->set_output_feature_dim(3);  // zero-based index of OC
-  // Spatial dims (H,W) one-based: (0->1,1->2) => 1,2
+  filter->set_input_feature_dim(2);
+  filter->set_output_feature_dim(3);
+  filter->add_spatial_dims(0);
   filter->add_spatial_dims(1);
-  filter->add_spatial_dims(2);
 
   // Output layout NHWC
   OneDnnTensorLayoutProto* out = conv_config.mutable_output();
@@ -196,24 +188,21 @@ TEST(OneDnnOpThunkTest, SimpleOneDnnConvolutionThunk) {
   OneDnnDataLayoutProto* out_data = out->mutable_data();
   out_data->set_batch_dim(0);
   out_data->set_feature_dim(3);
+  out_data->add_spatial_dims(1);
   out_data->add_spatial_dims(2);
-  out_data->add_spatial_dims(3);
 
   conv_config.set_feature_groups(1);
 
-  // Window parameters: stride=1, pad=0, dilation=1 encoded with offsets.
+  // Window parameters: stride=1, pad=0, dilation=1.
   OneDnnWindowProto* win = conv_config.mutable_window();
-  // Store (actual + 1) for strides so 2 -> (2 - 1 = 1 real stride).
-  win->add_strides(2);
-  win->add_strides(2);
-  // Pads store (actual +1) so 1 -> 0 actual pad.
-  win->add_pad_left(1);
-  win->add_pad_left(1);
-  win->add_pad_right(1);
-  win->add_pad_right(1);
-  // Dilations store (actual +1) so 2 -> 1 actual dilation.
-  win->add_window_dilations(2);
-  win->add_window_dilations(2);
+  win->add_strides(1);
+  win->add_strides(1);
+  win->add_pad_left(0);
+  win->add_pad_left(0);
+  win->add_pad_right(0);
+  win->add_pad_right(0);
+  win->add_window_dilations(1);
+  win->add_window_dilations(1);
 
   // Set up op buffers
   OneDnnOpThunk::OpBuffers op_buffers;
@@ -330,31 +319,26 @@ TEST(OneDnnOpThunkTest, SimpleOneDnnSoftmaxThunk) {
                                  threads.NumThreads());
 
   // Input shape (2x3), softmax over axis=1 (last dim)
-  Shape in_shape = ShapeUtil::MakeShape(F32, {2, 3});
-  Shape out_shape = in_shape;
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
 
   // Input:
   // [[1,2,3],
   //  [4,5,6]]
-  Literal in_literal = LiteralUtil::CreateR2FromArray2D<float>(
+  Literal literal = LiteralUtil::CreateR2FromArray2D<float>(
       Array2D<float>({{1.f, 2.f, 3.f}, {4.f, 5.f, 6.f}}));
-  Literal out_literal = LiteralUtil::CreateR2FromArray2D<float>(
-      Array2D<float>({{0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}}));
 
-  // Buffer allocations
-  auto [in_alloc, out_alloc] = CreateBufferAllocation(in_literal, out_literal);
+  // Buffer allocation
+  auto alloc = CreateBufferAllocation(0, literal);
+  auto slice = CreateBufferAllocationSlice(alloc);
 
-  auto [in_slice, out_slice] = CreateBufferAllocationSlice(in_alloc, out_alloc);
-
-  BufferAllocations allocations =
-      CreateBufferAllocations(in_literal, out_literal);
+  BufferAllocations allocation = CreateBufferAllocations(literal);
 
   // Set up op_buffers
   OneDnnOpThunk::OpBuffers op_buffers;
-  op_buffers.arguments_buffers = {in_slice};
-  op_buffers.arguments_shapes = {in_shape};
-  op_buffers.results_buffers = {out_slice};
-  op_buffers.results_shapes = {out_shape};
+  op_buffers.arguments_buffers = {slice};
+  op_buffers.arguments_shapes = {shape};
+  op_buffers.results_buffers = {slice};
+  op_buffers.results_shapes = {shape};
 
   // Softmax config (axis = 1)
   OneDnnSoftmaxConfig softmax_cfg;
@@ -368,7 +352,7 @@ TEST(OneDnnOpThunkTest, SimpleOneDnnSoftmaxThunk) {
 
   // Execute params
   Thunk::ExecuteParams params;
-  params.buffer_allocations = &allocations;
+  params.buffer_allocations = &allocation;
   params.intra_op_threadpool = &device;
 
   tsl::AsyncValueRef<Thunk::ExecuteEvent> exec_event = thunk->Execute(params);
@@ -388,8 +372,8 @@ TEST(OneDnnOpThunkTest, SimpleOneDnnSoftmaxThunk) {
   const float kTol = 1e-5f;
   // Validate results
   for (int i = 0; i < 3; ++i) {
-    float got0 = out_literal.Get<float>({0, i});
-    float got1 = out_literal.Get<float>({1, i});
+    float got0 = literal.Get<float>({0, i});
+    float got1 = literal.Get<float>({1, i});
     EXPECT_NEAR(got0, r0[i], kTol);
     EXPECT_NEAR(got1, r1[i], kTol);
   }

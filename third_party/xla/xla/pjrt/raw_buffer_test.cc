@@ -22,12 +22,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
 
-std::optional<absl::StatusOr<tsl::RCReference<PjRtRawBuffer>>> MockFactory(
+std::optional<absl::StatusOr<PjRtRawBufferRef>> MockFactory(
     PjRtBuffer* buffer) {
   if (buffer == nullptr) {
     return std::nullopt;

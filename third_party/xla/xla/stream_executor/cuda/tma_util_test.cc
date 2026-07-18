@@ -18,15 +18,12 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
-#include "xla/tsl/platform/status_matchers.h"
 
 namespace stream_executor::gpu {
 namespace {
-
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 TEST(TmaUtilTest, GetTensorMapDataTypeReturnsCorrectDataType) {
   EXPECT_THAT(GetTensorMapDataType(1),

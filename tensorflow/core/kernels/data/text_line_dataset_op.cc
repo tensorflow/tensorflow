@@ -14,6 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/text_line_dataset_op.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -21,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tf_data_file_logger_options.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
@@ -42,8 +51,8 @@ constexpr char kCurrentPos[] = "current_pos";
 
 class TextLineDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, std::vector<string> filenames,
-          const string& compression_type,
+  Dataset(OpKernelContext* ctx, std::vector<std::string> filenames,
+          const std::string& compression_type,
           const io::ZlibCompressionOptions& options)
       : DatasetBase(DatasetContext(ctx)),
         filenames_(std::move(filenames)),
@@ -52,7 +61,7 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
         options_(options) {}
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this,
         name_utils::IteratorPrefix(TextLineDatasetOp::kDatasetType, prefix)});
@@ -69,7 +78,7 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
     return *shapes;
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
@@ -242,7 +251,7 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
         TF_GUARDED_BY(mu_);  // must outlive input_stream_
   };
 
-  const std::vector<string> filenames_;
+  const std::vector<std::string> filenames_;
   const tstring compression_type_;
   const bool use_compression_;
   const io::ZlibCompressionOptions options_;
@@ -286,7 +295,7 @@ void TextLineDatasetOp::MakeDataset(OpKernelContext* ctx,
     zlib_compression_options.input_buffer_size = buffer_size;
   }
 
-  std::vector<string> filenames;
+  std::vector<std::string> filenames;
   filenames.reserve(filenames_tensor->NumElements());
   for (int i = 0; i < filenames_tensor->NumElements(); ++i) {
     filenames.push_back(filenames_tensor->flat<tstring>()(i));

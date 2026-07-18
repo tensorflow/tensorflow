@@ -46,20 +46,11 @@ namespace {
 
 constexpr ErrorSpec kErrorSpec{1e-3, 1e-5};
 
-using ConstantsTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using ConstantsTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 template <typename T>
 class ConstantsFloatTest : public ConstantsTest {
- protected:
-  void SetUp() override {
-    if ((std::is_same_v<T, tsl::float4_e2m1fn> ||
-         std::is_same_v<T, tsl::float8_e8m0fnu>) &&
-        test::DeviceTypeIs(test::kTpu)) {
-      // TODO(b/385004399): Run tests on these types on TPU.
-      GTEST_SKIP();
-    }
-  }
 };
 
 using FloatTypes =
@@ -206,17 +197,25 @@ TEST_F(ConstantsTest, Small_3x2x1x1) {
   input_array.FillWithPZ(pz);
   Literal input_literal = LiteralUtil::CreateR4FromArray4D(input_array);
 
-  {
-    XlaBuilder builder(TestName());
-    ConstantLiteral(&builder, input_literal);
-    ComputeAndCompareR4<float>(&builder, input_array, {}, kErrorSpec);
-  }
+  XlaBuilder builder(TestName());
+  ConstantLiteral(&builder, input_literal);
+  ComputeAndCompareR4<float>(&builder, input_array, {}, kErrorSpec);
+}
 
-  {
-    XlaBuilder builder(TestName());
-    ConstantR4FromArray4D<float>(&builder, input_array);
-    ComputeAndCompareR4<float>(&builder, input_array, {}, kErrorSpec);
-  }
+TEST_F(ConstantsTest, Small_3x2x1x1_array4d) {
+  Array4D<float> input_array(3, 2, 1, 1);
+  Array2D<float> pz({
+      // z0 z1
+      {-1.0f, 4.1f},  // p0
+      {2.0f, 4.1f},   // p1
+      {5.0f, 4.4f},   // p2
+  });
+  input_array.FillWithPZ(pz);
+  Literal input_literal = LiteralUtil::CreateR4FromArray4D(input_array);
+
+  XlaBuilder builder(TestName());
+  ConstantR4FromArray4D<float>(&builder, input_array);
+  ComputeAndCompareR4<float>(&builder, input_array, {}, kErrorSpec);
 }
 
 // TODO(b/29263943): Support tuple constants.
@@ -265,7 +264,7 @@ TEST_F(ConstantsTest, FullLikeScalar) {
   ComputeAndCompareR0<float>(&b, -1, {}, kErrorSpec);
 }
 
-using ConstantsHloTest = HloPjRtTestBase;
+using ConstantsHloTest = HloTestBase;
 
 // TODO(b/121147351): Fails on GPU. Not clear if this is expected behavior.
 TEST_F(ConstantsHloTest, BitcastOfConstant) {

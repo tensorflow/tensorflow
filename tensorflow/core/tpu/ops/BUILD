@@ -18,7 +18,6 @@ cc_library(
         ":tpu_copy_with_dynamic_shape_op",
         ":tpu_embedding_ops",
         ":tpu_execute_op",
-        ":tpu_handle_to_key_op",
         ":tpu_partitioned_ops",
         ":tpu_reshard_variables_op",
         ":tpu_round_robin_op",
@@ -40,7 +39,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/platform:status",
     ],
     alwayslink = 1,
 )
@@ -100,20 +99,6 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_handle_to_key_op",
-    srcs = [
-        "tpu_handle_to_key_op.cc",
-    ],
-    linkstatic = 1,
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/status",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "topk_ops",
     srcs = [
         "topk_ops.cc",
@@ -153,7 +138,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla:util",
+        "@xla//xla:util",
     ],
 )
 
@@ -179,9 +164,9 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@local_xla//xla:status_macros",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:logging",
+        "@xla//xla:status_macros",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:logging",
     ],
     alwayslink = 1,
 )
@@ -197,7 +182,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla:util",
+        "@xla//xla:util",
     ],
     alwayslink = 1,
 )
@@ -214,7 +199,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
-        "@local_xla//xla:util",
+        "@xla//xla:util",
     ],
     alwayslink = 1,
 )
@@ -228,7 +213,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/lib/core:status",
         "@com_google_absl//absl/status",
-        "@local_xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:errors",
     ],
     alwayslink = 1,
 )

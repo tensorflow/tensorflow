@@ -29,7 +29,7 @@ namespace tensorflow {
 namespace dtensor {
 
 // Computes AllReduce partitions using reduced mesh dimension names.
-StatusOr<std::map<DeviceLocation, std::vector<int32>>>
+StatusOr<std::map<DeviceLocation, std::vector<int32_t>>>
 GetAllReducePartitionsFromReducedDims(
     const dtensor::Layout& output_layout,
     const absl::flat_hash_set<std::string>& reduced_dims);

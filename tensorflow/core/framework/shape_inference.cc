@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 
 #include "tensorflow/core/framework/bounds_check.h"
@@ -122,13 +123,15 @@ absl::Status InferenceContext::set_output(
     absl::string_view output_name, const std::vector<ShapeHandle>& shapes) {
   auto result = output_name_map_.find(output_name);
   if (result == output_name_map_.end()) {
-    return errors::InvalidArgument("Unknown output name: ", output_name);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unknown output name: ", output_name));
   } else {
     const int start = result->second.first;
     const int size = result->second.second - start;
     const int shapes_size = shapes.size();
     if (size != shapes_size) {
-      return errors::InvalidArgument("Must provide exactly ", size, " shapes.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Must provide exactly ", size, " shapes."));
     }
     for (int i = 0; i < shapes_size; ++i) {
       outputs_[i + start] = shapes[i];
@@ -141,7 +144,8 @@ absl::Status InferenceContext::input(absl::string_view input_name,
                                      std::vector<ShapeHandle>* output) const {
   const auto result = input_name_map_.find(input_name);
   if (result == input_name_map_.end()) {
-    return errors::InvalidArgument("Unknown input name: ", input_name);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unknown input name: ", input_name));
   } else {
     output->clear();
     for (int i = result->second.first; i < result->second.second; ++i) {
@@ -155,7 +159,8 @@ absl::Status InferenceContext::output(absl::string_view output_name,
                                       std::vector<ShapeHandle>* output) const {
   const auto result = output_name_map_.find(output_name);
   if (result == output_name_map_.end()) {
-    return errors::InvalidArgument("Unknown output name: ", output_name);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unknown output name: ", output_name));
   } else {
     output->clear();
     for (int i = result->second.first; i < result->second.second; ++i) {
@@ -193,7 +198,8 @@ void InferenceContext::PreInputInit(
 absl::Status InferenceContext::ExpandOutputs(int new_output_size) {
   const int outputs_size = outputs_.size();
   if (new_output_size < outputs_size) {
-    return errors::InvalidArgument("Trying to reduce number of outputs of op.");
+    return absl::InvalidArgumentError(
+        "Trying to reduce number of outputs of op.");
   }
   outputs_.resize(new_output_size, nullptr);
   output_handle_shapes_and_types_.resize(new_output_size);
@@ -213,18 +219,18 @@ void InferenceContext::PostInputInit(
     input_handle_shapes_and_types_.resize(inputs_.size());
   } else {
     if (input_handle_data.size() != inputs_.size()) {
-      construction_status_ = errors::InvalidArgument(
-          "Wrong number of handle shapes passed; expected ", inputs_.size(),
-          " got ", input_handle_data.size());
+      construction_status_ = absl::InvalidArgumentError(
+          absl::StrCat("Wrong number of handle shapes passed; expected ",
+                       inputs_.size(), " got ", input_handle_data.size()));
       return;
     }
     input_handle_shapes_and_types_ = std::move(input_handle_data);
   }
   const int inputs_size = inputs_.size();
   if (inputs_size != num_inputs_from_node_def) {
-    construction_status_ = errors::InvalidArgument(
+    construction_status_ = absl::InvalidArgumentError(absl::StrCat(
         "Wrong number of inputs passed: ", inputs_.size(), " while ",
-        num_inputs_from_node_def, " expected based on NodeDef");
+        num_inputs_from_node_def, " expected based on NodeDef"));
     return;
   }
 
@@ -282,9 +288,9 @@ DimensionHandle InferenceContext::NumElements(ShapeHandle s) {
   }
 }
 
-string InferenceContext::DebugString(ShapeHandle s) {
+std::string InferenceContext::DebugString(ShapeHandle s) {
   if (RankKnown(s)) {
-    std::vector<string> vals;
+    std::vector<std::string> vals;
     for (auto d : s->dims_) vals.push_back(DebugString(d));
     return absl::StrCat("[", absl::StrJoin(vals, ","), "]");
   } else {
@@ -292,22 +298,22 @@ string InferenceContext::DebugString(ShapeHandle s) {
   }
 }
 
-string InferenceContext::DebugString(DimensionHandle d) {
+std::string InferenceContext::DebugString(DimensionHandle d) {
   return ValueKnown(d) ? absl::StrCat(Value(d)) : "?";
 }
 
-string InferenceContext::DebugString() const {
+std::string InferenceContext::DebugString() const {
   return absl::StrCat("InferenceContext for node: ", attrs_.SummarizeNode());
 }
 
-string InferenceContext::DebugString(const ShapeAndType& shape_and_type) {
+std::string InferenceContext::DebugString(const ShapeAndType& shape_and_type) {
   return absl::StrCat(DebugString(shape_and_type.shape), ":",
                       DataTypeString(shape_and_type.dtype));
 }
 
-string InferenceContext::DebugString(
+std::string InferenceContext::DebugString(
     absl::Span<const ShapeAndType> shape_and_types) {
-  std::vector<string> pieces;
+  std::vector<std::string> pieces;
   for (const ShapeAndType& s : shape_and_types) {
     pieces.push_back(DebugString(s));
   }
@@ -316,8 +322,8 @@ string InferenceContext::DebugString(
 
 absl::Status InferenceContext::WithRank(ShapeHandle shape, int64_t rank,
                                         ShapeHandle* out) {
-  if (rank > kint32max) {
-    return errors::InvalidArgument("Rank cannot exceed kint32max");
+  if (rank > std::numeric_limits<int32_t>::max()) {
+    return absl::InvalidArgumentError("Rank cannot exceed kint32max");
   }
   const int32_t existing = Rank(shape);
   if (existing == rank) {
@@ -335,14 +341,14 @@ absl::Status InferenceContext::WithRank(ShapeHandle shape, int64_t rank,
   }
   *out = nullptr;
 
-  return errors::InvalidArgument("Shape must be rank ", rank, " but is rank ",
-                                 existing);
+  return absl::InvalidArgumentError(
+      absl::StrCat("Shape must be rank ", rank, " but is rank ", existing));
 }
 
 absl::Status InferenceContext::WithRankAtLeast(ShapeHandle shape, int64_t rank,
                                                ShapeHandle* out) {
-  if (rank > kint32max) {
-    return errors::InvalidArgument("Rank cannot exceed kint32max");
+  if (rank > std::numeric_limits<int32_t>::max()) {
+    return absl::InvalidArgumentError("Rank cannot exceed kint32max");
   }
   const int32_t existing = Rank(shape);
   if (existing >= rank || existing == kUnknownRank) {
@@ -350,14 +356,14 @@ absl::Status InferenceContext::WithRankAtLeast(ShapeHandle shape, int64_t rank,
     return absl::OkStatus();
   }
   *out = nullptr;
-  return errors::InvalidArgument("Shape must be at least rank ", rank,
-                                 " but is rank ", existing);
+  return absl::InvalidArgumentError(absl::StrCat(
+      "Shape must be at least rank ", rank, " but is rank ", existing));
 }
 
 absl::Status InferenceContext::WithRankAtMost(ShapeHandle shape, int64_t rank,
                                               ShapeHandle* out) {
-  if (rank > kint32max) {
-    return errors::InvalidArgument("Rank cannot exceed kint32max");
+  if (rank > std::numeric_limits<int32_t>::max()) {
+    return absl::InvalidArgumentError("Rank cannot exceed kint32max");
   }
   const int32_t existing = Rank(shape);
   if (existing <= rank || existing == kUnknownRank) {
@@ -365,8 +371,8 @@ absl::Status InferenceContext::WithRankAtMost(ShapeHandle shape, int64_t rank,
     return absl::OkStatus();
   }
   *out = nullptr;
-  return errors::InvalidArgument("Shape must be at most rank ", rank,
-                                 " but is rank ", existing);
+  return absl::InvalidArgumentError(absl::StrCat(
+      "Shape must be at most rank ", rank, " but is rank ", existing));
 }
 
 absl::Status InferenceContext::WithValue(DimensionHandle dim, int64_t value,
@@ -381,8 +387,8 @@ absl::Status InferenceContext::WithValue(DimensionHandle dim, int64_t value,
     return Merge(dim, d, out);
   }
   *out = nullptr;
-  return errors::InvalidArgument("Dimension must be ", value, " but is ",
-                                 existing);
+  return absl::InvalidArgumentError(
+      absl::StrCat("Dimension must be ", value, " but is ", existing));
 }
 
 void InferenceContext::Relax(DimensionHandle d_old, DimensionHandle d_new,
@@ -429,8 +435,8 @@ absl::Status InferenceContext::Merge(DimensionHandle d0, DimensionHandle d1,
     return absl::OkStatus();
   } else {
     *out = nullptr;
-    return errors::InvalidArgument("Dimensions must be equal, but are ",
-                                   Value(d0), " and ", Value(d1));
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Dimensions must be equal, but are ", Value(d0), " and ", Value(d1)));
   }
 }
 
@@ -523,8 +529,8 @@ absl::Status InferenceContext::Merge(ShapeHandle s0, ShapeHandle s1,
   const int32_t rank = Rank(s0);
   if (rank != Rank(s1)) {
     *out = nullptr;
-    return errors::InvalidArgument("Shapes must be equal rank, but are ", rank,
-                                   " and ", Rank(s1));
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Shapes must be equal rank, but are ", rank, " and ", Rank(s1)));
   }
 
   bool return_s0 = true;
@@ -544,10 +550,10 @@ absl::Status InferenceContext::Merge(ShapeHandle s0, ShapeHandle s1,
       return_s1 = false;
     } else if (v0 != v1) {
       *out = nullptr;
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Dimension ", i, " in both shapes must be equal, but are ", Value(d0),
           " and ", Value(d1), ". Shapes are ", DebugString(s0), " and ",
-          DebugString(s1), ".");
+          DebugString(s1), "."));
     }
   }
 
@@ -610,8 +616,9 @@ absl::Status InferenceContext::Subshape(ShapeHandle s, int64_t start,
     start = rank + start;
     if (start < 0) {
       *out = nullptr;
-      return errors::InvalidArgument("Subshape start out of bounds: ", start_in,
-                                     ", for shape with rank ", rank);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Subshape start out of bounds: ", start_in,
+                       ", for shape with rank ", rank));
     }
   }
 
@@ -619,16 +626,17 @@ absl::Status InferenceContext::Subshape(ShapeHandle s, int64_t start,
     end = rank + end;
     if (end < 0) {
       *out = nullptr;
-      return errors::InvalidArgument("Subshape end out of bounds: ", end_in,
-                                     ", for shape with rank ", rank);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Subshape end out of bounds: ", end_in,
+                       ", for shape with rank ", rank));
     }
   }
   if (stride > 0 && start > end) {
     *out = nullptr;
-    return errors::InvalidArgument(
-        "Subshape must have computed start <= end, but is ", start, " and ",
-        end, " (computed from start ", start_in, " and end ", end_in,
-        " over shape with rank ", rank, ")");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Subshape must have computed start <= end, but is ", start,
+                     " and ", end, " (computed from start ", start_in,
+                     " and end ", end_in, " over shape with rank ", rank, ")"));
   } else if (stride < 0 && start < end) {
     *out = nullptr;
     return errors::InvalidArgument(
@@ -672,9 +680,9 @@ absl::Status InferenceContext::ReplaceDim(ShapeHandle s, int64_t dim_index_in,
   }
   if (!FastBoundsCheck(dim_index, s->dims_.size())) {
     *out = nullptr;
-    return errors::InvalidArgument("Out of range dim_index ", dim_index_in,
-                                   " for shape with ", s->dims_.size(),
-                                   " dimensions");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Out of range dim_index ", dim_index_in,
+                     " for shape with ", s->dims_.size(), " dimensions"));
   }
   std::vector<DimensionHandle> dims(s->dims_);
   dims[dim_index] = new_dim;
@@ -702,7 +710,8 @@ ShapeHandle InferenceContext::UnknownShape() {
 }
 
 ShapeHandle InferenceContext::UnknownShapeOfRank(int64_t rank) {
-  CHECK_LE(rank, kint32max) << "rank must be less than kint32max";
+  CHECK_LE(rank, std::numeric_limits<int32_t>::max())
+      << "rank must be less than kint32max";
   if (rank == kUnknownRank) {
     return UnknownShape();
   }
@@ -799,10 +808,10 @@ absl::Status InferenceContext::InternalMakeShapeFromTensor(
     // argument.
     const int64_t max_dimensions = 1 << 25;
     if (num_dims >= max_dimensions) {
-      return errors::Internal(
-          "Cannot create a tensor with ", num_dims,
-          " dimensions, as these would be more than maximum of ",
-          max_dimensions);
+      return absl::InternalError(
+          absl::StrCat("Cannot create a tensor with ", num_dims,
+                       " dimensions, as these would be more than maximum of ",
+                       max_dimensions));
     }
     std::vector<DimensionHandle> dims;
     dims.reserve(num_dims);
@@ -812,53 +821,53 @@ absl::Status InferenceContext::InternalMakeShapeFromTensor(
 
   if (t->shape().dims() == 0) {
     if (t->dtype() == DataType::DT_INT32) {
-      auto flat_t = t->scalar<int32>();
+      auto flat_t = t->scalar<int32_t>();
       if (flat_t() != -1) {
         *out = nullptr;
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Input tensor must be rank 1, or if its rank 0 it must have value "
             "-1 "
             "(representing an unknown shape).  Saw value: ",
-            flat_t());
+            flat_t()));
       }
       return ReturnUnknownShape(out);
     } else if (t->dtype() == DataType::DT_INT64) {
       auto flat_t = t->scalar<int64_t>();
       if (flat_t() != -1) {
         *out = nullptr;
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Input tensor must be rank 1, or if its rank 0 it must have value "
             "-1 "
             "(representing an unknown shape).  Saw value: ",
-            flat_t());
+            flat_t()));
       }
       return ReturnUnknownShape(out);
     } else {
       *out = nullptr;
-      return errors::InvalidArgument(
-          "Input tensor must be int32 or int64, but was ",
-          DataTypeString(t->dtype()));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Input tensor must be int32 or int64, but was ",
+                       DataTypeString(t->dtype())));
     }
   }
 
   if (t->shape().dims() != 1) {
     *out = nullptr;
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Input tensor must be rank 1, but was rank ", t->shape().dims(), ".",
-        ((t->shape().dims() == 0)
-             ? "If it is rank 0 it must have statically known value -1 "
-               "(representing an unknown shape). "
-             : " "),
-        "Saw tensor shape ", t->shape().DebugString());
+        t->shape().dims() == 0
+            ? "If it is rank 0 it must have statically known value -1 "
+              "(representing an unknown shape). "
+            : " ",
+        "Saw tensor shape ", t->shape().DebugString()));
   }
   std::vector<DimensionHandle> dims;
   if (t->dtype() == DataType::DT_INT32) {
-    auto flat_t = t->flat<int32>();
+    auto flat_t = t->flat<int32_t>();
     for (int i = 0; i < flat_t.size(); ++i) {
       const int32_t val = flat_t(i);
       if (val < -1) {
-        return errors::InvalidArgument(
-            "Invalid value in tensor used for shape: ", val);
+        return absl::InvalidArgumentError(
+            absl::StrCat("Invalid value in tensor used for shape: ", val));
       }
       // -1 will become an unknown dim.
       dims.push_back(MakeDim(val));
@@ -868,17 +877,17 @@ absl::Status InferenceContext::InternalMakeShapeFromTensor(
     for (int i = 0; i < flat_t.size(); ++i) {
       const int64_t val = flat_t(i);
       if (val < -1) {
-        return errors::InvalidArgument(
-            "Invalid value in tensor used for shape: ", val);
+        return absl::InvalidArgumentError(
+            absl::StrCat("Invalid value in tensor used for shape: ", val));
       }
       // -1 will become an unknown dim.
       dims.push_back(MakeDim(val));
     }
   } else {
     *out = nullptr;
-    return errors::InvalidArgument(
-        "Input tensor must be int32 or int64, but was ",
-        DataTypeString(t->dtype()));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Input tensor must be int32 or int64, but was ",
+                     DataTypeString(t->dtype())));
   }
 
   return ReturnCreatedShape(dims, out);
@@ -932,20 +941,21 @@ absl::Status InferenceContext::GetScalarFromTensor(const Tensor* t,
   // Caller must ensure that <t> is not NULL.
   const int rank = t->dims();
   if (rank != 0) {
-    return errors::InvalidArgument("Input must be scalar but has rank ", rank);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Input must be scalar but has rank ", rank));
   }
 
   if (t->dtype() == DataType::DT_INT16) {
     *val = t->scalar<int16_t>()();
     return absl::OkStatus();
   } else if (t->dtype() == DataType::DT_INT32) {
-    *val = t->scalar<int32>()();
+    *val = t->scalar<int32_t>()();
     return absl::OkStatus();
   } else if (t->dtype() == DataType::DT_INT64) {
     *val = t->scalar<int64_t>()();
     return absl::OkStatus();
   } else {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Scalar input must be int16, int32 or int64.");
   }
 }
@@ -955,27 +965,28 @@ absl::Status InferenceContext::GetScalarFromTensor(const Tensor* t, int64_t idx,
   // Caller must ensure that <t> is not NULL.
   const int rank = t->dims();
   if (rank != 1) {
-    return errors::InvalidArgument("Input must be 1D but has rank ", rank);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Input must be 1D but has rank ", rank));
   }
 
   if (t->dtype() == DataType::DT_INT32) {
-    auto flat_t = t->flat<int32>();
+    auto flat_t = t->flat<int32_t>();
     if (idx < 0 || idx >= flat_t.size()) {
-      return errors::InvalidArgument("Invalid index ", idx,
-                                     " for Tensor of size ", flat_t.size());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Invalid index ", idx, " for Tensor of size ", flat_t.size()));
     }
     *val = flat_t(idx);
     return absl::OkStatus();
   } else if (t->dtype() == DataType::DT_INT64) {
     auto flat_t = t->flat<int64_t>();
     if (idx < 0 || idx >= flat_t.size()) {
-      return errors::InvalidArgument("Invalid index ", idx,
-                                     " for Tensor of size ", flat_t.size());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Invalid index ", idx, " for Tensor of size ", flat_t.size()));
     }
     *val = flat_t(idx);
     return absl::OkStatus();
   } else {
-    return errors::InvalidArgument("Tensor input must be int32 or int64.");
+    return absl::InvalidArgumentError("Tensor input must be int32 or int64.");
   }
 }
 
@@ -990,8 +1001,9 @@ absl::Status InferenceContext::MakeDimForScalarInput(int idx,
   }
   TF_RETURN_IF_ERROR(GetScalarFromTensor(t, &val));
   if (val < 0) {
-    return errors::InvalidArgument("Dimension size, given by scalar input ",
-                                   idx, ", must be non-negative but is ", val);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Dimension size, given by scalar input ", idx,
+                     ", must be non-negative but is ", val));
   }
   *out = MakeDim(val);
   return absl::OkStatus();
@@ -1011,16 +1023,16 @@ absl::Status InferenceContext::MakeDimForScalarInputWithNegativeIndexing(
       *out = UnknownDim();
       return absl::OkStatus();
     } else if (val + input_rank < 0) {
-      return errors::InvalidArgument("Dimension size, given by scalar input ",
-                                     val, " must be in range [-", input_rank,
-                                     ", ", input_rank, ")");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Dimension size, given by scalar input ", val, " must be in range [-",
+          input_rank, ", ", input_rank, ")"));
     } else {
       val += input_rank;
     }
   } else if (input_rank >= 0 && val >= input_rank) {
-    return errors::InvalidArgument("Dimension size, given by scalar input ",
-                                   val, " must be in range [-", input_rank,
-                                   ", ", input_rank, ")");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Dimension size, given by scalar input ", val, " must be in range [-",
+        input_rank, ", ", input_rank, ")"));
   }
   *out = MakeDim(val);
   return absl::OkStatus();
@@ -1039,13 +1051,13 @@ absl::Status InferenceContext::Divide(DimensionHandle dividend,
   } else {
     const int64_t v = Value(dividend);
     if (divisor_value <= 0) {
-      return errors::InvalidArgument("Divisor must be positive but is ",
-                                     divisor_value);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Divisor must be positive but is ", divisor_value));
     }
     if (evenly_divisible && (v % divisor_value) != 0) {
-      return errors::InvalidArgument(
-          "Dimension size must be evenly divisible by ", divisor_value,
-          " but is ", v);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Dimension size must be evenly divisible by ",
+                       divisor_value, " but is ", v));
     }
     *out = MakeDim(v / divisor_value);
   }
@@ -1069,10 +1081,11 @@ absl::Status InferenceContext::Add(DimensionHandle first,
     // get pair of values which cannot be store in output. Check below will
     // report error. We still need to avoid undefined behavior of signed
     // overflow and use unsigned addition.
-    const int64_t sum = static_cast<uint64>(first_value) + second_value;
+    const int64_t sum = static_cast<uint64_t>(first_value) + second_value;
     if (sum < 0) {
-      return errors::InvalidArgument("Dimension size overflow from adding ",
-                                     first_value, " and ", second_value);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Dimension size overflow from adding ", first_value,
+                       " and ", second_value));
     }
     *out = MakeDim(sum);
   }
@@ -1093,9 +1106,9 @@ absl::Status InferenceContext::Subtract(DimensionHandle first,
     // Invariant: Both values are known, first_value is non-negative, and
     // second_value is positive.
     if (first_value < second_value) {
-      return errors::InvalidArgument(
-          "Negative dimension size caused by subtracting ", second_value,
-          " from ", first_value);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Negative dimension size caused by subtracting ",
+                       second_value, " from ", first_value));
     }
     *out = MakeDim(first_value - second_value);
   }
@@ -1122,9 +1135,9 @@ absl::Status InferenceContext::Multiply(DimensionHandle first,
     // Invariant: Both values are known and greater than 1.
     const int64_t product = MultiplyWithoutOverflow(first_value, second_value);
     if (product < 0) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Negative dimension size caused by overflow when multiplying ",
-          first_value, " and ", second_value);
+          first_value, " and ", second_value));
     }
     *out = MakeDim(product);
   }
@@ -1170,15 +1183,15 @@ absl::Status InferenceContext::Max(DimensionHandle first,
 }
 
 absl::Status InferenceContext::AttachContext(const absl::Status& status) {
-  std::vector<string> input_shapes;
+  std::vector<std::string> input_shapes;
   input_shapes.reserve(inputs_.size());
   for (const ShapeHandle& input_shape : inputs_) {
     input_shapes.emplace_back(DebugString(input_shape));
   }
 
   // Add information about the input tensors and partial tensor shapes used.
-  std::vector<string> input_from_tensors_str;
-  std::vector<string> input_from_tensors_as_shape_str;
+  std::vector<std::string> input_from_tensors_str;
+  std::vector<std::string> input_from_tensors_as_shape_str;
   input_from_tensors_as_shape_str.reserve(inputs_.size());
   for (int i = 0, end = inputs_.size(); i < end; ++i) {
     const int input_tensors_as_shapes_size = input_tensors_as_shapes_.size();
@@ -1197,7 +1210,7 @@ absl::Status InferenceContext::AttachContext(const absl::Status& status) {
     }
   }
 
-  string error_context =
+  std::string error_context =
       absl::StrCat(" for '", attrs_.SummarizeNode(),
                    "' with input shapes: ", absl::StrJoin(input_shapes, ", "));
   if (!input_from_tensors_str.empty()) {

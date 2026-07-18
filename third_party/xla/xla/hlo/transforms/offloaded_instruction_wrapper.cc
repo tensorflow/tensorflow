@@ -15,16 +15,19 @@ limitations under the License.
 
 #include "xla/hlo/transforms/offloaded_instruction_wrapper.h"
 
+#include <cstdint>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -47,15 +50,22 @@ absl::Status ClearComputeTypeFrontendAttribute(HloInstruction* instr) {
   return absl::OkStatus();
 }
 
+void ClearSideEffects(HloInstruction* instr) {
+  if (instr->opcode() == HloOpcode::kCustomCall) {
+    static_cast<HloCustomCallInstruction*>(instr)
+        ->set_custom_call_has_side_effect(false);
+  }
+}
+
 }  // namespace
 
 absl::Status RecursivelyClearComputeTypeFrontendAttribute(
     HloComputation* computation) {
   for (HloInstruction* instruction : computation->instructions()) {
-    TF_RETURN_IF_ERROR(ClearComputeTypeFrontendAttribute(instruction));
+    RETURN_IF_ERROR(ClearComputeTypeFrontendAttribute(instruction));
     for (HloComputation* called_computation :
          instruction->called_computations()) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           RecursivelyClearComputeTypeFrontendAttribute(called_computation));
     }
   }
@@ -75,11 +85,11 @@ FindAndWrapOffloadedComputations(
   // only materialize it on TC. This simplifies the dependency chain.
   for (HloInstruction* instr : computation.instructions()) {
     if (instr->IsConstant() && should_offload(instr)) {
-      TF_RETURN_IF_ERROR(clear_backend_config_device_type(instr));
+      RETURN_IF_ERROR(clear_backend_config_device_type(instr));
     }
   }
 
-  std::vector<std::pair<HloInstruction*, HloCallInstruction*>>
+  std::vector<std::pair<HloInstruction*, int64_t>>
       offloaded_instructions_and_calls;
   // On each iteration of the outer loop, try to create one offloaded
   // computation out of a connected set of offloaded instructions.
@@ -120,12 +130,12 @@ FindAndWrapOffloadedComputations(
           call_instr->UniquifyName(computation.parent());
           call_instr->set_frontend_attributes(instr->frontend_attributes());
         }
-        offloaded_call_instr = tsl::down_cast<HloCallInstruction*>(call_instr);
+        offloaded_call_instr = absl::down_cast<HloCallInstruction*>(call_instr);
         CHECK_NE(offloaded_call_instr, nullptr);
-        TF_RETURN_IF_ERROR(
-            clear_backend_config_device_type(offloaded_call_instr));
-        TF_RETURN_IF_ERROR(
+        RETURN_IF_ERROR(clear_backend_config_device_type(offloaded_call_instr));
+        RETURN_IF_ERROR(
             ClearComputeTypeFrontendAttribute(offloaded_call_instr));
+        ClearSideEffects(instr);
         offloaded_instr = instr;
         continue;
       }
@@ -161,6 +171,7 @@ FindAndWrapOffloadedComputations(
 
           offloaded_call_instr->AppendInstructionIntoCalledComputation(
               instr, /*add_output=*/instr_escapes_offloaded_computation);
+          ClearSideEffects(instr);
           offloaded_instr = instr;
         } else {
           unmerged_ancestors.insert(instr);
@@ -176,6 +187,7 @@ FindAndWrapOffloadedComputations(
         // computation, include it anyway.
         offloaded_call_instr->AppendInstructionIntoCalledComputation(
             instr, /*add_output=*/true);
+        ClearSideEffects(instr);
         offloaded_instr = instr;
       } else {
         unmerged_ancestors.insert(instr);
@@ -188,34 +200,46 @@ FindAndWrapOffloadedComputations(
       break;
     }
     offloaded_instructions_and_calls.push_back(
-        std::pair(offloaded_instr, offloaded_call_instr));
+        std::pair(offloaded_instr, offloaded_call_instr->unique_id()));
 
     for (HloInstruction* instr : computation.instructions()) {
-      // If an offloaded instruction is a custom call marked with side effects.
-      // Remove the annotation so it can be properly removed from the
-      // original computation during DCE.
-      if (instr->opcode() == HloOpcode::kCustomCall && should_offload(instr)) {
-        static_cast<HloCustomCallInstruction*>(instr)
-            ->set_custom_call_has_side_effect(false);
-      }
       // If an offloaded instruction is a Sharding custom call or has control
       // dependencies (such as those around elided copies), remove it
       // explicitly since it won't be removed by HloDCE.
       if (instr->IsDead() && (instr->IsCustomCall("Sharding") ||
                               (instr->HasControlDependencies() &&
                                !instr->HasSuccessorControlDependencies()))) {
-        TF_RETURN_IF_ERROR(instr->SafelyDropAllControlDependencies());
-        TF_RETURN_IF_ERROR(computation.RemoveInstruction(instr));
+        RETURN_IF_ERROR(instr->SafelyDropAllControlDependencies());
+        RETURN_IF_ERROR(computation.RemoveInstruction(instr));
       }
     }
 
     // DCE any offloaded instructions that have no remaining un-wrapped uses.
-    TF_RETURN_IF_ERROR(HloDCE().Run(computation.parent()).status());
+    RETURN_IF_ERROR(HloDCE().Run(computation.parent()).status());
 
     VLOG(6) << "After offloading computation after DCE:";
     XLA_VLOG_LINES(6, computation.parent()->ToString());
   }
-  return offloaded_instructions_and_calls;
+
+  // Filter out any offloaded call instructions that were removed by HloDCE.
+  // Since HloDCE deletes instructions and subsequent iterations of the while
+  // loop may allocate new ones reusing the same pointer address, we must use
+  // unique_id() to safely check if the instruction is still in the computation.
+  absl::flat_hash_map<int64_t, HloInstruction*> alive_instructions;
+  for (HloInstruction* instr : computation.instructions()) {
+    alive_instructions[instr->unique_id()] = instr;
+  }
+
+  std::vector<std::pair<HloInstruction*, HloCallInstruction*>> alive_calls;
+  alive_calls.reserve(offloaded_instructions_and_calls.size());
+  for (const auto& pair : offloaded_instructions_and_calls) {
+    if (auto it = alive_instructions.find(pair.second);
+        it != alive_instructions.end()) {
+      alive_calls.push_back(
+          {pair.first, absl::down_cast<HloCallInstruction*>(it->second)});
+    }
+  }
+  return alive_calls;
 }
 
 }  // namespace xla::offloader_util

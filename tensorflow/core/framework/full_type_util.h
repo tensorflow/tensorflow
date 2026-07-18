@@ -52,7 +52,7 @@ OpTypeConstructor NoOutputs();
 OpTypeConstructor Nullary(FullTypeId t);
 
 // Helper for a type constructor of <t>[FT_VAR[<var_name>]].
-OpTypeConstructor Unary(FullTypeId t, const string& var_name);
+OpTypeConstructor Unary(FullTypeId t, const std::string& var_name);
 
 // Helper for a type constructor of <t>[FT_ANY].
 OpTypeConstructor UnaryGeneric(FullTypeId t);
@@ -61,7 +61,8 @@ OpTypeConstructor UnaryGeneric(FullTypeId t);
 OpTypeConstructor UnaryTensorContainer(FullTypeId t, FullTypeId dtype);
 
 // Helper for a type constructor of <t>[FT_VAR[<var_name>]].
-OpTypeConstructor UnaryTensorContainer(FullTypeId t, const string& var_name);
+OpTypeConstructor UnaryTensorContainer(FullTypeId t,
+                                       const std::string& var_name);
 
 // Helper for a type constructor of
 // <t>[FT_FOR_EACH[
@@ -69,7 +70,8 @@ OpTypeConstructor UnaryTensorContainer(FullTypeId t, const string& var_name);
 //     FT_TENSOR[FT_VAR[<var_name>]],
 //     FT_VAR[<var_name>]].
 // Multi-valued type variables will expand the template (see full_type.proto).
-OpTypeConstructor VariadicTensorContainer(FullTypeId t, const string& var_name);
+OpTypeConstructor VariadicTensorContainer(FullTypeId t,
+                                          const std::string& var_name);
 
 // Type specialization and inference logic. This function narrows the type
 // specified in an op definition. Such types are usually generic and dependent

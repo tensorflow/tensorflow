@@ -7,7 +7,7 @@ load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist", "tf
 load("//tensorflow/lite/core:special_rules.bzl", "core_cc_api_stable_visibility_allowlist", "macros_visibility_allowlist")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     licenses = ["notice"],
 )
 
@@ -180,10 +180,9 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = [
-        "//third_party/deepmind/lyria_live/internal/odml:__subpackages__",
-        # copybara:uncomment "//third_party/odml/litert/litert:__subpackages__",
-        # "//third_party/odml/litert:__subpackages__",  # copybara:uncomment
         "//tensorflow/lite:__subpackages__",
+        "//third_party/deepmind/lyria_live/internal/odml:__subpackages__",
+        "//third_party/odml/litert:__subpackages__",
     ] + core_cc_api_stable_visibility_allowlist(),
     deps = [
         ":model_builder",
@@ -216,7 +215,7 @@ cc_library(
         "//tensorflow/lite/core/async:async_signature_runner",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/delegates:telemetry",
+        # copybara:uncomment "//tensorflow/lite/delegates:telemetry",
         "//tensorflow/lite/delegates/xnnpack:tflite_with_xnnpack_qs8",
         "//tensorflow/lite/delegates/xnnpack:tflite_with_xnnpack_qu8",
         "//tensorflow/lite/experimental/resource",
@@ -342,6 +341,8 @@ cc_test(
     srcs = ["signature_runner_test.cc"],
     data = [
         "//tensorflow/lite:testdata/multi_signatures.bin",
+        "//tensorflow/lite:testdata/no_signatures.bin",
+        "//tensorflow/lite:testdata/no_signatures_no_tensor_names.bin",
         "//tensorflow/lite:testdata/reverse_signature_model.bin",
     ],
     deps = [
@@ -387,6 +388,7 @@ cc_test(
         "//tensorflow/compiler/mlir/lite:allocation",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite:version",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/core/c:common",
@@ -472,7 +474,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
     visibility = [
-        "//platforms/darwinn/tflite:__subpackages__",
         "//tensorflow/lite:__subpackages__",
         "//tensorflow/lite/core:__subpackages__",
         "//tensorflow/lite/kernels:__subpackages__",

@@ -67,7 +67,7 @@ class OpSegment {
 
  private:
   // op name -> OpKernel
-  typedef std::unordered_map<string, OpKernel*> KernelMap;
+  typedef std::unordered_map<std::string, OpKernel*> KernelMap;
   struct Item {
     int num_holds = 1;      // Num of holds put on the session.
     KernelMap name_kernel;  // op name -> kernel.
@@ -76,7 +76,7 @@ class OpSegment {
 
   // session handle -> item.
   // Session handles are produced by strings::FpToString()
-  typedef std::unordered_map<string, Item*> SessionMap;
+  typedef std::unordered_map<std::string, Item*> SessionMap;
 
   mutable mutex mu_;
   SessionMap sessions_ TF_GUARDED_BY(mu_);

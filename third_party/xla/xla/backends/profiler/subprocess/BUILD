@@ -3,7 +3,6 @@ load(
     "xla_cc_test",
 )
 load("//xla/tsl:tsl.bzl", "internal_visibility")
-load("//xla/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_binary", "cc_library")
 load("//xla/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
@@ -18,26 +17,39 @@ cc_library(
     ]),
     deps = [
         "//xla/tsl/platform:env",
+        "@com_github_grpc_grpc//:gpr",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
-    ] + tsl_grpc_cc_dependencies(),
+        "@com_google_absl//absl/time",
+        "@tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
+    ],
 )
 
 xla_cc_test(
     name = "subprocess_registry_test",
     srcs = ["subprocess_registry_test.cc"],
+    data = [":subprocess_main"],
+    env = {
+        "XPROF_TEST_SUBPROCESS_MAIN_PATH": "$(rlocationpath :subprocess_main)",
+    },
     deps = [
         ":subprocess_registry",
         "//xla/tsl/platform:env",
+        "//xla/tsl/platform:subprocess",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
+        "@tsl//tsl/platform:path",
     ],
 )
 
@@ -52,10 +64,12 @@ cc_library(
     deps = [
         ":subprocess_registry",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/profiler/utils:timestamp_utils",
         "//xla/tsl/profiler/utils:xplane_schema",
         "//xla/tsl/profiler/utils:xplane_utils",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
@@ -63,14 +77,68 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/profiler/lib:profiler_collection",
-        "@local_tsl//tsl/profiler/lib:profiler_factory",
-        "@local_tsl//tsl/profiler/lib:profiler_interface",
-        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
-        "@local_tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
-    ] + tsl_grpc_cc_dependencies(),
+        "@tsl//tsl/profiler/lib:profiler_interface",
+        "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "subprocess_profiler",
+    srcs = ["subprocess_profiler.cc"],
+    copts = tf_profiler_copts(),
+    visibility = internal_visibility([
+        "//xla/python:__pkg__",
+    ]),
+    deps = [
+        ":subprocess_profiling_session",
+        ":subprocess_registry",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/profiler/utils:profiler_options_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
+        "@tsl//tsl/profiler/lib:profiler_factory",
+        "@tsl//tsl/profiler/lib:profiler_interface",
+        "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
     alwayslink = True,
+)
+
+xla_cc_test(
+    name = "subprocess_profiler_test",
+    srcs = ["subprocess_profiler_test.cc"],
+    args = ["--vmodule=subprocess_profiling_session=10"],
+    data = [":subprocess_main"],
+    env = {
+        "XPROF_TEST_SUBPROCESS_MAIN_PATH": "$(rlocationpath :subprocess_main)",
+    },
+    deps = [
+        ":subprocess_profiler",  # buildcleaner: keep
+        ":subprocess_registry",
+        "//xla/backends/profiler:profiler_backends",  # buildcleaner: keep
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:subprocess",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/profiler/utils:math_utils",
+        "//xla/tsl/profiler/utils:tf_xplane_visitor",
+        "//xla/tsl/profiler/utils:timespan",
+        "//xla/tsl/profiler/utils:xplane_visitor",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/profiler/lib:profiler_session",
+        "@tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
 )
 
 xla_cc_test(
@@ -86,27 +154,24 @@ xla_cc_test(
         ":subprocess_registry",
         "//xla/backends/profiler:profiler_backends",  # buildcleaner: keep
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:resource_loader",
+        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:subprocess",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
-        "//xla/tsl/profiler/utils:math_utils",
-        "//xla/tsl/profiler/utils:timespan",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "//xla/tsl/profiler/utils:tf_xplane_visitor",
+        "//xla/tsl/profiler/utils:xplane_schema",
+        "//xla/tsl/profiler/utils:xplane_visitor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/profiler/lib:profiler_session",
-        "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
-    ] + tsl_grpc_cc_dependencies(),
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/profiler/lib:profiler_session",
+        "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
 )
 
 cc_binary(
@@ -118,11 +183,13 @@ cc_binary(
     ]),
     deps = [
         "//xla/backends/profiler:profiler_backends",  # buildcleaner: keep
+        "//xla/tsl/platform:env",
         "//xla/tsl/profiler/rpc:profiler_server_impl",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/profiler/lib:connected_traceme",
+        "@tsl//tsl/profiler/lib:traceme",
     ],
 )

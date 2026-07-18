@@ -38,10 +38,10 @@ typedef Eigen::GpuDevice GPUDevice;
 template <typename T>
 __global__ void CheckNumericsKernel(const T* __restrict__ data, int size,
                                     int abnormal_detected[2]) {
-  const int32 thread_id = blockIdx.x * blockDim.x + threadIdx.x;
-  const int32 total_thread_count = gridDim.x * blockDim.x;
+  const int32_t thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+  const int32_t total_thread_count = gridDim.x * blockDim.x;
 
-  int32 offset = thread_id;
+  int32_t offset = thread_id;
 
   while (offset < size) {
     if (isnan(data[offset])) {
@@ -61,10 +61,10 @@ __global__ void CheckNumericsKernel(const T* __restrict__ data, int size,
 template <typename T>
 __global__ void CheckNumericsKernelV2(const T* __restrict__ data, int size,
                                       int abnormal_detected[3]) {
-  const int32 thread_id = blockIdx.x * blockDim.x + threadIdx.x;
-  const int32 total_thread_count = gridDim.x * blockDim.x;
+  const int32_t thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+  const int32_t total_thread_count = gridDim.x * blockDim.x;
 
-  int32 offset = thread_id;
+  int32_t offset = thread_id;
 
   while (offset < size) {
     if (isnan(data[offset])) {
@@ -85,8 +85,8 @@ template <typename T>
 struct CheckNumericsLaunch {
   void Run(const GPUDevice& d, const T* data, int size,
            int abnormal_detected[2]) {
-    const int32 block_size = d.maxGpuThreadsPerBlock();
-    const int32 num_blocks =
+    const int32_t block_size = d.maxGpuThreadsPerBlock();
+    const int32_t num_blocks =
         (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
         block_size;
 
@@ -103,8 +103,8 @@ template <typename T>
 struct CheckNumericsLaunchV2 {
   void Run(const GPUDevice& d, const T* data, int size,
            int abnormal_detected[3]) {
-    const int32 block_size = d.maxGpuThreadsPerBlock();
-    const int32 num_blocks =
+    const int32_t block_size = d.maxGpuThreadsPerBlock();
+    const int32_t num_blocks =
         (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
         block_size;
 

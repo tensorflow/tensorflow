@@ -23,13 +23,14 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 
-absl::StatusOr<bool> OpExpanderPass::Run(
+absl::StatusOr<bool> OpExpanderPass::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::vector<HloInstruction*> matching_instructions;
@@ -44,15 +45,13 @@ absl::StatusOr<bool> OpExpanderPass::Run(
   }
 
   for (HloInstruction* inst : matching_instructions) {
-    TF_ASSIGN_OR_RETURN(HloInstruction * expanded_root,
-                        ExpandInstruction(inst));
+    ASSIGN_OR_RETURN(HloInstruction * expanded_root, ExpandInstruction(inst));
     if (expanded_root == nullptr) {
       continue;
     }
-    TF_ASSIGN_OR_RETURN(bool changed,
-                        inst->parent()->ReplaceInstruction(
-                            inst, expanded_root, preserve_sharding_,
-                            relay_control_dependency_));
+    ASSIGN_OR_RETURN(bool changed, inst->parent()->ReplaceInstruction(
+                                       inst, expanded_root, preserve_sharding_,
+                                       relay_control_dependency_));
     DCHECK(changed);
   }
 

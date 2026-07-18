@@ -26,7 +26,7 @@ absl::Status NotDifferentiableGradientFunction::Compute(
 }
 
 absl::Status RegisterNotDifferentiable(GradientRegistry* registry,
-                                       const string& op) {
+                                       const std::string& op) {
   return registry->Register(op, [](const ForwardOperation& op) {
     return new NotDifferentiableGradientFunction;
   });

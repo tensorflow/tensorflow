@@ -21,10 +21,12 @@ limitations under the License.
 #include <cstdlib>
 #include <cstring>
 #include <initializer_list>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/lite/array.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
@@ -49,6 +51,7 @@ bool IsFlexOp(const char* custom_name) {
                                 strlen(kFlexCustomCodePrefix)) == 0;
 }
 
+#ifndef TF_LITE_STATIC_MEMORY
 TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input) {
   return BuildTfLiteArray(input).release();
 }
@@ -56,6 +59,7 @@ TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input) {
 TfLiteIntArray* ConvertArrayToTfLiteIntArray(const int ndims, const int* dims) {
   return BuildTfLiteArray(ndims, dims).release();
 }
+#endif  // TF_LITE_STATIC_MEMORY
 
 bool EqualArrayAndTfLiteIntArray(const TfLiteIntArray* a, const int b_size,
                                  const int* b) {
@@ -127,18 +131,33 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
     case kTfLiteFloat64:
       *bytes = sizeof(double);
       break;
+    case kTfLiteUInt4:
     case kTfLiteInt4:
       // TODO(b/246647008): Multiplying this value by the number of elements
       // does not yield the size of a tensor when 4-bit values are packed
       // 2 to a byte.
       *bytes = sizeof(int8_t);
       break;
+    case kTfLiteInt2:
+      // Similar to Int4, Int2 values are packed. Multiple Int2 values
+      // (specifically 4) are stored within a single byte. However, this
+      // function is expected to return the size of a single element as if it
+      // were unpacked. When unpacked, each Int2 value would occupy the space
+      // of an int8_t to be addressable in memory. The actual packed size
+      // is handled in the BytesRequired function.
+      *bytes = sizeof(int8_t);
+      break;
+    case kTfLiteFloat8E4M3FN:
+    case kTfLiteFloat8E5M2:
+      *bytes = 1;
+      break;
     default:
       if (context) {
         TF_LITE_KERNEL_LOG(
             context,
-            "Type %d is unsupported. Only float16, float32, float64, int8, "
-            "int16, int32, int64, uint8, uint64, bool, complex64 and "
+            "Type %d is unsupported. Only float16, float32, float64, int2, "
+            "int4, "
+            "int8, int16, int32, int64, uint8, uint64, bool, complex64 and "
             "complex128 supported currently.",
             type);
       }
@@ -179,6 +198,8 @@ bool IsValidationSubgraph(const char* name) {
   return name && std::string(name).find(kValidationSubgraphNamePrefix) == 0;
 }
 
+// TODO: b/500201192 - Use a common library for overflow checking.
+// Returns kTfLiteError if overflow occurred during multiplication.
 TfLiteStatus MultiplyAndCheckOverflow(size_t a, size_t b, size_t* product) {
   // Multiplying a * b where a and b are size_t cannot result in overflow in a
   // size_t accumulator if both numbers have no non-zero bits in their upper
@@ -194,19 +215,41 @@ TfLiteStatus MultiplyAndCheckOverflow(size_t a, size_t b, size_t* product) {
   return kTfLiteOk;
 }
 
+TfLiteStatus CheckedNumElements(absl::Span<const int> dims, size_t& count) {
+  size_t checked_count = 1;
+  for (const int dim : dims) {
+    if (dim < 0) return kTfLiteError;
+    if (MultiplyAndCheckOverflow(checked_count, static_cast<size_t>(dim),
+                                 &checked_count) != kTfLiteOk) {
+      return kTfLiteError;
+    }
+  }
+  count = checked_count;
+  return kTfLiteOk;
+}
+
+TfLiteStatus CheckedNumElements(absl::Span<const int> dims, int& count) {
+  size_t checked_count = 0;
+  if (CheckedNumElements(dims, checked_count) != kTfLiteOk) {
+    return kTfLiteError;
+  }
+  if (checked_count > static_cast<size_t>(std::numeric_limits<int>::max())) {
+    return kTfLiteError;
+  }
+  count = static_cast<int>(checked_count);
+  return kTfLiteOk;
+}
+
 TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
                            size_t* bytes, TfLiteContext* context_) {
   TF_LITE_ENSURE(context_, bytes != nullptr);
   // When 'dims_size' is 0, we simply assume it's a scalar. Therefore, we start
   // 'count' as 1.
-  size_t count = 1;
-  for (int k = 0; k < dims_size; k++) {
-    size_t old_count = count;
-    TF_LITE_ENSURE_MSG(
-        context_,
-        MultiplyAndCheckOverflow(old_count, dims[k], &count) == kTfLiteOk,
-        "BytesRequired number of elements overflowed.\n");
-  }
+  size_t count = 0;
+  TF_LITE_ENSURE_MSG(context_,
+                     CheckedNumElements(absl::Span<const int>(dims, dims_size),
+                                        count) == kTfLiteOk,
+                     "BytesRequired number of elements overflowed.\n");
   size_t type_size = 0;
   TF_LITE_ENSURE_OK(context_, GetSizeOfType(context_, type, &type_size));
   TF_LITE_ENSURE_MSG(
@@ -216,13 +259,27 @@ TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
   // GetSizeOfType doesn't work for kTfLiteInt4 due to it having 2 values packed
   // into 1 byte so the output of GetSizeOfType is the same as int8 aka 1 byte.
   // Thus the required bytes must be divided by half after everything for int4.
-  if (type == kTfLiteInt4) {
+  if (type == kTfLiteInt4 || type == kTfLiteUInt4) {
     *bytes = (*bytes + 1) / 2;
+  } else if (type == kTfLiteInt2) {
+    // For kTfLiteInt2, 4 elements are packed into a single byte.
+    // The '*bytes' variable at this point holds the total number of elements,
+    // because GetSizeOfType returns sizeof(int8_t) for each Int2 element.
+    // To get the actual number of bytes needed for the packed representation,
+    // we need to divide the total number of elements by 4.
+    // The expression `(*bytes + 3) / 4` implements integer division with
+    // ceiling, ensuring that we allocate enough bytes to store all elements.
+    // For example:
+    // 1 element: (1 + 3) / 4 = 1 byte
+    // 4 elements: (4 + 3) / 4 = 1 byte
+    // 5 elements: (5 + 3) / 4 = 2 bytes
+    *bytes = (*bytes + 3) / 4;
   }
 
   return kTfLiteOk;
 }
 
+#ifndef TF_LITE_STATIC_MEMORY
 TensorUniquePtr BuildTfLiteTensor() {
   auto tensor = TensorUniquePtr((TfLiteTensor*)calloc(1, sizeof(TfLiteTensor)));
   tensor->buffer_handle = kTfLiteNullBufferHandle;
@@ -260,6 +317,7 @@ TensorUniquePtr BuildTfLiteTensor(TfLiteType type, IntArrayUniquePtr dims,
   TfLiteTensorRealloc(bytes, t.get());
   return t;
 }
+#endif  // TF_LITE_STATIC_MEMORY
 
 int GetBuiltinDataSize(BuiltinOperator op) {
   switch (op) {

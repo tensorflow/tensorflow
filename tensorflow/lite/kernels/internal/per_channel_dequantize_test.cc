@@ -132,8 +132,9 @@ TEST(PerChannelDequantize, TestInt4ToFloat_2D) {
   std::vector<float> output(8, -1);
   const size_t bytes_unpacked = packed_int4_input.size() * 2;
   auto unpacked_input_data = std::make_unique<int8_t[]>(bytes_unpacked);
-  tflite::tensor_utils::UnpackDenseInt4IntoInt8(
-      packed_int4_input.data(), bytes_unpacked, unpacked_input_data.get());
+  tflite::tensor_utils::UnpackPackedIntToInt8(packed_int4_input.data(),
+                                              bytes_unpacked, /*bit_width=*/4,
+                                              unpacked_input_data.get());
   EXPECT_THAT(std::vector<int8_t>(unpacked_input_data.get(),
                                   unpacked_input_data.get() + bytes_unpacked),
               ElementsAreArray(ArrayFloatNear({-1, -1, 0, 0, 1, 4, 1, -8})));

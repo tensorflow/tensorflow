@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
 #include <vector>
 
 #include "absl/log/log.h"
@@ -31,7 +32,7 @@ namespace grappler {
 namespace graph_analyzer {
 
 // Dies on failure.
-static void LoadModel(const string& filename,
+static void LoadModel(const std::string& filename,
                       tensorflow::MetaGraphDef* metagraph) {
   LOG(INFO) << "Loading model from " << filename;
   absl::Status st;
@@ -49,7 +50,7 @@ static void LoadModel(const string& filename,
 // of train ops (if provided).
 void MaybePruneGraph(const tensorflow::MetaGraphDef& metagraph,
                      tensorflow::GraphDef* graph) {
-  std::vector<string> fetch_nodes;
+  std::vector<std::string> fetch_nodes;
   for (const auto& fetch :
        metagraph.collection_def().at("train_op").node_list().value()) {
     LOG(INFO) << "Fetch node: " << fetch;
@@ -72,7 +73,7 @@ void MaybePruneGraph(const tensorflow::MetaGraphDef& metagraph,
   }
 }
 
-void GraphAnalyzerTool(const string& file_name, int n) {
+void GraphAnalyzerTool(const std::string& file_name, int n) {
   if (n < 1) {
     LOG(FATAL) << "Invalid subgraph size " << n << ", must be at least 1";
   }

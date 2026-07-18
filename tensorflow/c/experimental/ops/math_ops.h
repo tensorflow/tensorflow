@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/framework/types.h"  // NOLINT
 
 namespace tensorflow {
 namespace ops {
@@ -47,7 +47,8 @@ absl::Status AddV2(AbstractContext* ctx, AbstractTensorHandle* const x,
 absl::Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a,
                     AbstractTensorHandle* const b,
                     AbstractTensorHandle** product, bool transpose_a = false,
-                    bool transpose_b = false, const char* name = nullptr,
+                    bool transpose_b = false, bool grad_a = false,
+                    bool grad_b = false, const char* name = nullptr,
                     const char* raw_device_name = nullptr);
 
 // Computes numerical negative value element-wise.

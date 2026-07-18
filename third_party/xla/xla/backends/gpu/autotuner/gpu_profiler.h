@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/redzone_buffers.h"
 #include "xla/service/shaped_buffer.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
 
@@ -42,13 +42,14 @@ class GpuProfiler : public Profiler {
  public:
   static std::unique_ptr<GpuProfiler> Create(
       stream_executor::StreamExecutor* stream_executor, ProfileOptions options,
-      se::DeviceMemoryAllocator* external_allocator = nullptr);
+      se::DeviceAddressAllocator* external_allocator = nullptr);
 
   // The input buffers shapes are taken from the attatched HloModule to the
   // executable.
   // TODO(b/407494793): Add a better way to get the input buffer shapes.
   absl::StatusOr<std::unique_ptr<InputBuffers>> CreateInputBuffers(
-      const Executable* executable) override;
+      const Executable* executable,
+      const HloInstruction* instr = nullptr) override;
 
   absl::StatusOr<ProfileResult> Profile(Executable* executable,
                                         const InputBuffers& buffers) override;
@@ -61,8 +62,9 @@ class GpuProfiler : public Profiler {
 
  private:
   explicit GpuProfiler(
-      se::StreamExecutor* stream_executor, se::DeviceMemoryAllocator* allocator,
-      std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator,
+      se::StreamExecutor* stream_executor,
+      se::DeviceAddressAllocator* allocator,
+      std::unique_ptr<se::DeviceAddressAllocator> owned_allocator,
       se::Stream* stream, ProfileOptions options)
       : stream_executor_(stream_executor),
         allocator_(allocator),
@@ -75,8 +77,8 @@ class GpuProfiler : public Profiler {
                                           ExecutionProfile* profile);
 
   se::StreamExecutor* stream_executor_;
-  se::DeviceMemoryAllocator* allocator_;
-  std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator_;
+  se::DeviceAddressAllocator* allocator_;
+  std::unique_ptr<se::DeviceAddressAllocator> owned_allocator_;
   se::Stream* stream_;
   ProfileOptions options_;
 };

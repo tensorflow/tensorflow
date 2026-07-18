@@ -41,8 +41,8 @@ void Device::Sync(const DoneCallback& done) { done(Sync()); }
 
 // static
 DeviceAttributes Device::BuildDeviceAttributes(
-    const string& name, DeviceType device, Bytes memory_limit,
-    const DeviceLocality& locality, const string& physical_device_desc) {
+    const std::string& name, DeviceType device, Bytes memory_limit,
+    const DeviceLocality& locality, const std::string& physical_device_desc) {
   DeviceAttributes da;
   da.set_name(name);
   do {

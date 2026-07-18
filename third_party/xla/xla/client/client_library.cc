@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/client/compile_only_client.h"
 #include "xla/client/local_client.h"
 #include "xla/service/compile_only_service.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "xla/service/service.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -104,10 +104,10 @@ ClientLibrary::~ClientLibrary() = default;
   se::Platform* platform = options.platform();
   int replica_count = options.number_of_replicas();
   ClientLibrary& client_library = Singleton();
-  absl::MutexLock lock(&client_library.service_mutex_);
+  absl::MutexLock lock(client_library.service_mutex_);
 
   if (platform == nullptr) {
-    TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
+    ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
   }
 
   auto it = client_library.local_instances_.find(platform->id());
@@ -122,8 +122,8 @@ ClientLibrary::~ClientLibrary() = default;
       options.intra_op_parallelism_threads());
   service_options.set_allowed_devices(options.allowed_devices());
   auto instance = std::make_unique<LocalInstance>();
-  TF_ASSIGN_OR_RETURN(instance->service,
-                      LocalService::NewService(service_options));
+  ASSIGN_OR_RETURN(instance->service,
+                   LocalService::NewService(service_options));
   instance->client = std::make_unique<LocalClient>(instance->service.get());
   LocalClient* cl = instance->client.get();
 
@@ -134,14 +134,14 @@ ClientLibrary::~ClientLibrary() = default;
 
 /* static */ LocalClient* ClientLibrary::LocalClientOrDie() {
   auto client_status = GetOrCreateLocalClient();
-  TF_CHECK_OK(client_status.status());
+  CHECK_OK(client_status.status());
   return client_status.value();
 }
 
 /* static */ LocalService* ClientLibrary::GetXlaService(
     se::Platform* platform) {
   ClientLibrary& client_library = Singleton();
-  absl::MutexLock lock(&client_library.service_mutex_);
+  absl::MutexLock lock(client_library.service_mutex_);
   auto it = client_library.local_instances_.find(platform->id());
   CHECK(it != client_library.local_instances_.end());
   return it->second->service.get();
@@ -150,10 +150,10 @@ ClientLibrary::~ClientLibrary() = default;
 /* static */ absl::StatusOr<CompileOnlyClient*>
 ClientLibrary::GetOrCreateCompileOnlyClient(se::Platform* platform) {
   ClientLibrary& client_library = Singleton();
-  absl::MutexLock lock(&client_library.service_mutex_);
+  absl::MutexLock lock(client_library.service_mutex_);
 
   if (platform == nullptr) {
-    TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
+    ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
   }
 
   auto it = client_library.compile_only_instances_.find(platform->id());
@@ -162,8 +162,7 @@ ClientLibrary::GetOrCreateCompileOnlyClient(se::Platform* platform) {
   }
 
   auto instance = std::make_unique<CompileOnlyInstance>();
-  TF_ASSIGN_OR_RETURN(instance->service,
-                      CompileOnlyService::NewService(platform));
+  ASSIGN_OR_RETURN(instance->service, CompileOnlyService::NewService(platform));
   instance->client =
       std::make_unique<CompileOnlyClient>(instance->service.get());
   CompileOnlyClient* cl = instance->client.get();
@@ -175,7 +174,7 @@ ClientLibrary::GetOrCreateCompileOnlyClient(se::Platform* platform) {
 
 /* static */ void ClientLibrary::DestroyLocalInstances() {
   ClientLibrary& client_library = Singleton();
-  absl::MutexLock lock(&client_library.service_mutex_);
+  absl::MutexLock lock(client_library.service_mutex_);
 
   client_library.local_instances_.clear();
   client_library.compile_only_instances_.clear();

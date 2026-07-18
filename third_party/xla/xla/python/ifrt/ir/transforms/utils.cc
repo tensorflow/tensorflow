@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -28,30 +29,51 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Bytecode/BytecodeWriter.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OperationSupport.h"
+#include "mlir/IR/OwningOpRef.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/mlir/utils/type_util.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
+#include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
+#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
+#include "xla/python/ifrt/ir/support/module_parsing.h"
+#include "xla/python/ifrt/ir/support/sharding_conversions.h"
+#include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
+#include "xla/python/pjrt_ifrt/xla_sharding.h"
+#include "xla/service/computation_placer.h"
+#include "xla/service/spmd/shardy/utils.h"
+#include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
 
@@ -148,6 +170,43 @@ void GetPrettyLocation(mlir::Location loc,
   }
 }
 
+// Constructs a bool vector with a True entry for each input sharding that must
+// be inferred.
+llvm::SmallVector<bool> GetInputShardingPropagation(
+    mlir::func::FuncOp func_op) {
+  llvm::SmallVector<bool> sharding_propagation_to_input;
+  sharding_propagation_to_input.reserve(func_op.getNumArguments());
+  for (int idx = 0; idx < func_op.getNumArguments(); ++idx) {
+    const auto hlo_sharding_attr =
+        func_op.getArgAttrOfType<mlir::StringAttr>(idx, kHloShardingAttrName);
+    if (hlo_sharding_attr == nullptr) {
+      sharding_propagation_to_input.push_back(true);
+    } else {
+      sharding_propagation_to_input.push_back(false);
+    }
+  }
+  return sharding_propagation_to_input;
+}
+
+// Constructs a bool vector with a True entry for each output sharding that must
+// be inferred.
+llvm::SmallVector<bool> GetOutputShardingPropagation(
+    mlir::func::FuncOp func_op) {
+  llvm::SmallVector<bool> sharding_propagation_to_output;
+  sharding_propagation_to_output.reserve(func_op.getNumResults());
+  for (int idx = 0; idx < func_op.getNumResults(); ++idx) {
+    const auto hlo_sharding_attr =
+        func_op.getResultAttrOfType<mlir::StringAttr>(idx,
+                                                      kHloShardingAttrName);
+    if (hlo_sharding_attr == nullptr) {
+      sharding_propagation_to_output.push_back(true);
+    } else {
+      sharding_propagation_to_output.push_back(false);
+    }
+  }
+  return sharding_propagation_to_output;
+}
+
 }  // namespace
 
 std::string GetPrettyLocation(mlir::Location loc) {
@@ -181,10 +240,6 @@ unsigned IfrtCallOpInfo::getHashValue(CallOp call_op) {
 bool IfrtCallOpInfo::isEqual(CallOp lhs, CallOp rhs) {
   if (lhs == rhs) {
     return true;
-  }
-  if (lhs == getEmptyKey() || lhs == getTombstoneKey() ||
-      rhs == getEmptyKey() || rhs == getTombstoneKey()) {
-    return false;
   }
   // Verify that the input and output types are the same.
   if (lhs.getInputs().getTypes() != rhs.getInputs().getTypes()) {
@@ -224,6 +279,9 @@ void UpdateFunctionType(mlir::func::FuncOp func_op) {
 }
 
 absl::StatusOr<DType> ToIfrtDType(mlir::Type type) {
+  if (llvm::isa<IfrtTokenType>(type)) {
+    return ToDType(xla::PrimitiveType::TOKEN);
+  }
   xla::PrimitiveType primitive_type = xla::ConvertMlirTypeToPrimitiveType(type);
   return ToDType(primitive_type);
 }
@@ -238,18 +296,12 @@ std::string OperationToString(mlir::Operation* op,
   return out;
 }
 
-mlir::ModuleOp CloneModuleUsingBuilder(mlir::ModuleOp module,
-                                       mlir::OpBuilder& builder) {
-  // Create a stub for the new module.
-  mlir::ModuleOp cloned_module =
-      builder.create<mlir::ModuleOp>(module.getLoc(), module.getName());
-  cloned_module->setAttrs(module->getAttrs());
-  mlir::IRMapping mapper;
-  // Clone each operation in the body of the module into the new module.
-  for (mlir::Operation& op : module.getBody()->getOperations()) {
-    cloned_module.getBody()->push_back(op.clone(mapper));
-  }
-  return cloned_module;
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CloneModuleIntoContext(
+    mlir::ModuleOp module, mlir::MLIRContext& context) {
+  std::string bytecode;
+  llvm::raw_string_ostream os(bytecode);
+  TF_RET_CHECK(mlir::succeeded(mlir::writeBytecodeToFile(module, os)));
+  return support::ParseMlirModuleString(bytecode, context);
 }
 
 absl::StatusOr<std::vector<std::string>> ExpandPlatformNames(
@@ -310,6 +362,97 @@ absl::StatusOr<std::optional<xla::CompileOptions>> GetModuleXlaCompileOverrides(
       }
     }
   }
+
+  return compile_options;
+}
+
+absl::StatusOr<ShardingRef> ShardingFromIfrtArrayType(
+    const IfrtArrayType array_type, Client* client,
+    const DeviceListRef& device_list) {
+  DeviceListRef array_device_list;
+  {
+    std::vector<Device*> array_devices;
+    array_devices.reserve(array_type.getDevices().size());
+    absl::Span<Device* const> devices = device_list->devices();
+    for (int logical_id : array_type.getDevices()) {
+      TF_RET_CHECK(devices[logical_id] != nullptr);
+      array_devices.push_back(devices[logical_id]);
+    }
+    ASSIGN_OR_RETURN(array_device_list,
+                     client->MakeDeviceList(std::move(array_devices)));
+  }
+
+  IfrtShardingParamAttr sharding_attr = GetShardingParamAttr(array_type);
+
+  ASSIGN_OR_RETURN(
+      xla::HloSharding hlo_sharding,
+      xla::ifrt::support::ToHloSharding(sharding_attr.getSharding()));
+  return xla::ifrt::HloSharding::Create(std::move(array_device_list),
+                                        array_type.MemoryKind(),
+                                        std::move(hlo_sharding));
+}
+
+absl::StatusOr<ArraySpec> ArraySpecFromMlirType(
+    mlir::Type array_type, Client* client, const DeviceListRef& device_list) {
+  IfrtArrayType ifrt_array_type = GetArrayType(array_type);
+
+  ASSIGN_OR_RETURN(DType dtype,
+                   ToIfrtDType(ifrt_array_type.getShape().getElementType()));
+
+  ASSIGN_OR_RETURN(
+      ShardingRef sharding,
+      ShardingFromIfrtArrayType(ifrt_array_type, client, device_list));
+  return ArraySpec{
+      /*dtype=*/dtype,
+      /*shape=*/Shape(ifrt_array_type.getShape().getShape()),
+      /*sharding=*/std::move(sharding),
+  };
+}
+
+xla::CompileOptions GetDefaultCompileOptions(CallOp call_op,
+                                             bool enable_sharding_propagation,
+                                             bool enable_parameter_tupling) {
+  mlir::SymbolTableCollection symbol_table;
+
+  xla::CompileOptions compile_options;
+  auto& exec_build_options = compile_options.executable_build_options;
+  // Executable build options are constructed using logical ids, which are
+  // later converted into real Device ids by using the logical ids as
+  // indices into the device list given at compilation invocation time.
+  llvm::ArrayRef<int> logical_device_ids = call_op.getDevices();
+  mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
+  CHECK(callee != nullptr) << "Callee function not found for CallOp";
+  if (call_op->hasAttrOfType<mlir::UnitAttr>(kIfrtLocalViewAttrName)) {
+    exec_build_options.set_num_replicas(logical_device_ids.size());
+    exec_build_options.set_num_partitions(1);
+    xla::DeviceAssignment device_assignment(logical_device_ids.size(), 1);
+    for (const auto [i, device_id] : llvm::enumerate(logical_device_ids)) {
+      device_assignment(i, 0) = device_id;
+    }
+    exec_build_options.set_device_assignment(device_assignment);
+    exec_build_options.set_use_spmd_partitioning(false);
+  } else {
+    exec_build_options.set_num_replicas(1);
+    exec_build_options.set_num_partitions(logical_device_ids.size());
+    xla::DeviceAssignment device_assignment(1, logical_device_ids.size());
+    for (const auto [i, device_id] : llvm::enumerate(logical_device_ids)) {
+      device_assignment(0, i) = device_id;
+    }
+    exec_build_options.set_device_assignment(device_assignment);
+    exec_build_options.set_use_spmd_partitioning(true);
+    mlir::ModuleOp callee_module = callee->getParentOfType<mlir::ModuleOp>();
+    if (xla::sdy::hasShardyMesh(callee_module)) {
+      exec_build_options.set_use_shardy_partitioner(true);
+    }
+    if (enable_sharding_propagation) {
+      exec_build_options.set_allow_spmd_sharding_propagation_to_parameters(
+          GetInputShardingPropagation(callee));
+      exec_build_options.set_allow_spmd_sharding_propagation_to_output(
+          GetOutputShardingPropagation(callee));
+    }
+  }
+
+  compile_options.parameter_is_tupled_arguments = enable_parameter_tupling;
 
   return compile_options;
 }

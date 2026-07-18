@@ -1,7 +1,7 @@
 licenses(["restricted"])  # NVIDIA proprietary license
 load("@local_config_cuda//cuda:build_defs.bzl", "if_version_equal_or_greater_than")
 load(
-    "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "@xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "cuda_rpath_flags",
 )
 

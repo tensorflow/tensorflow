@@ -115,8 +115,8 @@ TEST(TFCompileTest, Add_SetArg) {
   AddComp add(
       XlaCompiledCpuFunction::AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY);
 
-  alignas(32) int32 arg_x = 10;
-  alignas(32) int32 arg_y = 32;
+  alignas(32) int32_t arg_x = 10;
+  alignas(32) int32_t arg_y = 32;
   add.set_arg0_data(&arg_x);
   add.set_arg1_data(&arg_y);
   EXPECT_EQ(add.arg0_data(), add.arg_data(0));
@@ -194,7 +194,7 @@ TEST(TFCompileTest, Cond) {
   cond.arg2() = 20;
   {
     cond.arg0() = true;
-    const int32 expected_result = cond.arg1();
+    const int32_t expected_result = cond.arg1();
     EXPECT_TRUE(cond.Run());
     EXPECT_EQ(cond.error_msg(), "");
     EXPECT_EQ(cond.result0(), expected_result);
@@ -203,7 +203,7 @@ TEST(TFCompileTest, Cond) {
   }
   {
     cond.arg0() = false;
-    const int32 expected_result = cond.arg2();
+    const int32_t expected_result = cond.arg2();
     EXPECT_TRUE(cond.Run());
     EXPECT_EQ(cond.error_msg(), "");
     EXPECT_EQ(cond.result0(), expected_result);
@@ -221,7 +221,7 @@ TEST(TFCompileTest, Gather) {
   {
     const float params[4] = {1, 2, 3, 4};
     std::copy(params + 0, params + 4, gather.arg0_data());
-    const int32 indices[2] = {1, 3};
+    const int32_t indices[2] = {1, 3};
     std::copy(indices + 0, indices + 2, gather.arg1_data());
     EXPECT_TRUE(gather.Run());
     EXPECT_EQ(gather.error_msg(), "");
@@ -500,8 +500,8 @@ TEST(TFCompileTest, TopK) {
 
   EXPECT_TRUE(fn.Run());
   EXPECT_EQ(fn.error_msg(), "");
-  const int32 expected_values[] = {4, 4};
-  const int32 expected_indices[] = {0, 2};
+  const int32_t expected_values[] = {4, 4};
+  const int32_t expected_indices[] = {0, 2};
   EXPECT_EQ(expected_values[0], fn.result0(0));
   EXPECT_EQ(expected_values[1], fn.result0(1));
   EXPECT_EQ(expected_indices[0], fn.result1(0));
@@ -689,7 +689,7 @@ TEST(TFCompileTest, AssertEqAndReturnDiff) {
 
   assert.arg0() = 2;
   assert.arg1() = 1;
-  const int32 expected_result = assert.arg0() - assert.arg1();
+  const int32_t expected_result = assert.arg0() - assert.arg1();
   EXPECT_TRUE(assert.Run());
   EXPECT_EQ(assert.error_msg(), "");
   EXPECT_EQ(assert.result0(), expected_result);

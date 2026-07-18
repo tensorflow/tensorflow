@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/STLExtras.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -128,6 +129,15 @@ std::optional<bool> FusionCanShareBufferHint(
           continue;
         }
       }
+      // For sort, we can share the buffer if the operand appears only once. We
+      // can share it with that output buffer that corresponds to the operand.
+      if (hlo == non_bitcast_root && hlo->opcode() == HloOpcode::kSort &&
+          absl::c_count(hlo->operands(), hlo_operand) == 1) {
+        if (user_index != ShapeIndex{hlo->operand_index(hlo_operand)}) {
+          return false;
+        }
+        continue;
+      }
       if (non_bitcast_root->opcode() == HloOpcode::kDynamicUpdateSlice &&
           hlo->opcode() == HloOpcode::kDynamicSlice &&
           non_bitcast_root->operand(0) == hlo->operand(0) &&
@@ -208,6 +218,12 @@ std::optional<bool> FusionCanShareBufferHint(
   return found_path_to_output;
 }
 }  // namespace
+
+bool GpuAliasInfo::IsNoOpForAliasAnalysis(
+    const HloInstruction* instruction) const {
+  return AliasInfo::IsNoOpForAliasAnalysis(instruction) ||
+         instruction->opcode() == HloOpcode::kReshape;
+}
 
 std::optional<bool> GpuAliasInfo::MayAlias(const HloInstruction* operand,
                                            const ShapeIndex& operand_index,

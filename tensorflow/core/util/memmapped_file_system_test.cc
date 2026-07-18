@@ -14,13 +14,19 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/util/memmapped_file_system.h"
 
+#include <cstdint>
 #include <memory>
 
+#include "absl/base/internal/endian.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/memmapped_file_system_writer.h"
 
@@ -38,7 +44,7 @@ constexpr char kTensor2FileName[] = "memmapped_package://t2";
 constexpr char kProtoFileName[] = "memmapped_package://b";
 constexpr int kTestGraphDefVersion = 666;
 
-absl::Status CreateMemmappedFileSystemFile(const string& filename,
+absl::Status CreateMemmappedFileSystemFile(const std::string& filename,
                                            bool corrupted,
                                            Tensor* test_tensor) {
   Env* env = Env::Default();
@@ -72,8 +78,8 @@ absl::Status CreateMemmappedFileSystemFile(const string& filename,
 TEST(MemmappedFileSystemTest, SimpleTest) {
   const TensorShape test_tensor_shape = {10, 200};
   Tensor test_tensor(DT_FLOAT, test_tensor_shape);
-  const string dir = testing::TmpDir();
-  const string filename = io::JoinPath(dir, "memmapped_env_test");
+  const std::string dir = testing::TmpDir();
+  const std::string filename = io::JoinPath(dir, "memmapped_env_test");
   TF_ASSERT_OK(CreateMemmappedFileSystemFile(filename, false, &test_tensor));
 
   // Check that we can memmap the created file.
@@ -96,7 +102,7 @@ TEST(MemmappedFileSystemTest, SimpleTest) {
             absl::string_view(static_cast<const char*>(memory_region->data()),
                               test_tensor.TotalBytes()));
   // Check that GetFileSize works.
-  uint64 file_size = 0;
+  uint64_t file_size = 0;
   TF_ASSERT_OK(memmapped_env.GetFileSize(kTensor2FileName, &file_size));
   EXPECT_EQ(test_tensor.TotalBytes(), file_size);
 
@@ -134,18 +140,70 @@ TEST(MemmappedFileSystemTest, Corrupted) {
   // Create a corrupted file (it is not closed it properly).
   const TensorShape test_tensor_shape = {100, 200};
   Tensor test_tensor(DT_FLOAT, test_tensor_shape);
-  const string dir = testing::TmpDir();
-  const string filename = io::JoinPath(dir, "memmapped_env_corrupted_test");
+  const std::string dir = testing::TmpDir();
+  const std::string filename =
+      io::JoinPath(dir, "memmapped_env_corrupted_test");
   TF_ASSERT_OK(CreateMemmappedFileSystemFile(filename, true, &test_tensor));
   MemmappedFileSystem memmapped_env;
   ASSERT_NE(memmapped_env.InitializeFromFile(Env::Default(), filename),
             absl::OkStatus());
 }
 
+TEST(MemmappedFileSystemTest, CorruptedLength) {
+  const std::string dir = testing::TmpDir();
+  const std::string filename =
+      io::JoinPath(dir, "memmapped_env_corrupted_length_test");
+
+  // Create a properly formatted memmapped file first
+  const TensorShape test_tensor_shape = {10, 20};
+  Tensor test_tensor(DT_FLOAT, test_tensor_shape);
+  TF_ASSERT_OK(CreateMemmappedFileSystemFile(filename, false, &test_tensor));
+
+  // Corrupt the length of an element in the directory to be too large
+  Env* env = Env::Default();
+  std::string file_content;
+  TF_ASSERT_OK(ReadFileToString(env, filename, &file_content));
+
+  // Re-parse the directory to find where it is
+  const uint64_t directory_offset = absl::little_endian::Load64(
+      reinterpret_cast<const uint8_t*>(file_content.data()) +
+      file_content.length() - sizeof(uint64_t));
+
+  MemmappedFileSystemDirectory proto_directory;
+  ASSERT_TRUE(proto_directory.ParseFromString(absl::string_view(
+      file_content.data() + directory_offset,
+      file_content.length() - directory_offset - sizeof(uint64_t))));
+
+  // Modify the first element to have an incredibly large length
+  proto_directory.mutable_element(0)->set_length(file_content.length() * 2);
+
+  std::string new_directory_content = proto_directory.SerializeAsString();
+
+  // Create a new corrupted file
+  std::unique_ptr<WritableFile> corrupted_file;
+  TF_ASSERT_OK(env->NewWritableFile(filename, &corrupted_file));
+  TF_ASSERT_OK(corrupted_file->Append(
+      absl::string_view(file_content.data(), directory_offset)));
+  TF_ASSERT_OK(corrupted_file->Append(new_directory_content));
+
+  // Write offset in little endian format
+  uint8_t offset_buffer[sizeof(uint64_t)];
+  absl::little_endian::Store64(offset_buffer, directory_offset);
+  TF_ASSERT_OK(corrupted_file->Append(absl::string_view(
+      reinterpret_cast<char*>(offset_buffer), sizeof(uint64_t))));
+  TF_ASSERT_OK(corrupted_file->Close());
+
+  MemmappedFileSystem memmapped_env;
+  auto status = memmapped_env.InitializeFromFile(Env::Default(), filename);
+  EXPECT_EQ(status.code(), absl::StatusCode::kDataLoss);
+  EXPECT_TRUE(absl::StrContains(
+      status.message(), "Invalid offset or length of internal component"));
+}
+
 TEST(MemmappedFileSystemTest, ProxyToDefault) {
   MemmappedEnv memmapped_env(Env::Default());
-  const string dir = testing::TmpDir();
-  const string filename = io::JoinPath(dir, "test_file");
+  const std::string dir = testing::TmpDir();
+  const std::string filename = io::JoinPath(dir, "test_file");
   // Check that we can create write and read ordinary file.
   std::unique_ptr<WritableFile> writable_file_temp;
   TF_ASSERT_OK(memmapped_env.NewAppendableFile(filename, &writable_file_temp));
@@ -156,10 +214,10 @@ TEST(MemmappedFileSystemTest, ProxyToDefault) {
   };
   std::unique_ptr<WritableFile, decltype(adh)> writable_file(
       writable_file_temp.release(), adh);
-  const string test_string = "bla-bla-bla";
+  const std::string test_string = "bla-bla-bla";
   TF_ASSERT_OK(writable_file->Append(test_string));
   TF_ASSERT_OK(writable_file->Close());
-  uint64 file_length = 0;
+  uint64_t file_length = 0;
   TF_EXPECT_OK(memmapped_env.GetFileSize(filename, &file_length));
   EXPECT_EQ(test_string.length(), file_length);
   FileStatistics stat;

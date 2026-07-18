@@ -23,23 +23,23 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 // Explicit instantiation.
-template struct LaunchConv2DOp<CPUDevice, int32>;
-template struct Conv2DOp<CPUDevice, int32>;
+template struct LaunchConv2DOp<CPUDevice, int32_t>;
+template struct Conv2DOp<CPUDevice, int32_t>;
 
 // If we're using the alternative GEMM-based implementation of Conv2D for the
 // CPU implementation, don't register this EigenTensor-based version.
 #if !defined(USE_GEMM_FOR_CONV)
 REGISTER_KERNEL_BUILDER(
-    Name("Conv2D").Device(DEVICE_CPU).TypeConstraint<int32>("T"),
-    Conv2DOp<CPUDevice, int32>);
+    Name("Conv2D").Device(DEVICE_CPU).TypeConstraint<int32_t>("T"),
+    Conv2DOp<CPUDevice, int32_t>);
 #endif  // USE_GEMM_FOR_CONV
 REGISTER_KERNEL_BUILDER(
-    Name("Conv").Device(DEVICE_CPU).TypeConstraint<int32>("T"),
-    ConvOp<CPUDevice, int32>);
+    Name("Conv").Device(DEVICE_CPU).TypeConstraint<int32_t>("T"),
+    ConvOp<CPUDevice, int32_t>);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <>
-struct LaunchConv2DOp<GPUDevice, int32> {
+struct LaunchConv2DOp<GPUDevice, int32_t> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& input, const Tensor& filter, int row_dilation,
                   int col_dilation, int row_stride, int col_stride,
@@ -47,51 +47,51 @@ struct LaunchConv2DOp<GPUDevice, int32> {
                   const std::vector<int64_t>& explicit_paddings, Tensor* output,
                   TensorFormat data_format) {
     if (data_format != FORMAT_NHWC) {
-      ctx->SetStatus(
-          errors::Unimplemented("The Conv2D op currently only supports the "
-                                "NHWC tensor format for integer types. "
-                                "The op was given the format: ",
-                                ToString(data_format)));
+      ctx->SetStatus(absl::UnimplementedError(
+          absl::StrCat("The Conv2D op currently only supports the "
+                       "NHWC tensor format for integer types. "
+                       "The op was given the format: ",
+                       ToString(data_format))));
       return;
     }
     const int64_t in_depth = GetTensorDim(input, data_format, 'C');
     OP_REQUIRES(ctx, in_depth == filter.dim_size(2),
-                errors::Unimplemented(
+                absl::UnimplementedError(absl::StrCat(
                     "The Conv2D op currently does not support grouped "
                     "convolutions for integer types. A grouped convolution was "
                     "attempted to be run because the input depth of ",
                     in_depth, " does not match the filter input depth of ",
-                    filter.dim_size(2)));
+                    filter.dim_size(2))));
     OP_REQUIRES(
         ctx, filter.NumElements() > 0,
-        errors::InvalidArgument("filter must not have zero elements "
-                                "(i.e. all dimensions must be non-zero)"));
+        absl::InvalidArgumentError("filter must not have zero elements "
+                                   "(i.e. all dimensions must be non-zero)"));
 
     for (int64_t explicit_padding : explicit_paddings) {
       if (!FastBoundsCheck(explicit_padding, std::numeric_limits<int>::max())) {
-        ctx->SetStatus(errors::InvalidArgument("filter too large"));
+        ctx->SetStatus(absl::InvalidArgumentError("filter too large"));
         return;
       }
     }
-    LaunchGeneric<GPUDevice, int32>()(
+    LaunchGeneric<GPUDevice, int32_t>()(
         ctx, input, filter, row_stride, col_stride, row_dilation, col_dilation,
         padding, explicit_paddings, output, data_format);
   }
 };
 
 template <>
-struct LaunchConvOp<GPUDevice, int32> {
+struct LaunchConvOp<GPUDevice, int32_t> {
   void operator()(OpKernelContext* context, bool cudnn_use_autotune,
                   const Tensor& input, const Tensor& filter,
-                  const std::vector<int64>& dilations,
-                  const std::vector<int64>& strides, const Padding padding,
+                  const std::vector<int64_t>& dilations,
+                  const std::vector<int64_t>& strides, const Padding padding,
                   const std::vector<int64_t>& explicit_paddings,
                   TensorFormat data_format, Tensor* output) {
     // Cuda backend does not support int32. For 2D we fall back to Conv2D Eigen
     // based implementation and for 3D we throw an error.
     int spatial_dims = input.dims() - 2;
     if (spatial_dims == 2) {
-      LaunchConv2DOp<GPUDevice, int32>()(
+      LaunchConv2DOp<GPUDevice, int32_t>()(
           context, true, cudnn_use_autotune, input, filter, dilations[1],
           dilations[2], strides[1], strides[2], padding, explicit_paddings,
           output, data_format);
@@ -147,18 +147,18 @@ namespace functor {
       const T& padding_value);                                              \
   extern template struct PadInput<GPUDevice, T, int, 4>
 
-DECLARE_GPU_SPEC(int32);
+DECLARE_GPU_SPEC(int32_t);
 #undef DECLARE_GPU_SPEC
 
 }  // namespace functor
 
 // Registration of the GPU implementations.
 REGISTER_KERNEL_BUILDER(
-    Name("Conv2D").Device(DEVICE_GPU).TypeConstraint<int32>("T"),
-    Conv2DOp<GPUDevice, int32>);
+    Name("Conv2D").Device(DEVICE_GPU).TypeConstraint<int32_t>("T"),
+    Conv2DOp<GPUDevice, int32_t>);
 REGISTER_KERNEL_BUILDER(
-    Name("Conv").Device(DEVICE_GPU).TypeConstraint<int32>("T"),
-    ConvOp<GPUDevice, int32>);
+    Name("Conv").Device(DEVICE_GPU).TypeConstraint<int32_t>("T"),
+    ConvOp<GPUDevice, int32_t>);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

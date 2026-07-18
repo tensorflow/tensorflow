@@ -18,12 +18,13 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
-#include "xla/backends/gpu/codegen/emitters/emitter_base.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/status_macros.h"
@@ -34,17 +35,22 @@ namespace gpu {
 absl::StatusOr<std::unique_ptr<EmitterData>> GetEmitter(
     const HloModule& module) {
   auto data = std::make_unique<EmitterData>();
-  data->fusion = DynCast<HloFusionInstruction>(
-      module.entry_computation()->root_instruction());
+  {
+    auto* inst = module.entry_computation()->root_instruction();
+    while (inst && (inst->opcode() == HloOpcode::kTuple ||
+                    inst->opcode() == HloOpcode::kGetTupleElement)) {
+      inst = inst->mutable_operand(0);
+    }
+    data->fusion = DynCast<HloFusionInstruction>(inst);
+  }
   TF_RET_CHECK(data->fusion != nullptr) << "Root instruction must be a fusion";
   data->device.emplace(TestGpuDeviceInfo::RTXA6000DeviceInfo());
   data->analysis.emplace(
       HloFusionAnalysis::Create(*data->fusion, data->device.value()));
   PreBufferAssignmentFusionInfo info(data->analysis.value());
-  mlir::MLIRContext ctx = GetMlirContextForTest();
-  auto fusion_emitter = GetFusionEmitter(info, &ctx);
+  auto fusion_emitter = GetFusionEmitter(info);
 
-  auto emitter = dynamic_cast<EmitterBase*>(fusion_emitter.get());
+  auto emitter = dynamic_cast<MlirKernelFusion*>(fusion_emitter.get());
   TF_RET_CHECK(emitter != nullptr) << "Expected emitter to be an EmitterBase";
 
   fusion_emitter.release();
@@ -53,7 +59,7 @@ absl::StatusOr<std::unique_ptr<EmitterData>> GetEmitter(
 }
 
 mlir::MLIRContext GetMlirContextForTest() {
-  return mlir::MLIRContext(EmitterBase::GetDialectRegistry());
+  return mlir::MLIRContext(MlirKernelEmitter::GetDialectRegistry());
 }
 
 }  // namespace gpu

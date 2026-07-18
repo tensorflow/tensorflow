@@ -74,7 +74,7 @@ cc_library(
     deps = [
         ":philox_random",
         "//xla/tsl/platform:logging",
-        "@local_tsl//tsl/platform:random",
+        "@tsl//tsl/platform:random",
     ],
 )
 
@@ -96,14 +96,20 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "distribution_sampler.cc",
+        "simple_philox.cc",
+        "weighted_picker.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
         "distribution_sampler.h",
         "exact_uniform_int.h",
         "philox_random.h",
         "random_distributions.h",
         "random_distributions_utils.h",
-        "simple_philox.cc",
         "simple_philox.h",
-        "weighted_picker.cc",
         "weighted_picker.h",
     ],
 )
@@ -164,6 +170,7 @@ tsl_cc_test(
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "//xla/tsl/platform:types",
+        "@com_google_absl//absl/log:check",
     ],
 )
 
@@ -178,7 +185,7 @@ tsl_cc_test(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:random",
+        "@tsl//tsl/platform:random",
     ],
 )
 
@@ -193,8 +200,8 @@ tsl_cc_test(
         "//xla/tsl/lib/math:math_util",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:random",
     ],
 )
 

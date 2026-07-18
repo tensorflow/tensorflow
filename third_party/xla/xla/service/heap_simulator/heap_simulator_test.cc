@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
+#include <random>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -1050,6 +1052,7 @@ class HeapAlgorithmTestBase : public ::testing::Test {
 
  private:
   friend class GlobalDecreasingSizeBestFitHeapBenchmark;
+  friend class ConstrainedGlobalDecreasingSizeBestFitHeapBenchmark;
 
   // Create a dummy HloValue to pass to the heap algorithm.
   const HloValue* DummyBufferValue() {
@@ -1373,13 +1376,13 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, ColocatedDifferentSize1) {
   EXPECT_EQ(1, results.heap_results.size());
   const HeapSimulator::HeapResult<HloValue>& result =
       results.heap_results.at(0);
-  EXPECT_EQ(50, result.heap_size);
+  EXPECT_EQ(60, result.heap_size);
   EXPECT_EQ(40, result.chunk_map.at(buffer_a_).size);
   EXPECT_EQ(20, result.chunk_map.at(buffer_b_).size);
-  EXPECT_EQ(30, result.chunk_map.at(buffer_c_).size);
+  EXPECT_EQ(40, result.chunk_map.at(buffer_c_).size);
 
   EXPECT_EQ(0, result.chunk_map.at(buffer_a_).offset);
-  EXPECT_EQ(30, result.chunk_map.at(buffer_b_).offset);
+  EXPECT_EQ(40, result.chunk_map.at(buffer_b_).offset);
   EXPECT_EQ(0, result.chunk_map.at(buffer_c_).offset);
 }
 
@@ -1408,7 +1411,7 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, ColocatedDifferentSize2) {
   const HeapSimulator::HeapResult<HloValue>& result =
       results.heap_results.at(0);
   EXPECT_EQ(70, result.heap_size);
-  EXPECT_EQ(40, result.chunk_map.at(buffer_a_).size);
+  EXPECT_EQ(50, result.chunk_map.at(buffer_a_).size);
   EXPECT_EQ(20, result.chunk_map.at(buffer_b_).size);
   EXPECT_EQ(50, result.chunk_map.at(buffer_c_).size);
 
@@ -1443,7 +1446,7 @@ class FindGlobalDecreasingSizeBestFitTest : public HeapAlgorithmTestBase {
           chunk_candidate.offset, result_.UpdatedHeapSize(chunk_candidate));
 
       // Commit the chunk.
-      CommitChunk(*buffer_interval, chunk_candidate);
+      CommitChunkAndInterval(*buffer_interval, chunk_candidate);
 
       return result;
     }
@@ -1483,9 +1486,10 @@ class FindGlobalDecreasingSizeBestFitTest : public HeapAlgorithmTestBase {
     }
 
     // Expose protected function.
-    void CommitChunk(const BufferInterval& buffer_interval, Chunk chunk) {
-      GlobalDecreasingSizeBestFitHeap<HloValue>::CommitChunk(buffer_interval,
-                                                             chunk);
+    void CommitChunkAndInterval(const BufferInterval& buffer_interval,
+                                Chunk chunk) {
+      GlobalDecreasingSizeBestFitHeap<HloValue>::CommitChunkAndInterval(
+          buffer_interval, chunk);
     }
 
     // Typically, only one chunk is allowed to be assigned to each buffer in
@@ -1600,8 +1604,8 @@ TEST_F(FindGlobalDecreasingSizeBestFitTest, FindChunkCandidates) {
         heap_.GetBufferInterval(buffer_a_));
     auto chunks = heap_.FindChunkCandidates(sliced_buffer_a);
     EXPECT_THAT(chunks, ::testing::ElementsAre(Chunk::FromOffsetSize(0, 10)));
-    heap_.CommitChunk(sliced_buffer_a.full_buffer_interval(),
-                      Chunk::FromOffsetSize(0, 10));
+    heap_.CommitChunkAndInterval(sliced_buffer_a.full_buffer_interval(),
+                                 Chunk::FromOffsetSize(0, 10));
     EXPECT_THAT(
         heap_.committed(),
         ::testing::UnorderedElementsAre(::testing::Pair(
@@ -1642,10 +1646,11 @@ TEST_F(FindGlobalDecreasingSizeBestFitTest, FindChunkCandidates) {
     // +----+----+  => +----+    |
     // |         |     |    |    |
     // +---------+     +----+----+
-    heap_.CommitChunk(BufferInterval{buffer_b_, 5, 25, 30, /*colocations=*/{},
-                                     /*need_allocation=*/true},
-                      Chunk::FromOffsetSize(10, 5));
-    heap_.CommitChunk(
+    heap_.CommitChunkAndInterval(
+        BufferInterval{buffer_b_, 5, 25, 30, /*colocations=*/{},
+                       /*need_allocation=*/true},
+        Chunk::FromOffsetSize(10, 5));
+    heap_.CommitChunkAndInterval(
         BufferInterval{buffer_b_, 10, 30, 35, /*colocations=*/{buffer_c_},
                        /*need_allocation=*/true},
         Chunk::FromOffsetSize(10, 10));
@@ -1656,7 +1661,7 @@ TEST_F(FindGlobalDecreasingSizeBestFitTest, FindChunkCandidates) {
                                            Chunk::FromOffsetSize(0, 10))),
             ::testing::Pair(buffer_b_, ::testing::ElementsAre(
                                            Chunk::FromOffsetSize(10, 5),
-                                           Chunk::FromOffsetSize(10, 10))),
+                                           Chunk::FromOffsetSize(10, 15))),
             ::testing::Pair(buffer_c_, ::testing::ElementsAre(
                                            Chunk::FromOffsetSize(10, 15)))));
     EXPECT_EQ(heap_.heap_size(), 25);
@@ -1670,8 +1675,8 @@ TEST_F(FindGlobalDecreasingSizeBestFitTest, FindChunkCandidates) {
         heap_.GetBufferInterval(buffer_d_));
     auto chunks = heap_.FindChunkCandidates(sliced_buffer_d);
     EXPECT_THAT(chunks, ::testing::ElementsAre(Chunk::FromOffsetSize(0, 5)));
-    heap_.CommitChunk(sliced_buffer_d.full_buffer_interval(),
-                      Chunk::FromOffsetSize(0, 5));
+    heap_.CommitChunkAndInterval(sliced_buffer_d.full_buffer_interval(),
+                                 Chunk::FromOffsetSize(0, 5));
     EXPECT_THAT(
         heap_.committed(),
         ::testing::UnorderedElementsAre(
@@ -1679,7 +1684,7 @@ TEST_F(FindGlobalDecreasingSizeBestFitTest, FindChunkCandidates) {
                                            Chunk::FromOffsetSize(0, 10))),
             ::testing::Pair(buffer_b_, ::testing::ElementsAre(
                                            Chunk::FromOffsetSize(10, 5),
-                                           Chunk::FromOffsetSize(10, 10))),
+                                           Chunk::FromOffsetSize(10, 15))),
             ::testing::Pair(buffer_c_, ::testing::ElementsAre(
                                            Chunk::FromOffsetSize(10, 15))),
             ::testing::Pair(buffer_d_, ::testing::ElementsAre(
@@ -1694,9 +1699,9 @@ TEST_F(FindGlobalDecreasingSizeBestFitTest, FindChunkCandidates) {
     auto sliced_buffer_e = SlicedBufferInterval::CreateMutableInterval(
         heap_.GetBufferInterval(buffer_e_));
     auto chunks = heap_.FindChunkCandidates(sliced_buffer_e);
-    EXPECT_THAT(chunks, ::testing::ElementsAre(Chunk::FromOffsetSize(20, 10)));
-    heap_.CommitChunk(sliced_buffer_e.full_buffer_interval(),
-                      Chunk::FromOffsetSize(20, 10));
+    EXPECT_THAT(chunks, ::testing::ElementsAre(Chunk::FromOffsetSize(25, 10)));
+    heap_.CommitChunkAndInterval(sliced_buffer_e.full_buffer_interval(),
+                                 Chunk::FromOffsetSize(25, 10));
     EXPECT_THAT(
         heap_.committed(),
         ::testing::UnorderedElementsAre(
@@ -1704,14 +1709,14 @@ TEST_F(FindGlobalDecreasingSizeBestFitTest, FindChunkCandidates) {
                                            Chunk::FromOffsetSize(0, 10))),
             ::testing::Pair(buffer_b_, ::testing::ElementsAre(
                                            Chunk::FromOffsetSize(10, 5),
-                                           Chunk::FromOffsetSize(10, 10))),
+                                           Chunk::FromOffsetSize(10, 15))),
             ::testing::Pair(buffer_c_, ::testing::ElementsAre(
                                            Chunk::FromOffsetSize(10, 15))),
             ::testing::Pair(
                 buffer_d_, ::testing::ElementsAre(Chunk::FromOffsetSize(0, 5))),
             ::testing::Pair(buffer_e_, ::testing::ElementsAre(
-                                           Chunk::FromOffsetSize(20, 10)))));
-    EXPECT_EQ(heap_.heap_size(), 30);
+                                           Chunk::FromOffsetSize(25, 10)))));
+    EXPECT_EQ(heap_.heap_size(), 35);
   }
 
   // Place and commit F. It should fit on top of B's first slice.
@@ -1722,8 +1727,8 @@ TEST_F(FindGlobalDecreasingSizeBestFitTest, FindChunkCandidates) {
         heap_.GetBufferInterval(buffer_f_));
     auto chunks = heap_.FindChunkCandidates(sliced_buffer_f);
     EXPECT_THAT(chunks, ::testing::ElementsAre(Chunk::FromOffsetSize(15, 10)));
-    heap_.CommitChunk(sliced_buffer_f.full_buffer_interval(),
-                      Chunk::FromOffsetSize(15, 10));
+    heap_.CommitChunkAndInterval(sliced_buffer_f.full_buffer_interval(),
+                                 Chunk::FromOffsetSize(15, 10));
     EXPECT_THAT(
         heap_.committed(),
         ::testing::UnorderedElementsAre(
@@ -1731,16 +1736,16 @@ TEST_F(FindGlobalDecreasingSizeBestFitTest, FindChunkCandidates) {
                                            Chunk::FromOffsetSize(0, 10))),
             ::testing::Pair(buffer_b_, ::testing::ElementsAre(
                                            Chunk::FromOffsetSize(10, 5),
-                                           Chunk::FromOffsetSize(10, 10))),
+                                           Chunk::FromOffsetSize(10, 15))),
             ::testing::Pair(buffer_c_, ::testing::ElementsAre(
                                            Chunk::FromOffsetSize(10, 15))),
             ::testing::Pair(
                 buffer_d_, ::testing::ElementsAre(Chunk::FromOffsetSize(0, 5))),
             ::testing::Pair(buffer_e_, ::testing::ElementsAre(
-                                           Chunk::FromOffsetSize(20, 10))),
+                                           Chunk::FromOffsetSize(25, 10))),
             ::testing::Pair(buffer_f_, ::testing::ElementsAre(
                                            Chunk::FromOffsetSize(15, 10)))));
-    EXPECT_EQ(heap_.heap_size(), 30);
+    EXPECT_EQ(heap_.heap_size(), 35);
   }
 }
 
@@ -1857,10 +1862,78 @@ TEST_F(ConstrainedGlobalDecreasingSizeBestFitHeapTest, ColocatedII) {
 
   EXPECT_TRUE(result.heap_results[0].chunk_map.contains(buffer_a_));
   EXPECT_TRUE(result.heap_results[0].chunk_map.contains(buffer_c_));
-  EXPECT_EQ(30, result.heap_results[0].chunk_map.at(buffer_a_).size);
+  EXPECT_EQ(40, result.heap_results[0].chunk_map.at(buffer_a_).size);
   EXPECT_EQ(40, result.heap_results[0].chunk_map.at(buffer_c_).size);
   EXPECT_EQ(0, result.heap_results[0].chunk_map.at(buffer_a_).offset);
   EXPECT_EQ(0, result.heap_results[0].chunk_map.at(buffer_c_).offset);
+}
+
+TEST_F(ConstrainedGlobalDecreasingSizeBestFitHeapTest,
+       DecreasingSizeFastMerge) {
+  ConstrainedGlobalDecreasingSizeBestFitHeap heap(
+      /*size_limit_per_heap=*/50, /*alignment=*/1,
+      GlobalDecreasingSizeBestFitHeap<HloValue>::kFastMerge);
+  heap.Alloc(buffer_a_, 10);
+  heap.Alloc(buffer_b_, 30);
+  heap.Alloc(buffer_c_, 20);
+  heap.Alloc(buffer_d_, 40);
+  heap.Free(buffer_a_, 10);
+  heap.Free(buffer_b_, 30);
+  heap.Free(buffer_c_, 20);
+  heap.Free(buffer_d_, 40);
+
+  TF_ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> result,
+                          heap.Finish());
+  EXPECT_EQ(100, result.heap_size);
+  // The FastMerge algorithm processes buffers sorted by their start time. Given
+  // the heap limit of 50, the buffers are distributed into three heaps as
+  // follows:
+  //
+  // Heap 1 (total size 40):
+  //   - `buffer_a_` (size 10) is allocated at offset 0.
+  //   - `buffer_b_` (size 30) is allocated at offset 10.
+  //   - `buffer_c_` (size 20) and `buffer_d_` (size 40) cannot fit within the
+  //     50 limit.
+  //
+  // Heap 2 (total size 20):
+  //   - `buffer_c_` (size 20) is allocated at offset 0.
+  //   - `buffer_d_` (size 40) cannot fit.
+  //
+  // Heap 3 (total size 40):
+  //   - `buffer_d_` (size 40) is allocated at offset 0.
+  EXPECT_EQ(3, result.heap_results.size());
+}
+
+TEST_F(ConstrainedGlobalDecreasingSizeBestFitHeapTest,
+       DecreasingSizeFastSplit) {
+  ConstrainedGlobalDecreasingSizeBestFitHeap heap(
+      /*size_limit_per_heap=*/50, /*alignment=*/1,
+      GlobalDecreasingSizeBestFitHeap<HloValue>::kFastSplit);
+  heap.Alloc(buffer_a_, 10);
+  heap.Alloc(buffer_b_, 30);
+  heap.Alloc(buffer_c_, 20);
+  heap.Alloc(buffer_d_, 40);
+  heap.Free(buffer_a_, 10);
+  heap.Free(buffer_b_, 30);
+  heap.Free(buffer_c_, 20);
+  heap.Free(buffer_d_, 40);
+
+  TF_ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> result,
+                          heap.Finish());
+  EXPECT_EQ(100, result.heap_size);
+  // The FastSplit algorithm sorts buffers by decreasing size: d(40), b(30),
+  // c(20), a(10). Given the heap limit of 50, the buffers are distributed
+  // into two heaps as follows:
+  //
+  // Heap 1 (total size 50):
+  // - `buffer_d_` (size 40) is allocated.
+  // - `buffer_b_` (size 30) and `buffer_c_` (size 20) cannot fit.
+  // - `buffer_a_` (size 10) is allocated.
+  //
+  // Heap 2 (total size 50):
+  // - `buffer_b_` (size 30) is allocated.
+  // - `buffer_c_` (size 20) is allocated.
+  EXPECT_EQ(2, result.heap_results.size());
 }
 
 class IntervalTreeTest : public ::testing::Test {};
@@ -3874,6 +3947,200 @@ static void BM_GlobalDecreasingSizeBestFitHeap(
 }
 BENCHMARK(BM_GlobalDecreasingSizeBestFitHeap)
     ->ArgsProduct({{1, 4, 16, 64}, {1, 1024}});
+
+class SizeRecordingHeapAlgorithm : public HeapAlgorithm<HloValue> {
+ public:
+  SizeRecordingHeapAlgorithm(
+      absl::flat_hash_map<const HloValue*, int64_t>* alloc_sizes,
+      absl::flat_hash_map<const HloValue*, int64_t>* share_sizes)
+      : alloc_sizes_(alloc_sizes), share_sizes_(share_sizes) {}
+
+  void Alloc(const HloValue* buffer, int64_t size) override {
+    (*alloc_sizes_)[buffer] = size;
+  }
+  void Free(const HloValue* buffer, int64_t size) override {}
+  void ShareWith(const HloValue* buffer, const HloValue* shared,
+                 int64_t size) override {
+    (*share_sizes_)[buffer] = size;
+  }
+  absl::StatusOr<Result> Finish() override { return Result(); }
+
+  absl::flat_hash_map<const HloValue*, int64_t>* alloc_sizes_;
+  absl::flat_hash_map<const HloValue*, int64_t>* share_sizes_;
+};
+
+TEST_F(HeapSimulatorTest, UnionFindSizeUpdate) {
+  // This test validates that the HeapSimulator correctly updates the size of a
+  // buffer group when merging buffers. Specifically, when a buffer B shares
+  // memory with buffer A, the combined group's size should be max(size(A),
+  // size(B)).
+  //
+  // We construct a chain of negations:
+  // p0 (size 10) -> v0 (size 10) -> v1 (size 20) -> v2 (size 30)
+  //
+  // v0 reuses p0.
+  // v1 reuses v0. Group size becomes max(10, 20) = 20.
+  // v2 reuses v1. Group size becomes max(20, 30) = 30.
+  auto hlo_string = R"(
+    HloModule test_module
+
+    ENTRY entry {
+      p0 = f32[10] parameter(0)
+      v0 = f32[10] negate(p0)
+      v1 = f32[10] negate(v0)
+      ROOT v2 = f32[10] negate(v1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloInstruction* p0 = module->entry_computation()->parameter_instruction(0);
+  HloInstruction* v2 = module->entry_computation()->root_instruction();
+  HloInstruction* v1 = v2->mutable_operand(0);
+  HloInstruction* v0 = v1->mutable_operand(0);
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(module->entry_computation(), {p0, v0, v1, v2});
+  TF_ASSERT_OK(schedule.Verify());
+
+  // Assign increasing sizes to the instructions in the chain.
+  BufferValue::SizeFunction size_fn = [&](const BufferValue& buffer) {
+    if (buffer.instruction() == p0) {
+      return 10;
+    }
+    if (buffer.instruction() == v0) {
+      return 10;
+    }
+    if (buffer.instruction() == v1) {
+      return 20;
+    }
+    if (buffer.instruction() == v2) {
+      return 30;
+    }
+    return 0;
+  };
+
+  absl::flat_hash_map<const HloValue*, int64_t> alloc_sizes;
+  absl::flat_hash_map<const HloValue*, int64_t> share_sizes;
+  auto algorithm =
+      std::make_unique<SizeRecordingHeapAlgorithm>(&alloc_sizes, &share_sizes);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                          HloAliasAnalysis::Run(module.get(), &alias_info_));
+
+  HeapSimulator::Options options;
+  TF_ASSERT_OK(HeapSimulator::Run(std::move(algorithm), *module, schedule,
+                                  *alias_analysis, &alias_info_, &size_fn,
+                                  options));
+
+  const HloValue& v1_value =
+      alias_analysis->dataflow_analysis().GetUniqueValueAt(v1);
+  const HloValue& v2_value =
+      alias_analysis->dataflow_analysis().GetUniqueValueAt(v2);
+
+  // Check that the shared size reflects the max of the merged buffers *at the
+  // time of sharing*. The HeapSimulator processes instructions sequentially.
+  //
+  // 1. v1 (size 20) is shared with v0 (size 10). The group {p0, v0, v1}
+  //    updates its size to max(10, 20) = 20. v2 has not been seen yet.
+  EXPECT_EQ(share_sizes[&v1_value], 20);
+
+  // 2. v2 (size 30) is shared with v1 (size 20). The group {p0, v0, v1, v2}
+  //    updates its size to max(20, 30) = 30.
+  EXPECT_EQ(share_sizes[&v2_value], 30);
+}
+
+// Benchmark for the ConstrainedGlobalDecreasingSizeBestFitHeap algorithm to
+// evaluate the performance of different packing strategies (e.g., kFastMerge,
+// kSpatial) under a simulated workload of random buffer sizes.
+class ConstrainedGlobalDecreasingSizeBestFitHeapBenchmark
+    : public HeapAlgorithmTestBase {
+ public:
+  void TestBody() override {}
+
+  // Timing is performed automatically by the Google Benchmark framework
+  // (go/benchmark) around the `for (auto s : state)` loop. We explicitly pause
+  // and resume timing to exclude setup overhead from the measurement.
+  void RunBenchmark(
+      ::testing::benchmark::State& state,
+      const GlobalDecreasingSizeBestFitHeap<HloValue>::PackingStrategy&
+          algorithm_type) {
+    // The number of buffers to simulate, parameterized by the benchmark.
+    const int n = state.range(0);
+    int alignment = 16;
+
+    // Generate a deterministic workload of `n` buffers with random sizes up to
+    // 10,000 bytes. We use a fixed seed (47) for reproducibility across runs.
+    std::mt19937_64 rng(47);
+    std::uniform_int_distribution<int> buffer_size_dist(0, 10'000);
+    uint64_t unbounded_heap_size = std::numeric_limits<uint64_t>::max();
+
+    std::vector<std::pair<const HloValue*, int64_t>> buffers_and_sizes;
+    buffers_and_sizes.reserve(n);
+    for (int i = 0; i < n; i++) {
+      buffers_and_sizes.emplace_back(DummyBufferValue(), buffer_size_dist(rng));
+    }
+
+    for (auto s : state) {
+      // We only want to measure the runtime of `heap.Finish()`, which performs
+      // the actual buffer packing. Therefore, we pause timing during the
+      // initialization, Alloc(), and Free() operations.
+      state.PauseTiming();
+      benchmark::DoNotOptimize(alignment);
+      ConstrainedGlobalDecreasingSizeBestFitHeap heap(
+          unbounded_heap_size, alignment, algorithm_type);
+
+      for (const auto& [buffer, size] : buffers_and_sizes) {
+        heap.Alloc(buffer, size);
+      }
+      for (const auto& [buffer, size] : buffers_and_sizes) {
+        heap.Free(buffer, size);
+      }
+
+      // Resume timing to accurately measure the execution time of the actual
+      // layout and packing algorithms.
+      state.ResumeTiming();
+      TF_ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> result,
+                              heap.Finish());
+    }
+  }
+};
+
+static void BM_GlobalDecreasingSizeBestFitHeap_FastMerge(
+    ::testing::benchmark::State& state) {
+  ConstrainedGlobalDecreasingSizeBestFitHeapBenchmark bm;
+  bm.RunBenchmark(state, GlobalDecreasingSizeBestFitHeap<HloValue>::kFastMerge);
+}
+static void BM_GlobalDecreasingSizeBestFitHeap_FastSplit(
+    ::testing::benchmark::State& state) {
+  ConstrainedGlobalDecreasingSizeBestFitHeapBenchmark bm;
+  bm.RunBenchmark(state, GlobalDecreasingSizeBestFitHeap<HloValue>::kFastSplit);
+}
+static void BM_GlobalDecreasingSizeBestFitHeap_Spatial(
+    ::testing::benchmark::State& state) {
+  ConstrainedGlobalDecreasingSizeBestFitHeapBenchmark bm;
+  bm.RunBenchmark(state, GlobalDecreasingSizeBestFitHeap<HloValue>::kSpatial);
+}
+static void BM_GlobalDecreasingSizeBestFitHeap_Temporal(
+    ::testing::benchmark::State& state) {
+  ConstrainedGlobalDecreasingSizeBestFitHeapBenchmark bm;
+  bm.RunBenchmark(state, GlobalDecreasingSizeBestFitHeap<HloValue>::kTemporal);
+}
+
+// BENCHMARK registers the functions to be executed by the Google Benchmark
+// framework. ->Range(a, b) specifies multiple runs with a varying parameter
+// `n` (simulated buffers), multiplying by 8 each step from `a` to `b` (as 8 is
+// the default `kRangeMultiplier` in `testing/base/public/benchmark.h`).
+// FastMerge and FastSplit should exhibit O(n log n) time complexity. We measure
+// the slower algorithms for comparison with these and future algorithms.
+BENCHMARK(BM_GlobalDecreasingSizeBestFitHeap_FastMerge)
+    ->Range(1'000, 1'000'000);
+BENCHMARK(BM_GlobalDecreasingSizeBestFitHeap_FastSplit)
+    ->Range(1'000, 1'000'000);
+// The interval tree based algorithms grow quadratically with the number of
+// buffers, so keep the number of buffers small.
+BENCHMARK(BM_GlobalDecreasingSizeBestFitHeap_Spatial)->Range(1'000, 10'000);
+BENCHMARK(BM_GlobalDecreasingSizeBestFitHeap_Temporal)->Range(1'000, 10'000);
 
 }  // namespace
 }  // namespace xla

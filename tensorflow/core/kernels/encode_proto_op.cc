@@ -84,11 +84,10 @@ size_t TotalPackedSize<WireFormatLite::TYPE_INT64, int64_t>(const Tensor& input,
 }
 
 template <>
-size_t TotalPackedSize<WireFormatLite::TYPE_UINT64, uint64>(const Tensor& input,
-                                                            int message_index,
-                                                            int size) {
+size_t TotalPackedSize<WireFormatLite::TYPE_UINT64, uint64_t>(
+    const Tensor& input, int message_index, int size) {
   size_t data_size = 0;
-  auto input_t = input.flat_inner_dims<uint64>();
+  auto input_t = input.flat_inner_dims<uint64_t>();
   for (int64_t i = 0; i < size; i++) {
     data_size += WireFormatLite::UInt64Size(
         input_t(static_cast<int64_t>(message_index), i));
@@ -110,11 +109,11 @@ size_t TotalPackedSize<WireFormatLite::TYPE_INT32, int64_t>(const Tensor& input,
 }
 
 template <>
-size_t TotalPackedSize<WireFormatLite::TYPE_INT32, int32>(const Tensor& input,
-                                                          int message_index,
-                                                          int size) {
+size_t TotalPackedSize<WireFormatLite::TYPE_INT32, int32_t>(const Tensor& input,
+                                                            int message_index,
+                                                            int size) {
   size_t data_size = 0;
-  auto input_t = input.flat_inner_dims<int32>();
+  auto input_t = input.flat_inner_dims<int32_t>();
   for (int64_t i = 0; i < size; i++) {
     data_size += WireFormatLite::Int32Size(
         input_t(static_cast<int64_t>(message_index), i));
@@ -123,19 +122,19 @@ size_t TotalPackedSize<WireFormatLite::TYPE_INT32, int32>(const Tensor& input,
 }
 
 template <>
-size_t TotalPackedSize<WireFormatLite::TYPE_FIXED64, uint64>(
+size_t TotalPackedSize<WireFormatLite::TYPE_FIXED64, uint64_t>(
     const Tensor& input, int message_index, int size) {
   return size * WireFormatLite::kFixed64Size;
 }
 
 template <>
-size_t TotalPackedSize<WireFormatLite::TYPE_FIXED32, uint64>(
+size_t TotalPackedSize<WireFormatLite::TYPE_FIXED32, uint64_t>(
     const Tensor& input, int message_index, int size) {
   return size * WireFormatLite::kFixed32Size;
 }
 
 template <>
-size_t TotalPackedSize<WireFormatLite::TYPE_FIXED32, uint32>(
+size_t TotalPackedSize<WireFormatLite::TYPE_FIXED32, uint32_t>(
     const Tensor& input, int message_index, int size) {
   return size * WireFormatLite::kFixed32Size;
 }
@@ -148,11 +147,10 @@ size_t TotalPackedSize<WireFormatLite::TYPE_BOOL, bool>(const Tensor& input,
 }
 
 template <>
-size_t TotalPackedSize<WireFormatLite::TYPE_UINT32, uint64>(const Tensor& input,
-                                                            int message_index,
-                                                            int size) {
+size_t TotalPackedSize<WireFormatLite::TYPE_UINT32, uint64_t>(
+    const Tensor& input, int message_index, int size) {
   size_t data_size = 0;
-  auto input_t = input.flat_inner_dims<uint64>();
+  auto input_t = input.flat_inner_dims<uint64_t>();
   for (int64_t i = 0; i < size; i++) {
     data_size += WireFormatLite::UInt32Size(
         input_t(static_cast<int64_t>(message_index), i));
@@ -161,11 +159,10 @@ size_t TotalPackedSize<WireFormatLite::TYPE_UINT32, uint64>(const Tensor& input,
 }
 
 template <>
-size_t TotalPackedSize<WireFormatLite::TYPE_UINT32, uint32>(const Tensor& input,
-                                                            int message_index,
-                                                            int size) {
+size_t TotalPackedSize<WireFormatLite::TYPE_UINT32, uint32_t>(
+    const Tensor& input, int message_index, int size) {
   size_t data_size = 0;
-  auto input_t = input.flat_inner_dims<uint32>();
+  auto input_t = input.flat_inner_dims<uint32_t>();
   for (int64_t i = 0; i < size; i++) {
     data_size += WireFormatLite::UInt32Size(
         input_t(static_cast<int64_t>(message_index), i));
@@ -174,11 +171,11 @@ size_t TotalPackedSize<WireFormatLite::TYPE_UINT32, uint32>(const Tensor& input,
 }
 
 template <>
-size_t TotalPackedSize<WireFormatLite::TYPE_ENUM, int32>(const Tensor& input,
-                                                         int message_index,
-                                                         int size) {
+size_t TotalPackedSize<WireFormatLite::TYPE_ENUM, int32_t>(const Tensor& input,
+                                                           int message_index,
+                                                           int size) {
   size_t data_size = 0;
-  auto input_t = input.flat_inner_dims<int32>();
+  auto input_t = input.flat_inner_dims<int32_t>();
   for (int64_t i = 0; i < size; i++) {
     data_size += WireFormatLite::EnumSize(
         input_t(static_cast<int64_t>(message_index), i));
@@ -187,7 +184,7 @@ size_t TotalPackedSize<WireFormatLite::TYPE_ENUM, int32>(const Tensor& input,
 }
 
 template <>
-size_t TotalPackedSize<WireFormatLite::TYPE_SFIXED32, int32>(
+size_t TotalPackedSize<WireFormatLite::TYPE_SFIXED32, int32_t>(
     const Tensor& input, int message_index, int size) {
   return size * WireFormatLite::kSFixed32Size;
 }
@@ -205,11 +202,10 @@ size_t TotalPackedSize<WireFormatLite::TYPE_SFIXED64, int64_t>(
 }
 
 template <>
-size_t TotalPackedSize<WireFormatLite::TYPE_SINT32, int32>(const Tensor& input,
-                                                           int message_index,
-                                                           int size) {
+size_t TotalPackedSize<WireFormatLite::TYPE_SINT32, int32_t>(
+    const Tensor& input, int message_index, int size) {
   size_t data_size = 0;
-  auto input_t = input.flat_inner_dims<int32>();
+  auto input_t = input.flat_inner_dims<int32_t>();
   for (int64_t i = 0; i < size; i++) {
     data_size += WireFormatLite::SInt32Size(
         input_t(static_cast<int64_t>(message_index), i));
@@ -325,7 +321,7 @@ absl::Status WriteGroup(const FieldDescriptor& field_desc, const Tensor& input,
                         CodedOutputStream* output) {
   auto input_t = input.flat_inner_dims<tstring>();
   for (int64_t i = 0; i < size; i++) {
-    const string& value = input_t(static_cast<int64_t>(message_index), i);
+    const std::string& value = input_t(static_cast<int64_t>(message_index), i);
     WireFormatLite::WriteTag(field_desc.number(),
                              WireFormatLite::WIRETYPE_START_GROUP, output);
     // Note the use of WriteRaw instead of WriteString to skip the length.
@@ -361,48 +357,48 @@ absl::Status WriteField(const FieldDescriptor& field_desc, const Tensor& input,
                             WireFormatLite::WriteFloatNoTag>(
               field_desc, input, message_index, size, output);
         default:
-          return errors::DataLoss("Failed writing TYPE_FLOAT for ",
-                                  DataTypeString(dtype));
+          return absl::DataLossError(absl::StrCat(
+              "Failed writing TYPE_FLOAT for ", DataTypeString(dtype)));
       }
     case WireFormatLite::TYPE_INT64:
       return WriteField<int64_t, protobuf_int64, WireFormatLite::TYPE_INT64,
                         WireFormatLite::WriteInt64NoTag>(
           field_desc, input, message_index, size, output);
     case WireFormatLite::TYPE_UINT64:
-      return WriteField<uint64, protobuf_uint64, WireFormatLite::TYPE_UINT64,
+      return WriteField<uint64_t, protobuf_uint64, WireFormatLite::TYPE_UINT64,
                         WireFormatLite::WriteUInt64NoTag>(
           field_desc, input, message_index, size, output);
     case WireFormatLite::TYPE_INT32:
       switch (dtype) {
         case DataType::DT_INT64:
-          return WriteField<int64_t, int32, WireFormatLite::TYPE_INT32,
+          return WriteField<int64_t, int32_t, WireFormatLite::TYPE_INT32,
                             WireFormatLite::WriteInt32NoTag>(
               field_desc, input, message_index, size, output);
         case DataType::DT_INT32:
-          return WriteField<int32, int32, WireFormatLite::TYPE_INT32,
+          return WriteField<int32_t, int32_t, WireFormatLite::TYPE_INT32,
                             WireFormatLite::WriteInt32NoTag>(
               field_desc, input, message_index, size, output);
         default:
-          return errors::DataLoss("Failed writing TYPE_INT32 for ",
-                                  DataTypeString(dtype));
+          return absl::DataLossError(absl::StrCat(
+              "Failed writing TYPE_INT32 for ", DataTypeString(dtype)));
       }
     case WireFormatLite::TYPE_FIXED64:
-      return WriteField<uint64, protobuf_uint64, WireFormatLite::TYPE_FIXED64,
+      return WriteField<uint64_t, protobuf_uint64, WireFormatLite::TYPE_FIXED64,
                         WireFormatLite::WriteFixed64NoTag>(
           field_desc, input, message_index, size, output);
     case WireFormatLite::TYPE_FIXED32:
       switch (dtype) {
         case DataType::DT_UINT64:
-          return WriteField<uint64, uint32, WireFormatLite::TYPE_FIXED32,
+          return WriteField<uint64_t, uint32_t, WireFormatLite::TYPE_FIXED32,
                             WireFormatLite::WriteFixed32NoTag>(
               field_desc, input, message_index, size, output);
         case DataType::DT_UINT32:
-          return WriteField<uint32, uint32, WireFormatLite::TYPE_FIXED32,
+          return WriteField<uint32_t, uint32_t, WireFormatLite::TYPE_FIXED32,
                             WireFormatLite::WriteFixed32NoTag>(
               field_desc, input, message_index, size, output);
         default:
-          return errors::DataLoss("Failed writing TYPE_FIXED32 for ",
-                                  DataTypeString(dtype));
+          return absl::DataLossError(absl::StrCat(
+              "Failed writing TYPE_FIXED32 for ", DataTypeString(dtype)));
       }
     case WireFormatLite::TYPE_BOOL:
       return WriteField<bool, bool, WireFormatLite::TYPE_BOOL,
@@ -422,34 +418,34 @@ absl::Status WriteField(const FieldDescriptor& field_desc, const Tensor& input,
     case WireFormatLite::TYPE_UINT32:
       switch (dtype) {
         case DataType::DT_UINT64:
-          return WriteField<uint64, uint32, WireFormatLite::TYPE_UINT32,
+          return WriteField<uint64_t, uint32_t, WireFormatLite::TYPE_UINT32,
                             WireFormatLite::WriteUInt32NoTag>(
               field_desc, input, message_index, size, output);
         case DataType::DT_UINT32:
-          return WriteField<uint32, uint32, WireFormatLite::TYPE_UINT32,
+          return WriteField<uint32_t, uint32_t, WireFormatLite::TYPE_UINT32,
                             WireFormatLite::WriteUInt32NoTag>(
               field_desc, input, message_index, size, output);
         default:
-          return errors::DataLoss("Failed writing TYPE_UINT32 for ",
-                                  DataTypeString(dtype));
+          return absl::DataLossError(absl::StrCat(
+              "Failed writing TYPE_UINT32 for ", DataTypeString(dtype)));
       }
     case WireFormatLite::TYPE_ENUM:
-      return WriteField<int32, int32, WireFormatLite::TYPE_ENUM,
+      return WriteField<int32_t, int32_t, WireFormatLite::TYPE_ENUM,
                         WireFormatLite::WriteEnumNoTag>(
           field_desc, input, message_index, size, output);
     case WireFormatLite::TYPE_SFIXED32:
       switch (dtype) {
         case DataType::DT_INT64:
-          return WriteField<int64_t, int32, WireFormatLite::TYPE_SFIXED32,
+          return WriteField<int64_t, int32_t, WireFormatLite::TYPE_SFIXED32,
                             WireFormatLite::WriteSFixed32NoTag>(
               field_desc, input, message_index, size, output);
         case DataType::DT_INT32:
-          return WriteField<int32, int32, WireFormatLite::TYPE_SFIXED32,
+          return WriteField<int32_t, int32_t, WireFormatLite::TYPE_SFIXED32,
                             WireFormatLite::WriteSFixed32NoTag>(
               field_desc, input, message_index, size, output);
         default:
-          return errors::DataLoss("Failed writing TYPE_SFIXED32 for ",
-                                  DataTypeString(dtype));
+          return absl::DataLossError(absl::StrCat(
+              "Failed writing TYPE_SFIXED32 for ", DataTypeString(dtype)));
       }
     case WireFormatLite::TYPE_SFIXED64:
       return WriteField<int64_t, protobuf_int64, WireFormatLite::TYPE_SFIXED64,
@@ -458,16 +454,16 @@ absl::Status WriteField(const FieldDescriptor& field_desc, const Tensor& input,
     case WireFormatLite::TYPE_SINT32:
       switch (dtype) {
         case DataType::DT_INT64:
-          return WriteField<int64_t, int32, WireFormatLite::TYPE_SINT32,
+          return WriteField<int64_t, int32_t, WireFormatLite::TYPE_SINT32,
                             WireFormatLite::WriteSInt32NoTag>(
               field_desc, input, message_index, size, output);
         case DataType::DT_INT32:
-          return WriteField<int32, int32, WireFormatLite::TYPE_SINT32,
+          return WriteField<int32_t, int32_t, WireFormatLite::TYPE_SINT32,
                             WireFormatLite::WriteSInt32NoTag>(
               field_desc, input, message_index, size, output);
         default:
-          return errors::DataLoss("Failed writing TYPE_SINT32 for ",
-                                  DataTypeString(dtype));
+          return absl::DataLossError(absl::StrCat(
+              "Failed writing TYPE_SINT32 for ", DataTypeString(dtype)));
       }
     case WireFormatLite::TYPE_SINT64:
       return WriteField<int64_t, protobuf_int64, WireFormatLite::TYPE_SINT64,
@@ -480,7 +476,7 @@ absl::Status WriteField(const FieldDescriptor& field_desc, const Tensor& input,
 class EncodeProtoOp : public OpKernel {
  public:
   explicit EncodeProtoOp(OpKernelConstruction* context) : OpKernel(context) {
-    string descriptor_source;
+    std::string descriptor_source;
     OP_REQUIRES_OK(context,
                    context->GetAttr("descriptor_source", &descriptor_source));
     // We always get back a desc_pool, but we may not own it. If we own it,
@@ -489,24 +485,25 @@ class EncodeProtoOp : public OpKernel {
     OP_REQUIRES_OK(context, GetDescriptorPool(context->env(), descriptor_source,
                                               &desc_pool, &owned_desc_pool_));
 
-    string message_type;
+    std::string message_type;
     OP_REQUIRES_OK(context, context->GetAttr("message_type", &message_type));
     const Descriptor* message_desc =
         desc_pool->FindMessageTypeByName(message_type);
     OP_REQUIRES(context, message_desc != nullptr,
-                errors::InvalidArgument("No descriptor found for message type ",
-                                        message_type));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "No descriptor found for message type ", message_type)));
 
     OP_REQUIRES_OK(context, context->GetAttr("field_names", &field_names_));
 
     // Gather the field descriptors for the given field_names.
     field_descs_.resize(field_names_.size());
     for (int i = 0; i < field_names_.size(); i++) {
-      const string& name = field_names_[i];
+      const std::string& name = field_names_[i];
       auto field_desc = message_desc->FindFieldByName(name);
-      OP_REQUIRES(context, field_desc != nullptr,
-                  errors::InvalidArgument("Unknown field: ", name,
-                                          " in message type ", message_type));
+      OP_REQUIRES(
+          context, field_desc != nullptr,
+          absl::InvalidArgumentError(absl::StrCat(
+              "Unknown field: ", name, " in message type ", message_type)));
 
       field_descs_[i] = field_desc;
     }
@@ -532,7 +529,7 @@ class EncodeProtoOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input_list("values", &values));
 
     OP_REQUIRES(ctx, field_descs_.size() == values.size(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Length of inputs list must match field_names"));
 
     // Check the arguments for consistency.
@@ -545,16 +542,16 @@ class EncodeProtoOp : public OpKernel {
       OP_REQUIRES(
           ctx,
           proto_utils::IsCompatibleType(field_descs_[i]->type(), v.dtype()),
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Incompatible type for field ", field_names_[i],
               ".  Saw dtype: ", DataTypeString(v.dtype()),
-              " but field type is: ", field_descs_[i]->type_name()));
+              " but field type is: ", field_descs_[i]->type_name())));
 
-      OP_REQUIRES(
-          ctx, TensorShapeUtils::IsMatrixOrHigher(v.shape()),
-          errors::InvalidArgument("Invalid shape for field ", field_names_[i],
-                                  ".  Saw shape ", v.shape().DebugString(),
-                                  " but it should be at least a matrix."));
+      OP_REQUIRES(ctx, TensorShapeUtils::IsMatrixOrHigher(v.shape()),
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Invalid shape for field ", field_names_[i],
+                                   ".  Saw shape ", v.shape().DebugString(),
+                                   " but it should be at least a matrix.")));
 
       // All value tensors must have the same shape prefix (i.e. batch size).
       TensorShape shape_prefix = v.shape();
@@ -564,14 +561,14 @@ class EncodeProtoOp : public OpKernel {
       // have to match this one.
       if (i == 0) {
         OP_REQUIRES(ctx, v.dims() >= 1,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "Expected value to be at least a vector, saw shape: ",
-                        v.shape().DebugString()));
+                        v.shape().DebugString())));
         common_prefix = shape_prefix;
         message_count = common_prefix.num_elements();
       } else {
         OP_REQUIRES(ctx, shape_prefix == common_prefix,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(
                         "Values must match up to the last dimension"));
       }
     }
@@ -581,12 +578,12 @@ class EncodeProtoOp : public OpKernel {
                    expected_sizes_shape.AddDimWithStatus(field_descs_.size()));
 
     OP_REQUIRES(ctx, sizes_tensor->shape() == expected_sizes_shape,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "sizes should be batch_size + [len(field_names)].  Saw: ",
                     sizes_tensor->shape().DebugString(),
-                    " but expected: ", expected_sizes_shape.DebugString()));
+                    " but expected: ", expected_sizes_shape.DebugString())));
 
-    auto sizes = sizes_tensor->flat_inner_dims<int32>();
+    auto sizes = sizes_tensor->flat_inner_dims<int32_t>();
 
     for (int i = 0; i < field_descs_.size(); ++i) {
       const Tensor& v = values[i];
@@ -598,10 +595,10 @@ class EncodeProtoOp : public OpKernel {
            message_index++) {
         OP_REQUIRES(
             ctx, sizes(message_index, i) <= max_size,
-            errors::InvalidArgument(
+            absl::InvalidArgumentError(absl::StrCat(
                 "Size to write must not be larger than value tensor; but saw: ",
                 sizes(message_index, i), " > ", max_size, " at message ",
-                message_index, " field ", i));
+                message_index, " field ", i)));
       }
     }
 
@@ -629,7 +626,7 @@ class EncodeProtoOp : public OpKernel {
   }
 
  private:
-  std::vector<string> field_names_;
+  std::vector<std::string> field_names_;
   std::vector<const FieldDescriptor*> field_descs_;
 
   // Owned_desc_pool_ is null when using descriptor_source=local.

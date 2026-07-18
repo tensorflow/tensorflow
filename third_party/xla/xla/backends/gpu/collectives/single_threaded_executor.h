@@ -19,7 +19,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "xla/tsl/platform/threadpool_executor.h"
 
 namespace xla::gpu {
 
@@ -34,7 +33,6 @@ class SingleThreadedExecutor : public tsl::Executor {
 
  private:
   tsl::thread::ThreadPool thread_pool_;
-  tsl::thread::ThreadPoolExecutor executor_;
 };
 
 }  // namespace xla::gpu

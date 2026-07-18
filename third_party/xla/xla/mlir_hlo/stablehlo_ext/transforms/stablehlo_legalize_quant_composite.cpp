@@ -309,8 +309,8 @@ class RewriteFakeQuantCompositeOp
         quantizedDimension, storageTypeMin, storageTypeMax);
     RankedTensorType quantizedType = RankedTensorType::get(
         llvm::cast<ShapedType>(op.getType(0)).getShape(), quantizedElementType);
-    auto stablehloQuantizeOp = rewriter.create<stablehlo::UniformQuantizeOp>(
-        op.getLoc(), quantizedType, /*input=*/op.getOperand(0));
+    auto stablehloQuantizeOp = stablehlo::UniformQuantizeOp::create(
+        rewriter, op.getLoc(), quantizedType, /*input=*/op.getOperand(0));
     rewriter.replaceOpWithNewOp<stablehlo::UniformDequantizeOp>(
         op, op.getType(0),
         /*input=*/stablehloQuantizeOp.getResult());

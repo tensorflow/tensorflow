@@ -37,14 +37,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "absl/types/span.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
@@ -952,7 +950,7 @@ void CoordinationServiceAgent::WaitAtBarrierAsync(
         if (s.ok()) {
           // This would correspond to the request counter.
           barrier_counter_[barrier_id] = response->counter();
-        } else if (s.GetPayload(BarrierErrorPayloadKey()) != std::nullopt) {
+        } else if (s.GetPayload(BarrierErrorPayloadKey()).has_value()) {
           // Note that response is discarded if an error is returned, so we need
           // to parse from the error message.
           barrier_counter_[barrier_id] = GetBarrierCounterFromError(s);
@@ -1012,7 +1010,7 @@ void CoordinationServiceAgent::CancelBarrierAsync(absl::string_view barrier_id,
       });
 }
 
-absl::StatusOr<std::vector<tensorflow::CoordinatedTask>>
+absl::StatusOr<std::vector<CoordinationServiceAgent::AliveTask>>
 CoordinationServiceAgent::GetAliveTasks(
     const std::vector<CoordinatedTask>& tasks) {
   // Validate the agent.
@@ -1036,20 +1034,22 @@ CoordinationServiceAgent::GetAliveTasks(
   };
   leader_client_->GetAliveTasksAsync(request.get(), response.get(), done);
   n.WaitForNotification();
-
-  // Parse the response.
   if (!status.ok()) {
     return status;
   }
-  {
-    absl::MutexLock lock(incarnations_mu_);
-    for (int i = 0; i < response->alive_tasks_size(); ++i) {
-      incarnations_[response->alive_tasks(i).task_id()] =
-          response->incarnations(i);
-    }
+
+  // Parse the response.
+  absl::MutexLock lock(incarnations_mu_);
+  incarnations_.clear();
+  std::vector<AliveTask> alive_tasks;
+  for (int i = 0; i < response->alive_tasks_size(); ++i) {
+    int task_id = response->alive_tasks(i).task_id();
+    IncarnationId incarnation_id(response->incarnations(i));
+
+    alive_tasks.push_back(AliveTask{task_id, incarnation_id});
+    incarnations_[task_id] = incarnation_id;
   }
-  return std::vector<tensorflow::CoordinatedTask>(
-      response->alive_tasks().begin(), response->alive_tasks().end());
+  return alive_tasks;
 }
 
 // Returns an error if agent is not running.

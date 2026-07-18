@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/tsl/platform/errors.h"
@@ -28,7 +29,7 @@ limitations under the License.
 namespace xla {
 namespace emitters {
 
-absl::StatusOr<bool> FusionWrapperBase::Run(
+absl::StatusOr<bool> FusionWrapperBase::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto instructions = module->entry_computation()->MakeInstructionPostOrder();
@@ -42,12 +43,12 @@ absl::StatusOr<bool> FusionWrapperBase::Run(
       for (auto* computation : instruction->called_computations()) {
         for (auto* inner_instruction :
              computation->MakeInstructionPostOrder()) {
-          TF_RETURN_IF_ERROR(handle_instruction(inner_instruction));
+          RETURN_IF_ERROR(handle_instruction(inner_instruction));
         }
       }
       return absl::OkStatus();
     }
-    if (!MustWrapInstruction(opcode)) {
+    if (!MustWrapInstruction(*instruction)) {
       return absl::OkStatus();
     }
     auto* computation = instruction->parent();
@@ -66,16 +67,16 @@ absl::StatusOr<bool> FusionWrapperBase::Run(
       module->schedule().replace_instruction(computation, instruction,
                                              fusion_instruction);
     }
-    TF_RETURN_IF_ERROR(fusion_instruction->CopyAllControlDepsFrom(instruction));
-    TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
-    TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(fusion_instruction));
-    TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
+    RETURN_IF_ERROR(fusion_instruction->CopyAllControlDepsFrom(instruction));
+    RETURN_IF_ERROR(instruction->DropAllControlDeps());
+    RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(fusion_instruction));
+    RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
     changed = true;
     return absl::OkStatus();
   };
 
   for (auto* instruction : instructions) {
-    TF_RETURN_IF_ERROR(handle_instruction(instruction));
+    RETURN_IF_ERROR(handle_instruction(instruction));
   }
   return changed;
 }

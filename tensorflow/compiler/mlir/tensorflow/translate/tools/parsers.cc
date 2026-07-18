@@ -39,13 +39,13 @@ limitations under the License.
 namespace tensorflow {
 
 absl::Status ParseOutputArrayInfo(absl::string_view array_names,
-                                  std::vector<string>* outputs) {
+                                  std::vector<std::string>* outputs) {
   TF_RETURN_IF_ERROR(ParseNodeNames(array_names, *outputs));
   return absl::OkStatus();
 }
 
-absl::Status ParseOutputArrayInfo(const std::vector<string>& output_names,
-                                  std::vector<string>* outputs) {
+absl::Status ParseOutputArrayInfo(const std::vector<std::string>& output_names,
+                                  std::vector<std::string>* outputs) {
   for (auto& output_name : output_names) {
     if (output_name.empty()) continue;
     outputs->push_back(output_name);
@@ -57,8 +57,8 @@ absl::Status ParseInputArrayInfo(absl::string_view array_names,
                                  absl::string_view data_types,
                                  absl::string_view shapes,
                                  GraphImportConfig::InputArrays* inputs) {
-  std::vector<string> node_names;
-  std::vector<string> node_dtypes;
+  std::vector<std::string> node_names;
+  std::vector<std::string> node_dtypes;
   std::vector<std::optional<std::vector<int>>> node_shapes;
   TF_RETURN_IF_ERROR(ParseNodeNames(array_names, node_names));
   TF_RETURN_IF_ERROR(ParseNodeDataTypes(data_types, node_dtypes));
@@ -89,9 +89,10 @@ static absl::Status HandleSubtype(absl::string_view subtype,
 
   std::vector<int> dims;
   if (shape_and_type.size() > 2) {
-    return errors::FailedPrecondition("Invalid argument: '", subtype,
-                                      "', expected a single shape and type pair"
-                                      " separated with a ':'");
+    return absl::FailedPreconditionError(
+        absl::StrCat("Invalid argument: '", subtype,
+                     "', expected a single shape and type pair"
+                     " separated with a ':'"));
   } else if (shape_and_type.size() == 2) {
     const auto& shape_str = shape_and_type[0];
     TF_ASSIGN_OR_RETURN(dims, ParseShapeStr(shape_str));
@@ -100,7 +101,7 @@ static absl::Status HandleSubtype(absl::string_view subtype,
   const auto& subtype_str = shape_and_type.back();
   DataType subtype_dtype;
   if (!DataType_Parse(subtype_str, &subtype_dtype)) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         absl::StrCat("Invalid type: '", subtype_str, "'"));
   }
 
@@ -113,8 +114,8 @@ static absl::Status HandleSubtype(absl::string_view subtype,
 }
 
 absl::Status ParseInputArrayInfo(
-    const std::vector<string>& node_names,
-    const std::vector<string>& node_dtypes,
+    const std::vector<std::string>& node_names,
+    const std::vector<std::string>& node_dtypes,
     const std::vector<std::optional<std::vector<int>>>& node_shapes,
     GraphImportConfig::InputArrays* inputs) {
   std::vector<std::string> used_node_dtypes;
@@ -129,18 +130,18 @@ absl::Status ParseInputArrayInfo(
       } else if (dtype != DataType_Name(DT_INVALID)) {
         used_node_dtypes.push_back(dtype);
       } else {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(
             "Use '' if want to use the type from graph.");
       }
     }
   } else {
-    return errors::InvalidArgument(absl::StrCat(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Length of input node array and data type doesn't match (#arrays ",
         node_names.size(), ", #data_types ", node_dtypes.size(), ")"));
   }
 
   if (!node_shapes.empty() && node_names.size() != node_shapes.size()) {
-    return errors::InvalidArgument(absl::StrCat(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Length of input node array and data shape doesn't match (#arrays ",
         node_names.size(), ", #input_shapes ", node_shapes.size(), ")"));
   }
@@ -148,12 +149,12 @@ absl::Status ParseInputArrayInfo(
   // StringMap doesn't support reserve else reserve input map size here.
   for (int i = 0, end = node_names.size(); i < end; i++) {
     auto& name = node_names[i];
-    const string& type = used_node_dtypes[i];
+    const std::string& type = used_node_dtypes[i];
     if (name.empty()) continue;
 
     auto it_inserted_pair = inputs->insert({name, {}});
     if (!it_inserted_pair.second)
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           absl::StrCat("tensor ", name, " is repeated in the arrays flag"));
 
     ArrayInfo& info = it_inserted_pair.first->second;
@@ -163,7 +164,8 @@ absl::Status ParseInputArrayInfo(
     // If type has subtypes then parts[0] = type, parts[1] = subtypes,
     // parts[2] = ""
     if (parts.size() != 3 && parts.size() != 1) {
-      return errors::InvalidArgument("Invalid type '", type, "'");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Invalid type '", type, "'"));
     } else if (parts.size() == 3) {
       // First part is the type, second is the subtype
       ArrayInfo::SubTypeInfo subtype;
@@ -171,7 +173,7 @@ absl::Status ParseInputArrayInfo(
       info.subtypes.push_back(std::move(subtype));
     }
     if (!DataType_Parse(parts[0], &info.imported_dtype)) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           absl::StrCat("Invalid node type '", node_dtypes[i], "'"));
     }
 
@@ -193,7 +195,7 @@ absl::Status ParseNodeShapes(
     std::vector<std::optional<std::vector<int>>>& shapes_vector) {
   shapes_vector.clear();
   if (!shapes_str.empty()) {
-    std::vector<string> node_shapes_str = absl::StrSplit(shapes_str, ':');
+    std::vector<std::string> node_shapes_str = absl::StrSplit(shapes_str, ':');
     for (int i = 0; i < node_shapes_str.size(); i++) {
       if (node_shapes_str[i] == "*") {
         shapes_vector.push_back(std::nullopt);
@@ -223,14 +225,14 @@ static absl::StatusOr<std::vector<std::string>> ParseDTypesHelper(
     // Skip parsing the subtypes of a type
     if (c == '(') {
       if (inside_subtype) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(
             absl::StrCat("Syntax error: unexpected '(' in input data types: '",
                          data_types_str, "'"));
       }
       inside_subtype = true;
     } else if (c == ')') {
       if (!inside_subtype) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(
             absl::StrCat("Syntax error: unexpected ')' in input data types: '",
                          data_types_str, "'"));
       }
@@ -244,7 +246,7 @@ static absl::StatusOr<std::vector<std::string>> ParseDTypesHelper(
     }
   }
   if (inside_subtype) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         absl::StrCat("Syntax error: expected a ')' in input data types '",
                      data_types_str, "'"));
   }

@@ -178,6 +178,20 @@ class MathTest(test.TestCase, parameterized.TestCase):
     a = np.zeros(100)
     np.testing.assert_equal(np_math_ops.argsort(a, kind='stable'), r)
 
+    def testArgsortRaisesErrorForComplexDtypes(self):
+      """Test that argsort raises TypeError for complex64 and complex128."""
+      complex64_array = np.array([1 + 2j, 3 + 4j, 5 + 6j], dtype=np.complex64)
+      with self.assertRaisesRegex(
+          TypeError, 'argsort does not support complex64/complex128 dtypes'
+      ):
+        np_math_ops.argsort(complex64_array)
+
+      complex128_array = np.array([1 + 2j, 3 + 4j, 5 + 6j], dtype=np.complex128)
+      with self.assertRaisesRegex(
+          TypeError, 'argsort does not support complex64/complex128 dtypes'
+      ):
+        np_math_ops.argsort(complex128_array)
+
   def testArgMaxArgMin(self):
     data = [
         0,

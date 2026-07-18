@@ -6,7 +6,7 @@ load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
-# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:LICENSE"])
 
 cc_library(
     name = "genai_ops",
@@ -93,8 +93,8 @@ pybind_extension(
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite/c:common",
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 

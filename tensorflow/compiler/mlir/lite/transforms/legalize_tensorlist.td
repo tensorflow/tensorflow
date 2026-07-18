@@ -20,7 +20,7 @@ include "mlir/IR/OpBase.td"
 include "mlir/Dialect/Arith/IR/ArithOps.td"
 
 def ConstDenseElementsI32ZeroAttr
-  : NativeCodeCall<"$_builder.create<TFL::ConstOp>($_loc, DenseElementsAttr::get(RankedTensorType::get({}, $_builder.getI32Type()), {0}))">;
+  : NativeCodeCall<"TFL::ConstOp::create($_builder, $_loc, DenseElementsAttr::get(RankedTensorType::get({}, $_builder.getI32Type()), {0}))">;
 
 def Size1InputRange : NativeCodeCall<
   "SmallVector<Value, 1>{$0}">;

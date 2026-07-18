@@ -73,7 +73,7 @@ inline GraphDef CreateGraphDef(int num_nodes, int num_edges_per_node) {
   const int kNumInNodes = 10 * num_edges_per_node;
   GraphDef graph_def;
 
-  auto create_node = [](const string& name, const string& op) {
+  auto create_node = [](const std::string& name, const std::string& op) {
     NodeDef node;
     node.set_name(name);
     node.set_op(op);
@@ -115,17 +115,17 @@ inline GraphDef CreateRandomGraph(int size) {
   random::PhiloxRandom philox(0x12345);
   random::SimplePhilox rnd(&philox);
 
-  string prefix = "long_node_name_prefix_to_measure_string_copy_overhead";
+  std::string prefix = "long_node_name_prefix_to_measure_string_copy_overhead";
 
   GraphDef graph;
   for (int i = 0; i < size; ++i) {
-    const string name = absl::StrCat(prefix, i);
-    const uint32 num_inputs = rnd.Uniform(std::min(i, 5));
+    const std::string name = absl::StrCat(prefix, i);
+    const uint32_t num_inputs = rnd.Uniform(std::min(i, 5));
 
     NodeDef node;
     node.set_name(name);
     for (int n = 0; n < num_inputs; ++n) {
-      const uint32 input_node = rnd.Uniform(i);
+      const uint32_t input_node = rnd.Uniform(i);
       node.add_input(absl::StrCat(prefix, input_node));
     }
 
@@ -142,7 +142,7 @@ inline GraphDef CreateFaninFanoutNodeGraph(int num_regular_fanins,
                                            bool fanout_unique_index) {
   GraphDef graph;
 
-  auto create_node = [](const string& name) {
+  auto create_node = [](const std::string& name) {
     NodeDef node;
     node.set_name(name);
     return node;
@@ -151,14 +151,14 @@ inline GraphDef CreateFaninFanoutNodeGraph(int num_regular_fanins,
   NodeDef node = create_node(/*name=*/"node");
 
   for (int i = 0; i < num_regular_fanins; ++i) {
-    const string input_node_name = absl::StrFormat("in%05d", i);
+    const std::string input_node_name = absl::StrFormat("in%05d", i);
     NodeDef input_node = create_node(/*name=*/input_node_name);
     *graph.add_node() = std::move(input_node);
     node.add_input(input_node_name);
   }
 
   for (int i = 0; i < num_controlling_fanins; ++i) {
-    const string input_node_name = absl::StrFormat("control_in%05d", i);
+    const std::string input_node_name = absl::StrFormat("control_in%05d", i);
     NodeDef input_node = create_node(/*name=*/input_node_name);
     *graph.add_node() = std::move(input_node);
     node.add_input(absl::StrCat("^", input_node_name));
@@ -166,13 +166,13 @@ inline GraphDef CreateFaninFanoutNodeGraph(int num_regular_fanins,
 
   for (int i = 0; i < num_regular_fanouts; ++i) {
     NodeDef output_node = create_node(/*name=*/absl::StrFormat("out%05d", i));
-    const string input_node_index =
+    const std::string input_node_index =
         fanout_unique_index ? absl::StrCat(node.name(), ":", i) : node.name();
     output_node.add_input(input_node_index);
     *graph.add_node() = std::move(output_node);
   }
 
-  const string controlled_fanout_input = absl::StrCat("^", node.name());
+  const std::string controlled_fanout_input = absl::StrCat("^", node.name());
   for (int i = 0; i < num_controlled_fanouts; ++i) {
     NodeDef output_node =
         create_node(/*name=*/absl::StrFormat("control_out%05d", i));

@@ -130,14 +130,13 @@ Step 5: Update AllocationBlocks with the repacking placements
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -578,7 +577,7 @@ class BestFitRepacker
   }
 
   bool Repack() {
-    TF_CHECK_OK(Finish().status());
+    CHECK_OK(Finish().status());
     bool success = result_.heap_size <= max_size_;
     if (!success) {
       VLOG(1) << "Repacking unsuccessful with heap size " << result_.heap_size;

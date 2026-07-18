@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/canonicalize_boundary_value_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/cleanup_optimization_barrier_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/downcast_x64_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_batch_matmul_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass_options.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/split_merged_operands_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/unfold_large_splat_constants_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/unfreeze_global_constants.h"
+#include "tensorflow/compiler/mlir/lite/transforms/utilities/elements_attr_roundtrip_pass.h"
 
 namespace mlir {
 namespace quant {
@@ -303,7 +305,14 @@ inline std::unique_ptr<mlir::Pass> CreateCleanupOptimizationBarrierPass() {
   return Create<CleanupOptimizationBarrierPass>();
 }
 
+// Creates a pass that reduces the rank of tensors.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateRankReductionPass();
+
+// Creates a pass that makes TFLite model compatible with ML Drift delegate.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateGpuCompatibilityPass();
+
 #define GEN_PASS_DECL_DEFAULTQUANTPARAMSPASS
+#define GEN_PASS_DECL_GPUCOMPATIBILITYPASS
 #define GEN_PASS_DECL_LEGALIZETFPASS
 #define GEN_PASS_DECL_LOWERSTATICTENSORLISTPASS
 #define GEN_PASS_DECL_MODIFYIONODESPASS
@@ -314,6 +323,7 @@ inline std::unique_ptr<mlir::Pass> CreateCleanupOptimizationBarrierPass() {
 #define GEN_PASS_DECL_PREPARETFPASS
 #define GEN_PASS_DECL_QUANTIZEPASS
 #define GEN_PASS_DECL_RAISECUSTOMOPSPASS
+#define GEN_PASS_DECL_RANKREDUCTIONPASS
 #define GEN_PASS_DECL_TRIMFUNCTIONSPASS
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
@@ -362,6 +372,11 @@ inline void registerTensorFlowLitePasses() {
   Register<UnfoldLargeSplatConstantPass>();
   Register<SplitMergedOperandsPass>();
   Register<CleanupOptimizationBarrierPass>();
+  Register<DowncastX64Pass>();
+
+  // Utility Passes
+  Register<DenseToDenseResourceElementsPass>();
+  Register<DenseResourceToDenseElementsPass>();
 }
 
 }  // namespace TFL

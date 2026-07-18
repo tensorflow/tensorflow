@@ -25,20 +25,25 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
+#include "absl/base/optimization.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/numeric/bits.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/allocator_retry.h"
+#include "xla/tsl/framework/scoped_allocation_trace.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/trace_filter_utils.h"
 #include "xla/tsl/protobuf/bfc_memory_map.pb.h"
 #include "tsl/platform/numbers.h"
@@ -53,15 +58,39 @@ const uint64_t kDefaultMemoryFilterMask = tsl::profiler::TraceMeFiltersToMask(
 
 constexpr BFCAllocator::ChunkHandle BFCAllocator::kInvalidChunkHandle;
 
+static std::string AllocationAnnotationFrameDebugString(
+    const ScopedAllocationTrace::Frame& frame) {
+  if (frame.args.empty()) {
+    return frame.name;
+  }
+  return absl::StrCat(frame.name, "{",
+                      absl::StrJoin(frame.args, ", ", absl::PairFormatter("=")),
+                      "}");
+}
+
+static std::string AllocationAnnotationSnapshotDebugString(
+    const ScopedAllocationTrace::Snapshot& snapshot) {
+  return absl::StrJoin(
+      snapshot.frames, " / ",
+      [](std::string* out, const ScopedAllocationTrace::Frame& frame) {
+        absl::StrAppend(out, AllocationAnnotationFrameDebugString(frame));
+      });
+}
+
 BFCAllocator::BFCAllocator(std::unique_ptr<SubAllocator> sub_allocator,
-                           size_t total_memory, const string& name,
+                           size_t total_memory, const std::string& name,
                            const Options& opts)
     : opts_(opts),
+      free_chunk_tag_(opts.enable_spatial_partitioning ? ChunkTag::kCentralGap
+                                                       : ChunkTag::kLower),
       coalesce_regions_(sub_allocator->SupportsCoalescing()),
       sub_allocator_(std::move(sub_allocator)),
       name_(name),
-      free_chunks_list_(kInvalidChunkHandle),
+      unused_chunk_handle_head_(kInvalidChunkHandle),
       next_allocation_id_(1) {
+  CHECK(!opts.enable_spatial_partitioning || !opts.allow_growth)  // Crash OK
+      << "Spatial partitioning requires a single fixed address range "
+         "(allow_growth=false).";
   if (opts.allow_growth) {
     // 2MiB smallest initial allocation, unless total memory available
     // is less.
@@ -79,6 +108,13 @@ BFCAllocator::BFCAllocator(std::unique_ptr<SubAllocator> sub_allocator,
   // Allocate the requested amount of memory.
   memory_limit_ = total_memory;
   stats_.bytes_limit = static_cast<int64_t>(total_memory);
+
+  // Cap on how much a chunk may exceed the requested size before we split it.
+  // If the user did not set a fraction, default to 128MB.
+  max_internal_fragmentation_bytes_ =
+      (opts.fragmentation_fraction > 0.0)
+          ? opts.fragmentation_fraction * memory_limit_
+          : 128 << 20;
 
   // Create a bunch of bins of various good sizes.
 
@@ -104,7 +140,7 @@ BFCAllocator::~BFCAllocator() {
   // Lock the mutex to make sure that all memory effects are safely published
   // and available to a thread running the destructor (i.e., deallocations
   // happened on a different thread right before the destructor).
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
 
   // Return memory back.
   VLOG(2) << "Number of regions allocated: "
@@ -172,6 +208,10 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
     curr_region_allocation_bytes_ *= 2;
   }
 
+  CHECK_EQ(absl::bit_cast<uintptr_t>(mem_addr) & (kMinAllocationSize - 1), 0)
+      << "SubAllocator must return memory aligned to at least "
+      << kMinAllocationSize << " bytes, got " << mem_addr;
+
   VLOG(1) << "Extending allocation by "
           << strings::HumanReadableNumBytes(bytes_received) << " bytes for "
           << Name() << ".";
@@ -203,6 +243,8 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
   c->prev = kInvalidChunkHandle;
   c->next = kInvalidChunkHandle;
   c->freed_at_count = 0;
+  c->tag = free_chunk_tag_;
+  c->allocation_annotation.reset();
 
   region_manager_.set_handle(c->ptr, h);
 
@@ -221,63 +263,73 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
     prev_chunk->next = h;
   }
 
-  // Maybe merge adjacent chunks and insert the chunk into the right bin.
-  InsertFreeChunkIntoBin(TryToCoalesce(h, /*ignore_freed_at=*/false));
+  // Maybe merge adjacent chunks and insert the chunk into the right free
+  // structure. In spatial mode, a fresh region becomes the central gap.
+  InsertFreeChunk(TryToCoalesce(h, /*ignore_freed_at=*/false));
 
   return true;
 }
 
 BFCAllocator::ChunkHandle BFCAllocator::AllocateChunk() {
-  if (free_chunks_list_ != kInvalidChunkHandle) {
-    ChunkHandle h = free_chunks_list_;
+  if (unused_chunk_handle_head_ != kInvalidChunkHandle) {
+    ChunkHandle h = unused_chunk_handle_head_;
     Chunk* c = ChunkFromHandle(h);
-    free_chunks_list_ = c->next;
-    return h;
-  } else {
-    ChunkHandle h = chunks_.size();
-    chunks_.resize(h + 1);
+    unused_chunk_handle_head_ = c->next;
     return h;
   }
+  ChunkHandle h = chunks_.size();
+  chunks_.resize(h + 1);
+  return h;
 }
 
 void BFCAllocator::DeallocateChunk(ChunkHandle h) {
   Chunk* c = ChunkFromHandle(h);
   c->allocation_id = -1;
   c->bin_num = kInvalidBinNum;
-  c->next = free_chunks_list_;
-  free_chunks_list_ = h;
+  c->allocation_annotation.reset();
+  c->next = unused_chunk_handle_head_;
+  unused_chunk_handle_head_ = h;
 }
 
 void* BFCAllocator::AllocateRawInternalWithRetry(
-    size_t unused_alignment, size_t num_bytes,
+    size_t alignment, size_t num_bytes,
     const AllocationAttributes& allocation_attr) {
   // Fast path: Try once to allocate without getting the retry_helper_ involved
-  uint64 freed_by_count = 0;
+  uint64_t freed_by_count = 0;
   if (allocation_attr.freed_by_func != nullptr) {
     freed_by_count = (*allocation_attr.freed_by_func)();
   }
-  void* r =
-      AllocateRawInternal(unused_alignment, num_bytes, false, freed_by_count);
-  if (r != nullptr) {
-    return r;
-  } else {
-    static const int64_t kMaxMillisToWait = 10000;  // 10 seconds
-    r = retry_helper_.AllocateRaw(
-        [this, &allocation_attr](size_t a, size_t nb, bool v) {
-          uint64 freed_by_count = 0;
-          if (allocation_attr.freed_by_func != nullptr) {
-            freed_by_count = (*allocation_attr.freed_by_func)();
-          }
-          return AllocateRawInternal(a, nb, v, freed_by_count);
-        },
-        kMaxMillisToWait, unused_alignment, num_bytes);
+
+  void* r = AllocateRawInternal(alignment, num_bytes, false, freed_by_count,
+                                allocation_attr.allocation_end);
+  if (ABSL_PREDICT_TRUE(r != nullptr)) {
     return r;
   }
+
+  static const int64_t kMaxMillisToWait = 10000;  // 10 seconds
+  r = retry_helper_.AllocateRaw(
+      [this, &allocation_attr](size_t a, size_t nb, bool v) {
+        uint64_t freed_by_count = 0;
+        if (allocation_attr.freed_by_func != nullptr) {
+          freed_by_count = (*allocation_attr.freed_by_func)();
+        }
+        return AllocateRawInternal(a, nb, v, freed_by_count,
+                                   allocation_attr.allocation_end);
+      },
+      kMaxMillisToWait, alignment, num_bytes);
+  return r;
 }
 
-void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
+void* BFCAllocator::AllocateRaw(size_t alignment, size_t num_bytes,
                                 const AllocationAttributes& allocation_attr) {
-  VLOG(3) << "AllocateRaw " << Name() << "  " << num_bytes;
+  VLOG(3) << "AllocateRaw " << Name() << " " << num_bytes
+          << " alignment=" << alignment;
+  // Only spatially partitioned allocators serve upper-end requests; everything
+  // else must leave allocation_end at its kLower default. This lets the
+  // allocation path skip partitioning branches: with allocation_end always
+  // kLower, requests only ever land in AllocateChunkFromLowEnd.
+  DCHECK(opts_.enable_spatial_partitioning ||
+         allocation_attr.allocation_end == AllocationEnd::kLower);
   void* result = [&] {
     if (!opts_.allow_retry_on_failure || !allocation_attr.retry_on_failure) {
       // If we have globally disabled retry-on-failure and fail to allocate an
@@ -289,7 +341,7 @@ void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
       // tolerate failing.  For example, we allocate convolution scratch memory
       // as non-retryable; if it fails, we'll just use a fallback algorithm that
       // uses no scratch.
-      static std::atomic<int32> log_counter{0};
+      static std::atomic<int32_t> log_counter{0};
       constexpr int kMaxFailureLogs = 10;
       bool dump_log_on_failure =
           (/*retry is globally disabled*/ !opts_.allow_retry_on_failure &&
@@ -297,19 +349,21 @@ void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
            log_counter.load(std::memory_order_relaxed) < kMaxFailureLogs) ||
           VLOG_IS_ON(2);
 
-      uint64 freed_by_count = 0;
+      uint64_t freed_by_count = 0;
       if (allocation_attr.freed_by_func != nullptr) {
         freed_by_count = (*allocation_attr.freed_by_func)();
       }
-      void* res = AllocateRawInternal(unused_alignment, num_bytes,
-                                      dump_log_on_failure, freed_by_count);
+      void* res =
+          AllocateRawInternal(alignment, num_bytes, dump_log_on_failure,
+                              freed_by_count, allocation_attr.allocation_end);
       if (res == nullptr) {
-        int32 counter_value = log_counter.load(std::memory_order_relaxed);
+        int32_t counter_value = log_counter.load(std::memory_order_relaxed);
         if (counter_value < kMaxFailureLogs) {
           log_counter.store(counter_value + 1, std::memory_order_relaxed);
           LOG(WARNING)
               << "Allocator (" << Name() << ") ran out of memory trying "
               << "to allocate " << strings::HumanReadableNumBytes(num_bytes)
+              << " from the " << allocation_attr.allocation_end << " end"
               << " with freed_by_count=" << freed_by_count << "."
               << (!allocation_attr.retry_on_failure
                       ? " The caller indicates that this is not a failure, but"
@@ -319,10 +373,8 @@ void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
         }
       }
       return res;
-    } else {
-      return AllocateRawInternalWithRetry(unused_alignment, num_bytes,
-                                          allocation_attr);
     }
+    return AllocateRawInternalWithRetry(alignment, num_bytes, allocation_attr);
   }();
   VLOG(3) << "AllocateRaw " << Name() << "  " << num_bytes << " " << result;
   VLOG(4) << "[mem-debug] AllocateRaw," << Name() << "," << num_bytes << ","
@@ -330,13 +382,41 @@ void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
   return result;
 }
 
-// static
 size_t BFCAllocator::RoundedBytes(size_t bytes) {
   size_t rounded_bytes =
       (kMinAllocationSize *
        ((bytes + kMinAllocationSize - 1) / kMinAllocationSize));
   DCHECK_EQ(size_t{0}, rounded_bytes % kMinAllocationSize);
   return rounded_bytes;
+}
+
+uintptr_t BFCAllocator::AlignUp(uintptr_t ptr, size_t alignment) {
+  CHECK(absl::has_single_bit(alignment))
+      << "alignment must be a power of 2, got " << alignment;
+  const uintptr_t mask = static_cast<uintptr_t>(alignment) - 1;
+  return (ptr + mask) & ~mask;
+}
+
+uintptr_t BFCAllocator::AlignDown(uintptr_t ptr, size_t alignment) {
+  CHECK(absl::has_single_bit(alignment))
+      << "alignment must be a power of 2, got " << alignment;
+  const uintptr_t mask = static_cast<uintptr_t>(alignment) - 1;
+  return ptr & ~mask;
+}
+
+size_t BFCAllocator::LowEndAlignmentPadding(uintptr_t chunk_start,
+                                            size_t alignment) {
+  return RoundedBytes(AlignUp(chunk_start, alignment) - chunk_start);
+}
+
+uintptr_t BFCAllocator::HighEndAlignedStart(uintptr_t chunk_start,
+                                            size_t chunk_size,
+                                            size_t rounded_bytes,
+                                            size_t alignment) {
+  if (ABSL_PREDICT_FALSE(chunk_size < rounded_bytes)) {
+    return 0;
+  }
+  return AlignDown(chunk_start + chunk_size - rounded_bytes, alignment);
 }
 
 bool BFCAllocator::DeallocateFreeRegions(size_t rounded_bytes)
@@ -411,12 +491,12 @@ void BFCAllocator::DeallocateRegions(
     }
 
     VLOG(2) << "Deallocate region with ptr = " << it->ptr();
-    // Remove all chunk registrations from Bins.
+    // Remove all chunk registrations from free structures.
     ChunkHandle h = region_manager_.get_handle(it->ptr());
     while (h != kInvalidChunkHandle) {
       const Chunk* c = ChunkFromHandle(h);
-      if (c->bin_num != kInvalidBinNum) {
-        RemoveFreeChunkFromBin(h);
+      if (!c->in_use()) {
+        RemoveFreeChunk(h);
       }
       auto h_to_delete = h;
       h = c->next;
@@ -430,11 +510,11 @@ void BFCAllocator::DeallocateRegions(
   }
 }
 
-void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
-                                        size_t num_bytes,
+void* BFCAllocator::AllocateRawInternal(size_t alignment, size_t num_bytes,
                                         bool dump_log_on_failure,
-                                        uint64 freed_before) {
-  if (num_bytes == 0) {
+                                        uint64_t freed_before,
+                                        AllocationEnd allocation_end) {
+  if (ABSL_PREDICT_FALSE(num_bytes == 0)) {
     VLOG(2) << "tried to allocate 0 bytes";
     return nullptr;
   }
@@ -443,23 +523,30 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   // so all memory addresses are nicely byte aligned.
   size_t rounded_bytes = RoundedBytes(num_bytes);
 
+  // Alignment must be a power of two and at least kMinAllocationSize so that
+  // splitting for alignment always produces kMinAllocationSize-aligned chunks.
+  DCHECK(absl::has_single_bit(alignment)) << "alignment must be a power of 2";
+  alignment = std::max(alignment, kMinAllocationSize);
+
   // The BFC allocator tries to find the best fit first.
   BinNum bin_num = BinNumForSize(rounded_bytes);
 
-  absl::MutexLock l(&mutex_);
-  if (!timestamped_chunks_.empty()) {
+  absl::MutexLock l(mutex_);
+  if (ABSL_PREDICT_FALSE(!timestamped_chunks_.empty())) {
     // Merge timestamped chunks whose counts have become safe for general use.
     MergeTimestampedChunks(0);
   }
-  void* ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
-  if (ptr != nullptr) {
+  void* ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, alignment,
+                           freed_before, allocation_end);
+  if (ABSL_PREDICT_TRUE(ptr != nullptr)) {
     AddTraceMe("MemoryAllocation", ptr);
     return ptr;
   }
 
   // Try to extend
-  if (Extend(unused_alignment, rounded_bytes)) {
-    ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
+  if (Extend(alignment, rounded_bytes)) {
+    ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, alignment,
+                       freed_before, allocation_end);
     if (ptr != nullptr) {
       AddTraceMe("MemoryAllocation", ptr);
       return ptr;
@@ -472,7 +559,8 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
     // timestamped chunks more aggressively until a free chunk of the necessary
     // size is formed.
     if (MergeTimestampedChunks(rounded_bytes)) {
-      ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
+      ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, alignment,
+                         freed_before, allocation_end);
       if (ptr != nullptr) {
         AddTraceMe("MemoryAllocation", ptr);
         return ptr;
@@ -485,8 +573,9 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   // try deallocating free regions so that suballocator can combine them with
   // the unallocated bytes and form a larger region.
   if (DeallocateFreeRegions(rounded_bytes) &&
-      Extend(unused_alignment, rounded_bytes)) {
-    ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
+      Extend(alignment, rounded_bytes)) {
+    ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, alignment,
+                       freed_before, allocation_end);
     if (ptr != nullptr) {
       AddTraceMe("MemoryAllocation", ptr);
       return ptr;
@@ -501,20 +590,20 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
     LOG(WARNING)
         << "Allocator (" << Name() << ") ran out of memory trying "
         << "to allocate " << strings::HumanReadableNumBytes(num_bytes)
-        << " (rounded to " << rounded_bytes << ")" << "requested by op "
+        << " (rounded to " << rounded_bytes << ")"
+        << " from the " << allocation_end << " end requested by op "
         << tsl::profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation()
                .pending_op_name
-        << "\nIf the cause is memory fragmentation maybe the environment "
-        << "variable 'TF_GPU_ALLOCATOR=cuda_malloc_async' will "
-        << "improve the situation. \nCurrent allocation summary follows."
-        << "\nCurrent allocation summary follows.";
-    DumpMemoryLog(rounded_bytes);
+        << "\nIf this is caused by memory fragmentation, the environment "
+        << "variable 'TF_GPU_ALLOCATOR=cuda_malloc_async' may improve "
+        << "the situation.\nCurrent allocation summary follows.";
+    DumpMemoryLog(rounded_bytes, allocation_end);
     LOG(WARNING) << RenderOccupancy();
   }
   return nullptr;
 }
 
-int64_t BFCAllocator::LargestFreeChunk() {
+size_t BFCAllocator::LargestBinnedFreeChunk() {
   for (int i = kNumBins - 1; i >= 0; i--) {
     if (!BinFromIndex(i)->free_chunks.empty()) {
       return ChunkFromHandle(*BinFromIndex(i)->free_chunks.rbegin())->size;
@@ -523,10 +612,34 @@ int64_t BFCAllocator::LargestFreeChunk() {
   return 0;
 }
 
+size_t BFCAllocator::LargestBinnedFreeChunk(AllocationEnd allocation_end) {
+  ChunkTag tag = ChunkTagOf(allocation_end);
+  for (int i = kNumBins - 1; i >= 0; i--) {
+    Bin* b = BinFromIndex(i);
+    for (auto it = b->free_chunks.rbegin(); it != b->free_chunks.rend(); ++it) {
+      const Chunk* chunk = ChunkFromHandle(*it);
+      if (chunk->tag == tag) {
+        return chunk->size;
+      }
+    }
+  }
+  return 0;
+}
+
+size_t BFCAllocator::LargestFreeChunk() {
+  size_t largest = LargestBinnedFreeChunk();
+  if (central_gap_ != kInvalidChunkHandle) {
+    largest = std::max(largest, ChunkFromHandle(central_gap_)->size);
+  }
+  return largest;
+}
+
 double BFCAllocator::GetFragmentation() {
   int64_t bytes_available = *stats_.pool_bytes - stats_.bytes_in_use;
   DCHECK_GE(bytes_available, 0);
-  return static_cast<double>(bytes_available - LargestFreeChunk()) /
+  size_t largest_free_chunk = LargestFreeChunk();
+  return static_cast<double>(bytes_available -
+                             static_cast<int64_t>(largest_free_chunk)) /
          bytes_available;
 }
 
@@ -554,7 +667,7 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
                                {"peak_bytes_in_use", stats_.peak_bytes_in_use},
                                {"requested_bytes", req_bytes},
                                {"allocation_bytes", alloc_bytes},
-                               {"addr", reinterpret_cast<uint64>(chunk_ptr)},
+                               {"addr", absl::bit_cast<uintptr_t>(chunk_ptr)},
                                {"tf_op", annotation.pending_op_name},
                                {"id", annotation.pending_step_id},
                                {"region_type", annotation.pending_region_type},
@@ -566,88 +679,231 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
 }
 
 void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
-                                 size_t num_bytes, uint64 freed_before) {
-  // First identify the first bin that could satisfy rounded_bytes.
-  for (; bin_num < kNumBins; bin_num++) {
-    // Start searching from the first bin for the smallest chunk that fits
-    // rounded_bytes.
-    Bin* b = BinFromIndex(bin_num);
-    for (auto citer = b->free_chunks.begin(); citer != b->free_chunks.end();
-         ++citer) {
-      const BFCAllocator::ChunkHandle h = (*citer);
-      BFCAllocator::Chunk* chunk = ChunkFromHandle(h);
+                                 size_t num_bytes, size_t alignment,
+                                 uint64_t freed_before,
+                                 AllocationEnd allocation_end) {
+  // Spatial partitioning keeps three contiguous spans by address:
+  //
+  //   [ kLower (grows up) ][ kCentralGap ][ kUpper (grows down) ]
+  //
+  // A request first reuses a free hole with its own tag from the size bins.
+  // Only if no same-tag hole fits does it carve from the one central gap.
+  // Because neither end can create or consume the other end's interior holes,
+  // lower placements are independent of upper activity and upper placements are
+  // independent of lower activity, except when lower and upper allocations
+  // exhaust the central gap.
+  if (void* ptr = FindTaggedChunkPtr(bin_num, rounded_bytes, num_bytes,
+                                     alignment, freed_before, allocation_end)) {
+    return ptr;
+  }
+  return FindChunkPtrInCentralGap(rounded_bytes, num_bytes, alignment,
+                                  freed_before, allocation_end);
+}
+
+void* BFCAllocator::FindTaggedChunkPtr(BinNum bin_num, size_t rounded_bytes,
+                                       size_t num_bytes, size_t alignment,
+                                       uint64_t freed_before,
+                                       AllocationEnd allocation_end) {
+  const ChunkTag requested_tag = ChunkTagOf(allocation_end);
+  for (BinNum bn = bin_num; bn < kNumBins; bn++) {
+    Bin* b = BinFromIndex(bn);
+    for (ChunkHandle h : b->free_chunks) {
+      Chunk* chunk = ChunkFromHandle(h);
       DCHECK(!chunk->in_use());
-      if (freed_before > 0 && freed_before < chunk->freed_at_count) {
+      if (ABSL_PREDICT_FALSE(chunk->tag != requested_tag)) {
         continue;
       }
-      if (chunk->size >= rounded_bytes) {
-        // We found an existing chunk that fits us that wasn't in use, so remove
-        // it from the free bin structure prior to using.
-        RemoveFreeChunkIterFromBin(&b->free_chunks, citer);
-
-        // If we can break the size of the chunk into two reasonably large
-        // pieces, do don't waste more than max_internal_fragmentation_bytes on
-        // padding. If this threshold is not set by the user, then use 128MB as
-        // the default.
-        const int64_t max_internal_fragmentation_bytes =
-            (opts_.fragmentation_fraction > 0.0)
-                ? opts_.fragmentation_fraction * memory_limit_
-                : 128 << 20;
-
-        if (chunk->size >= rounded_bytes * 2 ||
-            static_cast<int64_t>(chunk->size) - rounded_bytes >=
-                max_internal_fragmentation_bytes) {
-          SplitChunk(h, rounded_bytes);
-          chunk = ChunkFromHandle(h);  // Update chunk pointer in case it moved
-        }
-
-        // The requested size of the returned chunk is what the user
-        // has allocated.
-        chunk->requested_size = num_bytes;
-        // Assign a unique id and increment the id counter, marking the
-        // chunk as being in use.
-        chunk->allocation_id = next_allocation_id_++;
-
-        // Update stats.
-        ++stats_.num_allocs;
-        stats_.bytes_in_use += chunk->size;
-        if (stats_.bytes_in_use > stats_.peak_bytes_in_use) {
-          VLOG(2) << "New Peak memory usage of " << stats_.bytes_in_use
-                  << " bytes for " << Name();
-        }
-        stats_.peak_bytes_in_use =
-            std::max(stats_.peak_bytes_in_use, stats_.bytes_in_use);
-        stats_.largest_alloc_size =
-            std::max<std::size_t>(stats_.largest_alloc_size, chunk->size);
-
-#ifdef TENSORFLOW_MEM_DEBUG
-        if (ShouldRecordOpName()) {
-          const auto& annotation =
-              profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();
-          if (!annotation.pending_op_name.empty()) {
-            chunk->op_name = annotation.pending_op_name;
-          } else {
-            LOG(INFO) << "missing pending_op_name for " << Name() << "\n"
-                      << CurrentStackTrace();
-            chunk->op_name = nullptr;
-          }
-          chunk->action_count = ++action_counter_;
-          chunk->step_id = annotation.pending_step_id;
-          int slot = chunk->action_count % MEM_DEBUG_SIZE_HISTORY_SIZE;
-          size_history_[slot] = stats_.bytes_in_use;
-        }
-#endif
-
-        VLOG(4) << "Returning: " << chunk->ptr;
-        if (VLOG_IS_ON(4)) {
-          LOG(INFO) << "A: " << RenderOccupancy();
-        }
-        return chunk->ptr;
+      if (ABSL_PREDICT_FALSE(freed_before > 0) &&
+          freed_before < chunk->freed_at_count) {
+        continue;
       }
+      const uintptr_t chunk_start = absl::bit_cast<uintptr_t>(chunk->ptr);
+      if (ABSL_PREDICT_FALSE(allocation_end == AllocationEnd::kUpper)) {
+        const uintptr_t aligned_start = HighEndAlignedStart(
+            chunk_start, chunk->size, rounded_bytes, alignment);
+        if (ABSL_PREDICT_FALSE(aligned_start < chunk_start)) {
+          continue;
+        }
+      } else {
+        const size_t align_padding =
+            LowEndAlignmentPadding(chunk_start, alignment);
+        if (ABSL_PREDICT_FALSE(chunk->size < rounded_bytes + align_padding)) {
+          continue;
+        }
+      }
+      RemoveFreeChunkFromBin(h);
+      return allocation_end == AllocationEnd::kUpper
+                 ? AllocateChunkFromHighEnd(h, rounded_bytes, num_bytes,
+                                            alignment)
+                 : AllocateChunkFromLowEnd(h, rounded_bytes, num_bytes,
+                                           alignment);
     }
   }
 
   return nullptr;
+}
+
+void* BFCAllocator::FindChunkPtrInCentralGap(size_t rounded_bytes,
+                                             size_t num_bytes, size_t alignment,
+                                             uint64_t freed_before,
+                                             AllocationEnd allocation_end) {
+  if (ABSL_PREDICT_FALSE(central_gap_ == kInvalidChunkHandle)) {
+    return nullptr;
+  }
+
+  ChunkHandle h = central_gap_;
+  Chunk* chunk = ChunkFromHandle(h);
+  DCHECK(!chunk->in_use());
+  DCHECK_EQ(chunk->tag, ChunkTag::kCentralGap);
+  if (ABSL_PREDICT_FALSE(freed_before > 0) &&
+      freed_before < chunk->freed_at_count) {
+    return nullptr;
+  }
+
+  const uintptr_t chunk_start = absl::bit_cast<uintptr_t>(chunk->ptr);
+  if (ABSL_PREDICT_FALSE(allocation_end == AllocationEnd::kUpper)) {
+    const uintptr_t aligned_start =
+        HighEndAlignedStart(chunk_start, chunk->size, rounded_bytes, alignment);
+    if (ABSL_PREDICT_FALSE(aligned_start < chunk_start)) {
+      return nullptr;
+    }
+  } else {
+    const size_t align_padding = LowEndAlignmentPadding(chunk_start, alignment);
+    if (ABSL_PREDICT_FALSE(chunk->size < rounded_bytes + align_padding)) {
+      return nullptr;
+    }
+  }
+
+  RemoveFreeChunk(h);
+  return allocation_end == AllocationEnd::kUpper
+             ? AllocateChunkFromHighEnd(h, rounded_bytes, num_bytes, alignment)
+             : AllocateChunkFromLowEnd(h, rounded_bytes, num_bytes, alignment);
+}
+
+void* BFCAllocator::AllocateChunkFromLowEnd(ChunkHandle h, size_t rounded_bytes,
+                                            size_t num_bytes,
+                                            size_t alignment) {
+  Chunk* chunk = ChunkFromHandle(h);
+
+  // If alignment requires it, split off the unaligned prefix as a separate free
+  // chunk. For a central-gap carve, that prefix falls below the new lower
+  // allocation and therefore becomes a lower-owned interior hole.
+  uintptr_t ptr_int = absl::bit_cast<uintptr_t>(chunk->ptr);
+  const size_t align_padding = LowEndAlignmentPadding(ptr_int, alignment);
+  if (ABSL_PREDICT_FALSE(align_padding > 0)) {
+    SplitChunk(h, align_padding);
+    chunk = ChunkFromHandle(h);
+    ChunkHandle aligned_h = chunk->next;
+    RemoveFreeChunk(aligned_h);
+    chunk->tag = ChunkTag::kLower;
+    InsertFreeChunk(h);
+    h = aligned_h;
+    chunk = ChunkFromHandle(h);
+  }
+
+  // If we can break the size of the chunk into two reasonably large pieces,
+  // don't waste more than max_internal_fragmentation_bytes_ on padding. The
+  // trailing remainder keeps the source chunk's tag (the central gap keeps its
+  // tag; a lower hole stays lower).
+  if (chunk->size >= rounded_bytes * 2 ||
+      static_cast<int64_t>(chunk->size) - rounded_bytes >=
+          max_internal_fragmentation_bytes_) {
+    SplitChunk(h, rounded_bytes);
+    chunk = ChunkFromHandle(h);  // Update chunk pointer in case it moved.
+  }
+
+  // The in-use chunk gets the lower tag.
+  chunk->tag = ChunkTag::kLower;
+  FinishChunkAllocation(chunk, num_bytes);
+  return chunk->ptr;
+}
+
+void* BFCAllocator::AllocateChunkFromHighEnd(ChunkHandle h,
+                                             size_t rounded_bytes,
+                                             size_t num_bytes,
+                                             size_t alignment) {
+  Chunk* chunk = ChunkFromHandle(h);
+
+  uintptr_t chunk_start = absl::bit_cast<uintptr_t>(chunk->ptr);
+  const uintptr_t aligned_start =
+      HighEndAlignedStart(chunk_start, chunk->size, rounded_bytes, alignment);
+  CHECK_GE(aligned_start, chunk_start);  // Crash OK
+  const size_t prefix_size = aligned_start - chunk_start;
+
+  // Split off everything below the aligned start as a free prefix, so the
+  // allocation lands at the high end of the chunk and grows downward. For a
+  // central-gap carve, this prefix remains the central gap.
+  if (ABSL_PREDICT_TRUE(prefix_size > 0)) {
+    SplitChunk(h, prefix_size);
+    ChunkHandle aligned_h = ChunkFromHandle(h)->next;
+    RemoveFreeChunk(aligned_h);
+    InsertFreeChunk(h);
+    h = aligned_h;
+    chunk = ChunkFromHandle(h);
+  }
+
+  // Split off any aligned-up suffix as a free remainder. Set the tag before
+  // splitting so the suffix inherits kUpper directly.
+  chunk->tag = ChunkTag::kUpper;
+  if (chunk->size > rounded_bytes) {
+    SplitChunk(h, rounded_bytes);
+    chunk = ChunkFromHandle(h);
+  }
+
+  // The in-use chunk gets the upper tag.
+  chunk->tag = ChunkTag::kUpper;
+  FinishChunkAllocation(chunk, num_bytes);
+  return chunk->ptr;
+}
+
+void BFCAllocator::FinishChunkAllocation(Chunk* chunk, size_t num_bytes) {
+  // The requested size of the returned chunk is what the user has allocated.
+  chunk->requested_size = num_bytes;
+  // Assign a unique id and increment the id counter, marking the chunk as being
+  // in use.
+  chunk->allocation_id = next_allocation_id_++;
+  ScopedAllocationTrace::Snapshot allocation_annotation =
+      ScopedAllocationTrace::Current();
+  if (allocation_annotation.frames.empty()) {
+    chunk->allocation_annotation.reset();
+  } else {
+    chunk->allocation_annotation = std::move(allocation_annotation);
+  }
+
+  // Update stats.
+  ++stats_.num_allocs;
+  stats_.bytes_in_use += chunk->size;
+  if (stats_.bytes_in_use > stats_.peak_bytes_in_use) {
+    VLOG(2) << "New Peak memory usage of " << stats_.bytes_in_use
+            << " bytes for " << Name();
+  }
+  stats_.peak_bytes_in_use =
+      std::max(stats_.peak_bytes_in_use, stats_.bytes_in_use);
+  stats_.largest_alloc_size =
+      std::max<std::size_t>(stats_.largest_alloc_size, chunk->size);
+
+#ifdef TENSORFLOW_MEM_DEBUG
+  if (ShouldRecordOpName()) {
+    const auto& annotation =
+        profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();
+    if (!annotation.pending_op_name.empty()) {
+      chunk->op_name = annotation.pending_op_name;
+    } else {
+      LOG(INFO) << "missing pending_op_name for " << Name() << "\n"
+                << CurrentStackTrace();
+      chunk->op_name = nullptr;
+    }
+    chunk->action_count = ++action_counter_;
+    chunk->step_id = annotation.pending_step_id;
+    int slot = chunk->action_count % MEM_DEBUG_SIZE_HISTORY_SIZE;
+    size_history_[slot] = stats_.bytes_in_use;
+  }
+#endif
+
+  VLOG(4) << "Returning: " << chunk->ptr;
+  if (VLOG_IS_ON(4)) {
+    LOG(INFO) << "A: " << RenderOccupancy();
+  }
 }
 
 void BFCAllocator::SplitChunk(BFCAllocator::ChunkHandle h, size_t num_bytes) {
@@ -672,6 +928,11 @@ void BFCAllocator::SplitChunk(BFCAllocator::ChunkHandle h, size_t num_bytes) {
   // It inherits the freed time.
   new_chunk->freed_at_count = c->freed_at_count;
 
+  // It inherits the tag; callers update the in-use piece after splitting.
+  new_chunk->tag = c->tag;
+
+  new_chunk->allocation_annotation.reset();
+
   // Maintain the pointers.
   // c <-> c_neighbor becomes
   // c <-> new_chunk <-> c_neighbor
@@ -684,8 +945,8 @@ void BFCAllocator::SplitChunk(BFCAllocator::ChunkHandle h, size_t num_bytes) {
     c_neighbor->prev = h_new_chunk;
   }
 
-  // Add the newly free chunk to the free bin.
-  InsertFreeChunkIntoBin(h_new_chunk);
+  // Add the newly free chunk to the appropriate free structure.
+  InsertFreeChunk(h_new_chunk);
 }
 
 void BFCAllocator::DeallocateRaw(void* ptr) {
@@ -703,7 +964,7 @@ void BFCAllocator::DeallocateRawInternal(void* ptr) {
     VLOG(2) << "tried to deallocate nullptr";
     return;
   }
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
 
   // Find the chunk from the ptr.
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
@@ -717,14 +978,14 @@ void BFCAllocator::DeallocateRawInternal(void* ptr) {
   MarkFree(h);
 
   // Consider coalescing it.
-  if (timing_counter_) {
-    InsertFreeChunkIntoBin(h);
+  if (ABSL_PREDICT_FALSE(timing_counter_ != nullptr)) {
+    InsertFreeChunk(h);
     timestamped_chunks_.push_back(h);
   } else {
-    InsertFreeChunkIntoBin(TryToCoalesce(h, false));
+    InsertFreeChunk(TryToCoalesce(h, false));
   }
 
-  // TraceMe needs to be added after MarkFree and InsertFreeChunkIntoBin for
+  // TraceMe needs to be added after MarkFree and InsertFreeChunk for
   // correct aggregation stats (bytes_in_use, fragmentation).
   AddTraceMe("MemoryDeallocation", chunk_ptr, req_bytes, alloc_bytes);
 
@@ -733,10 +994,19 @@ void BFCAllocator::DeallocateRawInternal(void* ptr) {
   }
 }
 
+BFCAllocator::ChunkTag BFCAllocator::MergedChunkTag(ChunkTag a,
+                                                    ChunkTag b) const {
+  // Two free holes with the same tag keep that tag (an interior hole still
+  // belongs to its end). Any other combination -- a hole merging with the
+  // central gap, or lower-end and upper-end holes meeting after the gap is
+  // exhausted -- yields a kCentralGap span reusable by either end.
+  return a == b ? a : ChunkTag::kCentralGap;
+}
+
 // Merges h1 and h2 when Chunk(h1)->next is h2 and Chunk(h2)->prev is c1.
 // We merge Chunk(h2) into Chunk(h1).
-void BFCAllocator::Merge(BFCAllocator::ChunkHandle h1,
-                         BFCAllocator::ChunkHandle h2) {
+void BFCAllocator::MergeChunks(BFCAllocator::ChunkHandle h1,
+                               BFCAllocator::ChunkHandle h2) {
   Chunk* c1 = ChunkFromHandle(h1);
   Chunk* c2 = ChunkFromHandle(h2);
   // We can only merge chunks that are not in use.
@@ -761,6 +1031,9 @@ void BFCAllocator::Merge(BFCAllocator::ChunkHandle h1,
   // Set the new size
   c1->size += c2->size;
 
+  // Combine tags: merging with the central gap grows the gap.
+  c1->tag = MergedChunkTag(c1->tag, c2->tag);
+
   // Pick latest free time.
   c1->freed_at_count = std::max(c1->freed_at_count, c2->freed_at_count);
 
@@ -775,13 +1048,52 @@ void BFCAllocator::DeleteChunk(ChunkHandle h) {
   DeallocateChunk(h);
 }
 
-void BFCAllocator::InsertFreeChunkIntoBin(BFCAllocator::ChunkHandle h) {
+void BFCAllocator::InsertFreeChunk(BFCAllocator::ChunkHandle h) {
   Chunk* c = ChunkFromHandle(h);
-  CHECK(!c->in_use() && (c->bin_num == kInvalidBinNum));
+  CHECK(!c->in_use() && (c->bin_num == kInvalidBinNum));  // Crash OK
+  if (c->tag == ChunkTag::kCentralGap) {
+    CHECK_EQ(central_gap_, kInvalidChunkHandle)  // Crash OK
+        << "spatial partitioning expects one central gap";
+    central_gap_ = h;
+    return;
+  }
+  CHECK_NE(c->tag, ChunkTag::kCentralGap);  // Crash OK
   BinNum bin_num = BinNumForSize(c->size);
   Bin* new_bin = BinFromIndex(bin_num);
   c->bin_num = bin_num;
   new_bin->free_chunks.insert(h);
+}
+
+void BFCAllocator::RemoveFreeChunk(BFCAllocator::ChunkHandle h) {
+  Chunk* c = ChunkFromHandle(h);
+  CHECK(!c->in_use());  // Crash OK
+  if (c->tag == ChunkTag::kCentralGap && c->bin_num == kInvalidBinNum) {
+    CHECK_EQ(central_gap_, h);  // Crash OK
+    central_gap_ = kInvalidChunkHandle;
+    return;
+  }
+  RemoveFreeChunkFromBin(h);
+}
+
+void BFCAllocator::ReturnBoundaryChunkToGap(BFCAllocator::ChunkHandle h) {
+  if (ABSL_PREDICT_TRUE(free_chunk_tag_ != ChunkTag::kCentralGap)) {
+    return;
+  }
+  Chunk* c = ChunkFromHandle(h);
+  CHECK(!c->in_use());  // Crash OK
+  if (ABSL_PREDICT_TRUE(c->tag == ChunkTag::kLower)) {
+    ChunkHandle n = c->next;
+    if (n == kInvalidChunkHandle ||
+        ChunkFromHandle(n)->tag != ChunkTag::kLower) {
+      c->tag = ChunkTag::kCentralGap;
+    }
+  } else if (ABSL_PREDICT_FALSE(c->tag == ChunkTag::kUpper)) {
+    ChunkHandle p = c->prev;
+    if (p == kInvalidChunkHandle ||
+        ChunkFromHandle(p)->tag != ChunkTag::kUpper) {
+      c->tag = ChunkTag::kCentralGap;
+    }
+  }
 }
 
 void BFCAllocator::RemoveFreeChunkIterFromBin(
@@ -808,10 +1120,18 @@ void BFCAllocator::MarkFree(BFCAllocator::ChunkHandle h) {
 
   // Mark the chunk as no longer in use.
   c->allocation_id = -1;
+  c->allocation_annotation.reset();
 
-  // Optionally record the free time.
-  if (timing_counter_) {
+  // Optionally record the free time. Timestamped chunks are kept in their
+  // original lower/upper tag until they become safe to merge; otherwise a
+  // pending boundary free could create a second central gap.
+  if (ABSL_PREDICT_FALSE(timing_counter_ != nullptr)) {
     c->freed_at_count = timing_counter_->next();
+  } else {
+    c->freed_at_count = 0;
+  }
+  if (ABSL_PREDICT_TRUE(c->freed_at_count == 0)) {
+    ReturnBoundaryChunkToGap(h);
   }
 
   // Updates the stats.
@@ -829,7 +1149,9 @@ void BFCAllocator::MarkFree(BFCAllocator::ChunkHandle h) {
 BFCAllocator::ChunkHandle BFCAllocator::TryToCoalesce(ChunkHandle h,
                                                       bool ignore_freed_at) {
   Chunk* c = ChunkFromHandle(h);
-  if ((!ignore_freed_at) && c->freed_at_count > 0) return h;
+  if ((!ignore_freed_at) && c->freed_at_count > 0) {
+    return h;
+  }
   ChunkHandle coalesced_chunk = h;
 
   // If the next chunk is free, merge it into c and delete it.
@@ -837,8 +1159,8 @@ BFCAllocator::ChunkHandle BFCAllocator::TryToCoalesce(ChunkHandle h,
     Chunk* n = ChunkFromHandle(c->next);
     if ((n->freed_at_count == 0) || ignore_freed_at) {
       VLOG(4) << "Merging c->next " << n->ptr << " with c " << c->ptr;
-      RemoveFreeChunkFromBin(c->next);
-      Merge(h, c->next);
+      RemoveFreeChunk(c->next);
+      MergeChunks(h, c->next);
     }
   }
 
@@ -848,23 +1170,22 @@ BFCAllocator::ChunkHandle BFCAllocator::TryToCoalesce(ChunkHandle h,
     if ((n->freed_at_count == 0) || ignore_freed_at) {
       VLOG(4) << "Merging c " << c->ptr << " into c->prev " << n->ptr;
       coalesced_chunk = c->prev;
-      RemoveFreeChunkFromBin(c->prev);
-      Merge(c->prev, h);
+      RemoveFreeChunk(c->prev);
+      MergeChunks(c->prev, h);
     }
   }
 
   return coalesced_chunk;
 }
 
-void BFCAllocator::SetSafeFrontier(uint64 count) {
-  uint64 current = safe_frontier_.load(std::memory_order_relaxed);
+void BFCAllocator::SetSafeFrontier(uint64_t count) {
+  uint64_t current = safe_frontier_.load(std::memory_order_relaxed);
   while (count > current) {
     if (safe_frontier_.compare_exchange_strong(current, count)) {
       retry_helper_.NotifyDealloc();
       return;
-    } else {
-      current = safe_frontier_.load(std::memory_order_relaxed);
     }
+    current = safe_frontier_.load(std::memory_order_relaxed);
   }
 }
 
@@ -917,14 +1238,19 @@ bool BFCAllocator::MergeTimestampedChunks(size_t required_bytes) {
     // merged and deallocated in a prior iteration so refetch the handle and
     // retest.
     ChunkHandle h = region_manager_.get_handle(ptr);
-    if (h == kInvalidChunkHandle) continue;
+    if (h == kInvalidChunkHandle) {
+      continue;
+    }
     if (required_bytes == 0 || !satisfied) {
       Chunk* c = ChunkFromHandle(h);
       DCHECK_NE(c->bin_num, kInvalidBinNum);
       DCHECK(!c->in_use());
-      RemoveFreeChunkFromBin(h);
+      RemoveFreeChunk(h);
+      if (c->freed_at_count == 0 || required_bytes > 0) {
+        ReturnBoundaryChunkToGap(h);
+      }
       ChunkHandle new_h = TryToCoalesce(h, (required_bytes > 0));
-      InsertFreeChunkIntoBin(new_h);
+      InsertFreeChunk(new_h);
       if (required_bytes > 0) {
         c = ChunkFromHandle(new_h);
         if (new_h != h && c->freed_at_count > 0) {
@@ -947,7 +1273,7 @@ bool BFCAllocator::TracksAllocationSizes() const { return true; }
 
 size_t BFCAllocator::RequestedSize(const void* ptr) const {
   CHECK(ptr);
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle)
       << "Asked for requested size of pointer we never allocated: " << ptr;
@@ -956,7 +1282,7 @@ size_t BFCAllocator::RequestedSize(const void* ptr) const {
 }
 
 size_t BFCAllocator::AllocatedSize(const void* ptr) const {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle)
       << "Asked for allocated size of pointer we never allocated: " << ptr;
@@ -965,7 +1291,7 @@ size_t BFCAllocator::AllocatedSize(const void* ptr) const {
 }
 
 int64_t BFCAllocator::AllocationId(const void* ptr) const {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle)
       << "Asked for allocation id of pointer we never allocated: " << ptr;
@@ -999,10 +1325,9 @@ void RenderRegion(char* rendered, const size_t resolution,
 
 }  // namespace
 
-string BFCAllocator::RenderOccupancy() {
+std::string BFCAllocator::RenderOccupancy() {
   // Make a buffer for the ASCII-art representation.
   const size_t resolution = 100;
-  char rendered[resolution];
 
   // Compute the total region size to render over
   size_t total_region_size = 0;
@@ -1015,8 +1340,7 @@ string BFCAllocator::RenderOccupancy() {
   }
 
   // Start out with everything empty
-  RenderRegion(rendered, resolution, total_region_size, 0, nullptr, nullptr,
-               total_region_size, '_');
+  std::string rendered(resolution, '_');
 
   size_t region_offset = 0;
   for (const auto& region : region_manager_.regions()) {
@@ -1028,23 +1352,25 @@ string BFCAllocator::RenderOccupancy() {
         // Render the wasted space
         size_t wasted = c->size - c->requested_size;
         if (wasted > 0) {
-          RenderRegion(rendered, resolution, total_region_size,
+          RenderRegion(rendered.data(), resolution, total_region_size,
                        region_offset + c->requested_size, region.ptr(), c->ptr,
                        wasted, 'x');
         }
         // Then the occupied space
-        RenderRegion(rendered, resolution, total_region_size, region_offset,
-                     region.ptr(), c->ptr, c->requested_size, '*');
+        RenderRegion(rendered.data(), resolution, total_region_size,
+                     region_offset, region.ptr(), c->ptr, c->requested_size,
+                     '*');
       }
       h = c->next;
     }
     region_offset += region.memory_size();
   }
 
-  return string(rendered, resolution);
+  return rendered;
 }
 
-void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
+void BFCAllocator::DumpMemoryLog(size_t num_bytes,
+                                 AllocationEnd allocation_end) {
   const std::array<BinDebugInfo, kNumBins> bin_infos = get_bin_debug_info();
   LOG(INFO) << "BFCAllocator dump for " << Name();
   for (BinNum bin_num = 0; bin_num < kNumBins; bin_num++) {
@@ -1089,15 +1415,21 @@ void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
       if (c->in_use()) {
         in_use_by_size[c->size]++;
       }
-      string buf = absl::StrCat((c->in_use() ? "InUse" : "Free "), " at ",
-                                absl::Hex(reinterpret_cast<uint64>(c->ptr)),
-                                " of size ", c->size);
+      std::string buf = absl::StrCat(
+          (c->in_use() ? "InUse" : "Free "), " at ",
+          absl::Hex(absl::bit_cast<uintptr_t>(c->ptr)), " of size ", c->size);
+      absl::StrAppend(&buf, " tag ", c->tag);
 #ifdef TENSORFLOW_MEM_DEBUG
       if (ShouldRecordOpName()) {
         absl::StrAppend(&buf, " by op ", c->op_name, " action_count ",
                         c->action_count, " step ", c->step_id);
       }
 #endif
+      if (c->in_use() && c->allocation_annotation.has_value()) {
+        absl::StrAppend(
+            &buf, " allocation_annotation ",
+            AllocationAnnotationSnapshotDebugString(*c->allocation_annotation));
+      }
       absl::StrAppend(&buf, " next ", c->next);
       if (timing_counter_) {
         absl::StrAppend(&buf, " freed_at_count ", c->freed_at_count);
@@ -1114,22 +1446,64 @@ void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
               << strings::HumanReadableNumBytes(it.first * it.second);
     total_bytes += (it.first * it.second);
   }
+  size_t memory_limit = memory_limit_;
+  size_t pool_bytes = static_cast<size_t>(*stats_.pool_bytes);
+  size_t unallocated_bytes = memory_limit - pool_bytes;
+  size_t free_pool_bytes =
+      pool_bytes - static_cast<size_t>(stats_.bytes_in_use);
+  size_t largest_binned_free_chunk = LargestBinnedFreeChunk();
+  size_t largest_compatible_binned_free_chunk =
+      LargestBinnedFreeChunk(allocation_end);
+  size_t central_gap_bytes = central_gap_ == kInvalidChunkHandle
+                                 ? 0
+                                 : ChunkFromHandle(central_gap_)->size;
+  size_t largest_free_chunk =
+      std::max(largest_binned_free_chunk, central_gap_bytes);
+  size_t largest_compatible_free_chunk =
+      std::max(largest_compatible_binned_free_chunk, central_gap_bytes);
+
   LOG(INFO) << "Sum Total of in-use chunks: "
             << strings::HumanReadableNumBytes(total_bytes);
-  LOG(INFO) << "Total bytes in pool: " << *stats_.pool_bytes
-            << " memory_limit_: " << memory_limit_
-            << " available bytes: " << (memory_limit_ - *stats_.pool_bytes)
-            << " curr_region_allocation_bytes_: "
-            << curr_region_allocation_bytes_;
-  LOG(INFO) << "Stats: \n" << stats_.DebugString();
+  LOG(INFO) << "Allocator memory summary: rounded request "
+            << strings::HumanReadableNumBytes(num_bytes)
+            << ", total free in pool "
+            << strings::HumanReadableNumBytes(free_pool_bytes)
+            << ", largest free chunk usable by " << allocation_end << " end "
+            << strings::HumanReadableNumBytes(largest_compatible_free_chunk)
+            << ", unallocated bytes "
+            << strings::HumanReadableNumBytes(unallocated_bytes)
+            << ", pool size " << strings::HumanReadableNumBytes(pool_bytes)
+            << ", pool limit " << strings::HumanReadableNumBytes(memory_limit);
+  if (central_gap_ != kInvalidChunkHandle) {
+    LOG(INFO) << "Spatial partitioning summary for " << allocation_end
+              << " end: central gap "
+              << strings::HumanReadableNumBytes(central_gap_bytes)
+              << ", largest same-end binned free chunk "
+              << strings::HumanReadableNumBytes(
+                     largest_compatible_binned_free_chunk)
+              << ", largest binned free chunk from any end "
+              << strings::HumanReadableNumBytes(largest_binned_free_chunk)
+              << ". The central gap is shared by lower/upper allocations "
+                 "and is not inserted into a bin.";
+  }
+  LOG(INFO) << "Allocator region growth hint: next region allocation target "
+            << strings::HumanReadableNumBytes(curr_region_allocation_bytes_)
+            << (opts_.allow_growth
+                    ? " (growth enabled)."
+                    : " (growth disabled; fixed-size pool; not an attempted "
+                      "allocation).");
+
+  AllocatorStats stats = stats_;
+  stats.largest_free_block_bytes = static_cast<int64_t>(largest_free_chunk);
+  LOG(INFO) << "Stats: \n" << stats.DebugString();
 }
 
 void BFCAllocator::MaybeWriteMemoryMap() {
   const char* gpu_memory_map_file = std::getenv("TF_BFC_MEMORY_DUMP");
   if (gpu_memory_map_file != nullptr) {
     std::unique_ptr<WritableFile> dump_file;
-    string file_name = absl::StrCat(gpu_memory_map_file, "_", Name(), ".",
-                                    Env::Default()->NowMicros());
+    std::string file_name = absl::StrCat(gpu_memory_map_file, "_", Name(), ".",
+                                         Env::Default()->NowMicros());
     absl::Status status =
         Env::Default()->NewWritableFile(file_name, &dump_file);
     if (!status.ok()) {
@@ -1146,7 +1520,7 @@ void BFCAllocator::MaybeWriteMemoryMap() {
 }
 
 MemoryDump BFCAllocator::RecordMemoryMap() {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   return RecordMemoryMapInternal();
 }
 
@@ -1183,7 +1557,7 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
       const Chunk* c = ChunkFromHandle(h);
       tensorflow::MemChunk* mc = md.add_chunk();
       mc->set_in_use(c->in_use());
-      mc->set_address(reinterpret_cast<uint64>(c->ptr));
+      mc->set_address(absl::bit_cast<uintptr_t>(c->ptr));
       mc->set_size(c->size);
       mc->set_requested_size(c->requested_size);
       mc->set_bin(c->bin_num);
@@ -1217,12 +1591,14 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
 }
 
 std::optional<AllocatorStats> BFCAllocator::GetStats() {
-  absl::MutexLock l(&mutex_);
-  return stats_;
+  absl::MutexLock l(mutex_);
+  AllocatorStats stats = stats_;
+  stats.largest_free_block_bytes = static_cast<int64_t>(LargestFreeChunk());
+  return stats;
 }
 
 bool BFCAllocator::ClearStats() {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   stats_.num_allocs = 0;
   stats_.peak_bytes_in_use = stats_.bytes_in_use;
   stats_.largest_alloc_size = 0;
@@ -1236,6 +1612,12 @@ BFCAllocator::get_bin_debug_info() {
     ChunkHandle h = region_manager_.get_handle(region.ptr());
     while (h != kInvalidChunkHandle) {
       const Chunk* c = ChunkFromHandle(h);
+      if (!c->in_use() && c->tag == ChunkTag::kCentralGap &&
+          c->bin_num == kInvalidBinNum) {
+        CHECK_EQ(central_gap_, h);  // Crash OK
+        h = c->next;
+        continue;
+      }
       BinNum bin_num = BinNumForSize(c->size);
       BinDebugInfo& bin_info = bin_infos[bin_num];
       bin_info.total_bytes_in_bin += c->size;

@@ -191,6 +191,12 @@ tf_proto {
       label: LABEL_OPTIONAL
       type: TYPE_STRING
     }
+    field {
+      name: "online_cost_analysis"
+      number: 36
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
     enum_type {
       name: "MlirBridgeRollout"
       value {

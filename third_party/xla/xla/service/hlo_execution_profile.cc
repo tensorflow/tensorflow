@@ -56,8 +56,7 @@ std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
 
   size_t profile_counters_size = hlo_profile_index_map.total_count();
 
-  std::unique_ptr<HloProfilePrinterData> profile_printer_data =
-      std::make_unique<HloProfilePrinterData>();
+  auto profile_printer_data = std::make_unique<HloProfilePrinterData>();
   profile_printer_data->set_profile_counters_size(profile_counters_size);
   profile_printer_data->mutable_computation_infos()->Reserve(
       hlo_profile_index_map.computation_count());

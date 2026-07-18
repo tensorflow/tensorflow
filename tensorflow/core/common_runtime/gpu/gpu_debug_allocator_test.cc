@@ -13,12 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
+#include <cstdint>
+#include <cstring>
+
+#include "absl/memory/memory.h"
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
-#include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
-
-#include <algorithm>
 #include <vector>
 
 #include "xla/stream_executor/gpu/gpu_init.h"
@@ -31,6 +33,7 @@ limitations under the License.
 #include "xla/tsl/platform/types.h"
 #include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
 #include "tensorflow/core/framework/typed_allocator.h"
 
 namespace tensorflow {
@@ -57,7 +60,8 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_None) {
     memset(&cpu_array[0], 0, cpu_array.size() * sizeof(int64_t));
     int64_t* gpu_array =
         TypedAllocator::Allocate<int64_t>(&a, cpu_array.size(), {});
-    se::DeviceMemory<int64_t> gpu_array_ptr{se::DeviceMemoryBase{gpu_array}};
+    stream_executor::DeviceAddress<int64_t> gpu_array_ptr{
+        stream_executor::DeviceAddressBase{gpu_array}};
     TF_CHECK_OK(stream_exec->SynchronousMemcpyH2D(
         &cpu_array[0], s * sizeof(int64_t), &gpu_array_ptr));
     EXPECT_TRUE(a.CheckHeader(gpu_array));
@@ -85,14 +89,14 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Header) {
           int64_t* gpu_array =
               TypedAllocator::Allocate<int64_t>(&a, cpu_array.size(), {});
 
-          se::DeviceMemory<int64_t> gpu_array_ptr{
-              se::DeviceMemoryBase{gpu_array}};
+          stream_executor::DeviceAddress<int64_t> gpu_array_ptr{
+              stream_executor::DeviceAddressBase{gpu_array}};
           TF_CHECK_OK(stream_exec->SynchronousMemcpyH2D(
               &cpu_array[0], cpu_array.size() * sizeof(int64_t),
               &gpu_array_ptr));
 
-          se::DeviceMemory<int64_t> gpu_hdr_ptr{
-              se::DeviceMemoryBase{gpu_array - 1}};
+          stream_executor::DeviceAddress<int64_t> gpu_hdr_ptr{
+              stream_executor::DeviceAddressBase{gpu_array - 1}};
           // Clobber first word of the header.
           float pi = 3.1417;
           TF_CHECK_OK(stream_exec->SynchronousMemcpyH2D(&pi, sizeof(float),
@@ -122,15 +126,15 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Footer) {
           int64_t* gpu_array =
               TypedAllocator::Allocate<int64_t>(&a, cpu_array.size(), {});
 
-          se::DeviceMemory<int64_t> gpu_array_ptr{
-              se::DeviceMemoryBase{gpu_array}};
+          stream_executor::DeviceAddress<int64_t> gpu_array_ptr{
+              stream_executor::DeviceAddressBase{gpu_array}};
           TF_CHECK_OK(stream_exec->SynchronousMemcpyH2D(
               &cpu_array[0], cpu_array.size() * sizeof(int64_t),
               &gpu_array_ptr));
 
           // Clobber word of the footer.
-          se::DeviceMemory<int64_t> gpu_ftr_ptr{
-              se::DeviceMemoryBase{gpu_array + s}};
+          stream_executor::DeviceAddress<int64_t> gpu_ftr_ptr{
+              stream_executor::DeviceAddressBase{gpu_array + s}};
           float pi = 3.1417;
           TF_CHECK_OK(stream_exec->SynchronousMemcpyH2D(&pi, sizeof(float),
                                                         &gpu_ftr_ptr));
@@ -156,7 +160,8 @@ TEST(GPUDebugAllocatorTest, ResetToNan) {
 
   // Allocate 1024 floats
   float* gpu_array = TypedAllocator::Allocate<float>(&a, cpu_array.size(), {});
-  se::DeviceMemory<float> gpu_array_ptr{se::DeviceMemoryBase{gpu_array}};
+  stream_executor::DeviceAddress<float> gpu_array_ptr{
+      stream_executor::DeviceAddressBase{gpu_array}};
   TF_CHECK_OK(stream_exec->SynchronousMemcpyD2H(
       gpu_array_ptr, cpu_array.size() * sizeof(float), &cpu_array[0]));
   for (float f : cpu_array) {
@@ -200,7 +205,8 @@ TEST(GPUDebugAllocatorTest, ResetToNanWithHeaderFooter) {
 
   // Allocate 1024 floats
   float* gpu_array = TypedAllocator::Allocate<float>(&a, cpu_array.size(), {});
-  se::DeviceMemory<float> gpu_array_ptr{se::DeviceMemoryBase{gpu_array}};
+  stream_executor::DeviceAddress<float> gpu_array_ptr{
+      stream_executor::DeviceAddressBase{gpu_array}};
   TF_CHECK_OK(stream_exec->SynchronousMemcpyD2H(
       gpu_array_ptr, cpu_array.size() * sizeof(float), &cpu_array[0]));
   for (float f : cpu_array) {

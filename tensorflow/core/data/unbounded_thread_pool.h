@@ -35,9 +35,9 @@ namespace data {
 // `UnboundedWorkQueue`.
 class UnboundedThreadPool : public thread::ThreadPoolInterface {
  public:
-  UnboundedThreadPool(Env* env, const string& thread_name)
+  UnboundedThreadPool(Env* env, const std::string& thread_name)
       : unbounded_work_queue_(env, thread_name) {}
-  UnboundedThreadPool(Env* env, const string& thread_name,
+  UnboundedThreadPool(Env* env, const std::string& thread_name,
                       const ThreadOptions& thread_options)
       : unbounded_work_queue_(env, thread_name, thread_options) {}
   ~UnboundedThreadPool() override = default;

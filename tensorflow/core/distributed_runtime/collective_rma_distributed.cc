@@ -39,9 +39,9 @@ namespace {
 
 class RecvBufCall : public CancellableCall {
  public:
-  RecvBufCall(int64_t step_id, const string& peer_device,
-              const string& peer_task, const string& key, Device* to_device,
-              DeviceContext* to_device_ctx,
+  RecvBufCall(int64_t step_id, const std::string& peer_device,
+              const std::string& peer_task, const std::string& key,
+              Device* to_device, DeviceContext* to_device_ctx,
               const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
               const DeviceLocality& client_locality,
               const DeviceAttributes& server_attributes,
@@ -83,9 +83,12 @@ absl::Status PopulateTensorFromResponse(const RecvBufResponse& response,
                                         Tensor* cpu_tensor) {
   const bool has_transport_options = response.has_transport_options();
 
-  // If there are no transport options, then the tensor has already been
-  // copied into request.buf_ptr.
-  if (!has_transport_options) return absl::OkStatus();
+  if (!has_transport_options) {
+    // If transport_options is missing, it means the peer has already
+    // copied the tensor content into the buffer pointed to by
+    // RecvBufRequest::buf_ptr, so there is nothing to do here.
+    return absl::OkStatus();
+  }
 
   const int64_t total_bytes = cpu_tensor->TotalBytes();
   int64_t num_bytes = 0;
@@ -96,9 +99,9 @@ absl::Status PopulateTensorFromResponse(const RecvBufResponse& response,
   }
 
   if (num_bytes != total_bytes) {
-    return errors::Internal("Tensor Size Mismatch: RecvBufResponse returned ",
-                            num_bytes,
-                            " bytes, expected: ", cpu_tensor->TotalBytes());
+    return absl::InternalError(absl::StrCat(
+        "Tensor Size Mismatch: RecvBufResponse returned ", num_bytes,
+        " bytes, expected: ", cpu_tensor->TotalBytes()));
   }
   PopulateTensorFromExtra(extra, cpu_tensor);
   return absl::OkStatus();
@@ -107,11 +110,12 @@ absl::Status PopulateTensorFromResponse(const RecvBufResponse& response,
 }  // namespace
 
 void CollectiveRemoteAccessDistributed::RecvFromPeer(
-    const string& peer_device, const string& peer_task, bool peer_is_local,
-    const string& key, Device* to_device, DeviceContext* to_device_ctx,
-    const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
-    const DeviceLocality& client_locality, int dev_to_dev_stream_index,
-    CancellationManager* cancellation_manager, const StatusCallback& done) {
+    const std::string& peer_device, const std::string& peer_task,
+    bool peer_is_local, const std::string& key, Device* to_device,
+    DeviceContext* to_device_ctx, const AllocatorAttributes& to_alloc_attr,
+    Tensor* to_tensor, const DeviceLocality& client_locality,
+    int dev_to_dev_stream_index, CancellationManager* cancellation_manager,
+    const StatusCallback& done) {
   if (peer_is_local) {
     CollectiveRemoteAccessLocal::RecvFromPeer(
         peer_device, peer_task, peer_is_local, key, to_device, to_device_ctx,
@@ -220,7 +224,7 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
   bool already_aborted = !abortion_cancel_mgr_.RegisterCallback(
       abortion_token, [state] { state->call->Cancel(); });
   if (already_aborted) {
-    recv_buf_callback(errors::Cancelled("collective ops already aborted"));
+    recv_buf_callback(absl::CancelledError("collective ops already aborted"));
   } else {
     state->call->Start(
         [this, abortion_token,
@@ -232,7 +236,7 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
 }
 
 void CollectiveRemoteAccessDistributed::CheckPeerHealth(
-    const string& peer_task, int64_t timeout_in_ms,
+    const std::string& peer_task, int64_t timeout_in_ms,
     const StatusCallback& done) {
   if (peer_task == task_name_) {
     // Fast path if the peer is the worker itself.
@@ -245,9 +249,10 @@ void CollectiveRemoteAccessDistributed::CheckPeerHealth(
   // attributes.
   WorkerInterface* wi = worker_cache_->GetOrCreateWorker(peer_task);
   if (wi == nullptr) {
-    done(errors::InvalidArgument(peer_task,
-                                 " not found. It's probably invalid. The "
-                                 "valid form is /job:xxx/replica:0/task:N"));
+    done(absl::InvalidArgumentError(
+        absl::StrCat(peer_task,
+                     " not found. It's probably invalid. The "
+                     "valid form is /job:xxx/replica:0/task:N")));
     return;
   }
   auto opts = new CallOptions();
@@ -265,16 +270,16 @@ void CollectiveRemoteAccessDistributed::CheckPeerHealth(
           s = dev_resolver_->GetAllDeviceAttributes(peer_task, &cached_attrs);
         }
         if (s.ok()) {
-          absl::flat_hash_set<uint64> remote_incarnations;
+          absl::flat_hash_set<uint64_t> remote_incarnations;
           for (const DeviceAttributes& da : resp->device_attributes()) {
             remote_incarnations.insert(da.incarnation());
           }
           for (const DeviceAttributes& attr : cached_attrs) {
             if (!remote_incarnations.contains(attr.incarnation())) {
-              s = errors::FailedPrecondition(
+              s = absl::FailedPreconditionError(absl::StrCat(
                   attr.name(), " with incarnation ", attr.incarnation(),
                   " is not available. This usually means ", peer_task,
-                  " has restarted");
+                  " has restarted"));
               break;
             }
           }

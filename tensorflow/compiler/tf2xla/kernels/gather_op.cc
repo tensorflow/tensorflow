@@ -15,10 +15,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -175,11 +177,11 @@ absl::Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
   if (context->num_inputs() == 3) {
     const TensorShape axis_shape = context->InputShape(2);
     if (!TensorShapeUtils::IsScalar(axis_shape)) {
-      return errors::InvalidArgument("axis must be scalar");
+      return absl::InvalidArgumentError("axis must be scalar");
     }
     DataType axis_type = context->input_type(2);
     if (axis_type != DT_INT32 && axis_type != DT_INT64) {
-      return errors::InvalidArgument("axis must be int32 or int64");
+      return absl::InvalidArgumentError("axis must be int32 or int64");
     }
 
     int64_t axis_input;
@@ -190,9 +192,9 @@ absl::Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
       // Check that params has rank of at least axis + 1.
       const auto min_params_rank =
           axis_input < 0 ? -axis_input : axis_input + 1;
-      return errors::InvalidArgument("Shape must be at least rank ",
-                                     min_params_rank, " but is rank ",
-                                     params_dims);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Shape must be at least rank ", min_params_rank,
+                       " but is rank ", params_dims));
     }
     if (axis_input < 0) {
       axis_input += params_dims;
@@ -209,21 +211,21 @@ absl::Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
 
     if (batch_dims < -indices_shape.dims() ||
         batch_dims > indices_shape.dims()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Expected batch_dims in the range [", -indices_shape.dims(), ", ",
-          indices_shape.dims(), "], but got ", batch_dims);
+          indices_shape.dims(), "], but got ", batch_dims));
     }
 
     if (batch_dims >= input_shape.dims()) {
-      return errors::InvalidArgument("batch_dims (", batch_dims,
-                                     ") must be less than rank(input) (",
-                                     input_shape.dims(), ").");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "batch_dims (", batch_dims, ") must be less than rank(input) (",
+          input_shape.dims(), ")."));
     }
 
     if (*axis < batch_dims) {
-      return errors::InvalidArgument("batch_dims (", batch_dims,
-                                     ") must be less than or equal to ",
-                                     "axis (", *axis, ").");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "batch_dims (", batch_dims, ") must be less than or equal to ",
+          "axis (", *axis, ")."));
     }
   }
 
@@ -231,7 +233,7 @@ absl::Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
   DataType index_type = context->input_type(1);
   if (index_type != DT_INT16 && index_type != DT_INT32 &&
       index_type != DT_INT64) {
-    return errors::InvalidArgument("indices must be int16, int32, or int64");
+    return absl::InvalidArgumentError("indices must be int16, int32, or int64");
   }
 
   xla::XlaOp gather;
@@ -275,7 +277,7 @@ class GatherOp : public XlaOpKernel {
 
   // The number of batch dimensions, as passed in the batch_dims attribute.
   // It must be less than or equal to rank(indices).
-  int32 batch_dims_ = 0;
+  int32_t batch_dims_ = 0;
 };
 
 REGISTER_XLA_OP(Name("Gather"), MlirXlaOpKernel);
@@ -283,7 +285,12 @@ REGISTER_XLA_OP(Name("GatherV2").CompileTimeConstantInput("axis"), GatherOp);
 
 class GatherNdOp : public XlaOpKernel {
  public:
-  explicit GatherNdOp(OpKernelConstruction* context) : XlaOpKernel(context) {}
+  explicit GatherNdOp(OpKernelConstruction* context) : XlaOpKernel(context) {
+    if (context->HasAttr("bad_indices_policy")) {
+      OP_REQUIRES_OK(context, context->GetAttr("bad_indices_policy",
+                                               &bad_indices_policy_));
+    }
+  }
 
   void Compile(XlaOpKernelContext* context) override {
     DataType params_type = context->input_type(0);
@@ -292,17 +299,18 @@ class GatherNdOp : public XlaOpKernel {
     TensorShape params_shape = context->InputShape(0);
     TensorShape indices_shape = context->InputShape(1);
     OP_REQUIRES(context, TensorShapeUtils::IsVectorOrHigher(params_shape),
-                errors::InvalidArgument("params must be at least a vector"));
-    OP_REQUIRES(context, TensorShapeUtils::IsVectorOrHigher(indices_shape),
-                errors::InvalidArgument("indices must be at least a vector"));
+                absl::InvalidArgumentError("params must be at least a vector"));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsVectorOrHigher(indices_shape),
+        absl::InvalidArgumentError("indices must be at least a vector"));
     const int64_t num_index_dims =
         indices_shape.dim_size(indices_shape.dims() - 1);
     OP_REQUIRES(
         context, num_index_dims <= params_shape.dims(),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "index innermost dimension length must be <= params rank; saw: ",
             indices_shape.dim_size(indices_shape.dims() - 1), " vs. ",
-            params_shape.dims()));
+            params_shape.dims())));
 
     xla::XlaBuilder* builder = context->builder();
     auto params = context->Input(0);
@@ -312,8 +320,60 @@ class GatherNdOp : public XlaOpKernel {
                                       indices_shape, /*axis=*/0,
                                       /*indices_are_nd=*/true, params_type,
                                       indices_type, builder, &gather));
+    // By default, XLA clips OOB indices, while "IGNORE" policy demands to fill
+    // 0s to the output. The following code implements the "IGNORE" policy by
+    // masking the gather result with the valid indices mask.
+    if (bad_indices_policy_ == "IGNORE") {
+      xla::XlaOp valid_mask;
+      for (int i = 0; i < num_index_dims; ++i) {
+        xla::XlaOp i_limit = XlaHelpers::IntegerLiteral(
+            builder, indices_type, params_shape.dim_size(i));
+        xla::XlaOp i_zero = XlaHelpers::Zero(builder, indices_type);
+        xla::XlaOp indices_i =
+            xla::SliceInDim(indices, i, i + 1, 1, indices_shape.dims() - 1);
+
+        xla::XlaOp indices_i_good =
+            xla::And(xla::Ge(indices_i, i_zero), xla::Lt(indices_i, i_limit));
+        if (i == 0) {
+          valid_mask = indices_i_good;
+        } else {
+          valid_mask = xla::And(valid_mask, indices_i_good);
+        }
+      }
+      auto gather_shape_status = builder->GetShape(gather);
+      OP_REQUIRES_OK(context, gather_shape_status.status());
+      auto gather_shape = gather_shape_status.value();
+
+      // The last dim of indices tensor is the index vector dimension, which is
+      // omitted from the gather tensor.
+      auto valid_mask_dims = indices_shape.dim_sizes();
+      valid_mask_dims.pop_back();
+      valid_mask = xla::Reshape(valid_mask, valid_mask_dims);
+      if (indices_shape.dims() != gather_shape.dimensions().size()) {
+        OP_REQUIRES(
+            context,
+            gather_shape.dimensions().size() == indices_shape.dims() - 1,
+            absl::InvalidArgumentError(
+                "Indices rank must be equal to output rank (with channel "
+                "dimension) or 1 less (w/o channel dimension)"));
+      } else {
+        std::vector<int64_t> broadcast_dims(valid_mask_dims.size(), 1);
+        for (int i = 0; i < broadcast_dims.size(); ++i) {
+          broadcast_dims[i] = i;
+        }
+        valid_mask = xla::BroadcastInDim(valid_mask, gather_shape.dimensions(),
+                                         broadcast_dims);
+      }
+
+      gather =
+          xla::Select(valid_mask, gather,
+                      xla::Broadcast(XlaHelpers::Zero(builder, params_type),
+                                     gather_shape.dimensions()));
+    }
     context->SetOutput(0, gather);
   }
+
+  std::string bad_indices_policy_;
 };
 
 REGISTER_XLA_OP(Name("GatherNd"), GatherNdOp);

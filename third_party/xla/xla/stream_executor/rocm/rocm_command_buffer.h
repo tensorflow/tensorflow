@@ -30,7 +30,7 @@ limitations under the License.
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -45,6 +45,8 @@ class RocmCommandBuffer : public GpuCommandBuffer {
   // Creates a new ROCm command buffer and the underlying HIP graph.
   static absl::StatusOr<std::unique_ptr<RocmCommandBuffer>> Create(
       Mode mode, StreamExecutor* executor);
+
+  std::string ToString() const override;
 
   ~RocmCommandBuffer() override;
 
@@ -61,23 +63,23 @@ class RocmCommandBuffer : public GpuCommandBuffer {
 
   absl::StatusOr<GraphNodeHandle> CreateSetCaseConditionNode(
       absl::Span<const GraphConditionalHandle> conditionals,
-      DeviceMemory<uint8_t> index, bool index_is_bool, int32_t batch_offset,
+      DeviceAddress<uint8_t> index, bool index_is_bool, int32_t batch_offset,
       bool enable_conditional_default,
       absl::Span<const GraphNodeHandle> dependencies) override;
 
   absl::Status UpdateSetCaseConditionNode(
       GraphNodeHandle handle,
       absl::Span<const GraphConditionalHandle> conditionals,
-      DeviceMemory<uint8_t> index, bool index_is_bool, int32_t batch_offset,
+      DeviceAddress<uint8_t> index, bool index_is_bool, int32_t batch_offset,
       bool enable_conditional_default) override;
 
   absl::StatusOr<GraphNodeHandle> CreateSetWhileConditionNode(
-      GraphConditionalHandle conditional, DeviceMemory<bool> predicate,
+      GraphConditionalHandle conditional, DeviceAddress<bool> predicate,
       absl::Span<const GraphNodeHandle> dependencies) override;
 
   absl::Status UpdateSetWhileConditionNode(
       GraphNodeHandle handle, GraphConditionalHandle conditional,
-      DeviceMemory<bool> predicate) override;
+      DeviceAddress<bool> predicate) override;
 
   //===--------------------------------------------------------------------===//
 
@@ -87,42 +89,46 @@ class RocmCommandBuffer : public GpuCommandBuffer {
 
   absl::StatusOr<GraphNodeHandle> CreateMemsetNode(
       absl::Span<const GraphNodeHandle> dependencies,
-      DeviceMemoryBase destination, BitPattern bit_pattern,
+      DeviceAddressBase destination, BitPattern bit_pattern,
       size_t num_elements) override;
 
   absl::Status UpdateMemsetNode(GraphNodeHandle node_handle,
-                                DeviceMemoryBase destination,
+                                DeviceAddressBase destination,
                                 BitPattern bit_pattern,
                                 size_t num_elements) override;
 
   absl::StatusOr<GraphNodeHandle> CreateMemcpyD2DNode(
       absl::Span<const GraphNodeHandle> dependencies,
-      DeviceMemoryBase destination, DeviceMemoryBase source,
+      DeviceAddressBase destination, DeviceAddressBase source,
       uint64_t size) override;
 
   absl::Status UpdateMemcpyD2DNode(GraphNodeHandle node_handle,
-                                   DeviceMemoryBase destination,
-                                   DeviceMemoryBase source,
+                                   DeviceAddressBase destination,
+                                   DeviceAddressBase source,
                                    uint64_t size) override;
 
   absl::Status PopulateDnnGraphNode(
-      dnn::DnnGraph&, Stream&, absl::Span<DeviceMemoryBase> operands) override {
+      dnn::DnnGraph&, Stream&,
+      absl::Span<DeviceAddressBase> operands) override {
     return absl::UnimplementedError("Not implemented.");
   }
 
   absl::Status UpdateDnnGraphNode(dnn::DnnGraph&, Stream&,
-                                  absl::Span<DeviceMemoryBase> operands,
+                                  absl::Span<DeviceAddressBase> operands,
                                   GraphNodeHandle) override {
     return absl::UnimplementedError("Not implemented.");
   }
 
-  absl::StatusOr<GraphNodeHandle> CreateChildNode(
-      ChildCommandType type, absl::Span<const GraphNodeHandle> dependencies,
-      CommandBuffer& nested) override;
+  absl::StatusOr<GraphNodeHandle> CreateClonedChildNode(
+      absl::Span<const GraphNodeHandle> dependencies,
+      const CommandBuffer& nested) override;
 
-  absl::Status UpdateChildNode(ChildCommandType type,
-                               GraphNodeHandle node_handle,
-                               const CommandBuffer& nested) override;
+  absl::StatusOr<GraphNodeHandle> CreateMovedChildNode(
+      absl::Span<const GraphNodeHandle> dependencies,
+      CommandBuffer* nested) override;
+
+  absl::Status UpdateClonedChildNode(GraphNodeHandle node_handle,
+                                     const CommandBuffer& nested) override;
 
   absl::StatusOr<GraphNodeHandle> CreateKernelNode(
       absl::Span<const GraphNodeHandle> dependencies, StreamPriority priority,
@@ -137,15 +143,21 @@ class RocmCommandBuffer : public GpuCommandBuffer {
   absl::StatusOr<GraphNodeHandle> CreateEmptyNode(
       absl::Span<const GraphNodeHandle> dependencies) override;
 
-  absl::Status Trace(Stream* stream,
-                     absl::AnyInvocable<absl::Status()> function) override;
+  absl::Status Trace(
+      Stream* stream,
+      absl::AnyInvocable<absl::Status(Stream* stream)> function) override;
 
   absl::Status LaunchGraph(Stream* stream) override;
 
   absl::StatusOr<size_t> GetNodeCount() const override;
 
   absl::Status SetPriority(StreamPriority priority) override {
-    return absl::UnimplementedError("Not implemented.");
+    // HIP does not expose an API to set per-node priority on graph kernel nodes
+    // (no equivalent of cuGraphKernelNodeSetAttribute with
+    // CU_LAUNCH_ATTRIBUTE_PRIORITY). Silently ignore priority requests so that
+    // collectives (which use StreamPriority::Highest) can be captured into HIP
+    // graphs without crashing.
+    return absl::OkStatus();
   }
 
   absl::Status PrepareFinalization() override;

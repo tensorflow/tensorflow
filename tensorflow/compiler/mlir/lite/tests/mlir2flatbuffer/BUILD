@@ -1,7 +1,7 @@
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
-# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:LICENSE"])
 
 licenses(["notice"])
 

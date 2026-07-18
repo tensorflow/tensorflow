@@ -16,15 +16,8 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSFORMS_COLLECTIVES_ALL_GATHER_CSE_H_
 #define XLA_HLO_TRANSFORMS_COLLECTIVES_ALL_GATHER_CSE_H_
 
-#include <cstdint>
-#include <tuple>
-
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/hlo_cse.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -49,18 +42,11 @@ namespace xla {
 //      some_computation.1 = compute(all-gather.0)
 //      some_computation.2 = compute(all-gather.0)
 //  }
-class AllGatherCSE : public HloModulePass {
+class AllGatherCSE : public HloCSE {
  public:
+  AllGatherCSE();
+  ~AllGatherCSE() override = default;
   absl::string_view name() const override { return "all-gather-cse"; }
-
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  std::tuple<HloInstruction*, int64_t, PrimitiveType> FindRawParameter(
-      HloInstruction* instruction);
 };
 
 }  // namespace xla

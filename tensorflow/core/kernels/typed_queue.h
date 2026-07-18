@@ -34,7 +34,7 @@ class TypedQueue : public QueueBase {
  public:
   TypedQueue(const int32_t capacity, const DataTypeVector& component_dtypes,
              const std::vector<TensorShape>& component_shapes,
-             const string& name);
+             const std::string& name);
 
   virtual absl::Status Initialize();  // Must be called before any other method.
 
@@ -47,7 +47,7 @@ class TypedQueue : public QueueBase {
 template <typename SubQueue>
 TypedQueue<SubQueue>::TypedQueue(
     int32_t capacity, const DataTypeVector& component_dtypes,
-    const std::vector<TensorShape>& component_shapes, const string& name)
+    const std::vector<TensorShape>& component_shapes, const std::string& name)
     : QueueBase(capacity, component_dtypes, component_shapes, name) {}
 
 template <typename SubQueue>

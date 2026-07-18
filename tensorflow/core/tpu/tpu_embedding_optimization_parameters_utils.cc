@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
@@ -192,11 +193,11 @@ absl::Status GetBaseAuxiliaryParameterCount(
 
       if ((num_inputs < 2) || ((num_inputs != num_outputs + 1) &&
                                (num_inputs != num_outputs + 2))) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "User-defined TPU embedding optimizer program must have at least "
             "two inputs and the number of outputs must be 1 or 2 less than the "
             "number of inputs. Received ",
-            num_inputs, " input(s) and ", num_outputs, "output(s).");
+            num_inputs, " input(s) and ", num_outputs, "output(s)."));
       }
 
       *count = num_outputs - 1;
@@ -207,9 +208,9 @@ absl::Status GetBaseAuxiliaryParameterCount(
       *count = 0;
       return absl::OkStatus();
     case OptimizationAlgorithm::PARAMETERS_NOT_SET:
-      return errors::InvalidArgument("No optimization algorithm specified");
+      return absl::InvalidArgumentError("No optimization algorithm specified");
   }
-  return errors::InvalidArgument("No optimization algorithm specified");
+  return absl::InvalidArgumentError("No optimization algorithm specified");
 }
 
 absl::Status GetGradientAccumulationSupport(
@@ -244,7 +245,7 @@ absl::Status UseGradientAccumulation(const OptimizationParameters& params,
       break;
     }
     default:
-      return errors::Internal(
+      return absl::InternalError(
           absl::StrCat("Unsupported gradient accumulation status ",
                        GradientAccumulationStatus_Status_Name(
                            params.gradient_accumulation_status())));
@@ -256,7 +257,7 @@ absl::Status UseGradientAccumulation(const OptimizationParameters& params,
     }
     case GradientAccumulationSupport::kNotSupported: {
       if (raw_gradient_accumulation_status) {
-        return errors::InvalidArgument(strings::Printf(
+        return absl::InvalidArgumentError(absl::StrFormat(
             "Optimization algorithm %s does not support gradient accumulation "
             "but parameters specify it.",
             GetOptimizationAlgorithmName(params.parameters_case()).c_str()));
@@ -397,7 +398,7 @@ absl::Status GetOptimizationAlgorithmStateVariables(
       break;
     }
     case OptimizationAlgorithm::PARAMETERS_NOT_SET: {
-      return errors::InvalidArgument("No optimization algorithm specified");
+      return absl::InvalidArgumentError("No optimization algorithm specified");
     }
   }
 
@@ -411,11 +412,11 @@ absl::Status GetOptimizationAlgorithmStateVariables(
   }
 
   if (state_variables->size() > kMaxAuxiliaryParameterCount + 1) {
-    return errors::InvalidArgument(
-        "Optimization algorithm",
-        GetOptimizationAlgorithmName(params.parameters_case()),
-        "does not support gradient accumulation because it "
-        "already has too many other accumulators");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Optimization algorithm",
+                     GetOptimizationAlgorithmName(params.parameters_case()),
+                     "does not support gradient accumulation because it "
+                     "already has too many other accumulators"));
   }
   return absl::OkStatus();
 }
@@ -475,11 +476,11 @@ absl::Status LoadOpShapeFunction::operator()(
     shape_inference::InferenceContext* c) const {
   int table_id;
   TF_RETURN_IF_ERROR(c->GetAttr("table_id", &table_id));
-  string table_name;
+  std::string table_name;
   TF_RETURN_IF_ERROR(c->GetAttr("table_name", &table_name));
   // Exactly one must be non-default.
   if ((table_id >= 0) == (!table_name.empty())) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "exactly one of table_id or table_name must be non-default");
   }
   int num_shards;
@@ -505,11 +506,11 @@ absl::Status RetrieveOpShapeFunction::operator()(
     shape_inference::InferenceContext* c) const {
   int table_id;
   TF_RETURN_IF_ERROR(c->GetAttr("table_id", &table_id));
-  string table_name;
+  std::string table_name;
   TF_RETURN_IF_ERROR(c->GetAttr("table_name", &table_name));
   // Exactly one must be non-default.
   if ((table_id >= 0) == (!table_name.empty())) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "exactly one of table_id or table_name must be non-default");
   }
   int num_shards;

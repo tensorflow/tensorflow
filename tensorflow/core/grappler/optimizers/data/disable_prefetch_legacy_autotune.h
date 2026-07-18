@@ -30,7 +30,9 @@ class DisablePrefetchLegacyAutotune : public TFDataOptimizerBase {
   DisablePrefetchLegacyAutotune() = default;
   ~DisablePrefetchLegacyAutotune() override = default;
 
-  string name() const override { return "disable_prefetch_legacy_autotune"; };
+  std::string name() const override {
+    return "disable_prefetch_legacy_autotune";
+  };
 
   bool UsesFunctionLibrary() const override { return false; }
 
@@ -38,14 +40,15 @@ class DisablePrefetchLegacyAutotune : public TFDataOptimizerBase {
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     if (!config) return absl::OkStatus();
 
-    const string& autotune = config->parameter_map().at(kAutotune).s();
+    const std::string& autotune = config->parameter_map().at(kAutotune).s();
     if (autotune == "true") {
       autotune_ = true;
     } else if (autotune == "false") {
       autotune_ = false;
     } else {
-      return errors::InvalidArgument("Received an invalid value for parameter ",
-                                     kAutotune, ": ", autotune);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Received an invalid value for parameter ", kAutotune,
+                       ": ", autotune));
     }
     return absl::OkStatus();
   }

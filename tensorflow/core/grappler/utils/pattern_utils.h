@@ -126,13 +126,13 @@ enum class NodeStatus { kRemain, kRemove, kReplace };
 // TODO (intel-tf): Support multiple roots by making them children of a single
 // virtual root.
 struct OpTypePattern {
-  string op;
-  string label;
+  std::string op;
+  std::string label;
   NodeStatus node_status;
   std::vector<OpTypePattern> children;
 
-  string DebugString() const {
-    string result = "{(op: " + op + ", " + "label: " + label + "), {";
+  std::string DebugString() const {
+    std::string result = "{(op: " + op + ", " + "label: " + label + "), {";
     for (const OpTypePattern& child : children) {
       result += child.DebugString() + ",";
     }
@@ -148,8 +148,8 @@ struct NodeViewMatch {
   MutableNodeView* node_view = nullptr;
   std::vector<NodeViewMatch> children;
 
-  string DebugString() const {
-    string result = "{";
+  std::string DebugString() const {
+    std::string result = "{";
     if (node_view == nullptr) {
       result += "Non-Matched-Node}";
       return result;
@@ -183,14 +183,14 @@ class SubGraphMatcher {
   // If a given pattern is matched, this function returns true as well as the
   // matched node and remove node info is populated.
   bool GetMatchedNodes(const OpTypePattern& pattern,
-                       const std::unordered_set<string>& nodes_to_preserve,
+                       const std::unordered_set<std::string>& nodes_to_preserve,
                        MutableNodeView* node_view,
-                       std::map<string, int>* matched_nodes_map,
+                       std::map<std::string, int>* matched_nodes_map,
                        std::set<int>* remove_node_indices);
 
  private:
   MutableGraphView* graph_view_;
-  std::map<string, int> node_label_to_index_;
+  std::map<std::string, int> node_label_to_index_;
   std::set<int> matched_node_indices_;
   std::set<int> remove_node_indices_;
   std::unique_ptr<NodeViewMatch> match_ = nullptr;
@@ -203,11 +203,11 @@ class SubGraphMatcher {
   // It performs a sanity check if the candidate nodes for removal in subgraph
   // fusion is indeed safe to remove.
   bool IsSafeNodesToRemove(
-      const std::unordered_set<string>& nodes_to_preserve) {
+      const std::unordered_set<std::string>& nodes_to_preserve) {
     for (const auto& node_idx : remove_node_indices_) {
       auto node_view = graph_view_->GetNode(node_idx);
       // Check if the node to be removed is in the nodes to be preserved.
-      string node_name = node_view->GetName();
+      std::string node_name = node_view->GetName();
       if (nodes_to_preserve.count(node_name) > 0) return false;
       // Traverse all the Regular Fanouts. Fanouts are stored as vector of
       // vector, std::vector<std::vector<MutableFaninView>>. Note that
@@ -234,8 +234,8 @@ bool SubGraphMatcher<MatchingDirection::kFollowInputs>::DoesOpTypePatternMatch(
 template <>
 bool SubGraphMatcher<MatchingDirection::kFollowInputs>::GetMatchedNodes(
     const OpTypePattern& pattern,
-    const std::unordered_set<string>& nodes_to_preserve,
-    MutableNodeView* node_view, std::map<string, int>* matched_nodes_map,
+    const std::unordered_set<std::string>& nodes_to_preserve,
+    MutableNodeView* node_view, std::map<std::string, int>* matched_nodes_map,
     std::set<int>* remove_node_indices);
 
 }  // namespace utils

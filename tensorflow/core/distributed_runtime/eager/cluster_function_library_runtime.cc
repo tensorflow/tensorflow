@@ -28,10 +28,19 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_def_util.h"
+#include "tensorflow/core/lib/monitoring/sampler.h"
 
 namespace tensorflow {
 namespace eager {
 namespace {
+
+auto* enqueue_request_size_metric = ::tensorflow::monitoring::Sampler<1>::New(
+    {"/tensorflow/distributed_runtime/eager/enqueue_request_size",
+     "The size of EnqueueRequest protos sent by "
+     "EagerClusterFunctionLibraryRuntime in bytes.",
+     "phase"},
+    ::tensorflow::monitoring::Buckets::Exponential(1, 1.12, 250));
+
 void StripDefaultAttributesInRegisterFunctionOp(
     RegisterFunctionOp* register_function) {
   StripDefaultAttributes(
@@ -45,7 +54,7 @@ void StripDefaultAttributesInRegisterFunctionOp(
 }  // namespace
 
 void EagerClusterFunctionLibraryRuntime::Instantiate(
-    const string& function_name, const FunctionLibraryDefinition& lib_def,
+    const std::string& function_name, const FunctionLibraryDefinition& lib_def,
     AttrSlice attrs, const FunctionLibraryRuntime::InstantiateOptions& options,
     FunctionLibraryRuntime::LocalHandle* handle,
     FunctionLibraryRuntime::DoneCallback done) {
@@ -58,7 +67,8 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
     return;
   }
   if (!released_op->is_function()) {
-    done(errors::Internal(function_name, " is not a function."));
+    done(absl::InternalError(
+        absl::StrCat(function_name, " is not a function.")));
     return;
   }
 
@@ -72,8 +82,8 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
   }
 
   if (eager_client == nullptr) {
-    done(errors::InvalidArgument("Could not find eager client for target: ",
-                                 target));
+    done(absl::InvalidArgumentError(
+        absl::StrCat("Could not find eager client for target: ", target)));
     return;
   }
 
@@ -100,18 +110,21 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
     auto iter =
         fdef_attrs.find(FunctionLibraryDefinition::kFunctionRunsAtMostOnce);
     if (iter == fdef_attrs.end()) {
-      done(errors::Internal("Missing function_runs_at_most_once attribute."));
+      done(
+          absl::InternalError("Missing function_runs_at_most_once attribute."));
       return;
     }
     if (!iter->second.b()) {
       done(
-          errors::Internal("Unexpected `false` value for "
-                           "function_runs_at_most_once attribute."));
+          absl::InternalError("Unexpected `false` value for "
+                              "function_runs_at_most_once attribute."));
       return;
     }
   }
 
   const absl::optional<std::vector<int>>& ret_indices = options.ret_indices;
+  enqueue_request_size_metric->GetCell("instantiate")
+      ->Add(request->ByteSizeLong());
   eager_client->EnqueueAsync(
       /*call_opts=*/nullptr, request.get(), response.get(),
       [this, request, response, handle, released_op = released_op.release(),
@@ -145,8 +158,8 @@ void EagerClusterFunctionLibraryRuntime::Run(
               rets->push_back(std::get<Tensor>(t));
             } else {
               status.Update(
-                  errors::Internal("Expect a Tensor as a remote function "
-                                   "output but got a TensorShape."));
+                  absl::InternalError("Expect a Tensor as a remote function "
+                                      "output but got a TensorShape."));
               break;
             }
           }
@@ -170,13 +183,13 @@ void EagerClusterFunctionLibraryRuntime::Run(
 
   EagerClient* eager_client = function_data->eager_client.get();
   if (eager_client == nullptr) {
-    done(errors::Internal("Could not find eager client"));
+    done(absl::InternalError("Could not find eager client"));
     return;
   }
 
   EagerOperation* op = function_data->op.get();
   if (!op->Inputs().empty()) {
-    done(errors::Internal("Inputs should not be set during instantiation."));
+    done(absl::InternalError("Inputs should not be set during instantiation."));
     return;
   }
 
@@ -227,7 +240,7 @@ void EagerClusterFunctionLibraryRuntime::Run(
         token,
         [call_opts, request, response, done]() { call_opts->StartCancel(); });
     if (already_cancelled) {
-      done(errors::Cancelled("EagerClusterFunctionLibraryRuntime::Run"));
+      done(absl::CancelledError("EagerClusterFunctionLibraryRuntime::Run"));
       return;
     }
   }
@@ -248,7 +261,7 @@ void EagerClusterFunctionLibraryRuntime::Run(
           return;
         }
         if (!response->shape().empty() && !response->tensor().empty()) {
-          done(errors::Internal(
+          done(absl::InternalError(
               "Both shape and tensor are specified in the same response"));
           return;
         }
@@ -260,8 +273,9 @@ void EagerClusterFunctionLibraryRuntime::Run(
           if (t.FromProto(tensor_proto)) {
             rets->push_back(std::move(t));
           } else {
-            done(errors::Internal("Could not convert tensor proto: ",
-                                  tensor_proto.DebugString()));
+            done(absl::InternalError(
+                absl::StrCat("Could not convert tensor proto: ",
+                             tensor_proto.DebugString())));
             return;
           }
         }
@@ -270,7 +284,7 @@ void EagerClusterFunctionLibraryRuntime::Run(
 }
 
 void EagerClusterFunctionLibraryRuntime::CleanUp(
-    uint64 step_id, FunctionLibraryRuntime::LocalHandle handle,
+    uint64_t step_id, FunctionLibraryRuntime::LocalHandle handle,
     FunctionLibraryRuntime::DoneCallback done) {
   FunctionData* function_data = nullptr;
   {
@@ -281,7 +295,7 @@ void EagerClusterFunctionLibraryRuntime::CleanUp(
 
   EagerClient* eager_client = function_data->eager_client.get();
   if (eager_client == nullptr) {
-    done(errors::Internal("Could not find eager client"));
+    done(absl::InternalError("Could not find eager client"));
     return;
   }
 
@@ -294,13 +308,15 @@ void EagerClusterFunctionLibraryRuntime::CleanUp(
   // StreamingEnqueueAsync could be blocking when streaming RPC is disabled.
   // CleanUp() needs to be non-blocking since it would be invoked inside the
   // enqueue done callback of Run(). So we don't use StreamingEnqueueAsync here.
+  enqueue_request_size_metric->GetCell("cleanup")->Add(request->ByteSizeLong());
   eager_client->EnqueueAsync(
       /*call_opts=*/nullptr, request.get(), response.get(),
       [request, response, done](const absl::Status& status) { done(status); });
 }
 
 DistributedFunctionLibraryRuntime* CreateClusterFLR(
-    const uint64 context_id, EagerContext* ctx, WorkerSession* worker_session) {
+    const uint64_t context_id, EagerContext* ctx,
+    WorkerSession* worker_session) {
   return new EagerClusterFunctionLibraryRuntime(
       context_id, ctx, worker_session->remote_device_mgr());
 }

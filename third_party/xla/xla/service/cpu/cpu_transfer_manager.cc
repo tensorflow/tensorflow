@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/compiler.h"
@@ -56,9 +57,9 @@ absl::Status CpuTransferManager::ReadDynamicShapes(
     return TransferManager::ReadDynamicShapes(stream, device_buffer,
                                               device_shape);
   }
-  TF_ASSIGN_OR_RETURN(auto platform,
-                      se::PlatformManager::PlatformWithId(PlatformId()));
-  TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
+  ASSIGN_OR_RETURN(auto platform,
+                   se::PlatformManager::PlatformWithId(PlatformId()));
+  ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform->id()));
   return ReadDynamicShapesOnCpu(device_buffer, device_shape,
                                 compiler->ShapeSizeBytesFunction());
 }

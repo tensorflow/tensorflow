@@ -192,11 +192,10 @@ TEST_F(NonMaxSuppressionV2GPUOpTest, TestInconsistentBoxAndScoreShapes) {
   AddInputFromArray<float>(TensorShape({5}), {.9f, .75f, .6f, .95f, .5f});
   AddInputFromArray<int>(TensorShape({}), {30});
   AddInputFromArray<float>(TensorShape({}), {.5f});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
 
   ASSERT_FALSE(s.ok());
-  EXPECT_TRUE(
-      str_util::StrContains(s.ToString(), "scores has incompatible shape"))
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "scores has incompatible shape"))
       << s;
 }
 
@@ -206,11 +205,11 @@ TEST_F(NonMaxSuppressionV2GPUOpTest, TestInvalidIOUThreshold) {
   AddInputFromArray<float>(TensorShape({1}), {.9f});
   AddInputFromArray<int>(TensorShape({}), {3});
   AddInputFromArray<float>(TensorShape({}), {1.2f});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
 
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(
-      str_util::StrContains(s.ToString(), "iou_threshold must be in [0, 1]"))
+      absl::StrContains(s.ToString(), "iou_threshold must be in [0, 1]"))
       << s;
 }
 
@@ -425,7 +424,7 @@ TEST_F(NonMaxSuppressionV3GPUOpTest, TestInconsistentBoxAndScoreShapes) {
   AddInputFromArray<int>(TensorShape({}), {30});
   AddInputFromArray<float>(TensorShape({}), {.5f});
   AddInputFromArray<float>(TensorShape({}), {0.0f});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
 
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(absl::StrContains(s.ToString(), "scores has incompatible shape"))
@@ -439,7 +438,7 @@ TEST_F(NonMaxSuppressionV3GPUOpTest, TestInvalidIOUThreshold) {
   AddInputFromArray<int>(TensorShape({}), {3});
   AddInputFromArray<float>(TensorShape({}), {1.2f});
   AddInputFromArray<float>(TensorShape({}), {0.0f});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
 
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(

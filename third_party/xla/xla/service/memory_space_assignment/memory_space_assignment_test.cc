@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/service/memory_space_assignment/memory_space_assignment.h"
 
-#include <stdbool.h>
-
 #include <algorithm>
 #include <cstdint>
 #include <functional>
@@ -46,6 +44,7 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
@@ -53,6 +52,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_live_range.h"
@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/service/cost_modelling/op_cost.h"
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
@@ -86,13 +87,11 @@ limitations under the License.
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace memory_space_assignment {
@@ -105,6 +104,8 @@ using ::testing::Return;
 using ::testing::UnorderedElementsAre;
 
 constexpr float kBytesPerSecond = 100;
+constexpr absl::string_view kTestModeLabel =
+    "xla::memory_space_assignment::test_mode";
 
 const auto& ShapeSize = HloCostAnalysis::DefaultShapeSize;
 
@@ -182,7 +183,7 @@ TEST_F(MemorySpaceAssignmentTest, ParameterOnly) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -211,7 +212,7 @@ TEST_F(MemorySpaceAssignmentTest, Simple) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, add, sub, mul});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   Options options = DefaultMemorySpaceOptions();
   options.post_module_scoped_alternate_memory_size_in_bytes = 10;
@@ -355,7 +356,7 @@ TEST_F(MemorySpaceAssignmentTest, NegateChain) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
                                       negate3, negate4, negate5, negate6, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -389,7 +390,7 @@ TEST_F(MemorySpaceAssignmentTest, NegateChain) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, PinnedDefaultMemorySpace) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule NegateChain, is_scheduled=true, entry_computation_layout={(f32[2,3]{1,0}, f32[2,3]{1,0:S(2)})->f32[2,3]{1,0}}
 
   ENTRY %NegateChain (p0: f32[2,3], p1: f32[2,3]) -> f32[2,3] {
@@ -403,7 +404,7 @@ TEST_F(MemorySpaceAssignmentTest, PinnedDefaultMemorySpace) {
     %negate.5 = f32[2,3]{1,0:S(2)} negate(f32[2,3]{1,0:S(2)} %negate.4)
     %negate.6 = f32[2,3]{1,0:S(2)} negate(f32[2,3]{1,0:S(2)} %negate.5)
     ROOT %add = f32[2,3]{1,0} add(f32[2,3]{1,0:S(2)} %negate.6, f32[2,3]{1,0:S(2)} %p1)
-  })";
+  })hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
@@ -440,7 +441,7 @@ TEST_F(MemorySpaceAssignmentTest, PinnedDefaultMemorySpace) {
 // remove the sync copy.
 TEST_F(MemorySpaceAssignmentTest,
        SyncCopyReplacementRedundantCopyAfterPrefetch) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -457,7 +458,7 @@ ENTRY entry {
   p0_copy = f32[2,3]{1,0} copy(p0)
   ROOT add0 = f32[2,3]{1,0} add(p0_copy, negate7)
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
@@ -472,7 +473,7 @@ ENTRY entry {
 }
 
 TEST_F(MemorySpaceAssignmentTest, SyncCopyReplacementWithControlPredecessor) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -491,7 +492,7 @@ ENTRY entry {
   negate9 = f32[2,3]{1,0} negate(negate8), control-predecessors={p0_copy}
   ROOT add0 = f32[2,3]{1,0} add(p0_copy, negate9)
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
@@ -510,8 +511,7 @@ ENTRY entry {
       module->schedule().sequence(module->entry_computation());
   auto find_index = [&](const HloInstruction* instruction) {
     return std::distance(sequence.instructions().begin(),
-                         std::find(sequence.instructions().begin(),
-                                   sequence.instructions().end(), instruction));
+                         absl::c_find(sequence.instructions(), instruction));
   };
   int64_t copy_done_time = find_index(copy_done);
   int64_t negate9_time = find_index(negate9);
@@ -527,7 +527,7 @@ ENTRY entry {
 // sync copy operand (p0) shows up at more than one position.
 TEST_F(MemorySpaceAssignmentTest,
        SyncCopyReplacementWouldNeedMoreThanOneAsyncCopy) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -555,7 +555,7 @@ ENTRY entry {
   dynamic-update-slice.1 = f32[2,3] dynamic-update-slice(p0_copy1, broadcast, constant.3, constant.3)
   ROOT tuple0 = tuple(negate12, dynamic-update-slice.0, dynamic-update-slice.1)
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
@@ -581,7 +581,7 @@ ENTRY entry {
 // All uses of the sync copy operand that are scheduled before the replaced sync
 // copy share the allocation in alternate memory (if any).
 TEST_F(MemorySpaceAssignmentTest, SyncCopyReplacementOperandHasMultipleUses) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -601,7 +601,7 @@ ENTRY entry {
   add0 = add(p0_copy, p0_negate0)
   ROOT tuple = tuple(negate7, add0, p0_negate1)
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
@@ -623,7 +623,7 @@ ENTRY entry {
 }
 
 TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementAfterPrefetch) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -641,7 +641,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementAfterPrefetch) {
     concat = f32[11,2,3] concatenate(negate7, slice), dimensions={0}
     ROOT root = negate(concat)
     }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
@@ -660,7 +660,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementAfterPrefetch) {
 
 TEST_F(MemorySpaceAssignmentTest,
        SyncDynamicSliceReplacementWithLateIndexOperand) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -687,7 +687,7 @@ TEST_F(MemorySpaceAssignmentTest,
     dynamic_slice = s32[1,2,3] dynamic-slice(p0_data, index, zero, zero), dynamic_slice_sizes={1,2,3}
     ROOT root = s32[1,2,3] negate(dynamic_slice)
     }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto module_copy = module->Clone();
@@ -726,7 +726,7 @@ TEST_F(MemorySpaceAssignmentTest,
 }
 
 TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementAfterPrefetch) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -746,7 +746,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementAfterPrefetch) {
     concat = f32[11,2,3] concatenate(negate7, dynamic_slice), dimensions={0}
     ROOT root = negate(concat)
     }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
@@ -767,7 +767,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementAfterPrefetch) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementIgnoredTrivials) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -787,7 +787,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementIgnoredTrivials) {
     concat = f32[11,3,2] concatenate(bitcast1, bitcast0), dimensions={0}
     ROOT root = negate(concat)
     }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
@@ -806,7 +806,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementIgnoredTrivials) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementIgnoredTrivials) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -828,7 +828,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementIgnoredTrivials) {
     concat = f32[11,3,2] concatenate(bitcast1, bitcast0), dimensions={0}
     ROOT root = negate(concat)
     }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
@@ -850,7 +850,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementIgnoredTrivials) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementAfterEviction) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -873,7 +873,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementAfterEviction) {
     concat = f32[2,4,2] concatenate(slice0, slice1), dimensions={0}
     ROOT root = negate(concat)
     }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
@@ -895,7 +895,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementAfterEviction) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementAfterEviction) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -920,7 +920,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementAfterEviction) {
     concat = f32[2,4,2] concatenate(dynamic_slice, dynamic_slice1), dimensions={0}
     ROOT root = negate(concat)
     }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
@@ -945,7 +945,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementAfterEviction) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementTwoSlices) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -964,7 +964,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementTwoSlices) {
     add = f32[1,2,3] add(slice.1, slice.2)
     ROOT concat = f32[11,2,3] concatenate(negate7, add), dimensions={0}
     }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
@@ -984,7 +984,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementTwoSlices) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementTwoSlices) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -1005,7 +1005,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementTwoSlices) {
     add = f32[1,2,3] add(dynamic_slice.1, dynamic_slice.2)
     ROOT concat = f32[11,2,3] concatenate(negate7, add), dimensions={0}
     }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
@@ -1029,7 +1029,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementTwoSlices) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementNestedSlices) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -1053,7 +1053,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementNestedSlices) {
     concat = f32[11,2,3] concatenate(negate12, slice1), dimensions={0}
     ROOT root = negate(concat)
     }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
@@ -1071,7 +1071,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementNestedSlices) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementNestedSlices) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -1097,7 +1097,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementNestedSlices) {
     concat = f32[11,2,3] concatenate(negate12, slice1), dimensions={0}
     ROOT root = negate(concat)
     }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
@@ -1118,7 +1118,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementNestedSlices) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementOneFails) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -1139,7 +1139,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementOneFails) {
     concat.0 = f32[9,2,3] concatenate(slice.0, add.0), dimensions={0}
     ROOT concat.1 = f32[10,2,3] concatenate(negate7, concat.0), dimensions={0}
     }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
@@ -1160,7 +1160,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementOneFails) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementOneFails) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -1183,7 +1183,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementOneFails) {
     concat.0 = f32[9,2,3] concatenate(dynamic_slice.0, add.0), dimensions={0}
     ROOT concat.1 = f32[10,2,3] concatenate(negate7, concat.0), dimensions={0}
     }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
@@ -1211,7 +1211,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementOneFails) {
 // copy vs an async slice. In this test, a prefetch of p0 would not fit into the
 // memory, while prefetching a slice of p0 is feasible.
 TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementTheSlicedOneFits) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -1229,7 +1229,7 @@ ENTRY entry {
   concat = f32[2,2,3] concatenate(negate7, slice), dimensions={0}
   ROOT root = negate(concat)
   }
-  )";
+  )hlo";
 
   const auto kMakeOptions = [this](bool enable_sync_slice_replacement) {
     Options options = DefaultMemorySpaceOptions();
@@ -1262,7 +1262,7 @@ ENTRY entry {
 }
 
 TEST_F(MemorySpaceAssignmentTest, SyncReplacementMultipleOpTypes) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -1281,7 +1281,7 @@ ENTRY entry {
   concat = f32[11,2,3] concatenate(negate7, slice), dimensions={0}
   ROOT root = negate(concat)
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
@@ -1304,7 +1304,7 @@ ENTRY entry {
 // different operands of the same instruction while converting sync copy to
 // async ones.
 TEST_F(MemorySpaceAssignmentTest, SyncReplacementAliasingBug) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true, entry_computation_layout={(f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[])->f32[10,2,3]{2,1,0}}
 
 %while_body (p0.1: (f32[10,2,3], f32[10,2,3], f32[10,2,3], pred[])) -> (f32[10,2,3], f32[10,2,3], f32[10,2,3], pred[]) {
@@ -1348,7 +1348,7 @@ ENTRY %entry (p0.2: f32[10,2,3], p1: f32[10,2,3], p2: pred[]) -> f32[10,2,3] {
   %gte.1 = f32[10,2,3]{2,1,0} get-tuple-element((f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[]) while.1), index=2
   ROOT %negate = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %gte.1)
 }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
@@ -1373,7 +1373,7 @@ ENTRY %entry (p0.2: f32[10,2,3], p1: f32[10,2,3], p2: pred[]) -> f32[10,2,3] {
 // Added for b/376344953 that was introduced when we tried to
 // convert a sync copy that was used by a conditional into an async copy.
 TEST_F(MemorySpaceAssignmentTest, ConditionalCopyReplacement) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule CondAllocation, is_scheduled=true
 
   true_computation {
@@ -1395,7 +1395,7 @@ TEST_F(MemorySpaceAssignmentTest, ConditionalCopyReplacement) {
     tuple = (f32[3]{0}) tuple(copy)
     ROOT conditional = f32[3]{0} conditional(p1, tuple, tuple), true_computation=true_computation, false_computation=false_computation
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
@@ -1415,7 +1415,7 @@ TEST_F(MemorySpaceAssignmentTest, ConditionalCopyReplacement) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, AllocationRequestAndResultModifierTest) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -1431,7 +1431,7 @@ ENTRY entry {
   negate7 = f32[2,3]{1,0} negate(negate6)
   ROOT add0 = f32[2,3]{1,0} add(p0, negate7)
   }
-  )";
+  )hlo";
   // The baseline behavior is to prefetch p0 at add0.
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> baseline_module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -1452,7 +1452,8 @@ ENTRY entry {
   options_result_modifier.max_retries = 1;
   options_result_modifier.allocation_request_modifier_testing_fn = nullptr;
   options_result_modifier.allocation_result_modifier_testing_fn =
-      [](const AllocationRequest& request, AllocationResult& result) {
+      [](const AllocationRequest& request, AllocationResult& result,
+         int64_t retry_number) {
         if (request.allocation_value_to_update->defining_instruction()
                     ->name() == "p0" &&
             request.use->hlo_use.instruction->name() == "add0") {
@@ -1501,8 +1502,7 @@ ENTRY entry {
           request_modifier_module->entry_computation());
   auto find_index = [&](const HloInstruction* instruction) {
     return std::distance(sequence.instructions().begin(),
-                         std::find(sequence.instructions().begin(),
-                                   sequence.instructions().end(), instruction));
+                         absl::c_find(sequence.instructions(), instruction));
   };
 
   int negate4_index = find_index(negate4);
@@ -1517,7 +1517,7 @@ ENTRY entry {
 // allocation_values will be empty in retries, previously causing a crash in
 // MsaAlgorithm::GetInefficientAllocationSites().
 TEST_F(MemorySpaceAssignmentTest, SyncReplacementLargeBuffers) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -1533,7 +1533,7 @@ ENTRY entry {
   slice = f32[1,2,3] slice(p0_copy), slice={[0:1], [0:2], [0:3]}
   ROOT concat = f32[11,2,3] concatenate(negate5, slice), dimensions={0}
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
@@ -1549,7 +1549,8 @@ ENTRY entry {
   // sync slice conversion target, so that maybe other constraints of the
   // allocation can be satisfied.
   options.allocation_result_modifier_testing_fn =
-      [](const AllocationRequest& request, AllocationResult& result) {
+      [](const AllocationRequest& request, AllocationResult& result,
+         int64_t retry_number) {
         if (request.allocation_value->defining_instruction()->name() ==
                 "p0_copy" &&
             request.use->hlo_use.instruction->name() == "concat") {
@@ -1575,7 +1576,7 @@ ENTRY entry {
 // of slice0. We hence stress-test such validity by delaying the allocation of
 // slice0 by 3 steps.
 TEST_F(MemorySpaceAssignmentTest, SyncReplacementAllocationExtensionBug) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -1595,7 +1596,7 @@ ENTRY entry {
   negate7 = negate(negate6)
   neg_slice0 = negate(slice0)
   ROOT tuple = tuple(negate7, neg_slice0)
-})";
+})hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
@@ -1649,7 +1650,7 @@ TEST_F(MemorySpaceAssignmentTest, AlwaysSpillJitPrefetchTest) {
   // instruction and to finish immediately before add. The
   // always_spill_to_default_memory option will move the start of the prefetch
   // from just after parameter(1) to just before its completion.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -1664,7 +1665,7 @@ ENTRY entry {
   negate6 = f32[2,3]{1,0} negate(negate5)
   ROOT add = f32[2,3]{1,0} add(negate6, p1)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -1705,7 +1706,7 @@ TEST_F(MemorySpaceAssignmentTest, AlwaysSpillPrefetchForSecondUseTest) {
   // so that version can be prefetched just before it is used at add0.
   // Additionally, we leave a copy of negate0 in alternate memory for use at
   // negate1.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -1720,7 +1721,7 @@ ENTRY entry {
   add0 = f32[2,3]{1,0} add(negate5, negate0)
   ROOT add1 = f32[2,3]{1,0} add(add0, p1)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -1782,7 +1783,7 @@ TEST_F(MemorySpaceAssignmentTest, AlwaysSpillEvictionTest) {
   // the eviction immediate, right after tanh0, the first use at add5 and second
   // use at tuple are served from separate, just-in-time prefetches that copy
   // from the eviction that previously occurred.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -1801,7 +1802,7 @@ ENTRY entry {
   negate2 = f32[4,3]{1,0} negate(negate1)
   ROOT tuple = tuple(tanh0, tanh2, negate2)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -1878,7 +1879,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchTest) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
                                       negate3, negate4, negate5, negate6, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   Options options = DefaultMemorySpaceOptions();
 
@@ -1954,7 +1955,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchBeforeTest) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
                                       negate3, negate4, negate5, negate6, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   Options options = DefaultMemorySpaceOptions();
 
@@ -2032,7 +2033,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchAfterTest) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
                                       negate3, negate4, negate5, negate6, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   Options options = DefaultMemorySpaceOptions();
 
@@ -2110,7 +2111,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchTooLateTest) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
                                       negate3, negate4, negate5, negate6, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   Options options = DefaultMemorySpaceOptions();
 
@@ -2180,7 +2181,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigPrecedenceTest) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
                                       negate3, negate4, negate5, negate6, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   Options options = DefaultMemorySpaceOptions();
 
@@ -2262,7 +2263,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchPrecedenceTest) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
                                       negate3, negate4, negate5, negate6, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   Options options = DefaultMemorySpaceOptions();
 
@@ -2345,7 +2346,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchNoMatchTest) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
                                       negate3, negate4, negate5, negate6, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   Options options = DefaultMemorySpaceOptions();
 
@@ -2493,7 +2494,7 @@ TEST_F(MemorySpaceAssignmentTest,
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, tanh, a, b, c, d, e, f, g, h, i,
                                       j, k, l, m, n, o, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get(),
                     UpdateMaxAsyncCopies(DefaultMemorySpaceOptions(), 1));
@@ -2582,7 +2583,7 @@ TEST_F(MemorySpaceAssignmentTest, EvictAndPrefetchAndPrefetch) {
        f,       g,       h,       i,       j,       k,       l,       m,
        n,       o,       add0,    negate0, negate1, negate2, negate3, negate4,
        negate5, negate6, negate7, negate8, negate9, add1});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -2673,7 +2674,7 @@ TEST_F(MemorySpaceAssignmentTest, While) {
                          body_iter_next, body_data_increment, body_data_mul,
                          body_data_add, body_data_next, body_out});
   schedule.set_sequence(entry_computation, {iter, data, tuple, while_op});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   LOG(INFO) << module->ToString(HloPrintOptions::ShortParsable());
 
@@ -2729,7 +2730,7 @@ TEST_F(MemorySpaceAssignmentTest, Tuple) {
   schedule.set_sequence(
       computation, {p, p0, negate0, negate1, negate2, negate3, negate4, negate5,
                     negate6, p1, add, p2, p2_0, mul});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -2765,7 +2766,7 @@ TEST_F(MemorySpaceAssignmentTest, Bitcast) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, negate, bitcast, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -2803,7 +2804,7 @@ TEST_F(MemorySpaceAssignmentTest, Bitcast2) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
                                       negate3, negate4, bitcast, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -2851,7 +2852,7 @@ TEST_F(MemorySpaceAssignmentTest, Bitcast3) {
   schedule.set_sequence(computation,
                         {p0, p1, negate0, negate1, negate2, negate3, negate4,
                          bitcast1, add, bitcast2, bitcast3, bitcast4, mul});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -2923,7 +2924,7 @@ TEST_F(MemorySpaceAssignmentTest, BitcastTuple) {
   schedule.set_sequence(computation,
                         {p0, p1, negate0, negate1, negate2, negate3, negate4,
                          bitcast, tuple, fusion});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 }
@@ -2933,7 +2934,7 @@ TEST_F(MemorySpaceAssignmentTest, BitcastGetTupleElementTuple) {
   // //third_party/tensorflow/compiler/xla/tests:slice_test and was causing a
   // breakage when there is a GetTupleElement(Tuple(Bitcast())) pattern. Also
   // added a GetTupleElement(GetTupleElement(Tuple(Tuple(Bitcast())))) pattern.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule DoIt_S64_10_0_5_1.3, is_scheduled=true
 
   ENTRY %DoIt_S64_10_0_5_1.3 (p0.1: (u32[10], u32[10])) -> (u32[5], u32[5]) {
@@ -2951,7 +2952,7 @@ TEST_F(MemorySpaceAssignmentTest, BitcastGetTupleElementTuple) {
     %copy.3 = u32[5]{0:T(128)} copy(u32[5]{0:T(128)} %get-tuple-element.6)
     ROOT %tuple.2 = (u32[5]{0:T(128)}, u32[5]{0:T(128)}) tuple(u32[5]{0:T(128)} %copy.2, u32[5]{0:T(128)} %copy.3)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -2960,7 +2961,7 @@ TEST_F(MemorySpaceAssignmentTest, BitcastGetTupleElementTuple) {
 
 TEST_F(MemorySpaceAssignmentTest, GetSimplifiedOperandBug) {
   // Test case for a bug finding Bitcasts in GTE(Tuple(...)) pattern.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule sort.16, is_scheduled=true
 
   ENTRY %sort.16 (param.0.1: s32[1], param.1.2: f32[1], param.2.3: u32[1], param.3.4: s32[1]) -> (s32[1], f32[1], u32[1], s32[1]) {
@@ -2979,7 +2980,7 @@ TEST_F(MemorySpaceAssignmentTest, GetSimplifiedOperandBug) {
     %copy.7 = s32[1]{0:T(128)} copy(s32[1]{0:T(128)} %get-tuple-element.7)
     ROOT %tuple.2 = (s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) tuple(s32[1]{0:T(128)} %copy.4, f32[1]{0:T(128)} %copy.5, u32[1]{0:T(128)} %copy.6, s32[1]{0:T(128)} %copy.7)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -3016,7 +3017,7 @@ TEST_F(MemorySpaceAssignmentTest, BitcastMultiUse) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, bitcast, negate0, negate1, negate2,
                                       negate3, negate4, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithDenseLayout(
@@ -3072,7 +3073,7 @@ TEST_F(MemorySpaceAssignmentTest, BitcastMultiUseTuple) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, bitcast, negate0, negate1, negate2,
                                       negate3, negate4, tuple, fusion});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithDenseLayout(
@@ -3136,7 +3137,7 @@ TEST_F(MemorySpaceAssignmentTest, BitcastScheduleBug) {
   schedule.set_sequence(
       computation, {p0, p1, bitcast, negate0, negate1, negate2, negate3,
                     negate4, negate5, negate6, negate7, negate8, negate9, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(),
                     /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/4);
@@ -3159,7 +3160,7 @@ TEST_F(MemorySpaceAssignmentTest, BitcastScheduleBug) {
 
 TEST_F(MemorySpaceAssignmentTest, AddDependency) {
   // Make sure add-dependency is not optimized away.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule AddDependency, is_scheduled=true
 
   ENTRY %AddDependency (p: f32[3]) -> f32[3] {
@@ -3175,7 +3176,7 @@ TEST_F(MemorySpaceAssignmentTest, AddDependency) {
     %add_dep = f32[3]{0} add-dependency(f32[3]{0} %p, token[] %token0)
     ROOT %add = f32[3]{0} add(f32[3]{0} %add_dep, f32[3]{0} %neg6)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -3193,7 +3194,7 @@ TEST_F(MemorySpaceAssignmentTest, WhileAllocationBug) {
   // Because the multiplies in the while body are going to be allocated in the
   // alternate memory first, the tanh that is fed inside the while loop should
   // not be placed in the alternate memory. Otherwise, we will corrupt memory.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule WhileAllocationBug, is_scheduled=true
 
   %WhileBody (body_param: (f32[4,3], f32[])) -> (f32[4,3], f32[]) {
@@ -3235,7 +3236,7 @@ TEST_F(MemorySpaceAssignmentTest, WhileAllocationBug) {
     %get-tuple-element.3 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[]) %while), index=0
     ROOT %add.3 = f32[4,3]{1,0} add(f32[4,3]{1,0} %get-tuple-element.3, f32[4,3]{1,0} %add.4)
   }
-  )";
+  )hlo";
 
   MsaBufferIntervalCompare buffer_interval_compare =
       [](const MsaBufferInterval& a, const MsaBufferInterval& b) {
@@ -3306,7 +3307,7 @@ TEST_F(MemorySpaceAssignmentTest, WhileAllocationBug) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, ConsecutiveWhileLoops) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule WhileAllocationBug, is_scheduled=true
 
   %WhileBody (body_param: (f32[4,3], f32[4,3], f32[])) -> (f32[4,3], f32[4,3], f32[]) {
@@ -3375,7 +3376,7 @@ TEST_F(MemorySpaceAssignmentTest, ConsecutiveWhileLoops) {
     %get-tuple-element.6 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %while.1), index=0
     ROOT %add.5 = f32[4,3]{1,0} add(f32[4,3]{1,0} %get-tuple-element.6, f32[4,3]{1,0} %add.3)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -3385,7 +3386,7 @@ TEST_F(MemorySpaceAssignmentTest, ConsecutiveWhileLoops) {
 TEST_F(MemorySpaceAssignmentTest, WhileLiveRangeBug) {
   // Tests against while live ranges being incorrect and the verifier
   // complaining about a conflict.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule WhileAllocationBug, is_scheduled=true
 
   %WhileBody (body_param: (f32[4,3], f32[4,3], f32[])) -> (f32[4,3], f32[4,3], f32[]) {
@@ -3440,7 +3441,7 @@ TEST_F(MemorySpaceAssignmentTest, WhileLiveRangeBug) {
     %add.3 = f32[4,3]{1,0} add(f32[4,3]{1,0} %get-tuple-element.4, f32[4,3]{1,0} %add.4)
     ROOT %add.5 = f32[4,3]{1,0} add(f32[4,3]{1,0} %get-tuple-element.5, f32[4,3]{1,0} %add.3)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -3451,7 +3452,7 @@ TEST_F(MemorySpaceAssignmentTest, ConsecutiveWhileLoopsOneBuffer) {
   // Tests against a bug when there are consecutive while loops with one buffer
   // (the value doesn't change in the buffer), the parameter can be colored in
   // the alternate memory space.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule WhileAllocationBug, is_scheduled=true
 
   %WhileBody (body_param: (f32[4,3], f32[4,3], f32[])) -> (f32[4,3], f32[4,3], f32[]) {
@@ -3542,7 +3543,7 @@ TEST_F(MemorySpaceAssignmentTest, ConsecutiveWhileLoopsOneBuffer) {
     %get-tuple-element.6 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %while.1), index=1
     ROOT %add.5 = f32[4,3]{1,0} add(f32[4,3]{1,0} %get-tuple-element.5, f32[4,3]{1,0} %get-tuple-element.6)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -3554,7 +3555,7 @@ TEST_F(MemorySpaceAssignmentTest, WhileCondAliasBug) {
   // output of the entry computation remains to be in default memory space.
   // Test from //third_party/tensorflow/compiler/xla/tests:while_test
   // WhileTest.WhileWithPrngScalarResult.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule WhileWithPrngScalarResult.18, is_scheduled=true
 
   %fused_computation (param_0.1: s32[6], param_1.3: s32[1], param_2.3: s32[5]) -> s32[6] {
@@ -3591,7 +3592,7 @@ TEST_F(MemorySpaceAssignmentTest, WhileCondAliasBug) {
     %broadcast.2 = s32[6]{0:T(128)} broadcast(s32[]{:T(128)} %constant.1), dimensions={}
     ROOT %while.17 = s32[6]{0:T(128)} while(s32[6]{0:T(128)} %broadcast.2), condition=%WhileWithPrngScalarResult.11, body=%body.3
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -3601,7 +3602,7 @@ TEST_F(MemorySpaceAssignmentTest, WhileCondAliasBug) {
 TEST_F(MemorySpaceAssignmentTest, WhileInPlaceBuffer) {
   // Ensure that a dynamic update slice within a while loop is able to get an
   // alternate memory allocation.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule Module, is_scheduled=true
 
   fused_computation {
@@ -3640,7 +3641,7 @@ TEST_F(MemorySpaceAssignmentTest, WhileInPlaceBuffer) {
     %get-tuple-element.4 = f32[2,3]{1,0} get-tuple-element((f32[2,3]{1,0}, f32[2,3]{1,0}, f32[]) %while), index=0
     ROOT %copy3 = f32[2,3]{1,0} copy(get-tuple-element.4)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -3655,7 +3656,7 @@ TEST_F(MemorySpaceAssignmentTest, WhileInPlaceBuffer) {
 TEST_F(MemorySpaceAssignmentTest, WhileSharedBufferVerificationBug) {
   // Tests a spurious verification failure when a while has the same value
   // passed in twice (copy0) and that value is evicted within the while loop.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   while_cond {
@@ -3699,14 +3700,14 @@ TEST_F(MemorySpaceAssignmentTest, WhileSharedBufferVerificationBug) {
     while = (f32[3]{0}, f32[3]{0}, f32[3]{0}, pred[]) while(tuple), condition=while_cond, body=while_body
     ROOT gte = f32[3]{0} get-tuple-element(while), index=2
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
 }
 
 TEST_F(MemorySpaceAssignmentTest, b228599972) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule entry, is_scheduled=true
 
 fused_computation {
@@ -3727,7 +3728,7 @@ ENTRY entry {
 
   ROOT %result = f32[2,3]{1,0} negate(%p1)
 }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
@@ -3747,7 +3748,7 @@ TEST_F(MemorySpaceAssignmentTest, b172243149) {
   // allocation, we won't replace this edge, and will end up with the
   // copy0->add0 edge, which illegally extends the lifetime of the alternate
   // memory buffer in copy0.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   while_cond {
@@ -3795,7 +3796,7 @@ TEST_F(MemorySpaceAssignmentTest, b172243149) {
     add0 = f32[3]{0} add(negate, copy0)
     ROOT add1 = f32[3]{0} add(add0, gte)
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
@@ -3805,7 +3806,7 @@ TEST_F(MemorySpaceAssignmentTest, ControlPredecessorsBug) {
   // Having control_predecessors on an HLO was preventing us from DCEing an op
   // that doesn't have any users (tuple.1). The scheduler assumes the graph is
   // fully DCEed, which causes some instructions not to be scheduled.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule sort.16, is_scheduled=true
 
   ENTRY %sort.16 (param.0.1: s32[1], param.1.2: f32[1], param.2.3: u32[1], param.3.4: s32[1]) -> (s32[1], f32[1], u32[1], s32[1]) {
@@ -3824,7 +3825,7 @@ TEST_F(MemorySpaceAssignmentTest, ControlPredecessorsBug) {
     %copy.7 = s32[1]{0:T(128)} copy(s32[1]{0:T(128)} %get-tuple-element.7)
     ROOT %tuple.2 = (s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) tuple(s32[1]{0:T(128)} %copy.4, f32[1]{0:T(128)} %copy.5, u32[1]{0:T(128)} %copy.6, s32[1]{0:T(128)} %copy.7)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -3833,7 +3834,7 @@ TEST_F(MemorySpaceAssignmentTest, ControlPredecessorsBug) {
 
 TEST_F(MemorySpaceAssignmentTest, ConditionalShouldBeAllocatedInAlternateMem) {
   // Checks if simple conditionals get alternate memory allocations.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule CondAllocation, is_scheduled=true
 
   true_computation {
@@ -3855,7 +3856,7 @@ TEST_F(MemorySpaceAssignmentTest, ConditionalShouldBeAllocatedInAlternateMem) {
     tuple = (f32[3]{0}) tuple(copy)
     ROOT conditional = f32[3]{0} conditional(p1, tuple, tuple), true_computation=true_computation, false_computation=false_computation
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
@@ -3879,7 +3880,7 @@ TEST_F(MemorySpaceAssignmentTest, ConditionalShouldBeAllocatedInAlternateMem) {
 TEST_F(MemorySpaceAssignmentTest, ConditionalAvoidsUnnecessaryPrefetch) {
   // Checks if we avoid unnecessary allocation in alternate memory if the input
   // won't be used in the computation for a long time.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule CondAllocation, is_scheduled=true
 
   true_computation {
@@ -3914,7 +3915,7 @@ TEST_F(MemorySpaceAssignmentTest, ConditionalAvoidsUnnecessaryPrefetch) {
     tuple1 = (f32[3]{0}) tuple(copy0)
     ROOT conditional = f32[3]{0} conditional(p1, tuple0, tuple1), true_computation=true_computation, false_computation=false_computation
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
@@ -3938,7 +3939,7 @@ TEST_F(MemorySpaceAssignmentTest, ConditionalAvoidsUnnecessaryPrefetch) {
 TEST_F(MemorySpaceAssignmentTest, ConditionalMultiUse) {
   // Make sure there is an evict when there is a conditional use followed by
   // another use.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule CondAllocation, is_scheduled=true
 
   true_computation {
@@ -3974,7 +3975,7 @@ TEST_F(MemorySpaceAssignmentTest, ConditionalMultiUse) {
     conditional = f32[3]{0} conditional(p1, tuple0, tuple1), true_computation=true_computation, false_computation=false_computation
     ROOT add1 = f32[3]{0} add(copy1, conditional)
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
@@ -3998,7 +3999,7 @@ TEST_F(MemorySpaceAssignmentTest, ConditionalMultiUse) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, ConditionalMultiUseInWhile) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule CondAllocation, is_scheduled=true
 
   true_computation {
@@ -4040,7 +4041,7 @@ TEST_F(MemorySpaceAssignmentTest, ConditionalMultiUseInWhile) {
     while = (f32[3]{0}, f32[3]{0}, pred[]) while(tuple), condition=while_cond, body=while_body
     ROOT gte = f32[3]{0} get-tuple-element(while), index=1
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
@@ -4067,7 +4068,7 @@ TEST_F(MemorySpaceAssignmentTest, ConditionalMultiUseInWhile) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, NestedConditional) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule CondAllocation, is_scheduled=true
 
   true_computation2 {
@@ -4106,7 +4107,7 @@ TEST_F(MemorySpaceAssignmentTest, NestedConditional) {
     tuple = (f32[3]{0}) tuple(copy)
     ROOT conditional = f32[3]{0} conditional(p1, tuple, tuple), true_computation=true_computation1, false_computation=false_computation1
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
@@ -4138,7 +4139,7 @@ TEST_F(MemorySpaceAssignmentTest, NestedConditionalBufferReuseVerificationBug) {
   // and the innermost conditional computation reuses the buffer. Here, both the
   // parameter of true_computation2 and neg2 will get the same buffer. Make sure
   // that verification doesn't claim a failure in this case.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule CondAllocation, is_scheduled=true
 
   true_computation2 {
@@ -4179,14 +4180,14 @@ TEST_F(MemorySpaceAssignmentTest, NestedConditionalBufferReuseVerificationBug) {
     tuple = (f32[3]{0}) tuple(copy)
     ROOT conditional = f32[3]{0} conditional(p1, tuple, tuple), true_computation=true_computation1, false_computation=false_computation1
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
 }
 
 TEST_F(MemorySpaceAssignmentTest, WhileInsideNestedConditionalVerificationBug) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule CondAllocation, is_scheduled=true
 
   while_cond {
@@ -4237,7 +4238,7 @@ TEST_F(MemorySpaceAssignmentTest, WhileInsideNestedConditionalVerificationBug) {
     tuple = (f32[3]{0}) tuple(copy)
     ROOT conditional = f32[3]{0} conditional(p1, tuple, tuple), true_computation=true_computation1, false_computation=false_computation1
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
@@ -4245,7 +4246,7 @@ TEST_F(MemorySpaceAssignmentTest, WhileInsideNestedConditionalVerificationBug) {
 
 TEST_F(MemorySpaceAssignmentTest,
        ConditionalComputationBufferOverlapBeforeParam) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule CondAllocation, is_scheduled=true
 
   true_computation {
@@ -4270,7 +4271,7 @@ TEST_F(MemorySpaceAssignmentTest,
     tuple = (f32[3]{0}) tuple(copy)
     ROOT conditional = f32[3]{0} conditional(p1, tuple, tuple), true_computation=true_computation, false_computation=false_computation
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto preset_assignments = AssignMemorySpace(module.get());
@@ -4295,7 +4296,7 @@ TEST_F(MemorySpaceAssignmentTest,
        RequestIdentifierShouldNotBeAllocatedInAlternateMem) {
   // Ensure that request identifier returned by Send/Recv HLOs are not allocated
   // in the alternate memory.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule SendRecv, is_scheduled=true
 
   ENTRY %AddDependency (p: f32[3]) -> f32[3] {
@@ -4309,7 +4310,7 @@ TEST_F(MemorySpaceAssignmentTest,
     %send-done = token[] send-done((f32[3]{0}, u32[], token[]) %send), channel_id=2
     ROOT %add = f32[3]{0} add(f32[3]{0} %p, f32[3]{0} %data)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -4329,7 +4330,7 @@ TEST_F(MemorySpaceAssignmentTest,
 
 TEST_F(MemorySpaceAssignmentTest, SendDoneShouldHaveSendOperand) {
   // Ensure that SendDone has only a Send operand.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule SendRecv, is_scheduled=true
 
   ENTRY %AddDependency (p: f32[3]) -> f32[3] {
@@ -4347,7 +4348,7 @@ TEST_F(MemorySpaceAssignmentTest, SendDoneShouldHaveSendOperand) {
     %send-done = token[] send-done((f32[3]{0}, u32[], token[]) %send), channel_id=2
     ROOT %add = f32[3]{0} add(f32[3]{0} %p0, f32[3]{0} %neg6)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -4356,7 +4357,7 @@ TEST_F(MemorySpaceAssignmentTest, SendDoneShouldHaveSendOperand) {
 
 TEST_F(MemorySpaceAssignmentTest, SendAndSendDoneShouldGetSameAllocation) {
   // Ensure that Send and SendDone have the same allocation.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule SendRecv, is_scheduled=true
 
   ENTRY %AddDependency (p: f32[3]) -> f32[3] {
@@ -4374,7 +4375,7 @@ TEST_F(MemorySpaceAssignmentTest, SendAndSendDoneShouldGetSameAllocation) {
     %send-done = token[] send-done((f32[3]{0}, u32[], token[]) %send), channel_id=2
     ROOT %add = f32[3]{0} add(f32[3]{0} %p0, f32[3]{0} %neg6)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -4428,7 +4429,7 @@ TEST_F(MemorySpaceAssignmentTest, LastUseOpt) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, add1, sub1, mul1, add2, mul2,
                                       padding_value, padded_mul2, add3});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -4520,7 +4521,7 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule1) {
                          body_data_add, body_data_next, body_out});
   schedule.set_sequence(entry_computation,
                         {iter, data, p2, tuple, while_op, while_data, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(), 50);
 }
@@ -4591,7 +4592,7 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule2) {
        negate4, negate5, negate6, negate7, add0});
   schedule.set_sequence(entry_computation,
                         {p0, p1, add1, add2, negate8, call, add3, add4, add5});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(), 5);
 }
@@ -4657,7 +4658,7 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule3) {
       {call_param, iota, slice, mul, negate0, negate1, negate2, negate3,
        negate4, negate5, negate6, negate7, add0});
   schedule.set_sequence(entry_computation, {p0, add1, add2, call, add3});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(), 5);
 }
@@ -4731,7 +4732,7 @@ TEST_F(MemorySpaceAssignmentTest, DISABLED_NonEntryComputationSchedule4) {
   schedule.set_sequence(false_computation, {false_param});
   schedule.set_sequence(entry_computation,
                         {p0, add1, add2, pred, conditional, add3});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(), 5);
 }
@@ -4850,7 +4851,7 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule5) {
       entry_computation,
       {iter, data, data2, negate0, negate1, negate2, negate3, negate4, negate5,
        negate6, negate7, sub, tuple, while_op, while_data, root});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   // Set a large max prefetch interval so that the buffer can be kept in
   // alternate memory.
@@ -4955,7 +4956,7 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
       entry_computation,
       {iter, data, negate0, negate1, negate2, negate3, negate4, negate5,
        negate6, negate7, tuple, while_op, while_data, while_data2, root});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   // Pick a large max prefetch interval to ensure all the while inputs are
   // allocated in the alternate memory.
@@ -5040,7 +5041,7 @@ TEST_F(MemorySpaceAssignmentTest, DanglingCopy) {
   schedule.set_sequence(
       computation, {p, p0, negate0, negate1, negate2, negate3, negate4, negate5,
                     negate6, p1a, copy, p1b, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 }
@@ -5077,7 +5078,7 @@ TEST_F(MemorySpaceAssignmentTest, MultiOutputFusion) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, fusion, element0, element1, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 }
@@ -5117,7 +5118,7 @@ TEST_F(MemorySpaceAssignmentTest, TupleInput) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, negate0, negate1, tuple, fusion});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 }
@@ -5190,7 +5191,7 @@ TEST_F(MemorySpaceAssignmentTest, TupleToTuple1) {
       computation,
       {p0, fusion0, element0, element1, negate0, negate1, negate2, negate3,
        negate4, negate5, negate6, add0, add1, fusion1, mul});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(), 5);
   EXPECT_THAT(fusion1,
@@ -5263,7 +5264,7 @@ TEST_F(MemorySpaceAssignmentTest, TupleToTuple2) {
   schedule.set_sequence(
       computation, {p0, fusion0, negate0, negate1, negate2, negate3, negate4,
                     negate5, negate6, fusion1});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(), 5);
 
@@ -5322,7 +5323,7 @@ TEST_F(MemorySpaceAssignmentTest, TupleToTuple3) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, fusion0, fusion1});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
   EXPECT_THAT(fusion1, op::Fusion(op::Fusion()));
@@ -5366,11 +5367,11 @@ TEST_F(MemorySpaceAssignmentTest, InputOutputAlias) {
   schedule.set_sequence(
       computation, {p, p0, negate0, negate1, negate2, negate3, negate4, negate5,
                     negate6, p1, add, negate7, tuple});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   // Make input {0} alias with output {0} and input {1} alias with output {1}.
-  TF_CHECK_OK(module->input_output_alias_config().SetUpAlias({0}, 0, {0}));
-  TF_CHECK_OK(module->input_output_alias_config().SetUpAlias({1}, 0, {1}));
+  CHECK_OK(module->input_output_alias_config().SetUpAlias({0}, 0, {0}));
+  CHECK_OK(module->input_output_alias_config().SetUpAlias({1}, 0, {1}));
 
   AssignMemorySpace(module.get());
 
@@ -5413,7 +5414,7 @@ TEST_F(MemorySpaceAssignmentTest, CostAnalysis) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
                                       negate3, negate4, negate5, negate6, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpaceUsingCostAnalysis(module.get());
   // Parameters are in the default memory space.
@@ -5485,7 +5486,7 @@ TEST_F(MemorySpaceAssignmentTest, MemoryBoundednessBufferIntervalCompare) {
   schedule.set_sequence(computation,
                         {p0, p1, tanh0, negate0, tanh1, negate1, tanh2, negate2,
                          tanh3, negate3, tanh4, negate4, tuple});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpaceUsingCostAnalysis(module.get());
   // Parameters are in the default memory space.
@@ -5513,8 +5514,8 @@ TEST_F(MemorySpaceAssignmentTest, MemoryBoundednessBufferIntervalCompare) {
   EXPECT_THAT(tanh4, op::ShapeWithLayout(shape_in_default_mem));
 }
 
-TEST_F(MemorySpaceAssignmentTest, ColorOutputInAlternateMemory) {
-  absl::string_view hlo_string = R"(
+TEST_F(MemorySpaceAssignmentTest, TestColorOutputInAlternateMemory) {
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -5532,7 +5533,7 @@ ENTRY entry {
   negate4 = f32[3,4]{1,0} add(negate3, tanh0)
   ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
 }
-)";
+)hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -5540,6 +5541,7 @@ ENTRY entry {
 
   HloInstruction* tanh0 = FindInstruction(module.get(), "tanh0");
   HloPosition tanh0_position{tanh0, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {tanh0_position, kAlternateMemorySpace}};
 
@@ -5563,7 +5565,7 @@ ENTRY entry {
 }
 
 TEST_F(MemorySpaceAssignmentTest, ColorInputInAlternateMemory) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -5581,7 +5583,7 @@ ENTRY entry {
   negate4 = f32[3,4]{1,0} add(negate3, tanh0)
   ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
 }
-)";
+)hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -5589,6 +5591,7 @@ ENTRY entry {
 
   HloInstruction* negate4 = FindInstruction(module.get(), "negate4");
   HloUse tanh0_use_during_negate4{negate4, 1, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {tanh0_use_during_negate4, kAlternateMemorySpace}};
 
@@ -5616,7 +5619,7 @@ ENTRY entry {
 
 TEST_F(MemorySpaceAssignmentTest,
        ColorOutputInDefaultMemoryUseInAlternateMemory) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -5634,7 +5637,7 @@ ENTRY entry {
   negate4 = f32[3,4]{1,0} add(negate3, tanh0)
   ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
 }
-)";
+)hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -5644,6 +5647,7 @@ ENTRY entry {
   HloPosition tanh0_position{tanh0, {}};
   HloInstruction* negate4 = FindInstruction(module.get(), "negate4");
   HloUse tanh0_use_during_negate4{negate4, 1, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {tanh0_position, kDefaultMemorySpace},
       {tanh0_use_during_negate4, kAlternateMemorySpace}};
@@ -5675,7 +5679,7 @@ ENTRY entry {
 
 TEST_F(MemorySpaceAssignmentTest,
        ColorOutputInAlternateMemoryUseInDefaultMemory) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -5693,7 +5697,7 @@ tanh4 = f32[3,4]{1,0} tanh(tanh3)
 negate4 = f32[3,4]{1,0} add(negate3, tanh0)
 ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
 }
-)";
+)hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -5703,6 +5707,7 @@ ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
   HloPosition tanh0_position{tanh0, {}};
   HloInstruction* negate4 = FindInstruction(module.get(), "negate4");
   HloUse tanh0_use_during_negate4{negate4, 1, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {tanh0_position, kAlternateMemorySpace},
       {tanh0_use_during_negate4, kDefaultMemorySpace}};
@@ -5733,7 +5738,7 @@ ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
 }
 
 TEST_F(MemorySpaceAssignmentTest, ColorAlternateUsesInAlternateMemory) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -5751,7 +5756,7 @@ tanh4 = f32[3,4]{1,0} tanh(tanh3)
 negate4 = f32[3,4]{1,0} add(negate3, tanh0)
 ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
 }
-)";
+)hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -5763,6 +5768,7 @@ ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
   HloUse negate0_use_during_negate1{negate1, 0, {}};
   HloInstruction* tanh1 = FindInstruction(module.get(), "tanh1");
   HloUse negate0_use_during_tanh1{tanh1, 0, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {negate0_position, kAlternateMemorySpace},
       {negate0_use_during_tanh1, kDefaultMemorySpace},
@@ -5811,7 +5817,7 @@ TEST_F(MemorySpaceAssignmentTest, ColorBuffersWithoutRepacking) {
   // .##...  chunk:     0-1024
   // Since we block a chunk for coloring of negate1, we are not able to allocate
   // negate3 in alternate memory without repacking.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule Slice, is_scheduled=true
 
 ENTRY main {
@@ -5828,7 +5834,7 @@ ENTRY main {
   negate5 = f32[32,16] negate(negate3)
 
   ROOT tuple = (f32[16,16], f32[32,16], f32[32,16]) tuple(negate2, negate4, negate5)
-})";
+})hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -5857,6 +5863,7 @@ ENTRY main {
   options.max_repacks = 0;
   HloInstruction* negate1 = FindInstruction(module.get(), "negate1");
   HloPosition negate1_position{negate1, {}};
+  options.allocate_colored_buffers_early = false;
   options.buffer_colorings = {{negate1_position, kAlternateMemorySpace}};
 
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
@@ -5904,7 +5911,7 @@ TEST_F(MemorySpaceAssignmentTest, ColorBuffersWithRepacking) {
   // #####.  chunk:  1024-2048
   // #####.  chunk:     0-1024
   // Repacking allows us to allocate negate3 in alternate memory.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule Slice, is_scheduled=true
 
 ENTRY main {
@@ -5921,7 +5928,7 @@ ENTRY main {
   negate5 = f32[32,16] negate(negate3)
 
   ROOT tuple = (f32[16,16], f32[32,16], f32[32,16]) tuple(negate2, negate4, negate5)
-})";
+})hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -5958,6 +5965,7 @@ ENTRY main {
   options.repacker = &repacker;
   HloInstruction* negate1 = FindInstruction(module.get(), "negate1");
   HloPosition negate1_position{negate1, {}};
+  options.allocate_colored_buffers_early = false;
   options.buffer_colorings = {{negate1_position, kAlternateMemorySpace}};
 
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
@@ -5992,9 +6000,18 @@ ENTRY main {
             kAlternateMemorySpace);
 }
 
+#define EXPECT_INSTRUCTION_IN(instruction_name, expected_memory_space) \
+  {                                                                    \
+    HloInstruction* instruction =                                      \
+        FindInstruction(module.get(), instruction_name);               \
+    EXPECT_EQ(instruction->shape().layout().memory_space(),            \
+              expected_memory_space)                                   \
+        << "Instruction name:" << instruction_name;                    \
+  }
+
 TEST_F(MemorySpaceAssignmentTest,
        MemoryBoundednessOverrideSortOrderAssignFirst) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -6012,7 +6029,7 @@ TEST_F(MemorySpaceAssignmentTest,
     negate4 = f32[3,4]{1,0} negate(negate3)
     ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -6033,37 +6050,25 @@ TEST_F(MemorySpaceAssignmentTest,
       /*hlo_cost_options_override=*/std::nullopt,
       /*optional_msa_sort_order_overrides=*/msa_sort_order_overrides);
   // Parameters are in the default memory space.
-  const HloInstruction* p0 = FindInstruction(module.get(), "p0");
-  EXPECT_EQ(p0->shape().layout().memory_space(), kDefaultMemorySpace);
-  const HloInstruction* p1 = FindInstruction(module.get(), "p1");
-  EXPECT_EQ(p1->shape().layout().memory_space(), kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("p0", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("p1", kDefaultMemorySpace);
   // Check that all negates are in alternate memory space except negate4.
   // negate4 is a program output, so it has to land in default memory.
-  HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
-  EXPECT_EQ(negate0->shape().layout().memory_space(), kAlternateMemorySpace);
-  HloInstruction* negate1 = FindInstruction(module.get(), "negate1");
-  EXPECT_EQ(negate1->shape().layout().memory_space(), kAlternateMemorySpace);
-  HloInstruction* negate2 = FindInstruction(module.get(), "negate2");
-  EXPECT_EQ(negate2->shape().layout().memory_space(), kAlternateMemorySpace);
-  HloInstruction* negate3 = FindInstruction(module.get(), "negate3");
-  EXPECT_EQ(negate3->shape().layout().memory_space(), kAlternateMemorySpace);
-  HloInstruction* negate4 = FindInstruction(module.get(), "negate4");
-  EXPECT_EQ(negate4->shape().layout().memory_space(), kDefaultMemorySpace);
-  const HloInstruction* tanh0 = FindInstruction(module.get(), "tanh0");
-  EXPECT_EQ(tanh0->shape().layout().memory_space(), kDefaultMemorySpace);
-  const HloInstruction* tanh1 = FindInstruction(module.get(), "tanh1");
-  EXPECT_EQ(tanh1->shape().layout().memory_space(), kDefaultMemorySpace);
-  const HloInstruction* tanh2 = FindInstruction(module.get(), "tanh2");
-  EXPECT_EQ(tanh2->shape().layout().memory_space(), kDefaultMemorySpace);
-  const HloInstruction* tanh3 = FindInstruction(module.get(), "tanh3");
-  EXPECT_EQ(tanh3->shape().layout().memory_space(), kDefaultMemorySpace);
-  const HloInstruction* tanh4 = FindInstruction(module.get(), "tanh4");
-  EXPECT_EQ(tanh4->shape().layout().memory_space(), kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate0", kAlternateMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate1", kAlternateMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate2", kAlternateMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate3", kAlternateMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate4", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh0", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh1", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh2", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh3", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh4", kDefaultMemorySpace);
 }
 
 TEST_F(MemorySpaceAssignmentTest,
        MemoryBoundednessOverrideSortOrderAssignLast) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -6081,7 +6086,7 @@ TEST_F(MemorySpaceAssignmentTest,
     negate4 = f32[3,4]{1,0} negate(negate3)
     ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -6103,37 +6108,25 @@ TEST_F(MemorySpaceAssignmentTest,
       /*hlo_cost_options_override=*/std::nullopt,
       /*optional_msa_sort_order_overrides=*/msa_sort_order_overrides);
   // Parameters are in the default memory space.
-  const HloInstruction* p0 = FindInstruction(module.get(), "p0");
-  EXPECT_EQ(p0->shape().layout().memory_space(), kDefaultMemorySpace);
-  const HloInstruction* p1 = FindInstruction(module.get(), "p1");
-  EXPECT_EQ(p1->shape().layout().memory_space(), kDefaultMemorySpace);
-  HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
-  EXPECT_EQ(negate0->shape().layout().memory_space(), kAlternateMemorySpace);
-  HloInstruction* negate1 = FindInstruction(module.get(), "negate1");
-  EXPECT_EQ(negate1->shape().layout().memory_space(), kAlternateMemorySpace);
-  HloInstruction* negate2 = FindInstruction(module.get(), "negate2");
-  EXPECT_EQ(negate2->shape().layout().memory_space(), kAlternateMemorySpace);
-  HloInstruction* negate3 = FindInstruction(module.get(), "negate3");
-  EXPECT_EQ(negate3->shape().layout().memory_space(), kAlternateMemorySpace);
-  HloInstruction* negate4 = FindInstruction(module.get(), "negate4");
+  EXPECT_INSTRUCTION_IN("p0", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("p1", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate0", kAlternateMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate1", kAlternateMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate2", kAlternateMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate3", kAlternateMemorySpace);
   // negate4 is a program output, so it has to land in default memory.
-  EXPECT_EQ(negate4->shape().layout().memory_space(), kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate4", kDefaultMemorySpace);
   // Check that all tanhs are in default memory space.
-  const HloInstruction* tanh0 = FindInstruction(module.get(), "tanh0");
-  EXPECT_EQ(tanh0->shape().layout().memory_space(), kDefaultMemorySpace);
-  const HloInstruction* tanh1 = FindInstruction(module.get(), "tanh1");
-  EXPECT_EQ(tanh1->shape().layout().memory_space(), kDefaultMemorySpace);
-  const HloInstruction* tanh2 = FindInstruction(module.get(), "tanh2");
-  EXPECT_EQ(tanh2->shape().layout().memory_space(), kDefaultMemorySpace);
-  const HloInstruction* tanh3 = FindInstruction(module.get(), "tanh3");
-  EXPECT_EQ(tanh3->shape().layout().memory_space(), kDefaultMemorySpace);
-  const HloInstruction* tanh4 = FindInstruction(module.get(), "tanh4");
-  EXPECT_EQ(tanh4->shape().layout().memory_space(), kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh0", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh1", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh2", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh3", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh4", kDefaultMemorySpace);
 }
 
 TEST_F(MemorySpaceAssignmentTest,
        MemoryBoundednessOverrideSortOrderBySizeLteAssignFirst) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -6151,7 +6144,7 @@ TEST_F(MemorySpaceAssignmentTest,
     negate4 = f32[5,4]{1,0} negate(negate3)
     ROOT tuple = (f32[3,4]{1,0}, f32[5,4]{1,0}) tuple(tanh4, negate4)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -6179,37 +6172,25 @@ TEST_F(MemorySpaceAssignmentTest,
       /*hlo_cost_options_override=*/std::nullopt,
       /*optional_msa_sort_order_overrides=*/msa_sort_order_overrides);
   // Parameters are in the default memory space.
-  const HloInstruction* p0 = FindInstruction(module.get(), "p0");
-  EXPECT_EQ(p0->shape().layout().memory_space(), kDefaultMemorySpace);
-  const HloInstruction* p1 = FindInstruction(module.get(), "p1");
-  EXPECT_EQ(p1->shape().layout().memory_space(), kDefaultMemorySpace);
-  HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
-  EXPECT_EQ(negate0->shape().layout().memory_space(), kDefaultMemorySpace);
-  HloInstruction* negate1 = FindInstruction(module.get(), "negate1");
-  EXPECT_EQ(negate1->shape().layout().memory_space(), kDefaultMemorySpace);
-  HloInstruction* negate2 = FindInstruction(module.get(), "negate2");
-  EXPECT_EQ(negate2->shape().layout().memory_space(), kDefaultMemorySpace);
-  HloInstruction* negate3 = FindInstruction(module.get(), "negate3");
-  EXPECT_EQ(negate3->shape().layout().memory_space(), kDefaultMemorySpace);
-  HloInstruction* negate4 = FindInstruction(module.get(), "negate4");
-  EXPECT_EQ(negate4->shape().layout().memory_space(), kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("p0", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("p1", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate0", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate1", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate2", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate3", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate4", kDefaultMemorySpace);
   // Check that all tanhs are in alternate memory space except tanh4. tanh4
   // is a program output, so it has to land in default memory.
-  const HloInstruction* tanh0 = FindInstruction(module.get(), "tanh0");
-  EXPECT_EQ(tanh0->shape().layout().memory_space(), kAlternateMemorySpace);
-  const HloInstruction* tanh1 = FindInstruction(module.get(), "tanh1");
-  EXPECT_EQ(tanh1->shape().layout().memory_space(), kAlternateMemorySpace);
-  const HloInstruction* tanh2 = FindInstruction(module.get(), "tanh2");
-  EXPECT_EQ(tanh2->shape().layout().memory_space(), kAlternateMemorySpace);
-  const HloInstruction* tanh3 = FindInstruction(module.get(), "tanh3");
-  EXPECT_EQ(tanh3->shape().layout().memory_space(), kAlternateMemorySpace);
-  const HloInstruction* tanh4 = FindInstruction(module.get(), "tanh4");
-  EXPECT_EQ(tanh4->shape().layout().memory_space(), kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh0", kAlternateMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh1", kAlternateMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh2", kAlternateMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh3", kAlternateMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh4", kDefaultMemorySpace);
 }
 
 TEST_F(MemorySpaceAssignmentTest,
        MemoryBoundednessOverrideSortOrderBySizeGteAssignFirst) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -6227,7 +6208,7 @@ TEST_F(MemorySpaceAssignmentTest,
     negate4 = f32[5,4]{1,0} negate(negate3)
     ROOT tuple = (f32[3,4]{1,0}, f32[5,4]{1,0}) tuple(tanh4, negate4)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -6255,37 +6236,25 @@ TEST_F(MemorySpaceAssignmentTest,
       /*hlo_cost_options_override=*/std::nullopt,
       /*optional_msa_sort_order_overrides=*/msa_sort_order_overrides);
   // Parameters are in the default memory space.
-  const HloInstruction* p0 = FindInstruction(module.get(), "p0");
-  EXPECT_EQ(p0->shape().layout().memory_space(), kDefaultMemorySpace);
-  const HloInstruction* p1 = FindInstruction(module.get(), "p1");
-  EXPECT_EQ(p1->shape().layout().memory_space(), kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("p0", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("p1", kDefaultMemorySpace);
   // Check that all negates are in alternate memory space except negate4.
   // negate4 is a program output, so it has to land in default memory.
-  HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
-  EXPECT_EQ(negate0->shape().layout().memory_space(), kAlternateMemorySpace);
-  HloInstruction* negate1 = FindInstruction(module.get(), "negate1");
-  EXPECT_EQ(negate1->shape().layout().memory_space(), kAlternateMemorySpace);
-  HloInstruction* negate2 = FindInstruction(module.get(), "negate2");
-  EXPECT_EQ(negate2->shape().layout().memory_space(), kAlternateMemorySpace);
-  HloInstruction* negate3 = FindInstruction(module.get(), "negate3");
-  EXPECT_EQ(negate3->shape().layout().memory_space(), kAlternateMemorySpace);
-  HloInstruction* negate4 = FindInstruction(module.get(), "negate4");
-  EXPECT_EQ(negate4->shape().layout().memory_space(), kDefaultMemorySpace);
-  const HloInstruction* tanh0 = FindInstruction(module.get(), "tanh0");
-  EXPECT_EQ(tanh0->shape().layout().memory_space(), kDefaultMemorySpace);
-  const HloInstruction* tanh1 = FindInstruction(module.get(), "tanh1");
-  EXPECT_EQ(tanh1->shape().layout().memory_space(), kDefaultMemorySpace);
-  const HloInstruction* tanh2 = FindInstruction(module.get(), "tanh2");
-  EXPECT_EQ(tanh2->shape().layout().memory_space(), kDefaultMemorySpace);
-  const HloInstruction* tanh3 = FindInstruction(module.get(), "tanh3");
-  EXPECT_EQ(tanh3->shape().layout().memory_space(), kDefaultMemorySpace);
-  const HloInstruction* tanh4 = FindInstruction(module.get(), "tanh4");
-  EXPECT_EQ(tanh4->shape().layout().memory_space(), kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate0", kAlternateMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate1", kAlternateMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate2", kAlternateMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate3", kAlternateMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate4", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh0", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh1", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh2", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh3", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh4", kDefaultMemorySpace);
 }
 
 TEST_F(MemorySpaceAssignmentTest,
        MemoryBoundednessOverrideSortOrderByUseAssignFirst) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -6303,7 +6272,7 @@ TEST_F(MemorySpaceAssignmentTest,
     negate4 = f32[3,4]{1,0} negate(negate3)
     ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -6326,32 +6295,116 @@ TEST_F(MemorySpaceAssignmentTest,
       /*hlo_cost_options_override=*/std::nullopt,
       /*optional_msa_sort_order_overrides=*/msa_sort_order_overrides);
   // Parameters are in the default memory space.
-  const HloInstruction* p0 = FindInstruction(module.get(), "p0");
-  EXPECT_EQ(p0->shape().layout().memory_space(), kDefaultMemorySpace);
-  const HloInstruction* p1 = FindInstruction(module.get(), "p1");
-  EXPECT_EQ(p1->shape().layout().memory_space(), kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("p0", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("p1", kDefaultMemorySpace);
   // Check that all negates are in alternate memory space except negate4.
   // negate4 is a program output, so it has to land in default memory.
-  HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
-  EXPECT_EQ(negate0->shape().layout().memory_space(), kAlternateMemorySpace);
-  HloInstruction* negate1 = FindInstruction(module.get(), "negate1");
-  EXPECT_EQ(negate1->shape().layout().memory_space(), kAlternateMemorySpace);
-  HloInstruction* negate2 = FindInstruction(module.get(), "negate2");
-  EXPECT_EQ(negate2->shape().layout().memory_space(), kAlternateMemorySpace);
-  HloInstruction* negate3 = FindInstruction(module.get(), "negate3");
-  EXPECT_EQ(negate3->shape().layout().memory_space(), kAlternateMemorySpace);
-  HloInstruction* negate4 = FindInstruction(module.get(), "negate4");
-  EXPECT_EQ(negate4->shape().layout().memory_space(), kDefaultMemorySpace);
-  const HloInstruction* tanh0 = FindInstruction(module.get(), "tanh0");
-  EXPECT_EQ(tanh0->shape().layout().memory_space(), kDefaultMemorySpace);
-  const HloInstruction* tanh1 = FindInstruction(module.get(), "tanh1");
-  EXPECT_EQ(tanh1->shape().layout().memory_space(), kDefaultMemorySpace);
-  const HloInstruction* tanh2 = FindInstruction(module.get(), "tanh2");
-  EXPECT_EQ(tanh2->shape().layout().memory_space(), kDefaultMemorySpace);
-  const HloInstruction* tanh3 = FindInstruction(module.get(), "tanh3");
-  EXPECT_EQ(tanh3->shape().layout().memory_space(), kDefaultMemorySpace);
-  const HloInstruction* tanh4 = FindInstruction(module.get(), "tanh4");
-  EXPECT_EQ(tanh4->shape().layout().memory_space(), kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate0", kAlternateMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate1", kAlternateMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate2", kAlternateMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate3", kAlternateMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate4", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh0", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh1", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh2", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh3", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh4", kDefaultMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       MemoryBoundednessOverrideSortOrderByRandomFingerprintAssignFirst) {
+  absl::string_view hlo_string = R"hlo(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    p0 = f32[3,4]{1,0} parameter(0)
+    p1 = f32[3,4]{1,0} parameter(1)
+    tanh0 = f32[3,4]{1,0} tanh(p0)
+    negate0 = f32[3,4]{1,0} negate(p1)
+    tanh1 = f32[3,4]{1,0} tanh(tanh0)
+    negate1 = f32[3,4]{1,0} negate(negate0)
+    tanh2 = f32[3,4]{1,0} tanh(tanh1)
+    negate2 = f32[3,4]{1,0} negate(negate1)
+    tanh3 = f32[3,4]{1,0} tanh(tanh2)
+    negate3 = f32[3,4]{1,0} negate(negate2)
+    tanh4 = f32[3,4]{1,0} tanh(tanh3)
+    negate4 = f32[3,4]{1,0} negate(negate3)
+    ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
+  }
+  )hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  // Override MSA sort order and try to assign all negates to alternate memory
+  // first. Alternate memory size is enough to fit 2 f32[4,3] tensors at a time.
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher {
+        hlo_random_filter {
+          seed: 123456
+          selection_range_begin: 0.
+          selection_range_end: 0.5
+        }
+      }
+      override_options { assign_first: true }
+    })pb";
+  TF_ASSERT_OK_AND_ASSIGN(auto msa_sort_order_overrides,
+                          ParseTextProto<MsaSortOrderOverrides>(text_proto));
+
+  // Show that with this random seed and bound values, we get tanh to pass the
+  // random filter while negate do not pass the filter.
+  //
+  // NOTE that all tanh functions are considered "identical" since the filter
+  // it only uses the "fingerprint" of the instruction which is based on the
+  // computation graph and does not include the name. Same for the negate
+  // functions.
+  const auto& hlo_position_matcher =
+      msa_sort_order_overrides.overrides(0).hlo_position_matcher();
+  EXPECT_TRUE(MemorySpaceAssignmentUtils::DoesInstructionMatchRandomFilter(
+      hlo_position_matcher, *FindInstruction(module.get(), "tanh0")));
+  EXPECT_TRUE(MemorySpaceAssignmentUtils::DoesInstructionMatchRandomFilter(
+      hlo_position_matcher, *FindInstruction(module.get(), "tanh1")));
+  EXPECT_TRUE(MemorySpaceAssignmentUtils::DoesInstructionMatchRandomFilter(
+      hlo_position_matcher, *FindInstruction(module.get(), "tanh2")));
+  EXPECT_TRUE(MemorySpaceAssignmentUtils::DoesInstructionMatchRandomFilter(
+      hlo_position_matcher, *FindInstruction(module.get(), "tanh3")));
+  EXPECT_TRUE(MemorySpaceAssignmentUtils::DoesInstructionMatchRandomFilter(
+      hlo_position_matcher, *FindInstruction(module.get(), "tanh4")));
+
+  EXPECT_FALSE(MemorySpaceAssignmentUtils::DoesInstructionMatchRandomFilter(
+      hlo_position_matcher, *FindInstruction(module.get(), "negate0")));
+  EXPECT_FALSE(MemorySpaceAssignmentUtils::DoesInstructionMatchRandomFilter(
+      hlo_position_matcher, *FindInstruction(module.get(), "negate1")));
+  EXPECT_FALSE(MemorySpaceAssignmentUtils::DoesInstructionMatchRandomFilter(
+      hlo_position_matcher, *FindInstruction(module.get(), "negate2")));
+  EXPECT_FALSE(MemorySpaceAssignmentUtils::DoesInstructionMatchRandomFilter(
+      hlo_position_matcher, *FindInstruction(module.get(), "negate3")));
+  EXPECT_FALSE(MemorySpaceAssignmentUtils::DoesInstructionMatchRandomFilter(
+      hlo_position_matcher, *FindInstruction(module.get(), "negate4")));
+
+  AssignMemorySpaceUsingCostAnalysis(
+      module.get(), /*memory_space_options_override=*/std::nullopt,
+      /*cost_analysis_options_override=*/std::nullopt,
+      /*hlo_cost_options_override=*/std::nullopt,
+      /*optional_msa_sort_order_overrides=*/msa_sort_order_overrides);
+  // Parameters are in the default memory space.
+  EXPECT_INSTRUCTION_IN("p0", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("p1", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate0", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate1", kDefaultMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate2", kDefaultMemorySpace);
+  // Since the max size is 128 bytes, there's enough space for negate3 to be
+  // assigned to alternate memory even though it doesn't have priority
+  EXPECT_INSTRUCTION_IN("negate3", kAlternateMemorySpace);
+  EXPECT_INSTRUCTION_IN("negate4", kDefaultMemorySpace);
+  // Check that all tanh are in alternate memory space except tanh4.
+  // tanh4 is a program output, so it has to land in default memory.
+  EXPECT_INSTRUCTION_IN("tanh0", kAlternateMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh1", kAlternateMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh2", kAlternateMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh3", kAlternateMemorySpace);
+  EXPECT_INSTRUCTION_IN("tanh4", kDefaultMemorySpace);
 }
 
 TEST_F(MemorySpaceAssignmentTest, SimpleWhileTupleTest) {
@@ -6435,7 +6488,7 @@ TEST_F(MemorySpaceAssignmentTest, SimpleWhileTupleTest) {
 
   HloComputation* computation = module->AddEntryComputation(builder.Build());
   schedule.set_sequence(computation, {param, gte0, gte1, tuple, while0});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(),
                     /*max_prefetch_interval=*/50);
@@ -6518,7 +6571,7 @@ TEST_F(MemorySpaceAssignmentTest, EvictionsShouldntBeDelayed) {
       {p0, tanh0, tanh_redundant0, tanh_redundant1, tanh_redundant2,
        tanh_redundant3, tanh_redundant4, tanh_redundant5, tanh_redundant6,
        negate0, tanh1, negate1, tanh2, negate2, tanh3, negate3, tuple});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpaceUsingCostAnalysis(module.get());
 
@@ -6607,7 +6660,7 @@ TEST_F(MemorySpaceAssignmentTest,
   schedule.set_sequence(computation,
                         {p0, p1, negate0, negate1, negate2, negate3, negate4,
                          negate5, negate6, add, tuple});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   Options options = DefaultMemorySpaceOptions();
   options.post_module_scoped_alternate_memory_size_in_bytes = 32;
@@ -6683,7 +6736,7 @@ TEST_F(MemorySpaceAssignmentTest, PendingChunkMemoryCorruptionBug) {
   //  -------------------------------------------
   //    Min memory          time ->
   //
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule bug, is_scheduled=true
 
   ENTRY %Entry {
@@ -6708,7 +6761,7 @@ TEST_F(MemorySpaceAssignmentTest, PendingChunkMemoryCorruptionBug) {
     %q = f32[8,3] negate(%m)
     ROOT %tuple = (f32[2,4], f32[8,3], f32[8,3]) tuple(%p, %q, %o)
   }
-  )";
+  )hlo";
 
   MsaBufferIntervalCompare buffer_interval_compare =
       [](const MsaBufferInterval& a, const MsaBufferInterval& b) {
@@ -6741,7 +6794,7 @@ TEST_F(MemorySpaceAssignmentTest, WhileAliasedArgumentRequiredAssignmentBug) {
   // multiple times to a while HLO. We already handle this case that the two
   // arguments must alias and get the same allocation in AllocateSegment so the
   // assertion isn't necessary.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule bug, is_scheduled=true
 
   while_condition {
@@ -6768,7 +6821,7 @@ TEST_F(MemorySpaceAssignmentTest, WhileAliasedArgumentRequiredAssignmentBug) {
     gte2 = f32[2,4] get-tuple-element(while), index=1
     ROOT root = f32[2,4] add(gte1, gte2)
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
@@ -6780,7 +6833,7 @@ TEST_F(MemorySpaceAssignmentTest, DisallowedUseBug) {
   // after this on the same buffer (o), this use may refer to "a" instead of the
   // evicted value, which is illegal because "a" will be allocated in the
   // alternate memory space.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule bug, is_scheduled=true
 
   ENTRY Entry {
@@ -6806,7 +6859,7 @@ TEST_F(MemorySpaceAssignmentTest, DisallowedUseBug) {
     r = f32[8,3] add(q, d)
     ROOT tuple = (f32[2,4], f32[8,3]) tuple(p, r)
   }
-  )";
+  )hlo";
 
   MsaBufferIntervalCompare buffer_interval_compare =
       [](const MsaBufferInterval& a, const MsaBufferInterval& b) {
@@ -6845,7 +6898,7 @@ TEST_F(MemorySpaceAssignmentTest, DisallowedUseBugInWhile) {
   // the default memory space might not be the very last one, so we need to
   // search the allocation sequence and find the one in the default memory
   // space.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   while_cond {
@@ -6889,7 +6942,7 @@ TEST_F(MemorySpaceAssignmentTest, DisallowedUseBugInWhile) {
     while = (f32[3]{0}, f32[3]{0}, f32[3]{0}, pred[]) while(tuple), condition=while_cond, body=while_body
     ROOT gte = f32[3]{0} get-tuple-element(while), index=2
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -6915,7 +6968,7 @@ TEST_F(MemorySpaceAssignmentTest, TwoLiveAllocationValuesBase) {
   //     - Segment A1.S0 defined during [cp-start.0, cp-done.0]
   //
   // A0 and A1 are both live for more than 1 instruction.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -6930,7 +6983,7 @@ TEST_F(MemorySpaceAssignmentTest, TwoLiveAllocationValuesBase) {
     /*08:*/ cp-done.0 = f32[10,10,10,10] collective-permute-done(cp-start.0)
     /*09:*/ v.3 = f32[10,10,10,10] add(v.2, v.2)
     /*10:*/ ROOT tuple.0 = (f32[10,10,10,10], f32[10,10,10,10], f32[10,10,10,10]) tuple(add.0, cp-done.0, v.3)
-  })";
+  })hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -6965,7 +7018,7 @@ TEST_F(MemorySpaceAssignmentTest,
   //     - Segment A1.S0 defined during [cp-start.0, cp-done.0]
   //
   // A0 and A1 are both live for 2 instructions
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -6980,7 +7033,7 @@ TEST_F(MemorySpaceAssignmentTest,
     /*08:*/ cp-done.0 = f32[10,10,10,10] collective-permute-done(cp-start.0)
     /*09:*/ v.3 = f32[10,10,10,10] add(v.2, v.2)
     /*10:*/ ROOT tuple.0 = (f32[10,10,10,10], f32[10,10,10,10], f32[10,10,10,10]) tuple(add.0, cp-done.0, v.3)
-  })";
+  })hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -7017,7 +7070,7 @@ TEST_F(MemorySpaceAssignmentTest,
   //
   // A0 and A1 are both live for more than 1 instruction. A0 is live beyond the
   // end of A1.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -7033,7 +7086,7 @@ TEST_F(MemorySpaceAssignmentTest,
     /*09:*/ v.3 = f32[10,10,10,10] add(v.2, v.2)
     /*10:*/ add.1 = f32[10,10,10,10] add(add.0, negate.0)
     /*11:*/ ROOT tuple.0 = (f32[10,10,10,10], f32[10,10,10,10], f32[10,10,10,10]) tuple(add.1, cp-done.0, v.3)
-  })";
+  })hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -7072,7 +7125,7 @@ TEST_F(MemorySpaceAssignmentTest,
   //     - Segment A1.S0 defined during [cp-start.0, cp-done.0]
   //
   // A0 and A1 are both live for more than 1 instruction.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -7087,7 +7140,7 @@ TEST_F(MemorySpaceAssignmentTest,
     /*08:*/ cp-done.0 = f32[10,10,10,10] collective-permute-done(cp-start.0)
     /*09:*/ v.3 = f32[10,10,10,10] add(v.2, v.2)
     /*10:*/ ROOT tuple.0 = (f32[10,10,10,10], f32[10,10,10,10], f32[10,10,10,10]) tuple(add.0, cp-done.0, v.3)
-  })";
+  })hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -7110,7 +7163,7 @@ TEST_F(MemorySpaceAssignmentTest,
 }
 
 TEST_F(MemorySpaceAssignmentTest, AvoidRedundantEvictionInWhile) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   while_cond {
@@ -7152,7 +7205,7 @@ TEST_F(MemorySpaceAssignmentTest, AvoidRedundantEvictionInWhile) {
     gte = f32[3]{0} get-tuple-element(while), index=1
     ROOT negate = f32[3]{0} negate(gte)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -7178,7 +7231,7 @@ TEST_F(MemorySpaceAssignmentTest,
        RedundantEvictionEliminationShouldntAddRedundantParam) {
   // Check that if there wasn't an eviction in the while loop, we don't add the
   // buffer in default memory as an additional parameter to the while loop.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   while_cond {
@@ -7207,7 +7260,7 @@ TEST_F(MemorySpaceAssignmentTest,
     gte = f32[3]{0} get-tuple-element(while), index=1
     ROOT negate = f32[3]{0} negate(gte)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -7219,7 +7272,7 @@ TEST_F(MemorySpaceAssignmentTest,
 }
 
 TEST_F(MemorySpaceAssignmentTest, AvoidRedundantEvictionInNestedWhile) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   while_cond2 {
@@ -7271,7 +7324,7 @@ TEST_F(MemorySpaceAssignmentTest, AvoidRedundantEvictionInNestedWhile) {
     gte = f32[3]{0} get-tuple-element(while1), index=1
     ROOT negate = f32[3]{0} negate(gte)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -7298,7 +7351,7 @@ TEST_F(MemorySpaceAssignmentTest, AvoidRedundantEvictionInNestedWhile) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, RedundantEvictionEliminationBug) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   while_cond {
@@ -7342,7 +7395,7 @@ TEST_F(MemorySpaceAssignmentTest, RedundantEvictionEliminationBug) {
     gte = f32[3]{0} get-tuple-element(while), index=1
     ROOT negate = f32[3]{0} negate(gte)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -7365,7 +7418,7 @@ TEST_F(MemorySpaceAssignmentTest, RedundantEvictionEliminationInChainedWhile) {
   // Check against a bug where a while HLO feeding to another while HLO can
   // cause a crash if we performa redundant eviction elimination to the first
   // while but not the other (while operand/parameter shapes would mismatch).
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   while_cond1 {
@@ -7424,7 +7477,7 @@ TEST_F(MemorySpaceAssignmentTest, RedundantEvictionEliminationInChainedWhile) {
     gte = f32[3]{0} get-tuple-element(while2), index=1
     ROOT negate = f32[3]{0} negate(gte)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -7438,7 +7491,7 @@ TEST_F(MemorySpaceAssignmentTest, RedundantEvictionEliminationInChainedWhile) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, AvoidRedundantEvictionAfterWhile) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   while_cond {
@@ -7495,7 +7548,7 @@ TEST_F(MemorySpaceAssignmentTest, AvoidRedundantEvictionAfterWhile) {
     negate34 = f32[3]{0} negate(negate33)
     ROOT add = f32[3]{0} add(negate34, gte0)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -7507,7 +7560,7 @@ TEST_F(MemorySpaceAssignmentTest, AvoidRedundantEvictionAfterWhile) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, AvoidRedundantEvictionAfterWhile2) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   while_cond1 {
@@ -7582,7 +7635,7 @@ TEST_F(MemorySpaceAssignmentTest, AvoidRedundantEvictionAfterWhile2) {
     negate34 = f32[3]{0} negate(negate33)
     ROOT add = f32[3]{0} add(negate34, gte2)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -7597,7 +7650,7 @@ TEST_F(MemorySpaceAssignmentTest, AvoidRedundantEvictionAfterWhile2) {
 
 TEST_F(MemorySpaceAssignmentTest,
        AfterWhileRedundantEarlierEvictionModifiedBuffer) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   while_cond {
@@ -7655,7 +7708,7 @@ TEST_F(MemorySpaceAssignmentTest,
     negate34 = f32[3]{0} negate(negate33)
     ROOT add = f32[3]{0} add(negate34, gte0)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -7670,7 +7723,7 @@ TEST_F(MemorySpaceAssignmentTest,
 
 TEST_F(MemorySpaceAssignmentTest,
        WhileRedundantEvictionWithInefficientAllocationBug) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   while_cond {
@@ -7750,7 +7803,7 @@ TEST_F(MemorySpaceAssignmentTest,
     gte = f32[3]{0} get-tuple-element(while2), index=1
     ROOT add = f32[3]{0} add(gte, negate14)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -7777,7 +7830,7 @@ TEST_F(MemorySpaceAssignmentTest,
 }
 
 TEST_F(MemorySpaceAssignmentTest, DisablePrefetch) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -7794,7 +7847,7 @@ TEST_F(MemorySpaceAssignmentTest, DisablePrefetch) {
     negate9 = f32[3]{0} negate(negate8)
     ROOT add = f32[3]{0} add(negate9, p0)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -7810,7 +7863,7 @@ TEST_F(MemorySpaceAssignmentTest, DisablePrefetch) {
 TEST_F(MemorySpaceAssignmentTest, BitcastRoot) {
   // Tests against a bug where the root of entry computation is a bitcast
   // instruction and it ends up getting an allocation in the alternate memory.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule primitive_computation_gather.4, is_scheduled=true
 
 %while_body {
@@ -7841,7 +7894,7 @@ ENTRY %primitive_computation_gather.4 (parameter.1: f32[3,10,5], parameter.2: s3
   %get-tuple-element.7 = f32[3,3,3] get-tuple-element(%while), index=1
   ROOT %bitcast.1 = f32[3,3,3] bitcast(f32[3,3,3] %get-tuple-element.7)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -7853,7 +7906,7 @@ ENTRY %primitive_computation_gather.4 (parameter.1: f32[3,10,5], parameter.2: s3
 }
 
 TEST_F(MemorySpaceAssignmentTest, PrecoloredBuffer) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule bug, is_scheduled=true
 
   ENTRY Entry {
@@ -7879,7 +7932,7 @@ TEST_F(MemorySpaceAssignmentTest, PrecoloredBuffer) {
     r = f32[8,3] add(q, a)
     ROOT tuple = (f32[2,4], f32[8,3]) tuple(p, r)
   }
-  )";
+  )hlo";
 
   MsaBufferIntervalCompare buffer_interval_compare =
       [](const MsaBufferInterval& a, const MsaBufferInterval& b) {
@@ -7929,7 +7982,7 @@ TEST_F(MemorySpaceAssignmentTest, PrecoloredBufferOOM) {
   // Same as above but there are two 96-byte values that are pinned to the
   // alternate memory (the size of the alternate memory is 128 bytes), which is
   // unsatisfiable.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule bug, is_scheduled=true
 
   ENTRY Entry {
@@ -7955,7 +8008,7 @@ TEST_F(MemorySpaceAssignmentTest, PrecoloredBufferOOM) {
     r = f32[8,3] add(q, a)
     ROOT tuple = (f32[2,4], f32[8,3]) tuple(p, r)
   }
-  )";
+  )hlo";
 
   MsaBufferIntervalCompare buffer_interval_compare =
       [](const MsaBufferInterval& a, const MsaBufferInterval& b) {
@@ -7992,7 +8045,7 @@ TEST_F(MemorySpaceAssignmentTest, PrecoloredBufferOOM) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, AsyncOpShortLiveRange) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -8005,7 +8058,7 @@ ENTRY entry {
   collective-permute-done = bf16[4]{0} collective-permute-done(collective-permute-start)
   ROOT add = add(collective-permute-done, negate3)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -8027,7 +8080,7 @@ ENTRY entry {
 }
 
 TEST_F(MemorySpaceAssignmentTest, AsyncOpLongLiveRange) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -8050,7 +8103,7 @@ ENTRY entry {
   collective-permute-done = bf16[4]{0} collective-permute-done(collective-permute-start)
   ROOT add = add(collective-permute-done, negate13)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -8072,7 +8125,7 @@ ENTRY entry {
 }
 
 TEST_F(MemorySpaceAssignmentTest, AsyncOpLongLiveRangeInputBufferConsumer) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -8095,7 +8148,7 @@ ENTRY entry {
   collective-permute-done = bf16[4]{0} collective-permute-done(collective-permute-start)
   ROOT add = add(collective-permute-done, negate13)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -8117,7 +8170,7 @@ ENTRY entry {
 }
 
 TEST_F(MemorySpaceAssignmentTest, InPlaceAsyncCollectivePermute) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -8135,7 +8188,7 @@ ENTRY entry {
   collective-permute-done = bf16[4]{0} collective-permute-done(collective-permute-start)
   ROOT add = add(collective-permute-done, negate4)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -8157,7 +8210,7 @@ ENTRY entry {
 }
 
 TEST_F(MemorySpaceAssignmentTest, InPlaceAsyncCollectivePermuteSameBuffer) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -8174,7 +8227,7 @@ ENTRY entry {
   collective-permute-done = bf16[4]{0} collective-permute-done(collective-permute-start)
   ROOT add = add(collective-permute-done, negate4)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -8197,7 +8250,7 @@ ENTRY entry {
 
 TEST_F(MemorySpaceAssignmentTest,
        InPlaceAsyncCollectivePermuteSameBufferChained) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -8219,7 +8272,7 @@ ENTRY entry {
   collective-permute-done.2 = bf16[4]{0} collective-permute-done(collective-permute-start.2)
   ROOT add = add(collective-permute-done.2, negate7)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -8253,7 +8306,7 @@ ENTRY entry {
 
 TEST_F(MemorySpaceAssignmentTest,
        TupleInPlaceAsyncCollectivePermuteSameBufferChained) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -8281,7 +8334,7 @@ ENTRY entry {
   gte = bf16[48]{0} get-tuple-element(collective-permute-done.2), index=0
   ROOT root = (bf16[48]{0}, bf16[4]{0}) tuple(gte, negate7)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -8297,7 +8350,7 @@ ENTRY entry {
 
 TEST_F(MemorySpaceAssignmentTest,
        TupleInPlaceAsyncCollectivePermuteSameBuffer) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -8321,7 +8374,7 @@ ENTRY entry {
   gte = bf16[48]{0} get-tuple-element(collective-permute-done.1), index=0
   ROOT root = (bf16[48]{0}, bf16[4]{0}) tuple(gte, negate4)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -8334,7 +8387,7 @@ ENTRY entry {
 
 TEST_F(MemorySpaceAssignmentTest,
        TupleInPlaceAsyncCollectivePermuteSameBufferRoot) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -8353,7 +8406,7 @@ ENTRY entry {
   collective-permute-start.1 = ((bf16[48]{0}, bf16[48]{0}), (bf16[48]{0}, bf16[48]{0}), u32[], u32[]) collective-permute-start(tuple2, tuple3, tuple0, tuple1), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{1}}
   ROOT collective-permute-done.1 = (bf16[48]{0}, bf16[48]{0}) collective-permute-done(collective-permute-start.1)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -8372,7 +8425,7 @@ ENTRY entry {
 }
 
 TEST_F(MemorySpaceAssignmentTest, TupleInPlaceAsyncCollectivePermuteRoot) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
  HloModule inplace_collective_permute, is_scheduled=true
 
  ENTRY %inplace_collective_permute {
@@ -8396,7 +8449,7 @@ TEST_F(MemorySpaceAssignmentTest, TupleInPlaceAsyncCollectivePermuteRoot) {
    %collective-permute-start = ((u32[8,1,1], u32[8,1,1]), (u32[8,1,1], u32[8,1,1]), u32[], u32[]) collective-permute-start((u32[8,1,1], u32[8,1,1]) %tuple.input, (u32[8,1,1], u32[8,1,1]) %tuple.output, (((s32[], s32[], s32[]), (s32[], s32[], s32[])), ((s32[], s32[], s32[]), (s32[], s32[], s32[]))) %input.indices, (((s32[], s32[], s32[]), (s32[], s32[], s32[])), ((s32[], s32[], s32[]), (s32[], s32[], s32[]))) %output.indices), channel_id=42, source_target_pairs={{0,1},{1,0},{1,0},{0,1}}, slice_sizes={{4},{4},{4},{4}}
    ROOT %collective-permute-done = (u32[8,1,1], u32[8,1,1]) collective-permute-done(((u32[8,1,1], u32[8,1,1]), (u32[8,1,1], u32[8,1,1]), u32[], u32[]) %collective-permute-start)
  }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -8415,7 +8468,7 @@ TEST_F(MemorySpaceAssignmentTest, TupleInPlaceAsyncCollectivePermuteRoot) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, ReservedScopedMemory) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -8427,7 +8480,7 @@ ENTRY entry {
   e = f32[2,4] negate(d)
   ROOT f = f32[2,4] add(e, b)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -8460,7 +8513,7 @@ ENTRY entry {
 }
 
 TEST_F(MemorySpaceAssignmentTest, ConstantAllocationFar) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -8473,7 +8526,7 @@ ENTRY entry {
   e = f32[2,4] negate(d)
   ROOT negate = f32[2,4] add(const, e)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -8492,7 +8545,7 @@ ENTRY entry {
 }
 
 TEST_F(MemorySpaceAssignmentTest, ConstantAllocationNear) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -8505,7 +8558,7 @@ ENTRY entry {
   const = f32[2,4] constant({...})
   ROOT negate = f32[2,4] add(const, e)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -8576,7 +8629,7 @@ TEST_F(MemorySpaceAssignmentTest, Repack) {
   //      +------------+        +------------+
   //  -------------------------------------------
   //    Min memory          time ->
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule bug, is_scheduled=true
 
   ENTRY Entry {
@@ -8596,7 +8649,7 @@ TEST_F(MemorySpaceAssignmentTest, Repack) {
     q = f32[8,3] negate(m)
     ROOT tuple = (f32[2,4], f32[8,3], f32[8,3]) tuple(p, q, o)
   }
-  )";
+  )hlo";
 
   MsaBufferIntervalCompare buffer_interval_compare =
       [](const MsaBufferInterval& a, const MsaBufferInterval& b) {
@@ -8652,7 +8705,7 @@ TEST_F(MemorySpaceAssignmentTest, RepackExportsAliasedOffsets) {
   // HLO), all four allocations should get the same (zero) offsets. However,
   // while allocations 2, 3, and 4 need to be colocated with each other,
   // allocation 1 doesn't need to be colocated with the other three.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule bug, is_scheduled=true
 
   while_condition {
@@ -8702,7 +8755,7 @@ TEST_F(MemorySpaceAssignmentTest, RepackExportsAliasedOffsets) {
     w = f32[8,4] negate(cos)
     ROOT tuple3 = (f32[2,4], f32[8,4]) tuple(v, w)
   }
-  )";
+  )hlo";
 
   MsaBufferIntervalCompare buffer_interval_compare =
       [](const MsaBufferInterval& a, const MsaBufferInterval& b) {
@@ -8749,7 +8802,7 @@ TEST_F(MemorySpaceAssignmentTest, RepackExportsAliasedOffsets) {
 
 TEST_F(MemorySpaceAssignmentTest,
        RepackExportsAliasedOffsetsForReservedScopedMemory) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -8761,7 +8814,7 @@ ENTRY entry {
   e = f32[2,4] negate(d)
   ROOT f = f32[2,4] add(e, b)
 }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
@@ -8821,7 +8874,7 @@ TEST_F(MemorySpaceAssignmentTest,
   // test. This test is capable of testing if
   // UpdateReservedScopedAllocationSize() can correctly pass operand/output set
   // of all instructions to reserved_scoped_memory_fn.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule bug, is_scheduled=true
 
   ENTRY Entry {
@@ -8841,7 +8894,7 @@ TEST_F(MemorySpaceAssignmentTest,
     q = f32[8,3] negate(m)
     ROOT tuple = (f32[2,4], f32[8,3], f32[8,3], f32[8,3]) tuple(p, q, o, c)
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
@@ -8947,7 +9000,7 @@ TEST_F(MemorySpaceAssignmentTest, ScopedAllocationWithDifferentOffset) {
   // scoped allocation has empty colocations. This is resolved by adding each
   // block itself as its own collocation. We test this by checking colocation
   // sizes during repacking.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule bug, is_scheduled=true
 
   ENTRY Entry {
@@ -8967,7 +9020,7 @@ TEST_F(MemorySpaceAssignmentTest, ScopedAllocationWithDifferentOffset) {
     q = f32[8,3] negate(m)
     ROOT tuple = (f32[2,4], f32[8,3], f32[8,3]) tuple(p, q, o)
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto check_fun = [](absl::Span<AllocationBlock*> allocations) {
@@ -9014,7 +9067,7 @@ TEST_F(MemorySpaceAssignmentTest,
   //
   // If the peak_memory_usage_ is not updated correctly, we will hit a check
   // failure and a will not be able to be allocated in alternate memory.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule bug, is_scheduled=true
   ENTRY Entry {
     param0 = f32[] parameter(0)
@@ -9026,7 +9079,7 @@ TEST_F(MemorySpaceAssignmentTest,
     d = f32[16] negate(a)
     ROOT tuple = (f32[16], f32[32]) tuple(d, c)
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
@@ -9065,7 +9118,7 @@ TEST_F(MemorySpaceAssignmentTest,
   // always required to get assignments in the default memory. After repacking,
   // this required assignment was never added back, causing conditionals to get
   // alternate-memory allocations.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule CondAllocation, is_scheduled=true
 
   true_computation {
@@ -9090,7 +9143,7 @@ TEST_F(MemorySpaceAssignmentTest,
     conditional = (f32[3]) conditional(p1, tuple, tuple), true_computation=true_computation, false_computation=false_computation
     ROOT gte = f32[3] get-tuple-element(conditional), index=0
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
@@ -9124,7 +9177,7 @@ TEST_F(MemorySpaceAssignmentTest, Determinism) {
 TEST_F(MemorySpaceAssignmentTest, InPlaceOp) {
   // Tests that in-place ops like DynamicUpdateSlice get the same allocation as
   // its input.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule Module, is_scheduled=true
 
 fused_computation {
@@ -9141,7 +9194,7 @@ ENTRY main {
   fusion = f32[2,3] fusion(negate), kind=kLoop, calls=fused_computation
   ROOT add = f32[2,3] add(fusion, fusion)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -9160,7 +9213,7 @@ ENTRY main {
 }
 
 TEST_F(MemorySpaceAssignmentTest, ConditionalInPlaceOp) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule Module, is_scheduled=true
 
 fused_computation {
@@ -9191,7 +9244,7 @@ ENTRY entry {
   tuple = (f32[2,3]) tuple(copy)
   ROOT conditional = f32[2,3] conditional(p1, tuple, tuple), true_computation=true_computation, false_computation=false_computation
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -9199,7 +9252,7 @@ ENTRY entry {
 }
 
 TEST_F(MemorySpaceAssignmentTest, AsyncCallDisableAlternateMem) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule Module, is_scheduled=true
 
 called_comp {
@@ -9234,7 +9287,7 @@ ENTRY entry {
   negate9 = f32[2,3] negate(negate8)
   ROOT add1 = f32[2,3] add(negate9, async-done)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -9300,7 +9353,7 @@ TEST_F(MemorySpaceAssignmentTest, InefficientAllocation) {
   // prefetch and an eviction. When we turn on detecting inefficient
   // allocations, we should catch this case and allocate the fusion input/output
   // in the default memory space.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule Module, is_scheduled=true
 
 fused_computation {
@@ -9334,7 +9387,7 @@ ENTRY entry {
   neg15 = f32[2,3] negate(neg14)
   ROOT tuple = (f32[2,3], f32[2,3]) tuple(fusion, neg15)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -9385,7 +9438,7 @@ TEST_F(MemorySpaceAssignmentTest, InefficientAllocationLivelockBug) {
   // fusion.1, but fusion.2 succeeds. We then find fusion.2 to be inefficient,
   // so we throw away the required assignment on fusion.1 and reallocate.
   // Without the appropriate fix, this will go on forever, causing a livelock.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule Module, is_scheduled=true
 
 fused_computation_1 {
@@ -9426,7 +9479,7 @@ ENTRY entry {
   neg12 = f32[2,3] negate(neg11)
   ROOT tuple = (f32[5,4], f32[2,3]) tuple(fusion.2, neg12)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -9449,7 +9502,7 @@ TEST_F(MemorySpaceAssignmentTest,
   // bug in inefficient allocation pinned this buffer to the default memory at
   // the use time, but we should really use the "corrected" use time which is
   // the earliest-scheduled called computation parameter.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule CondAllocation, is_scheduled=true
 
   true_computation {
@@ -9485,7 +9538,7 @@ TEST_F(MemorySpaceAssignmentTest,
     gte = f32[3] get-tuple-element(conditional), index=0
     ROOT add = f32[3] add(gte, negate8)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -9507,7 +9560,7 @@ TEST_F(MemorySpaceAssignmentTest, AsyncOpElapsedTime) {
   // are efficiently scheduled. So, in this example, collective-permute-start
   // should take zero time, which should be insufficient time to overlap a
   // prefetch for negate1's operand.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -9518,7 +9571,7 @@ ENTRY entry {
   collective-permute-done = bf16[16]{0} collective-permute-done(collective-permute-start)
   ROOT negate2 = bf16[4]{0} negate(negate1)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -9531,7 +9584,7 @@ ENTRY entry {
 TEST_F(MemorySpaceAssignmentTest, AliasedOperandBug) {
   // Test for a case where two aliased operands into the same instruction
   // (param0 and custom_call2) cause a violation of the required assignment.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -9561,7 +9614,7 @@ ENTRY entry {
   custom_call3 = f32[4,4]{0,1} custom-call(param0, custom_call2), custom_call_target="FooBar", output_to_operand_aliasing={{}: (0, {})}
   ROOT root = f32[4,4]{0,1} add(tanh, custom_call2)
 }
-  )";
+  )hlo";
 
   MsaBufferIntervalCompare buffer_interval_compare =
       [](const MsaBufferInterval& a, const MsaBufferInterval& b) {
@@ -9588,7 +9641,7 @@ ENTRY entry {
 }
 
 TEST_F(MemorySpaceAssignmentTest, AsyncOpCustomFusionShortLiveRange) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule Module, is_scheduled=true
 
 fused_computation_start {
@@ -9639,7 +9692,7 @@ ENTRY main {
   fusion3 = f32[2,1] fusion(gte5, gte6, gte7, gte8), kind=kCustom, output_to_operand_aliasing={{}: (1, {})}, calls=fused_computation_done
   ROOT add = f32[2,1] add(negate5, fusion3)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -9686,7 +9739,7 @@ ENTRY main {
 }
 
 TEST_F(MemorySpaceAssignmentTest, AsyncOpCustomFusionLongLiveRange) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule Module, is_scheduled=true
 
 fused_computation_start {
@@ -9745,7 +9798,7 @@ ENTRY main {
   fusion3 = f32[2,1] fusion(gte5, gte6, gte7, gte8), kind=kCustom, output_to_operand_aliasing={{}: (1, {})}, calls=fused_computation_done
   ROOT add = f32[2,1] add(negate13, fusion3)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -9791,7 +9844,7 @@ ENTRY main {
 }
 
 TEST_F(MemorySpaceAssignmentTest, AsyncOpCustomFusionMultipleUsers) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule Module, is_scheduled=true
 
 fused_computation_start {
@@ -9867,7 +9920,7 @@ ENTRY main {
   fusion4 = f32[2,1] fusion(gte5, gte6, gte7, gte8), kind=kCustom, output_to_operand_aliasing={{}: (1, {})}, calls=fused_computation_done
   ROOT add = f32[2,1] add(negate6, fusion4)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -9893,7 +9946,7 @@ ENTRY main {
 // exploiting how the hidden algorithm works. This is brittle and subject to
 // inadvertent breakage in the future.
 TEST_F(MemorySpaceAssignmentTest, HoistCopyStart) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule cross_program_prefetch, is_scheduled=true
 
   ENTRY cross_program_prefetch {
@@ -9912,7 +9965,7 @@ TEST_F(MemorySpaceAssignmentTest, HoistCopyStart) {
     negate.8 = f32[8,2]{1,0} negate(negate.7)
     ROOT dot.1 = f32[2,2]{1,0} dot(negate.8, get-tuple-element.1), lhs_contracting_dims={0}, rhs_contracting_dims={0}
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
@@ -9962,7 +10015,7 @@ TEST_F(MemorySpaceAssignmentTest, HoistCopyStart) {
 // alternate memory and doesn't crash, it has passed.
 TEST_F(MemorySpaceAssignmentTest,
        OperandsInAlternateMemoryWithCrossProgramPrefetch) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule cross_program_prefetch, is_scheduled=true
 
   ENTRY cross_program_prefetch {
@@ -9975,7 +10028,7 @@ TEST_F(MemorySpaceAssignmentTest,
     negate.2 = f32[8,2]{1,0} negate(negate.1)
     ROOT dot.1 = f32[2,2]{1,0} dot(negate.2, get-tuple-element.1), lhs_contracting_dims={0}, rhs_contracting_dims={0}
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
@@ -9988,7 +10041,7 @@ TEST_F(MemorySpaceAssignmentTest,
 }
 
 TEST_F(MemorySpaceAssignmentTest, WindowPrefetch) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 %fused_computation {
@@ -10006,7 +10059,7 @@ entry {
   ROOT fusion = bf16[64,8]{1,0:T(8,128)(2,1)} fusion(bf16[64,8]{1,0:T(8,128)(2,1)} %p0, bf16[64,8]{1,0:T(8,128)(2,1)} %p1, bf16[64,8]{1,0:T(8,128)(2,1)} %p2), kind=kLoop, calls=%fused_computation
 }
 
-)";
+)hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
@@ -10015,6 +10068,7 @@ entry {
   options.op_span_size_fn =
       [&](HloInstruction* original_hlo, HloInstruction* cloned_hlo,
           int64_t operand_index) -> int64_t { return 32; };
+  options.window_prefetch_min_span_size = 2;
   AssignMemorySpace(module.get(), std::move(options),
                     /*max_prefetch_interval=*/10,
                     /*min_prefetch_interval=*/0);
@@ -10039,7 +10093,7 @@ entry {
 // schedule can still be found, which prefetches the window buffers right
 // after that instruction.
 TEST_F(MemorySpaceAssignmentTest, WindowPrefetchSchedule) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 %fused_computation {
@@ -10055,7 +10109,7 @@ entry {
   ROOT t4 = bf16[64,8]{1,0:T(8,128)(2,1)} add(t2, t3)
 }
 
-)";
+)hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
@@ -10086,6 +10140,7 @@ entry {
   Options options = DefaultMemorySpaceOptions();
   options.enable_window_prefetch = true;
   options.op_span_size_fn = op_span_size_fn;
+  options.window_prefetch_min_span_size = 2;
   options.reserved_scoped_memory_fn = reserved_scoped_memory_fn;
   AssignMemorySpace(module.get(), std::move(options),
                     /*max_prefetch_interval=*/10,
@@ -10661,7 +10716,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {lhs, rhs, dot});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -10714,7 +10769,7 @@ TEST_F(MemorySpaceAssignmentTest, MultiCrossProgramPrefetchTest) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(
       computation, {lhs, first_weight, second_weight, first_dot, second_dot});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   Options options = DefaultMemorySpaceOptions();
   options.max_cross_program_prefetches = -1;
@@ -10769,7 +10824,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {param, lhs, rhs, dot});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -10809,7 +10864,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchBitcastTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {lhs, rhs, bitcast, dot});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -10853,7 +10908,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchBitcastTupleTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {param, lhs, rhs, bitcast, dot});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -10897,7 +10952,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchNestedTupleTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {param, gte, lhs, rhs, dot});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -10920,7 +10975,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchUnusedParamTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {param});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -10954,7 +11009,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTooBigTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {lhs, rhs, dot});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -10992,7 +11047,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTooBigTupleTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {param, lhs, rhs, dot});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -11040,7 +11095,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchFusionTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {activations, weights, fusion});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -11093,7 +11148,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchFusionTupleTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {activations, weights, tuple, fusion});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -11131,7 +11186,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {lhs, rhs, dot});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   Options options = DefaultMemorySpaceOptions();
   options.is_allowed_in_alternate_mem_fn = [](const HloValue& value) {
@@ -11178,7 +11233,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTupleTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {param, lhs, rhs, dot});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   Options options = DefaultMemorySpaceOptions();
   options.is_allowed_in_alternate_mem_fn = [](const HloValue& value) {
@@ -11192,7 +11247,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTupleTest) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, CrossProgramRootDupMayAlias) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule cross_program_prefetch, is_scheduled=true, input_output_alias={ {}: (0, {}, may-alias) }
     ENTRY CrossProgramPrefetch {
       c0 = s32[1,2] constant({{77, 77}})
@@ -11200,7 +11255,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramRootDupMayAlias) {
       p0 = s32[2,2] parameter(0)
       ROOT dup = s32[2,2] dynamic-update-slice(s32[2,2] p0, s32[1,2] c0, s32[] c1, s32[] c1)
     }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto preset_assignments = AssignMemorySpace(
@@ -11214,7 +11269,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramRootDupMayAlias) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, CrossProgramRootDusFusionMayAlias) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule cross_program_prefetch, is_scheduled=true, input_output_alias={ {}: (0, {}, may-alias) }
     fused_computation {
       fused_p0 = s32[2,2] parameter(0)
@@ -11231,7 +11286,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramRootDusFusionMayAlias) {
       bitcast1 = s32[2,2] bitcast(p0)
       ROOT fusion = s32[2,2] fusion(bitcast1, c0, c1, c1), kind=kLoop, calls=fused_computation
     }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto preset_assignments = AssignMemorySpace(
@@ -11243,7 +11298,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramRootDusFusionMayAlias) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, CrossProgramRootDup) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule cross_program_prefetch, is_scheduled=true
     ENTRY CrossProgramPrefetch {
       c0 = s32[1,2] constant({{77, 77}})
@@ -11251,7 +11306,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramRootDup) {
       p0 = s32[2,2] parameter(0)
       ROOT dup = s32[2,2] dynamic-update-slice(s32[2,2] p0, s32[1,2] c0, s32[] c1, s32[] c1)
     }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto preset_assignments = AssignMemorySpace(
@@ -11266,7 +11321,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramRootDup) {
 
 TEST_F(MemorySpaceAssignmentTest, CrossProgramRootDupDot) {
   // Cross program prefetch since the parameter and the root don't alias.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule cross_program_prefetch, is_scheduled=true
     ENTRY CrossProgramPrefetch {
       c0 = s32[1,2] constant({{77, 77}})
@@ -11276,7 +11331,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramRootDupDot) {
       dup = s32[2,2] dynamic-update-slice(s32[2,2] p0, s32[1,2] c0, s32[] c1, s32[] c1)
       ROOT dot = s32[2,2] dot(p1, dup), lhs_contracting_dims={0}, rhs_contracting_dims={0}
     }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto preset_assignments = AssignMemorySpace(
@@ -11291,14 +11346,14 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramRootDupDot) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, CrossProgramRootDotMayAlias) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule cross_program_prefetch, is_scheduled=true, input_output_alias={ {}: (0, {}, may-alias) }
     ENTRY CrossProgramPrefetch {
       p0 = s32[2,2] parameter(0)
       p1 = s32[2,2] parameter(1)
       ROOT dot = s32[2,2] dot(p1, p0), lhs_contracting_dims={0}, rhs_contracting_dims={0}
     }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto preset_assignments = AssignMemorySpace(
@@ -11315,7 +11370,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramRootLiveOutBug) {
   // Input-output aliased buffers should not be cross-program prefetched since
   // the update on the buffer will not be reflected on the next program
   // execution (the data in the alternate memory would be stale).
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule cross_program_prefetch, is_scheduled=true, input_output_alias={ {0}: (0, {}, may-alias) }
     fused_computation {
       p0 = s32[2,2] parameter(0)
@@ -11332,7 +11387,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramRootLiveOutBug) {
       fusion = s32[2,2] fusion(p0, dot), kind=kLoop, calls=fused_computation
       ROOT root = (s32[2,2], s32[2,2]) tuple(fusion, dot)
     }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto preset_assignments = AssignMemorySpace(
@@ -11344,13 +11399,13 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramRootLiveOutBug) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, CrossProgramRootParameter) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule cross_program_prefetch, is_scheduled=true
     ENTRY CrossProgramPrefetch {
       p0 = s32[2,2] parameter(0)
       ROOT bitcast = u32[2,2] bitcast(p0)
     }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto preset_assignments = AssignMemorySpace(
@@ -11364,7 +11419,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramRootParameter) {
 TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {
   // This test is for checking if the cross-program-prefetched buffer is freed
   // after its last use and there is an end-of-program prefetch.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule cross_program_prefetch, is_scheduled=true
 
   ENTRY CrossProgramPrefetch {
@@ -11381,7 +11436,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {
     negate.8 = f32[8,2]{1,0} negate(negate.7)
     ROOT negate.9 = f32[8,2]{1,0} negate(negate.8)
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto options = DefaultMemorySpaceOptions();
@@ -11446,7 +11501,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchWithOverrideNoReuse) {
   // parameter0 as opposed to p0 and limiting the max alternate memory
   // size to 256 bytes so that both p0 and p1 cannot be assigned to alternate
   // memory and priority is given to p0.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule cross_program_prefetch, is_scheduled=true
 
   ENTRY CrossProgramPrefetch {
@@ -11463,7 +11518,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchWithOverrideNoReuse) {
     negate.8 = f32[8,2]{1,0} negate(negate.7)
     ROOT negate.9 = f32[8,2]{1,0} negate(negate.8)
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto options = DefaultMemorySpaceOptions();
@@ -11538,7 +11593,7 @@ TEST_F(MemorySpaceAssignmentTest, UserAnnotatedCrossProgramPrefetchNoReuse) {
   // prefetch parameter0 as opposed to p0 and limiting the max alternate memory
   // size to 256 bytes so that both p0 and p1 cannot be assigned to alternate
   // memory and priority is given to p0.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule cross_program_prefetch, is_scheduled=true, entry_computation_layout={(f32[8,8]{1,0:S(1)}, f32[8,2]{1,0})->f32[8,2]{1,0}}
 
   ENTRY CrossProgramPrefetch {
@@ -11555,7 +11610,7 @@ TEST_F(MemorySpaceAssignmentTest, UserAnnotatedCrossProgramPrefetchNoReuse) {
     negate.8 = f32[8,2]{1,0} negate(negate.7)
     ROOT negate.9 = f32[8,2]{1,0} negate(negate.8)
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto options = DefaultMemorySpaceOptions();
@@ -11637,7 +11692,7 @@ TEST_F(MemorySpaceAssignmentTest,
   // layout to cross-program prefetch p0 is only present in the entry
   // computation layout and has not been propagated to the parameter
   // instruction. This still works as the previous test.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule cross_program_prefetch, is_scheduled=true, entry_computation_layout={(f32[8,8]{1,0:S(1)}, f32[8,2]{1,0})->f32[8,2]{1,0}}
 
   ENTRY CrossProgramPrefetch {
@@ -11654,7 +11709,7 @@ TEST_F(MemorySpaceAssignmentTest,
     negate.8 = f32[8,2]{1,0} negate(negate.7)
     ROOT negate.9 = f32[8,2]{1,0} negate(negate.8)
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto options = DefaultMemorySpaceOptions();
@@ -11733,7 +11788,7 @@ TEST_F(MemorySpaceAssignmentTest,
 TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleNoReuse) {
   // This test is for checking if the cross-program-prefetched buffer is freed
   // after its last use and there is an end-of-program prefetch.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule cross_program_prefetch, is_scheduled=true
 
   ENTRY CrossProgramPrefetch {
@@ -11751,7 +11806,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleNoReuse) {
     negate.8 = f32[8,2]{1,0} negate(negate.7)
     ROOT negate.9 = f32[8,2]{1,0} negate(negate.8)
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto preset_assignments = AssignMemorySpace(
@@ -11809,7 +11864,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleNoReuse) {
 
 TEST_F(MemorySpaceAssignmentTest,
        CrossProgramPrefetchEndOfProgramPrefetchAndWhile) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule cross_program_prefetch, is_scheduled=true
 
   while_condition {
@@ -11841,7 +11896,7 @@ TEST_F(MemorySpaceAssignmentTest,
     while = (f32[8,2]{1,0}, f32[8,2]{1,0}) while(tuple), condition=while_condition, body=while_body
     ROOT gte0 = f32[8,2]{1,0} get-tuple-element(while), index=0
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto preset_assignments = AssignMemorySpaceUsingCostAnalysis(module.get());
@@ -11880,7 +11935,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchReuse) {
   // This tests the scenario that the cross-program-prefetched buffer is used
   // again close to the end of the computation. In this case, it is better not
   // to free the buffer.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule cross_program_prefetch, is_scheduled=true
 
   ENTRY CrossProgramPrefetch {
@@ -11897,7 +11952,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchReuse) {
     negate.8 = f32[8,2]{1,0} negate(negate.7)
     ROOT dot.2 = f32[2,2]{1,0} dot(negate.8, p1), lhs_contracting_dims={0}, rhs_contracting_dims={0}
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
@@ -11937,7 +11992,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleReuse) {
   // This tests the scenario that the cross-program-prefetched buffer is used
   // again close to the end of the computation. In this case, it is better not
   // to free the buffer.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule cross_program_prefetch, is_scheduled=true
 
   ENTRY CrossProgramPrefetch {
@@ -11955,7 +12010,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleReuse) {
     negate.8 = f32[8,2]{1,0} negate(negate.7)
     ROOT dot.2 = f32[2,2]{1,0} dot(negate.8, get-tuple-element.1), lhs_contracting_dims={0}, rhs_contracting_dims={0}
   }
-  )";
+  )hlo";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
@@ -11992,7 +12047,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleReuse) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchBufferUnused) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 %fused_computation {
@@ -12031,7 +12086,7 @@ ENTRY %main {
   %fusion.1 = s32[100]{0} fusion(s32[32]{0} %reduce), kind=kLoop, calls=%fused_computation.1
   ROOT %fusion = f32[32]{0} fusion(f32[32]{0} %o, s32[100]{0} %fusion.1), kind=kCustom, calls=%fused_computation
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -12043,7 +12098,7 @@ ENTRY %main {
 }
 
 TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchPermissiveMode) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 fused_computation {
@@ -12059,7 +12114,7 @@ ENTRY entry {
   fusion = f32[4,2] fusion(p0, p1), kind=kLoop, calls=fused_computation
   ROOT negate = f32[4,2] negate(fusion)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -12078,7 +12133,7 @@ ENTRY entry {
 // - Test: prefetch p1, after p0 is unallocated from alternate memory (after
 //   instruction c).
 TEST_F(MemorySpaceAssignmentTest, CopyResourceIntegration) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY main {
@@ -12094,7 +12149,7 @@ ENTRY main {
 
   ROOT result = tuple(e,c,f)
 }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -12126,7 +12181,7 @@ ENTRY main {
   cost_analysis->SetOverrideForGetInstructionElapsed(
       [](const HloInstruction& instruction) -> float { return 10.0; });
   cost_analysis->SetOverrideForGetAsyncCopyElapsed(
-      [](const Shape& shape) -> float { return 20.0; });
+      [](int64_t size_in_bytes) -> float { return 20.0; });
   options.cost_analysis = cost_analysis.get();
   CostAnalysisPrefetchIntervalPicker prefetch_interval_picker(
       CostAnalysisPrefetchIntervalPicker(
@@ -12210,7 +12265,7 @@ ENTRY main {
 }
 
 TEST_F(MemorySpaceAssignmentTest, ExpandScopedAlternateMemory) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule TestModule, is_scheduled=true
     ENTRY Main {
       p0 = f32[8,8] parameter(0)
@@ -12227,7 +12282,7 @@ TEST_F(MemorySpaceAssignmentTest, ExpandScopedAlternateMemory) {
 
       ROOT t = tuple(v3, v4)
     }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -12804,7 +12859,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
                                      concat_bitcast->name(),
                                      " is not an async-slice-start.");
       }
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           int schedule_index,
           FindScheduleIndexOfInstruction(schedule, async_slice_start->name(),
                                          InstructionClass::kRelatedSliceStart));
@@ -13051,55 +13106,55 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
 
     // Update schedule_to_class with the instructions we care about.
     int slices_start_after_index;
-    TF_ASSIGN_OR_RETURN(slices_start_after_index,
-                        FindScheduleIndexOfInstruction(
-                            entry_schedule, slices_start_after_instruction_name,
-                            InstructionClass::kStartAfterNonCopy));
+    ASSIGN_OR_RETURN(slices_start_after_index,
+                     FindScheduleIndexOfInstruction(
+                         entry_schedule, slices_start_after_instruction_name,
+                         InstructionClass::kStartAfterNonCopy));
     schedule_to_class[slices_start_after_index] =
         InstructionClass::kStartAfterNonCopy;
     int slices_done_before_index;
-    TF_ASSIGN_OR_RETURN(slices_done_before_index,
-                        FindScheduleIndexOfInstruction(
-                            entry_schedule, slices_done_before_instruction_name,
-                            InstructionClass::kDoneBeforeNonCopy));
+    ASSIGN_OR_RETURN(slices_done_before_index,
+                     FindScheduleIndexOfInstruction(
+                         entry_schedule, slices_done_before_instruction_name,
+                         InstructionClass::kDoneBeforeNonCopy));
     schedule_to_class[slices_done_before_index] =
         InstructionClass::kDoneBeforeNonCopy;
     int concat_bitcast_index;
-    TF_ASSIGN_OR_RETURN(concat_bitcast_index,
-                        FindScheduleIndexOfInstruction(
-                            entry_schedule, concat_bitcast->name(),
-                            InstructionClass::kRelatedConcatBitcast));
+    ASSIGN_OR_RETURN(concat_bitcast_index,
+                     FindScheduleIndexOfInstruction(
+                         entry_schedule, concat_bitcast->name(),
+                         InstructionClass::kRelatedConcatBitcast));
     schedule_to_class[concat_bitcast_index] =
         InstructionClass::kRelatedConcatBitcast;
     for (const HloInstruction* slice : concat_bitcast->operands()) {
       int done_index;
-      TF_ASSIGN_OR_RETURN(done_index, FindScheduleIndexOfInstruction(
-                                          entry_schedule, slice->name(),
-                                          InstructionClass::kRelatedSliceDone));
+      ASSIGN_OR_RETURN(done_index, FindScheduleIndexOfInstruction(
+                                       entry_schedule, slice->name(),
+                                       InstructionClass::kRelatedSliceDone));
       schedule_to_class[done_index] = InstructionClass::kRelatedSliceDone;
       int start_index;
-      TF_ASSIGN_OR_RETURN(start_index,
-                          FindScheduleIndexOfInstruction(
-                              entry_schedule, slice->operand(0)->name(),
-                              InstructionClass::kRelatedSliceStart));
+      ASSIGN_OR_RETURN(start_index,
+                       FindScheduleIndexOfInstruction(
+                           entry_schedule, slice->operand(0)->name(),
+                           InstructionClass::kRelatedSliceStart));
       schedule_to_class[start_index] = InstructionClass::kRelatedSliceStart;
     }
 
     // Perform scheduling checks.
-    TF_RETURN_IF_ERROR(ConcatBitcastAndSlicesAfterInstruction(
+    RETURN_IF_ERROR(ConcatBitcastAndSlicesAfterInstruction(
         entry_schedule, schedule_to_class, slices_start_after_index));
-    TF_RETURN_IF_ERROR(OneSliceStartAfterInstructionWithNoCopyLikeBetween(
+    RETURN_IF_ERROR(OneSliceStartAfterInstructionWithNoCopyLikeBetween(
         entry_schedule, schedule_to_class, slices_start_after_index));
     if (expect_slices_started_at_different_times) {
-      TF_RETURN_IF_ERROR(AtLeastOneNonCopyLikeInstructionBetweenSliceStarts(
+      RETURN_IF_ERROR(AtLeastOneNonCopyLikeInstructionBetweenSliceStarts(
           entry_schedule, schedule_to_class));
     }
-    TF_RETURN_IF_ERROR(ConcatBitcastAndSlicesBeforeInstruction(
+    RETURN_IF_ERROR(ConcatBitcastAndSlicesBeforeInstruction(
         entry_schedule, schedule_to_class, slices_done_before_index));
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         ConcatBitcastAndSliceDonesBeforeInstructionWithNoCopyLikeBetween(
             entry_schedule, schedule_to_class, slices_done_before_index));
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         ConcatBitcastAfterSliceDones(entry_schedule, schedule_to_class));
 
     return absl::OkStatus();
@@ -13127,8 +13182,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
     absl::flat_hash_map<const HloInstruction*, Chunk> slices_to_chunks;
     std::optional<Chunk> result_chunk = std::nullopt;
 
-    for (const std::pair<HloPosition, Chunk>& position_chunk_pair :
-         assignments.chunks()) {
+    for (const auto& position_chunk_pair : assignments.chunks()) {
       if (position_chunk_pair.first.instruction == sliced_copy_result) {
         if (result_chunk.has_value()) {
           return FailedPrecondition(
@@ -13285,7 +13339,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
 };
 
 TEST_F(SlicedPrefetchTest, TwoSlices) {
-  std::string hlo_text = R"zz(
+  std::string hlo_text = R"hlo(
 HloModule Slice, is_scheduled=true
 
 ENTRY main {
@@ -13297,7 +13351,7 @@ ENTRY main {
   c = f32[8,8] tanh(b)
 
   ROOT r = f32[8,8] add(c, p1)
-})zz";
+})hlo";
 
   SetupProposeSlicesToExpect2SlicesOfF32x8x8();
 
@@ -13331,8 +13385,137 @@ ENTRY main {
   TF_EXPECT_OK(CheckSliceChunks(*assignments, root->operand(1)));
 }
 
+// This module is optmized as below, which adds two slices followed by a concat
+// bitcast. Since the concat bitcast uses the same slice buffers for its output,
+// the heap simulator trace should not have freed any of the slices before the
+// concat bitcast users are allocated/processed.
+//
+// ENTRY main {
+//   ...
+//   p1 = f32[8,8]{1,0} parameter(1)
+//   slice-start = slice-start(p1), slice={[4:8], [0:8]}
+//   ...
+//   slice-start.1 = slice-start(p1), slice={[0:4], [0:8]}
+//   ...
+//   c = f32[8,8]{1,0:S(1)} tanh(b)
+//   slice-done = f32[4,8]{1,0:S(1)} slice-done(slice-start)
+//   slice-done.1 = f32[4,8]{1,0:S(1)} slice-done(slice-start.1)
+//   custom-call = f32[8,8]{1,0:S(1)} custom-call(slice-done, slice-done.1),
+//                                    custom_call_target="ConcatBitcast"
+//   r = f32[8,8]{1,0:S(1)} add(c, custom-call)
+//   n = f32[8,8]{1,0:S(1)} negate(custom-call)
+// ROOT f = f32[8,8]{1,0} add(r, n)
+// }
+//
+TEST_F(SlicedPrefetchTest, SlicedPrefetchHeapSimulatorTrace) {
+  std::string hlo_text = R"hlo(
+HloModule Slice, is_scheduled=true
+
+ENTRY main {
+  p0 = f32[8,8] parameter(0)
+  p1 = f32[8,8] parameter(1)
+
+  a = f32[8,8] tanh(p0)
+  b = f32[8,8] tanh(a)
+  c = f32[8,8] tanh(b)
+
+  r = f32[8,8] add(c, p1)
+  n = f32[8,8] negate(p1)
+  ROOT f = f32[8,8] add(r, n)
+})hlo";
+
+  SetupProposeSlicesToExpect2SlicesOfF32x8x8();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  VLOG(1) << "Original module:\n"
+          << module->ToString(HloPrintOptions::ShortParsable());
+
+  std::unique_ptr<PresetAssignments> assignments = AssignMemorySpace(
+      module.get(), MakeDefaultOptions(),
+      /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/1);
+
+  VLOG(1) << "Post-MSA module:\n"
+          << module->ToString(HloPrintOptions::ShortParsable());
+
+  auto* r_instr = FindInstruction(module.get(), "r");
+  EXPECT_NE(r_instr, nullptr);
+  auto* n_instr = FindInstruction(module.get(), "n");
+  EXPECT_NE(n_instr, nullptr);
+
+  // Expect p1 to be copied via a sliced prefetch for use in r and n.
+  EXPECT_THAT(
+      r_instr,
+      op::Add(_, IsAsyncSlicedCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                                   {{{0, 4}, {0, 8}}, {{4, 8}, {0, 8}}},
+                                   op::Parameter(1))));
+  EXPECT_THAT(n_instr, op::Negate(r_instr->operand(1)));
+
+  // Check the instruction schedule.
+  TF_EXPECT_OK(
+      CheckSchedule(*module, r_instr->operand(1),
+                    /*slices_start_after_instruction_name=*/"p1",
+                    /*slices_done_before_instruction_name=*/"r",
+                    /*expect_slices_started_at_different_times=*/true));
+
+  // Check expectations on the chunks assigned to the asynchronous sliced copy.
+  TF_EXPECT_OK(CheckSliceChunks(*assignments, r_instr->operand(1)));
+
+  const HeapSimulatorTrace& heap_trace =
+      assignments->assignment_information_for_space(kAlternateMemorySpace)
+          ->heap_simulator_trace;
+  // Track the set of instructions currently living in the alternate memory
+  // space.
+  // - ALLOC event: Instruction should not be in the set. Add it.
+  // - FREE event: Instruction should be in the set. Remove it.
+  // - Concat bitcast instruction: Slice operands should remain in the set until
+  //   all concat bitcast users are allocated.
+  absl::flat_hash_set<const HloInstruction*> allocated_instructions;
+  for (const auto& event : heap_trace.events()) {
+    VLOG(3) << "event: " << event.DebugString();
+    const HloInstruction* instruction =
+        FindInstruction(module.get(), event.instruction_name());
+    EXPECT_NE(instruction, nullptr)
+        << "Instruction not found: " << event.instruction_name();
+    if (instruction->opcode() == HloOpcode::kCustomCall) {
+      EXPECT_NE(instruction->custom_call_target(),
+                memory_space_assignment::kConcatBitcastCustomCall)
+          << "We do not expect concat bitcast custom call to add any "
+             "independent events to the heap trace.";
+    }
+    if (instruction->opcode() == HloOpcode::kSlice) {
+      EXPECT_TRUE(event.kind() == HeapSimulatorTrace::Event::ALLOC ||
+                  event.kind() == HeapSimulatorTrace::Event::FREE);
+    }
+    if (event.kind() == HeapSimulatorTrace::Event::ALLOC) {
+      allocated_instructions.insert(instruction);
+    } else if (event.kind() == HeapSimulatorTrace::Event::FREE) {
+      EXPECT_TRUE(allocated_instructions.contains(instruction))
+          << "FREE is called on slice instruction before its ALLOC or is its "
+             "being called more than once on the same slice buffer.";
+      allocated_instructions.erase(instruction);
+    } else {
+      FAIL() << "Unexpected event kind: " << event.kind()
+             << " for instruction: " << event.instruction_name();
+    }
+    // At the time we allocate the r and n instructions, we should still have
+    // valid allocations for both slices of the concatbitcast operands, because
+    // the concatbitcast should share that buffer with its users, i.e. r and n
+    // instructions.
+    if ((instruction == r_instr || instruction == n_instr) &&
+        event.kind() == HeapSimulatorTrace::Event::ALLOC) {
+      int slice_count = absl::c_count_if(
+          allocated_instructions, [](const HloInstruction* inst) {
+            return inst->opcode() == HloOpcode::kSlice;
+          });
+      EXPECT_EQ(slice_count, 2)
+          << "Did not find enough valid allocations for both slice buffers in "
+             "the trace at the time of allocation for r or n instructions.";
+    }
+  }
+}
+
 TEST_F(SlicedPrefetchTest, TwoSlicesWithCopyReplacement) {
-  std::string hlo_text = R"zz(
+  std::string hlo_text = R"hlo(
 HloModule Slice, is_scheduled=true
 
 ENTRY main {
@@ -13350,7 +13533,7 @@ ENTRY main {
   r2 = f32[8,8] add(c, p1_copy2)
 
   ROOT r = f32[8,8] add(r1, r2)
-})zz";
+})hlo";
   Options options = MakeDefaultOptions();
   options.enable_sync_copy_replacement = true;
   SetupProposeSlicesToExpect2SlicesOfF32x8x8();
@@ -13368,7 +13551,7 @@ ENTRY main {
 }
 
 TEST_F(SlicedPrefetchTest, ThreeSlices) {
-  std::string hlo_text = R"zz(
+  std::string hlo_text = R"hlo(
 HloModule Slice, is_scheduled=true
 
 ENTRY main {
@@ -13380,7 +13563,7 @@ ENTRY main {
   c = f32[8,8] tanh(b)
 
   ROOT r = f32[8,8] add(c, p1)
-})zz";
+})hlo";
   const Shape f32_3_8 = ShapeUtil::MakeShape(F32, {3, 8});
   const Shape f32_2_8 = ShapeUtil::MakeShape(F32, {2, 8});
 
@@ -13432,7 +13615,7 @@ ENTRY main {
 }
 
 TEST_F(SlicedPrefetchTest, SlicingDisabled) {
-  std::string hlo_text = R"zz(
+  std::string hlo_text = R"hlo(
 HloModule Slice, is_scheduled=true
 
 ENTRY main {
@@ -13444,7 +13627,7 @@ ENTRY main {
   c = f32[8,8] tanh(b)
 
   ROOT r = f32[8,8] add(c, p1)
-})zz";
+})hlo";
 
   Options options = MakeDefaultOptions();
   options.sliced_prefetch_options.set_max_slices(0);
@@ -13471,7 +13654,7 @@ ENTRY main {
 }
 
 TEST_F(SlicedPrefetchTest, TooSmallToSlice) {
-  std::string hlo_text = R"zz(
+  std::string hlo_text = R"hlo(
 HloModule Slice, is_scheduled=true
 
 ENTRY main {
@@ -13483,7 +13666,7 @@ ENTRY main {
   c = f32[8,8] tanh(b)
 
   ROOT r = f32[8,8] add(c, p1)
-})zz";
+})hlo";
 
   Options options = MakeDefaultOptions();
   options.sliced_prefetch_options.set_min_bytes(1000000000);
@@ -13511,7 +13694,7 @@ ENTRY main {
 }
 
 TEST_F(SlicedPrefetchTest, FallbackToUnsliced) {
-  std::string hlo_text = R"zz(
+  std::string hlo_text = R"hlo(
 HloModule Slice, is_scheduled=true
 
 ENTRY main {
@@ -13523,7 +13706,7 @@ ENTRY main {
   c = f32[8,8] tanh(b)
 
   ROOT r = f32[8,8] add(c, p1)
-})zz";
+})hlo";
 
   Options options = MakeDefaultOptions();
   EXPECT_CALL(slice_proposer_,
@@ -13555,7 +13738,7 @@ ENTRY main {
 }
 
 TEST_F(SlicedPrefetchTest, UsingCostAnalysisIntervalPicker) {
-  std::string hlo_text = R"zz(
+  std::string hlo_text = R"hlo(
 HloModule Slice, is_scheduled=true
 
 ENTRY main {
@@ -13567,7 +13750,7 @@ ENTRY main {
   c = f32[8,8] tanh(b)
 
   ROOT r = f32[8,8] add(c, p1)
-})zz";
+})hlo";
 
   SetupProposeSlicesToExpect2SlicesOfF32x8x8();
 
@@ -13604,7 +13787,7 @@ ENTRY main {
 }
 
 TEST_F(SlicedPrefetchTest, LoopAliasing) {
-  std::string hlo_text = R"zz(
+  std::string hlo_text = R"hlo(
 HloModule Slice, is_scheduled=true
 
 WhileBody {
@@ -13644,7 +13827,7 @@ ENTRY main {
   d = f32[8,8] get-tuple-element(w), index=1
 
   ROOT r = f32[8,8] add(c, d)
-})zz";
+})hlo";
 
   SetupProposeSlicesToExpect2SlicesOfF32x8x8();
 
@@ -13738,7 +13921,7 @@ class MockRepacker : public MemorySpaceAssignmentRepacker {
 //   offset. After MSA, we check to make sure the fist slice is using the
 //   larger slicing parameters
 TEST_F(SlicedPrefetchTest, Repack) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule Slice, is_scheduled=true
 
 ENTRY main {
@@ -13771,7 +13954,7 @@ ENTRY main {
   z3 = f32[32,16] concatenate(z2, c), dimensions={0}
   z4 = f32[32,16] add(z3, b)
   ROOT z5 = f32[32,16] add(z4, d)
-})";
+})hlo";
 
   // Create 2 copies of the module, one to run without repacking and one to run
   // with repacking.
@@ -13926,8 +14109,7 @@ ENTRY main {
   ASSERT_EQ(p2_slice_dones.size(), 2);
   std::vector<int64_t> p2_slice_offsets;
   for (const HloInstruction* i : p2_slice_dones) {
-    for (const std::pair<HloPosition, Chunk>& position_chunk_pair :
-         assignments->chunks()) {
+    for (const auto& position_chunk_pair : assignments->chunks()) {
       if (position_chunk_pair.first.instruction == i) {
         p2_slice_offsets.push_back(position_chunk_pair.second.offset);
       }
@@ -13961,16 +14143,16 @@ struct ModuleAndAssignments {
 // slice is during one of the while loops.
 TEST_F(SlicedPrefetchTest, BackToBackWhileLoops) {
   // Define constants for building our test HLO.
-  const std::string while_cond = R"zz(
+  const std::string while_cond = R"hlo(
 WhileCond$ID {
   cond_param = (f32[8,8], f32[8,8], f32[], f32[]) parameter(0)
   i = f32[] get-tuple-element(cond_param), index=2
   limit = f32[] get-tuple-element(cond_param), index=3
 
   ROOT cond_result = pred[] compare(i, limit), direction=LT
-})zz";
+})hlo";
 
-  const std::string while_body = R"zz(
+  const std::string while_body = R"hlo(
 WhileBody$ID {
   body_param = (f32[8,8], f32[8,8], f32[], f32[]) parameter(0)
   v0 = f32[8,8] get-tuple-element(body_param), index=0
@@ -13983,19 +14165,19 @@ WhileBody$ID {
   $COMPUTATION
 
   ROOT while_result = (f32[8,8], f32[8,8], f32[], f32[]) tuple(v0, new_v1, new_i, limit)
-})zz";
+})hlo";
 
-  const std::string while_computation_cheap = R"zz(
-  new_v1 = f32[8,8] add(v0, v1))zz";
+  const std::string while_computation_cheap = R"hlo(
+  new_v1 = f32[8,8] add(v0, v1))hlo";
 
-  std::string while_computation_expensive = R"zz(
+  std::string while_computation_expensive = R"hlo(
   new_v1_0 = f32[8,8] add(v0, v1)
   new_v1_1 = f32[8,8] tanh(new_v1_0)
   new_v1_2 = f32[8,8] tanh(new_v1_1)
   new_v1_3 = f32[8,8] tanh(new_v1_2)
-  new_v1 = f32[8,8] tanh(new_v1_3))zz";
+  new_v1 = f32[8,8] tanh(new_v1_3))hlo";
 
-  std::string module_text = R"zz(
+  std::string module_text = R"hlo(
 HloModule Slice, is_scheduled=true
 
 $WHILEBODY1
@@ -14025,7 +14207,7 @@ ENTRY main {
 
   tmp1 = f32[8,8] add(loop1_result, loop2_result)
   ROOT r = f32[8,8] add(tmp1, prefetch_use)
-})zz";
+})hlo";
 
   // A lambda for generating HLO with 2 while loops called back to back. The
   // first while loop will execute while_computation1 and the second while loop
@@ -14076,8 +14258,8 @@ ENTRY main {
       [&](Options options,
           absl::string_view hlo_text) -> absl::StatusOr<ModuleAndAssignments> {
     ModuleAndAssignments module_and_assignments;
-    TF_ASSIGN_OR_RETURN(module_and_assignments.module,
-                        ParseAndReturnVerifiedModule(hlo_text));
+    ASSIGN_OR_RETURN(module_and_assignments.module,
+                     ParseAndReturnVerifiedModule(hlo_text));
     VLOG(1) << "Original module:\n"
             << module_and_assignments.module->ToString(
                    HloPrintOptions::ShortParsable());
@@ -14211,7 +14393,7 @@ TEST_F(RepackingTest, Colocations) {
 }
 
 TEST_F(SlicedPrefetchTest, UniformSizedSlicing) {
-  std::string hlo_text = R"zz(
+  std::string hlo_text = R"hlo(
 HloModule Slice, is_scheduled=true
 
 ENTRY main {
@@ -14232,7 +14414,7 @@ ENTRY main {
   x = f32[8,8] add(p1, h)
   padded_x = f32[8,16] pad(x, constant1), padding=0_0x0_8
   ROOT r = f32[8,16] add(padded_x, p2)
-})zz";
+})hlo";
   const Shape f32_8_16 = ShapeUtil::MakeShape(F32, {8, 16});
   const Shape s8_128 = ShapeUtil::MakeShape(S8, {128});
 
@@ -14302,7 +14484,7 @@ ENTRY main {
 }
 
 TEST_F(MemorySpaceAssignmentTest, TestAsyncCopyCustomKernel) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule jit_f, is_scheduled=true, entry_computation_layout={(f32[8,128]{1,0:T(8,128)})->(f32[8,128]{1,0:T(8,128)}, f32[8,128]{1,0:T(8,128)})}, allow_spmd_sharding_propagation_to_parameters={true}, allow_spmd_sharding_propagation_to_output={true,true}
 
 ENTRY %main.13 (Arg_0.1: f32[8,128]) -> (f32[8,128], f32[8,128]) {
@@ -14321,7 +14503,7 @@ ENTRY %main.13 (Arg_0.1: f32[8,128]) -> (f32[8,128], f32[8,128]) {
   %copy_done.3 = f32[8,128]{1,0:T(8,128)} custom-call(%get-tuple-element.7, %get-tuple-element.8, %get-tuple-element.9), custom_call_target="tpu_custom_call", operand_layout_constraints={f32[8,128]{1,0}, f32[8,128]{1,0}, s32[]}, output_to_operand_aliasing={{}: (1, {})}
   ROOT %tuple.12 = (f32[8,128]{1,0:T(8,128)}, f32[8,128]{1,0:T(8,128)}) tuple(%copy_done.2, %copy_done.3)
 }
-)";
+)hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -14338,6 +14520,7 @@ ENTRY %main.13 (Arg_0.1: f32[8,128]) -> (f32[8,128], f32[8,128]) {
   HloInstruction* copy_done_3 = FindInstruction(module.get(), "copy_done.3");
   HloUse copy_done_3_use{copy_done_3, 1, {}};
 
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {copy_start_2_position, kAlternateMemorySpace},
       {copy_start_3_position, kAlternateMemorySpace},
@@ -14438,7 +14621,7 @@ ENTRY %main.13 (Arg_0.1: f32[8,128]) -> (f32[8,128], f32[8,128]) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, TestCustomKernelColoringBug) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule jit_run_benchmark, is_scheduled=true, entry_computation_layout={(bf16[1024,512]{1,0:T(8,128)(2,1)}, bf16[2,512,4096]{2,1,0:T(8,128)(2,1)}, s32[3]{0:T(128)})->bf16[1024,512]{1,0:T(8,128)(2,1)}}, allow_spmd_sharding_propagation_to_parameters={false,false,false}, allow_spmd_sharding_propagation_to_output={true}, num_partitions=8
 
 ENTRY %main.28_spmd (param.1: bf16[1024,512], param.2: bf16[2,512,4096], param: s32[3]) -> bf16[1024,512] {
@@ -14455,7 +14638,7 @@ ENTRY %main.28_spmd (param.1: bf16[1024,512], param.2: bf16[2,512,4096], param: 
   %ragged_latency_optimized_reduce_scatter_out_feature_matmul.1 = bf16[1024,512]{1,0:T(8,128)(2,1)} custom-call(%get-tuple-element.10, %get-tuple-element.11, %get-tuple-element.16, %get-tuple-element.22, %get-tuple-element.28, /*index=5*/%param.1, %param.2), custom_call_target="tpu_custom_call", operand_layout_constraints={s32[1]{0}, s32[1]{0}, s32[4]{0}, s32[3]{0}, s32[3]{0}, bf16[1024,512]{1,0}, bf16[2,512,4096]{2,1,0}}, backend_config={"flag_configs":[{"flag_type":"XLA_TPU_EVENLY_DISTRIBUTE_CRITICAL_NODES","value":{"boolean_value":true}},{"flag_type":"XLA_TPU_ENABLE_LLO_PIPELINING","value":{"boolean_value":true}},{"flag_type":"XLA_TPU_ENABLE_LLO_SMALL_LOOP_FLATTENING","value":{"boolean_value":true}},{"flag_type":"XLA_TPU_RESCHEDULE_DMA_DONES","value":{"boolean_value":true}},{"flag_type":"XLA_TPU_MAX_INSTS_TO_PREDICATE","value":{"integer_value":"65536"}}],"barrier_config":{"barrier_type":"CUSTOM","id":"0"},"scoped_memory_configs":[],"custom_call_config":{"body":"","has_communication":true,"collective_id":"1","cost_estimate":{"flops":"5","transcendentals":"0","bytes_accessed":"15000000"},"needs_layout_passes":true,"allow_input_fusion":[],"serialization_format":"1","output_memory_colors":[],"output_memory_space_colors":[{"color":"1","shape_index":[]}],"input_memory_space_colors":[{"operand_index":"5","color":"1","shape_index":[]},{"operand_index":"6","color":"1","shape_index":[]}]},"used_scoped_memory_configs":[]}
   ROOT %copy.22 = bf16[1024,512]{1,0:T(8,128)(2,1)} copy(%ragged_latency_optimized_reduce_scatter_out_feature_matmul.1)
 }
-)";
+)hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -14468,6 +14651,7 @@ ENTRY %main.28_spmd (param.1: bf16[1024,512], param.2: bf16[2,512,4096], param: 
   HloUse custom_kernel_param_1_use{custom_kernel, 5, {}};
   HloUse custom_kernel_param_2_use{custom_kernel, 6, {}};
 
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {custom_kernel_position, kAlternateMemorySpace},
       {custom_kernel_param_1_use, kAlternateMemorySpace},
@@ -14573,14 +14757,14 @@ ENTRY %main.28_spmd (param.1: bf16[1024,512], param.2: bf16[2,512,4096], param: 
 }
 
 TEST_F(MemorySpaceAssignmentTest, TestColoringMultipleOperands) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule NegateChain, is_scheduled=true, entry_computation_layout={(f32[2,3]{1,0}, f32[2,3]{1,0:S(2)})->f32[2,3]{1,0}}
 
   ENTRY %NegateChain (p0: f32[2,3], p1: f32[2,3]) -> f32[2,3] {
     %p0 = f32[2,3]{1,0} parameter(0)
     %p1 = f32[2,3]{1,0} parameter(1)
     ROOT %add = f32[2,3]{1,0} add(f32[2,3]{1,0} %p0, f32[2,3]{1,0} %p1)
-  })";
+  })hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
@@ -14588,6 +14772,7 @@ TEST_F(MemorySpaceAssignmentTest, TestColoringMultipleOperands) {
   HloInstruction* add = FindInstruction(module.get(), "add");
   HloUse add_param_1_use{add, 0, {}};
   HloUse add_param_2_use{add, 1, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {add_param_1_use, kAlternateMemorySpace},
       {add_param_2_use, kAlternateMemorySpace}};
@@ -14605,9 +14790,171 @@ TEST_F(MemorySpaceAssignmentTest, TestColoringMultipleOperands) {
             kAlternateMemorySpace);
 }
 
+TEST_F(MemorySpaceAssignmentTest, TestColoringWithLoopOptimization) {
+  absl::string_view hlo_string = R"hlo(
+HloModule UnrolledLoop, is_scheduled=true
+
+ENTRY %main {
+  %param.0 = (f32[2,4], f32[2,4], f32[2,4], f32[2,4], f32[2,4], f32[2,4], f32[2,4], f32[2,4],
+              f32[2,4], f32[2,4], f32[2,4], f32[2,4], f32[2,4], f32[2,4], f32[2,4], f32[2,4]) parameter(0)
+
+  %gte.0 = f32[2,4] get-tuple-element(%param.0), index=0
+  %gte.1 = f32[2,4] get-tuple-element(%param.0), index=1
+  %add.common = f32[2,4] add(%gte.0, %gte.1)
+  %tanh.common = f32[2,4] tanh(%add.common)
+
+  // loop idx0
+  %neg.0.idx0 = f32[2,4] negate(%tanh.common)
+  %neg.1.idx0 = f32[2,4] negate(%neg.0.idx0)
+  %neg.2.idx0 = f32[2,4] negate(%neg.1.idx0)
+
+  %gte.0.idx0 = f32[2,4] get-tuple-element(%param.0), index=2
+  %add.0.idx0 = f32[2,4] add(%neg.2.idx0, %gte.0.idx0)
+
+  %gte.1.idx0 = f32[2,4] get-tuple-element(%param.0), index=3
+  %add.1.idx0 = f32[2,4] add(%add.0.idx0, %gte.1.idx0)
+
+  %tanh.idx0 = f32[2,4] tanh(%add.1.idx0)
+
+  // loop idx1
+  %neg.0.idx1 = f32[2,4] negate(%tanh.idx0)
+  %neg.1.idx1 = f32[2,4] negate(%neg.0.idx1)
+  %neg.2.idx1 = f32[2,4] negate(%neg.1.idx1)
+
+  %gte.0.idx1 = f32[2,4] get-tuple-element(%param.0), index=4
+  %add.0.idx1 = f32[2,4] add(%neg.2.idx1, %gte.0.idx1)
+
+  %gte.1.idx1 = f32[2,4] get-tuple-element(%param.0), index=5
+  %add.1.idx1 = f32[2,4] add(%add.0.idx1, %gte.1.idx1)
+
+  %tanh.idx1 = f32[2,4] tanh(%add.1.idx1)
+
+  // loop idx2
+  %neg.0.idx2 = f32[2,4] negate(%tanh.idx1)
+  %neg.1.idx2 = f32[2,4] negate(%neg.0.idx2)
+  %neg.2.idx2 = f32[2,4] negate(%neg.1.idx2)
+
+  %gte.0.idx2 = f32[2,4] get-tuple-element(%param.0), index=6
+  %add.0.idx2 = f32[2,4] add(%neg.2.idx2, %gte.0.idx2)
+
+  %gte.1.idx2 = f32[2,4] get-tuple-element(%param.0), index=7
+  %add.1.idx2 = f32[2,4] add(%add.0.idx2, %gte.1.idx2)
+
+  %tanh.idx2 = f32[2,4] tanh(%add.1.idx2)
+
+  // loop idx3
+  %neg.0.idx3 = f32[2,4] negate(%tanh.idx2)
+  %neg.1.idx3 = f32[2,4] negate(%neg.0.idx3)
+  %neg.2.idx3 = f32[2,4] negate(%neg.1.idx3)
+
+  %gte.0.idx3 = f32[2,4] get-tuple-element(%param.0), index=8
+  %add.0.idx3 = f32[2,4] add(%neg.2.idx3, %gte.0.idx3)
+
+  %gte.1.idx3 = f32[2,4] get-tuple-element(%param.0), index=9
+  %add.1.idx3 = f32[2,4] add(%add.0.idx3, %gte.1.idx3)
+
+  %tanh.idx3 = f32[2,4] tanh(%add.1.idx3)
+
+  // loop idx4
+  %neg.0.idx4 = f32[2,4] negate(%tanh.idx3)
+  %neg.1.idx4 = f32[2,4] negate(%neg.0.idx4)
+  %neg.2.idx4 = f32[2,4] negate(%neg.1.idx4)
+
+  %gte.0.idx4 = f32[2,4] get-tuple-element(%param.0), index=10
+  %add.0.idx4 = f32[2,4] add(%neg.2.idx4, %gte.0.idx4)
+
+  %gte.1.idx4 = f32[2,4] get-tuple-element(%param.0), index=11
+  %add.1.idx4 = f32[2,4] add(%add.0.idx4, %gte.1.idx4)
+
+  %tanh.idx4 = f32[2,4] tanh(%add.1.idx4)
+
+  // loop idx5
+  %neg.0.idx5 = f32[2,4] negate(%tanh.idx4)
+  %neg.1.idx5 = f32[2,4] negate(%neg.0.idx5)
+  %neg.2.idx5 = f32[2,4] negate(%neg.1.idx5)
+
+  %gte.0.idx5 = f32[2,4] get-tuple-element(%param.0), index=12
+  %add.0.idx5 = f32[2,4] add(%neg.2.idx5, %gte.0.idx5)
+
+  %gte.1.idx5 = f32[2,4] get-tuple-element(%param.0), index=13
+  %add.1.idx5 = f32[2,4] add(%add.0.idx5, %gte.1.idx5)
+
+  %tanh.idx5 = f32[2,4] tanh(%add.1.idx5)
+
+  // loop idx6
+  %neg.0.idx6 = f32[2,4] negate(%tanh.idx5)
+  %neg.1.idx6 = f32[2,4] negate(%neg.0.idx6)
+  %neg.2.idx6 = f32[2,4] negate(%neg.1.idx6)
+
+  %gte.0.idx6 = f32[2,4] get-tuple-element(%param.0), index=14
+  %add.0.idx6 = f32[2,4] add(%neg.2.idx6, %gte.0.idx6)
+
+  %gte.1.idx6 = f32[2,4] get-tuple-element(%param.0), index=15
+  %add.1.idx6 = f32[2,4] add(%add.0.idx6, %gte.1.idx6)
+
+  %tanh.idx6 = f32[2,4] tanh(%add.1.idx6)
+
+  ROOT %negate.common = f32[2,4] negate(%tanh.idx6)
+})hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 48;
+  memory_space_options.memory_bound_loop_optimizer_options.set_enabled(true);
+  memory_space_options.memory_bound_loop_optimizer_options
+      .set_desired_copy_ratio(0.1);
+  memory_space_options.memory_bound_loop_optimizer_options
+      .set_allow_unsatisfied_fully_pipelined_prefetch(true);
+  memory_space_options.memory_bound_loop_optimizer_options
+      .set_min_num_iterations(4);
+  HloUse add_0_idx0_use{FindInstruction(module.get(), "add.0.idx0"), 1, {}};
+  HloUse add_1_idx0_use{FindInstruction(module.get(), "add.1.idx0"), 1, {}};
+  HloUse add_0_idx1_use{FindInstruction(module.get(), "add.0.idx1"), 1, {}};
+  HloUse add_1_idx1_use{FindInstruction(module.get(), "add.1.idx1"), 1, {}};
+  HloUse add_0_idx2_use{FindInstruction(module.get(), "add.0.idx2"), 1, {}};
+  HloUse add_1_idx2_use{FindInstruction(module.get(), "add.1.idx2"), 1, {}};
+  HloUse add_0_idx3_use{FindInstruction(module.get(), "add.0.idx3"), 1, {}};
+  HloUse add_1_idx3_use{FindInstruction(module.get(), "add.1.idx3"), 1, {}};
+  HloUse add_0_idx4_use{FindInstruction(module.get(), "add.0.idx4"), 1, {}};
+  HloUse add_1_idx4_use{FindInstruction(module.get(), "add.1.idx4"), 1, {}};
+  HloUse add_0_idx5_use{FindInstruction(module.get(), "add.0.idx5"), 1, {}};
+  HloUse add_1_idx5_use{FindInstruction(module.get(), "add.1.idx5"), 1, {}};
+  HloUse add_0_idx6_use{FindInstruction(module.get(), "add.0.idx6"), 1, {}};
+  HloUse add_1_idx6_use{FindInstruction(module.get(), "add.1.idx6"), 1, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
+  memory_space_options.buffer_colorings = {
+      {add_0_idx0_use, kAlternateMemorySpace},
+      {add_1_idx0_use, kAlternateMemorySpace},
+      {add_0_idx1_use, kAlternateMemorySpace},
+      {add_1_idx1_use, kAlternateMemorySpace},
+      {add_0_idx2_use, kAlternateMemorySpace},
+      {add_1_idx2_use, kAlternateMemorySpace},
+      {add_0_idx3_use, kAlternateMemorySpace},
+      {add_1_idx3_use, kAlternateMemorySpace},
+      {add_0_idx4_use, kAlternateMemorySpace},
+      {add_1_idx4_use, kAlternateMemorySpace},
+      {add_0_idx5_use, kAlternateMemorySpace},
+      {add_1_idx5_use, kAlternateMemorySpace},
+      {add_0_idx6_use, kAlternateMemorySpace},
+      {add_1_idx6_use, kAlternateMemorySpace}};
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+  std::vector<std::string> alternate_memory_uses = {
+      "add.0.idx0", "add.1.idx0", "add.0.idx1", "add.1.idx1", "add.0.idx2",
+      "add.1.idx2", "add.0.idx3", "add.1.idx3", "add.0.idx4", "add.1.idx4",
+      "add.0.idx5", "add.1.idx5", "add.0.idx6", "add.1.idx6"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/alternate_memory_uses,
+      /*operand_number=*/1, /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCopyDone);
+}
+
 TEST_F(MemorySpaceAssignmentTest,
        ScopedAllocationAccountingWhenInstructionsAreRemoved) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
   HloModule DoIt_S64_10_0_5_1.3, is_scheduled=true
 
   ENTRY %DoIt_S64_10_0_5_1.3 (p0.1: (u32[10], u32[10])) -> (u32[5], u32[5]) {
@@ -14625,7 +14972,7 @@ TEST_F(MemorySpaceAssignmentTest,
     %copy.3 = u32[5]{0:T(128)} copy(u32[5]{0:T(128)} %get-tuple-element.6)
     ROOT %tuple.2 = (u32[5]{0:T(128)}, u32[5]{0:T(128)}) tuple(u32[5]{0:T(128)} %copy.2, u32[5]{0:T(128)} %copy.3)
   }
-  )";
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -14648,7 +14995,7 @@ TEST_F(MemorySpaceAssignmentTest,
 }
 
 TEST_F(MemorySpaceAssignmentTest, TestBlockPrefetchingNotEnoughReservedBytes) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -14674,7 +15021,7 @@ ENTRY entry {
   negate13 = f32[2,3]{1,0} negate(add12)
   negate14 = f32[2,3]{1,0} negate(negate13)
   ROOT add15 = f32[2,3]{1,0} add(p5, negate14)
-})";
+})hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
@@ -14683,45 +15030,21 @@ ENTRY entry {
   memory_space_options.max_outstanding_block_prefetches = 10;
   memory_space_options.max_outstanding_prefetches = 0;
 
-  HloInstruction* p0 = FindInstruction(module.get(), "p0");
-  HloPosition p0_position{p0, {}};
-  HloInstruction* p1 = FindInstruction(module.get(), "p1");
-  HloPosition p1_position{p1, {}};
-  HloInstruction* p2 = FindInstruction(module.get(), "p2");
-  HloPosition p2_position{p2, {}};
-  HloInstruction* p3 = FindInstruction(module.get(), "p3");
-  HloPosition p3_position{p3, {}};
-  HloInstruction* p4 = FindInstruction(module.get(), "p4");
-  HloPosition p4_position{p4, {}};
-  HloInstruction* p5 = FindInstruction(module.get(), "p5");
-  HloPosition p5_position{p5, {}};
-  memory_space_options.block_prefetched_positions = {p0_position, p1_position,
-                                                     p2_position, p3_position,
-                                                     p4_position, p5_position};
+  memory_space_options.block_prefetched_positions = GetHloPositions(
+      /*module=*/module.get(),
+      /*instruction_names=*/{"p0", "p1", "p2", "p3", "p4", "p5"});
 
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
   AssignMemorySpaceUsingCostAnalysis(module.get(),
                                      std::move(memory_space_options));
   XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
 
-  HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
-  EXPECT_EQ(negate0->operand(0)->shape().layout().memory_space(),
-            kDefaultMemorySpace);
-  HloInstruction* add3 = FindInstruction(module.get(), "add3");
-  EXPECT_EQ(add3->operand(0)->shape().layout().memory_space(),
-            kDefaultMemorySpace);
-  HloInstruction* add6 = FindInstruction(module.get(), "add6");
-  EXPECT_EQ(add6->operand(0)->shape().layout().memory_space(),
-            kDefaultMemorySpace);
-  HloInstruction* add9 = FindInstruction(module.get(), "add9");
-  EXPECT_EQ(add9->operand(0)->shape().layout().memory_space(),
-            kDefaultMemorySpace);
-  HloInstruction* add12 = FindInstruction(module.get(), "add12");
-  EXPECT_EQ(add12->operand(0)->shape().layout().memory_space(),
-            kDefaultMemorySpace);
-  HloInstruction* add15 = FindInstruction(module.get(), "add15");
-  EXPECT_EQ(add15->operand(0)->shape().layout().memory_space(),
-            kDefaultMemorySpace);
+  std::vector<std::string> default_memory_uses = {"negate0", "add3",  "add6",
+                                                  "add9",    "add12", "add15"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/default_memory_uses,
+      /*operand_number=*/0, /*operand_memory_space=*/kDefaultMemorySpace,
+      /*operand_opcode=*/HloOpcode::kParameter);
 }
 
 TEST_F(MemorySpaceAssignmentTest, TestBlockPrefetchingLowConcurrentPrefetches) {
@@ -14729,7 +15052,7 @@ TEST_F(MemorySpaceAssignmentTest, TestBlockPrefetchingLowConcurrentPrefetches) {
   // the maximum number of concurrent block prefetches allowed is 2. The live
   // ranges of p0 and p1 are long but their copy dones are early enough that
   // other prefetches can start without violating the concurrent prefetch limit.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -14755,63 +15078,34 @@ ENTRY entry {
   add13 = f32[2,3]{1,0} add(p0, add12)
   add14 = f32[2,3]{1,0} add(p1, add13)
   ROOT add15 = f32[2,3]{1,0} add(p5, add14)
-})";
+})hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
   memory_space_options.max_size_in_bytes = 96;
   memory_space_options.reserved_bytes_for_block_prefetches = 96;
-
-  HloInstruction* p0 = FindInstruction(module.get(), "p0");
-  HloPosition p0_position{p0, {}};
-  HloInstruction* p1 = FindInstruction(module.get(), "p1");
-  HloPosition p1_position{p1, {}};
-  HloInstruction* p2 = FindInstruction(module.get(), "p2");
-  HloPosition p2_position{p2, {}};
-  HloInstruction* p3 = FindInstruction(module.get(), "p3");
-  HloPosition p3_position{p3, {}};
-  HloInstruction* p4 = FindInstruction(module.get(), "p4");
-  HloPosition p4_position{p4, {}};
-  HloInstruction* p5 = FindInstruction(module.get(), "p5");
-  HloPosition p5_position{p5, {}};
-  memory_space_options.block_prefetched_positions = {p5_position, p4_position,
-                                                     p3_position, p2_position,
-                                                     p1_position, p0_position};
   memory_space_options.max_outstanding_block_prefetches = 2;
   memory_space_options.max_outstanding_prefetches = 0;
-  XLA_LOG_LINES(INFO, "Before MSA: \n" + module->ToString());
+
+  memory_space_options.block_prefetched_positions = GetHloPositions(
+      /*module=*/module.get(),
+      /*instruction_names=*/{"p0", "p1", "p2", "p3", "p4", "p5"});
+
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
   AssignMemorySpaceUsingCostAnalysis(module.get(),
                                      std::move(memory_space_options));
-  XLA_LOG_LINES(INFO, "After MSA: \n" + module->ToString());
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
 
-  HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
-  EXPECT_EQ(negate0->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add3 = FindInstruction(module.get(), "add3");
-  EXPECT_EQ(add3->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add13 = FindInstruction(module.get(), "add13");
-  EXPECT_EQ(add13->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add14 = FindInstruction(module.get(), "add14");
-  EXPECT_EQ(add14->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add6 = FindInstruction(module.get(), "add6");
-  EXPECT_EQ(add6->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add9 = FindInstruction(module.get(), "add9");
-  EXPECT_EQ(add9->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add12 = FindInstruction(module.get(), "add12");
-  EXPECT_EQ(add12->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add15 = FindInstruction(module.get(), "add15");
-  EXPECT_EQ(add15->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
+  std::vector<std::string> alternate_memory_uses = {
+      "negate0", "add3", "add6", "add9", "add12", "add13", "add14", "add15"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/alternate_memory_uses,
+      /*operand_number=*/0, /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCopyDone);
 }
 
 TEST_F(MemorySpaceAssignmentTest, TestSingleBufferedBlockPrefetching) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -14837,57 +15131,177 @@ ENTRY entry {
   negate13 = f32[2,3]{1,0} negate(add12)
   negate14 = f32[2,3]{1,0} negate(negate13)
   ROOT add15 = f32[2,3]{1,0} add(p5, negate14)
-})";
+})hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
   memory_space_options.max_size_in_bytes = 24;
   memory_space_options.reserved_bytes_for_block_prefetches = 24;
-
-  HloInstruction* p0 = FindInstruction(module.get(), "p0");
-  HloPosition p0_position{p0, {}};
-  HloInstruction* p1 = FindInstruction(module.get(), "p1");
-  HloPosition p1_position{p1, {}};
-  HloInstruction* p2 = FindInstruction(module.get(), "p2");
-  HloPosition p2_position{p2, {}};
-  HloInstruction* p3 = FindInstruction(module.get(), "p3");
-  HloPosition p3_position{p3, {}};
-  HloInstruction* p4 = FindInstruction(module.get(), "p4");
-  HloPosition p4_position{p4, {}};
-  HloInstruction* p5 = FindInstruction(module.get(), "p5");
-  HloPosition p5_position{p5, {}};
-  memory_space_options.block_prefetched_positions = {p5_position, p4_position,
-                                                     p3_position, p2_position,
-                                                     p1_position, p0_position};
   memory_space_options.max_outstanding_block_prefetches = 10;
+  memory_space_options.max_outstanding_prefetches = 0;
+
+  memory_space_options.block_prefetched_positions = GetHloPositions(
+      /*module=*/module.get(),
+      /*instruction_names=*/{"p0", "p1", "p2", "p3", "p4", "p5"});
+
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
   AssignMemorySpaceUsingCostAnalysis(module.get(),
                                      std::move(memory_space_options));
   XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
 
-  HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
-  EXPECT_EQ(negate0->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add3 = FindInstruction(module.get(), "add3");
-  EXPECT_EQ(add3->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add6 = FindInstruction(module.get(), "add6");
-  EXPECT_EQ(add6->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add9 = FindInstruction(module.get(), "add9");
-  EXPECT_EQ(add9->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add12 = FindInstruction(module.get(), "add12");
-  EXPECT_EQ(add12->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add15 = FindInstruction(module.get(), "add15");
-  EXPECT_EQ(add15->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
+  std::vector<std::string> alternate_memory_uses = {
+      "negate0", "add3", "add6", "add9", "add12", "add15"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/alternate_memory_uses,
+      /*operand_number=*/0, /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCopyDone);
+}
+
+TEST_F(MemorySpaceAssignmentTest, TestBlockPrefetchingWithAlisedUses) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  p2 = f32[2,3]{1,0} parameter(2)
+  p3 = f32[2,3]{1,0} parameter(3)
+  p4 = f32[2,3]{1,0} parameter(4)
+  p5 = f32[2,3]{1,0} parameter(5)
+  custom_call0 = f32[2,3]{1,0} custom-call(p0), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  negate1 = f32[2,3]{1,0} negate(custom_call0)
+  negate2 = f32[2,3]{1,0} negate(negate1)
+  add3 = f32[2,3]{1,0} add(p1, negate2)
+  negate4 = f32[2,3]{1,0} negate(add3)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  add6 = f32[2,3]{1,0} add(p2, negate5)
+  negate7 = f32[2,3]{1,0} negate(add6)
+  negate8 = f32[2,3]{1,0} negate(negate7)
+  add9 = f32[2,3]{1,0} add(p3, negate8)
+  negate10 = f32[2,3]{1,0} negate(add9)
+  negate11 = f32[2,3]{1,0} negate(negate10)
+  add12 = f32[2,3]{1,0} add(p4, negate11)
+  custom_call13 = f32[2,3]{1,0} custom-call(custom_call0, add12), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  negate14 = f32[2,3]{1,0} negate(custom_call13)
+  ROOT add15 = f32[2,3]{1,0} add(p5, negate14)
+})hlo";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 24;
+  memory_space_options.reserved_bytes_for_block_prefetches = 24;
+  memory_space_options.max_outstanding_block_prefetches = 10;
+  memory_space_options.max_outstanding_prefetches = 0;
+
+  memory_space_options.block_prefetched_positions = GetHloPositions(
+      /*module=*/module.get(),
+      /*instruction_names=*/{"p0", "p1", "p2", "p3", "p4", "p5"});
+
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+
+  std::vector<std::string> prefetched_uses = {"custom_call0", "add15"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/prefetched_uses,
+      /*operand_number=*/0, /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCopyDone);
+
+  std::vector<std::string> aliased_uses = {"negate1", "custom_call13",
+                                           "negate14"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/aliased_uses,
+      /*operand_number=*/0, /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCustomCall);
+
+  std::vector<std::string> default_memory_uses = {"add3", "add6", "add9",
+                                                  "add12"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/default_memory_uses,
+      /*operand_number=*/0, /*operand_memory_space=*/kDefaultMemorySpace,
+      /*operand_opcode=*/HloOpcode::kParameter);
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       TestBlockPrefetchingWithAliasingAndScopedAllocations) {
+  // Simple block prefetching test where p0 is block prefetched and aliases with
+  // custom_call2 and custom_call8 which is used at add13. This makes the
+  // effective aliased live range of the block prefetch p0 to be the entire
+  // program duration. We also have a scoped allocation for negate10 which
+  // reserves 24 bytes of scoped memory. The alternate memory is enough for
+  // prefetching p0 and allocating scoped memory for negate10.
+
+  // If we allocate scoped memory before block prefetching, 24 bytes of scoped
+  // memory for negate10 will be allocated at offset 0. Block prefetch for p0
+  // will also get offset 0, but we would not be able to extend it past the
+  // scoped allocation of negate10 when we try to extend it for the entire live
+  // range.
+
+  // To make sure we dont allocate block prefetches below MaxScopedMemorySize
+  // we reserve memory for scoped allocations before block prefetching and
+  // process scoped allocations after block prefetching.
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  custom_call2 = f32[2,3]{1,0} custom-call(p0), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  negate3 = f32[2,3]{1,0} negate(p1)
+  negate4 = f32[2,3]{1,0} negate(negate3)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  negate6 = f32[2,3]{1,0} negate(negate5)
+  negate7 = f32[2,3]{1,0} negate(negate6)
+  custom_call8 = f32[2,3]{1,0} custom-call(custom_call2), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  negate9 = f32[2,3]{1,0} negate(negate7)
+  negate10 = f32[2,3]{1,0} negate(negate9)
+  negate11 = f32[2,3]{1,0} negate(negate10)
+  negate12 = f32[2,3]{1,0} negate(negate11)
+  ROOT add13 = f32[2,3]{1,0} add(custom_call8, negate12)
+})hlo";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 48;
+  memory_space_options.reserved_bytes_for_block_prefetches = 24;
+  memory_space_options.max_outstanding_block_prefetches = 10;
+  memory_space_options.max_outstanding_prefetches = 0;
+  memory_space_options.block_prefetched_positions = GetHloPositions(
+      /*module=*/module.get(),
+      /*instruction_names=*/{"p0"});
+  memory_space_options.reserved_scoped_memory_fn =
+      [&](const HloInstruction* instruction,
+          const absl::flat_hash_set<std::pair<int, ShapeIndex>>
+              operands_in_alternate_memory,
+          const absl::flat_hash_set<ShapeIndex> outputs_in_alternate_memory) {
+        if (instruction->name() == "negate10") {
+          return 24;
+        }
+        return 0;
+      };
+
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+
+  std::vector<std::string> prefetched_uses = {"custom_call2"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/prefetched_uses,
+      /*operand_number=*/0, /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCopyDone);
+
+  std::vector<std::string> aliased_uses = {"custom_call8", "add13"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/aliased_uses,
+      /*operand_number=*/0, /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCustomCall);
 }
 
 TEST_F(MemorySpaceAssignmentTest,
        TestBlockPrefetchingWithInputOutputAliasConfig) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -14914,57 +15328,41 @@ ENTRY entry {
   negate14 = f32[2,3]{1,0} negate(negate13)
   add15 = f32[2,3]{1,0} add(p5, negate14)
   ROOT tuple = (f32[2,3]{1,0}, f32[2,3]{1,0}) tuple(add15, p3)
-})";
+})hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias({1}, 3, {}));
   Options memory_space_options = DefaultMemorySpaceOptions();
   memory_space_options.max_size_in_bytes = 24;
   memory_space_options.reserved_bytes_for_block_prefetches = 24;
-
-  HloInstruction* p0 = FindInstruction(module.get(), "p0");
-  HloPosition p0_position{p0, {}};
-  HloInstruction* p1 = FindInstruction(module.get(), "p1");
-  HloPosition p1_position{p1, {}};
-  HloInstruction* p2 = FindInstruction(module.get(), "p2");
-  HloPosition p2_position{p2, {}};
-  HloInstruction* p3 = FindInstruction(module.get(), "p3");
-  HloPosition p3_position{p3, {}};
-  HloInstruction* p4 = FindInstruction(module.get(), "p4");
-  HloPosition p4_position{p4, {}};
-  HloInstruction* p5 = FindInstruction(module.get(), "p5");
-  HloPosition p5_position{p5, {}};
-  memory_space_options.block_prefetched_positions = {p5_position, p4_position,
-                                                     p3_position, p2_position,
-                                                     p1_position, p0_position};
   memory_space_options.max_outstanding_block_prefetches = 10;
-  XLA_LOG_LINES(INFO, "Before MSA: \n" + module->ToString());
+  memory_space_options.max_outstanding_prefetches = 0;
+
+  memory_space_options.block_prefetched_positions = GetHloPositions(
+      /*module=*/module.get(),
+      /*instruction_names=*/{"p0", "p1", "p2", "p3", "p4", "p5"});
+
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
   AssignMemorySpaceUsingCostAnalysis(module.get(),
                                      std::move(memory_space_options));
-  XLA_LOG_LINES(INFO, "After MSA: \n" + module->ToString());
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
 
-  HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
-  EXPECT_EQ(negate0->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add3 = FindInstruction(module.get(), "add3");
-  EXPECT_EQ(add3->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add6 = FindInstruction(module.get(), "add6");
-  EXPECT_EQ(add6->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add9 = FindInstruction(module.get(), "add9");
-  EXPECT_EQ(add9->operand(0)->shape().layout().memory_space(),
-            kDefaultMemorySpace);
-  HloInstruction* add12 = FindInstruction(module.get(), "add12");
-  EXPECT_EQ(add12->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add15 = FindInstruction(module.get(), "add15");
-  EXPECT_EQ(add15->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
+  std::vector<std::string> alternate_memory_uses = {"negate0", "add3", "add6",
+                                                    "add12", "add15"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/alternate_memory_uses,
+      /*operand_number=*/0, /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCopyDone);
+
+  std::vector<std::string> default_memory_uses = {"add9"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/default_memory_uses,
+      /*operand_number=*/0, /*operand_memory_space=*/kDefaultMemorySpace,
+      /*operand_opcode=*/HloOpcode::kParameter);
 }
 
 TEST_F(MemorySpaceAssignmentTest, TestBlockPrefetchingDoubleBuffered) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -14990,50 +15388,30 @@ ENTRY entry {
   negate13 = f32[2,3]{1,0} negate(add12)
   negate14 = f32[2,3]{1,0} negate(negate13)
   ROOT add15 = f32[2,3]{1,0} add(p5, negate14)
-})";
+})hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
   memory_space_options.max_size_in_bytes = 48;
   memory_space_options.reserved_bytes_for_block_prefetches = 48;
-  HloInstruction* p0 = FindInstruction(module.get(), "p0");
-  HloPosition p0_position{p0, {}};
-  HloInstruction* p1 = FindInstruction(module.get(), "p1");
-  HloPosition p1_position{p1, {}};
-  HloInstruction* p2 = FindInstruction(module.get(), "p2");
-  HloPosition p2_position{p2, {}};
-  HloInstruction* p3 = FindInstruction(module.get(), "p3");
-  HloPosition p3_position{p3, {}};
-  HloInstruction* p4 = FindInstruction(module.get(), "p4");
-  HloPosition p4_position{p4, {}};
-  HloInstruction* p5 = FindInstruction(module.get(), "p5");
-  HloPosition p5_position{p5, {}};
-  memory_space_options.block_prefetched_positions = {p5_position, p4_position,
-                                                     p3_position, p2_position,
-                                                     p1_position, p0_position};
   memory_space_options.max_outstanding_block_prefetches = 10;
+  memory_space_options.max_outstanding_prefetches = 0;
+
+  memory_space_options.block_prefetched_positions = GetHloPositions(
+      /*module=*/module.get(),
+      /*instruction_names=*/{"p0", "p1", "p2", "p3", "p4", "p5"});
+
   XLA_VLOG_LINES(3, "Before MSA: \n" + module->ToString());
   AssignMemorySpaceUsingCostAnalysis(module.get(),
                                      std::move(memory_space_options));
   XLA_VLOG_LINES(3, "After MSA: \n" + module->ToString());
-  HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
-  EXPECT_EQ(negate0->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add3 = FindInstruction(module.get(), "add3");
-  EXPECT_EQ(add3->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add6 = FindInstruction(module.get(), "add6");
-  EXPECT_EQ(add6->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add9 = FindInstruction(module.get(), "add9");
-  EXPECT_EQ(add9->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add12 = FindInstruction(module.get(), "add12");
-  EXPECT_EQ(add12->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add15 = FindInstruction(module.get(), "add15");
-  EXPECT_EQ(add15->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
+
+  std::vector<std::string> prefetched_uses = {"negate0", "add3",  "add6",
+                                              "add9",    "add12", "add15"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/prefetched_uses,
+      /*operand_number=*/0, /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCopyDone);
 }
 
 TEST_F(MemorySpaceAssignmentTest, TestBlockPrefetchesWithMultipleUses) {
@@ -15042,7 +15420,7 @@ TEST_F(MemorySpaceAssignmentTest, TestBlockPrefetchesWithMultipleUses) {
   // This was a bug in the original implementation of block prefetching. This
   // test case tests the fix. In this test the parameters p0 and p1 have
   // multiple uses, we test that we prefetch them exactly once.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -15068,75 +15446,163 @@ ENTRY entry {
   add13 = f32[2,3]{1,0} add(p1, add12)
   add14 = f32[2,3]{1,0} add(p0, add13)
   ROOT add15 = f32[2,3]{1,0} add(p5, add14)
-})";
+})hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
   memory_space_options.max_size_in_bytes = 72;
   memory_space_options.reserved_bytes_for_block_prefetches = 72;
-  HloInstruction* p0 = FindInstruction(module.get(), "p0");
-  HloPosition p0_position{p0, {}};
-  HloInstruction* p1 = FindInstruction(module.get(), "p1");
-  HloPosition p1_position{p1, {}};
-  HloInstruction* p2 = FindInstruction(module.get(), "p2");
-  HloPosition p2_position{p2, {}};
-  HloInstruction* p3 = FindInstruction(module.get(), "p3");
-  HloPosition p3_position{p3, {}};
-  HloInstruction* p4 = FindInstruction(module.get(), "p4");
-  HloPosition p4_position{p4, {}};
-  HloInstruction* p5 = FindInstruction(module.get(), "p5");
-  HloPosition p5_position{p5, {}};
-  memory_space_options.block_prefetched_positions = {p5_position, p4_position,
-                                                     p3_position, p2_position,
-                                                     p1_position, p0_position};
   memory_space_options.max_outstanding_block_prefetches = 10;
+  memory_space_options.max_outstanding_prefetches = 0;
+
+  memory_space_options.block_prefetched_positions = GetHloPositions(
+      /*module=*/module.get(),
+      /*instruction_names=*/{"p0", "p1", "p2", "p3", "p4", "p5"});
+
   XLA_VLOG_LINES(3, "Before MSA: \n" + module->ToString());
   AssignMemorySpaceUsingCostAnalysis(module.get(),
                                      std::move(memory_space_options));
   XLA_VLOG_LINES(3, "After MSA: \n" + module->ToString());
+
+  std::vector<std::string> alternate_memory_uses = {
+      "negate0", "add3", "add6", "add9", "add12", "add13", "add14", "add15"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/alternate_memory_uses,
+      /*operand_number=*/0, /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCopyDone);
+
   HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
-  const HloInstruction* negate0_operand0 = negate0->operand(0);
-  EXPECT_EQ(negate0_operand0->opcode(), HloOpcode::kCopyDone);
-  EXPECT_EQ(negate0_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
   HloInstruction* add3 = FindInstruction(module.get(), "add3");
-  const HloInstruction* add3_operand0 = add3->operand(0);
-  EXPECT_EQ(add3_operand0->opcode(), HloOpcode::kCopyDone);
-  EXPECT_EQ(add3_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add6 = FindInstruction(module.get(), "add6");
-  const HloInstruction* add6_operand0 = add6->operand(0);
-  EXPECT_EQ(add6_operand0->opcode(), HloOpcode::kCopyDone);
-  EXPECT_EQ(add6_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add9 = FindInstruction(module.get(), "add9");
-  const HloInstruction* add9_operand0 = add9->operand(0);
-  EXPECT_EQ(add9_operand0->opcode(), HloOpcode::kCopyDone);
-  EXPECT_EQ(add9_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add12 = FindInstruction(module.get(), "add12");
-  const HloInstruction* add12_operand0 = add12->operand(0);
-  EXPECT_EQ(add12_operand0->opcode(), HloOpcode::kCopyDone);
-  EXPECT_EQ(add12_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
   HloInstruction* add13 = FindInstruction(module.get(), "add13");
-  const HloInstruction* add13_operand0 = add13->operand(0);
-  // Check that the prefetch of p1 is reused for add13.
-  EXPECT_EQ(add13_operand0, add3_operand0);
   HloInstruction* add14 = FindInstruction(module.get(), "add14");
-  const HloInstruction* add14_operand0 = add14->operand(0);
   // Check that the prefetch of p0 is reused for add14.
-  EXPECT_EQ(add14_operand0, negate0_operand0);
-  HloInstruction* add15 = FindInstruction(module.get(), "add15");
-  const HloInstruction* add15_operand0 = add15->operand(0);
-  EXPECT_EQ(add15_operand0->opcode(), HloOpcode::kCopyDone);
-  EXPECT_EQ(add15_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
+  EXPECT_EQ(negate0->operand(0), add14->operand(0));
+  // Check that the prefetch of p1 is reused for add13.
+  EXPECT_EQ(add3->operand(0), add13->operand(0));
+}
+
+TEST_F(MemorySpaceAssignmentTest, TestBlockPrefetchSourceValueAliased) {
+  // In this test, the source value of the block prefetch aliases to the left.
+  // custom_call1 and custom_call3 alias to the left, we test that all aliases
+  // to the left should be pinned to default memory space.
+  // custom_call3 also aliases to the right, which should be pinned to
+  // alternate memory space.
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  p2 = f32[2,3]{1,0} parameter(2)
+  p3 = f32[2,3]{1,0} parameter(3)
+  p4 = f32[2,3]{1,0} parameter(4)
+  p5 = f32[2,3]{1,0} parameter(5)
+
+  custom_call0 = f32[2,3]{1,0} custom-call(p0), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  negate_cc0 = f32[2,3]{1,0} negate(custom_call0)
+  negate_cc1 = f32[2,3]{1,0} negate(negate_cc0)
+  custom_call1 = f32[2,3]{1,0} custom-call(custom_call0 ,negate_cc1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  negate_cc2 = f32[2,3]{1,0} negate(custom_call1)
+  negate_cc3 = f32[2,3]{1,0} negate(negate_cc2)
+
+  custom_call2 = f32[2,3]{1,0} custom-call(p1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  negate_cc4 = f32[2,3]{1,0} negate(custom_call2)
+  negate_cc5 = f32[2,3]{1,0} negate(negate_cc4)
+  custom_call3 = f32[2,3]{1,0} custom-call(custom_call2 ,negate_cc5), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  negate_cc6 = f32[2,3]{1,0} negate(custom_call3)
+  negate_cc7 = f32[2,3]{1,0} negate(negate_cc6)
+
+  add0 = f32[2,3]{1,0} add(custom_call1, negate_cc3)
+  add1 = f32[2,3]{1,0} add(add0, negate_cc7)
+  negate2 = f32[2,3]{1,0} negate(add1)
+  add3 = f32[2,3]{1,0} add(custom_call3, negate2)
+  negate4 = f32[2,3]{1,0} negate(add3)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  add6 = f32[2,3]{1,0} add(p2, negate5)
+  negate7 = f32[2,3]{1,0} negate(add6)
+  negate8 = f32[2,3]{1,0} negate(negate7)
+  add9 = f32[2,3]{1,0} add(p3, negate8)
+  negate10 = f32[2,3]{1,0} negate(add9)
+  negate11 = f32[2,3]{1,0} negate(negate10)
+  add12 = f32[2,3]{1,0} add(p4, negate11)
+  custom_call13 = f32[2,3]{1,0} custom-call(custom_call3, add12), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  add14 = f32[2,3]{1,0} add(custom_call1, add12)
+  add15 = f32[2,3]{1,0} add(custom_call13, add14)
+  ROOT add16 = f32[2,3]{1,0} add(p5, add15)
+})hlo";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 400;
+  memory_space_options.reserved_bytes_for_block_prefetches = 400;
+  memory_space_options.max_outstanding_block_prefetches = 10;
+  memory_space_options.max_outstanding_prefetches = 0;
+
+  memory_space_options.block_prefetched_positions = GetHloPositions(
+      /*module=*/module.get(),
+      /*instruction_names=*/{"custom_call1", "custom_call3", "p2", "p3", "p4",
+                             "p5"});
+
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher {
+        instruction_name_regex: "custom_call0|custom_call1|custom_call2|custom_call3"
+      }
+      override_options { assign_first: true }
+    })pb";
+  TF_ASSERT_OK_AND_ASSIGN(auto msa_sort_order_overrides,
+                          ParseTextProto<MsaSortOrderOverrides>(text_proto));
+  memory_space_options.msa_sort_order_overrides =
+      std::move(msa_sort_order_overrides);
+
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+
+  // Check uses of block prefetche are from alternate memory space.
+  std::vector<std::string> alternate_memory_uses = {
+      "negate_cc2", "negate_cc6", "add0",          "add3",  "add6",
+      "add9",       "add12",      "custom_call13", "add14", "add16"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/alternate_memory_uses,
+      /*operand_number=*/0, /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCopyDone);
+
+  // Check that the uses of the values aliased to the right of prefetched value
+  // are from alternate memory space.
+  std::vector<std::string> alt_memory_uses_from_aliased_pinned_values = {
+      "add15"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(),
+      /*instruction_names=*/alt_memory_uses_from_aliased_pinned_values,
+      /*operand_number=*/0, /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCustomCall);
+
+  HloInstruction* add0 = FindInstruction(module.get(), "add0");
+  HloInstruction* add3 = FindInstruction(module.get(), "add3");
+  HloInstruction* custom_call13 =
+      FindInstruction(module.get(), "custom_call13");
+  HloInstruction* add14 = FindInstruction(module.get(), "add14");
+  // Check that the prefetch of p0 is reused for add14.
+  EXPECT_EQ(add0->operand(0), add14->operand(0));
+  // Check that the prefetch of p1 is reused for custom_call13.
+  EXPECT_EQ(add3->operand(0), custom_call13->operand(0));
+
+  // Check that all the uses of the hlo values that alias to the left of the
+  // prefetched hlo value (custom_call1, custom_call3) are from default memory
+  // space even though they are higher in the sort order.
+  std::vector<std::string> default_memory_uses = {"negate_cc0", "custom_call1",
+                                                  "negate_cc4", "custom_call3"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/default_memory_uses,
+      /*operand_number=*/0, /*operand_memory_space=*/kDefaultMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCustomCall);
 }
 
 TEST_F(MemorySpaceAssignmentTest,
        TestBlockPrefetchingDoubleBufferedWithColoring) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -15162,62 +15628,47 @@ ENTRY entry {
   negate13 = f32[2,3]{1,0} negate(add12)
   negate14 = f32[2,3]{1,0} negate(negate13)
   ROOT add15 = f32[2,3]{1,0} add(p5, negate14)
-})";
+})hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
   memory_space_options.max_size_in_bytes = 48;
   memory_space_options.reserved_bytes_for_block_prefetches = 48;
-  HloInstruction* p0 = FindInstruction(module.get(), "p0");
-  HloPosition p0_position{p0, {}};
-  HloInstruction* p1 = FindInstruction(module.get(), "p1");
-  HloPosition p1_position{p1, {}};
-  HloInstruction* p2 = FindInstruction(module.get(), "p2");
-  HloPosition p2_position{p2, {}};
-  HloInstruction* p3 = FindInstruction(module.get(), "p3");
-  HloPosition p3_position{p3, {}};
-  HloInstruction* p4 = FindInstruction(module.get(), "p4");
-  HloPosition p4_position{p4, {}};
-  HloInstruction* p5 = FindInstruction(module.get(), "p5");
-  HloPosition p5_position{p5, {}};
-  memory_space_options.block_prefetched_positions = {p5_position, p4_position,
-                                                     p3_position, p2_position,
-                                                     p1_position, p0_position};
   memory_space_options.max_outstanding_block_prefetches = 10;
+
+  memory_space_options.block_prefetched_positions =
+      GetHloPositions(module.get(), {"p5", "p4", "p3", "p2", "p1", "p0"});
+
   HloInstruction* add15 = FindInstruction(module.get(), "add15");
   HloUse add15_negate14_use{add15, 1, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {add15_negate14_use, kAlternateMemorySpace}};
+
   XLA_VLOG_LINES(3, "Before MSA: \n" + module->ToString());
   AssignMemorySpaceUsingCostAnalysis(module.get(),
                                      std::move(memory_space_options));
   XLA_VLOG_LINES(3, "After MSA: \n" + module->ToString());
-  HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
-  EXPECT_EQ(negate0->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add3 = FindInstruction(module.get(), "add3");
-  EXPECT_EQ(add3->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add6 = FindInstruction(module.get(), "add6");
-  EXPECT_EQ(add6->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add9 = FindInstruction(module.get(), "add9");
-  EXPECT_EQ(add9->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add12 = FindInstruction(module.get(), "add12");
-  EXPECT_EQ(add12->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add15_after_msa = FindInstruction(module.get(), "add15");
-  EXPECT_EQ(add15_after_msa->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  // Operand 1 of add15 is colored in alternate memory.
-  EXPECT_EQ(add15_after_msa->operand(1)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
+
+  std::vector<std::string> prefetched_uses = {"negate0", "add3",  "add6",
+                                              "add9",    "add12", "add15"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/prefetched_uses,
+      /*operand_number=*/0,
+      /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCopyDone);
+
+  std::vector<std::string> colored_uses = {"add15"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/colored_uses,
+      /*operand_number=*/1,
+      /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCopyDone);
 }
 
 TEST_F(MemorySpaceAssignmentTest,
        TestBlockPrefetchingDoubleBufferedWithColoringWithAliasAnalysis) {
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -15243,12 +15694,14 @@ ENTRY entry {
   negate13 = f32[2,3]{1,0} negate(add12)
   negate14 = f32[2,3]{1,0} negate(negate13)
   ROOT add15 = f32[2,3]{1,0} add(p5, negate14)
-})";
+})hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
   memory_space_options.max_size_in_bytes = 48;
   memory_space_options.reserved_bytes_for_block_prefetches = 48;
+  memory_space_options.max_outstanding_block_prefetches = 10;
+
   absl::flat_hash_set<HloPosition> block_prefetched_positions;
   TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
                           HloAliasAnalysis::Run(module.get(), &alias_info_));
@@ -15277,42 +15730,38 @@ ENTRY entry {
         });
   }
   memory_space_options.block_prefetched_positions = block_prefetched_positions;
-  memory_space_options.max_outstanding_block_prefetches = 10;
+
   HloInstruction* add15 = FindInstruction(module.get(), "add15");
   HloUse add15_negate14_use{add15, 1, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {add15_negate14_use, kAlternateMemorySpace}};
+
   XLA_VLOG_LINES(3, "Before MSA: \n" + module->ToString());
   AssignMemorySpaceUsingCostAnalysis(module.get(),
                                      std::move(memory_space_options));
   XLA_VLOG_LINES(3, "After MSA: \n" + module->ToString());
-  HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
-  EXPECT_EQ(negate0->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add3 = FindInstruction(module.get(), "add3");
-  EXPECT_EQ(add3->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add6 = FindInstruction(module.get(), "add6");
-  EXPECT_EQ(add6->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add9 = FindInstruction(module.get(), "add9");
-  EXPECT_EQ(add9->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add12 = FindInstruction(module.get(), "add12");
-  EXPECT_EQ(add12->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add15_after_msa = FindInstruction(module.get(), "add15");
-  EXPECT_EQ(add15_after_msa->operand(0)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  // Operand 1 of add15 is colored in alternate memory.
-  EXPECT_EQ(add15_after_msa->operand(1)->shape().layout().memory_space(),
-            kAlternateMemorySpace);
+
+  std::vector<std::string> prefetched_uses = {"negate0", "add3",  "add6",
+                                              "add9",    "add12", "add15"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/prefetched_uses,
+      /*operand_number=*/0,
+      /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCopyDone);
+
+  std::vector<std::string> colored_uses = {"add15"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/colored_uses,
+      /*operand_number=*/1,
+      /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCopyDone);
 }
 
 TEST_F(SlicedPrefetchTest, TestBlockPrefetchingAsyncSlicePrefetches) {
   // Test block prefetches convert slices to async sliced prefetches. Each
   // program input has two slices.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -15341,58 +15790,34 @@ ENTRY entry {
   negate13 = f32[2,3]{1,0} negate(add12)
   negate14 = f32[2,3]{1,0} negate(negate13)
   ROOT add15 = f32[2,3]{1,0} add(slice5, negate14)
-})";
+})hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
   memory_space_options.max_size_in_bytes = 48;
   memory_space_options.reserved_bytes_for_block_prefetches = 24;
   memory_space_options.max_outstanding_block_prefetches = 10;
-
-  HloInstruction* p0 = FindInstruction(module.get(), "p0");
-  HloPosition p0_position{p0, {}};
-  HloInstruction* p1 = FindInstruction(module.get(), "p1");
-  HloPosition p1_position{p1, {}};
-  HloInstruction* p2 = FindInstruction(module.get(), "p2");
-  HloPosition p2_position{p2, {}};
-  memory_space_options.block_prefetched_positions = {p0_position, p1_position,
-                                                     p2_position};
+  memory_space_options.max_outstanding_prefetches = 0;
+  memory_space_options.enable_sync_slice_replacement = true;
+  memory_space_options.is_async_slice_implemented_fn =
+      [](const HloInstruction* instruction) {
+        return instruction->opcode() == HloOpcode::kSlice;
+      };
+  memory_space_options.block_prefetched_positions =
+      GetHloPositions(module.get(), {"p0", "p1", "p2"});
 
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
   AssignMemorySpaceUsingCostAnalysis(module.get(),
                                      std::move(memory_space_options));
   XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
 
-  HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
-  const HloInstruction* negate0_operand0 = negate0->operand(0);
-  EXPECT_TRUE(IsAsyncSliceDone(negate0_operand0));
-  EXPECT_EQ(negate0_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add3 = FindInstruction(module.get(), "add3");
-  const HloInstruction* add3_operand0 = add3->operand(0);
-  EXPECT_TRUE(IsAsyncSliceDone(add3_operand0));
-  EXPECT_EQ(add3_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add6 = FindInstruction(module.get(), "add6");
-  const HloInstruction* add6_operand0 = add6->operand(0);
-  EXPECT_TRUE(IsAsyncSliceDone(add6_operand0));
-  EXPECT_EQ(add6_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add9 = FindInstruction(module.get(), "add9");
-  const HloInstruction* add9_operand0 = add9->operand(0);
-  EXPECT_TRUE(IsAsyncSliceDone(add9_operand0));
-  EXPECT_EQ(add9_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add12 = FindInstruction(module.get(), "add12");
-  const HloInstruction* add12_operand0 = add12->operand(0);
-  EXPECT_TRUE(IsAsyncSliceDone(add12_operand0));
-  EXPECT_EQ(add12_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add15 = FindInstruction(module.get(), "add15");
-  const HloInstruction* add15_operand0 = add15->operand(0);
-  EXPECT_TRUE(IsAsyncSliceDone(add15_operand0));
-  EXPECT_EQ(add15_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
+  std::vector<std::string> sliced_prefetch_uses = {"negate0", "add3",  "add6",
+                                                   "add9",    "add12", "add15"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/sliced_prefetch_uses,
+      /*operand_number=*/0,
+      /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kAsyncDone);
 
   // Check there are no additional prefetches apart from block prefetches.
   const std::vector<HloInstruction*>& instructions =
@@ -15411,7 +15836,7 @@ ENTRY entry {
 TEST_F(SlicedPrefetchTest, TestBlockPrefetchingAsyncSliceWithMultipleUses) {
   // Same as above, but slice 1 has multiple uses and p0 has multiple uses apart
   // from the slice.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -15443,79 +15868,51 @@ ENTRY entry {
   negate16 = f32[4,3]{1,0} negate(p0)
   add17 = f32[4,3]{1,0} add(p0, negate16)
   ROOT tuple = (f32[4,3]{1,0}, f32[2,3]{1,0}) tuple(add17, add15)
-})";
+})hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
   memory_space_options.max_size_in_bytes = 96;
   memory_space_options.reserved_bytes_for_block_prefetches = 96;
   memory_space_options.max_outstanding_block_prefetches = 10;
+  memory_space_options.max_outstanding_prefetches = 0;
+  memory_space_options.enable_sync_slice_replacement = true;
+  memory_space_options.is_async_slice_implemented_fn =
+      [](const HloInstruction* instruction) {
+        return instruction->opcode() == HloOpcode::kSlice;
+      };
 
-  HloInstruction* p0 = FindInstruction(module.get(), "p0");
-  HloPosition p0_position{p0, {}};
-  HloInstruction* p1 = FindInstruction(module.get(), "p1");
-  HloPosition p1_position{p1, {}};
-  HloInstruction* p2 = FindInstruction(module.get(), "p2");
-  HloPosition p2_position{p2, {}};
-  memory_space_options.block_prefetched_positions = {p0_position, p1_position,
-                                                     p2_position};
+  memory_space_options.block_prefetched_positions =
+      GetHloPositions(module.get(), {"p0", "p1", "p2"});
 
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
   AssignMemorySpaceUsingCostAnalysis(module.get(),
                                      std::move(memory_space_options));
   XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
 
-  HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
-  const HloInstruction* negate0_operand0 = negate0->operand(0);
-  EXPECT_TRUE(IsAsyncSliceDone(negate0_operand0));
-  EXPECT_EQ(negate0_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
+  std::vector<std::string> sliced_prefetch_uses = {
+      "negate0", "add3", "add6", "add9", "add11", "add12", "add15"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/sliced_prefetch_uses,
+      /*operand_number=*/0,
+      /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kAsyncDone);
+
+  std::vector<std::string> prefetched_uses = {"negate16", "add17"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/prefetched_uses,
+      /*operand_number=*/0,
+      /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCopyDone);
+
   HloInstruction* add3 = FindInstruction(module.get(), "add3");
-  const HloInstruction* add3_operand0 = add3->operand(0);
-  EXPECT_TRUE(IsAsyncSliceDone(add3_operand0));
-  EXPECT_EQ(add3_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add6 = FindInstruction(module.get(), "add6");
-  const HloInstruction* add6_operand0 = add6->operand(0);
-  EXPECT_TRUE(IsAsyncSliceDone(add6_operand0));
-  EXPECT_EQ(add6_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add9 = FindInstruction(module.get(), "add9");
-  const HloInstruction* add9_operand0 = add9->operand(0);
-  EXPECT_TRUE(IsAsyncSliceDone(add9_operand0));
-  EXPECT_EQ(add9_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
   HloInstruction* add11 = FindInstruction(module.get(), "add11");
-  const HloInstruction* add11_operand0 = add11->operand(0);
-  EXPECT_TRUE(IsAsyncSliceDone(add11_operand0));
-  EXPECT_EQ(add11_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add12 = FindInstruction(module.get(), "add12");
-  const HloInstruction* add12_operand0 = add12->operand(0);
-  EXPECT_TRUE(IsAsyncSliceDone(add12_operand0));
-  EXPECT_EQ(add12_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add15 = FindInstruction(module.get(), "add15");
-  const HloInstruction* add15_operand0 = add15->operand(0);
-  EXPECT_TRUE(IsAsyncSliceDone(add15_operand0));
-  EXPECT_EQ(add15_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
   HloInstruction* negate16 = FindInstruction(module.get(), "negate16");
-  const HloInstruction* negate16_operand0 = negate16->operand(0);
-  EXPECT_TRUE(negate16_operand0->opcode() == HloOpcode::kCopyDone);
-  EXPECT_EQ(negate16_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
   HloInstruction* add17 = FindInstruction(module.get(), "add17");
-  const HloInstruction* add17_operand0 = add17->operand(0);
-  EXPECT_TRUE(add17_operand0->opcode() == HloOpcode::kCopyDone);
-  EXPECT_EQ(add17_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-
   // Check slice1 is only prefetched once.
-  EXPECT_EQ(add3_operand0, add11_operand0);
-
+  EXPECT_EQ(add3->operand(0), add11->operand(0));
   // Check p0 is only prefetched once.
-  EXPECT_EQ(negate16_operand0, add17_operand0);
+  EXPECT_EQ(negate16->operand(0), add17->operand(0));
 
   // Check there are no additional prefetches apart from block prefetches.
   const std::vector<HloInstruction*>& instructions =
@@ -15532,11 +15929,121 @@ ENTRY entry {
 }
 
 TEST_F(SlicedPrefetchTest,
+       TestBlockPrefetchingAsyncDynamicSliceWithMultipleUses) {
+  // Test block prefetching with async dynamic slices. This test covers the
+  // scenario where:
+  // - a dynamic slice (dynamic_slice1) has multiple uses.
+  // - the original parameter being sliced (p0) has multiple uses apart from the
+  //   dynamic slice. We expect that:
+  // - dynamic_slice1 is only prefetched once.
+  // - p0 is only prefetched once.
+  // - All uses of block prefetches are in the alternate memory space.
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[4,3]{1,0} parameter(0)
+  p1 = f32[4,3]{1,0} parameter(1)
+  p2 = f32[4,3]{1,0} parameter(2)
+  dim0 = s32[] parameter(3)
+  dim1 = s32[] parameter(4)
+  dim2 = s32[] parameter(5)
+  dim3 = s32[] parameter(6)
+  dynamic_slice0 = f32[2,3]{1,0} dynamic-slice(p0, dim0, dim1), dynamic_slice_sizes={2,3}
+  dynamic_slice1 = f32[2,3]{1,0} dynamic-slice(p1, dim2, dim3), dynamic_slice_sizes={2,3}
+  dynamic_slice2 = f32[2,3]{1,0} dynamic-slice(p2, dim0, dim1), dynamic_slice_sizes={2,3}
+  dynamic_slice3 = f32[2,3]{1,0} dynamic-slice(p0, dim2, dim3), dynamic_slice_sizes={2,3}
+  dynamic_slice4 = f32[2,3]{1,0} dynamic-slice(p1, dim0, dim1), dynamic_slice_sizes={2,3}
+  dynamic_slice5 = f32[2,3]{1,0} dynamic-slice(p2, dim2, dim3), dynamic_slice_sizes={2,3}
+  negate0 = f32[2,3]{1,0} negate(dynamic_slice0)
+  negate1 = f32[2,3]{1,0} negate(negate0)
+  negate2 = f32[2,3]{1,0} negate(negate1)
+  add3 = f32[2,3]{1,0} add(dynamic_slice1, negate2)
+  negate4 = f32[2,3]{1,0} negate(add3)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  add6 = f32[2,3]{1,0} add(dynamic_slice2, negate5)
+  negate7 = f32[2,3]{1,0} negate(add6)
+  negate8 = f32[2,3]{1,0} negate(negate7)
+  add9 = f32[2,3]{1,0} add(dynamic_slice3, negate8)
+  negate10 = f32[2,3]{1,0} negate(add9)
+  add11 = f32[2,3]{1,0} add(dynamic_slice1, negate10)
+  add12 = f32[2,3]{1,0} add(dynamic_slice4, add11)
+  negate13 = f32[2,3]{1,0} negate(add12)
+  negate14 = f32[2,3]{1,0} negate(negate13)
+  add15 = f32[2,3]{1,0} add(dynamic_slice5, negate14)
+  negate16 = f32[4,3]{1,0} negate(p0)
+  add17 = f32[4,3]{1,0} add(p0, negate16)
+  ROOT tuple = (f32[4,3]{1,0}, f32[2,3]{1,0}) tuple(add17, add15)
+})hlo";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 96;
+  memory_space_options.reserved_bytes_for_block_prefetches = 96;
+  memory_space_options.max_outstanding_block_prefetches = 10;
+  memory_space_options.max_outstanding_prefetches = 0;
+  memory_space_options.enable_sync_slice_replacement = true;
+  memory_space_options.is_async_slice_implemented_fn =
+      [](const HloInstruction* instruction) {
+        return instruction->opcode() == HloOpcode::kDynamicSlice;
+      };
+
+  memory_space_options.block_prefetched_positions =
+      GetHloPositions(module.get(), {"p0", "p1", "p2"});
+
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+
+  std::vector<std::string> sliced_prefetch_uses = {
+      "negate0", "add3", "add6", "add9", "add11", "add12", "add15"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/sliced_prefetch_uses,
+      /*operand_number=*/0,
+      /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kAsyncDone);
+
+  std::vector<std::string> prefetched_uses = {"negate16", "add17"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/prefetched_uses,
+      /*operand_number=*/0,
+      /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCopyDone);
+
+  HloInstruction* add3 = FindInstruction(module.get(), "add3");
+  HloInstruction* add11 = FindInstruction(module.get(), "add11");
+  HloInstruction* negate16 = FindInstruction(module.get(), "negate16");
+  HloInstruction* add17 = FindInstruction(module.get(), "add17");
+  // Check dynamic_slice1 is only prefetched once.
+  EXPECT_EQ(add3->operand(0), add11->operand(0));
+  // Check p0 is only prefetched once.
+  EXPECT_EQ(negate16->operand(0), add17->operand(0));
+
+  // Check there are no additional prefetches apart from block prefetches.
+  const std::vector<HloInstruction*>& instructions =
+      module->schedule().sequence(module->entry_computation()).instructions();
+  int64_t num_prefetches =
+      absl::c_count_if(instructions, [&](const HloInstruction* instruction) {
+        return instruction->shape().has_layout() &&
+               instruction->shape().layout().memory_space() ==
+                   kAlternateMemorySpace &&
+               ((instruction->opcode() == HloOpcode::kAsyncDone &&
+                 (instruction->async_wrapped_instruction()->opcode() ==
+                      HloOpcode::kSlice ||
+                  instruction->async_wrapped_instruction()->opcode() ==
+                      HloOpcode::kDynamicSlice)) ||
+                instruction->opcode() == HloOpcode::kCopyDone);
+      });
+  EXPECT_EQ(num_prefetches, 7);
+}
+
+TEST_F(SlicedPrefetchTest,
        TestBlockPrefetchingDoubleBufferedAsyncSlicePrefetches) {
   // The block prefetching memory is twice the size of the slices. This will
   // result in double buffering of the slices i.e. having 2 live async slice
   // copies at a given time.
-  absl::string_view hlo_string = R"(
+  absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -15565,58 +16072,35 @@ ENTRY entry {
   negate13 = f32[2,3]{1,0} negate(add12)
   negate14 = f32[2,3]{1,0} negate(negate13)
   ROOT add15 = f32[2,3]{1,0} add(slice5, negate14)
-})";
+})hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
   memory_space_options.max_size_in_bytes = 48;
   memory_space_options.reserved_bytes_for_block_prefetches = 48;
   memory_space_options.max_outstanding_block_prefetches = 10;
+  memory_space_options.max_outstanding_prefetches = 0;
+  memory_space_options.enable_sync_slice_replacement = true;
+  memory_space_options.is_async_slice_implemented_fn =
+      [](const HloInstruction* instruction) {
+        return instruction->opcode() == HloOpcode::kSlice;
+      };
 
-  HloInstruction* p0 = FindInstruction(module.get(), "p0");
-  HloPosition p0_position{p0, {}};
-  HloInstruction* p1 = FindInstruction(module.get(), "p1");
-  HloPosition p1_position{p1, {}};
-  HloInstruction* p2 = FindInstruction(module.get(), "p2");
-  HloPosition p2_position{p2, {}};
-  memory_space_options.block_prefetched_positions = {p0_position, p1_position,
-                                                     p2_position};
+  memory_space_options.block_prefetched_positions =
+      GetHloPositions(module.get(), {"p0", "p1", "p2"});
 
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
   AssignMemorySpaceUsingCostAnalysis(module.get(),
                                      std::move(memory_space_options));
   XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
 
-  HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
-  const HloInstruction* negate0_operand0 = negate0->operand(0);
-  EXPECT_TRUE(IsAsyncSliceDone(negate0_operand0));
-  EXPECT_EQ(negate0_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add3 = FindInstruction(module.get(), "add3");
-  const HloInstruction* add3_operand0 = add3->operand(0);
-  EXPECT_TRUE(IsAsyncSliceDone(add3_operand0));
-  EXPECT_EQ(add3_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add6 = FindInstruction(module.get(), "add6");
-  const HloInstruction* add6_operand0 = add6->operand(0);
-  EXPECT_TRUE(IsAsyncSliceDone(add6_operand0));
-  EXPECT_EQ(add6_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add9 = FindInstruction(module.get(), "add9");
-  const HloInstruction* add9_operand0 = add9->operand(0);
-  EXPECT_TRUE(IsAsyncSliceDone(add9_operand0));
-  EXPECT_EQ(add9_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add12 = FindInstruction(module.get(), "add12");
-  const HloInstruction* add12_operand0 = add12->operand(0);
-  EXPECT_TRUE(IsAsyncSliceDone(add12_operand0));
-  EXPECT_EQ(add12_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
-  HloInstruction* add15 = FindInstruction(module.get(), "add15");
-  const HloInstruction* add15_operand0 = add15->operand(0);
-  EXPECT_TRUE(IsAsyncSliceDone(add15_operand0));
-  EXPECT_EQ(add15_operand0->shape().layout().memory_space(),
-            kAlternateMemorySpace);
+  std::vector<std::string> sliced_prefetch_uses = {"negate0", "add3",  "add6",
+                                                   "add9",    "add12", "add15"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/sliced_prefetch_uses,
+      /*operand_number=*/0,
+      /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kAsyncDone);
 
   // Check there are no additional prefetches apart from block prefetches.
   const std::vector<HloInstruction*>& instructions =
@@ -15632,11 +16116,659 @@ ENTRY entry {
   EXPECT_EQ(num_prefetches, 6);
 }
 
+TEST_F(MemorySpaceAssignmentTest, TestScheduleCustomCallPrefetchesBasic) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  param0 = f32[2,1,3]{2,1,0} parameter(0), sharding={replicated}
+
+  prefetch_start_param0 = (f32[2,1,3]{2,1,0:S(1)}, s32[]{:T(128)S(2)}) custom-call(param0), custom_call_target="tpu_custom_call"
+  gte_param0_0 = f32[2,1,3]{2,1,0:S(1)} get-tuple-element(prefetch_start_param0), index=0
+  gte_param0_1 = s32[]{:T(128)S(2)} get-tuple-element(prefetch_start_param0), index=1
+  prefetch_done_param0 = f32[2,1,3]{2,1,0:S(1)} custom-call(param0, gte_param0_0, gte_param0_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+  first_slice_prefetch_start_param0 = (f32[1,1,3]{2,1,0:S(1)}, s32[]{:T(128)S(2)}) custom-call(param0), custom_call_target="tpu_custom_call"
+  first_slice_gte_param0_0 = f32[1,1,3]{2,1,0:S(1)} get-tuple-element(first_slice_prefetch_start_param0), index=0
+  first_slice_gte_param0_1 = s32[]{:T(128)S(2)} get-tuple-element(first_slice_prefetch_start_param0), index=1
+  first_slice_prefetch_done_param0 = f32[1,1,3]{2,1,0:S(1)} custom-call(param0, first_slice_gte_param0_0, first_slice_gte_param0_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+  second_slice_prefetch_start_param0 = (f32[1,1,3]{2,1,0:S(1)}, s32[]{:T(128)S(2)}) custom-call(param0), custom_call_target="tpu_custom_call"
+  second_slice_gte_param0_0 = f32[1,1,3]{2,1,0:S(1)} get-tuple-element(second_slice_prefetch_start_param0), index=0
+  second_slice_gte_param0_1 = s32[]{:T(128)S(2)} get-tuple-element(second_slice_prefetch_start_param0), index=1
+  second_slice_prefetch_done_param0 = f32[1,1,3]{2,1,0:S(1)} custom-call(param0, second_slice_gte_param0_0, second_slice_gte_param0_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+  negate_param0 = f32[2,1,3]{2,1,0} negate(prefetch_done_param0)
+  add_param0 = f32[2,1,3]{2,1,0} add(prefetch_done_param0, negate_param0)
+  negate_param0_first_slice = f32[1,1,3]{2,1,0} negate(first_slice_prefetch_done_param0)
+  add_param0_first_slice = f32[1,1,3]{2,1,0} add(first_slice_prefetch_done_param0, negate_param0_first_slice)
+  negate_param0_second_slice = f32[1,1,3]{2,1,0} negate(second_slice_prefetch_done_param0)
+  add_param0_second_slice = f32[1,1,3]{2,1,0} add(second_slice_prefetch_done_param0, negate_param0_second_slice)
+  ROOT tuple = (f32[2,1,3]{2,1,0}, f32[1,1,3]{2,1,0}, f32[1,1,3]{2,1,0}) tuple(add_param0, add_param0_first_slice, add_param0_second_slice)
+})hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 200;
+  memory_space_options.reserved_bytes_for_block_prefetches = 200;
+  memory_space_options.max_outstanding_block_prefetches = 10;
+  memory_space_options.max_outstanding_prefetches = 0;
+
+  std::vector<CustomCallPrefetchInfo> custom_call_prefetch_instructions = {
+      {"param0", "prefetch_start_param0", "prefetch_done_param0"},
+      {"param0", "first_slice_prefetch_start_param0",
+       "first_slice_prefetch_done_param0"},
+      {"param0", "second_slice_prefetch_start_param0",
+       "second_slice_prefetch_done_param0"}};
+
+  memory_space_options.hlo_position_to_custom_call_prefetch_details =
+      GetCustomCallPrefetchDetailsMap(/*module=*/module.get(),
+                                      /*custom_call_prefetch_instructions=*/
+                                      custom_call_prefetch_instructions);
+
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+
+  std::vector<std::string> prefetch_uses = {
+      "add_param0",
+      "add_param0_first_slice",
+      "add_param0_second_slice",
+      "negate_param0",
+      "negate_param0_first_slice",
+      "negate_param0_second_slice",
+  };
+
+  // Check that all uses of custom call prefetches are in alternate memory
+  // space.
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/prefetch_uses,
+      /*operand_number=*/0, /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCustomCall);
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       TestScheduleCustomCallPrefetchesWithMultipleUses) {
+  // params p0, p1, p2 have sliced and non-sliced custom call prefetches.
+  // slice_done_1 and prefetch_done_0 have multiple uses.
+  // p0, p1 and p2 have uses apart from the custom call prefetches.
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[4,3]{1,0} parameter(0)
+  p1 = f32[4,3]{1,0} parameter(1)
+  p2 = f32[4,3]{1,0} parameter(2)
+
+  prefetch_start0 = (f32[4,3]{1,0}, s32[]{:T(128)S(2)}) custom-call(p0), custom_call_target="tpu_custom_call"
+  prefetch_start0_gte_0 = f32[4,3]{1,0} get-tuple-element(prefetch_start0), index=0
+  prefetch_start0_gte_1 = s32[]{:T(128)S(2)} get-tuple-element(prefetch_start0), index=1
+  prefetch_done_0 = f32[4,3]{1,0} custom-call(p0, prefetch_start0_gte_0, prefetch_start0_gte_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+
+  slice_start_0 = (f32[2,3]{1,0}, s32[]{:T(128)S(2)}) custom-call(p0), custom_call_target="tpu_custom_call"
+  slice_start_0_gte_0 = f32[2,3]{1,0} get-tuple-element(slice_start_0), index=0
+  slice_start_0_gte_1 = s32[]{:T(128)S(2)} get-tuple-element(slice_start_0), index=1
+  slice_done_0 = f32[2,3]{1,0} custom-call(p0, slice_start_0_gte_0, slice_start_0_gte_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+  slice_start_1 = (f32[2,3]{1,0}, s32[]{:T(128)S(2)}) custom-call(p1), custom_call_target="tpu_custom_call"
+  slice_start_1_gte_0 = f32[2,3]{1,0} get-tuple-element(slice_start_1), index=0
+  slice_start_1_gte_1 = s32[]{:T(128)S(2)} get-tuple-element(slice_start_1), index=1
+  slice_done_1 = f32[2,3]{1,0} custom-call(p1, slice_start_1_gte_0, slice_start_1_gte_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+  slice_start_2 = (f32[2,3]{1,0}, s32[]{:T(128)S(2)}) custom-call(p2), custom_call_target="tpu_custom_call"
+  slice_start_2_gte_0 = f32[2,3]{1,0} get-tuple-element(slice_start_2), index=0
+  slice_start_2_gte_1 = s32[]{:T(128)S(2)} get-tuple-element(slice_start_2), index=1
+  slice_done_2 = f32[2,3]{1,0} custom-call(p2, slice_start_2_gte_0, slice_start_2_gte_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+  slice_start_3 = (f32[2,3]{1,0}, s32[]{:T(128)S(2)}) custom-call(p0), custom_call_target="tpu_custom_call"
+  slice_start_3_gte_0 = f32[2,3]{1,0} get-tuple-element(slice_start_3), index=0
+  slice_start_3_gte_1 = s32[]{:T(128)S(2)} get-tuple-element(slice_start_3), index=1
+  slice_done_3 = f32[2,3]{1,0} custom-call(p0, slice_start_3_gte_0, slice_start_3_gte_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+  slice_start_4 = (f32[2,3]{1,0}, s32[]{:T(128)S(2)}) custom-call(p1), custom_call_target="tpu_custom_call"
+  slice_start_4_gte_0 = f32[2,3]{1,0} get-tuple-element(slice_start_4), index=0
+  slice_start_4_gte_1 = s32[]{:T(128)S(2)} get-tuple-element(slice_start_4), index=1
+  slice_done_4 = f32[2,3]{1,0} custom-call(p1, slice_start_4_gte_0, slice_start_4_gte_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+  slice_start_5 = (f32[2,3]{1,0}, s32[]{:T(128)S(2)}) custom-call(p2), custom_call_target="tpu_custom_call"
+  slice_start_5_gte_0 = f32[2,3]{1,0} get-tuple-element(slice_start_5), index=0
+  slice_start_5_gte_1 = s32[]{:T(128)S(2)} get-tuple-element(slice_start_5), index=1
+  slice_done_5 = f32[2,3]{1,0} custom-call(p2, slice_start_5_gte_0, slice_start_5_gte_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+  negate0 = f32[2,3]{1,0} negate(slice_done_0)
+  negate1 = f32[2,3]{1,0} negate(negate0)
+  negate2 = f32[2,3]{1,0} negate(negate1)
+  add3 = f32[2,3]{1,0} add(slice_done_1, negate2)
+  negate4 = f32[2,3]{1,0} negate(add3)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  add6 = f32[2,3]{1,0} add(slice_done_2, negate5)
+  negate7 = f32[2,3]{1,0} negate(add6)
+  negate8 = f32[2,3]{1,0} negate(negate7)
+  add9 = f32[2,3]{1,0} add(slice_done_3, negate8)
+  negate10 = f32[2,3]{1,0} negate(add9)
+  add11 = f32[2,3]{1,0} add(slice_done_1, negate10)
+  add12 = f32[2,3]{1,0} add(slice_done_4, add11)
+  negate13 = f32[2,3]{1,0} negate(add12)
+  negate14 = f32[2,3]{1,0} negate(negate13)
+  add15 = f32[2,3]{1,0} add(slice_done_5, negate14)
+  negate16 = f32[4,3]{1,0} negate(prefetch_done_0)
+  add17 = f32[4,3]{1,0} add(prefetch_done_0, negate16)
+  add18 = f32[4,3]{1,0} add(p0, add17)
+  add19 = f32[4,3]{1,0} add(p1, add18)
+  add20 = f32[4,3]{1,0} add(p2, add19)
+  ROOT tuple = (f32[4,3]{1,0}, f32[2,3]{1,0}) tuple(add20, add15)
+})hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 96;
+  memory_space_options.reserved_bytes_for_block_prefetches = 96;
+  memory_space_options.max_outstanding_block_prefetches = 10;
+  memory_space_options.max_outstanding_prefetches = 0;
+  memory_space_options.verify = true;
+
+  std::vector<CustomCallPrefetchInfo> custom_call_prefetch_instructions = {
+      {"p0", "prefetch_start0", "prefetch_done_0"},
+      {"p0", "slice_start_0", "slice_done_0"},
+      {"p0", "slice_start_3", "slice_done_3"},
+      {"p1", "slice_start_1", "slice_done_1"},
+      {"p1", "slice_start_4", "slice_done_4"},
+      {"p2", "slice_start_2", "slice_done_2"},
+      {"p2", "slice_start_5", "slice_done_5"}};
+
+  memory_space_options.hlo_position_to_custom_call_prefetch_details =
+      GetCustomCallPrefetchDetailsMap(/*module=*/module.get(),
+                                      /*custom_call_prefetch_instructions=*/
+                                      custom_call_prefetch_instructions);
+
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+
+  // Check that all uses of custom call prefetches are in alternate memory
+  // space.
+  std::vector<std::string> prefetched_uses = {"negate0", "add3",     "add6",
+                                              "add9",    "add11",    "add12",
+                                              "add15",   "negate16", "add17"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/prefetched_uses,
+      /*operand_number=*/0,
+      /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCustomCall);
+
+  // Check that all direct uses of parameters are in default memory space.
+  std::vector<std::string> direct_uses = {"add18", "add19", "add20"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/direct_uses,
+      /*operand_number=*/0, /*operand_memory_space=*/kDefaultMemorySpace,
+      /*operand_opcode=*/HloOpcode::kParameter);
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       TestScheduleCustomCallPrefetchesWithAliasing) {
+  // params p0, p1, p2 have sliced and non-sliced custom call prefetches.
+  // slice_done_1 and prefetch_done_0 have multiple uses.
+  // p0, p1 and p2 have uses apart from the custom call prefetches.
+  // custom_call17 output aliases with prefetch_done_0, extending the live range
+  // of prefetch_done_0 by sharing the buffer with one additional hlo value.
+  // custom_call15 output aliases with slice_done_5 and custom_call21
+  // output aliases with custom_call17, extending the live range of
+  // slice_done_5, by sharing the buffer with two additional hlo values.
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[4,3]{1,0} parameter(0)
+  p1 = f32[4,3]{1,0} parameter(1)
+  p2 = f32[4,3]{1,0} parameter(2)
+
+  prefetch_start0 = (f32[4,3]{1,0}, s32[]{:T(128)S(2)}) custom-call(p0), custom_call_target="tpu_custom_call"
+  prefetch_start0_gte_0 = f32[4,3]{1,0} get-tuple-element(prefetch_start0), index=0
+  prefetch_start0_gte_1 = s32[]{:T(128)S(2)} get-tuple-element(prefetch_start0), index=1
+  prefetch_done_0 = f32[4,3]{1,0} custom-call(p0, prefetch_start0_gte_0, prefetch_start0_gte_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+
+  slice_start_0 = (f32[2,3]{1,0}, s32[]{:T(128)S(2)}) custom-call(p0), custom_call_target="tpu_custom_call"
+  slice_start_0_gte_0 = f32[2,3]{1,0} get-tuple-element(slice_start_0), index=0
+  slice_start_0_gte_1 = s32[]{:T(128)S(2)} get-tuple-element(slice_start_0), index=1
+  slice_done_0 = f32[2,3]{1,0} custom-call(p0, slice_start_0_gte_0, slice_start_0_gte_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+  slice_start_1 = (f32[2,3]{1,0}, s32[]{:T(128)S(2)}) custom-call(p1), custom_call_target="tpu_custom_call"
+  slice_start_1_gte_0 = f32[2,3]{1,0} get-tuple-element(slice_start_1), index=0
+  slice_start_1_gte_1 = s32[]{:T(128)S(2)} get-tuple-element(slice_start_1), index=1
+  slice_done_1 = f32[2,3]{1,0} custom-call(p1, slice_start_1_gte_0, slice_start_1_gte_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+  slice_start_2 = (f32[2,3]{1,0}, s32[]{:T(128)S(2)}) custom-call(p2), custom_call_target="tpu_custom_call"
+  slice_start_2_gte_0 = f32[2,3]{1,0} get-tuple-element(slice_start_2), index=0
+  slice_start_2_gte_1 = s32[]{:T(128)S(2)} get-tuple-element(slice_start_2), index=1
+  slice_done_2 = f32[2,3]{1,0} custom-call(p2, slice_start_2_gte_0, slice_start_2_gte_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+  slice_start_3 = (f32[2,3]{1,0}, s32[]{:T(128)S(2)}) custom-call(p0), custom_call_target="tpu_custom_call"
+  slice_start_3_gte_0 = f32[2,3]{1,0} get-tuple-element(slice_start_3), index=0
+  slice_start_3_gte_1 = s32[]{:T(128)S(2)} get-tuple-element(slice_start_3), index=1
+  slice_done_3 = f32[2,3]{1,0} custom-call(p0, slice_start_3_gte_0, slice_start_3_gte_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+  slice_start_4 = (f32[2,3]{1,0}, s32[]{:T(128)S(2)}) custom-call(p1), custom_call_target="tpu_custom_call"
+  slice_start_4_gte_0 = f32[2,3]{1,0} get-tuple-element(slice_start_4), index=0
+  slice_start_4_gte_1 = s32[]{:T(128)S(2)} get-tuple-element(slice_start_4), index=1
+  slice_done_4 = f32[2,3]{1,0} custom-call(p1, slice_start_4_gte_0, slice_start_4_gte_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+  slice_start_5 = (f32[2,3]{1,0}, s32[]{:T(128)S(2)}) custom-call(p2), custom_call_target="tpu_custom_call"
+  slice_start_5_gte_0 = f32[2,3]{1,0} get-tuple-element(slice_start_5), index=0
+  slice_start_5_gte_1 = s32[]{:T(128)S(2)} get-tuple-element(slice_start_5), index=1
+  slice_done_5 = f32[2,3]{1,0} custom-call(p2, slice_start_5_gte_0, slice_start_5_gte_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+  negate0 = f32[2,3]{1,0} negate(slice_done_0)
+  negate1 = f32[2,3]{1,0} negate(negate0)
+  negate2 = f32[2,3]{1,0} negate(negate1)
+  add3 = f32[2,3]{1,0} add(slice_done_1, negate2)
+  negate4 = f32[2,3]{1,0} negate(add3)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  add6 = f32[2,3]{1,0} add(slice_done_2, negate5)
+  negate7 = f32[2,3]{1,0} negate(add6)
+  negate8 = f32[2,3]{1,0} negate(negate7)
+  add9 = f32[2,3]{1,0} add(slice_done_3, negate8)
+  negate10 = f32[2,3]{1,0} negate(add9)
+  add11 = f32[2,3]{1,0} add(slice_done_1, negate10)
+  add12 = f32[2,3]{1,0} add(slice_done_4, add11)
+  negate13 = f32[2,3]{1,0} negate(add12)
+  negate14 = f32[2,3]{1,0} negate(negate13)
+  custom_call15 = f32[2,3]{1,0} custom-call(slice_done_5, negate14), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  negate16 = f32[4,3]{1,0} negate(prefetch_done_0)
+  custom_call17 = f32[4,3]{1,0} custom-call(prefetch_done_0, negate16), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  add18 = f32[4,3]{1,0} add(p0, custom_call17)
+  add19 = f32[4,3]{1,0} add(p1, add18)
+  add20 = f32[4,3]{1,0} add(p2, custom_call17)
+  custom_call21 = f32[4,3]{1,0} custom-call(add19, custom_call17), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+  add22 = f32[4,3]{1,0} add(add20, custom_call21)
+  add23 = f32[2,3]{1,0} add(negate14, custom_call15)
+  ROOT tuple = (f32[4,3]{1,0}, f32[2,3]{1,0}) tuple(add22, add23)
+})hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 96;
+  memory_space_options.reserved_bytes_for_block_prefetches = 96;
+  memory_space_options.max_outstanding_block_prefetches = 10;
+  memory_space_options.max_outstanding_prefetches = 0;
+  memory_space_options.verify = true;
+
+  std::vector<CustomCallPrefetchInfo> custom_call_prefetch_instructions = {
+      {"p0", "prefetch_start0", "prefetch_done_0"},
+      {"p0", "slice_start_0", "slice_done_0"},
+      {"p0", "slice_start_3", "slice_done_3"},
+      {"p1", "slice_start_1", "slice_done_1"},
+      {"p1", "slice_start_4", "slice_done_4"},
+      {"p2", "slice_start_2", "slice_done_2"},
+      {"p2", "slice_start_5", "slice_done_5"}};
+
+  memory_space_options.hlo_position_to_custom_call_prefetch_details =
+      GetCustomCallPrefetchDetailsMap(/*module=*/module.get(),
+                                      /*custom_call_prefetch_instructions=*/
+                                      custom_call_prefetch_instructions);
+
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+
+  // Check that all uses of custom call prefetches are in alternate memory
+  // space.
+  std::vector<std::string> prefetched_uses = {
+      "negate0", "add3",          "add6",     "add9",         "add11",
+      "add12",   "custom_call15", "negate16", "custom_call17"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/prefetched_uses,
+      /*operand_number=*/0,
+      /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCustomCall);
+
+  // Check that all aliased uses of custom call prefetches are in alternate
+  // memory space.
+  std::vector<std::string> aliased_uses = {"add18", "add20", "custom_call21",
+                                           "add22", "add23"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/aliased_uses,
+      /*operand_number=*/1,
+      /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCustomCall);
+
+  // Check that all direct uses of parameters are in default memory space.
+  std::vector<std::string> direct_uses = {"add18", "add19", "add20"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/direct_uses,
+      /*operand_number=*/0, /*operand_memory_space=*/kDefaultMemorySpace,
+      /*operand_opcode=*/HloOpcode::kParameter);
+}
+
+TEST_F(MemorySpaceAssignmentTest, TestCustomCallPrefetchSourceAliasing) {
+  // The block prefetched value (custom_call1) is aliased to the left and to the
+  // right, we test that all aliased values are in default memory space.
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  param0 = f32[2,1,3]{2,1,0} parameter(0), sharding={replicated}
+
+  custom_call0 = f32[2,1,3]{2,1,0} custom-call(param0), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  negate0 = f32[2,1,3]{2,1,0} negate(custom_call0)
+  negate1 = f32[2,1,3]{2,1,0} negate(negate0)
+  custom_call1 = f32[2,1,3]{2,1,0} custom-call(custom_call0, negate1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  negate2 = f32[2,1,3]{2,1,0} negate(custom_call1)
+  negate3 = f32[2,1,3]{2,1,0} negate(negate2)
+
+  prefetch_start_param0 = (f32[2,1,3]{2,1,0:S(1)}, s32[]{:T(128)S(2)}) custom-call(custom_call1), custom_call_target="tpu_custom_call"
+  gte_param0_0 = f32[2,1,3]{2,1,0:S(1)} get-tuple-element(prefetch_start_param0), index=0
+  gte_param0_1 = s32[]{:T(128)S(2)} get-tuple-element(prefetch_start_param0), index=1
+  prefetch_done_param0 = f32[2,1,3]{2,1,0:S(1)} custom-call(custom_call1, gte_param0_0, gte_param0_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+  first_slice_prefetch_start_param0 = (f32[1,1,3]{2,1,0:S(1)}, s32[]{:T(128)S(2)}) custom-call(custom_call1), custom_call_target="tpu_custom_call"
+  first_slice_gte_param0_0 = f32[1,1,3]{2,1,0:S(1)} get-tuple-element(first_slice_prefetch_start_param0), index=0
+  first_slice_gte_param0_1 = s32[]{:T(128)S(2)} get-tuple-element(first_slice_prefetch_start_param0), index=1
+  first_slice_prefetch_done_param0 = f32[1,1,3]{2,1,0:S(1)} custom-call(custom_call1, first_slice_gte_param0_0, first_slice_gte_param0_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+  second_slice_prefetch_start_param0 = (f32[1,1,3]{2,1,0:S(1)}, s32[]{:T(128)S(2)}) custom-call(custom_call1), custom_call_target="tpu_custom_call"
+  second_slice_gte_param0_0 = f32[1,1,3]{2,1,0:S(1)} get-tuple-element(second_slice_prefetch_start_param0), index=0
+  second_slice_gte_param0_1 = s32[]{:T(128)S(2)} get-tuple-element(second_slice_prefetch_start_param0), index=1
+  second_slice_prefetch_done_param0 = f32[1,1,3]{2,1,0:S(1)} custom-call(custom_call1, second_slice_gte_param0_0, second_slice_gte_param0_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+  negate_param0 = f32[2,1,3]{2,1,0} negate(prefetch_done_param0)
+  add_param0 = f32[2,1,3]{2,1,0} add(prefetch_done_param0, negate_param0)
+  negate_param0_first_slice = f32[1,1,3]{2,1,0} negate(first_slice_prefetch_done_param0)
+  add_param0_first_slice = f32[1,1,3]{2,1,0} add(first_slice_prefetch_done_param0, negate_param0_first_slice)
+  negate_param0_second_slice = f32[1,1,3]{2,1,0} negate(second_slice_prefetch_done_param0)
+  add_param0_second_slice = f32[1,1,3]{2,1,0} add(second_slice_prefetch_done_param0, negate_param0_second_slice)
+
+  custom_call2 = f32[2,1,3]{2,1,0} custom-call(custom_call1, negate3), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  negate4 = f32[2,1,3]{2,1,0} negate(custom_call2)
+  negate5 = f32[2,1,3]{2,1,0} negate(negate4)
+  custom_call3 = f32[2,1,3]{2,1,0} custom-call(custom_call2, negate5), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  add0 = f32[2,1,3]{2,1,0} add(custom_call3, add_param0)
+  negate6 = f32[2,1,3]{2,1,0} negate(add0)
+
+  ROOT tuple = (f32[2,1,3]{2,1,0}, f32[1,1,3]{2,1,0}, f32[1,1,3]{2,1,0}) tuple(negate6, add_param0_first_slice, add_param0_second_slice)
+})hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 1000;
+  memory_space_options.reserved_bytes_for_block_prefetches = 1000;
+  memory_space_options.max_outstanding_block_prefetches = 10;
+  memory_space_options.max_outstanding_prefetches = 0;
+
+  std::vector<CustomCallPrefetchInfo> custom_call_prefetch_instructions = {
+      {"custom_call1", "prefetch_start_param0", "prefetch_done_param0"},
+      {"custom_call1", "first_slice_prefetch_start_param0",
+       "first_slice_prefetch_done_param0"},
+      {"custom_call1", "second_slice_prefetch_start_param0",
+       "second_slice_prefetch_done_param0"}};
+
+  memory_space_options.hlo_position_to_custom_call_prefetch_details =
+      GetCustomCallPrefetchDetailsMap(/*module=*/module.get(),
+                                      /*custom_call_prefetch_instructions=*/
+                                      custom_call_prefetch_instructions);
+
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher {
+        instruction_name_regex: "param0|custom_call0|custom_call1|custom_call2|custom_call3"
+      }
+      override_options { assign_first: true }
+    })pb";
+  TF_ASSERT_OK_AND_ASSIGN(auto msa_sort_order_overrides,
+                          ParseTextProto<MsaSortOrderOverrides>(text_proto));
+  memory_space_options.msa_sort_order_overrides =
+      std::move(msa_sort_order_overrides);
+
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+
+  std::vector<std::string> prefetch_uses = {
+      "add_param0",
+      "add_param0_first_slice",
+      "add_param0_second_slice",
+      "negate_param0",
+      "negate_param0_first_slice",
+      "negate_param0_second_slice",
+  };
+
+  // Check that all uses of custom call prefetches are in alternate memory
+  // space.
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/prefetch_uses,
+      /*operand_number=*/0, /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCustomCall);
+
+  std::vector<std::string> default_memory_space_uses = {
+      "negate0",
+      "custom_call1",
+      "negate2",
+      "prefetch_start_param0",
+      "prefetch_done_param0",
+      "first_slice_prefetch_start_param0",
+      "first_slice_prefetch_done_param0",
+      "second_slice_prefetch_start_param0",
+      "second_slice_prefetch_done_param0",
+      "custom_call2",
+      "negate4",
+      "custom_call3",
+      "add0"};
+
+  // Check that all the uses of the hlo values that alias with the prefetched
+  // hlo value (custom_call1) are in default memory space even though they are
+  // higher in the sort order.
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/default_memory_space_uses,
+      /*operand_number=*/0, /*operand_memory_space=*/kDefaultMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCustomCall);
+}
+
+TEST_F(SlicedPrefetchTest, TestMultiplePinnedAllocationsBug) {
+  // When block prefetching, finalize the original value if a sliced value is
+  // prefetched successfully and the original value is not, if not finalized it
+  // can cause re-allocation causing multiple pinned allocations for the same
+  // buffer.
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[4,3]{1,0} parameter(0)
+  slice0 = f32[2,3]{1,0} slice(p0), slice={[0:2], [0:3]}
+  negate0 = f32[2,3]{1,0} negate(slice0)
+  negate1 = f32[2,3]{1,0} negate(negate0)
+  negate2 = f32[2,3]{1,0} negate(negate1)
+  add2 = f32[2,3]{1,0} add(slice0, negate2)
+  negate3 = f32[2,3]{1,0} negate(add2)
+  negate4 = f32[2,3]{1,0} negate(negate3)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  negate6 = f32[4,3]{1,0} negate(p0)
+  negate7 = f32[4,3]{1,0} negate(negate6)
+  negate8 = f32[4,3]{1,0} negate(negate7)
+  negate9 = f32[4,3]{1,0} negate(negate8)
+  add10 = f32[4,3]{1,0} add(p0, negate9)
+  ROOT tuple = (f32[2,3]{1,0}, f32[4,3]{1,0}) tuple(negate5, add10)
+})hlo";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 256;
+  memory_space_options.reserved_bytes_for_block_prefetches = 24;
+  memory_space_options.max_outstanding_block_prefetches = 10;
+  memory_space_options.max_outstanding_prefetches = 0;
+  memory_space_options.enable_sync_slice_replacement = true;
+  memory_space_options.is_async_slice_implemented_fn =
+      [](const HloInstruction* instruction) {
+        return instruction->opcode() == HloOpcode::kSlice;
+      };
+  memory_space_options.block_prefetched_positions =
+      GetHloPositions(module.get(), {"p0"});
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: "p0" }
+      override_options { assign_first: true }
+    })pb";
+  TF_ASSERT_OK_AND_ASSIGN(auto msa_sort_order_overrides,
+                          ParseTextProto<MsaSortOrderOverrides>(text_proto));
+  memory_space_options.msa_sort_order_overrides =
+      std::move(msa_sort_order_overrides);
+
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+  std::vector<std::string> sliced_prefetch_uses = {"negate0", "add2"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/sliced_prefetch_uses,
+      /*operand_number=*/0,
+      /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kAsyncDone);
+}
+
+TEST_F(MemorySpaceAssignmentTest, TestBlockPrefetchingUsesInsideConditional) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+true_computation {
+  p2 = (f32[2,3]{1,0}) parameter(0)
+  gte0 = f32[2,3]{1,0} get-tuple-element(p2), index=0
+  negate3 = f32[2,3]{1,0} negate(gte0)
+  ROOT negate4 = f32[2,3]{1,0} negate(negate3)
+}
+
+false_computation {
+  p3 = (f32[2,3]{1,0}) parameter(0)
+  gte1 = f32[2,3]{1,0} get-tuple-element(p3), index=0
+  negate5 = f32[2,3]{1,0} negate(gte1)
+  ROOT negate6 = f32[2,3]{1,0} negate(negate5)
+}
+
+ENTRY entry {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = pred[] parameter(1)
+  negate0 = f32[2,3]{1,0} negate(p0)
+  negate1 = f32[2,3]{1,0} negate(negate0)
+  negate2 = f32[2,3]{1,0} negate(negate1)
+  tuple = (f32[2,3]{1,0}) tuple(p0)
+  cond = f32[2,3]{1,0} conditional(p1, tuple, tuple), true_computation=true_computation, false_computation=false_computation
+  ROOT add0 = f32[2,3]{1,0} add(cond, negate2)
+})hlo";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 24;
+  memory_space_options.reserved_bytes_for_block_prefetches = 24;
+  memory_space_options.max_outstanding_block_prefetches = 10;
+  memory_space_options.max_outstanding_prefetches = 0;
+
+  memory_space_options.block_prefetched_positions = GetHloPositions(
+      /*module=*/module.get(),
+      /*instruction_names=*/{"p0"});
+
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/{"negate0"},
+      /*operand_number=*/0,
+      /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCopyDone);
+
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/{"negate3", "negate5"},
+      /*operand_number=*/0,
+      /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kGetTupleElement);
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       TestExplicitPrefetchingUsesInsideConditional) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+true_computation {
+  p2 = (f32[2,3]{1,0}) parameter(0)
+  gte0 = f32[2,3]{1,0} get-tuple-element(p2), index=0
+  negate3 = f32[2,3]{1,0} negate(gte0)
+  ROOT negate4 = f32[2,3]{1,0} negate(negate3)
+}
+
+false_computation {
+  p3 = (f32[2,3]{1,0}) parameter(0)
+  gte1 = f32[2,3]{1,0} get-tuple-element(p3), index=0
+  negate5 = f32[2,3]{1,0} negate(gte1)
+  ROOT negate6 = f32[2,3]{1,0} negate(negate5)
+}
+
+ENTRY entry {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = pred[] parameter(1)
+
+  prefetch_start_param0 = (f32[2,3]{1,0}, s32[]{:T(128)S(2)}) custom-call(p0), custom_call_target="tpu_custom_call"
+  gte_param0_0 = f32[2,3]{1,0} get-tuple-element(prefetch_start_param0), index=0
+  gte_param0_1 = s32[]{:T(128)S(2)} get-tuple-element(prefetch_start_param0), index=1
+  prefetch_done_param0 = f32[2,3]{1,0} custom-call(p0, gte_param0_0, gte_param0_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+  
+  negate0 = f32[2,3]{1,0} negate(prefetch_done_param0)
+  negate1 = f32[2,3]{1,0} negate(negate0)
+  negate2 = f32[2,3]{1,0} negate(negate1)
+  tuple = (f32[2,3]{1,0}) tuple(prefetch_done_param0)
+  cond = f32[2,3]{1,0} conditional(p1, tuple, tuple), true_computation=true_computation, false_computation=false_computation
+  ROOT add0 = f32[2,3]{1,0} add(cond, negate2)
+})hlo";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 24;
+  memory_space_options.reserved_bytes_for_block_prefetches = 24;
+  memory_space_options.max_outstanding_block_prefetches = 10;
+  memory_space_options.max_outstanding_prefetches = 0;
+
+  std::vector<CustomCallPrefetchInfo> custom_call_prefetch_instructions = {
+      {"p0", "prefetch_start_param0", "prefetch_done_param0"}};
+
+  memory_space_options.hlo_position_to_custom_call_prefetch_details =
+      GetCustomCallPrefetchDetailsMap(/*module=*/module.get(),
+                                      /*custom_call_prefetch_instructions=*/
+                                      custom_call_prefetch_instructions);
+
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/{"negate0"},
+      /*operand_number=*/0,
+      /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCustomCall);
+
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/{"negate3", "negate5"},
+      /*operand_number=*/0,
+      /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kGetTupleElement);
+}
+
 TEST_F(MemorySpaceAssignmentTest, NoPrefetchWithBandwidthLimitingAsyncStart) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add. The prefetch will not happen because the bandwidth
   // adjustment factor is 0.0.
-  const absl::string_view hlo_string = R"(
+  const absl::string_view hlo_string = R"hlo(
 HloModule NegateChain, is_scheduled=true, entry_computation_layout={(f32[2,3]{1,0}, f32[2,3]{1,0})->f32[2,3]{1,0}}
 
 ENTRY %NegateChain (p0: f32[2,3], p1: f32[2,3]) -> f32[2,3] {
@@ -15650,7 +16782,7 @@ ENTRY %NegateChain (p0: f32[2,3], p1: f32[2,3]) -> f32[2,3] {
   %negate.5 = f32[2,3]{1,0} negate(%negate.4)
   %negate.6 = f32[2,3]{1,0} negate(%negate.5)
   ROOT %add = f32[2,3]{1,0} add(%negate.6, %p1)
-})";
+})hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -15673,11 +16805,50 @@ ENTRY %NegateChain (p0: f32[2,3], p1: f32[2,3]) -> f32[2,3] {
             kDefaultMemorySpace);
 }
 
+TEST_F(MemorySpaceAssignmentTest,
+       ReserveColoredBuffersBeforeCrossProgramPrefetchBug) {
+  // Reserving alternate memory space for colored buffers first prevents any
+  // successful cross program prefetches.
+  absl::string_view hlo_string = R"hlo(
+  HloModule cross_program_prefetch, is_scheduled=true
+
+  ENTRY cross_program_prefetch {
+    p0 = (f32[8,8]{1,0}, f32[8,2]{1,0}) parameter(0)
+    get-tuple-element.0 = f32[8,8]{1,0} get-tuple-element(p0), index=0
+    add.0 = f32[8,8]{1,0} add(get-tuple-element.0, get-tuple-element.0)
+    get-tuple-element.1 = f32[8,2]{1,0} get-tuple-element(p0), index=1
+    dot.0 = f32[8,2]{1,0} dot(add.0, get-tuple-element.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    negate.1 = f32[8,2]{1,0} negate(dot.0)
+    negate.2 = f32[8,2]{1,0} negate(negate.1)
+    ROOT dot.1 = f32[2,2]{1,0} dot(negate.2, get-tuple-element.1), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  }
+  )hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  Options options = DefaultMemorySpaceOptions();
+  options.enable_cross_program_prefetch = true;
+  options.max_size_in_bytes = 256;
+
+  HloInstruction* dot0 = FindInstruction(module.get(), "dot.0");
+  HloUse dot0_use_add0 = {dot0, 0, {}};
+  options.allocate_colored_buffers_early = false;
+  options.buffer_colorings = {{dot0_use_add0, kAlternateMemorySpace}};
+
+  AssignMemorySpace(module.get(), std::move(options));
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      module.get(), {"dot.0"},
+      /*operand_number=*/0, /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kAdd);
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  ASSERT_EQ(cross_program_prefetches.size(), 0);
+}
+
 TEST_F(MemorySpaceAssignmentTest, PrefetchWithoutBandwidthLimitingAsyncStart) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add. The prefetch will happen because the bandwidth
   // adjustment factor is 1.0.
-  const absl::string_view hlo_string = R"(
+  const absl::string_view hlo_string = R"hlo(
 HloModule NegateChain, is_scheduled=true, entry_computation_layout={(f32[2,3]{1,0}, f32[2,3]{1,0})->f32[2,3]{1,0}}
 
 ENTRY %NegateChain (p0: f32[2,3], p1: f32[2,3]) -> f32[2,3] {
@@ -15691,7 +16862,7 @@ ENTRY %NegateChain (p0: f32[2,3], p1: f32[2,3]) -> f32[2,3] {
   %negate.5 = f32[2,3]{1,0} negate(%negate.4)
   %negate.6 = f32[2,3]{1,0} negate(%negate.5)
   ROOT %add = f32[2,3]{1,0} add(%negate.6, %p1)
-})";
+})hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -15712,6 +16883,951 @@ ENTRY %NegateChain (p0: f32[2,3], p1: f32[2,3]) -> f32[2,3] {
   HloInstruction* add = FindInstruction(module.get(), "add");
   EXPECT_EQ(add->operand(1)->shape().layout().memory_space(),
             kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, TestForceImmediateEvictionBug) {
+  // * negate0 output is colored in alternate memory space
+  // * negate1 output is colored in alternate memory space
+  // * negate2 is pre-colored in alternate memory space
+  // Since the size of alternate memory space is 48 bytes, which is enough for
+  // exactly one value, this forces immediate eviction of both neagte0 and
+  // negate1. The incorrect copy start time of eviction caused a scheduling bug
+  // that resulted evictions for negate0 and negate1 to be overlapped.
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[3,4]{1,0} parameter(0)
+  p1 = f32[3,4]{1,0} parameter(1)
+  negate0 = f32[3,4]{1,0} negate(p0)
+  negate1 = f32[3,4]{1,0} negate(p1)
+  negate2 = f32[3,4]{1,0:S(1)} negate(negate0)
+  negate3 = f32[3,4]{1,0} negate(negate1)
+  ROOT add0 = f32[3,4]{1,0} add(negate2, negate3)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+
+  HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
+  HloInstruction* negate1 = FindInstruction(module.get(), "negate1");
+  HloPosition negate0_position{negate0, {}};
+  HloPosition negate1_position{negate1, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
+  memory_space_options.buffer_colorings = {
+      {negate0_position, kAlternateMemorySpace},
+      {negate1_position, kAlternateMemorySpace}};
+  memory_space_options.max_size_in_bytes = 48;
+  memory_space_options.verify = true;
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+  std::vector<std::string> instruction_names = {"negate0", "negate1",
+                                                "negate2"};
+  CheckMemorySpaceForInstructionNames(module.get(), instruction_names,
+                                      kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, TestSchedulingImmediateCopiesBug) {
+  // * negate3 output is colored in alternate memory space
+  // * add0 use of negate2 is colored in alternate memory space
+  // * alternate memory size is 48 bytes, enough for exactly one value
+  // * this forces immediate eviction of negate3 and just in time prefetch of
+  //   negate2.
+  // * msa should schedule the eviction start and done of negate3 first followed
+  //   by the immediate prefetch for negate2.
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[3,4]{1,0} parameter(0)
+  p1 = f32[3,4]{1,0} parameter(1)
+  negate0 = f32[3,4]{1,0} negate(p0)
+  negate1 = f32[3,4]{1,0} negate(p1)
+  negate2 = f32[3,4]{1,0} negate(negate0)
+  negate3 = f32[3,4]{1,0} negate(negate1)
+  add0 = f32[3,4]{1,0} add(negate2, negate3)
+  negate4 = f32[3,4]{1,0} negate(add0)
+  negate5 = f32[3,4]{1,0} negate(negate4)
+  ROOT negate6 = f32[3,4]{1,0} negate(negate5)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+
+  HloInstruction* add0 = FindInstruction(module.get(), "add0");
+  HloInstruction* negate3 = FindInstruction(module.get(), "negate3");
+  HloPosition negate3_position{negate3, {}};
+  HloUse add0_use_of_negate2{add0, 0, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
+  memory_space_options.buffer_colorings = {
+      {negate3_position, kAlternateMemorySpace},
+      {add0_use_of_negate2, kAlternateMemorySpace}};
+  memory_space_options.max_size_in_bytes = 48;
+  memory_space_options.verify = true;
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+  std::vector<std::string> output_colored = {"negate3"};
+  CheckMemorySpaceForInstructionNames(module.get(), output_colored,
+                                      kAlternateMemorySpace);
+  std::vector<std::string> input_colored = {"add0"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      module.get(), input_colored,
+      /*operand_number=*/0, /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCopyDone);
+}
+
+TEST_F(MemorySpaceAssignmentTest, ScheduleDonesBeforeStarts) {
+  // Alternate memory size is 48 bytes, enough for exactly one value.
+  // Eviction done of negate3 should be scheduled before prefetch start of
+  // negate2, to free up the alternate memory space for prefetch of negate2.
+
+  // * negate2 is colored in alternate memory space till the end of sub0.
+  // * negate3 is colored in default memory space till the end of sub0.
+  // * eviction done of negate2 should be scheduled right before mul0.
+  // * prefetch start of negate2 should be scheduled right after sub0.
+  // * they should be scheduled in the order of: negate3 eviction done,
+  //   negate2 prefetch start.
+
+  // NOTE: In MSA we conservatively schedule the eviction done one instruction
+  // earlier, which is why this corner case has never been triggered. This only
+  // commes into effect for immediate evictions.
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[3,4]{1,0} parameter(0)
+  p1 = f32[3,4]{1,0} parameter(1)
+  negate0 = f32[3,4]{1,0} negate(p0)
+  negate1 = f32[3,4]{1,0} negate(p1)
+  negate2 = f32[3,4]{1,0} negate(negate0) // output color negate2 in alternate memory space
+  negate3 = f32[3,4]{1,0} negate(negate1) // output color negate3 in default memory space
+  tanh0 = f32[3,4]{1,0} tanh(negate0)
+  add0 = f32[3,4]{1,0} add(negate2, negate3) // input color negate2 in alternate memory space and negate3 in default memory space
+  sub0 = f32[3,4]{1,0} subtract(negate2, negate3) // input color negate2 in alternate memory space and negate3 in default memory space
+  mul0 = f32[3,4]{1,0} multiply(negate2, negate3) // input color negate2 in default memory space and negate3 in alternate memory space
+  div0 = f32[3,4]{1,0} divide(negate2, negate3) // input color negate2 in default memory space and negate3 in alternate memory space
+  add1 = f32[3,4]{1,0} add(add0, sub0)
+  add2 = f32[3,4]{1,0} add(mul0, div0)
+  add3 = f32[3,4]{1,0} add(add1, add2)
+  ROOT add4 = f32[3,4]{1,0} add(tanh0, add3)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 48;
+  memory_space_options.verify = true;
+
+  HloPosition negate2_position = {FindInstruction(module.get(), "negate2"), {}};
+  HloPosition negate3_position = {FindInstruction(module.get(), "negate3"), {}};
+  HloUse add0_use_of_negate2{FindInstruction(module.get(), "add0"), 0, {}};
+  HloUse sub0_use_of_negate2{FindInstruction(module.get(), "sub0"), 0, {}};
+  HloUse mul0_use_of_negate2{FindInstruction(module.get(), "mul0"), 0, {}};
+  HloUse div0_use_of_negate2{FindInstruction(module.get(), "div0"), 0, {}};
+  HloUse add0_use_of_negate3{FindInstruction(module.get(), "add0"), 1, {}};
+  HloUse sub0_use_of_negate3{FindInstruction(module.get(), "sub0"), 1, {}};
+  HloUse mul0_use_of_negate3{FindInstruction(module.get(), "mul0"), 1, {}};
+  HloUse div0_use_of_negate3{FindInstruction(module.get(), "div0"), 1, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
+  memory_space_options.buffer_colorings = {
+      {negate2_position, kAlternateMemorySpace},
+      {add0_use_of_negate2, kAlternateMemorySpace},
+      {sub0_use_of_negate2, kAlternateMemorySpace},
+      {mul0_use_of_negate2, kDefaultMemorySpace},
+      {div0_use_of_negate2, kDefaultMemorySpace},
+      {negate3_position, kDefaultMemorySpace},
+      {add0_use_of_negate3, kDefaultMemorySpace},
+      {sub0_use_of_negate3, kDefaultMemorySpace},
+      {mul0_use_of_negate3, kAlternateMemorySpace},
+      {div0_use_of_negate3, kAlternateMemorySpace}};
+
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& lhs, const MsaBufferInterval& rhs) {
+        auto lookup = [](const MsaBufferInterval& x) {
+          int priority = 100;
+          if (x.buffer->instruction()->name() == "negate2") {
+            priority = 1;
+          } else if (x.buffer->instruction()->name() == "negate3") {
+            priority = 2;
+          }
+          return std::make_tuple(priority, x.buffer->instruction()->name());
+        };
+        return lookup(lhs) < lookup(rhs);
+      };
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(0, 100);
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpace(module.get(), std::move(memory_space_options),
+                    buffer_interval_compare, &prefetch_interval_picker);
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+
+  CheckMemorySpaceForInstructionNames(module.get(), {"negate2"},
+                                      kAlternateMemorySpace);
+  CheckMemorySpaceForInstructionNames(module.get(), {"negate3"},
+                                      kDefaultMemorySpace);
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      module.get(), {"add0", "sub0"},
+      /*operand_number=*/0, /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kNegate);
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      module.get(), {"add0", "sub0"},
+      /*operand_number=*/1, /*operand_memory_space=*/kDefaultMemorySpace,
+      /*operand_opcode=*/HloOpcode::kNegate);
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      module.get(), {"mul0", "div0"},
+      /*operand_number=*/0, /*operand_memory_space=*/kDefaultMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCopyDone);
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      module.get(), {"mul0", "div0"},
+      /*operand_number=*/1, /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCopyDone);
+}
+
+TEST_F(MemorySpaceAssignmentTest, TestColoringSyncReplacementCandidateUses) {
+  // * negate0 is colored in alternate memory space
+  // * negate2 and tanh0 uses of negate0 are colored in alternate memory space
+  // * add2 and add4 uses of copy0 are colored in alternate memory space
+  // * As a result, we should see an eviction of negate0 in default memory
+  //   space because the alternate memory space is not big enough to hold
+  //   negate0 and the copy of negate0 at the same time.
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[3,4]{1,0} parameter(0)
+  p1 = f32[3,4]{1,0} parameter(1)
+  negate0 = f32[3,4]{1,0} negate(p0)
+  negate1 = f32[3,4]{1,0} negate(p1)
+  negate2 = f32[3,4]{1,0} negate(negate0)
+  negate3 = f32[3,4]{1,0} negate(negate1)
+  tanh0 = f32[3,4]{1,0} tanh(negate0)
+  add0 = f32[3,4]{1,0} add(negate2, negate3)
+  copy0 = f32[3,4]{1,0} copy(negate0)
+  add1 = f32[3,4]{1,0} add(tanh0, add0)
+  add2 = f32[3,4]{1,0} add(copy0, add1)
+  add3 = f32[3,4]{1,0} add(negate0, add2)
+  add4 = f32[3,4]{1,0} add(copy0, add3)
+  ROOT negate4 = f32[3,4]{1,0} negate(add4)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 48;
+  memory_space_options.verify = true;
+  memory_space_options.enable_sync_copy_replacement = true;
+  memory_space_options.enable_sync_slice_replacement = true;
+  HloUse add2_use_of_copy0{FindInstruction(module.get(), "add2"), 0, {}};
+  HloUse add4_use_of_copy0{FindInstruction(module.get(), "add4"), 0, {}};
+  HloUse negate2_use_of_negate0{
+      FindInstruction(module.get(), "negate2"), 0, {}};
+  HloUse tanh0_use_of_negate0{FindInstruction(module.get(), "tanh0"), 0, {}};
+  HloPosition negate0_position{FindInstruction(module.get(), "negate0"), {}};
+  memory_space_options.allocate_colored_buffers_early = false;
+  memory_space_options.buffer_colorings = {
+      {negate0_position, kAlternateMemorySpace},
+      {negate2_use_of_negate0, kAlternateMemorySpace},
+      {tanh0_use_of_negate0, kAlternateMemorySpace},
+      {add2_use_of_copy0, kAlternateMemorySpace},
+      {add4_use_of_copy0, kAlternateMemorySpace}};
+
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& lhs, const MsaBufferInterval& rhs) {
+        auto lookup = [](const MsaBufferInterval& x) {
+          int priority = 100;
+          if (x.buffer->instruction()->name() == "negate0") {
+            priority = 1;
+          }
+          return std::make_tuple(priority, x.buffer->instruction()->name());
+        };
+        return lookup(lhs) < lookup(rhs);
+      };
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(0, 100);
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpace(module.get(), std::move(memory_space_options),
+                    buffer_interval_compare, &prefetch_interval_picker);
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+
+  // Check that negate0 is alternate memory space
+  CheckMemorySpaceForInstructionNames(module.get(), {"negate0"},
+                                      kAlternateMemorySpace);
+
+  // Check that negate0's uses at negate2 and tanh0 are from the pinned
+  // allocation in alternate memory space.
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      module.get(), {"negate2", "tanh0"},
+      /*operand_number=*/0, /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kNegate);
+
+  // Check that copy0 is converted to async copy to alternate memory space.
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      module.get(), {"add2", "add4"},
+      /*operand_number=*/0, /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCopyDone);
+
+  // Check that negate0's use at add3 is from an eviction in default
+  // memory space.
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      module.get(), {"add3"},
+      /*operand_number=*/0, /*operand_memory_space=*/kDefaultMemorySpace,
+      /*operand_opcode=*/HloOpcode::kCopyDone);
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       TestColoringSyncSliceReplacementCandidateUses) {
+  // * negate0 is colored in alternate memory space
+  // * negate2 and tanh0 uses of negate0 are colored in alternate memory space
+  // * negate4 and tanh1 uses of slice0 are colored in alternate memory space
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[3,4]{1,0} parameter(0)
+  p1 = f32[3,4]{1,0} parameter(1)
+  negate0 = f32[3,4]{1,0} negate(p0)
+  negate1 = f32[3,4]{1,0} negate(p1)
+  negate2 = f32[3,4]{1,0} negate(negate0)
+  negate3 = f32[3,4]{1,0} negate(negate1)
+  tanh0 = f32[3,4]{1,0} tanh(negate0)
+  add0 = f32[3,4]{1,0} add(negate2, negate3)
+  slice0 = f32[3,2]{1,0} slice(negate0), slice={[0:3], [0:2]}
+  add1 = f32[3,4]{1,0} add(tanh0, add0)
+  negate4 = f32[3,2]{1,0} negate(slice0)
+  add3 = f32[3,4]{1,0} add(negate0, add1)
+  tanh1 = f32[3,2]{1,0} tanh(slice0)
+  add5 = f32[3,2]{1,0} add(negate4, tanh1)
+  ROOT tuple0 = (f32[3,4], f32[3,2]) tuple(add3, add5)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 48;
+  memory_space_options.verify = true;
+  memory_space_options.enable_sync_copy_replacement = true;
+  memory_space_options.enable_sync_slice_replacement = true;
+  HloUse negate4_use_of_slice0{FindInstruction(module.get(), "negate4"), 0, {}};
+  HloUse tanh1_use_of_slice0{FindInstruction(module.get(), "tanh1"), 0, {}};
+  HloUse negate2_use_of_negate0{
+      FindInstruction(module.get(), "negate2"), 0, {}};
+  HloUse tanh0_use_of_negate0{FindInstruction(module.get(), "tanh0"), 0, {}};
+  HloPosition negate0_position{FindInstruction(module.get(), "negate0"), {}};
+  memory_space_options.allocate_colored_buffers_early = false;
+  memory_space_options.buffer_colorings = {
+      {negate0_position, kAlternateMemorySpace},
+      {negate2_use_of_negate0, kAlternateMemorySpace},
+      {tanh0_use_of_negate0, kAlternateMemorySpace},
+      {negate4_use_of_slice0, kAlternateMemorySpace},
+      {tanh1_use_of_slice0, kAlternateMemorySpace}};
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+
+  // Check that negate0 is alternate memory space
+  CheckMemorySpaceForInstructionNames(module.get(), {"negate0"},
+                                      kAlternateMemorySpace);
+  // Check that slice0 uses at negate4 and tanh1 and negate0 uses at negate2 and
+  // tanh0 read from alternate memory space.
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      module.get(), {"negate2", "tanh0", "negate4", "tanh1"},
+      /*operand_number=*/0, /*operand_memory_space=*/kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, TestReresrvingPendingAllocations) {
+  // * negate0, negate3, and negate4 require contiguous allocations.
+  // * negate0 and negate4 are colored in alternate memory space.
+  // * Sort order is negate3, negate4, negate0 followed by other buffers.
+  // * When we force fail the allocation of negate0, the reserved allocation
+  //   should be re-reserved during repacking.
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  param0 = f32[2,3]{1,0} parameter(1), sharding={replicated}
+  param1 = f32[4,3]{1,0} parameter(0), sharding={replicated}
+  param2 = f32[2,3]{1,0} parameter(2), sharding={replicated}
+  negate0 = f32[4,3]{1,0} negate(param1)
+  negate1 = f32[4,3]{1,0} negate(negate0)
+  negate2 = f32[4,3]{1,0} negate(negate1)
+  negate3 = f32[2,3]{1,0} negate(param0)
+  add0 = f32[4,3]{1,0} add(negate0, negate2)
+  negate4 = f32[2,3]{1,0} negate(param2)
+  tanh0 = f32[4,3]{1,0} tanh(add0)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  add1 = f32[2,3]{1,0} add(negate3,negate5)
+  ROOT tuple0 = (f32[2,3]{1,0}, f32[4,3]{1,0}) tuple(add1, tanh0)
+})hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 72;
+  memory_space_options.verify = true;
+  memory_space_options.position_requires_contiguous_allocation_fn =
+      [](const HloPosition& position) {
+        return position.instruction->name() == "negate0" ||
+               position.instruction->name() == "negate3" ||
+               position.instruction->name() == "negate4";
+      };
+  HloPosition negate0_position{FindInstruction(module.get(), "negate0"), {}};
+  HloPosition negate4_position{FindInstruction(module.get(), "negate4"), {}};
+  memory_space_options.max_retries = 2;
+  memory_space_options.max_repacks = 2;
+  memory_space_options.allocate_colored_buffers_early = false;
+  memory_space_options.buffer_colorings = {
+      {negate0_position, kAlternateMemorySpace},
+      {negate4_position, kAlternateMemorySpace}};
+  absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
+  auto check_fun = [](absl::Span<AllocationBlock*> allocations) {
+    // 3 allocations: 2 committed allocations for negate3 and negate4
+    // 1 re-reserved allocation for negate0
+    EXPECT_EQ(allocations.size(), 3);
+  };
+  FakeMemorySpaceAssignmentRepacker repacker =
+      FakeMemorySpaceAssignmentRepacker(repack_map, check_fun, true);
+
+  memory_space_options.repacker = &repacker;
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& lhs, const MsaBufferInterval& rhs) {
+        auto lookup = [](const MsaBufferInterval& x) {
+          int priority = 100;
+          if (x.buffer->instruction()->name() == "negate3") {
+            priority = 1;
+          }
+          if (x.buffer->instruction()->name() == "negate4") {
+            priority = 2;
+          }
+          if (x.buffer->instruction()->name() == "negate0") {
+            priority = 3;
+          }
+          return std::make_tuple(priority, x.buffer->instruction()->name());
+        };
+        return lookup(lhs) < lookup(rhs);
+      };
+
+  memory_space_options.allocation_result_modifier_testing_fn =
+      [](const AllocationRequest& request, AllocationResult& result,
+         int64_t retry_number) {
+        if (request.allocation_value->defining_instruction()->name() ==
+                "negate0" &&
+            retry_number <= 0 && result == AllocationResult::kSuccess) {
+          result = AllocationResult::kFailOutOfMemory;
+        }
+      };
+
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(0, 100);
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpace(module.get(), std::move(memory_space_options),
+                    buffer_interval_compare, &prefetch_interval_picker);
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+  CheckMemorySpaceForInstructionNames(
+      module.get(), {"negate0", "negate4", "negate3"}, kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       TestColoringWithContiguouslyAllocatedBuffers) {
+  // * All the custom calls alias with each other. The buffer live ranges starts
+  //   at custom_call0 and ends at the last use of custom_call3 at negate8.
+  // * All the custom call buffers require contiguous allocation.
+  // * Coloring the buffer at one instruction site at negate5 (use of
+  //   custom_call2) puts the entire live range of the buffer in alternate
+  //   memory space.
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  param0 = f32[2,1,3]{2,1,0} parameter(0), sharding={replicated}
+  negate0 = f32[2,1,3]{2,1,0} negate(param0)
+  custom_call0 = f32[2,1,3]{2,1,0} custom-call(negate0), custom_call_target="tpu_custom_call"
+  negate1 = f32[2,1,3]{2,1,0} negate(custom_call0)
+  negate2 = f32[2,1,3]{2,1,0} negate(negate1)
+  custom_call1 = f32[2,1,3]{2,1,0} custom-call(custom_call0, negate2), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  negate3 = f32[2,1,3]{2,1,0} negate(custom_call1)
+  negate4 = f32[2,1,3]{2,1,0} negate(negate3)
+  custom_call2 = f32[2,1,3]{2,1,0} custom-call(custom_call1, negate4), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  negate5 = f32[2,1,3]{2,1,0} negate(custom_call2)
+  negate6 = f32[2,1,3]{2,1,0} negate(negate5)
+  custom_call3 = f32[2,1,3]{2,1,0} custom-call(custom_call2, negate6), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  negate7 = f32[2,1,3]{2,1,0} negate(negate6)
+  negate8 = f32[2,1,3]{2,1,0} negate(custom_call3)
+  ROOT add0 = f32[2,1,3]{2,1,0} add(negate7, negate8)
+})hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 48;
+  memory_space_options.verify = true;
+  memory_space_options.position_requires_contiguous_allocation_fn =
+      [](const HloPosition& position) {
+        return position.instruction->opcode() == HloOpcode::kCustomCall;
+      };
+  HloUse negate5_use_of_custom_call2{
+      FindInstruction(module.get(), "negate5"), 0, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
+  memory_space_options.buffer_colorings = {
+      {negate5_use_of_custom_call2, kAlternateMemorySpace},
+  };
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& lhs, const MsaBufferInterval& rhs) {
+        auto lookup = [](const MsaBufferInterval& x) {
+          int priority = 100;
+          if (x.buffer->instruction()->name() == "negate4") {
+            priority = 1;
+          }
+          return std::make_tuple(priority, x.buffer->instruction()->name());
+        };
+        return lookup(lhs) < lookup(rhs);
+      };
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(0, 100);
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpace(module.get(), std::move(memory_space_options),
+                    buffer_interval_compare, &prefetch_interval_picker);
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+  CheckMemorySpaceForInstructionNames(
+      module.get(),
+      {"custom_call0", "custom_call1", "custom_call2", "custom_call3"},
+      kAlternateMemorySpace);
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      module.get(),
+      {"negate1", "negate3", "negate5", "negate8", "custom_call1",
+       "custom_call2", "custom_call3"},
+      /*operand_number=*/0, /*operand_memory_space=*/kAlternateMemorySpace,
+      HloOpcode::kCustomCall);
+}
+
+TEST_F(MemorySpaceAssignmentTest, TestColoringWithContiguousBuffersExtended) {
+  // * All the custom calls alias with each other and with negate0. The buffer
+  //   live ranges starts at negate0 and ends at the last use of custom_call3 at
+  //   negate8.
+  // * Only the custom call buffers require contiguous allocation (negate0 does
+  //   not require contiguous allocation).
+  // * Coloring the buffer at one instruction site at negate5 (use of
+  //   custom_call2) puts the entire live range of the buffer in alternate
+  //   memory space.
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  param0 = f32[2,1,3]{2,1,0} parameter(0), sharding={replicated}
+  negate0 = f32[2,1,3]{2,1,0} negate(param0)
+  custom_call0 = f32[2,1,3]{2,1,0} custom-call(negate0), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  negate1 = f32[2,1,3]{2,1,0} negate(custom_call0)
+  negate2 = f32[2,1,3]{2,1,0} negate(negate1)
+  custom_call1 = f32[2,1,3]{2,1,0} custom-call(custom_call0, negate2), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  negate3 = f32[2,1,3]{2,1,0} negate(custom_call1)
+  negate4 = f32[2,1,3]{2,1,0} negate(negate3)
+  custom_call2 = f32[2,1,3]{2,1,0} custom-call(custom_call1, negate4), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  negate5 = f32[2,1,3]{2,1,0} negate(custom_call2)
+  negate6 = f32[2,1,3]{2,1,0} negate(negate5)
+  custom_call3 = f32[2,1,3]{2,1,0} custom-call(custom_call2, negate6), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  negate7 = f32[2,1,3]{2,1,0} negate(negate6)
+  negate8 = f32[2,1,3]{2,1,0} negate(custom_call3)
+  ROOT add0 = f32[2,1,3]{2,1,0} add(negate7, negate8)
+})hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 48;
+  memory_space_options.verify = true;
+  memory_space_options.position_requires_contiguous_allocation_fn =
+      [](const HloPosition& position) {
+        return position.instruction->opcode() == HloOpcode::kCustomCall;
+      };
+  HloUse negate5_use_of_custom_call2{
+      FindInstruction(module.get(), "negate5"), 0, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
+  memory_space_options.buffer_colorings = {
+      {negate5_use_of_custom_call2, kAlternateMemorySpace},
+  };
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& lhs, const MsaBufferInterval& rhs) {
+        auto lookup = [](const MsaBufferInterval& x) {
+          int priority = 100;
+          if (x.buffer->instruction()->name() == "negate4") {
+            priority = 1;
+          }
+          return std::make_tuple(priority, x.buffer->instruction()->name());
+        };
+        return lookup(lhs) < lookup(rhs);
+      };
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(0, 100);
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpace(module.get(), std::move(memory_space_options),
+                    buffer_interval_compare, &prefetch_interval_picker);
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+  CheckMemorySpaceForInstructionNames(
+      module.get(),
+      {"negate0", "custom_call0", "custom_call1", "custom_call2",
+       "custom_call3"},
+      kAlternateMemorySpace);
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      module.get(),
+      {"negate1", "negate3", "negate5", "negate8", "custom_call0",
+       "custom_call1", "custom_call2", "custom_call3"},
+      /*operand_number=*/0, /*operand_memory_space=*/kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       ConditionalAliasedInputOutputAllocatedInAlternateMemory) {
+  // Conditional outputs and inputs alias with each other, and the outputs are
+  // first in the sort order. They should all get alternate memory allocations.
+  // Alternate memory size is 40 bytes, just enough for the both conditional
+  // outputs.
+  // This is a special case where one input to each branch computation aliases
+  // with one of the outputs in the branch and other output for the branch is a
+  // new buffer.
+  absl::string_view hlo_string = R"hlo(
+  HloModule CondAllocation, is_scheduled=true
+
+  computation0 {
+    param0 = (f32[3,2]{1,0}) parameter(0)
+    gte0 = f32[3,2]{1,0} get-tuple-element(param0), index=0
+    cc0 = f32[3,2]{1,0} custom-call(gte0), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+    cc1 = f32[3,2]{1,0} custom-call(cc0), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+    empty0 = f32[2,2]{1,0} custom-call(), custom_call_target="AllocateBuffer"
+    ROOT tuple2 = (f32[3,2], f32[2,2]) tuple(cc1, empty0)
+  }
+
+  computation1 {
+    param1 = (f32[2,2]{1,0}) parameter(0)
+    get1 = f32[2,2]{1,0} get-tuple-element(param1), index=0
+    cc2 = f32[2,2]{1,0} custom-call(get1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+    cc3 = f32[2,2]{1,0} custom-call(cc2), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+    empty1 = f32[3,2]{1,0} custom-call(), custom_call_target="AllocateBuffer"
+    ROOT tuple3 = (f32[3,2], f32[2,2]) tuple(empty1, cc3)
+  }
+
+  ENTRY entry {
+    p0 = f32[3,2] parameter(0)
+    p1 = f32[2,2] parameter(1)
+    p2 = pred[] parameter(2)
+    negate0 = f32[3,2]{1,0} negate(p0)
+    negate1 = f32[2,2]{1,0} negate(p1)
+    tuple0 = (f32[3,2]{1,0}) tuple(negate0)
+    tuple1 = (f32[2,2]{1,0}) tuple(negate1)
+    conditional = (f32[3,2], f32[2,2]) conditional(p2, tuple0, tuple1), true_computation=computation0, false_computation=computation1
+    gte2 = f32[3,2]{1,0} get-tuple-element(conditional), index=0
+    gte3 = f32[2,2]{1,0} get-tuple-element(conditional), index=1
+    negate6 = f32[3,2]{1,0} negate(gte2)
+    negate7 = f32[2,2]{1,0} negate(gte3)
+    ROOT tuple2 = (f32[3,2]{1,0}, f32[2,2]{1,0}) tuple(negate6, negate7)
+  }
+  )hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 40;
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& lhs, const MsaBufferInterval& rhs) {
+        auto lookup = [](const MsaBufferInterval& x) {
+          int priority = 100;
+          absl::flat_hash_set<std::string> priority_instructions = {
+              "empty0", "empty1", "cc1", "cc3"};
+          if (priority_instructions.contains(x.buffer->instruction()->name())) {
+            priority = 1;
+          }
+          return std::make_tuple(priority, x.buffer->instruction()->name());
+        };
+
+        return lookup(lhs) < lookup(rhs);
+      };
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(0, 1000);
+
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpace(module.get(), std::move(memory_space_options),
+                    buffer_interval_compare, &prefetch_interval_picker);
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+
+  // Verify conditional outputs and aliasing inputs are in alternate memory.
+  CheckMemorySpaceForInstructionNames(
+      module.get(), {"negate0", "negate1", "empty0", "empty1", "cc1", "cc3"},
+      kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, AllocateConditionalOutputsInAlternateMemory) {
+  // Conditional outputs will be allocated first. There is just enough space in
+  // alternate memory to fit them.
+  // custom-call outputs will also get alternate memory allocations, because
+  // they alias with the conditional outputs.
+  absl::string_view hlo_string = R"hlo(
+  HloModule CondAllocation, is_scheduled=true
+
+  computation0 {
+    branch0_param0 = (f32[3,2]{1,0}) parameter(0)
+    branch0_gte0 = f32[3,2]{1,0} get-tuple-element(branch0_param0), index=0
+    branch0_negate0 = f32[3,2]{1,0} negate(branch0_gte0)
+    branch0_negate1 = f32[3,2]{1,0} negate(branch0_negate0)
+    branch0_empty0 = f32[2,2]{1,0} custom-call(), custom_call_target="AllocateBuffer"
+    ROOT tuple2 = (f32[3,2], f32[2,2]) tuple(branch0_negate1, branch0_empty0)
+  }
+
+  computation1 {
+    branch1_param0 = (f32[2,2]{1,0}) parameter(0)
+    branch1_gte0 = f32[2,2]{1,0} get-tuple-element(branch1_param0), index=0
+    branch1_negate0 = f32[2,2]{1,0} negate(branch1_gte0)
+    branch1_negate1 = f32[2,2]{1,0} negate(branch1_negate0)
+    branch1_empty0 = f32[3,2]{1,0} custom-call(), custom_call_target="AllocateBuffer"
+    ROOT tuple3 = (f32[3,2], f32[2,2]) tuple(branch1_empty0, branch1_negate1)
+  }
+
+  ENTRY entry {
+    p0 = f32[3,2] parameter(0)
+    p1 = f32[2,2] parameter(1)
+    p2 = pred[] parameter(2)
+    negate0 = f32[3,2]{1,0} negate(p0)
+    negate1 = f32[2,2]{1,0} negate(p1)
+    tuple0 = (f32[3,2]{1,0}) tuple(negate0)
+    tuple1 = (f32[2,2]{1,0}) tuple(negate1)
+    conditional = (f32[3,2], f32[2,2]) conditional(p2, tuple0, tuple1), true_computation=computation0, false_computation=computation1
+    gte2 = f32[3,2]{1,0} get-tuple-element(conditional), index=0
+    gte3 = f32[2,2]{1,0} get-tuple-element(conditional), index=1
+    custom_call6 = f32[3,2]{1,0} custom-call(gte2), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+    custom_call7 = f32[2,2]{1,0} custom-call(gte3), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+    negate8 = f32[3,2]{1,0} negate(custom_call6)
+    negate9 = f32[2,2]{1,0} negate(custom_call7)
+    ROOT tuple4 = (f32[3,2]{1,0}, f32[2,2]{1,0}) tuple(negate8, negate9)
+  }
+  )hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 40;
+  memory_space_options.max_outstanding_prefetches = 0;
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& lhs, const MsaBufferInterval& rhs) {
+        auto lookup = [](const MsaBufferInterval& x) {
+          int priority = 100;
+          absl::flat_hash_set<std::string> priority_instructions = {
+              "branch0_empty0", "branch1_empty0", "branch0_negate1",
+              "branch1_negate1"};
+          if (priority_instructions.contains(x.buffer->instruction()->name())) {
+            priority = 1;
+          }
+          return std::make_tuple(priority, x.buffer->instruction()->name());
+        };
+
+        return lookup(lhs) < lookup(rhs);
+      };
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(0, 1000);
+
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpace(module.get(), std::move(memory_space_options),
+                    buffer_interval_compare, &prefetch_interval_picker);
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+
+  // verify conditional outputs and aliasing custom call outputs are in
+  // alternate memory.
+  CheckMemorySpaceForInstructionNames(
+      module.get(),
+      {"branch0_empty0", "branch1_empty0", "branch0_negate1", "branch1_negate1",
+       "custom_call6", "custom_call7"},
+      kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, ConditionalWithoutTupleAllocationTest) {
+  // Conditional branch computation outputs are not put in a tuple, they won't
+  // be allocated in alternate memory even though they are first in sort order.
+  // This is because they are produced at the root instruction of the
+  // computation and thus their allocation values have no uses.
+  absl::string_view hlo_string = R"hlo(
+HloModule Module, is_scheduled=true
+
+true_computation {
+  branch0_param0 = (f32[2,3]) parameter(0)
+  gte1 = f32[2,3] get-tuple-element(branch0_param0), index=0
+  neg0 = f32[2,3] negate(gte1)
+  ROOT neg1 = f32[2,3] negate(neg0)
+}
+
+false_computation {
+  branch1_param0 = (f32[2,3]) parameter(0)
+  gte2 = f32[2,3] get-tuple-element(branch1_param0), index=0
+  neg2 = f32[2,3] negate(gte2)
+  ROOT neg3 = f32[2,3] negate(neg2)
+}
+
+ENTRY entry {
+  p0 = f32[2,3] parameter(0)
+  p1 = pred[] parameter(1)
+  tuple = (f32[2,3]) tuple(p0)
+  conditional = f32[2,3] conditional(p1, tuple, tuple), true_computation=true_computation, false_computation=false_computation
+  neg4 = f32[2,3] negate(conditional)
+  ROOT neg5 = f32[2,3] negate(neg4)
+}
+  )hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 1000;
+  memory_space_options.max_outstanding_prefetches = 0;
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& lhs, const MsaBufferInterval& rhs) {
+        auto lookup = [](const MsaBufferInterval& x) {
+          int priority = 100;
+          if (x.buffer->instruction()->name() == "neg1" ||
+              x.buffer->instruction()->name() == "neg3") {
+            priority = 1;
+          }
+          return std::make_tuple(priority, x.buffer->instruction()->name());
+        };
+
+        return lookup(lhs) < lookup(rhs);
+      };
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(0, 1000);
+
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpace(module.get(), std::move(memory_space_options),
+                    buffer_interval_compare, &prefetch_interval_picker);
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+
+  // verify conditional outputs are not in alternate memory.
+  CheckMemorySpaceForInstructionNames(module.get(), {"neg1", "neg3"},
+                                      kDefaultMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, ConditionalOneBranchAliasedInputOutputTest) {
+  // For the conditional branch computation `computation1`, the output is
+  // aliased with the input, for the other branch, there is no aliasing. The
+  // aliased input to the conditional is first in the sort order, it should get
+  // an alternate memory allocation, along with the outputs of both branches,
+  // and the aliased value custom_call2.
+  absl::string_view hlo_string = R"hlo(
+  HloModule CondAllocation, is_scheduled=true
+
+  computation0 {
+    param0 = (f32[2,2]{1,0}) parameter(0)
+    gte0 = f32[2,2]{1,0} get-tuple-element(param0), index=0
+    negate1 = f32[2,2]{1,0} negate(gte0)
+    negate2 = f32[2,2]{1,0} negate(negate1)
+    negate3 = f32[2,2]{1,0} negate(negate2)
+    negate4 = f32[2,2]{1,0} negate(negate3)
+    ROOT tuple2 = (f32[2,2]) tuple(negate4)
+  }
+
+  computation1 {
+    param1 = (f32[2,2]{1,0}) parameter(0)
+    gte1 = f32[2,2]{1,0} get-tuple-element(param1), index=0
+    negate5 = f32[2,2]{1,0} negate(gte1)
+    custom_call1 = f32[2,2]{1,0} custom-call(gte1, negate5), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+    ROOT tuple3 = (f32[2,2]) tuple(custom_call1)
+  }
+
+  ENTRY entry {
+    p0 = pred[] parameter(0)
+    p1 = f32[2,2] parameter(1)
+    negate0 = f32[2,2]{1,0} negate(p1)
+    tanh0 = f32[2,2]{1,0} tanh(p1)
+    tuple0 = (f32[2,2]{1,0}) tuple(negate0)
+    tuple1 = (f32[2,2]{1,0}) tuple(tanh0)
+    conditional0 = (f32[2,2]) conditional(p0, tuple0, tuple1), true_computation=computation0, false_computation=computation1
+    gte2 = f32[2,2]{1,0} get-tuple-element(conditional0), index=0
+    custom_call2 = f32[2,2]{1,0} custom-call(gte2), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+    ROOT negate6 = f32[2,2]{1,0} negate(custom_call2)
+  }
+  )hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 20;
+  memory_space_options.max_outstanding_prefetches = 0;
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& lhs, const MsaBufferInterval& rhs) {
+        auto lookup = [](const MsaBufferInterval& x) {
+          int priority = 100;
+          if (x.buffer->instruction()->name() == "tanh0") {
+            priority = 1;
+          }
+          return std::make_tuple(priority, x.buffer->instruction()->name());
+        };
+        return lookup(lhs) < lookup(rhs);
+      };
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(0, 1000);
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpace(module.get(), std::move(memory_space_options),
+                    buffer_interval_compare, &prefetch_interval_picker);
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+
+  CheckMemorySpaceForInstructionNames(
+      module.get(), {"tanh0", "custom_call1", "negate4", "custom_call2"},
+      kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, ConditionalCommonInputAliasedOutputTest) {
+  // The input to the conditional is used in both branches, and it is also
+  // aliased with the custom call output. The custom call output is first in
+  // sort order, so it gets an alternate memory allocation along with all the
+  // values that alias with it.
+  absl::string_view hlo_string = R"hlo(
+  HloModule CondAllocation, is_scheduled=true
+
+  computation0 {
+    param0 = (f32[2,2]{1,0}) parameter(0)
+    gte0 = f32[2,2]{1,0} get-tuple-element(param0), index=0
+    negate1 = f32[2,2]{1,0} negate(gte0)
+    custom_call0 = f32[2,2]{1,0} custom-call(gte0, negate1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+    ROOT tuple2 = (f32[2,2]) tuple(custom_call0)
+  }
+
+  computation1 {
+    param1 = (f32[2,2]{1,0}) parameter(0)
+    gte1 = f32[2,2]{1,0} get-tuple-element(param1), index=0
+    negate2 = f32[2,2]{1,0} negate(gte1)
+    custom_call1 = f32[2,2]{1,0} custom-call(gte1, negate2), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+    ROOT tuple3 = (f32[2,2]) tuple(custom_call1)
+  }
+
+  ENTRY entry {
+    p0 = pred[] parameter(0)
+    p1 = f32[2,2] parameter(1)
+    negate0 = f32[2,2]{1,0} negate(p1)
+    tuple0 = (f32[2,2]{1,0}) tuple(negate0)
+    conditional0 = (f32[2,2]) conditional(p0, tuple0, tuple0), true_computation=computation0, false_computation=computation1
+    gte2 = f32[2,2]{1,0} get-tuple-element(conditional0), index=0
+    custom_call2 = f32[2,2]{1,0} custom-call(gte2), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+    ROOT negate3 = f32[2,2]{1,0} negate(custom_call2)
+  }
+  )hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 1000;
+  memory_space_options.max_outstanding_prefetches = 0;
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& lhs, const MsaBufferInterval& rhs) {
+        auto lookup = [](const MsaBufferInterval& x) {
+          int priority = 100;
+          if (x.buffer->instruction()->name() == "custom_call2") {
+            priority = 1;
+          }
+          return std::make_tuple(priority, x.buffer->instruction()->name());
+        };
+
+        return lookup(lhs) < lookup(rhs);
+      };
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(0, 1000);
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpace(module.get(), std::move(memory_space_options),
+                    buffer_interval_compare, &prefetch_interval_picker);
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+
+  CheckMemorySpaceForInstructionNames(
+      module.get(), {"negate0", "custom_call2", "custom_call0", "custom_call1"},
+      kAlternateMemorySpace);
 }
 
 }  // namespace

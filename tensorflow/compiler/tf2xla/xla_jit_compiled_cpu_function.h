@@ -22,10 +22,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "tensorflow/compiler/tf2xla/encoded_buffer_allocation_info.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function_thunks.h"
+#include "xla/backends/cpu/buffer_allocation_info.h"
 #include "xla/client/local_client.h"
-#include "xla/cpu_function_runtime.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/types.h"
@@ -82,20 +83,20 @@ class XlaJitCompiledCpuFunction {
   XlaCompiledCpuFunction::StaticData static_data_;
 
   // The backing array for buffer infos.
-  std::vector<xla::cpu_function_runtime::BufferInfo> buffer_infos_;
+  std::vector<xla::cpu::BufferAllocationInfo> buffer_infos_;
 
   // The backing array for the arg index table.
-  std::vector<int32> arg_index_table_;
+  std::vector<int32_t> arg_index_table_;
 
   // The backing array for the result index table.
-  std::vector<int32> result_index_table_;
+  std::vector<int32_t> result_index_table_;
 
   // The backing arrays of arg and result names. We hold the actual strings in
   // nonempty_*_names_, and hold arrays of pointers in *_names_ for the static
   // data to refer to.
-  std::vector<string> nonempty_arg_names_;
-  std::vector<string> nonempty_variable_names_;
-  std::vector<string> nonempty_result_names_;
+  std::vector<std::string> nonempty_arg_names_;
+  std::vector<std::string> nonempty_variable_names_;
+  std::vector<std::string> nonempty_result_names_;
   std::vector<const char*> arg_names_;
   std::vector<const char*> variable_names_;
   std::vector<const char*> result_names_;

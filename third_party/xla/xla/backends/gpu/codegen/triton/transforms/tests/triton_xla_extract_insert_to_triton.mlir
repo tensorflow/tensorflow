@@ -1,17 +1,35 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: xla-opt %s -split-input-file \
 // RUN: -triton-xla-extract-insert-to-triton \
 // RUN: | FileCheck %s
 
 // RUN: xla-opt %s -split-input-file \
-// RUN: -triton-xla-extract-insert-to-triton=allow_tma=1 \
+// RUN: -triton-xla-extract-insert-to-triton="allow_tma=1 num_stages=3" \
 // RUN: | FileCheck %s --check-prefix=CHECK-TMA
+
+// RUN: xla-opt %s -split-input-file \
+// RUN: -triton-xla-extract-insert-to-triton="allow_tdm=1" \
+// RUN: | FileCheck %s --check-prefix=CHECK-TDM
 
 func.func @lower_extract_insert(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
   %extracted_tensor = triton_xla.extract from %arg0
-      as memref<512x8x128xbf16, #triton_xla.layout<[2, 1, 0]>>
+      as memref<512x8x128xbf16, #xtile.layout<[2, 1, 0]>>
       [0, 3, 0] [16, 1, 64] [1, 1, 1] : tensor<16x64xbf16>
   triton_xla.insert %extracted_tensor into %arg1
-      as memref<256x16x256xbf16, #triton_xla.layout<[2, 1, 0]>>
+      as memref<256x16x256xbf16, #xtile.layout<[2, 1, 0]>>
       [0, 5, 0] [16, 1, 64] [1, 1, 1] : tensor<16x64xbf16>
   func.return
 }
@@ -24,20 +42,31 @@ func.func @lower_extract_insert(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
 // CHECK:         tt.return
 
 // CHECK-TMA-LABEL: tt.func @lower_extract_insert
-// CHECK-TMA-SAME:      %arg0: !tt.tensordesc<tensor<16x1x64xbf16>>
-// CHECK-TMA-SAME:      %arg1: !tt.tensordesc<tensor<16x1x64xbf16>>
+// CHECK-TMA-SAME:      %arg0: !tt.tensordesc<16x1x64xbf16>
+// CHECK-TMA-SAME:      %arg1: !tt.tensordesc<16x1x64xbf16>
 // CHECK-TMA:         %[[LOAD:.*]] = tt.descriptor_load %arg0
 // CHECK-TMA:         tt.descriptor_store %arg1[{{.*}}],
 // CHECK-TMA:         tt.return
+
+// Middle singleton dim is TDM-incompatible, so fall back to pointer loads.
+// CHECK-TDM-LABEL: tt.func @lower_extract_insert(
+// CHECK-TDM-SAME:      %arg0: !tt.ptr<bf16> {tt.divisibility = 16 : i32},
+// CHECK-TDM-SAME:      %arg1: !tt.ptr<bf16> {tt.divisibility = 16 : i32}) {
+// CHECK-TDM-NOT:     tt.make_tensor_descriptor
+// CHECK-TDM-NOT:     tt.descriptor_load
+// CHECK-TDM-NOT:     tt.descriptor_store
+// CHECK-TDM:         %[[LOAD:.*]] = tt.load
+// CHECK-TDM:         tt.store {{.*}}, %[[LOAD]]
+// CHECK-TDM:         tt.return
 
 // -----
 
 func.func @non_perfect_tile_shape(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
   %extracted_tensor = triton_xla.extract from %arg0
-    as memref<300x300xbf16, #triton_xla.layout<[1, 0]>>
+    as memref<300x300xbf16, #xtile.layout<[1, 0]>>
     [0, 0] [8, 8] [1, 1] : tensor<8x8xbf16>
   triton_xla.insert %extracted_tensor into %arg1
-    as memref<300x300xbf16, #triton_xla.layout<[1, 0]>>
+    as memref<300x300xbf16, #xtile.layout<[1, 0]>>
     [0, 0] [8, 8] [1, 1] : tensor<8x8xbf16>
   func.return
 }
@@ -46,14 +75,20 @@ func.func @non_perfect_tile_shape(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
 // CHECK:         %[[LOAD:.*]] = tt.load {{.*}}, %{{.*}}, %{{.*}} :
 // CHECK:         tt.store {{.*}}, %[[LOAD]], %{{.*}} :
 
+// CHECK-TDM-LABEL: tt.func @non_perfect_tile_shape
+// CHECK-TDM:         %[[DESC0:.*]] = tt.make_tensor_descriptor %arg0
+// CHECK-TDM:         tt.descriptor_load %[[DESC0]]
+// CHECK-TDM:         %[[DESC1:.*]] = tt.make_tensor_descriptor %arg1
+// CHECK-TDM:         tt.descriptor_store %[[DESC1]]
+
 // -----
 
 func.func @incompatible_tma_global_strides(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
   %extracted_tensor = triton_xla.extract from %arg0
-      as memref<234x234xbf16, #triton_xla.layout<[1, 0]>>
+      as memref<234x234xbf16, #xtile.layout<[1, 0]>>
       [0, 0] [16, 64] [128, 1] : tensor<16x64xbf16>
   triton_xla.insert %extracted_tensor into %arg1
-      as memref<123x123xbf16, #triton_xla.layout<[1, 0]>>
+      as memref<123x123xbf16, #xtile.layout<[1, 0]>>
       [0, 0] [16, 64] [128, 1] : tensor<16x64xbf16>
   func.return
 }
@@ -61,6 +96,11 @@ func.func @incompatible_tma_global_strides(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<
 // CHECK-TMA-LABEL: tt.func @incompatible_tma_global_strides
 // CHECK-TMA:         tt.load
 // CHECK-TMA:         tt.store
+
+// CHECK-TDM-LABEL: tt.func @incompatible_tma_global_strides
+// CHECK-TDM-NOT:     tt.make_tensor_descriptor
+// CHECK-TDM:         tt.load
+// CHECK-TDM:         tt.store
 
 // -----
 
@@ -74,13 +114,13 @@ module {
     %2 = arith.index_cast %1 : i64 to index
     %3 = xla.apply_indexing #indexing_map(%2)
     %extracted_tile = triton_xla.extract from %arg0
-        as memref<64xf32, #triton_xla.layout<[0]>>
+        as memref<64xf32, #xtile.layout<[0]>>
         [%3][32][1] : tensor<32xf32>
     %4 = math.absf %extracted_tile : tensor<32xf32>
     %5 = arith.subf %cst, %4 : tensor<32xf32>
-    triton_xla.insert %5 into %arg1 as memref<63xf32, #triton_xla.layout<[0]>>
+    triton_xla.insert %5 into %arg1 as memref<63xf32, #xtile.layout<[0]>>
         [%3][32][1] : tensor<32xf32>
-    triton_xla.insert %4 into %arg2 as memref<63xf32, #triton_xla.layout<[0]>>
+    triton_xla.insert %4 into %arg2 as memref<63xf32, #xtile.layout<[0]>>
         [%3][32][1] : tensor<32xf32>
     func.return
   }
@@ -90,6 +130,11 @@ module {
 // CHECK-COUNT-1: tt.load
 // CHECK:         tt.store {{.*}}, %{{.*}}, %{{.*}}
 // CHECK:         tt.store {{.*}}, %{{.*}}, %{{.*}}
+
+// CHECK-TDM-LABEL: tt.func @slice_with_tiling_that_needs_padding_has_boundary_checks
+// CHECK-TDM:       tt.descriptor_load
+// CHECK-TDM:       tt.descriptor_store
+// CHECK-TDM:       tt.descriptor_store
 
 // -----
 
@@ -103,13 +148,13 @@ module {
     %2 = arith.index_cast %1 : i64 to index
     %3 = xla.apply_indexing #indexing_map(%2)
     %extracted_tile = triton_xla.extract from %arg0
-        as memref<64xf32, #triton_xla.layout<[0]>>
+        as memref<64xf32, #xtile.layout<[0]>>
         [%3][32][1] : tensor<32xf32>
     %4 = math.absf %extracted_tile : tensor<32xf32>
     %5 = arith.subf %cst, %4 : tensor<32xf32>
-    triton_xla.insert %5 into %arg1 as memref<63xf32, #triton_xla.layout<[0]>>
+    triton_xla.insert %5 into %arg1 as memref<63xf32, #xtile.layout<[0]>>
         [%3][32][1] : tensor<32xf32>
-    triton_xla.insert %4 into %arg2 as memref<64xf32, #triton_xla.layout<[0]>>
+    triton_xla.insert %4 into %arg2 as memref<64xf32, #xtile.layout<[0]>>
         [%3][32][1] : tensor<32xf32>
     func.return
   }
@@ -120,15 +165,20 @@ module {
 // CHECK:         tt.store {{.*}}, %{{.*}}, %{{.*}}
 // CHECK:         tt.store {{.*}}, %{{.*}} :
 
+// CHECK-TDM-LABEL: tt.func @slice_with_extra_output_that_can_reuse_tile_due_to_padding
+// CHECK-TDM:       tt.descriptor_load
+// CHECK-TDM:       tt.descriptor_store
+// CHECK-TDM:       tt.descriptor_store
+
 // -----
 
 func.func @extract_with_non_unit_minor_dim_stride(%arg0: !tt.ptr<bf16>,
                           %arg1: !tt.ptr<bf16>) {
   %extracted_tensor = triton_xla.extract from %arg0
-      as memref<1024x1024xbf16, #triton_xla.layout<[1, 0]>>
+      as memref<1024x1024xbf16, #xtile.layout<[1, 0]>>
       [0, 0] [16, 64] [2, 2] : tensor<16x64xbf16>
   triton_xla.insert %extracted_tensor into %arg1
-      as memref<256x256xbf16, #triton_xla.layout<[1, 0]>>
+      as memref<256x256xbf16, #xtile.layout<[1, 0]>>
       [0, 0] [16, 64] [1, 1] : tensor<16x64xbf16>
   func.return
 }
@@ -137,14 +187,18 @@ func.func @extract_with_non_unit_minor_dim_stride(%arg0: !tt.ptr<bf16>,
 // CHECK-TMA:   tt.load
 // CHECK-TMA:   tt.descriptor_store
 
+// CHECK-TDM-LABEL: tt.func @extract_with_non_unit_minor_dim_stride
+// CHECK-TDM:   tt.load
+// CHECK-TDM:   tt.descriptor_store
+
 // -----
 
 func.func @lower_extract_insert_1d(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
   %extracted_tensor = triton_xla.extract from %arg0
-      as memref<128xbf16, #triton_xla.layout<[0]>>
+      as memref<128xbf16, #xtile.layout<[0]>>
       [0] [16] [1] : tensor<16xbf16>
   triton_xla.insert %extracted_tensor into %arg1
-      as memref<256xbf16, #triton_xla.layout<[0]>>
+      as memref<256xbf16, #xtile.layout<[0]>>
       [0] [16] [1] : tensor<16xbf16>
   func.return
 }
@@ -157,20 +211,29 @@ func.func @lower_extract_insert_1d(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
 // CHECK:         tt.return
 
 // CHECK-TMA-LABEL: tt.func @lower_extract_insert_1d
-// CHECK-TMA-SAME:      %arg0: !tt.tensordesc<tensor<16xbf16>>
-// CHECK-TMA-SAME:      %arg1: !tt.tensordesc<tensor<16xbf16>>
+// CHECK-TMA-SAME:      %arg0: !tt.tensordesc<16xbf16>
+// CHECK-TMA-SAME:      %arg1: !tt.tensordesc<16xbf16>
 // CHECK-TMA:         %[[LOAD:.*]] = tt.descriptor_load %arg0
 // CHECK-TMA:         tt.descriptor_store %arg1[{{.*}}], %[[LOAD]]
 // CHECK-TMA:         tt.return
+
+// CHECK-TDM-LABEL: tt.func @lower_extract_insert_1d(
+// CHECK-TDM-SAME:      %arg0: !tt.ptr<bf16> {tt.divisibility = 16 : i32},
+// CHECK-TDM-SAME:      %arg1: !tt.ptr<bf16> {tt.divisibility = 16 : i32}) {
+// CHECK-TDM:         %[[DESC0:.*]] = tt.make_tensor_descriptor %arg0
+// CHECK-TDM:         %[[LOAD:.*]] = tt.descriptor_load %[[DESC0]]
+// CHECK-TDM:         %[[DESC1:.*]] = tt.make_tensor_descriptor %arg1
+// CHECK-TDM:         tt.descriptor_store %[[DESC1]][{{.*}}], %[[LOAD]]
+// CHECK-TDM:         tt.return
 
 // -----
 
 func.func @lower_extract_insert_5d(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
   %extracted_tensor = triton_xla.extract from %arg0
-      as memref<16x16x16x16x16xbf16, #triton_xla.layout<[4, 3, 2, 1, 0]>>
+      as memref<16x16x16x16x16xbf16, #xtile.layout<[4, 3, 2, 1, 0]>>
       [0, 0, 0, 0, 0] [8, 8, 8, 8, 8] [1, 1, 1, 1, 1] : tensor<8x8x8x8x8xbf16>
   triton_xla.insert %extracted_tensor into %arg1
-      as memref<32x32x32x32x32xbf16, #triton_xla.layout<[4, 3, 2, 1, 0]>>
+      as memref<32x32x32x32x32xbf16, #xtile.layout<[4, 3, 2, 1, 0]>>
       [0, 0, 0, 0, 0] [8, 8, 8, 8, 8] [1, 1, 1, 1, 1] : tensor<8x8x8x8x8xbf16>
   func.return
 }
@@ -183,37 +246,51 @@ func.func @lower_extract_insert_5d(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
 // CHECK:         tt.return
 
 // CHECK-TMA-LABEL: tt.func @lower_extract_insert_5d
-// CHECK-TMA-SAME:      %arg0: !tt.tensordesc<tensor<8x8x8x8x8xbf16>>
-// CHECK-TMA-SAME:      %arg1: !tt.tensordesc<tensor<8x8x8x8x8xbf16>>
+// CHECK-TMA-SAME:      %arg0: !tt.tensordesc<8x8x8x8x8xbf16>
+// CHECK-TMA-SAME:      %arg1: !tt.tensordesc<8x8x8x8x8xbf16>
 // CHECK-TMA:         %[[LOAD:.*]] = tt.descriptor_load %arg0
 // CHECK-TMA:         tt.descriptor_store %arg1[{{.*}}], %[[LOAD]]
 // CHECK-TMA:         tt.return
+
+// CHECK-TDM-LABEL: tt.func @lower_extract_insert_5d(
+// CHECK-TDM-SAME:      %arg0: !tt.ptr<bf16> {tt.divisibility = 16 : i32},
+// CHECK-TDM-SAME:      %arg1: !tt.ptr<bf16> {tt.divisibility = 16 : i32}) {
+// CHECK-TDM:         %[[DESC0:.*]] = tt.make_tensor_descriptor %arg0
+// CHECK-TDM:         %[[LOAD:.*]] = tt.descriptor_load %[[DESC0]]
+// CHECK-TDM:         %[[DESC1:.*]] = tt.make_tensor_descriptor %arg1
+// CHECK-TDM:         tt.descriptor_store %[[DESC1]][{{.*}}], %[[LOAD]]
+// CHECK-TDM:         tt.return
 
 // -----
 
 func.func @extract_insert_with_zero_stride(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
   %extracted_tensor = triton_xla.extract from %arg0
-      as memref<512x128xbf16, #triton_xla.layout<[1, 0]>>
+      as memref<512x128xbf16, #xtile.layout<[1, 0]>>
       [0, 0] [1, 64] [0, 1] : tensor<1x64xbf16>
   triton_xla.insert %extracted_tensor into %arg1
-      as memref<256x256xbf16, #triton_xla.layout<[1, 0]>>
+      as memref<256x256xbf16, #xtile.layout<[1, 0]>>
       [0, 0] [1, 64] [0, 1] : tensor<1x64xbf16>
   func.return
 }
 
 // CHECK-TMA-LABEL: tt.func @extract_insert_with_zero_stride
-// CHECK-TMA-SAME:      %arg0: !tt.tensordesc<tensor<1x64xbf16>>
-// CHECK-TMA-SAME:      %arg1: !tt.tensordesc<tensor<1x64xbf16>>
+// CHECK-TMA-SAME:      %arg0: !tt.tensordesc<1x64xbf16>
+// CHECK-TMA-SAME:      %arg1: !tt.tensordesc<1x64xbf16>
+
+// CHECK-TDM-LABEL: tt.func @extract_insert_with_zero_stride
+// CHECK-TDM-NOT:     tt.make_tensor_descriptor
+// CHECK-TDM:         tt.load
+// CHECK-TDM:         tt.store
 
 // -----
 
 func.func @incompatible_tma_const_offset_not_divisible_by_16_bytes(
           %arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
   %extracted_tensor = triton_xla.extract from %arg0
-      as memref<512x128xbf16, #triton_xla.layout<[1, 0]>>
+      as memref<512x128xbf16, #xtile.layout<[1, 0]>>
       [0, 15] [1, 64] [1, 1] : tensor<1x64xbf16>
   triton_xla.insert %extracted_tensor into %arg1
-      as memref<256x256xbf16, #triton_xla.layout<[1, 0]>>
+      as memref<256x256xbf16, #xtile.layout<[1, 0]>>
       [0, 0] [1, 64] [0, 1] : tensor<1x64xbf16>
   func.return
 }
@@ -221,6 +298,11 @@ func.func @incompatible_tma_const_offset_not_divisible_by_16_bytes(
 // CHECK-TMA-LABEL: tt.func @incompatible_tma_const_offset_not_divisible_by_16_bytes
 // CHECK-TMA:         tt.load
 // CHECK-TMA:         tt.descriptor_store
+
+// CHECK-TDM-LABEL: tt.func @incompatible_tma_const_offset_not_divisible_by_16_bytes
+// CHECK-TDM-NOT:     tt.make_tensor_descriptor
+// CHECK-TDM:         tt.load
+// CHECK-TDM:         tt.store
 
 // -----
 
@@ -235,13 +317,13 @@ module {
     %2 = arith.index_cast %1 : i64 to index
     %3 = xla.apply_indexing #indexing_map(%2)
     %extracted_tile = triton_xla.extract from %arg0
-        as memref<16x16xbf16, #triton_xla.layout<[1, 0]>>
+        as memref<16x16xbf16, #xtile.layout<[1, 0]>>
         [0, %3] [16, 16] [1, 1] : tensor<16x16xbf16>
     %4 = tt.reshape %extracted_tile : tensor<16x16xbf16> -> tensor<16x1x16xbf16>
     %5 = xla.apply_indexing #indexing_map1(%2)
     %6 = xla.apply_indexing #indexing_map2(%2)
     triton_xla.insert %4 into %arg1
-        as memref<16x1x16xbf16, #triton_xla.layout<[2, 1, 0]>>
+        as memref<16x1x16xbf16, #xtile.layout<[2, 1, 0]>>
         [0, %5, %6] [16, 1, 16] [1, 1, 1] : tensor<16x1x16xbf16>
     func.return
   }
@@ -250,3 +332,102 @@ module {
 // CHECK-TMA-LABEL: tt.func @incompatible_tma_dynamic_offset_not_divisible_by_16_bytes
 // CHECK-TMA:         tt.load
 // CHECK-TMA:         tt.descriptor_store
+
+// CHECK-TDM-LABEL: tt.func @incompatible_tma_dynamic_offset_not_divisible_by_16_bytes
+// CHECK-TDM:         tt.descriptor_load
+// CHECK-TDM:         tt.store
+
+// -----
+
+func.func @parameter_into_broadcast_with_3_or_more_stages_does_not_use_tma(
+          %arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: !tt.ptr<f32>) {
+  %cst = arith.constant dense<0.000000e+00> : tensor<64x64xf32>
+  %extracted_tile = triton_xla.extract from %arg0 as
+      memref<64xf32, #xtile.layout<[0]>> [0] [64] [1] : tensor<64xf32>
+  %0 = tt.expand_dims %extracted_tile {axis = 1 : i32}
+      : tensor<64xf32> -> tensor<64x1xf32>
+  %1 = tt.broadcast %0 : tensor<64x1xf32> -> tensor<64x64xf32>
+  %extracted_tile_0 = triton_xla.extract from %arg1 as
+      memref<64x64xf32, #xtile.layout<[1, 0]>> [0, 0] [64, 64] [1, 1]
+      : tensor<64x64xf32>
+  %2 = tt.dot %1, %extracted_tile_0, %cst, inputPrecision = tf32
+      : tensor<64x64xf32> * tensor<64x64xf32> -> tensor<64x64xf32>
+  triton_xla.insert %2 into %arg2 as
+      memref<64x64xf32, #xtile.layout<[1, 0]>> [0, 0] [64, 64] [1, 1]
+      : tensor<64x64xf32>
+  return
+}
+
+// CHECK-TMA-LABEL: tt.func @parameter_into_broadcast_with_3_or_more_stages_does_not_use_tma
+// CHECK-TMA-NOT:         tt.descriptor_load %arg0
+// CHECK-TMA:             tt.descriptor_load %arg1
+
+// CHECK-TDM-LABEL: tt.func @parameter_into_broadcast_with_3_or_more_stages_does_not_use_tma
+// CHECK-TDM:         tt.descriptor_load
+// CHECK-TDM:         tt.descriptor_load
+// CHECK-TDM:         tt.descriptor_store
+
+// -----
+
+#indexing_map_unaligned = #xla.indexing_map<"(d0) -> (d0 * 2816), domain: d0 in [0, 2047]">
+module {
+  func.func @apply_mask_to_unaligned_offset_with_perfect_total_size(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>) {
+    %0 = tt.get_program_id x : i32
+    %1 = arith.extsi %0 : i32 to i64
+    %2 = arith.index_cast %1 : i64 to index
+    %3 = xla.apply_indexing #indexing_map_unaligned(%2)
+    // Total size 5767168 is divisible by 4096 (1408 * 4096)
+    // But offset stride 2816 is not divisible by 4096.
+    %extracted_tile = triton_xla.extract from %arg0
+        as memref<5767168xf32, #xtile.layout<[0]>>
+        [%3] [4096] [1] : tensor<4096xf32>
+    triton_xla.insert %extracted_tile into %arg1
+        as memref<5767168xf32, #xtile.layout<[0]>>
+        [%3] [4096] [1] : tensor<4096xf32>
+    func.return
+  }
+}
+
+// CHECK-LABEL: tt.func @apply_mask_to_unaligned_offset_with_perfect_total_size
+// CHECK: %[[RIGHT_MASK:.*]] = arith.cmpi slt
+// CHECK: %[[LEFT_MASK:.*]] = arith.cmpi sge
+// CHECK: %[[MASK:.*]] = arith.andi %[[LEFT_MASK]], %[[RIGHT_MASK]]
+// CHECK: tt.load {{.*}}, %[[MASK]], {{.*}}
+
+// CHECK-TDM-LABEL: tt.func @apply_mask_to_unaligned_offset_with_perfect_total_size
+// CHECK-TDM:         tt.descriptor_load
+// CHECK-TDM:         tt.descriptor_store
+
+// -----
+
+#indexing_map_aligned_with_oob_at_end = #xla.indexing_map<"(pid, d1) -> ((pid floordiv 64) * 384 + d1 * 32), domain: pid in [0, 1023], d1 in [0, 11]">
+module {
+  func.func @apply_mask_to_aligned_offset_with_out_of_bounds_reads_at_end(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: index) {
+    %0 = tt.get_program_id x : i32
+    %1 = arith.extsi %0 : i32 to i64
+    %2 = arith.index_cast %1 : i64 to index
+    %3 = xla.apply_indexing #indexing_map_aligned_with_oob_at_end(%2, %arg2)
+    // The total size 6080 is divisble by 32 (190 * 32).
+    // The offset stride 384 is also divisible by 32 (12 * 32).
+    // However, the elements addressed by the indexing map can go beyond the
+    // original size, e.g. for pid 15 and loop iteration 11 we have
+    // 15 * 384 + 11*32 =  5760 + 352 = 6112 > 6080.
+    %extracted_tile = triton_xla.extract from %arg0
+        as memref<6080xf32, #xtile.layout<[0]>>
+        [%3] [32] [1] : tensor<32xf32>
+    triton_xla.insert %extracted_tile into %arg1
+        as memref<6080xf32, #xtile.layout<[0]>>
+        [%3] [32] [1] : tensor<32xf32>
+    func.return
+  }
+}
+
+// CHECK-LABEL: tt.func @apply_mask_to_aligned_offset_with_out_of_bounds_reads_at_end
+// CHECK: %[[RIGHT_MASK:.*]] = arith.cmpi slt
+// CHECK: %[[LEFT_MASK:.*]] = arith.cmpi sge
+// CHECK: %[[MASK:.*]] = arith.andi %[[LEFT_MASK]], %[[RIGHT_MASK]]
+// CHECK: tt.load {{.*}}, %[[MASK]], {{.*}}
+
+// CHECK-TDM-LABEL: tt.func @apply_mask_to_aligned_offset_with_out_of_bounds_reads_at_end
+// CHECK-TDM:         tt.descriptor_load
+// CHECK-TDM:         tt.descriptor_store

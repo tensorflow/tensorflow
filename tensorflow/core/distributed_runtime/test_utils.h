@@ -33,90 +33,90 @@ class TestWorkerInterface : public WorkerInterface {
   void GetStatusAsync(CallOptions* opts, const GetStatusRequest* request,
                       GetStatusResponse* response, bool fail_fast,
                       StatusCallback done) override {
-    done(errors::Unimplemented("GetStatusAsync"));
+    done(absl::UnimplementedError("GetStatusAsync"));
   }
 
   void CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
                                 CreateWorkerSessionResponse* response,
                                 StatusCallback done) override {
-    done(errors::Unimplemented("CreateWorkerSessionAsync"));
+    done(absl::UnimplementedError("CreateWorkerSessionAsync"));
   }
 
   void DeleteWorkerSessionAsync(CallOptions* opts,
                                 const DeleteWorkerSessionRequest* request,
                                 DeleteWorkerSessionResponse* response,
                                 StatusCallback done) override {
-    done(errors::Unimplemented("DeleteWorkerSessionAsync"));
+    done(absl::UnimplementedError("DeleteWorkerSessionAsync"));
   }
 
   void RegisterGraphAsync(const RegisterGraphRequest* request,
                           RegisterGraphResponse* response,
                           StatusCallback done) override {
-    done(errors::Unimplemented("RegisterGraphAsync"));
+    done(absl::UnimplementedError("RegisterGraphAsync"));
   }
 
   void DeregisterGraphAsync(const DeregisterGraphRequest* request,
                             DeregisterGraphResponse* response,
                             StatusCallback done) override {
-    done(errors::Unimplemented("DeregisterGraphAsync"));
+    done(absl::UnimplementedError("DeregisterGraphAsync"));
   }
 
   void RunGraphAsync(CallOptions* opts, RunGraphRequestWrapper* request,
                      MutableRunGraphResponseWrapper* response,
                      StatusCallback done) override {
-    done(errors::Unimplemented("RunGraphAsync"));
+    done(absl::UnimplementedError("RunGraphAsync"));
   }
 
   void CleanupGraphAsync(const CleanupGraphRequest* request,
                          CleanupGraphResponse* response,
                          StatusCallback done) override {
-    done(errors::Unimplemented("CleanupGraphAsync"));
+    done(absl::UnimplementedError("CleanupGraphAsync"));
   }
 
   void CleanupAllAsync(const CleanupAllRequest* request,
                        CleanupAllResponse* response,
                        StatusCallback done) override {
-    done(errors::Unimplemented("CleanupAllAsync"));
+    done(absl::UnimplementedError("CleanupAllAsync"));
   }
 
   void RecvTensorAsync(CallOptions* opts, const RecvTensorRequest* request,
                        TensorResponse* response, StatusCallback done) override {
-    done(errors::Unimplemented("RecvTensorAsync"));
+    done(absl::UnimplementedError("RecvTensorAsync"));
   }
 
   void LoggingAsync(const LoggingRequest* request, LoggingResponse* response,
                     StatusCallback done) override {
-    done(errors::Unimplemented("LoggingAsync"));
+    done(absl::UnimplementedError("LoggingAsync"));
   }
 
   void TracingAsync(const TracingRequest* request, TracingResponse* response,
                     StatusCallback done) override {
-    done(errors::Unimplemented("TracingAsync"));
+    done(absl::UnimplementedError("TracingAsync"));
   }
 
   void RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
                     RecvBufResponse* response, StatusCallback done) override {
-    done(errors::Unimplemented("RecvBufAsync"));
+    done(absl::UnimplementedError("RecvBufAsync"));
   }
 
   void CompleteGroupAsync(CallOptions* opts,
                           const CompleteGroupRequest* request,
                           CompleteGroupResponse* response,
                           StatusCallback done) override {
-    done(errors::Unimplemented("CompleteGroupAsync"));
+    done(absl::UnimplementedError("CompleteGroupAsync"));
   }
 
   void CompleteInstanceAsync(CallOptions* ops,
                              const CompleteInstanceRequest* request,
                              CompleteInstanceResponse* response,
                              StatusCallback done) override {
-    done(errors::Unimplemented("CompleteInstanceAsync"));
+    done(absl::UnimplementedError("CompleteInstanceAsync"));
   }
 
   void GetStepSequenceAsync(const GetStepSequenceRequest* request,
                             GetStepSequenceResponse* response,
                             StatusCallback done) override {
-    done(errors::Unimplemented("GetStepSequenceAsync"));
+    done(absl::UnimplementedError("GetStepSequenceAsync"));
   }
 };
 
@@ -124,23 +124,24 @@ class TestWorkerCache : public WorkerCacheInterface {
  public:
   virtual ~TestWorkerCache() {}
 
-  void AddWorker(const string& target, WorkerInterface* wi) {
+  void AddWorker(const std::string& target, WorkerInterface* wi) {
     workers_[target] = wi;
   }
 
-  void AddDevice(const string& device_name, const DeviceLocality& dev_loc) {
+  void AddDevice(const std::string& device_name,
+                 const DeviceLocality& dev_loc) {
     localities_[device_name] = dev_loc;
   }
 
-  void ListWorkers(std::vector<string>* workers) const override {
+  void ListWorkers(std::vector<std::string>* workers) const override {
     workers->clear();
     for (auto it : workers_) {
       workers->push_back(it.first);
     }
   }
 
-  void ListWorkersInJob(const string& job_name,
-                        std::vector<string>* workers) const override {
+  void ListWorkersInJob(const std::string& job_name,
+                        std::vector<std::string>* workers) const override {
     workers->clear();
     for (auto it : workers_) {
       DeviceNameUtils::ParsedName device_name;
@@ -152,7 +153,7 @@ class TestWorkerCache : public WorkerCacheInterface {
     }
   }
 
-  WorkerInterface* GetOrCreateWorker(const string& target) override {
+  WorkerInterface* GetOrCreateWorker(const std::string& target) override {
     auto it = workers_.find(target);
     if (it != workers_.end()) {
       return it->second;
@@ -160,19 +161,20 @@ class TestWorkerCache : public WorkerCacheInterface {
     return nullptr;
   }
 
-  void ReleaseWorker(const string& target, WorkerInterface* worker) override {}
+  void ReleaseWorker(const std::string& target,
+                     WorkerInterface* worker) override {}
 
   absl::Status GetEagerClientCache(
       std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
-    return errors::Unimplemented("Unimplemented.");
+    return absl::UnimplementedError("Unimplemented.");
   }
 
   absl::Status GetCoordinationClientCache(
       std::unique_ptr<CoordinationClientCache>* coord_client_cache) override {
-    return errors::Unimplemented("Unimplemented.");
+    return absl::UnimplementedError("Unimplemented.");
   }
 
-  bool GetDeviceLocalityNonBlocking(const string& device,
+  bool GetDeviceLocalityNonBlocking(const std::string& device,
                                     DeviceLocality* locality) override {
     auto it = localities_.find(device);
     if (it != localities_.end()) {
@@ -182,7 +184,8 @@ class TestWorkerCache : public WorkerCacheInterface {
     return false;
   }
 
-  void GetDeviceLocalityAsync(const string& device, DeviceLocality* locality,
+  void GetDeviceLocalityAsync(const std::string& device,
+                              DeviceLocality* locality,
                               StatusCallback done) override {
     auto it = localities_.find(device);
     if (it != localities_.end()) {
@@ -190,12 +193,12 @@ class TestWorkerCache : public WorkerCacheInterface {
       done(absl::OkStatus());
       return;
     }
-    done(errors::Internal("Device not found: ", device));
+    done(absl::InternalError(absl::StrCat("Device not found: ", device)));
   }
 
  protected:
-  std::unordered_map<string, WorkerInterface*> workers_;
-  std::unordered_map<string, DeviceLocality> localities_;
+  std::unordered_map<std::string, WorkerInterface*> workers_;
+  std::unordered_map<std::string, DeviceLocality> localities_;
 };
 
 }  // namespace tensorflow

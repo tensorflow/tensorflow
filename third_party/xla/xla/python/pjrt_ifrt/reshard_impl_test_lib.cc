@@ -17,6 +17,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <ostream>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -34,13 +35,17 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/primitive_util.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -51,12 +56,13 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
+#include "xla/python/ifrt/value.h"
+#include "xla/python/ifrt/value_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -66,18 +72,54 @@ namespace {
 
 using ::testing::Eq;
 using ::testing::HasSubstr;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
+
+enum class ReshardMethod {
+  kArray,
+  kBundle,
+};
+
+template <typename Sink>
+void AbslStringify(Sink& sink, ReshardMethod method) {
+  switch (method) {
+    case ReshardMethod::kArray:
+      sink.Append("Array");
+      break;
+    case ReshardMethod::kBundle:
+      sink.Append("Bundle");
+      break;
+  }
+}
+
+absl::StatusOr<std::vector<ArrayRef>> ReshardArrays(
+    ReshardMethod method, Client* client, absl::Span<ArrayRef> src_arrays,
+    absl::Span<const ArraySpec> array_specs, ArrayCopySemantics semantics) {
+  switch (method) {
+    case ReshardMethod::kArray:
+      return client->ReshardArrays(src_arrays, array_specs, semantics);
+    case ReshardMethod::kBundle: {
+      std::vector<ValueRef> src_values = ToValues(src_arrays);
+      ASSIGN_OR_RETURN(BundleRef bundle,
+                       client->Bundle(absl::MakeSpan(src_values),
+                                      ArrayCopySemantics::kReuseInput));
+      ASSIGN_OR_RETURN(BundleRef resharded_bundle,
+                       bundle->ReshardArrays(array_specs, semantics));
+      ASSIGN_OR_RETURN(
+          std::vector<ValueRef> retrieved_values,
+          resharded_bundle->GetValues(ArrayCopySemantics::kReuseInput));
+      return ToArrays(absl::MakeSpan(retrieved_values));
+    }
+  }
+}
 
 absl::StatusOr<ArrayRef> MakeArrayFromLiteral(Client* absl_nonnull client,
                                               const xla::LiteralBase& literal,
                                               const ShardingRef& sharding) {
-  TF_ASSIGN_OR_RETURN(const DType dtype,
-                      ToDType(literal.shape().element_type()));
+  ASSIGN_OR_RETURN(const DType dtype, ToDType(literal.shape().element_type()));
   const Shape shape(literal.shape().dimensions());
 
-  TF_ASSIGN_OR_RETURN(const std::vector<IndexDomain> index_domains,
-                      sharding->IndexDomains(shape));
+  ASSIGN_OR_RETURN(const std::vector<IndexDomain> index_domains,
+                   sharding->IndexDomains(
+                       shape, SingleDeviceShardSemantics::kAddressableShards));
 
   Client::MakeArraysFromHostBufferShardsSpec spec = {
       /*buffers=*/{},
@@ -108,7 +150,7 @@ absl::StatusOr<ArrayRef> MakeArrayFromLiteral(Client* absl_nonnull client,
     spec.buffers.push_back({{i}, std::move(host_buffer)});
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<ArrayRef> arrays,
       client->MakeArraysFromHostBufferShards(
           absl::MakeSpan(&spec, 1),
@@ -117,36 +159,38 @@ absl::StatusOr<ArrayRef> MakeArrayFromLiteral(Client* absl_nonnull client,
 }
 
 absl::StatusOr<xla::Literal> CopyArrayToLiteral(ArrayRef array) {
-  TF_ASSIGN_OR_RETURN(const xla::PrimitiveType element_type,
-                      ToPrimitiveType(array->dtype()));
+  ASSIGN_OR_RETURN(const xla::PrimitiveType element_type,
+                   ToPrimitiveType(array->dtype()));
   const auto xla_shape =
       xla::ShapeUtil::MakeShape(element_type, array->shape().dims());
 
-  TF_ASSIGN_OR_RETURN(const std::vector<IndexDomain> index_domains,
-                      array->sharding().IndexDomains(array->shape()));
-  TF_ASSIGN_OR_RETURN(std::vector<ArrayRef> shards,
-                      array->DisassembleIntoSingleDeviceArrays(
-                          ArrayCopySemantics::kReuseInput,
-                          SingleDeviceShardSemantics::kAddressableShards));
+  ASSIGN_OR_RETURN(
+      const std::vector<IndexDomain> index_domains,
+      array->sharding().IndexDomains(
+          array->shape(), SingleDeviceShardSemantics::kAddressableShards));
+  ASSIGN_OR_RETURN(std::vector<ArrayRef> shards,
+                   array->DisassembleIntoSingleDeviceArrays(
+                       ArrayCopySemantics::kReuseInput,
+                       SingleDeviceShardSemantics::kAddressableShards));
 
-  TF_ASSIGN_OR_RETURN(xla::Literal literal, xla::Literal::Make(xla_shape));
+  ASSIGN_OR_RETURN(xla::Literal literal, xla::Literal::Make(xla_shape));
   absl::flat_hash_set<IndexDomain> seen;
 
   for (int i = 0; i < shards.size(); ++i) {
     const Index& offset = index_domains[i].origin();
     const Shape& shard_shape = index_domains[i].shape();
 
-    TF_ASSIGN_OR_RETURN(xla::Literal slice,
-                        xla::Literal::Make(xla::ShapeUtil::MakeShape(
-                            element_type, shard_shape.dims())));
+    ASSIGN_OR_RETURN(xla::Literal slice,
+                     xla::Literal::Make(xla::ShapeUtil::MakeShape(
+                         element_type, shard_shape.dims())));
     tsl::Future<> future = shards[i]->CopyToHostBuffer(
         slice.untyped_data(), std::nullopt, ArrayCopySemantics::kAlwaysCopy);
-    TF_RETURN_IF_ERROR(future.Await());
+    RETURN_IF_ERROR(future.Await());
     VLOG(2) << "Slice #" << i << " (" << index_domains[i]
             << "): " << slice.ToString();
 
     if (seen.insert(index_domains[i]).second) {
-      TF_RETURN_IF_ERROR(literal.CopySliceFrom(
+      RETURN_IF_ERROR(literal.CopySliceFrom(
           slice, Index::Zeros(shard_shape.dims().size()).elements(),
           offset.elements(), shard_shape.dims()));
     } else {
@@ -165,10 +209,10 @@ absl::StatusOr<xla::Literal> CopyArrayToLiteral(ArrayRef array) {
 
 absl::StatusOr<xla::Literal> CreateIotaLiteral(xla::PrimitiveType element_type,
                                                absl::Span<const int64_t> dims) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       xla::Literal literal,
       xla::Literal::Make(xla::ShapeUtil::MakeShape(element_type, dims)));
-  TF_RETURN_IF_ERROR(xla::primitive_util::IntegralTypeSwitch(
+  RETURN_IF_ERROR(xla::primitive_util::IntegralTypeSwitch(
       [&](auto primitive_type_constant) -> absl::Status {
         using T = xla::primitive_util::NativeTypeOf<primitive_type_constant>;
         T value(0);
@@ -179,7 +223,7 @@ absl::StatusOr<xla::Literal> CreateIotaLiteral(xla::PrimitiveType element_type,
   return literal;
 }
 
-class ReshardTest : public testing::Test {
+class ReshardTestBase : public testing::Test {
  protected:
   void SetUp() override {
     TF_ASSERT_OK_AND_ASSIGN(client_, test_util::GetClient());
@@ -188,7 +232,11 @@ class ReshardTest : public testing::Test {
   std::shared_ptr<Client> client_;
 };
 
-TEST_F(ReshardTest, BatchedWithDifferentSharding) {
+class ReshardTest : public ReshardTestBase,
+                    public testing::WithParamInterface<ReshardMethod> {};
+
+TEST_P(ReshardTest, BatchedWithDifferentSharding) {
+  const ReshardMethod method = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
                           CreateIotaLiteral(xla::PrimitiveType::S32, {4, 8}));
 
@@ -224,8 +272,8 @@ TEST_F(ReshardTest, BatchedWithDifferentSharding) {
   };
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<ArrayRef> dst_arrays,
-      client_->ReshardArrays(absl::MakeSpan(src_arrays), array_specs,
-                             ArrayCopySemantics::kDonateInput));
+      ReshardArrays(method, client_.get(), absl::MakeSpan(src_arrays),
+                    array_specs, ArrayCopySemantics::kDonateInput));
   ASSERT_EQ(dst_arrays.size(), 2);
 
   EXPECT_EQ(dst_arrays[0]->sharding(), *array_specs[0].sharding);
@@ -237,7 +285,8 @@ TEST_F(ReshardTest, BatchedWithDifferentSharding) {
               absl_testing::IsOkAndHolds(Eq(std::cref(literal))));
 }
 
-TEST_F(ReshardTest, BatchedWithDifferentDeviceLists) {
+TEST_P(ReshardTest, BatchedWithDifferentDeviceLists) {
+  const ReshardMethod method = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
                           CreateIotaLiteral(xla::PrimitiveType::S32, {4, 8}));
 
@@ -289,8 +338,8 @@ TEST_F(ReshardTest, BatchedWithDifferentDeviceLists) {
   };
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<ArrayRef> dst_arrays,
-      client_->ReshardArrays(absl::MakeSpan(src_arrays), array_specs,
-                             ArrayCopySemantics::kDonateInput));
+      ReshardArrays(method, client_.get(), absl::MakeSpan(src_arrays),
+                    array_specs, ArrayCopySemantics::kDonateInput));
   ASSERT_EQ(dst_arrays.size(), 2);
 
   EXPECT_EQ(dst_arrays[0]->sharding(), *array_specs[0].sharding);
@@ -302,7 +351,8 @@ TEST_F(ReshardTest, BatchedWithDifferentDeviceLists) {
               absl_testing::IsOkAndHolds(Eq(std::cref(literal))));
 }
 
-TEST_F(ReshardTest, PoisonedInput) {
+TEST_P(ReshardTest, PoisonedInput) {
+  const ReshardMethod method = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
                           CreateIotaLiteral(xla::PrimitiveType::S32, {4, 8}));
   const absl::Status error = absl::InternalError("injected error");
@@ -360,8 +410,8 @@ TEST_F(ReshardTest, PoisonedInput) {
   };
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<ArrayRef> dst_arrays,
-      client_->ReshardArrays(absl::MakeSpan(src_arrays), array_specs,
-                             ArrayCopySemantics::kDonateInput));
+      ReshardArrays(method, client_.get(), absl::MakeSpan(src_arrays),
+                    array_specs, ArrayCopySemantics::kDonateInput));
   ASSERT_EQ(dst_arrays.size(), 2);
 
   EXPECT_EQ(dst_arrays[0]->sharding(), *array_specs[0].sharding);
@@ -373,7 +423,8 @@ TEST_F(ReshardTest, PoisonedInput) {
               absl_testing::StatusIs(error.code(), HasSubstr(error.message())));
 }
 
-TEST_F(ReshardTest, DifferentDestinationLayout) {
+TEST_P(ReshardTest, DifferentDestinationLayout) {
+  const ReshardMethod method = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
                           CreateIotaLiteral(xla::PrimitiveType::S32, {4, 8}));
 
@@ -388,26 +439,51 @@ TEST_F(ReshardTest, DifferentDestinationLayout) {
 
   TF_ASSERT_OK_AND_ASSIGN(const DeviceListRef dst_device_list,
                           client_->MakeDeviceList(client_->devices()));
+
+  xla::Layout layout = xla::LayoutUtil::MakeAscendingLayout(2);
+  if (auto ifrt_topology = client_->GetTopologyForDevices(dst_device_list);
+      ifrt_topology.ok()) {
+    const xla::PjRtTopologyDescription* topology =
+        (*ifrt_topology)->description().get();
+    TF_ASSERT_OK_AND_ASSIGN(
+        xla::Shape shape,
+        topology->MakeCanonicalShapeForMemorySpace(
+            topology->GetDefaultMemorySpaceKindId(),
+            xla::ShapeUtil::MakeShape(xla::PrimitiveType::S32,
+                                      src_array->shape().dims()),
+            &layout));
+    layout = shape.layout();
+  }
+
   ArraySpec dst_array_spec = {
       /*dtype=*/src_array->dtype(),
       /*shape=*/src_array->shape(),
       /*sharding=*/
       HloSharding::Create(dst_device_list, MemoryKind(),
                           xla::HloSharding::Replicate()),
-      /*layout=*/
-      std::make_shared<xla::PjRtLayout>(
-          xla::LayoutUtil::MakeAscendingLayout(2)),
+      /*layout=*/std::make_shared<const xla::PjRtLayout>(std::move(layout)),
   };
 
   // Make sure that the destination layout is actually different from the source
   // layout in order to ensure the test coverage.
-  TF_ASSERT_OK_AND_ASSIGN(const auto src_layout, src_array->pjrt_layout());
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> src_layout,
+                          src_array->pjrt_layout());
+  if (src_layout == nullptr) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        Shape shard_shape,
+        src_array->sharding().GetShardShape(src_array->shape()));
+    TF_ASSERT_OK_AND_ASSIGN(
+        src_layout, client_->GetDefaultPjRtLayout(
+                        src_array->dtype(), shard_shape.dims(),
+                        src_array->sharding().devices()->devices().front(),
+                        src_array->sharding().memory_kind()));
+  }
   ASSERT_NE(src_layout->xla_layout(), dst_array_spec.layout->xla_layout());
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<ArrayRef> dst_arrays,
-      client_->ReshardArrays(absl::MakeSpan(&src_array, 1), {dst_array_spec},
-                             ArrayCopySemantics::kDonateInput));
+      ReshardArrays(method, client_.get(), absl::MakeSpan(&src_array, 1),
+                    {dst_array_spec}, ArrayCopySemantics::kDonateInput));
   ASSERT_EQ(dst_arrays.size(), 1);
 
   const ArrayRef& dst_array = dst_arrays[0];
@@ -415,17 +491,26 @@ TEST_F(ReshardTest, DifferentDestinationLayout) {
 
   // Verify that the destination array is created with the user-provided layout.
   TF_ASSERT_OK_AND_ASSIGN(const auto dst_layout, dst_array->pjrt_layout());
+  ASSERT_NE(dst_layout, nullptr);
   EXPECT_EQ(dst_layout->xla_layout(), dst_array_spec.layout->xla_layout());
 
   EXPECT_THAT(CopyArrayToLiteral(dst_array),
               absl_testing::IsOkAndHolds(Eq(std::cref(literal))));
 }
 
-class ReshardMemoryKindTest : public ReshardTest,
-                              public testing::WithParamInterface<MemoryKind> {};
+INSTANTIATE_TEST_SUITE_P(ReshardTest, ReshardTest,
+                         testing::Values(ReshardMethod::kArray,
+                                         ReshardMethod::kBundle),
+                         [](const testing::TestParamInfo<ReshardMethod>& info) {
+                           return absl::StrCat(info.param);
+                         });
+
+class ReshardMemoryKindTest : public ReshardTestBase,
+                              public testing::WithParamInterface<
+                                  std::tuple<ReshardMethod, MemoryKind>> {};
 
 TEST_P(ReshardMemoryKindTest, Int4) {
-  const MemoryKind memory_kind = GetParam();
+  const auto& [method, memory_kind] = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
                           CreateIotaLiteral(xla::PrimitiveType::S4, {4, 8}));
 
@@ -450,8 +535,8 @@ TEST_P(ReshardMemoryKindTest, Int4) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<ArrayRef> dst_arrays,
-      client_->ReshardArrays(absl::MakeSpan(&src_array, 1), {dst_array_spec},
-                             ArrayCopySemantics::kDonateInput));
+      ReshardArrays(method, client_.get(), absl::MakeSpan(&src_array, 1),
+                    {dst_array_spec}, ArrayCopySemantics::kDonateInput));
   ASSERT_EQ(dst_arrays.size(), 1);
 
   const ArrayRef& dst_array = dst_arrays[0];
@@ -466,9 +551,15 @@ auto AllMemoryKinds() {
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    AllMemoryKinds, ReshardMemoryKindTest, AllMemoryKinds(),
-    [](const testing::TestParamInfo<ReshardMemoryKindTest::ParamType>& info)
-        -> std::string { return absl::StrCat(info.param); });
+    AllMemoryKinds, ReshardMemoryKindTest,
+    testing::Combine(testing::Values(ReshardMethod::kArray,
+                                     ReshardMethod::kBundle),
+                     AllMemoryKinds()),
+    ([](const testing::TestParamInfo<ReshardMemoryKindTest::ParamType>& info)
+         -> std::string {
+      const auto& [method, memory_kind] = info.param;
+      return absl::StrCat(method, "_", memory_kind);
+    }));
 
 struct ReshardTestParam {
   absl::string_view name;
@@ -483,12 +574,13 @@ struct ReshardTestParam {
 };
 
 class ReshardParameterizedTest
-    : public ReshardTest,
+    : public ReshardTestBase,
       public testing::WithParamInterface<
-          std::tuple<ReshardTestParam, MemoryKind, MemoryKind>> {};
+          std::tuple<ReshardMethod, ReshardTestParam, MemoryKind, MemoryKind>> {
+};
 
 TEST_P(ReshardParameterizedTest, RoundTrip) {
-  const auto& [param, src_memory_kind, dst_memory_kind] = GetParam();
+  const auto& [method, param, src_memory_kind, dst_memory_kind] = GetParam();
 
   absl::InlinedVector<Device*, 1> src_devices;
   src_devices.reserve(param.src_device_indices.size());
@@ -529,8 +621,8 @@ TEST_P(ReshardParameterizedTest, RoundTrip) {
     };
     TF_ASSERT_OK_AND_ASSIGN(
         std::vector<ArrayRef> dst_arrays,
-        client_->ReshardArrays(absl::MakeSpan(&src_array, 1), {array_spec},
-                               ArrayCopySemantics::kDonateInput));
+        ReshardArrays(method, client_.get(), absl::MakeSpan(&src_array, 1),
+                      {array_spec}, ArrayCopySemantics::kDonateInput));
     ASSERT_EQ(dst_arrays.size(), 1);
     dst_array = std::move(dst_arrays[0]);
 
@@ -550,8 +642,8 @@ TEST_P(ReshardParameterizedTest, RoundTrip) {
     };
     TF_ASSERT_OK_AND_ASSIGN(
         std::vector<ArrayRef> src_arrays,
-        client_->ReshardArrays(absl::MakeSpan(&dst_array, 1), {array_spec},
-                               ArrayCopySemantics::kDonateInput));
+        ReshardArrays(method, client_.get(), absl::MakeSpan(&dst_array, 1),
+                      {array_spec}, ArrayCopySemantics::kDonateInput));
     ASSERT_EQ(src_arrays.size(), 1);
     src_array = std::move(src_arrays[0]);
 
@@ -563,8 +655,17 @@ TEST_P(ReshardParameterizedTest, RoundTrip) {
 
 INSTANTIATE_TEST_SUITE_P(
     SameDeviceCount, ReshardParameterizedTest,
-    testing::Combine(     //
+    testing::Combine(  //
+        testing::Values(ReshardMethod::kArray, ReshardMethod::kBundle),
         testing::Values(  //
+            ReshardTestParam{
+                /*name=*/"Scalar",
+                /*shape=*/Shape({}),
+                /*src_sharding=*/xla::HloSharding::Replicate(),
+                /*src_device_indices=*/{0, 1, 2, 3, 4, 5, 6, 7},
+                /*dst_sharding=*/xla::HloSharding::Replicate(),
+                /*dst_device_indices=*/{0, 1, 2, 3, 4, 5, 6, 7},
+            },
             ReshardTestParam{
                 /*name=*/"ReplicateToReplicate",
                 /*shape=*/Shape({4, 8}),
@@ -617,15 +718,25 @@ INSTANTIATE_TEST_SUITE_P(
         AllMemoryKinds(), AllMemoryKinds()),
     ([](const testing::TestParamInfo<ReshardParameterizedTest::ParamType>&
             info) {
-      const auto& [param, src_memory_kind, dst_memory_kind] = info.param;
-      return absl::StrCat(param.name, "_", src_memory_kind, "_to_",
+      const auto& [method, param, src_memory_kind, dst_memory_kind] =
+          info.param;
+      return absl::StrCat(method, "_", param.name, "_", src_memory_kind, "_to_",
                           dst_memory_kind);
     }));
 
 INSTANTIATE_TEST_SUITE_P(
     DifferentDeviceCount, ReshardParameterizedTest,
-    testing::Combine(     //
+    testing::Combine(  //
+        testing::Values(ReshardMethod::kArray, ReshardMethod::kBundle),
         testing::Values(  //
+            ReshardTestParam{
+                /*name=*/"Scalar",
+                /*shape=*/Shape({}),
+                /*src_sharding=*/xla::HloSharding::Replicate(),
+                /*src_device_indices=*/{0, 1},
+                /*dst_sharding=*/xla::HloSharding::Replicate(),
+                /*dst_device_indices=*/{0, 1, 2, 3, 4, 5, 6, 7},
+            },
             ReshardTestParam{
                 /*name=*/"ReplicateToReplicate",
                 /*shape=*/Shape({4, 8}),
@@ -678,8 +789,9 @@ INSTANTIATE_TEST_SUITE_P(
         AllMemoryKinds(), AllMemoryKinds()),
     ([](const testing::TestParamInfo<ReshardParameterizedTest::ParamType>&
             info) {
-      const auto& [param, src_memory_kind, dst_memory_kind] = info.param;
-      return absl::StrCat(param.name, "_", src_memory_kind, "_to_",
+      const auto& [method, param, src_memory_kind, dst_memory_kind] =
+          info.param;
+      return absl::StrCat(method, "_", param.name, "_", src_memory_kind, "_to_",
                           dst_memory_kind);
     }));
 

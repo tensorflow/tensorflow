@@ -156,6 +156,8 @@ enum HostEventType {
   kScheduleWithSplit,
   kScheduleWithEagerSplit,
   kASBSQueueSchedule,
+  kOrbaxConcatInputBuffers,
+  kOrbaxProcessBatch,
   // TFRT related.
   kTfrtModelRun,
   // Serving related.
@@ -198,6 +200,7 @@ enum HostEventType {
 };
 
 enum StatType {
+  // LINT.IfChange(stat_type_enum)
   kFirstStatType = 0,
   kUnknownStatType = kFirstStatType,
   // TraceMe arguments.
@@ -209,6 +212,7 @@ enum StatType {
   kQueueId,
   kQueueAddr,
   kRequestId,
+  kGlobalChipId,
   kRunId,
   kReplicaId,
   kGraphType,
@@ -267,6 +271,7 @@ enum StatType {
   kDeduplicatedName,
   kHloCategory,
   kHloModule,
+  kUniqueHloOpId,
   kProgramId,
   kEquation,
   kIsEager,
@@ -290,6 +295,11 @@ enum StatType {
   kScaledValue,
   kThreadId,
   kMatrixUnitUtilizationPercent,
+  kHbmUtilizationPercent,
+  kPerformanceCounterId,
+  kCounterValue,
+  kPerformanceCounterDescription,
+  kPerformanceCounterSets,
   // Cost analysis related.
   kTimeScaleMultiplier,
   // XLA metadata map related.
@@ -372,7 +382,38 @@ enum StatType {
   kCudaGraphMapValueId,
   kCudaGraphNodeMapId,
   kGraphMetadataLineId,
-  kLastStatType = kGraphMetadataLineId,
+  kOffloadCoreId,
+  kTcOffloadStartId,
+  kOffloadExecutionIndex,
+  kMarkerPayloadString,
+  kMetadataCudaVersion,
+  kMetadataLibtpuVersion,
+  kMetadataCudaRuntimeVersion,
+  kMetadataCudaDriverVersion,
+  // LLO Debug Dump.
+  kLloProto,
+  // Total VDD core energy consumed in nano Joules.
+  kVddCoreEnergy,
+  // Number of VDD core power events.
+  kVddCorePowerEvents,
+  // Total HBM energy consumed in nano Joules.
+  kHbmEnergy,
+  // Number of HBM power events.
+  kHbmPowerEvents,
+  // Stats for subprocess trace collection.
+  kConsumerPid,
+  kProcessId,
+  // Transaction ID for DMA transfers with
+  kTransactionWithChipCoreId,
+  // Program Counter in Oci Descriptors, etc
+  kProgramCounter,
+  kUsesIci,
+  // LINT.ThenChange(:last_stat_type)
+
+  // LINT.IfChange(last_stat_type)
+  // Change this to point to the last stat type when adding a new one.
+  kLastStatType = kUsesIci,
+  // LINT.ThenChange(:stat_type_enum)
 };
 
 enum MegaScaleStatType : uint8_t {
@@ -400,18 +441,18 @@ enum MegaScaleStatType : uint8_t {
   kMegaScaleLoopIteration,
   kMegaScaleGraphProtos,
   kMegaScaleNetworkTransportLatency,
-  kMegaScaleTransmissionBudgetUs,
-  kMegaScaleDelayBudgetUs,
   kMegaScaleHloModule,
   kMegaScaleMultiSliceTopology,
-  kLastMegaScaleStatType = kMegaScaleMultiSliceTopology,
+  kMegaScaleActivationToNetworkReceiveDurationUs,
+  kLastMegaScaleStatType = kMegaScaleActivationToNetworkReceiveDurationUs,
 };
 
 enum TaskEnvStatType {
   kFirstTaskEnvStatType = 1,
   kEnvProfileStartTime = kFirstTaskEnvStatType,
   kEnvProfileStopTime,
-  kLastTaskEnvStatType = kEnvProfileStopTime,
+  kEnvProfileOptions,
+  kLastTaskEnvStatType = kEnvProfileOptions,
 };
 
 static constexpr uint32_t kLineIdOffset = 10000;
@@ -503,7 +544,7 @@ class XFlow {
   }
 
   // Encoding
-  uint64 ToStatValue() const { return encoded_.whole; }
+  uint64_t ToStatValue() const { return encoded_.whole; }
 
   // Decoding
   static XFlow FromStatValue(uint64_t encoded) { return XFlow(encoded); }

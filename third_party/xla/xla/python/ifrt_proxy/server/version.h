@@ -22,25 +22,16 @@
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt_proxy/common/versions.h"
 
-// TODO(madthanu): Delete this file and use ifrt_proxy/common/versions.h
-// directly.
-
 namespace xla {
 namespace ifrt {
 namespace proxy {
-
-// LINT.IfChange
-// TODO(b/296144873): Document the version upgrade policy.
-inline constexpr int kServerMinVersion = protocol_version::kServerMin;
-inline constexpr int kServerMaxVersion = protocol_version::kCurrent;
-// LINT.ThenChange(//tensorflow/compiler/xla/python/ifrt_proxy/common/VERSION.md)
 
 // Returns a protocol version that both the client and the server support, or an
 // error if there is no such a version.
 absl::StatusOr<int> ChooseProtocolVersion(
     int client_min_version, int client_max_version,
-    int server_min_version = kServerMinVersion,
-    int server_max_version = kServerMaxVersion);
+    int server_min_version = protocol_version::kServerMin,
+    int server_max_version = protocol_version::kServerMax);
 
 // Returns an IFRT SerDes version that both the client and the server support,
 // or an error if there is no such a version.

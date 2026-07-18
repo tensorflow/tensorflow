@@ -21,39 +21,44 @@ limitations under the License.
 
 namespace tflite {
 
-std::vector<uint8_t> PackInt4ValuesDensely(std::vector<uint8_t> src_buffer) {
-  auto num_elements = src_buffer.size();
-  auto packed_size = (num_elements + 1) / 2;
-  std::vector<uint8_t> packed_buffer((num_elements + 1) / 2);
-
-  for (int i = 0; i < num_elements - 1; i += 2) {
-    packed_buffer[i / 2] = src_buffer[i] & 0x0F;
-    packed_buffer[i / 2] |= src_buffer[i + 1] << 4;
-  }
-
-  // Copy the final nibble if the buffer is odd-lengthed
-  if (num_elements % 2 != 0) {
-    packed_buffer[packed_size - 1] = src_buffer[num_elements - 1] & 0x0F;
-  }
-
-  return packed_buffer;
-}
-
-std::vector<char> UnpackDenseInt4IntoInt8(
-    const std::vector<uint8_t>& src_buffer, int64_t num_elements) {
+std::vector<char> UnpackDenseLowBitIntoInt8(
+    const std::vector<uint8_t>& src_buffer, int64_t num_elements,
+    int bit_width) {
   std::vector<char> unpacked_buffer;
   unpacked_buffer.reserve(num_elements);
+  const int elements_per_byte = 8 / bit_width;
+  const int sign_bit_shift = 8 - bit_width;
+  const uint8_t mask = (1 << bit_width) - 1;
 
   for (uint8_t value : src_buffer) {
-    // Cast to signed before right-shifting to ensure correct sign extension
-    unpacked_buffer.push_back(static_cast<int8_t>(value << 4) >> 4);
-    unpacked_buffer.push_back(static_cast<int8_t>(value) >> 4);
+    for (int i = 0; i < elements_per_byte; ++i) {
+      if (unpacked_buffer.size() == num_elements) break;
+      int bit_offset = i * bit_width;
+      uint8_t extracted_value = (value >> bit_offset) & mask;
+      // Sign extend
+      unpacked_buffer.push_back(
+          static_cast<int8_t>(extracted_value << sign_bit_shift) >>
+          sign_bit_shift);
+    }
   }
 
-  // The last element might be a padded zero, so check and pop if needed
-  if (unpacked_buffer.size() > num_elements) {
-    assert(unpacked_buffer.size() == num_elements + 1);
-    unpacked_buffer.pop_back();
+  return unpacked_buffer;
+}
+
+std::vector<char> UnpackDenseLowBitIntoUint8(
+    const std::vector<uint8_t>& src_buffer, int64_t num_elements,
+    int bit_width) {
+  std::vector<char> unpacked_buffer;
+  unpacked_buffer.reserve(num_elements);
+  const int elements_per_byte = 8 / bit_width;
+  const uint8_t mask = (1 << bit_width) - 1;
+
+  for (uint8_t value : src_buffer) {
+    for (int i = 0; i < elements_per_byte; ++i) {
+      if (unpacked_buffer.size() == num_elements) break;
+      int bit_offset = i * bit_width;
+      unpacked_buffer.push_back((value >> bit_offset) & mask);
+    }
   }
 
   return unpacked_buffer;

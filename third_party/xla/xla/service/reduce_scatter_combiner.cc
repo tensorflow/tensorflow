@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -80,7 +81,8 @@ int64_t FindMostFrequentScatterDim(
 // entries in to_combine must be ReduceScatter ops with exactly one operand
 // and the same reduction operation.
 absl::Status CombineReduceScatters(
-    absl::Span<HloInstruction* const> to_combine) {
+    absl::Span<HloInstruction* const> to_combine,
+    const ReduceScatterCombiner::PostCombineFn& post_combine = nullptr) {
   if (to_combine.size() < 2) {
     return absl::OkStatus();
   }
@@ -148,7 +150,11 @@ absl::Status CombineReduceScatters(
           Cast<HloReduceScatterInstruction>(to_combine.front())
               ->use_global_device_ids(),
           most_frequent_dim));
-  combined->set_metadata(to_combine.front()->metadata());
+  combined->set_metadata(MergeMetadata(to_combine));
+  combined->set_frontend_attributes(MergeFrontendAttributes(to_combine));
+  if (post_combine != nullptr) {
+    RETURN_IF_ERROR(post_combine(to_combine, combined));
+  }
 
   // We have to propagate the sharding manually because Domain instructions are
   // not guaranteed to preserve it for side effecting instructions.
@@ -168,8 +174,7 @@ absl::Status CombineReduceScatters(
                                        replacement->shape()),
           replacement));
     }
-    TF_RETURN_IF_ERROR(
-        computation.ReplaceInstruction(to_combine[i], replacement));
+    RETURN_IF_ERROR(computation.ReplaceInstruction(to_combine[i], replacement));
   }
   return absl::OkStatus();
 }
@@ -205,6 +210,16 @@ absl::StatusOr<bool> ReduceScatterCombiner::RunWithKeyCombiner(
     absl::FunctionRef<std::optional<ReduceScatterCombiner::GroupKey>(
         const HloInstruction*, const HloDomainMap&, bool)>
         combine_key) {
+  return RunWithKeyCombiner(module, execution_threads, combine_key, nullptr);
+}
+
+absl::StatusOr<bool> ReduceScatterCombiner::RunWithKeyCombiner(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    absl::FunctionRef<std::optional<ReduceScatterCombiner::GroupKey>(
+        const HloInstruction*, const HloDomainMap&, bool)>
+        combine_key,
+    PostCombineFn post_combine) {
   VLOG(1) << "Running ReduceScatterCombiner with threshold of "
           << combine_threshold_in_bytes_ << " bytes";
 
@@ -230,17 +245,21 @@ absl::StatusOr<bool> ReduceScatterCombiner::RunWithKeyCombiner(
               << computation->ToString();
       continue;
     }
-    TF_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
+    ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
 
     auto key_fn = [&](const HloInstruction* instruction) {
       return combine_key(instruction, *domain_map, combine_by_dim_);
     };
+    auto combine_fn =
+        [&](absl::Span<HloInstruction* const> to_combine) -> absl::Status {
+      return CombineReduceScatters(to_combine, post_combine);
+    };
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         bool computation_changed,
         CombineInstructionsByKey<ReduceScatterCombiner::GroupKey>(
-            computation, key_fn, &CombineReduceScatters,
-            combine_threshold_in_bytes_, combine_threshold_count_));
+            computation, key_fn, combine_fn, combine_threshold_in_bytes_,
+            combine_threshold_count_));
     changed |= computation_changed;
   }
 
@@ -256,11 +275,11 @@ ReduceScatterCombiner::ReduceScatterCombiner(int64_t combine_threshold_in_bytes,
       combine_by_dim_(combine_by_dim),
       combine_while_loops_(combine_while_loops) {}
 
-absl::StatusOr<bool> ReduceScatterCombiner::Run(
+absl::StatusOr<bool> ReduceScatterCombiner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  TF_ASSIGN_OR_RETURN(
-      bool changed, RunWithKeyCombiner(module, execution_threads, CombineKey));
+  ASSIGN_OR_RETURN(bool changed,
+                   RunWithKeyCombiner(module, execution_threads, CombineKey));
   return changed;
 }
 

@@ -124,15 +124,26 @@ absl::Status Iterator::Restore(const std::vector<Tensor>& saved_iterator) {
     auto saved_vec = saved_iterator[i].vec<Variant>();
     auto* variant = saved_vec(0).get<IteratorStateVariant>();
     if (!variant) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Cannot initialize an iterator from tensor ",
           saved_vec(0).DebugString(),
-          ". Expected a variant tensor of type IteratorStateVariant.");
+          ". Expected a variant tensor of type IteratorStateVariant."));
     }
     data.push_back(variant->GetData());
   }
   VariantTensorDataReader reader(data);
   return iterator_->Restore(ctx_.get(), &reader);
+}
+
+void Iterator::Cancel() {
+  if (ctx_) {
+    if (ctx_->cancellation_manager()) {
+      ctx_->cancellation_manager()->StartCancel();
+    }
+    for (auto& split_provider : ctx_->split_providers()) {
+      split_provider->Cancel();
+    }
+  }
 }
 
 std::shared_ptr<model::Model> Iterator::model() const { return ctx_->model(); }
@@ -162,14 +173,15 @@ absl::Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
         return absl::OkStatus();
       }});
 
-  string fetch_node = "";
+  std::string fetch_node = "";
   for (const auto& node : graph_def.node()) {
     if (node.op() == "_Retval") {
       fetch_node = node.input(0);
     }
   }
   if (fetch_node.empty()) {
-    return errors::NotFound("Failed to find a _Retval op in the given dataset");
+    return absl::NotFoundError(
+        "Failed to find a _Retval op in the given dataset");
   }
 
   // Run graph up to `output_node` and extract the `DatasetBase` stored in the

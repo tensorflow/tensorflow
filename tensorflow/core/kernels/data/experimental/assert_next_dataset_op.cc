@@ -51,7 +51,7 @@ class AssertNextDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
@@ -61,7 +61,7 @@ class AssertNextDatasetOp::Dataset : public DatasetBase {
     return output_shapes_;
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
@@ -99,22 +99,22 @@ class AssertNextDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params) {}
 
     absl::Status Initialize(IteratorContext* ctx) override {
-      std::vector<string> tokens =
+      std::vector<std::string> tokens =
           absl::StrSplit(prefix(), ':', absl::SkipEmpty());
       if (dataset()->transformations_.size() > tokens.size() - 2) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Asserted next ", dataset()->transformations_.size(),
-            " transformations but encountered only ", tokens.size() - 2, ".");
+            " transformations but encountered only ", tokens.size() - 2, "."));
       }
       int n = tokens.size();
       for (size_t i = 0; i < dataset()->transformations_.size(); ++i) {
         if (!MatchesAnyVersion(dataset()->transformations_[i],
                                tokens[n - 2 - i])) {
-          return errors::InvalidArgument("Asserted transformation matching ",
-                                         dataset()->transformations_[i],
-                                         " at offset ", i, " but encountered ",
-                                         tokens[n - 2 - i],
-                                         " transformation instead.");
+          return absl::InvalidArgumentError(
+              absl::StrCat("Asserted transformation matching ",
+                           dataset()->transformations_[i], " at offset ", i,
+                           " but encountered ", tokens[n - 2 - i],
+                           " transformation instead."));
         }
       }
       return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);

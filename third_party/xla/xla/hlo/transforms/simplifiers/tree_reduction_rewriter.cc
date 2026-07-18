@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/padding.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -35,17 +36,22 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 
 class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit ReductionRewriterVisitor(int64_t reduce_window_size)
-      : reduce_window_size_(reduce_window_size) {}
+  ReductionRewriterVisitor(
+      int64_t reduce_window_size,
+      HloPredicate filter)
+      : reduce_window_size_(reduce_window_size),
+        filter_(std::move(filter)) {}
 
   absl::Status HandleReduce(HloInstruction *hlo) override {
+    if (filter_ && !filter_(hlo)) {
+      return absl::OkStatus();
+    }
+
     HloInstruction *reduced_op = hlo->mutable_operand(0);
     HloInstruction *initial_value = hlo->mutable_operand(1);
     const Shape &input_shape = reduced_op->shape();
@@ -64,13 +70,14 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
           return input_shape.dimensions(reduced_dim) <= reduce_window_size_;
         })) {
       VLOG(1) << "Skipping tree reduction rewrite: all reduced dimensions are "
-                 "smaller than "
-              << reduce_window_size_;
+                 "smaller than the window size.";
       return absl::OkStatus();
     }
 
     std::vector<int64_t> window_dimensions;
     std::vector<int64_t> window_strides;
+    window_dimensions.reserve(input_shape.dimensions().size());
+    window_strides.reserve(input_shape.dimensions().size());
     for (int64_t dim_idx = 0; dim_idx < input_shape.dimensions().size();
          dim_idx++) {
       if (!absl::c_linear_search(hlo->dimensions(), dim_idx)) {
@@ -90,13 +97,13 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
         MakePadding(input_shape.dimensions(), window_dimensions, window_strides,
                     Padding::kSame);
 
-    TF_ASSIGN_OR_RETURN(
-        Window window, ShapeInference::InferWindowFromDimensions(
-                           window_dimensions, window_strides, padding, {}, {}));
+    ASSIGN_OR_RETURN(Window window,
+                     ShapeInference::InferWindowFromDimensions(
+                         window_dimensions, window_strides, padding, {}, {}));
 
-    TF_ASSIGN_OR_RETURN(Shape intermediate_shape,
-                        ShapeInference::InferReduceWindowShape(
-                            input_shape, initial_value->shape(), window));
+    ASSIGN_OR_RETURN(Shape intermediate_shape,
+                     ShapeInference::InferReduceWindowShape(
+                         input_shape, initial_value->shape(), window));
 
     HloInstruction *reduce_window =
         hlo->parent()->AddInstruction(HloInstruction::CreateReduceWindow(
@@ -112,16 +119,17 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
 
  private:
   int64_t reduce_window_size_;
+  HloPredicate filter_;
 };
 
-absl::StatusOr<bool> TreeReductionRewriter::Run(
-    HloModule *module,
-    const absl::flat_hash_set<absl::string_view> &execution_threads) {
-  ReductionRewriterVisitor visitor(reduce_window_size_);
+absl::StatusOr<bool> TreeReductionRewriter::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  ReductionRewriterVisitor visitor(reduce_window_size_, filter_);
   bool changed = false;
   for (const auto &computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_RETURN_IF_ERROR(computation->Accept(&visitor));
+    RETURN_IF_ERROR(computation->Accept(&visitor));
     changed |= visitor.changed();
   }
 

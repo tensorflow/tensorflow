@@ -548,7 +548,7 @@ template <typename Format>
 mlir::NamedAttribute GetNamesAttr(mlir::OpBuilder& builder, const char* name,
                                   llvm::ArrayRef<mlir::Type> types,
                                   const Format& fmt) {
-  llvm::SmallVector<string, 8> names;
+  llvm::SmallVector<std::string, 8> names;
   for (int i = 0; i < types.size(); ++i) {
     names.push_back(fmt(i));
   }
@@ -621,7 +621,7 @@ StatusOr<absl::Span<mlir::Value>> GetExpandedArguments(
         mlir::TensorType tensor_type =
             mlir::dyn_cast_or_null<mlir::TensorType>(arg.getType());
         if (!tensor_type) {
-          return errors::InvalidArgument("Could not determine tensor type.");
+          return absl::InvalidArgumentError("Could not determine tensor type.");
         }
         for (int i = 0; i < num_devices; ++i) {
           replications.emplace_back(InsertArgumentForDevice(

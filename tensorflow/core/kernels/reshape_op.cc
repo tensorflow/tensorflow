@@ -21,7 +21,7 @@ namespace tensorflow {
 REGISTER_KERNEL_BUILDER(Name("Reshape")
                             .Device(DEVICE_CPU)
                             .HostMemory("shape")
-                            .TypeConstraint<int32>("Tshape"),
+                            .TypeConstraint<int32_t>("Tshape"),
                         ReshapeOp);
 REGISTER_KERNEL_BUILDER(Name("Reshape")
                             .Device(DEVICE_CPU)
@@ -56,15 +56,15 @@ REGISTER_KERNEL_BUILDER(Name("Reshape")
                             .HostMemory("tensor")
                             .HostMemory("shape")
                             .HostMemory("output")
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("Tshape"),
+                            .TypeConstraint<int32_t>("T")
+                            .TypeConstraint<int32_t>("Tshape"),
                         ReshapeOp);
 REGISTER_KERNEL_BUILDER(Name("Reshape")
                             .Device(DEVICE_GPU)
                             .HostMemory("tensor")
                             .HostMemory("shape")
                             .HostMemory("output")
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .TypeConstraint<int64_t>("Tshape"),
                         ReshapeOp);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -91,15 +91,15 @@ REGISTER_KERNEL_BUILDER(Name("Reshape")
                             .HostMemory("tensor")
                             .HostMemory("shape")
                             .HostMemory("output")
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("Tshape"),
+                            .TypeConstraint<int32_t>("T")
+                            .TypeConstraint<int32_t>("Tshape"),
                         ReshapeOp);
 REGISTER_KERNEL_BUILDER(Name("Reshape")
                             .Device(DEVICE_DEFAULT)
                             .HostMemory("tensor")
                             .HostMemory("shape")
                             .HostMemory("output")
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .TypeConstraint<int64_t>("Tshape"),
                         ReshapeOp);
 

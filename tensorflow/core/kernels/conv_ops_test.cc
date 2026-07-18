@@ -86,8 +86,9 @@ class FusedResizePadConvOpTest : public OpsTestBase {
     const int right_padding = 0;
 
     AddInputFromArray<T>(image.shape(), image.flat<T>());
-    AddInputFromArray<int32>(TensorShape({2}), {resized_height, resized_width});
-    AddInputFromArray<int32>(
+    AddInputFromArray<int32_t>(TensorShape({2}),
+                               {resized_height, resized_width});
+    AddInputFromArray<int32_t>(
         TensorShape({4, 2}),
         {0, 0, top_padding, bottom_padding, left_padding, right_padding, 0, 0});
     AddInputFromArray<T>(filter.shape(), filter.flat<T>());
@@ -128,8 +129,8 @@ class FusedResizePadConvOpTest : public OpsTestBase {
                                int resize_height, int y_padding, int x_padding,
                                int filter_size, int filter_count,
                                bool resize_align_corners,
-                               const string& pad_mode, int stride,
-                               const string& padding, DataType dtype) {
+                               const std::string& pad_mode, int stride,
+                               const std::string& padding, DataType dtype) {
     Scope root = tensorflow::Scope::NewRootScope();
     using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
@@ -188,8 +189,9 @@ class FusedResizePadConvOpTest : public OpsTestBase {
   void CompareFusedPadOnlyAndSeparate(int input_width, int input_height,
                                       int input_depth, int y_padding,
                                       int x_padding, int filter_size,
-                                      int filter_count, const string& pad_mode,
-                                      int stride, const string& padding,
+                                      int filter_count,
+                                      const std::string& pad_mode, int stride,
+                                      const std::string& padding,
                                       DataType dtype) {
     Scope root = tensorflow::Scope::NewRootScope();
     using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
@@ -488,7 +490,7 @@ class FusedConv2DOpTest : public OpsTestBase {
   static constexpr int kImageBatchCount = 8;
 
   static constexpr bool kIsInt8 =
-      std::is_same<T, int8>::value || std::is_same<T, qint8>::value;
+      std::is_same<T, int8_t>::value || std::is_same<T, qint8>::value;
 
   using BiasAddGraphRunner =
       std::function<void(const Tensor& input_data, const Tensor& filter_data,
@@ -680,7 +682,7 @@ class FusedConv2DOpTest : public OpsTestBase {
       const Tensor& input_data, const Tensor& filter_data,
       const Tensor& scale_data, const Tensor& offset_data,
       const Tensor& mean_data, const Tensor& variance_data,
-      const string& activation_type, const std::string& padding,
+      const std::string& activation_type, const std::string& padding,
       const std::vector<int>& explicit_paddings, Tensor* output,
       bool allow_gpu_device = false, int stride = 1) {
     Scope root = tensorflow::Scope::NewRootScope();
@@ -780,7 +782,7 @@ class FusedConv2DOpTest : public OpsTestBase {
         TensorShape shape = arg_data.shape();
         Tensor arg_data_float = Tensor(dtype_args, shape);
         for (int index = 0; index < arg_data.NumElements(); index++) {
-          int8 v = *(reinterpret_cast<int8*>(arg_data.data()) + index);
+          int8_t v = *(reinterpret_cast<int8_t*>(arg_data.data()) + index);
           *(reinterpret_cast<float*>(arg_data_float.data()) + index) =
               static_cast<float>(v);
         }
@@ -886,7 +888,7 @@ class FusedConv2DOpTest : public OpsTestBase {
 
   void ExpectMatch(const Tensor& x, const Tensor& y, double atol) {
     constexpr bool exact_match =
-        std::is_same<T, int8>::value || std::is_same<T, qint8>::value;
+        std::is_same<T, int8_t>::value || std::is_same<T, qint8>::value;
     if (exact_match) {
       test::ExpectEqual(x, y);
     } else {
@@ -903,7 +905,7 @@ class FusedConv2DOpTest : public OpsTestBase {
 
     constexpr int int8_scale = 80;
 
-    using ConvT = typename std::conditional<kIsInt8, int8, T>::type;
+    using ConvT = typename std::conditional<kIsInt8, int8_t, T>::type;
     DataType dtype_conv = DataTypeToEnum<ConvT>::v();
 
     TensorShape image_shape{image_batch_count, image_height, image_width,
@@ -1120,7 +1122,7 @@ class FusedConv2DOpTest : public OpsTestBase {
   // Verifies that computing Conv2D+FusedBatchNorm+{Activation} in a graph is
   // identical to FusedConv2D.
   void VerifyConv2DWithBatchNormAndActivation(
-      const string& activation, int filter_size, int filter_count,
+      const std::string& activation, int filter_size, int filter_count,
       const std::vector<int>& explicit_paddings = {}, int depth = kDepth,
       int image_width = kImageWidth, int image_height = kImageHeight,
       int image_batch_count = kImageBatchCount) {
@@ -1353,7 +1355,7 @@ REGISTER_TYPED_TEST_SUITE_P(FusedConv2DWithBatchNormOpTest,     //
                             SpatialConvolutionAndActivation);
 #endif
 
-using FusedBiasAddDataTypes = ::testing::Types<float, double, int8, qint8>;
+using FusedBiasAddDataTypes = ::testing::Types<float, double, int8_t, qint8>;
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedConv2DWithBiasOpTest,
                                FusedBiasAddDataTypes);
 

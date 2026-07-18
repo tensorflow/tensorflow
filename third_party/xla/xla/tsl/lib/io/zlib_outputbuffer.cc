@@ -15,7 +15,23 @@ limitations under the License.
 
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
 
+#include <zlib.h>
+
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <string>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "xla/tsl/lib/io/zlib_compression_options.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_system.h"
 
 namespace tsl {
 namespace io {
@@ -45,9 +61,8 @@ absl::Status ZlibOutputBuffer::Init() {
   // Output buffer size should be greater than 1 because deflation needs at
   // least one byte for book keeping etc.
   if (output_buffer_capacity_ <= 1) {
-    return errors::InvalidArgument(
-        "output_buffer_bytes should be greater than "
-        "1");
+    return absl::InvalidArgumentError(
+        "output_buffer_bytes should be greater than 1");
   }
   memset(z_stream_.get(), 0, sizeof(z_stream));
   z_stream_->zalloc = Z_NULL;
@@ -59,7 +74,8 @@ absl::Status ZlibOutputBuffer::Init() {
                    zlib_options_.mem_level, zlib_options_.compression_strategy);
   if (status != Z_OK) {
     z_stream_.reset(nullptr);
-    return errors::InvalidArgument("deflateInit failed with status", status);
+    return absl::InvalidArgumentError(
+        absl::StrCat("deflateInit failed with status", status));
   }
   z_stream_->next_in = z_stream_input_.get();
   z_stream_->next_out = z_stream_output_.get();
@@ -68,7 +84,7 @@ absl::Status ZlibOutputBuffer::Init() {
   return absl::OkStatus();
 }
 
-int32 ZlibOutputBuffer::AvailableInputSpace() const {
+int32_t ZlibOutputBuffer::AvailableInputSpace() const {
   return input_buffer_capacity_ - z_stream_->avail_in;
 }
 
@@ -107,6 +123,10 @@ void ZlibOutputBuffer::AddToInputBuffer(absl::string_view data) {
   z_stream_->avail_in += bytes_to_write;
 }
 
+bool ZlibOutputBuffer::IsSyncOrFullFlush(uint8_t flush_mode) {
+  return flush_mode == Z_SYNC_FLUSH || flush_mode == Z_FULL_FLUSH;
+}
+
 absl::Status ZlibOutputBuffer::DeflateBuffered(int flush_mode) {
   do {
     // From zlib manual (http://www.zlib.net/manual.html):
@@ -119,9 +139,9 @@ absl::Status ZlibOutputBuffer::DeflateBuffered(int flush_mode) {
     // to file.
     if (z_stream_->avail_out == 0 ||
         (IsSyncOrFullFlush(flush_mode) && z_stream_->avail_out < 6)) {
-      TF_RETURN_IF_ERROR(FlushOutputBufferToFile());
+      RETURN_IF_ERROR(FlushOutputBufferToFile());
     }
-    TF_RETURN_IF_ERROR(Deflate(flush_mode));
+    RETURN_IF_ERROR(Deflate(flush_mode));
   } while (z_stream_->avail_out == 0);
 
   DCHECK(z_stream_->avail_in == 0);
@@ -130,7 +150,7 @@ absl::Status ZlibOutputBuffer::DeflateBuffered(int flush_mode) {
 }
 
 absl::Status ZlibOutputBuffer::FlushOutputBufferToFile() {
-  uint32 bytes_to_write = output_buffer_capacity_ - z_stream_->avail_out;
+  uint32_t bytes_to_write = output_buffer_capacity_ - z_stream_->avail_out;
   if (bytes_to_write > 0) {
     absl::Status s = file_->Append(absl::string_view(
         reinterpret_cast<char*>(z_stream_output_.get()), bytes_to_write));
@@ -160,7 +180,7 @@ absl::Status ZlibOutputBuffer::Append(absl::string_view data) {
     return absl::OkStatus();
   }
 
-  TF_RETURN_IF_ERROR(DeflateBuffered(zlib_options_.flush_mode));
+  RETURN_IF_ERROR(DeflateBuffered(zlib_options_.flush_mode));
 
   // At this point input stream should be empty.
   if (bytes_to_write <= static_cast<size_t>(AvailableInputSpace())) {
@@ -178,9 +198,9 @@ absl::Status ZlibOutputBuffer::Append(absl::string_view data) {
     if (z_stream_->avail_out == 0) {
       // No available output space.
       // Write output buffer to file.
-      TF_RETURN_IF_ERROR(FlushOutputBufferToFile());
+      RETURN_IF_ERROR(FlushOutputBufferToFile());
     }
-    TF_RETURN_IF_ERROR(Deflate(zlib_options_.flush_mode));
+    RETURN_IF_ERROR(Deflate(zlib_options_.flush_mode));
   } while (z_stream_->avail_out == 0);
 
   DCHECK(z_stream_->avail_in == 0);  // All input will be used up.
@@ -194,15 +214,15 @@ absl::Status ZlibOutputBuffer::Append(absl::string_view data) {
 #if defined(TF_CORD_SUPPORT)
 absl::Status ZlibOutputBuffer::Append(const absl::Cord& cord) {
   for (absl::string_view fragment : cord.Chunks()) {
-    TF_RETURN_IF_ERROR(Append(fragment));
+    RETURN_IF_ERROR(Append(fragment));
   }
   return absl::OkStatus();
 }
 #endif
 
 absl::Status ZlibOutputBuffer::Flush() {
-  TF_RETURN_IF_ERROR(DeflateBuffered(Z_PARTIAL_FLUSH));
-  TF_RETURN_IF_ERROR(FlushOutputBufferToFile());
+  RETURN_IF_ERROR(DeflateBuffered(Z_PARTIAL_FLUSH));
+  RETURN_IF_ERROR(FlushOutputBufferToFile());
   return file_->Flush();
 }
 
@@ -211,14 +231,14 @@ absl::Status ZlibOutputBuffer::Name(absl::string_view* result) const {
 }
 
 absl::Status ZlibOutputBuffer::Sync() {
-  TF_RETURN_IF_ERROR(Flush());
+  RETURN_IF_ERROR(Flush());
   return file_->Sync();
 }
 
 absl::Status ZlibOutputBuffer::Close() {
   if (z_stream_) {
-    TF_RETURN_IF_ERROR(DeflateBuffered(Z_FINISH));
-    TF_RETURN_IF_ERROR(FlushOutputBufferToFile());
+    RETURN_IF_ERROR(DeflateBuffered(Z_FINISH));
+    RETURN_IF_ERROR(FlushOutputBufferToFile());
     deflateEnd(z_stream_.get());
     z_stream_.reset(nullptr);
   }
@@ -231,11 +251,12 @@ absl::Status ZlibOutputBuffer::Deflate(int flush) {
       (error == Z_STREAM_END && flush == Z_FINISH)) {
     return absl::OkStatus();
   }
-  string error_string = strings::StrCat("deflate() failed with error ", error);
+  std::string error_string =
+      absl::StrCat("deflate() failed with error ", error);
   if (z_stream_->msg != nullptr) {
-    strings::StrAppend(&error_string, ": ", z_stream_->msg);
+    absl::StrAppend(&error_string, ": ", z_stream_->msg);
   }
-  return errors::DataLoss(error_string);
+  return absl::DataLossError(error_string);
 }
 
 absl::Status ZlibOutputBuffer::Tell(int64_t* position) {

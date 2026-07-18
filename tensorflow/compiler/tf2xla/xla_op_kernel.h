@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_OP_KERNEL_H_
 
 #include "absl/base/attributes.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -249,7 +250,7 @@ class XlaOpKernelContext {
   // Sets output `index` to the XlaOp `handle`.
   // All outputs should be set using SetOutput and SetConstantOutput, not
   // via the underlying OpKernelContext.
-  void SetOutput(int index, const xla::XlaOp& handle);
+  void SetOutput(int index, xla::XlaOp handle);
 
   // Sets output `index` to compile-time constant `host_tensor`, where
   // `host_tensor` is a tensor in host memory. It is preferable to use
@@ -260,7 +261,7 @@ class XlaOpKernelContext {
   void SetOutputExpression(int index, const XlaExpression& expression);
 
   // Sets output `index` to the Tensor List `handle`.
-  void SetTensorListOutput(int index, const xla::XlaOp& handle);
+  void SetTensorListOutput(int index, xla::XlaOp handle);
 
   // Status handling.
   void SetStatus(const absl::Status& status) { context_->SetStatus(status); }
@@ -341,27 +342,27 @@ class XlaOpKernelContext {
   // Gets an XLA lambda to compute Max. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
-  const xla::XlaComputation* GetOrCreateMax(const DataType type);
+  const xla::XlaComputation* GetOrCreateMax(DataType type);
 
   // Gets an XLA lambda to compute Min. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
-  const xla::XlaComputation* GetOrCreateMin(const DataType type);
+  const xla::XlaComputation* GetOrCreateMin(DataType type);
 
   // Gets an XLA lambda to compute Add. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
-  const xla::XlaComputation* GetOrCreateAdd(const DataType type);
+  const xla::XlaComputation* GetOrCreateAdd(DataType type);
 
   // Gets an XLA lambda to compute LogAddExp. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
-  const xla::XlaComputation* GetOrCreateLogAddExp(const DataType type);
+  const xla::XlaComputation* GetOrCreateLogAddExp(DataType type);
 
   // Gets an XLA lambda to compute Mul. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
-  const xla::XlaComputation* GetOrCreateMul(const DataType type);
+  const xla::XlaComputation* GetOrCreateMul(DataType type);
 
   // Returns stack trace encoded as a string at a given module, or an empty
   // string if none found.

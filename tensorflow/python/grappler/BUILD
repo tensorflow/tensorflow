@@ -1,5 +1,6 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "get_compatible_with_portable", "tf_py_strict_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "tf_protos_grappler")
@@ -81,10 +82,10 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:thread_annotations",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@pybind11",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:thread_annotations",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -124,14 +125,15 @@ tf_python_pybind_extension(
         "//tensorflow/core/framework:tensor",
         "//tensorflow/python/lib/core:pybind11_status",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:platform_port",
         "@pybind11",
+        "@tsl//tsl/platform:platform_port",
     ] + if_pywrap(["//tensorflow/python/grappler:model_analyzer_lib"]),
 )
 
-py_strict_library(
+py_library(
     name = "tf_item",
     srcs = ["item.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_tf_item",
@@ -176,10 +178,10 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:thread_annotations",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@pybind11",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:thread_annotations",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ] + if_not_windows(["//tensorflow/core/grappler/costs:graph_properties"]),  # b/148556093,
 )
 
@@ -230,9 +232,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tf_cluster",
     srcs = ["cluster.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_tf_cluster",
@@ -283,10 +286,10 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:thread_annotations",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@pybind11",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:thread_annotations",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ] + if_pywrap(
         if_true = [
             "//tensorflow/core/grappler/costs:measuring_cost_estimator",
@@ -321,9 +324,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tf_optimizer",
     srcs = ["tf_optimizer.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_tf_optimizer",
@@ -382,11 +386,11 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:thread_annotations",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@pybind11",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:thread_annotations",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ] + if_pywrap(
         if_true = [
             "//tensorflow/core/grappler/clusters:cluster",
@@ -525,9 +529,10 @@ cuda_py_strict_test(
 #     xla_enable_strict_auto_jit = False,
 # )
 
-py_strict_library(
+py_library(
     name = "cost_analyzer",
     srcs = ["cost_analyzer.py"],
+    strict_deps = True,
     deps = [
         ":_pywrap_cost_analyzer",
         ":tf_cluster",
@@ -535,9 +540,10 @@ py_strict_library(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "cost_analyzer_tool",
     srcs = ["cost_analyzer_tool.py"],
+    strict_deps = True,
     deps = [
         ":cost_analyzer",
         ":tf_optimizer",
@@ -579,11 +585,12 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "model_analyzer",
     srcs = [
         "model_analyzer.py",
     ],
+    strict_deps = True,
     deps = [":_pywrap_model_analyzer"],
 )
 
@@ -689,9 +696,10 @@ tf_python_pybind_extension(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "graph_analyzer",
     srcs = ["graph_analyzer.py"],
+    strict_deps = True,
     deps = [
         ":_pywrap_graph_analyzer",
         "@absl_py//absl:app",

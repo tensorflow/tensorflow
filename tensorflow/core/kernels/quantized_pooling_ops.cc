@@ -42,15 +42,15 @@ class QuantizedAvgPoolingOp : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
-                errors::InvalidArgument("Sliding window ksize field must "
-                                        "specify 4 dimensions"));
+                absl::InvalidArgumentError("Sliding window ksize field must "
+                                           "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 4 dimensions"));
+                absl::InvalidArgumentError("Sliding window strides field must "
+                                           "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
-                errors::Unimplemented(
+                absl::UnimplementedError(
                     "Pooling is not yet supported on the batch dimension."));
   }
 
@@ -83,11 +83,11 @@ class QuantizedAvgPoolingOp : public OpKernel {
     const float max_input = context->input(2).scalar<float>()();
 
     OP_REQUIRES(context, params.depth_window == 1,
-                errors::Unimplemented("Non-spatial pooling is not "
-                                      "yet supported. Volunteers? :)"));
+                absl::UnimplementedError("Non-spatial pooling is not "
+                                         "yet supported. Volunteers? :)"));
 
     OP_REQUIRES(context, tensor_in.dims() == 4,
-                errors::InvalidArgument("tensor_in must be 4-dimensional"));
+                absl::InvalidArgumentError("tensor_in must be 4-dimensional"));
 
     Tensor* output = nullptr;
     TensorShape params_forward_output_shape;
@@ -95,8 +95,9 @@ class QuantizedAvgPoolingOp : public OpKernel {
                    params.forward_output_shape(&params_forward_output_shape));
     OP_REQUIRES_OK(context, context->allocate_output(
                                 0, params_forward_output_shape, &output));
-    const int32_t highest = static_cast<int32>(Eigen::NumTraits<T>::highest());
-    const int32_t lowest = static_cast<int32>(Eigen::NumTraits<T>::lowest());
+    const int32_t highest =
+        static_cast<int32_t>(Eigen::NumTraits<T>::highest());
+    const int32_t lowest = static_cast<int32_t>(Eigen::NumTraits<T>::lowest());
 
     // TODO(vrv): Switch this to the Eigen::Tensor version of
     // SpatialAvgPooling once that version is running quickly.
@@ -105,12 +106,12 @@ class QuantizedAvgPoolingOp : public OpKernel {
     Tensor int32_output(DT_INT32, params_forward_output_shape);
     // Cast input to int32 tensor and call SpatialAvgPool.
     Tensor int32_input(DT_INT32, tensor_in.shape());
-    int32_input.flat<int32>() = tensor_in.flat<T>().template cast<int32>();
-    SpatialAvgPool<Device, int32>(context, &int32_output, int32_input, params,
-                                  padding_);
+    int32_input.flat<int32_t>() = tensor_in.flat<T>().template cast<int32_t>();
+    SpatialAvgPool<Device, int32_t>(context, &int32_output, int32_input, params,
+                                    padding_);
 
     // Clamp the int32 output back into quantized space.
-    output->flat<T>() = int32_output.flat<int32>()
+    output->flat<T>() = int32_output.flat<int32_t>()
                             .cwiseMax(lowest)
                             .cwiseMin(highest)
                             .template cast<T>();
@@ -124,8 +125,8 @@ class QuantizedAvgPoolingOp : public OpKernel {
   }
 
  private:
-  std::vector<int32> ksize_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> ksize_;
+  std::vector<int32_t> stride_;
   Padding padding_;
 };
 

@@ -37,8 +37,8 @@ namespace tensorflow {
 // graph_def. All saved_model assets will be ignored.
 absl::Status FreezeSavedModel(const SavedModelBundle& saved_model_bundle,
                               GraphDef* frozen_graph_def,
-                              std::unordered_set<string>* inputs,
-                              std::unordered_set<string>* outputs);
+                              std::unordered_set<std::string>* inputs,
+                              std::unordered_set<std::string>* outputs);
 
 }  // namespace tensorflow
 

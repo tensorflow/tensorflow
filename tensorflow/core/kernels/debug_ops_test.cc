@@ -41,7 +41,7 @@ namespace tensorflow {
 class DebugIdentityOpTest : public OpsTestBase {
  protected:
   absl::Status Init(DataType input_type,
-                    const std::vector<string>& debug_urls) {
+                    const std::vector<std::string>& debug_urls) {
     env_ = Env::Default();
 
     TF_CHECK_OK(NodeDefBuilder("op", "DebugIdentity")
@@ -53,7 +53,7 @@ class DebugIdentityOpTest : public OpsTestBase {
   }
 
   absl::Status Init(DataType input_type) {
-    std::vector<string> empty_debug_urls;
+    std::vector<std::string> empty_debug_urls;
     return Init(input_type, empty_debug_urls);
   }
 
@@ -62,51 +62,51 @@ class DebugIdentityOpTest : public OpsTestBase {
 
 TEST_F(DebugIdentityOpTest, Int32Success_6) {
   TF_ASSERT_OK(Init(DT_INT32));
-  AddInputFromArray<int32>(TensorShape({6}), {1, 2, 3, 4, 5, 6});
+  AddInputFromArray<int32_t>(TensorShape({6}), {1, 2, 3, 4, 5, 6});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_INT32, TensorShape({6}));
-  test::FillValues<int32>(&expected, {1, 2, 3, 4, 5, 6});
+  test::FillValues<int32_t>(&expected, {1, 2, 3, 4, 5, 6});
   // Verify the identity output
-  test::ExpectTensorEqual<int32>(expected, *GetOutput(0));
+  test::ExpectTensorEqual<int32_t>(expected, *GetOutput(0));
 }
 
 TEST_F(DebugIdentityOpTest, Int32Success_6_FileURLs) {
   const int kNumDumpDirs = 3;
 
-  const string tmp_dir = testing::TmpDir();
+  const std::string tmp_dir = testing::TmpDir();
 
-  std::vector<string> dump_roots;
-  std::vector<string> debug_urls;
+  std::vector<std::string> dump_roots;
+  std::vector<std::string> debug_urls;
   for (int i = 0; i < kNumDumpDirs; ++i) {
-    const string dump_root = absl::StrCat(tmp_dir, "_", i);
+    const std::string dump_root = absl::StrCat(tmp_dir, "_", i);
     dump_roots.push_back(dump_root);
 
     debug_urls.push_back(absl::StrCat("file://", dump_root));
   }
 
-  uint64 wall_time = Env::Default()->NowMicros();
+  uint64_t wall_time = Env::Default()->NowMicros();
 
   TF_ASSERT_OK(Init(DT_INT32, debug_urls));
-  AddInputFromArray<int32>(TensorShape({6}), {1, 2, 3, 4, 5, 6});
+  AddInputFromArray<int32_t>(TensorShape({6}), {1, 2, 3, 4, 5, 6});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_INT32, TensorShape({6}));
-  test::FillValues<int32>(&expected, {1, 2, 3, 4, 5, 6});
+  test::FillValues<int32_t>(&expected, {1, 2, 3, 4, 5, 6});
   // Verify the identity output
-  test::ExpectTensorEqual<int32>(expected, *GetOutput(0));
+  test::ExpectTensorEqual<int32_t>(expected, *GetOutput(0));
 
   for (int i = 0; i < kNumDumpDirs; ++i) {
     ASSERT_TRUE(env_->FileExists(dump_roots[i]).ok());
     ASSERT_TRUE(env_->IsDirectory(dump_roots[i]).ok());
 
-    std::vector<string> device_roots;
+    std::vector<std::string> device_roots;
     FileSystem* fs = nullptr;
     TF_ASSERT_OK(Env::Default()->GetFileSystemForFile(dump_roots[i], &fs));
-    std::vector<string> children;
+    std::vector<std::string> children;
     TF_ASSERT_OK(fs->GetChildren(dump_roots[i], &children));
 
-    const string kDeviceDirPrefix = absl::StrCat(
+    const std::string kDeviceDirPrefix = absl::StrCat(
         DebugNodeKey::kMetadataFilePrefix, DebugNodeKey::kDeviceTag);
-    for (const string child : children) {
+    for (const std::string child : children) {
       if (!strncmp(child.c_str(), kDeviceDirPrefix.c_str(),
                    kDeviceDirPrefix.size())) {
         device_roots.push_back(io::JoinPath(dump_roots[i], child));
@@ -114,16 +114,16 @@ TEST_F(DebugIdentityOpTest, Int32Success_6_FileURLs) {
     }
     ASSERT_EQ(1, device_roots.size());
 
-    const string& device_root = device_roots[0];
+    const std::string& device_root = device_roots[0];
     TF_ASSERT_OK(Env::Default()->GetFileSystemForFile(device_root, &fs));
     TF_ASSERT_OK(fs->GetChildren(device_root, &children));
 
     int dump_files_found = 0;
-    for (const string child : children) {
+    for (const std::string child : children) {
       dump_files_found++;
 
       // Try reading the file into a Event proto.
-      const string dump_file_path = io::JoinPath(device_root, child);
+      const std::string dump_file_path = io::JoinPath(device_root, child);
       std::fstream ifs(dump_file_path, std::ios::in | std::ios::binary);
       Event event;
       event.ParseFromIstream(&ifs);
@@ -141,7 +141,7 @@ TEST_F(DebugIdentityOpTest, Int32Success_6_FileURLs) {
       ASSERT_EQ(TensorShape({6}), tensor_prime.shape());
 
       for (int j = 0; j < 6; ++j) {
-        ASSERT_EQ(j + 1, tensor_prime.flat<int32>()(j));
+        ASSERT_EQ(j + 1, tensor_prime.flat<int32_t>()(j));
       }
     }
 
@@ -160,11 +160,11 @@ TEST_F(DebugIdentityOpTest, Int32Success_6_FileURLs) {
 
 TEST_F(DebugIdentityOpTest, Int32Success_2_3) {
   TF_ASSERT_OK(Init(DT_INT32));
-  AddInputFromArray<int32>(TensorShape({2, 3}), {1, 2, 3, 4, 5, 6});
+  AddInputFromArray<int32_t>(TensorShape({2, 3}), {1, 2, 3, 4, 5, 6});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_INT32, TensorShape({2, 3}));
-  test::FillValues<int32>(&expected, {1, 2, 3, 4, 5, 6});
-  test::ExpectTensorEqual<int32>(expected, *GetOutput(0));
+  test::FillValues<int32_t>(&expected, {1, 2, 3, 4, 5, 6});
+  test::ExpectTensorEqual<int32_t>(expected, *GetOutput(0));
 }
 
 TEST_F(DebugIdentityOpTest, StringSuccess) {
@@ -251,7 +251,7 @@ class DebugNumericSummaryOpTest : public OpsTestBase {
   }
 
   absl::Status InitGated(DataType input_type,
-                         const std::vector<string>& debug_urls) {
+                         const std::vector<std::string>& debug_urls) {
     TF_CHECK_OK(NodeDefBuilder("op", "DebugNumericSummary")
                     .Input(FakeInput(input_type))
                     .Attr("tensor_name", "FakeTensor:0")
@@ -472,7 +472,7 @@ TEST_F(DebugNumericSummaryOpTest, Scalar_tensor_shape) {
 
 TEST_F(DebugNumericSummaryOpTest, Int16Success) {
   TF_ASSERT_OK(Init(DT_INT16));
-  AddInputFromArray<int16>(TensorShape({4, 1}), {-1, -3, 3, 7});
+  AddInputFromArray<int16_t>(TensorShape({4, 1}), {-1, -3, 3, 7});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_DOUBLE, TensorShape({16}));
@@ -498,7 +498,7 @@ TEST_F(DebugNumericSummaryOpTest, Int16Success) {
 
 TEST_F(DebugNumericSummaryOpTest, Int32Success) {
   TF_ASSERT_OK(Init(DT_INT32));
-  AddInputFromArray<int32>(TensorShape({2, 3}), {0, 0, -1, 3, 3, 7});
+  AddInputFromArray<int32_t>(TensorShape({2, 3}), {0, 0, -1, 3, 3, 7});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_DOUBLE, TensorShape({16}));
@@ -551,7 +551,7 @@ TEST_F(DebugNumericSummaryOpTest, Int64Success) {
 
 TEST_F(DebugNumericSummaryOpTest, UInt8Success) {
   TF_ASSERT_OK(Init(DT_UINT8));
-  AddInputFromArray<uint8>(TensorShape({1, 5}), {0, 10, 30, 30, 70});
+  AddInputFromArray<uint8_t>(TensorShape({1, 5}), {0, 10, 30, 30, 70});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_DOUBLE, TensorShape({16}));
@@ -606,7 +606,7 @@ TEST_F(DebugNumericSummaryOpTest, BoolSuccess) {
 TEST_F(DebugNumericSummaryOpTest, DisabledDueToEmptyEnabledSet) {
   ClearEnabledWatchKeys();
 
-  std::vector<string> debug_urls({"grpc://server:3333"});
+  std::vector<std::string> debug_urls({"grpc://server:3333"});
   TF_ASSERT_OK(InitGated(DT_FLOAT, debug_urls));
   AddInputFromArray<float>(TensorShape({2, 2}), {1.0, 3.0, 3.0, 7.0});
   TF_ASSERT_OK(RunOpKernel());
@@ -621,7 +621,7 @@ TEST_F(DebugNumericSummaryOpTest, DisabledDueToNonMatchingWatchKey) {
       "grpc://server:3333", "FakeTensor:1:DebugNumeriSummary",
       EventReply::DebugOpStateChange::READ_ONLY);
 
-  std::vector<string> debug_urls({"grpc://server:3333"});
+  std::vector<std::string> debug_urls({"grpc://server:3333"});
   TF_ASSERT_OK(InitGated(DT_FLOAT, debug_urls));
   AddInputFromArray<float>(TensorShape({2, 2}), {1.0, 3.0, 3.0, 7.0});
   TF_ASSERT_OK(RunOpKernel());
@@ -699,7 +699,7 @@ class DebugNumericSummaryOpCustomLowerUpperBoundsTest : public OpsTestBase {
 
 TEST_F(DebugNumericSummaryOpCustomLowerUpperBoundsTest, Int32Success) {
   TF_ASSERT_OK(Init(DT_INT32));
-  AddInputFromArray<int32>(TensorShape({2, 3}), {0, 0, -1, 3, 3, 7});
+  AddInputFromArray<int32_t>(TensorShape({2, 3}), {0, 0, -1, 3, 3, 7});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_DOUBLE, TensorShape({16}));

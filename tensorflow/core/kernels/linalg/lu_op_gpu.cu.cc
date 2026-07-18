@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 
@@ -38,7 +42,7 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace {
 template <typename Scalar>
 __device__ void ComputePermutationFromTranspositions(
-    int64 num_rows, const int* __restrict__ pivots,
+    int64_t num_rows, const int* __restrict__ pivots,
     Scalar* __restrict__ permutation_indices) {
   // Fill in the output array with the identity permutation.
   for (int i = 0; i < num_rows; ++i) {
@@ -63,7 +67,7 @@ __device__ void ComputePermutationFromTranspositions(
 // transpositions.
 template <typename Scalar>
 __global__ void ComputePermutationFromTranspositionsKernel(
-    GpuLaunchConfig config, const int64 num_rows,
+    GpuLaunchConfig config, const int64_t num_rows,
     const int* __restrict__ all_pivots,
     Scalar* __restrict__ all_permutation_indices) {
   // We only parallelize over batches here. Performance is not critical,
@@ -87,18 +91,18 @@ class LuOpGpu : public AsyncOpKernel {
     // Analyze shape and validate inputs.
     const int input_rank = input.dims();
 
-    OP_REQUIRES_ASYNC(
-        context, input_rank >= 2,
-        errors::InvalidArgument("Input must have rank >= 2, got ", input_rank),
-        done);
+    OP_REQUIRES_ASYNC(context, input_rank >= 2,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "Input must have rank >= 2, got ", input_rank)),
+                      done);
 
-    const int64 num_rows = input.dim_size(input_rank - 2);
-    const int64 num_cols = input.dim_size(input_rank - 1);
+    const int64_t num_rows = input.dim_size(input_rank - 2);
+    const int64_t num_cols = input.dim_size(input_rank - 1);
 
     OP_REQUIRES_ASYNC(
         context, num_rows == num_cols,
-        errors::InvalidArgument("Input matrices must be squares, got", num_rows,
-                                " != ", num_cols),
+        absl::InvalidArgumentError(absl::StrCat(
+            "Input matrices must be squares, got", num_rows, " != ", num_cols)),
         done);
 
     TensorShape batch_shape;
@@ -156,17 +160,17 @@ class LuOpGpu : public AsyncOpKernel {
     auto packed_triangular_factors_transpose_reshaped =
         packed_triangular_factors_transpose
             .template flat_inner_dims<Scalar, 3>();
-    const int64 batch_size =
+    const int64_t batch_size =
         packed_triangular_factors_transpose_reshaped.dimension(0);
 
     // Allocate pivots on the device.
     Tensor pivots;
     OP_REQUIRES_OK_ASYNC(context,
                          solver->allocate_scoped_tensor(
-                             DataTypeToEnum<int32>::value,
+                             DataTypeToEnum<int32_t>::value,
                              TensorShape{batch_size, num_rows}, &pivots),
                          done);
-    auto pivots_mat = pivots.template matrix<int32>();
+    auto pivots_mat = pivots.template matrix<int32_t>();
 
     // Transpose the input. This is necessary because cuBLAS assumes
     // column-major storage while TensorFlow uses row-major.
@@ -180,7 +184,7 @@ class LuOpGpu : public AsyncOpKernel {
     if (num_rows == num_cols && num_rows / batch_size <= 128) {
       // For small matrices or large batch sizes, we use the batched
       // interface from cuBlas.
-      auto packed_triangular_factors_ptrs = solver->GetScratchSpace<uint8>(
+      auto packed_triangular_factors_ptrs = solver->GetScratchSpace<uint8_t>(
           sizeof(Scalar*) * batch_size, "packed_triangular_factors_ptrs",
           /* on_host */ true);
 
@@ -237,16 +241,16 @@ class LuOpGpu : public AsyncOpKernel {
     // kernels run.
     // TODO(rmlarsen): Use move capture once C++14 becomes available.
     auto info_checker = [context, done, dev_info](
-                            const Status& status,
+                            const absl::Status& status,
                             const std::vector<HostLapackInfo>& host_infos) {
       if (!status.ok() && absl::IsInvalidArgument(status) &&
           !host_infos.empty()) {
         for (int i = 0; i < host_infos[0].size(); ++i) {
           // Match the CPU error message for singular matrices. Otherwise
           // just print the original error message from the status below.
-          OP_REQUIRES_ASYNC(context, host_infos[0].data()[i] <= 0,
-                            errors::InvalidArgument("Input is not invertible."),
-                            done);
+          OP_REQUIRES_ASYNC(
+              context, host_infos[0].data()[i] <= 0,
+              absl::InvalidArgumentError("Input is not invertible."), done);
         }
       }
       OP_REQUIRES_OK_ASYNC(context, status, done);
@@ -265,15 +269,15 @@ class LuOpGpu : public AsyncOpKernel {
                               .TypeConstraint<idx_type>("output_idx_type"), \
                           LuOpGpu<type, idx_type>);
 
-REGISTER_LU_GPU(float, int32);
-REGISTER_LU_GPU(double, int32);
-REGISTER_LU_GPU(complex64, int32);
-REGISTER_LU_GPU(complex128, int32);
+REGISTER_LU_GPU(float, int32_t);
+REGISTER_LU_GPU(double, int32_t);
+REGISTER_LU_GPU(complex64, int32_t);
+REGISTER_LU_GPU(complex128, int32_t);
 
-REGISTER_LU_GPU(float, int64);
-REGISTER_LU_GPU(double, int64);
-REGISTER_LU_GPU(complex64, int64);
-REGISTER_LU_GPU(complex128, int64);
+REGISTER_LU_GPU(float, int64_t);
+REGISTER_LU_GPU(double, int64_t);
+REGISTER_LU_GPU(complex64, int64_t);
+REGISTER_LU_GPU(complex128, int64_t);
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA

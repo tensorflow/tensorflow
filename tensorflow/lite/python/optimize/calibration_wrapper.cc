@@ -122,6 +122,14 @@ inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
       return TensorType_INT32;
     case kTfLiteUInt32:
       return TensorType_UINT32;
+    case kTfLiteInt2:
+      return TensorType_INT2;
+    case kTfLiteUInt4:
+      return TensorType_UINT4;
+    case kTfLiteFloat8E4M3FN:
+      return TensorType_FLOAT8_E4M3FN;
+    case kTfLiteFloat8E5M2:
+      return TensorType_FLOAT8_E5M2;
     case kTfLiteInt4:
       return TensorType_INT4;
     case kTfLiteUInt8:
@@ -280,7 +288,8 @@ PyObject* AddIntermediateTensors(PyObject* data) {
   }
 
   std::unique_ptr<FlatBufferModel> model =
-      FlatBufferModel::BuildFromBuffer(buf, length, error_reporter.get());
+      FlatBufferModel::VerifyAndBuildFromBuffer(
+          buf, length, /*extra_verifier=*/nullptr, error_reporter.get());
   if (!model) {
     PyErr_Format(PyExc_ValueError, "Invalid model");
     return nullptr;
@@ -792,7 +801,8 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
     return nullptr;
   }
   std::unique_ptr<FlatBufferModel> model =
-      FlatBufferModel::BuildFromBuffer(buf, length, error_reporter.get());
+      FlatBufferModel::VerifyAndBuildFromBuffer(
+          buf, length, /*extra_verifier=*/nullptr, error_reporter.get());
   if (!model) {
     *error_msg = "Invalid model";
     return nullptr;

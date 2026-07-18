@@ -165,7 +165,8 @@ class OpRegistry : public OpRegistryInterface {
   // Functions in deferred_ may only be called with mu_ held.
   mutable std::vector<OpRegistrationDataFactory> deferred_ TF_GUARDED_BY(mu_);
   // Values are owned.
-  mutable absl::flat_hash_map<string, std::unique_ptr<const OpRegistrationData>>
+  mutable absl::flat_hash_map<std::string,
+                              std::unique_ptr<const OpRegistrationData>>
       registry_ TF_GUARDED_BY(mu_);
   mutable bool initialized_ TF_GUARDED_BY(mu_);
 
@@ -193,7 +194,8 @@ class OpListOpRegistry : public OpRegistryInterface {
 
  private:
   // Values are owned.
-  absl::flat_hash_map<string, std::unique_ptr<const OpRegistrationData>> index_;
+  absl::flat_hash_map<std::string, std::unique_ptr<const OpRegistrationData>>
+      index_;
 };
 
 // Support for defining the OpDef (specifying the semantics of the Op and how

@@ -26,6 +26,9 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/rng_state_lib.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
@@ -40,7 +43,7 @@ class RngGetAndUpdateStateThunk final : public Thunk {
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
   BufferUses buffer_uses() const final {
-    return {BufferUse::Write(state_buffer_)};
+    return {BufferUse::Write(state_buffer_, ShapeUtil::MakeShape(U64, {2}))};
   }
 
   int64_t delta() const { return rng_state_.delta(); }

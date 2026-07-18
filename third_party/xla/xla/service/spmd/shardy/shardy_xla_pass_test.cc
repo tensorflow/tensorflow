@@ -47,18 +47,17 @@ using ShardyXLATest = HloHardwareIndependentTestBase;
 void runShardy(VerifiedHloModule* module, bool stablehloImport,
                bool runSdyShardingPropagation = true,
                bool expectChanged = true) {
+  // TODO (b/512424980): Parameterize ShardyXLA tests with HloShardingV3
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_enable_hlo_sharding_v3(false);
   if (stablehloImport) {
     module->add_frontend_attribute(std::string(xla::sdy::kImportMhloShardings),
                                    "t");
   }
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           ShardyXLA(runSdyShardingPropagation).Run(module));
-  VLOG(1) << module->ToString();
-  if (expectChanged) {
-    EXPECT_TRUE(changed);
-  } else {
-    EXPECT_FALSE(changed);
-  }
+  EXPECT_EQ(changed, expectChanged);
 }
 
 void runShardyWithStablehloImport(VerifiedHloModule* module,
@@ -99,6 +98,72 @@ TEST_F(ShardyXLATest, AllowSpmdShardingPropagationParametersOutputRespected) {
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Sharding("{devices=[2,2,2]<=[8]}"));
 }
+
+namespace {
+
+TEST_F(ShardyXLATest, SdyReduceScatterManualComputationExport) {
+  const char* const hloString = R"(
+    HloModule sdy_rs_export
+
+    region_add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+
+    xla.sdy.manual_computation_body.11 {
+      Arg_0.12 = f32[4,8] parameter(0)
+      ROOT rs = f32[4,4] reduce-scatter(Arg_0.12), dimensions={1}, replica_groups={{0,1},{2,3}}, channel_id=1, use_global_device_ids=true, to_apply=region_add
+    }
+
+    ENTRY main {
+      p0 = f32[8,8] parameter(0), sharding={devices=[2,1]<=[2]}
+      %custom-call.2 = (f32[4,8]) custom-call(p0), custom_call_target="xla.sdy.GlobalToLocalShape",
+        frontend_attributes={
+          xla.sdy.in_shardings="#sdy.sharding_per_value<[<mesh<[\"a\"=2, \"b\"=2]>, [{\"a\"}, {}], replicated={\"b\"}>]>",
+          xla.sdy.manual_axes="#sdy<manual_axes{\"a\", \"b\"}>"
+        }
+      %local_param = f32[4,8] get-tuple-element(%custom-call.2), index=0
+      %call.1 = f32[4,4] call(%local_param), to_apply=xla.sdy.manual_computation_body.11
+      ROOT %custom-call.3 = f32[8,8] custom-call(%call.1), custom_call_target="xla.sdy.LocalToGlobalShape",
+        frontend_attributes={
+          xla.sdy.manual_axes="#sdy<manual_axes{\"a\", \"b\"}>",
+          xla.sdy.out_shardings="#sdy.sharding_per_value<[<mesh<[\"a\"=2, \"b\"=2]>, [{\"a\"}, {\"b\"}]>]>"
+        }
+    })";
+
+  // Verify that a manual computation containing a reduce-scatter,
+  // (represented by `xla.sdy.GlobalToLocalShape` and
+  // `xla.sdy.LocalToGlobalShape` custom calls), is correctly exported to XLA
+  // SPMD compatible `SPMDFullToShardShape` and `SPMDShardToFullShape` custom
+  // calls.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+
+  runShardyWithSdyImport(module.get());
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(root->IsCustomCall("SPMDShardToFullShape"));
+
+  HloInstruction* rs =
+      FindInstruction(module.get(), xla::HloOpcode::kReduceScatter);
+  EXPECT_NE(rs, nullptr);
+
+  const HloComputation* rs_comp = rs->parent();
+  const HloInstruction* call = nullptr;
+  for (const HloInstruction* inst :
+       module->entry_computation()->instructions()) {
+    if (inst->opcode() == HloOpcode::kCall && inst->to_apply() == rs_comp) {
+      call = inst;
+      break;
+    }
+  }
+
+  EXPECT_NE(call, nullptr);
+  EXPECT_TRUE(call->operand(0)->IsCustomCall("SPMDFullToShardShape"));
+}
+
+}  // namespace
 
 TEST_F(ShardyXLATest, ElementWise) {
   const char* const hloString = R"(
@@ -189,6 +254,7 @@ TEST_F(ShardyXLATest, NonFlatGraphForcedDifferentShardingsOnSharedFunc) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
   runShardyWithStablehloImport(module.get());
+  VLOG(10) << "module: " << module->ToString();
   // Computations refer to: %foo, %bar (x2), %entry.
   EXPECT_EQ(module->computation_count(), 4);
 }
@@ -747,7 +813,7 @@ TEST_F(ShardyXLATest, ShardMap) {
       ROOT add = f32[] add(p0, p1)
     }
 
-    shmap_body.11 {
+    xla.sdy.manual_computation_body.11 {
       Arg_0.12 = f32[2,8] parameter(0)
       add.14 = f32[2,8] add(Arg_0.12, Arg_0.12)
       Arg_1.13 = f32[8,32] parameter(1)
@@ -757,18 +823,16 @@ TEST_F(ShardyXLATest, ShardMap) {
 
     ENTRY main {
       p0 = f32[8,16] parameter(0)
-      custom-call.3 = f32[8,16] custom-call(p0), custom_call_target="Sharding", sharding={devices=[4,2]<=[8]}
-      custom-call.4 = f32[2,8] custom-call(custom-call.3), custom_call_target="SPMDFullToShardShape", sharding={manual}
       p1 = f32[16,32] parameter(1)
-      custom-call.5 = f32[16,32] custom-call(p1), custom_call_target="Sharding", sharding={devices=[2,1,4]<=[4,2]T(1,0) last_tile_dim_replicate}
-      custom-call.6 = f32[8,32] custom-call(custom-call.5), custom_call_target="SPMDFullToShardShape", sharding={manual}
-      call.17 = f32[2,32] call(custom-call.4, custom-call.6), to_apply=shmap_body.11
-      custom-call.18 = f32[2,32] custom-call(call.17), custom_call_target="Sharding", sharding={manual}
-      ROOT custom-call.19 = f32[8,32] custom-call(custom-call.18), custom_call_target="SPMDShardToFullShape", sharding={devices=[4,1,2]<=[8] last_tile_dim_replicate}
+      %custom-call.2 = (f32[2,8], f32[8,32]) custom-call(p0, p1), custom_call_target="xla.sdy.GlobalToLocalShape", frontend_attributes={xla.sdy.in_shardings="#sdy.sharding_per_value<[<mesh<[\"a\"=4, \"b\"=2]>, [{\"a\"}, {\"b\"}]>, <mesh<[\"a\"=4, \"b\"=2]>, [{\"b\"}, {}], replicated={\"a\"}>]>",xla.sdy.manual_axes="#sdy<manual_axes{\"a\", \"b\"}>"}
+      %get-tuple-element.2 = f32[2,8] get-tuple-element(%custom-call.2), index=0
+      %get-tuple-element.3 = f32[8,32] get-tuple-element(%custom-call.2), index=1
+      %call.1 = f32[2,32] call(%get-tuple-element.2, %get-tuple-element.3), to_apply=xla.sdy.manual_computation_body.11
+      ROOT %custom-call.3 = f32[8,32] custom-call(%call.1), custom_call_target="xla.sdy.LocalToGlobalShape", frontend_attributes={xla.sdy.manual_axes="#sdy<manual_axes{\"a\", \"b\"}>",xla.sdy.out_shardings="#sdy.sharding_per_value<[<mesh<[\"a\"=4, \"b\"=2]>, [{\"a\"}, {}], replicated={\"b\"}>]>"}
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardyWithStablehloImport(module.get());
+  runShardyWithSdyImport(module.get());
 
   // The entry computation, the region_add for the all-reduce, and the
   // shmap_body.
@@ -924,8 +988,6 @@ TEST_F(ShardyXLATest, TestRunShardingPropagationFalseUseTuplesTrue) {
                           ParseAndReturnVerifiedModule(hloString));
   runShardyWithStablehloImport(module.get(),
                                /*runSdyShardingPropagation=*/false);
-  LOG(INFO) << module->ToString(
-      HloPrintOptions{}.set_include_layout_in_shapes(false));
   EXPECT_TRUE(*RunFileCheck(
       module->ToString(HloPrintOptions{}.set_include_layout_in_shapes(false)),
       expected));
@@ -955,8 +1017,6 @@ ENTRY %main.0 (Arg_0.0: s64[2]) -> s64[2] {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
   runShardyWithSdyImport(module.get());
-  LOG(INFO) << module->ToString(
-      HloPrintOptions{}.set_include_layout_in_shapes(false));
   EXPECT_TRUE(*RunFileCheck(
       module->ToString(HloPrintOptions{}.set_include_layout_in_shapes(false)),
       expected));
@@ -1067,6 +1127,82 @@ TEST_F(ShardyXLATest, RaggedDotMode1) {
               op::Sharding("{devices=[2,2,1,2]<=[8] last_tile_dim_replicate}"));
 }
 
+namespace {
+
+// End-to-end check: an associative scan exposes its non-scan dims as
+// pass-through factors and its scan dim as a permutation factor, so an input
+// sharded along the non-scan dim propagates through Shardy and reaches the
+// scan output. The scan-dim sharding is preserved as well (associative scans
+// allow it via parallel-prefix evaluation). The scan tuple is exported back
+// as an HLO `kScan` followed by `get-tuple-element`, which is what gets
+// inspected here.
+//
+// The scan body sees per-iteration slices: input is `f32[16,32]` with scan
+// dim 0, so the body input parameter is `f32[32]` and the carry init is
+// `f32[32]`.
+TEST_F(ShardyXLATest, ScanAssociative) {
+  const char* const hloString = R"(
+  HloModule scan_associative, allow_spmd_sharding_propagation_to_parameters={true,true}, allow_spmd_sharding_propagation_to_output={true}, frontend_attributes={xla.sdy.meshes={mesh = #sdy.mesh<["a"=2, "b"=2]>}}
+    %scan_combiner {
+      %lhs = f32[32] parameter(0)
+      %rhs = f32[32] parameter(1)
+      %add = f32[32] add(%lhs, %rhs)
+      ROOT %t = (f32[32], f32[32]) tuple(%add, %add)
+    }
+    ENTRY %entry {
+      %p0 = f32[16,32] parameter(0), frontend_attributes={xla.sdy.sharding="#sdy.sharding<@mesh, [{\"a\", ?}, {\"b\", ?}]>"}
+      %init_scalar = f32[] constant(0)
+      %init = f32[32] broadcast(%init_scalar), dimensions={}
+      %scan = (f32[16,32], f32[32]) scan(%p0, %init), dimensions={0}, num_carries=1, is_associative=true, to_apply=%scan_combiner
+      ROOT %result = f32[16,32] get-tuple-element(%scan), index=0
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardyWithSdyImport(module.get());
+
+  HloComputation* entry = module->entry_computation();
+  EXPECT_THAT(entry->parameter_instruction(0),
+              op::Sharding("{devices=[2,2]<=[4]}"));
+  EXPECT_THAT(entry->root_instruction(), op::Sharding("{devices=[2,2]<=[4]}"));
+}
+
+// Same as above, but non-associative: the scan-dim factor in the rule is
+// `kNeedReplication` instead of `kPermutation`. With an open scan dim
+// sharding (user only pins the non-scan dim to `b`), propagation must NOT
+// introduce a sharding axis on the scan dim — the partitioner can't shard a
+// non-associative scan dim. The non-scan dim's `b` axis still flows from
+// input to output through the rule's pass-through factor.
+TEST_F(ShardyXLATest, ScanNonAssociative) {
+  const char* const hloString = R"(
+  HloModule scan_non_associative, allow_spmd_sharding_propagation_to_parameters={true,true}, allow_spmd_sharding_propagation_to_output={true}, frontend_attributes={xla.sdy.meshes={mesh = #sdy.mesh<["a"=2, "b"=2]>}}
+    %scan_combiner {
+      %lhs = f32[32] parameter(0)
+      %rhs = f32[32] parameter(1)
+      %add = f32[32] add(%lhs, %rhs)
+      ROOT %t = (f32[32], f32[32]) tuple(%add, %add)
+    }
+    ENTRY %entry {
+      %p0 = f32[16,32] parameter(0), frontend_attributes={xla.sdy.sharding="#sdy.sharding<@mesh, [{?}, {\"b\", ?}]>"}
+      %init_scalar = f32[] constant(0)
+      %init = f32[32] broadcast(%init_scalar), dimensions={}
+      %scan = (f32[16,32], f32[32]) scan(%p0, %init), dimensions={0}, num_carries=1, is_associative=false, to_apply=%scan_combiner
+      ROOT %result = f32[16,32] get-tuple-element(%scan), index=0
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardyWithSdyImport(module.get());
+
+  HloComputation* entry = module->entry_computation();
+  EXPECT_THAT(
+      entry->parameter_instruction(0),
+      op::Sharding("{devices=[1,2,2]<=[2,2]T(1,0) last_tile_dim_replicate}"));
+  EXPECT_THAT(
+      entry->root_instruction(),
+      op::Sharding("{devices=[1,2,2]<=[2,2]T(1,0) last_tile_dim_replicate}"));
+}
+
+}  // namespace
+
 TEST_F(ShardyXLATest, PreserveOriginalValueRecoveryTable) {
   const char* const hloString = R"(
   HloModule test, entry_computation_layout={(f32[6,3], f32[6,3])->f32[6,3]}, origin_recovery_table={
@@ -1106,7 +1242,7 @@ TEST_F(ShardyXLATest, PreserveOriginalValueRecoveryTable) {
                             expected));
 }
 
-TEST_F(ShardyXLATest, UpdateInlineableAttr) {
+TEST_F(ShardyXLATest, ManualComputationInlineableFalseErasedAndRenamed) {
   const char* const hloString = R"(
     HloModule module
 
@@ -1117,6 +1253,29 @@ TEST_F(ShardyXLATest, UpdateInlineableAttr) {
 
     ENTRY entry {
       ROOT call.2 = () call(), to_apply=xla.sdy.manual_computation_body, frontend_attributes={inlineable="false"}
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardy(module.get(), /*stablehloImport=*/false,
+            /*runSdyShardingPropagation=*/false);
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kCall);
+  EXPECT_FALSE(root->has_frontend_attributes());
+  EXPECT_EQ(root->to_apply()->name(), "inlineable_callee");
+}
+
+TEST_F(ShardyXLATest, ManualComputationInlineableXlaLateErasedAndRenamed) {
+  const char* const hloString = R"(
+    HloModule module
+
+    xla.sdy.manual_computation_body {
+      constant.0 = f32[1] constant({0})
+      ROOT tuple.1 = () tuple()
+    }
+
+    ENTRY entry {
+      ROOT call.2 = () call(), to_apply=xla.sdy.manual_computation_body, frontend_attributes={inlineable="xla_late"}
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
@@ -1153,6 +1312,104 @@ TEST_F(ShardyXLATest, ManualComputationCallOpWithToken) {
   // MLIR TypeConversion on CallOps not preserving them. This test ensures that
   // the sharding attribute is preserved.
   EXPECT_EQ(callInst->sharding().ToString(), "{manual}");
+}
+
+// This test is to ensure that the stack frame index is fully copied.
+TEST_F(ShardyXLATest, StackFrameMetadataFullyCopiedTest) {
+  const char* const hloString = R"(
+  HloModule main
+
+  FileNames
+  1 "file1.py"
+  2 "file2.py"
+
+  FunctionNames
+  1 "foo"
+  2 "bar"
+
+  FileLocations
+  1 {file_name_id=1 function_name_id=1 line=1 end_line=1 column=1 end_column=1}
+  2 {file_name_id=2 function_name_id=2 line=2 end_line=2 column=2 end_column=2}
+
+  StackFrames
+  1 {file_location_id=1 parent_frame_id=1}
+  2 {file_location_id=2 parent_frame_id=2}
+
+  ENTRY %entry {
+    p0 = f32[6,3] parameter(0)
+    p1 = f32[6,3] parameter(1)
+    add = f32[6,3] add(p0, p1), sharding={devices=[2,1]<=[2]}
+    ROOT result = f32[6,3] copy(add), metadata={op_name="copy", stack_frame_id=2}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardyWithStablehloImport(module.get());
+
+  // Verify the stack frame index is fully copied both frames.
+  EXPECT_EQ(module->stack_frames().proto().stack_frames().size(), 2);
+  const auto& frame1 = module->stack_frames().proto().stack_frames()[0];
+  EXPECT_EQ(frame1.file_location_id(), 1);
+  EXPECT_EQ(frame1.parent_frame_id(), 0);
+  const auto& frame2 = module->stack_frames().proto().stack_frames()[1];
+  EXPECT_EQ(frame2.file_location_id(), 2);
+  EXPECT_EQ(frame2.parent_frame_id(), 1);
+
+  EXPECT_EQ(module->stack_frames().proto().file_locations().size(), 2);
+
+  HloInstruction* copy = FindInstruction(module.get(), xla::HloOpcode::kCopy);
+  EXPECT_NE(copy, nullptr);
+  EXPECT_EQ(copy->metadata().op_name(), "copy");
+  EXPECT_EQ(copy->metadata().stack_frame_id(), 2);
+}
+
+// This test is to ensure that the stack frame index is replaced with a single
+// frame, instead of being fully copied.
+TEST_F(ShardyXLATest, StackFrameMetadataReplacedTest) {
+  const char* const hloString = R"(
+  HloModule main
+
+  FileNames
+  1 "file1.py"
+  2 "file2.py"
+
+  FunctionNames
+  1 "foo"
+  2 "bar"
+
+  FileLocations
+  1 {file_name_id=1 function_name_id=1 line=1 end_line=1 column=1 end_column=1}
+  2 {file_name_id=2 function_name_id=2 line=2 end_line=2 column=2 end_column=2}
+
+  StackFrames
+  1 {file_location_id=1 parent_frame_id=1}
+  2 {file_location_id=2 parent_frame_id=2}
+
+  ENTRY %entry {
+    p0 = f32[6,3] parameter(0)
+    p1 = f32[6,3] parameter(1)
+    add = f32[6,3] add(p0, p1), sharding={devices=[2,1]<=[2]}
+    ROOT result = f32[6,3] copy(add), metadata={op_name="copy", stack_frame_id=1}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardyWithStablehloImport(module.get());
+
+  // Verify the stack frame index is replaced with a single frame.
+  EXPECT_EQ(module->stack_frames().proto().stack_frames().size(), 1);
+  const auto& frame = module->stack_frames().proto().stack_frames()[0];
+  EXPECT_EQ(frame.file_location_id(), 1);
+  EXPECT_EQ(frame.parent_frame_id(), 0);
+
+  const auto& location = module->stack_frames().proto().file_locations()[0];
+  EXPECT_EQ(location.file_name_id(), 1);
+  EXPECT_EQ(location.function_name_id(), 1);
+  EXPECT_EQ(location.line(), 1);
+  EXPECT_EQ(location.column(), 1);
+
+  HloInstruction* copy = FindInstruction(module.get(), xla::HloOpcode::kCopy);
+  EXPECT_NE(copy, nullptr);
+  EXPECT_EQ(copy->metadata().op_name(), "copy");
+  EXPECT_EQ(copy->metadata().stack_frame_id(), 1);
 }
 
 }  // namespace sdy

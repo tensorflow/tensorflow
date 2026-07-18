@@ -207,6 +207,9 @@ absl::Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
     case TF_FLOAT8_E5M2FNUZ:
       *out_pyarray_type = custom_dtypes.float8_e5m2fnuz;
       break;
+    case TF_FLOAT4_E2M1FN:
+      *out_pyarray_type = custom_dtypes.float4_e2m1fn;
+      break;
     case TF_INT4:
       *out_pyarray_type = custom_dtypes.int4;
       break;
@@ -220,8 +223,8 @@ absl::Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
       *out_pyarray_type = custom_dtypes.uint2;
       break;
     default:
-      return errors::Internal("Tensorflow type ", tf_datatype,
-                              " not convertible to numpy dtype.");
+      return absl::InternalError(absl::StrCat(
+          "Tensorflow type ", tf_datatype, " not convertible to numpy dtype."));
   }
   return absl::OkStatus();
 }
@@ -230,7 +233,7 @@ absl::Status ArrayFromMemory(int dim_size, npy_intp* dims, void* data,
                              DataType dtype, std::function<void()> destructor,
                              PyObject** result) {
   if (dtype == DT_STRING || dtype == DT_RESOURCE) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Cannot convert string or resource Tensors.");
   }
 
@@ -242,30 +245,30 @@ absl::Status ArrayFromMemory(int dim_size, npy_intp* dims, void* data,
   }
 
   if (dim_size > NPY_MAXDIMS) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Cannot convert tensor with ", dim_size,
         " dimensions to NumPy array. NumPy arrays can have at most ",
-        NPY_MAXDIMS, " dimensions");
+        NPY_MAXDIMS, " dimensions"));
   }
   auto* np_array = reinterpret_cast<PyArrayObject*>(
       PyArray_SimpleNewFromData(dim_size, dims, type_num, data));
   if (np_array == nullptr) {
-    string shape_str = absl::StrJoin(
+    std::string shape_str = absl::StrJoin(
         absl::Span<npy_intp>{dims, static_cast<size_t>(dim_size)}, ", ");
     if (PyErr_Occurred()) {
-      string exception_str = PyExceptionFetch();
+      std::string exception_str = PyExceptionFetch();
       PyErr_Clear();
-      return errors::InvalidArgument(
-          "Failed to create numpy array from tensor of shape [", shape_str,
-          "]. Numpy error: ", exception_str);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Failed to create numpy array from tensor of shape [",
+                       shape_str, "]. Numpy error: ", exception_str));
     }
-    return errors::Internal(
-        "Failed to create numpy array from tensor of shape [", shape_str, "]");
+    return absl::InternalError(absl::StrCat(
+        "Failed to create numpy array from tensor of shape [", shape_str, "]"));
   }
 
   PyArray_CLEARFLAGS(np_array, NPY_ARRAY_OWNDATA);
   if (PyType_Ready(&TensorReleaserType) == -1) {
-    return errors::Unknown("Python type initialization failed.");
+    return absl::UnknownError("Python type initialization failed.");
   }
   auto* releaser = reinterpret_cast<TensorReleaser*>(
       TensorReleaserType.tp_alloc(&TensorReleaserType, 0));
@@ -273,7 +276,7 @@ absl::Status ArrayFromMemory(int dim_size, npy_intp* dims, void* data,
   if (PyArray_SetBaseObject(np_array, reinterpret_cast<PyObject*>(releaser)) ==
       -1) {
     Py_DECREF(releaser);
-    return errors::Unknown("Python array refused to use memory.");
+    return absl::UnknownError("Python array refused to use memory.");
   }
   *result = reinterpret_cast<PyObject*>(np_array);
   return absl::OkStatus();

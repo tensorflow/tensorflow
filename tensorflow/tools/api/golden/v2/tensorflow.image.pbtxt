@@ -2,7 +2,7 @@ path: "tensorflow.image"
 tf_module {
   member {
     name: "ResizeMethod"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member_method {
     name: "adjust_brightness"
@@ -67,6 +67,10 @@ tf_module {
   member_method {
     name: "decode_jpeg"
     argspec: "args=[\'contents\', \'channels\', \'ratio\', \'fancy_upscaling\', \'try_recover_truncated\', \'acceptable_fraction\', \'dct_method\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'1\', \'True\', \'False\', \'1\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "decode_jxl"
+    argspec: "args=[\'contents\', \'channels\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \"<dtype: \'uint8\'>\", \'None\'], "
   }
   member_method {
     name: "decode_png"

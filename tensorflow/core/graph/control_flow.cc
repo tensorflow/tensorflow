@@ -27,7 +27,7 @@ namespace tensorflow {
 namespace {
 // Information about a loop frame structure.
 struct Frame {
-  string name;
+  std::string name;
 
   // Pointer to the parent frame. The root frame has a pointer to itself.
   Frame* parent = nullptr;
@@ -40,7 +40,7 @@ struct Frame {
 // Verify that the ControlFlowInfo of the graph has valid loop structure.
 absl::Status ValidateControlFlowInfo(
     const Graph* graph, const std::vector<ControlFlowInfo>& cf_info) {
-  std::unordered_map<string, Frame> frames;
+  std::unordered_map<std::string, Frame> frames;
   for (const Node* node : graph->op_nodes()) {
     const ControlFlowInfo& cf = cf_info[node->id()];
     if (!cf.frame || !cf.parent_frame) {
@@ -55,12 +55,12 @@ absl::Status ValidateControlFlowInfo(
       frame.parent = parent;
       frame.name = cf.frame_name;
     } else if (frame.parent != parent) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Invalid loop structure: Mismatched parent frames for \"",
           cf.frame_name, "\": \"", parent->name, "\" vs \"", frame.parent->name,
           "\". The node giving this error: ", FormatNodeForError(*node),
           ". This is an internal bug, please file a bug report with "
-          "instructions on how to reproduce the error.");
+          "instructions on how to reproduce the error."));
     }
     if (IsLoopCond(node)) {
       // ForwardLoopCounter runs in the same frame as the forward loop and
@@ -69,12 +69,12 @@ absl::Status ValidateControlFlowInfo(
       if (frame.loop_cond &&
           !absl::StrContains(frame.loop_cond->name(), "LoopCounter") &&
           !absl::StrContains(node->name(), "LoopCounter")) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Invalid loop structure: Loop \"", cf.frame_name,
             "\" has more than one LoopCond node: ", FormatNodeForError(*node),
             " and ", FormatNodeForError(*frame.loop_cond),
             ". This is an internal bug, please file a bug report with "
-            "instructions on how to reproduce the error.");
+            "instructions on how to reproduce the error."));
       }
       frame.loop_cond = node;
     }
@@ -85,7 +85,7 @@ absl::Status ValidateControlFlowInfo(
 
 absl::Status BuildControlFlowInfo(const Graph* g,
                                   std::vector<ControlFlowInfo>* info,
-                                  std::vector<string>* unreachable_nodes) {
+                                  std::vector<std::string>* unreachable_nodes) {
   info->clear();
   info->resize(g->num_node_ids());
 
@@ -97,7 +97,7 @@ absl::Status BuildControlFlowInfo(const Graph* g,
   src_info.frame = src_node;
   src_info.parent_frame = src_node;
 
-  string frame_name;
+  std::string frame_name;
   std::deque<const Node*> ready;
   ready.push_back(src_node);
   while (!ready.empty()) {
@@ -135,14 +135,15 @@ absl::Status BuildControlFlowInfo(const Graph* g,
       // Process the node 'out'.
       if (IsEnter(out)) {
         if (is_visited) {
-          const string& parent_frame = (*info)[out_parent->id()].frame_name;
+          const std::string& parent_frame =
+              (*info)[out_parent->id()].frame_name;
           if (parent_frame != frame_name) {
-            return errors::InvalidArgument(
+            return absl::InvalidArgumentError(absl::StrCat(
                 FormatNodeForError(*out),
                 " has inputs from different frames. The input ",
                 FormatNodeForError(*curr_node), " is in frame '", frame_name,
                 "'. The input ", FormatNodeForError(*parent_nodes[out->id()]),
-                " is in frame '", parent_frame, "'.");
+                " is in frame '", parent_frame, "'."));
           }
         } else {
           out_info->frame = out;
@@ -150,20 +151,20 @@ absl::Status BuildControlFlowInfo(const Graph* g,
           TF_RETURN_IF_ERROR(
               GetNodeAttr(out->attrs(), "frame_name", &out_info->frame_name));
           if (out_info->frame_name.empty()) {
-            return errors::InvalidArgument("The Enter ",
-                                           FormatNodeForError(*out),
-                                           " must have a frame name.");
+            return absl::InvalidArgumentError(
+                absl::StrCat("The Enter ", FormatNodeForError(*out),
+                             " must have a frame name."));
           }
         }
       } else {
         if (is_visited) {
           if (out_info->frame_name != frame_name) {
-            return errors::InvalidArgument(
+            return absl::InvalidArgumentError(absl::StrCat(
                 FormatNodeForError(*out),
                 " has inputs from different frames. The input ",
                 FormatNodeForError(*curr_node), " is in frame '", frame_name,
                 "'. The input ", FormatNodeForError(*parent_nodes[out->id()]),
-                " is in frame '", out_info->frame_name, "'.");
+                " is in frame '", out_info->frame_name, "'."));
           }
         } else {
           out_info->frame = frame;

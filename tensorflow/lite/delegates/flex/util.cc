@@ -101,6 +101,12 @@ TF_DataType GetTensorFlowDataType(TfLiteType type) {
       return TF_INT32;
     case kTfLiteUInt32:
       return TF_UINT32;
+    case kTfLiteInt2:
+      // TODO(b/246806634): Tensorflow DT_INT2 type doesn't exist yet
+      return TF_INT8;
+    case kTfLiteUInt4:
+      // TODO(b/246806634): Tensorflow DT_UINT4 type doesn't exist yet
+      return TF_UINT8;
     case kTfLiteInt4:
       // TODO(b/246806634): Tensorflow DT_INT4 type doesn't exist yet
       return TF_INT8;
@@ -108,6 +114,10 @@ TF_DataType GetTensorFlowDataType(TfLiteType type) {
       return TF_UINT8;
     case kTfLiteInt8:
       return TF_INT8;
+    case kTfLiteFloat8E4M3FN:
+      return TF_FLOAT8_E4M3FN;
+    case kTfLiteFloat8E5M2:
+      return TF_FLOAT8_E5M2;
     case kTfLiteInt64:
       return TF_INT64;
     case kTfLiteUInt64:
@@ -163,6 +173,10 @@ TfLiteType GetTensorFlowLiteType(TF_DataType type) {
       return kTfLiteBool;
     case TF_RESOURCE:
       return kTfLiteResource;
+    case TF_FLOAT8_E4M3FN:
+      return kTfLiteFloat8E4M3FN;
+    case TF_FLOAT8_E5M2:
+      return kTfLiteFloat8E5M2;
     case TF_VARIANT:
       return kTfLiteVariant;
     default:
@@ -185,12 +199,20 @@ const char* TfLiteTypeToTfTypeName(TfLiteType type) {
       return "int32";
     case kTfLiteUInt32:
       return "uint32";
+    case kTfLiteInt2:
+      return "int2";
+    case kTfLiteUInt4:
+      return "uint4";
     case kTfLiteInt4:
       return "int4";
     case kTfLiteUInt8:
       return "uint8";
     case kTfLiteInt8:
       return "int8";
+    case kTfLiteFloat8E4M3FN:
+      return "float8_e4m3fn";
+    case kTfLiteFloat8E5M2:
+      return "float8_e5m2";
     case kTfLiteInt64:
       return "int64";
     case kTfLiteUInt64:

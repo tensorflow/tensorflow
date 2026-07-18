@@ -35,9 +35,10 @@ class CastTest(xla_test.XLATestCase):
         dtypes.uint32,
         dtypes.uint64,
     }
-    for src_type in types:
-      for dst_type in types:
-        self._test_cast(src_type, dst_type)
+    with self.session() as session:
+      for src_type in types:
+        for dst_type in types:
+          self._test_cast(src_type, dst_type, session)
 
   def test_cast_fp8(self):
     if platform.system() == "Darwin":
@@ -61,12 +62,13 @@ class CastTest(xla_test.XLATestCase):
         dtypes.uint32,
         dtypes.uint64,
     }
-    for fp8_type in fp8_types:
-      for other_type in other_types | fp8_types:
-        self._test_cast(fp8_type, other_type)
-        self._test_cast(other_type, fp8_type)
+    with self.session() as session:
+      for fp8_type in fp8_types:
+        for other_type in other_types | fp8_types:
+          self._test_cast(fp8_type, other_type, session)
+          self._test_cast(other_type, fp8_type, session)
 
-  def _test_cast(self, src_type, dst_type):
+  def _test_cast(self, src_type, dst_type, session):
     with self.subTest(src_type=src_type, dst_type=dst_type):
       shapes = [[], [4], [2, 3], [2, 0, 4]]
       src_np_dtype = src_type.as_numpy_dtype
@@ -83,6 +85,7 @@ class CastTest(xla_test.XLATestCase):
             lambda x, dst_type=dst_type: math_ops.cast(x, dst_type),
             src,
             expected=dst,
+            local_session=session,
         )
 
       # Check special values.
@@ -112,6 +115,7 @@ class CastTest(xla_test.XLATestCase):
           lambda x, dst_type=dst_type: math_ops.cast(x, dst_type),
           src,
           expected=dst,
+          local_session=session,
       )
 
   def test_give_me_a_name(self):

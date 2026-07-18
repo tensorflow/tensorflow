@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -39,10 +38,10 @@ limitations under the License.
 
 namespace xla::gpu {
 
-namespace {
-
 #define GEN_PASS_DEF_LOWERXLASHAREDPASS
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h.inc"
+
+namespace {
 
 struct LowerForall : mlir::OpRewritePattern<mlir::scf::ForallOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -70,8 +69,8 @@ struct LowerForall : mlir::OpRewritePattern<mlir::scf::ForallOp> {
       // xla.range is a closed interval so we subtract 1 from the size which is
       // half-open.
       int64_t upper_range = size - 1;
-      auto thread_id = b.create<mlir::gpu::ThreadIdOp>(
-          static_cast<mlir::gpu::Dimension>(idx));
+      auto thread_id = mlir::gpu::ThreadIdOp::create(
+          b, static_cast<mlir::gpu::Dimension>(idx));
       thread_id->setAttr("xla.range", b.getIndexArrayAttr({0, upper_range}));
       new_args.push_back(thread_id);
     }
@@ -118,7 +117,7 @@ struct LowerWorkgroupId : mlir::OpRewritePattern<WorkGroupIdOp> {
                                          mlir::gpu::Dimension dimension) const {
     mlir::Location loc = op.getLoc();
     mlir::ImplicitLocOpBuilder b(loc, rewriter);
-    auto block_id = b.create<mlir::gpu::BlockIdOp>(dimension);
+    auto block_id = mlir::gpu::BlockIdOp::create(b, dimension);
     if (mlir::Attribute range = op->getAttr("xla.range")) {
       block_id->setAttr("xla.range", op->getAttr("xla.range"));
     }
@@ -143,9 +142,4 @@ struct LowerXlaSharedPass final
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateLowerXlaSharedPass() {
-  return std::make_unique<LowerXlaSharedPass>();
-}
-
 }  // namespace xla::gpu

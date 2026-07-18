@@ -27,7 +27,7 @@ class UsePrivateThreadPool : public TFDataOptimizerBase {
   UsePrivateThreadPool() = default;
   ~UsePrivateThreadPool() override = default;
 
-  string name() const override { return "use_private_thread_pool"; };
+  std::string name() const override { return "use_private_thread_pool"; };
 
   bool UsesFunctionLibrary() const override { return false; }
 

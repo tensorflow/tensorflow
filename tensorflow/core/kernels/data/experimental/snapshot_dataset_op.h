@@ -84,7 +84,7 @@ class SnapshotDatasetV2Op : public UnaryDatasetOpKernel {
   std::string reader_prefix_;
   std::string writer_prefix_;
   bool hash_valid_;
-  uint64 hash_;
+  uint64_t hash_;
 
   std::shared_ptr<FunctionMetadata> reader_func_metadata_;
   std::shared_ptr<FunctionMetadata> shard_func_metadata_;

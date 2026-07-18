@@ -32,7 +32,7 @@ NodeDefBuilder::NodeOut::NodeOut() {
 }
 
 void NodeDefBuilder::NodeOut::Reset(absl::string_view n, int i, DataType dt) {
-  node = string(n);
+  node = std::string(n);
   index = i;
   data_type = dt;
 }
@@ -41,9 +41,9 @@ NodeDefBuilder::NodeDefBuilder(absl::string_view name,
                                absl::string_view op_name,
                                const OpRegistryInterface* op_registry,
                                const NodeDebugInfo* debug) {
-  node_def_.set_name(string(name));
+  node_def_.set_name(name);
   const absl::Status status =
-      op_registry->LookUpOpDef(string(op_name), &op_def_);
+      op_registry->LookUpOpDef(std::string(op_name), &op_def_);
   if (status.ok()) {
     Initialize();
   } else {
@@ -62,7 +62,7 @@ NodeDefBuilder::NodeDefBuilder(absl::string_view name,
 
 NodeDefBuilder::NodeDefBuilder(absl::string_view name, const OpDef* op_def)
     : op_def_(op_def) {
-  node_def_.set_name(string(name));
+  node_def_.set_name(name);
   Initialize();
 }
 
@@ -182,7 +182,7 @@ void NodeDefBuilder::AddInput(absl::string_view src_node, int src_index) {
   } else if (src_index > 0) {
     node_def_.add_input(absl::StrCat(src_node, ":", src_index));
   } else {
-    node_def_.add_input(string(src_node));
+    node_def_.add_input(std::string(src_node));
   }
 }
 
@@ -210,13 +210,13 @@ NodeDefBuilder& NodeDefBuilder::ControlInput(absl::string_view src_node) {
 }
 
 NodeDefBuilder& NodeDefBuilder::Device(absl::string_view device_spec) {
-  node_def_.set_device(string(device_spec));
+  node_def_.set_device(device_spec);
   return *this;
 }
 
 absl::Status NodeDefBuilder::Finalize(NodeDef* node_def, bool consume) {
-  const std::vector<string>* errors_ptr = &errors_;
-  std::vector<string> errors_storage;
+  const std::vector<std::string>* errors_ptr = &errors_;
+  std::vector<std::string> errors_storage;
   if (op_def_ != nullptr && inputs_specified_ < op_def_->input_arg_size()) {
     // Since this is a const method, to add an error, we have to make
     // a copy of the existing errors.
@@ -230,23 +230,23 @@ absl::Status NodeDefBuilder::Finalize(NodeDef* node_def, bool consume) {
   if (!errors_ptr->empty()) {
     if (errors_ptr->size() == 1) {
       if (op_def_ == nullptr) {
-        return errors::InvalidArgument((*errors_ptr)[0],
-                                       " while building NodeDef '",
-                                       node_def_.name(), "'");
+        return absl::InvalidArgumentError(
+            absl::StrCat((*errors_ptr)[0], " while building NodeDef '",
+                         node_def_.name(), "'"));
       }
-      return errors::InvalidArgument(
-          (*errors_ptr)[0], " while building NodeDef '", node_def_.name(),
-          "' using ", SummarizeOpDef(*op_def_));
+      return absl::InvalidArgumentError(
+          absl::StrCat((*errors_ptr)[0], " while building NodeDef '",
+                       node_def_.name(), "' using ", SummarizeOpDef(*op_def_)));
     } else {
       if (op_def_ == nullptr) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             errors_ptr->size(), " errors while building NodeDef '",
-            node_def_.name(), "':\n", absl::StrJoin(*errors_ptr, "\n"));
+            node_def_.name(), "':\n", absl::StrJoin(*errors_ptr, "\n")));
       }
-      return errors::InvalidArgument(
-          errors_ptr->size(), " errors while building NodeDef '",
-          node_def_.name(), "' using ", SummarizeOpDef(*op_def_), ":\n",
-          absl::StrJoin(*errors_ptr, "\n"));
+      return absl::InvalidArgumentError(
+          absl::StrCat(errors_ptr->size(), " errors while building NodeDef '",
+                       node_def_.name(), "' using ", SummarizeOpDef(*op_def_),
+                       ":\n", absl::StrJoin(*errors_ptr, "\n")));
     }
   } else {
     NodeDef node_def_backup;
@@ -318,9 +318,9 @@ ATTR(const TensorProto&)
 ATTR(const NameAttrList&)
 ATTR(absl::Span<const absl::string_view>)
 ATTR(absl::Span<const char* const>)
-ATTR(absl::Span<const string>)
+ATTR(absl::Span<const std::string>)
 ATTR(absl::Span<const tstring>)
-ATTR(absl::Span<const int32>)
+ATTR(absl::Span<const int32_t>)
 ATTR(absl::Span<const int64_t>)
 ATTR(absl::Span<const float>)
 ATTR(absl::Span<const bool>)

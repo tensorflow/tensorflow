@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Pass/PassOptions.h"
 #include "mlir/Transforms/Passes.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -88,7 +89,9 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
 
   AddTfDeviceAssignmentPasses(pm, options);
 
-  pm.addPass(tfrt_compiler::CreateTfrtXlaRewritePass());
+  if (options.allow_xla_cpu) {
+    pm.addPass(tfrt_compiler::CreateTfrtXlaRewritePass());
+  }
 
   // Here we perform TFRT specific optimization before standard TF optimization,
   // as TFRT-specific optimization may create more opportunities.
@@ -136,8 +139,24 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
       .batch_timeout_micros = options.batch_timeout_micros,
       .allowed_batch_sizes = options.allowed_batch_sizes,
       .max_enqueued_batches = options.max_enqueued_batches,
+      .low_priority_max_batch_size = options.low_priority_max_batch_size,
+      .low_priority_batch_timeout_micros =
+          options.low_priority_batch_timeout_micros,
+      .low_priority_allowed_batch_sizes =
+          options.low_priority_allowed_batch_sizes,
+      .low_priority_max_enqueued_batches =
+          options.low_priority_max_enqueued_batches,
+      .num_warmup_batch_threads = options.num_warmup_batch_threads,
+      .enable_large_batch_splitting = options.enable_large_batch_splitting,
+      .mixed_priority_batching_policy = options.mixed_priority_batching_policy,
       .batch_queue_global_prioritization_num_threads =
           options.batch_queue_global_prioritization_num_threads,
+      .enable_priority_aware_batch_scheduler =
+          options.enable_priority_aware_batch_scheduler,
+      .enable_priority_aware_batch_scheduler_resplit =
+          options.enable_priority_aware_batch_scheduler_resplit,
+      .enable_batching_task_lazy_cancellation =
+          options.enable_batching_task_lazy_cancellation,
   }));
 
   // Deduplicate functions invoked by tf.BatchFunction with the same
@@ -152,7 +171,6 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
   pm.addPass(mlir::createInlinerPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateRemoveUnusedWhileResultsPass());
-  pm.addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
 
   // Apply standard optimization after optimizing control flow ops.
   pm.addPass(mlir::createInlinerPass());
@@ -163,6 +181,7 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
   // by performing shape inference again after reference variable to resource
   // variable conversion. We should remove this after b/187876545 is fixed.
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  pm.addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
 
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TFDevice::CreateLaunchToDeviceAttributePass());
@@ -239,7 +258,7 @@ void CreateTFInvariantOptimizationPipelineHelper(
 
 absl::Status ValidateTfrtPipelineOptions(const TfrtPipelineOptions &options) {
   if (options.target_tpurt && options.target_gpu) {
-    return tensorflow::errors::Internal(
+    return absl::InternalError(
         "Invalid pipeline options. Targeting both TPU and GPU is not "
         "supported.");
   }

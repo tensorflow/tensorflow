@@ -1,0 +1,36 @@
+diff --git a/BUILD.bazel b/BUILD.bazel
+index 34e4a54..a8ea978 100644
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -110,6 +110,7 @@ cc_library(
+     name = "brotli_inc",
+     hdrs = [":public_headers"],
+     copts = STRICT_C_OPTIONS,
++    features = ["-layering_check"],
+     strip_include_prefix = "c/include",
+ )
+ 
+@@ -118,6 +119,7 @@ cc_library(
+     srcs = [":common_sources"],
+     hdrs = [":common_headers"],
+     copts = STRICT_C_OPTIONS,
++    features = ["-layering_check"],
+     deps = [":brotli_inc"],
+ )
+ 
+@@ -126,6 +128,7 @@ cc_library(
+     srcs = [":dec_sources"],
+     hdrs = [":dec_headers"],
+     copts = STRICT_C_OPTIONS,
++    features = ["-layering_check"],
+     deps = [":brotlicommon"],
+ )
+ 
+@@ -134,6 +137,7 @@ cc_library(
+     srcs = [":enc_sources"],
+     hdrs = [":enc_headers"],
+     copts = STRICT_C_OPTIONS,
++    features = ["-layering_check"],
+     linkopts = select({
+         ":clang-cl": [],
+         ":msvc": [],

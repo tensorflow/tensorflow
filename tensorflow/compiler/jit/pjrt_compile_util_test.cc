@@ -34,7 +34,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-StatusOr<std::unique_ptr<Graph>> SampleGraphAddXY() {
+absl::StatusOr<std::unique_ptr<Graph>> SampleGraphAddXY() {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   Scope scope = Scope::NewRootScope().ExitOnError();
   auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
@@ -45,7 +45,7 @@ StatusOr<std::unique_ptr<Graph>> SampleGraphAddXY() {
   return graph;
 }
 
-StatusOr<FunctionDef> SampleFuntionAddXY(const std::string& name) {
+absl::StatusOr<FunctionDef> SampleFuntionAddXY(const std::string& name) {
   TF_ASSIGN_OR_RETURN(auto graph, SampleGraphAddXY());
   FunctionDef fdef;
   TF_RETURN_IF_ERROR(GraphToFunctionDef(*graph, name, &fdef));

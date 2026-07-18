@@ -23,18 +23,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/no_destructor.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/utils/pointer_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tuple_tree.h"
@@ -95,6 +92,10 @@ std::string NodeToString(const Node& node) {
   }
 
   return absl::StrCat("(", absl::StrJoin(children_str, ", "), ")");
+}
+
+bool HasNegativeShapeIndex(absl::Span<const int64_t> shape_index) {
+  return absl::c_any_of(shape_index, [](int64_t idx) { return idx < 0; });
 }
 }  // namespace
 
@@ -159,9 +160,9 @@ OriginalValueProto OriginalValue::ToProto() const {
   if (is_synthetic_call()) {
     original_value_proto.set_is_synthetic_call(true);
   } else {
-    tree().ForEachElement([&original_value_proto](
-                              const ShapeIndex& index,
-                              const std::optional<OriginalArray>& value) {
+    for (const auto& leaf_it : original_arrays()) {
+      const ShapeIndex& index = leaf_it.first;
+      const std::optional<OriginalArray>& value = leaf_it.second;
       OriginalValueElementProto* original_value_node_proto =
           original_value_proto.add_elements();
       for (const auto& i : index) {
@@ -170,7 +171,7 @@ OriginalValueProto OriginalValue::ToProto() const {
       if (value.has_value()) {
         *original_value_node_proto->mutable_original_array() = value->ToProto();
       }
-    });
+    }
   }
   return original_value_proto;
 }
@@ -182,6 +183,11 @@ std::shared_ptr<OriginalValue> OriginalValue::FromProto(
   }
   std::vector<std::pair<ShapeIndex, std::optional<OriginalArray>>> nodes;
   for (const auto& leaf : original_value_proto.elements()) {
+    if (HasNegativeShapeIndex(leaf.shape_index()) ||
+        (leaf.has_original_array() &&
+         HasNegativeShapeIndex(leaf.original_array().shape_index()))) {
+      return nullptr;
+    }
     ShapeIndex index(leaf.shape_index());
     if (leaf.has_original_array()) {
       nodes.emplace_back(index,
@@ -219,12 +225,14 @@ std::shared_ptr<OriginalValue> OriginalValue::CreateFromInstruction(
   if (instruction->opcode() == HloOpcode::kTuple) {
     auto original_value = std::make_shared<OriginalValue>(
         TupleTree<std::optional<OriginalArray>>(instruction->shape()));
+    bool has_original_value = false;
     for (int64_t i = 0; i < instruction->operand_count(); ++i) {
       const HloInstruction* operand = instruction->operand(i);
       auto op_original_value = operand->original_value();
       if (!op_original_value || op_original_value->is_synthetic_call()) {
-        return nullptr;
+        continue;
       }
+      has_original_value = true;
       const auto& op_tree = op_original_value->tree();
       op_tree.ForEachElement([&](const ShapeIndex& index,
                                  const std::optional<OriginalArray>& value) {
@@ -233,7 +241,7 @@ std::shared_ptr<OriginalValue> OriginalValue::CreateFromInstruction(
         *original_value->mutable_tree()->mutable_element(dest_index) = value;
       });
     }
-    return original_value;
+    return has_original_value ? original_value : nullptr;
   }
 
   // Default case: create a new tree with leaves pointing to this instruction.
@@ -243,55 +251,6 @@ std::shared_ptr<OriginalValue> OriginalValue::CreateFromInstruction(
     leaf.second = {absl::StrCat(prefix, instruction->name()), leaf.first};
   }
   return original_value;
-}
-
-void CopyOriginalValue(const HloInstruction* src_instruction,
-                       HloInstruction* dest_instruction, bool clone,
-                       bool issue_warning) {
-  if (!src_instruction || !dest_instruction ||
-      !ShapeUtil::Compatible(src_instruction->shape(),
-                             dest_instruction->shape())) {
-    if (issue_warning) {
-      LOG(WARNING)
-          << "Expect the new instruction to have the same shape with the old "
-             "instruction when moving over original_value";
-    }
-    return;
-  }
-
-  std::shared_ptr<OriginalValue> original_value =
-      src_instruction->original_value();
-  if (!original_value) {
-    return;
-  }
-
-  if (!clone || original_value->is_synthetic_call()) {
-    dest_instruction->set_original_value(original_value);
-    return;
-  }
-
-  // Deep clone the tree.
-  auto cloned_tree = std::make_shared<OriginalValue>(original_value->tree());
-  dest_instruction->set_original_value(cloned_tree);
-}
-
-void DeduplicateOriginalValues(HloModule* module) {
-  absl::flat_hash_set<std::shared_ptr<OriginalValue>,
-                      PointeeHash<OriginalValue>, PointeeEqual<OriginalValue>>
-      unique_original_values;
-  for (HloComputation* computation : module->computations()) {
-    for (HloInstruction* instruction : computation->instructions()) {
-      if (std::shared_ptr<OriginalValue> original_value =
-              instruction->original_value()) {
-        auto p = unique_original_values.insert(original_value);
-        if (!p.second) {
-          // Reassign the pointer with the existing identical object and release
-          // the duplicate.
-          instruction->set_original_value(*p.first);
-        }
-      }
-    }
-  }
 }
 
 /* static */

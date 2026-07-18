@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -129,11 +130,11 @@ class BatchDimensionMerger : public DfsHloRewriteVisitor {
           shifted_contracting_dimensions.end());
     }
 
-    TF_ASSIGN_OR_RETURN(HloInstruction * reshaped_lhs,
-                        MakeReshapeHlo(new_lhs_shape, dot->mutable_operand(0)));
+    ASSIGN_OR_RETURN(HloInstruction * reshaped_lhs,
+                     MakeReshapeHlo(new_lhs_shape, dot->mutable_operand(0)));
 
-    TF_ASSIGN_OR_RETURN(HloInstruction * reshaped_rhs,
-                        MakeReshapeHlo(new_rhs_shape, dot->mutable_operand(1)));
+    ASSIGN_OR_RETURN(HloInstruction * reshaped_rhs,
+                     MakeReshapeHlo(new_rhs_shape, dot->mutable_operand(1)));
 
     Shape new_dot_shape = merge_batch_dims(dot->shape(), /*batch_dim=*/0);
     HloInstruction* new_dot = dot->parent()->AddInstruction(
@@ -151,7 +152,7 @@ class BatchDimensionMerger : public DfsHloRewriteVisitor {
 
 }  // namespace
 
-absl::StatusOr<bool> DotDimensionMerger::Run(
+absl::StatusOr<bool> DotDimensionMerger::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return BatchDimensionMerger().RunOnModule(module, execution_threads);

@@ -63,7 +63,7 @@ class TestEagerNode : public EagerNode {
   };
 
   void Abort(absl::Status status) override {}
-  string DebugString() const override { return "testEagerNode"; }
+  std::string DebugString() const override { return "testEagerNode"; }
 
  private:
   TestState* state_;
@@ -94,7 +94,7 @@ class TestAsyncEagerNode : public AsyncEagerNode {
   };
 
   void Abort(absl::Status status) override {}
-  string DebugString() const override { return "testAsyncEagerNode"; }
+  std::string DebugString() const override { return "testAsyncEagerNode"; }
 
  private:
   TestState* state_;
@@ -152,8 +152,8 @@ TEST(EagerExecutorTest, TestSyncExecutorFailPrepare) {
       /*async=*/false, /*enable_streaming_enqueue=*/true);
 
   auto state = std::make_unique<TestState>();
-  auto node = std::make_unique<TestEagerNode>(state.get(),
-                                              errors::InvalidArgument("test"));
+  auto node = std::make_unique<TestEagerNode>(
+      state.get(), absl::InvalidArgumentError("test"));
   auto status = sync_executor->AddOrExecute(std::move(node));
 
   ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
@@ -166,7 +166,7 @@ TEST(EagerExecutorTest, TestSyncExecutorFailRun) {
 
   auto state = std::make_unique<TestState>();
   auto node = std::make_unique<TestEagerNode>(state.get(), absl::OkStatus(),
-                                              errors::Internal("test"));
+                                              absl::InternalError("test"));
 
   auto status = sync_executor->AddOrExecute(std::move(node));
   ASSERT_EQ(status.code(), tensorflow::error::INTERNAL);
@@ -218,8 +218,8 @@ TEST(EagerExecutorTest, TestAsyncExecutorFailPrepare) {
       /*async=*/true, /*enable_streaming_enqueue=*/true);
 
   auto state = std::make_unique<TestState>();
-  auto node = std::make_unique<TestEagerNode>(state.get(),
-                                              errors::InvalidArgument("test"));
+  auto node = std::make_unique<TestEagerNode>(
+      state.get(), absl::InvalidArgumentError("test"));
 
   auto status = async_executor->AddOrExecute(std::move(node));
 
@@ -233,7 +233,7 @@ TEST(EagerExecutorTest, TestAsyncExecutorFailRun) {
 
   auto state = std::make_unique<TestState>();
   auto node = std::make_unique<TestEagerNode>(state.get(), absl::OkStatus(),
-                                              errors::Internal("test"));
+                                              absl::InternalError("test"));
 
   TF_ASSERT_OK(async_executor->AddOrExecute(std::move(node)));
   auto status = async_executor->WaitForAllPendingNodes();
@@ -247,7 +247,7 @@ TEST(EagerExecutorTest, TestAsyncExecutorFailPrepareWithAsyncNode) {
 
   auto state = std::make_unique<TestState>();
   auto node = std::make_unique<TestAsyncEagerNode>(
-      state.get(), errors::InvalidArgument("test"));
+      state.get(), absl::InvalidArgumentError("test"));
   auto status = async_executor->AddOrExecute(std::move(node));
 
   ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
@@ -260,7 +260,7 @@ TEST(EagerExecutorTest, TestAsyncExecutorFailRunWithAsyncNode) {
 
   auto state = std::make_unique<TestState>();
   auto node = std::make_unique<TestAsyncEagerNode>(
-      state.get(), absl::OkStatus(), errors::Internal("test"));
+      state.get(), absl::OkStatus(), absl::InternalError("test"));
 
   TF_ASSERT_OK(async_executor->AddOrExecute(std::move(node)));
 

@@ -18,16 +18,16 @@ limitations under the License.
 #include <memory>
 
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -387,22 +387,58 @@ TEST_F(TupleSimplifierTest, NestedTuple) {
 
 TEST_F(TupleSimplifierTest, SimplifyWithControlPredecessors) {
   constexpr absl::string_view kModuleStr = R"(
-    HloModule m, is_scheduled=true
+HloModule m, is_scheduled=true
 
-    ENTRY test {
-       %arg_tuple.1 = (f32[]{:T(256)}, f32[]{:T(256)}) parameter(0)
-       %get-tuple-element.8514 = f32[]{:T(256)} get-tuple-element(%arg_tuple.1), index=0
-       %get-tuple-element.8515 = f32[]{:T(256)} get-tuple-element(%arg_tuple.1), index=1
-       %copy.1 = f32[]{:T(256)} copy(%get-tuple-element.8515)
-       %tuple.954 = (f32[]{:T(256)}, f32[]{:T(256)}) tuple(%get-tuple-element.8514, %copy.1)
-       %get-tuple-element.8507 = f32[]{:T(256)} get-tuple-element(%tuple.954), index=1, control-predecessors={%arg_tuple.1}
-       %get-tuple-element.8508 = f32[]{:T(256)} get-tuple-element(%tuple.954), index=0, control-predecessors={%get-tuple-element.8507}
-       %added = f32[]{:T(256)} add(%get-tuple-element.8507, %get-tuple-element.8508)
-    }
+ENTRY test {
+   arg.0 = (f32[], f32[]) parameter(0)
+   gte.0 = get-tuple-element(arg.0), index=0
+   gte.1 = get-tuple-element(arg.0), index=1
+   copy.0 = copy(gte.1)
+   tuple.0 = tuple(gte.0, copy.0)
+   gte.2 = get-tuple-element(tuple.0), index=1, control-predecessors={arg.0}
+   gte.3 = get-tuple-element(tuple.0), index=0, control-predecessors={gte.2}
+   ROOT add.0 = add(gte.2, gte.3)
+}
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
+  // Should not trip the verifier.
   Run(module.get(), /*change_expected=*/true);
+}
+
+TEST_F(TupleSimplifierTest, StableSchedule) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main, is_scheduled=true
+
+ENTRY main {
+  arg.0 = s32[] parameter(0)
+  arg.1 = s32[] parameter(1)
+  op-start.0 = s32[] custom-call(arg.0), custom_call_target="start"
+  op-start.1 = s32[] custom-call(arg.1), custom_call_target="start"
+  op-done.0 = s32[] custom-call(op-start.0), custom_call_target="done"
+  op-done.1 = s32[] custom-call(op-start.1), custom_call_target="done"
+  tuple.0 = tuple(op-done.0, op-done.1)
+  gte.0 = get-tuple-element(tuple.0), index=0
+  gte.1 = get-tuple-element(tuple.0), index=1
+  copy.0 = copy(gte.0)
+  ROOT tuple.1 = tuple(copy.0, gte.1)
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  Run(module.get(), /*change_expected=*/true);
+
+  HloInstruction* op_start_0 = FindInstruction(module.get(), "op-start.0");
+  HloInstruction* op_start_1 = FindInstruction(module.get(), "op-start.1");
+  HloInstruction* op_done_0 = FindInstruction(module.get(), "op-done.0");
+  HloInstruction* op_done_1 = FindInstruction(module.get(), "op-done.1");
+
+  // Original ordering should be preserved.
+  SequentialHloOrdering ordering(module->schedule());
+  EXPECT_TRUE(ordering.ExecutesBefore(op_start_0, op_done_0));
+  EXPECT_TRUE(ordering.ExecutesBefore(op_start_0, op_done_1));
+  EXPECT_TRUE(ordering.ExecutesBefore(op_start_1, op_done_0));
+  EXPECT_TRUE(ordering.ExecutesBefore(op_start_1, op_done_1));
 }
 
 }  // namespace

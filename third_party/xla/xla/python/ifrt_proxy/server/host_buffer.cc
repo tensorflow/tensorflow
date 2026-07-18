@@ -29,6 +29,7 @@
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/python/ifrt_proxy/common/transfer_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -63,7 +64,7 @@ absl::Status HostBufferStore::Store(uint64_t handle, std::string data) {
 
 absl::Status HostBufferStore::ReadFromDisk(uint64_t handle) {
   std::optional<std::string> file_path = LargeTransferFilePath(handle);
-  CHECK(file_path != std::nullopt) << absl::NotFoundError(
+  CHECK(file_path.has_value()) << absl::NotFoundError(
       "IFRT proxy: cannot retrieve file path for ReadFromDisk().");
   VLOG(3) << "HostBuffer::StoreViaFilePath " << handle << " " << *file_path;
 
@@ -71,7 +72,7 @@ absl::Status HostBufferStore::ReadFromDisk(uint64_t handle) {
   MemRegion value;
   {
     std::unique_ptr<tsl::ReadOnlyMemoryRegion> tsl_mmaped;
-    TF_RETURN_IF_ERROR(tsl::Env::Default()->NewReadOnlyMemoryRegionFromFile(
+    RETURN_IF_ERROR(tsl::Env::Default()->NewReadOnlyMemoryRegionFromFile(
         *file_path, &tsl_mmaped));
 
     auto view_ptr = new absl::string_view(

@@ -17,14 +17,12 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_ASM_COMPILER_H_
 
 #include <cstdint>
-#include <string>
 #include <vector>
 
-#include "absl/base/macros.h"
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
+#include "absl/strings/string_view.h"
 #include "xla/stream_executor/cuda/cubin_or_ptx_image.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 
 namespace stream_executor {
@@ -35,24 +33,8 @@ namespace stream_executor {
 // 'options' is used to query for the CUDA location in case it is
 // customized in a passed flag, and for controlling ptxas optimizations.
 absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
-    const CudaComputeCapability& cc, const std::string& ptx_contents,
-    GpuAsmOpts options, bool cancel_if_reg_spill = false);
-
-// Temporary overload for users outside of XLA that still use the old API.
-inline absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
-    int cc_major, int cc_minor, const char* ptx_contents, GpuAsmOpts options,
-    bool cancel_if_reg_spill = false) {
-  return CompileGpuAsm(CudaComputeCapability(cc_major, cc_minor),
-                       std::string(ptx_contents), options, cancel_if_reg_spill);
-}
-
-// Same as CompileGpuAsm, but caches the result, and returns unowned view of
-// the compiled binary.
-//
-// A copy of the string provided in ptx will be made.
-absl::StatusOr<absl::Span<const uint8_t>> CompileGpuAsmOrGetCached(
-    const CudaComputeCapability& cc, const std::string& ptx_contents,
-    GpuAsmOpts compilation_options);
+    const CudaComputeCapability& cc, absl::string_view ptx_contents,
+    GpuAsmOpts options);
 
 // Bundles the GPU machine code (cubins) and PTX if requested and returns the
 // resulting binary (i.e. a fatbin) as a byte array.

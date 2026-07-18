@@ -25,10 +25,15 @@ namespace xla {
 // already compiled) or an LLVM IR (if XLA itself will compile it to PTX).
 class KernelSource {
  public:
+  KernelSource() = default;
   virtual ~KernelSource() = default;
 
   // Get a human readable string representation of the kernel source.
   virtual std::string ToString() const = 0;
+
+ protected:
+  KernelSource(KernelSource&&) = default;
+  KernelSource& operator=(KernelSource&&) = default;
 };
 
 }  // namespace xla

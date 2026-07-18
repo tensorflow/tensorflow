@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Object/ObjectFile.h"
+#include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Target/TargetMachine.h"
@@ -51,6 +53,8 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/jit_compiler.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/runtime/function_library.h"
+#include "xla/backends/cpu/target_machine_options.h"
+#include "xla/debug_options_flags.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -114,7 +118,11 @@ TEST_P(ObjectLoaderTest, Load) {
   ir_compiler_hooks.post_codegen = object_files_saver;
 
   std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
-      llvm::TargetOptions(), IrCompiler::Options(), ir_compiler_hooks);
+      llvm::TargetOptions(),
+      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::None,
+                          /*optimize_for_size=*/false,
+                          TargetMachineOptions(GetDebugOptionsFromFlags())},
+      ir_compiler_hooks);
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto compiler,
@@ -122,10 +130,10 @@ TEST_P(ObjectLoaderTest, Load) {
 
   auto add_module = [&](absl::string_view ir, absl::string_view name,
                         size_t dylib_index) -> absl::Status {
-    TF_ASSIGN_OR_RETURN(llvm::orc::ThreadSafeModule tsm,
-                        ParseModule(tsc, ir, name));
+    ASSIGN_OR_RETURN(llvm::orc::ThreadSafeModule tsm,
+                     ParseModule(tsc, ir, name));
     SetModuleMemoryRegionName(*tsm.getModuleUnlocked(), "object_loader_test");
-    TF_RETURN_IF_ERROR(compiler.AddModule(std::move(tsm), dylib_index));
+    RETURN_IF_ERROR(compiler.AddModule(std::move(tsm), dylib_index));
     return absl::OkStatus();
   };
 

@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 
 namespace xla::gpu {
@@ -95,6 +97,27 @@ TEST_F(TritonTilingPropagationTest,
   EXPECT_NE(dim_spec_1, nullptr);
   EXPECT_EQ(dim_spec_1->size(), 1);
   EXPECT_EQ(dim_spec_1->at(0).count, 1);
+}
+
+TEST_F(TritonTilingPropagationTest,
+       IsInputWorthFusingSliceThroughSingleUserReshape) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[100,100] parameter(0)
+  p1 = f32[100,100] parameter(1)
+  add = f32[100,100] add(p0, p1)
+  neg = f32[100,100] negate(add)
+  reshape = f32[10000] reshape(add)
+  slice = f32[10] slice(reshape), slice={[0:10]}
+  ROOT root = tuple(slice, neg)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  const HloInstruction* slice =
+      module->entry_computation()->root_instruction()->operand(0);
+  EXPECT_TRUE(triton_fusion::IsInputWorthFusing(*slice));
 }
 
 }  // namespace

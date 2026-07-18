@@ -19,7 +19,7 @@ limitations under the License.
 namespace tensorflow {
 
 absl::Status MemmappedFileSystemWriter::InitializeToFile(
-    Env* env, const string& filename) {
+    Env* env, const std::string& filename) {
   auto status = env->NewWritableFile(filename, &output_file_);
   if (status.ok()) {
     output_file_offset_ = 0;
@@ -27,22 +27,22 @@ absl::Status MemmappedFileSystemWriter::InitializeToFile(
   return status;
 }
 
-absl::Status MemmappedFileSystemWriter::SaveTensor(const Tensor& tensor,
-                                                   const string& element_name) {
+absl::Status MemmappedFileSystemWriter::SaveTensor(
+    const Tensor& tensor, const std::string& element_name) {
   if (!output_file_) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "MemmappedEnvWritter: saving tensor into not opened file");
   }
   if (!MemmappedFileSystem::IsWellFormedMemmappedPackageFilename(
           element_name)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "MemmappedEnvWritter: element_name is invalid: must have memmapped ",
         "package prefix ", MemmappedFileSystem::kMemmappedPackagePrefix,
-        " and include [A-Za-z0-9_.]");
+        " and include [A-Za-z0-9_.]"));
   }
   const auto tensor_data = tensor.tensor_data();
   if (tensor_data.empty()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "MemmappedEnvWritter: saving tensor with 0 size");
   }
   // Adds pad for correct alignment after memmapping.
@@ -56,20 +56,20 @@ absl::Status MemmappedFileSystemWriter::SaveTensor(const Tensor& tensor,
 }
 
 absl::Status MemmappedFileSystemWriter::SaveProtobuf(
-    const protobuf::MessageLite& message, const string& element_name) {
+    const protobuf::MessageLite& message, const std::string& element_name) {
   if (!output_file_) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "MemmappedEnvWritter: saving protobuf into not opened file");
   }
   if (!MemmappedFileSystem::IsWellFormedMemmappedPackageFilename(
           element_name)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "MemmappedEnvWritter: element_name is invalid: must have memmapped "
         "package prefix ",
         MemmappedFileSystem::kMemmappedPackagePrefix,
-        " and include [A-Za-z0-9_.]");
+        " and include [A-Za-z0-9_.]"));
   }
-  const string encoded = message.SerializeAsString();
+  const std::string encoded = message.SerializeAsString();
   AddToDirectoryElement(element_name, encoded.size());
   const auto res = output_file_->Append(encoded);
   if (res.ok()) {
@@ -80,25 +80,25 @@ absl::Status MemmappedFileSystemWriter::SaveProtobuf(
 
 namespace {
 
-absl::string_view EncodeUint64LittleEndian(uint64 val, char* output_buffer) {
-  for (unsigned int i = 0; i < sizeof(uint64); ++i) {
+absl::string_view EncodeUint64LittleEndian(uint64_t val, char* output_buffer) {
+  for (unsigned int i = 0; i < sizeof(uint64_t); ++i) {
     output_buffer[i] = (val >> i * 8);
   }
-  return {output_buffer, sizeof(uint64)};
+  return {output_buffer, sizeof(uint64_t)};
 }
 
 }  // namespace
 
 absl::Status MemmappedFileSystemWriter::FlushAndClose() {
   if (!output_file_) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "MemmappedEnvWritter: flushing into not opened file");
   }
-  const string dir = directory_.SerializeAsString();
+  const std::string dir = directory_.SerializeAsString();
   TF_RETURN_IF_ERROR(output_file_->Append(dir));
 
   // Write the directory offset.
-  char buffer[sizeof(uint64)];
+  char buffer[sizeof(uint64_t)];
   TF_RETURN_IF_ERROR(output_file_->Append(
       EncodeUint64LittleEndian(output_file_offset_, buffer)));
 
@@ -109,13 +109,13 @@ absl::Status MemmappedFileSystemWriter::FlushAndClose() {
   return absl::OkStatus();
 }
 
-absl::Status MemmappedFileSystemWriter::AdjustAlignment(uint64 alignment) {
-  const uint64 alignment_rest = output_file_offset_ % alignment;
-  const uint64 to_write_for_alignment =
+absl::Status MemmappedFileSystemWriter::AdjustAlignment(uint64_t alignment) {
+  const uint64_t alignment_rest = output_file_offset_ % alignment;
+  const uint64_t to_write_for_alignment =
       (alignment_rest == 0) ? 0 : alignment - (output_file_offset_ % alignment);
-  static constexpr uint64 kFillerBufferSize = 16;
+  static constexpr uint64_t kFillerBufferSize = 16;
   const char kFillerBuffer[kFillerBufferSize] = {};
-  for (uint64 rest = to_write_for_alignment; rest > 0;) {
+  for (uint64_t rest = to_write_for_alignment; rest > 0;) {
     absl::string_view sp(kFillerBuffer, std::min(rest, kFillerBufferSize));
     TF_RETURN_IF_ERROR(output_file_->Append(sp));
     rest -= sp.size();
@@ -124,8 +124,8 @@ absl::Status MemmappedFileSystemWriter::AdjustAlignment(uint64 alignment) {
   return absl::OkStatus();
 }
 
-void MemmappedFileSystemWriter::AddToDirectoryElement(const string& name,
-                                                      uint64 length) {
+void MemmappedFileSystemWriter::AddToDirectoryElement(const std::string& name,
+                                                      uint64_t length) {
   MemmappedFileSystemDirectoryElement* new_directory_element =
       directory_.add_element();
   new_directory_element->set_offset(output_file_offset_);

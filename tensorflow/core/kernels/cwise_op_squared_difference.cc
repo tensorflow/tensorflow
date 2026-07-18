@@ -17,7 +17,7 @@ limitations under the License.
 
 namespace tensorflow {
 REGISTER8(BinaryOp, CPU, "SquaredDifference", functor::squared_difference,
-          float, Eigen::half, double, bfloat16, int32, int64_t, complex64,
+          float, Eigen::half, double, bfloat16, int32_t, int64_t, complex64,
           complex128);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
@@ -37,8 +37,8 @@ REGISTER_KERNEL_BUILDER(
         .HostMemory("x")
         .HostMemory("y")
         .HostMemory("z")
-        .TypeConstraint<int32>("T"),
-    BinaryOp<CPUDevice, functor::squared_difference<int32>>);
+        .TypeConstraint<int32_t>("T"),
+    BinaryOp<CPUDevice, functor::squared_difference<int32_t>>);
 
 REGISTER_KERNEL_BUILDER(
     Name("SquaredDifference")
@@ -46,7 +46,7 @@ REGISTER_KERNEL_BUILDER(
         .HostMemory("x")
         .HostMemory("y")
         .HostMemory("z")
-        .TypeConstraint<int32>("T"),
-    BinaryOp<CPUDevice, functor::squared_difference<int32>>);
+        .TypeConstraint<int32_t>("T"),
+    BinaryOp<CPUDevice, functor::squared_difference<int32_t>>);
 
 }  // namespace tensorflow

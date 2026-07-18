@@ -66,6 +66,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -177,27 +178,30 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteIntArray* output_shape = TfLiteIntArrayCreate(output_rank);
   TF_LITE_ENSURE(context, output_shape != nullptr);
   int k = 0;
-  size_t embedding_size = 1;
-  size_t lookup_size = 1;
+  CheckedInt<size_t> embedding_size = 1;
+  CheckedInt<size_t> lookup_size = 1;
   for (int i = 0; i < lookup_rank - 1; i++, k++) {
-    const size_t dim = dense_shape->data.i32[i];
-    TF_LITE_ENSURE_MSG(
-        context,
-        MultiplyAndCheckOverflow(lookup_size, dim, &lookup_size) == kTfLiteOk,
-        "Lookup size overflowed.");
+    const int32_t dim = dense_shape->data.i32[i];
+    lookup_size *= dim;
     output_shape->data[k] = dim;
   }
+  TF_LITE_ENSURE_MSG(context, !lookup_size.Overflow(),
+                     "Lookup size overflowed.");
   for (int i = 1; i < embedding_rank; i++, k++) {
-    const size_t dim = SizeOfDimension(value, i);
-    TF_LITE_ENSURE_MSG(context,
-                       MultiplyAndCheckOverflow(embedding_size, dim,
-                                                &embedding_size) == kTfLiteOk,
-                       "Embedding size overflowed.");
+    const int dim = SizeOfDimension(value, i);
+    embedding_size *= dim;
     output_shape->data[k] = dim;
   }
+  TF_LITE_ENSURE_MSG(context, !embedding_size.Overflow(),
+                     "Embedding size overflowed.");
   TF_LITE_ENSURE_STATUS(context->ResizeTensor(context, output, output_shape));
-  const size_t output_size = lookup_size * embedding_size;
-  TfLiteTensorRealloc(output_size * sizeof(float), output);
+  const CheckedInt output_size = lookup_size * embedding_size;
+  TF_LITE_ENSURE_MSG(context, !output_size.Overflow(),
+                     "Output size overflowed.");
+  const CheckedInt byte_output_size = output_size * sizeof(float);
+  TF_LITE_ENSURE_MSG(context, !byte_output_size.Overflow(),
+                     "Byte output size overflowed.");
+  TfLiteTensorRealloc(byte_output_size.Value(), output);
 
   float* output_ptr = GetTensorData<float>(output);
   const float* weights_ptr = GetTensorData<float>(weights);
@@ -205,7 +209,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // Makes sure reallocation was successful.
   TF_LITE_ENSURE(context, output_ptr != nullptr);
 
-  std::fill_n(output_ptr, output_size, 0.0f);
+  std::fill_n(output_ptr, output_size.Value(), 0.0f);
 
   // Keep track of the current bucket for aggregation/combination.
   int current_output_offset = 0;
@@ -231,13 +235,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       output_bucket += indices->data.i32[example_indices_offset + k] * stride;
       stride *= dense_shape->data.i32[k];
     }
-    const int output_offset = output_bucket * embedding_size;
+    const int output_offset = output_bucket * embedding_size.Value();
 
     // If we are in a new aggregation bucket and the combiner is not the sum,
     // go back and finalize the result of the previous bucket.
     if (output_offset != current_output_offset) {
       FinalizeAggregation(params->combiner, num_elements, current_total_weight,
-                          current_squares_weight, embedding_size,
+                          current_squares_weight, embedding_size.Value(),
                           &output_ptr[current_output_offset]);
 
       // Track next bucket.
@@ -249,7 +253,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
     // Add element to aggregation.
     ++num_elements;
-    const int example_embedding_offset = idx * embedding_size;
+    const int example_embedding_offset = idx * embedding_size.Value();
     const float w = weights_ptr[i];
     current_squares_weight += w * w;
     current_total_weight += w;
@@ -266,7 +270,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   // Finalize last bucket.
   FinalizeAggregation(params->combiner, num_elements, current_total_weight,
-                      current_squares_weight, embedding_size,
+                      current_squares_weight, embedding_size.Value(),
                       &GetTensorData<float>(output)[current_output_offset]);
 
   return kTfLiteOk;

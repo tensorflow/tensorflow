@@ -14,6 +14,8 @@
 # ==============================================================================
 """Structured Tensors."""
 
+from __future__ import annotations
+
 import re
 from typing import Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
@@ -48,6 +50,10 @@ _FieldValue = Union[
 # Function that takes a FieldValue as input and returns the transformed
 # FieldValue.
 _FieldFn = Callable[[_FieldValue], _FieldValue]
+
+# Field names work as key, and they can be a sequence to refer to the
+# sub-levels (embedded) StructuredTensor's.
+FieldName = Union[str, Sequence[str]]
 
 
 @tf_export('experimental.StructuredTensor')
@@ -99,15 +105,6 @@ class StructuredTensor(extension_type.BatchableExtensionType):
   _ragged_shape: dynamic_ragged_shape.DynamicRaggedShape
 
   __name__ = 'tf.StructuredTensor'
-  #=============================================================================
-  # Common Types
-  #=============================================================================
-  # pylint: disable=invalid-name
-  # Field names work as key, and they can be a sequence to refer to the
-  # sub-levels (embedded) StructuredTensor's.
-  FieldName = Union[str, Sequence[str]]
-
-  # pylint: enable=invalid-name
 
   #=============================================================================
   # Constructor & Factory Methods
@@ -1189,6 +1186,11 @@ class StructuredTensor(extension_type.BatchableExtensionType):
     def rank(self):
       return self._ragged_shape.rank
 
+
+# We cannot define this inside the class in the usual way because under Python
+# 3.14 we attempt to interpret it as an ExtensionType field. It would be cleaner
+# not to define it inside the class at all, but we want to avoid an API break.
+StructuredTensor.FieldName = FieldName
 
 # Regular expression used to determine whether a string is a valid field name.
 # Note: we plan to relax (or possibly eliminate) this in the future; you

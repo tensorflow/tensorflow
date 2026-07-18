@@ -31,7 +31,7 @@ class XlaAotOnlyVarHandleOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* context) override;
 
  private:
-  string name_;
+  std::string name_;
 };
 
 XlaAotOnlyVarHandleOp::XlaAotOnlyVarHandleOp(OpKernelConstruction* c)
@@ -49,8 +49,8 @@ void XlaAotOnlyVarHandleOp::Compile(XlaOpKernelContext* context) {
       return;
     }
   }
-  context->SetStatus(
-      errors::InvalidArgument("Variable: ", name_, " not configured"));
+  context->SetStatus(absl::InvalidArgumentError(
+      absl::StrCat("Variable: ", name_, " not configured")));
 }
 }  // namespace
 

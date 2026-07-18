@@ -27,8 +27,8 @@ namespace tensorflow {
 // registration with a CancellationManager.
 class CancellableCall {
  public:
-  CancellableCall(CancellationManager* cancel_mgr, const string& remote_worker,
-                  WorkerCacheInterface* wc)
+  CancellableCall(CancellationManager* cancel_mgr,
+                  const std::string& remote_worker, WorkerCacheInterface* wc)
       : is_cancelled_(false),
         cancel_mgr_(cancel_mgr),
         remote_worker_(remote_worker),
@@ -51,7 +51,7 @@ class CancellableCall {
   mutex mu_;
   bool is_cancelled_;
   CancellationManager* const cancel_mgr_;  // Not owned
-  const string remote_worker_;
+  const std::string remote_worker_;
   WorkerCacheInterface* const wc_;  // Not owned
   WorkerInterface* const wi_;       // Owned by wc_, must be released.
   CallOptions opts_;

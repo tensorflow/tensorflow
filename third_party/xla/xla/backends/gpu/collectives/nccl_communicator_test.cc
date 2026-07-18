@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,153 +13,136 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/collectives/nccl_communicator.h"
-
-#include <cstddef>
+#include <functional>
 #include <memory>
-#include <optional>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/status/status_matchers.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
+#include "absl/synchronization/barrier.h"
+#include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/collectives_test_util.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
-#include "xla/backends/gpu/collectives/nccl_errors.h"
-#include "xla/core/collectives/rank_id.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/future.h"
-#include "xla/service/collective_ops_utils.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/tsl/platform/errors.h"
-
-#if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#if (TF_ROCM_VERSION >= 50200)
-#include "rocm/include/rccl/rccl.h"
-#else
-#include "rocm/include/rccl.h"
-#endif  // TF_ROCM_VERSION >= 50200
-#else
-#include "third_party/nccl/nccl.h"
-#endif  // TENSORFLOW_USE_ROCM
+#include "xla/runtime/device_id.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/concurrency/executor.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/threadpool.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
 
-using ::testing::HasSubstr;
+static constexpr GlobalDeviceId kD0(0);
+static constexpr GlobalDeviceId kD1(1);
 
-constexpr absl::string_view kCudaError = "unhandled cuda error";
+// Test checks that there are no deadlocks when NCCL API is used concurrently
+// from multiple threads.
+// Test launches two parallel threads which should use the same NCCL
+// communicator asynchronously. The first thread should perform memory
+// registration and the second thread should perform AllReduce.
+// Memory registration operations should wait for the AllReduce to complete
+// using a barrier.
+TEST(NcclCommunicatorTest, AsyncApiCalls) {
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("CUDA"));
 
-void AssertAborted(absl::Status s) {
-  ASSERT_THAT(s, absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
-                                        HasSubstr("aborted")));
-};
+  constexpr int kNumDevices = 2;
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       CreateExecutors(platform, kNumDevices));
 
-void AssertEventAborted(Future<> future) {
-  ASSERT_THAT(future.Await(),
-              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
-                                     HasSubstr("aborted")));
-};
+  if (!executors[0]->CanEnablePeerAccessTo(executors[1])) {
+    GTEST_SKIP() << "Test requires peer access between devices";
+  }
 
-// Creates a non-blocking NCCL communicator.
-absl::StatusOr<std::unique_ptr<NcclCommunicator>> CreateCommunicator(
-    bool blocking) {
-  auto f = [blocking]() -> absl::StatusOr<ncclComm_t> {
-    // Create a unique NCCL Id.
-    ncclUniqueId id;
-    TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclGetUniqueId(&id)));
+  if (!executors[0]
+           ->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeastHopper()) {
+    GTEST_SKIP() << "Test requires at least Hopper architecture";
+  }
 
-    // Initialize a communicator.
-    ncclConfig_t config = NCCL_CONFIG_INITIALIZER;
-    config.blocking = blocking ? 1 : 0;
-    ncclComm_t comm;
-    ncclResult_t r =
-        ncclCommInitRankConfig(&comm, /*nranks=*/1, id, /*rank=*/0, &config);
-    if (r == ncclUnhandledCudaError) {
-      // If this test runs on a machine without any CUDA-capable devices
-      // available, we get a ncclUnhandledCudaError. We return a specific error
-      // and skip the test.
-      LOG(ERROR) << XLA_NCCL_STATUS(r);
-      return absl::FailedPreconditionError(kCudaError);
+  ASSERT_OK_AND_ASSIGN(auto comms, CreateCommunicators(executors, {kD0, kD1},
+                                                       /*blocking=*/true));
+
+  ASSERT_OK_AND_ASSIGN(auto allocators, CreateMemoryAllocators(executors));
+  ASSERT_OK_AND_ASSIGN(auto sym_allocs, Allocate(allocators, 1024));
+  ASSERT_OK_AND_ASSIGN(auto send_allocs, Allocate(allocators, 1024));
+  ASSERT_OK_AND_ASSIGN(auto recv_allocs, Allocate(allocators, 1024));
+
+  ASSERT_OK_AND_ASSIGN(auto stream0, executors[0]->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream1, executors[1]->CreateStream());
+
+  constexpr int kNumThreads = 4;
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "nccl_test", kNumThreads);
+
+  constexpr int kNumIterations = 1000;
+  std::vector<std::unique_ptr<absl::Barrier>> registration_barriers;
+  registration_barriers.reserve(kNumIterations);
+  std::vector<std::unique_ptr<absl::Barrier>> all_reduce_barriers;
+  all_reduce_barriers.reserve(kNumIterations);
+  for (int i = 0; i < kNumIterations; ++i) {
+    registration_barriers.push_back(
+        std::make_unique<absl::Barrier>(kNumThreads));
+    all_reduce_barriers.push_back(std::make_unique<absl::Barrier>(kNumThreads));
+  }
+
+  // Register memory, synchronize with barrier, unregister memory
+  // asynchronously.
+  std::function<absl::Status(int)> memory_registration_fn =
+      [&](int rank) -> absl::Status {
+    for (int i = 0; i < kNumIterations; ++i) {
+      if (i > 0) {
+        all_reduce_barriers[i - 1]->Block();
+      }
+      ASSIGN_OR_RETURN(auto sym_mem, comms[rank]->CreateSymmetricMemory(
+                                         sym_allocs[rank]->address()));
+      registration_barriers[i]->Block();
     }
-    if (r != ncclSuccess && r != ncclInProgress) {
-      return XLA_NCCL_STATUS(r);
-    }
-
-    // Wait for the communicator to finish initializing.
-    ncclResult_t state = ncclInProgress;
-    while (state == ncclInProgress) {
-      TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclCommGetAsyncError(comm, &state)));
-    }
-    TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(state));
-    return comm;
+    all_reduce_barriers[kNumIterations - 1]->Block();
+    return absl::OkStatus();
   };
-  bool is_async = !blocking;
-  return NcclCommunicator::Create(f, is_async);
-}
 
-TEST(NcclCommunicator, AbortSucceeds) {
-  for (const bool blocking : {true, false}) {
-    absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
-        CreateCommunicator(blocking);
-    if (comm.status().message() == kCudaError) {
-      GTEST_SKIP() << "unhandled cuda error";
+  // Perform AllReduce.
+  std::function<absl::Status(int)> all_reduce_fn =
+      [&](int rank) -> absl::Status {
+    se::Stream* stream = rank == 0 ? stream0.get() : stream1.get();
+    GpuCollectives::Executor gpu_exec(stream);
+    for (int i = 0; i < kNumIterations; ++i) {
+      registration_barriers[i]->Block();
+      RETURN_IF_ERROR(comms[rank]
+                          ->AllReduce(send_allocs[rank]->address(),
+                                      recv_allocs[rank]->address(), F32, 256,
+                                      ReductionKind::SUM, gpu_exec)
+                          .Await());
+      all_reduce_barriers[i]->Block();
     }
-    ASSERT_THAT(comm, absl_testing::IsOk());
-    ASSERT_THAT((*comm)->Abort(), absl_testing::IsOk());
-  }
-}
+    return absl::OkStatus();
+  };
 
-TEST(NcclCommunicator, DoubleAbortFails) {
-  for (const bool blocking : {true, false}) {
-    absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
-        CreateCommunicator(blocking);
-    if (comm.status().message() == kCudaError) {
-      GTEST_SKIP() << "unhandled cuda error";
-    }
-    ASSERT_THAT(comm.status(), absl_testing::IsOk());
-    ASSERT_THAT((*comm)->Abort(), absl_testing::IsOk());
-    ASSERT_THAT((*comm)->Abort(),
-                absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
-                                       HasSubstr("aborted")));
-  }
-}
+  tsl::Executor& exec = *pool.AsExecutor();
+  std::vector<Future<>> futures;
+  futures.reserve(kNumThreads);
+  futures.push_back(
+      MakeFutureOn(exec, [&]() { return memory_registration_fn(0); }));
+  futures.push_back(
+      MakeFutureOn(exec, [&]() { return memory_registration_fn(1); }));
+  futures.push_back(MakeFutureOn(exec, [&]() { return all_reduce_fn(0); }));
+  futures.push_back(MakeFutureOn(exec, [&]() { return all_reduce_fn(1); }));
 
-TEST(NcclCommunicator, OperationsFailAfterAbort) {
-  for (const bool blocking : {true, false}) {
-    // Declare placeholder variables to make the operations below compile.
-    se::DeviceMemoryBase buf;
-    PrimitiveType dtype = PrimitiveType::U64;
-    size_t count = 0;
-    ReductionKind rk = ReductionKind::SUM;
-    GpuCollectives::Executor executor(nullptr);
-
-    // Execute NcclCommunicator operations. They should all immediately fail
-    // because the communicator has been aborted.
-    absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
-        CreateCommunicator(blocking);
-    if (comm.status().message() == kCudaError) {
-      GTEST_SKIP() << "unhandled cuda error";
-    }
-    ASSERT_THAT(comm.status(), absl_testing::IsOk());
-    ASSERT_THAT((*comm)->Abort(), absl_testing::IsOk());
-    AssertAborted((*comm)->HealthCheck());
-    AssertAborted((*comm)->NumRanks().status());
-    AssertAborted((*comm)->RegisterBufferOnce(buf, 0, false));
-    AssertEventAborted(
-        (*comm)->AllReduce(buf, buf, dtype, count, rk, executor));
-    AssertEventAborted(
-        (*comm)->Broadcast(buf, buf, dtype, count, RankId(0), executor));
-    AssertEventAborted(
-        (*comm)->ReduceScatter(buf, buf, dtype, count, rk, executor));
-    AssertEventAborted((*comm)->AllGather(buf, buf, dtype, count, executor));
-    AssertEventAborted((*comm)->AllToAll({}, {}, dtype, count, executor));
-    AssertEventAborted(
-        (*comm)->CollectivePermute(buf, buf, dtype, count, {}, {}, executor));
-    AssertEventAborted((*comm)->Send(buf, dtype, count, RankId(0), executor));
-    AssertEventAborted((*comm)->Recv(buf, dtype, count, RankId(0), executor));
+  for (auto& f : futures) {
+    EXPECT_OK(f.Await());
   }
 }
 

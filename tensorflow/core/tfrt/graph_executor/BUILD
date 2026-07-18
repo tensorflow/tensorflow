@@ -12,18 +12,10 @@ package(
 
 package_group(
     name = "friends",
+    # TODO(b/476497239): Remove the old JSV codebase once the migration is done.
     packages = [
-        # copybara:uncomment "//cloud/ai/platform/prediction/...",
-        # copybara:uncomment "//learning/brain/experimental/tfrt/native_lowering/...",
-        # copybara:uncomment "//learning/brain/tfrt/...",
-        # copybara:uncomment "//learning/infra/mira/experimental/orbax_model/...",
-        # copybara:uncomment "//learning/serving/servables/tfrt/...",
-        # copybara:uncomment "//smartass/brain/inference/...",
-        # copybara:uncomment "//tensorflow/compiler/mlir/tfrt/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/tfrt/graph_executor/python/...",
-        # copybara:uncomment "//tensorflow_serving/servables/tensorflow/...",
-        # copybara:uncomment "//tensorflow_serving/servables/tensorflow/google/...",
     ],
 )
 
@@ -134,11 +126,6 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:refcount",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_xla//xla/tsl/concurrency:async_value",
-        "@local_xla//xla/tsl/concurrency:ref_count",
         "@tf_runtime//:basic_kernels_alwayslink",
         "@tf_runtime//:bef",
         "@tf_runtime//:befexecutor",
@@ -146,6 +133,11 @@ cc_library(
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:mlirtobef",
         "@tf_runtime//:support",
+        "@tsl//tsl/platform:refcount",
+        "@tsl//tsl/platform:status",
+        "@tsl//tsl/profiler/lib:traceme",
+        "@xla//xla/tsl/concurrency:async_value",
+        "@xla//xla/tsl/concurrency:ref_count",
     ] + if_google(
         [
             "//learning/brain/experimental/tfrt/native_lowering/stubs:tfrt_native_lowering_impl",
@@ -180,7 +172,9 @@ tf_cc_test(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_compat_request_state",
         "//tensorflow/core/tfrt/fallback:fallback_state",
+        "//tensorflow/core/tfrt/fallback:op_kernel_runner",
         "//tensorflow/core/tfrt/mlrt/interpreter:context",
         "//tensorflow/core/tfrt/mlrt/interpreter:value",
         "//tensorflow/core/tfrt/mlrt/kernel",
@@ -189,11 +183,11 @@ tf_cc_test(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:tensor",
         "@tf_runtime//cpp_tests:common",
+        "@tsl//tsl/platform:status",
+        "@tsl//tsl/platform:statusor",
     ] + if_google(
         [
             "//learning/brain/experimental/tfrt/native_lowering/kernels:kernels_alwayslink",
@@ -250,9 +244,9 @@ tf_cc_test(
         ":test_config_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@tsl//tsl/platform:status_matchers",
+        "@tsl//tsl/platform:statusor",
+        "@xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 

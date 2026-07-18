@@ -85,9 +85,10 @@ void RecordDeviceTimeMeasurement(
 inline DeviceTimeMeasurement::DeviceType GetDeviceType(
     PjRtPlatformId platform_id) {
   if (platform_id == CudaId() || platform_id == RocmId() ||
-      platform_id == SyclId()) {
+      platform_id == OneapiId()) {
     return DeviceTimeMeasurement::DeviceType::kGpu;
-  } else if (platform_id == TpuId()) {
+  }
+  if (platform_id == TpuId()) {
     return DeviceTimeMeasurement::DeviceType::kTpu;
   }
   return DeviceTimeMeasurement::DeviceType::kUnknown;

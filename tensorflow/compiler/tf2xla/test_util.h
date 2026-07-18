@@ -41,7 +41,7 @@ struct InstantiationResultForTest {
 // Instantiates a function, producing a GraphDef to compare against the
 // expected graph.
 absl::Status InstantiateFunctionForTest(
-    const string& name, const FunctionLibraryDefinition& library,
+    const std::string& name, const FunctionLibraryDefinition& library,
     InstantiationResultForTest* result);
 
 }  // namespace tensorflow

@@ -14,7 +14,7 @@ load(
 )
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = [
         # "//litert:__subpackages__",  # copybara:uncomment
         # copybara:uncomment "//third_party/odml/litert:__subpackages__",
@@ -106,6 +106,7 @@ tflite_cc_library_with_c_headers_test(
     deps = [
         ":c_api_types",
         ":operator",
+        "//tensorflow/compiler/mlir/lite:allocation",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:stderr_reporter",

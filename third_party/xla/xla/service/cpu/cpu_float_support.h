@@ -18,8 +18,6 @@ limitations under the License.
 
 #include <functional>
 
-#include "xla/backends/cpu/codegen/target_machine_features.h"
-#include "xla/backends/cpu/xnn_support.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -31,35 +29,36 @@ namespace cpu {
 
 class CpuFloatSupport : public FloatSupport {
  public:
-  using DotStrategyChecker = std::function<bool(const HloInstruction& hlo)>;
+  using CallLibraryChecker = std::function<bool(const HloInstruction& hlo)>;
 
   explicit CpuFloatSupport(PrimitiveType low_precision_type,
-                           DotStrategyChecker call_library_for_dot,
-                           TargetMachineFeatures* cpu_features)
+                           CallLibraryChecker call_library_for_instruction)
       : FloatSupport(low_precision_type),
-        call_library_for_dot_(call_library_for_dot),
-        cpu_features_(cpu_features) {}
+        call_library_for_instruction_(call_library_for_instruction) {}
 
-  // Skip trying to upcast the dot if XNNPACK is enabled and the dot is
-  // supported by XNNPACK.
+  // Skip trying to upcast the dot if the dot is supported by a library.
   bool ShouldSkipInstruction(const HloInstruction& hlo) const override {
-    return hlo.opcode() == HloOpcode::kDot && call_library_for_dot_(hlo) &&
-           IsDotSupportedByXnn(hlo.dot_dimension_numbers(),
-                               hlo.operand(0)->shape(), hlo.operand(1)->shape(),
-                               hlo.shape(), cpu_features_)
-               .value_or(false);
+    return (hlo.opcode() == HloOpcode::kDot ||
+            hlo.opcode() == HloOpcode::kConvolution ||
+            hlo.opcode() == HloOpcode::kReduce ||
+            hlo.opcode() == HloOpcode::kReduceWindow) &&
+           call_library_for_instruction_(hlo);
   }
 
   // Makes FloatNormalization skip custom fusion computations for CPU backend.
   bool ShouldSkipComputationsOf(const HloInstruction& hlo) const override {
-    return hlo.opcode() == HloOpcode::kFusion &&
-           Cast<HloFusionInstruction>(&hlo)->fusion_kind() ==
-               HloInstruction::FusionKind::kCustom;
+    if (hlo.opcode() == HloOpcode::kFusion &&
+        Cast<HloFusionInstruction>(&hlo)->fusion_kind() ==
+            HloInstruction::FusionKind::kCustom) {
+      return true;
+    }
+    return (hlo.opcode() == HloOpcode::kReduce ||
+            hlo.opcode() == HloOpcode::kReduceWindow) &&
+           call_library_for_instruction_(hlo);
   }
 
  private:
-  DotStrategyChecker call_library_for_dot_;
-  TargetMachineFeatures* cpu_features_;
+  CallLibraryChecker call_library_for_instruction_;
 };
 
 }  // namespace cpu

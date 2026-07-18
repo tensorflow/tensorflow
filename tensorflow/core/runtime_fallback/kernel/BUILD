@@ -381,11 +381,11 @@ cc_library(
         "//tensorflow/core/tfrt/utils:tensor_util",
         "@com_google_absl//absl/base",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:refcount",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
         "@tf_runtime//:tensor_alwayslink",
+        "@tsl//tsl/platform:refcount",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
@@ -420,6 +420,7 @@ cc_library(
         "//tensorflow/core/tfrt/graph_executor:config",
         "//tensorflow/core/tfrt/graph_executor:config_proto_cc",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
+        "@com_google_absl//absl/time",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
         "@tf_runtime//:tensor_alwayslink",

@@ -16,14 +16,15 @@ limitations under the License.
 // This file contains the patterns to convert arith.index_cast on tensors to
 // tensor ops and index_cast on scalars.
 
-#include <memory>
-#include <utility>
-
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "transforms/passes.h"
@@ -48,10 +49,10 @@ struct IndexCastConverter : public OpRewritePattern<T> {
         tensor::createDynamicDimValues(rewriter, op.getLoc(), op.getIn());
     rewriter.replaceOpWithNewOp<tensor::GenerateOp>(
         op, resultTy, dynamicExtents,
-        [&](OpBuilder &b, Location loc, ValueRange args) {
-          Value extent = b.create<tensor::ExtractOp>(loc, op.getIn(), args);
-          Value cast = b.create<T>(loc, resultTy.getElementType(), extent);
-          b.create<tensor::YieldOp>(loc, cast);
+        [&](OpBuilder& b, Location loc, ValueRange args) {
+          Value extent = tensor::ExtractOp::create(b, loc, op.getIn(), args);
+          Value cast = T::create(b, loc, resultTy.getElementType(), extent);
+          tensor::YieldOp::create(b, loc, cast);
         });
     return success();
   }
@@ -70,9 +71,4 @@ struct LowerIndexCastPass
 };
 
 }  // namespace
-
-std::unique_ptr<OperationPass<func::FuncOp>> createLowerIndexCastPass() {
-  return std::make_unique<LowerIndexCastPass>();
-}
-
 }  // namespace mlir

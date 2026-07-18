@@ -14,6 +14,19 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/tsl/platform/cloud/google_auth_provider.h"
+
+#include <cstdint>
+#include <cstdlib>
+#include <memory>
+#include <vector>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/platform/cloud/compute_engine_metadata_client.h"
+#include "xla/tsl/platform/cloud/oauth_client.h"
+#include "xla/tsl/platform/types.h"
 #ifndef _WIN32
 #include <pwd.h>
 #include <unistd.h>
@@ -24,13 +37,13 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "json/json.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "tsl/platform/base64.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/retrying_utils.h"
 
 namespace tsl {
 
@@ -51,6 +64,13 @@ constexpr char kCloudSdkConfig[] = "CLOUDSDK_CONFIG";
 // setting this to 'true' (case insensitive) will skip attempting to contact
 // the GCE metadata service.
 constexpr char kNoGceCheck[] = "NO_GCE_CHECK";
+
+// The environment variable to set the maximum number of requests for GCE auth.
+constexpr char kGcsAuthMaxRequests[] = "TF_GCS_AUTH_MAX_REQUESTS";
+
+// The environment variable to set the delay in seconds between GCE auth
+// retries.
+constexpr char kGcsAuthRetryDelaySec[] = "TF_GCS_AUTH_RETRY_DELAY_SEC";
 
 // The default path to the gcloud config folder, relative to the home folder.
 constexpr char kGCloudConfigFolder[] = ".config/gcloud/";
@@ -77,19 +97,19 @@ constexpr char kGceTokenPath[] = "instance/service-accounts/default/token";
 constexpr char kOAuthScope[] = "https://www.googleapis.com/auth/cloud-platform";
 
 /// Returns whether the given path points to a readable file.
-bool IsFile(const string& filename) {
+bool IsFile(const std::string& filename) {
   std::ifstream fstream(filename.c_str());
   return fstream.good();
 }
 
 /// Returns the credentials file name from the env variable.
-absl::Status GetEnvironmentVariableFileName(string* filename) {
+absl::Status GetEnvironmentVariableFileName(std::string* filename) {
   if (!filename) {
-    return errors::FailedPrecondition("'filename' cannot be nullptr.");
+    return absl::FailedPreconditionError("'filename' cannot be nullptr.");
   }
   const char* result = std::getenv(kGoogleApplicationCredentials);
   if (!result || !IsFile(result)) {
-    return errors::NotFound(strings::StrCat("$", kGoogleApplicationCredentials,
+    return absl::NotFoundError(absl::StrCat("$", kGoogleApplicationCredentials,
                                             " is not set or corrupt."));
   }
   *filename = result;
@@ -97,11 +117,11 @@ absl::Status GetEnvironmentVariableFileName(string* filename) {
 }
 
 /// Returns the well known file produced by command 'gcloud auth login'.
-absl::Status GetWellKnownFileName(string* filename) {
+absl::Status GetWellKnownFileName(std::string* filename) {
   if (!filename) {
-    return errors::FailedPrecondition("'filename' cannot be nullptr.");
+    return absl::FailedPreconditionError("'filename' cannot be nullptr.");
   }
-  string config_dir;
+  std::string config_dir;
   const char* config_dir_override = std::getenv(kCloudSdkConfig);
   if (config_dir_override) {
     config_dir = config_dir_override;
@@ -109,16 +129,34 @@ absl::Status GetWellKnownFileName(string* filename) {
     // Determine the home dir path.
     const char* home_dir = std::getenv("HOME");
     if (!home_dir) {
-      return errors::FailedPrecondition("Could not read $HOME.");
+      return absl::FailedPreconditionError("Could not read $HOME.");
     }
     config_dir = io::JoinPath(home_dir, kGCloudConfigFolder);
   }
   auto result = io::JoinPath(config_dir, kWellKnownCredentialsFile);
   if (!IsFile(result)) {
-    return errors::NotFound(
+    return absl::NotFoundError(
         "Could not find the credentials file in the standard gcloud location.");
   }
   *filename = result;
+  return absl::OkStatus();
+}
+
+absl::Status ParseNonNegativeIntEnvVar(const char* env_var_name,
+                                       int default_value, int* result) {
+  if (!result) {
+    return absl::FailedPreconditionError("'result' cannot be nullptr.");
+  }
+  const char* env_value = std::getenv(env_var_name);
+  if (!env_value) {
+    *result = default_value;
+    return absl::OkStatus();
+  }
+  if (!absl::SimpleAtoi(env_value, result) || *result < 0) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed to parse $", env_var_name,
+                     " as a non-negative integer: ", env_value));
+  }
   return absl::OkStatus();
 }
 
@@ -139,9 +177,9 @@ GoogleAuthProvider::GoogleAuthProvider(
           std::move(compute_engine_metadata_client)),
       env_(env) {}
 
-absl::Status GoogleAuthProvider::GetToken(string* t) {
-  absl::MutexLock lock(&mu_);
-  const uint64 now_sec = env_->NowSeconds();
+absl::Status GoogleAuthProvider::GetToken(std::string* t) {
+  absl::MutexLock lock(mu_);
+  const uint64_t now_sec = env_->NowSeconds();
 
   if (now_sec + kExpirationTimeMarginSec < expiration_timestamp_sec_) {
     *t = current_token_;
@@ -166,10 +204,29 @@ absl::Status GoogleAuthProvider::GetToken(string* t) {
   if (skip_gce_check) {
     token_from_gce_status =
         absl::Status(absl::StatusCode::kCancelled,
-                     strings::StrCat("GCE check skipped due to presence of $",
-                                     kNoGceCheck, " environment variable."));
+                     absl::StrCat("GCE check skipped due to presence of $",
+                                  kNoGceCheck, " environment variable."));
   } else {
-    token_from_gce_status = GetTokenFromGce();
+    int max_requests;
+    RETURN_IF_ERROR(
+        ParseNonNegativeIntEnvVar(kGcsAuthMaxRequests, 1, &max_requests));
+    int retry_delay_sec;
+    RETURN_IF_ERROR(
+        ParseNonNegativeIntEnvVar(kGcsAuthRetryDelaySec, 5, &retry_delay_sec));
+
+    for (int i = 0; i < max_requests; ++i) {
+      token_from_gce_status = GetTokenFromGce();
+      if (token_from_gce_status.ok()) {
+        break;
+      }
+      if (i < max_requests - 1) {
+        LOG(INFO) << "GCE auth failed with status: " << token_from_gce_status
+                  << ". Retrying in " << retry_delay_sec
+                  << " seconds... (Request " << i + 2 << " of " << max_requests
+                  << ")";
+        env_->SleepForMicroseconds(retry_delay_sec * 1000000);
+      }
+    }
   }
 
   if (token_from_gce_status.ok()) {
@@ -208,28 +265,28 @@ absl::Status GoogleAuthProvider::GetToken(string* t) {
 }
 
 absl::Status GoogleAuthProvider::GetTokenFromFiles() {
-  string credentials_filename;
+  std::string credentials_filename;
   if (!GetEnvironmentVariableFileName(&credentials_filename).ok() &&
       !GetWellKnownFileName(&credentials_filename).ok()) {
-    return errors::NotFound("Could not locate the credentials file.");
+    return absl::NotFoundError("Could not locate the credentials file.");
   }
 
   Json::Value json;
   Json::Reader reader;
   std::ifstream credentials_fstream(credentials_filename);
   if (!reader.parse(credentials_fstream, json)) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Couldn't parse the JSON credentials file.");
   }
   if (json.isMember("refresh_token")) {
-    TF_RETURN_IF_ERROR(oauth_client_->GetTokenFromRefreshTokenJson(
+    RETURN_IF_ERROR(oauth_client_->GetTokenFromRefreshTokenJson(
         json, kOAuthV3Url, &current_token_, &expiration_timestamp_sec_));
   } else if (json.isMember("private_key")) {
-    TF_RETURN_IF_ERROR(oauth_client_->GetTokenFromServiceAccountJson(
+    RETURN_IF_ERROR(oauth_client_->GetTokenFromServiceAccountJson(
         json, kOAuthV4Url, kOAuthScope, &current_token_,
         &expiration_timestamp_sec_));
   } else {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Unexpected content of the JSON credentials file.");
   }
   return absl::OkStatus();
@@ -237,14 +294,14 @@ absl::Status GoogleAuthProvider::GetTokenFromFiles() {
 
 absl::Status GoogleAuthProvider::GetTokenFromGce() {
   std::vector<char> response_buffer;
-  const uint64 request_timestamp_sec = env_->NowSeconds();
+  const uint64_t request_timestamp_sec = env_->NowSeconds();
 
-  TF_RETURN_IF_ERROR(compute_engine_metadata_client_->GetMetadata(
+  RETURN_IF_ERROR(compute_engine_metadata_client_->GetMetadata(
       kGceTokenPath, &response_buffer));
   absl::string_view response =
       absl::string_view(&response_buffer[0], response_buffer.size());
 
-  TF_RETURN_IF_ERROR(oauth_client_->ParseOAuthResponse(
+  RETURN_IF_ERROR(oauth_client_->ParseOAuthResponse(
       response, request_timestamp_sec, &current_token_,
       &expiration_timestamp_sec_));
 
@@ -254,7 +311,7 @@ absl::Status GoogleAuthProvider::GetTokenFromGce() {
 absl::Status GoogleAuthProvider::GetTokenForTesting() {
   const char* token = std::getenv(kGoogleAuthTokenForTesting);
   if (!token) {
-    return errors::NotFound("The env variable for testing was not set.");
+    return absl::NotFoundError("The env variable for testing was not set.");
   }
   expiration_timestamp_sec_ = UINT64_MAX;
   current_token_ = token;

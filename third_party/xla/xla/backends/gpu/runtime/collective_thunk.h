@@ -17,100 +17,58 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_THUNK_H_
 
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
+#include "absl/base/call_once.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
-#include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/Value.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/runtime/collective_clique_requests.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/backends/gpu/runtime/collective_thunk.pb.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/rendezvous.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
 struct CollectiveConfig {
-  int64_t operand_count;
+  // Returns if the collective communication operation is degenerate because all
+  // the groups formed by the operation are singleton.
+  bool IsDegenerate(int64_t replica_count, int64_t partition_count) const;
+
   std::vector<PrimitiveType> operand_element_type;
   std::vector<ReplicaGroup> replica_groups;
-  RendezvousKey::CollectiveOpKind collective_op_kind;
-  int64_t op_id;
-  CollectiveOpGroupMode group_mode;
-  bool use_symmetric_buffer;
+  CollectiveOpGroupMode group_mode = COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA;
+  bool use_symmetric_buffer = false;
 
-  template <typename OpT>
-  void SetCollectiveOpKindAndID(OpT op);
-  void SetCollectiveOpKindAndID(const HloCollectivePermuteInstruction* instr);
-  void SetCollectiveOpKindAndID(const HloSendRecvInstruction* instr);
-  bool IsDegenerate(int64_t replica_count, int64_t partition_count) const;
+  CollectiveConfigProto ToProto() const;
+  static CollectiveConfig FromProto(const CollectiveConfigProto& proto);
 };
-
-template <typename OpT>
-void CollectiveConfig::SetCollectiveOpKindAndID(OpT op) {
-  if (op.getChannelId()) {
-    collective_op_kind = RendezvousKey::kCrossModule;
-    op_id = static_cast<int64_t>(op.getChannelId()->getHandle());
-  } else {
-    collective_op_kind = RendezvousKey::kCrossReplica;
-    mlir::ModuleOp parent = op->template getParentOfType<mlir::ModuleOp>();
-    mlir::IntegerAttr unique_id =
-        parent->getAttrOfType<mlir::IntegerAttr>("hlo.unique_id");
-    op_id = static_cast<int64_t>(unique_id.getInt());
-  }
-}
 
 CollectiveConfig GetCollectiveConfig(const HloInstruction* hlo,
                                      std::optional<bool> use_global_device_ids);
-
-template <typename OpT>
-CollectiveConfig GetCollectiveConfigForMlir(
-    OpT op, std::optional<bool> use_global_device_ids) {
-  CollectiveConfig config;
-  config.operand_count = op.getInputs().size();
-  config.operand_element_type.reserve(config.operand_count);
-  for (int i = 0; i < config.operand_count; i++) {
-    const Shape shape = GetShape(op.getInputs()[i]);
-    config.operand_element_type.push_back(shape.element_type());
-  }
-  config.replica_groups = ConvertReplicaGroups(op.getReplicaGroups()).value();
-  config.SetCollectiveOpKindAndID(op);
-  config.group_mode = GetCollectiveOpGroupMode(op.getChannelId().has_value(),
-                                               use_global_device_ids)
-                          .value();
-  return config;
-}
-
-// Handle to a communicator object with corresponding clique key.
-struct CommunicatorHandle {
-  CommunicatorHandle(Communicator* comm, GpuCliqueKey clique_key)
-      : comm(comm), clique_key(std::move(clique_key)) {}
-
-  Communicator* comm;       // communicator object
-  GpuCliqueKey clique_key;  // clique key
-};
 
 // Wrap GpuCliqueKey into a unique struct to guarantee we do not accidentally
 // try to run multiple unrelated rendezvous for a same key.
@@ -131,155 +89,157 @@ struct FirstCallRendezvousKey {
 // CollectiveThunk
 //===----------------------------------------------------------------------===//
 
-// Forward declare.
-class CollectiveDoneThunk;
-
 // Thunk base class for XLA:GPU collective operations.
-class CollectiveThunk : public Thunk {
+//
+// Also implements Command so it can be recorded directly into command buffers.
+// ExecuteOnStream launches the collective eagerly on the compute stream;
+// Record() traces RunCollective into a nested CUDA graph and attaches it as a
+// child command. Both paths share the first-call rendezvous via
+// RunWithCommAndRendezvous to avoid NCCL bootstrap races.
+class CollectiveThunk : public Command {
  public:
-  CollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync,
-                  AsyncStreamKind stream_kind);
-
   struct Buffer {
     int64_t element_count;
-    BufferAllocation::Slice source_buffer;
-    BufferAllocation::Slice destination_buffer;
+    ShapedSlice source_buffer;
+    ShapedSlice destination_buffer;
     int64_t source_memory_space;
     int64_t destination_memory_space;
-    mlir::Value source_value;
-    mlir::Value destination_value;
+
+    absl::StatusOr<CollectiveBufferProto> ToProto() const;
+    static absl::StatusOr<Buffer> FromProto(
+        const CollectiveBufferProto& buffer_proto,
+        absl::Span<const BufferAllocation> buffer_allocations);
   };
 
-  // Completion events for asynchronous collective operations (operations
-  // launched on a dedicated stream that is synchronized with main compute
-  // stream only when needed).
-  class AsyncEvents {
-   private:
-    friend class CollectiveThunk;
-    friend class CollectiveDoneThunk;
-    friend class CollectiveGroupThunk;
-    friend class NvshmemCollectiveThunk;
-    friend class NvshmemCollectiveDoneThunk;
-
-    absl::Status Initialize(se::StreamExecutor* executor);
-    absl::StatusOr<se::Event*> GetEvent(se::StreamExecutor* executor);
-
-   private:
-    absl::Mutex mu_;
-    absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Event>> events_
-        ABSL_GUARDED_BY(mu_);
-  };
+  using CollectivesMode = DebugOptions::CollectivesMode;
+  CollectiveThunk(Kind kind, ThunkInfo thunk_info, std::vector<Buffer> buffers,
+                  CommunicationId communication_id = CommunicationId(0),
+                  CollectivesMode collectives_mode =
+                      DebugOptions::COLLECTIVES_PRIVATE_MEMORY);
 
   // Logging support.
-  static std::string GetDeviceString(
-      const Thunk::CollectiveExecuteParams& params);
+  static std::string GetDeviceString(const CollectiveParams& params);
 
-  absl::Status Prepare(const PrepareParams& params,
-                       ResourceRequestsInterface& resource_requests) override;
+  virtual CollectiveCliqueRequests::CliqueRequirements GetCliqueRequirements(
+      const GpuCliqueKey& clique_key) {
+    return {};
+  }
 
+  bool IsTracedCommand() const override { return true; }
+  bool requires_update_on_initialize() const override { return true; }
+  bool requires_warmup() const override { return true; }
+
+  absl::Status Prepare(const PrepareParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
-
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const ExecuteParams& execute_params, const RecordParams& record_params,
+      RecordAction record_action, se::CommandBuffer* command_buffer) override;
 
-  std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
+  const std::vector<Buffer>& buffers() const { return buffers_; }
 
-  bool IsAsyncStart() const override { return async_events_ != nullptr; }
+  BufferUses buffer_uses() const override;
 
-  absl::StatusOr<std::vector<Communicator*>> GetCommunicators(
-      const ExecuteParams& params) const override;
+  CommunicationId communication_id() const { return communication_id_; }
+  CollectivesMode collectives_mode() const { return collectives_mode_; }
 
-  std::shared_ptr<AsyncEvents> async_events() const { return async_events_; }
-  void set_async_events(std::shared_ptr<AsyncEvents> async_events) {
-    async_events_ = async_events;
-  }
+  // Returns the clique key used by this collective thunk at run time.
+  absl::StatusOr<GpuCliqueKey> GetCliqueKey(const ExecuteParams& params) const;
 
-  CollectiveStreamId nccl_stream_id() const {
-    return xla::gpu::GetCollectiveStreamId(IsAsync(), GetAsyncStreamId(),
-                                           GetAsyncStreamKind());
-  }
-
-  ExecutionStreamId nccl_execution_stream_id() const {
-    return ExecutionStreamId(execution_stream_id().value() +
-                             nccl_stream_id().value());
-  }
+  // Shorthands for checking the collectives memory mode of this thunk.
+  bool use_private_memory() const;
+  bool use_symmetric_memory() const;
+  bool use_peer_memory() const;
 
  protected:
-  // Run collective operation on a given stream and return if the first call
-  // rendezvous with other participants is needed.
+  // Returns true if the first call to this collective operation has to be
+  // guarded with a rendezvous synchronization with other local participants
+  // before and after running the collective operation itself.
+  //
+  // This is done as a workaround for NCCL deadlocks that can be triggered when
+  // NCCL kernel execution races with a thunk before or after the collective
+  // one that calls CUDA APIs that trigger a deadlock.
+  virtual bool RequiresRendezvous() const = 0;
+
+  // Prepares collective operation for execution.
+  //
+  // At this stage it is possible to request symmetric or multicast memory for
+  // the collective buffers. Subclasses override this to request memory needed
+  // for one-sided or device-initiated collectives.
+  virtual absl::Status PrepareCollective(const PrepareParams& params,
+                                         const GpuCliqueKey& clique_key) {
+    return absl::OkStatus();
+  }
+
+  // Initializes collective operation for execution.
+  //
+  // At this stage it is possible to resolve buffer slices from a buffer
+  // assignment, but the content of all buffers is undefined.
+  virtual absl::Status InitializeCollective(const InitializeParams& params,
+                                            const GpuCliqueKey& clique_key) {
+    return absl::OkStatus();
+  }
+
+  // Run collective operation on a given stream.
+  //
   // A collective thunk is normally an independent operation in a sense that
   // different instances of the same collective thunk communicate each other.
   // The only exception are SendThunk and RecvThunk. Assume two devices are
   // executing a program contains the following instructions, the Recv from
   // device 1 will release the Send from device 0. Adding first call
   // rendezvous on the SendThunk would cause a runtime deadlock.
+  //
   //  Send(src_target={0,1})
   //  Recv(src_target={0,1})
-  virtual absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
-                                             se::Stream& stream,
-                                             CommunicatorHandle comm) = 0;
+  virtual absl::Status RunCollective(const ExecuteParams& params,
+                                     const GpuCliqueKey& clique_key,
+                                     se::Stream& stream,
+                                     Communicator& comm) = 0;
+
   virtual const CollectiveConfig& config() const = 0;
-  virtual AsyncStreamKind GetAsyncStreamKind() const { return stream_kind_; }
-  virtual CollectiveStreamId GetAsyncStreamId() const { return stream_id_; }
-  bool IsAsync() const { return async_events_ != nullptr; }
+
+  virtual bool CanUseSymmetricBuffer() const { return false; }
 
  private:
-  const AsyncStreamKind stream_kind_;
-  // NCCL stream id assigned by execution stream assignment.
-  CollectiveStreamId stream_id_ = CollectiveStreamId(0);
+  // Rendezvous with other local participants before/after the first call to
+  // the collective operation to avoid NCCL deadlocks. See the comment on
+  // RequiresRendezvous() for details. `flag` is `pre_call_rendezvous_flag_`
+  // when called before the collective, and `post_call_rendezvous_flag_` after.
+  // Does nothing if !RequiresRendezvous() or the flag is already completed.
+  absl::Status FirstCallRendezvous(const ExecuteParams& params,
+                                   const GpuCliqueKey& clique_key,
+                                   absl::string_view label,
+                                   RendezvousFlag& flag);
 
-  std::shared_ptr<AsyncEvents> async_events_;
+  // Resolves the clique key and communicator for this collective, performs the
+  // pre-call first-call rendezvous, invokes `fn` with the resolved clique/comm,
+  // and then performs the post-call rendezvous. Shared by ExecuteOnStream (for
+  // eager execution) and Record (for command-buffer tracing).
+  absl::Status RunWithCommAndRendezvous(
+      const ExecuteParams& params,
+      absl::FunctionRef<absl::Status(const GpuCliqueKey&, Communicator&)> fn);
 
-  // After a first call to this particular instance of a collective thunk we do
-  // a round of rendezvous to make sure that all participants successfully
-  // allocated on-device state required for executing collective operation. This
-  // is required to avoid deadlocks when one device goes too far ahead and
-  // causes a deadlock in CUDA driver (root cause is mysterious).
-  //
-  // TODO(ezhulenev): Try to move this flag to NCCL clique as we need to make
-  // sure that all NCCL resources are allocated just once.
-  RendezvousFlag first_call_rendezvous_flag_;
+  const std::vector<Buffer> buffers_;
+  // Before and after a first call to this particular instance of a collective
+  // thunk we do a round of rendezvous to make sure that all participants are
+  // ready to execute the collective operation and that all of them successfully
+  // allocated on-device state required for it. This is required to avoid
+  // deadlocks when one device goes too far ahead and causes a deadlock in CUDA
+  // driver (root cause rumored to be fixed in 590 driver series).
+  RendezvousFlag pre_call_rendezvous_flag_;
+  RendezvousFlag post_call_rendezvous_flag_;
+
+  CommunicationId communication_id_;
+  CollectivesMode collectives_mode_;
+
+  // Device assignment is owned by PjRtExecutable and never changes between
+  // thunk executions, and replica groups are baked into the thunk at compile
+  // time. Device groups are the same for all devices, so computed once.
+  absl::once_flag device_groups_once_;
+  absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>> device_groups_;
 };
 
 //===----------------------------------------------------------------------===//
-// CollectiveDoneThunk
-//===----------------------------------------------------------------------===//
-
-class CollectiveDoneThunk : public Thunk {
- public:
-  CollectiveDoneThunk(
-      Thunk::Kind kind, ThunkInfo thunk_info,
-      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events,
-      AsyncStreamKind async_stream_kind);
-
-  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
-
-  // return the execution stream id wheer previous async operator was launched
-  // to.
-  ExecutionStreamId nccl_execution_stream_id() const {
-    return ExecutionStreamId(
-        execution_stream_id().value() +
-        xla::gpu::GetCollectiveStreamId(true, stream_id_, stream_kind_)
-            .value());
-  }
-
-  std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
-
-  bool IsAsyncDone() const override { return async_events_ != nullptr; }
-
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events() const {
-    return async_events_;
-  }
-
- private:
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events_;
-  AsyncStreamKind stream_kind_ = AsyncStreamKind::kCollective;
-  // NCCL stream id assigned by execution stream assignment.
-  CollectiveStreamId stream_id_ = CollectiveStreamId(1);
-};
-
-//===----------------------------------------------------------------------===//
-
-absl::Status IsValidOperand(mlir::Value operand, Thunk::Kind reduction_op);
 
 absl::Status IsValidOperand(Shape shape, Thunk::Kind reduction_op);
 
@@ -315,51 +275,24 @@ absl::Status AddOpDescription(absl::Status status, OpT op,
 
 //===----------------------------------------------------------------------===//
 
-absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
-    GpuCollectives* collectives, const Thunk::CollectiveExecuteParams& params,
-    const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind,
-    bool use_nccl = true);
-
-// Helper over GetGpuCliqueKey that builds key for AsyncStreamKind::kCollective.
+// Helper over GetGpuCliqueKey that builds clique key.
 absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
-    const CollectiveThunk::CollectiveExecuteParams& params,
-    const CollectiveConfig& collective_config, bool use_nccl = true);
-
-// Returns a communicator and additional information about the clique.
-absl::StatusOr<CommunicatorHandle> GetComm(
-    GpuCollectives* collectives, const Thunk::CollectiveExecuteParams& params,
-    const Thunk::CollectiveCliques& collective_cliques,
-    const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind);
+    const CollectiveParams& params, const CollectiveConfig& collective_config,
+    CommunicationId communication_id = CommunicationId(0));
 
 struct DeviceBufferPair {
   PrimitiveType element_type;
   int64_t element_count;
-  se::DeviceMemoryBase source_buffer;
-  se::DeviceMemoryBase destination_buffer;
+  se::DeviceAddressBase source_buffer;
+  se::DeviceAddressBase destination_buffer;
   int64_t source_memory_space;
   int64_t destination_memory_space;
 };
 
 absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
-    const Thunk::ExecuteParams& params,
-    const std::vector<CollectiveThunk::Buffer>& buffers,
-    const std::vector<PrimitiveType>& element_types);
-
-absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
     const BufferAllocations* buffer_allocations,
     const std::vector<CollectiveThunk::Buffer>& buffers,
     const std::vector<PrimitiveType>& element_types);
-
-// Registers buffers allocated in collective memory with a communicator to
-// enable zero-copy collectives.
-//
-// https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html
-absl::Status MaybeRegisterBuffers(se::StreamExecutor* executor,
-                                  const std::vector<DeviceBufferPair>& buffers,
-                                  Communicator* comm,
-                                  bool use_symmetric_buffer = false);
 }  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_THUNK_H_

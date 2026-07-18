@@ -163,8 +163,8 @@ func::FuncOp BuildFuncOp(const Subgraph& subgraph, OpBuilder& builder,
     Value cloned_output = values_in_scope.lookup(result);
     return_operands.push_back(cloned_output);
   }
-  function_builder.create<mlir::func::ReturnOp>(new_func.getLoc(),
-                                                return_operands);
+  mlir::func::ReturnOp::create(function_builder, new_func.getLoc(),
+                               return_operands);
   ops_added.func_op = new_func;
   module.push_back(new_func);
   return new_func;
@@ -179,8 +179,8 @@ void ExtractSubgraphToFunc(const Subgraph& subgraph, OpBuilder& builder,
   Operation* last_output = subgraph.partition_ops_.back();
 
   builder.setInsertionPoint(last_output);
-  auto call_op = builder.create<func::CallOp>(last_output->getLoc(), func,
-                                              subgraph.FuncArguments());
+  auto call_op = func::CallOp::create(builder, last_output->getLoc(), func,
+                                      subgraph.FuncArguments());
   ops_added.call_op = call_op;
   // FuncOutputs refer to the original `Values` in input module which are now
   // invalid after pulling out the defining ops. The values in

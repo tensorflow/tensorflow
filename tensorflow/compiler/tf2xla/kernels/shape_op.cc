@@ -109,7 +109,7 @@ class XlaSetBoundOp : public XlaOpKernel {
                                 bound_shape.DebugString()));
     int64_t bound;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar("bound", &bound));
-    xla::Literal bound_literal = xla::LiteralUtil::CreateR0<int32>(bound);
+    xla::Literal bound_literal = xla::LiteralUtil::CreateR0<int32_t>(bound);
     xla::XlaOp result = xla::CustomCall(
         ctx->builder(), "SetBound", {ctx->Input("input")},
         ctx->InputXlaShape("input").value(), "", false, {}, &bound_literal);
@@ -331,6 +331,8 @@ class SqueezeOp : public XlaOpKernel {
     absl::flat_hash_set<int32_t> wrapped_squeeze_dims;
     wrapped_squeeze_dims.reserve(squeeze_dims_.size());
     std::vector<int64_t> new_shape;
+    std::vector<xla::XlaOp> output_dim_sizes;
+    std::vector<bool> dims_are_dynamic;
     // Validate squeeze dims against the input.
     for (int32_t dim : squeeze_dims_) {
       OP_REQUIRES(
@@ -358,21 +360,31 @@ class SqueezeOp : public XlaOpKernel {
         } else {
           // This dimension is not being squeezed.
           new_shape.push_back(existing_dim);
+          if (!shape.is_static()) {
+            output_dim_sizes.push_back(xla::GetDimensionSize(ctx->Input(0), i));
+            dims_are_dynamic.push_back(shape.is_dynamic_dimension(i));
+          }
         }
       } else {
-        OP_REQUIRES(
-            ctx, !shape.is_dynamic_dimension(i),
-            errors::InvalidArgument("Squeeze op does not support bounded "
-                                    "dynamic dimensions. Input shape: ",
-                                    shape.ToString()));
-        // Copy over all non-1-length dimensions.
-        if (existing_dim != 1) {
+        // Copy over all dimensions that are not guaranteed to be 1.
+        // If a dimension is dynamic, its size is not statically known to be 1,
+        // so we cannot squeeze it. We must keep it.
+        if (shape.is_dynamic_dimension(i) || existing_dim != 1) {
           new_shape.push_back(existing_dim);
+          if (!shape.is_static()) {
+            output_dim_sizes.push_back(xla::GetDimensionSize(ctx->Input(0), i));
+            dims_are_dynamic.push_back(shape.is_dynamic_dimension(i));
+          }
         }
       }
     }
 
-    ctx->SetOutput(0, xla::Reshape(ctx->Input(0), new_shape));
+    if (shape.is_static()) {
+      ctx->SetOutput(0, xla::Reshape(ctx->Input(0), new_shape));
+    } else {
+      ctx->SetOutput(0, xla::DynamicReshape(ctx->Input(0), output_dim_sizes,
+                                            new_shape, dims_are_dynamic));
+    }
   }
 
  private:

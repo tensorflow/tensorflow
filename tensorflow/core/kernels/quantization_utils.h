@@ -84,7 +84,7 @@ T FloatToQuantized(float input, float range_min, float range_max) {
       static_cast<int64_t>(Eigen::NumTraits<T>::highest());
   quantized = std::max(quantized, lowest_quantized);
   quantized = std::min(quantized, highest_quantized);
-  return static_cast<T>(static_cast<int32>(quantized));
+  return static_cast<T>(static_cast<int32_t>(quantized));
 }
 
 template <class T>
@@ -284,7 +284,7 @@ inline void RequantizeManyInNewRangeReference(const qint32* input,
     int64_t quantized_int64 = round_intermediate >> fp_shift;
     quantized_int64 = std::max(quantized_int64, int64_t{0});
     quantized_int64 = std::min(quantized_int64, int64_t{255});
-    output[index] = static_cast<quint8>(static_cast<int32>(quantized_int64));
+    output[index] = static_cast<quint8>(static_cast<int32_t>(quantized_int64));
   }
 }
 
@@ -310,7 +310,7 @@ inline void RequantizeManyInNewRange8To32BitReference(
     int64_t output_value = code_0_int64 + (input_value * mult_int32);
     output_value = std::max(output_value, lowest_quantized);
     output_value = std::min(output_value, highest_quantized);
-    output[i] = static_cast<int32>(output_value);
+    output[i] = static_cast<int32_t>(output_value);
   }
 }
 
@@ -725,7 +725,7 @@ inline void RequantizeManyInNewRangeUsingEigen<qint32, quint8>(
   auto intermediate = fp_value.unaryExpr(int64_right_shift_op<fp_shift>());
   auto input_requantized = intermediate.cwiseMax(int64_t{0})
                                .cwiseMin(int64_t{255})
-                               .template cast<int32>()
+                               .template cast<int32_t>()
                                .template cast<quint8>();
   output->flat<quint8>().device(device) = input_requantized;
 }

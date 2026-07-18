@@ -1069,6 +1069,14 @@ class Interpreter {
   static constexpr char kPlaceholderSignatureDefKey[] =
       "<placeholder signature>";
 
+  // Placeholder input names to use when the model has with no signatures & no
+  // tensor names.
+  std::vector<std::string> placeholder_input_names_;
+
+  // Placeholder output names to use when the model has with no signatures & no
+  // tensor names.
+  std::vector<std::string> placeholder_output_names_;
+
   // Placeholder SignatureDef for legacy models with no signatures.
   std::unique_ptr<internal::SignatureDef> placeholder_signature_def_;
 
@@ -1096,9 +1104,7 @@ class Interpreter {
   // Stores control edges that are encoded in the metadata of the model. Updated
   // in SetMetadata; model_control_dependencies_.empty() means that there were
   // no control dependencies encoded in the metadata, or that we were unable to
-  // parse them. We assume that, if we were able to parse them, they are
-  // consistent with the model and no further consistency check (e.g., bounds
-  // checks when dereferencing by subgraph and operator index) will take place.
+  // parse or validate them.
   ModelControlDependencies model_control_dependencies_;
 
   // Flag indicating whether to continue or cancel in flight invocation.

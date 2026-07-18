@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/match.h"
+#include "tensorflow/core/platform/mutex.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler.h"
@@ -30,6 +31,7 @@ limitations under the License.
 
 #include "absl/synchronization/barrier.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/blocking_counter.h"
@@ -119,6 +121,80 @@ TEST(RunHandlerUtilTest, PrioritySchedulingTest) {
   EXPECT_EQ(sorted_active_list[3], 1);
 }
 
+TEST(RunHandlerUtilTest, PriorityExecutionTest) {
+  // Set up a pool with 1 intra-op thread and 1 inter-op thread. The frist
+  // request will be scheduled immediately and be blocked until the rest of the
+  // two requests are enqueued. The execution order of the latter two requests
+  // should follow the priority.
+  int num_threads = 1;
+  RunHandlerPool::Options pool_options;
+  pool_options.num_intra_op_threads = num_threads;
+  pool_options.num_inter_op_threads = num_threads;
+  pool_options.num_threads_in_sub_thread_pool = {1};
+  std::unique_ptr<RunHandlerPool> pool(new RunHandlerPool(pool_options));
+
+  RunHandlerOptions options;
+
+  options.priority = 2;
+  auto handler_med = pool->Get(2, 0, options);
+
+  options.priority = 3;
+  auto handler_high = pool->Get(1, 0, options);
+
+  options.priority = 1;
+  auto handler_low = pool->Get(3, 0, options);
+
+  std::vector<int64_t> sorted_active_list =
+      pool->GetActiveHandlerPrioritiesForTesting();
+  EXPECT_EQ(sorted_active_list.size(), 3);
+  EXPECT_EQ(sorted_active_list[0], 3);
+  EXPECT_EQ(sorted_active_list[1], 2);
+  EXPECT_EQ(sorted_active_list[2], 1);
+
+  absl::Notification start_block;
+  absl::Notification continue_block;
+
+  // Block the worker on the low priority handler.
+  handler_low->ScheduleInterOpClosure(TaskFunction([&]() {
+    start_block.Notify();
+    continue_block.WaitForNotification();
+  }));
+
+  start_block.WaitForNotification();
+
+  std::vector<int> execution_order;
+  tensorflow::mutex mu;
+  tensorflow::BlockingCounter counter(2);
+
+  // Schedule task on medium priority handler.
+  handler_med->ScheduleInterOpClosure(TaskFunction([&]() {
+    {
+      tensorflow::mutex_lock l(mu);
+      execution_order.push_back(2);
+    }
+    counter.DecrementCount();
+  }));
+
+  // Schedule task on high priority handler.
+  handler_high->ScheduleInterOpClosure(TaskFunction([&]() {
+    {
+      tensorflow::mutex_lock l(mu);
+      execution_order.push_back(3);
+    }
+    counter.DecrementCount();
+  }));
+
+  continue_block.Notify();
+  counter.Wait();
+
+  // The worker should pick tasks from high priority handlers first because
+  // after finishing the task on the low priority handler, it iterates from the
+  // beginning of the sorted list (high, med, low).
+  EXPECT_EQ(execution_order.size(), 2);
+  EXPECT_EQ(execution_order[0], 3);
+  EXPECT_EQ(execution_order[1], 2);
+}
+
 TEST(RunHandlerUtilTest, IntraOpThreadPool) {
   int num_threads = 2;
   RunHandlerPool::Options pool_options;
@@ -134,6 +210,42 @@ TEST(RunHandlerUtilTest, IntraOpThreadPool) {
   absl::Notification notification;
   intra_pool->Schedule([&notification]() { notification.Notify(); });
   notification.WaitForNotification();
+}
+
+// Verifies that ScheduleIntraOpClosure enqueues work to the non-blocking
+// (intra-op) queue.
+TEST(RunHandlerUtilTest, ScheduleIntraOpClosureRoutesToNonBlockingQueue) {
+  RunHandlerPool::Options options;
+  options.num_inter_op_threads = 1;  // 1 blocking thread
+  options.num_intra_op_threads = 1;  // 1 non-blocking thread
+  options.num_threads_in_sub_thread_pool = {2};
+
+  // Notifications must be declared before the pool and handler to avoid race
+  // conditions in destruction.
+  absl::Notification blocker_started;
+  absl::Notification blocker_release;
+  absl::Notification intra_done;
+
+  std::unique_ptr<RunHandlerPool> pool(new RunHandlerPool(options));
+  auto handler = pool->Get(/*step_id=*/1, /*timeout_in_ms=*/0);
+
+  // Block the sole inter-op (blocking) thread.
+  handler->ScheduleInterOpClosure(TaskFunction([&]() {
+    blocker_started.Notify();
+    blocker_release.WaitForNotification();
+  }));
+  blocker_started.WaitForNotification();
+
+  // Schedule an intra-op closure. With the correct implementation this goes
+  // to the non-blocking queue and the intra-op thread picks it up.
+  handler->ScheduleIntraOpClosure(TaskFunction([&]() { intra_done.Notify(); }));
+
+  // If ScheduleIntraOpClosure incorrectly enqueued as blocking work, the
+  // intra-op thread cannot pick it up and this would hang.
+  EXPECT_TRUE(intra_done.WaitForNotificationWithTimeout(absl::Seconds(10)));
+
+  // Unblock the inter-op thread so the pool can shut down cleanly.
+  blocker_release.Notify();
 }
 
 class RunHandlerThreadPoolTest

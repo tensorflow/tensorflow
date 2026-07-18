@@ -21,19 +21,28 @@ package(
 filegroup(
     name = "mobile_srcs",
     srcs = [
-        "byte_swap_array.h",
         "byte_swap_tensor.cc",
-        "byte_swap_tensor.h",
         "naming.cc",
-        "naming.h",
         "tensor_bundle.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs",
+    srcs = [
+        "byte_swap_array.h",
+        "byte_swap_tensor.h",
+        "naming.h",
         "tensor_bundle.h",
     ],
 )
 
-alias(
+filegroup(
     name = "android_srcs",
-    actual = ":mobile_srcs",
+    srcs = [
+        ":mobile_hdrs",
+        ":mobile_srcs",
+    ],
 )
 
 cc_library(
@@ -63,8 +72,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla/tsl/lib/io:buffered_file",
-        "@local_xla//xla/tsl/util:byte_swap_array",
+        "@xla//xla/tsl/lib/io:buffered_file",
+        "@xla//xla/tsl/util:byte_swap_array",
     ],
 )
 
@@ -81,6 +90,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
     ],
 )
@@ -92,7 +102,7 @@ cc_library(
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
-        "@local_xla//xla/tsl/util:byte_swap_array",
+        "@xla//xla/tsl/util:byte_swap_array",
     ],
 )
 
@@ -109,9 +119,9 @@ cc_library(
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:logging",
+        "@tsl//tsl/platform:platform_port",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:logging",
     ],
 )
 

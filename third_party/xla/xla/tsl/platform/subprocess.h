@@ -52,7 +52,8 @@ class SubProcess;
 // launched with the given command-line arguments `argv`. The process
 // must be explicitly started by calling the Start() method on the
 // returned object.
-std::unique_ptr<SubProcess> CreateSubProcess(const std::vector<string>& argv);
+std::unique_ptr<SubProcess> CreateSubProcess(
+    const std::vector<std::string>& argv);
 
 }  // namespace tsl
 

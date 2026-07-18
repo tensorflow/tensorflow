@@ -89,15 +89,15 @@ struct is_simple_type {
 // standard types.
 namespace std {
 template <>
-class numeric_limits<tsl::qint8> : public numeric_limits<tsl::int8> {};
+class numeric_limits<tsl::qint8> : public numeric_limits<int8_t> {};
 template <>
-class numeric_limits<tsl::quint8> : public numeric_limits<tsl::uint8> {};
+class numeric_limits<tsl::quint8> : public numeric_limits<uint8_t> {};
 template <>
-class numeric_limits<tsl::qint16> : public numeric_limits<tsl::int16> {};
+class numeric_limits<tsl::qint16> : public numeric_limits<int16_t> {};
 template <>
-class numeric_limits<tsl::quint16> : public numeric_limits<tsl::uint16> {};
+class numeric_limits<tsl::quint16> : public numeric_limits<uint16_t> {};
 template <>
-class numeric_limits<tsl::qint32> : public numeric_limits<tsl::int32> {};
+class numeric_limits<tsl::qint32> : public numeric_limits<int32_t> {};
 
 }  // namespace std
 

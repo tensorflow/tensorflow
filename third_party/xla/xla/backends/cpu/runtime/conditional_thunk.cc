@@ -27,16 +27,42 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
+namespace {
+
+absl::StatusOr<Shape> ShapeForBranchIndexBuffer(
+    BufferAllocation::Slice& branch_index_buffer) {
+  // See operation semantics documentation:
+  // https://openxla.org/xla/operation_semantics#conditional
+
+  // Branch index is pred[].
+  if (branch_index_buffer.size() == sizeof(bool)) {
+    return ShapeUtil::MakeShape(PRED, {1});
+  }
+
+  // Branch index is s32[].
+  if (branch_index_buffer.size() == sizeof(int32_t)) {
+    return ShapeUtil::MakeShape(S32, {1});
+  }
+
+  return Internal("Unsupported branch index buffer size %d",
+                  branch_index_buffer.size());
+}
+
+}  // namespace
 
 absl::StatusOr<std::unique_ptr<ConditionalThunk>> ConditionalThunk::Create(
     Info info, BufferAllocation::Slice branch_index_buffer,
@@ -44,26 +70,31 @@ absl::StatusOr<std::unique_ptr<ConditionalThunk>> ConditionalThunk::Create(
   std::vector<ThunkExecutor> branch_executors;
   branch_executors.reserve(branch_sequences.size());
   for (auto& branch_sequence : branch_sequences) {
-    TF_ASSIGN_OR_RETURN(auto branch_executor,
-                        ThunkExecutor::Create(std::move(branch_sequence)));
+    ASSIGN_OR_RETURN(auto branch_executor,
+                     ThunkExecutor::Create(std::move(branch_sequence)));
     branch_executors.push_back(std::move(branch_executor));
   }
-  return absl::WrapUnique(new ConditionalThunk(std::move(info),
-                                               std::move(branch_index_buffer),
-                                               std::move(branch_executors)));
+
+  ASSIGN_OR_RETURN(Shape shape, ShapeForBranchIndexBuffer(branch_index_buffer));
+
+  return absl::WrapUnique(
+      new ConditionalThunk(std::move(info), std::move(branch_index_buffer),
+                           shape, std::move(branch_executors)));
 }
 
 ConditionalThunk::ConditionalThunk(Info info,
                                    BufferAllocation::Slice branch_index_buffer,
+                                   Shape branch_index_buffer_shape,
                                    std::vector<ThunkExecutor> branch_executors)
     : Thunk(Kind::kConditional, std::move(info)),
       branch_index_buffer_(branch_index_buffer),
+      branch_index_buffer_shape_(branch_index_buffer_shape),
       branch_executors_(std::move(branch_executors)) {}
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> ConditionalThunk::Execute(
     const ExecuteParams& params) {
-  TF_ASSIGN_OR_RETURN(
-      se::DeviceMemoryBase branch_index_data,
+  ASSIGN_OR_RETURN(
+      se::DeviceAddressBase branch_index_data,
       params.buffer_allocations->GetDeviceAddress(branch_index_buffer_));
 
   VLOG(3) << absl::StreamFormat("Conditional: #branches=%d",
@@ -79,18 +110,13 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> ConditionalThunk::Execute(
                : branch_index;
   };
 
-  // See operation semantics documentation:
-  // https://openxla.org/xla/operation_semantics#conditional
-
-  // Branch index is pred[].
-  if (branch_index_buffer_.size() == sizeof(bool)) {
+  if (branch_index_buffer_shape_.element_type() == PRED) {
     bool* pred = reinterpret_cast<bool*>(branch_index_data.opaque());
     VLOG(3) << "  loaded pred[] branch index: " << *pred;
     return branch_executors_.at(*pred ? 0 : 1).Execute(params);
   }
 
-  // Branch index is s32[].
-  if (branch_index_buffer_.size() == sizeof(int32_t)) {
+  if (branch_index_buffer_shape_.element_type() == S32) {
     int32_t* index = reinterpret_cast<int32_t*>(branch_index_data.opaque());
     VLOG(3) << "  loaded s32[] branch index: " << *index;
     return branch_executors_.at(clamp(*index)).Execute(params);
@@ -101,7 +127,8 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> ConditionalThunk::Execute(
 }
 
 ConditionalThunk::BufferUses ConditionalThunk::buffer_uses() const {
-  BufferUses buffer_uses = {BufferUse::Read(branch_index_buffer_)};
+  BufferUses buffer_uses = {
+      BufferUse::Read(branch_index_buffer_, branch_index_buffer_shape_)};
   for (const auto& branch_executor : branch_executors_) {
     BufferUses uses = branch_executor.buffer_uses();
     buffer_uses.insert(buffer_uses.end(), uses.begin(), uses.end());

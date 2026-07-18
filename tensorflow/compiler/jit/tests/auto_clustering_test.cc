@@ -13,9 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/jit/tests/auto_clustering_test_helper.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
@@ -23,7 +29,7 @@ class AutoClusteringTestImpl : public AutoClusteringTest {
  protected:
   // Test auto-clustering with a proto text file ${key}.pbtxt.
   absl::Status RunAutoClusteringTestWithPbtxt(absl::string_view key) {
-    string file_name_without_extension =
+    std::string file_name_without_extension =
         absl::StrCat(testing::TensorFlowSrcRoot(), "/compiler/jit/tests/", key);
 
     return AutoClusteringTest::RunAutoClusteringTestWithPbtxt(
@@ -33,7 +39,7 @@ class AutoClusteringTestImpl : public AutoClusteringTest {
 
   // Test auto-clustering with a gzipped proto text file ${key}.pbtxt.gz.
   absl::Status RunAutoClusteringTestWithGzippedPbtxt(absl::string_view key) {
-    string file_name_without_extension =
+    std::string file_name_without_extension =
         absl::StrCat(testing::TensorFlowSrcRoot(), "/compiler/jit/tests/", key);
 
     return AutoClusteringTest::RunAutoClusteringTestWithGzippedPbtxt(
@@ -85,7 +91,7 @@ absl::Status BenchmarkHelper(absl::string_view key, benchmark::State& state) {
 }
 
 void BM_MarkForCompilationPass_KerasImagenetMain(benchmark::State& state) {
-  TF_CHECK_OK(BenchmarkHelper("keras_imagenet_main", state));
+  CHECK_OK(BenchmarkHelper("keras_imagenet_main", state));
 }
 
 BENCHMARK(BM_MarkForCompilationPass_KerasImagenetMain);

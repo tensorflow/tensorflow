@@ -105,7 +105,7 @@ class RingGathererTest : public ::testing::Test {
       // Confirm that every device terminated with the expected error status.
       for (int di = 0; di < static_cast<int>(instances_.size()); ++di) {
         EXPECT_NE(instances_[di]->status_.message().find("Deliberate failure"),
-                  string::npos);
+                  std::string::npos);
       }
     } else {
       // Confirm that every device accumulated the same set of correct
@@ -130,7 +130,7 @@ class RingGathererTest : public ::testing::Test {
             GenerateEvenSubdivOffsets(test_env->num_devices_per_worker,
                                       num_subdivs);
       }
-      string dev_name = col_params_->group.members[rank].device.name();
+      std::string dev_name = col_params_->group.members[rank].device.name();
       TF_CHECK_OK(test_env_->device_mgr->LookupDevice(dev_name, &device_))
           << "Couldn't find device " << dev_name
           << " existing devices: " << test_env_->device_mgr->DebugString();

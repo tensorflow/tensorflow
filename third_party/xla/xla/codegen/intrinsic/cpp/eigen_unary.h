@@ -19,7 +19,29 @@ limitations under the License.
 
 namespace xla::codegen {
 
-Vec4f FastTanhf(Vec4f x);
+// Single precision
+// Right now these are unused and we rename them to avoid shadowing the current
+// tanh implementation.
+float tanh_f32(float x) asm("xla.unused.tanh.f32");
+Vec4f tanh_v4f32(Vec4f x) asm("xla.unused.tanh.v4f32");
+Vec8f tanh_v8f32(Vec8f x) asm("xla.unused.tanh.v8f32");
+Vec16f tanh_v16f32(Vec16f x) asm("xla.unused.tanh.v16f32");
+
+// Double precision
+double tanh_f64(double x) asm("xla.unused.tanh.f64");
+Vec4d tanh_v4f64(Vec4d x) asm("xla.unused.tanh.v4f64");
+Vec8d tanh_v8f64(Vec8d x) asm("xla.unused.tanh.v8f64");
+
+// Single precision
+float atan_f32(float x) asm("xla.atan.f32");
+Vec4f atan_v4f32(Vec4f x) asm("xla.atan.v4f32");
+Vec8f atan_v8f32(Vec8f x) asm("xla.atan.v8f32");
+Vec16f atan_v16f32(Vec16f x) asm("xla.atan.v16f32");
+
+// Double precision
+double atan_f64(double x) asm("xla.atan.f64");
+Vec4d atan_v4f64(Vec4d x) asm("xla.atan.v4f64");
+Vec8d atan_v8f64(Vec8d x) asm("xla.atan.v8f64");
 
 }  // namespace xla::codegen
 

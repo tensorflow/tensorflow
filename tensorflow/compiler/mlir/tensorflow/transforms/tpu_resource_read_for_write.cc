@@ -106,9 +106,9 @@ void TPUResourceReadForWritePass::runOnOperation() {
       if (!resource_and_type.resource) continue;
       if (ClusterFuncHasResourceRead(cluster_func, resource_and_type.resource))
         continue;
-      auto new_read = builder.create<TF::ReadVariableOp>(
-          resource_and_type.resource.getLoc(), resource_and_type.subtype,
-          resource_and_type.resource);
+      auto new_read = TF::ReadVariableOp::create(
+          builder, resource_and_type.resource.getLoc(),
+          resource_and_type.subtype, resource_and_type.resource);
       read_operands.push_back(new_read.getValue());
     }
 
@@ -119,8 +119,9 @@ void TPUResourceReadForWritePass::runOnOperation() {
     operands.append(read_operands.begin(), read_operands.end());
 
     auto loc = cluster_func.getLoc();
-    auto new_cluster_func = builder.create<tf_device::ClusterFuncOp>(
-        loc, cluster_func.getResultTypes(), operands, cluster_func->getAttrs());
+    auto new_cluster_func = tf_device::ClusterFuncOp::create(
+        builder, loc, cluster_func.getResultTypes(), operands,
+        cluster_func->getAttrs());
     cluster_func.replaceAllUsesWith(new_cluster_func);
     func::FuncOp func = cluster_func.getFuncOp();
     Block& block = func.front();

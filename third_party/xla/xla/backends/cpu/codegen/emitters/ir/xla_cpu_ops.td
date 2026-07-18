@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_CODEGEN_EMITTERS_IR_XLA_CPU_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_dialect.td"
 include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_types.td"
 include "xla/codegen/emitters/ir/xla_attrs.td"
@@ -31,7 +32,8 @@ def TensorOrMemRef : AnyTypeOf<[AnyMemRef, AnyRankedTensor]>;
 // !xla_cpu.load
 //===----------------------------------------------------------------------===//
 
-def XLACPU_LoadOp : XLACPU_Op<"load"> {
+def XLACPU_LoadOp : XLACPU_Op<"load",
+    [DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
   let summary = "Loads a tensor from an XLA:CPU call frame";
 
   let description = [{
@@ -56,7 +58,8 @@ def XLACPU_LoadOp : XLACPU_Op<"load"> {
 // !xla_cpu.extract_workgroup_id
 //===----------------------------------------------------------------------===//
 
-def XLACPU_ExtractWorkgroupIdOp : XLACPU_Op<"extract_workgroup_id"> {
+def XLACPU_ExtractWorkgroupIdOp : XLACPU_Op<"extract_workgroup_id",
+    [DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
   let summary = "Extracts the workgroup id from the call frame";
 
   let description = [{
@@ -83,7 +86,7 @@ def XLACPU_ExtractWorkgroupIdOp : XLACPU_Op<"extract_workgroup_id"> {
 // !xla_cpu.success
 //===----------------------------------------------------------------------===//
 
-def XLACPU_SuccessOp : XLACPU_Op<"success"> {
+def XLACPU_SuccessOp : XLACPU_Op<"success", [Pure]> {
   let summary = "Creates an !xla_cpu.error in the 'success' state.";
   let arguments = (ins);
   let results = (outs XLACPU_Error:$result);

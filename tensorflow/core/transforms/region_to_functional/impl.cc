@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/transforms/region_to_functional/impl.h"
 
 #include <cassert>
-#include <cctype>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -27,6 +26,7 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/iterator.h"
 #include "llvm/Support/ScopedPrinter.h"
@@ -232,8 +232,8 @@ struct ConvertIfLikeRegionOpToExplicitCapture
 
   IfLikeRegionOp RebuildWith(IfLikeRegionOp op, ValueRange added,
                              PatternRewriter &rewriter) const override {
-    return rewriter.create<IfLikeRegionOp>(
-        op.getLoc(), op.getResultTypes(), op.getCond(), op.getCtls(),
+    return IfLikeRegionOp::create(
+        rewriter, op.getLoc(), op.getResultTypes(), op.getCond(), op.getCtls(),
         op.getThenAttrsAttr(), op.getElseAttrsAttr(),
         op.getThenRegionAttrsAttr(), op.getElseRegionAttrsAttr());
   }
@@ -246,9 +246,9 @@ struct ConvertCaseLikeRegionOpToExplicitCapture
 
   CaseLikeRegionOp RebuildWith(CaseLikeRegionOp op, ValueRange added,
                                PatternRewriter &rewriter) const override {
-    return rewriter.create<CaseLikeRegionOp>(
-        op.getLoc(), op.getResultTypes(), op.getBranchIndex(), op.getCtls(),
-        op.getBranchAttrsAttr(), op.getRegionAttrsAttr(),
+    return CaseLikeRegionOp::create(
+        rewriter, op.getLoc(), op.getResultTypes(), op.getBranchIndex(),
+        op.getCtls(), op.getBranchAttrsAttr(), op.getRegionAttrsAttr(),
         op.getBranches().size());
   }
 };
@@ -294,9 +294,9 @@ struct ConvertWhileLikeRegionOpToExplicitCapture
     util::LoopRegionResultAdded(op.getBodyRegion(), added.size());
 
     rewriter.setInsertionPoint(op);
-    return rewriter.create<WhileLikeRegionOp>(
-        op.getLoc(), results, op.getCtl().getType(), operands, op.getCtls(),
-        op.getParallelIterationsAttr(), op.getCondAttrsAttr(),
+    return WhileLikeRegionOp::create(
+        rewriter, op.getLoc(), results, op.getCtl().getType(), operands,
+        op.getCtls(), op.getParallelIterationsAttr(), op.getCondAttrsAttr(),
         op.getBodyAttrsAttr(), op.getCondRegionAttrsAttr(),
         op.getBodyRegionAttrsAttr());
   }
@@ -323,8 +323,8 @@ struct ConvertForRegionOpToExplicitCapture
     util::LoopRegionResultAdded(op.getBodyRegion(), added.size());
 
     rewriter.setInsertionPoint(op);
-    return rewriter.create<ForRegionOp>(
-        op.getLoc(), results, op.getCtl().getType(), op.getStart(),
+    return ForRegionOp::create(
+        rewriter, op.getLoc(), results, op.getCtl().getType(), op.getStart(),
         op.getLimit(), op.getDelta(), operands, op.getCtls(),
         op.getBodyAttrsAttr(), op.getRegionAttrsAttr());
   }
@@ -606,8 +606,9 @@ GraphFuncOp BasePattern::CreateFunc(Location loc, const Twine &sym_name,
   for (BlockArgument operand : GetLoopRegionDataArgs(region))
     arg_types.append({operand.getType(), dialect_.getControlType()});
   auto func_type = FunctionType::get(ctx_, arg_types, res_types);
-  auto func = OpBuilder(ctx_).create<GraphFuncOp>(loc, sym_name, func_type,
-                                                  /*generic=*/false);
+  auto builder = OpBuilder(ctx_);
+  auto func = GraphFuncOp::create(builder, loc, sym_name, func_type,
+                                  /*generic=*/false);
 
   attrs.append(func->getAttrs());
   func->setAttrs(attrs.getDictionary(ctx_));
@@ -668,8 +669,9 @@ FuncAttr BasePattern::Outline(Operation *op, PatternRewriter &rewriter,
             op->getAttrOfType<StringAttr>(dialect_.getNameAttrIdentifier())) {
       llvm::raw_string_ostream os(new_func_name);
       os << "_tfg_region_specialized_";
-      for (char c : llvm::map_range(
-               op_name.getValue(), [](char c) { return isalnum(c) ? c : '_'; }))
+      for (char c : llvm::map_range(op_name.getValue(), [](char c) {
+             return llvm::isAlnum(c) ? c : '_';
+           }))
         os << c;
       os << '_' << llvm::to_string(region.getRegionNumber());
       os.flush();
@@ -868,8 +870,8 @@ LogicalResult ConvertIfLikeOp<IfLikeRegionOp, IfLikeOp>::matchAndRewrite(
 
   rewriter.setInsertionPoint(op);
   auto func_op =
-      rewriter.create<IfLikeOp>(op.getLoc(), op.getResultTypes(), op.getCond(),
-                                operands, branches[0], branches[1]);
+      IfLikeOp::create(rewriter, op.getLoc(), op.getResultTypes(), op.getCond(),
+                       operands, branches[0], branches[1]);
   util::ForwardNonIntrinsicAttributes(op, func_op);
   rewriter.replaceOp(op, func_op.getResults());
   return success();
@@ -922,9 +924,9 @@ LogicalResult ConvertCaseLikeOp<CaseLikeRegionOp, CaseLikeOp>::matchAndRewrite(
   llvm::append_range(operands, op.getCtls());
 
   rewriter.setInsertionPoint(op);
-  auto func_op = rewriter.create<CaseLikeOp>(op.getLoc(), op.getResultTypes(),
-                                             op.getBranchIndex(), operands,
-                                             rewriter.getArrayAttr(branches));
+  auto func_op = CaseLikeOp::create(rewriter, op.getLoc(), op.getResultTypes(),
+                                    op.getBranchIndex(), operands,
+                                    rewriter.getArrayAttr(branches));
   util::ForwardNonIntrinsicAttributes(op, func_op);
   rewriter.replaceOp(op, func_op.getResults());
   return success();
@@ -998,9 +1000,9 @@ ConvertWhileLikeOp<WhileLikeRegionOp, WhileLikeOp>::matchAndRewrite(
   llvm::append_range(operands, op.getCtls());
 
   rewriter.setInsertionPoint(op);
-  auto func_op = rewriter.create<WhileLikeOp>(op.getLoc(), op.getResultTypes(),
-                                              operands, cond_ref, body_ref,
-                                              op.getParallelIterationsAttr());
+  auto func_op =
+      WhileLikeOp::create(rewriter, op.getLoc(), op.getResultTypes(), operands,
+                          cond_ref, body_ref, op.getParallelIterationsAttr());
   util::ForwardNonIntrinsicAttributes(op, func_op);
   rewriter.replaceOp(op, func_op.getResults());
   return success();
@@ -1036,9 +1038,9 @@ LogicalResult ConvertForOp::matchAndRewrite(ForRegionOp op,
   llvm::append_range(operands, op.getCtls());
 
   rewriter.setInsertionPoint(op);
-  auto func_op = rewriter.create<tfg::ForOp>(
-      op.getLoc(), op.getResultTypes(), op.getStart(), op.getLimit(),
-      op.getDelta(), operands, body_ref[0]);
+  auto func_op = tfg::ForOp::create(rewriter, op.getLoc(), op.getResultTypes(),
+                                    op.getStart(), op.getLimit(), op.getDelta(),
+                                    operands, body_ref[0]);
   util::ForwardNonIntrinsicAttributes(op, func_op);
   rewriter.replaceOp(op, func_op.getResults());
   return success();

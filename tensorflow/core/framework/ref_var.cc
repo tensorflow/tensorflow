@@ -32,7 +32,7 @@ void AssignRefVariable(
   // behaviors that cannot be traced back to the original tensor.
   OP_REQUIRES(
       context, rhs.IsInitialized(),
-      errors::Internal("Right hand side of AssignOp is not initialized"));
+      absl::InternalError("Right hand side of AssignOp is not initialized"));
 
   // We can't always know how this value will be used downstream, so make
   // conservative assumptions in specifying constraints on the memory
@@ -51,11 +51,11 @@ void AssignRefVariable(
     const bool same_shape = old_lhs.shape().IsSameSize(rhs.shape());
     if (validate_shape) {
       OP_REQUIRES(context, same_shape,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Assign requires shapes of both tensors to match. "
                       "lhs shape= ",
                       old_lhs.shape().DebugString(),
-                      " rhs shape= ", rhs.shape().DebugString()));
+                      " rhs shape= ", rhs.shape().DebugString())));
     }
 
     // In the code below we try to minimize the amount of memory allocation
@@ -75,7 +75,7 @@ void AssignRefVariable(
         reshaped_old_lhs = old_lhs;
       } else {
         OP_REQUIRES(context, reshaped_old_lhs.CopyFrom(old_lhs, rhs.shape()),
-                    errors::Internal(
+                    absl::InternalError(
                         "Unable to copy the value tensor to the ref input"));
         context->replace_ref_input(input_ref_index, reshaped_old_lhs,
                                    /* lock_held */ true);

@@ -18,14 +18,15 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_OPS_RESOURCE_VARIABLE_OPS_H_
 #define TENSORFLOW_C_EXPERIMENTAL_OPS_RESOURCE_VARIABLE_OPS_H_
 
+#include <string>
+
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"  // NOLINT
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace ops {
@@ -35,7 +36,8 @@ absl::Status VarHandleOp(AbstractContext* ctx, AbstractTensorHandle** resource,
                          DataType dtype, const PartialTensorShape shape,
                          const char* container = "",
                          const char* shared_name = "",
-                         absl::Span<string const> allowed_devices = {},
+                         const char* debug_name = "",
+                         absl::Span<std::string const> allowed_devices = {},
                          const char* name = nullptr,
                          const char* raw_device_name = nullptr);
 

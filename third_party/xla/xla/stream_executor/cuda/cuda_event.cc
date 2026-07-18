@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
@@ -66,7 +67,7 @@ absl::StatusOr<CUevent> InitEvent(StreamExecutor *executor, EventFlags flags) {
 
   std::unique_ptr<ActivateContext> activation = executor->Activate();
   CUevent event_handle;
-  TF_RETURN_IF_ERROR(cuda::ToStatus(cuEventCreate(&event_handle, cuflags)));
+  RETURN_IF_ERROR(cuda::ToStatus(cuEventCreate(&event_handle, cuflags)));
   return event_handle;
 }
 
@@ -88,9 +89,14 @@ absl::Status CudaEvent::WaitForEventOnExternalStream(std::intptr_t stream) {
                            handle_);
 }
 
+absl::Status CudaEvent::Synchronize() {
+  std::unique_ptr<ActivateContext> activation = executor_->Activate();
+  return cuda::ToStatus(cuEventSynchronize(handle_));
+}
+
 absl::StatusOr<CudaEvent> CudaEvent::Create(StreamExecutor *executor,
                                             bool allow_timing) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       CUevent event_handle,
       InitEvent(executor, allow_timing ? EventFlags::kDefault
                                        : EventFlags::kDisableTiming));

@@ -241,7 +241,7 @@ absl::optional<uint64_t> VerifyAndCountElements(
     const auto* dim_metadata = sparsity.dim_metadata()->Get(i);
     if (dim_metadata->format() == DimensionType_DENSE) {
       if (dim_metadata->dense_size() != dim_sizes[original_dim]) {
-        return absl::nullopt;
+        return std::nullopt;
       }
 
       // Each index in a dense dimension is stored implicitly.
@@ -249,7 +249,7 @@ absl::optional<uint64_t> VerifyAndCountElements(
     } else {
       if (!CheckArraySegments(dim_metadata) ||
           !CheckArrayIndices(dim_metadata)) {
-        return absl::nullopt;
+        return std::nullopt;
       }
 
       int array_segments_size = GetSizeOfSegments(dim_metadata);
@@ -260,23 +260,23 @@ absl::optional<uint64_t> VerifyAndCountElements(
             GetValueOfSegmentsAt(dim_metadata, j + 1) < 0 ||
             GetValueOfSegmentsAt(dim_metadata, j) >
                 GetValueOfSegmentsAt(dim_metadata, j + 1)) {
-          return absl::nullopt;
+          return std::nullopt;
         }
       }
 
       if (static_cast<int>(num_elements) != array_segments_size - 1) {
-        return absl::nullopt;
+        return std::nullopt;
       }
 
       if (array_indices_size !=
           GetValueOfSegmentsAt(dim_metadata, array_segments_size - 1)) {
-        return absl::nullopt;
+        return std::nullopt;
       }
 
       for (int j = 0; j < array_indices_size; j++) {
         if (GetValueOfIndicesAt(dim_metadata, j) < 0 ||
             GetValueOfIndicesAt(dim_metadata, j) >= dim_sizes[original_dim]) {
-          return absl::nullopt;
+          return std::nullopt;
         }
       }
 
@@ -292,24 +292,24 @@ absl::optional<uint64_t> VerifyAndCountSparseElements(const Tensor& tensor) {
   const auto* sparsity = tensor.sparsity();
   if (sparsity->traversal_order() == nullptr ||
       sparsity->dim_metadata() == nullptr) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   const int total_dims = sparsity->traversal_order()->size();
   const int original_rank = tensor.shape()->size();
   const int sparsity_dim_metadata_size = sparsity->dim_metadata()->size();
   if (total_dims < original_rank || sparsity_dim_metadata_size != total_dims) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   const int block_rank = total_dims - original_rank;
   if (block_rank > 0) {
     if (sparsity->block_map() == nullptr) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     const int sparse_rank = sparsity->block_map()->size();
     if (sparse_rank != block_rank) {
-      return absl::nullopt;
+      return std::nullopt;
     }
   }
 
@@ -325,14 +325,14 @@ absl::optional<uint64_t> VerifyAndCountSparseElements(const Tensor& tensor) {
   std::sort(traversal_order.begin(), traversal_order.begin() + original_rank);
   for (int i = 0; i < original_rank; i++) {
     if (traversal_order[i] != i) {
-      return absl::nullopt;
+      return std::nullopt;
     }
   }
 
   std::sort(traversal_order.begin() + original_rank, traversal_order.end());
   for (int i = original_rank; i < total_dims; i++) {
     if (traversal_order[i] != i) {
-      return absl::nullopt;
+      return std::nullopt;
     }
   }
 
@@ -356,20 +356,20 @@ absl::optional<uint64_t> VerifyAndCountSparseElements(const Tensor& tensor) {
     int original_block_dim =
         sparsity->traversal_order()->Get(i + original_rank);
     if (original_block_dim < 0 || original_block_dim >= total_dims) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     int block_dim_size =
         sparsity->dim_metadata()->Get(i + original_rank)->dense_size();
     // If size is <= 0 we just return as it is invalid.
     if (block_dim_size <= 0) {
-      return absl::nullopt;
+      return std::nullopt;
     }
 
     expanded_dim_sizes[original_block_dim] = block_dim_size;
 
     int mapped_block_dim = sparsity->block_map()->Get(i);
     if (mapped_block_dim < 0 || mapped_block_dim >= total_dims) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     expanded_dim_sizes[mapped_block_dim] /= block_dim_size;
   }
@@ -428,13 +428,20 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
     case TensorType_UINT32:
       bytes_required *= sizeof(uint32_t);
       break;
+    case TensorType_INT2:
+      bytes_required = (bytes_required + 3) / 4;
+      break;
+    case TensorType_UINT4:
+      bytes_required = (bytes_required + 1) / 2;
+      break;
     case TensorType_INT4:
-      // TODO(b/246647008): Multiplying this value by the number of elements
-      // does not yield the size of a tensor when 4-bit values are packed
-      // 2 to a byte.
-      bytes_required *= sizeof(int8_t);
+      bytes_required = (bytes_required + 1) / 2;
       break;
     case TensorType_UINT8:
+      bytes_required *= sizeof(uint8_t);
+      break;
+    case TensorType_FLOAT8_E4M3FN:
+    case TensorType_FLOAT8_E5M2:
       bytes_required *= sizeof(uint8_t);
       break;
     case TensorType_INT8:

@@ -43,7 +43,7 @@ absl::Status FractionalPoolShapeFn(InferenceContext* c) {
   std::vector<float> pooling_ratio;
   TF_RETURN_IF_ERROR(c->GetAttr("pooling_ratio", &pooling_ratio));
   if (pooling_ratio.size() != 4) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "pooling_ratio field must specify 4 dimensions");
   }
   std::vector<DimensionHandle> output_dims;
@@ -55,8 +55,8 @@ absl::Status FractionalPoolShapeFn(InferenceContext* c) {
       auto val =
           static_cast<int64_t>(std::floor(c->Value(d) / pooling_ratio[i]));
       if (val < 0) {
-        return errors::InvalidArgument("Size computed for dim ", i,
-                                       " is negative: ", val);
+        return absl::InvalidArgumentError(
+            absl::StrCat("Size computed for dim ", i, " is negative: ", val));
       }
       output_dims.push_back(c->MakeDim(val));
     } else {
@@ -66,8 +66,8 @@ absl::Status FractionalPoolShapeFn(InferenceContext* c) {
 
   for (std::size_t i = 0; i < pooling_ratio.size(); ++i) {
     if (pooling_ratio[i] < 1) {
-      return errors::InvalidArgument(
-          "pooling_ratio cannot be smaller than 1, got: ", pooling_ratio[i]);
+      return absl::InvalidArgumentError(absl::StrCat(
+          "pooling_ratio cannot be smaller than 1, got: ", pooling_ratio[i]));
     }
   }
 
@@ -539,8 +539,8 @@ absl::Status CommonFusedConvCalculations(InferenceContext* c, bool has_resize) {
     DimensionHandle new_height = c->UnknownDim();
     DimensionHandle new_width = c->UnknownDim();
     if (size != nullptr) {
-      new_height = c->MakeDim(size->flat<int32>()(0));
-      new_width = c->MakeDim(size->flat<int32>()(1));
+      new_height = c->MakeDim(size->flat<int32_t>()(0));
+      new_width = c->MakeDim(size->flat<int32_t>()(1));
     }
     TF_RETURN_IF_ERROR(c->ReplaceDim(resized, 1, new_height, &resized));
     TF_RETURN_IF_ERROR(c->ReplaceDim(resized, 2, new_width, &resized));
@@ -559,10 +559,10 @@ absl::Status CommonFusedConvCalculations(InferenceContext* c, bool has_resize) {
     std::vector<DimensionHandle> output_dims;
     for (int i = 0; i < 4; ++i) {
       DimensionHandle dim = c->Dim(resized, i);
-      int64_t p0 = static_cast<int64_t>(paddings_t->matrix<int32>()(i, 0));
-      int64_t p1 = static_cast<int64_t>(paddings_t->matrix<int32>()(i, 1));
+      int64_t p0 = static_cast<int64_t>(paddings_t->matrix<int32_t>()(i, 0));
+      int64_t p1 = static_cast<int64_t>(paddings_t->matrix<int32_t>()(i, 1));
       if (p0 < 0 || p1 < 0) {
-        return errors::InvalidArgument("Paddings must be non-negative");
+        return absl::InvalidArgumentError("Paddings must be non-negative");
       }
 
       TF_RETURN_IF_ERROR(c->Add(dim, p0 + p1, &dim));
@@ -576,12 +576,12 @@ absl::Status CommonFusedConvCalculations(InferenceContext* c, bool has_resize) {
   // Work out the convolution's effect with 'padded' as the input.
   ShapeHandle filter;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(filter_index), 4, &filter));
-  std::vector<int32> strides;
+  std::vector<int32_t> strides;
   TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
   if (strides.size() != 4) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Operation requires the stride attribute to contain 4 values, but ",
-        "got: ", strides.size());
+        "got: ", strides.size()));
   }
 
   int32_t stride_rows = strides[1];
@@ -1026,12 +1026,12 @@ REGISTER_OP("MaxPoolWithArgmax")
     .Output("argmax: Targmax")
     .Attr("T: realnumbertype")
     .SetShapeFn([](InferenceContext* c) {
-      std::vector<int32> ksize;
+      std::vector<int32_t> ksize;
       TF_RETURN_IF_ERROR(c->GetAttr("ksize", &ksize));
       for (int i = 0; i < ksize.size(); ++i) {
         if (ksize[i] <= 0) {
-          return errors::InvalidArgument(
-              "ksize must be a positive int32 value, got:", ksize[i]);
+          return absl::InvalidArgumentError(absl::StrCat(
+              "ksize must be a positive int32 value, got:", ksize[i]));
         }
       }
       TF_RETURN_IF_ERROR(shape_inference::MaxPoolShape(c));
@@ -1091,22 +1091,22 @@ REGISTER_OP("Dilation2D")
       ShapeHandle filter_shape;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &filter_shape));
 
-      std::vector<int32> strides;
+      std::vector<int32_t> strides;
       TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
       if (strides.size() != 4) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Dilation2D requires the stride attribute to contain 4 values, but "
             "got: ",
-            strides.size());
+            strides.size()));
       }
 
-      std::vector<int32> rates;
+      std::vector<int32_t> rates;
       TF_RETURN_IF_ERROR(c->GetAttr("rates", &rates));
       if (rates.size() != 4) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Dilation2D requires the rates attribute to contain 4 values, but "
             "got: ",
-            rates.size());
+            rates.size()));
       }
 
       int32_t stride_rows = strides[1];
@@ -1319,14 +1319,14 @@ REGISTER_OP("SoftmaxCrossEntropyWithLogits")
       TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFn(c, 1));
 
       if (!c->RankKnown(c->output(1))) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Shape must be broadcasted with rank 2, but is rank is unknown.");
       }
 
       if (c->Rank(c->output(1)) != 2) {
-        return errors::InvalidArgument(
-            "Shape must be broadcasted with rank 2, but is rank ",
-            c->Rank(c->output(1)));
+        return absl::InvalidArgumentError(
+            absl::StrCat("Shape must be broadcasted with rank 2, but is rank ",
+                         c->Rank(c->output(1))));
       }
       DimensionHandle batch_size = c->Dim(c->output(1), 0);
       c->set_output(0, c->Vector(batch_size));
@@ -1409,7 +1409,7 @@ absl::Status TopKShapeFn(InferenceContext* c) {
     int32_t k;
     TF_RETURN_IF_ERROR(c->GetAttr("k", &k));
     if (k < 0) {
-      return errors::InvalidArgument("Need k >= 0, got ", k);
+      return absl::InvalidArgumentError(absl::StrCat("Need k >= 0, got ", k));
     }
     k_dim = c->MakeDim(k);
   }
@@ -1417,9 +1417,9 @@ absl::Status TopKShapeFn(InferenceContext* c) {
   DimensionHandle last_dim = c->Dim(input, -1);
   if (c->ValueKnown(last_dim) && c->ValueKnown(k_dim) &&
       c->Value(last_dim) < c->Value(k_dim)) {
-    return errors::InvalidArgument(
-        "input must have last dimension >= k = ", c->Value(k_dim), " but is ",
-        c->Value(last_dim));
+    return absl::InvalidArgumentError(
+        absl::StrCat("input must have last dimension >= k = ", c->Value(k_dim),
+                     " but is ", c->Value(last_dim)));
   }
 
   // Replace last_dim with k_dim.
@@ -1464,56 +1464,64 @@ absl::Status ApproxTopKShape(shape_inference::InferenceContext* c) {
     reduction_dimension += c->Rank(input_shape);
   }
   if (reduction_dimension >= c->Rank(input_shape) || reduction_dimension < 0) {
-    return errors::InvalidArgument("Invalid reduction dimension: ", r_dim_copy,
-                                   ". Must be within the range of [", -rank,
-                                   ", ", rank - 1, "]");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Invalid reduction dimension: ", r_dim_copy,
+        ". Must be within the range of [", -rank, ", ", rank - 1, "]"));
   }
-  int64_t reduction_dim_value =
-      c->Value(c->Dim(input_shape, reduction_dimension));
 
-  if (reduction_dim_value < k) {
-    return errors::InvalidArgument("input must have last dimension >= k = ", k,
-                                   " but was ", reduction_dim_value);
+  DimensionHandle reduction_dim_handle =
+      c->Dim(input_shape, reduction_dimension);
+  const bool reduction_dim_known = c->ValueKnown(reduction_dim_handle);
+  const int64_t reduction_dim_value =
+      reduction_dim_known ? c->Value(reduction_dim_handle) : -1;
+  if (reduction_dim_known && reduction_dim_value < k) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("input must have last dimension >= k = ", k, " but was ",
+                     reduction_dim_value));
   }
   if (recall_target > 1.0 || recall_target <= 0.) {
-    return errors::InvalidArgument("Invalid recall target: ", recall_target,
-                                   ". Valid value range in : [0, 1.0].");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid recall target: ", recall_target,
+                     ". Valid value range in : [0, 1.0]."));
   }
 
-  int64_t output_dim_value = [&] {
-    if (aggregate_to_topk) {
-      return k;
-    }
-    int64_t tpu_tiling = c->Rank(input_shape) == 1 ? 1024 : 128;
-    if (reduction_dim_value <= tpu_tiling || recall_target == 1.0) {
-      return reduction_dim_value;
-    }
-    if (k == 1) {
-      return tpu_tiling;
-    }
-    uint64_t logical_input_size = reduction_input_size_override >= 0
-                                      ? reduction_input_size_override
-                                      : reduction_dim_value;
-    uint64_t m = std::min<uint64_t>(
-        std::max<uint64_t>(
-            static_cast<uint64_t>((1.0 - k) /
-                                  std::log(static_cast<double>(recall_target))),
-            tpu_tiling),
-        reduction_dim_value);
-    uint32_t log2_reduction = log2_floor(logical_input_size / m);
-    if (log2_reduction == 0) {
-      return reduction_dim_value;
-    }
-    log2_reduction = std::min<uint32_t>(
-        log2_reduction, log2_ceil(reduction_dim_value / tpu_tiling));
-    return tensorflow::MathUtil::CeilOfRatio<int64_t>(
-               tensorflow::MathUtil::CeilOfRatio<int64_t>(reduction_dim_value,
-                                                          tpu_tiling),
-               (1 << log2_reduction)) *
-           tpu_tiling;
-  }();
-
-  auto output_dim = c->MakeDim(output_dim_value);
+  DimensionHandle output_dim;
+  if (aggregate_to_topk) {
+    output_dim = c->MakeDim(k);
+  } else if (!reduction_dim_known) {
+    output_dim = c->UnknownDim();
+  } else {
+    int64_t output_dim_value = [&] {
+      int64_t tpu_tiling = c->Rank(input_shape) == 1 ? 1024 : 128;
+      if (reduction_dim_value <= tpu_tiling || recall_target == 1.0) {
+        return reduction_dim_value;
+      }
+      if (k == 1) {
+        return tpu_tiling;
+      }
+      uint64_t logical_input_size = reduction_input_size_override >= 0
+                                        ? reduction_input_size_override
+                                        : reduction_dim_value;
+      uint64_t m = std::min<uint64_t>(
+          std::max<uint64_t>(
+              static_cast<uint64_t>(
+                  (1.0 - k) / std::log(static_cast<double>(recall_target))),
+              tpu_tiling),
+          reduction_dim_value);
+      uint32_t log2_reduction = log2_floor(logical_input_size / m);
+      if (log2_reduction == 0) {
+        return reduction_dim_value;
+      }
+      log2_reduction = std::min<uint32_t>(
+          log2_reduction, log2_ceil(reduction_dim_value / tpu_tiling));
+      return tensorflow::MathUtil::CeilOfRatio<int64_t>(
+                 tensorflow::MathUtil::CeilOfRatio<int64_t>(reduction_dim_value,
+                                                            tpu_tiling),
+                 (1 << log2_reduction)) *
+             tpu_tiling;
+    }();
+    output_dim = c->MakeDim(output_dim_value);
+  }
 
   ShapeHandle output_shape;
   TF_RETURN_IF_ERROR(c->ReplaceDim(input_shape, reduction_dimension, output_dim,
@@ -1581,9 +1589,9 @@ REGISTER_OP("NthElement")
       DimensionHandle last_dim = c->Dim(input, -1);
       if (c->ValueKnown(last_dim) && c->ValueKnown(n_dim) &&
           c->Value(last_dim) <= c->Value(n_dim)) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Input must have last dimension > n = ", c->Value(n_dim),
-            " but is ", c->Value(last_dim));
+            " but is ", c->Value(last_dim)));
       }
 
       // Reduce last_dim for output tensor

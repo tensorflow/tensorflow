@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -204,11 +205,18 @@ absl::Status ConvertTfMlirToRuntimeExecutable(
         tensorflow::tf2xla::v2::RunFunctionTf2xlaClusteringBridge(
             module, /*is_supported_by_replicated_brige*/ true,
             /*is_in_fallback_enabled_mode=*/VLOG_IS_ON(1)));
+    if (VLOG_IS_ON(1)) {
+      tensorflow::DumpMlirOpToFile("after_tf2xla_clustering_bridge", module);
+    }
 
     TF_RETURN_IF_ERROR(
         tensorflow::tfrt_compiler::RunLowerClusterToRuntimeOpsPassPipeline(
             module, tsl::DeviceType(DEVICE_TPU_XLA_JIT)));
 
+    if (VLOG_IS_ON(1)) {
+      tensorflow::DumpMlirOpToFile("after_lower_cluster_to_runtime_ops",
+                                   module);
+    }
     TF_RETURN_IF_ERROR(
         tensorflow::tf2xla::v2::ExportFromTensorflowDialectToExecutor(module));
   } else if (options.device_target == TfrtDeviceInfraTarget::kTfFallback) {
@@ -341,6 +349,12 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
   pipeline_options->min_max_enqueued_batches = options.min_max_enqueued_batches;
   pipeline_options->batch_queue_global_prioritization_num_threads =
       options.batch_queue_global_prioritization_num_threads;
+  pipeline_options->enable_priority_aware_batch_scheduler =
+      options.enable_priority_aware_batch_scheduler;
+  pipeline_options->enable_priority_aware_batch_scheduler_resplit =
+      options.enable_priority_aware_batch_scheduler_resplit;
+  pipeline_options->enable_batching_task_lazy_cancellation =
+      options.enable_batching_task_lazy_cancellation;
   pipeline_options->batch_padding_policy = options.batch_padding_policy;
   pipeline_options->num_batch_threads =
       options.batch_options.num_batch_threads();
@@ -352,8 +366,25 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
                            options.batch_options.allowed_batch_sizes().end()));
   pipeline_options->max_enqueued_batches =
       options.batch_options.max_enqueued_batches();
+  pipeline_options->low_priority_max_batch_size =
+      options.batch_options.low_priority_max_batch_size();
+  pipeline_options->low_priority_batch_timeout_micros =
+      options.batch_options.low_priority_batch_timeout_micros();
+  pipeline_options->low_priority_allowed_batch_sizes =
+      llvm::ArrayRef<int64_t>(std::vector<int64_t>(
+          options.batch_options.low_priority_allowed_batch_sizes().begin(),
+          options.batch_options.low_priority_allowed_batch_sizes().end()));
+  pipeline_options->low_priority_max_enqueued_batches =
+      options.batch_options.low_priority_max_enqueued_batches();
+  pipeline_options->num_warmup_batch_threads =
+      options.batch_options.num_warmup_batch_threads();
+  pipeline_options->enable_large_batch_splitting =
+      options.batch_options.enable_large_batch_splitting();
+  pipeline_options->mixed_priority_batching_policy =
+      options.batch_options.mixed_priority_batching_policy();
   pipeline_options->merge_inter_dependent_streams =
       options.merge_inter_dependent_streams;
+  pipeline_options->allow_xla_cpu = options.allow_xla_cpu;
 
   return pipeline_options;
 }

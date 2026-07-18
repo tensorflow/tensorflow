@@ -17,6 +17,7 @@ limitations under the License.
 // --output_file_path=/tmp/output.pbtxt
 // --optimization_pass=NameOfGraphOptimizationPass
 
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -35,9 +36,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 absl::Status RealMain(int argc, char** argv) {
-  string input_file_path;
-  string output_file_path;
-  string optimization_pass;
+  std::string input_file_path;
+  std::string output_file_path;
+  std::string optimization_pass;
 
   const std::vector<Flag> flag_list = {
       Flag("input_file_path", &input_file_path, "Location of the input graph."),
@@ -48,18 +49,20 @@ absl::Status RealMain(int argc, char** argv) {
            "Which optimization pass to run."),
   };
   if (!Flags::Parse(&argc, argv, flag_list)) {
-    return errors::FailedPrecondition("Invalid flags passed");
+    return absl::FailedPreconditionError("Invalid flags passed");
   }
   port::InitMain(argv[0], &argc, &argv);
 
   if (input_file_path.empty()) {
-    return errors::FailedPrecondition("input_file_path is a required flag.");
+    return absl::FailedPreconditionError("input_file_path is a required flag.");
   }
   if (output_file_path.empty()) {
-    return errors::FailedPrecondition("output_file_path is a required flag.");
+    return absl::FailedPreconditionError(
+        "output_file_path is a required flag.");
   }
   if (optimization_pass.empty()) {
-    return errors::FailedPrecondition("optimization_pass is a required flag.");
+    return absl::FailedPreconditionError(
+        "optimization_pass is a required flag.");
   }
 
   GraphDef graphdef_input;

@@ -118,6 +118,9 @@ mlir::Attribute convertGeneric(mlir::Attribute vifrt_attr,
   if (auto attr = llvm::dyn_cast<VifrtShardingParamV1Attr>(vifrt_attr)) {
     return IfrtShardingParamAttr::get(attr.getContext(), attr.getSharding());
   }
+  if (auto attr = llvm::dyn_cast<VifrtShardingParamV2Attr>(vifrt_attr)) {
+    return IfrtShardingParamAttr::get(attr.getContext(), attr.getSharding());
+  }
   if (auto attr = llvm::dyn_cast<VifrtUnspecifiedShardingV1Attr>(vifrt_attr)) {
     return IfrtUnspecifiedShardingAttr::get(attr.getContext());
   }
@@ -264,9 +267,13 @@ class VifrtToIfrtTypeConverter : public VifrtTypeConverterBuiltin {
         // No layout was specified.
         layout_attr = nullptr;
       }
-      return IfrtArrayType::get(array.getContext(), array.getShape(),
-                                sharding_attr, devices_attr, memory_kind_attr,
-                                layout_attr);
+      mlir::RankedTensorType shape = array.getShape();
+      if (llvm::isa<VifrtTokenV1Type>(shape.getElementType())) {
+        shape = mlir::RankedTensorType::get(
+            {}, IfrtTokenType::get(array.getContext()));
+      }
+      return IfrtArrayType::get(array.getContext(), shape, sharding_attr,
+                                devices_attr, memory_kind_attr, layout_attr);
     });
     addConversion([](VifrtControlV1Type type) -> mlir::Type {
       return IfrtControlType::get(type.getContext());
@@ -358,7 +365,7 @@ class VifrtToIfrtOpConverter : public mlir::OpConversionPattern<VifrtOpTy> {
       return mlir::failure();
     }
 
-    // Convert the IFRT attributes to VIFRT attributes.
+    // Convert the VIFRT attributes to IFRT attributes.
     llvm::SmallVector<mlir::NamedAttribute> ifrt_attrs;
     llvm::DenseSet<mlir::StringAttr> already_converted_attrs;
     // Special case operations.
@@ -407,9 +414,8 @@ class VifrtToIfrtOpConverter : public mlir::OpConversionPattern<VifrtOpTy> {
     mlir::ValueRange ifrt_operands = adaptor.getOperands();
 
     // Convert the IFRT op to a VIFRT equivalent op.
-    VifrtToIfrtOp<VifrtOpTy> ifrt_op =
-        rewriter.create<VifrtToIfrtOp<VifrtOpTy>>(vifrt_op.getLoc(), ifrt_types,
-                                                  ifrt_operands, ifrt_attrs);
+    VifrtToIfrtOp<VifrtOpTy> ifrt_op = VifrtToIfrtOp<VifrtOpTy>::create(
+        rewriter, vifrt_op.getLoc(), ifrt_types, ifrt_operands, ifrt_attrs);
 
     // Convert the VIFRT region types to IFRT region types.
     for (auto [vifrt_region, ifrt_region] :

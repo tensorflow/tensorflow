@@ -747,5 +747,14 @@ TEST_F(TupleTreeTest, ToNode) {
   EXPECT_THAT(tree.ToNode({0, 0}), StatusIs(absl::StatusCode::kInvalidArgument,
                                             "Cannot index into a leaf node"));
 }
+
+TEST_F(TupleTreeTest, IsTuple) {
+  TupleTree<int> tuple_tree({5});
+  TupleTree<int> non_tuple_tree(5);
+
+  EXPECT_TRUE(tuple_tree.IsTuple());
+  EXPECT_FALSE(non_tuple_tree.IsTuple());
+}
+
 }  // namespace
 }  // namespace xla

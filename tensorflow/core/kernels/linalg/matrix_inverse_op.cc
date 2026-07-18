@@ -73,7 +73,7 @@ class MatrixInverseOp : public LinearAlgebraOp<Scalar> {
     const RealScalar min_abs_pivot =
         lu_decomposition.matrixLU().diagonal().cwiseAbs().minCoeff();
     OP_REQUIRES(context, min_abs_pivot > RealScalar(0),
-                errors::InvalidArgument("Input is not invertible."));
+                absl::InvalidArgumentError("Input is not invertible."));
     outputs->at(0).noalias() = lu_decomposition.inverse();
   }
 
@@ -115,7 +115,7 @@ class MatrixInverseOp<Eigen::half> : public LinearAlgebraOp<Eigen::half> {
     const float min_abs_pivot =
         lu_decomposition.matrixLU().diagonal().cwiseAbs().minCoeff();
     OP_REQUIRES(context, min_abs_pivot > 0.0,
-                errors::InvalidArgument("Input is not invertible."));
+                absl::InvalidArgumentError("Input is not invertible."));
     outputs->at(0).noalias() =
         lu_decomposition.inverse().template cast<Eigen::half>();
   }
@@ -144,15 +144,15 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
     const int ndims = input.dims();
     const int64_t n = input.dim_size(ndims - 1);
     // Validate inputs.
-    OP_REQUIRES_ASYNC(
-        context, ndims >= 2,
-        errors::InvalidArgument("Input must have rank >= 2, got ", ndims),
-        done);
-    OP_REQUIRES_ASYNC(
-        context, input.dim_size(ndims - 2) == n,
-        errors::InvalidArgument("Input matrices must be squares, got",
-                                input.dim_size(ndims - 2), " != ", n),
-        done);
+    OP_REQUIRES_ASYNC(context, ndims >= 2,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "Input must have rank >= 2, got ", ndims)),
+                      done);
+    OP_REQUIRES_ASYNC(context, input.dim_size(ndims - 2) == n,
+                      absl::InvalidArgumentError(
+                          absl::StrCat("Input matrices must be squares, got",
+                                       input.dim_size(ndims - 2), " != ", n)),
+                      done);
 
     // By definition, an empty matrix's inverse is an empty matrix.
     if (input.NumElements() == 0) {
@@ -199,10 +199,10 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
                                        TensorShape{batch_size, n}, &pivots),
         done);
     auto pivots_mat = pivots.template matrix<int>();
-    auto input_copy_ptr_array = solver->GetScratchSpace<uint8>(
+    auto input_copy_ptr_array = solver->GetScratchSpace<uint8_t>(
         sizeof(Scalar*) * batch_size, "input_copy_ptr_array",
         /* on_host */ true);
-    auto output_ptr_array = solver->GetScratchSpace<uint8>(
+    auto output_ptr_array = solver->GetScratchSpace<uint8_t>(
         sizeof(Scalar*) * batch_size, "output_copy_ptr_array",
         /* on_host */ true);
     auto output_reshaped = output->template flat_inner_dims<Scalar, 3>();
@@ -290,7 +290,7 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
     }
     // Callback for checking info after kernels finish.
     auto info_checker = [context, done](
-                            const Status& status,
+                            const absl::Status& status,
                             const std::vector<HostLapackInfo>& host_infos) {
       if (!status.ok() && absl::IsInvalidArgument(status)) {
         for (const auto& host_info : host_infos) {
@@ -300,7 +300,7 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
             // below.
             OP_REQUIRES_ASYNC(
                 context, host_info(i) <= 0,
-                errors::InvalidArgument("Input is not invertible."), done);
+                absl::InvalidArgumentError("Input is not invertible."), done);
           }
         }
       }

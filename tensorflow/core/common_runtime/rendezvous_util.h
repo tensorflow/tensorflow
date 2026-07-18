@@ -17,12 +17,14 @@ limitations under the License.
 
 #include <map>
 
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 
-typedef std::map<string, Tensor> NamedTensors;
+typedef std::map<std::string, Tensor> NamedTensors;
 typedef std::function<void(const absl::Status&)> StatusCallback;
 
 // Uses `rendezvous` to send tensors in `tensors_to_send`. `device_context`
@@ -33,7 +35,8 @@ typedef std::function<void(const absl::Status&)> StatusCallback;
 absl::Status SendTensorsToRendezvous(
     RendezvousInterface* rendezvous, DeviceContext* device_context,
     const std::vector<AllocatorAttributes>& alloc_attrs,
-    const std::vector<string>& keys, absl::Span<const Tensor> tensors_to_send);
+    const std::vector<std::string>& keys,
+    absl::Span<const Tensor> tensors_to_send);
 
 // Uses `rendezvous` to obtain tensors. `device_context` should be the
 // DeviceContext associated with the receiving device. `alloc_attrs` contains
@@ -42,7 +45,7 @@ absl::Status SendTensorsToRendezvous(
 void RecvOutputsFromRendezvousAsync(
     RendezvousInterface* rendezvous, DeviceContext* device_context,
     const std::vector<AllocatorAttributes>& alloc_attrs,
-    const std::vector<string>& keys, std::vector<Tensor>* received_tensors,
+    const std::vector<std::string>& keys, std::vector<Tensor>* received_tensors,
     StatusCallback done);
 
 absl::Status RecvOutputsFromRendezvous(RendezvousInterface* rendezvous,

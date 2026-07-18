@@ -17,19 +17,25 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/hlo/ir/stack_frames.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/literal_util.h"
 #include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
@@ -42,9 +48,302 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ::testing::ElementsAre;
+using ::testing::HasSubstr;
+using ::testing::Not;
 
 using HloInstructionTest = HloHardwareIndependentTestBase;
+
+TEST_F(HloInstructionTest, SparsityConfigToString_RHSOnly) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder("main");
+  // Add a dummy convolution to test sparsity config.
+  // convolution(256x256, 256x256), dim_labels=bf_io->bf
+  HloInstruction* lhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(BF16, {256, 256}), "lhs"));
+  HloInstruction* rhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(BF16, {64, 256}), "rhs"));
+  SparsityConfig sparsity_config;
+  sparsity_config.mutable_rhs()->set_block_size(4);
+  sparsity_config.mutable_rhs()->set_num_non_zero(1);
+  sparsity_config.mutable_rhs()->set_dimension(0);
+  sparsity_config.mutable_rhs()->set_stride(1);
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_input_batch_dimension(0);
+  dnums.set_input_feature_dimension(1);
+  dnums.set_kernel_input_feature_dimension(0);
+  dnums.set_kernel_output_feature_dimension(1);
+  dnums.set_output_batch_dimension(0);
+  dnums.set_output_feature_dimension(1);
+  HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
+      /*shape=*/ShapeUtil::MakeShape(BF16, {256, 256}),
+      /*lhs=*/lhs,
+      /*rhs=*/rhs,
+      /*feature_group_count=*/1,
+      /*batch_group_count=*/1,
+      /*window=*/Window(),
+      /*dimension_numbers=*/dnums,
+      /*precision_config=*/PrecisionConfig(),
+      /*sparsity_config=*/sparsity_config));
+  module->AddEntryComputation(builder.Build());
+
+  EXPECT_EQ(
+      conv->ToString(),
+      R"(%convolution = bf16[256,256]{1,0} convolution(%lhs, %rhs), dim_labels=bf_io->bf, sparsity_config={rhs={sparsity=1x4 dimension=0 stride=1}})");
+}
+
+TEST_F(HloInstructionTest, SparsityConfigToString_LHSAndRHS) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder("main");
+  // Add a dummy convolution to test sparsity config.
+  // convolution(256x256, 256x256), dim_labels=bf_io->bf
+  HloInstruction* lhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(BF16, {256, 256}), "lhs"));
+  HloInstruction* rhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(BF16, {64, 256}), "rhs"));
+  SparsityConfig sparsity_config;
+  sparsity_config.mutable_rhs()->set_block_size(4);
+  sparsity_config.mutable_rhs()->set_num_non_zero(1);
+  sparsity_config.mutable_rhs()->set_dimension(0);
+  sparsity_config.mutable_rhs()->set_stride(1);
+  sparsity_config.mutable_lhs()->set_block_size(4);
+  sparsity_config.mutable_lhs()->set_num_non_zero(1);
+  sparsity_config.mutable_lhs()->set_dimension(0);
+  sparsity_config.mutable_lhs()->set_stride(1);
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_input_batch_dimension(0);
+  dnums.set_input_feature_dimension(1);
+  dnums.set_kernel_input_feature_dimension(0);
+  dnums.set_kernel_output_feature_dimension(1);
+  dnums.set_output_batch_dimension(0);
+  dnums.set_output_feature_dimension(1);
+  HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
+      /*shape=*/ShapeUtil::MakeShape(BF16, {256, 256}),
+      /*lhs=*/lhs,
+      /*rhs=*/rhs,
+      /*feature_group_count=*/1,
+      /*batch_group_count=*/1,
+      /*window=*/Window(),
+      /*dimension_numbers=*/dnums,
+      /*precision_config=*/PrecisionConfig(),
+      /*sparsity_config=*/sparsity_config));
+  module->AddEntryComputation(builder.Build());
+
+  EXPECT_EQ(
+      conv->ToString(),
+      R"(%convolution = bf16[256,256]{1,0} convolution(%lhs, %rhs), dim_labels=bf_io->bf, sparsity_config={lhs={sparsity=1x4 dimension=0 stride=1} rhs={sparsity=1x4 dimension=0 stride=1}})");
+}
+
+TEST_F(HloInstructionTest, GetStackTraceStringFromStackFrameId) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder("main");
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {1}), "p"));
+  auto sqrt = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {1}), HloOpcode::kSqrt, param));
+  module->AddEntryComputation(builder.Build());
+
+  // Add stack frames to the module
+  StackFrameIndexProto index;
+  index.add_file_names("file1.py");
+  index.add_file_names("file2.py");
+  index.add_function_names("func1");
+  index.add_function_names("func2");
+
+  auto loc1 = index.add_file_locations();
+  loc1->set_file_name_id(1);
+  loc1->set_function_name_id(1);
+  loc1->set_line(10);
+  loc1->set_column(5);
+
+  auto loc2 = index.add_file_locations();
+  loc2->set_file_name_id(2);
+  loc2->set_function_name_id(2);
+  loc2->set_line(20);
+  loc2->set_column(1);
+
+  auto frame1 = index.add_stack_frames();
+  frame1->set_file_location_id(1);
+  frame1->set_parent_frame_id(0);
+
+  auto frame2 = index.add_stack_frames();
+  frame2->set_file_location_id(2);
+  frame2->set_parent_frame_id(1);
+
+  module->set_stack_frames(StackFrames::FromProto(index).value());
+
+  // Set metadata on the instruction
+  OpMetadata metadata;
+  metadata.set_stack_frame_id(2);
+  sqrt->set_metadata(metadata);
+
+  std::string stack_trace = sqrt->GetStackTraceStringFromMetadata(4);
+
+  EXPECT_THAT(stack_trace, HasSubstr("    file1.py:10:5 [func1]"));
+  EXPECT_THAT(stack_trace, HasSubstr("    file2.py:20:1 [func2]"));
+}
+
+TEST_F(HloInstructionTest, GetStackTraceString1BasedIndexing) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder("main");
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {1}), "p"));
+  auto sqrt = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {1}), HloOpcode::kSqrt, param));
+  module->AddEntryComputation(builder.Build());
+
+  // Add stack frames to the module using 1-based indexing
+  StackFrameIndexProto index;
+  index.add_file_names("file.py");
+  index.add_function_names("func");
+
+  auto loc = index.add_file_locations();
+  loc->set_file_name_id(1);      // 1-based
+  loc->set_function_name_id(1);  // 1-based
+  loc->set_line(100);
+
+  auto frame = index.add_stack_frames();
+  frame->set_file_location_id(1);  // 1-based
+  frame->set_parent_frame_id(0);   // 0 means no parent
+
+  module->set_stack_frames(StackFrames::FromProto(index).value());
+
+  // Set metadata on the instruction
+  OpMetadata metadata;
+  metadata.set_stack_frame_id(1);  // Points to frame 1
+  sqrt->set_metadata(metadata);
+
+  std::string stack_trace = sqrt->GetStackTraceStringFromMetadata(4);
+  EXPECT_THAT(stack_trace, HasSubstr("    file.py:100 [func]"));
+
+  // Test invalid frame ID (0)
+  metadata.set_stack_frame_id(0);
+  sqrt->set_metadata(metadata);
+  EXPECT_THAT(sqrt->GetStackTraceStringFromMetadata(4),
+              HasSubstr("<no source information>"));
+
+  // Test out-of-bounds frame ID
+  metadata.set_stack_frame_id(42);
+  sqrt->set_metadata(metadata);
+  EXPECT_THAT(sqrt->GetStackTraceStringFromMetadata(4),
+              HasSubstr("<no source information>"));
+}
+
+TEST_F(HloInstructionTest, GetStackTraceStringFromSourceInfo) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder("main");
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {1}), "p"));
+  auto sqrt = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {1}), HloOpcode::kSqrt, param));
+  module->AddEntryComputation(builder.Build());
+
+  // Set metadata with direct source info (no stack frames)
+  OpMetadata metadata;
+  metadata.set_source_file("direct_file.py");
+  metadata.set_source_line(42);
+  sqrt->set_metadata(metadata);
+
+  std::string stack_trace = sqrt->GetStackTraceStringFromMetadata(4);
+
+  EXPECT_THAT(stack_trace, HasSubstr("    direct_file.py:42"));
+}
+
+TEST_F(HloInstructionTest, GetStackTraceStringCombined) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder("main");
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {1}), "p"));
+  auto sqrt = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {1}), HloOpcode::kSqrt, param));
+  module->AddEntryComputation(builder.Build());
+
+  // Add stack frames
+  StackFrameIndexProto index;
+  index.add_file_names("frame_file.py");
+  index.add_function_names("frame_func");
+  auto loc = index.add_file_locations();
+  loc->set_file_name_id(1);
+  loc->set_function_name_id(1);
+  loc->set_line(10);
+  auto frame = index.add_stack_frames();
+  frame->set_file_location_id(1);
+  frame->set_parent_frame_id(0);
+  module->set_stack_frames(StackFrames::FromProto(index).value());
+
+  // Set both stack_frame_id and source_info
+  OpMetadata metadata;
+  metadata.set_stack_frame_id(1);
+  metadata.set_source_file("source_file.py");
+  metadata.set_source_line(20);
+  sqrt->set_metadata(metadata);
+
+  std::string stack_trace = sqrt->GetStackTraceStringFromMetadata(4);
+
+  EXPECT_THAT(stack_trace, HasSubstr("    frame_file.py:10 [frame_func]"));
+  EXPECT_THAT(stack_trace, Not(HasSubstr("source_file.py:20")));
+}
+
+TEST_F(HloInstructionTest, GetStackTraceStringNoSourceInfo) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder("main");
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {1}), "p"));
+  auto sqrt = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {1}), HloOpcode::kSqrt, param));
+  module->AddEntryComputation(builder.Build());
+
+  // Set no metadata on the instruction
+  std::string stack_trace = sqrt->GetStackTraceStringFromMetadata(4);
+
+  EXPECT_THAT(stack_trace, HasSubstr("    <no source information>"));
+}
+
+TEST_F(HloInstructionTest, PostOrderDFSDataflowErrorLocation) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder("main");
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {1}), "p"));
+  auto sqrt = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {1}), HloOpcode::kSqrt, param));
+  module->AddEntryComputation(builder.Build());
+
+  // Add stack frames to the module
+  StackFrameIndexProto index;
+  index.add_file_names("file.py");
+  index.add_function_names("func");
+  auto loc = index.add_file_locations();
+  loc->set_file_name_id(1);
+  loc->set_function_name_id(1);
+  loc->set_line(100);
+  auto frame = index.add_stack_frames();
+  frame->set_file_location_id(1);
+  frame->set_parent_frame_id(0);
+  ASSERT_OK_AND_ASSIGN(auto stack_frames, StackFrames::FromProto(index));
+  module->set_stack_frames(std::move(stack_frames));
+
+  // Set metadata on the instruction
+  OpMetadata metadata;
+  metadata.set_stack_frame_id(1);
+  sqrt->set_metadata(metadata);
+
+  class FailingVisitor : public DfsHloVisitorWithDefault {
+   public:
+    absl::Status DefaultAction(HloInstruction* hlo) override {
+      if (hlo->opcode() == HloOpcode::kSqrt) {
+        return absl::Status(absl::StatusCode::kInvalidArgument,
+                            "Injected error");
+      }
+      return absl::OkStatus();
+    }
+  };
+
+  FailingVisitor visitor;
+  absl::Status status = sqrt->Accept(&visitor);
+
+  EXPECT_THAT(status.message(), HasSubstr("Injected error"));
+  EXPECT_THAT(status.message(), HasSubstr("Python Code Location:"));
+  EXPECT_THAT(status.message(), HasSubstr("file.py:100 [func]"));
+}
 
 TEST_F(HloInstructionTest, SetFrontendAttribute) {
   HloConstantInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}));
@@ -150,6 +449,54 @@ ENTRY main {
   TF_EXPECT_OK(module->schedule().Verify());
 }
 
+TEST_F(HloInstructionTest, CreateVariadicAsyncUpdate) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main
+
+ENTRY main {
+  arg.0 = s32[] parameter(0)
+  call-start.0 = ((s32[]), s32[], s32[]) call-start(arg.0), to_apply={
+    arg.0 = s32[] parameter(0)
+    ROOT abs.0 = abs(arg.0)
+  }, async_execution_thread="thread"
+  ROOT call-done.0 = s32[] call-done(call-start.0)
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* async_done = entry->root_instruction();
+  HloInstruction* async_start = async_done->async_chain_start();
+
+  // Test 1 operand case
+  std::unique_ptr<HloInstruction> update1 = HloInstruction::CreateAsyncUpdate(
+      async_start->shape(), std::vector<HloInstruction*>{async_start});
+  EXPECT_EQ(update1->opcode(), HloOpcode::kAsyncUpdate);
+  EXPECT_EQ(update1->operand_count(), 1);
+
+  // Test 2 operands case
+  HloInstruction* const_op = entry->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<std::int32_t>(42)));
+
+  std::unique_ptr<HloInstruction> update2 = HloInstruction::CreateAsyncUpdate(
+      async_start->shape(),
+      std::vector<HloInstruction*>{async_start, const_op});
+  EXPECT_EQ(update2->opcode(), HloOpcode::kAsyncUpdate);
+  EXPECT_EQ(update2->operand_count(), 2);
+  EXPECT_EQ(update2->operand(1), const_op);
+
+  // Test Cloning
+  std::unique_ptr<HloInstruction> clone1 =
+      update1->CloneWithNewOperands(update1->shape(), update1->operands());
+  EXPECT_EQ(clone1->operand_count(), 1);
+
+  std::unique_ptr<HloInstruction> clone2 =
+      update2->CloneWithNewOperands(update2->shape(), update2->operands());
+  EXPECT_EQ(clone2->operand_count(), 2);
+  EXPECT_EQ(clone2->operand(1), const_op);
+}
+
 TEST_F(HloInstructionTest, CloneImplCollectivePermuteOp) {
   constexpr absl::string_view kHlo = R"(
 HloModule main
@@ -237,6 +584,172 @@ TEST_F(HloInstructionTest, CanonicalPrintingSupportsInt64) {
   EXPECT_EQ(param3_to_string,
             "tmp_2 = pred[] compare(f32[] tmp_0, f32[] tmp_1), direction=GT, "
             "type=TOTALORDER");
+}
+
+TEST_F(HloInstructionTest, CanonicalPrintingSupportsCustomCall) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           R"(
+    HloModule custom_call_with_comp
+
+    max_F32 {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT maximum = f32[] maximum(lhs, rhs)
+    }
+
+    ENTRY CustomCall {
+      constant = f32[1]{0} constant({12345})
+      ROOT custom-call = f32[1,2,3]{0,2,1} custom-call(constant), custom_call_target="foo\"bar", called_computations={max_F32}
+    }
+  )"));
+
+  xla::HloPrintOptions hlo_print_options =
+      xla::HloPrintOptions(xla::HloPrintOptions::Canonical());
+  hlo_print_options.set_is_in_nested_computation(true);
+
+  xla::CanonicalNameMap new_map;
+  xla::StringPrinter printer;
+  module->entry_computation()
+      ->root_instruction()
+      ->operand(0)
+      ->PrintWithCanonicalNameMap(&printer, hlo_print_options, &new_map);
+  std::string param1_to_string = std::move(printer).ToString();
+
+  printer = StringPrinter();
+  // CustomCall Root Instruction
+  module->entry_computation()->root_instruction()->PrintWithCanonicalNameMap(
+      &printer, hlo_print_options, &new_map);
+  std::string param2_to_string = std::move(printer).ToString();
+
+  EXPECT_EQ(param1_to_string, "tmp_0 = f32[1]{0} constant({12345})");
+  EXPECT_EQ(param2_to_string,
+            "tmp_1 = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} tmp_0), "
+            "custom_call_target=\"foo\\\"bar\", called_computations={\n{\n  "
+            "tmp_0 = f32[] parameter(0)\n  tmp_1 = f32[] parameter(1)\n  ROOT "
+            "tmp_2 = f32[] maximum(f32[] tmp_0, f32[] tmp_1)\n}\n}");
+}
+
+TEST_F(HloInstructionTest, MapUnaryOutputDimToOperandDimConvert) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 20});
+  auto param = HloInstruction::CreateParameter(0, shape, "p");
+  auto convert = HloInstruction::CreateConvert(shape, param.get());
+  EXPECT_EQ(convert->MapUnaryOutputDimToOperandDim(0), 0);
+  EXPECT_EQ(convert->MapUnaryOutputDimToOperandDim(1), 1);
+}
+
+TEST_F(HloInstructionTest, MapUnaryOutputDimToOperandDimBroadcastScalar) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 20});
+  Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+  auto scalar_param = HloInstruction::CreateParameter(0, scalar_shape, "p");
+  auto broadcast =
+      HloInstruction::CreateBroadcast(shape, scalar_param.get(), {});
+  EXPECT_EQ(broadcast->MapUnaryOutputDimToOperandDim(0), std::nullopt);
+  EXPECT_EQ(broadcast->MapUnaryOutputDimToOperandDim(1), std::nullopt);
+}
+
+TEST_F(HloInstructionTest, MapUnaryOutputDimToOperandDimBroadcastVector) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 20});
+  Shape vector_shape = ShapeUtil::MakeShape(F32, {10});
+  auto vector_param = HloInstruction::CreateParameter(0, vector_shape, "p");
+  auto broadcast_vector =
+      HloInstruction::CreateBroadcast(shape, vector_param.get(), {0});
+  EXPECT_EQ(broadcast_vector->MapUnaryOutputDimToOperandDim(0), 0);
+  EXPECT_EQ(broadcast_vector->MapUnaryOutputDimToOperandDim(1), std::nullopt);
+}
+
+TEST_F(HloInstructionTest,
+       MapUnaryOutputDimToOperandDimReshapeInsertDimensions) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 20});
+  auto param = HloInstruction::CreateParameter(0, shape, "p");
+  Shape shape_1_10_1_20 = ShapeUtil::MakeShape(F32, {1, 10, 1, 20});
+  auto reshape_insert =
+      HloInstruction::CreateReshape(shape_1_10_1_20, param.get());
+  EXPECT_EQ(reshape_insert->MapUnaryOutputDimToOperandDim(0), std::nullopt);
+  EXPECT_EQ(reshape_insert->MapUnaryOutputDimToOperandDim(1), 0);
+  EXPECT_EQ(reshape_insert->MapUnaryOutputDimToOperandDim(2), std::nullopt);
+  EXPECT_EQ(reshape_insert->MapUnaryOutputDimToOperandDim(3), 1);
+}
+
+TEST_F(HloInstructionTest,
+       MapUnaryOutputDimToOperandDimReshapeDeleteDimensions) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 20});
+  Shape shape_1_10_1_20 = ShapeUtil::MakeShape(F32, {1, 10, 1, 20});
+  auto param = HloInstruction::CreateParameter(0, shape_1_10_1_20, "p");
+  auto reshape_delete = HloInstruction::CreateReshape(shape, param.get());
+  EXPECT_EQ(reshape_delete->MapUnaryOutputDimToOperandDim(0), 1);
+  EXPECT_EQ(reshape_delete->MapUnaryOutputDimToOperandDim(1), 3);
+}
+
+TEST_F(HloInstructionTest, MapUnaryOutputDimToOperandDimReshapeNonTrivial) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 20});
+  auto param = HloInstruction::CreateParameter(0, shape, "p");
+  Shape shape_200 = ShapeUtil::MakeShape(F32, {200});
+  auto reshape_non_trivial =
+      HloInstruction::CreateReshape(shape_200, param.get());
+  EXPECT_EQ(reshape_non_trivial->MapUnaryOutputDimToOperandDim(0),
+            std::nullopt);
+}
+
+TEST_F(HloInstructionTest, MapUnaryOutputDimToOperandDimReshapeMixed) {
+  Shape input_shape = ShapeUtil::MakeShape(F32, {1, 10, 20});
+  auto param = HloInstruction::CreateParameter(0, input_shape, "p");
+  Shape output_shape = ShapeUtil::MakeShape(F32, {10, 1, 20});
+
+  auto reshape = HloInstruction::CreateReshape(output_shape, param.get());
+
+  EXPECT_EQ(reshape->MapUnaryOutputDimToOperandDim(0), 1);
+  EXPECT_EQ(reshape->MapUnaryOutputDimToOperandDim(1), std::nullopt);
+  EXPECT_EQ(reshape->MapUnaryOutputDimToOperandDim(2), 2);
+}
+
+TEST_F(HloInstructionTest, AddCallOperandWithoutChainPropagation) {
+  const char* const hlo = R"(
+HloModule test
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  abs = f32[2,3] abs(p0)
+  ROOT tuple = (f32[2,3]) tuple(abs)
+}
+
+ENTRY main {
+  p0 = f32[2,3] parameter(0)
+  start = ((f32[2,3]), f32[2,3], s32[]) async-start(p0), calls=async_computation
+  ROOT update = ((f32[2,3]), f32[2,3], s32[]) async-update(start)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloAsyncStartInstruction* start =
+      Cast<HloAsyncStartInstruction>(FindInstruction(module.get(), "start"));
+  HloInstruction* update = FindInstruction(module.get(), "update");
+
+  Shape old_update_shape = update->shape();
+  HloInstruction* dummy_param = module->entry_computation()->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+  start->AddCallOperand(dummy_param);
+
+  EXPECT_EQ(update->shape(), old_update_shape);
+  EXPECT_NE(update->shape(), start->shape());
+}
+
+TEST_F(HloInstructionTest, PrecisionConfigMethodConsistency) {
+  // 1. Test a valid opcode (kParameter) that does not have PrecisionConfig.
+  std::unique_ptr<HloInstruction> param = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {}), "param");
+  EXPECT_FALSE(param->SupportsPrecisionConfig());
+  EXPECT_DEATH(param->precision_config(), "");
+  EXPECT_DEATH(param->mutable_precision_config(), "");
+
+  // 2. Test an opcode (kDot) that does have PrecisionConfig.
+  std::unique_ptr<HloInstruction> lhs = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {2, 2}), "lhs");
+  std::unique_ptr<HloInstruction> rhs = HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(F32, {2, 2}), "rhs");
+  DotDimensionNumbers dnums;
+  std::unique_ptr<HloInstruction> dot =
+      HloInstruction::CreateDot(ShapeUtil::MakeShape(F32, {2, 2}), lhs.get(),
+                                rhs.get(), dnums, PrecisionConfig());
+  EXPECT_TRUE(dot->SupportsPrecisionConfig());
 }
 
 }  // namespace

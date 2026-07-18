@@ -1,14 +1,13 @@
 # Tensorflow util package
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")  # @unused
 load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap", "if_static")
 
 visibility = [
-    "//engedu/ml/tf_from_scratch:__pkg__",
     "//third_party/cloud_tpu/convergence_tools:__subpackages__",
     "//third_party/mlperf:__subpackages__",
     "//tensorflow:internal",
@@ -41,8 +40,9 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "core",
+    strict_deps = True,
     deps = [
         ":tf_contextlib",
         ":tf_decorator_py",
@@ -83,7 +83,7 @@ tf_python_pybind_extension(
             "//tensorflow/core/framework:reader_base",
             "//tensorflow/core:lib_headers_for_pybind",
             "//tensorflow/core/profiler/internal:print_model_analysis",
-            "@local_xla//third_party/python_runtime:headers",
+            "@xla//third_party/python_runtime:headers",
             "@com_google_absl//absl/strings",
             "@eigen_archive//:eigen3",
             "@pybind11",
@@ -103,8 +103,8 @@ tf_python_pybind_extension(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 
@@ -118,8 +118,8 @@ tf_python_pybind_extension(
     ],
     deps = [
         "//tensorflow/python/lib/core:pybind11_lib",
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",
     ] + if_pywrap([":cpp_nest"]),
 )
 
@@ -133,7 +133,9 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
-        "@local_xla//third_party/python_runtime:headers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@xla//third_party/python_runtime:headers",
     ],
     alwayslink = 1,
 )
@@ -152,8 +154,8 @@ tf_python_pybind_extension(
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",
     ] + if_pywrap([":kernel_registry"]),
 )
 
@@ -167,8 +169,8 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util:stat_summarizer",
-        "@local_xla//xla/tsl/util:stats_calculator_portable",
         "@pybind11",
+        "@xla//xla/tsl/util:stats_calculator_portable",
     ],
 )
 
@@ -212,8 +214,8 @@ tf_python_pybind_extension(
     ],
     deps = [
         "//tensorflow/core/util:port",
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 
@@ -259,8 +261,10 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/compiler/tf2tensorrt:common_utils",
         "//tensorflow/compiler/tf2tensorrt:trt_parameters",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
@@ -270,8 +274,8 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/py/numpy:headers",
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",
     ] + if_pywrap(["@com_google_absl//absl/strings"]),
 )
 
@@ -283,8 +287,11 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
-        "@local_xla//third_party/python_runtime:headers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 
@@ -391,10 +398,11 @@ pytype_strict_library(
     deps = [":tf_decorator_py"],
 )
 
-py_strict_library(
+py_library(
     name = "tf_decorator_py",
     srcs = ["tf_decorator.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = [
         "//learning/deepmind/research/language/translation/lm:__subpackages__",
         "//tensorflow:__pkg__",
@@ -425,9 +433,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tf_stack",
     srcs = ["tf_stack.py"],
+    strict_deps = True,
     # TODO(mdan): Remove public visibility.
     visibility = ["//visibility:public"],
     deps = [
@@ -473,12 +482,13 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:fingerprint",
-        "@local_tsl//tsl/platform:mutex",
-        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
         "@pybind11_abseil//pybind11_abseil:status_casters",
+        "@tsl//tsl/platform:fingerprint",
+        "@tsl//tsl/platform:mutex",
+        "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@xla//xla/tsl/platform:status",
     ] + if_static([
         ":stack_trace",
     ]),
@@ -504,8 +514,8 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
-        "@local_tsl//tsl/platform:fingerprint",
-        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@tsl//tsl/platform:fingerprint",
+        "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
 
@@ -522,7 +532,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
 
@@ -533,7 +543,7 @@ cc_library(
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/types:span",
-        "@local_xla//third_party/python_runtime:headers",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 
@@ -555,8 +565,8 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
-        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ] + if_pywrap(
         if_true = [
             "//tensorflow/compiler/tf2xla:tf2xla_opset",
@@ -615,10 +625,11 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "nest_test_main_lib",
     testonly = True,
     srcs = ["nest_test.py"],
+    strict_deps = True,
     deps = [
         ":nest",
         ":nest_util",
@@ -682,9 +693,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tf_should_use",
     srcs = ["tf_should_use.py"],
+    strict_deps = True,
     deps = [
         ":tf_decorator_py",
         "//tensorflow/python/eager:context",
@@ -720,9 +732,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "example_parser_configuration",
     srcs = ["example_parser_configuration.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -731,9 +744,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "deprecation",
     srcs = ["deprecation.py"],
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = util_subpackage_visibility,
     # copybara:uncomment_end_and_comment_begin
@@ -757,10 +771,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "type_annotations",
     srcs = ["type_annotations.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         # global_test_configuration is added here because all major tests depend on this
@@ -770,9 +785,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "nest_util",
     srcs = ["nest_util.py"],
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         ":__init__",
@@ -783,16 +799,17 @@ py_strict_library(
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
-        "@pypi_wrapt//:pkg",
+        "@pypi//wrapt",
         "//tensorflow/python:pywrap_tensorflow",
         ":_pywrap_utils",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tf_inspect",
     srcs = ["tf_inspect.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         ":tf_decorator_py",
@@ -803,9 +820,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "deprecated_module",
     srcs = ["deprecated_module.py"],
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         ":deprecated_module_new",
@@ -817,9 +835,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "lazy_loader",
     srcs = ["lazy_loader.py"],
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = util_subpackage_visibility,
     # copybara:uncomment_end_and_comment_begin
@@ -848,10 +867,11 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "decorator_utils",
     srcs = ["decorator_utils.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         # global_test_configuration is added here because all major tests depend on this
@@ -861,10 +881,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "__init__",
     srcs = ["__init__.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         # global_test_configuration is added here because all major tests depend on this
@@ -874,9 +895,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "variable_utils",
     srcs = ["variable_utils.py"],
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         ":__init__",
@@ -891,10 +913,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "compat",
     srcs = ["compat.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = util_subpackage_visibility,
     # copybara:uncomment_end_and_comment_begin
@@ -912,10 +935,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "numpy_compat",
     srcs = ["numpy_compat.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         # global_test_configuration is added here because all major tests depend on this
@@ -926,10 +950,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "object_identity",
     srcs = ["object_identity.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         ":compat",
@@ -940,10 +965,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "keyword_args",
     srcs = ["keyword_args.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         ":decorator_utils",
@@ -954,9 +980,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "serialization",
     srcs = ["serialization.py"],
+    strict_deps = True,
     visibility = util_subpackage_visibility + [
         "//tensorflow_kfac/python/kernel_tests:__subpackages__",
     ],
@@ -969,14 +996,15 @@ py_strict_library(
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
         "//third_party/py/numpy",
-        "@pypi_wrapt//:pkg",
+        "@pypi//wrapt",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "traceback_utils",
     srcs = ["traceback_utils.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         ":tf_decorator_py",
@@ -988,9 +1016,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "module_wrapper",
     srcs = ["module_wrapper.py"],
+    lazy_imports = True,
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         ":__init__",
@@ -1007,9 +1037,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "function_utils",
     srcs = ["function_utils.py"],
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         ":tf_decorator_py",
@@ -1022,10 +1053,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "lock_util",
     srcs = ["lock_util.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         # global_test_configuration is added here because all major tests depend on this
@@ -1035,10 +1067,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "is_in_graph_mode",
     srcs = ["is_in_graph_mode.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         # global_test_configuration is added here because all major tests depend on this
@@ -1048,9 +1081,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "dispatch",
     srcs = ["dispatch.py"],
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = util_subpackage_visibility,
     # copybara:uncomment_end_and_comment_begin
@@ -1073,10 +1107,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "keras_deps",
     srcs = ["keras_deps.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = util_subpackage_visibility,
     # copybara:uncomment_end_and_comment_begin
@@ -1093,9 +1128,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "nest",
     srcs = ["nest.py"],
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = util_subpackage_visibility,
     # copybara:uncomment_end_and_comment_begin
@@ -1116,10 +1152,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "deprecated_module_new",
     srcs = ["deprecated_module_new.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         # global_test_configuration is added here because all major tests depend on this
@@ -1129,10 +1166,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "all_util",
     srcs = ["all_util.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = util_subpackage_visibility,
     # copybara:uncomment_end_and_comment_begin
@@ -1169,11 +1207,12 @@ tf_python_pybind_extension(
         "fast_module_type.pyi",
     ],
     deps = [
-        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
-        "@local_xla//third_party/python_runtime:headers",
+        "@com_google_absl//absl/synchronization",
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 
@@ -1302,16 +1341,18 @@ tf_python_pybind_extension(
     ] + if_pywrap(["//tensorflow/compiler/tf2xla:tf2xla_opset"]),
 )
 
-py_strict_library(
+py_library(
     name = "tf_decorator_export",
     srcs = ["tf_decorator_export.py"],
+    strict_deps = True,
     deps = [
         ":tf_decorator_py",
         ":tf_export",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "custom_nest_protocol",
     srcs = ["custom_nest_protocol.py"],
+    strict_deps = True,
 )

@@ -42,7 +42,8 @@ namespace tensorflow {
 //
 template <
     typename T,
-    bool = std::is_trivially_copyable<typename std::decay<T>::type>::value,
+    bool = std::is_trivially_copyable<typename std::decay<T>::type>::value &&
+           !std::is_pointer<typename std::decay<T>::type>::value,
     bool =
         std::is_same<typename std::decay<T>::type, ::tensorflow::Tensor>::value,
     bool = std::is_base_of<protobuf::MessageLite,
@@ -79,11 +80,24 @@ void EncodeVariantImpl(const T& value,
 
 // Specialization for other types
 template <typename T>
-void EncodeVariantImpl(const T& value,
-                       TypeResolver<T, false /* is_pod */, false /* Tensor */,
-                                    false /* protobuf */>,
-                       VariantTensorData* data) {
+typename std::enable_if<
+    !std::is_pointer<typename std::decay<T>::type>::value>::type
+EncodeVariantImpl(const T& value,
+                  TypeResolver<T, false /* is_pod */, false /* Tensor */,
+                               false /* protobuf */>,
+                  VariantTensorData* data) {
   value.Encode(data);
+}
+
+// Specialization for pointers
+template <typename T>
+typename std::enable_if<
+    std::is_pointer<typename std::decay<T>::type>::value>::type
+EncodeVariantImpl(const T& value,
+                  TypeResolver<T, false /* is_pod */, false /* Tensor */,
+                               false /* protobuf */>,
+                  VariantTensorData* data) {
+  // Pointers cannot be encoded.
 }
 
 // Specialization for POD type
@@ -101,6 +115,7 @@ bool DecodeVariantImpl(VariantTensorData data,
                        TypeResolver<T, false /* is_pod */, true /* Tensor */,
                                     false /* protobuf */>,
                        T* value) {
+  if (data.tensors_size() == 0) return false;
   *value = data.tensors(0);
   return true;
 }
@@ -118,11 +133,25 @@ bool DecodeVariantImpl(VariantTensorData data,
 
 // Specialization for other types
 template <typename T>
-bool DecodeVariantImpl(VariantTensorData data,
-                       TypeResolver<T, false /* is_pod */, false /* Tensor */,
-                                    false /* protobuf */>,
-                       T* value) {
+typename std::enable_if<!std::is_pointer<typename std::decay<T>::type>::value,
+                        bool>::type
+DecodeVariantImpl(VariantTensorData data,
+                  TypeResolver<T, false /* is_pod */, false /* Tensor */,
+                               false /* protobuf */>,
+                  T* value) {
   return value->Decode(std::move(data));
+}
+
+// Specialization for pointers
+template <typename T>
+typename std::enable_if<std::is_pointer<typename std::decay<T>::type>::value,
+                        bool>::type
+DecodeVariantImpl(VariantTensorData data,
+                  TypeResolver<T, false /* is_pod */, false /* Tensor */,
+                               false /* protobuf */>,
+                  T* value) {
+  // Pointers cannot be decoded.
+  return false;
 }
 
 template <typename C, typename = void>
@@ -131,7 +160,7 @@ struct has_type_name : std::false_type {};
 template <typename C>
 struct has_type_name<
     C, typename std::enable_if<std::is_same<
-           decltype(std::declval<C>().TypeName()), string>::value>::type>
+           decltype(std::declval<C>().TypeName()), std::string>::value>::type>
     : std::true_type {};
 
 template <typename T, bool = has_type_name<typename std::decay<T>::type>::value,
@@ -179,18 +208,18 @@ struct has_debug_string : std::false_type {};
 
 template <typename C>
 struct has_debug_string<
-    C, typename std::enable_if<std::is_same<
-           decltype(std::declval<C>().DebugString()), string>::value>::type>
+    C,
+    typename std::enable_if<std::is_same<
+        decltype(std::declval<C>().DebugString()), std::string>::value>::type>
     : std::true_type {};
 
 template <typename C, typename = void>
 struct can_strcat : std::false_type {};
 
 template <typename C>
-struct can_strcat<
-    C, typename std::enable_if<std::is_same<
-           decltype(strings::StrCat(std::declval<C>())), string>::value>::type>
-    : std::true_type {};
+struct can_strcat<C, typename std::enable_if<std::is_same<
+                         decltype(strings::StrCat(std::declval<C>())),
+                         std::string>::value>::type> : std::true_type {};
 
 template <typename T,
           bool = has_debug_string<typename std::decay<T>::type>::value,

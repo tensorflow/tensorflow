@@ -38,7 +38,7 @@ template <typename T, bool BIG>
 struct Wrapper {
   T value;
   char big[BIG ? 256 : 1];
-  string TypeName() const { return "POD"; }
+  std::string TypeName() const { return "POD"; }
 };
 
 template <bool BIG>
@@ -87,7 +87,7 @@ class MaybeAlive {
 
   static int LiveCounter() { return live_counter_; }
 
-  string TypeName() const { return "MaybeAlive"; }
+  std::string TypeName() const { return "MaybeAlive"; }
   void Encode(VariantTensorData* data) const {}
   bool Decode(VariantTensorData data) { return false; }
 
@@ -127,7 +127,7 @@ class DeleteCounter {
   char big_[BIG ? 256 : 1];
   int* counter_;
 
-  string TypeName() const { return "DeleteCounter"; }
+  std::string TypeName() const { return "DeleteCounter"; }
   void Encode(VariantTensorData* data) const {}
   bool Decode(VariantTensorData data) { return false; }
 };
@@ -248,7 +248,7 @@ class MoveAndCopyCounter {
   int* move_counter_;
   int* copy_counter_;
 
-  string TypeName() const { return "MoveAndCopyCounter"; }
+  std::string TypeName() const { return "MoveAndCopyCounter"; }
   void Encode(VariantTensorData* data) const {}
   bool Decode(VariantTensorData data) { return false; }
 };
@@ -538,7 +538,7 @@ struct TensorList {
     return true;
   }
 
-  string TypeName() const { return "TensorList"; }
+  std::string TypeName() const { return "TensorList"; }
 
   std::vector<Tensor> vec;
 };
@@ -616,7 +616,7 @@ void PodUpdateTest() {
     float y;
     char big[BIG ? 256 : 1];
 
-    string TypeName() const { return "POD"; }
+    std::string TypeName() const { return "POD"; }
   };
 
   Variant x = Pod{10, 20.f};
@@ -639,7 +639,7 @@ void TestEncodeDecodePod() {
     float y;
     char big[BIG ? 256 : 1];
 
-    string TypeName() const { return "POD"; }
+    std::string TypeName() const { return "POD"; }
   };
 
   Variant x;

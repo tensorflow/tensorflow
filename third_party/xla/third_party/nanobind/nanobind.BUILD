@@ -2,6 +2,10 @@ licenses(["notice"])
 
 package(default_visibility = ["//visibility:public"])
 
+exports_files([
+    "src/stubgen.py",
+])
+
 cc_library(
     name = "nanobind",
     srcs = glob(
@@ -30,7 +34,7 @@ cc_library(
         ],
     ),
     deps = [
-        "@local_xla//third_party/python_runtime:headers",
         "@robin_map",
+        "@xla//third_party/python_runtime:headers",
     ],
 )

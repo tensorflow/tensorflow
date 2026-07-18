@@ -31,8 +31,8 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/layout.h"
-#include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -91,7 +91,7 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
   for (const SplitConfig& split_config : split_configs) {
     layout.add_split_configs(split_config);
   }
-  if (physical_shape != std::nullopt) {
+  if (physical_shape.has_value()) {
     *layout.mutable_physical_shape() = *std::move(physical_shape);
   }
   layout.set_dynamic_shape_metadata_prefix_bytes(
@@ -101,7 +101,7 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
 
 /* static */ Layout LayoutUtil::MakeDescendingLayout(int64_t num_dims) {
   std::vector<int64_t> layout(num_dims);
-  std::iota(layout.rbegin(), layout.rend(), static_cast<int64_t>(0));
+  std::iota(layout.rbegin(), layout.rend(), 0);
   return MakeLayout(layout);
 }
 
@@ -111,7 +111,7 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
 
 /* static */ Layout LayoutUtil::MakeAscendingLayout(int64_t num_dims) {
   std::vector<int64_t> layout(num_dims);
-  std::iota(layout.begin(), layout.end(), static_cast<int64_t>(0));
+  absl::c_iota(layout, 0);
   return MakeLayout(layout);
 }
 
@@ -201,11 +201,12 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
     const Shape& shape, bool allow_missing_layouts) {
   if (shape.IsTuple()) {
     for (auto& element_shape : shape.tuple_shapes()) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           ValidateLayoutInShape(element_shape, allow_missing_layouts));
     }
     return absl::OkStatus();
-  } else if (shape.IsArray()) {
+  }
+  if (shape.IsArray()) {
     if (!shape.has_layout()) {
       if (allow_missing_layouts) {
         return absl::OkStatus();
@@ -214,10 +215,9 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
                              ShapeUtil::HumanString(shape));
     }
     return ValidateLayoutForShape(shape.layout(), shape);
-  } else {
-    // Token, opaque, etc. shape.
-    return absl::OkStatus();
   }
+  // Token, opaque, etc. shape.
+  return absl::OkStatus();
 }
 
 /* static */ absl::Status LayoutUtil::ValidateLayoutForShape(
@@ -278,16 +278,60 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
         shape.ToString());
   }
   for (const auto& tile : layout.tiles()) {
-    if (tile.dimensions().empty() ||
-        absl::c_any_of(tile.dimensions(),
-                       [](int64_t dim) { return dim == 0; })) {
+    if (tile.dimensions().empty()) {
       return InvalidArgument("layout has invalid tiles: %s", shape.ToString());
+    }
+    for (int64_t dim : tile.dimensions()) {
+      if (dim <= 0 && dim != Tile::kCombineDimension) {
+        return InvalidArgument(
+            "layout has invalid tiles: tile dimension %d must be positive or "
+            "kCombineDimension: %s",
+            dim, shape.ToString());
+      }
     }
   }
 
   if (layout.element_size_in_bits() < 0) {
     return InvalidArgument("layout element_size_in_bits field is negative: %d",
                            layout.element_size_in_bits());
+  }
+
+  // Validate split configs.
+  absl::InlinedVector<bool, InlineRank()> physical_dims_in_split_config(
+      shape.dimensions().size(), false);
+  for (const SplitConfig& config : layout.split_configs()) {
+    int64_t physical_dim = config.dimension();
+    if (physical_dim < 0 || physical_dim >= shape.dimensions().size()) {
+      return InvalidArgument(
+          "split config has out-of-bounds physical dimension: %d; shape: %s",
+          physical_dim, shape.ToString());
+    }
+    if (physical_dims_in_split_config[physical_dim]) {
+      return InvalidArgument(
+          "split config has duplicate physical dimension: %d; shape: %s",
+          physical_dim, shape.ToString());
+    }
+    physical_dims_in_split_config[physical_dim] = true;
+
+    int64_t logical_dim = Major(layout, physical_dim);
+    int64_t dim_size = shape.dimensions(logical_dim);
+
+    int64_t last_split_index = 0;
+    for (int64_t split_index : config.split_indices()) {
+      if (split_index <= last_split_index) {
+        return InvalidArgument(
+            "split config split indices must be strictly increasing and "
+            "positive: {%s}; shape: %s",
+            absl::StrJoin(config.split_indices(), ", "), shape.ToString());
+      }
+      if (split_index >= dim_size) {
+        return InvalidArgument(
+            "split config split index is out of bounds: %d (dim size %d); "
+            "shape: %s",
+            split_index, dim_size, shape.ToString());
+      }
+      last_split_index = split_index;
+    }
   }
 
   return absl::OkStatus();
@@ -370,7 +414,8 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
   if (shape.IsTuple()) {
     return absl::c_any_of(shape.tuple_shapes(),
                           LayoutUtil::HasCustomElementSizeInBits);
-  } else if (!shape.IsArray()) {
+  }
+  if (!shape.IsArray()) {
     // Opaque or token types have no custom element size in bits.
     return false;
   }
@@ -416,16 +461,15 @@ absl::Status CopyLayoutInternal(const Shape& src, Shape* dst) {
           "cannot copy layout from shape: tuple element count differs");
     }
     for (int64_t i = 0; i < ShapeUtil::TupleElementCount(src); ++i) {
-      TF_RETURN_IF_ERROR(CopyLayoutInternal(src.tuple_shapes(i),
-                                            dst->mutable_tuple_shapes(i)));
+      RETURN_IF_ERROR(CopyLayoutInternal(src.tuple_shapes(i),
+                                         dst->mutable_tuple_shapes(i)));
     }
   } else if (src.IsArray()) {
     if (src.has_layout()) {
       if (src.dimensions().size() != dst->dimensions().size()) {
         return InvalidArgument("cannot copy layout from shape: ranks differs");
       }
-      TF_RETURN_IF_ERROR(
-          LayoutUtil::ValidateLayoutForShape(src.layout(), *dst));
+      RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(src.layout(), *dst));
       *dst->mutable_layout() = src.layout();
     } else {
       dst->clear_layout();
@@ -494,7 +538,9 @@ absl::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
 
 /*static*/ Layout LayoutUtil::MoveDimToMajor(const Layout& layout,
                                              int64_t dim) {
-  if (dim == MinorToMajor(layout).back()) return layout;
+  if (dim == MinorToMajor(layout).back()) {
+    return layout;
+  }
   Layout ret = layout;
   ret.clear_minor_to_major();
   for (auto d : MinorToMajor(layout)) {
@@ -569,6 +615,193 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
   return linear_index;
 }
 
+// See https://openxla.org/xla/tiled_layout for details on the layout and
+// tiling.
+/*static*/ int64_t LayoutUtil::LinearIndexForNestedTiling(
+    const Shape& shape, absl::Span<const int64_t> indices) {
+  CHECK(shape.IsArray());
+  CHECK(shape.has_layout());
+  const int num_dims = shape.dimensions().size();
+  CHECK_EQ(num_dims, indices.size());
+
+  if (num_dims == 0) {
+    return 0;
+  }
+
+  // 1. Initialize physical dimensions and indices (major-to-minor).
+  // The layout.minor_to_major(0) is the most minor physical dimension.
+  // We construct vectors in major-to-minor order to simplify tiling and
+  // linearization.
+  std::vector<int64_t> current_shape;
+  std::vector<int64_t> current_indices;
+  current_shape.reserve(num_dims);
+  current_indices.reserve(num_dims);
+  for (int64_t i = num_dims - 1; i >= 0; --i) {
+    int64_t logical_dim = shape.layout().minor_to_major(i);
+    current_shape.push_back(shape.dimensions(logical_dim));
+    current_indices.push_back(indices[logical_dim]);
+  }
+
+  // 2. Iteratively apply each tile level.
+  for (const Tile& tile : shape.layout().tiles()) {
+    const int64_t tile_rank = tile.dimensions().size();
+    if (tile_rank > current_shape.size()) {
+      int64_t pad_size = tile_rank - current_shape.size();
+      current_shape.insert(current_shape.begin(), pad_size, 1);
+      current_indices.insert(current_indices.begin(), pad_size, 0);
+    }
+    // Tiling applies to a suffix of the current physical dimensions.
+    CHECK_LE(tile_rank, current_shape.size());
+
+    const int64_t suffix_start = current_shape.size() - tile_rank;
+    std::vector<int64_t> next_shape;
+    std::vector<int64_t> next_indices;
+    next_shape.reserve(current_shape.size() + tile_rank);
+    next_indices.reserve(current_indices.size() + tile_rank);
+
+    // Prefix dimensions remain unchanged.
+    for (int i = 0; i < suffix_start; ++i) {
+      next_shape.push_back(current_shape[i]);
+      next_indices.push_back(current_indices[i]);
+    }
+
+    // Outer tiles dimensions: ceil(d/t)
+    // Outer tiles indices: floor(e/t).
+    for (int i = 0; i < tile_rank; ++i) {
+      int64_t d = current_shape[suffix_start + i];
+      int64_t e = current_indices[suffix_start + i];
+      int64_t t = tile.dimension(i);
+      next_shape.push_back(CeilOfRatio(d, t));
+      next_indices.push_back(e / t);
+    }
+
+    // Inner tile dimensions: t.
+    // Inner tile indices: e mod t.
+    for (int i = 0; i < tile_rank; ++i) {
+      int64_t e = current_indices[suffix_start + i];
+      int64_t t = tile.dimension(i);
+      next_shape.push_back(t);
+      next_indices.push_back(e % t);
+    }
+
+    current_shape = std::move(next_shape);
+    current_indices = std::move(next_indices);
+  }
+
+  // 3. Final linearization in the expanded row-major (major-to-minor) space.
+  int64_t linear_index = 0;
+  int64_t multiplier = 1;
+  for (int64_t i = current_shape.size() - 1; i >= 0; --i) {
+    linear_index += current_indices[i] * multiplier;
+    multiplier *= current_shape[i];
+  }
+  return linear_index;
+}
+
+// See https://openxla.org/xla/tiled_layout for details on the layout and
+// tiling.
+/*static*/ std::vector<int64_t> LayoutUtil::DelinearizeIndexForNestedTiling(
+    const Shape& shape, int64_t linear_index) {
+  CHECK(shape.IsArray());
+  CHECK(shape.has_layout());
+  const int num_dims = shape.dimensions().size();
+
+  if (num_dims == 0) {
+    return {};
+  }
+
+  // 1. Determine the final expanded physical shape (major-to-minor).
+  // We simulate the tiling process to find the high-dimensional shape
+  // that linear_index maps into.
+  std::vector<int64_t> current_shape;
+  current_shape.reserve(num_dims);
+  for (int64_t i = num_dims - 1; i >= 0; --i) {
+    int64_t logical_dim = shape.layout().minor_to_major(i);
+    current_shape.push_back(shape.dimensions(logical_dim));
+  }
+
+  // Structure to store the shape state before each tiling level.
+  struct TilingStep {
+    std::vector<int64_t> shape_before;
+    Tile tile;
+  };
+  std::vector<TilingStep> steps;
+
+  for (const Tile& tile : shape.layout().tiles()) {
+    const int64_t tile_rank = tile.dimensions().size();
+    if (tile_rank > current_shape.size()) {
+      int64_t pad_size = tile_rank - current_shape.size();
+      current_shape.insert(current_shape.begin(), pad_size, 1);
+    }
+    steps.push_back({current_shape, tile});
+
+    const int64_t suffix_start = current_shape.size() - tile_rank;
+
+    std::vector<int64_t> next_shape;
+    next_shape.reserve(current_shape.size() + tile_rank);
+    // Prefix dimensions remain unchanged.
+    for (int i = 0; i < suffix_start; ++i) {
+      next_shape.push_back(current_shape[i]);
+    }
+    // Outer tile dimensions: ceil(d/t).
+    for (int i = 0; i < tile_rank; ++i) {
+      next_shape.push_back(
+          CeilOfRatio(current_shape[suffix_start + i], tile.dimension(i)));
+    }
+    // Inner tile dimensions: t.
+    for (int i = 0; i < tile_rank; ++i) {
+      next_shape.push_back(tile.dimension(i));
+    }
+    current_shape = std::move(next_shape);
+  }
+
+  // 2. Delinearize linear_index into indices for the final expanded shape.
+  // We use standard row-major delinearization.
+  std::vector<int64_t> current_indices(current_shape.size());
+  int64_t remaining_index = linear_index;
+  for (int i = current_shape.size() - 1; i >= 0; --i) {
+    current_indices[i] = remaining_index % current_shape[i];
+    remaining_index /= current_shape[i];
+  }
+
+  // 3. Reverse the tiling steps to collapse indices.
+  // For dimension size d and tile size t,
+  // Each tiling step splits d into ceil(d/t) (outer) and t (inner).
+  // The original index is e = outer_index * t + inner_index.
+  for (int s = steps.size() - 1; s >= 0; --s) {
+    const auto& step = steps[s];
+    const int64_t tile_rank = step.tile.dimensions().size();
+    const int64_t suffix_start = step.shape_before.size() - tile_rank;
+
+    std::vector<int64_t> prev_indices;
+    prev_indices.reserve(step.shape_before.size());
+    // Prefix remains unchanged.
+    for (int i = 0; i < suffix_start; ++i) {
+      prev_indices.push_back(current_indices[i]);
+    }
+    // Combine outer and inner indices.
+    // The current_indices layout is [prefix, outer_0...k-1, inner_0...k-1].
+    for (int i = 0; i < tile_rank; ++i) {
+      int64_t outer_idx = current_indices[suffix_start + i];
+      int64_t inner_idx = current_indices[suffix_start + tile_rank + i];
+      int64_t tile_dim = step.tile.dimension(i);
+      prev_indices.push_back(outer_idx * tile_dim + inner_idx);
+    }
+    current_indices = std::move(prev_indices);
+  }
+
+  // 4. Map the physical major-to-minor indices back to logical dimensions.
+  std::vector<int64_t> logical_indices(num_dims);
+  int64_t pad_offset = current_indices.size() - num_dims;
+  for (int i = 0; i < num_dims; ++i) {
+    // The physical order was minor_to_major(num_dims-1) down to 0.
+    int64_t logical_dim = shape.layout().minor_to_major(num_dims - 1 - i);
+    logical_indices[logical_dim] = current_indices[pad_offset + i];
+  }
+
+  return logical_indices;
+}
+
 /*static*/ int64_t LayoutUtil::MemorySpace(const Shape& shape) {
   return shape.has_layout() ? shape.layout().memory_space()
                             : Layout::kDefaultMemorySpace;
@@ -626,10 +859,48 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
 
 /*static*/ std::optional<SplitConfig> LayoutUtil::GetSplitConfig(
     const Shape& shape) {
-  CHECK_LE(shape.layout().split_configs().size(), 1);
-  return shape.layout().split_configs().size() > 0
-             ? std::make_optional(shape.layout().split_configs(0))
-             : std::nullopt;
+  const absl::Span<const SplitConfig>& configs = shape.layout().split_configs();
+  CHECK_LE(configs.size(), 1);
+
+  if (configs.empty()) {
+    return std::nullopt;
+  }
+  return configs[0];
+}
+
+/*static*/ bool LayoutUtil::IsUntiledLayout(absl::Span<const Tile> tiles,
+                                            absl::Span<const int64_t> shape) {
+  // Tiles are applied recursively to expand current_shape
+  // Example: (t0, t1) tile applied to (..., n, m) expands it to
+  // (..., ceildiv(n, t0), ceildiv(m, t1), t0, t1)
+  std::vector<int64_t> current_shape(shape.begin(), shape.end());
+  for (const Tile& tile : tiles) {
+    const int64_t tile_ndims = tile.dimensions().size();
+    CHECK_LE(tile_ndims, current_shape.size());
+    const absl::Span<const int64_t> tiled_shape =
+        absl::Span<const int64_t>(current_shape).last(tile_ndims);
+    // new_tiled_shape will hold the tiled shape after the tile is applied.
+    std::vector<int64_t> new_tiled_shape(2 * tile_ndims);
+    bool allow_multiple_tiles = true;
+    for (int64_t i = 0; i < tile_ndims; ++i) {
+      if (tiled_shape[i] % tile.dimension(i) != 0) {
+        return false;
+      }
+      CHECK_GT(tile.dimension(i), 0);
+      new_tiled_shape[i] = tiled_shape[i] / tile.dimension(i);
+      new_tiled_shape[tile_ndims + i] = tile.dimension(i);
+      if (!allow_multiple_tiles && new_tiled_shape[i] != 1) {
+        return false;
+      }
+      if (tile.dimension(i) != 1) {
+        allow_multiple_tiles = false;
+      }
+    }
+    current_shape.erase(current_shape.end() - tile_ndims, current_shape.end());
+    current_shape.insert(current_shape.end(), new_tiled_shape.begin(),
+                         new_tiled_shape.end());
+  }
+  return true;
 }
 
 }  // namespace xla

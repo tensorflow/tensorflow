@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -61,7 +62,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/mlprogram_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
-#include "xla/mlir/framework/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/function_body.h"
@@ -93,7 +93,6 @@ static void RegisterPasses() {
     mlir::mhlo::registerLegalizeTFPass();
     mlir::quant::stablehlo::registerBridgePasses();
     mlir::tf_saved_model::registerTensorFlowSavedModelPasses();
-    mlir::xla_framework::registerXlaFrameworkPasses();
     tensorflow::RegisterMlProgramPasses();
     return true;
   }();
@@ -172,7 +171,8 @@ std::string ImportFunction(const std::string& functiondef_proto,
   FunctionLibraryDefinition& flib_def = *cpp_context->FuncLibDef();
   const tensorflow::FunctionDef* fdef = flib_def.Find(function_name);
   if (fdef == nullptr) {
-    s = tensorflow::errors::NotFound("Cannot find function ", function_name);
+    s = absl::NotFoundError(
+        absl::StrCat("Cannot find function ", function_name));
     tsl::Set_TF_Status_from_Status(status, s);
     return "// error";
   }
@@ -251,7 +251,7 @@ std::string ExperimentalConvertSavedModelToMlir(
 
   // Convert the SavedModelV2Bundle to an MLIR module.
 
-  std::vector<string> exported_names =
+  std::vector<std::string> exported_names =
       absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
   mlir::DialectRegistry registry;
   mlir::func::registerAllExtensions(registry);
@@ -270,10 +270,10 @@ std::string ExperimentalConvertSavedModelV1ToMlirLite(
     const std::string& saved_model_path, const std::string& exported_names_str,
     const std::string& tags, bool upgrade_legacy, bool show_debug_info,
     TF_Status* status) {
-  std::unordered_set<string> tag_set =
+  std::unordered_set<std::string> tag_set =
       absl::StrSplit(tags, ',', absl::SkipEmpty());
 
-  std::vector<string> exported_names =
+  std::vector<std::string> exported_names =
       absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
   mlir::DialectRegistry registry;
   mlir::func::registerAllExtensions(registry);
@@ -299,7 +299,7 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
     bool show_debug_info, TF_Status* status) {
   // Load the saved model into a SavedModelBundle.
 
-  std::unordered_set<string> tag_set =
+  std::unordered_set<std::string> tag_set =
       absl::StrSplit(tags, ',', absl::SkipEmpty());
 
   tensorflow::SavedModelBundle bundle;
@@ -311,7 +311,7 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
   }
 
   // Convert the SavedModelBundle to an MLIR module.
-  std::vector<string> exported_names =
+  std::vector<std::string> exported_names =
       absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
   mlir::DialectRegistry registry;
   mlir::func::registerAllExtensions(registry);

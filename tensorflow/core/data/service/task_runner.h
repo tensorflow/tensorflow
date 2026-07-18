@@ -37,6 +37,8 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+class IteratorMetricsCollector;
+
 // Iterator over a task's elements.
 class TaskIterator {
  public:
@@ -52,19 +54,22 @@ class TaskIterator {
   // Saves a checkpoint of the iterator. Returns Tensors that can be called with
   // `Restore()`.
   virtual absl::StatusOr<std::vector<Tensor>> Save() {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "Serializing a tf.data service task iterator is unsupported.");
   }
 
   // Restores the iterator from a checkpoint. `saved_iterator` is the serialized
   // iterator saved by calling `Save()`.
   virtual absl::Status Restore(const std::vector<Tensor>& saved_iterator) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "Restoring from a tf.data service task iterator is unsupported.");
   }
 
   // Returns the dataset model for performance analysis.
   virtual std::shared_ptr<model::Model> model() const { return nullptr; }
+
+  // Cancels the task iterator.
+  virtual void Cancel() {}
 };
 
 // Implementation of TaskIterator wrapping a standalone iterator.
@@ -75,16 +80,19 @@ class StandaloneTaskIterator : public TaskIterator {
   // lives as long as `iterator`.
   StandaloneTaskIterator(std::unique_ptr<standalone::Dataset> dataset,
                          std::unique_ptr<standalone::Iterator> iterator);
+  ~StandaloneTaskIterator() override;
   absl::Status GetNext(std::vector<Tensor>& element,
                        bool& end_of_sequence) override;
   int64_t Cardinality() const override;
   absl::StatusOr<std::vector<Tensor>> Save() override;
   absl::Status Restore(const std::vector<Tensor>& saved_iterator) override;
   std::shared_ptr<model::Model> model() const override;
+  void Cancel() override;
 
  private:
   std::unique_ptr<standalone::Dataset> dataset_;
   std::unique_ptr<standalone::Iterator> iterator_;
+  std::unique_ptr<IteratorMetricsCollector> metrics_collector_;
 };
 
 // Interface for providing elements to task consumers.
@@ -261,7 +269,7 @@ class PrefetchThread {
 class RoundRobinTaskRunner : public TaskRunner {
  public:
   RoundRobinTaskRunner(std::unique_ptr<TaskIterator> iterator,
-                       int64_t num_consumers, string worker_address);
+                       int64_t num_consumers, std::string worker_address);
 
   absl::Status GetNext(const GetElementRequest& req,
                        GetElementResult& result) override;
@@ -280,7 +288,7 @@ class RoundRobinTaskRunner : public TaskRunner {
   // start.
   absl::Status PrepareRound(const GetElementRequest& req);
   const int64_t num_consumers_;
-  const string worker_address_;
+  const std::string worker_address_;
   mutex mu_;
   bool cancelled_ TF_GUARDED_BY(mu_) = false;
   // Condition variable notified whenever we start a new round of round-robin.
@@ -291,7 +299,7 @@ class RoundRobinTaskRunner : public TaskRunner {
       requests_ TF_GUARDED_BY(mu_);
   // Index of the first round we plan to serve. At startup, this is the minimum
   // of all requested element indices.
-  int64_t first_round_ TF_GUARDED_BY(mu_) = kint64max;
+  int64_t first_round_ TF_GUARDED_BY(mu_) = std::numeric_limits<int64_t>::max();
   int64_t current_round_ TF_GUARDED_BY(mu_) = -1;
   bool round_skipped_ TF_GUARDED_BY(mu_) = false;
   // Buffered results for the current round.

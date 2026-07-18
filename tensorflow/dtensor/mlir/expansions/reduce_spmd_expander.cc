@@ -59,9 +59,9 @@ absl::Status AssertReplicated(mlir::Value operand) {
   if (!layout) return absl::OkStatus();
 
   if (!layout->IsFullyReplicated()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Expected layout for ", DefiningOpName(operand),
-        " to be fully replicated, but found ", layout->ToString());
+        " to be fully replicated, but found ", layout->ToString()));
   }
   return absl::OkStatus();
 }
@@ -128,8 +128,9 @@ absl::Status ExtractDims<mlir::TF::BiasAddGradOp>(
       reduced_dims->push_back(dim);
     }
   } else {
-    return errors::InvalidArgument("Unsupported data_format for BiasAddGrad: ",
-                                   StringRefToView(data_format));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unsupported data_format for BiasAddGrad: ",
+                     StringRefToView(data_format)));
   }
   *keep_dims = false;
   *matched = true;
@@ -174,8 +175,8 @@ absl::Status ExtractReductionParameters(
       op, &reduced_dims, &keep_dims, &matched));
 
   if (!matched)
-    return errors::Unimplemented("Op type: ", OpName(op),
-                                 " not yet implemented.");
+    return absl::UnimplementedError(
+        absl::StrCat("Op type: ", OpName(op), " not yet implemented."));
 
   reduced_dims_set.insert(reduced_dims.begin(), reduced_dims.end());
   return absl::OkStatus();
@@ -200,14 +201,14 @@ StatusOr<mlir::Operation*> ReduceSPMDExpander::ExpandOp(mlir::Operation* op) {
                       ExtractLayoutFromOperand(op->getOperand(0)));
 
   if (!input_layout || !requested_output_layout)
-    return errors::InvalidArgument("is missing input or output layouts.");
+    return absl::InvalidArgumentError("is missing input or output layouts.");
 
   // Generate an error message for TPU int64.
   if (input_layout->mesh().is_tpu_mesh()) {
     if (auto tensor_type =
             mlir::dyn_cast<mlir::TensorType>(op->getOperand(0).getType())) {
       if (tensor_type.getElementType().isInteger(64)) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "ReduceOp on TPU does not support int64 as dtype.");
       }
     }
@@ -253,9 +254,9 @@ StatusOr<mlir::Operation*> ReduceSPMDExpander::ExpandOp(mlir::Operation* op) {
         reduce_op,
         EmitAllReduce(builder, output_layout, reduced_dims, op, kReduceOpMean));
   } else {
-    return DT_CTX(errors::Unimplemented(
+    return DT_CTX(absl::UnimplementedError(absl::StrCat(
         "Failed to create AllReduce op during SPMD expansion. Op type: ",
-        OpName(op), " not yet implemented in DTensor SPMD pass."));
+        OpName(op), " not yet implemented in DTensor SPMD pass.")));
   }
 
   llvm::SmallPtrSet<mlir::Operation*, 4> newly_created_ops;

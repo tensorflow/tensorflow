@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/thunk.h"
-#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
@@ -36,10 +35,7 @@ class TopKThunk final : public Thunk {
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
-  BufferUses buffer_uses() const final {
-    return {BufferUse::Read(values_buffer_), BufferUse::Write(output_buffer_),
-            BufferUse::Write(indices_buffer_)};
-  }
+  BufferUses buffer_uses() const final;
 
   int64_t batch_size() const { return batch_size_; }
   int64_t input_size() const { return input_size_; }

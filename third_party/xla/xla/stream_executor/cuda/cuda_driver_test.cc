@@ -14,20 +14,19 @@ limitations under the License.
 ==============================================================================*/
 
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/test.h"
 
 namespace stream_executor {
 namespace cuda {
 
 void CheckCuda(CUresult result, const char* file, int line) {
-  TF_CHECK_OK(cuda::ToStatus(result));
+  CHECK_OK(cuda::ToStatus(result));
 }
 
 void CheckCuda(cudaError_t result, const char* file, int line) {
@@ -52,13 +51,13 @@ TEST_F(CudaDriverTest, DriverVersionParsingTest) {
   auto driver_version = Diagnostician::FindKernelModuleVersion(
       "... NVIDIA UNIX Open Kernel Module for x86_64  570.00  Release Build  "
       "...  Mon Aug 12 04:17:20 UTC 2024");
-  TF_CHECK_OK(driver_version.status());
+  CHECK_OK(driver_version.status());
   EXPECT_EQ("570.0.0", cuda::DriverVersionToString(driver_version.value()));
 
   driver_version = Diagnostician::FindKernelModuleVersion(
       "... NVIDIA UNIX Open Kernel Module  571.00  Release Build  "
       "...  Mon Aug 12 04:17:20 UTC 2024");
-  TF_CHECK_OK(driver_version.status());
+  CHECK_OK(driver_version.status());
   EXPECT_EQ("571.0.0", cuda::DriverVersionToString(driver_version.value()));
 }
 }  // namespace cuda

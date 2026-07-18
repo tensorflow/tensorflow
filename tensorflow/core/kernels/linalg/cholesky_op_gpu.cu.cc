@@ -105,15 +105,15 @@ class CholeskyOpGpu : public AsyncOpKernel {
 #endif
 #endif
     // Validate inputs.
-    OP_REQUIRES_ASYNC(
-        context, ndims >= 2,
-        errors::InvalidArgument("Input must have rank >= 2, got ", ndims),
-        done);
-    OP_REQUIRES_ASYNC(
-        context, input.dim_size(ndims - 2) == n,
-        errors::InvalidArgument("Input matrices must be squares, got",
-                                input.dim_size(ndims - 2), " != ", n),
-        done);
+    OP_REQUIRES_ASYNC(context, ndims >= 2,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "Input must have rank >= 2, got ", ndims)),
+                      done);
+    OP_REQUIRES_ASYNC(context, input.dim_size(ndims - 2) == n,
+                      absl::InvalidArgumentError(
+                          absl::StrCat("Input matrices must be squares, got",
+                                       input.dim_size(ndims - 2), " != ", n)),
+                      done);
 
     if (input.NumElements() == 0) {
       // If X is an empty matrix (0 rows, 0 col), X * X' == X.
@@ -155,7 +155,7 @@ class CholeskyOpGpu : public AsyncOpKernel {
     if (use_batched_solver) {
       // For small matrices or large batch sizes, we use the batched interface
       // from cuSolver.
-      auto output_reshaped_ptrs = solver->GetScratchSpace<uint8>(
+      auto output_reshaped_ptrs = solver->GetScratchSpace<uint8_t>(
           sizeof(Scalar*) * batch_size, "input_copt_ptrs",
           /* on_host */ true);
       const Scalar** output_reshaped_ptrs_base =
@@ -193,7 +193,7 @@ class CholeskyOpGpu : public AsyncOpKernel {
 
     // Register callback to check info after kernels finish.
     auto info_checker = [context, done, n](
-                            const Status& status,
+                            const absl::Status& status,
                             const std::vector<HostLapackInfo>& host_infos) {
       if (!status.ok() && absl::IsInvalidArgument(status) &&
           !host_infos.empty()) {

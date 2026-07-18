@@ -15,6 +15,16 @@ limitations under the License.
 
 #include "xla/service/dynamic_dimension_inference.h"
 
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -22,17 +32,17 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/literal.h"
-#include "xla/service/hlo_runner.h"
+#include "xla/literal_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace {
@@ -48,10 +58,10 @@ class DynamicDimensionInferenceTest : public HloHardwareIndependentTestBase {
           DynamicDimensionInference::ShapeCheckMode::kIgnore,
       const DynamicDimensionInference::AssertionGenerator& assertion_generator =
           nullptr) {
-    TF_ASSIGN_OR_RETURN(DynamicDimensionInference inference,
-                        DynamicDimensionInference::Run(
-                            module_.get(), op_supports_dynamism_handler,
-                            handler, shape_check_mode, assertion_generator));
+    ASSIGN_OR_RETURN(DynamicDimensionInference inference,
+                     DynamicDimensionInference::Run(
+                         module_.get(), op_supports_dynamism_handler, handler,
+                         shape_check_mode, assertion_generator));
 
     inference_ = std::make_unique<DynamicDimensionInference>(inference);
     return absl::OkStatus();
@@ -620,7 +630,7 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeIntoScalar) {
   module_->AddEntryComputation(builder.Build());
 
   SCOPED_TRACE(module_->ToString());
-  TF_CHECK_OK(RunInference());
+  CHECK_OK(RunInference());
 }
 
 TEST_F(DynamicDimensionInferenceTest, GatherTest) {

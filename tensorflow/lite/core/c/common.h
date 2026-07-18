@@ -56,6 +56,7 @@ limitations under the License.
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #include "tensorflow/lite/core/c/c_api_types.h"  // IWYU pragma: export
 
@@ -277,13 +278,34 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
     }                                                                        \
   } while (0)
 
-#define TF_LITE_ENSURE_OK(context, status) \
-  do {                                     \
-    const TfLiteStatus s = (status);       \
-    if ((s) != kTfLiteOk) {                \
-      return s;                            \
-    }                                      \
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
+#define TF_LITE_VAR_ARG_HEAD(FIRST, ...) FIRST
+#define TF_LITE_STRINGIFY_HELPER(x) #x
+#define TF_LITE_STRINGIFY(x) TF_LITE_STRINGIFY_HELPER(x)
+// Checks that `status` evaluates to `kTfLiteOk`.
+//
+// Can take a printf style log message and its parameters after the status. The
+// message will be printed using `TF_LITE_KERNEL_LOG` in case of error.
+#define TF_LITE_ENSURE_OK(context, status, ...)                              \
+  do {                                                                       \
+    const TfLiteStatus s = (status);                                         \
+    if (s != kTfLiteOk) {                                                    \
+      if (sizeof(TF_LITE_VAR_ARG_HEAD("" __VA_ARGS__)) > sizeof("")) {       \
+        TF_LITE_MAYBE_KERNEL_LOG((context), __FILE__ ":" TF_LITE_STRINGIFY(  \
+                                                __LINE__) ": " __VA_ARGS__); \
+      }                                                                      \
+      return s;                                                              \
+    }                                                                        \
   } while (0)
+#else
+#define TF_LITE_ENSURE_OK(context, status, ...) \
+  do {                                          \
+    const TfLiteStatus s = (status);            \
+    if ((s) != kTfLiteOk) {                     \
+      return s;                                 \
+    }                                           \
+  } while (0)
+#endif
 
 // `std::unreachable` not available until CC23.
 #ifdef __GNUC__  // GCC, Clang, ICC
@@ -334,6 +356,8 @@ typedef enum TfLiteQuantizationType {
   kTfLiteAffineQuantization = 1,
   /// Blockwise quantization.
   kTfLiteBlockwiseQuantization = 2,
+  /// Multi-axis quantization.
+  kTfLiteMultiAxisQuantization = 3,
 } TfLiteQuantizationType;
 
 /// Structure specifying the quantization used by the tensor, if-any.
@@ -372,6 +396,16 @@ typedef struct TfLiteBlockwiseQuantization {
   int32_t blocksize;
   int32_t quantized_dimension;
 } TfLiteBlockwiseQuantization;
+
+/// Parameters for multi-axis quantization. The scales and zero_points fields
+/// refer to tensor indices in the same subgraph. If zero_points is -1, zero
+/// point is assumed to be 0. For per-channel quantization, blocksize is 0.
+typedef struct TfLiteMultiAxisQuantization {
+  int32_t scales;
+  int32_t zero_points;
+  int32_t blocksize;
+  TfLiteIntArray* quantized_dimensions;
+} TfLiteMultiAxisQuantization;
 
 /// A union of pointers that points to memory for a given tensor.
 ///
@@ -1060,6 +1094,13 @@ typedef struct TfLiteContext {
   /// WARNING: This is an experimental interface that is subject to change.
   TfLiteStatus (*ReleaseSubgraphContext)(struct TfLiteContext* context,
                                          int subgraph_index);
+#if defined(_WIN32)
+  /// Create a array of a given `size` (uninitialized entries).
+  TfLiteIntArray* (*TfLiteIntArrayCreate)(int size);  // NOLINT
+
+  /// Free memory of array `a`.
+  void (*TfLiteIntArrayFree)(TfLiteIntArray* a);  // NOLINT
+#endif                                            // defined(_WIN32)
 } TfLiteContext;
 
 /// `TfLiteOperator` is an external version of `TfLiteRegistration`
@@ -1352,7 +1393,15 @@ typedef enum TfLiteDelegateFlags {
   /// operator information using `Profiler::EventType::OPERATOR_INVOKE_EVENT`
   /// and the results will appear in the operator-wise Profiling section and not
   /// in the Delegate internal section.
-  kTfLiteDelegateFlagsPerOperatorProfiling = 4
+  kTfLiteDelegateFlagsPerOperatorProfiling = 4,
+
+  // This flag can be used by callers to hint that the delegate is likely to
+  // delegate the entire graph to a single delegate so certain allocations can
+  // be skipped.
+  // This is an ADVANCED feature and should only be used if the caller has
+  // prior knowledge that the delegate will fully delegate all subgraphs
+  // to a single delegate.
+  kTfLiteDelegateFlagsHintFullyDelegatedToSingleDelegate = 8,
 } TfLiteDelegateFlags;
 
 /// WARNING: This is an experimental interface that is subject to change.

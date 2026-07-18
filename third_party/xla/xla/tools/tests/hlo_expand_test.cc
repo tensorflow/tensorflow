@@ -17,6 +17,8 @@ limitations under the License.
 #include <vector>
 
 #include <gmock/gmock.h>
+#include "absl/strings/string_view.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/subprocess.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/test.h"
@@ -57,11 +59,11 @@ class HloExpandTest : public ::testing::Test {
 
 TEST_F(HloExpandTest, CholeskyHlo) {
   std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
-                                           "tests", "cholesky.hlo");
+                                           "tests", "data", "cholesky.hlo");
   std::vector<std::string> additional_flags = {"--input_format=hlo", hlo_path};
   HloOpt(additional_flags);
 
-  const std::string& expected_hlo_string =
+  constexpr absl::string_view expected_hlo_string =
       R"(HloModule main, entry_computation_layout={()->f64[3,3]{1,0}}
 
 ENTRY %main.3 () -> f64[3,3] {
@@ -74,13 +76,15 @@ ENTRY %main.3 () -> f64[3,3] {
   EXPECT_THAT(stdout_output_, testing::HasSubstr(expected_hlo_string));
 }
 
-TEST_F(HloExpandTest, SpmdHlo) {
+TEST_F(HloExpandTest, SpmdHloWithoutHloShardingV3) {
+  tsl::setenv("XLA_FLAGS", "--xla_enable_hlo_sharding_v3=false", 1);
   std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
-                                           "tests", "spmd.hlo");
+                                           "tests", "data", "spmd.hlo");
   std::vector<std::string> additional_flags = {"--spmd_expander", hlo_path};
   HloOpt(additional_flags);
+  tsl::unsetenv("XLA_FLAGS");
 
-  const std::string& expected_hlo_string =
+  constexpr absl::string_view expected_hlo_string =
       R"(HloModule module, entry_computation_layout={(f32[24,64]{1,0}, f32[39296,64]{1,0})->f32[24,19648]{1,0}}, num_partitions=2
 
 ENTRY %entry_spmd (param: f32[24,64], param.1: f32[39296,64]) -> f32[24,19648] {
@@ -102,14 +106,44 @@ ENTRY %entry_spmd (param: f32[24,64], param.1: f32[39296,64]) -> f32[24,19648] {
   EXPECT_THAT(stdout_output_, testing::HasSubstr(expected_hlo_string));
 }
 
+TEST_F(HloExpandTest, SpmdHloWithHloShardingV3) {
+  tsl::setenv("XLA_FLAGS", "--xla_enable_hlo_sharding_v3=true", 1);
+  std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
+                                           "tests", "data", "spmd.hlo");
+  std::vector<std::string> additional_flags = {"--spmd_expander", hlo_path};
+  HloOpt(additional_flags);
+  tsl::unsetenv("XLA_FLAGS");
+
+  constexpr absl::string_view expected_hlo_string =
+      R"(HloModule module, entry_computation_layout={(f32[24,64]{1,0}, f32[39296,64]{1,0})->f32[24,19648]{1,0}}, num_partitions=2
+
+ENTRY %entry_spmd (param: f32[24,64], param.1: f32[39296,64]) -> f32[24,19648] {
+  %param = f32[24,64]{1,0} parameter(0), sharding={mesh[], replicated}
+  %lhs.copy.1 = f32[24,64]{1,0} copy(%param)
+  %param.1 = f32[39296,64]{1,0} parameter(1), sharding={mesh[], replicated}
+  %constant = s32[2]{0} constant({0, 19648})
+  %partition-id = u32[] partition-id()
+  %dynamic-slice = s32[1]{0} dynamic-slice(%constant, %partition-id), dynamic_slice_sizes={1}
+  %reshape = s32[] reshape(%dynamic-slice)
+  %constant.1 = s32[] constant(0)
+  %dynamic-slice.1 = f32[19648,64]{1,0} dynamic-slice(%param.1, %reshape, %constant.1), dynamic_slice_sizes={19648,64}
+  %rhs.copy.1 = f32[19648,64]{1,0} copy(%dynamic-slice.1)
+  ROOT %dot.1 = f32[24,19648]{1,0} dot(%lhs.copy.1, %rhs.copy.1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})";
+
+  EXPECT_TRUE(exited_normally_);
+  EXPECT_EQ(exit_status_, 0);
+  EXPECT_THAT(stdout_output_, testing::HasSubstr(expected_hlo_string));
+}
+
 TEST_F(HloExpandTest, CholeskyExpanderHlo) {
   std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
-                                           "tests", "cholesky.hlo");
+                                           "tests", "data", "cholesky.hlo");
   std::vector<std::string> additional_flags = {"--input_format=hlo", hlo_path,
                                                "--expand_all"};
   HloOpt(additional_flags);
 
-  const std::string& expected_hlo_string = "%xla.cholesky_f64";
+  constexpr absl::string_view expected_hlo_string = "%xla.cholesky_f64";
 
   EXPECT_TRUE(exited_normally_);
   EXPECT_EQ(exit_status_, 0);
@@ -121,7 +155,7 @@ TEST_F(HloExpandTest, InvalidArgc) {
                                                "bar", "baz"};
   HloOpt(additional_flags);
 
-  const std::string& expected_string =
+  constexpr absl::string_view expected_string =
       "Cannot parse more than one argument. See usage below:";
 
   EXPECT_TRUE(exited_normally_);
@@ -131,11 +165,11 @@ TEST_F(HloExpandTest, InvalidArgc) {
 
 TEST_F(HloExpandTest, InvalidInputFileExtension) {
   std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
-                                           "tests", "foo.bar");
+                                           "tests", "data", "foo.bar");
   std::vector<std::string> additional_flags = {hlo_path};
   HloOpt(additional_flags);
 
-  const std::string& expected_string =
+  constexpr absl::string_view expected_string =
       "input_format must be specified as [hlo|pb|pbtxt|txt].";
 
   EXPECT_TRUE(exited_normally_);
@@ -147,7 +181,7 @@ TEST_F(HloExpandTest, InvalidInputFormat) {
   std::vector<std::string> additional_flags = {"--input_format=foo"};
   HloOpt(additional_flags);
 
-  const std::string& expected_string =
+  constexpr absl::string_view expected_string =
       "input_format must be specified as [hlo|pb|pbtxt|txt].";
 
   EXPECT_TRUE(exited_normally_);
@@ -157,14 +191,14 @@ TEST_F(HloExpandTest, InvalidInputFormat) {
 
 TEST_F(HloExpandTest, InvalidOutputFileExtension) {
   std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
-                                           "tests", "cholesky.hlo");
-  std::string output_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
-                                              "tools", "tests", "foo.bar");
+                                           "tests", "data", "cholesky.hlo");
+  std::string output_path = tsl::io::JoinPath(
+      tsl::testing::XlaSrcRoot(), "tools", "tests", "data", "foo.bar");
   std::vector<std::string> additional_flags = {"--input_format=", hlo_path,
                                                "--output_file=" + output_path};
   HloOpt(additional_flags);
 
-  const std::string& expected_string =
+  constexpr absl::string_view expected_string =
       "output_format must be specified as [hlo|pb|pbtxt].";
 
   EXPECT_TRUE(exited_normally_);
@@ -174,12 +208,12 @@ TEST_F(HloExpandTest, InvalidOutputFileExtension) {
 
 TEST_F(HloExpandTest, InvalidOutputFormat) {
   std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
-                                           "tests", "cholesky.hlo");
+                                           "tests", "data", "cholesky.hlo");
   std::vector<std::string> additional_flags = {"--input_format=", hlo_path,
                                                "--output_format=foo"};
   HloOpt(additional_flags);
 
-  const std::string& expected_string =
+  constexpr absl::string_view expected_string =
       "output_format must be specified as [hlo|pb|pbtxt].";
 
   EXPECT_TRUE(exited_normally_);
@@ -189,11 +223,11 @@ TEST_F(HloExpandTest, InvalidOutputFormat) {
 
 TEST_F(HloExpandTest, InvalidFile) {
   std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
-                                           "tests", "foo.bar");
+                                           "tests", "data", "foo.bar");
   std::vector<std::string> additional_flags = {"--input_format=hlo", hlo_path};
   HloOpt(additional_flags);
 
-  const std::string& expected_string = "Try: hlo-expand --help";
+  constexpr absl::string_view expected_string = "Try: hlo-expand --help";
 
   EXPECT_TRUE(exited_normally_);
   EXPECT_EQ(exit_status_, 1);
@@ -202,12 +236,12 @@ TEST_F(HloExpandTest, InvalidFile) {
 
 TEST_F(HloExpandTest, UnsupportedOutputFormat) {
   std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
-                                           "tests", "cholesky.hlo");
+                                           "tests", "data", "cholesky.hlo");
   std::vector<std::string> additional_flags = {"--input_format=hlo",
                                                "--output_format=pb", hlo_path};
   HloOpt(additional_flags);
 
-  const std::string& expected_string =
+  constexpr absl::string_view expected_string =
       "Printing to stdout must specify supported "
       "output_format=[hlo|pbtxt|txt].";
 
@@ -217,12 +251,13 @@ TEST_F(HloExpandTest, UnsupportedOutputFormat) {
 }
 
 TEST_F(HloExpandTest, VerificationFailure) {
-  std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
-                                           "tests", "invalid_concat.hlo");
+  std::string hlo_path =
+      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools", "tests", "data",
+                        "invalid_concat.hlo");
   std::vector<std::string> additional_flags = {"--verify_hlo", hlo_path};
   HloOpt(additional_flags);
 
-  const std::string& expected_string =
+  constexpr absl::string_view expected_string =
       "Cannot concatenate arrays that differ in dimensions";
 
   EXPECT_TRUE(exited_normally_);

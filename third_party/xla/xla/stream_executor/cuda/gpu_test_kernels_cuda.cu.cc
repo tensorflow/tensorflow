@@ -21,7 +21,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/gpu_test_kernel_traits.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels_lib.cu.h"
-#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args_packing_spec.h"
 #include "xla/stream_executor/kernel_spec.h"
 
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
@@ -31,6 +31,25 @@ GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
           absl::bit_cast<void*>(&stream_executor::gpu::AddI32),
 
           "AddI32", arity);
+    }));
+
+GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
+    IncrementBy5I32KernelWithCustomArgsPackingCuda,
+    stream_executor::gpu::internal::IncrementBy5I32KernelWithCustomArgsPacking,
+    stream_executor::cuda::kCudaPlatformId, ([](size_t arity) {
+      stream_executor::KernelArgsPackingSpec spec;
+      // This kernels is implemented in terms of the generic `IncI32` kernel
+      // which accepts a constant scalar argument and an addressable pointer
+      // argument. We use a custom args packing spec to pass a constant scalar
+      // value of 5 to the kernel.
+      spec.AddConstantArgument<int32_t>(5);
+      spec.AddAddressArgument(/*argument_index=*/0);
+      spec.AddAddressArgument(/*argument_index=*/1);
+
+      return stream_executor::KernelLoaderSpec::CreateInProcessSymbolSpec(
+          absl::bit_cast<void*>(&stream_executor::gpu::IncI32),
+
+          "IncI32", /*arity=*/3, spec);
     }));
 
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
@@ -59,9 +78,10 @@ GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
           "AddI32Ptrs3", arity,
           [&](const stream_executor::Kernel& kernel,
               const stream_executor::KernelArgs& args) {
-            auto bufs = stream_executor::Cast<
-                            stream_executor::KernelArgsDeviceMemoryArray>(&args)
-                            ->device_memory_args();
+            auto bufs =
+                stream_executor::Cast<
+                    stream_executor::KernelArgsDeviceAddressArray>(&args)
+                    ->device_addr_args();
             auto cast = [](auto m) {
               return reinterpret_cast<int32_t*>(m.opaque());
             };

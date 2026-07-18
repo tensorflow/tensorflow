@@ -17,11 +17,14 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
@@ -53,10 +56,11 @@ constexpr int kThreadLimit = 65536;
 
 absl::Status ValidateNumThreads(int32_t num_threads) {
   if (num_threads < 0) {
-    return errors::InvalidArgument("`num_threads` must be >= 0");
+    return absl::InvalidArgumentError("`num_threads` must be >= 0");
   }
   if (num_threads >= kThreadLimit) {
-    return errors::InvalidArgument("`num_threads` must be < ", kThreadLimit);
+    return absl::InvalidArgumentError(
+        absl::StrCat("`num_threads` must be < ", kThreadLimit));
   }
   return absl::OkStatus();
 }
@@ -65,8 +69,8 @@ absl::Status ValidateNumThreads(int32_t num_threads) {
 class ThreadPoolResource : public ResourceBase {
  public:
   ThreadPoolResource(Env* env, const ThreadOptions& thread_options,
-                     const string& name, int num_threads, bool low_latency_hint,
-                     int max_intra_op_parallelism)
+                     const std::string& name, int num_threads,
+                     bool low_latency_hint, int max_intra_op_parallelism)
       : thread_pool_(env, thread_options, name, num_threads, low_latency_hint),
         max_intra_op_parallelism_(max_intra_op_parallelism) {}
 
@@ -86,9 +90,9 @@ class ThreadPoolResource : public ResourceBase {
     }
   }
 
-  int32 NumThreads() { return thread_pool_.NumThreads(); }
+  int32_t NumThreads() { return thread_pool_.NumThreads(); }
 
-  string DebugString() const override { return "ThreadPoolResource"; }
+  std::string DebugString() const override { return "ThreadPoolResource"; }
 
  private:
   thread::ThreadPool thread_pool_;
@@ -156,7 +160,7 @@ class ThreadPoolHandleOp : public OpKernel {
   mutex mu_;
   ContainerInfo cinfo_ TF_GUARDED_BY(mu_);
   bool initialized_ TF_GUARDED_BY(mu_) = false;
-  string display_name_;
+  std::string display_name_;
   int num_threads_;
   int max_intra_op_parallelism_;
 };
@@ -194,7 +198,7 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
     }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       return std::make_unique<Iterator>(
           Iterator::Params{this, absl::StrCat(prefix, "::ThreadPool")});
     }
@@ -206,7 +210,7 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    string DebugString() const override {
+    std::string DebugString() const override {
       return "ThreadPoolDatasetOp::Dataset";
     }
 
@@ -308,7 +312,7 @@ class MaxIntraOpParallelismDatasetOp::Dataset : public DatasetBase {
         max_intra_op_parallelism_(max_intra_op_parallelism),
         traceme_metadata_(
             {{"parallelism",
-              strings::Printf("%lld", static_cast<long long>(
+              absl::StrFormat("%lld", static_cast<long long>(
                                           max_intra_op_parallelism_))}}) {
     input_->Ref();
   }
@@ -316,7 +320,7 @@ class MaxIntraOpParallelismDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this, absl::StrCat(prefix, "::MaxIntraOpParallelism")});
   }
@@ -328,7 +332,7 @@ class MaxIntraOpParallelismDatasetOp::Dataset : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return "MaxIntraOpParallelismDatasetOp::Dataset";
   }
 
@@ -419,7 +423,7 @@ void MaxIntraOpParallelismDatasetOp::MakeDatasetFromOptions(
     DatasetBase** output) {
   OP_REQUIRES(
       ctx, max_intra_op_parallelism >= 0,
-      errors::InvalidArgument("`max_intra_op_parallelism` must be >= 0"));
+      absl::InvalidArgumentError("`max_intra_op_parallelism` must be >= 0"));
   *output = new Dataset(DatasetContext(DatasetContext::Params(
                             {MaxIntraOpParallelismDatasetOp::kDatasetType,
                              MaxIntraOpParallelismDatasetOp::kDatasetOp})),
@@ -435,7 +439,7 @@ void MaxIntraOpParallelismDatasetOp::MakeDataset(OpKernelContext* ctx,
                                               &max_intra_op_parallelism));
   OP_REQUIRES(
       ctx, max_intra_op_parallelism >= 0,
-      errors::InvalidArgument("`max_intra_op_parallelism` must be >= 0"));
+      absl::InvalidArgumentError("`max_intra_op_parallelism` must be >= 0"));
   *output = new Dataset(ctx, input, max_intra_op_parallelism);
 }
 
@@ -451,7 +455,7 @@ class PrivateThreadPoolDatasetOp::Dataset : public DatasetBase {
         num_threads_(num_threads == 0 ? port::MaxParallelism() : num_threads),
         traceme_metadata_(
             {{"num_threads",
-              strings::Printf("%lld", static_cast<long long>(num_threads_))}}) {
+              absl::StrFormat("%lld", static_cast<long long>(num_threads_))}}) {
     thread_pool_ = std::make_unique<thread::ThreadPool>(
         ctx->env(), ThreadOptions{}, "data_private_threadpool", num_threads_);
     input_->Ref();
@@ -460,7 +464,7 @@ class PrivateThreadPoolDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(
         Iterator::Params{this, absl::StrCat(prefix, "::PrivateThreadPool")});
   }
@@ -472,7 +476,7 @@ class PrivateThreadPoolDatasetOp::Dataset : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return "PrivateThreadPoolDatasetOp::Dataset";
   }
 

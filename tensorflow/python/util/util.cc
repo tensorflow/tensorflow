@@ -16,17 +16,21 @@ limitations under the License.
 
 #include <Python.h>
 
+#include <cstddef>
 #include <functional>
 #include <memory>
+#include <string>
 #include <unordered_map>
-#include <vector>
+#include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/macros.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tsl/platform/thread_annotations.h"
 
@@ -54,15 +58,15 @@ constexpr const char VARIABLES_MODULE[] =
     "tensorflow.python.ops.variables";
 constexpr const char CORE_TYPES_MODULE[] =
     "tensorflow.python.types.core";
-string PyObjectToString(PyObject* o);
+std::string PyObjectToString(PyObject* o);
 }  // namespace
 
-std::unordered_map<string, PyObject*>* RegisteredPyObjectMap() {
-  static auto* m = new std::unordered_map<string, PyObject*>();
+std::unordered_map<std::string, PyObject*>* RegisteredPyObjectMap() {
+  static auto* m = new std::unordered_map<std::string, PyObject*>();
   return m;
 }
 
-PyObject* GetRegisteredPyObject(const string& name) {
+PyObject* GetRegisteredPyObject(const std::string& name) {
   const auto* m = RegisteredPyObjectMap();
   auto it = m->find(name);
   if (it == m->end()) {
@@ -75,7 +79,7 @@ PyObject* GetRegisteredPyObject(const string& name) {
 }
 
 PyObject* RegisterPyObject(PyObject* name, PyObject* value) {
-  string key;
+  std::string key;
   if (PyBytes_Check(name)) {
     key = PyBytes_AsString(name);
 #if PY_MAJOR_VERSION >= 3
@@ -136,7 +140,7 @@ absl::string_view GetClassName(PyObject* o) {
   return name;
 }
 
-string PyObjectToString(PyObject* o) {
+std::string PyObjectToString(PyObject* o) {
   if (o == nullptr) {
     return "<null object>";
   }
@@ -145,7 +149,7 @@ string PyObjectToString(PyObject* o) {
 #if PY_MAJOR_VERSION < 3
     string s(PyString_AS_STRING(str));
 #else
-    string s(PyUnicode_AsUTF8(str));
+    std::string s(PyUnicode_AsUTF8(str));
 #endif
     Py_DECREF(str);
     return absl::StrCat("type=", GetClassName(o), " str=", s);
@@ -217,24 +221,56 @@ class CachedTypeCheck {
  private:
   std::function<int(PyObject*)> ternary_predicate_;
   mutex type_to_sequence_map_mu_;
-  std::unordered_map<PyTypeObject*, bool> type_to_sequence_map_
+  absl::flat_hash_map<PyTypeObject*, bool> type_to_sequence_map_
       TF_GUARDED_BY(type_to_sequence_map_mu_);
 };
 
+// Imports a type from a module and caches it.
+// This function is thread-safe and returns a borrowed reference.
+// Caching avoids repeated imports and prevents leaking references,
+// as callers assume the returned object is borrowed and do not DECREF it.
 PyObject* ImportTypeFromModule(const char* module_name, const char* type_name) {
-  static PyObject* given_type;
-  given_type = [module_name, type_name]() {
-    PyObject* module = PyImport_ImportModule(module_name);
-    PyObject* attr =
-        module ? PyObject_GetAttrString(module, type_name) : nullptr;
-    if (attr == nullptr) {
-      PyErr_WriteUnraisable(nullptr);
-      PyErr_Clear();
+  static absl::Mutex* mu = new absl::Mutex();
+  static auto* cache = new std::unordered_map<std::string, PyObject*>();
+
+  std::string key = absl::StrCat(module_name, ".", type_name);
+
+  {
+    absl::MutexLock l(*mu);
+    auto it = cache->find(key);
+    if (it != cache->end()) {
+      return it->second;
     }
-    if (module) Py_DECREF(module);
+  }
+
+  PyObject* module = PyImport_ImportModule(module_name);
+  PyObject* attr = module ? PyObject_GetAttrString(module, type_name) : nullptr;
+  if (attr == nullptr) {
+    PyErr_WriteUnraisable(nullptr);
+    PyErr_Clear();
+  }
+  if (module) Py_DECREF(module);
+
+  if (attr) {
+    PyObject* to_decref = nullptr;
+    {
+      // Double-check cache in case another thread inserted it while we were
+      // not holding the lock during the expensive import operation.
+      absl::MutexLock l(*mu);
+      auto it = cache->find(key);
+      if (it != cache->end()) {
+        to_decref = attr;
+        attr = it->second;
+      } else {
+        (*cache)[key] = attr;
+      }
+    }
+    if (to_decref) {
+      Py_DECREF(to_decref);
+    }
     return attr;
-  }();
-  return given_type;
+  }
+  return nullptr;
 }
 
 // Returns true if 'obj' is an instance of 'type_name'
@@ -444,7 +480,7 @@ int IsDispatchableHelper(PyObject* o) {
 // ValueIterator interface
 class ValueIterator {
  public:
-  virtual ~ValueIterator() {}
+  virtual ~ValueIterator() = default;
   virtual Safe_PyObjectPtr next() = 0;
 
   bool valid() const { return is_valid_; }
@@ -536,18 +572,20 @@ class SequenceValueIterator : public ValueIterator {
  public:
   explicit SequenceValueIterator(PyObject* iterable)
       : seq_(PySequence_Fast(iterable, "")),
-        size_(seq_.get() ? PySequence_Fast_GET_SIZE(seq_.get()) : 0),
         index_(0) {}
 
   Safe_PyObjectPtr next() override {
     Safe_PyObjectPtr result;
-    if (index_ < size_) {
-      // PySequence_Fast_GET_ITEM returns a borrowed reference.
-      PyObject* elem = PySequence_Fast_GET_ITEM(seq_.get(), index_);
-      ++index_;
-      if (elem) {
-        Py_INCREF(elem);
-        result.reset(elem);
+    if (seq_) {
+      Py_ssize_t current_size = PySequence_Fast_GET_SIZE(seq_.get());
+      if (index_ < current_size) {
+        // PySequence_Fast_GET_ITEM returns a borrowed reference.
+        PyObject* elem = PySequence_Fast_GET_ITEM(seq_.get(), index_);
+        ++index_;
+        if (elem) {
+          Py_INCREF(elem);
+          result.reset(elem);
+        }
       }
     }
 
@@ -556,7 +594,6 @@ class SequenceValueIterator : public ValueIterator {
 
  private:
   Safe_PyObjectPtr seq_;
-  const Py_ssize_t size_;
   Py_ssize_t index_;
 };
 
@@ -575,7 +612,7 @@ class SingleValueIterator : public ValueIterator {
 // should have already called PyErr_SetString.
 class ErrorValueIterator : public ValueIterator {
  public:
-  ErrorValueIterator() {}
+  ErrorValueIterator() = default;
   Safe_PyObjectPtr next() override { return nullptr; }
 };
 
@@ -787,8 +824,8 @@ bool FlattenHelper(
 
 // Sets error using keys of 'dict1' and 'dict2'.
 // 'dict1' and 'dict2' are assumed to be Python dictionaries.
-void SetDifferentKeysError(PyObject* dict1, PyObject* dict2, string* error_msg,
-                           bool* is_type_error) {
+void SetDifferentKeysError(PyObject* dict1, PyObject* dict2,
+                           std::string* error_msg, bool* is_type_error) {
   Safe_PyObjectPtr k1(MappingKeys(dict1));
   if (PyErr_Occurred() || k1.get() == nullptr) {
     *error_msg =
@@ -822,7 +859,7 @@ void SetDifferentKeysError(PyObject* dict1, PyObject* dict2, string* error_msg,
 // with appropriate error and sets `is_type_error` to true iff
 // the error to be raised should be TypeError.
 bool AssertSameStructureHelper(
-    PyObject* o1, PyObject* o2, bool check_types, string* error_msg,
+    PyObject* o1, PyObject* o2, bool check_types, std::string* error_msg,
     bool* is_type_error, const std::function<int(PyObject*)>& is_nested_helper,
     const std::function<ValueIteratorPtr(PyObject*)>& value_iterator_getter,
     bool check_composite_tensor_type_spec) {
@@ -832,8 +869,9 @@ bool AssertSameStructureHelper(
   const bool is_nested2 = is_nested_helper(o2);
   if (PyErr_Occurred()) return false;
   if (is_nested1 != is_nested2) {
-    string seq_str = is_nested1 ? PyObjectToString(o1) : PyObjectToString(o2);
-    string non_seq_str =
+    std::string seq_str =
+        is_nested1 ? PyObjectToString(o1) : PyObjectToString(o2);
+    std::string non_seq_str =
         is_nested1 ? PyObjectToString(o2) : PyObjectToString(o1);
     *is_type_error = false;
     *error_msg = tensorflow::strings::StrCat(
@@ -1186,7 +1224,7 @@ PyObject* SameNamedtuples(PyObject* o1, PyObject* o2) {
     Py_RETURN_FALSE;
   }
 
-  if (GetClassName(o1).compare(GetClassName(o2)) == 0) {
+  if (GetClassName(o1) == GetClassName(o2)) {
     Py_RETURN_TRUE;
   } else {
     Py_RETURN_FALSE;
@@ -1200,7 +1238,7 @@ PyObject* AssertSameStructure(PyObject* o1, PyObject* o2, bool check_types,
   const std::function<ValueIteratorPtr(PyObject*)>& get_value_iterator =
       expand_composites ? GetValueIteratorForComposite : GetValueIterator;
   const bool check_composite_tensor_type_spec = expand_composites;
-  string error_msg;
+  std::string error_msg;
   bool is_type_error = false;
   AssertSameStructureHelper(o1, o2, check_types, &error_msg, &is_type_error,
                             is_nested_helper, get_value_iterator,
@@ -1225,7 +1263,7 @@ PyObject* AssertSameStructure(PyObject* o1, PyObject* o2, bool check_types,
 
 PyObject* AssertSameStructureForData(PyObject* o1, PyObject* o2,
                                      bool check_types) {
-  string error_msg;
+  std::string error_msg;
   bool is_type_error = false;
   AssertSameStructureHelper(o1, o2, check_types, &error_msg, &is_type_error,
                             IsNestedForDataHelper, GetValueIterator, false);

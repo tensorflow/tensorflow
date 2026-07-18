@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 
-#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_id.h"
 
 namespace stream_executor {
 namespace rocm {
 
-PLATFORM_DEFINE_ID(kROCmPlatformId);
+PLATFORM_DEFINE_ID(kROCmPlatformId, ROCM);
 
 }  // namespace rocm
 }  // namespace stream_executor

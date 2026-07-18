@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/data/captured_function.h"
@@ -43,7 +45,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, FunctionMetadata::Create(
                             ctx, "predicate", /*params=*/{}, &func_metadata_));
     OP_REQUIRES(ctx, func_metadata_->short_circuit_info().indices.size() <= 1,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "predicate function has more than one return value."));
   }
 
@@ -70,7 +72,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
     ~Dataset() override { input_->Unref(); }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       return std::make_unique<Iterator>(
           Iterator::Params{this, absl::StrCat(prefix, "::TakeWhile")});
     }
@@ -83,7 +85,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    string DebugString() const override {
+    std::string DebugString() const override {
       return "TakeWhileDatasetOp::Dataset";
     }
 
@@ -166,7 +168,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
 
         if (result.size() != 1 || result[0].dtype() != DT_BOOL ||
             result[0].NumElements() != 1) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               "`predicate` must returns a scalar bool tensor.");
         }
         *end_of_sequence = !result[0].scalar<bool>()();

@@ -51,7 +51,7 @@ class ChangeOpDataType : public HloModulePass {
       absl::Span<std::pair<PrimitiveType, PrimitiveType> const> from_to_types,
       HloPredicate op_matcher, HloCloner cloner = nullptr)
       : op_matcher_(op_matcher), cloner_(cloner) {
-    for (const std::pair<PrimitiveType, PrimitiveType>& pair : from_to_types) {
+    for (const auto& pair : from_to_types) {
       to_type_map_[pair.first] = pair.second;
     }
   }
@@ -63,8 +63,9 @@ class ChangeOpDataType : public HloModulePass {
   }
 
   absl::string_view name() const override { return "change-op-data-type"; }
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

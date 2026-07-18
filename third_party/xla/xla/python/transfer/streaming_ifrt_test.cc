@@ -24,11 +24,15 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "xla/future.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/python/ifrt/array.h"
@@ -78,19 +82,21 @@ absl::StatusOr<SingleBufferCopyPlan> SetupTransferDestList(
     xla::ifrt::PjRtClient* ifrt_client, size_t xfer_size) {
   auto* pjrt_client = ifrt_client->pjrt_client();
   // CHECK_EQ(pjrt_client->platform_id(), xla::TpuId());
-  TF_ASSIGN_OR_RETURN(auto* pjrt_memory_space,
-                      device->pjrt_device()->default_memory_space());
-  TF_ASSIGN_OR_RETURN(auto atm_owned,
-                      pjrt_client->CreateBuffersForAsyncHostToDevice(
-                          {shape}, pjrt_memory_space));
+  ASSIGN_OR_RETURN(auto* pjrt_memory_space,
+                   device->pjrt_device()->default_memory_space());
+  ASSIGN_OR_RETURN(auto atm_owned,
+                   pjrt_client->CreateBuffersForAsyncHostToDevice(
+                       {shape}, pjrt_memory_space));
   auto atm = std::shared_ptr<xla::PjRtClient::AsyncHostToDeviceTransferManager>(
       std::move(atm_owned));
   SingleBufferCopyPlan results;
   size_t copy_size = xla::ShapeUtil::ByteSizeOf(shape);
 
   results.dests.push_back(MakeDmaDestination(atm, 0, copy_size));
-  TF_ASSIGN_OR_RETURN(auto arr,
-                      ifrt_client->CreatePjRtArray(atm->RetrieveBuffer(0)));
+  // `CreateBuffersForAsyncHostToDevice` uses a default layout.
+  ASSIGN_OR_RETURN(auto arr,
+                   ifrt_client->CreatePjRtArray(atm->RetrieveBuffer(0),
+                                                /*has_custom_layout=*/false));
   results.arrays.push_back(std::move(arr));
   return results;
 }
@@ -99,7 +105,7 @@ void CopyIntoDest(tsl::RCReference<ChunkDestination> dest,
                   tsl::RCReference<xla::ifrt::Array> arr, size_t xfer_size,
                   size_t buffer_id) {
   std::shared_ptr<xla::PjRtClient> pjrt_client =
-      tensorflow::down_cast<xla::ifrt::PjRtClient*>(arr->client())
+      absl::down_cast<xla::ifrt::PjRtClient*>(arr->client())
           ->shared_ptr_pjrt_client();
 
   auto* array = static_cast<xla::ifrt::PjRtCompatibleArray*>(arr.get());
@@ -145,11 +151,65 @@ absl::StatusOr<std::vector<int32_t>> FetchResult(
     tsl::RCReference<xla::ifrt::Array> arr, size_t result_size) {
   std::vector<int32_t> result;
   result.resize(result_size);
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       arr->CopyToHostBuffer(result.data(), std::nullopt,
                             xla::ifrt::ArrayCopySemantics::kReuseInput)
           .Await());
   return result;
+}
+
+TEST(PremappedCopierState, FreeCycle) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, xla::ifrt::test_util::GetClient());
+  std::shared_ptr<xla::PjRtClient> pjrt_client =
+      absl::down_cast<xla::ifrt::PjRtClient*>(client.get())
+          ->shared_ptr_pjrt_client();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto scratch, AllocateAndMapPjrtMemory(pjrt_client, 1024 * 1024 * 16));
+  auto cstate = std::make_shared<PremappedCopierState>(scratch, 4, 4096);
+  std::vector<void*> buffers_to_return;
+  for (size_t i = 0; i < 2; ++i) {
+    cstate->ScheduleCopy(
+        {/*copy_fn=*/[](void* dst, int64_t offset,
+                        int64_t transfer_size) -> xla::Future<> {
+           return xla::Future<>(absl::OkStatus());
+         },
+         /*buffer_id=*/0,
+         /*offset=*/100,
+         /*size=*/100},
+        [&buffers_to_return](PremappedCopierState* state,
+                             absl::StatusOr<void*> buf,
+                             const DmaCopyChunk& chunk) {
+          CHECK_OK(buf.status());
+          buffers_to_return.push_back(buf.value());
+        });
+  }
+  class BufferReturner {
+   public:
+    explicit BufferReturner(absl::AnyInvocable<void() &&> on_done)
+        : on_done_(std::move(on_done)) {}
+    ~BufferReturner() { std::move(on_done_)(); }
+
+   private:
+    absl::AnyInvocable<void() &&> on_done_;
+  };
+  cstate->ScheduleCopy(
+      {/*copy_fn=*/[buffer = std::make_unique<BufferReturner>(
+                        [b = buffers_to_return[0], cstate]() {
+                          cstate->ReturnBuffer(b);
+                        })](void* dst, int64_t offset,
+                            int64_t transfer_size) -> xla::Future<> {
+         return xla::Future<>(absl::OkStatus());
+       },
+       /*buffer_id=*/0,
+       /*offset=*/100,
+       /*size=*/100},
+      [buffer = std::make_unique<BufferReturner>(
+           [b = buffers_to_return[1], cstate]() { cstate->ReturnBuffer(b); })](
+          PremappedCopierState* state, absl::StatusOr<void*> buf,
+          const DmaCopyChunk& chunk) {
+        CHECK_OK(buf.status());
+        state->ReturnBuffer(buf.value());
+      });
 }
 
 TEST(PremappedCopierState, RoundTrip) {

@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/hash/hash.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/device_list.h"
@@ -74,25 +75,19 @@ class HloSharding final
       std::optional<DeviceListRef> devices,
       std::optional<MemoryKind> memory_kind) const override;
 
-  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
-      const Shape& shape) const override;
+  using Sharding::Disassemble;
   absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
-  absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
-      const DynamicShape& dynamic_shape) const override;
   absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
       const DynamicShape& dynamic_shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
-  absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
-      const Shape& shape) const override;
+  using Sharding::IndexDomains;
   absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
-
-  std::string DebugString() const override;
 
   static char ID;  // NOLINT
 
@@ -100,9 +95,27 @@ class HloSharding final
   HloSharding(DeviceListRef devices, MemoryKind memory_kind,
               xla::HloSharding xla_hlo_sharding);
 
+  std::string DebugString() const override;
+
   void Hash(absl::HashState state) const override;
 
-  xla::HloSharding xla_hlo_sharding_;
+  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> DisassembleEven(
+      const Shape& shape,
+      SingleDeviceShardSemantics single_device_shard_semantics) const;
+
+  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> DisassembleUneven(
+      const Shape& shape,
+      SingleDeviceShardSemantics single_device_shard_semantics) const;
+
+  const xla::HloSharding xla_hlo_sharding_;
+
+  // Cached information for computing shard shapes.
+  // If `std::nullopt`, the shard shape is the same as the shape.
+  struct TileInformation {
+    int64_t tiled_data_rank;
+    absl::Span<const int64_t> dimensions;
+  };
+  std::optional<TileInformation> tile_information_;
 
   // Cached hash. 0 indicates the hash needs to be computed and cached.
   // May be written multiple times with the same non-zero value.

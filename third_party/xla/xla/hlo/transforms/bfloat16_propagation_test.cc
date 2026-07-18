@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -82,7 +83,7 @@ class BFloat16PropagationTest : public HloHardwareIndependentTestBase {
   // module is changed after this pass.
   bool PropagatePrecision(HloModule* module) {
     TestBFloat16Support bfloat16_support;
-    BFloat16Propagation propagation(&bfloat16_support);
+    BFloat16Propagation propagation(&bfloat16_support, &alias_info_);
     absl::StatusOr<bool> result = propagation.Run(module);
     EXPECT_IS_OK(result.status());
     return result.value();
@@ -108,6 +109,7 @@ class BFloat16PropagationTest : public HloHardwareIndependentTestBase {
     return HloInstruction::CreateDot(shape, lhs, rhs, dot_dnums,
                                      DefaultPrecisionConfig(2));
   }
+  AliasInfo alias_info_;
 };
 
 // Tests that BF16 can propagate through select over non-tuple buffers, but not
@@ -228,7 +230,8 @@ TEST_F(BFloat16PropagationTest, DoNotChangeAllReduce) {
   HloInstruction* all_reduce =
       builder.AddInstruction(HloInstruction::CreateAllReduce(
           ShapeUtil::MakeTupleShape({shape, shape}), {a, b}, reduction,
-          /*device_list=*/CollectiveDeviceList(), /*constrain_layout=*/false,
+          std::make_shared<CollectiveDeviceList>(),
+          /*constrain_layout=*/false,
           /*channel_id=*/1, /*use_global_device_ids=*/false));
   HloInstruction* gte0 = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(shape, all_reduce, 0));
@@ -1356,6 +1359,527 @@ ENTRY entry {
   EXPECT_FALSE(OutputsBF16(gte));
   EXPECT_FALSE(OutputsBF16(gte1));
   EXPECT_TRUE(OutputsBF16(gte2));
+}
+
+// =============================================================================
+// Tests for HloScanInstruction propagation. The scan path mirrors kWhile
+// (carry slots alias init -> body parameter -> body root -> result carry) and
+// adds a body-internal duplicator pre-pass to break shared dataflow values
+// across tuple-root slots (e.g. the canonical JAX cumsum pattern emits
+// `tuple(add, add)` to use one value for both the per-step output and the
+// next carry).
+// =============================================================================
+
+// Tests that BF16 is propagated end-to-end through an associative scan whose
+// downstream consumer wants BF16. The scan body uses a single `add` value for
+// both the per-step output slot and the carry slot; the body-internal
+// duplicator should insert a self-convert on one of them so that both slots
+// can independently lower to BF16.
+TEST_F(BFloat16PropagationTest, PropagateThroughAssociativeScanIntoDot) {
+  constexpr absl::string_view kHlo = R"(
+HloModule scan_into_dot
+
+%combine (carry: f32[4,4], slice: f32[4,4]) -> (f32[4,4], f32[4,4]) {
+  %slice = f32[4,4] parameter(1)
+  %carry = f32[4,4] parameter(0)
+  %add = f32[4,4] add(%slice, %carry)
+  ROOT %tup = (f32[4,4], f32[4,4]) tuple(%add, %add)
+}
+
+ENTRY main {
+  %arg = f32[3,4,4] parameter(0)
+  %zero = f32[] constant(0)
+  %init = f32[4,4] broadcast(%zero), dimensions={}
+  %scan = (f32[3,4,4], f32[4,4]) scan(%arg, %init),
+      dimensions={0}, num_carries=1, is_associative=true, to_apply=%combine
+  %scan_out = f32[3,4,4] get-tuple-element(%scan), index=0
+  %slice = f32[1,4,4] slice(%scan_out), slice={[2:3], [0:4], [0:4]}
+  %lhs = f32[4,4] reshape(%slice)
+  ROOT %dot = f32[4,4] dot(%lhs, %lhs),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_TRUE(PropagatePrecision(module.get()));
+
+  // Dot demands BF16 operands (TestBFloat16Support reports
+  // EffectiveOperandPrecisionIsLowPrecision == true for kDot), so the slice
+  // and reshape feeding it should be BF16, the per-step scan output slot 0
+  // should be BF16, and the corresponding body root slot 0 should also be
+  // BF16.
+  HloInstruction* lhs = FindInstruction(module.get(), "lhs");
+  ASSERT_NE(lhs, nullptr);
+  EXPECT_TRUE(OutputsBF16(lhs));
+  HloInstruction* scan_out = FindInstruction(module.get(), "scan_out");
+  ASSERT_NE(scan_out, nullptr);
+  EXPECT_TRUE(OutputsBF16(scan_out));
+
+  // Inspect the scan body: at least slot 0 of the body root tuple should be
+  // BF16 (the one feeding the per-step output that downstream consumes).
+  HloInstruction* scan = FindInstruction(module.get(), "scan");
+  ASSERT_NE(scan, nullptr);
+  ASSERT_EQ(scan->opcode(), HloOpcode::kScan);
+  HloInstruction* body_root = scan->to_apply()->root_instruction();
+  ASSERT_EQ(body_root->opcode(), HloOpcode::kTuple);
+  EXPECT_EQ(body_root->shape().tuple_shapes(0).element_type(), BF16);
+}
+
+// Tests the body-internal duplicator: a body with `tuple(add, add)` should
+// have a self-convert inserted on the duplicate slot so that the two body
+// root slots reference distinct dataflow values. After propagation, when
+// only the per-step output is consumed in BF16 but the carry isn't, the two
+// slots can resolve to different precisions (BF16 output, F32 carry).
+TEST_F(BFloat16PropagationTest, ScanBodyDuplicatorBreaksTupleAliasing) {
+  constexpr absl::string_view kHlo = R"(
+HloModule scan_duplicator
+
+%combine (carry: f32[4,4], slice: f32[4,4]) -> (f32[4,4], f32[4,4]) {
+  %slice = f32[4,4] parameter(1)
+  %carry = f32[4,4] parameter(0)
+  %add = f32[4,4] add(%slice, %carry)
+  ROOT %tup = (f32[4,4], f32[4,4]) tuple(%add, %add)
+}
+
+ENTRY main {
+  %arg = f32[3,4,4] parameter(0)
+  %zero = f32[] constant(0)
+  %init = f32[4,4] broadcast(%zero), dimensions={}
+  ROOT %scan = (f32[3,4,4], f32[4,4]) scan(%arg, %init),
+      dimensions={0}, num_carries=1, is_associative=true, to_apply=%combine
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  // No downstream consumer demands BF16, so propagation should be a no-op.
+  // The duplicator-inserted self-convert is a no-op kConvert and the
+  // SkipNoopConversions cleanup at the end of the pass should remove it.
+  EXPECT_FALSE(PropagatePrecision(module.get()));
+
+  HloInstruction* scan = FindInstruction(module.get(), "scan");
+  ASSERT_NE(scan, nullptr);
+  HloInstruction* body_root = scan->to_apply()->root_instruction();
+  ASSERT_EQ(body_root->opcode(), HloOpcode::kTuple);
+  // After cleanup both slots should reference the original `add` (the
+  // no-op convert was removed).
+  EXPECT_EQ(body_root->operand(0), body_root->operand(1));
+}
+
+// Tests that an associative scan with two distinct body-root slots is
+// independently tracked per-slot during propagation. The body uses two
+// distinct ops (`sum` and `prod`) for the two tuple slots, so no body-internal
+// duplicator is needed; each slot's precision is decided based on its own
+// downstream consumers and the carry alignment helper independently aligns
+// each carry chain. Both slots end up BF16 because there is no F32-demanding
+// consumer downstream.
+TEST_F(BFloat16PropagationTest, ScanWithDistinctRootSlotsLowersPerSlot) {
+  constexpr absl::string_view kHlo = R"(
+HloModule scan_distinct_slots
+
+%combine (carry: f32[4,4], slice: f32[4,4]) -> (f32[4,4], f32[4,4]) {
+  %slice = f32[4,4] parameter(1)
+  %carry = f32[4,4] parameter(0)
+  %sum = f32[4,4] add(%slice, %carry)
+  %prod = f32[4,4] multiply(%slice, %carry)
+  ROOT %tup = (f32[4,4], f32[4,4]) tuple(%sum, %prod)
+}
+
+ENTRY main {
+  %arg = f32[3,4,4] parameter(0)
+  %one = f32[] constant(1)
+  %init = f32[4,4] broadcast(%one), dimensions={}
+  %scan = (f32[3,4,4], f32[4,4]) scan(%arg, %init),
+      dimensions={0}, num_carries=1, is_associative=true, to_apply=%combine
+  %out = f32[3,4,4] get-tuple-element(%scan), index=0
+  %slice = f32[1,4,4] slice(%out), slice={[2:3], [0:4], [0:4]}
+  %lhs = f32[4,4] reshape(%slice)
+  ROOT %dot = f32[4,4] dot(%lhs, %lhs),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_TRUE(PropagatePrecision(module.get()));
+
+  // The dot demands BF16 input on slot 0, so the per-step output (sum) goes
+  // BF16. Slot 1 (carry, prod) has no downstream BF16-demanding consumer, and
+  // the carry init `broadcast(constant(1))` does not get a BF16 demand from
+  // anywhere either, so AlignScanCarryPrecisions keeps the entire carry chain
+  // (init / body-parameter / body-root slot 1 / scan-result slot 1) at F32.
+  // This is exactly the per-slot independence the new propagation logic is
+  // designed to enable: the two body-root slots are tracked separately and
+  // each takes the precision its own users demand.
+  HloInstruction* scan = FindInstruction(module.get(), "scan");
+  ASSERT_NE(scan, nullptr);
+  ASSERT_EQ(scan->opcode(), HloOpcode::kScan);
+  HloInstruction* body_root = scan->to_apply()->root_instruction();
+  ASSERT_EQ(body_root->opcode(), HloOpcode::kTuple);
+  EXPECT_EQ(body_root->shape().tuple_shapes(0).element_type(), BF16);
+  EXPECT_EQ(body_root->shape().tuple_shapes(1).element_type(), F32);
+  // The two slots are backed by distinct dataflow values (no duplicator).
+  EXPECT_NE(body_root->operand(0), body_root->operand(1));
+  // Slot 0's underlying op was upgraded to BF16 (either directly via the
+  // standard backward pass or via a precision-changing convert inserted by
+  // ResolveInconsistentScans).
+  EXPECT_EQ(body_root->operand(0)->shape().element_type(), BF16);
+  EXPECT_EQ(body_root->operand(1)->shape().element_type(), F32);
+}
+
+// Non-associative scans must be expanded to while loops by ScanExpander
+// before reaching BFloat16Propagation; otherwise the pass cannot maintain a
+// consistent body/output shape and the module would fail HloVerifier.
+// BFloat16Propagation enforces this with a CHECK in
+// ShouldKeepPrecisionUnchanged. This test confirms a bare non-associative
+// kScan reaching the pass kills the process with that CHECK rather than
+// silently producing an inconsistent module.
+TEST_F(BFloat16PropagationTest, NonAssociativeScanCrashesWithoutScanExpander) {
+  constexpr absl::string_view kHlo = R"(
+HloModule non_associative_scan
+
+%combine (carry: f32[4,4], slice: f32[4,4]) -> (f32[4,4], f32[4,4]) {
+  %slice = f32[4,4] parameter(1)
+  %carry = f32[4,4] parameter(0)
+  %add = f32[4,4] add(%slice, %carry)
+  ROOT %tup = (f32[4,4], f32[4,4]) tuple(%add, %add)
+}
+
+ENTRY main {
+  %arg = f32[3,4,4] parameter(0)
+  %zero = f32[] constant(0)
+  %init = f32[4,4] broadcast(%zero), dimensions={}
+  %scan = (f32[3,4,4], f32[4,4]) scan(%arg, %init),
+      dimensions={0}, num_carries=1, is_associative=false, to_apply=%combine
+  %scan_out = f32[3,4,4] get-tuple-element(%scan), index=0
+  %slice = f32[1,4,4] slice(%scan_out), slice={[2:3], [0:4], [0:4]}
+  %lhs = f32[4,4] reshape(%slice)
+  ROOT %dot = f32[4,4] dot(%lhs, %lhs),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_DEATH(PropagatePrecision(module.get()),
+               "Non-associative kScan reached BFloat16Propagation");
+}
+
+// Regression test for AlignScanCarryPrecisions on a 1-carry/1-input/0-output
+// associative scan. With num_outputs == 0 the body root and scan result are
+// non-tuple (single-array) shapes; the carry slot must be addressed by an
+// empty ShapeIndex rather than {num_outputs + i} == {0}, otherwise
+// ShapeUtil::GetSubshape would CHECK-fail on a non-tuple shape.
+TEST_F(BFloat16PropagationTest, ScanCarryAlignmentHandlesNonTupleRoot) {
+  // 1 input + 1 carry, num_outputs = 0 => scan result and body root are both
+  // single-array (non-tuple) shapes carrying the carry slot directly. The
+  // body's parameter list is (carry, slice) and its single root is the new
+  // carry value. We must use a per-element op (not e.g. a dot) so that the
+  // body parameter shapes (rank-2, no scan dim) stay consistent with the
+  // root shape.
+  constexpr absl::string_view kHlo = R"(
+HloModule scan_no_outputs
+
+%combine (carry: f32[4,4], slice: f32[4,4]) -> f32[4,4] {
+  %carry = f32[4,4] parameter(0)
+  %slice = f32[4,4] parameter(1)
+  ROOT %add = f32[4,4] add(%carry, %slice)
+}
+
+ENTRY main {
+  %arg = f32[3,4,4] parameter(0)
+  %zero = f32[] constant(0)
+  %init = f32[4,4] broadcast(%zero), dimensions={}
+  ROOT %scan = f32[4,4] scan(%arg, %init),
+      dimensions={0}, num_carries=1, is_associative=true, to_apply=%combine
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+
+  // The carry chain has no BF16-demanding consumer, so the pass should leave
+  // the carry slot at F32. Crucially, it must not crash inside
+  // AlignScanCarryPrecisions while indexing the non-tuple shapes.
+  PropagatePrecision(module.get());
+
+  HloInstruction* scan = FindInstruction(module.get(), "scan");
+  ASSERT_NE(scan, nullptr);
+  ASSERT_EQ(scan->opcode(), HloOpcode::kScan);
+  // Body root and scan result must remain non-tuple F32 arrays.
+  EXPECT_FALSE(scan->shape().IsTuple());
+  EXPECT_EQ(scan->shape().element_type(), F32);
+  HloInstruction* body_root = scan->to_apply()->root_instruction();
+  EXPECT_FALSE(body_root->shape().IsTuple());
+  EXPECT_EQ(body_root->shape().element_type(), F32);
+}
+
+// Regression test for the FloatSupport fix in float_support.cc: associative
+// scans must be promoted to BF16 in production, not just under the test
+// fixture's blanket-true SupportsLowPrecision* overrides. This test runs the
+// pass with the *real* xla::FloatSupport (subclass-free) so that any
+// regression that drops kScan from SupportsLowPrecisionOutput /
+// SupportsLowPrecisionOperand will be caught.
+TEST_F(BFloat16PropagationTest,
+       AssociativeScanBF16PromotedUnderProductionFloatSupport) {
+  constexpr absl::string_view kHlo = R"(
+HloModule scan_production_float_support
+
+%combine (carry: f32[4,4], slice: f32[4,4]) -> (f32[4,4], f32[4,4]) {
+  %slice = f32[4,4] parameter(1)
+  %carry = f32[4,4] parameter(0)
+  %add = f32[4,4] add(%slice, %carry)
+  ROOT %tup = (f32[4,4], f32[4,4]) tuple(%add, %add)
+}
+
+ENTRY main {
+  %arg = f32[3,4,4] parameter(0)
+  %zero = f32[] constant(0)
+  %init = f32[4,4] broadcast(%zero), dimensions={}
+  %scan = (f32[3,4,4], f32[4,4]) scan(%arg, %init),
+      dimensions={0}, num_carries=1, is_associative=true, to_apply=%combine
+  %scan_out = f32[3,4,4] get-tuple-element(%scan), index=0
+  // Explicit F32->BF16 convert that propagation should subsume by lowering
+  // the scan's per-step output to BF16 directly.
+  ROOT %bf = bf16[3,4,4] convert(%scan_out)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+
+  // Run with the production FloatSupport, NOT the TestBFloat16Support
+  // fixture. Pre-fix this would leave the scan output as F32; post-fix the
+  // scan's per-step output should be promoted to BF16 (and the explicit
+  // convert removed by the no-op cleanup at the end of the pass).
+  FloatSupport production_bf16_support(BF16);
+  BFloat16Propagation propagation(&production_bf16_support, &alias_info_);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, propagation.Run(module.get()));
+  EXPECT_TRUE(changed) << "Production FloatSupport should propagate BF16 "
+                          "through associative scan; if this fails, kScan "
+                          "may have been dropped from "
+                          "FloatSupport::SupportsLowPrecisionOutput / "
+                          "SupportsLowPrecisionOperand.";
+
+  HloInstruction* scan = FindInstruction(module.get(), "scan");
+  ASSERT_NE(scan, nullptr);
+  ASSERT_EQ(scan->opcode(), HloOpcode::kScan);
+  ASSERT_TRUE(scan->shape().IsTuple());
+  // Slot 0 (per-step output) should now be BF16; the carry (slot 1) is left
+  // F32 because no consumer demanded BF16 of the carry chain.
+  EXPECT_EQ(scan->shape().tuple_shapes(0).element_type(), BF16);
+  EXPECT_EQ(scan->shape().tuple_shapes(1).element_type(), F32);
+
+  // The post-pass module must verify cleanly under mixed precision.
+  EXPECT_TRUE(HloVerifier(/*layout_sensitive=*/false,
+                          /*allow_mixed_precision=*/true)
+                  .Run(module.get())
+                  .status()
+                  .ok());
+}
+
+// Regression test for AlignScanCarryPrecisions: when carry_init is BF16 we
+// must NOT downgrade the body parameter / body root / scan result carry
+// slots to F32, even if some of them appear F32 in the type query. Doing so
+// would leave the scan operand (BF16) and body parameter (F32) inconsistent
+// because we cannot rewrite the carry init operand here without affecting
+// other consumers. AlignScanCarryPrecisions therefore bails out unless
+// types[0] (carry_init) is F32, deferring any such mismatch to
+// FloatNormalization downstream.
+//
+// This test exercises the bail-out by feeding a scan whose carry chain is
+// fully BF16 (init is a bf16 parameter, body parameter / body root / scan
+// result are all bf16). The downstream user of the per-step output upcasts
+// to F32, but the carry chain has no F32-demanding consumer. The pass must
+// run without crashing inside AlignScanCarryPrecisions and must leave every
+// carry slot as BF16; in particular it must NOT introduce a carry_init vs
+// body_parameter precision mismatch.
+TEST_F(BFloat16PropagationTest, ScanCarryAlignmentSkipsBf16CarryInit) {
+  constexpr absl::string_view kHlo = R"(
+HloModule scan_bf16_carry_init
+
+%combine (carry: bf16[4,4], slice: bf16[4,4]) -> (bf16[4,4], bf16[4,4]) {
+  %carry = bf16[4,4] parameter(0)
+  %slice = bf16[4,4] parameter(1)
+  %add = bf16[4,4] add(%carry, %slice)
+  ROOT %tup = (bf16[4,4], bf16[4,4]) tuple(%add, %add)
+}
+
+ENTRY main {
+  %arg = bf16[3,4,4] parameter(0)
+  %init = bf16[4,4] parameter(1)
+  %scan = (bf16[3,4,4], bf16[4,4]) scan(%arg, %init),
+      dimensions={0}, num_carries=1, is_associative=true, to_apply=%combine
+  %out = bf16[3,4,4] get-tuple-element(%scan), index=0
+  // Force the per-step output up to F32 downstream so propagation has work
+  // to do, but leave the carry chain entirely BF16.
+  ROOT %f = f32[3,4,4] convert(%out)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  PropagatePrecision(module.get());
+
+  HloInstruction* scan = FindInstruction(module.get(), "scan");
+  ASSERT_NE(scan, nullptr);
+  ASSERT_EQ(scan->opcode(), HloOpcode::kScan);
+  ASSERT_TRUE(scan->shape().IsTuple());
+
+  // Carry slot (slot 1) must remain BF16 across init / body parameter /
+  // body root / scan result. AlignScanCarryPrecisions must NOT downgrade
+  // these to F32 just because they "look mixed" relative to other slots.
+  EXPECT_EQ(scan->operand(1)->shape().element_type(), BF16);  // carry init.
+  HloComputation* body = scan->to_apply();
+  EXPECT_EQ(body->parameter_instruction(1)->shape().element_type(), BF16);
+  HloInstruction* body_root = body->root_instruction();
+  ASSERT_EQ(body_root->opcode(), HloOpcode::kTuple);
+  EXPECT_EQ(body_root->shape().tuple_shapes(1).element_type(), BF16);
+  EXPECT_EQ(scan->shape().tuple_shapes(1).element_type(), BF16);
+
+  // The post-pass module must still verify cleanly: a downgrade would have
+  // left scan-operand BF16 vs body-parameter F32, which the verifier rejects
+  // even under allow_mixed_precision because it's not a "narrowing" mismatch
+  // the verifier tolerates.
+  EXPECT_TRUE(HloVerifier(/*layout_sensitive=*/false,
+                          /*allow_mixed_precision=*/true)
+                  .Run(module.get())
+                  .status()
+                  .ok());
+}
+
+TEST_F(BFloat16PropagationTest,
+       DoNotPropagateThroughBitcastDifferentElementTypes) {
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+  Shape u32_shape = ShapeUtil::MakeShape(U32, {4, 4});
+  Shape f32_shape = ShapeUtil::MakeShape(F32, {4, 4});
+
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, u32_shape, "param"));
+  HloInstruction* bitcast =
+      builder.AddInstruction(HloInstruction::CreateBitcast(f32_shape, param));
+  auto dot = builder.AddInstruction(CreateDot(f32_shape, bitcast, bitcast));
+
+  auto computation = module->AddEntryComputation(builder.Build());
+  PropagatePrecision(module.get());
+
+  EXPECT_EQ(computation->root_instruction(), dot);
+  EXPECT_EQ(bitcast->shape().element_type(), F32);
+  EXPECT_EQ(param->shape().element_type(), U32);
+  EXPECT_FALSE(OutputsBF16(bitcast));
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+TEST_F(BFloat16PropagationTest, BitcastDifferentElementTypesInWhileLoop) {
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+  Shape u32_shape = ShapeUtil::MakeShape(U32, {4, 4});
+  Shape f32_shape = ShapeUtil::MakeShape(F32, {4, 4});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({u32_shape, f32_shape});
+
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "param"));
+
+  auto builder_cond = HloComputation::Builder("cond");
+  builder_cond.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "cond_param"));
+  builder_cond.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+  auto cond = module->AddEmbeddedComputation(builder_cond.Build());
+
+  auto builder_body = HloComputation::Builder("body");
+  auto body_param = builder_body.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "body_param"));
+  auto u32_elem = builder_body.AddInstruction(
+      HloInstruction::CreateGetTupleElement(u32_shape, body_param, 0));
+  auto f32_elem = builder_body.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32_shape, body_param, 1));
+  auto bitcast = builder_body.AddInstruction(
+      HloInstruction::CreateBitcast(f32_shape, u32_elem));
+  auto body_dot =
+      builder_body.AddInstruction(CreateDot(f32_shape, bitcast, f32_elem));
+  builder_body.AddInstruction(
+      HloInstruction::CreateTuple({u32_elem, body_dot}));
+  auto body = module->AddEmbeddedComputation(builder_body.Build());
+
+  auto while_hlo = builder.AddInstruction(
+      HloInstruction::CreateWhile(tuple_shape, cond, body, param));
+
+  auto while_out_f32 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32_shape, while_hlo, 1));
+  auto entry_dot = builder.AddInstruction(
+      CreateDot(f32_shape, while_out_f32, while_out_f32));
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(PropagatePrecision(module.get()));
+
+  EXPECT_EQ(computation->root_instruction(), entry_dot);
+  EXPECT_EQ(bitcast->shape().element_type(), F32);
+  EXPECT_EQ(u32_elem->shape().element_type(), U32);
+  EXPECT_FALSE(OutputsBF16(bitcast));
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+TEST_F(BFloat16PropagationTest, BitcastDifferentElementTypesIsWhileRoot) {
+  const std::string module_str = R"(
+HloModule module
+
+cond {
+  cond_param = f32[4,4] parameter(0)
+  ROOT cond_root = pred[] constant(true)
+}
+
+body {
+  body_param = f32[4,4] parameter(0)
+  bitcast_in = u32[4,4] bitcast(body_param)
+  ROOT bitcast_out = f32[4,4] bitcast(bitcast_in)
+}
+
+ENTRY entry {
+  param = f32[4,4] parameter(0)
+  while = f32[4,4] while(param), condition=cond, body=body
+  ROOT root_dot = f32[4,4] dot(while, while),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
+  EXPECT_FALSE(PropagatePrecision(module.get()));
+  auto bitcast_out = FindInstruction(module.get(), "bitcast_out");
+  ASSERT_NE(bitcast_out, nullptr);
+  EXPECT_FALSE(OutputsBF16(bitcast_out));
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+TEST_F(BFloat16PropagationTest, BitcastBf16ToF32InWhileLoop) {
+  const std::string module_str = R"(
+HloModule module
+
+cond {
+  cond_param = f32[4,4] parameter(0)
+  ROOT cond_root = pred[] constant(true)
+}
+
+body {
+  body_param = f32[4,4] parameter(0)
+  bitcast_in = bf16[4,4] bitcast(body_param)
+  ROOT bitcast_out = f32[4,4] bitcast(bitcast_in)
+}
+
+ENTRY entry {
+  param = f32[4,4] parameter(0)
+  while = f32[4,4] while(param), condition=cond, body=body
+  ROOT root_dot = f32[4,4] dot(while, while),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
+  EXPECT_FALSE(PropagatePrecision(module.get()));
+  auto bitcast_out = FindInstruction(module.get(), "bitcast_out");
+  ASSERT_NE(bitcast_out, nullptr);
+  EXPECT_FALSE(OutputsBF16(bitcast_out));
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
 }
 
 }  // namespace xla

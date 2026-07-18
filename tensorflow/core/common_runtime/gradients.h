@@ -28,7 +28,7 @@ struct NodeOut {
   int index;
 
   // Returns the string name that represents the output of this node.
-  string name() const;
+  std::string name() const;
   // Returns the data type of the output of this node.
   DataType dtype() const;
 };

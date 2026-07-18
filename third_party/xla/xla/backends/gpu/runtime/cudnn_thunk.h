@@ -26,20 +26,29 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/traced_command.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/dnn.h"
 
 namespace xla {
 namespace gpu {
 
 // Wraps executable cuDNN graph objects.
-class CuDnnThunk : public Thunk {
+//
+// Also implements Command (via TracedCommand) so it can be recorded directly
+// into command buffers. Record() prefers explicit command-buffer construction
+// when the graph supports it and falls back to tracing ExecuteOnStream via
+// RecordTracedCommand otherwise.
+class CuDnnThunk : public TracedCommand {
  public:
-  CuDnnThunk(std::string fingerprint, ThunkInfo,
-             std::vector<BufferAllocation::Slice> args,
-             std::vector<bool> output_args,
+  CuDnnThunk(std::string fingerprint, ThunkInfo, std::vector<ShapedSlice> args,
+             std::vector<bool> output_args, bool should_memzero = false,
              std::optional<int64_t> sdpa_dropout_seed = std::nullopt);
   CuDnnThunk(const CuDnnThunk&) = delete;
   CuDnnThunk& operator=(const CuDnnThunk&) = delete;
@@ -48,9 +57,26 @@ class CuDnnThunk : public Thunk {
   absl::Status Initialize(const InitializeParams&) override;
   absl::Status ExecuteOnStream(const ExecuteParams&) override;
 
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override;
+
   std::shared_ptr<se::dnn::LazyDnnGraph> graph() const { return graph_; }
-  const std::vector<BufferAllocation::Slice>& arguments() const {
-    return args_;
+  const std::vector<ShapedSlice>& arguments() const { return args_; }
+
+  BufferUses buffer_uses() const override {
+    BufferUses res;
+    res.reserve(args_.size());
+
+    for (int i = 0; i < args_.size(); i++) {
+      if (output_args_[i]) {
+        res.push_back(BufferUse::Write(args_[i].slice, args_[i].shape));
+        continue;
+      }
+      res.push_back(BufferUse::Read(args_[i].slice, args_[i].shape));
+    }
+    return res;
   }
 
   absl::StatusOr<ThunkProto> ToProto() const override;
@@ -63,8 +89,9 @@ class CuDnnThunk : public Thunk {
   absl::once_flag once_flag_;
   std::string fingerprint_;
   std::shared_ptr<se::dnn::LazyDnnGraph> graph_;
-  std::vector<BufferAllocation::Slice> args_;
+  std::vector<ShapedSlice> args_;
   std::vector<bool> output_args_;
+  bool should_memzero_;
   // Sdpa dropout seed
   std::optional<int64_t> sdpa_dropout_seed_;
 };

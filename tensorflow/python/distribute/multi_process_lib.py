@@ -105,15 +105,16 @@ def _set_spawn_exe_path():
         # /.../tensorflow/python/distribute/input_lib_test.py
         # and the binary is
         # /.../tensorflow/python/distribute/input_lib_test_multiworker_gpu
-        package_root_base = sys.argv[0][:sys.argv[0].rfind(package_root)]
+        package_root_base = sys.argv[0][: sys.argv[0].rfind(package_root)]
         binary = os.environ['TEST_TARGET'][2:].replace(':', '/', 1)
-        possible_path = os.path.join(package_root_base, package_root,
-                                     binary)
+        possible_path = os.path.join(package_root_base, package_root, binary)
         logging.info('Guessed test binary path: %s', possible_path)
         if os.access(possible_path, os.X_OK):
           return possible_path
         return None
-    path = guess_path('org_tensorflow')
+    path = guess_path('_main')  # bzlmod
+    if not path:
+      path = guess_path('org_tensorflow')
     if not path:
       path = guess_path('org_keras')
     if path is None:
@@ -134,8 +135,7 @@ def _if_spawn_run_and_exit():
   # the process is spawned. Examples of x are "forkserver" or
   # "semaphore_tracker".
   is_spawned = ('-c' in sys.argv[1:] and
-                sys.argv[sys.argv.index('-c') +
-                         1].startswith('from multiprocessing.'))
+                'from multiprocessing.' in sys.argv[sys.argv.index('-c') + 1])
 
   if not is_spawned:
     return

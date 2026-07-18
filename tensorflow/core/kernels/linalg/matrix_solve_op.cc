@@ -18,6 +18,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
+#include <limits>
 #include <numeric>
 
 #include "Eigen/Core"  // from @eigen_archive
@@ -66,8 +67,9 @@ class MatrixSolveOp : public LinearAlgebraOp<Scalar> {
     double rows = static_cast<double>(input_matrix_shapes[0].dim_size(0));
     double num_rhss = static_cast<double>(input_matrix_shapes[1].dim_size(1));
     double cost = rows * rows * (rows + num_rhss);
-    return cost >= static_cast<double>(kint64max) ? kint64max
-                                                  : static_cast<int64_t>(cost);
+    return cost >= static_cast<double>(std::numeric_limits<int64_t>::max())
+               ? std::numeric_limits<int64_t>::max()
+               : static_cast<int64_t>(cost);
   }
 
   bool EnableInputForwarding() const final { return false; }
@@ -99,7 +101,7 @@ class MatrixSolveOp : public LinearAlgebraOp<Scalar> {
     const RealScalar min_abs_pivot =
         lu_decomposition.matrixLU().diagonal().cwiseAbs().minCoeff();
     OP_REQUIRES(context, min_abs_pivot > RealScalar(0),
-                errors::InvalidArgument(kErrMsg));
+                absl::InvalidArgumentError(kErrMsg));
 
     // TODO(rmlarsen): Add check based on condition number estimation.
     // The necessary changes to Eigen are in
@@ -133,30 +135,30 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
     const int64_t n = input.dim_size(ndims - 1);
     const int64_t nrhs = rhs.dim_size(ndims - 1);
     // Validate inputs.
-    OP_REQUIRES_ASYNC(
-        context, ndims >= 2,
-        errors::InvalidArgument("Input must have rank >= 2, got ", ndims),
-        done);
-    OP_REQUIRES_ASYNC(context, rhs.dims() == ndims,
-                      errors::InvalidArgument(
-                          "Input and right-hand side must have same rank, got ",
-                          ndims, " != ", rhs.dims()),
+    OP_REQUIRES_ASYNC(context, ndims >= 2,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "Input must have rank >= 2, got ", ndims)),
                       done);
-    OP_REQUIRES_ASYNC(
-        context, input.dim_size(ndims - 2) == n,
-        errors::InvalidArgument("Input matrices must be squares, got ",
-                                input.dim_size(ndims - 2), " != ", n),
-        done);
+    OP_REQUIRES_ASYNC(context, rhs.dims() == ndims,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "Input and right-hand side must have same rank, got ",
+                          ndims, " != ", rhs.dims())),
+                      done);
+    OP_REQUIRES_ASYNC(context, input.dim_size(ndims - 2) == n,
+                      absl::InvalidArgumentError(
+                          absl::StrCat("Input matrices must be squares, got ",
+                                       input.dim_size(ndims - 2), " != ", n)),
+                      done);
     OP_REQUIRES_ASYNC(context, rhs.dim_size(ndims - 2) == n,
-                      errors::InvalidArgument(
+                      absl::InvalidArgumentError(absl::StrCat(
                           "Input matrix and right-hand side must have the "
                           "same number of rows, got ",
-                          n, " != ", rhs.dim_size(ndims - 2)),
+                          n, " != ", rhs.dim_size(ndims - 2))),
                       done);
     for (int dim = 0; dim < ndims - 2; dim++) {
       OP_REQUIRES_ASYNC(
           context, input.dim_size(dim) == rhs.dim_size(dim),
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(
               "All input tensors must have the same outer dimensions."),
           done);
     }
@@ -219,7 +221,7 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
     // 1. Compute the partially pivoted LU factorization(s) of the
     // matrix/matrices.
     std::vector<DeviceLapackInfo> dev_info;
-    auto input_copy_ptrs = solver->GetScratchSpace<uint8>(
+    auto input_copy_ptrs = solver->GetScratchSpace<uint8_t>(
         sizeof(Scalar*) * batch_size, "input_copt_ptrs",
         /* on_host */ true);
     const int kMaxMatrixSizeToBatchSizeRatio = 128;
@@ -299,10 +301,10 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
     // fly. (This means that we actually use the LU-factorization of A^T in that
     // case, but that is equally good for solving AX=B). This way we save an
     // explicit transpose in the more common case of adjoint_ == false.
-    auto input_copy_ptr_array = solver->GetScratchSpace<uint8>(
+    auto input_copy_ptr_array = solver->GetScratchSpace<uint8_t>(
         sizeof(Scalar*) * batch_size, "input_copy_ptr_array",
         /* on_host */ true);
-    auto transposed_rhs_ptr_array = solver->GetScratchSpace<uint8>(
+    auto transposed_rhs_ptr_array = solver->GetScratchSpace<uint8_t>(
         sizeof(Scalar*) * batch_size, "transposed_rhs_ptr_array",
         /* on_host */ true);
     auto transposed_rhs_reshaped =
@@ -331,12 +333,12 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
                                pivots_mat.data(), transposed_rhs_ptrs_base, n,
                                &host_info, batch_size),
           done);
-      OP_REQUIRES_ASYNC(
-          context, host_info == 0,
-          errors::InvalidArgument("The ", -host_info,
-                                  "'th argument to cublas*getrsBatched had "
-                                  "an illegal value."),
-          done);
+      OP_REQUIRES_ASYNC(context, host_info == 0,
+                        absl::InvalidArgumentError(absl::StrCat(
+                            "The ", -host_info,
+                            "'th argument to cublas*getrsBatched had "
+                            "an illegal value.")),
+                        done);
     } else {
       dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "getrs"));
       for (int batch = 0; batch < batch_size; ++batch) {
@@ -365,7 +367,7 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
     // kernels run. TODO(rmlarsen): Use move capture once C++14 becomes
     // available.
     auto info_checker = [context, done, dev_info](
-                            const Status& status,
+                            const absl::Status& status,
                             const std::vector<HostLapackInfo>& host_infos) {
       if (!status.ok() && absl::IsInvalidArgument(status) &&
           !host_infos.empty()) {
@@ -373,7 +375,7 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
           // Match the CPU error message for singular matrices. Otherwise
           // just print the original error message from the status below.
           OP_REQUIRES_ASYNC(context, host_infos[0].data()[i] <= 0,
-                            errors::InvalidArgument(kErrMsg), done);
+                            absl::InvalidArgumentError(kErrMsg), done);
         }
       }
       OP_REQUIRES_OK_ASYNC(context, status, done);

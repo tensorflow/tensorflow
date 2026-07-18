@@ -15,25 +15,25 @@ limitations under the License.
 
 #include "tensorflow/core/framework/local_rendezvous.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/hash/hash.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/logging.h"
 #include "tensorflow/core/activity_watcher/activity.h"
-#include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/gtl/manual_constructor.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/refcount.h"
-#include "tensorflow/core/platform/types.h"
 #include "tsl/platform/refcount.h"
 
 namespace tensorflow {
@@ -141,16 +141,43 @@ LocalRendezvous::~LocalRendezvous() {
 }
 
 namespace {
-uint64 KeyHash(const absl::string_view& k) {
-  return Hash64(k.data(), k.size());
-}
+class KeyHash {
+ public:
+  // We use salted hashing (see go/totw/189) to reduce the likelihood of hash
+  // collisions. Note: if the strings are long, then it would be better to
+  // generate both hashes while iterating once over the string, but in practice,
+  // it's hard to beat absl::Hash, which is highly optimized.
+  explicit KeyHash(absl::string_view key) {
+    // We use absl::HashOf instead of tsl::Hash64 because it's faster, and we
+    // don't need a deterministic hash function.
+    bucket_hash_ = absl::HashOf(key);
+    constexpr int kArbitraryConstant = 100;
+    // Note: it's important that the arbitrary constant is passed to HashOf
+    // before `key` so that the different initial hash state cascades while
+    // hashing the string contents.
+    table_hash_ = absl::HashOf(kArbitraryConstant, key);
+  }
+  uint64_t bucket(uint64_t num_buckets) const {
+    return bucket_hash_ % num_buckets;
+  }
+  uint64_t table_hash() const { return table_hash_; }
+  std::string ToString() const {
+    return absl::StrFormat("bucket_hash: %#x, table_hash: %#x", bucket_hash_,
+                           table_hash_);
+  }
+
+ private:
+  uint64_t bucket_hash_;
+  uint64_t table_hash_;
+};
 }  // namespace
 
 absl::Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
                                    const Rendezvous::Args& send_args,
                                    const Tensor& val, const bool is_dead) {
-  uint64 key_hash = KeyHash(key.FullKey());
-  DVLOG(2) << "Send " << this << " " << key_hash << " " << key.FullKey();
+  KeyHash key_hash = KeyHash(key.FullKey());
+  DVLOG(2) << "Send " << this << " " << key_hash.ToString() << " "
+           << key.FullKey();
 
   if (is_dead) {
     static auto* rendezvous_dead_values_sent = monitoring::Counter<2>::New(
@@ -158,17 +185,20 @@ absl::Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
         "The number of dead values sent between a pair of devices.",
         "send_device", "recv_device");
     rendezvous_dead_values_sent
-        ->GetCell(string(key.src_device), string(key.dst_device))
+        ->GetCell(std::string(key.src_device), std::string(key.dst_device))
         ->IncrementBy(1);
   }
 
-  TF_RETURN_IF_ERROR(status());
-
-  int bucket_index = key_hash % num_buckets_;
+  int bucket_index = key_hash.bucket(num_buckets_);
   auto& bucket = table_buckets_[bucket_index];
   bucket.mu.lock();
 
-  auto it = bucket.table.insert({key_hash, ItemQueue()}).first;
+  if (auto s = status(); !s.ok()) {
+    bucket.mu.unlock();
+    return s;
+  }
+
+  auto it = bucket.table.insert({key_hash.table_hash(), ItemQueue()}).first;
   ItemQueue* queue = &it->second;
   if (queue->head == nullptr || queue->head->type == Item::kSend) {
     // There is no waiter for this message. Append the message
@@ -186,7 +216,7 @@ absl::Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
               activity_watcher::Activity::Attributes{
                   {"Rendezvous", absl::StrFormat("%p", this)},
                   {"key", std::string(key.FullKey())},
-                  {"key_hash", absl::StrCat(key_hash)},
+                  {"key_hash", key_hash.ToString()},
               });
         },
         /*level=*/1);
@@ -229,22 +259,23 @@ absl::Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
 void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
                                 const Rendezvous::Args& recv_args,
                                 Rendezvous::DoneCallback done) {
-  uint64 key_hash = KeyHash(key.FullKey());
-  DVLOG(2) << "Recv " << this << " " << key_hash << " " << key.FullKey();
+  KeyHash key_hash = KeyHash(key.FullKey());
+  DVLOG(2) << "Recv " << this << " " << key_hash.ToString() << " "
+           << key.FullKey();
   tsl::core::RefCountPtr<Rendezvous> rc_keep_alive;
 
-  auto s = status();
-  if (!s.ok()) {
+  int bucket_index = key_hash.bucket(num_buckets_);
+  auto& bucket = table_buckets_[bucket_index];
+  bucket.mu.lock();
+
+  if (auto s = status(); !s.ok()) {
+    bucket.mu.unlock();
     // Rendezvous has been aborted.
     done(s, Rendezvous::Args(), recv_args, Tensor(), false);
     return;
   }
 
-  int bucket_index = key_hash % num_buckets_;
-  auto& bucket = table_buckets_[bucket_index];
-  bucket.mu.lock();
-
-  auto it = bucket.table.insert({key_hash, ItemQueue()}).first;
+  auto it = bucket.table.insert({key_hash.table_hash(), ItemQueue()}).first;
   ItemQueue* queue = &it->second;
   if (queue->head == nullptr || queue->head->type == Item::kRecv) {
     // There is no message to pick up.
@@ -253,39 +284,50 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
     CancellationToken token = CancellationManager::kInvalidToken;
     bool already_cancelled = false;
     if (cm != nullptr) {
+      // Take a reference for the cancellation callback so that it does not
+      // access LocalRendezvous after it is destroyed. It's dropped either
+      // at the end of the callback, or when callback registration fails,
+      // or when the cancellation callback is cancelled.
+      if (rc_owner_) {
+        rc_owner_->Ref();
+      }
       token = cm->get_cancellation_token();
       already_cancelled = !cm->RegisterCallback(token, [this, token, key_hash,
                                                         &bucket] {
+        tsl::core::RefCountPtr<Rendezvous> rc_owner(rc_owner_);
         Item* item = nullptr;
         {
           mutex_lock l(bucket.mu);
-          auto it = bucket.table.insert({key_hash, ItemQueue()}).first;
-          ItemQueue* queue = &it->second;
-          // Find an item in the queue with a cancellation token that matches
-          // `token`, and remove it.
-          if (queue->head != nullptr && queue->head->type == Item::kRecv) {
-            for (Item *prev = nullptr, *curr = queue->head; curr != nullptr;
-                 prev = curr, curr = curr->next) {
-              if (curr->recv_state.cancellation_token == token) {
-                item = curr;
-                if (queue->head->next == nullptr) {
-                  // We have a single-element queue, so we can erase it from
-                  // the table.
-                  bucket.table.erase(it);
-                } else {
-                  // Remove the current item from the queue.
-                  if (curr == queue->head) {
-                    DCHECK_EQ(prev, nullptr);
-                    queue->head = curr->next;
+
+          auto it = bucket.table.find(key_hash.table_hash());
+          if (it != bucket.table.end()) {
+            ItemQueue* queue = &it->second;
+            // Find an item in the queue with a cancellation token that matches
+            // `token`, and remove it.
+            if (queue->head != nullptr && queue->head->type == Item::kRecv) {
+              for (Item *prev = nullptr, *curr = queue->head; curr != nullptr;
+                   prev = curr, curr = curr->next) {
+                if (curr->recv_state.cancellation_token == token) {
+                  item = curr;
+                  if (queue->head->next == nullptr) {
+                    // We have a single-element queue, so we can erase it from
+                    // the table.
+                    bucket.table.erase(it);
                   } else {
-                    DCHECK_NE(prev, nullptr);
-                    prev->next = curr->next;
+                    // Remove the current item from the queue.
+                    if (curr == queue->head) {
+                      DCHECK_EQ(prev, nullptr);
+                      queue->head = curr->next;
+                    } else {
+                      DCHECK_NE(prev, nullptr);
+                      prev->next = curr->next;
+                    }
+                    if (queue->tail == curr) {
+                      queue->tail = prev;
+                    }
                   }
-                  if (queue->tail == curr) {
-                    queue->tail = prev;
-                  }
+                  break;
                 }
-                break;
               }
             }
           }
@@ -294,17 +336,23 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
         if (item != nullptr) {
           (*item->recv_state.waiter)(
               StatusGroup::MakeDerived(
-                  errors::Cancelled("RecvAsync is cancelled.")),
+                  absl::CancelledError("RecvAsync is cancelled.")),
               Rendezvous::Args(), item->args, Tensor(), /*is_dead=*/false);
           delete item;
         }
       });
     }
     if (already_cancelled) {
+      if (queue->head == nullptr) {
+        bucket.table.erase(it);
+      }
       bucket.mu.unlock();
       done(StatusGroup::MakeDerived(
-               errors::Cancelled("RecvAsync is cancelled.")),
+               absl::CancelledError("RecvAsync is cancelled.")),
            Rendezvous::Args(), recv_args, Tensor(), /*is_dead=*/false);
+      if (rc_owner_) {
+        rc_owner_->Unref();
+      }
       return;
     }
 
@@ -320,7 +368,7 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
               activity_watcher::Activity::Attributes{
                   {"Rendezvous", absl::StrFormat("%p", this)},
                   {"key", std::string(key.FullKey())},
-                  {"key_hash", absl::StrCat(key_hash)},
+                  {"key_hash", key_hash.ToString()},
               });
         },
         /*level=*/1);
@@ -339,7 +387,9 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
             // StartAbort, Unref will happen inside the cancellation callback
             // when called by the CM.
             if (cm->TryDeregisterCallback(token)) {
-              // Ignore the return value.
+              if (rc_owner_) {
+                rc_owner_->Unref();
+              }
             }
             done(s, send_args, recv_args, v, dead);
           },
@@ -404,8 +454,13 @@ void LocalRendezvous::DoAbort(const absl::Status& status) {
     mutex_lock l(mu_);
     status_.Update(status);
   }
-  LOG_EVERY_POW_2(INFO) << "Local rendezvous is aborting with status: "
-                        << status;
+
+  // OUT_OF_RANGE implies a normal end of sequence (e.g. for tf.data),
+  // so we suppress the warning to avoid log noise.
+  if (status.code() != absl::StatusCode::kOutOfRange) {
+    LOG_EVERY_POW_2(WARNING)
+        << "Local rendezvous is aborting with status: " << status;
+  }
 
   // Keeps one Item to make sure the current rendezvous won't be destructed.
   std::unique_ptr<Item> to_delete;
@@ -418,6 +473,7 @@ void LocalRendezvous::DoAbort(const absl::Status& status) {
     }
     for (auto& p : table) {
       Item* item = p.second.head;
+      DCHECK(item);  // we delete all empty lists from the table
       while (item != nullptr) {
         switch (item->type) {
           case Item::kRecv:

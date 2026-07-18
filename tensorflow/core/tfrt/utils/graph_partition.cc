@@ -90,7 +90,7 @@ absl::Status PrepareSubgraphForFunctionConversion(
     int position = -1;
     std::string node_name = grappler::ParseNodeName(input, &position);
     if (position != 0) {
-      return errors::Unimplemented(
+      return absl::UnimplementedError(
           "Support for input node with multiple output tensors is not "
           "implemented.");
     }
@@ -135,7 +135,7 @@ absl::Status PrepareSubgraphForFunctionConversion(
     int position = -1;
     std::string node_name = grappler::ParseNodeName(output, &position);
     if (position != 0) {
-      return errors::Unimplemented(
+      return absl::UnimplementedError(
           "Support for output node with multiple output tensors is not "
           "implemented.");
     }
@@ -218,7 +218,7 @@ absl::StatusOr<Node*> BuildPartitionedCallOp(
     const std::string& device,
     const absl::flat_hash_map<std::string, NodeInfo>& input_nodes,
     const absl::flat_hash_map<std::string, NodeInfo>& output_nodes,
-    const absl::optional<std::pair<std::string, NodeInfo>>&
+    const std::optional<std::pair<std::string, NodeInfo>>&
         auxiliary_output_node,
     const std::vector<std::string>& control_outputs, Graph* subgraph,
     Graph* graph) {
@@ -271,7 +271,7 @@ absl::StatusOr<Node*> BuildPartitionedCallOp(
     }
   }
   auto control_ret_node_names =
-      [&control_ret_names](const Node* node) -> absl::optional<std::string> {
+      [&control_ret_names](const Node* node) -> std::optional<std::string> {
     if (control_ret_names.contains(node->name())) {
       return node->name();
     }
@@ -436,7 +436,7 @@ absl::StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
   auto new_graph = std::make_unique<Graph>(graph->flib_def());
   FunctionDefLibrary flib = graph->flib_def().ToProto();
 
-  std::unordered_map<string, std::unique_ptr<Graph>> partitions;
+  std::unordered_map<std::string, std::unique_ptr<Graph>> partitions;
   TF_RETURN_IF_ERROR(
       PartitionFunctionGraph(device_set, std::move(graph), &partitions));
 
@@ -447,7 +447,7 @@ absl::StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
   std::map<std::string, OutputNodeInfo> device_to_output_info_map;
 
   for (auto& partition : partitions) {
-    const string& device = partition.first;
+    const std::string& device = partition.first;
     VLOG(1) << "Process the partitioin on device: " << device;
 
     Graph* subgraph = partition.second.get();

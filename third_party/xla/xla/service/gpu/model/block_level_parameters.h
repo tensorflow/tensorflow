@@ -27,15 +27,16 @@ namespace gpu {
 // A container for block-level parameters. Currently only used for Triton
 // fusions.
 struct BlockLevelParameters {
-  // TODO(b/421837868): migrate to carry a full tiling instance wherever
-  // possible?
   std::vector<std::vector<int64_t>> output_tile_sizes;
 
   // Triton-specific parameters.
   int64_t num_warps = 1;
   int num_ctas = 1;
   int num_stages = 1;
+  int64_t global_scratch_memory_size = 0;
   bool is_tma_allowed = false;
+  bool is_warp_specialization_allowed = false;
+  int waves_per_eu = 0;
 
   // Returns a BlockLevelParameters struct from a BlockLevelFusionConfig proto.
   static BlockLevelParameters FromBlockLevelFusionConfig(
@@ -45,6 +46,9 @@ struct BlockLevelParameters {
     result.num_ctas = config.num_ctas();
     result.num_stages = config.num_stages();
     result.is_tma_allowed = config.is_tma_allowed();
+    result.is_warp_specialization_allowed =
+        config.is_warp_specialization_allowed();
+    result.waves_per_eu = config.waves_per_eu();
     result.output_tile_sizes.reserve(config.output_tiles_size());
     for (const auto& tile : config.output_tiles()) {
       result.output_tile_sizes.push_back(
@@ -65,6 +69,8 @@ struct BlockLevelParameters {
     config.set_num_ctas(num_ctas);
     config.set_num_stages(num_stages);
     config.set_is_tma_allowed(is_tma_allowed);
+    config.set_is_warp_specialization_allowed(is_warp_specialization_allowed);
+    config.set_waves_per_eu(waves_per_eu);
     return config;
   }
 };

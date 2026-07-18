@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_CODEGEN_TILING_TILING_SPECIFICATION_H_
 
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/codegen/tiling/constraint_expression.h"
+#include "xla/codegen/tiling/experimental/tiling_space_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {
@@ -120,6 +122,9 @@ class TilingSpecification {
   // Returns the total number of parameters in the tiling specification.
   int64_t num_parameters() const { return num_parameters_; }
 
+  // Returns a string representation of the tiling specification.
+  std::string ToString() const;
+
  private:
   // `SymbolicTileAnalysis` is the only class allowed to construct
   // `TilingSpecification`s.
@@ -138,11 +143,6 @@ class TilingSpecification {
   ConstraintExpression constraints_;
   int64_t num_parameters_;
 };
-
-// A sequence of tile sizes.
-//
-// This is an inlined vector to avoid too many heap allocations.
-using FlatTiling = absl::InlinedVector<int64_t, 4>;
 
 // `Tiling`s are instantiations of `TilingSpecification`s, and the conformance
 // of a `Tiling` `t` to a `TilingSpecification` `spec` can be checked by calling

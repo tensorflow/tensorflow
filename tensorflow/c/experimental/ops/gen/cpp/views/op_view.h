@@ -41,11 +41,11 @@ class OpView {
   ArgView OnlyInput() const;
   ArgView OnlyOutput() const;
 
-  string FunctionName() const;
-  string VariableName() const;
-  string OpNameString() const;
-  string Summary() const;
-  std::vector<string> Description() const;
+  std::string FunctionName() const;
+  std::string VariableName() const;
+  std::string OpNameString() const;
+  std::string Summary() const;
+  std::vector<std::string> Description() const;
   bool IsListOp() const;
 
  private:

@@ -16,18 +16,18 @@ limitations under the License.
 #include "xla/service/gpu/gpu_float_support.h"
 
 #include <utility>
-#include <variant>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/float_support.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
@@ -57,9 +57,17 @@ bool GpuFloatSupport::SupportsMixedPrecisions(const HloInstruction& hlo) const {
   }
 }
 
+bool IsAnySubByteNonPredType(const Shape& shape) {
+  bool result = false;
+  ShapeUtil::ForEachSubshape(
+      shape, [&](const Shape& subshape, const ShapeIndex& /*index*/) {
+        result |= primitive_util::IsSubByteNonPredType(subshape.element_type());
+      });
+  return result;
+}
+
 bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
-  if (IsCollective(&hlo) &&
-      primitive_util::IsSubByteNonPredType(hlo.shape().element_type())) {
+  if (IsCollective(&hlo) && IsAnySubByteNonPredType(hlo.shape())) {
     return false;
   }
   switch (hlo.opcode()) {
@@ -73,21 +81,34 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
       // lower it to a dot + multiply for unsupported types.
       return true;
     case HloOpcode::kDot:  // Handled by Triton GEMM.
-      using TypeAndCC =
-          std::pair<PrimitiveType, stream_executor::CudaComputeCapability>;
-      for (auto [type, cc] :
-           {TypeAndCC(F8E4M3FN, se::CudaComputeCapability::Ampere()),
-            TypeAndCC(F8E5M2, se::CudaComputeCapability::Hopper())}) {
-        if (LowPrecisionType() == type) {
-          auto* cuda_compute_capability =
-              std::get_if<se::CudaComputeCapability>(&compute_capability_);
-          // Do not normalize supported types inside Triton fused computations.
-          return cuda_compute_capability &&
-                 cuda_compute_capability->SupportsAllFeaturesOf(cc) &&
-                 IsTritonFusedComputation(*hlo.parent());
+      // Do not normalize supported types inside Triton fused computations.
+      if (IsTritonFusedComputation(*hlo.parent())) {
+        if (auto* cuda_compute_capability =
+                compute_capability_.cuda_compute_capability()) {
+          using TypeAndCC =
+              std::pair<PrimitiveType, stream_executor::CudaComputeCapability>;
+          for (auto [type, cc] :
+               {TypeAndCC(F8E4M3FN, se::CudaComputeCapability::Ampere()),
+                TypeAndCC(F8E5M2, se::CudaComputeCapability::Hopper())}) {
+            if (LowPrecisionType() == type) {
+              return cuda_compute_capability->SupportsAllFeaturesOf(cc);
+            }
+          }
+        } else if (auto* rocm_cc =
+                       compute_capability_.rocm_compute_capability()) {
+          PrimitiveType low_prec = LowPrecisionType();
+          if (low_prec == F8E4M3FN || low_prec == F8E5M2) {
+            return rocm_cc->has_ocp_fp8_support();
+          }
+          if (low_prec == F8E4M3FNUZ || low_prec == F8E5M2FNUZ) {
+            return rocm_cc->has_nanoo_fp8_support();
+          }
         }
       }
       return LowPrecisionType() == BF16;
+    case HloOpcode::kConvolution:
+    case HloOpcode::kRaggedDot:
+      return true;
     // Data movement only ops.
     case HloOpcode::kAllGather:
     case HloOpcode::kAllToAll:
@@ -118,18 +139,48 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
       return true;
     // Elementwise ops.
     case HloOpcode::kExp:
-    case HloOpcode::kLog:
       if (LowPrecisionType() == BF16) {
-        auto* cuda_compute_capability =
-            std::get_if<se::CudaComputeCapability>(&compute_capability_);
-        return cuda_compute_capability != nullptr;
+        if (compute_capability_.IsCuda()) {
+          return true;
+        }
+        // gfx1250 has a native bf16 exponential instruction, so there is no
+        // need to upcast bf16 exp to f32.
+        if (auto* rocm_cc = compute_capability_.rocm_compute_capability()) {
+          return rocm_cc->has_bf16_transcendental_support();
+        }
       }
       return false;
+    case HloOpcode::kLog:
+      if (LowPrecisionType() == BF16) {
+        if (compute_capability_.IsCuda()) {
+          return true;
+        }
+        // gfx1250 has a native bf16 logarithm instruction, so there is no
+        // need to upcast bf16 log to f32.
+        if (auto* rocm_cc = compute_capability_.rocm_compute_capability()) {
+          return rocm_cc->has_bf16_transcendental_support();
+        }
+      }
+      return false;
+    case HloOpcode::kRsqrt:
+    case HloOpcode::kSqrt:
+    case HloOpcode::kTanh:
+      // gfx1250 has native bf16 transcendental instructions (v_sqrt_bf16,
+      // v_rsq_bf16, v_tanh_bf16), so there is no need to upcast these bf16 ops
+      // to f32.
+      if (LowPrecisionType() == BF16) {
+        if (auto* rocm_cc = compute_capability_.rocm_compute_capability()) {
+          return rocm_cc->has_bf16_transcendental_support();
+        }
+      }
+      return false;
+    case HloOpcode::kAbs:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
+    case HloOpcode::kNegate:
       if (LowPrecisionType() == BF16) {
         auto* cuda_compute_capability =
-            std::get_if<se::CudaComputeCapability>(&compute_capability_);
+            compute_capability_.cuda_compute_capability();
         return cuda_compute_capability != nullptr &&
                cuda_compute_capability->IsAtLeastAmpere();
       }
@@ -139,7 +190,7 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     case HloOpcode::kSubtract: {
       if (LowPrecisionType() == BF16) {
         auto* cuda_compute_capability =
-            std::get_if<se::CudaComputeCapability>(&compute_capability_);
+            compute_capability_.cuda_compute_capability();
         return cuda_compute_capability != nullptr &&
                cuda_compute_capability->IsAtLeastHopper();
       }

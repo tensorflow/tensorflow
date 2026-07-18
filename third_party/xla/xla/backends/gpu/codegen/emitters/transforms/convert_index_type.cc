@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <utility>
 
@@ -38,6 +37,10 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+#define GEN_PASS_DEF_CONVERTINDEXTYPEPASS
+#include "xla/backends/gpu/codegen/emitters/transforms/passes.h.inc"
+
 namespace {
 
 using mlir::ImplicitLocOpBuilder;
@@ -50,9 +53,6 @@ using mlir::PatternRewriter;
 using mlir::Type;
 
 namespace arith = mlir::arith;
-
-#define GEN_PASS_DEF_CONVERTINDEXTYPEPASS
-#include "xla/backends/gpu/codegen/emitters/transforms/passes.h.inc"
 
 // Rewrites a binary elementwise op on 'index' types to a binary elementwise
 // op on integers with the specified bit width.
@@ -85,13 +85,13 @@ class RewriteIndexBinaryElementwiseOp
 
     Type index_type = IndexType::get(op->getContext());
     Type dst_type = b.getIntegerType(index_bitwidth_);
-    auto lhs = b.create<arith::IndexCastOp>(dst_type, op->getOperand(0));
-    auto rhs = b.create<arith::IndexCastOp>(dst_type, op->getOperand(1));
-    auto new_op = b.create<BinaryElementwiseOp>(lhs, rhs);
+    auto lhs = arith::IndexCastOp::create(b, dst_type, op->getOperand(0));
+    auto rhs = arith::IndexCastOp::create(b, dst_type, op->getOperand(1));
+    auto new_op = BinaryElementwiseOp::create(b, lhs, rhs);
 
     rewriter.replaceAllUsesWith(
         op.getResult(),
-        b.create<arith::IndexCastOp>(index_type, new_op.getResult()));
+        arith::IndexCastOp::create(b, index_type, new_op.getResult()));
 
     return mlir::success();
   }
@@ -128,10 +128,5 @@ struct ConvertIndexTypePass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateConvertIndexTypePass() {
-  return std::make_unique<ConvertIndexTypePass>();
-}
-
 }  // namespace gpu
 }  // namespace xla

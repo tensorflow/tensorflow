@@ -32,9 +32,9 @@ class VarHandleOp : public OpKernel {
  private:
   // Same fields as in ResourceHandleOp.
   bool is_anonymous_;
-  string container_;
-  string name_;
-  string debug_name_;
+  std::string container_;
+  std::string name_;
+  std::string debug_name_;
   Tensor const_tensor_;
 
   DtypeAndPartialTensorShape dtype_and_shape_;
@@ -81,8 +81,9 @@ class VariableShapeOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     core::RefCountPtr<Var> variable;
-    OP_REQUIRES_OK(ctx,
-                   LookupResource(ctx, HandleFromInput(ctx, 0), &variable));
+    ResourceHandle handle;
+    OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 0, &handle));
+    OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &variable));
     variable->mu()->lock_shared();
     TensorShape shape = variable->tensor()->shape();
     variable->mu()->unlock_shared();

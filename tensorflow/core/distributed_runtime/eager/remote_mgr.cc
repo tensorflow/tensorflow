@@ -110,14 +110,14 @@ absl::Status RemoteMgr::GetMirroredResourceShape(
   auto iter = mirrored_resource_shape_map_.find(remote_handle);
   if (iter == mirrored_resource_shape_map_.end()) {
     // TODO(b/217820532): Fix the tensor deallocation order issue.
-    return WithErrorSourcePayload(errors::InvalidArgument(
+    return WithErrorSourcePayload(absl::InvalidArgumentError(absl::StrCat(
         "Unable to find the relevant tensor remote_handle: Op ID: ",
         remote_handle.op_id, ", Output num: ", remote_handle.output_num,
         ". One possible cause is that the tensor was accessed after "
         "deallocation in a distributed worker setup. Try setting "
         "`os.environ['TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE']='False'` in "
         "your client to disable async streaming behavior to see if it fixes "
-        "the problem."));
+        "the problem.")));
   }
 
   *handle = iter->second;
@@ -127,16 +127,16 @@ absl::Status RemoteMgr::GetMirroredResourceShape(
 
 absl::Status RemoteMgr::GetRemoteTensorHandle(
     const tensorflow::TensorHandle* handle, const bool wait_until_ready,
-    int64_t* op_id, int32* output_num) {
+    int64_t* op_id, int32_t* output_num) {
   TF_RETURN_IF_ERROR(handle->RemoteAddress(handle->device(), wait_until_ready,
                                            op_id, output_num));
   tensorflow::TensorHandle* h;
   TF_RETURN_IF_ERROR(
       GetTensorHandleImpl(RemoteTensorHandleInternal(*op_id, *output_num), &h));
   if (handle != h) {
-    return WithErrorSourcePayload(errors::Internal(
+    return WithErrorSourcePayload(absl::InternalError(absl::StrCat(
         "Found two different tensor handles with the same op_id:", *op_id,
-        " and output_num:", *output_num));
+        " and output_num:", *output_num)));
   }
   return absl::OkStatus();
 }
@@ -160,9 +160,9 @@ absl::Status RemoteMgr::DeleteTensorHandle(
       return absl::OkStatus();
     }
   }
-  return WithErrorSourcePayload(errors::InvalidArgument(
+  return WithErrorSourcePayload(absl::InvalidArgumentError(absl::StrCat(
       "Unable to find the relevant tensor remote_handle: Op ID: ",
-      remote_handle.op_id, ", Output num: ", remote_handle.output_num));
+      remote_handle.op_id, ", Output num: ", remote_handle.output_num)));
 }
 
 absl::Status RemoteMgr::SerializeRemoteTensorHandle(
@@ -213,7 +213,7 @@ absl::Status RemoteMgr::DeserializeRemoteTensorHandle(
   } else {
     // Create a remote TensorHandle for remote tensors which have not been
     // copied to the local worker yet (e.g. remote function inputs).
-    const string& device_name =
+    const std::string& device_name =
         in.op_device().empty() ? in.device() : in.op_device();
     TF_RETURN_IF_ERROR(
         parent_->FindDeviceFromName(device_name.c_str(), &device));
@@ -241,7 +241,7 @@ absl::Status RemoteMgr::DeserializeRemoteTensorHandle(
   return absl::OkStatus();
 }
 
-EagerExecutor& RemoteMgr::GetOrCreateExecutorForStream(uint64 stream_id) {
+EagerExecutor& RemoteMgr::GetOrCreateExecutorForStream(uint64_t stream_id) {
   mutex_lock l(executor_map_mu_);
   auto it = executor_map_.find(stream_id);
   if (it == executor_map_.end()) {
@@ -254,7 +254,7 @@ EagerExecutor& RemoteMgr::GetOrCreateExecutorForStream(uint64 stream_id) {
   return it->second;
 }
 
-void RemoteMgr::DeleteExecutorForStream(uint64 stream_id) {
+void RemoteMgr::DeleteExecutorForStream(uint64_t stream_id) {
   mutex_lock l(executor_map_mu_);
   auto it = executor_map_.find(stream_id);
   if (it == executor_map_.end()) {

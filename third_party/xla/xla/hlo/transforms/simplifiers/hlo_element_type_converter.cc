@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -116,11 +117,11 @@ HloElementTypeConverter::HloElementTypeConverter(
 
 // This routine converts the arithmetic operations in the given module that use
 // eliminate_type_ to operations that use replace_with_type_.
-absl::StatusOr<bool> HloElementTypeConverter::Run(
+absl::StatusOr<bool> HloElementTypeConverter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
-      3, "HloElementTypeConverter::Run(), before:\n" + module->ToString());
+      3, "HloElementTypeConverter::RunImpl(), before:\n" + module->ToString());
 
   if (eliminate_type_ == replace_with_type_) {
     return false;
@@ -200,7 +201,7 @@ absl::StatusOr<bool> HloElementTypeConverter::Run(
 
         new_hlo = computation->AddInstruction(
             hlo->CloneWithNewOperands(shape, new_operands, &context));
-        TF_RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
+        RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
 
         new_hlo = ToElementType(new_hlo, eliminate_type_);
       } else if (hlo->shape().IsTuple()) {
@@ -210,7 +211,7 @@ absl::StatusOr<bool> HloElementTypeConverter::Run(
 
         new_hlo = computation->AddInstruction(
             hlo->CloneWithNewOperands(new_shape, new_operands, &context));
-        TF_RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
+        RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
 
         // Convert the elements of the result of `new_hlo` to produce a new
         // tuple with shape `old_shape`.
@@ -218,21 +219,21 @@ absl::StatusOr<bool> HloElementTypeConverter::Run(
       } else {
         new_hlo = computation->AddInstruction(
             hlo->CloneWithNewOperands(hlo->shape(), new_operands, &context));
-        TF_RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
+        RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
       }
 
-      TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(new_hlo));
-      TF_RETURN_IF_ERROR(hlo->DropAllControlDeps());
+      RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(new_hlo));
+      RETURN_IF_ERROR(hlo->DropAllControlDeps());
 
       // NB!  We want to replace and remove side effecting instructions like Rng
       // as well so we can't rely HloComputation::ReplaceInstruction to reliably
       // remove the replaced instruction.
-      TF_RETURN_IF_ERROR(computation->RemoveInstruction(hlo));
+      RETURN_IF_ERROR(computation->RemoveInstruction(hlo));
       changed = true;
     }
   }
   XLA_VLOG_LINES(
-      2, "HloElementTypeConverter::Run(), after:\n" + module->ToString());
+      2, "HloElementTypeConverter::RunImpl(), after:\n" + module->ToString());
   return changed;
 }
 

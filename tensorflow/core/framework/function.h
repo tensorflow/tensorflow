@@ -111,7 +111,7 @@ class FunctionDefHelper {
   struct AttrValueWrapper {
     AttrValue proto;
 
-    AttrValueWrapper() {}
+    AttrValueWrapper() = default;
 
     template <typename T>
     AttrValueWrapper(T val) {  // NOLINT(runtime/explicit)
@@ -125,7 +125,7 @@ class FunctionDefHelper {
   // Constructs an AttrValue.func given the "name" and "attrs".
   static AttrValueWrapper FunctionRef(
       const std::string& name,
-      absl::Span<const std::pair<string, AttrValueWrapper>> attrs);
+      absl::Span<const std::pair<std::string, AttrValueWrapper>> attrs);
   static AttrValueWrapper FunctionRef(const std::string& name) {
     return FunctionRef(name, {});
   }
@@ -141,11 +141,11 @@ class FunctionDefHelper {
   struct Node {
     // When constructing a NodeDef, the first entry in ret is used as
     // the node name, the remaining values are ignored.
-    std::vector<string> ret;
+    std::vector<std::string> ret;
     std::string op;
-    std::vector<string> arg;
-    std::vector<std::pair<string, AttrValueWrapper>> attr;
-    std::vector<string> dep;
+    std::vector<std::string> arg;
+    std::vector<std::pair<std::string, AttrValueWrapper>> attr;
+    std::vector<std::string> dep;
     std::string device;
 
     // Required if the op has zero outputs. Otherwise, ret[0] used as name if
@@ -157,8 +157,8 @@ class FunctionDefHelper {
       CHECK(!ret.empty());
       return ret[0];
     }
-    std::vector<string> original_node_names;
-    std::vector<string> original_func_names;
+    std::vector<std::string> original_node_names;
+    std::vector<std::string> original_func_names;
 
     NodeDef ToNodeDef() const;
   };
@@ -170,33 +170,33 @@ class FunctionDefHelper {
   // - `control_ret_def` holds a mapping from the function control
   //   output names to the nodes from `node_def`.
   static FunctionDef Create(
-      const std::string& function_name, absl::Span<const string> in_def,
-      absl::Span<const string> out_def, absl::Span<const string> attr_def,
-      absl::Span<const Node> node_def,
-      absl::Span<const std::pair<string, string>> ret_def,
-      absl::Span<const std::pair<string, string>> control_ret_def);
+      const std::string& function_name, absl::Span<const std::string> in_def,
+      absl::Span<const std::string> out_def,
+      absl::Span<const std::string> attr_def, absl::Span<const Node> node_def,
+      absl::Span<const std::pair<std::string, std::string>> ret_def,
+      absl::Span<const std::pair<std::string, std::string>> control_ret_def);
 
   // Creates a FunctionDef from the given parameters. Node inputs must use
   // function encoding (node_name:output_name[:output_index]).
   // - `ret_def` holds a mapping from the function output names from `out_def`
   //   to the node outputs from `node_def`.
   static FunctionDef Create(
-      const std::string& function_name, absl::Span<const string> in_def,
-      absl::Span<const string> out_def, absl::Span<const string> attr_def,
-      absl::Span<const Node> node_def,
-      absl::Span<const std::pair<string, string>> ret_def);
+      const std::string& function_name, absl::Span<const std::string> in_def,
+      absl::Span<const std::string> out_def,
+      absl::Span<const std::string> attr_def, absl::Span<const Node> node_def,
+      absl::Span<const std::pair<std::string, std::string>> ret_def);
 
   // TODO(josh11b): Get rid of these and transition to the one above.
   static FunctionDef Define(const std::string& function_name,
-                            absl::Span<const string> arg_def,
-                            absl::Span<const string> ret_def,
-                            absl::Span<const string> attr_def,
+                            absl::Span<const std::string> arg_def,
+                            absl::Span<const std::string> ret_def,
+                            absl::Span<const std::string> attr_def,
                             absl::Span<const Node> node_def);
 
   // Defines an anonymous function. I.e., its name is not relevant.
-  static FunctionDef Define(absl::Span<const string> arg_def,
-                            absl::Span<const string> ret_def,
-                            absl::Span<const string> attr_def,
+  static FunctionDef Define(absl::Span<const std::string> arg_def,
+                            absl::Span<const std::string> ret_def,
+                            absl::Span<const std::string> attr_def,
                             absl::Span<const Node> node_def);
 
   // Helpers to construct a constant scalar.
@@ -258,7 +258,7 @@ inline FunctionDefHelper::AttrValueWrapper::AttrValueWrapper(
 // GetFunctionSignature(func name, opdef) returns OK if the func name is found
 // and opdef is filled with a pointer to the corresponding signature
 // (a OpDef proto). Otherwise, returns an error.
-typedef std::function<absl::Status(const string&, const OpDef**)>
+typedef std::function<absl::Status(const std::string&, const OpDef**)>
     GetFunctionSignature;
 
 struct InstantiationResult {
@@ -293,11 +293,11 @@ bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2);
 // Return a hash of `fdef` that is consistent with FunctionDefsEqual method.
 // In other words, if two fdefs compare equal, their hash values will be the
 // same.
-uint64 FunctionDefHash(const FunctionDef& fdef);
+uint64_t FunctionDefHash(const FunctionDef& fdef);
 
 class CallFrameInterface {
  public:
-  virtual ~CallFrameInterface() {}
+  virtual ~CallFrameInterface() = default;
 
   virtual size_t num_args() const = 0;
   virtual size_t num_retvals() const = 0;
@@ -422,6 +422,9 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   explicit FunctionLibraryDefinition(
       const OpRegistryInterface* default_registry,
       const FunctionDefLibrary& lib_def = {},
+      const FunctionDefLibraryStackTraces& library_traces = {});
+  FunctionLibraryDefinition(
+      const OpRegistryInterface* default_registry, FunctionDefLibrary&& lib_def,
       const FunctionDefLibraryStackTraces& library_traces = {});
   FunctionLibraryDefinition(const OpRegistryInterface* default_registry,
                             const GraphDef& graph_def);
@@ -566,7 +569,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   }
 
   // Returns all the function names in the FunctionLibraryDefinition.
-  std::vector<string> ListFunctionNames() const TF_LOCKS_EXCLUDED(mu_);
+  std::vector<std::string> ListFunctionNames() const TF_LOCKS_EXCLUDED(mu_);
 
   const OpRegistryInterface* default_registry() const {
     return default_registry_;
@@ -657,8 +660,10 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
  private:
   void Initialize(const FunctionDefLibrary& library,
                   const FunctionDefLibraryStackTraces& library_traces);
+  void Initialize(FunctionDefLibrary&& library,
+                  const FunctionDefLibraryStackTraces& library_traces);
 
-  core::RefCountPtr<FunctionRecord> FindHelper(const string& func) const
+  core::RefCountPtr<FunctionRecord> FindHelper(const std::string& func) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
   std::string FindGradientHelper(const std::string& func) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
@@ -681,8 +686,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   // Remove all functions in `funcs` and all gradients of functions in
   // `funcs_with_grads` from this library.
-  absl::Status Remove(const std::vector<string>& funcs,
-                      const std::vector<string>& funcs_with_grads)
+  absl::Status Remove(const std::vector<std::string>& funcs,
+                      const std::vector<std::string>& funcs_with_grads)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Remove `func` from the library. Returns non-OK Status unless `func` is in
@@ -698,10 +703,11 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   mutable mutex mu_;
   const OpRegistryInterface* default_registry_;
-  gtl::FlatMap<string, FunctionRecord*> records_ TF_GUARDED_BY(mu_);
-  gtl::FlatMap<string, string> func_grad_ TF_GUARDED_BY(mu_);
+  gtl::FlatMap<std::string, FunctionRecord*> records_ TF_GUARDED_BY(mu_);
+  gtl::FlatMap<std::string, std::string> func_grad_ TF_GUARDED_BY(mu_);
   // Maps from function name to optimized function graph.
-  gtl::FlatMap<string, std::function<absl::StatusOr<OptimizedFunctionGraph>()>>
+  gtl::FlatMap<std::string,
+               std::function<absl::StatusOr<OptimizedFunctionGraph>()>>
       optimized_function_graph_creator_map_ TF_GUARDED_BY(mu_);
 };
 
@@ -729,7 +735,7 @@ struct FunctionArgIndex {
 
 class FunctionLibraryRuntime : public core::WeakRefCounted {
  public:
-  ~FunctionLibraryRuntime() override {}
+  ~FunctionLibraryRuntime() override = default;
 
   // Instantiate a function with the given "attrs".
   //
@@ -752,7 +758,7 @@ class FunctionLibraryRuntime : public core::WeakRefCounted {
     // function's inputs. The device of resource inputs must be the device
     // backing the resource, not the CPU device backing the resource handle.
     // Must have the same length as number of inputs to the function.
-    std::vector<string> input_devices;
+    std::vector<std::string> input_devices;
 
     // For multi-device functions, a vector of canonical device names for
     // function's outputs.
@@ -780,14 +786,15 @@ class FunctionLibraryRuntime : public core::WeakRefCounted {
     // resource output, and node producing that resource is a function call,
     // runtime will leave device specification empty and will rely on Placer to
     // infer correct device.
-    std::vector<string> output_devices;
+    std::vector<std::string> output_devices;
 
     // If set, it indicates the original output indices of a component function.
-    absl::optional<std::vector<int>> ret_indices = absl::nullopt;
+    absl::optional<std::vector<int>> ret_indices = std::nullopt;
 
     // Maps from a CompositeDevice name to a list of underlying physical
     // devices.
-    absl::flat_hash_map<string, const std::vector<string>*> composite_devices;
+    absl::flat_hash_map<std::string, const std::vector<std::string>*>
+        composite_devices;
 
     // This interface is EXPERIMENTAL and subject to change.
     //
@@ -836,8 +843,8 @@ class FunctionLibraryRuntime : public core::WeakRefCounted {
 
     // If provided, this optimization function will be invoked before
     // the placer for multi-device functions.
-    std::function<absl::Status(std::vector<string> /*ret_node_names*/,
-                               std::vector<string> /*keep_node_names*/,
+    std::function<absl::Status(std::vector<std::string> /*ret_node_names*/,
+                               std::vector<std::string> /*keep_node_names*/,
                                FunctionLibraryDefinition*, const DeviceSet&,
                                Device* /*cpu_device*/, std::unique_ptr<Graph>*)>
         optimize_graph_fn;
@@ -899,7 +906,7 @@ class FunctionLibraryRuntime : public core::WeakRefCounted {
     // Instantiates the function enabling soft placement or outside compilation.
     bool allow_soft_placement = false;
   };
-  typedef uint64 Handle;
+  typedef uint64_t Handle;
   virtual absl::Status Instantiate(const std::string& function_name,
                                    AttrSlice attrs,
                                    const InstantiateOptions& options,
@@ -938,7 +945,7 @@ class FunctionLibraryRuntime : public core::WeakRefCounted {
   // In the cross-process scenario, runner isn't used for making the Async
   // RPC calls.
   struct Options {
-    Options() {}
+    Options() = default;
     explicit Options(const int64_t step_id) : step_id(step_id) {}
 
     // Choose a step ID that is guaranteed not to clash with any
@@ -952,7 +959,7 @@ class FunctionLibraryRuntime : public core::WeakRefCounted {
     // remote outputs lazily. All components of a remote multi-device function
     // should use the same op_id, in order to correctly map remote output
     // tensors to the remote TensorHandles in the default device.
-    absl::optional<int64_t> op_id = absl::nullopt;
+    absl::optional<int64_t> op_id = std::nullopt;
 
     // Not owned. Caller makes sure that the rendezvous outlives this Options.
     RendezvousInterface* rendezvous = nullptr;
@@ -962,7 +969,7 @@ class FunctionLibraryRuntime : public core::WeakRefCounted {
     StepStatsCollectorInterface* stats_collector = nullptr;
     tsl::CoordinationServiceAgent* coordination_service_agent = nullptr;
 
-    absl::optional<ManagedStackTrace> stack_trace = absl::nullopt;
+    absl::optional<ManagedStackTrace> stack_trace = std::nullopt;
 
     std::function<void(std::function<void()>)>* runner = nullptr;
 
@@ -1055,7 +1062,7 @@ class FunctionLibraryRuntime : public core::WeakRefCounted {
   // Returns the graph version number.
   virtual int graph_def_version() const = 0;
 
-  typedef uint64 LocalHandle;
+  typedef uint64_t LocalHandle;
 
   // Creates a copy of ProcessFunctionLibraryRuntime (transferring ownership to
   // the caller), FunctionLibraryRuntime (owned by the returned
@@ -1088,7 +1095,8 @@ class FunctionLibraryRuntime : public core::WeakRefCounted {
 // `composite_devices` if the input device is a composite device.
 std::string GetFunctionResourceInputDevice(
     const Tensor& input, const int arg_index, const FunctionDef& function_def,
-    absl::flat_hash_map<string, std::vector<string>>* composite_devices);
+    absl::flat_hash_map<std::string, std::vector<std::string>>*
+        composite_devices);
 
 // Returns a canonicalized string for the instantiation of the function of the
 // given "name", attributes "attrs", and "options".
@@ -1106,7 +1114,7 @@ const FunctionLibraryRuntime::LocalHandle kInvalidLocalHandle = -1;
 
 class CustomKernelCreator {
  public:
-  virtual ~CustomKernelCreator() {}
+  virtual ~CustomKernelCreator() = default;
 
   // Given a NodeDef 'node_def' and the function library runtime 'flr',
   // validate if the class supports creating such a kernel.
@@ -1136,7 +1144,7 @@ typedef absl::variant<Tensor, TensorShape> FunctionRet;
 // Used to instantiate and run functions in a distributed system.
 class DistributedFunctionLibraryRuntime {
  public:
-  virtual ~DistributedFunctionLibraryRuntime() {}
+  virtual ~DistributedFunctionLibraryRuntime() = default;
 
   // Instantiate a function on a remote target specified in `options.target`, by
   // sending the name and definition of the function to the remote worker. The
@@ -1173,7 +1181,7 @@ class DistributedFunctionLibraryRuntime {
                    FunctionLibraryRuntime::DoneCallback done) = 0;
 
   // Clean up a previously instantiated function on remote worker.
-  virtual void CleanUp(uint64 step_id,
+  virtual void CleanUp(uint64_t step_id,
                        FunctionLibraryRuntime::LocalHandle handle,
                        FunctionLibraryRuntime::DoneCallback done) = 0;
 
@@ -1273,7 +1281,7 @@ absl::Status GetOpGradientCreator(const std::string& op, Creator* creator);
       const Node&, const string&, T*) const;                 \
   extern template Status FunctionLibraryDefinition::GetAttr( \
       const NodeDef&, const string&, T*) const;
-GET_ATTR(string)
+GET_ATTR(std::string)
 GET_ATTR(bool)
 #undef GET_ATTR
 

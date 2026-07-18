@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 
-#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_id.h"
 
 namespace stream_executor {
 namespace cuda {
 
-PLATFORM_DEFINE_ID(kCudaPlatformId);
+PLATFORM_DEFINE_ID(kCudaPlatformId, CUDA);
 
 }  // namespace cuda
 }  // namespace stream_executor

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_DEFAULT_POSIX_FILE_SYSTEM_H_
 #define XLA_TSL_PLATFORM_DEFAULT_POSIX_FILE_SYSTEM_H_
 
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/env.h"
 #include "tsl/platform/path.h"
 
@@ -27,58 +28,53 @@ class PosixFileSystem : public FileSystem {
 
   ~PosixFileSystem() override {}
 
-  TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
-
   absl::Status NewRandomAccessFile(
-      const string& filename, TransactionToken* token,
+      const std::string& filename,
       std::unique_ptr<RandomAccessFile>* result) override;
 
-  absl::Status NewWritableFile(const string& fname, TransactionToken* token,
+  absl::Status NewWritableFile(const std::string& fname,
                                std::unique_ptr<WritableFile>* result) override;
 
   absl::Status NewAppendableFile(
-      const string& fname, TransactionToken* token,
-      std::unique_ptr<WritableFile>* result) override;
+      const std::string& fname, std::unique_ptr<WritableFile>* result) override;
 
   absl::Status NewReadOnlyMemoryRegionFromFile(
-      const string& filename, TransactionToken* token,
+      const std::string& filename,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
-  absl::Status FileExists(const string& fname,
-                          TransactionToken* token) override;
+  absl::Status FileExists(absl::string_view fname) override;
 
-  absl::Status GetChildren(const string& dir, TransactionToken* token,
-                           std::vector<string>* result) override;
+  absl::Status GetChildren(const std::string& dir,
+                           std::vector<std::string>* result) override;
 
-  absl::Status Stat(const string& fname, TransactionToken* token,
-                    FileStatistics* stats) override;
+  absl::Status Stat(const std::string& fname, FileStatistics* stats) override;
 
-  absl::Status GetMatchingPaths(const string& pattern, TransactionToken* token,
-                                std::vector<string>* results) override;
+  absl::Status GetMatchingPaths(const std::string& pattern,
+                                std::vector<std::string>* results) override;
 
-  absl::Status DeleteFile(const string& fname,
-                          TransactionToken* token) override;
+  absl::Status DeleteFile(const std::string& fname) override;
 
-  absl::Status CreateDir(const string& name, TransactionToken* token) override;
+  absl::Status CreateDir(const std::string& name) override;
 
-  absl::Status DeleteDir(const string& name, TransactionToken* token) override;
+  absl::Status CreateDir(const std::string& name, uint32_t mode) override;
 
-  absl::Status GetFileSize(const string& fname, TransactionToken* token,
-                           uint64* size) override;
+  absl::Status DeleteDir(const std::string& name) override;
 
-  absl::Status RenameFile(const string& src, const string& target,
-                          TransactionToken* token) override;
+  absl::Status GetFileSize(const std::string& fname, uint64_t* size) override;
 
-  absl::Status CopyFile(const string& src, const string& target,
-                        TransactionToken* token) override;
+  absl::Status RenameFile(const std::string& src,
+                          const std::string& target) override;
+
+  absl::Status CopyFile(const std::string& src,
+                        const std::string& target) override;
 };
 
 class LocalPosixFileSystem : public PosixFileSystem {
  public:
-  string TranslateName(const string& name) const override {
+  std::string TranslateName(absl::string_view name) const override {
     absl::string_view scheme, host, path;
     io::ParseURI(name, &scheme, &host, &path);
-    return string(path);
+    return std::string(path);
   }
 };
 

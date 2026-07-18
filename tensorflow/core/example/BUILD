@@ -1,8 +1,4 @@
 load(
-    "@io_bazel_rules_closure//closure:defs.bzl",
-    "closure_proto_library",
-)
-load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_copts",
@@ -153,16 +149,18 @@ tf_jspb_proto_library(
     deps = [":example_protos"],
 )
 
-closure_proto_library(
-    name = "example_protos_closure",
-    deps = [":example_protos"],
-)
-
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "feature_util.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs_no_runtime",
+    srcs = [
         "feature_util.h",
+        ":example_protos_cc",
     ],
 )
 

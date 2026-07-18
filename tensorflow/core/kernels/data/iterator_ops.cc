@@ -40,6 +40,8 @@ limitations under the License.
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_handle.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
@@ -548,7 +550,7 @@ FunctionLibraryRuntime* IteratorHandleOp::CreatePrivateFLR(
 
   *device_mgr =
       std::make_unique<StaticDeviceMgr>(RenamedDevice::NewRenamedDevice(
-          ctx->device()->name(), down_cast<Device*>(ctx->device()),
+          ctx->device()->name(), absl::down_cast<Device*>(ctx->device()),
           false /* owns_underlying */, false /* isolate_session_state */));
   *flib_def = std::make_unique<FunctionLibraryDefinition>(
       *ctx->function_library()->GetFunctionLibraryDefinition());
@@ -583,7 +585,7 @@ AnonymousIteratorHandleOp::AnonymousIteratorHandleOp(
   OP_REQUIRES_OK(context, context->GetAttr(kOutputShapes, &output_shapes_));
 }
 
-string AnonymousIteratorHandleOp::name() { return kAnonymousIterator; }
+std::string AnonymousIteratorHandleOp::name() { return kAnonymousIterator; }
 
 absl::Status AnonymousIteratorHandleOp::CreateResource(
     OpKernelContext* ctx, std::unique_ptr<FunctionLibraryDefinition> flib_def,
@@ -619,8 +621,9 @@ absl::Status MakeIteratorOp::DoCompute(OpKernelContext* ctx) {
   DatasetBase* dataset;
   TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
   IteratorResource* iterator_resource;
-  TF_RETURN_IF_ERROR(
-      LookupResource(ctx, HandleFromInput(ctx, 1), &iterator_resource));
+  ResourceHandle handle;
+  TF_RETURN_IF_ERROR(HandleFromInput(ctx, 1, &handle));
+  TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &iterator_resource));
   core::ScopedUnref unref_iterator(iterator_resource);
   return iterator_resource->SetIteratorFromDataset(ctx, dataset);
 }
@@ -725,7 +728,7 @@ class OneShotIteratorOp : public AsyncOpKernel {
         graph_def_version_(ctx->graph_def_version())
 
   {
-    string shared_name;
+    std::string shared_name;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("shared_name", &shared_name));
     OP_REQUIRES(ctx, shared_name.empty(),
                 errors::InvalidArgument("OneShotIteratorOp does not currently "
@@ -837,9 +840,10 @@ class OneShotIteratorOp : public AsyncOpKernel {
         &f_handle));
     FunctionLibraryRuntime::Options opts;
     opts.cancellation_manager = ctx->cancellation_manager();
-    ScopedStepContainer step_container(opts.step_id, [ctx](const string& name) {
-      ctx->resource_manager()->Cleanup(name).IgnoreError();
-    });
+    ScopedStepContainer step_container(
+        opts.step_id, [ctx](const std::string& name) {
+          ctx->resource_manager()->Cleanup(name).IgnoreError();
+        });
     opts.step_container = &step_container;
     opts.runner = ctx->runner();
     opts.run_all_kernels_inline = ctx->run_all_kernels_inline();
@@ -935,7 +939,9 @@ absl::Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
                                  ctx->op_kernel().type_string());
   metrics::RecordTFDataFetchOp("IteratorGetNextOp");
   IteratorResource* iterator;
-  TF_RETURN_IF_ERROR(LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
+  ResourceHandle handle;
+  TF_RETURN_IF_ERROR(HandleFromInput(ctx, 0, &handle));
+  TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &iterator));
   core::ScopedUnref unref_iterator(iterator);
   std::vector<Tensor> components;
   bool end_of_sequence = false;
@@ -955,7 +961,9 @@ absl::Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
 
 absl::Status IteratorGetModelProtoOp::DoCompute(OpKernelContext* ctx) {
   IteratorResource* iterator = nullptr;
-  TF_RETURN_IF_ERROR(LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
+  ResourceHandle handle;
+  TF_RETURN_IF_ERROR(HandleFromInput(ctx, 0, &handle));
+  TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &iterator));
   core::ScopedUnref unref_iterator(iterator);
 
   std::string model_proto;
@@ -990,7 +998,9 @@ absl::Status IteratorGetNextAsOptionalOp::DoCompute(OpKernelContext* ctx) {
                                  ctx->op_kernel().type_string());
   metrics::RecordTFDataFetchOp("IteratorGetNextAsOptionalOp");
   IteratorResource* iterator;
-  TF_RETURN_IF_ERROR(LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
+  ResourceHandle handle;
+  TF_RETURN_IF_ERROR(HandleFromInput(ctx, 0, &handle));
+  TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &iterator));
   core::ScopedUnref unref_iterator(iterator);
   std::vector<Tensor> components;
   bool end_of_sequence = false;
@@ -1029,8 +1039,9 @@ void IteratorToStringHandleOp::Compute(OpKernelContext* ctx) {
   // Validate that the handle corresponds to a real resource, and
   // that it is an IteratorResource.
   IteratorResource* iterator_resource;
-  OP_REQUIRES_OK(
-      ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
+  ResourceHandle handle;
+  OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 0, &handle));
+  OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &iterator_resource));
   iterator_resource->Unref();
 
   Tensor* string_handle_t;
@@ -1111,8 +1122,9 @@ void SerializeIteratorOp::Compute(OpKernelContext* ctx) {
   // Validate that the handle corresponds to a real resource, and
   // that it is an IteratorResource.
   IteratorResource* iterator_resource;
-  OP_REQUIRES_OK(
-      ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
+  ResourceHandle handle;
+  OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 0, &handle));
+  OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &iterator_resource));
   core::ScopedUnref unref_iterator(iterator_resource);
   IteratorVariantSerializer serializer;
   OP_REQUIRES_OK(ctx, serializer.InitializeFromIterator(
@@ -1130,8 +1142,9 @@ void DeserializeIteratorOp::Compute(OpKernelContext* ctx) {
   // Validate that the handle corresponds to a real resource, and
   // that it is an IteratorResource.
   IteratorResource* iterator_resource;
-  OP_REQUIRES_OK(
-      ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
+  ResourceHandle handle;
+  OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 0, &handle));
+  OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &iterator_resource));
   core::ScopedUnref unref_iterator(iterator_resource);
   const Tensor* serialized_t;
   OP_REQUIRES_OK(ctx, ctx->input("serialized", &serialized_t));

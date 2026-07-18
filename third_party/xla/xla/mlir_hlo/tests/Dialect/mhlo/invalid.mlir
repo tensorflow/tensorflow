@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: mlir-hlo-opt %s -verify-diagnostics -split-input-file
 
 // -----
@@ -196,4 +210,52 @@ func.func @reduce_precision_no_m_num(%arg0: tensor<3x4xf32>) -> (tensor<3x4xf32>
   // expected-error @+1 {{custom op 'mhlo.reduce_precision' expected exponent mantissa in format e#m#, saw e2m}}
   %0 = mhlo.reduce_precision %arg0, format = e2m : tensor<3x4xf32>
   func.return %0 : tensor<?x?xf64>
+}
+
+// -----
+
+func.func @scan_explicit_size_mismatch(%input: tensor<10xf32>, %init: tensor<f32>) -> tensor<10xf32> {
+  // expected-error @+1 {{'mhlo.scan' op invalid scan dimension size of operand 0}}
+  %0:2 = mhlo.scan (%input) inits (%init) dimension=0 attributes {scan_dim_size = 20 : i64} {
+  ^bb0(%input0: tensor<f32>, %carry0: tensor<f32>):
+    %1 = mhlo.add %input0, %carry0 : tensor<f32>
+    mhlo.return %1, %1 : tensor<f32>, tensor<f32>
+  } : (tensor<10xf32>, tensor<f32>) -> (tensor<10xf32>, tensor<f32>)
+  func.return %0#0 : tensor<10xf32>
+}
+
+// -----
+
+func.func @scan_body_returns_too_few_results(%input: tensor<10xf32>, %init: tensor<f32>) -> tensor<10xf32> {
+  // expected-error @+2 {{'mhlo.scan' op failed to infer returned types}}
+  // expected-error @+1 {{ScanOp body must return at least 1 values (carries)}}
+  %0:2 = mhlo.scan (%input) inits (%init) dimension=0 {
+  ^bb0(%input0: tensor<f32>, %carry0: tensor<f32>):
+    "mhlo.return"() : () -> ()
+  } : (tensor<10xf32>, tensor<f32>) -> (tensor<10xf32>, tensor<f32>)
+  func.return %0#0 : tensor<10xf32>
+}
+
+// -----
+
+func.func @scan_dim_out_of_bounds(%input: tensor<10xf32>, %init: tensor<f32>) -> tensor<10xf32> {
+  // expected-error @+1 {{scan dimension of operand 0 is out of bounds}}
+  %0:2 = mhlo.scan (%input) inits (%init) dimension=1 {
+  ^bb0(%carry0: tensor<f32>, %input0: tensor<f32>):
+    %1 = mhlo.add %carry0, %input0 : tensor<f32>
+    mhlo.return %1, %1 : tensor<f32>, tensor<f32>
+  } : (tensor<10xf32>, tensor<f32>) -> (tensor<10xf32>, tensor<f32>)
+  func.return %0#0 : tensor<10xf32>
+}
+
+// -----
+
+func.func @scan_dim_out_of_bounds_output(%input: tensor<10x10xf32>, %init: tensor<f32>) -> tensor<10x10xf32> {
+  // expected-error @+1 {{operand and body argument 0 are incompatible}}
+  %0:2 = mhlo.scan (%input) inits (%init) dimension=1 {
+  ^bb0(%carry0: tensor<f32>, %input0: tensor<10xf32>):
+    %1 = mhlo.add %carry0, %carry0 : tensor<f32>
+    mhlo.return %1, %1 : tensor<f32>, tensor<f32>
+  } : (tensor<10x10xf32>, tensor<f32>) -> (tensor<10x10xf32>, tensor<f32>)
+  func.return %0#0 : tensor<10x10xf32>
 }

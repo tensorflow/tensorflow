@@ -48,7 +48,8 @@ constexpr char kValueAttr[] = "value";
 constexpr int kAutotuneValue = -1;
 
 // Returns true if it is a `tf.data.AUTOTUNE` node.
-bool IsAutotuneNode(const string& node_name, const MutableGraphView& graph) {
+bool IsAutotuneNode(const std::string& node_name,
+                    const MutableGraphView& graph) {
   const NodeDef* node = graph.GetNode(node_name);
   if (!node) return false;
   if (node->op() != kConstOp) return false;
@@ -91,10 +92,10 @@ bool SameDeterministicAttr(const NodeDef& parallel_map_node,
 // optimizing each function in that graph and later aggregating any new
 // functions introduced during these individual optimizations into that single
 // graph's collective function library).
-string GetFusedName(const NodeDef& parent, const NodeDef& child) {
+std::string GetFusedName(const NodeDef& parent, const NodeDef& child) {
   return absl::StrCat("map_fusion_nodes/", parent.name(), "/", child.name());
 }
-string GetFusedName(const FunctionDef& parent, const FunctionDef& child) {
+std::string GetFusedName(const FunctionDef& parent, const FunctionDef& child) {
   return absl::StrCat("map_fusion_funcs/", parent.signature().name(), "/",
                       child.signature().name());
 }
@@ -171,7 +172,7 @@ absl::Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
   }
 
   MutableGraphView graph(output);
-  absl::flat_hash_set<string> nodes_to_delete;
+  absl::flat_hash_set<std::string> nodes_to_delete;
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              item.graph.library());
 

@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <string>
 
-#include "xla/stream_executor/tpu/tpu_api.h"
-#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/tpu/tpu_api.h"
+#include "xla/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 
@@ -75,7 +75,7 @@ class TpuMeshStateInterface : public tensorflow::ResourceBase {
                mesh_state_, tpu_core_type);
   }
 
-  string DebugString() const override { return "TpuMeshStateInterface"; }
+  std::string DebugString() const override { return "TpuMeshStateInterface"; }
 
  private:
   XLA_TpuMeshState* mesh_state_;

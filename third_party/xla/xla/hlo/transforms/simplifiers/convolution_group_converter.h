@@ -44,13 +44,6 @@ class ConvolutionGroupConverter : public HloModulePass {
     return "convolution-group-converter";
   }
 
-  // Run convolution rewriting on the given computation. Returns whether the
-  // computation was changed.
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   // Predicate that determines whether this pass should rewrite a given
   // convolution.
   std::function<bool(HloInstruction*)> should_expand_;
@@ -64,6 +57,13 @@ class ConvolutionGroupConverter : public HloModulePass {
 
   // Tells whether filter expansion is required.
   bool filter_expansion_;
+
+ protected:
+  // Run convolution rewriting on the given computation. Returns whether the
+  // computation was changed.
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
 
 }  // namespace xla

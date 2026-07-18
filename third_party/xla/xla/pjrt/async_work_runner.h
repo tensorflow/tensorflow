@@ -16,24 +16,44 @@ limitations under the License.
 #ifndef XLA_PJRT_ASYNC_WORK_RUNNER_H_
 #define XLA_PJRT_ASYNC_WORK_RUNNER_H_
 
+#include <utility>
+
+#include "absl/base/macros.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 
 // Async work runner abstracts away the implementation of the underlying thread
 // pool (or concurrent work queue).
-class AsyncWorkRunner {
+class AsyncWorkRunner : public tsl::Executor {
  public:
+  AsyncWorkRunner() = default;
   virtual ~AsyncWorkRunner() = default;
 
-  // `work` euqueued by `Schedule` may run on the calling thread.
-  virtual void Schedule(absl::AnyInvocable<void() &&> work) = 0;
-  virtual void ScheduleWhenReady(
+  // Executes `task` when all dependencies become ready.
+  void ExecuteWhenReady(
+      absl::Span<const tsl::RCReference<tsl::AsyncValue>> dependencies,
+      Task task) {
+    tsl::RunWhenReady(dependencies, [this, task = std::move(task)]() mutable {
+      Execute(std::move(task));
+    });
+  }
+
+  ABSL_DEPRECATE_AND_INLINE()
+  void Schedule(absl::AnyInvocable<void() &&> work) {
+    Execute(std::move(work));
+  }
+
+  ABSL_DEPRECATE_AND_INLINE()
+  void ScheduleWhenReady(
       absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
-      absl::AnyInvocable<void() &&> work) = 0;
+      absl::AnyInvocable<void() &&> work) {
+    ExecuteWhenReady(values, std::move(work));
+  }
 };
 
 }  // namespace xla

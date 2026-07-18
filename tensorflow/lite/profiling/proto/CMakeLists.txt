@@ -17,8 +17,8 @@ find_package(Protobuf REQUIRED)
 add_library(profiling_info_proto profiling_info.proto)
 
 list(APPEND profiling_info_generated_files
-    ${CMAKE_BINARY_DIR}/tflite/profiling/proto/profiling_info.pb.cc
-    ${CMAKE_BINARY_DIR}/tflite/profiling/proto/profiling_info.pb.h)
+    ${CMAKE_BINARY_DIR}/tensorflow/lite/profiling/proto/profiling_info.pb.cc
+    ${CMAKE_BINARY_DIR}/tensorflow/lite/profiling/proto/profiling_info.pb.h)
 
 # Generate profiling_info.pb.cc and profiling_info.pb.h from
 # profiling_info.proto using protoc. Once the protobuf package version is
@@ -26,7 +26,7 @@ list(APPEND profiling_info_generated_files
 add_custom_command(
     OUTPUT ${profiling_info_generated_files}
     COMMAND ${Protobuf_PROTOC_EXECUTABLE}
-    ARGS --cpp_out=${CMAKE_BINARY_DIR} --proto_path=${CMAKE_CURRENT_SOURCE_DIR}/../../.. tflite/profiling/proto/profiling_info.proto
+    ARGS --cpp_out=${CMAKE_BINARY_DIR} --proto_path=${TENSORFLOW_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/profiling_info.proto
     DEPENDS ${Protobuf_PROTOC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/profiling_info.proto
 )
 
@@ -37,8 +37,8 @@ target_include_directories(profiling_info_proto PUBLIC ${CMAKE_BINARY_DIR})
 
 add_library(model_runtime_info_proto model_runtime_info.proto)
 list(APPEND model_runtime_info_generated_files
-    ${CMAKE_BINARY_DIR}/tflite/profiling/proto/model_runtime_info.pb.cc
-    ${CMAKE_BINARY_DIR}/tflite/profiling/proto/model_runtime_info.pb.h
+    ${CMAKE_BINARY_DIR}/tensorflow/lite/profiling/proto/model_runtime_info.pb.cc
+    ${CMAKE_BINARY_DIR}/tensorflow/lite/profiling/proto/model_runtime_info.pb.h
 )
 
 # Generate model_runtime_info.pb.cc and model_runtime_info.pb.h from
@@ -47,7 +47,7 @@ list(APPEND model_runtime_info_generated_files
 add_custom_command(
     OUTPUT ${model_runtime_info_generated_files}
     COMMAND ${Protobuf_PROTOC_EXECUTABLE}
-    ARGS --cpp_out=${CMAKE_BINARY_DIR} --proto_path=${CMAKE_CURRENT_SOURCE_DIR}/../../.. tflite/profiling/proto/model_runtime_info.proto
+    ARGS --cpp_out=${CMAKE_BINARY_DIR} --proto_path=${TENSORFLOW_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/model_runtime_info.proto
     DEPENDS ${Protobuf_PROTOC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/model_runtime_info.proto ${profiling_info_generated_files}
 )
 

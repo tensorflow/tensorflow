@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/kernels_experimental.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
@@ -283,7 +285,7 @@ TEST(TestKernel, TestRegisterAsyncKernelBuilder) {
     TF_EXPECT_OK(status);
     ASSERT_NE(nullptr, kernel.get());
     auto done = []() { async_kernel_done = true; };
-    down_cast<AsyncOpKernel*>(kernel.get())->ComputeAsync(nullptr, done);
+    absl::down_cast<AsyncOpKernel*>(kernel.get())->ComputeAsync(nullptr, done);
   }
 
   ASSERT_TRUE(async_kernel_done);
@@ -405,7 +407,7 @@ TEST_F(TestKernelAttr, String) {
                                           /*max_length*/ 5, status);
 
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-    EXPECT_EQ("bunny", string(static_cast<const char*>(val.get()), 5));
+    EXPECT_EQ("bunny", std::string(static_cast<const char*>(val.get()), 5));
     TF_DeleteStatus(status);
     return static_cast<void*>(s);
   };
@@ -421,7 +423,7 @@ TEST_F(TestKernelAttr, StringList) {
     s->created = true;
     s->compute_called = false;
 
-    std::vector<string> list = {"bugs", "bunny", "duck"};
+    std::vector<std::string> list = {"bugs", "bunny", "duck"};
     int list_total_size = 0;
     for (const auto& s : list) {
       list_total_size += s.size();
@@ -440,7 +442,8 @@ TEST_F(TestKernelAttr, StringList) {
 
     for (size_t i = 0; i < list.size(); ++i) {
       EXPECT_EQ(list[i].size(), lens[i]) << i;
-      EXPECT_EQ(list[i], string(static_cast<const char*>(values[i]), lens[i]))
+      EXPECT_EQ(list[i],
+                std::string(static_cast<const char*>(values[i]), lens[i]))
           << i;
     }
     TF_DeleteStatus(status);
@@ -823,7 +826,7 @@ TEST(TestKernel, TestInputAndOutputCount) {
     TF_Status* s = TF_NewStatus();
     TF_GetInput(ctx, 0, &input, s);
     EXPECT_EQ(TF_OK, TF_GetCode(s)) << "Failed to get input: " << TF_Message(s);
-    EXPECT_EQ(123, *static_cast<tensorflow::uint8*>(TF_TensorData(input)));
+    EXPECT_EQ(123, *static_cast<uint8_t*>(TF_TensorData(input)));
     TF_GetInput(ctx, -1, &input, s);
     EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(s));
     TF_GetInput(ctx, 3, &input, s);
@@ -866,7 +869,7 @@ TEST(TestKernel, TestInputAndOutputCount) {
     p.device = &dummy_device;
     p.step_id = 43;
 
-    Tensor t(tensorflow::uint8(123));
+    Tensor t(uint8_t(123));
 
     absl::InlinedVector<TensorValue, 4UL> inputs;
     // Simulate 2 inputs
@@ -886,7 +889,7 @@ TEST(TestKernel, TestInputAndOutputCount) {
 
     ASSERT_EQ(2, num_inputs);
     ASSERT_EQ(1, num_outputs);
-    ASSERT_EQ(123, ctx.mutable_output(0)->scalar<tensorflow::uint8>()());
+    ASSERT_EQ(123, ctx.mutable_output(0)->scalar<uint8_t>()());
   }
 }
 
@@ -1466,3 +1469,47 @@ void set_tensor_data(TF_Tensor* tensor, T* values, size_t tensor_size_bytes,
 #endif
 }
 }  // namespace tensorflow
+
+extern absl::Status EnsureSparseVariableAccess(
+    TF_OpKernelContext* ctx, bool variantType,
+    void (*copyFunc)(TF_OpKernelContext* ctx, TF_Tensor* source,
+                     TF_Tensor* dest),
+    tensorflow::Var* var, bool lock_held = false);
+
+extern absl::Status PrepareToUpdateVariable(
+    TF_OpKernelContext* ctx, tensorflow::Tensor* tensor, bool copy_on_read_mode,
+    bool variantType,
+    void (*copyFunc)(TF_OpKernelContext* ctx, TF_Tensor* source,
+                     TF_Tensor* dest));
+
+TEST(TestKernel, EnsureSparseVariableAccessVariantTypeValidation) {
+  auto var = tensorflow::core::RefCountPtr<tensorflow::Var>(
+      new tensorflow::Var(tensorflow::DT_FLOAT));
+  *var->tensor() =
+      tensorflow::Tensor(tensorflow::DT_FLOAT, tensorflow::TensorShape({1}));
+
+  absl::Status status = EnsureSparseVariableAccess(
+      /*ctx=*/nullptr, /*variantType=*/true, /*copyFunc=*/nullptr, var.get(),
+      /*lock_held=*/false);
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(status.message(),
+            "variantType is true, but variable tensor dtype is not DT_VARIANT");
+
+  status = EnsureSparseVariableAccess(
+      /*ctx=*/nullptr, /*variantType=*/false, /*copyFunc=*/nullptr, var.get(),
+      /*lock_held=*/false);
+  EXPECT_TRUE(status.ok());
+}
+
+TEST(TestKernel, PrepareToUpdateVariableVariantTypeValidation) {
+  tensorflow::Tensor tensor(tensorflow::DT_FLOAT, tensorflow::TensorShape({1}));
+
+  absl::Status status = PrepareToUpdateVariable(
+      /*ctx=*/nullptr, &tensor, /*copy_on_read_mode=*/true,
+      /*variantType=*/true, /*copyFunc=*/nullptr);
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(status.message(),
+            "variantType is true, but tensor dtype is not DT_VARIANT");
+}

@@ -17,14 +17,19 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <queue>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
@@ -32,24 +37,33 @@ namespace xla {
 
 HloReachabilityMap::HloReachabilityMap(
     absl::Span<const HloInstruction* const> instructions)
-    : bits_per_bitset_(instructions.size()),
-      words_per_bitset_((bits_per_bitset_ + BitSet::kBits - 1) / BitSet::kBits),
+    : words_per_bitset_((instructions.size() + BitSet::kBits - 1) /
+                        BitSet::kBits),
       total_words_((instructions.size() + 1 /*for tmp_bit_set_*/) *
                    words_per_bitset_) {
-  int row = 0;
-  int total_rows = instructions.size() + 1;  // for tmp_bit_set_
+  if (!instructions.empty()) {
+    CHECK(instructions[0]->parent() != nullptr)
+        << "Instruction must be in a computation.";
+    computation_id_ = instructions[0]->parent()->unique_id();
+  } else {
+    computation_id_ = kComputationIdAbsent;
+  }
+  uint64_t row = 0;
+  uint64_t total_rows = instructions.size() + 1;  // for tmp_bit_set_
   while (row < total_rows) {
     const int rows_to_allocate = std::min(kRowsPerAllocation, total_rows - row);
     size_t words_to_allocate = rows_to_allocate * words_per_bitset_;
+    // make_unique initializes the array of words to 0
     bit_storage_.push_back(std::make_unique<BitSet::Word[]>(words_to_allocate));
-    // Initialize all the bitsets to 0
-    memset(bit_storage_.back().get(), 0,
-           words_to_allocate * sizeof(BitSet::Word));
     row += rows_to_allocate;
   }
 
   tmp_bit_set_ = BitSetFromIndex(instructions.size());
-  indices_.reserve(instructions.size());
+  int32_t max_local_id = 0;
+  for (const HloInstruction* instruction : instructions) {
+    max_local_id = std::max(max_local_id, instruction->local_id());
+  }
+  indices_.resize(max_local_id + 1, kValueAbsent);
   for (size_t i = 0; i < instructions.size(); ++i) {
     BitSetFromIndex(i).Set(i);  // Instructions are reachable from themselves.
     indices_[GetKey(instructions[i])] = i;
@@ -104,9 +118,15 @@ void HloReachabilityMap::SetReachabilityToUnionHelper(
 
 void HloReachabilityMap::Replace(const HloInstruction* original,
                                  const HloInstruction* replacement) {
-  if (GetKey(original) != GetKey(replacement)) {
-    indices_[GetKey(replacement)] = GetIndex(original);
-    indices_.erase(GetKey(original));
+  Key original_key = GetKey(original);
+  Key replacement_key = GetKey(replacement);
+  if (original_key != replacement_key) {
+    DCHECK_LT(original_key, indices_.size());
+    if (replacement_key >= indices_.size()) {
+      indices_.resize(replacement_key + 1, kValueAbsent);
+    }
+    indices_[replacement_key] = GetIndex(original);
+    indices_[original_key] = kValueAbsent;
   }
 }
 
@@ -129,10 +149,8 @@ std::unique_ptr<HloReachabilityMap> HloReachabilityMap::BuildWithRestrictions(
 
 std::unique_ptr<HloReachabilityMap> HloReachabilityMap::Build(
     const HloComputation* computation) {
-  HloComputation::ChannelDependencies channel_dependencies =
-      computation->ComputeChannelDependencies();
   std::vector<HloInstruction*> instructions =
-      computation->MakeInstructionPostOrder(channel_dependencies);
+      computation->MakeInstructionPostOrder();
   auto result = std::make_unique<HloReachabilityMap>(instructions);
 
   auto get_bit_set = [&](const HloInstruction* instruction) -> BitSet {
@@ -153,12 +171,6 @@ std::unique_ptr<HloReachabilityMap> HloReachabilityMap::Build(
     };
 
     add_dependencies(instruction);
-
-    // If an instruction has channel depencencies, they are also reachable.
-    auto it = channel_dependencies.find(instruction);
-    if (it != channel_dependencies.end()) {
-      absl::c_for_each(it->second, add_dependencies);
-    }
   }
   return result;
 }
@@ -170,9 +182,18 @@ void HloReachabilityMap::UpdateReachabilityThroughInstruction(
 
   std::vector<HloInstruction*> inputs;
 
+  // Keep track of the number of times an instruction is in the worklist and
+  // only process it only if it is the last occurrence. Note that this might
+  // still mean that an instruction is processed multiple times.
+  absl::flat_hash_map<const HloInstruction*, int64_t> in_worklist;
+
   while (!worklist.empty()) {
     const HloInstruction* item = worklist.front();
     worklist.pop();
+    --in_worklist[item];
+    if (in_worklist[item] > 0) {
+      continue;
+    }
 
     inputs.assign(item->operands().begin(), item->operands().end());
     inputs.insert(inputs.end(), item->control_predecessors().begin(),
@@ -182,9 +203,131 @@ void HloReachabilityMap::UpdateReachabilityThroughInstruction(
       // Add immediate successors to worklist.
       for (const HloInstruction* user : item->users()) {
         worklist.push(user);
+        ++in_worklist[user];
       }
       for (const HloInstruction* succ : item->control_successors()) {
         worklist.push(succ);
+        ++in_worklist[succ];
+      }
+    }
+  }
+}
+
+// Use ptr tagging in `worklist` to check if current instruction is successor of
+// left or right.
+static constexpr uintptr_t FROM_LEFT_FLAG_MASK = 1;
+static constexpr uintptr_t PTR_MASK = ~FROM_LEFT_FLAG_MASK;
+static_assert(alignof(HloInstruction) >= 2,
+              "HloInstruction must be aligned to at least 2 bytes");
+void HloReachabilityMap::UpdateReachabilityForMerge(
+    const HloInstruction* left, const HloInstruction* right) {
+  DCHECK(tmp_worklist_.empty());
+  DCHECK(tmp_indices_to_update_.empty());
+  DCHECK(IsKeyPresent(GetKey(left)));
+  DCHECK(IsKeyPresent(GetKey(right)));
+
+  if (left == right) {
+    return;
+  }
+
+  Index left_index = GetIndex(left);
+  Index right_index = GetIndex(right);
+  BitSet left_bit_set = BitSetFromIndex(left_index);
+  BitSet right_bit_set = BitSetFromIndex(right_index);
+
+  absl::flat_hash_set<const HloInstruction*> visited;
+  auto add_to_worklist = [&](const HloInstruction* instr,
+                             bool from_left) -> void {
+    if (visited.insert(instr).second) {
+      if (IsKeyPresent(GetKey(instr))) {
+        BitSet bit_set = BitSetFromIndex(GetIndex(instr));
+        // If the node is already reachable from both sides, we can skip it.
+        if ((from_left && bit_set.Get(right_index)) ||
+            (!from_left && bit_set.Get(left_index))) {
+          return;
+        }
+      }
+      uintptr_t raw_addr = reinterpret_cast<uintptr_t>(instr);
+      tmp_worklist_.push_back(raw_addr | from_left);
+      return;
+    }
+    return;
+  };
+  add_to_worklist(left, /*from_left=*/true);
+  const bool left_added = !tmp_worklist_.empty();
+  add_to_worklist(right, /*from_left=*/false);
+  if (tmp_worklist_.empty()) {
+    return;
+  }
+  left_bit_set.GetDifferingWordUnions(right_bit_set, tmp_changed_words_);
+  if (tmp_changed_words_.empty()) {
+    tmp_worklist_.clear();
+    return;
+  }
+  while (!tmp_worklist_.empty()) {
+    const uintptr_t item_and_from_left = tmp_worklist_.back();
+    tmp_worklist_.pop_back();
+
+    // Use ptr tagging to show if instruction is successor of left or right.
+    const bool from_left = (item_and_from_left & FROM_LEFT_FLAG_MASK);
+    const HloInstruction* item =
+        reinterpret_cast<const HloInstruction*>(item_and_from_left & PTR_MASK);
+
+    if (IsKeyPresent(GetKey(item))) {
+      tmp_indices_to_update_.push_back(GetIndex(item));
+    }
+    for (const HloInstruction* user : item->users()) {
+      add_to_worklist(user, from_left);
+    }
+    for (const HloInstruction* succ : item->control_successors()) {
+      add_to_worklist(succ, from_left);
+    }
+  }
+  DCHECK(tmp_worklist_.empty());
+  // Based on the benchmarks, if the number of changed words is more than 25% of
+  // the size of the bitset, it is faster do full |= instead of using
+  // OrUpdatePartial.
+  if (tmp_changed_words_.size() > words_per_bitset_ * 0.25) {
+    // Is is guaranteed that either left_bit_set or right_bit_set is in
+    // tmp_indices_to_update_ based on the logic above.
+    BitSet info = left_added ? left_bit_set : right_bit_set;
+    info.OrUpdatePartial(tmp_changed_words_);
+    for (Index index : tmp_indices_to_update_) {
+      BitSet bit_set = BitSetFromIndex(index);
+      bit_set |= info;
+    }
+  } else {
+    for (Index index : tmp_indices_to_update_) {
+      BitSet bit_set = BitSetFromIndex(index);
+      bit_set.OrUpdatePartial(tmp_changed_words_);
+    }
+  }
+  tmp_changed_words_.clear();
+  tmp_indices_to_update_.clear();
+}
+
+void HloReachabilityMap::UpdateMultipleInstructions(
+    absl::flat_hash_map<const HloInstruction*,
+                        absl::flat_hash_set<const HloInstruction*>>
+        to_update) {
+  while (!to_update.empty()) {
+    auto it = to_update.begin();
+    const HloInstruction* instruction = it->first;
+
+    BitSet bit_set = BitSetFromIndex(GetIndex(instruction));
+    bool changed = false;
+    // NOLINTNEXTLINE the loop aggregation is order independent.
+    for (const HloInstruction* operand : it->second) {
+      BitSet operand_bit_set = BitSetFromIndex(GetIndex(operand));
+      changed |= bit_set.OrUpdate(operand_bit_set);
+    }
+    to_update.erase(it);
+    if (changed) {
+      for (const HloInstruction* user : instruction->users()) {
+        to_update[user].insert(instruction);
+      }
+      for (const HloInstruction* succ : instruction->control_successors()) {
+        to_update[succ].insert(instruction);
       }
     }
   }

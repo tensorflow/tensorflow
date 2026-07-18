@@ -25,6 +25,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "google/protobuf/text_format.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -33,11 +35,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/protobuf.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {
@@ -47,7 +45,6 @@ constexpr char kDefaultDenylist[] = R"pb(
     hlo: "(f32[512,512,7,7]{3,2,1,0}, u8[0]{0}) custom-call(f32[512,512,7,7]{3,2,1,0}, f32[512,512,3,3]{3,2,1,0}, f32[512]{0}), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target=\"__cudnn$convBiasActivationForward\""
     backend_config {
       operation_queue_id: 0
-      wait_on_operation_queues: []
       cudnn_conv_backend_config: {
         activation_mode: kNone
         conv_result_scale: 1
@@ -57,15 +54,14 @@ constexpr char kDefaultDenylist[] = R"pb(
       force_earliest_schedule: false
       device_type: DEVICE_TYPE_DEVICE
     }
-    cc { major: 7 }
-    cudnn_version { major: 9 }
+    cc { major_version: 7 }
+    cudnn_version { major_version: 9 }
     algos { id: 14 }
   }
   entries {
     hlo: "(f32[512,512,7,7]{3,2,1,0}, u8[0]{0}) custom-call(f32[512,512,7,7]{3,2,1,0}, f32[512,512,3,3]{3,2,1,0}, f32[512]{0}), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target=\"__cudnn$convBiasActivationForward\""
     backend_config {
       operation_queue_id: 0
-      wait_on_operation_queues: []
       cudnn_conv_backend_config: {
         activation_mode: kNone
         conv_result_scale: 1
@@ -74,15 +70,14 @@ constexpr char kDefaultDenylist[] = R"pb(
       },
       force_earliest_schedule: false
     }
-    cc { major: 7 }
-    cudnn_version { major: 9 minor: 1 patch: 1 }
+    cc { major_version: 7 }
+    cudnn_version { major_version: 9 minor_version: 1 patch_version: 1 }
     algos { id: 14 }
   }
   entries {
     hlo: "(f32[27,256,32,32]{3,2,1,0}, u8[0]{0}) custom-call(f32[27,256,32,32]{3,2,1,0}, f32[256,256,3,3]{3,2,1,0}, f32[256]{0}, f32[27,256,32,32]{3,2,1,0}), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target=\"__cudnn$convBiasActivationForward\""
     backend_config {
       operation_queue_id: 0
-      wait_on_operation_queues: []
       cudnn_conv_backend_config: {
         activation_mode: kNone
         conv_result_scale: 1
@@ -91,15 +86,14 @@ constexpr char kDefaultDenylist[] = R"pb(
       },
       force_earliest_schedule: false
     }
-    cc { major: 7 }
-    cudnn_version { major: 9 }
+    cc { major_version: 7 }
+    cudnn_version { major_version: 9 }
     algos { id: 14 }
   }
   entries {
     hlo: "(f32[27,256,32,32]{3,2,1,0}, u8[0]{0}) custom-call(f32[27,256,32,32]{3,2,1,0}, f32[256,256,3,3]{3,2,1,0}, f32[256]{0}, f32[27,256,32,32]{3,2,1,0}), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target=\"__cudnn$convBiasActivationForward\""
     backend_config {
       operation_queue_id: 0
-      wait_on_operation_queues: []
       cudnn_conv_backend_config: {
         activation_mode: kNone
         conv_result_scale: 1
@@ -108,15 +102,14 @@ constexpr char kDefaultDenylist[] = R"pb(
       },
       force_earliest_schedule: false
     }
-    cc { major: 7 minor: 5 }
-    cudnn_version { major: 9 }
+    cc { major_version: 7 minor_version: 5 }
+    cudnn_version { major_version: 9 }
     algos { id: 14 }
   }
   entries {
     hlo: "(f32[27,256,32,32]{3,2,1,0}, u8[0]{0}) custom-call(f32[27,256,32,32]{3,2,1,0}, f32[256,256,3,3]{3,2,1,0}, f32[256]{0}, f32[27,256,32,32]{3,2,1,0}), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target=\"__cudnn$convBiasActivationForward\""
     backend_config {
       operation_queue_id: 0
-      wait_on_operation_queues: []
       cudnn_conv_backend_config: {
         activation_mode: kNone
         conv_result_scale: 1
@@ -125,15 +118,14 @@ constexpr char kDefaultDenylist[] = R"pb(
       },
       force_earliest_schedule: false
     }
-    cc { major: 7 }
-    cudnn_version { major: 9 minor: 1 patch: 1 }
+    cc { major_version: 7 }
+    cudnn_version { major_version: 9 minor_version: 1 patch_version: 1 }
     algos { id: 14 }
   }
   entries {
     hlo: "(f32[27,256,32,32]{3,2,1,0}, u8[0]{0}) custom-call(f32[27,256,32,32]{3,2,1,0}, f32[256,256,3,3]{3,2,1,0}, f32[256]{0}, f32[27,256,32,32]{3,2,1,0}), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target=\"__cudnn$convBiasActivationForward\""
     backend_config {
       operation_queue_id: 0
-      wait_on_operation_queues: []
       cudnn_conv_backend_config: {
         activation_mode: kNone
         conv_result_scale: 1
@@ -142,8 +134,8 @@ constexpr char kDefaultDenylist[] = R"pb(
       },
       force_earliest_schedule: false
     }
-    cc { major: 7 minor: 5 }
-    cudnn_version { major: 9 minor: 1 patch: 1 }
+    cc { major_version: 7 minor_version: 5 }
+    cudnn_version { major_version: 9 minor_version: 1 patch_version: 1 }
     algos { id: 14 }
   }
   entries {
@@ -151,7 +143,6 @@ constexpr char kDefaultDenylist[] = R"pb(
     backend_config {
       force_earliest_schedule: false
       operation_queue_id: 0
-      wait_on_operation_queues: []
       cudnn_conv_backend_config: {
         activation_mode: kNone
         conv_result_scale: 1
@@ -159,21 +150,21 @@ constexpr char kDefaultDenylist[] = R"pb(
         side_input_scale: 0
       }
     }
-    cc { major: 9 }
-    cudnn_version { major: 9 minor: 10 }
+    cc { major_version: 9 }
+    cudnn_version { major_version: 9 minor_version: 10 }
     algos { id: 0 }
   }
   entries {
     hlo: "(f32[7,2500,3072]{2,1,0}, u8[0]{0}) custom-call(f32[7,2500,3072]{2,1,0}, f32[3072,257,512]{2,1,0}), window={size=257 pad=128_128}, dim_labels=b0f_o0i->b0f, feature_group_count=6, custom_call_target=\"__cudnn$convForward\""
-    cc { major: 9 }
-    cudnn_version { major: 9 minor: 10 }
+    cc { major_version: 9 }
+    cudnn_version { major_version: 9 minor_version: 10 }
     algos { id: 0 }
     backend_config { cudnn_conv_backend_config { conv_result_scale: 1 } }
   }
   entries {
     hlo: "(f32[7,2500,3072]{2,1,0}, u8[0]{0}) custom-call(f32[7,2500,3072]{2,1,0}, f32[3072,129,512]{2,1,0}), window={size=129 pad=64_64}, dim_labels=b0f_o0i->b0f, feature_group_count=6, custom_call_target=\"__cudnn$convForward\""
-    cc { major: 9 }
-    cudnn_version { major: 9 minor: 10 }
+    cc { major_version: 9 }
+    cudnn_version { major_version: 9 minor_version: 10 }
     algos { id: 0 }
     backend_config { cudnn_conv_backend_config { conv_result_scale: 1 } }
   }
@@ -194,12 +185,13 @@ absl::Status ParseTextFormatDenyList(DenyListMapType& list,
 
   for (const auto& entry : proto.entries()) {
     for (const auto& algo : entry.algos()) {
-      list[std::make_tuple(HloStringWithGpuBackendConfig(
-                               entry.hlo(), entry.backend_config()),
-                           entry.cc().major(), entry.cc().minor(),
-                           entry.cudnn_version().major(),
-                           entry.cudnn_version().minor(),
-                           entry.cudnn_version().patch(), entry.blas_version())]
+      list[std::make_tuple(
+               HloStringWithGpuBackendConfig(entry.hlo(),
+                                             entry.backend_config()),
+               entry.cc().major_version(), entry.cc().minor_version(),
+               entry.cudnn_version().major_version(),
+               entry.cudnn_version().minor_version(),
+               entry.cudnn_version().patch_version(), entry.blas_version())]
           .emplace_back(algo.id(), algo.tensor_ops(), std::nullopt);
     }
   }
@@ -215,11 +207,11 @@ std::vector<stream_executor::dnn::AlgorithmDesc> GetDisabledConvAlgorithms(
         GetDebugOptionsFromFlags().xla_gpu_algorithm_denylist_path();
     if (!file_path.empty()) {
       std::string denylist_text;
-      TF_CHECK_OK(tsl::ReadFileToString(tsl::Env::Default(), file_path,
-                                        &denylist_text));
-      TF_CHECK_OK(ParseTextFormatDenyList(*list, denylist_text));
+      CHECK_OK(tsl::ReadFileToString(tsl::Env::Default(), file_path,
+                                     &denylist_text));
+      CHECK_OK(ParseTextFormatDenyList(*list, denylist_text));
     }
-    TF_CHECK_OK(ParseTextFormatDenyList(*list, kDefaultDenylist));
+    CHECK_OK(ParseTextFormatDenyList(*list, kDefaultDenylist));
     return list;
   }();
 
@@ -244,9 +236,10 @@ std::vector<stream_executor::dnn::AlgorithmDesc> GetDisabledConvAlgorithms(
       ::xla::HloPrintOptions::Fingerprint().set_print_backend_config(true));
 
   // Exclude algorithms with explicit BLAS version set
-  auto key = std::make_tuple(hlo, cc.major(), cc.minor(), cudnn_version.major(),
-                             cudnn_version.minor(), cudnn_version.patch(),
-                             std::string{blas_version});
+  auto key = std::make_tuple(
+      hlo, cc.major_version(), cc.minor_version(),
+      cudnn_version.major_version(), cudnn_version.minor_version(),
+      cudnn_version.patch_version(), std::string{blas_version});
   add_matching_disabled_algorithms_to_result(key);
 
   // Exclude algorithms with no BLAS version set
@@ -264,8 +257,8 @@ absl::StatusOr<std::string> GenerateDenyListEntry(
   AlgorithmDenylist list;
   AlgorithmDenylistEntry* entry = list.add_entries();
   entry->set_hlo(instr.ToString(::xla::HloPrintOptions::Fingerprint()));
-  TF_ASSIGN_OR_RETURN(*entry->mutable_backend_config(),
-                      instr.backend_config<GpuBackendConfig>());
+  ASSIGN_OR_RETURN(*entry->mutable_backend_config(),
+                   instr.backend_config<GpuBackendConfig>());
 
   *entry->mutable_cc() = cc;
   *entry->mutable_cudnn_version() = cudnn_version;

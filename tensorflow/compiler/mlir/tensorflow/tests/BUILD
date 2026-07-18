@@ -19,7 +19,11 @@ glob_lit_tests(
     tags_override = {
         "optimize.mlir": ["no_rocm"],
         "tf_optimize.mlir": ["no_rocm"],
-        "tf-reduce-identity.mlir": ["no_windows"],
+        # TODO(b/495279482): Remove no_oss once the compiler crash is fixed.
+        "tf-reduce-identity.mlir": [
+            "no_windows",
+            "no_oss",
+        ],
     },
     test_file_exts = ["mlir"],
 )
@@ -56,6 +60,6 @@ tf_cc_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_xla//xla:xla_data_proto_cc",
+        "@xla//xla:xla_data_proto_cc",
     ],
 )

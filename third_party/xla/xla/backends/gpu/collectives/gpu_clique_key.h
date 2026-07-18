@@ -16,54 +16,56 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_GPU_CLIQUE_KEY_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_GPU_CLIQUE_KEY_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
 
 #include "absl/hash/hash.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/core/collectives/clique_key.h"
-#include "xla/service/global_device_id.h"
+#include "xla/runtime/device_id.h"
 #include "xla/tsl/lib/gtl/int_type.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
-// In XLA:GPU we use different streams for different kinds of collective
-// operations, and include the async stream kind into the GPU clique key.
+// CommunicationId is an opaque strongly-typed integer wrapper that represents
+// different kinds of communications for the same set of global devices.
 //
-// We carefully isolate different kinds of collectives using separate
-// communicators and guarantee that all collective operations have a total order
-// that will not create a deadlock.
-enum class AsyncStreamKind : int64_t {
-  kCollective = 0,  // Stream for asynchronous collective ops.
-  kP2P0 = 1,        // One Stream for P2P Send and Recv ops.
-  kP2P1 = 2,        // Another Stream for P2P Send and Recv ops.
-  kMemCpyP2P = 3,   // Stream for MemCpyP2P
-};
+// Underlying collective communication library typically doesn't allow to run
+// multiple concurrent operations using the same set of communicators, however
+// some operations use disjoint set of hardware resources and can safely run in
+// parallel, i.e. all-reduce is likely to require computation resources to do
+// the actual reduction computation, and sending/receiving data can be done
+// using copy engines, in such case it is possible to request two cliques for
+// the same set of devices, but with a different communication id.
+//
+// Communication id is an opaque integer type, and how to assign different types
+// of communication to ids is a decision made by individual thunks. Today XLA
+// assigns most of the collective operations to id `0` and peer-to-peer
+// communication (essentially operations decomposed to send and recv) to id `1`.
+//
+// IMPORTANT: CommunicationId is not the same as CommunicationStreamId!
+// Assigning communication streams based on communication id is one of the valid
+// strategies, however runtime might make more or less actual streams, as long
+// as runtime guarantees that all collective operations launched for a given
+// clique have a well defined total execution order, enforced with events.
+TSL_LIB_GTL_DEFINE_INT_TYPE(CommunicationId, uint64_t);
 
-bool IsP2PStreamKind(AsyncStreamKind stream_kind);
-
-inline constexpr int64_t kAsyncStreamTotal =
-    static_cast<int64_t>(AsyncStreamKind::kMemCpyP2P) + 1;
-
-// Strongly-typed wrapper to represent collective stream ID.
-TSL_LIB_GTL_DEFINE_INT_TYPE(CollectiveStreamId, uint64_t);
-
-// Assigns a unique ID to a stream for asynchronous or synchronous execution.
-// These IDs can be used, for example, to look up the NCCL communicator.
-CollectiveStreamId GetCollectiveStreamId(
-    bool is_async, CollectiveStreamId stream_id = CollectiveStreamId(1),
-    AsyncStreamKind stream_kind = AsyncStreamKind::kCollective);
+// StrJoin for device groups that shortens long list of devices for readability.
+std::string HumanReadableDeviceGroups(
+    absl::Span<const std::vector<GlobalDeviceId>> device_groups,
+    absl::string_view separator = ",", size_t first = 2, size_t last = 1);
 
 // Clique key for identifying a particular collectives clique on a GPU backend.
 class GpuCliqueKey : public CliqueKey {
  public:
-  explicit GpuCliqueKey(
-      std::vector<GlobalDeviceId> devices, int64_t num_local_participants,
-      bool is_p2p = false,
-      std::vector<std::vector<GlobalDeviceId>> participant_groups = {},
-      GlobalDeviceId root_device = GlobalDeviceId(-1),
-      std::vector<IncarnationId> incarnations = {});
+  GpuCliqueKey(std::vector<GlobalDeviceId> devices,
+               int64_t num_local_participants,
+               CommunicationId communication_id = CommunicationId(0),
+               std::vector<IncarnationId> incarnations = {});
 
   GpuCliqueKey(const GpuCliqueKey&) = default;
   GpuCliqueKey& operator=(const GpuCliqueKey&) = default;
@@ -71,32 +73,28 @@ class GpuCliqueKey : public CliqueKey {
   GpuCliqueKey(GpuCliqueKey&&) = default;
   GpuCliqueKey& operator=(GpuCliqueKey&&) = default;
 
-  CollectiveStreamId stream_id() const;
-
-  // Device generating the unique id for this key
-  GlobalDeviceId root_device() const;
-
   // Returns true if this clique is a subset of `other`: both cliques have the
   // same `stream_id` and all clique devices are part of `other` clique.
   bool IsSubsetOf(const CliqueKey& other) const final;
 
-  // Returns true if this clique will be used with p2p communicators.
-  bool is_p2p() const;
-
-  // For multi-root initialization, generate `nroots` copies (subkeys) of the
-  // key each with a different root device. Root devices are distributed evenly
-  // across the ranks. The subkeys are used to exchange the CliqueIds during
-  // clique initialization.
-  std::vector<GpuCliqueKey> GetSubKeys(int64_t nroots) const;
+  // Returns root devices that are responsible for bootstrapping the GPU clique
+  // during initialization. Root devices are distributed evenly across all ranks
+  // in the clique. XLA processes owning the root devices are responsible for
+  // generating clique id and exchanging it with other ranks that share the same
+  // root device (this is done via shared KV store).
+  std::vector<GlobalDeviceId> GetRootDevices(int64_t nroots) const;
 
   // The number of participant devices that are local to the current process (in
-  // multi-host environments this likely to be all devices on the same host).
+  // multi-host environments this is likely to be all devices on the same host).
   // This number should never be different in two cliques over the same sets of
   // devices.
   int64_t num_local_participants() const { return num_local_participants_; }
 
+  // Returns the communication id assigned to the clique.
+  CommunicationId communication_id() const { return communication_id_; }
+
   // Returns true if this clique is local to the current process (in multi-host
-  // environments this likely to be all devices on the same host).
+  // environments this is likely to be all devices on the same host).
   bool is_local() const { return num_local_participants_ == devices().size(); }
 
   // Returns the incarnation ids of the participating processes.
@@ -107,33 +105,15 @@ class GpuCliqueKey : public CliqueKey {
   // GPU clique keys have a total order on which we rely on for acquiring
   // cliques in the same order across all participating devices.
   friend bool operator==(const GpuCliqueKey& a, const GpuCliqueKey& b);
+  friend bool operator!=(const GpuCliqueKey& a, const GpuCliqueKey& b);
   friend bool operator<(const GpuCliqueKey& a, const GpuCliqueKey& b);
   friend bool operator>(const GpuCliqueKey& a, const GpuCliqueKey& b);
 
  private:
   void HashValue(absl::HashState state) const final;
 
-  // See comment on `num_local_participants()`.
   int64_t num_local_participants_;
-  bool is_p2p_;
-
-  // The full list of groups across all devices which this clique is a part of.
-  //
-  // When GPU communicator splitting is enabled, this is used to distinguish
-  // which cliques can be reused from the cache or must be split in order to
-  // prevent a deadlock situation.
-  //
-  // For example, imagine we have a communicator with devices = [0,1] and
-  // groups = [0, 1] Later on, we may want to create communicators [0, 1] and
-  // [2, 3] by splitting [0, 1, 2, 3] If ranks 0 and 1 reuse the existing
-  // [0, 1] clique but ranks 2 and 3 initiate a split, there will be a deadlock
-  // since ranks 2, 3 and will be waiting forever for 0, 1 to join the split.
-  //
-  // Having the participating groups as part of the cache key will prevent such
-  // situations
-  std::vector<std::vector<GlobalDeviceId>> participant_groups_;
-
-  GlobalDeviceId root_device_;
+  CommunicationId communication_id_;
 
   std::vector<IncarnationId> incarnations_;
 };

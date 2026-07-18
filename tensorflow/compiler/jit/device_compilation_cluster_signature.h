@@ -58,7 +58,8 @@ struct DeviceCompilationClusterSignature {
   bool operator==(const DeviceCompilationClusterSignature& other) const;
 
   struct Hash {
-    uint64 operator()(const DeviceCompilationClusterSignature& signature) const;
+    uint64_t operator()(
+        const DeviceCompilationClusterSignature& signature) const;
   };
 
   // Returns a human-readable description of the signature.

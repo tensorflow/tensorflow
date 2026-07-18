@@ -18,31 +18,19 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <memory>
 #include <optional>
-#include <utility>
-#include <vector>
 
 #include "absl/base/casts.h"
-#include "absl/container/inlined_vector.h"
-#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
-#include "absl/log/log.h"
-#include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
-#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/common_pjrt_client.h"
+#include "xla/pjrt/cpu/cpu_device_memory.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/raw_buffer.h"
-#include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
@@ -53,7 +41,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -91,6 +79,10 @@ void PackOrCopy(PrimitiveType element_type, const LiteralSlice& literal,
                 void* data, int64_t size) {
   if (primitive_util::IsSubByteNonPredType(element_type)) {
     const int bit_width = primitive_util::BitWidth(element_type);
+    const int64_t expected_packed_size =
+        CeilOfRatio<int64_t>(literal.size_bytes(), 8 / bit_width);
+    CHECK_EQ(expected_packed_size, size)
+        << "Mismatched packed target size in PackOrCopy";
     absl::Span<const char> src_data_span(
         static_cast<const char*>(literal.untyped_data()), literal.size_bytes());
     absl::Span<char> dst_data_span(static_cast<char*>(data), size);
@@ -98,37 +90,6 @@ void PackOrCopy(PrimitiveType element_type, const LiteralSlice& literal,
   } else {
     CHECK_EQ(literal.size_bytes(), size);
     std::memcpy(data, literal.untyped_data(), size);
-  }
-}
-
-/*static*/ absl::StatusOr<std::unique_ptr<TrackedCpuDeviceBuffer>>
-AbstractCpuBuffer::AllocateTrackedDeviceBuffer(
-    const Shape& on_device_shape,
-    absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events) {
-  if (on_device_shape.IsTuple()) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Tuples are not supported for cpu-buffers: ",
-                     on_device_shape.ToString()));
-  }
-  size_t byte_size = ShapeUtil::ByteSizeOf(on_device_shape);
-  TF_ASSIGN_OR_RETURN(tsl::AsyncValueRef<CpuDeviceMemory> device_buffer,
-                      CpuDeviceMemory::Allocate(byte_size));
-  return std::make_unique<TrackedCpuDeviceBuffer>(
-      /*owns_buffers=*/true, std::move(device_buffer),
-      std::move(definition_events));
-}
-
-/*static*/ void AbstractCpuBuffer::AllocateAvsAndEvents(
-    const Shape& shape,
-    absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4>* avs,
-    absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>* definition_events) {
-  // Nested tuple shapes are not supported here.
-  int num_leaf_buffers = shape.IsTuple() ? shape.tuple_shapes().size() : 1;
-  for (int i = 0; i < num_leaf_buffers; ++i) {
-    tsl::AsyncValueRef<CpuEvent> definition_event =
-        tsl::MakeConstructedAsyncValueRef<CpuEvent>();
-    definition_events->push_back(definition_event.CopyRef());
-    avs->push_back(std::move(definition_event));
   }
 }
 

@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,9 +30,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/python/transfer/transfer_socket.pb.h"
+#include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace aux {
 
@@ -46,7 +50,7 @@ class ChunkDestination : public tsl::ReferenceCounted<ChunkDestination> {
   virtual void Poison(absl::Status s) = 0;
 
   // For testing.
-  static std::pair<xla::Future<std::string>, tsl::RCReference<ChunkDestination>>
+  static std::pair<tsl::Future<std::string>, tsl::RCReference<ChunkDestination>>
   MakeStringDest();
 };
 
@@ -107,7 +111,8 @@ class BulkTransportInterface {
     // There may be some delay between Send() and when the message
     // is actually sent. on_send gets called when the message actually
     // gets sent.
-    absl::AnyInvocable<void(int bond_id, size_t size) &&> on_send;
+    absl::AnyInvocable<void(absl::StatusOr<int> bond_id, size_t size) &&>
+        on_send;
   };
 
   // Schedules a send over a BulkTransportInterface connection.
@@ -162,9 +167,15 @@ class BulkTransportFactory {
     std::unique_ptr<BulkTransportInterface> bulk_transport;
   };
   // Receives the bulk transport request.
-  virtual BulkTransportRecvResult RecvBulkTransport(
+  virtual absl::StatusOr<BulkTransportRecvResult> RecvBulkTransport(
       const SocketTransferEstablishBulkTransport&
           remote_bulk_transport_info) = 0;
+
+  // Shutsdown in a blocking fashion to allow avoiding
+  // destroying the ifrt client on a background thread.
+  // This may make the BulkTransportFactory unusable, so be careful
+  // to only call it right before destruction.
+  virtual void BlockingShutdown() {}
 
   // Creates a factory (mostly for testing) which runs entirely
   // locally.
@@ -202,12 +213,17 @@ class PullTable {
   };
 
   // Registers an entry in the pull table to be pulled at a later point.
-  void AwaitPull(uint64_t uuid, tsl::RCReference<Entry> entry);
+  void AwaitPull(uint64_t uuid, tsl::RCReference<Entry> entry,
+                 std::optional<absl::Time> timeout = std::nullopt);
 
   // Will call Send() for each of the copied buffers in req offset by
   // base_req_id (assigned sequentially). (Delegates to PullTable::Entry).
   void Handle(tsl::RCReference<ConnectionState> state,
-              const SocketTransferPullRequest& req, size_t base_req_id);
+              const SocketTransferPullRequest& req, size_t base_req_id,
+              std::optional<absl::Time> timeout = std::nullopt);
+
+  // Drops pulls that have expired relative to time t.
+  void DropExpiredPulls(absl::Time t);
 
   // Test-only implementation of PullTable::Entry for a list of strings.
   static tsl::RCReference<PullTable::Entry> MakeStringEntry(
@@ -218,13 +234,38 @@ class PullTable {
 
  private:
   absl::Mutex mu_;
-  absl::flat_hash_map<uint64_t, tsl::RCReference<Entry>> entries_;
-  struct PausedFetch {
+  struct HeapNodeBase {
+    size_t heap_index = -1;
+    std::optional<absl::Time> timeout;
+  };
+
+  struct EntryWithTimeout : public HeapNodeBase {
+    tsl::RCReference<Entry> entry;
+    uint64_t uuid;
+  };
+  absl::flat_hash_map<uint64_t, std::unique_ptr<EntryWithTimeout>> entries_;
+
+  struct PausedFetch;
+  using FetchList = std::list<PausedFetch>;
+  struct PausedFetch : public HeapNodeBase {
     tsl::RCReference<ConnectionState> state;
     SocketTransferPullRequest req;
     size_t base_req_id;
+    FetchList::iterator list_it;
   };
-  absl::flat_hash_map<uint64_t, std::vector<PausedFetch>> paused_fetches_;
+  absl::flat_hash_map<uint64_t, FetchList> paused_fetches_;
+
+  std::vector<HeapNodeBase*> entry_heap_;
+  std::vector<HeapNodeBase*> fetch_heap_;
+
+  static bool CompareNodes(const HeapNodeBase* a, const HeapNodeBase* b);
+  static void BubbleUp(std::vector<HeapNodeBase*>& heap, size_t idx);
+  static void BubbleDown(std::vector<HeapNodeBase*>& heap, size_t idx);
+  static void PushIntrusive(std::vector<HeapNodeBase*>& heap,
+                            HeapNodeBase* item);
+  static void RemoveIntrusive(std::vector<HeapNodeBase*>& heap,
+                              HeapNodeBase* item);
+  static HeapNodeBase* PopIntrusive(std::vector<HeapNodeBase*>& heap);
 };
 
 }  // namespace aux

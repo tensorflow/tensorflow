@@ -35,6 +35,8 @@ limitations under the License.
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
+using namespace mlir;  // NOLINT
+
 namespace mlir {
 namespace TF {
 namespace {
@@ -276,7 +278,7 @@ mlir::LogicalResult DTensorAllToAllOp::verify() {
 
 LogicalResult DTensorLayout::inferReturnTypes(
     MLIRContext* context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
+    DictionaryAttr attributes, mlir::PropertyRef, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   assert(operands.size() == 1);
   inferredReturnTypes.assign({operands[0].getType()});

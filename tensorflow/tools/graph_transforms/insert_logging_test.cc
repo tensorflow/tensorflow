@@ -36,7 +36,7 @@ absl::Status InsertLogging(const GraphDef& input_graph_def,
 class InsertLoggingTest : public ::testing::Test {
  protected:
   void CheckGraphCanRun(const GraphDef& graph_def,
-                        const std::vector<string>& output_names) {
+                        const std::vector<std::string>& output_names) {
     std::unique_ptr<Session> session(NewSession(SessionOptions()));
     TF_ASSERT_OK(session->Create(graph_def));
     std::vector<Tensor> outputs;
@@ -73,7 +73,7 @@ class InsertLoggingTest : public ::testing::Test {
 
     CheckGraphCanRun(result, {"add_node4"});
 
-    std::unordered_set<string> print_inputs;
+    std::unordered_set<std::string> print_inputs;
     for (const NodeDef& node : result.node()) {
       if (node.op() == "Print") {
         print_inputs.insert(node.input(0));
@@ -116,13 +116,13 @@ class InsertLoggingTest : public ::testing::Test {
     TransformFuncContext context;
     context.input_names = {};
     context.output_names = {"add_node4"};
-    context.params.insert(
-        std::pair<string, std::vector<string>>({"op", {"Mul", "Add"}}));
+    context.params.insert(std::pair<std::string, std::vector<std::string>>(
+        {"op", {"Mul", "Add"}}));
     TF_ASSERT_OK(InsertLogging(graph_def, context, &result));
 
     CheckGraphCanRun(result, {"add_node4"});
 
-    std::unordered_set<string> print_inputs;
+    std::unordered_set<std::string> print_inputs;
     for (const NodeDef& node : result.node()) {
       if (node.op() == "Print") {
         print_inputs.insert(node.input(0));
@@ -165,13 +165,13 @@ class InsertLoggingTest : public ::testing::Test {
     TransformFuncContext context;
     context.input_names = {};
     context.output_names = {"add_node4"};
-    context.params.insert(
-        std::pair<string, std::vector<string>>({"prefix", {"add_node"}}));
+    context.params.insert(std::pair<std::string, std::vector<std::string>>(
+        {"prefix", {"add_node"}}));
     TF_ASSERT_OK(InsertLogging(graph_def, context, &result));
 
     CheckGraphCanRun(result, {"add_node4"});
 
-    std::unordered_set<string> print_inputs;
+    std::unordered_set<std::string> print_inputs;
     for (const NodeDef& node : result.node()) {
       if (node.op() == "Print") {
         print_inputs.insert(node.input(0));

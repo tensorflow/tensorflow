@@ -45,7 +45,7 @@ template struct LaunchConv2DBackpropInputOp<CPUDevice, double>;
 
 // A dummy type to group forward backward data autotune results together.
 struct ConvBackwardDataAutotuneGroup {
-  static string name() { return "ConvBwdData"; }
+  static std::string name() { return "ConvBwdData"; }
 };
 
 typedef AutotuneSingleton<ConvBackwardDataAutotuneGroup, ConvParameters,
@@ -56,14 +56,14 @@ typedef AutotuneSingleton<ConvBackwardDataAutotuneGroup, ConvParameters,
 // Computes backprop input using Eigen::SpatialConvolutionBackwardInput on GPU
 // for int32 inputs.
 template <>
-struct LaunchConv2DBackpropInputOp<GPUDevice, int32> {
+struct LaunchConv2DBackpropInputOp<GPUDevice, int32_t> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& out_backprop, const Tensor& filter,
                   int row_dilation, int col_dilation, int row_stride,
                   int col_stride, const Padding& padding,
                   const std::vector<int64_t>& explicit_paddings,
                   Tensor* in_backprop, TensorFormat data_format) {
-    LaunchConv2DBackpropInputOpImpl<GPUDevice, int32> launcher;
+    LaunchConv2DBackpropInputOpImpl<GPUDevice, int32_t> launcher;
     launcher(ctx, use_cudnn, cudnn_use_autotune, out_backprop, filter,
              row_dilation, col_dilation, row_stride, col_stride, padding,
              explicit_paddings, in_backprop, data_format);
@@ -82,8 +82,8 @@ void LaunchConv2DBackpropInputOpGpuImpl(
   using se::dnn::AlgorithmDesc;
   using se::dnn::ProfileResult;
 
-  std::vector<int32> strides(4, 1);
-  std::vector<int32> dilations(4, 1);
+  std::vector<int32_t> strides(4, 1);
+  std::vector<int32_t> dilations(4, 1);
   auto input_h = GetTensorDimIndex(data_format, 'H');
   auto input_w = GetTensorDimIndex(data_format, 'W');
   strides[input_h] = row_stride;
@@ -123,10 +123,10 @@ void LaunchConv2DBackpropInputOpGpuImpl(
   DCHECK_EQ(dims.spatial_dims[1].output_size, expected_out_cols);
 
   auto* stream = ctx->op_device_context()->stream();
-  OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
+  OP_REQUIRES(ctx, stream, absl::InternalError("No GPU stream available."));
 
   if (!use_cudnn) {
-    ctx->SetStatus(errors::Unimplemented(
+    ctx->SetStatus(absl::UnimplementedError(
         "Conv2DBackpropInput for GPU is not currently supported "
         "without cudnn"));
     return;
@@ -144,10 +144,10 @@ void LaunchConv2DBackpropInputOpGpuImpl(
       dims.spatial_dims[0].stride == 1 && dims.spatial_dims[1].stride == 1 &&
       data_format == FORMAT_NHWC && (padding == VALID || padding == SAME)) {
     // 1x1 filter, so call cublas directly.
-    const uint64 m = dims.batch_size * dims.spatial_dims[0].input_size *
-                     dims.spatial_dims[1].input_size;
-    const uint64 k = dims.out_depth;
-    const uint64 n = dims.in_depth;
+    const uint64_t m = dims.batch_size * dims.spatial_dims[0].input_size *
+                       dims.spatial_dims[1].input_size;
+    const uint64_t k = dims.out_depth;
+    const uint64_t n = dims.in_depth;
 
     auto a_ptr = AsDeviceMemory(out_backprop.template flat<T>().data(),
                                 out_backprop.template flat<T>().size());
@@ -172,10 +172,10 @@ void LaunchConv2DBackpropInputOpGpuImpl(
              data_format == FORMAT_NHWC) {
     // The input data and filter have the same height/width, and we are not
     // using grouped convolution, so call cublas directly.
-    const uint64 m = dims.batch_size;
-    const uint64 k = dims.out_depth;
-    const uint64 n = dims.spatial_dims[0].input_size *
-                     dims.spatial_dims[1].input_size * dims.in_depth;
+    const uint64_t m = dims.batch_size;
+    const uint64_t k = dims.out_depth;
+    const uint64_t n = dims.spatial_dims[0].input_size *
+                       dims.spatial_dims[1].input_size * dims.in_depth;
 
     auto a_ptr = AsDeviceMemory(out_backprop.template flat<T>().data(),
                                 out_backprop.template flat<T>().size());
@@ -279,7 +279,8 @@ void LaunchConv2DBackpropInputOpGpuImpl(
   //   (2) NHWC -> OHWI
 
   Tensor transformed_filter;
-  const auto transform_filter = [&](FilterTensorFormat dst_format) -> Status {
+  const auto transform_filter =
+      [&](FilterTensorFormat dst_format) -> absl::Status {
     VLOG(4) << "Transform filter tensor from " << ToString(FORMAT_HWIO)
             << " to " << ToString(dst_format);
 
@@ -297,7 +298,7 @@ void LaunchConv2DBackpropInputOpGpuImpl(
         To32Bit(filter.tensor<T, 4>()),
         To32Bit(transformed_filter.tensor<T, 4>()));
 
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   if (compute_data_format == FORMAT_NCHW) {
@@ -305,8 +306,8 @@ void LaunchConv2DBackpropInputOpGpuImpl(
   } else if (compute_data_format == FORMAT_NHWC) {
     OP_REQUIRES_OK(ctx, transform_filter(FORMAT_OHWI));
   } else {
-    ctx->SetStatus(errors::InvalidArgument("Invalid compute data format: ",
-                                           ToString(compute_data_format)));
+    ctx->SetStatus(absl::InvalidArgumentError(absl::StrCat(
+        "Invalid compute data format: ", ToString(compute_data_format))));
     return;
   }
 
@@ -391,7 +392,7 @@ void LaunchConv2DBackpropInputOpGpuImpl(
   auto autotune_entry = std::move(entry_or).value();
 
   DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize, ctx);
-  Status cudnn_launch_status =
+  absl::Status cudnn_launch_status =
       LaunchAutotunedConv(autotune_entry, &scratch_allocator,
                           se::dnn::ConvolutionKind::BACKWARD_DATA, stream,
                           input_desc, in_backprop_ptr, filter_desc, filter_ptr,
@@ -531,25 +532,25 @@ DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
 
 template <>
-void SpatialConvolutionBackwardInputFunc<GPUDevice, int32>::operator()(
-    const GPUDevice&, typename TTypes<int32, 4>::Tensor,
-    typename TTypes<int32, 4>::ConstTensor,
-    typename TTypes<int32, 4>::ConstTensor, Eigen::DenseIndex,
+void SpatialConvolutionBackwardInputFunc<GPUDevice, int32_t>::operator()(
+    const GPUDevice&, typename TTypes<int32_t, 4>::Tensor,
+    typename TTypes<int32_t, 4>::ConstTensor,
+    typename TTypes<int32_t, 4>::ConstTensor, Eigen::DenseIndex,
     Eigen::DenseIndex, Eigen::DenseIndex, Eigen::DenseIndex);
-extern template struct SpatialConvolutionBackwardInputFunc<GPUDevice, int32>;
+extern template struct SpatialConvolutionBackwardInputFunc<GPUDevice, int32_t>;
 
 template <>
 void SpatialConvolutionBackwardInputWithExplicitPaddingFunc<
-    GPUDevice, int32>::operator()(const GPUDevice&,
-                                  typename TTypes<int32, 4>::Tensor,
-                                  typename TTypes<int32, 4>::ConstTensor,
-                                  typename TTypes<int32, 4>::ConstTensor,
-                                  Eigen::DenseIndex, Eigen::DenseIndex,
-                                  Eigen::DenseIndex, Eigen::DenseIndex,
-                                  Eigen::DenseIndex, Eigen::DenseIndex,
-                                  Eigen::DenseIndex, Eigen::DenseIndex);
+    GPUDevice, int32_t>::operator()(const GPUDevice&,
+                                    typename TTypes<int32_t, 4>::Tensor,
+                                    typename TTypes<int32_t, 4>::ConstTensor,
+                                    typename TTypes<int32_t, 4>::ConstTensor,
+                                    Eigen::DenseIndex, Eigen::DenseIndex,
+                                    Eigen::DenseIndex, Eigen::DenseIndex,
+                                    Eigen::DenseIndex, Eigen::DenseIndex,
+                                    Eigen::DenseIndex, Eigen::DenseIndex);
 extern template struct SpatialConvolutionBackwardInputWithExplicitPaddingFunc<
-    GPUDevice, int32>;
+    GPUDevice, int32_t>;
 
 }  // namespace functor
 
@@ -575,9 +576,9 @@ REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
                         Conv2DBackpropInputOp<GPUDevice, Eigen::bfloat16>);
 REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("input_sizes"),
-                        Conv2DBackpropInputOp<GPUDevice, int32>);
+                        Conv2DBackpropInputOp<GPUDevice, int32_t>);
 
 // To be used inside depthwise_conv_grad_op.cc.
 // TODO(reedwm): Move this and the definition to depthwise_conv_grad_op.cc.

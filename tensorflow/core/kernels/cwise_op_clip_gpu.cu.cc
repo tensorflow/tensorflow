@@ -24,11 +24,11 @@ limitations under the License.
 namespace tensorflow {
 
 template <typename T>
-__global__ void UnaryClipCustomKernel(const int32 size_in,
-                                      const T *__restrict__ in0,
-                                      const T *__restrict__ in1,
-                                      const T *__restrict__ in2,
-                                      T *__restrict__ out) {
+__global__ void UnaryClipCustomKernel(const int32_t size_in,
+                                      const T* __restrict__ in0,
+                                      const T* __restrict__ in1,
+                                      const T* __restrict__ in2,
+                                      T* __restrict__ out) {
   GPU_1D_KERNEL_LOOP(i, size_in) {
     T value = in2[0] < in0[i] ? in2[0] : in0[i];
     out[i] = value < in1[0] ? in1[0] : value;
@@ -36,11 +36,11 @@ __global__ void UnaryClipCustomKernel(const int32 size_in,
 }
 
 template <typename T>
-__global__ void BinaryRightClipCustomKernel(const int32 size_in,
-                                            const T *__restrict__ in0,
-                                            const T *__restrict__ in1,
-                                            const T *__restrict__ in2,
-                                            T *__restrict__ out) {
+__global__ void BinaryRightClipCustomKernel(const int32_t size_in,
+                                            const T* __restrict__ in0,
+                                            const T* __restrict__ in1,
+                                            const T* __restrict__ in2,
+                                            T* __restrict__ out) {
   GPU_1D_KERNEL_LOOP(i, size_in) {
     T value = in2[i] < in0[i] ? in2[i] : in0[i];
     out[i] = value < in1[0] ? in1[0] : value;
@@ -48,11 +48,11 @@ __global__ void BinaryRightClipCustomKernel(const int32 size_in,
 }
 
 template <typename T>
-__global__ void BinaryLeftClipCustomKernel(const int32 size_in,
-                                           const T *__restrict__ in0,
-                                           const T *__restrict__ in1,
-                                           const T *__restrict__ in2,
-                                           T *__restrict__ out) {
+__global__ void BinaryLeftClipCustomKernel(const int32_t size_in,
+                                           const T* __restrict__ in0,
+                                           const T* __restrict__ in1,
+                                           const T* __restrict__ in2,
+                                           T* __restrict__ out) {
   GPU_1D_KERNEL_LOOP(i, size_in) {
     T value = in2[0] < in0[i] ? in2[0] : in0[i];
     out[i] = value < in1[i] ? in1[i] : value;
@@ -129,12 +129,12 @@ INSTANTIATE_GPU(Eigen::half);
 INSTANTIATE_GPU(bfloat16);
 INSTANTIATE_GPU(float);
 INSTANTIATE_GPU(double);
-INSTANTIATE_GPU(int8);
-INSTANTIATE_GPU(int16);
-INSTANTIATE_GPU(int32);
+INSTANTIATE_GPU(int8_t);
+INSTANTIATE_GPU(int16_t);
+INSTANTIATE_GPU(int32_t);
 INSTANTIATE_GPU(int64_t);
-INSTANTIATE_GPU(uint8);
-INSTANTIATE_GPU(uint16);
+INSTANTIATE_GPU(uint8_t);
+INSTANTIATE_GPU(uint16_t);
 #undef INSTANTIATE_GPU
 
 }  // namespace functor

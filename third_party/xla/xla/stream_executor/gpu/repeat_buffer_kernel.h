@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel.h"
 
 namespace stream_executor::gpu {
@@ -27,7 +27,7 @@ namespace stream_executor::gpu {
 // and look up the kernel in the GPU kernel registry.
 struct RepeatBufferKernel {
   using KernelType =
-      stream_executor::TypedKernel<stream_executor::DeviceMemoryBase, int64_t,
+      stream_executor::TypedKernel<stream_executor::DeviceAddressBase, int64_t,
                                    int64_t>;
 };
 

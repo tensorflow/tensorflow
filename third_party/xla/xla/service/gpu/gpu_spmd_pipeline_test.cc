@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -34,6 +35,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -50,8 +53,8 @@ class GpuSpmdPartitioningTest : public HloHardwareIndependentTestBase,
         /*replica_count=*/1, /*num_partitions=*/num_devices);
     config.set_num_partitions(num_devices);
     config.set_use_shardy_partitioner(UseShardy());
-    TF_ASSIGN_OR_RETURN(auto module,
-                        ParseAndReturnVerifiedModule(hlo_module, config));
+    ASSIGN_OR_RETURN(auto module,
+                     ParseAndReturnVerifiedModule(hlo_module, config));
     if (UseShardy()) {
       module->add_frontend_attribute(
           std::string(xla::sdy::kImportMhloShardings), "t");
@@ -60,10 +63,11 @@ class GpuSpmdPartitioningTest : public HloHardwareIndependentTestBase,
     HloPassPipeline spmd_pipeline("spmd-partitioner");
     se::CudaComputeCapability ampere(8, 0);
     AlgebraicSimplifierOptions alg_simplifier_options;
-    // Ampere Core_count from tensorflow/compiler/xla/tools/hlo_opt/gpu_specs/.
+    // Ampere Core_count from
+    // tensorflow/compiler/xla/backends/gpu/target_config/specs/.
     AddSPMDPasses(module.get(), alg_simplifier_options, ampere, spmd_pipeline,
                   std::nullopt);
-    TF_RETURN_IF_ERROR(spmd_pipeline.Run(module.get()).status());
+    RETURN_IF_ERROR(spmd_pipeline.Run(module.get()).status());
     XLA_VLOG_LINES(10, module->ToString());
     return module;
   }

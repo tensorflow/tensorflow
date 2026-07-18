@@ -88,10 +88,10 @@ class OpCompatibilityTest : public OpsTestBase {
     TF_ASSERT_OK(RunOpKernel());
   }
 
-  string Result() { return GetOutput(0)->scalar<tstring>()(); }
+  std::string Result() { return GetOutput(0)->scalar<tstring>()(); }
 
   void ExpectIncompatible(const OpDef& old_op_def, const OpDef& new_op_def,
-                          const string& error) {
+                          const std::string& error) {
     // Test OpDefCompatible gives the same answer without the node_def.
     absl::Status status = OpDefCompatible(old_op_def, new_op_def);
     if (status.ok()) {
@@ -103,8 +103,9 @@ class OpCompatibilityTest : public OpsTestBase {
     }
   }
 
-  void ExpectInvalid(const OpDef& old_op_def, const string& validation_error,
-                     const string& compatibility_error) {
+  void ExpectInvalid(const OpDef& old_op_def,
+                     const std::string& validation_error,
+                     const std::string& compatibility_error) {
     // Record the original signature before we change *node_def().
     DataTypeVector old_in_types, old_out_types;
     TF_ASSERT_OK(InOutTypesForNode(*node_def(), old_op_def, &old_in_types,
@@ -127,7 +128,7 @@ class OpCompatibilityTest : public OpsTestBase {
   }
 
   void ExpectTypeMismatch(const OpDef& old_op_def,
-                          const string& compatibility_error) {
+                          const std::string& compatibility_error) {
     // Record the original signature before we change *node_def().
     DataTypeVector old_in_types, old_out_types;
     TF_ASSERT_OK(InOutTypesForNode(*node_def(), old_op_def, &old_in_types,
@@ -153,7 +154,7 @@ class OpCompatibilityTest : public OpsTestBase {
   }
 
   void ExpectRenameFailure(const OpDef& old_op_def,
-                           const string& compatibility_error) {
+                           const std::string& compatibility_error) {
     // This should be all that is needed to get compatibility.
     const OpDef* new_op_def = RegisteredOpDef();
     AddDefaultsToNodeDef(*new_op_def, node_def());
@@ -166,7 +167,7 @@ class OpCompatibilityTest : public OpsTestBase {
   }
 
   void ExpectDefaultChangeFailure(const OpDef& old_op_def,
-                                  const string& compatibility_error) {
+                                  const std::string& compatibility_error) {
     // This should be all that is needed to get compatibility.
     const OpDef* new_op_def = RegisteredOpDef();
     AddDefaultsToNodeDef(*new_op_def, node_def());

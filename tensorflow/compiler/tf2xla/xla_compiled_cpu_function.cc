@@ -25,16 +25,16 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/allocator.h"
 #include "xla/backends/cpu/runtime/rng_state_lib.h"
-#include "xla/cpu_function_runtime.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
 namespace {
 
-int32 GetResultIndex(const int32* result_index_table, int32 num_results) {
+int32_t GetResultIndex(const int32_t* result_index_table, int32_t num_results) {
   auto it =
       std::min_element(result_index_table, result_index_table + num_results);
 
@@ -72,7 +72,7 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
       alloc_mode == AllocMode::ARGS_VARIABLES_RESULTS_PROFILES_AND_TEMPS;
   // Allocate arg and temp buffers.
   alloc_buffer_table_ = tensorflow::MallocContiguousBuffers(
-      static_data.buffer_infos_, static_data.num_buffers_,
+      absl::MakeConstSpan(static_data.buffer_infos_, static_data.num_buffers_),
       /*allocate_entry_params=*/allocate_entry_params, buffer_table_,
       /*annotate_initialized=*/true);
   // If Hlo profiling is enabled the generated code expects an appropriately
@@ -150,7 +150,7 @@ int LookupNameIndex(absl::string_view name, const char** names) {
 
 }  // namespace
 
-int XlaCompiledCpuFunction::LookupArgIndex(const string& name) const {
+int XlaCompiledCpuFunction::LookupArgIndex(const std::string& name) const {
   return LookupNameIndex(name, arg_names_);
 }
 
@@ -162,7 +162,7 @@ int XlaCompiledCpuFunction::LookupVariableIndex(absl::string_view name) const {
   return num_args_ - num_variables_ + index;
 }
 
-int XlaCompiledCpuFunction::LookupResultIndex(const string& name) const {
+int XlaCompiledCpuFunction::LookupResultIndex(const std::string& name) const {
   return LookupNameIndex(name, result_names_);
 }
 

@@ -35,11 +35,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -123,13 +124,13 @@ absl::Status HloHardwareIndependentTestBase::
       for (int64_t i = 0; i < computation->num_parameters(); ++i) {
         const Shape& param_shape =
             computation->parameter_instruction(i)->shape();
-        TF_RETURN_IF_ERROR(computation->parent()
-                               ->mutable_entry_computation_layout()
-                               ->mutable_parameter_layout(i)
-                               ->CopyLayoutFromShape(param_shape));
+        RETURN_IF_ERROR(computation->parent()
+                            ->mutable_entry_computation_layout()
+                            ->mutable_parameter_layout(i)
+                            ->CopyLayoutFromShape(param_shape));
       }
 
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           computation->parent()
               ->mutable_entry_computation_layout()
               ->mutable_result_layout()
@@ -165,7 +166,7 @@ HloHardwareIndependentTestBase::ParseAndReturnVerifiedModule(
       TestName(), config_with_device_assignment, verifier_layout_sensitive_,
       allow_mixed_precision_in_hlo_verifier_, shape_size_fn,
       instruction_can_change_layout_func_);
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       module->ParseHloStringAndVerifyModule(hlo_text, parser_options));
   return module;
 }
@@ -174,7 +175,7 @@ HloHardwareIndependentTestBase::ParseAndReturnVerifiedModule(
 absl::StatusOr<bool> HloHardwareIndependentTestBase::RunHloPass(
     HloPassInterface* hlo_pass, HloModule* module) {
   const std::string before_run = module->ToProto().ShortDebugString();
-  TF_ASSIGN_OR_RETURN(bool changed, hlo_pass->Run(module));
+  ASSIGN_OR_RETURN(bool changed, hlo_pass->Run(module));
   const std::string after_run = module->ToProto().ShortDebugString();
   if (changed) {
     EXPECT_NE(after_run, before_run) << absl::StrFormat(
@@ -216,6 +217,9 @@ DebugOptions HloHardwareIndependentTestBase::GetDebugOptionsForTest() const {
   debug_options.add_xla_disable_hlo_passes("constant_folding");
   debug_options.set_xla_hlo_evaluator_use_fast_path(true);
   debug_options.set_xla_cpu_emitter_verification_level(1);
+  // b/475785091: Tests are run with heap checker, which makes multi-threaded
+  // autotuning slow which leads to occasional timeouts.
+  debug_options.set_xla_gpu_force_compilation_parallelism(1);
   return debug_options;
 }
 
@@ -223,7 +227,8 @@ void HloHardwareIndependentTestBase::RunAndFilecheckHloRewrite(
     absl::string_view hlo, HloPassInterface&& hlo_pass,
     std::optional<absl::string_view> expected,
     std::function<void(HloModule*)> after_pass_checks,
-    const HloModuleConfig* config) const {
+    const HloModuleConfig* config,
+    absl::Span<const absl::string_view> additional_check_prefixes) const {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           config ? ParseAndReturnVerifiedModule(hlo, *config)
                                  : ParseAndReturnVerifiedModule(hlo));
@@ -234,7 +239,7 @@ void HloHardwareIndependentTestBase::RunAndFilecheckHloRewrite(
         bool filecheck_matches,
         RunFileCheck(
             module->ToString(HloPrintOptions().set_print_large_constants(true)),
-            *expected));
+            *expected, additional_check_prefixes));
     EXPECT_TRUE(filecheck_matches) << module->ToString();
     if (after_pass_checks) {
       after_pass_checks(module.get());
@@ -257,10 +262,10 @@ HloHardwareIndependentTestBase::RunAndCheckHloRewrite(
   std::string hlo_string = absl::StrReplaceAll(hlo_template, params);
   SCOPED_TRACE("Input HLO: " + hlo_string);
   VLOG(7) << "Input HLO: " << hlo_string;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      ParseAndReturnVerifiedModule(hlo_string));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                   ParseAndReturnVerifiedModule(hlo_string));
   VLOG(7) << "Input HLO parsed. Running the pass:  + " << hlo_pass->name();
-  TF_ASSIGN_OR_RETURN(bool changed, RunHloPass(hlo_pass, module.get()));
+  ASSIGN_OR_RETURN(bool changed, RunHloPass(hlo_pass, module.get()));
   VLOG(7) << "Output HLO: "
           << module->ToString(HloPrintOptions::ShortParsable()
                                   .set_print_control_dependencies(true));

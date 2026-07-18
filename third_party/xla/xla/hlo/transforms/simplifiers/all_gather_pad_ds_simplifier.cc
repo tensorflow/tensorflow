@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -769,7 +770,9 @@ std::optional<PatternMatchResult> MatchDynamicSlicePadAllGather(
   // Match all-gather for kFlattenedID collective mode.
   absl::StatusOr<CollectiveOpGroupMode> mode = GetCollectiveOpGroupMode(ag_hlo);
 
-  if (!mode.ok() || mode.value() != CollectiveOpGroupMode::kFlattenedID) {
+  if (!mode.ok() ||
+      mode.value() !=
+          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID) {
     VLOG(2) << "AG does not use global device ids or channel id "
             << ag_hlo->ToString();
     return std::nullopt;
@@ -958,14 +961,14 @@ absl::Status AllGatherPadDsSimplifierVisitor::HandleDynamicSlice(
   return ReplaceInstruction(dynamic_slice, *selected);
 }
 
-absl::StatusOr<bool> AllGatherPadDsSimplifier::Run(
+absl::StatusOr<bool> AllGatherPadDsSimplifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     AllGatherPadDsSimplifierVisitor visitor;
-    TF_RETURN_IF_ERROR(computation->Accept(&visitor));
+    RETURN_IF_ERROR(computation->Accept(&visitor));
     changed |= visitor.changed();
   }
   return changed;

@@ -83,12 +83,11 @@ struct AddQuantDeQuantAfterConvolutionOp final
         cast<ShapedType>(clonedConvOp->getResult(0).getType());
     auto loc = clonedConvOp->getLoc();
     auto quantizedType = getQuantizedType(loc, rewriter, convResultType);
-    auto stablehloQuantizeOp = rewriter.create<stablehlo::UniformQuantizeOp>(
-        op.getLoc(), quantizedType, clonedConvOp->getResult(0));
-    auto stablehloDeQuantizeOp =
-        rewriter.create<stablehlo::UniformDequantizeOp>(
-            op.getLoc(), op.getType(),
-            /*input=*/stablehloQuantizeOp.getResult());
+    auto stablehloQuantizeOp = stablehlo::UniformQuantizeOp::create(
+        rewriter, op.getLoc(), quantizedType, clonedConvOp->getResult(0));
+    auto stablehloDeQuantizeOp = stablehlo::UniformDequantizeOp::create(
+        rewriter, op.getLoc(), op.getType(),
+        /*input=*/stablehloQuantizeOp.getResult());
     rewriter.replaceAllUsesWith(op, stablehloDeQuantizeOp.getResult());
     return success();
   }

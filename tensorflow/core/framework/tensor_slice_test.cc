@@ -317,11 +317,11 @@ TEST(TensorSliceTest, Deserialization) {
   // since 0 is start's default value.)
 
   TensorSliceProto proto2;
-  ASSERT_TRUE(proto2.ParseFromArray(pb2, sizeof(pb2) - 1));
+  ASSERT_TRUE(proto2.ParseFromString(absl::string_view(pb2, sizeof(pb2) - 1)));
   TensorSlice ts2(proto2);
 
   TensorSliceProto proto3;
-  ASSERT_TRUE(proto3.ParseFromArray(pb3, sizeof(pb3) - 1));
+  ASSERT_TRUE(proto3.ParseFromString(absl::string_view(pb3, sizeof(pb3) - 1)));
   TensorSlice ts3(proto3);
 
   // Both serializations should be interpreted the same.

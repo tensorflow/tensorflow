@@ -47,14 +47,22 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "allocator.cc",
-        "allocator.h",
         "allocator_registry.cc",
-        "allocator_registry.h",
         "cpu_allocator_impl.cc",
+        "scoped_allocation_trace.cc",
+        "tracking_allocator.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs_no_runtime",
+    srcs = [
+        "allocator.h",
+        "allocator_registry.h",
         "device_type.h",
         "fixedpoint_types.h",
         "numeric_types.h",
-        "tracking_allocator.cc",
+        "scoped_allocation_trace.h",
         "tracking_allocator.h",
         "type_traits.h",
     ],
@@ -65,9 +73,15 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "cancellation.cc",
+        "metrics.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
         "cancellation.h",
         "fixedpoint_types.h",
-        "metrics.cc",
         "metrics.h",
     ],
 )
@@ -104,36 +118,34 @@ cc_library(
         "tracking_allocator.cc",
         "tracking_allocator.h",
     ],
-    hdrs = [
-        "allocator.h",
-    ],
+    hdrs = ["allocator.h"],
     features = ["parse_headers"],
     visibility = ["//visibility:public"],
     deps = [
-        ":numeric_types",
-        ":type_traits",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ] + if_static(
         extra_deps = [
             ":allocator_registry_impl",
             "@com_google_absl//absl/synchronization",
             "//xla/tsl/lib/gtl:inlined_vector",
-            "@local_tsl//tsl/platform:strcat",
-            "@local_tsl//tsl/platform:stringprintf",
+            "@tsl//tsl/platform:numbers",
+            "@tsl//tsl/platform:strcat",
             "//xla/tsl/platform:env",
             "//xla/tsl/platform:env_impl",
             "//xla/tsl/platform:logging",
             "//xla/tsl/platform:macros",
-            "@local_tsl//tsl/platform:platform_port",
-            "@local_tsl//tsl/platform:thread_annotations",
             "//xla/tsl/platform:types",
+            "@tsl//tsl/platform:platform_port",
+            "@tsl//tsl/platform:thread_annotations",
         ],
         otherwise = [
             "//xla/tsl/lib/gtl:inlined_vector",
             "//xla/tsl/platform:logging",
-            "@local_tsl//tsl/platform:platform_port",
-            "@local_tsl//tsl/platform:strcat",
+            "@tsl//tsl/platform:numbers",
+            "@tsl//tsl/platform:platform_port",
+            "@tsl//tsl/platform:strcat",
             "//xla/tsl/platform:env",
         ],
     ),
@@ -156,28 +168,37 @@ cc_library(
     visibility = internal_visibility([
         "//xla:__subpackages__",
         "//tensorflow/core:__subpackages__",
-        "@local_tsl//tsl:__subpackages__",
+        "@tsl//tsl:__subpackages__",
         "//tensorflow/python/profiler/internal:__pkg__",
         "//third_party/xprof:__subpackages__",
     ]),
     deps = [
-        ":numeric_types",
-        ":type_traits",
         "//xla/tsl/lib/gtl:inlined_vector",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:strcat",
-        "@local_tsl//tsl/platform:stringprintf",
-        "@local_tsl//tsl/platform:thread_annotations",
-        "@local_tsl//tsl/profiler/lib:scoped_memory_debug_annotation",
-        "@local_tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/profiler/lib:scoped_memory_debug_annotation",
+        "@tsl//tsl/profiler/lib:traceme",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "scoped_allocation_trace",
+    srcs = ["scoped_allocation_trace.cc"],
+    hdrs = ["scoped_allocation_trace.h"],
+    features = ["parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
 )
 
 cc_library(
@@ -193,23 +214,46 @@ cc_library(
     deps = [
         ":allocator",
         ":metrics",
+        ":scoped_allocation_trace",
         ":shared_counter",
         "//xla/tsl/lib/core:bits",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:types",
         "//xla/tsl/profiler/utils:trace_filter_utils",
         "//xla/tsl/protobuf:bfc_memory_map_proto_cc",
-        "//xla/tsl/util:safe_reinterpret_cast",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:numbers",
-        "@local_tsl//tsl/platform:stacktrace",
-        "@local_tsl//tsl/profiler/lib:scoped_memory_debug_annotation",
-        "@local_tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/platform:numbers",
+        "@tsl//tsl/platform:stacktrace",
+        "@tsl//tsl/profiler/lib:scoped_memory_debug_annotation",
+        "@tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+tsl_cc_test(
+    name = "bfc_allocator_test",
+    srcs = ["bfc_allocator_test.cc"],
+    deps = [
+        ":allocator",
+        ":bfc_allocator",
+        ":scoped_allocation_trace",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:env_impl",  # buildcleaner: keep
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:log_severity",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/log:scoped_mock_log",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -231,7 +275,10 @@ cc_library(
         "device_id_manager.h",
     ],
     deps = [
+        ":device_type",
         "//xla/tsl/lib/gtl:int_type",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:statusor",
     ] + if_static([
         ":device_id_impl",
     ]),
@@ -252,11 +299,10 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -271,13 +317,16 @@ cc_library(
         ":device_type",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:device_name_utils",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:str_util",
+        "@tsl//tsl/platform:str_util",
     ],
 )
 
@@ -366,15 +415,12 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla/tsl/lib/gtl:flatmap",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status",
-        "//xla/tsl/platform:types",
-        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:hash",
-        "@local_tsl//tsl/platform:stringpiece",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -395,7 +441,6 @@ cc_library(
     name = "serving_device_selector_policies",
     srcs = ["serving_device_selector_policies.cc"],
     hdrs = ["serving_device_selector_policies.h"],
-    features = ["-layering_check"],
     deps = [
         ":serving_device_selector",
         "@com_google_absl//absl/strings:string_view",
@@ -414,9 +459,10 @@ tsl_cc_test(
     deps = [
         ":cancellation",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:env_impl",
-        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:env_impl",  # buildcleaner: keep
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
     ],
@@ -465,10 +511,12 @@ tsl_cc_test(
     deps = [
         ":device_id_impl",
         ":device_id_utils",
+        ":device_type",
         "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:status_matchers",
-        "//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "//xla/tsl/platform:statusor",
         "//xla/tsl/util:device_name_utils",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],

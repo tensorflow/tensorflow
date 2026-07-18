@@ -11,7 +11,7 @@ load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_android_libr
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni", "aar_without_jni")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -37,6 +37,21 @@ exports_files([
     "AndroidManifestGpuApi.xml",
     "proguard.flags",
     "tflite_version_script.lds",
+])
+
+exports_files([
+    # go/keep-sorted start
+    "src/main/java/org/tensorflow/lite/DataType.java",
+    "src/main/java/org/tensorflow/lite/DataTypeUtils.java",
+    "src/main/java/org/tensorflow/lite/InterpreterFactory.java",
+    "src/main/java/org/tensorflow/lite/NativeInterpreterWrapperExperimental.java",
+    "src/main/java/org/tensorflow/lite/NativeSignatureRunnerWrapper.java",
+    "src/main/java/org/tensorflow/lite/RuntimeFlavor.java",
+    "src/main/java/org/tensorflow/lite/Tensor.java",
+    "src/main/java/org/tensorflow/lite/TensorImpl.java",
+    "src/main/java/org/tensorflow/lite/annotations/UsedByReflection.java",
+    "src/main/java/org/tensorflow/lite/package-info.java",
+    # go/keep-sorted end
 ])
 
 #-----------------------------------------------------------------------------
@@ -924,6 +939,17 @@ filegroup(
         "src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java",
         "src/test/java/org/tensorflow/lite/TestInit.java",
         "src/test/java/org/tensorflow/lite/nnapi/NnApiDelegateTest.java",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "portable_tests_for_litert",
+    srcs = [
+        "src/test/java/org/tensorflow/lite/InterpreterMobileNetTest.java",
+        "src/test/java/org/tensorflow/lite/SupportedFeatures.java",
+        "src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java",
+        "src/test/java/org/tensorflow/lite/TestInit.java",
     ],
     visibility = ["//visibility:public"],
 )

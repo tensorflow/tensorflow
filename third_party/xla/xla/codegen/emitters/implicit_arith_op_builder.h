@@ -44,6 +44,9 @@ class ImplicitArithOpBuilder {
   // Integer multiplication.
   ImplicitArithOpBuilder operator*(int64_t rhs) const;
   ImplicitArithOpBuilder operator*(mlir::Value rhs) const;
+  // Signed integer division.
+  ImplicitArithOpBuilder operator/(int64_t rhs) const;
+  ImplicitArithOpBuilder operator/(mlir::Value rhs) const;
   // Bitwise and.
   ImplicitArithOpBuilder operator&(mlir::Value rhs) const;
   ImplicitArithOpBuilder operator&(int64_t rhs) const;
@@ -71,6 +74,14 @@ class ImplicitArithOpBuilder {
   ImplicitArithOpBuilder operator==(mlir::Value rhs) const;
   ImplicitArithOpBuilder operator==(int64_t rhs) const;
   ImplicitArithOpBuilder operator!=(int64_t rhs) const;
+
+  // Signed integer min.
+  ImplicitArithOpBuilder min(mlir::Value rhs) const;
+  ImplicitArithOpBuilder min(int64_t rhs) const;
+
+  // Signed integer max.
+  ImplicitArithOpBuilder max(mlir::Value rhs) const;
+  ImplicitArithOpBuilder max(int64_t rhs) const;
 
   ImplicitArithOpBuilder MakeConstant(int64_t c) const;
 

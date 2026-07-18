@@ -32,6 +32,10 @@ struct NumWorkClusters {
     return x == other.x && y == other.y && z == other.z;
   }
 
+  bool operator!=(const NumWorkClusters& other) const {
+    return !(*this == other);
+  }
+
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const NumWorkClusters& d) {
     absl::Format(&sink, "NumWorkClusters{%d, %d, %d}", d.x, d.y, d.z);

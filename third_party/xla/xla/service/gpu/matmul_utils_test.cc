@@ -17,23 +17,23 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/shape.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 namespace {
-
-using ::tsl::testing::IsOkAndHolds;
 
 using CanFoldTransposeOperandIntoDotTest = HloHardwareIndependentTestBase;
 
@@ -53,6 +53,25 @@ ENTRY AddDotsFunc {
                           ParseAndReturnVerifiedModule(hlo_text));
   auto dot = module->entry_computation()->root_instruction();
   EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 0),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(CanFoldTransposeOperandIntoDotTest, RhsTransposeFoldGemm) {
+  const char* hlo_text = R"(
+HloModule RhsTransposeFoldGemm
+
+ENTRY AddDotsFunc {
+  x = f32[2,3] parameter(0)
+  y = f32[4,3] parameter(1)
+  y_transposed = f32[3,4] transpose(y), dimensions={1, 0}
+  ROOT dot_a = f32[2,4] dot(x, y_transposed), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  auto dot = module->entry_computation()->root_instruction();
+  EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 1),
               absl_testing::IsOkAndHolds(true));
 }
 
@@ -336,6 +355,40 @@ ENTRY DotFunc {
   auto dot = module->entry_computation()->root_instruction();
   EXPECT_THAT(IsMatrixMultiplicationTooSmallForRewriting(*dot, 100),
               absl_testing::IsOkAndHolds(false));
+}
+
+TEST(TritonGemmConfigTest, ProtoRoundTripPreservesWavesPerEu) {
+  TritonGemmConfig config(/*block_m=*/64, /*block_n=*/128, /*block_k=*/32,
+                          /*num_stages=*/2, /*num_warps=*/4,
+                          /*num_ctas=*/1, /*is_tma_allowed=*/false,
+                          /*is_warp_specialization_allowed=*/false,
+                          /*waves_per_eu=*/4);
+
+  AutotuneResult::TritonGemmKey key = config.ToProto();
+  EXPECT_EQ(key.waves_per_eu(), 4);
+
+  TF_ASSERT_OK_AND_ASSIGN(TritonGemmConfig restored,
+                          TritonGemmConfig::FromProto(key));
+  EXPECT_EQ(restored.block_m, 64);
+  EXPECT_EQ(restored.block_n, 128);
+  EXPECT_EQ(restored.block_k, 32);
+
+  EXPECT_EQ(restored.num_stages, 2);
+  EXPECT_EQ(restored.num_warps, 4);
+  EXPECT_EQ(restored.num_ctas, 1);
+  EXPECT_EQ(restored.is_tma_allowed, false);
+  EXPECT_EQ(restored.is_warp_specialization_allowed, false);
+  EXPECT_EQ(restored.waves_per_eu, 4);
+}
+
+TEST(TritonGemmConfigTest, ToStringIncludesWavesPerEu) {
+  TritonGemmConfig config(/*block_m=*/64, /*block_n=*/128, /*block_k=*/32,
+                          /*num_stages=*/2, /*num_warps=*/4,
+                          /*num_ctas=*/1, /*is_tma_allowed=*/false,
+                          /*is_warp_specialization_allowed=*/false,
+                          /*waves_per_eu=*/4);
+  std::string str = config.ToString();
+  EXPECT_NE(str.find("waves_per_eu:4"), std::string::npos);
 }
 
 }  // namespace

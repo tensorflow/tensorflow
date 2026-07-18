@@ -48,7 +48,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/cuda/ptx_linking_method.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
@@ -82,10 +82,13 @@ ENTRY main {
 
 constexpr absl::string_view kSM90AHlo = R"(
 gemm_fusion_dot {
-  %p0 = f16[64,1024]{1,0} parameter(0)
-  %p1 = f16[1024,32,32]{2,1,0} parameter(1)
-  %bitcast.74246 = f16[1024,1024]{0,1} bitcast(f16[1024,32,32]{2,1,0} %p1)
-  ROOT %dot.1302 = f16[64,1024]{1,0} dot(f16[64,1024]{1,0} %p0, f16[1024,1024]{0,1} %bitcast.74246), lhs_contracting_dims={1}, rhs_contracting_dims={0}, frontend_attributes={grad_x="false",grad_y="false"}
+  p0 = f16[64,1024]{1,0} parameter(0)
+  p1 = f16[1024,32,32]{2,1,0} parameter(1)
+  rhs = f16[1024,1024]{0,1} bitcast(p1)
+  ROOT dot = f16[64,1024]{1,0} dot(p0, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    frontend_attributes={grad_x="false",grad_y="false"},
+    backend_config={sizes:[32]}
 }
 
 ENTRY e {
@@ -95,17 +98,14 @@ ENTRY e {
   // whether we properly enable SM 9.0A in all compilation and linking paths.
   ROOT triton_gemm_fusion_dot = f16[64,1024]{1,0} fusion(p0, p1), kind=kCustom,
     calls=gemm_fusion_dot,
-    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-      triton_gemm_config:
-        {"block_m":64,"block_n":32,"block_k":32,
-         "split_k":1,"num_stages":1,"num_warps":4,
-         "num_ctas":1}}}
+    backend_config={fusion_backend_config:{kind:"__triton_nested_gemm_fusion",
+      block_level_fusion_config:{output_tiles:[{sizes:[64,32]}],num_stages:1,num_warps:4,num_ctas:1}}}
 })";
 
 constexpr absl::string_view kResultsInNoPtxHlo = R"(
   ENTRY e {
     a = f32[5,5] parameter(0)
-    ROOT _ = f32[5,5] custom-call(a, a), custom_call_target="__cublas$gemm",
+    ROOT _ = f32[5,5] custom-call(a, a), custom_call_target="__cublas$lt$matmul",
       backend_config="{ \"gemm_backend_config\": {\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}}"
   })";
 
@@ -141,7 +141,7 @@ std::string GenerateParametrizedTestname(
 }
 
 class NVPTXCompilationTests
-    : public HloTestBase,
+    : public HloTestBaseLegacy,
       public ::testing::WithParamInterface<std::tuple<
           absl::string_view, PtxCompilationMethod, PtxLinkingMethod>> {
  public:
@@ -149,15 +149,13 @@ class NVPTXCompilationTests
                              PtxCompilationMethod compilation_method,
                              PtxLinkingMethod linking_method) {
     using CudaComputeCapability = stream_executor::CudaComputeCapability;
-    if (!::testing::Value(
-            backend()
-                .default_stream_executor()
-                ->GetDeviceDescription()
-                .gpu_compute_capability(),
-            ::testing::VariantWith<CudaComputeCapability>(
-                CudaComputeCapability{9, 0,
-                                      CudaComputeCapability::FeatureExtension::
-                                          kAcceleratedFeatures})) &&
+    auto cc = backend()
+                  .default_stream_executor()
+                  ->GetDeviceDescription()
+                  .gpu_compute_capability();
+    if ((cc.cuda_compute_capability()->major < 9 ||
+         cc.cuda_compute_capability()->feature_extension !=
+             CudaComputeCapability::FeatureExtension::kAcceleratedFeatures) &&
         name == "requires_sm90a") {
       GTEST_SKIP() << "This test requires SM 9.0a";
     }
@@ -204,32 +202,27 @@ class NVPTXCompilationTests
             ? DebugOptions::LIB_NV_JIT_LINK_MODE_ENABLED
             : DebugOptions::LIB_NV_JIT_LINK_MODE_DISABLED);
 
-    debug_options->set_xla_gpu_enable_llvm_module_compilation_parallelism(
-        linking_method != PtxLinkingMethod::kNone);
     debug_options->set_xla_gpu_force_compilation_parallelism(12);
 
     if (linking_method == PtxLinkingMethod::kDriver) {
-      debug_options->set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(
-          true);
       debug_options->set_xla_gpu_cuda_data_dir("/does/not/exist");
     }
+    debug_options->set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(
+        linking_method == PtxLinkingMethod::kDriver);
 
     tsl::setenv("TF_USE_NVLINK_FOR_PARALLEL_COMPILATION",
                 linking_method == PtxLinkingMethod::kNvLink ? "true" : "false",
                 1);
-
-    // We need individual functions to test parallel compilation.
-    debug_options->set_xla_llvm_force_inline_before_split(false);
   }
 
   DebugOptions GetDebugOptionsForTest() const override {
-    auto debug_options = HloTestBase::GetDebugOptionsForTest();
+    auto debug_options = HloTestBaseLegacy::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(0);
     return debug_options;
   }
 
   void SetUp() override {
-    HloTestBase::SetUp();
+    HloTestBaseLegacy::SetUp();
     absl::string_view name = std::get<0>(GetParam());
     PtxCompilationMethod compilation_method = std::get<1>(GetParam());
     PtxLinkingMethod linking_method = std::get<2>(GetParam());
@@ -242,10 +235,7 @@ class NVPTXCompilationTests
 
     return compiler.RunBackend(std::move(module),
                                backend().default_stream_executor(),
-                               {/*device_allocator=*/nullptr,
-                                /*thread_pool=*/nullptr,
-                                /*layout_canonicalization_callback=*/{},
-                                /*is_autotuning_compilation=*/false});
+                               /*options=*/{});
   }
 };
 

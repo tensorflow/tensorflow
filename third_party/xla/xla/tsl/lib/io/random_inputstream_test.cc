@@ -25,7 +25,7 @@ namespace {
 
 TEST(RandomInputStream, ReadNBytes) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/random_inputbuffer_test";
+  std::string fname = testing::TmpDir() + "/random_inputbuffer_test";
   TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
 
   std::unique_ptr<RandomAccessFile> file;
@@ -55,7 +55,7 @@ TEST(RandomInputStream, ReadNBytes) {
 #if defined(TF_CORD_SUPPORT)
 TEST(RandomInputStream, ReadNBytesWithCords) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/random_inputbuffer_test";
+  std::string fname = testing::TmpDir() + "/random_inputbuffer_test";
   TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
 
   std::unique_ptr<RandomAccessFile> file;
@@ -87,7 +87,7 @@ TEST(RandomInputStream, ReadNBytesWithCords) {
 
 TEST(RandomInputStream, SkipNBytes) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/random_inputbuffer_test";
+  std::string fname = testing::TmpDir() + "/random_inputbuffer_test";
   TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
 
   std::unique_ptr<RandomAccessFile> file;
@@ -118,7 +118,7 @@ TEST(RandomInputStream, SkipNBytes) {
 
 TEST(RandomInputStream, Seek) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/random_inputbuffer_seek_test";
+  std::string fname = testing::TmpDir() + "/random_inputbuffer_seek_test";
   TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
 
   std::unique_ptr<RandomAccessFile> file;

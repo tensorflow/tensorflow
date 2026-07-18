@@ -17,9 +17,12 @@ limitations under the License.
 
 #include <string.h>
 
+#include <cstdint>
+#include <limits>
 #include <memory>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "xla/tsl/lib/random/simple_philox.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/test.h"
@@ -96,7 +99,7 @@ static void BM_DistributionSampler(::testing::benchmark::State& state) {
   for (auto s : state) {
     r |= picker.Sample(&rand);
   }
-  CHECK_NE(r, kint32max);
+  CHECK_NE(r, std::numeric_limits<int32_t>::max());
 }
 
 BENCHMARK(BM_DistributionSampler)->Arg(10)->Arg(100)->Arg(1000);

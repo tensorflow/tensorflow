@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -89,7 +90,9 @@ XlaOp Acos(XlaOp x,
            bool expand = true);
 
 // Computes the arc sine of 'x'.
-XlaOp Asin(XlaOp x);
+XlaOp Asin(XlaOp x,
+           const std::optional<ResultAccuracy>& result_accuracy = std::nullopt,
+           bool expand = true);
 
 // Computes the arc tangent of 'x'.
 XlaOp Atan(XlaOp x);
@@ -102,7 +105,9 @@ XlaOp Acosh(XlaOp x,
             bool expand = true);
 
 // Computes the inverse hyperbolic sine of 'x'.
-XlaOp Asinh(XlaOp x);
+XlaOp Asinh(XlaOp x,
+            const std::optional<ResultAccuracy>& result_accuracy = std::nullopt,
+            bool expand = true);
 
 // Computes the inverse hyperbolic tangent of 'x'.
 XlaOp Atanh(XlaOp x,

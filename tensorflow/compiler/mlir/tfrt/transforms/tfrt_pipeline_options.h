@@ -155,6 +155,24 @@ struct TfrtPipelineOptions
           "prioritized batching function using this number of global threads."),
       llvm::cl::init(0)};
 
+  Option<bool> enable_priority_aware_batch_scheduler{
+      *this, "tfrt-enable-priority-aware-batch-scheduler",
+      llvm::cl::desc("If true, the queue implementation will have a separate "
+                     "subqueue for each criticality."),
+      llvm::cl::init(false)};
+
+  Option<bool> enable_priority_aware_batch_scheduler_resplit{
+      *this, "tfrt-enable-priority-aware-batch-scheduler-resplit",
+      llvm::cl::desc("If true, the queue implementation will allow task "
+                     "resplit for priority aware batch scheduler."),
+      llvm::cl::init(false)};
+
+  Option<bool> enable_batching_task_lazy_cancellation{
+      *this, "tfrt-enable-batching-task-lazy-cancellation",
+      llvm::cl::desc("If true, enable lazy cancellation filtering in the "
+                     "priority-aware batch scheduler."),
+      llvm::cl::init(false)};
+
   Option<std::string> batch_padding_policy{
       *this, "tfrt-batch-padding-policy",
       llvm::cl::desc("The policy used when padding (or splitting) batches."),
@@ -186,11 +204,64 @@ struct TfrtPipelineOptions
                      "before requests are failed fast"),
       llvm::cl::init(0)};
 
+  /**experimental options to override legacy priority batching parameters**/
+
+  // The following options are for legacy priority batching, and are only for
+  // experimentation.
+  // TODO(b/488097129): Remove these options after the experiment is done.
+  Option<int64_t> low_priority_max_batch_size{
+      *this, "tfrt-low-priority-max-batch-size",
+      llvm::cl::desc("The maximum allowed batch size for low priority "
+                     "requests"),
+      llvm::cl::init(0)};
+
+  Option<int64_t> low_priority_batch_timeout_micros{
+      *this, "tfrt-low-priority-batch-timeout-micros",
+      llvm::cl::desc("The maximum number of microseconds before outputting an "
+                     "incomplete batch for low priority requests"),
+      llvm::cl::init(0)};
+
+  ListOption<int64_t> low_priority_allowed_batch_sizes{
+      *this, "tfrt-low-priority-allowed-batch-sizes",
+      llvm::cl::desc("Allowed sizes for padding (or splitting) batches for low "
+                     "priority requests")};
+
+  Option<int64_t> low_priority_max_enqueued_batches{
+      *this, "tfrt-low-priority-max-enqueued-batches",
+      llvm::cl::desc("The maximum number of batches enqueued for processing "
+                     "before low priority requests are failed fast"),
+      llvm::cl::init(0)};
+
+  /*experimental options end*/
+
+  Option<int64_t> num_warmup_batch_threads{
+      *this, "tfrt-num-warmup-batch-threads",
+      llvm::cl::desc("The number of threads for processing warmup requests. "
+                     "Useful to process warmup requests without starving the "
+                     "regular batch threads when global scheduler is enabled."),
+      llvm::cl::init(0)};
+
+  Option<bool> enable_large_batch_splitting{
+      *this, "tfrt-enable-large-batch-splitting",
+      llvm::cl::desc("If true, enables large batch splitting to reduce padding "
+                     "inefficiency"),
+      llvm::cl::init(false)};
+
+  Option<std::string> mixed_priority_batching_policy{
+      *this, "tfrt-mixed-priority-batching-policy",
+      llvm::cl::desc("Policy for mixed priority batching"), llvm::cl::init("")};
+
   Option<bool> merge_inter_dependent_streams{
       *this, "tfrt-merge-inter-dependent-streams",
       llvm::cl::desc("If true, streams with inter data depenedencies will be "
                      "preferred to be merged for inline execution."),
       llvm::cl::init(false)};
+  Option<bool> allow_xla_cpu{
+      *this,
+      "allow-xla-cpu",
+      llvm::cl::desc("If true, allow XLA:CPU for CPU computations."),
+      llvm::cl::init(true),
+  };
 };
 
 }  // namespace tensorflow

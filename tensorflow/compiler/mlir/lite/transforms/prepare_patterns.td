@@ -24,13 +24,13 @@ def DenseElementsAttr : ElementsAttrBase<
   "non-opaque constant tensor">;
 
 def CreateGatherNdOp : NativeCodeCall<
-    "$_builder.create<TF::GatherNdOp>($0.getLoc(), $0.getType(), $1, $2, $3)">;
+    "TF::GatherNdOp::create($_builder, $0.getLoc(), $0.getType(), $1, $2, $3)">;
 
 def CreateTFCastOpI32 : NativeCodeCall<
     "CreateTFCastOpI32(&$_builder, $_loc, $0, $1)">;
 
 // Convert to std constant for statically shaped, non-opaque constants.
-def ConvertTfConst : Pat<(TF_ConstOp:$res DenseElementsAttr:$value), (Arith_ConstantOp $value),
+def ConvertTfConst : Pat<(TF_ConstOp:$res DenseElementsAttr:$value), (TFL_ConstOp $value),
           [(AnyStaticShapeTensor $res)]>;
 
 // Convert the legacy BatchNormWithGlobalNormalization to other ops.

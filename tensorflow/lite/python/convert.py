@@ -25,8 +25,6 @@ from tensorflow.compiler.mlir.lite import model_flags_pb2 as _model_flags_pb2
 from tensorflow.compiler.mlir.lite import types_pb2 as _types_pb2
 from tensorflow.compiler.mlir.lite.metrics import converter_error_data_pb2
 from tensorflow.compiler.mlir.lite.python import wrap_converter
-from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2
-from tensorflow.compiler.mlir.quantization.stablehlo import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python import util
 from tensorflow.lite.python.convert_phase import Component
@@ -432,7 +430,6 @@ def build_conversion_flags(
     guarantee_all_funcs_one_use=False,
     enable_mlir_variable_quantization=False,
     disable_fuse_mul_and_fc=False,
-    quantization_options: Optional[quant_opts_pb2.QuantizationOptions] = None,
     ir_dump_dir=None,
     ir_dump_pass_regex=None,
     ir_dump_func_regex=None,
@@ -441,9 +438,6 @@ def build_conversion_flags(
     print_ir_after=None,
     print_ir_module_scope=None,
     elide_elementsattrs_if_larger=None,
-    quantization_config: Optional[
-        quantization_config_pb2.QuantizationConfig
-    ] = None,
     use_buffer_offset=False,
     reduce_type_precision=False,
     qdq_conversion_mode=None,
@@ -454,6 +448,7 @@ def build_conversion_flags(
     canonicalizing_inf_as_min_max_float=True,
     serialize_debug_metadata=False,
     unsafe_fuse_dynamic_shaped_broadcast=False,
+    unsafe_single_batch_rank_reduction=False,
     **_,
 ):
   """Builds protocol buffer describing a conversion of a model.
@@ -548,11 +543,6 @@ def build_conversion_flags(
       graph.
     disable_fuse_mul_and_fc: Disable fusing input multiplication with
       fullyconnected operations. Useful when quantizing weights.
-    quantization_options: [Deprecated] Config to indicate quantization options
-      of each components (ex: weight, bias, activation). This can be a preset
-      method or a custom method, and allows finer, modular control. This option
-      will override any other existing quantization flags. We plan on gradually
-      migrating all quantization-related specs into this option.
     ir_dump_dir: A string specifying the target directory to output MLIR dumps
       produced during conversion. If populated, enables MLIR dumps.
     ir_dump_pass_regex: A string containing a regular expression for filtering
@@ -570,8 +560,6 @@ def build_conversion_flags(
       operation when printing IR for print_ir_[before|after].
     elide_elementsattrs_if_larger: An int, if specified elides ElementsAttrs
       with '...' that have more elements than the given upper limit.
-    quantization_config: Configures the StableHLO Quantizer. See the comments in
-      `QuantizationConfig` protobuf definition for details.
     use_buffer_offset: Force the model use buffer_offset & buffer_size fields
       instead of data. i.e. store the constant tensor and custom op binaries
       outside of Flatbuffers
@@ -599,6 +587,8 @@ def build_conversion_flags(
       when output shape has dynamic dimensions, but it may cause incorrect
       results when broadcasting ops are introduced by explicit broadcasting in
       the source model.
+    unsafe_single_batch_rank_reduction: When set to true, enable the unsafe
+      single batch rank reduction.
 
   Returns:
     conversion_flags: protocol buffer describing the conversion process.
@@ -682,10 +672,6 @@ def build_conversion_flags(
       enable_mlir_variable_quantization
   )
   conversion_flags.disable_fuse_mul_and_fc = disable_fuse_mul_and_fc
-  if quantization_options:  # Deprecated
-    conversion_flags.quantization_options.CopyFrom(quantization_options)
-  if quantization_config:
-    conversion_flags.quantization_config.CopyFrom(quantization_config)
 
   # Transfer debug options. Check for existence before populating in order to
   # leverage defaults specified in proto definition.
@@ -735,6 +721,9 @@ def build_conversion_flags(
   conversion_flags.serialize_debug_metadata = serialize_debug_metadata
   conversion_flags.unsafe_fuse_dynamic_shaped_broadcast = (
       unsafe_fuse_dynamic_shaped_broadcast
+  )
+  conversion_flags.unsafe_single_batch_rank_reduction = (
+      unsafe_single_batch_rank_reduction
   )
 
   return conversion_flags

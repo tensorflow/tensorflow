@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -38,7 +38,7 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::SizeIs;
 
-using RedzoneBuffersTest = HloTestBase;
+using RedzoneBuffersTest = HloTestBaseLegacy;
 
 constexpr int kRedzonePaddingBytes = 8 * 1024 * 1024;
 
@@ -58,7 +58,8 @@ TEST_F(RedzoneBuffersTest, VerifyOutputNotATuple) {
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_executor,
                           platform->ExecutorForDevice(0));
   auto allocator =
-      std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor);
+      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+          stream_executor);
   TF_ASSERT_OK_AND_ASSIGN(se::Stream * stream, allocator->GetStream(0));
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -111,7 +112,8 @@ TEST_F(RedzoneBuffersTest, VerifyOutputTupleOneElement) {
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_executor,
                           platform->ExecutorForDevice(0));
   auto allocator =
-      std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor);
+      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+          stream_executor);
   TF_ASSERT_OK_AND_ASSIGN(se::Stream * stream, allocator->GetStream(0));
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -163,7 +165,8 @@ TEST_F(RedzoneBuffersTest, VerifyOutputTupleTwoElements) {
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_executor,
                           platform->ExecutorForDevice(0));
   auto allocator =
-      std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor);
+      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+          stream_executor);
   TF_ASSERT_OK_AND_ASSIGN(se::Stream * stream, allocator->GetStream(0));
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -216,7 +219,8 @@ TEST_F(RedzoneBuffersTest, FromExecutable) {
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_executor,
                           platform->ExecutorForDevice(0));
   auto allocator =
-      std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor);
+      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+          stream_executor);
   TF_ASSERT_OK_AND_ASSIGN(se::Stream * stream, allocator->GetStream(0));
 
   HloComputation* computation = module->entry_computation();
@@ -247,7 +251,8 @@ TEST_F(RedzoneBuffersTest, FromProgramShape) {
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_executor,
                           platform->ExecutorForDevice(0));
   auto allocator =
-      std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor);
+      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+          stream_executor);
   TF_ASSERT_OK_AND_ASSIGN(se::Stream * stream, allocator->GetStream(0));
 
   TF_ASSERT_OK_AND_ASSIGN(

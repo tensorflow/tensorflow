@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "xla/mlir/tools/mlir_interpreter/framework/tensor_or_memref.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <optional>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
@@ -63,8 +63,12 @@ std::optional<int64_t> GetCollapsedStrideNaive(llvm::ArrayRef<int64_t> dims,
     v[*view.GetPhysicalIndex(view_indices)] = true;
   }
 
-  if (v.count() != f.GetNumElements()) return std::nullopt;
-  if (f.GetNumElements() <= 1) return 0;
+  if (v.count() != f.GetNumElements()) {
+    return std::nullopt;
+  }
+  if (f.GetNumElements() <= 1) {
+    return 0;
+  }
 
   // Check that they have a common stride.
   int64_t min = v.find_first();
@@ -79,21 +83,23 @@ std::optional<int64_t> GetCollapsedStrideNaive(llvm::ArrayRef<int64_t> dims,
 }
 
 TEST(TensorOrMemrefTest, CollapsedStride) {
-  BufferView view{.sizes = {1, 2, 3, 1, 5},
-                  .strides = BufferView::GetDefaultStrides({1, 2, 3, 1, 5})};
+  BufferView view{/*offset=*/0, /*sizes=*/{1, 2, 3, 1, 5},
+                  /*strides=*/BufferView::GetDefaultStrides({1, 2, 3, 1, 5})};
 
   auto check_all = [&]() {
     for (int64_t i = 0; i < (1 << view.num_dimensions()); ++i) {
       SmallVector<int64_t> dims;
       for (int64_t dim = 0; dim < view.num_dimensions(); ++dim) {
-        if (i & (1 << dim)) dims.push_back(dim);
+        if (i & (1 << dim)) {
+          dims.push_back(dim);
+        }
       }
 
       do {
         auto v = view.GetCollapsedStride(dims);
         auto n = GetCollapsedStrideNaive(dims, view);
         EXPECT_EQ(n, v) << "checking " << absl::StrJoin(dims, ", ");
-      } while (std::next_permutation(dims.begin(), dims.end()));
+      } while (absl::c_next_permutation(dims));
     }
   };
 

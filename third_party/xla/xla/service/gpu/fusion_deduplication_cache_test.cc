@@ -16,13 +16,12 @@ limitations under the License.
 #include "xla/service/gpu/fusion_deduplication_cache.h"
 
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -37,7 +36,7 @@ HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer,
     fusion_instruction =
         computation->AddInstruction(HloInstruction::CreateFusion(
             consumer->shape(), HloInstruction::FusionKind::kLoop, consumer));
-    TF_CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
+    CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
   }
 
   if (producer->opcode() == HloOpcode::kFusion) {
@@ -56,7 +55,7 @@ HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer,
 
   // In case of multi-output fusion, `producer` would already be deleted.
   if (!allow_multi_output && producer->user_count() == 0) {
-    TF_CHECK_OK(computation->RemoveInstruction(producer));
+    CHECK_OK(computation->RemoveInstruction(producer));
   }
 
   return fusion_instruction;

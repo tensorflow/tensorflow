@@ -93,7 +93,7 @@ std::vector<int64_t> IntTensorAsVector(const Tensor& t) {
   result.reserve(t.NumElements());
   for (int i = 0; i < t.NumElements(); i++) {
     int64_t element = t.dtype() == DT_INT32
-                          ? static_cast<int64_t>(t.flat<int32>()(i))
+                          ? static_cast<int64_t>(t.flat<int32_t>()(i))
                           : t.flat<int64_t>()(i);
     result.push_back(element);
   }
@@ -251,14 +251,14 @@ absl::Status ComputeSliceSize(const Scope& host_scope,
 absl::Status ConvertTensorFlowSliceToStaticShapedSlice(
     Graph* g, Node* slice, const SliceInputs& slice_inputs,
     absl::string_view cluster_name, Node** result) {
-  string host_name;
+  std::string host_name;
   TF_RETURN_IF_ERROR(DeviceNameUtils::DeviceNameToCpuDeviceName(
       slice->assigned_device_name(), &host_name));
 
   absl::Status status;
   Scope main_scope =
       NewInternalScope(g, &status, /*refiner=*/nullptr)
-          .WithXlaCluster(string(cluster_name))
+          .WithXlaCluster(std::string(cluster_name))
           .NewSubScope(absl::StrCat(slice->name(), "/static_shaped_slice"));
   Scope host_scope = main_scope.WithAssignedDevice(host_name);
 
@@ -286,7 +286,7 @@ absl::Status ConvertTensorFlowSliceToStaticShapedSlice(
 
   TF_RETURN_IF_ERROR(main_scope.status());
 
-  std::vector<string> compile_time_const_inputs;
+  std::vector<std::string> compile_time_const_inputs;
   compile_time_const_inputs.push_back("size");
   (*result)->AddAttr(kXlaCompileTimeConstantInputsAttr,
                      compile_time_const_inputs);

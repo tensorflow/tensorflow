@@ -64,7 +64,7 @@ class AsyncValueAllocator : public Allocator {
   void DeallocateRaw(void* ptr) override;
 
   bool AllocatesOpaqueHandle() const override { return true; }
-  string Name() override { return "async-value"; }
+  std::string Name() override { return "async-value"; }
 };
 
 }  // namespace tensorflow

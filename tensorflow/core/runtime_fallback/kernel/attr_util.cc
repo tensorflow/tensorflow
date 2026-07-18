@@ -72,10 +72,11 @@ absl::Status ParseValue(absl::string_view input, bool* value) {
   return absl::OkStatus();
 }
 
-absl::Status ParseValue(absl::string_view input, int32* value) {
+absl::Status ParseValue(absl::string_view input, int32_t* value) {
   bool parse_result = absl::SimpleAtoi(input, value);
   if (!parse_result) {
-    return errors::InvalidArgument("Could not parse int32 from ", input);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Could not parse int32 from ", input));
   }
   return absl::OkStatus();
 }
@@ -90,15 +91,15 @@ absl::Status ParseValue(absl::string_view input, std::string* value) {
   return absl::OkStatus();
 }
 
-absl::Status ParseValue(absl::string_view input, std::vector<int32>* value) {
+absl::Status ParseValue(absl::string_view input, std::vector<int32_t>* value) {
   std::vector<std::string> parts = str_util::Split(input, ",");
   value->reserve(parts.size());
   for (const auto& value_str : parts) {
     int32_t value_int;
     bool parse_result = absl::SimpleAtoi(value_str, &value_int);
     if (!parse_result) {
-      return errors::InvalidArgument("Could not parse list of integers from ",
-                                     input);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Could not parse list of integers from ", input));
     }
     value->push_back(value_int);
   }
@@ -123,7 +124,7 @@ absl::Status AddOpAttr(const std::string& name, const std::string& attr_value,
   } else if (type == "i32") {
     int32_t val;
     s = ParseValue(value, &val);
-    opattrs->Set<int32>(name, val);
+    opattrs->Set<int32_t>(name, val);
   } else if (type == "string" || type == "padding") {
     std::string val;
     s = ParseValue(value, &val);
@@ -133,9 +134,9 @@ absl::Status AddOpAttr(const std::string& name, const std::string& attr_value,
     s = ParseValue(value, &val);
     opattrs->Set<tfrt::OpAttrType>(name, tfd::ConvertFromTfDataType(val));
   } else if (type == "list(i32)") {
-    std::vector<int32> val;
+    std::vector<int32_t> val;
     s = ParseValue(value, &val);
-    opattrs->SetArray<int32>(name, val);
+    opattrs->SetArray<int32_t>(name, val);
   }
   return s;
 }

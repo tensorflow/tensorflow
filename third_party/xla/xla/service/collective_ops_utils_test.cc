@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/array2d.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -39,15 +40,16 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/collective_permute_cycle.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -57,11 +59,11 @@ using CycleType = collective_permute_cycle::CycleType;
 
 // Creates a container of ReplicaGroups.
 std::vector<ReplicaGroup> CreateReplicaGroups(
-    const std::vector<std::vector<int64_t>> &replica_groups) {
+    const std::vector<std::vector<int64_t>>& replica_groups) {
   std::vector<ReplicaGroup> result;
   result.reserve(replica_groups.size());
-  for (const auto &replica_group : replica_groups) {
-    ReplicaGroup &group = result.emplace_back();
+  for (const auto& replica_group : replica_groups) {
+    ReplicaGroup& group = result.emplace_back();
     for (auto id : replica_group) {
       group.add_replica_ids(id);
     }
@@ -71,9 +73,10 @@ std::vector<ReplicaGroup> CreateReplicaGroups(
 
 TEST(CollectiveOpsUtilsTest, GetParticipatingIDs_NoReplicaGroups) {
   std::vector<int> actual =
-      GetParticipatingIDs(CollectiveOpGroupMode::kFlattenedID,
-                          /*current_id=*/0, /*total_participant_count=*/3,
-                          /*groups=*/{})
+      GetParticipatingIDs(
+          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID,
+          /*current_id=*/0, /*total_participant_count=*/3,
+          CollectiveDeviceList(std::vector<ReplicaGroup>{}))
           .value();
   std::vector<int> expected = {0, 1, 2};
   EXPECT_EQ(actual, expected);
@@ -89,10 +92,11 @@ TEST(CollectiveOpsUtilsTest, GetParticipatingIDs_ReplicaGroups) {
   replica_groups[2].add_replica_ids(3);
 
   std::vector<int> actual =
-      GetParticipatingIDs(CollectiveOpGroupMode::kFlattenedID,
-                          /*current_id=*/1,
-                          /*total_participant_count=*/std::nullopt,
-                          replica_groups)
+      GetParticipatingIDs(
+          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID,
+          /*current_id=*/1,
+          /*total_participant_count=*/std::nullopt,
+          CollectiveDeviceList(replica_groups))
           .value();
   std::vector<int> expected = {1, 5};
   EXPECT_EQ(actual, expected);
@@ -115,7 +119,7 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
 
-  HloInstruction *all_gather =
+  HloInstruction* all_gather =
       module->entry_computation()->GetInstructionWithName("all-gather");
 
   EXPECT_EQ(IsOrHasCollectiveWithChannelId(all_gather), all_gather);
@@ -137,10 +141,10 @@ TEST(CollectiveOpsUtilsTest, IsNonFusionCollectiveSendRecv) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule(hlo_string));
 
-  HloInstruction *recv_ctx =
+  HloInstruction* recv_ctx =
       module->entry_computation()->GetInstructionWithName("recv_ctx");
   ASSERT_NE(recv_ctx, nullptr);
-  HloInstruction *send_ctx =
+  HloInstruction* send_ctx =
       module->entry_computation()->GetInstructionWithName("send_ctx");
   ASSERT_NE(send_ctx, nullptr);
 
@@ -159,11 +163,12 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId2) {
       HloInstruction * param_0,
       builder.AddParameter(HloInstruction::CreateParameter(
           0, ShapeUtil::MakeShape(BF16, {1, 512, 4096}), "p0")));
-  HloInstruction *instr =
+  HloInstruction* instr =
       builder.AddInstruction(HloInstruction::CreateAllGather(
           ShapeUtil::MakeShape(BF16, {1, 4096, 4096}), {param_0}, 1,
-          CollectiveDeviceList(std::vector<ReplicaGroup>({group})), true, 231,
-          true));
+          std::make_shared<CollectiveDeviceList>(
+              std::vector<ReplicaGroup>({group})),
+          true, 231, true));
   auto computation = builder.Build(
       builder.AddInstruction(HloInstruction::CreateTuple({instr})));
   auto fusion =
@@ -177,9 +182,11 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId2) {
       HloInstruction * param_1,
       builder2.AddParameter(HloInstruction::CreateParameter(
           0, ShapeUtil::MakeShape(BF16, {1, 512, 4096}), "p1")));
-  HloInstruction *instr_without_channel_id =
+  HloInstruction* instr_without_channel_id =
       builder2.AddInstruction(HloInstruction::CreateAllGather(
-          ShapeUtil::MakeShape(BF16, {1, 4096, 4096}), {param_1}, 1, {group},
+          ShapeUtil::MakeShape(BF16, {1, 4096, 4096}), {param_1}, 1,
+          std::make_shared<CollectiveDeviceList>(
+              std::vector<ReplicaGroup>({group})),
           true, std::nullopt, true));
   auto computation2 = builder2.Build(builder2.AddInstruction(
       HloInstruction::CreateTuple({instr_without_channel_id})));
@@ -189,7 +196,6 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId2) {
                                    {param_1}, computation2.get(), "fusion2");
   EXPECT_EQ(IsOrHasCollectiveWithChannelId(fusion2.get()), nullptr);
 }
-
 
 TEST(IsExclusivelyCrossModuleTest, CrossReplicaNoChannelSet) {
   int64_t num_replicas = 4;
@@ -279,19 +285,21 @@ TEST(CollectiveOpsUtilsTest, GetReplicaGroups) {
   // Set up a collective permute start instruction
   auto builder = HloComputation::Builder("GetReplicaGroupsTest");
   auto param_shape = ShapeUtil::MakeShape(F32, {4, 4});
-  HloInstruction *param_0 = builder.AddInstruction(
+  HloInstruction* param_0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "p0"));
 
   // Test for CollectivePermuteStart
   std::vector<std::pair<int64_t, int64_t>> source_target_pairs = {
       {0, 1}, {1, 2}, {2, 3}, {3, 0}};
 
-  HloInstruction *permute_start =
+  HloInstruction* permute_start =
       builder.AddInstruction(HloInstruction::CreateCollectivePermuteStart(
           param_shape, param_0, source_target_pairs, /*channel_id=*/1));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::vector<int64_t>> permute_groups,
-                          GetAsyncReplicaGroups(permute_start));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CollectiveDeviceListBase> permute_groups_list,
+      GetAsyncReplicaGroups(permute_start));
+  auto permute_groups = permute_groups_list->flattened_replica_groups();
   EXPECT_EQ(permute_groups.size(), 4);
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(permute_groups[i].size(), 2);
@@ -302,15 +310,18 @@ TEST(CollectiveOpsUtilsTest, GetReplicaGroups) {
   // Test for AllGatherStart
   std::vector<ReplicaGroup> replica_groups =
       CreateReplicaGroups({{0, 1}, {2, 3}});
-  HloInstruction *all_gather_start =
+  HloInstruction* all_gather_start =
       builder.AddInstruction(HloInstruction::CreateAllGatherStart(
           ShapeUtil::MakeTupleShape({param_shape, param_shape}), {param_0},
-          /*all_gather_dimension=*/0, replica_groups,
+          /*all_gather_dimension=*/0,
+          std::make_shared<CollectiveDeviceList>(replica_groups),
           /*constrain_layout=*/false,
           /*channel_id=*/1, /*use_global_device_ids=*/false));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::vector<int64_t>> all_gather_groups,
-                          GetAsyncReplicaGroups(all_gather_start));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CollectiveDeviceListBase> all_gather_groups_list,
+      GetAsyncReplicaGroups(all_gather_start));
+  auto all_gather_groups = all_gather_groups_list->flattened_replica_groups();
   EXPECT_EQ(all_gather_groups.size(), 2);
   EXPECT_THAT(all_gather_groups[0], testing::ElementsAre(0, 1));
   EXPECT_THAT(all_gather_groups[1], testing::ElementsAre(2, 3));
@@ -325,17 +336,21 @@ TEST(CollectiveOpsUtilsTest, GetReplicaGroups) {
   reducer_builder.AddInstruction(HloInstruction::CreateBinary(
       ShapeUtil::MakeScalarShape(F32), HloOpcode::kAdd, reducer_x, reducer_y));
 
-  HloComputation *add_computation =
+  HloComputation* add_computation =
       module.AddEmbeddedComputation(reducer_builder.Build());
 
-  HloInstruction *all_reduce_start =
+  HloInstruction* all_reduce_start =
       builder.AddInstruction(HloInstruction::CreateAllReduceStart(
           ShapeUtil::MakeTupleShape({param_shape, param_shape}), {param_0},
-          add_computation, replica_groups, /*constrain_layout=*/false,
+          add_computation,
+          std::make_shared<CollectiveDeviceList>(replica_groups),
+          /*constrain_layout=*/false,
           /*channel_id=*/2, /*use_global_device_ids=*/false));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::vector<int64_t>> all_reduce_groups,
-                          GetAsyncReplicaGroups(all_reduce_start));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CollectiveDeviceListBase> all_reduce_groups_list,
+      GetAsyncReplicaGroups(all_reduce_start));
+  auto all_reduce_groups = all_reduce_groups_list->flattened_replica_groups();
   EXPECT_EQ(all_reduce_groups.size(), 2);
   EXPECT_THAT(all_reduce_groups[0], testing::ElementsAre(0, 1));
   EXPECT_THAT(all_reduce_groups[1], testing::ElementsAre(2, 3));
@@ -346,14 +361,14 @@ TEST(CollectiveOpsUtilsTest, IsAsyncCollective) {
   HloModule module("test_module", HloModuleConfig());
   auto builder = HloComputation::Builder("IsAsyncCollectiveTest");
   auto param_shape = ShapeUtil::MakeShape(F32, {4, 4});
-  HloInstruction *param_0 = builder.AddInstruction(
+  HloInstruction* param_0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "p0"));
 
   // Test for CollectivePermuteStart and CollectivePermuteDone
   std::vector<std::pair<int64_t, int64_t>> source_target_pairs = {
       {0, 1}, {1, 2}, {2, 3}, {3, 0}};
 
-  HloInstruction *permute_start =
+  HloInstruction* permute_start =
       builder.AddInstruction(HloInstruction::CreateCollectivePermuteStart(
           param_shape, param_0, source_target_pairs, /*channel_id=*/1));
 
@@ -361,7 +376,7 @@ TEST(CollectiveOpsUtilsTest, IsAsyncCollective) {
   EXPECT_TRUE(is_async_status.ok());
   EXPECT_TRUE(is_async_status.value());
 
-  HloInstruction *permute_done =
+  HloInstruction* permute_done =
       builder.AddInstruction(HloInstruction::CreateUnary(
           param_shape, HloOpcode::kCollectivePermuteDone, permute_start));
 
@@ -373,11 +388,12 @@ TEST(CollectiveOpsUtilsTest, IsAsyncCollective) {
   std::vector<ReplicaGroup> replica_groups =
       CreateReplicaGroups({{0, 1}, {2, 3}});
 
-  HloInstruction *all_gather_start =
+  HloInstruction* all_gather_start =
       builder.AddInstruction(HloInstruction::CreateAllGatherStart(
           ShapeUtil::MakeTupleShape(
               {ShapeUtil::MakeShape(F32, {8, 4}), param_shape}),
-          {param_0}, /*all_gather_dimension=*/0, replica_groups,
+          {param_0}, /*all_gather_dimension=*/0,
+          std::make_shared<CollectiveDeviceList>(replica_groups),
           /*constrain_layout=*/false,
           /*channel_id=*/2, /*use_global_device_ids=*/false));
 
@@ -385,7 +401,7 @@ TEST(CollectiveOpsUtilsTest, IsAsyncCollective) {
   EXPECT_TRUE(is_async_status.ok());
   EXPECT_TRUE(is_async_status.value());
 
-  HloInstruction *all_gather_done = builder.AddInstruction(
+  HloInstruction* all_gather_done = builder.AddInstruction(
       HloInstruction::CreateUnary(ShapeUtil::MakeShape(F32, {8, 4}),
                                   HloOpcode::kAllGatherDone, all_gather_start));
 
@@ -396,27 +412,29 @@ TEST(CollectiveOpsUtilsTest, IsAsyncCollective) {
   // Test for AllReduceStart and AllReduceDone
   // First create a reduction computation
   HloComputation::Builder reducer_builder("add");
-  HloInstruction *reducer_x = reducer_builder.AddInstruction(
+  HloInstruction* reducer_x = reducer_builder.AddInstruction(
       HloInstruction::CreateParameter(0, ShapeUtil::MakeScalarShape(F32), "x"));
-  HloInstruction *reducer_y = reducer_builder.AddInstruction(
+  HloInstruction* reducer_y = reducer_builder.AddInstruction(
       HloInstruction::CreateParameter(1, ShapeUtil::MakeScalarShape(F32), "y"));
   reducer_builder.AddInstruction(HloInstruction::CreateBinary(
       ShapeUtil::MakeScalarShape(F32), HloOpcode::kAdd, reducer_x, reducer_y));
 
-  HloComputation *add_computation =
+  HloComputation* add_computation =
       module.AddEmbeddedComputation(reducer_builder.Build());
 
-  HloInstruction *all_reduce_start =
+  HloInstruction* all_reduce_start =
       builder.AddInstruction(HloInstruction::CreateAllReduceStart(
           ShapeUtil::MakeTupleShape({param_shape, param_shape}), {param_0},
-          add_computation, replica_groups, /*constrain_layout=*/false,
+          add_computation,
+          std::make_shared<CollectiveDeviceList>(replica_groups),
+          /*constrain_layout=*/false,
           /*channel_id=*/3, /*use_global_device_ids=*/false));
 
   is_async_status = IsAsyncCollective(all_reduce_start);
   EXPECT_TRUE(is_async_status.ok());
   EXPECT_TRUE(is_async_status.value());
 
-  HloInstruction *all_reduce_done =
+  HloInstruction* all_reduce_done =
       builder.AddInstruction(HloInstruction::CreateUnary(
           param_shape, HloOpcode::kAllReduceDone, all_reduce_start));
 
@@ -425,7 +443,7 @@ TEST(CollectiveOpsUtilsTest, IsAsyncCollective) {
   EXPECT_TRUE(is_async_status.value());
 
   // Test for regular CollectivePermute (non-async)
-  HloInstruction *permute =
+  HloInstruction* permute =
       builder.AddInstruction(HloInstruction::CreateCollectivePermute(
           param_shape, param_0, source_target_pairs, /*channel_id=*/1));
 
@@ -556,12 +574,19 @@ std::vector<TestCase> GetTestCases() {
   const std::vector<TestCase> test_cases = {
       // clang-format off
       // has_channel_id, use_global_device_ids, expected mode
-      {false, std::nullopt, CollectiveOpGroupMode::kCrossReplica},
-      {false, false,         CollectiveOpGroupMode::kCrossReplica},
-      {false, true,          std::nullopt},
-      {true,  std::nullopt, CollectiveOpGroupMode::kCrossPartition},
-      {true,  false,         CollectiveOpGroupMode::kCrossReplicaAndPartition},
-      {true,  true,          CollectiveOpGroupMode::kFlattenedID},
+      // No channel id, no global device ids.
+      {false, std::nullopt,
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA},
+      {false, false,
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA},
+      {false, true, std::nullopt},
+      {true, std::nullopt,
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION},
+      {true, false,
+       CollectiveOpGroupMode::
+           COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION},
+      {true, true,
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID},
       // clang-format on
   };
   return test_cases;
@@ -570,7 +595,7 @@ std::vector<TestCase> GetTestCases() {
 class GetCollectOpGroupModeTest : public testing::TestWithParam<TestCase> {};
 
 TEST_P(GetCollectOpGroupModeTest, Test) {
-  const TestCase &tc = GetParam();
+  const TestCase& tc = GetParam();
   absl::StatusOr<CollectiveOpGroupMode> actual =
       GetCollectiveOpGroupMode(tc.has_channel_id, tc.use_global_device_ids);
   if (tc.expected) {
@@ -595,32 +620,36 @@ struct TestCaseForInstruction {
 std::vector<TestCaseForInstruction> GetTestCasesForInstruction() {
   return std::vector<TestCaseForInstruction>{
       //  opcode, has_channel_id, use_global_device_ids, expected_group_mode
-      {HloOpcode::kAllGather, true, true, CollectiveOpGroupMode::kFlattenedID},
+      {HloOpcode::kAllGather, true, true,
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID},
       {HloOpcode::kAllGather, true, false,
-       CollectiveOpGroupMode::kCrossReplicaAndPartition},
+       CollectiveOpGroupMode::
+           COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION},
       {HloOpcode::kAllGather, false, false,
-       CollectiveOpGroupMode::kCrossReplica},
-      {HloOpcode::kAllReduce, true, true, CollectiveOpGroupMode::kFlattenedID},
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA},
+      {HloOpcode::kAllReduce, true, true,
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID},
       {HloOpcode::kAllReduce, true, false,
-       CollectiveOpGroupMode::kCrossReplicaAndPartition},
+       CollectiveOpGroupMode::
+           COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION},
       {HloOpcode::kAllReduce, false, false,
-       CollectiveOpGroupMode::kCrossReplica},
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA},
       {HloOpcode::kAllToAll, true, std::nullopt,
-       CollectiveOpGroupMode::kCrossPartition},
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION},
       {HloOpcode::kAllToAll, false, std::nullopt,
-       CollectiveOpGroupMode::kCrossReplica},
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA},
       {HloOpcode::kCollectiveBroadcast, true, std::nullopt,
-       CollectiveOpGroupMode::kCrossPartition},
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION},
       {HloOpcode::kCollectiveBroadcast, false, std::nullopt,
-       CollectiveOpGroupMode::kCrossReplica},
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA},
       {HloOpcode::kCollectivePermute, true, std::nullopt,
-       CollectiveOpGroupMode::kCrossPartition},
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION},
       {HloOpcode::kCollectivePermute, false, std::nullopt,
-       CollectiveOpGroupMode::kCrossReplica},
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA},
       {HloOpcode::kRaggedAllToAll, true, std::nullopt,
-       CollectiveOpGroupMode::kCrossPartition},
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION},
       {HloOpcode::kRaggedAllToAll, false, std::nullopt,
-       CollectiveOpGroupMode::kCrossReplica}};
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA}};
 }
 
 class GetCollectOpGroupModeTestForInstruction
@@ -629,19 +658,19 @@ class GetCollectOpGroupModeTestForInstruction
 absl::StatusOr<std::unique_ptr<HloComputation>> CreateMaxComputation() {
   Shape scalar = ShapeUtil::MakeScalarShape(F32);
   auto builder_max = HloComputation::Builder("max");
-  TF_ASSIGN_OR_RETURN(HloInstruction * a,
-                      builder_max.AddParameter(
-                          HloInstruction::CreateParameter(0, scalar, "a")));
-  TF_ASSIGN_OR_RETURN(HloInstruction * b,
-                      builder_max.AddParameter(
-                          HloInstruction::CreateParameter(1, scalar, "b")));
-  HloInstruction *max = builder_max.AddInstruction(
+  ASSIGN_OR_RETURN(HloInstruction * a,
+                   builder_max.AddParameter(
+                       HloInstruction::CreateParameter(0, scalar, "a")));
+  ASSIGN_OR_RETURN(HloInstruction * b,
+                   builder_max.AddParameter(
+                       HloInstruction::CreateParameter(1, scalar, "b")));
+  HloInstruction* max = builder_max.AddInstruction(
       HloInstruction::CreateBinary(scalar, HloOpcode::kMaximum, a, b), "max");
   return builder_max.Build(max);
 }
 
 TEST_P(GetCollectOpGroupModeTestForInstruction, Test) {
-  const TestCaseForInstruction &test_case = GetParam();
+  const TestCaseForInstruction& test_case = GetParam();
   ReplicaGroup group;
   for (int k = 0; k < 4; ++k) {
     group.add_replica_ids(k);
@@ -666,7 +695,7 @@ TEST_P(GetCollectOpGroupModeTestForInstruction, Test) {
                           builder.AddParameter(HloInstruction::CreateParameter(
                               0, two_elements, "parameter")));
 
-  HloInstruction *collective;
+  HloInstruction* collective;
   switch (test_case.op_code) {
     case HloOpcode::kAllGather:
       collective = builder.AddInstruction(HloInstruction::CreateAllGather(
@@ -777,7 +806,7 @@ std::string TestCase::ToString() const {
   return s.str();
 }
 
-std::ostream &operator<<(std::ostream &os, const TestCase &tc) {
+std::ostream& operator<<(std::ostream& os, const TestCase& tc) {
   os << tc.ToString();
   return os;
 }
@@ -1031,7 +1060,7 @@ std::vector<TestCase> GetTestCases() {
 class GetParticipatingTest : public testing::TestWithParam<TestCase> {};
 
 TEST_P(GetParticipatingTest, Test) {
-  const TestCase &tc = GetParam();
+  const TestCase& tc = GetParam();
 
   int64_t num_replicas = tc.device_assignment.n1();
   int64_t num_partitions = tc.device_assignment.n2();
@@ -1057,7 +1086,7 @@ TEST_P(GetParticipatingTest, Test) {
   }
 
   // Test GetParticipatingDevices.
-  for (const TestCase::CurrentIdAndOutput &subtest : tc.subtests) {
+  for (const TestCase::CurrentIdAndOutput& subtest : tc.subtests) {
     absl::StatusOr<std::vector<GlobalDeviceId>> actual =
         GetParticipatingDevices(GlobalDeviceId(subtest.current_id),
                                 device_assignment, replica_groups, *group_mode);
@@ -1098,15 +1127,16 @@ TEST_P(GetParticipatingTest, Test) {
               testing::UnorderedElementsAreArray(expect_device_groups));
 
   // Test GetParticipatingFlattenedIdGroups.
-  absl::StatusOr<CollectiveDeviceList> collective_device_list =
-      GetParticipatingFlattenedIdGroups(
-          device_assignment, CollectiveDeviceList(replica_groups), *group_mode);
+  absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
+      collective_device_list = GetParticipatingFlattenedIdGroups(
+          device_assignment,
+          *std::make_shared<CollectiveDeviceList>(replica_groups), *group_mode);
   if (!collective_device_list.ok()) {
     EXPECT_TRUE(tc.expected_failure);
     return;
   }
-  const std::vector<ReplicaGroup> &actual_flattened_id_groups =
-      collective_device_list.value().replica_groups();
+  const std::vector<ReplicaGroup>& actual_flattened_id_groups =
+      collective_device_list.value()->replica_groups();
 
   std::vector<std::vector<int64_t>> actual_flattened_id_groups_int;
   actual_flattened_id_groups_int.reserve(actual_flattened_id_groups.size());
@@ -1146,16 +1176,16 @@ TEST_P(GetParticipatingTest, Test) {
       /*parameter_number=*/1, ShapeUtil::MakeShape(F32, {}), "y"));
   sum_builder.AddInstruction(HloInstruction::CreateBinary(
       ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd, x, y));
-  HloComputation *reduction =
+  HloComputation* reduction =
       hlo_module.AddEmbeddedComputation(sum_builder.Build());
   HloComputation::Builder entry_builder("test_entry");
-  HloInstruction *operand = entry_builder.AddInstruction(
+  HloInstruction* operand = entry_builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
   std::optional<int64_t> channel_id = std::nullopt;
   if (tc.has_channel_id) {
     channel_id = 0;
   }
-  HloInstruction *ar =
+  HloInstruction* ar =
       entry_builder.AddInstruction(HloInstruction::CreateAllReduce(
           operand->shape(), {operand}, reduction, replica_groups,
           /*constrain_layout=*/false,
@@ -1195,7 +1225,7 @@ class GetPariticipantCountsForReplicaGroupsTest
     : public testing::TestWithParam<TestCase> {};
 
 TEST_P(GetPariticipantCountsForReplicaGroupsTest, Test) {
-  const TestCase &tc = GetParam();
+  const TestCase& tc = GetParam();
 
   std::vector<ReplicaGroup> replica_groups =
       CreateReplicaGroups(tc.replica_groups);
@@ -1211,7 +1241,7 @@ std::vector<TestCase> GetTestCases() {
       {
           "CrossReplicaEmptyGroup",
           {},
-          CollectiveOpGroupMode::kCrossReplica,
+          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA,
           8,
           1,
           {8},
@@ -1219,7 +1249,7 @@ std::vector<TestCase> GetTestCases() {
       {
           "CrossReplicaWithPartitions",
           {{0, 1}, {2, 3}},
-          CollectiveOpGroupMode::kCrossReplica,
+          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA,
           4,
           2,
           {2, 2, 2, 2},
@@ -1227,7 +1257,8 @@ std::vector<TestCase> GetTestCases() {
       {
           "CrossReplicaAndPartition",
           {{0, 1}, {2, 3}},
-          CollectiveOpGroupMode::kCrossReplicaAndPartition,
+          CollectiveOpGroupMode::
+              COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION,
           4,
           2,
           {4, 4},
@@ -1235,7 +1266,7 @@ std::vector<TestCase> GetTestCases() {
       {
           "FlattenedID",
           {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}},
-          CollectiveOpGroupMode::kFlattenedID,
+          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID,
           4,
           2,
           {1, 1, 1, 1, 1, 1, 1, 1},
@@ -1247,7 +1278,7 @@ INSTANTIATE_TEST_SUITE_P(
     GetPariticipantCountsForReplicaGroupsTest,
     testing::ValuesIn(GetTestCases()),
     [](const testing::TestParamInfo<
-        GetPariticipantCountsForReplicaGroupsTest::ParamType> &info) {
+        GetPariticipantCountsForReplicaGroupsTest::ParamType>& info) {
       return info.param.test_name;
     });
 
@@ -1260,4 +1291,183 @@ TEST(GetReductionIdentity, NoCrashForComplexType) {
 }
 
 }  // namespace GetPariticipantCountsForReplicaGroupsTest
+class IsNcclSymmetricBuffersEnabledForCollectiveTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    absl::string_view hlo_string = R"(
+      HloModule test_module, replica_count=2
+
+      add_f32 {
+        x = f32[] parameter(0)
+        y = f32[] parameter(1)
+        ROOT add = f32[] add(x, y)
+      }
+
+      add_s32 {
+        x = s32[] parameter(0)
+        y = s32[] parameter(1)
+        ROOT add = s32[] add(x, y)
+      }
+
+      ENTRY test_computation {
+        p_f32_1024 = f32[1024]{0} parameter(0)
+        p_s32_1024 = s32[1024]{0} parameter(1)
+        p_f32_2048 = f32[2048]{0} parameter(2)
+        p_f32_512 = f32[512]{0} parameter(3)
+
+        ar_f32_1024 = f32[1024]{0} all-reduce(p_f32_1024), replica_groups={{0,1}}, to_apply=add_f32
+        ar_s32_1024 = s32[1024]{0} all-reduce(p_s32_1024), replica_groups={{0,1}}, to_apply=add_s32
+        ar_f32_2048 = f32[2048]{0} all-reduce(p_f32_2048), replica_groups={{0,1}}, to_apply=add_f32
+        ag_f32_512 = f32[1024]{0} all-gather(p_f32_512), replica_groups={{0,1}}, dimensions={0}
+        ag_f32_1024 = f32[2048]{0} all-gather(p_f32_1024), replica_groups={{0,1}}, dimensions={0}
+
+        ROOT tuple = (f32[1024]{0}, s32[1024]{0}, f32[2048]{0}, f32[1024]{0}, f32[2048]{0}) tuple(ar_f32_1024, ar_s32_1024, ar_f32_2048, ag_f32_512, ag_f32_1024)
+      }
+    )";
+
+    ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnUnverifiedModule(hlo_string));
+
+    auto* entry = module_->entry_computation();
+    ar_f32_1024_ = entry->GetInstructionWithName("ar_f32_1024");
+    ar_s32_1024_ = entry->GetInstructionWithName("ar_s32_1024");
+    ar_f32_2048_ = entry->GetInstructionWithName("ar_f32_2048");
+    ag_f32_512_ = entry->GetInstructionWithName("ag_f32_512");
+    ag_f32_1024_ = entry->GetInstructionWithName("ag_f32_1024");
+
+    ASSERT_NE(ar_f32_1024_, nullptr);
+    ASSERT_NE(ar_s32_1024_, nullptr);
+    ASSERT_NE(ar_f32_2048_, nullptr);
+    ASSERT_NE(ag_f32_512_, nullptr);
+    ASSERT_NE(ag_f32_1024_, nullptr);
+  }
+
+  std::unique_ptr<HloModule> module_;
+  HloInstruction* ar_f32_1024_;
+  HloInstruction* ar_s32_1024_;
+  HloInstruction* ar_f32_2048_;
+  HloInstruction* ag_f32_512_;
+  HloInstruction* ag_f32_1024_;
+};
+
+TEST_F(IsNcclSymmetricBuffersEnabledForCollectiveTest, MasterSwitchEnablesAll) {
+  DebugOptions opts;
+  opts.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(true);
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_1024_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_s32_1024_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_2048_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_512_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_1024_, opts));
+}
+
+TEST_F(IsNcclSymmetricBuffersEnabledForCollectiveTest, AllFilterEnablesAll) {
+  DebugOptions opts;
+  auto* filter = opts.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+  filter->set_collective(DebugOptions::ALLCOLLECTIVES);
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_1024_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_s32_1024_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_2048_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_512_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_1024_, opts));
+}
+
+TEST_F(IsNcclSymmetricBuffersEnabledForCollectiveTest, AllFilterWithSizeLimit) {
+  DebugOptions opts;
+  auto* filter = opts.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+  filter->set_collective(DebugOptions::ALLCOLLECTIVES);
+  filter->set_max_size_bytes(4096);
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_1024_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_s32_1024_, opts));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_2048_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_512_, opts));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_1024_, opts));
+}
+
+TEST_F(IsNcclSymmetricBuffersEnabledForCollectiveTest,
+       SingleCollectiveNoOtherFilters) {
+  DebugOptions opts;
+  auto* filter = opts.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+  filter->set_collective(DebugOptions::ALLREDUCE);
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_1024_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_s32_1024_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_2048_, opts));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_1024_, opts));
+}
+
+TEST_F(IsNcclSymmetricBuffersEnabledForCollectiveTest,
+       SingleCollectiveWithSizeFilter) {
+  DebugOptions opts;
+  auto* filter = opts.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+  filter->set_collective(DebugOptions::ALLREDUCE);
+  filter->set_max_size_bytes(4096);
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_1024_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_s32_1024_, opts));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_2048_, opts));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_1024_, opts));
+}
+
+TEST_F(IsNcclSymmetricBuffersEnabledForCollectiveTest,
+       SingleCollectiveWithTypeFilter) {
+  DebugOptions opts;
+  auto* filter = opts.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+  filter->set_collective(DebugOptions::ALLREDUCE);
+  filter->set_op_type(F32);
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_1024_, opts));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ar_s32_1024_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_2048_, opts));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_1024_, opts));
+}
+
+TEST_F(IsNcclSymmetricBuffersEnabledForCollectiveTest,
+       SingleCollectiveWithSizeAndTypeFilter) {
+  DebugOptions opts;
+  auto* filter = opts.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+  filter->set_collective(DebugOptions::ALLREDUCE);
+  filter->set_max_size_bytes(4096);
+  filter->set_op_type(F32);
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_1024_, opts));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ar_s32_1024_, opts));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_2048_, opts));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_1024_, opts));
+}
+
+TEST_F(IsNcclSymmetricBuffersEnabledForCollectiveTest,
+       OverlappingFiltersDifferentTypes) {
+  DebugOptions opts;
+  {
+    auto* filter = opts.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+    filter->set_collective(DebugOptions::ALLREDUCE);
+    filter->set_max_size_bytes(4096);
+    filter->set_op_type(F32);
+  }
+  {
+    auto* filter = opts.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+    filter->set_collective(DebugOptions::ALLREDUCE);
+    filter->set_max_size_bytes(8192);
+    filter->set_op_type(S32);
+  }
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_1024_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_s32_1024_, opts));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_2048_, opts));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_1024_, opts));
+}
+
+TEST_F(IsNcclSymmetricBuffersEnabledForCollectiveTest,
+       OverlappingFiltersDifferentSizes) {
+  DebugOptions opts;
+  {
+    auto* filter = opts.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+    filter->set_collective(DebugOptions::ALLREDUCE);
+    filter->set_max_size_bytes(4096);
+    filter->set_op_type(F32);
+  }
+  {
+    auto* filter = opts.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+    filter->set_collective(DebugOptions::ALLREDUCE);
+    filter->set_max_size_bytes(8192);
+    filter->set_op_type(F32);
+  }
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_1024_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_2048_, opts));
+}
+
 }  // namespace xla

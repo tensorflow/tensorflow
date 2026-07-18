@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/tsl/lib/io/record_writer.h"
 
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/lib/hash/crc32c.h"
 #include "xla/tsl/lib/io/compression.h"
 #include "xla/tsl/platform/env.h"
@@ -33,7 +34,7 @@ bool IsSnappyCompressed(const RecordWriterOptions& options) {
 }  // namespace
 
 RecordWriterOptions RecordWriterOptions::CreateRecordWriterOptions(
-    const string& compression_type) {
+    const std::string& compression_type) {
   RecordWriterOptions options;
 #if defined(IS_SLIM_BUILD)
   if (compression_type != compression::kNone) {
@@ -109,8 +110,8 @@ absl::Status RecordWriter::WriteRecord(absl::string_view data) {
   char footer[kFooterSize];
   PopulateHeader(header, data.data(), data.size());
   PopulateFooter(footer, data.data(), data.size());
-  TF_RETURN_IF_ERROR(dest_->Append(absl::string_view(header, sizeof(header))));
-  TF_RETURN_IF_ERROR(dest_->Append(data));
+  RETURN_IF_ERROR(dest_->Append(absl::string_view(header, sizeof(header))));
+  RETURN_IF_ERROR(dest_->Append(data));
   return dest_->Append(absl::string_view(footer, sizeof(footer)));
 }
 
@@ -129,8 +130,8 @@ absl::Status RecordWriter::WriteRecord(const absl::Cord& data) {
   char footer[kFooterSize];
   PopulateHeader(header, data);
   PopulateFooter(footer, data);
-  TF_RETURN_IF_ERROR(dest_->Append(absl::string_view(header, sizeof(header))));
-  TF_RETURN_IF_ERROR(dest_->Append(data));
+  RETURN_IF_ERROR(dest_->Append(absl::string_view(header, sizeof(header))));
+  RETURN_IF_ERROR(dest_->Append(data));
   return dest_->Append(absl::string_view(footer, sizeof(footer)));
 }
 #endif

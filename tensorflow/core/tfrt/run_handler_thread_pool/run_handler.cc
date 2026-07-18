@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/strings/str_cat.h"
 #define EIGEN_USE_THREADS
 
@@ -35,9 +36,11 @@ limitations under the License.
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/lib/core/threadpool_interface.h"
+#include "tensorflow/core/lib/monitoring/sampler.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/denormal.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/setround.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
@@ -55,6 +58,12 @@ namespace {
 
 typedef typename internal::RunHandlerEnvironment::Task Task;
 typedef Eigen::RunQueue<Task, 1024> Queue;
+
+auto* wait_for_handler_latency = tensorflow::monitoring::Sampler<1>::New(
+    {"/tensorflow/core/tfrt/run_handler_thread_pool/"
+     "wait_for_handler_latency",
+     "Latency of waiting for a free handler in microseconds.", "priority"},
+    tensorflow::monitoring::Buckets::Exponential(100, 2, 20));
 
 }  // namespace
 
@@ -795,6 +804,7 @@ class RunHandlerPool::Impl {
     RunHandler::Impl* handler_impl;
     {
       tensorflow::mutex_lock l(mu_);
+      uint64_t start_wait_us = tensorflow::Env::Default()->NowMicros();
       if (!has_free_handler()) {
         tsl::profiler::TraceMe activity(
             [step_id] {
@@ -810,7 +820,10 @@ class RunHandlerPool::Impl {
                            timeout_in_ms * 1000 * 1000)) {
           return nullptr;
         }
+        wait_for_handler_latency->GetCell(absl::StrCat(options.priority))
+            ->Add(tensorflow::Env::Default()->NowMicros() - start_wait_us);
       }
+
       // Remove the last entry from free_handlers_ and add to the end of
       // sorted_active_handlers_.
       handler_impl = free_handlers_.back();
@@ -1056,7 +1069,7 @@ void RunHandler::ScheduleInterOpClosure(TaskFunction fn) {
 }
 
 void RunHandler::ScheduleIntraOpClosure(TaskFunction fn) {
-  impl_->ScheduleInterOpClosure(std::move(fn));
+  impl_->ScheduleIntraOpClosure(std::move(fn));
 }
 
 int RunHandler::NumThreads() const {

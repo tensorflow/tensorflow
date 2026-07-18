@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/xla_data.pb.h"
@@ -28,11 +30,11 @@ namespace {
 class GatherOp : public XlaOpKernel {
  public:
   explicit GatherOp(OpKernelConstruction* context) : XlaOpKernel(context) {
-    string dnums_attr;
+    std::string dnums_attr;
     OP_REQUIRES_OK(context, context->GetAttr("dimension_numbers", &dnums_attr));
     OP_REQUIRES(
         context, dnums_.ParsePartialFromString(dnums_attr),
-        errors::InvalidArgument("Error parsing gather dimension numbers"));
+        absl::InvalidArgumentError("Error parsing gather dimension numbers"));
     OP_REQUIRES_OK(
         context, context->GetAttr("indices_are_sorted", &indices_are_sorted_));
   }
@@ -60,11 +62,11 @@ class ScatterOp : public XlaOpKernel {
   explicit ScatterOp(OpKernelConstruction* context) : XlaOpKernel(context) {
     OP_REQUIRES_OK(
         context, context->GetAttr("update_computation", &update_computation_));
-    string dnums_attr;
+    std::string dnums_attr;
     OP_REQUIRES_OK(context, context->GetAttr("dimension_numbers", &dnums_attr));
     OP_REQUIRES(
         context, dnums_.ParsePartialFromString(dnums_attr),
-        errors::InvalidArgument("Error parsing scatter dimension numbers"));
+        absl::InvalidArgumentError("Error parsing scatter dimension numbers"));
     OP_REQUIRES_OK(
         context, context->GetAttr("indices_are_sorted", &indices_are_sorted_));
   }

@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker_impl.h"
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -95,10 +96,10 @@ absl::Status MoveElementToResponse(std::vector<Tensor>&& element,
   Variant& variant = element[0].scalar<Variant>()();
   CompressedElement* compressed = variant.get<CompressedElement>();
   if (compressed == nullptr) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(absl::StrCat(
         "Expected dataset to produce a CompressedElement variant tensor, but "
         "it produced ",
-        variant.TypeName());
+        variant.TypeName()));
   }
   *resp.mutable_compressed() = *compressed;
   return absl::OkStatus();
@@ -183,9 +184,9 @@ absl::Status DataServiceWorkerImpl::Start(
     mutex_lock l(mu_);
     return !cancelled_;
   };
-  TF_RETURN_IF_ERROR(grpc_util::Retry([this]() { return Heartbeat(); },
-                                      should_retry, "Worker heartbeat.",
-                                      /*deadline_micros=*/kint64max));
+  TF_RETURN_IF_ERROR(grpc_util::Retry(
+      [this]() { return Heartbeat(); }, should_retry, "Worker heartbeat.",
+      /*deadline_micros=*/std::numeric_limits<int64_t>::max()));
   LOG(INFO) << "Worker registered with dispatcher running at "
             << config_.dispatcher_address()
             << ". Worker config: " << config_.DebugString();
@@ -231,11 +232,11 @@ absl::Status DataServiceWorkerImpl::ValidateWorkerConfig() const {
       config_.worker_tags(),
       [](const std::string& worker_tag) { return worker_tag.empty(); });
   if (any_tag_is_empty) {
-    return errors::FailedPrecondition(
-        "Worker tags cannot be empty. Got tags {",
-        absl::StrJoin(config_.worker_tags().begin(),
-                      config_.worker_tags().end(), ", "),
-        "}");
+    return absl::FailedPreconditionError(
+        absl::StrCat("Worker tags cannot be empty. Got tags {",
+                     absl::StrJoin(config_.worker_tags().begin(),
+                                   config_.worker_tags().end(), ", "),
+                     "}"));
   }
   return absl::OkStatus();
 }
@@ -248,10 +249,10 @@ DataServiceWorkerImpl::CreateDispatcherClient() const TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     return !cancelled_;
   };
-  TF_RETURN_IF_ERROR(
-      grpc_util::Retry([&dispatcher]() { return dispatcher->Initialize(); },
-                       should_retry, "Initialize dispatcher client.",
-                       /*deadline_micros=*/kint64max));
+  TF_RETURN_IF_ERROR(grpc_util::Retry(
+      [&dispatcher]() { return dispatcher->Initialize(); }, should_retry,
+      "Initialize dispatcher client.",
+      /*deadline_micros=*/std::numeric_limits<int64_t>::max()));
   return dispatcher;
 }
 
@@ -261,24 +262,24 @@ absl::Status DataServiceWorkerImpl::GetElementResult(
   {
     mutex_lock l(mu_);
     if (cancelled_) {
-      return errors::Cancelled("Worker is shutting down");
+      return absl::CancelledError("Worker is shutting down");
     }
     if (!registered_) {
       // We need to reject requests until the worker has registered with the
       // dispatcher, so that we don't return NOT_FOUND for tasks that the worker
       // had before preemption.
-      return errors::Unavailable(
+      return absl::UnavailableError(
           "Worker has not yet registered with dispatcher.");
     }
     auto it = tasks_.find(request->task_id());
     if (it == tasks_.end()) {
       if (deleted_tasks_.contains(request->task_id())) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(absl::StrCat(
             "Got request for local task ", request->task_id(), " of worker ",
             worker_address_, ", which has been deleted. You may be creating ",
             "a duplicate iteration which has already finished. To fix this, "
             "make sure to create your dataset only once, as opposed to "
-            "re-creating it repeatedly inside a loop.");
+            "re-creating it repeatedly inside a loop."));
       }
       if (finished_tasks_.contains(request->task_id())) {
         VLOG(3) << "Task is already finished";
@@ -288,7 +289,8 @@ absl::Status DataServiceWorkerImpl::GetElementResult(
       }
       // Perhaps the worker hasn't gotten the task from the dispatcher yet.
       // Return Unavailable so that the client knows to continue retrying.
-      return errors::Unavailable("Task ", request->task_id(), " not found");
+      return absl::UnavailableError(
+          absl::StrCat("Task ", request->task_id(), " not found"));
     }
     task = it->second.get();
     task->outstanding_requests++;
@@ -336,7 +338,7 @@ absl::Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
 absl::Status DataServiceWorkerImpl::EnsureTaskInitialized(
     DataServiceWorkerImpl::Task& task) {
   if (task.task_def.worker_address() != worker_address_) {
-    return errors::Internal(absl::Substitute(
+    return absl::InternalError(absl::Substitute(
         "Dispatcher's worker address $0 does not match worker's address $1.",
         task.task_def.worker_address(), worker_address_));
   }
@@ -377,8 +379,8 @@ absl::StatusOr<DatasetDef> DataServiceWorkerImpl::GetDatasetDef(
       return def;
     }
     case TaskDef::DATASET_NOT_SET:
-      return errors::Internal("Unrecognized dataset case: ",
-                              task_def.dataset_case());
+      return absl::InternalError(
+          absl::StrCat("Unrecognized dataset case: ", task_def.dataset_case()));
   }
 }
 
@@ -459,8 +461,9 @@ DataServiceWorkerImpl::MakeDatasetIterator(standalone::Dataset& dataset,
     return iterator;
   }
 
-  return errors::InvalidArgument("Unrecognized processing mode: ",
-                                 task_def.processing_mode_def().DebugString());
+  return absl::InvalidArgumentError(
+      absl::StrCat("Unrecognized processing mode: ",
+                   task_def.processing_mode_def().DebugString()));
 }
 
 void DataServiceWorkerImpl::StopTask(Task& task) TF_LOCKS_EXCLUDED(mu_) {

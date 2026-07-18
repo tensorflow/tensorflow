@@ -19,15 +19,22 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/btree_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/clique.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/lockable.h"
+#include "xla/tsl/util/tied_ref.h"
 
 namespace xla::gpu {
 
@@ -39,11 +46,28 @@ class GpuClique : public Clique {
   GpuClique(
       GpuCliqueKey key, std::optional<CliqueIds> ids,
       absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators,
-      bool peer_access_enabled);
+      bool peer_access_enabled, std::shared_ptr<CancellationToken> cancel,
+      const GpuClique* parent = nullptr);
 
   const GpuCliqueKey& key() const { return key_; }
   const std::optional<CliqueIds>& ids() const { return ids_; }
   bool peer_access_enabled() const { return peer_access_enabled_; }
+
+  // Returns a device communicator for a given rank and requirements if it's in
+  // a clique.
+  std::optional<GpuDeviceCommunicator*> device_comm(
+      RankId rank, const GpuDeviceCommunicator::Requirements& reqs) const;
+
+  // Adds a device communicator to the clique.
+  absl::Status AddDeviceComm(
+      RankId rank, GpuDeviceCommunicator::Requirements reqs,
+      std::unique_ptr<GpuDeviceCommunicator> communicator);
+
+  // Ties an object to a clique. Clique takes ownership of the object and will
+  // destroy it when the clique is destroyed. When TiedRef is destroyed, the
+  // object will be garbage collected.
+  template <typename T>
+  absl::StatusOr<tsl::TiedRef<T>> Tie(std::unique_ptr<T> object);
 
   std::string DebugString() const final;
 
@@ -52,6 +76,19 @@ class GpuClique : public Clique {
 
   // Aborts all communicators in the clique.
   absl::Status Abort();
+
+  // Cancels all communicators in the clique.
+  //
+  // Cancellation signals all communicators in the clique that they will be
+  // aborted next, and that they should gracefully cancel all pending collective
+  // operations and not start any new ones.
+  void Cancel();
+
+  // Returns true if the clique was cancelled.
+  bool IsCancelled() const;
+
+  // Returns a parent clique iff *this one was created by clique splitting.
+  const GpuClique* parent() const { return parent_; }
 
  private:
   friend LockableGpuClique;
@@ -67,7 +104,29 @@ class GpuClique : public Clique {
   // True if peer device memory access is possible between all local devices in
   // the clique.
   bool peer_access_enabled_;
+
+  // Cancellation token shared with all communicators in the clique.
+  std::shared_ptr<CancellationToken> cancel_;
+
+  // A parent GPU clique iff *this clique was constructed by split operation.
+  const GpuClique* parent_;
+
+  // We keep device communicators in a sorted container to guarantee that they
+  // are destroyed in deterministic order.
+  mutable absl::Mutex mu_;
+  absl::btree_map<std::pair<RankId, GpuDeviceCommunicator::Requirements>,
+                  std::unique_ptr<GpuDeviceCommunicator>>
+      device_communicators_ ABSL_GUARDED_BY(mu_);
+
+  // Storage for tied objects.
+  tsl::TiedAny tied_any_ ABSL_GUARDED_BY(mu_);
 };
+
+template <typename T>
+absl::StatusOr<tsl::TiedRef<T>> GpuClique::Tie(std::unique_ptr<T> object) {
+  absl::MutexLock lock(mu_);
+  return tied_any_.Tie<T>(std::move(object));
+}
 
 // A lockable version of GpuClique that guarantees exclusive access to the
 // clique communicators.
@@ -76,7 +135,14 @@ class LockableGpuClique : public Lockable<GpuClique, GpuClique::LockableName> {
   LockableGpuClique(
       GpuCliqueKey clique_key, std::optional<CliqueIds> clique_ids,
       absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators,
-      bool peer_access_enabled);
+      bool peer_access_enabled, std::shared_ptr<CancellationToken> cancel,
+      const GpuClique* parent = nullptr);
+
+  // Returns true if this clique has a parent whose key is a superset of (or
+  // equal to) `clique_key`. When the existing parent is a superset of the new
+  // split candidate, the clique was created from a bigger (or equal) split and
+  // is still valid — no need to abandon and re-split.
+  bool IsParentSupersetOf(const GpuCliqueKey& clique_key) const;
 
   std::string DebugString() const;
 
@@ -87,6 +153,9 @@ class LockableGpuClique : public Lockable<GpuClique, GpuClique::LockableName> {
 
   // Aborts all communicators in the clique without taking the lock.
   absl::Status Abort();
+
+  // Cancels all communicators in the clique without taking the lock.
+  void Cancel();
 };
 
 }  // namespace xla::gpu

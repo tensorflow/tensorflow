@@ -100,14 +100,15 @@ absl::Status ReattachUserContextRefs(absl::Status status) {
   return status;
 }
 
-absl::Status ExpandUserContexts(absl::Status status) {
+static void ExpandStandardUserContext(absl::Status& status) {
   if (status.ok()) {
-    return status;
+    return;
   }
+
   std::optional<absl::Cord> payload =
       status.GetPayload(kIfrtUserContextPayloadUrl);
   if (!payload.has_value()) {
-    return status;
+    return;
   }
 
   status.ErasePayload(kIfrtUserContextPayloadUrl);
@@ -117,7 +118,7 @@ absl::Status ExpandUserContexts(absl::Status status) {
     tsl::errors::AppendToMessage(
         &status, "\n(failed to parse a user context ID: ", payload->Flatten(),
         ")");
-    return status;
+    return;
   }
   TrackedUserContextRef user_context =
       UserContextRegistry::Get().Lookup(UserContextId(user_context_id));
@@ -125,12 +126,23 @@ absl::Status ExpandUserContexts(absl::Status status) {
     tsl::errors::AppendToMessage(
         &status, "\n(failed to find a user context for ID: ", user_context_id,
         ")");
-    return status;
+    return;
   }
   tsl::errors::AppendToMessage(&status, "\n",
                                user_context->user_context()->DebugString());
+}
+
+absl::Status ExpandUserContexts(absl::Status status) {
+  CustomStatusExpanderRegistry::Get().Process(status);
   return status;
 }
+
+static const bool register_standard_user_context = []() {
+  xla::ifrt::CustomStatusExpanderRegistry::Get().Register(
+      kIfrtUserContextPayloadUrl, ExpandStandardUserContext,
+      /*process_order=*/-1);
+  return true;
+}();
 
 }  // namespace ifrt
 }  // namespace xla

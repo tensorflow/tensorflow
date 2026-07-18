@@ -62,7 +62,7 @@ class LoadDatasetOp::Dataset : public DatasetBase {
         path_(path) {}
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
@@ -73,7 +73,7 @@ class LoadDatasetOp::Dataset : public DatasetBase {
     return output_shapes_;
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
@@ -179,7 +179,7 @@ class LoadDatasetOp::Dataset : public DatasetBase {
       std::vector<std::string> snapshot_shard_dirs;
       TF_RETURN_IF_ERROR(ctx->env()->GetMatchingPaths(
           io::JoinPath(run_dir,
-                       strings::Printf("%s%s", "*",
+                       absl::StrFormat("%s%s", "*",
                                        snapshot_util::kShardDirectorySuffix)),
           &snapshot_shard_dirs));
       std::sort(snapshot_shard_dirs.begin(), snapshot_shard_dirs.end());
@@ -203,7 +203,7 @@ class LoadDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(instantiated_captured_reader_func_->Run(
           ctx, std::move(reader_input), &reader_output, /*node=*/nullptr));
       if (reader_output.size() != 1) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "reader_func returns more than one argument.");
       }
       TF_RETURN_IF_ERROR(
@@ -252,7 +252,8 @@ void LoadDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
                                                       &nondistributed_metadata,
                                                       &metadata_file_exists));
   OP_REQUIRES(ctx, metadata_file_exists,
-              errors::NotFound("Could not find metadata file [", path, "]"));
+              absl::NotFoundError(
+                  absl::StrCat("Could not find metadata file [", path, "]")));
   *output = new Dataset(ctx, path, std::move(nondistributed_metadata),
                         compression_, std::move(captured_reader_func),
                         output_types_, output_shapes_);

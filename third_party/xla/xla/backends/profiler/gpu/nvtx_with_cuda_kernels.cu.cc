@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/nvtx_with_cuda_kernels.h"
 
+#include <cstddef>
 #include <vector>
 
 #include "third_party/gpus/cuda/include/cuda.h"

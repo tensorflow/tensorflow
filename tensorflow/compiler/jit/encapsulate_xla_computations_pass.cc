@@ -46,7 +46,7 @@ const char* const kXlaClusterOutput = "XlaClusterOutput";
 
 bool IsCpuGpuCompile(const Graph* graph) {
   for (Node* n : graph->nodes()) {
-    string name;
+    std::string name;
     // Only consider nodes being compiled.
     if (!TryGetNodeAttr(n->attrs(), kXlaClusterIdAttr, &name)) continue;
     // Early return for any node with a device that is not a CPU or GPU.
@@ -74,8 +74,8 @@ bool is_guaranteed_constant(const Node& n) {
 absl::Status GetIndexAttr(const Node& n, int num_args, int* index) {
   TF_RETURN_IF_ERROR(GetNodeAttr(n.attrs(), "index", index));
   if (*index < 0 || *index >= num_args) {
-    return errors::InvalidArgument("Invalid ", n.type_string(), " number ",
-                                   *index);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid ", n.type_string(), " number ", *index));
   }
   return absl::OkStatus();
 }
@@ -127,8 +127,8 @@ absl::Status RewriteSubgraph(
     if (n->type_string() == "_Arg") {
       // Check if this is a guaranteed constant.
       if (is_guaranteed_constant(*n)) {
-        return errors::InvalidArgument(
-            "Guaranteed constants are not supported (", n->name(), ")");
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Guaranteed constants are not supported (", n->name(), ")"));
       }
       args.push_back(n);
     } else if (n->type_string() == "_Retval") {
@@ -137,7 +137,7 @@ absl::Status RewriteSubgraph(
   }
 
   if (std::find(args.begin(), args.end(), nullptr) != args.end()) {
-    return errors::InvalidArgument("Missing or non-consecutive arguments");
+    return absl::InvalidArgumentError("Missing or non-consecutive arguments");
   }
 
   // Reorders the arguments.
@@ -185,7 +185,7 @@ absl::Status RewriteSubgraph(
   // Uniquify the function name by computing a fingerprint of the function.
   // Nondeterminism in serialization would not lead to incorrect results, but
   // may cause spurious cache misses.
-  TF_ASSIGN_OR_RETURN(uint64 fingerprint, FingerprintGraph(*graph));
+  TF_ASSIGN_OR_RETURN(uint64_t fingerprint, FingerprintGraph(*graph));
   VLOG(1) << "Subgraph fingerprint:" << fingerprint;
   call_def->set_op(absl::StrCat(call_def->op(), "_", fingerprint));
   return absl::OkStatus();
@@ -204,14 +204,14 @@ absl::Status RewriteSubgraph(
         e->src()->attrs().Find(kXlaClusterIdAttr) != nullptr &&
         e->dst()->attrs().Find(kXlaClusterIdAttr) == nullptr &&
         e->dst()->type_string() != kXlaClusterOutput) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Undeclared output of XLA computation. Some common causes of this "
           "error are: 1) variable initializers that depend on the XLA "
           "computation; 2) gradient computations that depend on the XLA "
           "computation, which can be mitigated by moving gradient computations "
           "inside XLA computation. Offending edge: ",
           e->src()->name(), ":", e->src_output(), " -> ", e->dst()->name(), ":",
-          e->dst_input());
+          e->dst_input()));
     }
   }
 
@@ -360,7 +360,8 @@ absl::Status RewriteSubgraph(
 /*static*/ absl::Status EncapsulateXlaComputationsPass::BuildXlaLaunchOps(
     Graph* graph) {
   const auto is_xla_launch_node = [](const Node& node) -> absl::StatusOr<bool> {
-    const string& name = GetNodeAttrString(node.attrs(), kXlaClusterIdAttr);
+    const std::string& name =
+        GetNodeAttrString(node.attrs(), kXlaClusterIdAttr);
     return !name.empty();
   };
 

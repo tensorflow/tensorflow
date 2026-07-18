@@ -24,8 +24,10 @@ limitations under the License.
 
 #include "absl/base/nullability.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/layout.pb.h"
@@ -34,6 +36,7 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace ifrt {
@@ -76,12 +79,33 @@ class Layout : public llvm::RTTIExtends<Layout, Serializable> {
   virtual absl::StatusOr<std::optional<int64_t>> ByteSize(
       DType dtype, const Shape& shard_shape) const = 0;
 
+  // Computes the byte size of a shard shape using a layout. If `dtype`
+  // represents non-fixed-size (e.g., `kString`), size-less (e.g., `kToken`), or
+  // opaque (`kOpaque`) data, or there is no single fixed size across shards,
+  // returns `std::nullopt`.
+  //
+  // `layout` may be `nullptr`, which represents a default layout. Default
+  // layouts will be automatically resolved to concrete layouts to compute the
+  // byte size.
+  static absl::StatusOr<std::optional<int64_t>> ByteSize(
+      DType dtype, const Shape& shape, const ShardingRef& sharding,
+      const LayoutRef& layout);
+
   // Constructs `Layout` from `LayoutProto`.
   static absl::StatusOr<CustomLayoutRef> FromProto(const LayoutProto& proto);
 
+  // Converts the layout to a protobuf.
+  absl::Status ToProto(
+      LayoutProto& layout_proto,
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
+
   // Returns a `LayoutProto` representation.
   absl::StatusOr<LayoutProto> ToProto(
-      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
+    LayoutProto proto;
+    RETURN_IF_ERROR(ToProto(proto, version));
+    return proto;
+  }
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const Layout& layout) {

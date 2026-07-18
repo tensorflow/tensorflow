@@ -47,11 +47,11 @@ correspond to. Again, make sure to use `// CHECK` instead of `; CHECK` as the
 delimiter.
 
 For example, some
-[GPU tests](https://github.com/openxla/xla/tree/main/xla/service/gpu/tests) can
+[GPU tests](https://github.com/openxla/xla/tree/main/xla/backends/gpu/tests) can
 be written as follows:
 
 ```
-// RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/%{GPU}.txtpb | FileCheck --check-prefixes=CHECK-%{PTX} %s
+// RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../../../backends/gpu/specs/%{GPU}.txtpb | FileCheck --check-prefixes=CHECK-%{PTX} %s
 
 HloModule Test, is_scheduled=true
 fused_computation {

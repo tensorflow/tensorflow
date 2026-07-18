@@ -70,14 +70,14 @@ REGISTER_OP("DTensorAllScatter")
                           Layout::FromString(output_layout_string));
       if (c->Rank(in) != input_layout.rank() ||
           c->Rank(in) != output_layout.rank()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Input tensor rank and layout ranks do not agree: input rank ",
             c->Rank(in), " input layout rank ", input_layout.rank(),
             " output "
             "layout rank ",
-            output_layout.rank());
+            output_layout.rank()));
       }
-      const std::vector<int32> output_sharding = output_layout.num_shards();
+      const std::vector<int32_t> output_sharding = output_layout.num_shards();
       std::vector<shape_inference::DimensionHandle> out_dims;
       out_dims.reserve(c->Rank(in));
       for (int i = 0; i < c->Rank(in); ++i) {
@@ -92,11 +92,11 @@ REGISTER_OP("DTensorAllScatter")
                                        /*evenly_divisible=*/true, &out_dim));
           out_dims.push_back(out_dim);
         } else {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "DTensorAllScatter only supports output layouts which are more "
               "sharded than input layouts. Received input sharding spec ",
               input_layout.sharding_spec(i), " and output sharding spec ",
-              output_layout.sharding_spec(i), " for dimension ", i, ".");
+              output_layout.sharding_spec(i), " for dimension ", i, "."));
         }
       }
       c->set_output(0, c->MakeShape(out_dims));
@@ -130,17 +130,17 @@ REGISTER_OP("DTensorAllGather")
                           Layout::FromString(output_layout_string));
       if (c->Rank(in) != input_layout.rank() ||
           c->Rank(in) != output_layout.rank()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Input tensor rank and layout ranks do not agree: input rank ",
             c->Rank(in), " input layout rank ", input_layout.rank(),
             " output "
             "layout rank ",
-            output_layout.rank());
+            output_layout.rank()));
       }
-      const std::vector<int32> input_sharding = input_layout.num_shards();
+      const std::vector<int32_t> input_sharding = input_layout.num_shards();
       std::vector<shape_inference::DimensionHandle> out_dims;
       out_dims.reserve(c->Rank(in));
-      for (int32 i = 0; i < c->Rank(in); ++i) {
+      for (int32_t i = 0; i < c->Rank(in); ++i) {
         shape_inference::DimensionHandle dim = c->Dim(in, i);
         if (!c->ValueKnown(dim) ||
             input_layout.sharding_spec(i) == output_layout.sharding_spec(i)) {
@@ -151,11 +151,11 @@ REGISTER_OP("DTensorAllGather")
           TF_RETURN_IF_ERROR(c->Multiply(dim, input_sharding[i], &out_dim));
           out_dims.push_back(out_dim);
         } else {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "DTensorAllGatherr only supports input layouts which are more "
               "sharded than output layouts. Received input sharding spec ",
               input_layout.sharding_spec(i), " and output sharding spec ",
-              output_layout.sharding_spec(i), " for dimension ", i, ".");
+              output_layout.sharding_spec(i), " for dimension ", i, "."));
         }
       }
       c->set_output(0, c->MakeShape(out_dims));
@@ -186,15 +186,15 @@ REGISTER_OP("DTensorAllToAll")
                           Layout::FromString(output_layout_string));
       if (c->Rank(in) != input_layout.rank() ||
           c->Rank(in) != output_layout.rank()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Input tensor rank and layout ranks do not agree: input rank ",
             c->Rank(in), " input layout rank ", input_layout.rank(),
             " output "
             "layout rank ",
-            output_layout.rank());
+            output_layout.rank()));
       }
-      const std::vector<int32> input_sharding = input_layout.num_shards();
-      const std::vector<int32> output_sharding = output_layout.num_shards();
+      const std::vector<int32_t> input_sharding = input_layout.num_shards();
+      const std::vector<int32_t> output_sharding = output_layout.num_shards();
       std::vector<shape_inference::DimensionHandle> out_dims;
       out_dims.reserve(c->Rank(in));
       for (int i = 0; i < c->Rank(in); ++i) {

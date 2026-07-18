@@ -18,34 +18,20 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Pass/Pass.h"
+#include "xla/backends/gpu/codegen/triton/extern_function_helper.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"  // IWYU pragma: keep
+#include "xla/codegen/xtile/ir/xtile_dialect.h"  // IWYU pragma: keep
 
 namespace mlir::triton::xla {
 
 #define GEN_PASS_DECL
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
 
-std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass();
-std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass(
-    bool allow_tma);
-std::unique_ptr<mlir::Pass> CreateTritonXLASqueezeDimsPass();
-std::unique_ptr<mlir::Pass> CreateTritonXLAFoldTransposePass();
-std::unique_ptr<mlir::Pass> CreateGeneralizeKernelSignaturePass();
 
-std::unique_ptr<mlir::Pass> CreateInt4ToPackedInt4RewritePass(
-    bool enable_bf16x2);
-std::unique_ptr<mlir::Pass> CreateRoundF32ToTF32ForTf32DotRewritePass();
-std::unique_ptr<mlir::Pass> CreateExtractTmaInfoPass();
-std::unique_ptr<mlir::Pass> CreateTritonXLAUnswitchLoopsPass();
-std::unique_ptr<mlir::Pass> CreateTritonXLALowerGetTidPass();
-std::unique_ptr<mlir::Pass> CreateTritonXLALowerAtomicsPass();
-std::unique_ptr<mlir::Pass> CreateTritonXLALowerBlockBarrierPass();
-std::unique_ptr<mlir::Pass> CreateTritonXLAConvertUnsupportedTypesPass();
-std::unique_ptr<mlir::Pass> CreateTritonXLALowerRemoteAccessPass();
-std::unique_ptr<mlir::Pass> CreateStableHLOLowerToTritonPass();
 
 // Returns true if the `op` contains an operation in it's regions that satisfies
 // the `fn`.

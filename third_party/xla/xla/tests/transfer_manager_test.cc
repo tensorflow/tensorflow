@@ -13,27 +13,34 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-#include <string>
+#include <cstdint>
+#include <functional>
+#include <numeric>
+#include <utility>
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "benchmark/benchmark.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
-#include "xla/service/generic_transfer_manager.h"
+#include "xla/literal_util.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/stream_pool.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/local_client_test_base.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace {
@@ -412,8 +419,8 @@ class TransferDeviceToHostBenchmark : public TransferManagerTest {
     }
     Literal literal = LiteralUtil::MakeTupleOwned(std::move(tuple_elements));
     auto device_buffer = AllocateDeviceBuffer(literal.shape());
-    TF_CHECK_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
-                                                           device_buffer));
+    CHECK_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
+                                                        device_buffer));
     for (auto s : state) {
       TF_ASSERT_OK_AND_ASSIGN(
           Literal result,
@@ -443,8 +450,8 @@ class TransferHostToDeviceBenchmark : public TransferManagerTest {
     auto device_buffer = AllocateDeviceBuffer(literal.shape());
 
     for (auto s : state) {
-      TF_CHECK_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
-                                                             device_buffer));
+      CHECK_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
+                                                          device_buffer));
     }
     TearDown();
   }

@@ -1,3 +1,17 @@
+# Copyright 2024 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
 """A script to generate the complex_unary_op_samples.h file.
 
 The generated file contains samples and reference values of complex unary
@@ -57,10 +71,10 @@ def main():
   default_extra_prec_multiplier = 1
 
   blocks = []
-  for opname in ['Log1p', 'Tan', 'Asin', 'Asinh']:
+  for opname in ['Log1p', 'Tan', 'Asin', 'Asinh', 'Exp']:
     mpmath_op = opname.lower()
     mpmath_op = dict(asin='arcsin', asinh='arcsinh').get(mpmath_op, mpmath_op)
-    size_re, size_im = dict(Log1p=(7, 7), Tan=(7, 7)).get(
+    size_re, size_im = dict(Log1p=(7, 7), Tan=(7, 7), Exp=(7, 7)).get(
         opname, (default_size, default_size)
     )
     extra_prec_multiplier = dict(
@@ -70,6 +84,7 @@ def main():
         # available
         Asin=20,
         Asinh=20,
+        Exp=1,
     ).get(opname, default_extra_prec_multiplier)
     nmp = jtu.numpy_with_mpmath(
         mpmath, extra_prec_multiplier=extra_prec_multiplier

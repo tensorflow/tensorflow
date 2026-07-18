@@ -14,8 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/window_dataset_op.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <deque>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -73,10 +82,10 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         output_shapes_(input_->output_shapes().size(), TensorShape({})),
         traceme_metadata_(
             {{"window_size",
-              strings::Printf("%lld", static_cast<long long>(window_size))},
+              absl::StrFormat("%lld", static_cast<long long>(window_size))},
              {"window_shift",
-              strings::Printf("%lld", static_cast<long long>(window_shift))},
-             {"window_stride", strings::Printf("%lld", static_cast<long long>(
+              absl::StrFormat("%lld", static_cast<long long>(window_shift))},
+             {"window_stride", absl::StrFormat("%lld", static_cast<long long>(
                                                            window_stride))}}) {
     input_->Ref();
   }
@@ -84,7 +93,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
@@ -97,7 +106,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
     return output_shapes_;
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
     params.set_args(window_size_, window_shift_, window_stride_,
                     drop_remainder_);
@@ -258,9 +267,21 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         // Build the output tuple component by copying one slice
         // from each input element in the window.
         for (size_t i = 0; i < num_window_elements; ++i) {
+          if (window_elements[i].size() != num_tuple_components) {
+            return errors::Internal(
+                "Malformed checkpoint: window elements have inconsistent "
+                "number of components. Expected: ",
+                num_tuple_components, " but got: ", window_elements[i].size());
+          }
           std::vector<Tensor> component_element;
           component_element.push_back(std::move(window_elements[i][idx]));
           window_component_elements.push_back(component_element);
+        }
+        if (idx >= dataset()->input_->output_dtypes().size() ||
+            idx >= dataset()->input_->output_shapes().size()) {
+          return errors::Internal(
+              "Malformed checkpoint: window elements do not match the dataset "
+              "output types or shapes.");
         }
         DataTypeVector output_types({dataset()->input_->output_dtypes()[idx]});
         std::vector<PartialTensorShape> output_shapes(
@@ -381,11 +402,11 @@ class WindowDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    string CodeKey(size_t index) {
+    std::string CodeKey(size_t index) {
       return strings::StrCat(kBuffer, "[", index, "]", kCodeSuffix);
     }
 
-    string ErrorMessageKey(size_t index) {
+    std::string ErrorMessageKey(size_t index) {
       return strings::StrCat(kBuffer, "[", index, "]", kErrorMessage);
     }
 

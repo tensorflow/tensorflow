@@ -25,10 +25,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
@@ -42,7 +44,7 @@ namespace {
 absl::Status FuncGetAttribute(hipFunction_attribute attribute,
                               hipFunction_t func, int* attribute_value) {
   return ToStatus(
-      wrap::hipFuncGetAttribute(attribute_value, attribute, func),
+      hipFuncGetAttribute(attribute_value, attribute, func),
       absl::StrCat("Failed to query kernel attribute: ", attribute));
 }
 
@@ -57,23 +59,22 @@ absl::StatusOr<int32_t> RocmKernel::GetMaxOccupiedBlocksPerCore(
   std::unique_ptr<ActivateContext> activation = executor_->Activate();
 
   int max_blocks = 0;
-  TF_RETURN_IF_ERROR(
-      ToStatus(wrap::hipModuleOccupancyMaxActiveBlocksPerMultiprocessor(
-                   &max_blocks, rocm_function_, threads_per_block,
-                   dynamic_shared_memory_bytes),
-               "Failed to calculate maximal active blocks per SM"));
+  RETURN_IF_ERROR(ToStatus(hipModuleOccupancyMaxActiveBlocksPerMultiprocessor(
+                               &max_blocks, rocm_function_, threads_per_block,
+                               dynamic_shared_memory_bytes),
+                           "Failed to calculate maximal active blocks per SM"));
   return max_blocks;
 }
 
 absl::StatusOr<KernelMetadata> RocmKernel::GetKernelMetadata() {
   KernelMetadata kernel_metadata;
   int value = 0;
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       FuncGetAttribute(HIP_FUNC_ATTRIBUTE_NUM_REGS, rocm_function_, &value));
   kernel_metadata.set_registers_per_thread(value);
 
-  TF_RETURN_IF_ERROR(FuncGetAttribute(HIP_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
-                                      rocm_function_, &value));
+  RETURN_IF_ERROR(FuncGetAttribute(HIP_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
+                                   rocm_function_, &value));
   kernel_metadata.set_shared_memory_bytes(value);
   return kernel_metadata;
 }
@@ -99,17 +100,23 @@ absl::Status RocmKernel::Launch(const ThreadDim& thread_dims,
     void** params = const_cast<void**>(packed.argument_addresses().data());
 
     return stream->LaunchKernel(thread_dims, block_dims, cluster_dims, function,
-                                name(), params,
-                                packed.number_of_shared_bytes());
+                                name(), params, packed.number_of_shared_bytes(),
+                                /*use_pdl=*/false);
   };
 
   // If arguments are already packed we can just launch the kernel.
   if (auto* packed = DynCast<KernelArgsPackedArrayBase>(&args)) {
-    return launch(*packed);
+    auto& pack = args_packing();
+    if (!pack) {
+      return launch(*packed);
+    }
+    ASSIGN_OR_RETURN(auto repacked, pack(*this, *packed));
+
+    return launch(*repacked);
   }
 
   // For device memory array we rely on a custom kernel arguments packing.
-  if (auto* device_mem = DynCast<KernelArgsDeviceMemoryArray>(&args)) {
+  if (auto* device_mem = DynCast<KernelArgsDeviceAddressArray>(&args)) {
     auto& pack = args_packing();
     if (!pack) {
       return absl::InternalError(
@@ -117,7 +124,7 @@ absl::Status RocmKernel::Launch(const ThreadDim& thread_dims,
           "memory arguments array");
     }
 
-    TF_ASSIGN_OR_RETURN(auto packed, pack(*this, *device_mem));
+    ASSIGN_OR_RETURN(auto packed, pack(*this, *device_mem));
     return launch(*packed);
   }
 

@@ -89,7 +89,7 @@ class StatSummarizer {
     return stats_calculator_->GetStatsByNodeType();
   }
 
-  std::string GetStatsByMetric(const string& title,
+  std::string GetStatsByMetric(const std::string& title,
                                StatsCalculator::SortingMetric sorting_metric,
                                int num_stats) const {
     return stats_calculator_->GetStatsByMetric(title, sorting_metric,

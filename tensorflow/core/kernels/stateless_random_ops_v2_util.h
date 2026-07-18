@@ -31,9 +31,9 @@ template <typename T>
 absl::Status GetScalar(const Tensor& tensor, int input_idx, T* result) {
   auto dtype = DataTypeToEnum<T>::v();
   if (tensor.dims() != 0) {
-    return errors::InvalidArgument("input ", std::to_string(input_idx),
-                                   " (0-based) must have shape [], not ",
-                                   tensor.shape().DebugString());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "input ", std::to_string(input_idx),
+        " (0-based) must have shape [], not ", tensor.shape().DebugString()));
   }
   if (tensor.dtype() != dtype) {
     return errors::InvalidArgument("dtype of input ", std::to_string(input_idx),
@@ -71,14 +71,15 @@ void FillRandomTensor(OpKernelContext* ctx, Algorithm alg, const Tensor& key,
   auto flat = tensor->flat<T>();
   if (alg == RNG_ALG_PHILOX) {
     // Reuse the compute kernels from the stateful random ops
-    auto key_data = key.flat<uint64>().data();
-    auto counter_data = counter.flat<uint64>().data();
+    auto key_data = key.flat<uint64_t>().data();
+    auto counter_data = counter.flat<uint64_t>().data();
     functor::FillPhiloxRandom<Device, Distribution>()(
         ctx, ctx->eigen_device<Device>(), key_data, counter_data,
         random::PhiloxRandom() /*dummy*/, flat.data(), flat.size(), dist);
   } else {
     OP_REQUIRES(ctx, false,
-                errors::InvalidArgument("Unsupported algorithm id: ", alg));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Unsupported algorithm id: ", alg)));
   }
 }
 }  // end namespace tensorflow

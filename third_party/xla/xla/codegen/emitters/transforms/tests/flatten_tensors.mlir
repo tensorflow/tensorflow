@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: emitters_opt %s -split-input-file -xla-flatten-tensors \
 // RUN: --verify-diagnostics | FileCheck %s
 
@@ -114,8 +128,8 @@ func.func @for_loop(%t0: tensor<32x1024xf32>, %t1: tensor<64x8x4xf32>)
 
 // -----
 
-#map = #xla.indexing_map<"(d0, d1) -> ((d1 * 128 + d0) floordiv 36), domain: d0 in [0, 127], d1 in [0, 393749]">
-#map1 = #xla.indexing_map<"(d0, d1) -> (((d1 * 128 + d0) floordiv 9) mod 4), domain: d0 in [0, 127], d1 in [0, 393749]">
+#map = #xla.indexing_map<"(d0, d1) -> ((d1 * 128 + d0) / 36), domain: d0 in [0, 127], d1 in [0, 393749]">
+#map1 = #xla.indexing_map<"(d0, d1) -> (((d1 * 128 + d0) / 9) mod 4), domain: d0 in [0, 127], d1 in [0, 393749]">
 #map2 = #xla.indexing_map<"(d0, d1) -> ((d1 * 128 + d0) mod 9), domain: d0 in [0, 127], d1 in [0, 393749]">
 func.func @if_op(%arg0: tensor<4000x4x9xf32>, %arg1: tensor<1400x1xi32>,
     %arg2: tensor<1400x1x4x9xf32>, %arg3: tensor<4000x4x9xf32>)
@@ -398,3 +412,13 @@ func.func @constant_vector() -> vector<2x3xf32> {
 // CHECK-LABEL: func.func @constant_vector
 // CHECK-SAME: -> vector<6xf32>
 // CHECK-NOT:  builtin.unrealized_conversion_cast
+
+// -----
+
+func.func @get_dynamic_dim_size(%in: tensor<16x8x4xf32>) -> (i32) {
+  %out = xla.get_dynamic_dim_size %in 1 : tensor<16x8x4xf32>
+  func.return %out : i32
+}
+// CHECK-LABEL: func.func @get_dynamic_dim_size(
+// CHECK-SAME:      %[[TENSOR:.*]]: tensor<512xf32>) -> i32 {
+// CHECK:         xla.get_dynamic_dim_size %[[TENSOR]] 1 : tensor<512xf32>

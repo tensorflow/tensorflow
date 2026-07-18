@@ -16,27 +16,18 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_CLIENT_IMPL_UTIL_H_
 #define XLA_PYTHON_IFRT_CLIENT_IMPL_UTIL_H_
 
+#include <optional>
 #include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
-#include "xla/python/ifrt/user_context.h"
-#include "xla/tsl/concurrency/ref_count.h"
+#include "xla/python/ifrt/executable.h"
 
 namespace xla {
 namespace ifrt {
-
-// Convenient helper to choose the current `UserContextRef` in a uniform way.
-//
-// * If `UserContextScope::current() != nullptr`, `UserContextScope::current()`
-//   is returned.
-// * Otherwise, `client->CreateUserContext()` is returned.
-//
-// TODO(hyeontaek): Remove this helper and use `UserContextScope::current()`
-// when there is no plural way of getting the current `UserContextRef`.
-UserContextRef GetUserContext(Client* client);
 
 // Portable adapter for `MakeArraysFromHostBufferShards`. It breaks downs
 // requests into `MakeArrayFromHostBuffer` calls followed by
@@ -48,6 +39,18 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
     Client* client,
     absl::Span<Client::MakeArraysFromHostBufferShardsSpec> specs,
     Client::HostBufferSemantics semantics);
+
+// Portable adapter of `LoadedExecutable::ExecuteBundle` that unpacks bundles,
+// calls `Execute` with individual arrays, and repacks the outputs into a
+// bundle.
+//
+// TODO(hyeontaek): Remove this function once all major IFRT implementations
+// natively support `LoadedExecutable::ExecuteBundle`.
+absl::StatusOr<LoadedExecutable::ExecuteBundleResult>
+LoadedExecutableExecuteBundle(
+    LoadedExecutable* executable, absl::Span<BundleRef> args,
+    const ExecuteOptions& options,
+    const std::optional<std::vector<int>>& outputs_bundle_slice_sizes);
 
 }  // namespace ifrt
 }  // namespace xla

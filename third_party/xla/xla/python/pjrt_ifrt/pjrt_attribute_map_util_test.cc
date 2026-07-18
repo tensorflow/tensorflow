@@ -38,8 +38,8 @@ TEST(PjRtAttributeMapUtilTest, FromPjRtAttributeMap) {
       {"float", xla::PjRtValueType(1.23f)},
   });
 
-  EXPECT_EQ(FromPjRtAttributeMap(pjrt_map).map(),
-            AttributeMap::Map({
+  EXPECT_EQ(FromPjRtAttributeMap(pjrt_map),
+            AttributeMap({
                 {"string", AttributeMap::StringValue("value")},
                 {"bool", AttributeMap::BoolValue(true)},
                 {"int64", AttributeMap::Int64Value(123)},

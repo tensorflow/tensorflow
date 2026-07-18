@@ -19,6 +19,8 @@ limitations under the License.
 #include <algorithm>
 #include <iostream>
 #include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -40,23 +42,24 @@ class NthElementOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     // The second args is N, which must be a positive scalar.
     const auto& n_in = context->input(1);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(n_in.shape()),
-        errors::InvalidArgument("N must be scalar but has rank ", n_in.dims()));
-    int n = n_in.scalar<int32>()();
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(n_in.shape()),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "N must be scalar but has rank ", n_in.dims())));
+    int n = n_in.scalar<int32_t>()();
     OP_REQUIRES(context, n >= 0,
-                errors::InvalidArgument("n must be non-negative but is ", n));
+                absl::InvalidArgumentError(
+                    absl::StrCat("n must be non-negative but is ", n)));
 
     // The first args is input tensor, which must have 1 dimension at least.
     const Tensor& input_in = context->input(0);
     const int num_dims = input_in.dims();
     OP_REQUIRES(context, num_dims >= 1,
-                errors::InvalidArgument(
-                    "Input must be at least rank 1 but is rank ", num_dims));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Input must be at least rank 1 but is rank ", num_dims)));
     // The last dimension of input tensor must be greater than N.
-    OP_REQUIRES(
-        context, input_in.dim_size(num_dims - 1) > n,
-        errors::InvalidArgument("Input must have last dimension > n = ", n));
+    OP_REQUIRES(context, input_in.dim_size(num_dims - 1) > n,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input must have last dimension > n = ", n)));
 
     // std::nth_element only support the nth-smallest selection.
     if (reverse_) {
@@ -91,8 +94,8 @@ struct NthElementFunctor<CPUDevice, T> {
 
     // Assume input_shape is [d1,d2,...dk], and output_shape is [d1,d2...dk-1],
     // then num_rows = d1*d2...dk-1, last_dim = dk.
-    const int num_rows = output_tensor.NumElements();
-    const int last_dim = input_tensor.dim_size(input_tensor.dims() - 1);
+    const int64_t num_rows = output_tensor.NumElements();
+    const int64_t last_dim = input_tensor.dim_size(input_tensor.dims() - 1);
 
     // Allocate each row to different shard.
     auto SubNthElement = [&, input, output, last_dim, n](int64_t start,
@@ -100,7 +103,7 @@ struct NthElementFunctor<CPUDevice, T> {
       // std::nth_element would rearrange the array, so we need a new buffer.
       std::vector<T> buf(last_dim);
 
-      for (int b = start; b < limit; ++b) {
+      for (int64_t b = start; b < limit; ++b) {
         // Copy from one row of elements to buffer
         const T* input_start = input + b * last_dim;
         const T* input_end = input + (b + 1) * last_dim;

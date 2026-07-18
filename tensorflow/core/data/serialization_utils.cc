@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/data/compression_utils.h"
@@ -59,8 +60,8 @@ constexpr char kOutputNode[] = ".output_node";
 
 absl::Status FromGraphDef(
     FunctionLibraryRuntime* flr, const GraphDef& graph_def,
-    const std::vector<std::pair<string, Tensor>>& input_list,
-    const string& output_node, Tensor* result) {
+    const std::vector<std::pair<std::string, Tensor>>& input_list,
+    const std::string& output_node, Tensor* result) {
   FunctionLibraryRuntime* cloned_flr = nullptr;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr = nullptr;
   std::unique_ptr<FunctionLibraryDefinition> lib_def = nullptr;
@@ -79,7 +80,7 @@ absl::Status FromGraphDef(
 // FindStatefulOps searches `graph_def` for all of its stateful ops storing
 // their names in `stateful_op_names`.
 absl::Status FindStatefulOps(const GraphDef& graph_def,
-                             std::vector<string>* stateful_op_names) {
+                             std::vector<std::string>* stateful_op_names) {
   FunctionLibraryDefinition lib_def(OpRegistry::Global(), graph_def.library());
 
   // Iterate over all nodes in the graph.
@@ -112,6 +113,11 @@ absl::Status ReadElementsFromCheckpoint(
   int64_t num_elements;
   TF_RETURN_IF_ERROR(
       reader->ReadScalar(key_prefix, kNumElements, &num_elements));
+  if (num_elements < 0) {
+    return absl::InternalError(
+        absl::StrCat("Num_elements in tf.data checkpoint must be >= 0, got: ",
+                     num_elements));
+  }
   DCHECK(elements->empty());
   elements->reserve(num_elements);
   for (int i = 0; i < num_elements; ++i) {
@@ -119,6 +125,12 @@ absl::Status ReadElementsFromCheckpoint(
     int64_t num_components;
     TF_RETURN_IF_ERROR(
         reader->ReadScalar(element_prefix, kNumComponents, &num_components));
+    if (num_components < 0) {
+      return absl::InternalError(
+          absl::StrCat("Num of Tensor size in tf.data checkpoint must be >= 0, "
+                       "got: ",
+                       num_components));
+    }
     elements->emplace_back();
     std::vector<Tensor>& element = elements->at(i);
     element.reserve(num_components);
@@ -173,12 +185,12 @@ absl::Status UpdateCheckpointElements(
 VariantTensorDataReader::VariantTensorDataReader(
     const std::vector<const tensorflow::VariantTensorData*>& data) {
   for (const auto& d : data) {
-    string metadata;
+    std::string metadata;
     d->get_metadata(&metadata);
     auto keys = str_util::Split(metadata, kDelimiter, str_util::SkipEmpty());
-    const string name = keys[0];
+    const std::string name = keys[0];
     data_[name] = d;
-    map_[name] = std::map<string, size_t>();
+    map_[name] = std::map<std::string, size_t>();
     for (size_t i = 1; i < keys.size(); ++i) {
       map_[name][keys[i]] = i - 1;
     }
@@ -187,7 +199,7 @@ VariantTensorDataReader::VariantTensorDataReader(
 
 absl::Status VariantTensorDataReader::ReadScalar(absl::string_view key,
                                                  int64_t* val) const {
-  string prefix;
+  std::string prefix;
   TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
   return ReadScalar(prefix, key, val);
 }
@@ -200,7 +212,7 @@ absl::Status VariantTensorDataReader::ReadScalar(absl::string_view name,
 
 absl::Status VariantTensorDataReader::ReadScalar(absl::string_view key,
                                                  tstring* val) const {
-  string prefix;
+  std::string prefix;
   TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
   return ReadScalar(prefix, key, val);
 }
@@ -213,7 +225,7 @@ absl::Status VariantTensorDataReader::ReadScalar(absl::string_view name,
 
 absl::Status VariantTensorDataReader::ReadTensor(absl::string_view key,
                                                  Tensor* val) const {
-  string prefix;
+  std::string prefix;
   TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
   return ReadTensor(prefix, key, val);
 }
@@ -221,7 +233,7 @@ absl::Status VariantTensorDataReader::ReadTensor(absl::string_view key,
 absl::Status VariantTensorDataReader::ReadTensor(FunctionLibraryRuntime* flr,
                                                  absl::string_view key,
                                                  Tensor* val) const {
-  string prefix;
+  std::string prefix;
   TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
   return ReadTensorInternal(flr, prefix, key, val);
 }
@@ -240,7 +252,7 @@ absl::Status VariantTensorDataReader::ReadTensor(FunctionLibraryRuntime* flr,
 }
 
 bool VariantTensorDataReader::Contains(absl::string_view key) const {
-  string prefix;
+  std::string prefix;
   if (!ExtractIteratorPrefix(key, &prefix).ok()) {
     return false;
   }
@@ -249,30 +261,45 @@ bool VariantTensorDataReader::Contains(absl::string_view key) const {
 
 bool VariantTensorDataReader::Contains(absl::string_view n,
                                        absl::string_view key) const {
-  string name(n);
+  std::string name(n);
   auto it = map_.find(name);
   if (it == map_.end()) {
     return false;
   }
   const auto& bucket = it->second;
-  return bucket.find(string(key)) != bucket.end();
+  return bucket.find(std::string(key)) != bucket.end();
 }
 
 template <typename T>
 absl::Status VariantTensorDataReader::ReadScalarInternal(absl::string_view n,
                                                          absl::string_view key,
                                                          T* val) const {
-  string name(n);
+  std::string name(n);
   auto it = map_.find(name);
   if (it == map_.end()) {
-    return errors::NotFound(name);
+    return absl::NotFoundError(name);
   }
   const auto& bucket = it->second;
-  auto key_it = bucket.find(string(key));
+  auto key_it = bucket.find(std::string(key));
   if (key_it == bucket.end()) {
-    return errors::NotFound(key);
+    return absl::NotFoundError(key);
   }
-  *val = data_.at(name)->tensors(key_it->second).scalar<T>()();
+  if (key_it->second >= data_.at(name)->tensors().size()) {
+    return absl::OutOfRangeError(
+        "VariantTensorDataReader tensor index out of range.");
+  }
+  const Tensor& t = data_.at(name)->tensors(key_it->second);
+  if (t.NumElements() != 1) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected a scalar, but found a tensor with ",
+                     t.NumElements(), " elements."));
+  }
+  if (t.dtype() != DataTypeToEnum<T>::v()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Expected scalar of type ", DataTypeString(DataTypeToEnum<T>::v()),
+        ", but found tensor of type ", DataTypeString(t.dtype())));
+  }
+  *val = t.scalar<T>()();
   return absl::OkStatus();
 }
 
@@ -282,15 +309,19 @@ absl::Status VariantTensorDataReader::ReadTensorInternal(
   if (Contains(n, absl::StrCat(key, kIsDataset))) {
     return ReadDatasetInternal(flr, n, key, val);
   }
-  string name(n);
+  std::string name(n);
   auto it = map_.find(name);
   if (it == map_.end()) {
-    return errors::NotFound(name);
+    return absl::NotFoundError(name);
   }
   const auto& bucket = it->second;
-  auto key_it = bucket.find(string(key));
+  auto key_it = bucket.find(std::string(key));
   if (key_it == bucket.end()) {
-    return errors::NotFound(key);
+    return absl::NotFoundError(key);
+  }
+  if (key_it->second >= data_.at(name)->tensors().size()) {
+    return absl::OutOfRangeError(
+        "VariantTensorDataReader tensor index out of range.");
   }
   *val = data_.at(name)->tensors(key_it->second);
   return absl::OkStatus();
@@ -300,7 +331,7 @@ absl::Status VariantTensorDataReader::ReadDatasetInternal(
     FunctionLibraryRuntime* flr, absl::string_view n, absl::string_view key,
     Tensor* val) const {
   if (flr == nullptr) {
-    return errors::Internal(
+    return absl::InternalError(
         "Function library runtime is needed to restore a dataset.");
   }
   tstring output_node, serialized_graph_def;
@@ -313,12 +344,12 @@ absl::Status VariantTensorDataReader::ReadDatasetInternal(
   return absl::OkStatus();
 }
 
-std::map<string, Tensor> VariantTensorDataReader::ReadAllTensors() {
-  std::map<string, Tensor> result;
+std::map<std::string, Tensor> VariantTensorDataReader::ReadAllTensors() {
+  std::map<std::string, Tensor> result;
   for (const auto& entry : map_) {
-    string key1 = entry.first;
+    std::string key1 = entry.first;
     for (const auto& inner : entry.second) {
-      string key2 = inner.first;
+      std::string key2 = inner.first;
       size_t index = inner.second;
       result[absl::StrCat(key1, kDelimiter, key2)] =
           data_[key1]->tensors(index);
@@ -329,7 +360,7 @@ std::map<string, Tensor> VariantTensorDataReader::ReadAllTensors() {
 
 absl::Status VariantTensorDataWriter::WriteScalar(absl::string_view key,
                                                   const int64_t val) {
-  string prefix;
+  std::string prefix;
   TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
   return WriteScalar(prefix, key, val);
 }
@@ -342,7 +373,7 @@ absl::Status VariantTensorDataWriter::WriteScalar(absl::string_view name,
 
 absl::Status VariantTensorDataWriter::WriteScalar(absl::string_view key,
                                                   const tstring& val) {
-  string prefix;
+  std::string prefix;
   TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
   return WriteScalar(prefix, key, val);
 }
@@ -355,7 +386,7 @@ absl::Status VariantTensorDataWriter::WriteScalar(absl::string_view name,
 
 absl::Status VariantTensorDataWriter::WriteTensor(absl::string_view key,
                                                   const Tensor& val) {
-  string prefix;
+  std::string prefix;
   TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
   return WriteTensor(prefix, key, val);
 }
@@ -369,8 +400,8 @@ absl::Status VariantTensorDataWriter::WriteTensor(absl::string_view name,
 void VariantTensorDataWriter::MaybeFlush() {
   if (is_flushed_) return;
   for (auto& keys : keys_) {
-    const string name = keys.first;
-    string metadata = name;
+    const std::string name = keys.first;
+    std::string metadata = name;
     for (size_t i = 0; i < keys_[name].size(); ++i) {
       absl::StrAppend(&metadata, kDelimiter, keys_[name][i]);
     }
@@ -406,7 +437,7 @@ template <typename T>
 absl::Status VariantTensorDataWriter::WriteScalarInternal(
     absl::string_view name, absl::string_view key, const T& val) {
   if (is_flushed_) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Cannot call WriteScalar after GetData or ReleaseData is called");
   }
   Tensor val_t = Tensor(DataTypeToEnum<T>::v(), TensorShape({}));
@@ -422,15 +453,15 @@ absl::Status VariantTensorDataWriter::WriteTensorInternal(absl::string_view n,
     return WriteDatasetInternal(n, key, dataset);
   }
   if (is_flushed_) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Cannot call WriteTensor after GetData or ReleaseData is called");
   }
-  DCHECK_EQ(key.find(kDelimiter), string::npos);
-  string name(n);
+  DCHECK_EQ(key.find(kDelimiter), std::string::npos);
+  std::string name(n);
   if (keys_.count(name) == 0) {
-    keys_[name] = std::vector<string>();
+    keys_[name] = std::vector<std::string>();
   }
-  keys_[name].push_back(string(key));
+  keys_[name].push_back(std::string(key));
   if (data_.count(name) == 0) {
     data_[name] = std::make_unique<VariantTensorData>();
     data_[name]->set_type_name("tensorflow::Iterator");
@@ -444,14 +475,14 @@ absl::Status VariantTensorDataWriter::WriteDatasetInternal(
   GraphDef graph_def;
   SerializationContext ctx((SerializationContext::Params()));
   TF_RETURN_IF_ERROR(AsGraphDef(dataset, std::move(ctx), &graph_def));
-  string output_node;
+  std::string output_node;
   for (const auto& node : graph_def.node()) {
     if (node.op() == kRetvalOp) {
       output_node = node.input(0);
       break;
     }
   }
-  string result;
+  std::string result;
   graph_def.SerializeToString(&result);
   TF_RETURN_IF_ERROR(WriteScalar(n, absl::StrCat(key, kIsDataset), ""));
   TF_RETURN_IF_ERROR(
@@ -552,8 +583,8 @@ REGISTER_UNARY_VARIANT_DECODE_FUNCTION(IteratorStateVariant,
 
 absl::Status AsGraphDefForRewrite(
     OpKernelContext* ctx, const DatasetBase* input,
-    std::vector<std::pair<string, Tensor>>* input_list, GraphDef* result,
-    string* dataset_node) {
+    std::vector<std::pair<std::string, Tensor>>* input_list, GraphDef* result,
+    std::string* dataset_node) {
   SerializationContext::Params params(ctx);
   params.input_list = input_list;
   params.external_state_policy = ExternalStatePolicy::POLICY_IGNORE;
@@ -579,7 +610,7 @@ absl::Status AsGraphDef(const DatasetBase* dataset,
   }
   if (serialization_ctx.external_state_policy() ==
       ExternalStatePolicy::POLICY_WARN) {
-    std::vector<string> stateful_op_names;
+    std::vector<std::string> stateful_op_names;
     TF_RETURN_IF_ERROR(FindStatefulOps(*graph_def, &stateful_op_names));
     if (!stateful_op_names.empty()) {
       LOG(WARNING) << "We found the following stateful ops in the dataset "

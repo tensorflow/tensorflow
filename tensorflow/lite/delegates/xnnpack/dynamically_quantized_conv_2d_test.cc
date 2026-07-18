@@ -19,22 +19,16 @@ limitations under the License.
 #include <random>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/delegates/xnnpack/dynamically_quantized_conv_2d_tester.h"
+#include "tensorflow/lite/delegates/xnnpack/fingerprint_test_helpers.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
 namespace tflite {
 namespace xnnpack {
 
-TEST(DynamicallyQuantizedConv2D, 3x3) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
+struct DynamicallyQuantizedConv2D : DelegateTest {};
 
+TEST_F(DynamicallyQuantizedConv2D, 3x3) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -44,8 +38,8 @@ TEST(DynamicallyQuantizedConv2D, 3x3) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -53,18 +47,13 @@ TEST(DynamicallyQuantizedConv2D, 3x3) {
       .KernelHeight(3)
       .KernelWidth(3)
       .SamePadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, 3x3Stride2) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, 3x3Stride2) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -74,8 +63,8 @@ TEST(DynamicallyQuantizedConv2D, 3x3Stride2) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -85,18 +74,13 @@ TEST(DynamicallyQuantizedConv2D, 3x3Stride2) {
       .StrideHeight(2)
       .StrideWidth(2)
       .SamePadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, Grouped) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, Grouped) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -109,8 +93,8 @@ TEST(DynamicallyQuantizedConv2D, Grouped) {
       std::bind(std::uniform_int_distribution<int32_t>(2, 8), std::ref(rng));
 
   auto groups = groups_rng();
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(groups * channel_per_group_rng())
@@ -119,18 +103,13 @@ TEST(DynamicallyQuantizedConv2D, Grouped) {
       .KernelHeight(3)
       .KernelWidth(3)
       .SamePadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, SmallKernelWithSamePadding) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, SmallKernelWithSamePadding) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -142,8 +121,8 @@ TEST(DynamicallyQuantizedConv2D, SmallKernelWithSamePadding) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -151,18 +130,13 @@ TEST(DynamicallyQuantizedConv2D, SmallKernelWithSamePadding) {
       .KernelHeight(kernel_rng())
       .KernelWidth(kernel_rng())
       .SamePadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, SmallKernelWithValidPadding) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, SmallKernelWithValidPadding) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -174,8 +148,8 @@ TEST(DynamicallyQuantizedConv2D, SmallKernelWithValidPadding) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -183,17 +157,13 @@ TEST(DynamicallyQuantizedConv2D, SmallKernelWithValidPadding) {
       .KernelHeight(kernel_rng())
       .KernelWidth(kernel_rng())
       .ValidPadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, StrideWithSamePadding) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
+TEST_F(DynamicallyQuantizedConv2D, StrideWithSamePadding) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -207,8 +177,8 @@ TEST(DynamicallyQuantizedConv2D, StrideWithSamePadding) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -218,18 +188,13 @@ TEST(DynamicallyQuantizedConv2D, StrideWithSamePadding) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .SamePadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, StrideWithValidPadding) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, StrideWithValidPadding) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -243,8 +208,8 @@ TEST(DynamicallyQuantizedConv2D, StrideWithValidPadding) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -254,18 +219,13 @@ TEST(DynamicallyQuantizedConv2D, StrideWithValidPadding) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .ValidPadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, DilationWithSamePadding) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, DilationWithSamePadding) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -279,8 +239,8 @@ TEST(DynamicallyQuantizedConv2D, DilationWithSamePadding) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -290,18 +250,13 @@ TEST(DynamicallyQuantizedConv2D, DilationWithSamePadding) {
       .DilationHeight(dilation_rng())
       .DilationWidth(dilation_rng())
       .SamePadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, DilationWithValidPadding) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, DilationWithValidPadding) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -315,8 +270,8 @@ TEST(DynamicallyQuantizedConv2D, DilationWithValidPadding) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -326,18 +281,13 @@ TEST(DynamicallyQuantizedConv2D, DilationWithValidPadding) {
       .DilationHeight(dilation_rng())
       .DilationWidth(dilation_rng())
       .ValidPadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, TensorWiseQuantizedInt8Weights) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, TensorWiseQuantizedInt8Weights) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -351,8 +301,8 @@ TEST(DynamicallyQuantizedConv2D, TensorWiseQuantizedInt8Weights) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -361,18 +311,13 @@ TEST(DynamicallyQuantizedConv2D, TensorWiseQuantizedInt8Weights) {
       .KernelWidth(kernel_rng())
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, ChannelWiseQuantizedInt8Weights) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, ChannelWiseQuantizedInt8Weights) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -386,8 +331,8 @@ TEST(DynamicallyQuantizedConv2D, ChannelWiseQuantizedInt8Weights) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -396,18 +341,13 @@ TEST(DynamicallyQuantizedConv2D, ChannelWiseQuantizedInt8Weights) {
       .KernelWidth(kernel_rng())
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, ReluActivation) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, ReluActivation) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -421,8 +361,8 @@ TEST(DynamicallyQuantizedConv2D, ReluActivation) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -432,18 +372,13 @@ TEST(DynamicallyQuantizedConv2D, ReluActivation) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .ReluActivation()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, Relu6Activation) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, Relu6Activation) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -457,8 +392,8 @@ TEST(DynamicallyQuantizedConv2D, Relu6Activation) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -468,18 +403,13 @@ TEST(DynamicallyQuantizedConv2D, Relu6Activation) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .Relu6Activation()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, ReluMinus1To1Activation) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, ReluMinus1To1Activation) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -493,8 +423,8 @@ TEST(DynamicallyQuantizedConv2D, ReluMinus1To1Activation) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -504,18 +434,13 @@ TEST(DynamicallyQuantizedConv2D, ReluMinus1To1Activation) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .ReluMinus1To1Activation()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, TanhActivation) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, TanhActivation) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -529,8 +454,8 @@ TEST(DynamicallyQuantizedConv2D, TanhActivation) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -540,18 +465,13 @@ TEST(DynamicallyQuantizedConv2D, TanhActivation) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .TanhActivation()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, SignBitActivation) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, SignBitActivation) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -565,8 +485,8 @@ TEST(DynamicallyQuantizedConv2D, SignBitActivation) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -576,18 +496,19 @@ TEST(DynamicallyQuantizedConv2D, SignBitActivation) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .SignBitActivation()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, MultiThreading) {
+TEST_F(DynamicallyQuantizedConv2D, MultiThreading) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.num_threads = 2;
   delegate_options.flags |=
       TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
+  UseCustomDelegate(delegate_options);
 
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
@@ -602,8 +523,8 @@ TEST(DynamicallyQuantizedConv2D, MultiThreading) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -612,10 +533,13 @@ TEST(DynamicallyQuantizedConv2D, MultiThreading) {
       .KernelWidth(kernel_rng())
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, WeightsCache) {
+TEST_F(DynamicallyQuantizedConv2D, WeightsCache) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   std::unique_ptr<TfLiteXNNPackDelegateWeightsCache,
@@ -625,9 +549,7 @@ TEST(DynamicallyQuantizedConv2D, WeightsCache) {
   delegate_options.weights_cache = weights_cache.get();
   delegate_options.flags |=
       TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
+  UseCustomDelegate(delegate_options);
 
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
@@ -642,8 +564,8 @@ TEST(DynamicallyQuantizedConv2D, WeightsCache) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -653,19 +575,20 @@ TEST(DynamicallyQuantizedConv2D, WeightsCache) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .WeightsCache(weights_cache.get())
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, TransientIndirectionBuffer) {
+TEST_F(DynamicallyQuantizedConv2D, TransientIndirectionBuffer) {
   TfLiteXNNPackDelegateOptions xnnpack_options =
       TfLiteXNNPackDelegateOptionsDefault();
   xnnpack_options.num_threads = 2;
   xnnpack_options.flags |=
       TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER;
   xnnpack_options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&xnnpack_options),
-                       TfLiteXNNPackDelegateDelete);
+  UseCustomDelegate(xnnpack_options);
 
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
@@ -680,8 +603,8 @@ TEST(DynamicallyQuantizedConv2D, TransientIndirectionBuffer) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -690,7 +613,10 @@ TEST(DynamicallyQuantizedConv2D, TransientIndirectionBuffer) {
       .KernelWidth(kernel_rng())
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 }  // namespace xnnpack

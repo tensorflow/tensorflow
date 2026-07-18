@@ -1,5 +1,5 @@
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library")
 
 # Description: Sparse CSR support for TensorFlow.
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
@@ -20,14 +20,15 @@ tf_gen_op_wrapper_py(
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
-    py_lib_rule = py_strict_library,
+    py_lib_rule = py_library,
     visibility = ["//visibility:private"],
     deps = ["//tensorflow/core:sparse_csr_matrix_ops_op_lib"],
 )
 
-py_strict_library(
+py_library(
     name = "sparse_py",
     srcs = ["sparse.py"],
+    strict_deps = True,
     deps = [
         ":conjugate_gradient",
         ":sparse_csr_matrix_grad",
@@ -35,9 +36,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "sparse_csr_matrix_grad",
     srcs = ["sparse_csr_matrix_grad.py"],
+    strict_deps = True,
     deps = [
         ":sparse_csr_matrix_ops",
         "//tensorflow/python/framework:ops",
@@ -49,9 +51,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "__init__",
     srcs = ["__init__.py"],
+    strict_deps = True,
 )
 
 pytype_strict_library(
@@ -70,9 +73,10 @@ pytype_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "sparse_csr_matrix_ops",
     srcs = ["sparse_csr_matrix_ops.py"],
+    strict_deps = True,
     deps = [
         ":gen_sparse_csr_matrix_ops",
         "//tensorflow/python/eager:context",

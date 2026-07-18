@@ -263,6 +263,10 @@ cc_library(
         "utils/hlo_utils.h",
     ],
     strip_include_prefix = ".",
+    visibility = internal_visibility([
+        "//learning/brain/mlir:mhlo_friends",
+        "@shardy//shardy/dialect/sdy/transforms/import:__pkg__",
+    ]),
     deps = [
         ":canonicalize_inc_gen",
         ":convert_op_folder",
@@ -532,12 +536,14 @@ cc_library(
     deps = [
         ":map_stablehlo_to_hlo_op",
         ":mlir_hlo",
+        ":unregistered_attributes",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_ops_inc_gen",
     ],
@@ -591,6 +597,7 @@ cc_library(
         "@llvm-project//mlir:LLVMCommonConversion",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -681,8 +688,8 @@ cc_library(
         "@llvm-project//mlir:VectorDialect",
         "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:VectorTransforms",
-        "@llvm-project//mlir:X86VectorDialect",
-        "@llvm-project//mlir:X86VectorTransforms",
+        "@llvm-project//mlir:X86Dialect",
+        "@llvm-project//mlir:X86Transforms",
         "@stablehlo//:chlo_ops",
     ],
 )
@@ -980,7 +987,9 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
+    visibility = internal_visibility(["//learning/brain/mlir:stablehlo_friends"]),
     deps = [
+        ":mlir_hlo",
         ":shape_component_analysis",
         ":stablehlo_extension_base",
         ":stablehlo_extension_ops",
@@ -995,6 +1004,7 @@ cc_library(
         "@llvm-project//mlir:LinalgDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Rewrite",
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",

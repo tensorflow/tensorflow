@@ -85,8 +85,8 @@ TEST(AttrTypeMap, CacheKey) {
   ASSERT_FALSE(cache_key == a.CacheKey("cpu:0"));
 }
 
-string ToString(const AttrValueMap& m) {
-  std::vector<string> strs;
+std::string ToString(const AttrValueMap& m) {
+  std::vector<std::string> strs;
   for (const auto& e : m) {
     strs.push_back(absl::StrCat(e.first, " -> ", e.second.DebugString()));
   }

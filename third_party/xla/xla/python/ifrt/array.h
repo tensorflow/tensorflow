@@ -77,15 +77,12 @@ class Array : public llvm::RTTIExtends<Array, Value> {
   virtual const Sharding& sharding() const = 0;
   virtual ShardingRef shared_ptr_sharding() const = 0;
   // The device memory layout for each shard of the Array. All shards are
-  // assumed to have the same layout. Cannot be nullptr; implementations should
-  // return UNIMPLEMENTED instead.
+  // assumed to have the same layout. `nullptr` indicates a default layout; the
+  // user can obtain a concrete layout by calling
+  // `Client::GetDefaultPjRtLayout()`.
   virtual absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> pjrt_layout()
       const = 0;
-  virtual CustomLayoutRef layout() const {
-    // TODO(hyeontaek): Change to a pure virtual method once all implementations
-    // override this method.
-    CHECK(false) << "Placeholder; do not use yet";
-  }
+  virtual LayoutRef layout() const = 0;
 
   // Breaks an array up into per-device arrays. This is the elimination
   // counterpart of `Client::AssembleArrayFromSingleDeviceArrays()`.

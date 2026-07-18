@@ -19,6 +19,7 @@ limitations under the License.
 #include <climits>
 #include <functional>
 #include <memory>
+#include <new>
 #include <optional>
 #include <string>
 #include <utility>
@@ -85,15 +86,15 @@ std::string ProtoSerializationErrorMessage(const TensorProto& proto,
 /* static */ constexpr const int64_t
     CustomReader::kSnappyReaderOutputBufferSizeBytes;
 
-std::string HashDirectory(const std::string& path, uint64 hash) {
+std::string HashDirectory(const std::string& path, uint64_t hash) {
   return io::JoinPath(
-      path, strings::Printf("%llu", static_cast<unsigned long long>(hash)));
+      path, absl::StrFormat("%llu", static_cast<unsigned long long>(hash)));
 }
 
-std::string RunDirectory(const std::string& hash_directory, uint64 run_id) {
+std::string RunDirectory(const std::string& hash_directory, uint64_t run_id) {
   return RunDirectory(
       hash_directory,
-      strings::Printf("%llu", static_cast<unsigned long long>(run_id)));
+      absl::StrFormat("%llu", static_cast<unsigned long long>(run_id)));
 }
 
 std::string RunDirectory(const std::string& hash_directory,
@@ -104,14 +105,14 @@ std::string RunDirectory(const std::string& hash_directory,
 std::string ShardDirectory(const std::string& run_directory, int64_t shard_id) {
   return io::JoinPath(
       run_directory,
-      strings::Printf("%08llu%s", static_cast<unsigned long long>(shard_id),
+      absl::StrFormat("%08llu%s", static_cast<unsigned long long>(shard_id),
                       kShardDirectorySuffix));
 }
 std::string GetCheckpointFileName(const std::string& shard_directory,
-                                  uint64 checkpoint_id) {
+                                  uint64_t checkpoint_id) {
   return io::JoinPath(
       shard_directory,
-      strings::Printf("%08llu.snapshot",
+      absl::StrFormat("%08llu.snapshot",
                       static_cast<unsigned long long>(checkpoint_id)));
 }
 
@@ -129,8 +130,8 @@ absl::Status Writer::Create(Env* env, const std::string& filename,
           std::make_unique<TFRecordWriter>(filename, compression_type);
       break;
     default:
-      return errors::InvalidArgument("Snapshot writer version: ", version,
-                                     " is not supported.");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Snapshot writer version: ", version, " is not supported."));
   }
 
   return (*out_writer)->Initialize(env);
@@ -160,7 +161,8 @@ absl::Status TFRecordWriter::WriteTensors(const std::vector<Tensor>& tensors) {
     auto* proto_buffer = new std::string();
     if (!proto.SerializeToString(proto_buffer)) {
       delete proto_buffer;
-      return errors::DataLoss(ProtoSerializationErrorMessage(proto, filename_));
+      return absl::DataLossError(
+          ProtoSerializationErrorMessage(proto, filename_));
     }
     absl::Cord proto_serialized = absl::MakeCordFromExternal(
         *proto_buffer,
@@ -305,9 +307,9 @@ absl::Status CustomWriter::WriteTensors(const std::vector<Tensor>& tensors) {
   }
   DCHECK_EQ(position, uncompressed.data() + total_size);
 
-  string output;
+  std::string output;
   if (!tsl::port::Snappy_Compress(uncompressed.data(), total_size, &output)) {
-    return errors::Internal("Failed to compress using snappy.");
+    return absl::InternalError("Failed to compress using snappy.");
   }
 
 #if defined(TF_CORD_SUPPORT)
@@ -362,7 +364,7 @@ absl::Status CustomWriter::WriteRecord(const absl::Cord& data) {
 #endif  // TF_CORD_SUPPORT
 
 absl::Status Reader::Create(Env* env, const std::string& filename,
-                            const string& compression_type, int version,
+                            const std::string& compression_type, int version,
                             const DataTypeVector& dtypes,
                             std::unique_ptr<Reader>* out_reader) {
   switch (version) {
@@ -379,8 +381,8 @@ absl::Status Reader::Create(Env* env, const std::string& filename,
           std::make_unique<TFRecordReader>(filename, compression_type, dtypes);
       break;
     default:
-      return errors::InvalidArgument("Snapshot reader version: ", version,
-                                     " is not supported.");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Snapshot reader version: ", version, " is not supported."));
   }
 
   return (*out_reader)->Initialize(env);
@@ -452,7 +454,7 @@ class Reader::Dataset : public DatasetBase {
   }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(node_name(), prefix)});
   }
@@ -622,7 +624,7 @@ class Reader::NestedDataset : public DatasetBase {
   }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(node_name(), prefix)});
   }
@@ -693,9 +695,9 @@ void Reader::NestedDatasetOp::MakeDataset(OpKernelContext* ctx,
 
 absl::Status Reader::MakeNestedDataset(
     Env* env, const std::vector<std::string>& shard_dirs,
-    const string& compression_type, int version, const DataTypeVector& dtypes,
-    const std::vector<PartialTensorShape>& shapes, const int64_t start_index,
-    DatasetBase** output) {
+    const std::string& compression_type, int version,
+    const DataTypeVector& dtypes, const std::vector<PartialTensorShape>& shapes,
+    const int64_t start_index, DatasetBase** output) {
   std::vector<DatasetBase*> datasets;
 
   datasets.reserve(shard_dirs.size());
@@ -710,7 +712,7 @@ absl::Status Reader::MakeNestedDataset(
     datasets.push_back(
         new Dataset(DatasetContext(DatasetContext::Params(
                         {"SnapshotDatasetReader",
-                         strings::StrCat("SnapshotDatasetReader/_", i)})),
+                         absl::StrCat("SnapshotDatasetReader/_", i)})),
                     shard_dirs.at(i), compression_type, version, dtypes, shapes,
                     dataset_start_index));
     datasets.back()->Initialize(/*metadata=*/{});
@@ -738,7 +740,7 @@ void Reader::MakeNestedDataset(const std::vector<DatasetBase*>& datasets,
 }
 
 TFRecordReaderImpl::TFRecordReaderImpl(
-    const std::string& filename, const string& compression,
+    const std::string& filename, const std::string& compression,
     std::optional<int64_t> output_buffer_size)
     : filename_(filename),
       offset_(0),
@@ -783,17 +785,17 @@ absl::StatusOr<std::vector<Tensor>> TFRecordReaderImpl::GetTensors() {
 
 absl::StatusOr<Tensor> TFRecordReaderImpl::Parse(const tstring& record) {
   TensorProto proto;
-  if (!proto.ParseFromArray(record.data(), record.size())) {
-    return errors::DataLoss(
+  if (!proto.ParseFromString(absl::string_view(record.data(), record.size()))) {
+    return absl::DataLossError(absl::StrCat(
         "Unable to parse tensor from stored proto in file: ", filename_,
-        ", record ", offset_, ". Serialized proto: ", record);
+        ", record ", offset_, ". Serialized proto: ", record));
   }
 
   Tensor tensor;
   if (!tensor.FromProto(proto)) {
-    return errors::DataLoss(
+    return absl::DataLossError(absl::StrCat(
         "Unable to parse tensor from stored proto in file: ", filename_,
-        ", record ", offset_, ". TensorProto: ", proto.ShortDebugString());
+        ", record ", offset_, ". TensorProto: ", proto.ShortDebugString()));
   }
   return tensor;
 }
@@ -809,8 +811,8 @@ absl::Status TFRecordReader::ReadTensors(std::vector<Tensor>* read_tensors) {
 }
 
 CustomReader::CustomReader(const std::string& filename,
-                           const string& compression_type, const int version,
-                           const DataTypeVector& dtypes)
+                           const std::string& compression_type,
+                           const int version, const DataTypeVector& dtypes)
     : filename_(filename),
       compression_type_(compression_type),
       version_(version),
@@ -866,18 +868,20 @@ absl::Status CustomReader::ReadTensors(std::vector<Tensor>* read_tensors) {
     return ReadTensorsV0(read_tensors);
   }
   if (version_ != 1) {
-    return errors::InvalidArgument("Version: ", version_, " is not supported.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Version: ", version_, " is not supported."));
   }
   if (compression_type_ != io::compression::kSnappy) {
-    return errors::InvalidArgument("Compression ", compression_type_,
-                                   " is not supported.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Compression ", compression_type_, " is not supported."));
   }
 
   experimental::SnapshotTensorMetadata metadata;
   tstring metadata_str;
   TF_RETURN_IF_ERROR(ReadRecord(&metadata_str));
-  if (!metadata.ParseFromArray(metadata_str.data(), metadata_str.size())) {
-    return errors::DataLoss("Could not parse SnapshotTensorMetadata");
+  if (!metadata.ParseFromString(
+          absl::string_view(metadata_str.data(), metadata_str.size()))) {
+    return absl::DataLossError("Could not parse SnapshotTensorMetadata");
   }
   read_tensors->reserve(metadata.tensor_metadata_size());
 
@@ -898,12 +902,13 @@ absl::Status CustomReader::ReadTensors(std::vector<Tensor>* read_tensors) {
       auto tensor_proto_str = std::move(tensor_proto_strs[complex_index].first);
       size_t tensor_proto_size = tensor_proto_strs[complex_index].second;
       TensorProto tp;
-      if (!tp.ParseFromArray(tensor_proto_str.get(), tensor_proto_size)) {
-        return errors::Internal("Could not parse TensorProto");
+      if (!tp.ParseFromString(
+              absl::string_view(tensor_proto_str.get(), tensor_proto_size))) {
+        return absl::InternalError("Could not parse TensorProto");
       }
       Tensor t;
       if (!t.FromProto(tp)) {
-        return errors::Internal("Could not parse Tensor");
+        return absl::InternalError("Could not parse Tensor");
       }
       read_tensors->push_back(std::move(t));
       complex_index++;
@@ -927,7 +932,7 @@ absl::Status CustomReader::ReadTensorsV0(std::vector<Tensor>* read_tensors) {
   for (int i = 0; i < record.tensor_size(); ++i) {
     read_tensors->emplace_back();
     if (!read_tensors->back().FromProto(record.tensor(i))) {
-      return errors::DataLoss("Unable to parse tensor from proto.");
+      return absl::DataLossError("Unable to parse tensor from proto.");
     }
   }
   return absl::OkStatus();
@@ -943,7 +948,15 @@ absl::Status CustomReader::SnappyUncompress(
   size_t size;
   if (!tsl::port::Snappy_GetUncompressedLength(compressed.data(),
                                                compressed.size(), &size)) {
-    return errors::Internal("Could not get snappy uncompressed length");
+    return absl::InternalError("Could not get snappy uncompressed length");
+  }
+
+  if (metadata->tensor_metadata_size() != simple_tensor_mask_.size()) {
+    return absl::DataLossError(
+        absl::StrCat("Number of tensors in snapshot metadata (",
+                     metadata->tensor_metadata_size(),
+                     ") does not match number of tensors in dataset elements (",
+                     simple_tensor_mask_.size(), ")."));
   }
 
   int num_tensors = metadata->tensor_metadata_size();
@@ -960,25 +973,34 @@ absl::Status CustomReader::SnappyUncompress(
       iov[index].iov_len = buffer->size();
       simple_tensors->push_back(std::move(simple_tensor));
     } else {
-      auto tensor_proto_str =
-          std::make_unique<char[]>(tensor_metadata.tensor_size_bytes());
+      int64_t tensor_size = tensor_metadata.tensor_size_bytes();
+      if (tensor_size < 0) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Tensor size is negative: ", tensor_size));
+      }
+      std::unique_ptr<char[]> tensor_proto_str =
+          std::make_unique<char[]>(tensor_size);
+      if (tensor_proto_str == nullptr) {
+        return absl::ResourceExhaustedError(absl::StrCat(
+            "Failed to allocate memory for tensor of size ", tensor_size));
+      }
       iov[index].iov_base = tensor_proto_str.get();
-      iov[index].iov_len = tensor_metadata.tensor_size_bytes();
-      tensor_proto_strs->push_back(std::make_pair(
-          std::move(tensor_proto_str), tensor_metadata.tensor_size_bytes()));
+      iov[index].iov_len = tensor_size;
+      tensor_proto_strs->push_back(
+          std::make_pair(std::move(tensor_proto_str), tensor_size));
     }
     total_size += iov[index].iov_len;
     index++;
   }
   const int64_t size_int = size;
   if (size_int != total_size) {
-    return errors::Internal("Uncompressed size mismatch. Snappy expects ", size,
-                            " whereas the tensor metadata suggests ",
-                            total_size);
+    return absl::InternalError(
+        absl::StrCat("Uncompressed size mismatch. Snappy expects ", size,
+                     " whereas the tensor metadata suggests ", total_size));
   }
   if (!tsl::port::Snappy_UncompressToIOVec(compressed.data(), compressed.size(),
                                            iov.data(), num_tensors)) {
-    return errors::Internal("Failed to perform snappy decompression.");
+    return absl::InternalError("Failed to perform snappy decompression.");
   }
   return absl::OkStatus();
 }
@@ -986,7 +1008,7 @@ absl::Status CustomReader::SnappyUncompress(
 absl::Status CustomReader::ReadRecord(tstring* record) {
   tstring header;
   TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(kHeaderSize, &header));
-  uint64 length = core::DecodeFixed64(header.data());
+  uint64_t length = core::DecodeFixed64(header.data());
   return input_stream_->ReadNBytes(length, record);
 }
 
@@ -994,7 +1016,7 @@ absl::Status CustomReader::ReadRecord(tstring* record) {
 absl::Status CustomReader::ReadRecord(absl::Cord* record) {
   tstring header;
   TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(kHeaderSize, &header));
-  uint64 length = core::DecodeFixed64(header.data());
+  uint64_t length = core::DecodeFixed64(header.data());
   if (compression_type_ == io::compression::kNone) {
     return input_stream_->ReadNBytes(length, record);
   } else {
@@ -1009,9 +1031,9 @@ absl::Status CustomReader::ReadRecord(absl::Cord* record) {
 #endif  // TF_CORD_SUPPORT
 
 absl::Status WriteMetadataFile(
-    Env* env, const string& dir,
+    Env* env, const std::string& dir,
     const experimental::SnapshotMetadataRecord* metadata) {
-  string metadata_filename = io::JoinPath(dir, kMetadataFilename);
+  std::string metadata_filename = io::JoinPath(dir, kMetadataFilename);
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(dir));
   std::string tmp_filename =
       absl::StrCat(metadata_filename, "-tmp-", random::New64());
@@ -1020,9 +1042,9 @@ absl::Status WriteMetadataFile(
 }
 
 absl::Status WriteMetadataFile(
-    Env* env, const string& dir,
+    Env* env, const std::string& dir,
     const experimental::DistributedSnapshotMetadata* metadata) {
-  string metadata_filename = io::JoinPath(dir, kMetadataFilename);
+  std::string metadata_filename = io::JoinPath(dir, kMetadataFilename);
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(dir));
   std::string tmp_filename =
       absl::StrCat(metadata_filename, "-tmp-", random::New64());
@@ -1030,10 +1052,10 @@ absl::Status WriteMetadataFile(
   return env->RenameFile(tmp_filename, metadata_filename);
 }
 
-absl::Status ReadMetadataFile(Env* env, const string& dir,
+absl::Status ReadMetadataFile(Env* env, const std::string& dir,
                               experimental::SnapshotMetadataRecord* metadata,
                               bool* file_exists) {
-  string metadata_filename = io::JoinPath(dir, kMetadataFilename);
+  std::string metadata_filename = io::JoinPath(dir, kMetadataFilename);
   absl::Status s = env->FileExists(metadata_filename);
   *file_exists = s.ok();
 
@@ -1045,9 +1067,9 @@ absl::Status ReadMetadataFile(Env* env, const string& dir,
 }
 
 absl::Status ReadMetadataFile(
-    Env* env, const string& dir,
+    Env* env, const std::string& dir,
     experimental::DistributedSnapshotMetadata* metadata, bool* file_exists) {
-  string metadata_filename = io::JoinPath(dir, kMetadataFilename);
+  std::string metadata_filename = io::JoinPath(dir, kMetadataFilename);
   absl::Status s = env->FileExists(metadata_filename);
   *file_exists = s.ok();
 
@@ -1058,7 +1080,7 @@ absl::Status ReadMetadataFile(
   }
 }
 
-absl::Status DumpDatasetGraph(Env* env, const std::string& path, uint64 hash,
+absl::Status DumpDatasetGraph(Env* env, const std::string& path, uint64_t hash,
                               const GraphDef* graph) {
   std::string hash_hex = absl::StrCat(absl::Hex(hash, absl::kZeroPad16));
   std::string graph_file =
@@ -1072,11 +1094,11 @@ absl::Status DumpDatasetGraph(Env* env, const std::string& path, uint64 hash,
 absl::Status DetermineOpState(
     const std::string& mode_string, bool file_exists,
     const experimental::SnapshotMetadataRecord* metadata,
-    const uint64 pending_snapshot_expiry_seconds, Mode* mode) {
+    const uint64_t pending_snapshot_expiry_seconds, Mode* mode) {
   if (mode_string == kModeRead) {
     // In read mode, we should expect a metadata file is written.
     if (!file_exists) {
-      return errors::NotFound("Metadata file does not exist.");
+      return absl::NotFoundError("Metadata file does not exist.");
     }
     LOG(INFO) << "Overriding mode to reader.";
     *mode = READER;
@@ -1122,7 +1144,7 @@ absl::Status DetermineOpState(
 
 AsyncWriter::AsyncWriter(Env* env, int64_t file_index,
                          const std::string& shard_directory,
-                         uint64 checkpoint_id, const std::string& compression,
+                         uint64_t checkpoint_id, const std::string& compression,
                          int64_t version, const DataTypeVector& output_types,
                          std::function<void(absl::Status)> done) {
   thread_ = absl::WrapUnique(env->StartThread(
@@ -1159,7 +1181,7 @@ bool AsyncWriter::ElementAvailable() { return !deque_.empty(); }
 
 absl::Status AsyncWriter::WriterThread(Env* env,
                                        const std::string& shard_directory,
-                                       uint64 checkpoint_id,
+                                       uint64_t checkpoint_id,
                                        const std::string& compression,
                                        int64_t version,
                                        DataTypeVector output_types) {

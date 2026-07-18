@@ -279,8 +279,10 @@ constexpr T GoldbergUlp(T x) {
     return GoldbergUlp(std::numeric_limits<T>::min());
   }
   std::optional<int> maybe_exponent = LogBase(x);
-  if (maybe_exponent.has_value(); const int exponent = *maybe_exponent) {
-    return ScaleBase(std::numeric_limits<T>::epsilon(), exponent);
+  if (maybe_exponent.has_value()) {
+    if (const int exponent = *maybe_exponent) {
+      return ScaleBase(std::numeric_limits<T>::epsilon(), exponent);
+    }
   }
   if constexpr (std::numeric_limits<T>::has_quiet_NaN) {
     return std::numeric_limits<T>::quiet_NaN();
@@ -307,6 +309,26 @@ int64_t CalculateDistanceInFloats(T a, T b) {
   // integer overflow.
   int64_t signed_distance = a_distance_from_zero - b_distance_from_zero;
   return std::abs(signed_distance);
+}
+
+// Returns the number of ULPs between two floating point values.
+// Returns std::nullopt if the inputs are not both finite or if they are not
+// both the same infinity.
+template <typename T>
+std::optional<int64_t> UlpDistance(T actual, T expected) {
+  if (std::isnan(expected)) {
+    return std::isnan(actual) ? std::optional<int64_t>(0) : std::nullopt;
+  }
+  if (std::isinf(expected)) {
+    return (std::isinf(actual) &&
+            std::signbit(expected) == std::signbit(actual))
+               ? std::optional<int64_t>(0)
+               : std::nullopt;
+  }
+  if (std::isnan(actual) || std::isinf(actual)) {
+    return std::nullopt;
+  }
+  return std::abs(CalculateDistanceInFloats(actual, expected));
 }
 
 // Packs two float operands into a single 32-bit value as bf16. The lower 16

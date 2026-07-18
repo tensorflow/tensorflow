@@ -18,26 +18,33 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
+#include <limits>
+#include <optional>
 #include <tuple>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
+#include "xla/backends/gpu/transforms/dynamic_slice_copy.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/collective_permute_decomposer.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
-#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -62,7 +69,6 @@ static constexpr int64_t kNumAsyncCollectivesP2P = 4;
 
 // Number of async memcpy operations that can be in flight at the same time.
 static constexpr int64_t kNumAsyncMemcpy = std::numeric_limits<int>::max();
-;
 
 // Classifies `hlo` instruction as noop or not.
 bool IsNopInstruction(const HloInstruction& hlo) {
@@ -128,13 +134,14 @@ std::pair<GpuResourceType, ResourceUsageType> GetP2PResourceAndUsage(
 bool ShapeHasHostMemorySpace(const Shape& shape) {
   return shape.IsArray() && shape.has_layout() &&
          shape.layout().memory_space() ==
-             static_cast<int64_t>(stream_executor::MemoryType::kHost);
+             static_cast<int64_t>(stream_executor::MemorySpace::kHost);
 }
 
 bool IsSlicingMemcpy(const HloInstruction& hlo) {
   if (hlo.opcode() == HloOpcode::kFusion) {
     return ShapeHasHostMemorySpace(hlo.shape()) ||
-           ShapeHasHostMemorySpace(hlo.operand(0)->shape());
+           ShapeHasHostMemorySpace(hlo.operand(0)->shape()) ||
+           IsDynamicSliceCopyFusion(&hlo);
   }
   return false;
 }
@@ -159,10 +166,16 @@ bool IsMemcpyAsyncDoneOp(const HloInstruction& hlo) {
   return IsSlicingMemcpy(*hlo.async_wrapped_instruction());
 }
 
+bool IsDynamicSliceCopyFusionAsyncOp(const HloInstruction& hlo) {
+  return (hlo.opcode() == HloOpcode::kAsyncStart ||
+          hlo.opcode() == HloOpcode::kAsyncDone) &&
+         IsDynamicSliceCopyFusion(hlo.async_wrapped_instruction());
+}
+
 // Marks async start operations to be scheduled as early as possible.
 // It allows maximum overlap of operations while respecting dependencies.
-// Besides async collectives, copy-start is async memcpy D2H/H2D, the beginning
-// of a host offloading segment.
+// Besides async collectives, copy-start and dynamic-slice copy fusions are
+// async memcpy operations.
 bool IsGpuAsyncStart(const HloInstruction& hlo) {
   return (hlo_query::IsAsyncCollectiveStartOp(&hlo,
                                               /*include_send_recv=*/true) &&
@@ -269,7 +282,8 @@ bool GpuScheduleCrossesOverlapLimit(
   if (resource_type == xla::ResourceTypeToIndex(
                            GpuResourceType::kGpuAsyncStreamCollectives) &&
       sched_state.resource_occupiers_in_flight.contains(resource_type) &&
-      !sched_state.resource_occupiers_in_flight.at(resource_type).empty()) {
+      !sched_state.resource_occupiers_in_flight.at(resource_type).empty() &&
+      !IsCustomCollectiveOp(&node->GetInstr())) {
     const HloInstruction& curr_hlo_inst = node->GetInstr();
     if (sched_state.async_tracker->IsSupportedAsyncDone(curr_hlo_inst)) {
       CHECK(
@@ -278,6 +292,17 @@ bool GpuScheduleCrossesOverlapLimit(
           curr_hlo_inst.IsAsynchronous()
               ? curr_hlo_inst.operand(0)->async_wrapped_instruction()
               : curr_hlo_inst.operand(0);
+
+      auto get_replica_groups = [](const HloInstruction* inst) {
+        if (inst->opcode() != HloOpcode::kCollectivePermuteStart)
+          return inst->device_list()->flattened_replica_groups();
+        std::vector<std::vector<int64_t>> g;
+        absl::c_transform(inst->source_target_pairs(), std::back_inserter(g),
+                          [](auto& p) -> std::vector<int64_t> {
+                            return {p.first, p.second};
+                          });
+        return g;
+      };
 
       // If candidate can be overlapped with in-flight collectives
       bool can_overlap = true;
@@ -289,14 +314,9 @@ bool GpuScheduleCrossesOverlapLimit(
                   ? async_occupier->async_wrapped_instruction()
                   : async_occupier;
 
-          // Number of overlapping ranks between this occupier and candidate
-          auto curr_start_replica_group =
-              GetAsyncReplicaGroups(curr_start_inst);
-          CHECK_OK(curr_start_replica_group);
-          auto occupier_replica_group = GetAsyncReplicaGroups(occupier);
-          CHECK_OK(occupier_replica_group);
-          size_t overlapping_count = CountOverlappingRanks(
-              *curr_start_replica_group, *occupier_replica_group);
+          size_t overlapping_count =
+              CountOverlappingRanks(get_replica_groups(curr_start_inst),
+                                    get_replica_groups(occupier));
           if (overlapping_count > 1) {
             can_overlap = false;
             VLOG(3) << "Collectives have " << overlapping_count
@@ -422,7 +442,15 @@ ResourcesVector GpuAsyncTracker::GetResourcesFromInstructionImpl(
     ResourceUsageType usage;
     GpuResourceType resource;
 
-    if (IsAnnotatedForGpuAsyncStreamCollectivesP2P(instr)) {
+    // Keep existing copy-start/copy-done and host-memory slicing fusions on the
+    // async-compute resource path. Only dynamic-slice memcpy async wrappers use
+    // the dedicated memcpy resource added for D2D copy overlap.
+    if (IsDynamicSliceCopyFusionAsyncOp(instr)) {
+      resource = GpuResourceType::kGpuAsyncStreamMemcpy;
+      usage = op.outer == HloOpcode::kAsyncStart
+                  ? ResourceUsageType::kResourceRelease
+                  : ResourceUsageType::kResourceOccupy;
+    } else if (IsAnnotatedForGpuAsyncStreamCollectivesP2P(instr)) {
       resource = GpuResourceType::kGpuAsyncStreamCollectivesP2P;
       usage = op.outer == HloOpcode::kAsyncStart
                   ? ResourceUsageType::kResourceRelease
@@ -433,7 +461,8 @@ ResourcesVector GpuAsyncTracker::GetResourcesFromInstructionImpl(
       usage = op.outer == HloOpcode::kAsyncStart
                   ? ResourceUsageType::kResourceRelease
                   : ResourceUsageType::kResourceOccupy;
-      resource = hlo_query::IsCollectiveCommunicationOp(op.inner)
+      resource = hlo_query::IsCollectiveCommunicationOp(op.inner) ||
+                         IsCustomCollectiveOp(&instr)
                      ? GpuResourceType::kGpuAsyncStreamCollectives
                      : GpuResourceType::kGpuAsyncStreamComputes;
     }
@@ -471,7 +500,7 @@ int64_t GpuAsyncTracker::GetNumAvailableResources(int64_t resource_type) const {
   // another collective.
   if (resource_type ==
       ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamComputes)) {
-    return 2;
+    return config_.parallel_async_compute_limit;
   }
 
   if (resource_type ==
@@ -494,7 +523,6 @@ int64_t GpuAsyncTracker::GetNumAvailableResources(int64_t resource_type) const {
 
   if (resource_type ==
       ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamMemcpy)) {
-    constexpr int64_t kNumAsyncMemcpy = std::numeric_limits<int>::max();
     return kNumAsyncMemcpy;
   }
 
@@ -523,6 +551,8 @@ absl::string_view GpuAsyncTracker::GetResourceName(
       return "kGpuAsyncStreamCollectives";
     case GpuResourceType::kGpuAsyncStreamComputes:
       return "kGpuAsyncStreamComputes";
+    case GpuResourceType::kGpuAsyncStreamMemcpy:
+      return "kGpuAsyncStreamMemcpy";
     default:
       return "kUnsupportedResource";
   }
@@ -604,7 +634,11 @@ ApproximateLatencyEstimator::TimeCost GpuLatencyEstimator::NodeCost(
   // custom call is 1000, the LHS will try to schedule approximately 5 of
   // these in between each start/end pair.
   if (instr->opcode() == HloOpcode::kCustomCall) {
-    if (IsCublasGemm(*instr) || IsCustomCallToDnnConvolution(*instr)) {
+    if (const std::optional<TimeCost> latency =
+            GetLatencyFromMetadata(*instr)) {
+      return *latency;
+    }
+    if (IsCublasLtGemm(*instr) || IsCustomCallToDnnConvolution(*instr)) {
       return ApproximateLatencyEstimator::kMediumCost;
     }
     // consider other custom calls as medium cost for now. Keeping the case
@@ -692,6 +726,19 @@ void GPUProfileStatisticsAggregator::HandleMissingInstructionLatency(
 void GPUProfileStatisticsAggregator::HandleFoundInstructionLatency(
     const HloInstruction& from, const HloInstruction& to) {
   found_instructions_count_++;
+}
+
+// Checks if the async instruction is a custom collective call
+bool IsCustomCollectiveOp(const HloInstruction* instr) {
+  if (instr->opcode() == HloOpcode::kAsyncStart ||
+      instr->opcode() == HloOpcode::kAsyncDone ||
+      instr->opcode() == HloOpcode::kAsyncUpdate) {
+    auto& attrs = instr->frontend_attributes().map();
+    if (auto it = attrs.find(kXlaStreamAnnotationAttr); it != attrs.end()) {
+      return absl::EqualsIgnoreCase(it->second, kXlaCollectiveStreamAnnotation);
+    }
+  }
+  return false;
 }
 
 }  // namespace gpu

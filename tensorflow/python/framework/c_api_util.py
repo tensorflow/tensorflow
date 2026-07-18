@@ -105,7 +105,7 @@ class ScopedTFImportGraphDefOptions(object):
 
 
 class ScopedTFImportGraphDefResults(object):
-  """Wrapper around TF_ImportGraphDefOptions that handles deletion."""
+  """Wrapper around TF_ImportGraphDefResults that handles deletion."""
 
   __slots__ = ["results"]
 
@@ -140,7 +140,7 @@ class ScopedTFBuffer(object):
 
 
 class ApiDefMap(object):
-  """Wrapper around Tf_ApiDefMap that handles querying and deletion.
+  """Wrapper around TF_ApiDefMap that handles querying and deletion.
 
   The OpDef protos are also stored in this class so that they could
   be queried by op name.
@@ -173,6 +173,8 @@ class ApiDefMap(object):
   def get_api_def(self, op_name):
     api_def_proto = api_def_pb2.ApiDef()
     buf = c_api.TF_ApiDefMapGet(self._api_def_map, op_name, len(op_name))
+    if buf is None:
+      raise ValueError(f"No api_def found for op name {op_name}.")
     try:
       api_def_proto.ParseFromString(c_api.TF_GetBuffer(buf))
     finally:

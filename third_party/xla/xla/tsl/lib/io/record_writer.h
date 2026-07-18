@@ -46,7 +46,7 @@ struct RecordWriterOptions {
   CompressionType compression_type = NONE;
 
   static RecordWriterOptions CreateRecordWriterOptions(
-      const string& compression_type);
+      const std::string& compression_type);
 
 #if !defined(IS_SLIM_BUILD)
   // Options specific to compression.
@@ -62,8 +62,8 @@ class RecordWriter {
   //  uint32    masked crc of length
   //  byte      data[length]
   //  uint32    masked crc of data
-  static constexpr size_t kHeaderSize = sizeof(uint64) + sizeof(uint32);
-  static constexpr size_t kFooterSize = sizeof(uint32);
+  static constexpr size_t kHeaderSize = sizeof(uint64_t) + sizeof(uint32_t);
+  static constexpr size_t kFooterSize = sizeof(uint32_t);
 
   // Create a writer that will append data to "*dest".
   // "*dest" must be initially empty.
@@ -114,12 +114,12 @@ class RecordWriter {
   WritableFile* dest_;
   RecordWriterOptions options_;
 
-  inline static uint32 MaskedCrc(const char* data, size_t n) {
+  inline static uint32_t MaskedCrc(const char* data, size_t n) {
     return crc32c::Mask(crc32c::Value(data, n));
   }
 
 #if defined(TF_CORD_SUPPORT)
-  inline static uint32 MaskedCrc(const absl::Cord& data) {
+  inline static uint32_t MaskedCrc(const absl::Cord& data) {
     return crc32c::Mask(crc32c::Value(data));
   }
 #endif
@@ -130,8 +130,8 @@ class RecordWriter {
 
 void RecordWriter::PopulateHeader(char* header, const char* data, size_t n) {
   core::EncodeFixed64(header + 0, n);
-  core::EncodeFixed32(header + sizeof(uint64),
-                      MaskedCrc(header, sizeof(uint64)));
+  core::EncodeFixed32(header + sizeof(uint64_t),
+                      MaskedCrc(header, sizeof(uint64_t)));
 }
 
 void RecordWriter::PopulateFooter(char* footer, const char* data, size_t n) {
@@ -141,8 +141,8 @@ void RecordWriter::PopulateFooter(char* footer, const char* data, size_t n) {
 #if defined(TF_CORD_SUPPORT)
 void RecordWriter::PopulateHeader(char* header, const absl::Cord& data) {
   core::EncodeFixed64(header + 0, data.size());
-  core::EncodeFixed32(header + sizeof(uint64),
-                      MaskedCrc(header, sizeof(uint64)));
+  core::EncodeFixed32(header + sizeof(uint64_t),
+                      MaskedCrc(header, sizeof(uint64_t)));
 }
 
 void RecordWriter::PopulateFooter(char* footer, const absl::Cord& data) {

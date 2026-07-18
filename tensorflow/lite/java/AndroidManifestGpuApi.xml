@@ -2,6 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="org.tensorflow.lite.gpu.api">
 
+    <uses-sdk
+        android:minSdkVersion="21" />
+
     <application>
         <!-- Applications that target Android S+ require explicit declaration of
              any referenced vendor-provided libraries. -->
@@ -19,4 +22,3 @@
     </application>
 
 </manifest>
-

@@ -284,6 +284,27 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegex(ValueError, "incompatible"):
         self.evaluate(array_ops.boolean_mask(tensor, mask))
 
+  def testNonBooleanMaskDocumentedAsBackwardCompatible(self):
+    # Regression for https://github.com/tensorflow/tensorflow/issues/89106:
+    # the docstring used to say `mask` must be a boolean tensor, but the
+    # runtime silently accepts non-bool masks (treating them as truthy /
+    # falsy). The fix updates the docstring to make that contract
+    # explicit. This test pins both halves down: the int-mask call still
+    # works at runtime, AND the docstring no longer claims a bool-only
+    # mask is required.
+    self.assertIn(
+        "non-boolean tensors are also accepted", array_ops.boolean_mask.__doc__
+    )
+    self.assertIn(
+        "non-boolean tensors are also accepted",
+        array_ops.boolean_mask_v2.__doc__,
+    )
+    # Runtime behaviour: int32 mask still works (no TypeError).
+    tensor = constant_op.constant([1, 2, 3, 4, 5])
+    int_mask = constant_op.constant([1, 0, 1, 0, 1], dtype=dtypes.int32)
+    out = self.evaluate(array_ops.boolean_mask(tensor, int_mask))
+    self.assertAllEqual(out, [1, 3, 5])
+
   def testStringMask(self):
     # Reproduces b/111171330, where the optimized boolean_mask graph would
     # be incorrectly placed on GPU.
@@ -480,7 +501,8 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
               use_gpu=True):
             x_np = np.reshape(
                 np.arange(outer_size * middle_size * 3, dtype=np.float32),
-                newshape=(outer_size, middle_size, 3))
+                (outer_size, middle_size, 3),
+            )
             x_tf = self.evaluate(reverse_f(x_np, [1]))
             np_answer = x_np[:, ::-1, :]
             self.assertAllEqual(x_tf, np_answer)
@@ -496,7 +518,8 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
               use_gpu=True):
             x_np = np.reshape(
                 np.arange(outer_size * middle_size * 4, dtype=np.float32),
-                newshape=(outer_size, middle_size, 4))
+                (outer_size, middle_size, 4),
+            )
             x_tf = self.evaluate(reverse_f(x_np, [1]))
             np_answer = x_np[:, ::-1, :]
             self.assertAllEqual(x_tf, np_answer)
@@ -512,7 +535,8 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
               use_gpu=True):
             x_np = np.reshape(
                 np.arange(outer_size * middle_size * 3, dtype=np.float32),
-                newshape=(outer_size, middle_size, 3))
+                (outer_size, middle_size, 3),
+            )
             x_tf = self.evaluate(reverse_f(x_np, [0]))
             np_answer = x_np[::-1, :, :]
             self.assertAllEqual(x_tf, np_answer)

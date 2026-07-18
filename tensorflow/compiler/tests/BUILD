@@ -1,8 +1,16 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_cuda_cc_test")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow/compiler/tests:build_combined_defs.bzl", "tf_xla_combined_py_test")
-load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites", "tf_xla_py_strict_test")
+load(
+    "//tensorflow/compiler/tests:build_defs.bzl",
+    "generate_backend_suites",
+    "tf_xla_py_strict_test",
+    # copybara:uncomment_begin(google-only)
+    # "tpu_backends",
+    # copybara:uncomment_end
+)
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
@@ -36,7 +44,7 @@ package_group(
 
 generate_backend_suites()
 
-py_strict_library(
+py_library(
     name = "xla_test",
     testonly = 1,
     srcs = ["xla_test.py"],
@@ -60,20 +68,21 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "test_utils",
     testonly = 1,
     srcs = [
         "__init__.py",
         "test_utils.py",
     ],
+    strict_deps = True,
     deps = [
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
 )
 
-py_strict_test(
+py_test(
     name = "xla_test_test",
     size = "small",
     srcs = ["xla_test_test.py"],
@@ -93,6 +102,7 @@ py_strict_test(
 tf_xla_combined_py_test(
     name = "combined_ops_test_a",
     size = "medium",
+    timeout = "long",
     package = "tensorflow.compiler.tests",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -213,9 +223,8 @@ tf_xla_combined_py_test(
     name = "combined_ops_test_f",
     size = "medium",
     timeout = "long",
-    # copybara:uncomment_begin
-    # #TODO(b/286470564): Remove once the bug is fixed.
-    # disable_tpu_tfrt = True,
+    # copybara:uncomment_begin(google-only)
+    # disabled_backends = tpu_backends(),
     # copybara:uncomment_end
     exec_properties = {
         "cpp_link.mem": "16g",
@@ -340,10 +349,6 @@ tf_xla_py_strict_test(
     name = "add_n_test",
     size = "small",
     srcs = ["add_n_test.py"],
-    # copybara:uncomment_begin
-    # #TODO(b/286470564): Remove once the bug is fixed.
-    # disable_tpu_tfrt = True,
-    # copybara:uncomment_end
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "notap",
@@ -496,10 +501,6 @@ tf_xla_py_strict_test(
     name = "cond_test",
     size = "small",
     srcs = ["cond_test.py"],
-    # copybara:uncomment_begin
-    # #TODO(b/286470564): Remove once the bug is fixed.
-    # disable_tpu_tfrt = True,
-    # copybara:uncomment_end
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "notap",
@@ -1746,12 +1747,8 @@ tf_xla_py_strict_test(
     name = "tensor_list_ops_test",
     size = "small",
     srcs = ["tensor_list_ops_test.py"],
-    # copybara:uncomment_begin
-    # #TODO(b/286470564): Remove once the bug is fixed.
-    # disable_tpu_tfrt = True,
-    # copybara:uncomment_end
-    # TensorList ops are not implemented in the on-demand compilation model yet.
-    disabled_backends = ["cpu_ondemand"],
+    # TensorList ops are only implemented on CPU.
+    enabled_backends = ["cpu"],
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
@@ -1906,10 +1903,6 @@ tf_xla_py_strict_test(
     name = "while_test",
     size = "small",
     srcs = ["while_test.py"],
-    # copybara:uncomment_begin
-    # #TODO(b/291130193): Remove once the bug is fixed.
-    # disable_tpu_tfrt = True,
-    # copybara:uncomment_end
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "notap",
@@ -2082,7 +2075,7 @@ tf_xla_py_strict_test(
 
 tf_xla_py_strict_test(
     name = "xla_device_test",
-    size = "small",
+    size = "medium",
     srcs = ["xla_device_test.py"],
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -2166,7 +2159,6 @@ tf_xla_py_strict_test(
         "gpu_a100",
         "gpu_h100",
     ],
-    env = {"XLA_FLAGS": "--xla_backend_extra_options=xla_cpu_disable_new_fusion_emitters=true"},
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
@@ -2187,7 +2179,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@local_xla//xla:xla_data_proto_py",
+        "@xla//xla:xla_data_proto_py",
     ],
 )
 
@@ -2430,9 +2422,6 @@ tf_xla_py_strict_test(
     name = "where_op_tpu_test",
     size = "small",
     srcs = ["where_op_test.py"],
-    args = [
-        "--tpu_use_tfrt=true",
-    ],
     disabled_backends = [
         "cpu",
         "cpu_ondemand",
@@ -2622,7 +2611,10 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops_gen",
         "//tensorflow/python/platform:test",
     ],
@@ -2828,8 +2820,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/tsl/platform:status",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/tsl/platform:status",
     ],
 )
 
@@ -2916,20 +2908,20 @@ tf_cuda_cc_test(
         "//tensorflow/compiler/jit:xla_kernel_creator",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_testutil",
-        "@local_xla//xla/tsl/platform:status",
+        "@com_google_absl//absl/log:check",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "lstm",
     testonly = 1,
     srcs = ["lstm.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",

@@ -17,13 +17,41 @@ limitations under the License.
 
 #include <stdio.h>
 
+#include <cstdint>
+#include <iosfwd>
+#include <limits>
 #include <memory>
+#include <set>
+#include <unordered_set>
 
+#include "absl/base/attributes.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
+#include "xla/tsl/platform/cloud/auth_provider.h"
+#include "xla/tsl/platform/cloud/compute_engine_metadata_client.h"
+#include "xla/tsl/platform/cloud/compute_engine_zone_provider.h"
+#include "xla/tsl/platform/cloud/expiring_lru_cache.h"
+#include "xla/tsl/platform/cloud/gcs_dns_cache.h"
+#include "xla/tsl/platform/cloud/gcs_throttle.h"
+#include "xla/tsl/platform/cloud/http_request.h"
+#include "xla/tsl/platform/cloud/zone_provider.h"
+#include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/retrying_file_system.h"
 
 #ifndef _WIN32
@@ -45,7 +73,7 @@ limitations under the License.
 #ifdef _WIN32
 #include <io.h>  // for _mktemp
 #endif
-#include "absl/base/macros.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "json/json.h"
 #include "xla/tsl/platform/cloud/curl_http_request.h"
 #include "xla/tsl/platform/cloud/file_block_cache.h"
@@ -56,10 +84,8 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/platform/retrying_utils.h"
 #include "tsl/platform/str_util.h"
-#include "tsl/platform/stringprintf.h"
 #include "tsl/platform/thread_annotations.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -79,16 +105,16 @@ constexpr char kBucketMetadataLocationKey[] = "location";
 constexpr size_t kReadAppendableFileBufferSize = 1024 * 1024;  // In bytes.
 constexpr int kGetChildrenDefaultPageSize = 1000;
 // The HTTP response code "308 Resume Incomplete".
-constexpr uint64 HTTP_CODE_RESUME_INCOMPLETE = 308;
+constexpr uint64_t HTTP_CODE_RESUME_INCOMPLETE = 308;
 // The HTTP response code "412 Precondition Failed".
-constexpr uint64 HTTP_CODE_PRECONDITION_FAILED = 412;
+constexpr uint64_t HTTP_CODE_PRECONDITION_FAILED = 412;
 // The environment variable that overrides the size of the readahead buffer.
 ABSL_DEPRECATED("Use GCS_READ_CACHE_BLOCK_SIZE_MB instead.")
 constexpr char kReadaheadBufferSize[] = "GCS_READAHEAD_BUFFER_SIZE_BYTES";
 // The environment variable that overrides the maximum age of entries in the
 // Stat cache. A value of 0 means nothing is cached.
 constexpr char kStatCacheMaxAge[] = "GCS_STAT_CACHE_MAX_AGE";
-constexpr uint64 kStatCacheDefaultMaxAge = 5;
+constexpr uint64_t kStatCacheDefaultMaxAge = 5;
 // The environment variable that overrides the maximum number of entries in the
 // Stat cache.
 constexpr char kStatCacheMaxEntries[] = "GCS_STAT_CACHE_MAX_ENTRIES";
@@ -96,7 +122,7 @@ constexpr size_t kStatCacheDefaultMaxEntries = 1024;
 // The environment variable that overrides the maximum age of entries in the
 // GetMatchingPaths cache. A value of 0 (the default) means nothing is cached.
 constexpr char kMatchingPathsCacheMaxAge[] = "GCS_MATCHING_PATHS_CACHE_MAX_AGE";
-constexpr uint64 kMatchingPathsCacheDefaultMaxAge = 0;
+constexpr uint64_t kMatchingPathsCacheDefaultMaxAge = 0;
 // The environment variable that overrides the maximum number of entries in the
 // GetMatchingPaths cache.
 constexpr char kMatchingPathsCacheMaxEntries[] =
@@ -109,9 +135,9 @@ constexpr size_t kBucketLocationCacheMaxEntries = 10;
 // one bucket so this limit is set fairly low
 constexpr size_t kStorageLayoutCacheMaxEntries = 10;
 // LRUCache that has 30 mins expiration.
-constexpr uint64 kStorageLayoutCacheMaxAgeSecs = 30 * 60;
+constexpr uint64_t kStorageLayoutCacheMaxAgeSecs = 30 * 60;
 // ExpiringLRUCache doesnt support any "cache forever" option
-constexpr size_t kCacheNeverExpire = std::numeric_limits<uint64>::max();
+constexpr size_t kCacheNeverExpire = std::numeric_limits<uint64_t>::max();
 // The file statistics returned by Stat() for directories.
 const FileStatistics DIRECTORY_STAT(0, 0, true);
 // Some environments exhibit unreliable DNS resolution. Set this environment
@@ -173,27 +199,27 @@ constexpr char kAppendMode[] = "GCS_APPEND_MODE";
 // objects.
 constexpr char kComposeAppend[] = "compose";
 
-absl::Status GetTmpFilename(string* filename) {
+absl::Status GetTmpFilename(std::string* filename) {
   *filename = io::GetTempFilename("");
   return absl::OkStatus();
 }
 
 /// Appends a trailing slash if the name doesn't already have one.
-string MaybeAppendSlash(const string& name) {
+std::string MaybeAppendSlash(absl::string_view name) {
   if (name.empty()) {
     return "/";
   }
   if (name.back() != '/') {
-    return strings::StrCat(name, "/");
+    return absl::StrCat(name, "/");
   }
-  return name;
+  return std::string(name);
 }
 
 // io::JoinPath() doesn't work in cases when we want an empty subpath
 // to result in an appended slash in order for directory markers
 // to be processed correctly: "gs://a/b" + "" should give "gs://a/b/".
-string JoinGcsPath(const string& path, const string& subpath) {
-  return strings::StrCat(MaybeAppendSlash(path), subpath);
+std::string JoinGcsPath(const std::string& path, const std::string& subpath) {
+  return absl::StrCat(MaybeAppendSlash(path), subpath);
 }
 
 /// \brief Returns the given paths appending all their subfolders.
@@ -205,16 +231,16 @@ string JoinGcsPath(const string& path, const string& subpath) {
 ///  - for 'a/b/c/' it will append 'a', 'a/b' and 'a/b/c'
 ///  - for 'a//b/c/' it will append 'a', 'a//b' and 'a//b/c'
 ///  - for '/a/b/c/' it will append '/a', '/a/b' and '/a/b/c'
-std::set<string> AddAllSubpaths(const std::vector<string>& paths) {
-  std::set<string> result;
+std::set<std::string> AddAllSubpaths(const std::vector<std::string>& paths) {
+  std::set<std::string> result;
   result.insert(paths.begin(), paths.end());
-  for (const string& path : paths) {
+  for (const std::string& path : paths) {
     absl::string_view subpath = io::Dirname(path);
     // If `path` starts with `/`, `subpath` will be `/` and then we get into an
     // infinite loop. Same behavior happens if there is a `//` pattern in
     // `path`, so we check for that and leave the loop quicker.
     while (!(subpath.empty() || subpath == "/")) {
-      result.emplace(string(subpath));
+      result.emplace(std::string(subpath));
       subpath = io::Dirname(subpath);
     }
   }
@@ -224,7 +250,7 @@ std::set<string> AddAllSubpaths(const std::vector<string>& paths) {
 absl::Status ParseJson(absl::string_view json, Json::Value* result) {
   Json::Reader reader;
   if (!reader.parse(json.data(), json.data() + json.size(), *result)) {
-    return errors::Internal("Couldn't parse JSON response from GCS.");
+    return absl::InternalError("Couldn't parse JSON response from GCS.");
   }
   return absl::OkStatus();
 }
@@ -238,21 +264,21 @@ absl::Status GetValue(const Json::Value& parent, const char* name,
                       Json::Value* result) {
   *result = parent.get(name, Json::Value::null);
   if (result->isNull()) {
-    return errors::Internal("The field '", name,
-                            "' was expected in the JSON response.");
+    return absl::InternalError(absl::StrCat(
+        "The field '", name, "' was expected in the JSON response."));
   }
   return absl::OkStatus();
 }
 
 /// Reads a string JSON value with the given name from a parent JSON value.
 absl::Status GetStringValue(const Json::Value& parent, const char* name,
-                            string* result) {
+                            std::string* result) {
   Json::Value result_value;
-  TF_RETURN_IF_ERROR(GetValue(parent, name, &result_value));
+  RETURN_IF_ERROR(GetValue(parent, name, &result_value));
   if (!result_value.isString()) {
-    return errors::Internal(
-        "The field '", name,
-        "' in the JSON response was expected to be a string.");
+    return absl::InternalError(
+        absl::StrCat("The field '", name,
+                     "' in the JSON response was expected to be a string."));
   }
   *result = result_value.asString();
   return absl::OkStatus();
@@ -262,7 +288,7 @@ absl::Status GetStringValue(const Json::Value& parent, const char* name,
 absl::Status GetInt64Value(const Json::Value& parent, const char* name,
                            int64_t* result) {
   Json::Value result_value;
-  TF_RETURN_IF_ERROR(GetValue(parent, name, &result_value));
+  RETURN_IF_ERROR(GetValue(parent, name, &result_value));
   if (result_value.isNumeric()) {
     *result = result_value.asInt64();
     return absl::OkStatus();
@@ -271,20 +297,20 @@ absl::Status GetInt64Value(const Json::Value& parent, const char* name,
       absl::SimpleAtoi(result_value.asCString(), result)) {
     return absl::OkStatus();
   }
-  return errors::Internal(
-      "The field '", name,
-      "' in the JSON response was expected to be a number.");
+  return absl::InternalError(
+      absl::StrCat("The field '", name,
+                   "' in the JSON response was expected to be a number."));
 }
 
 /// Reads a boolean JSON value with the given name from a parent JSON value.
 absl::Status GetBoolValue(const Json::Value& parent, const char* name,
                           bool* result) {
   Json::Value result_value;
-  TF_RETURN_IF_ERROR(GetValue(parent, name, &result_value));
+  RETURN_IF_ERROR(GetValue(parent, name, &result_value));
   if (!result_value.isBool()) {
-    return errors::Internal(
-        "The field '", name,
-        "' in the JSON response was expected to be a boolean.");
+    return absl::InternalError(
+        absl::StrCat("The field '", name,
+                     "' in the JSON response was expected to be a boolean."));
   }
   *result = result_value.asBool();
   return absl::OkStatus();
@@ -297,19 +323,19 @@ RetryConfig GetGcsRetryConfig() {
       /* max_delay_time_us = */ 32 * 1000 * 1000,
       /* max_retries = */ 10);
   // Apply the overrides for Retry configs.
-  uint64 init_delay_time_us;
+  uint64_t init_delay_time_us;
   if (GetEnvVar(kRetryConfigInitialDelayTimeUs, strings::safe_strtou64,
                 &init_delay_time_us)) {
     retryConfig.init_delay_time_us = init_delay_time_us;
   }
 
-  uint64 max_delay_time_us;
+  uint64_t max_delay_time_us;
   if (GetEnvVar(kRetryConfigMaxDelayTimeUs, strings::safe_strtou64,
                 &max_delay_time_us)) {
     retryConfig.max_delay_time_us = max_delay_time_us;
   }
 
-  uint32 max_retries;
+  uint32_t max_retries;
   if (GetEnvVar(kRetryConfigMaxRetries, strings::safe_strtou32, &max_retries)) {
     retryConfig.max_retries = max_retries;
   }
@@ -326,10 +352,10 @@ RetryConfig GetGcsRetryConfig() {
 class GcsRandomAccessFile : public RandomAccessFile {
  public:
   using ReadFn = std::function<absl::Status(
-      const string& filename, uint64 offset, size_t n,
+      const std::string& filename, uint64_t offset, size_t n,
       absl::string_view* result, char* scratch)>;
 
-  GcsRandomAccessFile(const string& filename, ReadFn read_fn)
+  GcsRandomAccessFile(const std::string& filename, ReadFn read_fn)
       : filename_(filename), read_fn_(std::move(read_fn)) {}
 
   absl::Status Name(absl::string_view* result) const override {
@@ -338,14 +364,14 @@ class GcsRandomAccessFile : public RandomAccessFile {
   }
 
   /// The implementation of reads with an LRU block cache. Thread safe.
-  absl::Status Read(uint64 offset, size_t n, absl::string_view* result,
+  absl::Status Read(uint64_t offset, size_t n, absl::string_view* result,
                     char* scratch) const override {
     return read_fn_(filename_, offset, n, result, scratch);
   }
 
  private:
   /// The filename of this file.
-  const string filename_;
+  const std::string filename_;
   /// The implementation of the read operation (provided by the GCSFileSystem).
   const ReadFn read_fn_;
 };
@@ -354,11 +380,11 @@ class GcsRandomAccessFile : public RandomAccessFile {
 class BufferedGcsRandomAccessFile : public RandomAccessFile {
  public:
   using ReadFn = std::function<absl::Status(
-      const string& filename, uint64 offset, size_t n,
+      const std::string& filename, uint64_t offset, size_t n,
       absl::string_view* result, char* scratch)>;
 
   // Initialize the reader. Provided read_fn should be thread safe.
-  BufferedGcsRandomAccessFile(const string& filename, uint64 buffer_size,
+  BufferedGcsRandomAccessFile(const std::string& filename, uint64_t buffer_size,
                               ReadFn read_fn)
       : filename_(filename),
         read_fn_(std::move(read_fn)),
@@ -374,13 +400,13 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
   /// The implementation of reads with an read buffer. Thread safe.
   /// Returns `OUT_OF_RANGE` if fewer than n bytes were stored in `*result`
   /// because of EOF.
-  absl::Status Read(uint64 offset, size_t n, absl::string_view* result,
+  absl::Status Read(uint64_t offset, size_t n, absl::string_view* result,
                     char* scratch) const override {
     if (n > buffer_size_) {
       return read_fn_(filename_, offset, n, result, scratch);
     }
     {
-      absl::MutexLock l(&buffer_mutex_);
+      absl::MutexLock l(buffer_mutex_);
       size_t buffer_end = buffer_start_ + buffer_.size();
       size_t copy_size = 0;
       if (offset < buffer_end && offset >= buffer_start_) {
@@ -406,15 +432,15 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
         // Forget the end-of-file flag to allow for clients that poll on the
         // same file.
         buffer_end_is_past_eof_ = false;
-        return errors::OutOfRange("EOF reached. Requested to read ", n,
-                                  " bytes from ", offset, ".");
+        return absl::OutOfRangeError(absl::StrCat(
+            "EOF reached. Requested to read ", n, " bytes from ", offset, "."));
       }
     }
     return absl::OkStatus();
   }
 
  private:
-  absl::Status FillBuffer(uint64 start) const
+  absl::Status FillBuffer(uint64_t start) const
       TF_EXCLUSIVE_LOCKS_REQUIRED(buffer_mutex_) {
     buffer_start_ = start;
     buffer_.resize(buffer_size_);
@@ -427,49 +453,50 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
   }
 
   // The filename of this file.
-  const string filename_;
+  const std::string filename_;
 
   // The implementation of the read operation (provided by the GCSFileSystem).
   const ReadFn read_fn_;
 
   // Size of buffer that we read from GCS each time we send a request.
-  const uint64 buffer_size_;
+  const uint64_t buffer_size_;
 
   // Mutex for buffering operations that can be accessed from multiple threads.
   // The following members are mutable in order to provide a const Read.
   mutable absl::Mutex buffer_mutex_;
 
   // Offset of buffer from start of the file.
-  mutable uint64 buffer_start_ TF_GUARDED_BY(buffer_mutex_);
+  mutable uint64_t buffer_start_ TF_GUARDED_BY(buffer_mutex_);
 
   mutable bool buffer_end_is_past_eof_ TF_GUARDED_BY(buffer_mutex_);
 
-  mutable string buffer_ TF_GUARDED_BY(buffer_mutex_);
+  mutable std::string buffer_ TF_GUARDED_BY(buffer_mutex_);
 };
 
 // Function object declaration with params needed to create upload sessions.
 typedef std::function<absl::Status(
-    uint64 start_offset, const std::string& object_to_upload,
-    const std::string& bucket, uint64 file_size, const std::string& gcs_path,
+    uint64_t start_offset, const std::string& object_to_upload,
+    const std::string& bucket, uint64_t file_size, const std::string& gcs_path,
     UploadSessionHandle* session_handle)>
     SessionCreator;
 
 // Function object declaration with params needed to upload objects.
 typedef std::function<absl::Status(
-    const std::string& session_uri, uint64 start_offset,
-    uint64 already_uploaded, const std::string& tmp_content_filename,
-    uint64 file_size, const std::string& file_path)>
+    const std::string& session_uri, uint64_t start_offset,
+    uint64_t already_uploaded, const std::string& tmp_content_filename,
+    uint64_t file_size, const std::string& file_path)>
     ObjectUploader;
 
 // Function object declaration with params needed to poll upload status.
-typedef std::function<absl::Status(const string& session_uri, uint64 file_size,
-                                   const std::string& gcs_path, bool* completed,
-                                   uint64* uploaded)>
+typedef std::function<absl::Status(
+    const std::string& session_uri, uint64_t file_size,
+    const std::string& gcs_path, bool* completed, uint64_t* uploaded)>
     StatusPoller;
 
 // Function object declaration with params needed to poll upload status.
-typedef std::function<absl::Status(const string& fname, const string& bucket,
-                                   const string& object, int64_t* generation)>
+typedef std::function<absl::Status(
+    const std::string& fname, const std::string& bucket,
+    const std::string& object, int64_t* generation)>
     GenerationGetter;
 
 /// \brief GCS-based implementation of a writeable file.
@@ -478,7 +505,7 @@ typedef std::function<absl::Status(const string& fname, const string& bucket,
 /// tmp file and copies it to GCS on flush/close.
 class GcsWritableFile : public WritableFile {
  public:
-  GcsWritableFile(const string& bucket, const string& object,
+  GcsWritableFile(const std::string& bucket, const std::string& object,
                   GcsFileSystem* filesystem,
                   GcsFileSystem::TimeoutConfig* timeouts,
                   std::function<void()> file_cache_erase,
@@ -512,8 +539,9 @@ class GcsWritableFile : public WritableFile {
   /// tmp_content_filename should contain a path of an existing temporary file
   /// with the content to be appended. The class takes ownership of the
   /// specified tmp file and deletes it on close.
-  GcsWritableFile(const string& bucket, const string& object,
-                  GcsFileSystem* filesystem, const string& tmp_content_filename,
+  GcsWritableFile(const std::string& bucket, const std::string& object,
+                  GcsFileSystem* filesystem,
+                  const std::string& tmp_content_filename,
                   GcsFileSystem::TimeoutConfig* timeouts,
                   std::function<void()> file_cache_erase,
                   RetryConfig retry_config, bool compose_append,
@@ -546,12 +574,12 @@ class GcsWritableFile : public WritableFile {
   }
 
   absl::Status Append(absl::string_view data) override {
-    TF_RETURN_IF_ERROR(CheckWritable());
+    RETURN_IF_ERROR(CheckWritable());
     VLOG(3) << "Append: " << GetGcsPath() << " size " << data.length();
     sync_needed_ = true;
     outfile_ << data;
     if (!outfile_.good()) {
-      return errors::Internal(
+      return absl::InternalError(
           "Could not append to the internal temporary file.");
     }
     return absl::OkStatus();
@@ -581,7 +609,7 @@ class GcsWritableFile : public WritableFile {
 
   absl::Status Sync() override {
     VLOG(3) << "Sync started:" << GetGcsPath();
-    TF_RETURN_IF_ERROR(CheckWritable());
+    RETURN_IF_ERROR(CheckWritable());
     if (!sync_needed_) {
       return absl::OkStatus();
     }
@@ -596,7 +624,7 @@ class GcsWritableFile : public WritableFile {
   absl::Status Tell(int64_t* position) override {
     *position = outfile_.tellp();
     if (*position == -1) {
-      return errors::Internal("tellp on the internal temporary file failed");
+      return absl::InternalError("tellp on the internal temporary file failed");
     }
     return absl::OkStatus();
   }
@@ -611,12 +639,12 @@ class GcsWritableFile : public WritableFile {
   absl::Status SyncImpl() {
     outfile_.flush();
     if (!outfile_.good()) {
-      return errors::Internal(
+      return absl::InternalError(
           "Could not write to the internal temporary file.");
     }
     UploadSessionHandle session_handle;
-    uint64 start_offset = 0;
-    string object_to_upload = object_;
+    uint64_t start_offset = 0;
+    std::string object_to_upload = object_;
     bool should_compose = false;
     if (compose_append_) {
       start_offset = start_offset_;
@@ -628,16 +656,16 @@ class GcsWritableFile : public WritableFile {
                             io::Basename(object_), ".", start_offset_);
       }
     }
-    TF_RETURN_IF_ERROR(CreateNewUploadSession(start_offset, object_to_upload,
-                                              &session_handle));
-    uint64 already_uploaded = 0;
+    RETURN_IF_ERROR(CreateNewUploadSession(start_offset, object_to_upload,
+                                           &session_handle));
+    uint64_t already_uploaded = 0;
     bool first_attempt = true;
     const absl::Status upload_status = RetryingUtils::CallWithRetries(
         [&first_attempt, &already_uploaded, &session_handle, &start_offset,
-         this]() {
+         this]() -> absl::Status {
           if (session_handle.resumable && !first_attempt) {
             bool completed;
-            TF_RETURN_IF_ERROR(RequestUploadSessionStatus(
+            RETURN_IF_ERROR(RequestUploadSessionStatus(
                 session_handle.session_uri, &completed, &already_uploaded));
             LOG(INFO) << "### RequestUploadSessionStatus: completed = "
                       << completed
@@ -660,31 +688,31 @@ class GcsWritableFile : public WritableFile {
     if (absl::IsNotFound(upload_status)) {
       // GCS docs recommend retrying the whole upload. We're relying on the
       // RetryingFileSystem to retry the Sync() call.
-      return errors::Unavailable(
-          strings::StrCat("Upload to gs://", bucket_, "/", object_,
-                          " failed, caused by: ", upload_status.message()));
+      return absl::UnavailableError(
+          absl::StrCat("Upload to gs://", bucket_, "/", object_,
+                       " failed, caused by: ", upload_status.message()));
     }
     if (upload_status.ok()) {
       if (should_compose) {
-        TF_RETURN_IF_ERROR(AppendObject(object_to_upload));
+        RETURN_IF_ERROR(AppendObject(object_to_upload));
       }
-      TF_RETURN_IF_ERROR(GetCurrentFileSize(&start_offset_));
+      RETURN_IF_ERROR(GetCurrentFileSize(&start_offset_));
     }
     return upload_status;
   }
 
   absl::Status CheckWritable() const {
     if (!outfile_.is_open()) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           "The internal temporary file is not writable.");
     }
     return absl::OkStatus();
   }
 
-  absl::Status GetCurrentFileSize(uint64* size) {
+  absl::Status GetCurrentFileSize(uint64_t* size) {
     const auto tellp = outfile_.tellp();
     if (tellp == static_cast<std::streampos>(-1)) {
-      return errors::Internal(
+      return absl::InternalError(
           "Could not get the size of the internal temporary file.");
     }
     *size = tellp;
@@ -692,35 +720,35 @@ class GcsWritableFile : public WritableFile {
   }
 
   /// Initiates a new resumable upload session.
-  absl::Status CreateNewUploadSession(uint64 start_offset,
+  absl::Status CreateNewUploadSession(uint64_t start_offset,
                                       std::string object_to_upload,
                                       UploadSessionHandle* session_handle) {
-    uint64 file_size;
-    TF_RETURN_IF_ERROR(GetCurrentFileSize(&file_size));
+    uint64_t file_size;
+    RETURN_IF_ERROR(GetCurrentFileSize(&file_size));
     return session_creator_(start_offset, object_to_upload, bucket_, file_size,
                             GetGcsPath(), session_handle);
   }
 
   /// Appends the data of append_object to the original object and deletes
   /// append_object.
-  absl::Status AppendObject(string append_object) {
-    const string append_object_path = GetGcsPathWithObject(append_object);
+  absl::Status AppendObject(std::string append_object) {
+    const std::string append_object_path = GetGcsPathWithObject(append_object);
     VLOG(3) << "AppendObject: " << append_object_path << " to " << GetGcsPath();
 
     int64_t generation = 0;
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         generation_getter_(GetGcsPath(), bucket_, object_, &generation));
 
-    TF_RETURN_IF_ERROR(RetryingUtils::CallWithRetries(
-        [&append_object, &generation, this]() {
+    RETURN_IF_ERROR(RetryingUtils::CallWithRetries(
+        [&append_object, &generation, this]() -> absl::Status {
           std::unique_ptr<HttpRequest> request;
-          TF_RETURN_IF_ERROR(filesystem_->CreateHttpRequest(&request));
+          RETURN_IF_ERROR(filesystem_->CreateHttpRequest(&request));
 
           request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket_, "/o/",
                                           request->EscapeString(object_),
                                           "/compose"));
 
-          const string request_body = strings::StrCat(
+          const std::string request_body = strings::StrCat(
               "{'sourceObjects': [{'name': '", object_,
               "','objectPrecondition':{'ifGenerationMatch':", generation,
               "}},{'name': '", append_object, "'}]}");
@@ -736,7 +764,7 @@ class GcsWritableFile : public WritableFile {
 
     return RetryingUtils::DeleteWithRetries(
         [&append_object_path, this]() {
-          return filesystem_->DeleteFile(append_object_path, nullptr);
+          return filesystem_->DeleteFile(append_object_path);
         },
         retry_config_);
   }
@@ -746,19 +774,20 @@ class GcsWritableFile : public WritableFile {
   /// If the upload has already succeeded, sets 'completed' to true.
   /// Otherwise sets 'completed' to false and 'uploaded' to the currently
   /// uploaded size in bytes.
-  absl::Status RequestUploadSessionStatus(const string& session_uri,
-                                          bool* completed, uint64* uploaded) {
-    uint64 file_size;
-    TF_RETURN_IF_ERROR(GetCurrentFileSize(&file_size));
+  absl::Status RequestUploadSessionStatus(const std::string& session_uri,
+                                          bool* completed, uint64_t* uploaded) {
+    uint64_t file_size;
+    RETURN_IF_ERROR(GetCurrentFileSize(&file_size));
     return status_poller_(session_uri, file_size, GetGcsPath(), completed,
                           uploaded);
   }
 
   /// Uploads data to object.
-  absl::Status UploadToSession(const string& session_uri, uint64 start_offset,
-                               uint64 already_uploaded) {
-    uint64 file_size;
-    TF_RETURN_IF_ERROR(GetCurrentFileSize(&file_size));
+  absl::Status UploadToSession(const std::string& session_uri,
+                               uint64_t start_offset,
+                               uint64_t already_uploaded) {
+    uint64_t file_size;
+    RETURN_IF_ERROR(GetCurrentFileSize(&file_size));
     absl::Status status =
         object_uploader_(session_uri, start_offset, already_uploaded,
                          tmp_content_filename_, file_size, GetGcsPath());
@@ -772,22 +801,22 @@ class GcsWritableFile : public WritableFile {
     return status;
   }
 
-  string GetGcsPathWithObject(string object) const {
-    return strings::StrCat("gs://", bucket_, "/", object);
+  std::string GetGcsPathWithObject(std::string object) const {
+    return absl::StrCat("gs://", bucket_, "/", object);
   }
-  string GetGcsPath() const { return GetGcsPathWithObject(object_); }
+  std::string GetGcsPath() const { return GetGcsPathWithObject(object_); }
 
-  string bucket_;
-  string object_;
+  std::string bucket_;
+  std::string object_;
   GcsFileSystem* const filesystem_;  // Not owned.
-  string tmp_content_filename_;
+  std::string tmp_content_filename_;
   std::ofstream outfile_;
   GcsFileSystem::TimeoutConfig* timeouts_;
   std::function<void()> file_cache_erase_;
   bool sync_needed_;  // whether there is buffered data that needs to be synced
   RetryConfig retry_config_ = GetGcsRetryConfig();
   bool compose_append_;
-  uint64 start_offset_;
+  uint64_t start_offset_;
   // Callbacks to the file system used to upload object into GCS.
   const SessionCreator session_creator_;
   const ObjectUploader object_uploader_;
@@ -797,14 +826,14 @@ class GcsWritableFile : public WritableFile {
 
 class GcsReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
  public:
-  GcsReadOnlyMemoryRegion(std::unique_ptr<char[]> data, uint64 length)
+  GcsReadOnlyMemoryRegion(std::unique_ptr<char[]> data, uint64_t length)
       : data_(std::move(data)), length_(length) {}
   const void* data() override { return reinterpret_cast<void*>(data_.get()); }
-  uint64 length() override { return length_; }
+  uint64_t length() override { return length_; }
 
  private:
   std::unique_ptr<char[]> data_;
-  uint64 length_;
+  uint64_t length_;
 };
 
 bool StringPieceIdentity(absl::string_view str, absl::string_view* value) {
@@ -815,14 +844,15 @@ bool StringPieceIdentity(absl::string_view str, absl::string_view* value) {
 /// \brief Utility function to split a comma delimited list of strings to an
 /// unordered set, lowercasing all values.
 bool SplitByCommaToLowercaseSet(absl::string_view list,
-                                std::unordered_set<string>* set) {
-  std::vector<string> vector = absl::StrSplit(absl::AsciiStrToLower(list), ',');
-  *set = std::unordered_set<string>(vector.begin(), vector.end());
+                                std::unordered_set<std::string>* set) {
+  std::vector<std::string> vector =
+      absl::StrSplit(absl::AsciiStrToLower(list), ',');
+  *set = std::unordered_set<std::string>(vector.begin(), vector.end());
   return true;
 }
 
 // \brief Convert Compute Engine zone to region
-string ZoneToRegion(string* zone) {
+std::string ZoneToRegion(std::string* zone) {
   return zone->substr(0, zone->find_last_of('-'));
 }
 
@@ -830,11 +860,11 @@ string ZoneToRegion(string* zone) {
 
 GcsFileSystem::GcsFileSystem(bool make_default_cache,
                              GcsCacheOptions cache_options) {
-  uint64 value;
+  uint64_t value;
   block_size_ = cache_options.block_size;
   size_t max_bytes = cache_options.max_bytes;
 
-  uint64 max_staleness = cache_options.max_staleness_secs;
+  uint64_t max_staleness = cache_options.max_staleness_secs;
 
   http_request_factory_ = std::make_shared<CurlHttpRequest::Factory>();
   compute_engine_metadata_client_ =
@@ -870,7 +900,7 @@ GcsFileSystem::GcsFileSystem(bool make_default_cache,
           << "max staleness = " << max_staleness;
   file_block_cache_ = MakeFileBlockCache(block_size_, max_bytes, max_staleness);
   // Apply overrides for the stat cache max age and max entries, if provided.
-  uint64 stat_cache_max_age = kStatCacheDefaultMaxAge;
+  uint64_t stat_cache_max_age = kStatCacheDefaultMaxAge;
   size_t stat_cache_max_entries = kStatCacheDefaultMaxEntries;
   if (GetEnvVar(kStatCacheMaxAge, strings::safe_strtou64, &value)) {
     stat_cache_max_age = value;
@@ -882,7 +912,7 @@ GcsFileSystem::GcsFileSystem(bool make_default_cache,
                                                       stat_cache_max_entries));
   // Apply overrides for the matching paths cache max age and max entries, if
   // provided.
-  uint64 matching_paths_cache_max_age = kMatchingPathsCacheDefaultMaxAge;
+  uint64_t matching_paths_cache_max_age = kMatchingPathsCacheDefaultMaxAge;
   size_t matching_paths_cache_max_entries =
       kMatchingPathsCacheDefaultMaxEntries;
   if (GetEnvVar(kMatchingPathsCacheMaxAge, strings::safe_strtou64, &value)) {
@@ -892,10 +922,10 @@ GcsFileSystem::GcsFileSystem(bool make_default_cache,
                 &value)) {
     matching_paths_cache_max_entries = value;
   }
-  matching_paths_cache_.reset(new ExpiringLRUCache<std::vector<string>>(
+  matching_paths_cache_.reset(new ExpiringLRUCache<std::vector<std::string>>(
       matching_paths_cache_max_age, matching_paths_cache_max_entries));
 
-  bucket_location_cache_.reset(new ExpiringLRUCache<string>(
+  bucket_location_cache_.reset(new ExpiringLRUCache<std::string>(
       kCacheNeverExpire, kBucketLocationCacheMaxEntries));
 
   storage_layout_cache_ = std::make_unique<ExpiringLRUCache<Json::Value>>(
@@ -923,8 +953,9 @@ GcsFileSystem::GcsFileSystem(bool make_default_cache,
       absl::string_view header_value = add_header_contents.substr(split + 1);
 
       if (!header_name.empty() && !header_value.empty()) {
-        additional_header_.reset(new std::pair<const string, const string>(
-            string(header_name), string(header_value)));
+        additional_header_.reset(
+            new std::pair<const std::string, const std::string>(
+                std::string(header_name), std::string(header_value)));
 
         VLOG(1) << "GCS additional header ENABLED. "
                 << "Name: " << additional_header_->first << ", "
@@ -942,7 +973,7 @@ GcsFileSystem::GcsFileSystem(bool make_default_cache,
   }
 
   // Apply the overrides for request timeouts
-  uint32 timeout_value;
+  uint32_t timeout_value;
   if (GetEnvVar(kRequestConnectionTimeout, strings::safe_strtou32,
                 &timeout_value)) {
     timeouts_.connect = timeout_value;
@@ -999,11 +1030,12 @@ GcsFileSystem::GcsFileSystem(
     std::unique_ptr<AuthProvider> auth_provider,
     std::unique_ptr<HttpRequest::Factory> http_request_factory,
     std::unique_ptr<ZoneProvider> zone_provider, size_t block_size,
-    size_t max_bytes, uint64 max_staleness, uint64 stat_cache_max_age,
-    size_t stat_cache_max_entries, uint64 matching_paths_cache_max_age,
+    size_t max_bytes, uint64_t max_staleness, uint64_t stat_cache_max_age,
+    size_t stat_cache_max_entries, uint64_t matching_paths_cache_max_age,
     size_t matching_paths_cache_max_entries, RetryConfig retry_config,
-    TimeoutConfig timeouts, const std::unordered_set<string>& allowed_locations,
-    std::pair<const string, const string>* additional_header,
+    TimeoutConfig timeouts,
+    const std::unordered_set<std::string>& allowed_locations,
+    std::pair<const std::string, const std::string>* additional_header,
     bool compose_append)
     : timeouts_(timeouts),
       retry_config_(retry_config),
@@ -1025,56 +1057,57 @@ GcsFileSystem::GcsFileSystem(
       additional_header_(additional_header) {}
 
 absl::Status GcsFileSystem::NewRandomAccessFile(
-    const string& fname, TransactionToken* token,
-    std::unique_ptr<RandomAccessFile>* result) {
-  string bucket, object;
-  TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
-  TF_RETURN_IF_ERROR(CheckBucketLocationConstraint(bucket));
+    const std::string& fname, std::unique_ptr<RandomAccessFile>* result) {
+  std::string bucket, object;
+  RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
+  RETURN_IF_ERROR(CheckBucketLocationConstraint(bucket));
   if (cache_enabled_) {
-    result->reset(new GcsRandomAccessFile(fname, [this, bucket, object](
-                                                     const string& fname,
-                                                     uint64 offset, size_t n,
-                                                     absl::string_view* result,
-                                                     char* scratch) {
-      absl::ReaderMutexLock l(&block_cache_lock_);
-      GcsFileStat stat;
-      TF_RETURN_IF_ERROR(stat_cache_->LookupOrCompute(
-          fname, &stat,
-          [this, bucket, object](const string& fname, GcsFileStat* stat) {
-            return UncachedStatForObject(fname, bucket, object, stat);
-          }));
-      if (!file_block_cache_->ValidateAndUpdateFileSignature(
-              fname, stat.generation_number)) {
-        VLOG(1)
-            << "File signature has been changed. Refreshing the cache. Path: "
-            << fname;
-      }
-      *result = absl::string_view();
-      size_t bytes_transferred;
-      TF_RETURN_IF_ERROR(file_block_cache_->Read(fname, offset, n, scratch,
-                                                 &bytes_transferred));
-      *result = absl::string_view(scratch, bytes_transferred);
-      if (bytes_transferred < n) {
-        return errors::OutOfRange("EOF reached, ", result->size(),
-                                  " bytes were read out of ", n,
-                                  " bytes requested.");
-      }
-      return absl::OkStatus();
-    }));
+    result->reset(new GcsRandomAccessFile(
+        fname,
+        [this, bucket, object](const std::string& fname, uint64_t offset,
+                               size_t n, absl::string_view* result,
+                               char* scratch) -> absl::Status {
+          absl::ReaderMutexLock l(block_cache_lock_);
+          GcsFileStat stat;
+          RETURN_IF_ERROR(stat_cache_->LookupOrCompute(
+              fname, &stat,
+              [this, bucket, object](absl::string_view fname,
+                                     GcsFileStat* stat) {
+                return UncachedStatForObject(fname, bucket, object, stat);
+              }));
+          if (!file_block_cache_->ValidateAndUpdateFileSignature(
+                  fname, stat.generation_number)) {
+            VLOG(1) << "File signature has been changed. Refreshing the cache. "
+                       "Path: "
+                    << fname;
+          }
+          *result = absl::string_view();
+          size_t bytes_transferred;
+          RETURN_IF_ERROR(file_block_cache_->Read(fname, offset, n, scratch,
+                                                  &bytes_transferred));
+          *result = absl::string_view(scratch, bytes_transferred);
+          if (bytes_transferred < n) {
+            return absl::OutOfRangeError(absl::StrCat(
+                "EOF reached, ", result->size(), " bytes were read out of ", n,
+                " bytes requested."));
+          }
+          return absl::OkStatus();
+        }));
   } else {
     result->reset(new BufferedGcsRandomAccessFile(
         fname, block_size_,
-        [this, bucket, object](const string& fname, uint64 offset, size_t n,
-                               absl::string_view* result, char* scratch) {
+        [this, bucket, object](const std::string& fname, uint64_t offset,
+                               size_t n, absl::string_view* result,
+                               char* scratch) -> absl::Status {
           *result = absl::string_view();
           size_t bytes_transferred;
-          TF_RETURN_IF_ERROR(
+          RETURN_IF_ERROR(
               LoadBufferFromGCS(fname, offset, n, scratch, &bytes_transferred));
           *result = absl::string_view(scratch, bytes_transferred);
           if (bytes_transferred < n) {
-            return errors::OutOfRange("EOF reached, ", result->size(),
-                                      " bytes were read out of ", n,
-                                      " bytes requested.");
+            return absl::OutOfRangeError(absl::StrCat(
+                "EOF reached, ", result->size(), " bytes were read out of ", n,
+                " bytes requested."));
           }
           return absl::OkStatus();
         }));
@@ -1084,8 +1117,8 @@ absl::Status GcsFileSystem::NewRandomAccessFile(
 
 void GcsFileSystem::ResetFileBlockCache(size_t block_size_bytes,
                                         size_t max_bytes,
-                                        uint64 max_staleness_secs) {
-  absl::MutexLock l(&block_cache_lock_);
+                                        uint64_t max_staleness_secs) {
+  absl::MutexLock l(block_cache_lock_);
   file_block_cache_ =
       MakeFileBlockCache(block_size_bytes, max_bytes, max_staleness_secs);
   if (stats_ != nullptr) {
@@ -1095,10 +1128,10 @@ void GcsFileSystem::ResetFileBlockCache(size_t block_size_bytes,
 
 // A helper function to build a FileBlockCache for GcsFileSystem.
 std::unique_ptr<FileBlockCache> GcsFileSystem::MakeFileBlockCache(
-    size_t block_size, size_t max_bytes, uint64 max_staleness) {
+    size_t block_size, size_t max_bytes, uint64_t max_staleness) {
   std::unique_ptr<FileBlockCache> file_block_cache(new RamFileBlockCache(
       block_size, max_bytes, max_staleness,
-      [this](const string& filename, size_t offset, size_t n, char* buffer,
+      [this](const std::string& filename, size_t offset, size_t n, char* buffer,
              size_t* bytes_transferred) {
         return LoadBufferFromGCS(filename, offset, n, buffer,
                                  bytes_transferred);
@@ -1110,14 +1143,14 @@ std::unique_ptr<FileBlockCache> GcsFileSystem::MakeFileBlockCache(
 }
 
 // A helper function to actually read the data from GCS.
-absl::Status GcsFileSystem::LoadBufferFromGCS(const string& fname,
+absl::Status GcsFileSystem::LoadBufferFromGCS(const std::string& fname,
                                               size_t offset, size_t n,
                                               char* buffer,
                                               size_t* bytes_transferred) {
   *bytes_transferred = 0;
 
-  string bucket, object;
-  TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
+  std::string bucket, object;
+  RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
 
   profiler::TraceMe activity(
       [fname]() { return absl::StrCat("LoadBufferFromGCS ", fname); });
@@ -1158,7 +1191,7 @@ absl::Status GcsFileSystem::LoadBufferFromGCS(const string& fname,
     GcsFileStat stat;
     if (stat_cache_->Lookup(fname, &stat)) {
       if (offset + bytes_read < stat.base.length) {
-        return errors::Internal(strings::Printf(
+        return absl::InternalError(absl::StrFormat(
             "File contents are inconsistent for file: %s @ %lu.", fname.c_str(),
             offset));
       }
@@ -1172,12 +1205,12 @@ absl::Status GcsFileSystem::LoadBufferFromGCS(const string& fname,
 
 /// Initiates a new upload session.
 absl::Status GcsFileSystem::CreateNewUploadSession(
-    uint64 start_offset, const std::string& object_to_upload,
-    const std::string& bucket, uint64 file_size, const std::string& gcs_path,
+    uint64_t start_offset, const std::string& object_to_upload,
+    const std::string& bucket, uint64_t file_size, const std::string& gcs_path,
     UploadSessionHandle* session_handle) {
   std::vector<char> output_buffer;
   std::unique_ptr<HttpRequest> request;
-  TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
+  RETURN_IF_ERROR(CreateHttpRequest(&request));
 
   std::string uri = strings::StrCat(
       kGcsUploadUriBase, "b/", bucket,
@@ -1194,19 +1227,20 @@ absl::Status GcsFileSystem::CreateNewUploadSession(
     session_handle->resumable = true;
     session_handle->session_uri = request->GetResponseHeader("Location");
     if (session_handle->session_uri.empty()) {
-      return errors::Internal("Unexpected response from GCS when writing to ",
-                              gcs_path, ": 'Location' header not returned.");
+      return absl::InternalError(
+          absl::StrCat("Unexpected response from GCS when writing to ",
+                       gcs_path, ": 'Location' header not returned."));
     }
   }
   return absl::OkStatus();
 }
 
 absl::Status GcsFileSystem::UploadToSession(
-    const std::string& session_uri, uint64 start_offset,
-    uint64 already_uploaded, const std::string& tmp_content_filename,
-    uint64 file_size, const std::string& file_path) {
+    const std::string& session_uri, uint64_t start_offset,
+    uint64_t already_uploaded, const std::string& tmp_content_filename,
+    uint64_t file_size, const std::string& file_path) {
   std::unique_ptr<HttpRequest> request;
-  TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
+  RETURN_IF_ERROR(CreateHttpRequest(&request));
   request->SetUri(session_uri);
   if (file_size > 0) {
     request->AddHeader("Content-Range",
@@ -1216,25 +1250,25 @@ absl::Status GcsFileSystem::UploadToSession(
   }
   request->SetTimeouts(timeouts_.connect, timeouts_.idle, timeouts_.write);
 
-  TF_RETURN_IF_ERROR(request->SetPutFromFile(tmp_content_filename,
-                                             start_offset + already_uploaded));
+  RETURN_IF_ERROR(request->SetPutFromFile(tmp_content_filename,
+                                          start_offset + already_uploaded));
   TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when uploading ",
                                   file_path);
   return absl::OkStatus();
 }
 
 absl::Status GcsFileSystem::RequestUploadSessionStatus(
-    const string& session_uri, uint64 file_size, const std::string& gcs_path,
-    bool* completed, uint64* uploaded) {
+    const std::string& session_uri, uint64_t file_size,
+    const std::string& gcs_path, bool* completed, uint64_t* uploaded) {
   CHECK(completed != nullptr) << "RequestUploadSessionStatus() called with out "
                                  "param 'completed' == nullptr.";  // Crash ok
   CHECK(uploaded != nullptr) << "RequestUploadSessionStatus() called with out "
                                 "param 'uploaded' == nullptr.";  // Crash ok
   std::unique_ptr<HttpRequest> request;
-  TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
+  RETURN_IF_ERROR(CreateHttpRequest(&request));
   request->SetUri(session_uri);
   request->SetTimeouts(timeouts_.connect, timeouts_.idle, timeouts_.metadata);
-  request->AddHeader("Content-Range", strings::StrCat("bytes */", file_size));
+  request->AddHeader("Content-Range", absl::StrCat("bytes */", file_size));
   request->SetPutEmptyBody();
   absl::Status status = request->Send();
   if (status.ok()) {
@@ -1256,11 +1290,12 @@ absl::Status GcsFileSystem::RequestUploadSessionStatus(
 
     auto return_error = [](const std::string& gcs_path,
                            const std::string& error_message) {
-      return errors::Internal("Unexpected response from GCS when writing ",
-                              gcs_path, ": ", error_message);
+      return absl::InternalError(
+          absl::StrCat("Unexpected response from GCS when writing ", gcs_path,
+                       ": ", error_message));
     };
 
-    std::vector<string> range_strs = str_util::Split(range_piece, '-');
+    std::vector<std::string> range_strs = str_util::Split(range_piece, '-');
     if (range_strs.size() != 2) {
       return return_error(gcs_path, "Range header '" + received_range +
                                         "' could not be parsed.");
@@ -1288,75 +1323,76 @@ absl::Status GcsFileSystem::RequestUploadSessionStatus(
 }
 
 absl::Status GcsFileSystem::ParseGcsPathForScheme(absl::string_view fname,
-                                                  string scheme,
+                                                  std::string scheme,
                                                   bool empty_object_ok,
-                                                  string* bucket,
-                                                  string* object) {
+                                                  std::string* bucket,
+                                                  std::string* object) {
   absl::string_view parsed_scheme, bucketp, objectp;
   io::ParseURI(fname, &parsed_scheme, &bucketp, &objectp);
   if (parsed_scheme != scheme) {
-    return errors::InvalidArgument("GCS path doesn't start with 'gs://': ",
-                                   fname);
+    return absl::InvalidArgumentError(
+        absl::StrCat("GCS path doesn't start with 'gs://': ", fname));
   }
-  *bucket = string(bucketp);
+  *bucket = std::string(bucketp);
   if (bucket->empty() || *bucket == ".") {
-    return errors::InvalidArgument("GCS path doesn't contain a bucket name: ",
-                                   fname);
+    return absl::InvalidArgumentError(
+        absl::StrCat("GCS path doesn't contain a bucket name: ", fname));
   }
   absl::ConsumePrefix(&objectp, "/");
-  *object = string(objectp);
+  *object = std::string(objectp);
   if (!empty_object_ok && object->empty()) {
-    return errors::InvalidArgument("GCS path doesn't contain an object name: ",
-                                   fname);
+    return absl::InvalidArgumentError(
+        absl::StrCat("GCS path doesn't contain an object name: ", fname));
   }
   return absl::OkStatus();
 }
 
 absl::Status GcsFileSystem::ParseGcsPath(absl::string_view fname,
-                                         bool empty_object_ok, string* bucket,
-                                         string* object) {
+                                         bool empty_object_ok,
+                                         std::string* bucket,
+                                         std::string* object) {
   return ParseGcsPathForScheme(fname, "gs", empty_object_ok, bucket, object);
 }
 
-void GcsFileSystem::ClearFileCaches(const string& fname) {
-  absl::ReaderMutexLock l(&block_cache_lock_);
+void GcsFileSystem::ClearFileCaches(const std::string& fname) {
+  absl::ReaderMutexLock l(block_cache_lock_);
   file_block_cache_->RemoveFile(fname);
   stat_cache_->Delete(fname);
-  // TODO(rxsang): Remove the patterns that matche the file in
+  // TODO(rxsang): Remove the patterns that match the file in
   // MatchingPathsCache as well.
 }
 
 absl::Status GcsFileSystem::NewWritableFile(
-    const string& fname, TransactionToken* token,
-    std::unique_ptr<WritableFile>* result) {
-  string bucket, object;
-  TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
+    const std::string& fname, std::unique_ptr<WritableFile>* result) {
+  std::string bucket, object;
+  RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
 
   auto session_creator =
-      [this](uint64 start_offset, const std::string& object_to_upload,
-             const std::string& bucket, uint64 file_size,
+      [this](uint64_t start_offset, const std::string& object_to_upload,
+             const std::string& bucket, uint64_t file_size,
              const std::string& gcs_path, UploadSessionHandle* session_handle) {
         return CreateNewUploadSession(start_offset, object_to_upload, bucket,
                                       file_size, gcs_path, session_handle);
       };
   auto object_uploader =
-      [this](const std::string& session_uri, uint64 start_offset,
-             uint64 already_uploaded, const std::string& tmp_content_filename,
-             uint64 file_size, const std::string& file_path) {
+      [this](const std::string& session_uri, uint64_t start_offset,
+             uint64_t already_uploaded, const std::string& tmp_content_filename,
+             uint64_t file_size, const std::string& file_path) {
         return UploadToSession(session_uri, start_offset, already_uploaded,
                                tmp_content_filename, file_size, file_path);
       };
-  auto status_poller = [this](const string& session_uri, uint64 file_size,
-                              const std::string& gcs_path, bool* completed,
-                              uint64* uploaded) {
+  auto status_poller = [this](const std::string& session_uri,
+                              uint64_t file_size, const std::string& gcs_path,
+                              bool* completed, uint64_t* uploaded) {
     return RequestUploadSessionStatus(session_uri, file_size, gcs_path,
                                       completed, uploaded);
   };
 
-  auto generation_getter = [this](const string& fname, const string& bucket,
-                                  const string& object, int64* generation) {
+  auto generation_getter =
+      [this](const std::string& fname, const std::string& bucket,
+             const std::string& object, int64_t* generation) -> absl::Status {
     GcsFileStat stat;
-    TF_RETURN_IF_ERROR(RetryingUtils::CallWithRetries(
+    RETURN_IF_ERROR(RetryingUtils::CallWithRetries(
         [&fname, &bucket, &object, &stat, this]() {
           return UncachedStatForObject(fname, bucket, object, &stat);
         },
@@ -1376,18 +1412,17 @@ absl::Status GcsFileSystem::NewWritableFile(
 // Reads the file from GCS in chunks and stores it in a tmp file,
 // which is then passed to GcsWritableFile.
 absl::Status GcsFileSystem::NewAppendableFile(
-    const string& fname, TransactionToken* token,
-    std::unique_ptr<WritableFile>* result) {
+    const std::string& fname, std::unique_ptr<WritableFile>* result) {
   std::unique_ptr<RandomAccessFile> reader;
-  TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, token, &reader));
+  RETURN_IF_ERROR(NewRandomAccessFile(fname, &reader));
   std::unique_ptr<char[]> buffer(new char[kReadAppendableFileBufferSize]);
   absl::Status status;
-  uint64 offset = 0;
+  uint64_t offset = 0;
   absl::string_view read_chunk;
 
   // Read the file from GCS in chunks and save it to a tmp file.
-  string old_content_filename;
-  TF_RETURN_IF_ERROR(GetTmpFilename(&old_content_filename));
+  std::string old_content_filename;
+  RETURN_IF_ERROR(GetTmpFilename(&old_content_filename));
   std::ofstream old_content(old_content_filename, std::ofstream::binary);
   while (true) {
     status = reader->Read(
@@ -1410,31 +1445,32 @@ absl::Status GcsFileSystem::NewAppendableFile(
   old_content.close();
 
   auto session_creator =
-      [this](uint64 start_offset, const std::string& object_to_upload,
-             const std::string& bucket, uint64 file_size,
+      [this](uint64_t start_offset, const std::string& object_to_upload,
+             const std::string& bucket, uint64_t file_size,
              const std::string& gcs_path, UploadSessionHandle* session_handle) {
         return CreateNewUploadSession(start_offset, object_to_upload, bucket,
                                       file_size, gcs_path, session_handle);
       };
   auto object_uploader =
-      [this](const std::string& session_uri, uint64 start_offset,
-             uint64 already_uploaded, const std::string& tmp_content_filename,
-             uint64 file_size, const std::string& file_path) {
+      [this](const std::string& session_uri, uint64_t start_offset,
+             uint64_t already_uploaded, const std::string& tmp_content_filename,
+             uint64_t file_size, const std::string& file_path) {
         return UploadToSession(session_uri, start_offset, already_uploaded,
                                tmp_content_filename, file_size, file_path);
       };
 
-  auto status_poller = [this](const string& session_uri, uint64 file_size,
-                              const std::string& gcs_path, bool* completed,
-                              uint64* uploaded) {
+  auto status_poller = [this](const std::string& session_uri,
+                              uint64_t file_size, const std::string& gcs_path,
+                              bool* completed, uint64_t* uploaded) {
     return RequestUploadSessionStatus(session_uri, file_size, gcs_path,
                                       completed, uploaded);
   };
 
-  auto generation_getter = [this](const string& fname, const string& bucket,
-                                  const string& object, int64* generation) {
+  auto generation_getter =
+      [this](const std::string& fname, const std::string& bucket,
+             const std::string& object, int64_t* generation) -> absl::Status {
     GcsFileStat stat;
-    TF_RETURN_IF_ERROR(RetryingUtils::CallWithRetries(
+    RETURN_IF_ERROR(RetryingUtils::CallWithRetries(
         [&fname, &bucket, &object, &stat, this]() {
           return UncachedStatForObject(fname, bucket, object, &stat);
         },
@@ -1444,8 +1480,8 @@ absl::Status GcsFileSystem::NewAppendableFile(
   };
 
   // Create a writable file and pass the old content to it.
-  string bucket, object;
-  TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
+  std::string bucket, object;
+  RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
   result->reset(new GcsWritableFile(
       bucket, object, this, old_content_filename, &timeouts_,
       [this, fname]() { ClearFileCaches(fname); }, retry_config_,
@@ -1455,29 +1491,27 @@ absl::Status GcsFileSystem::NewAppendableFile(
 }
 
 absl::Status GcsFileSystem::NewReadOnlyMemoryRegionFromFile(
-    const string& fname, TransactionToken* token,
-    std::unique_ptr<ReadOnlyMemoryRegion>* result) {
-  uint64 size;
-  TF_RETURN_IF_ERROR(GetFileSize(fname, token, &size));
+    const std::string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
+  uint64_t size;
+  RETURN_IF_ERROR(GetFileSize(fname, &size));
   std::unique_ptr<char[]> data(new char[size]);
 
   std::unique_ptr<RandomAccessFile> file;
-  TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, token, &file));
+  RETURN_IF_ERROR(NewRandomAccessFile(fname, &file));
 
   absl::string_view piece;
-  TF_RETURN_IF_ERROR(file->Read(0, piece, absl::MakeSpan(data.get(), size)));
+  RETURN_IF_ERROR(file->Read(0, piece, absl::MakeSpan(data.get(), size)));
 
   result->reset(new GcsReadOnlyMemoryRegion(std::move(data), size));
   return absl::OkStatus();
 }
 
-absl::Status GcsFileSystem::FileExists(const string& fname,
-                                       TransactionToken* token) {
-  string bucket, object;
-  TF_RETURN_IF_ERROR(ParseGcsPath(fname, true, &bucket, &object));
+absl::Status GcsFileSystem::FileExists(absl::string_view fname) {
+  std::string bucket, object;
+  RETURN_IF_ERROR(ParseGcsPath(fname, true, &bucket, &object));
   if (object.empty()) {
     bool result;
-    TF_RETURN_IF_ERROR(BucketExists(bucket, &result));
+    RETURN_IF_ERROR(BucketExists(bucket, &result));
     if (result) {
       return absl::OkStatus();
     } else {
@@ -1495,16 +1529,18 @@ absl::Status GcsFileSystem::FileExists(const string& fname,
 
   // Check if the folder exists.
   bool result;
-  TF_RETURN_IF_ERROR(FolderExists(fname, &result));
+  RETURN_IF_ERROR(FolderExists(fname, &result));
   if (result) {
     return absl::OkStatus();
   }
-  return errors::NotFound("The specified path ", fname, " was not found.");
+  return absl::NotFoundError(
+      absl::StrCat("The specified path ", fname, " was not found."));
 }
 
-absl::Status GcsFileSystem::ObjectExists(const string& fname,
-                                         const string& bucket,
-                                         const string& object, bool* result) {
+absl::Status GcsFileSystem::ObjectExists(const std::string& fname,
+                                         const std::string& bucket,
+                                         const std::string& object,
+                                         bool* result) {
   GcsFileStat stat;
   const absl::Status status = StatForObject(fname, bucket, object, &stat);
   switch (static_cast<int>(status.code())) {
@@ -1519,9 +1555,9 @@ absl::Status GcsFileSystem::ObjectExists(const string& fname,
   }
 }
 
-absl::Status GcsFileSystem::UncachedStatForObject(const string& fname,
-                                                  const string& bucket,
-                                                  const string& object,
+absl::Status GcsFileSystem::UncachedStatForObject(absl::string_view fname,
+                                                  const std::string& bucket,
+                                                  const std::string& object,
                                                   GcsFileStat* stat) {
   std::vector<char> output_buffer;
   std::unique_ptr<HttpRequest> request;
@@ -1543,19 +1579,18 @@ absl::Status GcsFileSystem::UncachedStatForObject(const string& fname,
       request->Send(), " when reading metadata of gs://", bucket, "/", object);
 
   Json::Value root;
-  TF_RETURN_IF_ERROR(ParseJson(output_buffer, &root));
+  RETURN_IF_ERROR(ParseJson(output_buffer, &root));
 
   // Parse file size.
-  TF_RETURN_IF_ERROR(GetInt64Value(root, "size", &stat->base.length));
+  RETURN_IF_ERROR(GetInt64Value(root, "size", &stat->base.length));
 
   // Parse generation number.
-  TF_RETURN_IF_ERROR(
-      GetInt64Value(root, "generation", &stat->generation_number));
+  RETURN_IF_ERROR(GetInt64Value(root, "generation", &stat->generation_number));
 
   // Parse file modification time.
-  string updated;
-  TF_RETURN_IF_ERROR(GetStringValue(root, "updated", &updated));
-  TF_RETURN_IF_ERROR(ParseRfc3339Time(updated, &(stat->base.mtime_nsec)));
+  std::string updated;
+  RETURN_IF_ERROR(GetStringValue(root, "updated", &updated));
+  RETURN_IF_ERROR(ParseRfc3339Time(updated, &(stat->base.mtime_nsec)));
 
   VLOG(1) << "Stat of: gs://" << bucket << "/" << object << " -- "
           << " length: " << stat->base.length
@@ -1574,24 +1609,25 @@ absl::Status GcsFileSystem::UncachedStatForObject(const string& fname,
   return absl::OkStatus();
 }
 
-absl::Status GcsFileSystem::StatForObject(const string& fname,
-                                          const string& bucket,
-                                          const string& object,
+absl::Status GcsFileSystem::StatForObject(absl::string_view fname,
+                                          const std::string& bucket,
+                                          const std::string& object,
                                           GcsFileStat* stat) {
   if (object.empty()) {
-    return errors::InvalidArgument(strings::Printf(
-        "'object' must be a non-empty string. (File: %s)", fname.c_str()));
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "'object' must be a non-empty string. (File: %s)", fname));
   }
 
-  TF_RETURN_IF_ERROR(stat_cache_->LookupOrCompute(
+  RETURN_IF_ERROR(stat_cache_->LookupOrCompute(
       fname, stat,
-      [this, &bucket, &object](const string& fname, GcsFileStat* stat) {
+      [this, &bucket, &object](absl::string_view fname, GcsFileStat* stat) {
         return UncachedStatForObject(fname, bucket, object, stat);
       }));
   return absl::OkStatus();
 }
 
-absl::Status GcsFileSystem::BucketExists(const string& bucket, bool* result) {
+absl::Status GcsFileSystem::BucketExists(const std::string& bucket,
+                                         bool* result) {
   const absl::Status status = GetBucketMetadata(bucket, nullptr);
   switch (static_cast<absl::StatusCode>(status.code())) {
     case absl::StatusCode::kOk:
@@ -1606,56 +1642,57 @@ absl::Status GcsFileSystem::BucketExists(const string& bucket, bool* result) {
 }
 
 absl::Status GcsFileSystem::CheckBucketLocationConstraint(
-    const string& bucket) {
+    const std::string& bucket) {
   if (allowed_locations_.empty()) {
     return absl::OkStatus();
   }
 
   // Avoid calling external API's in the constructor
   if (allowed_locations_.erase(kDetectZoneSentinelValue) == 1) {
-    string zone;
-    TF_RETURN_IF_ERROR(zone_provider_->GetZone(&zone));
+    std::string zone;
+    RETURN_IF_ERROR(zone_provider_->GetZone(&zone));
     allowed_locations_.insert(ZoneToRegion(&zone));
   }
 
-  string location;
-  TF_RETURN_IF_ERROR(GetBucketLocation(bucket, &location));
+  std::string location;
+  RETURN_IF_ERROR(GetBucketLocation(bucket, &location));
   if (allowed_locations_.find(location) != allowed_locations_.end()) {
     return absl::OkStatus();
   }
 
-  return errors::FailedPrecondition(strings::Printf(
+  return absl::FailedPreconditionError(absl::StrFormat(
       "Bucket '%s' is in '%s' location, allowed locations are: (%s).",
       bucket.c_str(), location.c_str(),
       absl::StrJoin(allowed_locations_, ", ").c_str()));
 }
 
-absl::Status GcsFileSystem::GetBucketLocation(const string& bucket,
-                                              string* location) {
-  auto compute_func = [this](const string& bucket, string* location) {
+absl::Status GcsFileSystem::GetBucketLocation(const std::string& bucket,
+                                              std::string* location) {
+  auto compute_func = [this](absl::string_view bucket,
+                             std::string* location) -> absl::Status {
     std::vector<char> result_buffer;
     absl::Status status = GetBucketMetadata(bucket, &result_buffer);
     Json::Value result;
-    TF_RETURN_IF_ERROR(ParseJson(result_buffer, &result));
-    string bucket_location;
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(ParseJson(result_buffer, &result));
+    std::string bucket_location;
+    RETURN_IF_ERROR(
         GetStringValue(result, kBucketMetadataLocationKey, &bucket_location));
     // Lowercase the GCS location to be case insensitive for allowed locations.
     *location = absl::AsciiStrToLower(bucket_location);
     return absl::OkStatus();
   };
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       bucket_location_cache_->LookupOrCompute(bucket, location, compute_func));
 
   return absl::OkStatus();
 }
 
 absl::Status GcsFileSystem::GetBucketMetadata(
-    const string& bucket, std::vector<char>* result_buffer) {
+    absl::string_view bucket, std::vector<char>* result_buffer) {
   std::unique_ptr<HttpRequest> request;
-  TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
-  request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket));
+  RETURN_IF_ERROR(CreateHttpRequest(&request));
+  request->SetUri(absl::StrCat(kGcsUriBase, "b/", bucket));
 
   if (result_buffer != nullptr) {
     request->SetResultBuffer(result_buffer);
@@ -1665,10 +1702,10 @@ absl::Status GcsFileSystem::GetBucketMetadata(
   return request->Send();
 }
 
-absl::Status GcsFileSystem::GetStorageLayout(const string& bucket,
+absl::Status GcsFileSystem::GetStorageLayout(absl::string_view bucket,
                                              std::vector<char>* result_buffer) {
   std::unique_ptr<HttpRequest> request;
-  TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
+  RETURN_IF_ERROR(CreateHttpRequest(&request));
 
   request->SetUri(absl::StrCat(kGcsUriBase, "b/", bucket, "/storageLayout"));
 
@@ -1689,7 +1726,7 @@ absl::Status GcsFileSystem::ParseIsHnsEnabled(
   if (!hns_node.isNull() && hns_node.isObject()) {
     bool enabled = false;
     if (hns_node.isMember("enabled")) {
-      TF_RETURN_IF_ERROR(GetBoolValue(hns_node, "enabled", &enabled));
+      RETURN_IF_ERROR(GetBoolValue(hns_node, "enabled", &enabled));
 
       *is_hns = enabled;
     }
@@ -1697,11 +1734,12 @@ absl::Status GcsFileSystem::ParseIsHnsEnabled(
   return absl::OkStatus();
 }
 
-absl::Status GcsFileSystem::IsBucketHnsEnabled(const string& bucket,
+absl::Status GcsFileSystem::IsBucketHnsEnabled(const std::string& bucket,
                                                bool* is_hns) {
   Json::Value storage_layout;
 
-  auto compute_func = [this](const string& bucket, Json::Value* layout_json) {
+  auto compute_func = [this](absl::string_view bucket,
+                             Json::Value* layout_json) {
     std::vector<char> layout_buffer;
     absl::Status layout_status = GetStorageLayout(bucket, &layout_buffer);
     if (!layout_status.ok()) {
@@ -1711,24 +1749,25 @@ absl::Status GcsFileSystem::IsBucketHnsEnabled(const string& bucket,
   };
 
   // Look up the full JSON object in the new cache.
-  TF_RETURN_IF_ERROR(storage_layout_cache_->LookupOrCompute(
+  RETURN_IF_ERROR(storage_layout_cache_->LookupOrCompute(
       bucket, &storage_layout, compute_func));
 
   return ParseIsHnsEnabled(storage_layout, is_hns);
 }
 
-absl::Status GcsFileSystem::FolderExists(const string& dirname, bool* result) {
-  StatCache::ComputeFunc compute_func = [this](const string& dirname,
-                                               GcsFileStat* stat) {
-    std::vector<string> children;
-    TF_RETURN_IF_ERROR(
+absl::Status GcsFileSystem::FolderExists(absl::string_view dirname,
+                                         bool* result) {
+  StatCache::ComputeFunc compute_func =
+      [this](absl::string_view dirname, GcsFileStat* stat) -> absl::Status {
+    std::vector<std::string> children;
+    RETURN_IF_ERROR(
         GetChildrenBounded(dirname, 1, &children, true /* recursively */,
                            true /* include_self_directory_marker */));
     if (!children.empty()) {
       stat->base = DIRECTORY_STAT;
       return absl::OkStatus();
     } else {
-      return errors::InvalidArgument("Not a directory!");
+      return absl::InvalidArgumentError("Not a directory!");
     }
   };
   GcsFileStat stat;
@@ -1745,96 +1784,94 @@ absl::Status GcsFileSystem::FolderExists(const string& dirname, bool* result) {
   return s;
 }
 
-absl::Status GcsFileSystem::GetChildren(const string& dirname,
-                                        TransactionToken* token,
-                                        std::vector<string>* result) {
+absl::Status GcsFileSystem::GetChildren(const std::string& dirname,
+                                        std::vector<std::string>* result) {
   return GetChildrenBounded(dirname, UINT64_MAX, result,
                             false /* recursively */,
                             false /* include_self_directory_marker */);
 }
 
-absl::Status GcsFileSystem::GetMatchingPaths(const string& pattern,
-                                             TransactionToken* token,
-                                             std::vector<string>* results) {
+absl::Status GcsFileSystem::GetMatchingPaths(
+    const std::string& pattern, std::vector<std::string>* results) {
   MatchingPathsCache::ComputeFunc compute_func =
-      [this](const string& pattern, std::vector<string>* results) {
-        results->clear();
-        // Find the fixed prefix by looking for the first wildcard.
-        const string& fixed_prefix =
-            pattern.substr(0, pattern.find_first_of("*?[\\"));
-        const string dir(this->Dirname(fixed_prefix));
-        if (dir.empty()) {
-          return errors::InvalidArgument(
-              "A GCS pattern doesn't have a bucket name: ", pattern);
-        }
-        std::vector<string> all_files;
-        TF_RETURN_IF_ERROR(GetChildrenBounded(
-            dir, UINT64_MAX, &all_files, true /* recursively */,
-            false /* include_self_directory_marker */));
+      [this](absl::string_view pattern,
+             std::vector<std::string>* results) -> absl::Status {
+    results->clear();
+    // Find the fixed prefix by looking for the first wildcard.
+    const absl::string_view fixed_prefix =
+        pattern.substr(0, pattern.find_first_of("*?[\\"));
+    const absl::string_view dir = this->Dirname(fixed_prefix);
+    if (dir.empty()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("A GCS pattern doesn't have a bucket name: ", pattern));
+    }
+    std::vector<std::string> all_files;
+    RETURN_IF_ERROR(
+        GetChildrenBounded(dir, UINT64_MAX, &all_files, true /* recursively */,
+                           false /* include_self_directory_marker */));
 
-        const auto& files_and_folders = AddAllSubpaths(all_files);
+    const auto& files_and_folders = AddAllSubpaths(all_files);
 
-        // To handle `/` in the object names, we need to remove it from `dir`
-        // and then use `StrCat` to insert it back.
-        const absl::string_view dir_no_slash = absl::StripSuffix(dir, "/");
+    // To handle `/` in the object names, we need to remove it from `dir`
+    // and then use `StrCat` to insert it back.
+    const absl::string_view dir_no_slash = absl::StripSuffix(dir, "/");
 
-        // Match all obtained paths to the input pattern.
-        for (const auto& path : files_and_folders) {
-          // Manually construct the path instead of using `JoinPath` for the
-          // cases where `path` starts with a `/` (which is a valid character in
-          // the filenames of GCS objects). `JoinPath` canonicalizes the result,
-          // removing duplicate slashes. We know that `dir_no_slash` does not
-          // end in `/`, so we are safe inserting the new `/` here as the path
-          // separator.
-          const string full_path = strings::StrCat(dir_no_slash, "/", path);
-          if (this->Match(full_path, pattern)) {
-            results->push_back(full_path);
-          }
-        }
-        return absl::OkStatus();
-      };
-  TF_RETURN_IF_ERROR(
+    // Match all obtained paths to the input pattern.
+    for (const auto& path : files_and_folders) {
+      // Manually construct the path instead of using `JoinPath` for the
+      // cases where `path` starts with a `/` (which is a valid character in
+      // the filenames of GCS objects). `JoinPath` canonicalizes the result,
+      // removing duplicate slashes. We know that `dir_no_slash` does not
+      // end in `/`, so we are safe inserting the new `/` here as the path
+      // separator.
+      const std::string full_path = absl::StrCat(dir_no_slash, "/", path);
+      if (this->Match(full_path, pattern)) {
+        results->push_back(full_path);
+      }
+    }
+    return absl::OkStatus();
+  };
+  RETURN_IF_ERROR(
       matching_paths_cache_->LookupOrCompute(pattern, results, compute_func));
   return absl::OkStatus();
 }
 
 absl::Status GcsFileSystem::GetChildrenBounded(
-    const string& dirname, uint64 max_results, std::vector<string>* result,
-    bool recursive, bool include_self_directory_marker) {
+    absl::string_view dirname, uint64_t max_results,
+    std::vector<std::string>* result, bool recursive,
+    bool include_self_directory_marker) {
   if (!result) {
-    return errors::InvalidArgument("'result' cannot be null");
+    return absl::InvalidArgumentError("'result' cannot be null");
   }
-  string bucket, object_prefix;
-  TF_RETURN_IF_ERROR(
+  std::string bucket, object_prefix;
+  RETURN_IF_ERROR(
       ParseGcsPath(MaybeAppendSlash(dirname), true, &bucket, &object_prefix));
 
-  string nextPageToken;
-  uint64 retrieved_results = 0;
+  std::string nextPageToken;
+  uint64_t retrieved_results = 0;
   while (true) {  // A loop over multiple result pages.
     std::vector<char> output_buffer;
     std::unique_ptr<HttpRequest> request;
-    TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
-    auto uri = strings::StrCat(kGcsUriBase, "b/", bucket, "/o");
+    RETURN_IF_ERROR(CreateHttpRequest(&request));
+    auto uri = absl::StrCat(kGcsUriBase, "b/", bucket, "/o");
     if (recursive) {
-      uri = strings::StrCat(uri, "?fields=items%2Fname%2CnextPageToken");
+      uri = absl::StrCat(uri, "?fields=items%2Fname%2CnextPageToken");
     } else {
       // Set "/" as a delimiter to ask GCS to treat subfolders as children
       // and return them in "prefixes".
-      uri = strings::StrCat(uri,
-                            "?fields=items%2Fname%2Cprefixes%2CnextPageToken");
-      uri = strings::StrCat(uri, "&delimiter=%2F");
+      uri =
+          absl::StrCat(uri, "?fields=items%2Fname%2Cprefixes%2CnextPageToken");
+      uri = absl::StrCat(uri, "&delimiter=%2F");
     }
     if (!object_prefix.empty()) {
-      uri = strings::StrCat(uri,
-                            "&prefix=", request->EscapeString(object_prefix));
+      uri = absl::StrCat(uri, "&prefix=", request->EscapeString(object_prefix));
     }
     if (!nextPageToken.empty()) {
-      uri = strings::StrCat(
-          uri, "&pageToken=", request->EscapeString(nextPageToken));
+      uri = absl::StrCat(uri,
+                         "&pageToken=", request->EscapeString(nextPageToken));
     }
     if (max_results - retrieved_results < kGetChildrenDefaultPageSize) {
-      uri =
-          strings::StrCat(uri, "&maxResults=", max_results - retrieved_results);
+      uri = absl::StrCat(uri, "&maxResults=", max_results - retrieved_results);
     }
     request->SetUri(uri);
     request->SetResultBuffer(&output_buffer);
@@ -1842,29 +1879,29 @@ absl::Status GcsFileSystem::GetChildrenBounded(
 
     TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading ", dirname);
     Json::Value root;
-    TF_RETURN_IF_ERROR(ParseJson(output_buffer, &root));
+    RETURN_IF_ERROR(ParseJson(output_buffer, &root));
     const auto items = root.get("items", Json::Value::null);
     if (!items.isNull()) {
       if (!items.isArray()) {
-        return errors::Internal(
+        return absl::InternalError(
             "Expected an array 'items' in the GCS response.");
       }
       for (size_t i = 0; i < items.size(); i++) {
         const auto item = items.get(i, Json::Value::null);
         if (!item.isObject()) {
-          return errors::Internal(
+          return absl::InternalError(
               "Unexpected JSON format: 'items' should be a list of objects.");
         }
-        string name;
-        TF_RETURN_IF_ERROR(GetStringValue(item, "name", &name));
+        std::string name;
+        RETURN_IF_ERROR(GetStringValue(item, "name", &name));
         // The names should be relative to the 'dirname'. That means the
         // 'object_prefix', which is part of 'dirname', should be removed from
         // the beginning of 'name'.
         absl::string_view relative_path(name);
         if (!absl::ConsumePrefix(&relative_path, object_prefix)) {
-          return errors::Internal(strings::StrCat(
-              "Unexpected response: the returned file name ", name,
-              " doesn't match the prefix ", object_prefix));
+          return absl::InternalError(
+              absl::StrCat("Unexpected response: the returned file name ", name,
+                           " doesn't match the prefix ", object_prefix));
         }
         if (!relative_path.empty() || include_self_directory_marker) {
           result->emplace_back(relative_path);
@@ -1878,22 +1915,22 @@ absl::Status GcsFileSystem::GetChildrenBounded(
     if (!prefixes.isNull()) {
       // Subfolders are returned for the non-recursive mode.
       if (!prefixes.isArray()) {
-        return errors::Internal(
+        return absl::InternalError(
             "'prefixes' was expected to be an array in the GCS response.");
       }
       for (size_t i = 0; i < prefixes.size(); i++) {
         const auto prefix = prefixes.get(i, Json::Value::null);
         if (prefix.isNull() || !prefix.isString()) {
-          return errors::Internal(
+          return absl::InternalError(
               "'prefixes' was expected to be an array of strings in the GCS "
               "response.");
         }
-        const string& prefix_str = prefix.asString();
+        const std::string& prefix_str = prefix.asString();
         absl::string_view relative_path(prefix_str);
         if (!absl::ConsumePrefix(&relative_path, object_prefix)) {
-          return errors::Internal(
+          return absl::InternalError(absl::StrCat(
               "Unexpected response: the returned folder name ", prefix_str,
-              " doesn't match the prefix ", object_prefix);
+              " doesn't match the prefix ", object_prefix));
         }
         result->emplace_back(relative_path);
         if (++retrieved_results >= max_results) {
@@ -1906,28 +1943,29 @@ absl::Status GcsFileSystem::GetChildrenBounded(
       return absl::OkStatus();
     }
     if (!token.isString()) {
-      return errors::Internal(
+      return absl::InternalError(
           "Unexpected response: nextPageToken is not a string");
     }
     nextPageToken = token.asString();
   }
 }
 
-absl::Status GcsFileSystem::Stat(const string& fname, TransactionToken* token,
+absl::Status GcsFileSystem::Stat(const std::string& fname,
                                  FileStatistics* stat) {
   if (!stat) {
-    return errors::Internal("'stat' cannot be nullptr.");
+    return absl::InternalError("'stat' cannot be nullptr.");
   }
-  string bucket, object;
-  TF_RETURN_IF_ERROR(ParseGcsPath(fname, true, &bucket, &object));
+  std::string bucket, object;
+  RETURN_IF_ERROR(ParseGcsPath(fname, true, &bucket, &object));
   if (object.empty()) {
     bool is_bucket;
-    TF_RETURN_IF_ERROR(BucketExists(bucket, &is_bucket));
+    RETURN_IF_ERROR(BucketExists(bucket, &is_bucket));
     if (is_bucket) {
       *stat = DIRECTORY_STAT;
       return absl::OkStatus();
     }
-    return errors::NotFound("The specified bucket ", fname, " was not found.");
+    return absl::NotFoundError(
+        absl::StrCat("The specified bucket ", fname, " was not found."));
   }
 
   GcsFileStat gcs_stat;
@@ -1940,21 +1978,21 @@ absl::Status GcsFileSystem::Stat(const string& fname, TransactionToken* token,
     return status;
   }
   bool is_folder;
-  TF_RETURN_IF_ERROR(FolderExists(fname, &is_folder));
+  RETURN_IF_ERROR(FolderExists(fname, &is_folder));
   if (is_folder) {
     *stat = DIRECTORY_STAT;
     return absl::OkStatus();
   }
-  return errors::NotFound("The specified path ", fname, " was not found.");
+  return absl::NotFoundError(
+      absl::StrCat("The specified path ", fname, " was not found."));
 }
 
-absl::Status GcsFileSystem::DeleteFile(const string& fname,
-                                       TransactionToken* token) {
-  string bucket, object;
-  TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
+absl::Status GcsFileSystem::DeleteFile(const std::string& fname) {
+  std::string bucket, object;
+  RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
 
   std::unique_ptr<HttpRequest> request;
-  TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
+  RETURN_IF_ERROR(CreateHttpRequest(&request));
   request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket, "/o/",
                                   request->EscapeString(object)));
   request->SetTimeouts(timeouts_.connect, timeouts_.idle, timeouts_.metadata);
@@ -1965,30 +2003,30 @@ absl::Status GcsFileSystem::DeleteFile(const string& fname,
   return absl::OkStatus();
 }
 
-absl::Status GcsFileSystem::CreateDir(const string& dirname,
-                                      TransactionToken* token) {
-  string dirname_with_slash = MaybeAppendSlash(dirname);
+absl::Status GcsFileSystem::CreateDir(const std::string& dirname) {
+  std::string dirname_with_slash = MaybeAppendSlash(dirname);
   VLOG(3) << "CreateDir: creating directory with dirname: " << dirname
           << " and dirname_with_slash: " << dirname_with_slash;
-  string bucket, object;
-  TF_RETURN_IF_ERROR(ParseGcsPath(dirname_with_slash, /*empty_object_ok=*/true,
-                                  &bucket, &object));
+  std::string bucket, object;
+  RETURN_IF_ERROR(ParseGcsPath(dirname_with_slash, /*empty_object_ok=*/true,
+                               &bucket, &object));
   if (object.empty()) {
     bool is_bucket;
-    TF_RETURN_IF_ERROR(BucketExists(bucket, &is_bucket));
+    RETURN_IF_ERROR(BucketExists(bucket, &is_bucket));
     return is_bucket ? absl::OkStatus()
-                     : errors::NotFound("The specified bucket ",
-                                        dirname_with_slash, " was not found.");
+                     : absl::NotFoundError(absl::StrCat("The specified bucket ",
+                                                        dirname_with_slash,
+                                                        " was not found."));
   }
 
-  if (FileExists(dirname_with_slash, token).ok()) {
+  if (FileExists(dirname_with_slash).ok()) {
     // Use the original name for a correct error here.
     VLOG(3) << "CreateDir: directory already exists, not uploading " << dirname;
-    return errors::AlreadyExists(dirname);
+    return absl::AlreadyExistsError(dirname);
   }
 
   std::unique_ptr<HttpRequest> request;
-  TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
+  RETURN_IF_ERROR(CreateHttpRequest(&request));
 
   request->SetUri(strings::StrCat(
       kGcsUploadUriBase, "b/", bucket,
@@ -2010,67 +2048,65 @@ absl::Status GcsFileSystem::CreateDir(const string& dirname,
   }
   VLOG(3) << "Ignoring directory already exists on object "
           << dirname_with_slash;
-  return errors::AlreadyExists(dirname);
+  return absl::AlreadyExistsError(dirname);
 }
 
 // Checks that the directory is empty (i.e no objects with this prefix exist).
 // Deletes the GCS directory marker if it exists.
-absl::Status GcsFileSystem::DeleteDir(const string& dirname,
-                                      TransactionToken* token) {
-  std::vector<string> children;
+absl::Status GcsFileSystem::DeleteDir(const std::string& dirname) {
+  std::vector<std::string> children;
   // A directory is considered empty either if there are no matching objects
   // with the corresponding name prefix or if there is exactly one matching
   // object and it is the directory marker. Therefore we need to retrieve
   // at most two children for the prefix to detect if a directory is empty.
-  TF_RETURN_IF_ERROR(
-      GetChildrenBounded(dirname, 2, &children, true /* recursively */,
-                         true /* include_self_directory_marker */));
+  RETURN_IF_ERROR(GetChildrenBounded(dirname, 2, &children,
+                                     true /* recursively */,
+                                     true /* include_self_directory_marker */));
 
   if (children.size() > 1 || (children.size() == 1 && !children[0].empty())) {
-    return errors::FailedPrecondition("Cannot delete a non-empty directory.");
+    return absl::FailedPreconditionError(
+        "Cannot delete a non-empty directory.");
   }
   if (children.size() == 1 && children[0].empty()) {
     // This is the directory marker object. Delete it.
-    return DeleteFile(MaybeAppendSlash(dirname), token);
+    return DeleteFile(MaybeAppendSlash(dirname));
   }
   return absl::OkStatus();
 }
 
-absl::Status GcsFileSystem::GetFileSize(const string& fname,
-                                        TransactionToken* token,
-                                        uint64* file_size) {
+absl::Status GcsFileSystem::GetFileSize(const std::string& fname,
+                                        uint64_t* file_size) {
   if (!file_size) {
-    return errors::Internal("'file_size' cannot be nullptr.");
+    return absl::InternalError("'file_size' cannot be nullptr.");
   }
 
   // Only validate the name.
-  string bucket, object;
-  TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
+  std::string bucket, object;
+  RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
 
   FileStatistics stat;
-  TF_RETURN_IF_ERROR(Stat(fname, token, &stat));
+  RETURN_IF_ERROR(Stat(fname, &stat));
   *file_size = stat.length;
   return absl::OkStatus();
 }
 
-absl::Status GcsFileSystem::RenameFile(const string& src, const string& target,
-                                       TransactionToken* token) {
-  if (!IsDirectory(src, token).ok()) {
+absl::Status GcsFileSystem::RenameFile(const std::string& src,
+                                       const std::string& target) {
+  if (!IsDirectory(src).ok()) {
     return RenameObject(src, target);
   }
 
   // It's a directory. Parse both source and target to check the buckets.
-  string src_bucket, src_object;
-  TF_RETURN_IF_ERROR(ParseGcsPath(src, true, &src_bucket, &src_object));
+  std::string src_bucket, src_object;
+  RETURN_IF_ERROR(ParseGcsPath(src, true, &src_bucket, &src_object));
 
-  string target_bucket, target_object;
-  TF_RETURN_IF_ERROR(
-      ParseGcsPath(target, true, &target_bucket, &target_object));
+  std::string target_bucket, target_object;
+  RETURN_IF_ERROR(ParseGcsPath(target, true, &target_bucket, &target_object));
 
   // If buckets are the same, we can check for HNS and use the fast rename API.
   if (src_bucket == target_bucket) {
     bool hns_enabled = false;
-    TF_RETURN_IF_ERROR(IsBucketHnsEnabled(src_bucket, &hns_enabled));
+    RETURN_IF_ERROR(IsBucketHnsEnabled(src_bucket, &hns_enabled));
 
     if (hns_enabled) {
       return RenameFolderHns(src, target);
@@ -2081,28 +2117,27 @@ absl::Status GcsFileSystem::RenameFile(const string& src, const string& target,
   // 1. The buckets are different (cross-bucket rename).
   // 2. The buckets are the same, but HNS is not enabled.
   VLOG(1) << "Falling back to iterative rename for directory " << src;
-  std::vector<string> children;
-  TF_RETURN_IF_ERROR(
-      GetChildrenBounded(src, UINT64_MAX, &children, true /* recursively */,
-                         true /* include_self_directory_marker */));
-  for (const string& subpath : children) {
-    TF_RETURN_IF_ERROR(
+  std::vector<std::string> children;
+  RETURN_IF_ERROR(GetChildrenBounded(src, UINT64_MAX, &children,
+                                     true /* recursively */,
+                                     true /* include_self_directory_marker */));
+  for (const std::string& subpath : children) {
+    RETURN_IF_ERROR(
         RenameObject(JoinGcsPath(src, subpath), JoinGcsPath(target, subpath)));
   }
   return absl::OkStatus();
 }
 
 // Uses a GCS API command to copy the object and then deletes the old one.
-absl::Status GcsFileSystem::RenameObject(const string& src,
-                                         const string& target) {
+absl::Status GcsFileSystem::RenameObject(const std::string& src,
+                                         const std::string& target) {
   VLOG(3) << "RenameObject: started gs://" << src << " to " << target;
-  string src_bucket, src_object, target_bucket, target_object;
-  TF_RETURN_IF_ERROR(ParseGcsPath(src, false, &src_bucket, &src_object));
-  TF_RETURN_IF_ERROR(
-      ParseGcsPath(target, false, &target_bucket, &target_object));
+  std::string src_bucket, src_object, target_bucket, target_object;
+  RETURN_IF_ERROR(ParseGcsPath(src, false, &src_bucket, &src_object));
+  RETURN_IF_ERROR(ParseGcsPath(target, false, &target_bucket, &target_object));
 
   std::unique_ptr<HttpRequest> request;
-  TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
+  RETURN_IF_ERROR(CreateHttpRequest(&request));
   request->SetUri(strings::StrCat(kGcsUriBase, "b/", src_bucket, "/o/",
                                   request->EscapeString(src_object),
                                   "/rewriteTo/b/", target_bucket, "/o/",
@@ -2117,18 +2152,18 @@ absl::Status GcsFileSystem::RenameObject(const string& src,
   // DeleteFile call below.
   ClearFileCaches(target);
   Json::Value root;
-  TF_RETURN_IF_ERROR(ParseJson(output_buffer, &root));
+  RETURN_IF_ERROR(ParseJson(output_buffer, &root));
   bool done;
-  TF_RETURN_IF_ERROR(GetBoolValue(root, "done", &done));
+  RETURN_IF_ERROR(GetBoolValue(root, "done", &done));
   if (!done) {
     // If GCS didn't complete rewrite in one call, this means that a large file
     // is being copied to a bucket with a different storage class or location,
     // which requires multiple rewrite calls.
     // TODO(surkov): implement multi-step rewrites.
-    return errors::Unimplemented(
-        "Couldn't rename ", src, " to ", target,
-        ": moving large files between buckets with different "
-        "locations or storage classes is not supported.");
+    return absl::UnimplementedError(
+        absl::StrCat("Couldn't rename ", src, " to ", target,
+                     ": moving large files between buckets with different "
+                     "locations or storage classes is not supported."));
   }
 
   VLOG(3) << "RenameObject: finished from: gs://" << src << " to " << target;
@@ -2136,68 +2171,66 @@ absl::Status GcsFileSystem::RenameObject(const string& src,
   // on the server side, we can't just retry the whole RenameFile operation
   // because the source object is already gone.
   return RetryingUtils::DeleteWithRetries(
-      [this, &src]() { return DeleteFile(src, nullptr); }, retry_config_);
+      [this, &src]() { return DeleteFile(src); }, retry_config_);
 }
 
-absl::Status GcsFileSystem::IsDirectory(const string& fname,
-                                        TransactionToken* token) {
-  string bucket, object;
-  TF_RETURN_IF_ERROR(ParseGcsPath(fname, true, &bucket, &object));
+absl::Status GcsFileSystem::IsDirectory(const std::string& fname) {
+  std::string bucket, object;
+  RETURN_IF_ERROR(ParseGcsPath(fname, true, &bucket, &object));
   if (object.empty()) {
     bool is_bucket;
-    TF_RETURN_IF_ERROR(BucketExists(bucket, &is_bucket));
+    RETURN_IF_ERROR(BucketExists(bucket, &is_bucket));
     if (is_bucket) {
       return absl::OkStatus();
     }
-    return errors::NotFound("The specified bucket gs://", bucket,
-                            " was not found.");
+    return absl::NotFoundError(
+        absl::StrCat("The specified bucket gs://", bucket, " was not found."));
   }
   bool is_folder;
-  TF_RETURN_IF_ERROR(FolderExists(fname, &is_folder));
+  RETURN_IF_ERROR(FolderExists(fname, &is_folder));
   if (is_folder) {
     return absl::OkStatus();
   }
   bool is_object;
-  TF_RETURN_IF_ERROR(ObjectExists(fname, bucket, object, &is_object));
+  RETURN_IF_ERROR(ObjectExists(fname, bucket, object, &is_object));
   if (is_object) {
-    return errors::FailedPrecondition("The specified path ", fname,
-                                      " is not a directory.");
+    return absl::FailedPreconditionError(
+        absl::StrCat("The specified path ", fname, " is not a directory."));
   }
-  return errors::NotFound("The specified path ", fname, " was not found.");
+  return absl::NotFoundError(
+      absl::StrCat("The specified path ", fname, " was not found."));
 }
 
-absl::Status GcsFileSystem::DeleteRecursively(const string& dirname,
-                                              TransactionToken* token,
+absl::Status GcsFileSystem::DeleteRecursively(const std::string& dirname,
                                               int64_t* undeleted_files,
                                               int64_t* undeleted_dirs) {
   if (!undeleted_files || !undeleted_dirs) {
-    return errors::Internal(
+    return absl::InternalError(
         "'undeleted_files' and 'undeleted_dirs' cannot be nullptr.");
   }
   *undeleted_files = 0;
   *undeleted_dirs = 0;
-  if (!IsDirectory(dirname, token).ok()) {
+  if (!IsDirectory(dirname).ok()) {
     *undeleted_dirs = 1;
     return absl::Status(
         absl::StatusCode::kNotFound,
-        strings::StrCat(dirname, " doesn't exist or not a directory."));
+        absl::StrCat(dirname, " doesn't exist or not a directory."));
   }
-  std::vector<string> all_objects;
+  std::vector<std::string> all_objects;
   // Get all children in the directory recursively.
-  TF_RETURN_IF_ERROR(GetChildrenBounded(
-      dirname, UINT64_MAX, &all_objects, true /* recursively */,
-      true /* include_self_directory_marker */));
-  for (const string& object : all_objects) {
-    const string& full_path = JoinGcsPath(dirname, object);
+  RETURN_IF_ERROR(GetChildrenBounded(dirname, UINT64_MAX, &all_objects,
+                                     true /* recursively */,
+                                     true /* include_self_directory_marker */));
+  for (const std::string& object : all_objects) {
+    const std::string& full_path = JoinGcsPath(dirname, object);
     // Delete all objects including directory markers for subfolders.
     // Since DeleteRecursively returns OK if individual file deletions fail,
     // and therefore RetryingFileSystem won't pay attention to the failures,
     // we need to make sure these failures are properly retried.
     const auto& delete_file_status = RetryingUtils::DeleteWithRetries(
-        [this, &full_path, token]() { return DeleteFile(full_path, token); },
-        retry_config_);
+        [this, &full_path]() { return DeleteFile(full_path); }, retry_config_);
     if (!delete_file_status.ok()) {
-      if (IsDirectory(full_path, token).ok()) {
+      if (IsDirectory(full_path).ok()) {
         // The object is a directory marker.
         (*undeleted_dirs)++;
       } else {
@@ -2208,18 +2241,17 @@ absl::Status GcsFileSystem::DeleteRecursively(const string& dirname,
   return absl::OkStatus();
 }
 
-absl::Status GcsFileSystem::RenameFolderHns(const string& src,
-                                            const string& target) {
+absl::Status GcsFileSystem::RenameFolderHns(const std::string& src,
+                                            const std::string& target) {
   VLOG(1) << "GcsFileSystem::RenameFolderHns invoked. From: '" << src
           << "' to: '" << target << "'";
 
-  string src_bucket, src_object, target_bucket, target_object;
-  TF_RETURN_IF_ERROR(ParseGcsPath(src, false, &src_bucket, &src_object));
-  TF_RETURN_IF_ERROR(
-      ParseGcsPath(target, false, &target_bucket, &target_object));
+  std::string src_bucket, src_object, target_bucket, target_object;
+  RETURN_IF_ERROR(ParseGcsPath(src, false, &src_bucket, &src_object));
+  RETURN_IF_ERROR(ParseGcsPath(target, false, &target_bucket, &target_object));
 
   std::unique_ptr<HttpRequest> request;
-  TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
+  RETURN_IF_ERROR(CreateHttpRequest(&request));
 
   const std::string uri_to_send =
       absl::StrCat(kGcsUriBase, "b/", src_bucket, "/folders/",
@@ -2239,16 +2271,17 @@ absl::Status GcsFileSystem::RenameFolderHns(const string& src,
 
   // Parse the long-running operation object from the response.
   Json::Value operation_response;
-  TF_RETURN_IF_ERROR(ParseJson(output_buffer, &operation_response));
+  RETURN_IF_ERROR(ParseJson(output_buffer, &operation_response));
 
   bool done = false;
   if (operation_response.isMember("done")) {
-    TF_RETURN_IF_ERROR(GetBoolValue(operation_response, "done", &done));
+    RETURN_IF_ERROR(GetBoolValue(operation_response, "done", &done));
     if (done) {
       if (operation_response.isMember("error")) {
-        return errors::Internal("RenameFolderHns for '", src,
-                                "' failed immediately with an error: ",
-                                operation_response["error"].toStyledString());
+        return absl::InternalError(
+            absl::StrCat("RenameFolderHns for '", src,
+                         "' failed immediately with an error: ",
+                         operation_response["error"].toStyledString()));
       }
       VLOG(1) << "RenameFolderHns finished immediately for " << src;
       return absl::OkStatus();
@@ -2256,8 +2289,7 @@ absl::Status GcsFileSystem::RenameFolderHns(const string& src,
   }
 
   std::string operation_name;
-  TF_RETURN_IF_ERROR(
-      GetStringValue(operation_response, "name", &operation_name));
+  RETURN_IF_ERROR(GetStringValue(operation_response, "name", &operation_name));
 
   absl::string_view operation_id = io::Basename(operation_name);
 
@@ -2268,7 +2300,7 @@ absl::Status GcsFileSystem::RenameFolderHns(const string& src,
   while (true) {
     absl::SleepFor(kPollingInterval);
     std::unique_ptr<HttpRequest> poll_request;
-    TF_RETURN_IF_ERROR(CreateHttpRequest(&poll_request));
+    RETURN_IF_ERROR(CreateHttpRequest(&poll_request));
 
     poll_request->SetUri(absl::StrCat(kGcsUriBase, "b/", src_bucket,
                                       "/operations/", operation_id));
@@ -2280,17 +2312,17 @@ absl::Status GcsFileSystem::RenameFolderHns(const string& src,
     TF_RETURN_WITH_CONTEXT_IF_ERROR(poll_request->Send(),
                                     " when polling operation ", operation_id);
 
-    TF_RETURN_IF_ERROR(ParseJson(poll_output_buffer, &operation_response));
+    RETURN_IF_ERROR(ParseJson(poll_output_buffer, &operation_response));
 
     if (operation_response.isMember("error")) {
-      return errors::Internal("RenameFolderHns for '", src,
-                              "' failed with an error: ",
-                              operation_response["error"].toStyledString());
+      return absl::InternalError(
+          absl::StrCat("RenameFolderHns for '", src, "' failed with an error: ",
+                       operation_response["error"].toStyledString()));
     }
 
     if (operation_response.isMember("done")) {
       bool done = false;
-      TF_RETURN_IF_ERROR(GetBoolValue(operation_response, "done", &done));
+      RETURN_IF_ERROR(GetBoolValue(operation_response, "done", &done));
       if (done) {
         break;
       }
@@ -2305,8 +2337,8 @@ absl::Status GcsFileSystem::RenameFolderHns(const string& src,
 // Flushes all caches for filesystem metadata and file contents. Useful for
 // reclaiming memory once filesystem operations are done (e.g. model is loaded),
 // or for resetting the filesystem to a consistent state.
-void GcsFileSystem::FlushCaches(TransactionToken* token) {
-  absl::ReaderMutexLock l(&block_cache_lock_);
+void GcsFileSystem::FlushCaches() {
+  absl::ReaderMutexLock l(block_cache_lock_);
   file_block_cache_->Flush();
   stat_cache_->Clear();
   matching_paths_cache_->Clear();
@@ -2317,13 +2349,13 @@ void GcsFileSystem::FlushCaches(TransactionToken* token) {
 void GcsFileSystem::SetStats(GcsStatsInterface* stats) {
   CHECK(stats_ == nullptr) << "SetStats() has already been called.";
   CHECK(stats != nullptr);
-  absl::MutexLock l(&block_cache_lock_);
+  absl::MutexLock l(block_cache_lock_);
   stats_ = stats;
   stats_->Configure(this, &throttle_, file_block_cache_.get());
 }
 
 void GcsFileSystem::SetCacheStats(FileBlockCacheStatsInterface* cache_stats) {
-  absl::ReaderMutexLock l(&block_cache_lock_);
+  absl::ReaderMutexLock l(block_cache_lock_);
   if (file_block_cache_ == nullptr) {
     LOG(ERROR) << "Tried to set cache stats of non-initialized file block "
                   "cache object. This may result in not exporting the intended "
@@ -2335,7 +2367,7 @@ void GcsFileSystem::SetCacheStats(FileBlockCacheStatsInterface* cache_stats) {
 
 void GcsFileSystem::SetAuthProvider(
     std::unique_ptr<AuthProvider> auth_provider) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   auth_provider_ = std::move(auth_provider);
 }
 
@@ -2349,11 +2381,10 @@ absl::Status GcsFileSystem::CreateHttpRequest(
     dns_cache_->AnnotateRequest(new_request.get());
   }
 
-  string auth_token;
+  std::string auth_token;
   {
-    absl::ReaderMutexLock l(&mu_);
-    TF_RETURN_IF_ERROR(
-        AuthProvider::GetToken(auth_provider_.get(), &auth_token));
+    absl::ReaderMutexLock l(mu_);
+    RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
   }
 
   new_request->AddAuthBearerHeader(auth_token);
@@ -2368,7 +2399,7 @@ absl::Status GcsFileSystem::CreateHttpRequest(
   }
 
   if (!throttle_.AdmitRequest()) {
-    return errors::Unavailable("Request throttled");
+    return absl::UnavailableError("Request throttled");
   }
 
   *request = std::move(new_request);

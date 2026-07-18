@@ -1,3 +1,18 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
 // COM: This file is there to check that the `tfl-legalize-hlo` pass exists in `odml-to-stablehlo-opt`.
 
 // RUN: odml-to-stablehlo-opt %s -tfl-legalize-hlo -split-input-file | FileCheck %s --dump-input=fail
@@ -2297,13 +2312,56 @@ func.func @slice(%arg0: tensor<1x4672xf32>) -> tensor<1x519xf32> {
   func.return %0 : tensor<1x519xf32>
 }
 
-// CHECK: %[[CST:.*]] = arith.constant dense<[0, 4153]> : tensor<2xi64>
-// CHECK: %[[CST_0:.*]] = arith.constant dense<[1, 4672]> : tensor<2xi64>
-// CHECK: %[[CST_1:.*]] = arith.constant dense<1> : tensor<2xi64>
-// CHECK: %[[VAL_0:.*]] = "tfl.cast"(%[[CST]]) : (tensor<2xi64>) -> tensor<2xi32>
-// CHECK: %[[VAL_1:.*]] = "tfl.cast"(%[[CST_0]]) : (tensor<2xi64>) -> tensor<2xi32>
-// CHECK: %[[VAL_2:.*]] = "tfl.cast"(%[[CST_1]]) : (tensor<2xi64>) -> tensor<2xi32>
-// CHECK: %[[VAL_3:.*]] = "tfl.strided_slice"(%arg0, %[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) <{begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32}> : (tensor<1x4672xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x519xf32>
+// CHECK: %[[CST:.*]] = arith.constant dense<[0, 4153]> : tensor<2xi32>
+// CHECK: %[[CST_0:.*]] = arith.constant dense<[1, 4672]> : tensor<2xi32>
+// CHECK: %[[CST_1:.*]] = arith.constant dense<1> : tensor<2xi32>
+// CHECK: %[[VAL_3:.*]] = "tfl.strided_slice"(%arg0, %[[CST]], %[[CST_0]], %[[CST_1]]) <{begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32}> : (tensor<1x4672xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x519xf32>
+
+// -----
+
+// CHECK-LABEL: rank5_slice
+func.func @rank5_slice(%arg0: tensor<16x192x48x1x2xf32>) -> tensor<16x192x48x1x1xf32> {
+  // CHECK: %[[CST:.*]] = arith.constant dense<0> : tensor<5xi32>
+  // CHECK: %[[CST_0:.*]] = arith.constant dense<[16, 192, 48, 1, 1]> : tensor<5xi32>
+  // CHECK: %[[CST_1:.*]] = arith.constant dense<1> : tensor<5xi32>
+  // CHECK: "tfl.strided_slice"(%arg0, %[[CST]], %[[CST_0]], %[[CST_1]])
+  %0 = "mhlo.slice"(%arg0) {
+    start_indices = dense<0> : tensor<5xi64>,
+    limit_indices = dense<[16, 192, 48, 1, 1]> : tensor<5xi64>,
+    strides = dense<1> : tensor<5xi64>
+  } : (tensor<16x192x48x1x2xf32>) -> tensor<16x192x48x1x1xf32>
+  return %0 : tensor<16x192x48x1x1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: dynamic_slice_mhlo
+func.func @dynamic_slice_mhlo(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  // CHECK: %[[CST:.*]] = arith.constant dense<0> : tensor<2xi32>
+  // CHECK: %[[CST_0:.*]] = arith.constant dense<1> : tensor<2xi32>
+  // CHECK: %[[CST_1:.*]] = arith.constant dense<1> : tensor<2xi32>
+  // CHECK: "tfl.strided_slice"(%arg0, %[[CST]], %[[CST_0]], %[[CST_1]])
+  %0 = "mhlo.slice"(%arg0) {
+    start_indices = dense<0> : tensor<2xi64>,
+    limit_indices = dense<1> : tensor<2xi64>,
+    strides = dense<1> : tensor<2xi64>
+  } : (tensor<?x?xf32>) -> tensor<?x?xf32>
+  return %0 : tensor<?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: rank6_slice_collapse
+func.func @rank6_slice_collapse(%arg0: tensor<1x16x192x48x1x2xf32>) -> tensor<1x16x192x48x1x1xf32> {
+  // CHECK: %[[RESHAPE_IN:.*]] = "tfl.reshape"(%arg0, %{{.*}}) : (tensor<1x16x192x48x1x2xf32>, tensor<5xi32>) -> tensor<16x192x48x1x2xf32>
+  // CHECK: %[[SLICE:.*]] = "tfl.strided_slice"(%[[RESHAPE_IN]], %{{.*}}, %{{.*}}, %{{.*}}) {{.*}} (tensor<16x192x48x1x2xf32>, tensor<5xi32>, tensor<5xi32>, tensor<5xi32>) -> tensor<16x192x48x1x1xf32>
+  // CHECK: %[[RESHAPE_OUT:.*]] = "tfl.reshape"(%[[SLICE]], %{{.*}}) : (tensor<16x192x48x1x1xf32>, tensor<6xi32>) -> tensor<1x16x192x48x1x1xf32>
+  %cst = arith.constant dense<0> : tensor<6xi32>
+  %cst_0 = arith.constant dense<[1, 16, 192, 48, 1, 1]> : tensor<6xi32>
+  %cst_1 = arith.constant dense<1> : tensor<6xi32>
+  %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1) <{begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32}> : (tensor<1x16x192x48x1x2xf32>, tensor<6xi32>, tensor<6xi32>, tensor<6xi32>) -> tensor<1x16x192x48x1x1xf32>
+  return %0 : tensor<1x16x192x48x1x1xf32>
+}
 
 // -----
 
@@ -2317,7 +2375,7 @@ func.func @real_dynamic_slice(%arg0: tensor<1x?x4x256xf32>, %arg1: tensor<4xi32>
   func.return %0 : tensor<1x?x4x128xf32>
 }
 
-// CHECK: "tfl.strided_slice"(%arg0, %0, %1, %2) <{begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32}> : (tensor<1x?x4x256xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x?x4x128xf32>
+// CHECK: "tfl.strided_slice"(%arg0, %{{.*}}, %{{.*}}, %{{.*}}) <{begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32}> : (tensor<1x?x4x256xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x?x4x128xf32>
 
 // -----
 
@@ -3198,8 +3256,8 @@ func.func @not_ui8(%arg0: tensor<7x9x11xui8>) -> tensor<7x9x11xui8> {
   func.return %0 : tensor<7x9x11xui8>
 }
 
-// CHECK: %cst = arith.constant dense<255> : tensor<ui8>
-// CHECK: %0 = "tfl.bitwise_xor"(%arg0, %cst) : (tensor<7x9x11xui8>, tensor<ui8>) -> tensor<7x9x11xui8>
+// CHECK: %[[CST:.*]] = "tfl.pseudo_const"() <{value = dense<255> : tensor<ui8>}> : () -> tensor<ui8>
+// CHECK: %{{.*}} = "tfl.bitwise_xor"(%arg0, %[[CST]]) : (tensor<7x9x11xui8>, tensor<ui8>) -> tensor<7x9x11xui8>
 
 // -----
 
@@ -3209,8 +3267,8 @@ func.func @not_ui16(%arg0: tensor<7x9x11xui16>) -> tensor<7x9x11xui16> {
   func.return %0 : tensor<7x9x11xui16>
 }
 
-// CHECK: %cst = arith.constant dense<65535> : tensor<ui16>
-// CHECK: %0 = "tfl.bitwise_xor"(%arg0, %cst) : (tensor<7x9x11xui16>, tensor<ui16>) -> tensor<7x9x11xui16>
+// CHECK: %[[CST:.*]] = "tfl.pseudo_const"() <{value = dense<65535> : tensor<ui16>}> : () -> tensor<ui16>
+// CHECK: %{{.*}} = "tfl.bitwise_xor"(%arg0, %[[CST]]) : (tensor<7x9x11xui16>, tensor<ui16>) -> tensor<7x9x11xui16>
 
 // -----
 
@@ -3220,8 +3278,8 @@ func.func @not_ui32(%arg0: tensor<7x9x11xui32>) -> tensor<7x9x11xui32> {
   func.return %0 : tensor<7x9x11xui32>
 }
 
-// CHECK: %cst = arith.constant dense<4294967295> : tensor<ui32>
-// CHECK: %0 = "tfl.bitwise_xor"(%arg0, %cst) : (tensor<7x9x11xui32>, tensor<ui32>) -> tensor<7x9x11xui32>
+// CHECK: %[[CST:.*]] = "tfl.pseudo_const"() <{value = dense<4294967295> : tensor<ui32>}> : () -> tensor<ui32>
+// CHECK: %{{.*}} = "tfl.bitwise_xor"(%arg0, %[[CST]]) : (tensor<7x9x11xui32>, tensor<ui32>) -> tensor<7x9x11xui32>
 
 // -----
 
@@ -3724,11 +3782,40 @@ func.func @dynamic_broadcast_in_dim_general_case_expand_back_dims(%arg0: tensor<
 // -----
 
 //===----------------------------------------------------------------------===//
+// mhlo.case
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: case_func
+func.func @case_func(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> (tensor<i32>) {
+  %0 = "mhlo.case"(%arg0) ({
+    %2 = mhlo.add %arg1, %arg2 : tensor<i32>
+    "mhlo.return"(%2) : (tensor<i32>) -> ()
+  }, {
+    %2 = mhlo.multiply %arg1, %arg1 : tensor<i32>
+    "mhlo.return"(%2) : (tensor<i32>) -> ()
+  }) : (tensor<i32>) -> tensor<i32>
+  func.return %0: tensor<i32>
+}
+
+// CHECK: %[[CST:.*]] = arith.constant dense<0> : tensor<i32>
+// CHECK: %[[PRED:.*]] = tfl.not_equal(%arg0, %[[CST]]) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+// CHECK: %[[IF:.*]] = "tfl.if"(%[[PRED]]) ({
+// CHECK:   %[[MUL:.*]] = tfl.mul %arg1, %arg1 {fused_activation_function = "NONE"} : tensor<i32>
+// CHECK:   "tfl.yield"(%[[MUL]]) : (tensor<i32>) -> ()
+// CHECK: }, {
+// CHECK:   %[[ADD:.*]] = tfl.add %arg1, %arg2 {fused_activation_function = "NONE"} : tensor<i32>
+// CHECK:   "tfl.yield"(%[[ADD]]) : (tensor<i32>) -> ()
+// CHECK: }) : (tensor<i1>) -> tensor<i32>
+// CHECK: return %[[IF]] : tensor<i32>
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // mhlo.if
 //===----------------------------------------------------------------------===//
 
-// CHECK-LABEL: if
-func.func @if(%arg0: tensor<i1>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> (tensor<i32>) {
+// CHECK-LABEL: if_label
+func.func @if_label(%arg0: tensor<i1>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> (tensor<i32>) {
   %0 = mhlo.add %arg1, %arg2 : tensor<i32>
   %1 = "mhlo.if"(%arg0) ({
     "mhlo.return"(%0) : (tensor<i32>) -> ()

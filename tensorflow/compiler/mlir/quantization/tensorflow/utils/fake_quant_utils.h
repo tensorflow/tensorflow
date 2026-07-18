@@ -141,10 +141,10 @@ class ConvertFakeQuantOpToQuantOps {
     // Finally, use the quantization parameter to create the quantize and
     // dequantize ops, and insert them between the tf.FakeQuantWithMinMaxVarsOp
     // and its users.
-    auto quantize = rewriter.create<mlir::quant::ir::QuantizeCastOp>(
-        tf_op.getLoc(), qtype.getValue(), input);
-    auto dequantize = rewriter.create<mlir::quant::ir::DequantizeCastOp>(
-        tf_op.getLoc(), res_type, quantize.getResult());
+    auto quantize = mlir::quant::ir::QuantizeCastOp::create(
+        rewriter, tf_op.getLoc(), qtype.getValue(), input);
+    auto dequantize = mlir::quant::ir::DequantizeCastOp::create(
+        rewriter, tf_op.getLoc(), res_type, quantize.getResult());
     tf_op.getOutputs().replaceAllUsesWith(dequantize);
 
     return success();

@@ -35,8 +35,8 @@ namespace tsl {
 namespace monitoring {
 
 void PercentileSamplerCell::Add(double sample) {
-  uint64 nstime = EnvTime::NowNanos();
-  absl::MutexLock l(&mu_);
+  uint64_t nstime = EnvTime::NowNanos();
+  absl::MutexLock l(mu_);
   samples_[next_position_] = {nstime, sample};
   ++next_position_;
   if (TF_PREDICT_FALSE(next_position_ >= samples_.size())) {
@@ -90,7 +90,7 @@ Percentiles PercentileSamplerCell::value() const {
 
 std::vector<PercentileSamplerCell::Sample> PercentileSamplerCell::GetSamples(
     size_t* total_samples, long double* accumulator) const {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   std::vector<Sample> samples;
   if (num_samples_ == samples_.size()) {
     samples.insert(samples.end(), samples_.begin() + next_position_,

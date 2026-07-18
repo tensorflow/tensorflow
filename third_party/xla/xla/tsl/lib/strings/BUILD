@@ -18,8 +18,8 @@ cc_library(
         "//xla/tsl/platform:macros",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:hash",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:hash",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -27,6 +27,13 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "proto_serialization.cc",
+    ],
+    visibility = internal_visibility(["//tensorflow/core/lib/strings:__pkg__"]),
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
         "proto_serialization.h",
     ],
     visibility = internal_visibility(["//tensorflow/core/lib/strings:__pkg__"]),

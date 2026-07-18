@@ -76,7 +76,7 @@ class TestCluster {
 
   // Returns a vector of string "<hostname>:<port>" pairs that may be
   // used as targets to construct a GrpcSession.
-  const std::vector<string>& targets(std::string job_name = "localhost") {
+  const std::vector<std::string>& targets(std::string job_name = "localhost") {
     return targets_.at(job_name);
   }
 

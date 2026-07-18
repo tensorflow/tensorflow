@@ -154,11 +154,13 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <cstdint>
 #include <functional>
 #include <iosfwd>
 #include <ostream>  // NOLINT
 #include <unordered_map>
 
+#include "absl/strings/str_format.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/types.h"
 
@@ -290,6 +292,21 @@ std::ostream& operator<<(std::ostream& os,  // NOLINT
   return os << arg.value();
 }
 
+template <typename Sink, typename... T>
+void AbslStringify(Sink& sink, IntType<T...> arg) {
+  using ValueType = typename decltype(arg)::ValueType;
+
+  // int8_t/uint8_t are not supported by the "%v" specifier due to it being
+  // ambiguous whether an integer or character should be printed.
+  if constexpr (std::is_same_v<ValueType, int8_t>) {
+    absl::Format(&sink, "%d", arg.value());
+  } else if constexpr (std::is_same_v<ValueType, uint8_t>) {
+    absl::Format(&sink, "%u", arg.value());
+  } else {
+    absl::Format(&sink, "%v", arg.value());
+  }
+}
+
 // -- NON-MEMBER ARITHMETIC OPERATORS ------------------------------------------
 // We support only the +, -, *, and / operators with the same IntType and
 // ValueType types.  The reason is to allow simple manipulation on these IDs
@@ -331,24 +348,23 @@ INT_TYPE_ARITHMETIC_OP(%);
 //   IntType<IntTypeName, ValueType> OP IntType<IntTypeName, ValueType>
 //   IntType<IntTypeName, ValueType> OP ValueType
 //   ValueType OP IntType<IntTypeName, ValueType>
-#define INT_TYPE_COMPARISON_OP(op)                               \
-  template <typename IntTypeName, typename ValueType>            \
-  static inline constexpr bool operator op(                      \
-      IntType<IntTypeName, ValueType> id_1,                      \
-      IntType<IntTypeName, ValueType> id_2) {                    \
-    return id_1.value() op id_2.value();                         \
-  }                                                              \
-  template <typename IntTypeName, typename ValueType>            \
-  static inline constexpr bool operator op(                      \
-      IntType<IntTypeName, ValueType> id,                        \
-      typename IntType<IntTypeName, ValueType>::ValueType val) { \
-    return id.value() op val;                                    \
-  }                                                              \
-  template <typename IntTypeName, typename ValueType>            \
-  static inline constexpr bool operator op(                      \
-      typename IntType<IntTypeName, ValueType>::ValueType val,   \
-      IntType<IntTypeName, ValueType> id) {                      \
-    return val op id.value();                                    \
+#define INT_TYPE_COMPARISON_OP(op)                                          \
+  template <typename IntTypeName, typename ValueType>                       \
+  inline constexpr bool operator op(IntType<IntTypeName, ValueType> id_1,   \
+                                    IntType<IntTypeName, ValueType> id_2) { \
+    return id_1.value() op id_2.value();                                    \
+  }                                                                         \
+  template <typename IntTypeName, typename ValueType>                       \
+  inline constexpr bool operator op(                                        \
+      IntType<IntTypeName, ValueType> id,                                   \
+      typename IntType<IntTypeName, ValueType>::ValueType val) {            \
+    return id.value() op val;                                               \
+  }                                                                         \
+  template <typename IntTypeName, typename ValueType>                       \
+  inline constexpr bool operator op(                                        \
+      typename IntType<IntTypeName, ValueType>::ValueType val,              \
+      IntType<IntTypeName, ValueType> id) {                                 \
+    return val op id.value();                                               \
   }
 INT_TYPE_COMPARISON_OP(==);  // NOLINT
 INT_TYPE_COMPARISON_OP(!=);  // NOLINT

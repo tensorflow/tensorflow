@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -43,7 +44,7 @@ StatusOr<mlir::Value> ExpandIndices(mlir::OpBuilder& builder,
   int64_t num_dim =
       mlir::dyn_cast<mlir::RankedTensorType>(indices.getType()).getDimSize(1);
   if (num_dim != 2)
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "Sparse tensors with dense rank not equal to 2 is not yet supported in "
         "DTensor.");
   mlir::Location loc = indices.getLoc();
@@ -53,14 +54,14 @@ StatusOr<mlir::Value> ExpandIndices(mlir::OpBuilder& builder,
           .getElementType());
   // Little trick to make a rank-2 tensor of [[0,0], [0,1]] using rank 1
   // constants.
-  mlir::Value indices_padding = builder.create<mlir::TF::ReshapeOp>(
-      loc,
+  mlir::Value indices_padding = mlir::TF::ReshapeOp::create(
+      builder, loc,
       mlir::TF::collection_ops_util::GetR1Const({0, 0, 0, 1}, builder, loc),
       mlir::TF::collection_ops_util::GetR1Const({2, 2}, builder, loc));
   mlir::Value indices_padded =
-      builder.create<mlir::TF::PadOp>(loc, indices_padded_type,
-                                      /*input=*/indices,
-                                      /*paddings=*/indices_padding);
+      mlir::TF::PadOp::create(builder, loc, indices_padded_type,
+                              /*input=*/indices,
+                              /*paddings=*/indices_padding);
   return indices_padded;
 }
 
@@ -81,7 +82,7 @@ StatusOr<mlir::Operation*> DynamicEnqueueSparseExpander::ExpandOp(
 
   for (mlir::Value sparse_feature_value : feature) {
     if (!IsSparseValue(sparse_feature_value)) {
-      return errors::Internal(
+      return absl::InternalError(
           "Expected feature input to DynamicEnqueueOp to be a sparse input, "
           "but was not. This should not happen.");
     }
@@ -98,16 +99,15 @@ StatusOr<mlir::Operation*> DynamicEnqueueSparseExpander::ExpandOp(
   // This op does not have a return value so we do not need to replace any
   // consumers.
   mlir::Operation* sparse_enqueue_op =
-      builder
-          .create<mlir::TF::DynamicEnqueueTPUEmbeddingArbitraryTensorBatchOp>(
-              location,
-              /*sample_indices_or_row_splits_list=*/indices,
-              /*embedding_indices=*/values,
-              /*aggregation_weights=*/dense_enqueue_op.getAggregationWeights(),
-              /*mode_override=*/
-              dense_enqueue_op.getModeOverride(),
-              /*device_ordinal=*/dense_enqueue_op.getDeviceOrdinal(),
-              /*combiners=*/dense_enqueue_op.getCombiners());
+      mlir::TF::DynamicEnqueueTPUEmbeddingArbitraryTensorBatchOp::create(
+          builder, location,
+          /*sample_indices_or_row_splits=*/indices,
+          /*embedding_indices=*/values,
+          /*aggregation_weights=*/dense_enqueue_op.getAggregationWeights(),
+          /*mode_override=*/
+          dense_enqueue_op.getModeOverride(),
+          /*device_ordinal=*/dense_enqueue_op.getDeviceOrdinal(),
+          /*combiners=*/dense_enqueue_op.getCombiners());
   dense_enqueue_op.erase();
   return sparse_enqueue_op;
 }

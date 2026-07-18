@@ -15,13 +15,27 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/resource_util.h"
 
+#include <optional>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "tensorflow/core/common_runtime/function_body.h"
+#include "tensorflow/core/common_runtime/function_utils.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -59,9 +73,9 @@ absl::StatusOr<absl::InlinedVector<const Edge*, 1>> OutputEdgesByIndex(
     const Node& n, int idx) {
   absl::InlinedVector<const Edge*, 1> res;
   if (idx >= n.num_outputs()) {
-    return errors::InvalidArgument("Invalid out_edge index: ", idx, ", Node ",
-                                   n.name(), " only has ", n.num_outputs(),
-                                   " outputs.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid out_edge index: ", idx, ", Node ", n.name(),
+                     " only has ", n.num_outputs(), " outputs."));
   }
 
   for (const Edge* o : n.out_edges()) {
@@ -188,9 +202,9 @@ absl::Status PropagateThroughCallOp(
                         absl::flat_hash_set<ResourceUsageAnalysis::NodeInfo>>*
         source_to_path) {
   if (call_depth > kMaxCallDepth) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Function call stack in given graph is too deep, last function ",
-        "name is: ", function_name.value());
+        "name is: ", function_name.value()));
   }
   // resource_arg_indices contains all indices of the input
   // arguments that carry Stack/TensorArray resource handles.
@@ -204,8 +218,8 @@ absl::Status PropagateThroughCallOp(
   // Instantiate associated function to get function body.
   FunctionLibraryRuntime::Handle handle;
   TF_RETURN_IF_ERROR(InstantiateFunctionCall(n.def(), lib_runtime, &handle));
-  auto release_handle_on_return = gtl::MakeCleanup(
-      [&] { TF_CHECK_OK(lib_runtime->ReleaseHandle(handle)); });
+  auto release_handle_on_return =
+      gtl::MakeCleanup([&] { CHECK_OK(lib_runtime->ReleaseHandle(handle)); });
   const FunctionBody* fbody = lib_runtime->GetFunctionBody(handle);
 
   // Recursively analyze called function for resource sources and users.
@@ -267,17 +281,17 @@ absl::Status AnalyzeResourceUsage(
       user_to_source;
   for (const Node* n : reverse_post_order) {
     if (IsControlFlowV1Node(n)) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "AnalyzeResourceUsage does not support control flow v1 node: ",
-          n->DebugString());
+          n->DebugString()));
     }
 
     // TODO(ycao): Support pass-through functional while/if nodes.
     if (n->type_string() == kIfOp || n->type_string() == kWhileOp) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "AnalyzeResourceUsage does not yet support control flow v2 "
           "node: ",
-          n->DebugString());
+          n->DebugString()));
     }
 
     // Record a resource source edge.

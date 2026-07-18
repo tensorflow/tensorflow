@@ -27,6 +27,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "xla/hlo/analysis/tuple_points_to_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -52,7 +53,7 @@ using RematAlgorithmFunction = std::function<absl::StatusOr<bool>(
 // CSE will undo the effects of this optimization and should not be run after
 // this pass. In general, this pass should be run very late, immediately before
 // code generation.
-class HloRematerialization : public HloModulePass {
+class HloRematerialization : public HloPassInterface {
  public:
   // The minimum cost estimate memory limit in bytes for a computation to be
   // considered for rematerialization. Only in use for peak priority
@@ -219,18 +220,12 @@ class HloRematerialization : public HloModulePass {
         std::max(max_rematerialized_block_size_, new_rematerialized_block_size);
   }
 
-  // Runs rematerialization on the given module. Returns whether the module was
-  // changed. Requires that the module has a schedule set
-  // (HloModule::has_schedule() is true) before running. Returns whether any
-  // instructions were rematerialized. If memory use is already below the limit
-  // specified in the constructor then no instructions are rematerialized and
-  // false is returned.
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   int64_t GetBlockSizeLimit() const { return options_.block_size_limit; }
+
+  // Sets points to analysis to stale. Used by Peak Priority algorithm to
+  // indicate that the points to analysis should be updated before the next
+  // rematerialization subpass.
+  void SetPointsToAnalysisStale();
 
   // Holds references to data structures and some constants that are used during
   // rematerialization. This struct is used to avoid long function signatures.
@@ -284,6 +279,13 @@ class HloRematerialization : public HloModulePass {
     return absl::OkStatus();
   }
 
+  // Only Peak priority requires constant update of points to analysis.
+  void on_block_rematerialized(int remat_count) {
+    if (remat_count > 0 && remat_algorithm() == RematAlgorithm::kPeakPriority) {
+      SetPointsToAnalysisStale();
+    }
+  }
+
  protected:
   // Updates the schedule to mirror the provided instruction sequence. This is
   // used to update the schedule after each rematerialization due to the memory
@@ -293,6 +295,9 @@ class HloRematerialization : public HloModulePass {
       HloComputation* computation, HloSchedule* schedule,
       const HloInstructionSequence& sequence,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
+
+  // Updates points to analysis if it is stale.
+  absl::Status UpdatePointsToAnalysis(HloModule* module);
 
   // Cleans up dead rematerialized instructions out of the module. Basically
   // runs DCE and updates the schedule.
@@ -371,6 +376,14 @@ class HloRematerialization : public HloModulePass {
       const HloInstruction* instruction,
       const absl::flat_hash_set<absl::string_view>& execution_threads) const;
 
+  // Checks if rematerialization has taken too long and sets a status variable
+  // to warn the user if so.
+  void CheckTimeLimit();
+
+  absl::Time start_time_;
+  bool warned_too_long_ = false;
+  bool warned_too_little_progress_ = false;
+
   const Options options_;
 
   // Reference to data structure which records the peak memory usage of the HLO
@@ -414,6 +427,16 @@ class HloRematerialization : public HloModulePass {
   // rematerialized.
   absl::AnyInvocable<absl::Status(HloInstruction*, HloInstruction*)>
       on_rematerialized_;
+
+  // Runs rematerialization on the given module. Returns whether the module was
+  // changed. Requires that the module has a schedule set
+  // (HloModule::has_schedule() is true) before running. Returns whether any
+  // instructions were rematerialized. If memory use is already below the limit
+  // specified in the constructor then no instructions are rematerialized and
+  // false is returned.
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
 
 }  // namespace xla

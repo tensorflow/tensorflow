@@ -16,13 +16,19 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_USER_CONTEXT_REGISTRY_H_
 #define XLA_PYTHON_IFRT_USER_CONTEXT_REGISTRY_H_
 
+#include <functional>
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/python/ifrt/user_context.h"
 
@@ -120,6 +126,36 @@ class TrackedUserContext {
 
   const UserContextId id_;
   absl_nonnull const UserContextRef user_context_;
+};
+
+// CustomStatusExpanderRegistry allows registering 'payload expanders' that
+// errors returned by the IFRT backend are processed through before the error
+// message is returned to IFRT users.
+class CustomStatusExpanderRegistry {
+ public:
+  static CustomStatusExpanderRegistry& Get();
+
+  using PayloadExpanderFn = std::function<void(absl::Status&)>;
+  // Registers a payload expander. `expander` is expected to take the entire
+  // `absl::Status` object, remove the payload from the object, and modify the
+  // contents of the `absl::Status` accordingly.
+  //
+  // The optional `process_order`, if supplied, determines the order in which
+  // the expander is processed in relation to other expanders. Expanders with
+  // lower process orders are processed first; please use a positive value
+  // unless you have discussed with IFRT maintainers about writing a
+  // a critical expander function that needs to be processed earlier. Order
+  // among expanders of the same `process_order` is unspecified.
+  void Register(absl::string_view payload_name, PayloadExpanderFn expander,
+                std::optional<int> process_order = std::nullopt);
+
+  // Invokes all registered expanders on the given status.
+  void Process(absl::Status& status);
+
+ private:
+  mutable absl::Mutex mu_;
+  absl::btree_map<std::pair<int, std::string>, PayloadExpanderFn> registry_
+      ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace ifrt

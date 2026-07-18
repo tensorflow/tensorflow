@@ -19,12 +19,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/memory/memory.h"
 #include "Eigen/Core"  // from @eigen_archive
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/interpreter.h"
-#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -75,6 +71,15 @@ class DequantizeOpModel : public SingleOpModel {
                        data_int8.data() + data_int8.size());
   }
 
+  template <typename T>
+  void SetInputInt2(int input, const std::vector<T> data) {
+    auto non_const = *const_cast<std::vector<T>*>(&data);
+    std::vector<int8_t> data_int8(non_const.size());
+    std::copy(non_const.begin(), non_const.end(), data_int8.begin());
+    PopulateTensor2bit(input, 0, data_int8.data(),
+                       data_int8.data() + data_int8.size());
+  }
+
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
 
  protected:
@@ -90,6 +95,25 @@ TEST(DequantizeOpTest, Int4) {
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear({4, 3.5, -3, -3.5})));
+}
+
+TEST(DequantizeOpTest, Uint4) {
+  // [0, 7.5] -> scale=0.5, zero_point=0 for UINT4
+  DequantizeOpModel m(TensorType_UINT4, {2, 2}, 0.5, 0, 8);
+
+  m.SetInputInt4<uint8_t>(0, {15, 14, 1, 0});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({7.5, 7.0, 0.5, 0.0})));
+}
+
+TEST(DequantizeOpTest, Int2) {
+  DequantizeOpModel m(TensorType_INT2, {1, 4}, 0.5, -1, 6);
+
+  m.SetInputInt2<int8_t>(0, {1, 0, -1, -2});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({1.0, 0.5, 0.0, -0.5})));
 }
 
 TEST(DequantizeOpTest, Uint8) {
@@ -183,6 +207,39 @@ TEST(DequantizePerChannelOpTest, Int8) {
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear(
                   {-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64})));
+}
+
+TEST(DequantizePerChannelOpTest, Int2) {
+  // scales={0.5, 1.0}, zero_points={-1, 0}, channel_dim=0
+  DequantizePerChannelOpModel m(TensorType_INT2, {2, 2}, {0.5, 1.0}, {-1, 0}, 0,
+                                6);
+  m.SetInputInt2<int8_t>(0, {1, 0, -1, -2});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  // Dequantization formula: (val - zp) * scale
+  // Channel 0: scale=0.5, zp=-1.
+  // val=1: (1 - (-1)) * 0.5 = 1.0
+  // val=0: (0 - (-1)) * 0.5 = 0.5
+  // Channel 1: scale=1.0, zp=0
+  // val=-1: (-1 - 0) * 1.0 = -1.0
+  // val=-2: (-2 - 0) * 1.0 = -2.0
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({1.0, 0.5, -1.0, -2.0})));
+}
+
+TEST(DequantizePerChannelOpTest, Uint4) {
+  // scales={0.5, 1.0}, zero_points={0, 1}, channel_dim=0
+  DequantizePerChannelOpModel m(TensorType_UINT4, {2, 2}, {0.5, 1.0}, {0, 1}, 0,
+                                8);
+  m.SetInputInt4<uint8_t>(0, {15, 1, 15, 1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  // Channel 0: scale=0.5, zp=0
+  // val=15: (15 - 0) * 0.5 = 7.5
+  // val=1: (1 - 0) * 0.5 = 0.5
+  // Channel 1: scale=1.0, zp=1
+  // val=15: (15 - 1) * 1.0 = 14.0
+  // val=1: (1 - 1) * 1.0 = 0.0
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({7.5, 0.5, 14.0, 0.0})));
 }
 
 }  // namespace

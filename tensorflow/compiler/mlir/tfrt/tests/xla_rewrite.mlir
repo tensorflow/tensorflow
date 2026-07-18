@@ -1,3 +1,17 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: tf-tfrt-opt -tfrt-xla-rewrite %s | FileCheck %s --dump-input=fail
 
 // CHECK-LABEL: xla_launch
@@ -27,7 +41,14 @@ func.func @xla_launch(%arg: tensor<i32>, %v0: tensor<*x!tf_type.resource>, %v1: 
       device = "/device:GPU:0", executor_type = "", f = @callee}
       : (tensor<i32>, tensor<i32>, tensor<*x!tf_type.resource>, tensor<i32>, tensor<*x!tf_type.resource>) -> tensor<i32>
 
-  func.return %r2 : tensor<i32>
+  // CHECK: tf.XlaLaunchV2
+  // CHECK-SAME: constants = [0, 3]
+  // CHECK-SAME: resources = [2, 4]
+  %r3 = "tf.PartitionedCall"(%c0, %r2, %v0, %c1, %v1) {_XlaMustCompile = true, config = "", config_proto = "",
+      device = "/device:CPU:0", executor_type = "", f = @callee}
+      : (tensor<i32>, tensor<i32>, tensor<*x!tf_type.resource>, tensor<i32>, tensor<*x!tf_type.resource>) -> tensor<i32>
+
+  func.return %r3 : tensor<i32>
 }
 
 func.func @callee(%c0: tensor<i32>, %arg: tensor<i32>, %v0: tensor<*x!tf_type.resource>, %c1: tensor<i32>, %v1: tensor<*x!tf_type.resource>) -> (tensor<i32>) {

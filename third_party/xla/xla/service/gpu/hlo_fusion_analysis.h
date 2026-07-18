@@ -21,16 +21,23 @@ limitations under the License.
 #include <optional>
 
 #include "absl/log/check.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/codegen/hlo_fusion_spec.h"
 #include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
+
+// Returns true if the instruction's fusion backend config kind matches the
+// given one.
+bool IsGpuFusionKind(const HloInstruction& hlo, absl::string_view kind);
 
 class HloFusionAnalysis {
  public:
@@ -44,7 +51,7 @@ class HloFusionAnalysis {
     kConcatenate,
     kScatter,
     kCuDnn,
-    kDynamicMemcpy,
+    kSort,
   };
 
   // Precomputed information about inputs (arguments) and outputs (roots) of the
@@ -97,6 +104,9 @@ class HloFusionAnalysis {
   const FusionBackendConfig& fusion_backend_config() const {
     return fusion_backend_config_;
   }
+
+  // Returns the shape of the first result.
+  const Shape& first_result_shape() const;
 
   // Returns the tiled transpose description. Requires that emitter_fusion_kind_
   // is kTranspose.

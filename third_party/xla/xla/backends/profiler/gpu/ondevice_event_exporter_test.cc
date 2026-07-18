@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/tsl/profiler/backends/gpu/ondevice_event_receiver.h"
 #include "xla/tsl/profiler/backends/gpu/ondevice_trace_event.h"

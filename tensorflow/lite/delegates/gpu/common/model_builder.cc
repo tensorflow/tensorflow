@@ -1527,6 +1527,10 @@ class LSTMOperationParser : public TFLiteOperationParser {
     int activ_tensor_idx = tflite_node->outputs->data[3];
     RETURN_IF_ERROR(
         reader->ReadValueByTensorIdx(activ_tensor_idx, &activ_temp));
+    if (activ_temp->tensor.shape.c % 4 != 0) {
+      return absl::UnimplementedError(
+          "BasicLSTM activation depth must be a multiple of 4.");
+    }
 
     RETURN_IF_ERROR(reader->AddInput(concat_node, 0));  // input
     RETURN_IF_ERROR(reader->AddInput(concat_node, 1));  // prev_activ
@@ -1998,6 +2002,13 @@ class ResamplerOperationParser : public TFLiteOperationParser {
 
     auto src_shape = graph->FindInputs(node->id)[0]->tensor.shape;
     auto warp_shape = graph->FindInputs(node->id)[1]->tensor.shape;
+
+    if (src_shape.b != warp_shape.b) {
+      return absl::InvalidArgumentError("src_shape.b != warp_shape.b");
+    }
+    if (warp_shape.c < 2) {
+      return absl::InvalidArgumentError("warp_shape.c < 2");
+    }
 
     auto output_value = graph->FindOutputs(node->id)[0];
     output_value->tensor.shape =
@@ -3198,6 +3209,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<ReLUOperationParser>(0, 0);
     case kTfLiteBuiltinRelu6:
       return std::make_unique<ReLUOperationParser>(0, 6);
+    case kTfLiteBuiltinRelu0To1:
+      return std::make_unique<ReLUOperationParser>(0.0, 1.0);
     case kTfLiteBuiltinReluN1To1:
       return std::make_unique<ReLUOperationParser>(-1.0, 1.0);
     case kTfLiteBuiltinLeakyRelu:

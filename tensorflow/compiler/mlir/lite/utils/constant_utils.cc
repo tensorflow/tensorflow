@@ -138,8 +138,8 @@ absl::StatusOr<arith::ConstantOp> CreateConstOpWithVectorValue(
                                                 shaped_type.getElementType());
   auto attr = CreateTypedAttr(dense_type, value);
 
-  return rewriter->create<arith::ConstantOp>(loc, dense_type,
-                                             cast<TypedAttr>(*attr));
+  return arith::ConstantOp::create(*rewriter, loc, dense_type,
+                                   cast<TypedAttr>(*attr));
 }
 
 absl::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
@@ -149,8 +149,8 @@ absl::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
       RankedTensorType::get({}, shaped_type.getElementType());
   auto attr = CreateTypedAttr(scalar_type, value);
 
-  return rewriter->create<arith::ConstantOp>(loc, scalar_type,
-                                             cast<TypedAttr>(*attr));
+  return arith::ConstantOp::create(*rewriter, loc, scalar_type,
+                                   cast<TypedAttr>(*attr));
 }
 
 }  // namespace TFL

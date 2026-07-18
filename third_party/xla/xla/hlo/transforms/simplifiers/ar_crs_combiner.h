@@ -86,14 +86,15 @@ class ArCrsCombiner : public HloModulePass {
       : num_spatial_partitions_(num_spatial_partitions),
         spmd_partition_(spmd_partition) {}
   absl::string_view name() const override { return "ar-crs-combiner"; }
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Helper method to allow testing of InstructionsComputeSameValue.
   static bool TestInstructionsComputeSameValue(HloInstruction* i1,
                                                HloInstruction* i2);
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   // We used this struct because multiple ARs could be paired with the same CRS.

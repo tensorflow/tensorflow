@@ -127,7 +127,7 @@ TEST_F(XlaCompilerOptionsTest, PjRtOptionsXlaDevice) {
 
   se::Platform::Id platform_id = nullptr;
   auto xla_device_metadata = CreateXlaDeviceMetadata(compilation_device_type);
-  std::shared_ptr<se::DeviceMemoryAllocator> custom_allocator;
+  std::shared_ptr<stream_executor::DeviceAddressAllocator> custom_allocator;
   XlaPlatformInfo platform_info(
       compilation_device_type, platform_id, xla_device_metadata.get(),
       /*pjrt_device_metadata=*/nullptr, custom_allocator);
@@ -243,7 +243,7 @@ TEST_F(XlaCompilerOptionsTest, XlaOptions) {
 
   se::Platform::Id platform_id = se::host::kHostPlatformId;
   auto xla_device_metadata = CreateXlaDeviceMetadata(compilation_device_type);
-  std::shared_ptr<se::DeviceMemoryAllocator> custom_allocator;
+  std::shared_ptr<stream_executor::DeviceAddressAllocator> custom_allocator;
   XlaPlatformInfo platform_info(
       device_type, platform_id, xla_device_metadata.get(),
       /*pjrt_device_metadata=*/nullptr, custom_allocator);
@@ -282,7 +282,7 @@ TEST_F(XlaCompilerOptionsTest, XlaOptionsHasRefVarsNoXlaDeviceMetadata) {
   core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
 
   se::Platform::Id platform_id = se::host::kHostPlatformId;
-  std::shared_ptr<se::DeviceMemoryAllocator> custom_allocator;
+  std::shared_ptr<stream_executor::DeviceAddressAllocator> custom_allocator;
   XlaPlatformInfo platform_info(
       device_type, platform_id, /*xla_device_metadata=*/nullptr,
       /*pjrt_device_metadata=*/nullptr, custom_allocator);

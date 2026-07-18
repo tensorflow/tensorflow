@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -32,15 +33,19 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "grpcpp/channel.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/runtime/device_id.h"
+#include "xla/tsl/distributed_runtime/call_options.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/platform/env.h"
 
-namespace tsl {
+namespace xla {
 class CoordinationServiceAgent;
-}  // namespace tsl
+}  // namespace xla
 
 namespace xla {
 
-class DistributedRuntimeClient {
+class DistributedRuntimeClient
+    : public std::enable_shared_from_this<DistributedRuntimeClient> {
  public:
   struct Options {
     // This node's global ID. Required.
@@ -72,14 +77,14 @@ class DistributedRuntimeClient {
     // Exposed so tests can override this behavior to something non-fatal.
     std::function<void(absl::Status)> missed_heartbeat_callback =
         [](const absl::Status& status) {
-          LOG(QFATAL) << "Terminating process because the JAX distributed "
-                         "service detected fatal errors. This most likely "
-                         "indicates that another task died; see the other task "
-                         "logs for more details. Disable Python buffering, "
-                         "i.e. `python -u`, to be sure to see all the "
-                         "previous output. "
-                         "absl::Status: "
-                      << status;
+          LOG(FATAL) << "Terminating process because the JAX distributed "
+                        "service detected fatal errors. This most likely "
+                        "indicates that another task died; see the other task "
+                        "logs for more details. Disable Python buffering, "
+                        "i.e. `python -u`, to be sure to see all the "
+                        "previous output. "
+                        "absl::Status: "
+                     << status;
         };
 
     // For testing. Should the client explicitly Shutdown() on destruction?
@@ -116,6 +121,14 @@ class DistributedRuntimeClient {
   virtual absl::StatusOr<std::string> BlockingKeyValueGet(
       absl::string_view key, absl::Duration timeout) = 0;
 
+  // Async version of `BlockingKeyValueGet`. The `done` callback is invoked when
+  // the key-value becomes available.
+  // The caller can cancel the underlying RPC call with the `StartCancel()` and
+  // `ClearCancelCallback()` methods on the returned `CallOptions`.
+  virtual std::shared_ptr<tsl::CallOptions> AsyncKeyValueGet(
+      absl::string_view key,
+      tsl::CoordinationServiceAgent::StatusOrValueCallback done) = 0;
+
   // Returns `NotFoundError` immediately if the key is not found.
   virtual absl::StatusOr<std::string> KeyValueTryGet(absl::string_view key) = 0;
 
@@ -149,14 +162,21 @@ class DistributedRuntimeClient {
       std::string barrier_id, absl::Duration timeout,
       std::optional<absl::Span<const int32_t>> nodes) = 0;
 
+  // Returns the subset of live nodes, along with their incarnations. See
+  // CoordinationService.GetAliveTasks for detailed semantics.
+  virtual absl::StatusOr<absl::flat_hash_map<int32_t, IncarnationId>>
+  GetLiveNodesWithIncarnations(absl::Span<const int32_t> nodes) = 0;
+
   // Returns the subset of live nodes. See CoordinationService.GetAliveTasks for
   // detailed semantics.
+  //
+  // TODO: mwhittaker - Remove this function.
   virtual absl::StatusOr<std::vector<int32_t>> GetLiveNodes(
       absl::Span<const int32_t> nodes) = 0;
 
   // Returns pointer to coordination service agent, or InternalError if the
   // client does not use coordination service.
-  virtual absl::StatusOr<tsl::CoordinationServiceAgent*>
+  virtual absl::StatusOr<CoordinationServiceAgent*>
   GetCoordinationServiceAgent() = 0;
 };
 

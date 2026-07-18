@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "xla/service/platform_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -33,7 +33,7 @@ TEST(MemcpyTest, PinnedHostMemory) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto d_ptr,
                           executor->HostMemoryAllocate(sizeof(int)));
-  DeviceMemoryBase d_mem(d_ptr->opaque(), sizeof(int));
+  DeviceAddressBase d_mem(d_ptr->address().opaque(), sizeof(int));
 
   int h_ptr;
   TF_ASSERT_OK(stream->Memcpy(&h_ptr, d_mem, d_mem.size()));

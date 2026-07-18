@@ -1,9 +1,26 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
 syntax = "proto3";
 
 package tensorflow.ifrt_serving;
 
 import "tensorflow/compiler/tf2xla/host_compute_metadata.proto";
+import "xla/python/ifrt/layout.proto";
 import "xla/service/hlo.proto";
+import "xla/xla_data.proto";
 import "tensorflow/core/framework/types.proto";
 import "tensorflow/core/protobuf/tpu/compile_metadata.proto";
 
@@ -11,4 +28,5 @@ message Tf2HLOResultProto {
   xla.HloModuleProto hlo_module_proto = 1;
   tensorflow.tpu.TPUCompileMetadataProto compile_metadata = 2;
   tensorflow.tf2xla.HostComputeMetadata host_compute_metadata = 3;
+  repeated xla.ShapeProto xla_input_shapes = 4;
 }

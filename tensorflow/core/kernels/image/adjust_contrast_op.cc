@@ -49,26 +49,30 @@ class AdjustContrastOp : public OpKernel {
     const Tensor& min_value = context->input(2);
     const Tensor& max_value = context->input(3);
     OP_REQUIRES(context, input.dims() >= 3,
-                errors::InvalidArgument("input must be at least 3-D, got shape",
-                                        input.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("input must be at least 3-D, got shape",
+                                 input.shape().DebugString())));
     const int64_t height = input.dim_size(input.dims() - 3);
     const int64_t width = input.dim_size(input.dims() - 2);
     const int64_t channels = input.dim_size(input.dims() - 1);
 
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(factor.shape()),
-                errors::InvalidArgument("contrast_factor must be scalar: ",
-                                        factor.shape().DebugString()));
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_value.shape()),
-                errors::InvalidArgument("min_value must be scalar: ",
-                                        min_value.shape().DebugString()));
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_value.shape()),
-                errors::InvalidArgument("max_value must be scalar: ",
-                                        max_value.shape().DebugString()));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(factor.shape()),
+        absl::InvalidArgumentError(absl::StrCat(
+            "contrast_factor must be scalar: ", factor.shape().DebugString())));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(min_value.shape()),
+        absl::InvalidArgumentError(absl::StrCat(
+            "min_value must be scalar: ", min_value.shape().DebugString())));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(max_value.shape()),
+        absl::InvalidArgumentError(absl::StrCat(
+            "max_value must be scalar: ", max_value.shape().DebugString())));
 
     if (std::is_same<Device, GPUDevice>::value) {
       OP_REQUIRES(
           context, !OpDeterminismRequired(),
-          errors::Unimplemented(
+          absl::UnimplementedError(
               "A deterministic GPU implementation of AdjustContrast is not"
               " currently available."));
     }
@@ -99,10 +103,10 @@ class AdjustContrastOp : public OpKernel {
       Name("AdjustContrast").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       AdjustContrastOp<CPUDevice, T>);
 
-REGISTER_KERNEL(uint8);
-REGISTER_KERNEL(int8);
-REGISTER_KERNEL(int16);
-REGISTER_KERNEL(int32);
+REGISTER_KERNEL(uint8_t);
+REGISTER_KERNEL(int8_t);
+REGISTER_KERNEL(int16_t);
+REGISTER_KERNEL(int32_t);
 REGISTER_KERNEL(float);
 REGISTER_KERNEL(double);
 #undef REGISTER_KERNEL
@@ -123,10 +127,10 @@ namespace functor {
       typename TTypes<float, 4>::Tensor output);                    \
   extern template struct AdjustContrast<GPUDevice, T>;
 
-DECLARE_GPU_SPEC(uint8);
-DECLARE_GPU_SPEC(int8);
-DECLARE_GPU_SPEC(int16);
-DECLARE_GPU_SPEC(int32);
+DECLARE_GPU_SPEC(uint8_t);
+DECLARE_GPU_SPEC(int8_t);
+DECLARE_GPU_SPEC(int16_t);
+DECLARE_GPU_SPEC(int32_t);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
@@ -137,10 +141,10 @@ DECLARE_GPU_SPEC(double);
   REGISTER_KERNEL_BUILDER(                                              \
       Name("AdjustContrast").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
       AdjustContrastOp<GPUDevice, T>);
-REGISTER_GPU_KERNEL(uint8);
-REGISTER_GPU_KERNEL(int8);
-REGISTER_GPU_KERNEL(int16);
-REGISTER_GPU_KERNEL(int32);
+REGISTER_GPU_KERNEL(uint8_t);
+REGISTER_GPU_KERNEL(int8_t);
+REGISTER_GPU_KERNEL(int16_t);
+REGISTER_GPU_KERNEL(int32_t);
 REGISTER_GPU_KERNEL(float);
 REGISTER_GPU_KERNEL(double);
 #undef REGISTER_GPU_KERNEL
@@ -166,15 +170,17 @@ class AdjustContrastOpV2Base : public OpKernel {
     const Tensor& input = context->input(0);
     const Tensor& factor = context->input(1);
     OP_REQUIRES(context, input.dims() >= 3,
-                errors::InvalidArgument("input must be at least 3-D, got shape",
-                                        input.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("input must be at least 3-D, got shape",
+                                 input.shape().DebugString())));
     const int64_t height = input.dim_size(input.dims() - 3);
     const int64_t width = input.dim_size(input.dims() - 2);
     const int64_t channels = input.dim_size(input.dims() - 1);
 
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(factor.shape()),
-                errors::InvalidArgument("contrast_factor must be scalar: ",
-                                        factor.shape().DebugString()));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(factor.shape()),
+        absl::InvalidArgumentError(absl::StrCat(
+            "contrast_factor must be scalar: ", factor.shape().DebugString())));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
@@ -430,7 +436,7 @@ class AdjustContrastOpv2<GPUDevice, T> : public AdjustContrastOpV2Base {
                               options.channels};
     OP_REQUIRES(
         context, !OpDeterminismRequired(),
-        errors::Unimplemented(
+        absl::UnimplementedError(
             "A deterministic GPU implementation of AdjustContrastv2 is not"
             " currently available."));
 

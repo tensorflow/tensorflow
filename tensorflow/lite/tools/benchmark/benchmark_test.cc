@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_performance_options.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
+#include "tensorflow/lite/tools/benchmark/proto/benchmark_result.pb.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/logging.h"
@@ -149,6 +150,14 @@ BenchmarkParams CreateMultiSignatureParams(std::string signature_key) {
       /*signature_key=*/signature_key);
   return params;
 }
+BenchmarkParams CreateMultiSignatureParamsWithUnspecifiedSignature() {
+  BenchmarkParams params = BenchmarkTfLiteModel::DefaultParams();
+  InitializeParams(
+      params, /*num_runs=*/2, /*min_secs=*/1.0f, /*max_secs=*/150.0f,
+      /*model_read_option=*/ModelReadOption::FROM_PATH, ModelGraphType::FP32);
+  params.Set<std::string>("graph", *g_multi_signature_model_path);
+  return params;
+}
 
 std::string CreateFilePath(const std::string& file_name) {
   const char* tmp_dir = getenv("TEST_TMPDIR");
@@ -190,9 +199,9 @@ void CheckInputTensorValue(const TfLiteTensor* input_tensor,
                            int tensor_dim_index,
                            const std::string& expected_value) {
   StringRef tensor_value = GetString(input_tensor, tensor_dim_index);
-  EXPECT_TRUE(absl::equal(tensor_value.str, tensor_value.str + tensor_value.len,
-                          expected_value.c_str(),
-                          expected_value.c_str() + expected_value.length()));
+  EXPECT_TRUE(std::equal(tensor_value.str, tensor_value.str + tensor_value.len,
+                         expected_value.c_str(),
+                         expected_value.c_str() + expected_value.length()));
 }
 
 class TestBenchmark : public BenchmarkTfLiteModel {
@@ -267,6 +276,24 @@ TEST(BenchmarkTest, MultiSignatureModelWithInvalidSignatureKeyFails) {
   ASSERT_THAT(g_multi_signature_model_path, testing::NotNull());
 
   TestBenchmark benchmark(CreateMultiSignatureParams("addisabbaba"));
+  auto status = benchmark.Run();
+  EXPECT_EQ(kTfLiteError, status);
+}
+
+TEST(BenchmarkTest, SingleSignatureModelWithInvalidSignatureKeyFails) {
+  ASSERT_THAT(g_string_model_path, testing::NotNull());
+
+  BenchmarkParams params = CreateStringParams();
+  params.Set<std::string>("signature_to_run_for", "invalid_signature_key");
+  TestBenchmark benchmark(std::move(params));
+  auto status = benchmark.Run();
+  EXPECT_EQ(kTfLiteError, status);
+}
+
+TEST(BenchmarkTest, MultiSignatureModelWithUnspecifiedSignatureKeyFails) {
+  ASSERT_THAT(g_multi_signature_model_path, testing::NotNull());
+
+  TestBenchmark benchmark(CreateMultiSignatureParamsWithUnspecifiedSignature());
   auto status = benchmark.Run();
   EXPECT_EQ(kTfLiteError, status);
 }
@@ -591,9 +618,9 @@ TEST(BenchmarkTest, ParametersArePopulatedWhenInputShapeIsNotSpecified) {
 
   // Expect data is not the same.
   EXPECT_EQ(input_bytes.size(), input_tensor->bytes);
-  EXPECT_FALSE(absl::equal(input_bytes.begin(), input_bytes.end(),
-                           input_tensor->data.raw,
-                           input_tensor->data.raw + input_tensor->bytes));
+  EXPECT_FALSE(std::equal(input_bytes.begin(), input_bytes.end(),
+                          input_tensor->data.raw,
+                          input_tensor->data.raw + input_tensor->bytes));
 }
 
 TEST(BenchmarkTest, InitializationFailedWhenInvalidGraphPathIsProvided) {
@@ -612,6 +639,83 @@ TEST(BenchmarkTest, InitializationFailedWhenInvalidGraphFdIsProvided) {
   TestBenchmark benchmark(std::move(params));
 
   EXPECT_EQ(benchmark.Init(), kTfLiteError);
+}
+
+class TestBenchmarkListener : public BenchmarkListener {
+ public:
+  void OnBenchmarkEnd(const BenchmarkResults& results) override {
+    results_ = results;
+  }
+
+  const BenchmarkResults& results() const { return results_; }
+
+ private:
+  BenchmarkResults results_;
+};
+
+TEST(BenchmarkTest, BenchmarkResultFileIsWritten) {
+  ASSERT_THAT(g_fp32_model_path, testing::NotNull());
+  BenchmarkParams params = BenchmarkTfLiteModel::DefaultParams();
+
+  std::string result_file_path = "/tmp/result.txtproto";
+#if defined(__ANDROID__)
+  result_file_path = "/data/local/tmp/result.txtproto";
+#endif
+  params.Set<std::string>("result_file_path", result_file_path);
+  params.Set<bool>("report_peak_memory_footprint", true);
+  params.Set<std::string>("graph", *g_fp32_model_path);
+
+  TestBenchmark benchmark(std::move(params));
+  TestBenchmarkListener listener;
+  benchmark.AddListener(&listener);
+  benchmark.Run();
+
+  std::ifstream in_file(result_file_path, std::ios::binary | std::ios::in);
+  tflite::tools::benchmark::BenchmarkResult result;
+  result.ParseFromIstream(&in_file);
+
+  // Verify latency metrics.
+  EXPECT_FLOAT_EQ(result.latency_metrics().init_ms(),
+                  listener.results().startup_latency_us() / 1000.0);
+  EXPECT_FLOAT_EQ(result.latency_metrics().first_inference_ms(),
+                  listener.results().warmup_time_us().first() / 1000.0);
+  EXPECT_FLOAT_EQ(result.latency_metrics().average_warm_up_ms(),
+                  listener.results().warmup_time_us().avg() / 1000.0);
+  EXPECT_FLOAT_EQ(result.latency_metrics().avg_ms(),
+                  listener.results().inference_time_us().avg() / 1000.0);
+  EXPECT_FLOAT_EQ(result.latency_metrics().min_ms(),
+                  listener.results().inference_time_us().min() / 1000.0);
+  EXPECT_FLOAT_EQ(result.latency_metrics().max_ms(),
+                  listener.results().inference_time_us().max() / 1000.0);
+  EXPECT_FLOAT_EQ(
+      result.latency_metrics().stddev_ms(),
+      listener.results().inference_time_us().std_deviation() / 1000.0);
+  EXPECT_FLOAT_EQ(
+      result.latency_metrics().median_ms(),
+      listener.results().inference_time_us().percentile(50) / 1000.0);
+  EXPECT_FLOAT_EQ(
+      result.latency_metrics().p95_ms(),
+      listener.results().inference_time_us().percentile(95) / 1000.0);
+  EXPECT_FLOAT_EQ(
+      result.latency_metrics().p5_ms(),
+      listener.results().inference_time_us().percentile(5) / 1000.0);
+
+  // Verify memory metrics.
+  EXPECT_EQ(result.memory_metrics().init_footprint_kb(),
+            listener.results().init_mem_usage().mem_footprint_kb);
+  EXPECT_EQ(result.memory_metrics().overall_footprint_kb(),
+            listener.results().overall_mem_usage().mem_footprint_kb);
+  EXPECT_EQ(result.memory_metrics().has_peak_mem_mb(), true);
+
+  // Verify misc metrics.
+  EXPECT_FLOAT_EQ(result.misc_metrics().model_size_mb(),
+                  listener.results().model_size_mb());
+  EXPECT_EQ(result.misc_metrics().num_runs(),
+            listener.results().inference_time_us().count());
+  EXPECT_EQ(result.misc_metrics().num_warmup_runs(),
+            listener.results().warmup_time_us().count());
+  EXPECT_FLOAT_EQ(result.misc_metrics().model_throughput_in_mb_per_sec(),
+                  listener.results().throughput_MB_per_second());
 }
 
 }  // namespace

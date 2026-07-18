@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tosa/tf_tfl_passes.h"
 
-#include "mlir/Dialect/Affine/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Affine/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -53,7 +53,7 @@ void createTFTFLtoTOSALegalizationPipeline(
   //----------------------------------------------------------------------------
   pm.addPass(mlir::TFL::CreateLiftTfliteFlexOpsPass());
   pm.addPass(mlir::tosa::createFuseBiasTFPass());
-  pm.addPass(mlir::tosa::createConvertTFLUint8Pass());
+  pm.addPass(mlir::tosa::createConvertTFLUnsignedIntToSignedPass());
   if (opts.dequantize_tfl_softmax) {
     pm.addPass(mlir::tosa::createDequantizeTFLSoftmaxPass());
   }

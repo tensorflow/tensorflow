@@ -16,7 +16,10 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/select_k_thunk.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -24,16 +27,19 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/select_k_exec.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/primitive_util.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"
 
@@ -43,13 +49,11 @@ namespace xla::gpu {
 // SelectKThunk
 //===----------------------------------------------------------------------===//
 
-SelectKThunk::SelectKThunk(const HloInstruction* inst, std::uint32_t batch_size,
+SelectKThunk::SelectKThunk(ThunkInfo thunk_info, std::uint32_t batch_size,
                            std::uint32_t num_elements, std::uint32_t k,
                            xla::PrimitiveType dtype,
-                           const emitters::KernelArguments& kernel_arguments,
-                           ThunkId thunk_id)
-    : Thunk(Kind::kSelectK,
-            Thunk::ThunkInfo::WithProfileAnnotation(inst, thunk_id)),
+                           const emitters::KernelArguments& kernel_arguments)
+    : Thunk(Kind::kSelectK, thunk_info),
       batch_size_(batch_size),
       num_elements_(num_elements),
       k_(k),
@@ -67,6 +71,21 @@ std::string SelectKThunk::ToString(int indent) const {
                       ", dtype=", dtype_, ")");
 }
 
+Thunk::BufferUses SelectKThunk::buffer_uses() const {
+  BufferUses uses;
+  uses.reserve(args_.size());
+  uses.push_back(BufferUse::Read(
+      args_[0], ShapeUtil::MakeShape(dtype_, {batch_size_, num_elements_})));
+
+  uses.push_back(BufferUse::Write(
+      args_[1], ShapeUtil::MakeShape(dtype_, {batch_size_, k_})));
+
+  uses.push_back(BufferUse::Write(
+      args_[2], ShapeUtil::MakeShape(PrimitiveType::S32, {batch_size_, k_})));
+
+  return uses;
+}
+
 // Execute the TopK operation on the GPU stream.
 // Maps kernel arguments to device memory and dispatches the appropriate
 // select_k_exec implementation based on the platform and data type.
@@ -74,16 +93,17 @@ absl::Status SelectKThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Launching " << ToString(0);
 
   // Map buffer slices to device memory.
-  absl::InlinedVector<se::DeviceMemoryBase, 3> buffer_args;
+  absl::InlinedVector<se::DeviceAddressBase, 3> buffer_args;
   for (const BufferAllocation::Slice& arg : args_) {
-    se::DeviceMemoryBase buf = params.buffer_allocations->GetDeviceAddress(arg);
+    se::DeviceAddressBase buf =
+        params.buffer_allocations->GetDeviceAddress(arg);
     VLOG(3) << "  Arg: alloc #" << arg.index() << ", offset: " << arg.offset()
             << ": " << buf.opaque() << " (" << buf.size() << "B)";
     buffer_args.push_back(buf);
   }
 
   int device_ordinal = params.buffer_allocations->device_ordinal();
-  se::DeviceMemoryAllocator* allocator =
+  se::DeviceAddressAllocator* allocator =
       params.buffer_allocations->memory_allocator();
   se::Stream* stream = params.stream;
 
@@ -107,10 +127,35 @@ absl::Status SelectKThunk::ExecuteOnStream(const ExecuteParams& params) {
 absl::StatusOr<ThunkProto> SelectKThunk::ToProto() const {
   ThunkProto proto;
   *proto.mutable_thunk_info() = thunk_info().ToProto();
+  SelectKThunkProto* select_k_proto = proto.mutable_select_k_thunk();
 
-  SelectKThunkProto* select_k_thunk_proto = proto.mutable_select_k_thunk();
-  (void)select_k_thunk_proto;
-  // TODO(upwind): Add fields for SelectKThunkProto.
+  select_k_proto->set_batch_size(batch_size_);
+  select_k_proto->set_num_elements(num_elements_);
+  select_k_proto->set_k(k_);
+  select_k_proto->set_dtype(dtype_);
+
+  for (const BufferAllocation::Slice& arg : args_) {
+    ASSIGN_OR_RETURN(*select_k_proto->add_args(), arg.ToProto());
+  }
   return proto;
 }
+
+absl::StatusOr<std::unique_ptr<SelectKThunk>> SelectKThunk::FromProto(
+    ThunkInfo thunk_info, const SelectKThunkProto& proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  std::vector<emitters::KernelArgument> arguments;
+  arguments.reserve(proto.args().size());
+  for (const xla::buffer_assignment::BufferAllocationSliceProto& arg :
+       proto.args()) {
+    ASSIGN_OR_RETURN(
+        BufferAllocation::Slice slice,
+        BufferAllocation::Slice::FromProto(arg, buffer_allocations));
+    emitters::KernelArgument argument{Shape{}, slice};
+    arguments.push_back(std::move(argument));
+  }
+  return std::make_unique<SelectKThunk>(
+      thunk_info, proto.batch_size(), proto.num_elements(), proto.k(),
+      proto.dtype(), emitters::KernelArguments(std::move(arguments)));
+}
+
 }  // namespace xla::gpu

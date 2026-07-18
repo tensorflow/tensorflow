@@ -68,6 +68,22 @@ std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options) {
             << absl::StrJoin(options.batch_options.allowed_batch_sizes(), ",")
             << ", max_enqueued_batches = "
             << options.batch_options.max_enqueued_batches()
+            << ", low_priority_max_batch_size = "
+            << options.batch_options.low_priority_max_batch_size()
+            << ", low_priority_batch_timeout_micros = "
+            << options.batch_options.low_priority_batch_timeout_micros()
+            << ", low_priority_allowed_batch_sizes = "
+            << absl::StrJoin(
+                   options.batch_options.low_priority_allowed_batch_sizes(),
+                   ",")
+            << ", low_priority_max_enqueued_batches = "
+            << options.batch_options.low_priority_max_enqueued_batches()
+            << ", num_warmup_batch_threads = "
+            << options.batch_options.num_warmup_batch_threads()
+            << ", enable_large_batch_splitting = "
+            << options.batch_options.enable_large_batch_splitting()
+            << ", mixed_priority_batching_policy = "
+            << options.batch_options.mixed_priority_batching_policy()
             << ", merge_inter_dependent_streams = "
             << options.merge_inter_dependent_streams
             << ", decompose_resource_ops = " << options.decompose_resource_ops

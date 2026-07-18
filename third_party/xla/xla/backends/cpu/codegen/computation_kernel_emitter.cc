@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -44,8 +45,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
-#include "xla/codegen/llvm_ir_kernel_source.h"
-#include "xla/codegen/llvm_kernel_definition.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -72,8 +72,8 @@ absl::Status GetInstructionSlices(
     const BufferAssignment* buffer_assignment,
     absl::flat_hash_set<KernelApiIrBuilder::KernelParameter>& parameters) {
   const Shape& shape = instruction->shape();
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                      buffer_assignment->GetUniqueTopLevelSlice(instruction));
+  ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                   buffer_assignment->GetUniqueTopLevelSlice(instruction));
   if (slice.allocation()->is_thread_local()) {
     return absl::OkStatus();
   }
@@ -82,7 +82,7 @@ absl::Status GetInstructionSlices(
   if (shape.IsTuple()) {
     for (const auto& [leaf_index, leaf_shape] :
          ShapeUtil::GetLeafShapes(shape)) {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           BufferAllocation::Slice leaf_slice,
           buffer_assignment->GetUniqueSlice(instruction, {leaf_index}));
       parameters.insert({leaf_shape, std::move(leaf_slice)});
@@ -98,7 +98,7 @@ absl::Status GetAllSlices(
     absl::flat_hash_set<KernelApiIrBuilder::KernelParameter>& results) {
   for (const HloInstruction* instruction : computation->instructions()) {
     for (const HloInstruction* operand : instruction->operands()) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           GetInstructionSlices(operand, buffer_assignment, arguments));
     }
 
@@ -106,7 +106,7 @@ absl::Status GetAllSlices(
     // TODO(willfroom): Is there a method somewhere to check if an instruction
     // just forwards the buffer? (e.g get-tuple-arg)
     if (instruction->opcode() != HloOpcode::kParameter) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           GetInstructionSlices(instruction, buffer_assignment, results));
     }
 
@@ -116,8 +116,8 @@ absl::Status GetAllSlices(
         continue;
       }
 
-      TF_RETURN_IF_ERROR(GetAllSlices(nested_computation, buffer_assignment,
-                                      arguments, results));
+      RETURN_IF_ERROR(GetAllSlices(nested_computation, buffer_assignment,
+                                   arguments, results));
     }
   }
 
@@ -133,7 +133,7 @@ ComputationKernelEmitter::ComputationKernelEmitter(
       buffer_assignment_(buffer_assignment),
       target_machine_(target_machine) {}
 
-absl::StatusOr<LlvmKernelDefinition>
+absl::StatusOr<ComputationKernelEmitter::KernelDefinition>
 ComputationKernelEmitter::EmitKernelDefinition() {
   VLOG(2) << "Emit Computation host kernel: " << instr_->name();
 
@@ -146,7 +146,7 @@ ComputationKernelEmitter::EmitKernelDefinition() {
 
   absl::flat_hash_set<KernelApiIrBuilder::KernelParameter> arguments;
   absl::flat_hash_set<KernelApiIrBuilder::KernelParameter> results;
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       GetAllSlices(instr_->to_apply(), buffer_assignment_, arguments, results));
 
   // As the computation is a series of operations, buffers are not disjoint.
@@ -158,17 +158,17 @@ ComputationKernelEmitter::EmitKernelDefinition() {
   std::unique_ptr<llvm::Module> llvm_module = KernelApiIrBuilder::CreateModule(
       absl::StrCat(instr_->name(), "_computation_kernel_module"), *ctx);
 
-  TF_ASSIGN_OR_RETURN(std::string kernel_name,
-                      kernel_api_ir_builder.GetKernelName(instr_, "_kernel"));
+  ASSIGN_OR_RETURN(std::string kernel_name,
+                   kernel_api_ir_builder.GetKernelName(instr_, "_kernel"));
 
-  TF_ASSIGN_OR_RETURN(KernelApiIrBuilder::KernelPrototype kernel_prototype,
-                      kernel_api_ir_builder.EmitKernelPrototype(
-                          *llvm_module, kernel_name,
-                          std::vector<KernelApiIrBuilder::KernelParameter>(
-                              arguments.begin(), arguments.end()),
-                          std::vector<KernelApiIrBuilder::KernelParameter>(
-                              results.begin(), results.end()),
-                          BuildModuleMemoryRegionName(name(), instr_)));
+  ASSIGN_OR_RETURN(KernelApiIrBuilder::KernelPrototype kernel_prototype,
+                   kernel_api_ir_builder.EmitKernelPrototype(
+                       *llvm_module, kernel_name,
+                       std::vector<KernelApiIrBuilder::KernelParameter>(
+                           arguments.begin(), arguments.end()),
+                       std::vector<KernelApiIrBuilder::KernelParameter>(
+                           results.begin(), results.end()),
+                       BuildModuleMemoryRegionName(name(), instr_)));
 
   llvm::IRBuilder<> ir_builder(*ctx);
   ir_builder.SetInsertPoint(
@@ -183,24 +183,24 @@ ComputationKernelEmitter::EmitKernelDefinition() {
       slice_to_buffer_table_index;
 
   int64_t buffer_table_index = 0;
-  for (const auto& [array, slice] : llvm::zip(
+  for (const auto& [array, arg] : llvm::zip(
            kernel_prototype.arguments, kernel_prototype.argument_buffers)) {
     int64_t index = buffer_table_index++;
-    slice_to_buffer_table_index[slice] = index;
+    slice_to_buffer_table_index[arg.slice] = index;
     llvm::Value* buffer_table_ptr = llvm_ir::EmitBufferIndexingGEP(
         buffer_table, ir_builder.getPtrTy(), index, &ir_builder);
     ir_builder.CreateStore(array.GetBasePointer(), buffer_table_ptr);
   }
-  for (const auto& [array, slice] :
+  for (const auto& [array, result] :
        llvm::zip(kernel_prototype.results, kernel_prototype.result_buffers)) {
     int64_t index = buffer_table_index++;
-    slice_to_buffer_table_index[slice] = index;
+    slice_to_buffer_table_index[result.slice] = index;
     llvm::Value* buffer_table_ptr = llvm_ir::EmitBufferIndexingGEP(
         buffer_table, ir_builder.getPtrTy(), index, &ir_builder);
     ir_builder.CreateStore(array.GetBasePointer(), buffer_table_ptr);
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       llvm::Function * computation_function,
       EmitNestedComputation(
           kernel_prototype.function, kernel_prototype.return_block, ir_builder,
@@ -215,14 +215,21 @@ ComputationKernelEmitter::EmitKernelDefinition() {
                                     buffer_table, llvm_nullptr, llvm_nullptr};
   ir_builder.CreateCall(computation_function, args);
 
-  LlvmIrKernelSource source(std::move(ctx), std::move(llvm_module));
+  LlvmKernelSource source(std::move(ctx), std::move(llvm_module));
+
+  KernelSpec::Buffers kernel_arguments, kernel_results;
+  for (const auto& buffer : kernel_prototype.argument_buffers) {
+    kernel_arguments.push_back({buffer.slice, buffer.shape});
+  }
+  for (const auto& buffer : kernel_prototype.result_buffers) {
+    kernel_results.push_back({buffer.slice, buffer.shape});
+  }
 
   KernelSpec spec(kernel_prototype.function->getName(), NumWorkGroups(),
-                  std::move(kernel_prototype.argument_buffers),
-                  std::move(kernel_prototype.result_buffers),
+                  std::move(kernel_arguments), std::move(kernel_results),
                   std::move(kernel_prototype.invariant_arguments));
 
-  return LlvmKernelDefinition(std::move(spec), std::move(source));
+  return KernelDefinition(std::move(spec), std::move(source));
 }
 
 absl::StatusOr<llvm::Function*> ComputationKernelEmitter::EmitNestedComputation(
@@ -241,7 +248,7 @@ absl::StatusOr<llvm::Function*> ComputationKernelEmitter::EmitNestedComputation(
       /*allow_runtime_calls=*/false);
   IrEmitter::IRBuilderGuard builder_guard = ir_emitter.WithBuilder(builder);
 
-  TF_RETURN_IF_ERROR(ir_emitter.EmitSmallConstantGlobals());
+  RETURN_IF_ERROR(ir_emitter.EmitSmallConstantGlobals());
 
   const HloComputation* computation = instr_->to_apply();
   return ir_emitter.EmitNestedComputation(*computation, computation->name(),

@@ -75,7 +75,7 @@ absl::Status LocalTensorHandleData::NumElements(int64_t* num_elements) const {
 
 absl::Status LocalTensorHandleData::Unprotect() {
   if (!IsReady()) {
-    return errors::Internal("Cannot unprotect a non-ready tensor");
+    return absl::InternalError("Cannot unprotect a non-ready tensor");
   }
 
   forwarding_protection_tensor_ = tensorflow::Tensor();
@@ -96,7 +96,7 @@ absl::Status LocalTensorHandleData::SetTensor(tensorflow::Tensor&& t) {
   return absl::OkStatus();
 }
 
-string LocalTensorHandleData::DebugString() const {
+std::string LocalTensorHandleData::DebugString() const {
   if (IsReady()) {
     return tensor_.DeviceSafeDebugString();
   } else {

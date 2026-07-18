@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <zlib.h>
 
+#include "absl/status/status.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/logging.h"
 #include "tsl/platform/strcat.h"
 
@@ -86,9 +88,9 @@ ZlibInputStream::~ZlibInputStream() {
 
 absl::Status ZlibInputStream::Reset() {
   if (init_error_) {
-    return errors::DataLoss("unable to reset stream, cannot decompress.");
+    return absl::DataLossError("unable to reset stream, cannot decompress.");
   }
-  TF_RETURN_IF_ERROR(input_stream_->Reset());
+  RETURN_IF_ERROR(input_stream_->Reset());
   inflateEnd(z_stream_def_->stream.get());
   InitZlibBuffer();
   bytes_read_ = 0;
@@ -163,7 +165,7 @@ absl::Status ZlibInputStream::ReadFromStream() {
   // fill up the buffer in which case input_stream_->ReadNBytes would return an
   // OutOfRange error.
   if (data.empty()) {
-    return errors::OutOfRange("EOF reached");
+    return absl::OutOfRangeError("EOF reached");
   }
   if (absl::IsOutOfRange(s)) {
     return absl::OkStatus();
@@ -196,7 +198,7 @@ size_t ZlibInputStream::NumUnreadBytes() const {
 absl::Status ZlibInputStream::ReadNBytes(int64_t bytes_to_read,
                                          tstring* result) {
   if (init_error_) {
-    return errors::DataLoss("Unable to decompress Zlib file.");
+    return absl::DataLossError("Unable to decompress Zlib file.");
   }
 
   result->clear();
@@ -215,12 +217,12 @@ absl::Status ZlibInputStream::ReadNBytes(int64_t bytes_to_read,
     z_stream_def_->stream->avail_out = output_buffer_capacity_;
 
     // Step 2. Try to inflate some input data.
-    TF_RETURN_IF_ERROR(Inflate());
+    RETURN_IF_ERROR(Inflate());
 
     // Step 3. Read any data produced by inflate. If no progress was made by
     // inflate, read more compressed data from the input stream.
     if (NumUnreadBytes() == 0) {
-      TF_RETURN_IF_ERROR(ReadFromStream());
+      RETURN_IF_ERROR(ReadFromStream());
     } else {
       bytes_to_read -= ReadBytesFromCache(bytes_to_read, result);
     }
@@ -234,7 +236,7 @@ absl::Status ZlibInputStream::ReadNBytes(int64_t bytes_to_read,
                                          absl::Cord* result) {
   // TODO(frankchn): Optimize this instead of bouncing through the buffer.
   tstring buf;
-  TF_RETURN_IF_ERROR(ReadNBytes(bytes_to_read, &buf));
+  RETURN_IF_ERROR(ReadNBytes(bytes_to_read, &buf));
   result->Clear();
   result->Append(buf.data());
   return absl::OkStatus();
@@ -250,12 +252,12 @@ absl::Status ZlibInputStream::Inflate() {
   // not fatal and `inflate` can be called again with more input and output
   // space to continue inflating.
   if (error != Z_OK && error != Z_STREAM_END && error != Z_BUF_ERROR) {
-    string error_string =
-        strings::StrCat("inflate() failed with error ", error);
+    std::string error_string =
+        absl::StrCat("inflate() failed with error ", error);
     if (z_stream_def_->stream->msg != nullptr) {
-      strings::StrAppend(&error_string, ": ", z_stream_def_->stream->msg);
+      absl::StrAppend(&error_string, ": ", z_stream_def_->stream->msg);
     }
-    return errors::DataLoss(error_string);
+    return absl::DataLossError(error_string);
   }
   if (error == Z_STREAM_END && zlib_options_.window_bits == MAX_WBITS + 16) {
     inflateReset(z_stream_def_->stream.get());

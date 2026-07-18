@@ -32,7 +32,7 @@ class DriverManager {
   // == `sqlite`, then `CreateQueryConnection` will create a
   // `SqliteQueryConnection` instance.
   static std::unique_ptr<QueryConnection> CreateQueryConnection(
-      const string& driver_name);
+      const std::string& driver_name);
 };
 
 }  // namespace sql

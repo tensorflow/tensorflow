@@ -18,7 +18,8 @@ limitations under the License.
 
 #include <cstddef>
 
-#include "xla/cpu_function_runtime.h"
+#include "absl/types/span.h"
+#include "xla/backends/cpu/buffer_allocation_info.h"
 
 namespace tensorflow {
 
@@ -27,7 +28,7 @@ namespace tensorflow {
 // allocate_entry_params is false, entry parameters.  There are `n` entries in
 // `buffer_infos`.  Each buffer is aligned to Align() byte boundaries.
 size_t AlignedBufferBytes(
-    const xla::cpu_function_runtime::BufferInfo* buffer_infos, size_t n,
+    absl::Span<const xla::cpu::BufferAllocationInfo> buffers,
     bool allocate_entry_params);
 
 // MallocContiguousBuffers allocates buffers for use by the entry point
@@ -43,7 +44,7 @@ size_t AlignedBufferBytes(
 // the head of the allocated contiguous block, which should be passed to
 // FreeContiguous when the buffers are no longer in use.
 void* MallocContiguousBuffers(
-    const xla::cpu_function_runtime::BufferInfo* buffer_infos, size_t n,
+    absl::Span<const xla::cpu::BufferAllocationInfo> buffers,
     bool allocate_entry_params, void** bufs, bool annotate_initialized);
 
 // FreeContiguous frees the contiguous block of memory allocated by

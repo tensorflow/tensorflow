@@ -22,7 +22,6 @@ cc_library(
         "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
@@ -30,7 +29,7 @@ cc_library(
         "//tensorflow/tools/optimization:optimization_pass_runner_lib",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla:status_macros",
+        "@xla//xla:status_macros",
     ],
 )
 
@@ -49,6 +48,8 @@ tf_cc_test(
     deps = [
         ":auto_clustering_test_helper",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -79,7 +80,7 @@ cc_library(
         "//tensorflow/core/platform:path",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/service:hlo_proto_cc",
+        "@xla//xla/service:hlo_proto_cc",
     ],
 )
 

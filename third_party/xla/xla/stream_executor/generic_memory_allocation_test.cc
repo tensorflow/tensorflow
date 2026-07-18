@@ -34,8 +34,8 @@ TEST(GenericMemoryAllocationTest, DeleterIsCalledWithCorrectArguments) {
   };
   {
     GenericMemoryAllocation allocation(array.data(), array.size(), deleter);
-    EXPECT_EQ(allocation.opaque(), array.data());
-    EXPECT_EQ(allocation.size(), array.size());
+    EXPECT_EQ(allocation.address().opaque(), array.data());
+    EXPECT_EQ(allocation.address().size(), array.size());
     EXPECT_FALSE(deleter_called);
   }
   EXPECT_TRUE(deleter_called);

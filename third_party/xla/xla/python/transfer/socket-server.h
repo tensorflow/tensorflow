@@ -17,6 +17,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/python/transfer/event_loop.h"
 #include "xla/python/transfer/streaming.h"
@@ -30,6 +33,7 @@ namespace aux {
 class SocketServer {
  public:
   SocketServer() = default;
+  ~SocketServer();
 
   // Address that this server is listening on.
   const SocketAddress& addr() { return listener_->addr(); }
@@ -41,9 +45,14 @@ class SocketServer {
       std::shared_ptr<BulkTransportFactory> bulk_transport_factory);
 
   // Registers an entry for a particular uuid which is a list of buffers.
-  void AwaitPull(uint64_t uuid, tsl::RCReference<PullTable::Entry> handler) {
-    pull_table_->AwaitPull(uuid, std::move(handler));
+  void AwaitPull(uint64_t uuid, tsl::RCReference<PullTable::Entry> handler,
+                 std::optional<absl::Time> timeout = std::nullopt) {
+    DropExpiredPulls();
+    pull_table_->AwaitPull(uuid, std::move(handler), timeout);
   }
+
+  // Clears pull table entries with expired timeouts.
+  void DropExpiredPulls() { pull_table_->DropExpiredPulls(absl::Now()); }
 
   // Clears outstanding buffers and buffer requests.
   void Reset() { pull_table_->Reset(); }
@@ -58,13 +67,20 @@ class SocketServer {
 
     // Fetch a particular buffer from a remote server.
     void Pull(uint64_t uuid, int buffer_id,
-              tsl::RCReference<ChunkDestination> dest);
+              tsl::RCReference<ChunkDestination> dest,
+              std::optional<absl::Time> timeout = std::nullopt);
 
     // Fetch a list of buffers from a remote server.
     void Pull(uint64_t uuid, absl::Span<const int> buffer_ids,
-              std::vector<tsl::RCReference<ChunkDestination>> dests);
+              std::vector<tsl::RCReference<ChunkDestination>> dests,
+              std::optional<absl::Time> timeout = std::nullopt);
 
-    void InjectFailure();
+    enum FailureKind {
+      kPoison,
+      kProtocolFailure,
+    };
+
+    void InjectFailure(FailureKind kind = kProtocolFailure);
 
    private:
     SocketNetworkState* local_;
@@ -73,7 +89,15 @@ class SocketServer {
   // Connect to a remote server at an address.
   tsl::RCReference<Connection> Connect(const SocketAddress& other_addr);
 
+  void WaitForQuiesce();
+
  private:
+  struct ConnectionList {
+    absl::Mutex mu;
+    std::list<SocketNetworkState*> list;
+  };
+  std::shared_ptr<ConnectionList> connections_ =
+      std::make_shared<ConnectionList>();
   std::unique_ptr<SocketListener> listener_;
   std::shared_ptr<BulkTransportFactory> bulk_transport_factory_;
   std::shared_ptr<PullTable> pull_table_ = std::make_shared<PullTable>();

@@ -14,21 +14,25 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/shard_dataset_op.h"
 
+#include <cstdint>
 #include <cstdlib>
-#include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -71,9 +75,9 @@ class ShardDatasetOp::Dataset : public DatasetBase {
         input_(input),
         require_non_empty_(require_non_empty),
         traceme_metadata_(
-            {{"index", strings::Printf("%lld", static_cast<long long>(index))},
+            {{"index", absl::StrFormat("%lld", static_cast<long long>(index))},
              {"num_shards",
-              strings::Printf("%lld", static_cast<long long>(num_shards))}}) {
+              absl::StrFormat("%lld", static_cast<long long>(num_shards))}}) {
     input_->Ref();
     random_indexing_compatible_ = absl::OkStatus();
     if (input_ != nullptr) {
@@ -84,7 +88,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
@@ -97,7 +101,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
     params.set_args(num_shards_, index_);
     return name_utils::DatasetDebugString(kDatasetType, params);
@@ -121,7 +125,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
     return input_->CheckExternalState();
   }
 
-  absl::Status Get(OpKernelContext* ctx, int64 index,
+  absl::Status Get(OpKernelContext* ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     return input_->Get(ctx, index_ + (num_shards_ * index), out_tensors);
@@ -161,7 +165,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
 
     absl::Status Initialize(IteratorContext* ctx) override {
       if (dataset()->num_shards_ == kShardHint) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(
             "`tf.data.Dataset.shard(SHARD_HINT, ...)` can only be used in "
             "`tf.distribute.Strategy.experimental_distribute_dataset()` with "
             "`tf.data.experimental.AutoShardPolicy.HINT` policy, or tf.data "
@@ -341,17 +345,18 @@ void ShardDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
 
   OP_REQUIRES_OK(ctx,
                  ParseScalarArgument<int64_t>(ctx, kNumShards, &num_shards));
-  OP_REQUIRES(
-      ctx, num_shards > 0 || num_shards == kShardHint,
-      errors::InvalidArgument("Number of shards must be greater than zero "
-                              "(currently num_shards = ",
-                              num_shards, ")."));
+  OP_REQUIRES(ctx, num_shards > 0 || num_shards == kShardHint,
+              absl::InvalidArgumentError(
+                  absl::StrCat("Number of shards must be greater than zero "
+                               "(currently num_shards = ",
+                               num_shards, ").")));
 
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kIndex, &index));
-  OP_REQUIRES(
-      ctx, (index >= 0 && index < num_shards) || num_shards == kShardHint,
-      errors::InvalidArgument("Index must be between 0 and ", num_shards - 1,
-                              " (currently index = ", index, ")."));
+  OP_REQUIRES(ctx,
+              (index >= 0 && index < num_shards) || num_shards == kShardHint,
+              absl::InvalidArgumentError(
+                  absl::StrCat("Index must be between 0 and ", num_shards - 1,
+                               " (currently index = ", index, ").")));
 
   *output = new Dataset(ctx, num_shards, index, require_non_empty_, input);
 }

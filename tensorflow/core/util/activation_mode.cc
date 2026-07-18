@@ -15,13 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/util/activation_mode.h"
 
+#include <string>
+
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 
-absl::Status GetActivationModeFromString(const string& str_value,
+absl::Status GetActivationModeFromString(const std::string& str_value,
                                          ActivationMode* value) {
   if (str_value == "None") {
     *value = NONE;
@@ -38,7 +41,8 @@ absl::Status GetActivationModeFromString(const string& str_value,
   } else if (str_value == "BandPass") {
     *value = BANDPASS;
   } else {
-    return errors::NotFound(str_value, " is not an allowed activation mode");
+    return absl::NotFoundError(
+        absl::StrCat(str_value, " is not an allowed activation mode"));
   }
   return absl::OkStatus();
 }

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_TSL_PLATFORM_CTSTRING_INTERNAL_H_
 
 #include <limits.h>
+#include <stdbool.h>  // IWYU pragma: keep, provides bool
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -81,6 +82,18 @@ typedef enum TF_TString_Type {  // NOLINT
   TF_TSTR_TYPE_MASK = 0x03
 } TF_TString_Type;
 
+// C-compatible API for tstring shared ownership.
+struct TStringOwnerCApi;
+
+typedef void (*tstring_owner_ref_t)(struct TStringOwnerCApi *self);
+typedef bool (*tstring_owner_unref_t)(struct TStringOwnerCApi *self);
+
+typedef struct TStringOwnerCApi {
+  tstring_owner_ref_t ref;
+  tstring_owner_unref_t unref;
+  void *obj;  // Opaque pointer to the C++ owner object
+} TStringOwnerCApi;
+
 typedef struct TF_TString_Large {  // NOLINT
   size_t size;
   size_t cap;
@@ -96,6 +109,7 @@ typedef struct TF_TString_Offset {  // NOLINT
 typedef struct TF_TString_View {  // NOLINT
   size_t size;
   const char *ptr;
+  TStringOwnerCApi *owner_ref;
 } TF_TString_View;
 
 typedef struct TF_TString_Raw {  // NOLINT
@@ -177,6 +191,10 @@ static inline void TF_TString_Dealloc(TF_TString *str) {
       str->u.large.ptr != NULL) {  // NOLINT
     free(str->u.large.ptr);
     TF_TString_Init(str);
+  } else if (TF_TString_GetType(str) == TF_TSTR_VIEW &&
+             str->u.view.owner_ref != NULL) {  // NOLINT
+    (void)str->u.view.owner_ref->unref(str->u.view.owner_ref);
+    TF_TString_Init(str);
   }
 }
 
@@ -226,11 +244,20 @@ static inline const char *TF_TString_GetDataPointer(const TF_TString *str) {
 
 static inline char *TF_TString_ResizeUninitialized(TF_TString *str,
                                                    size_t new_size) {
+  if (new_size >= (size_t)~0 - 16) {
+#if defined(__clang__) || defined(__GNUC__)
+    __builtin_trap();
+#else
+    *(volatile int*)0 = 0;
+#endif
+  }
   size_t curr_size = TF_TString_GetSize(str);
   size_t copy_size = TF_min(new_size, curr_size);
 
   TF_TString_Type curr_type = TF_TString_GetType(str);
   const char *curr_ptr = TF_TString_GetDataPointer(str);
+  TStringOwnerCApi *curr_owner_ref =
+      curr_type == TF_TSTR_VIEW ? str->u.view.owner_ref : NULL;  // NOLINT
 
   // Case: SMALL/LARGE/VIEW/OFFSET -> SMALL
   if (new_size <= TF_TString_SmallCapacity) {
@@ -243,9 +270,9 @@ static inline char *TF_TString_ResizeUninitialized(TF_TString *str,
 
     if (curr_type == TF_TSTR_LARGE) {
       free((void *)curr_ptr);  // NOLINT
+    } else if (curr_owner_ref != NULL) {  // NOLINT
+      curr_owner_ref->unref(curr_owner_ref);
     }
-
-    // We do not clear out the newly excluded region.
 
     return str->u.smll.str;
   }
@@ -259,6 +286,13 @@ static inline char *TF_TString_ResizeUninitialized(TF_TString *str,
     new_cap = TF_align16(curr_cap / 2 + 1) - 1;
   } else if (new_size > curr_cap) {
     new_cap = TF_align16(new_size + 1) - 1;
+    if (new_cap < new_size) {  // Check for overflow after alignment
+#if defined(__clang__) || defined(__GNUC__)
+      __builtin_trap();
+#else
+      *(volatile int*)0 = 0;
+#endif
+    }
   } else {
     new_cap = curr_cap;
   }
@@ -272,6 +306,9 @@ static inline char *TF_TString_ResizeUninitialized(TF_TString *str,
     new_ptr = (char *)malloc(new_cap + 1);  // NOLINT
     if (copy_size) {
       memcpy(new_ptr, curr_ptr, copy_size);
+    }
+    if (curr_type == TF_TSTR_VIEW && str->u.view.owner_ref != NULL) {  // NOLINT
+      (void)str->u.view.owner_ref->unref(str->u.view.owner_ref);
     }
   }
 
@@ -302,6 +339,13 @@ static inline char *TF_TString_GetMutableDataPointer(TF_TString *str) {
 }
 
 static inline void TF_TString_Reserve(TF_TString *str, size_t new_cap) {
+  if (new_cap > (size_t)~0 - 16) {
+#if defined(__clang__) || defined(__GNUC__)
+    __builtin_trap();
+#else
+    *(volatile int*)0 = 0;
+#endif
+  }
   TF_TString_Type curr_type = TF_TString_GetType(str);
 
   if (new_cap <= TF_TString_SmallCapacity) {
@@ -333,6 +377,9 @@ static inline void TF_TString_Reserve(TF_TString *str, size_t new_cap) {
     // Convert to Large
     char *new_ptr = (char *)malloc(new_cap + 1);  // NOLINT
     memcpy(new_ptr, curr_ptr, curr_size);
+    if (curr_type == TF_TSTR_VIEW && str->u.view.owner_ref != NULL) {  // NOLINT
+      (void)str->u.view.owner_ref->unref(str->u.view.owner_ref);
+    }
 
     str->u.large.size = TF_TString_ToInternalSizeT(curr_size, TF_TSTR_LARGE);
     str->u.large.ptr = new_ptr;
@@ -362,12 +409,22 @@ static inline char *TF_TString_Resize(TF_TString *str, size_t new_size,
   return cstr;
 }
 
-static inline void TF_TString_AssignView(TF_TString *dst, const char *src,
-                                         size_t size) {
+static inline void TF_TString_AssignViewWithOwner(TF_TString *dst,
+                                                  const char *src, size_t size,
+                                                  TStringOwnerCApi *owner_ref) {
+  if (owner_ref != NULL) {  // NOLINT
+    owner_ref->ref(owner_ref);
+  }
   TF_TString_Dealloc(dst);
 
   dst->u.view.size = TF_TString_ToInternalSizeT(size, TF_TSTR_VIEW);
   dst->u.view.ptr = src;
+  dst->u.view.owner_ref = owner_ref;
+}
+
+static inline void TF_TString_AssignView(TF_TString *dst, const char *src,
+                                         size_t size) {
+  TF_TString_AssignViewWithOwner(dst, src, size, NULL);  // NOLINT
 }
 
 static inline void TF_TString_AppendN(TF_TString *dst, const char *src,
@@ -400,14 +457,21 @@ static inline void TF_TString_Copy(TF_TString *dst, const char *src,
 static inline void TF_TString_Assign(TF_TString *dst, const TF_TString *src) {
   if (dst == src) return;
 
-  TF_TString_Dealloc(dst);
-
   switch (TF_TString_GetType(src)) {
     case TF_TSTR_SMALL:
-    case TF_TSTR_VIEW:
+      TF_TString_Dealloc(dst);
       *dst = *src;
       return;
+    case TF_TSTR_VIEW: {
+      TF_TString_Dealloc(dst);
+      *dst = *src;
+      if (dst->u.view.owner_ref != NULL) {  // NOLINT
+        dst->u.view.owner_ref->ref(dst->u.view.owner_ref);
+      }
+      return;
+    }
     case TF_TSTR_LARGE: {
+      TF_TString_Dealloc(dst);
       const char *src_c = TF_TString_GetDataPointer(src);
       size_t size = TF_TString_GetSize(src);
 
@@ -433,9 +497,9 @@ static inline void TF_TString_Move(TF_TString *dst, TF_TString *src) {
 
   switch (TF_TString_GetType(src)) {
     case TF_TSTR_SMALL:
-    case TF_TSTR_VIEW:
       *dst = *src;
       return;
+    case TF_TSTR_VIEW:
     case TF_TSTR_LARGE:
       *dst = *src;
       TF_TString_Init(src);

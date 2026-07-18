@@ -14,15 +14,22 @@ limitations under the License.
 ==============================================================================*/
 #include <stdint.h>
 
+#include <cstdlib>
+#include <cstring>
 #include <initializer_list>
 #include <string>
 #include <type_traits>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "Eigen/Core"  // from @eigen_archive
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace {
@@ -105,12 +112,23 @@ class GatherOpModel : public SingleOpModel {
       num_elements *= shape[i];
     }
     std::vector<int8_t> inflated_output(num_elements);
-    tensor_utils::UnpackDenseInt4IntoInt8(data_int8.data(), num_elements,
-                                          inflated_output.data());
+    tensor_utils::UnpackPackedIntToInt8(data_int8.data(), num_elements,
+                                        /*bit_width=*/4,
+                                        inflated_output.data());
     return inflated_output;
   }
 
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
+
+  void SetRawInput(const char* data, size_t bytes) {
+    auto tensor = interpreter_->tensor(input_);
+    char* tensor_buffer = reinterpret_cast<char*>(malloc(bytes));
+    memcpy(tensor_buffer, data, bytes);
+    TfLiteTensorReset(tensor->type, tensor->name,
+                      TfLiteIntArrayCopy(tensor->dims), tensor->params,
+                      tensor_buffer, bytes, kTfLiteDynamic, tensor->allocation,
+                      tensor->is_variable, tensor);
+  }
 
  protected:
   int input_;
@@ -251,7 +269,7 @@ TEST_P(GatherOpTest, LastAxis0DIndex) {
 }
 
 using TestTypes = testing::Types<int8_t, uint8_t, int16_t, int32_t, int64_t,
-                                 float, Eigen::half, Eigen::bfloat16>;
+                                 float, half, Eigen::bfloat16>;
 
 template <typename T>
 struct TypedGatherOpTest : public testing::Test {};
@@ -293,6 +311,30 @@ TEST(GatherOpTest, SimpleString) {
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   ASSERT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
   EXPECT_THAT(m.GetStringOutput(), ElementsAreArray({"A", "C"}));
+}
+
+TEST(GatherOpTest, StringIndexTruncation) {
+  GatherOpModel<std::string, int16_t> m({TensorType_STRING, {1}},
+                                        {TensorType_INT16, {1}},
+                                        /*constant_tensor=*/false, {"A"}, {0});
+
+  // Access the implementation details to manually corrupt the string tensor's
+  // buffer. We want to simulate:
+  // - num_strings = -65535 (which is 0xFFFF0001, truncates to 1 in int16_t)
+  // - indexes = {0}
+  // - pos = 0 < 1 check would pass in 16-bit, but should fail with our
+  // validation.
+
+  int32_t malformed_data[3];
+  malformed_data[0] = -65535;  // N
+  malformed_data[1] = 12;      // offset
+  malformed_data[2] = 12;      // total length
+
+  m.SetRawInput(reinterpret_cast<const char*>(malformed_data),
+                sizeof(malformed_data));
+
+  // Invoke should fail (not kTfLiteOk)
+  EXPECT_NE(m.Invoke(), kTfLiteOk);
 }
 
 TEST_P(GatherOpTest, 2DIndexString) {

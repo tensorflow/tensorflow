@@ -5,6 +5,8 @@ load(
     "tf_proto_library",
 )
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:LICENSE"])
+
 # OSS only: This target is header-only. Link `debug_options_proto_cc_impl` only to
 # `libtensorflow_framework.so` via `lib_internal_impl`. Do NOT link `debug_options_proto_cc_impl`
 # directly unless the target does not link `libtensorflow_framework.so`.
@@ -28,6 +30,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@com_googlesource_code_re2//:re2",
         "@llvm-project//llvm:Support",
@@ -36,10 +39,10 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:stringpiece",
-        "@local_xla//xla/tsl/lib/io:buffered_file",
-        "@local_xla//xla/tsl/platform:env",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:stringpiece",
+        "@xla//xla/tsl/lib/io:buffered_file",
+        "@xla//xla/tsl/platform:env",
     ],
 )
 
@@ -60,8 +63,8 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:path",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
-        "@local_xla//xla/tsl/platform:env",
+        "@tsl//tsl/platform:path",
+        "@xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/platform:env",
     ],
 )

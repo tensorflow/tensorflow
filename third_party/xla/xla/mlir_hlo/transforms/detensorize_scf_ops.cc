@@ -13,15 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-#include <utility>
-
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/Pass/Pass.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "transforms/passes.h"
@@ -62,7 +60,7 @@ struct RegionOpPattern : public OpRewritePattern<T> {
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     b.setInsertionPoint(result);
     for (auto [index, operand] : unitTensors(result->getOperands())) {
-      result->setOperand(index, b.create<tensor::ExtractOp>(operand));
+      result->setOperand(index, tensor::ExtractOp::create(b, operand));
     }
 
     // Fix any block arguments in the op. We're detensorizing all arguments that
@@ -76,8 +74,8 @@ struct RegionOpPattern : public OpRewritePattern<T> {
           // Change the argument type to a scalar, but repack it into a tensor.
           arg.setType(
               mlir::cast<RankedTensorType>(arg.getType()).getElementType());
-          auto converted = b.create<tensor::FromElementsOp>(
-              RankedTensorType::get({}, arg.getType()), arg);
+          auto converted = tensor::FromElementsOp::create(
+              b, RankedTensorType::get({}, arg.getType()), arg);
           arg.replaceAllUsesExcept(converted, converted.getOperation());
         }
 
@@ -86,7 +84,7 @@ struct RegionOpPattern : public OpRewritePattern<T> {
              unitTensors(block.getTerminator()->getOperands())) {
           b.setInsertionPoint(block.getTerminator());
           block.getTerminator()->setOperand(
-              index, b.create<tensor::ExtractOp>(operand));
+              index, tensor::ExtractOp::create(b, operand));
         }
       }
     }
@@ -99,7 +97,7 @@ struct RegionOpPattern : public OpRewritePattern<T> {
       opResult.setType(oldType.getElementType());
 
       // Convert the scalar back to a tensor in the output.
-      results[index] = b.create<tensor::FromElementsOp>(oldType, opResult);
+      results[index] = tensor::FromElementsOp::create(b, oldType, opResult);
     }
     rewriter.replaceOp(op.getOperation(), results);
     return success();
@@ -128,8 +126,3 @@ struct DetensorizeScfOpsPass
 
 }  // namespace
 }  // namespace mlir
-
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-mlir::createDetensorizeScfOpsPass() {
-  return std::make_unique<mlir::DetensorizeScfOpsPass>();
-}

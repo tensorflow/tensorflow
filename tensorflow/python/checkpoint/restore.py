@@ -745,7 +745,7 @@ def _queue_slot_variables(checkpoint_position, visit_queue):
             deferred_slot_restoration.slot_variable_id,
             deferred_slot_restoration.slot_name,
             # If the corresponding variable has a non trivial resharding
-            # attached, the the slot variable should be resharded in the same
+            # attached, the slot variable should be resharded in the same
             # way.
             checkpoint_position.callback
             if checkpoint_position.has_non_trivial_reshard_callback()
@@ -780,7 +780,7 @@ def _queue_slot_variables(checkpoint_position, visit_queue):
               slot_restoration.slot_variable_id,
               slot_restoration.slot_name,
               # If the corresponding variable has a non trivial resharding
-              # attached, the the slot variable should be resharded in the same
+              # attached, the slot variable should be resharded in the same
               # way.
               checkpoint_position.callback
               if checkpoint_position.has_non_trivial_reshard_callback()

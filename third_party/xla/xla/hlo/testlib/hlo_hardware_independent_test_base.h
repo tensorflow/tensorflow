@@ -35,7 +35,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
@@ -167,7 +166,8 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
       absl::string_view hlo_with_filecheck_lines, HloPassInterface&& hlo_pass,
       std::optional<absl::string_view> expected,
       std::function<void(HloModule*)> after_pass_checks = nullptr,
-      const HloModuleConfig* config = nullptr) const;
+      const HloModuleConfig* config = nullptr,
+      absl::Span<const absl::string_view> additional_check_prefixes = {}) const;
 
   using FixedMapping =
       std::initializer_list<std::pair<absl::string_view, absl::string_view>>;

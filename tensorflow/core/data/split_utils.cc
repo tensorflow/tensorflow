@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -82,7 +83,7 @@ absl::Status IndexSplitProvider::Restore(
 int64_t IndexSplitProvider::Cardinality() const {
   // RandomDataset uses kint64max to simulate infinite splits.
   // See RandomDatasetOp::Dataset::MakeSplitProviders.
-  if (n_ == tsl::kint64max) {
+  if (n_ == std::numeric_limits<int64_t>::max()) {
     return kInfiniteCardinality;
   }
   return n_;

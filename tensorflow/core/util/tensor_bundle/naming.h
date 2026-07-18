@@ -34,14 +34,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_NAMING_H_
 #define TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_NAMING_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
-string MetaFilename(absl::string_view prefix);
-string DataFilename(absl::string_view prefix, int32_t shard_id,
-                    int32_t num_shards);
+std::string MetaFilename(absl::string_view prefix);
+std::string DataFilename(absl::string_view prefix, int32_t shard_id,
+                         int32_t num_shards);
 
 }  // namespace tensorflow
 

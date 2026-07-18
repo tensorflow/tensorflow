@@ -33,11 +33,11 @@ xla_cc_binary(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:RegisterAllDialects",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:status",
+        "@llvm-project//mlir:RegisterAllDialects",  # buildcleaner: keep
+        "@tsl//tsl/platform:env",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:status",
     ],
 )
 
@@ -50,6 +50,7 @@ cc_library(
         "//xla/mlir/tools/mlir_replay/public:execution_trace_proto_cc",
         "//xla/mlir/tools/mlir_replay/public:execution_trace_utils",
         "//xla/service:hlo_proto_cc",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/random:bit_gen_ref",
@@ -61,6 +62,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:ParseUtilities",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:statusor",
     ],
 )

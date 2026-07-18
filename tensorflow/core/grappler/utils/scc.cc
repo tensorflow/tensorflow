@@ -127,7 +127,7 @@ void StronglyConnectedComponents(
     const GraphDef& graph, std::unordered_map<const NodeDef*, int>* components,
     int* num_components) {
   std::stack<SCCNodeData*> stack;
-  std::unordered_map<string, SCCNodeData*> name_to_data;
+  std::unordered_map<std::string, SCCNodeData*> name_to_data;
   std::vector<SCCNodeData> node_data_container;
   node_data_container.reserve(graph.node_size());
   std::unordered_map<const NodeDef*, SCCNodeData*> node_to_data;
@@ -144,7 +144,7 @@ void StronglyConnectedComponents(
   // Also create a mapping from nodes to their children.
   // Inputs might not be present if called on a subgraph.
   for (const NodeDef& node : graph.node()) {
-    for (const string& input : node.input()) {
+    for (const std::string& input : node.input()) {
       auto it = name_to_data.find(NodeName(input));
       if (it != name_to_data.end()) {
         it->second->children.push_back(node_to_data[&node]);
@@ -204,7 +204,7 @@ int IdentifyLoops(const GraphDef& graph,
   int loop_id = 0;
   for (const auto& component : component_ids) {
     const std::vector<const NodeDef*>& component_nodes = component.second;
-    std::vector<std::pair<NodeDef*, string>> next_iter_nodes;
+    std::vector<std::pair<NodeDef*, std::string>> next_iter_nodes;
     GraphDef subgraph;
     std::unordered_map<const NodeDef*, const NodeDef*> subgraph_mapping;
 

@@ -26,31 +26,32 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
-se::DeviceMemoryBase ConstantAllocation::AsDeviceMemoryBase() const {
+se::DeviceAddressBase ConstantAllocation::AsDeviceAddress() const {
   if (auto* _ = std::get_if<std::monostate>(&data)) {
-    return se::DeviceMemoryBase();
+    return se::DeviceAddressBase();
   }
 
   if (auto* owned = std::get_if<std::unique_ptr<Literal>>(&data)) {
-    return se::DeviceMemoryBase((*owned)->untyped_data(),
-                                (*owned)->size_bytes());
+    return se::DeviceAddressBase((*owned)->untyped_data(),
+                                 (*owned)->size_bytes());
   }
 
   auto* view = std::get_if<absl::Span<const uint8_t>>(&data);
-  return se::DeviceMemoryBase(
+  return se::DeviceAddressBase(
       const_cast<void*>(reinterpret_cast<const void*>(view->data())),
       view->size());
 }
@@ -127,9 +128,9 @@ absl::StatusOr<std::vector<ConstantAllocation>> CreateConstantAllocations(
     VLOG(3) << "Create constant allocation for index " << allocation.index()
             << " from constant literal " << const_instr->name()
             << "; shape=" << const_instr->literal().shape();
-    TF_ASSIGN_OR_RETURN(constants.emplace_back(),
-                        LiteralToConstantAllocation(allocation.index(),
-                                                    const_instr->literal()));
+    ASSIGN_OR_RETURN(constants.emplace_back(),
+                     LiteralToConstantAllocation(allocation.index(),
+                                                 const_instr->literal()));
   }
 
   return constants;

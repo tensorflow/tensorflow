@@ -19,22 +19,23 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
 absl::StatusOr<XlaOp> BroadcastTo(XlaOp input,
                                   absl::Span<int64_t const> output_dims) {
   XlaBuilder* builder = input.builder();
-  TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
+  ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
   absl::Span<int64_t const> input_dims = input_shape.dimensions();
 
   if (input_dims == output_dims) {
@@ -42,10 +43,10 @@ absl::StatusOr<XlaOp> BroadcastTo(XlaOp input,
   }
 
   if (input_dims.size() > output_dims.size()) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Input shape (", ShapeUtil::HumanString(input_shape),
         ") must have rank less than or equal to the output shape [",
-        absl::StrJoin(output_dims, ","), "]");
+        absl::StrJoin(output_dims, ","), "]"));
   }
 
   std::vector<int64_t> broadcast_dims;
@@ -56,10 +57,10 @@ absl::StatusOr<XlaOp> BroadcastTo(XlaOp input,
     if (input_it != input_dims.rend()) {
       if (!(*output_it == 0 && *input_it == 0) &&
           !(*input_it != 0 && *output_it % *input_it == 0)) {
-        return tsl::errors::InvalidArgument(
-            "Invalid shape broadcast from ",
-            ShapeUtil::HumanString(input_shape), " to [",
-            absl::StrJoin(output_dims, ","), "]");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Invalid shape broadcast from ",
+                         ShapeUtil::HumanString(input_shape), " to [",
+                         absl::StrJoin(output_dims, ","), "]"));
       }
 
       broadcast_dims.push_back(broadcast_shape.size());

@@ -17,6 +17,7 @@
 #include <gtest/gtest.h>
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace {
@@ -34,7 +35,7 @@ tflite::TensorType GetTTEnum<double>() {
 }
 
 template <>
-tflite::TensorType GetTTEnum<Eigen::half>() {
+tflite::TensorType GetTTEnum<half>() {
   return tflite::TensorType_FLOAT16;
 }
 
@@ -74,7 +75,7 @@ class Atan2Test : public ::testing::Test {
   using FloatType = Float;
 };
 
-using TestTypes = ::testing::Types<float, double, Eigen::half, Eigen::bfloat16>;
+using TestTypes = ::testing::Types<float, double, half, Eigen::bfloat16>;
 
 TYPED_TEST_SUITE(Atan2Test, TestTypes);
 
@@ -85,15 +86,15 @@ TYPED_TEST(Atan2Test, TestScalar) {
   tflite::TensorData output = {GetTTEnum<Float>(), {}};
   Atan2Model m(y, x, output);
 
-  auto got = m.GetOutput<Float>({Float(0.0)}, {Float(0.0)});
+  auto got = m.GetOutput<Float>({Float(0.0f)}, {Float(0.0f)});
   ASSERT_EQ(got.size(), 1);
   EXPECT_FLOAT_EQ(got[0], 0.0);
-  ASSERT_FLOAT_EQ(m.GetOutput<Float>({Float(1.0)}, {Float(0.0)})[0],
-                  Float(M_PI / 2));
-  ASSERT_FLOAT_EQ(m.GetOutput<Float>({Float(0.0)}, {Float(1.0)})[0],
-                  Float(0.0));
-  ASSERT_FLOAT_EQ(m.GetOutput<Float>({Float(-1.0)}, {Float(0.0)})[0],
-                  Float(-M_PI / 2));
+  ASSERT_FLOAT_EQ(m.GetOutput<Float>({Float(1.0f)}, {Float(0.0f)})[0],
+                  Float(static_cast<float>(M_PI / 2)));
+  ASSERT_FLOAT_EQ(m.GetOutput<Float>({Float(0.0f)}, {Float(1.0f)})[0],
+                  Float(0.0f));
+  ASSERT_FLOAT_EQ(m.GetOutput<Float>({Float(-1.0f)}, {Float(0.0f)})[0],
+                  Float(-static_cast<float>(M_PI / 2)));
 }
 
 TYPED_TEST(Atan2Test, TestBatch) {
@@ -102,10 +103,12 @@ TYPED_TEST(Atan2Test, TestBatch) {
   tflite::TensorData x = {GetTTEnum<Float>(), {4, 2, 1}};
   tflite::TensorData output = {GetTTEnum<Float>(), {4, 2, 1}};
   Atan2Model m(y, x, output);
-  std::vector<Float> y_data = {Float(0.1), Float(0.2), Float(0.3), Float(0.4),
-                               Float(0.5), Float(0.6), Float(0.7), Float(0.8)};
-  std::vector<Float> x_data = {Float(0.8), Float(0.7), Float(0.6), Float(0.5),
-                               Float(0.4), Float(0.3), Float(0.2), Float(0.1)};
+  std::vector<Float> y_data = {Float(0.1f), Float(0.2f), Float(0.3f),
+                               Float(0.4f), Float(0.5f), Float(0.6f),
+                               Float(0.7f), Float(0.8f)};
+  std::vector<Float> x_data = {Float(0.8f), Float(0.7f), Float(0.6f),
+                               Float(0.5f), Float(0.4f), Float(0.3f),
+                               Float(0.2f), Float(0.1f)};
   auto got = m.GetOutput<Float>(y_data, x_data);
   ASSERT_EQ(got.size(), 8);
   for (int i = 0; i < 8; ++i) {

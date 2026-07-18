@@ -24,12 +24,15 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -90,9 +93,9 @@ void RegisterSerDes(const void* type_id, std::unique_ptr<SerDes> serdes) {
   serdes.release();
 }
 
-absl::StatusOr<Serialized> Serialize(
-    const Serializable& serializable,
-    std::unique_ptr<SerializeOptions> options) {
+absl::Status Serialize(const Serializable& serializable,
+                       std::unique_ptr<SerializeOptions> options,
+                       Serialized& proto) {
   SerDes* serdes;
   {
     Registry* const r = registry();
@@ -105,13 +108,21 @@ absl::StatusOr<Serialized> Serialize(
     }
     serdes = it->second;
   }
-  TF_ASSIGN_OR_RETURN(std::string data,
-                      serdes->Serialize(serializable, std::move(options)));
+  ASSIGN_OR_RETURN(absl::Cord data,
+                   serdes->Serialize(serializable, std::move(options)));
 
-  Serialized proto;
+  proto.Clear();
   proto.set_type_name(std::string(serdes->type_name()));
   proto.set_data(std::move(data));
-  return proto;
+  return absl::OkStatus();
+}
+
+absl::StatusOr<Serialized> Serialize(
+    const Serializable& serializable,
+    std::unique_ptr<SerializeOptions> options) {
+  Serialized serialized;
+  RETURN_IF_ERROR(Serialize(serializable, std::move(options), serialized));
+  return serialized;
 }
 
 namespace serdes_internal {

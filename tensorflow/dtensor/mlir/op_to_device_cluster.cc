@@ -51,8 +51,8 @@ mlir::LogicalResult WrapDeviceCluster(mlir::OpBuilder *builder,
                                       mlir::Operation *op) {
   // Create new tf_device.cluster op wrapping a single operation.
   builder->setInsertionPoint(op);
-  auto cluster = builder->create<mlir::tf_device::ClusterOp>(
-      op->getLoc(), op->getResultTypes());
+  auto cluster = mlir::tf_device::ClusterOp::create(*builder, op->getLoc(),
+                                                    op->getResultTypes());
   if (auto layout_op = llvm::dyn_cast<mlir::TF::DTensorLayout>(op)) {
     cluster->setAttr(kMeshAttr, builder->getStringAttr(
                                     layout_op.getLayout().mesh().ToString()));
@@ -89,7 +89,7 @@ mlir::LogicalResult WrapDeviceCluster(mlir::OpBuilder *builder,
   cluster.getBody().push_back(new mlir::Block);
 
   builder->setInsertionPointToEnd(&cluster.GetBody());
-  builder->create<mlir::tf_device::ReturnOp>(op->getLoc(), op->getResults());
+  mlir::tf_device::ReturnOp::create(*builder, op->getLoc(), op->getResults());
 
   // Move `op` inside newly created `ClusterOp`.
   op->moveBefore(cluster.GetBody().getTerminator());

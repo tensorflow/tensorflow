@@ -38,11 +38,13 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
-class ScatterTest : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+class ScatterTest : public HloPjRtInterpreterReferenceMixin<HloTestBase> {
  protected:
   void RunTest(const absl::string_view hlo_text, Literal* const operand,
                Literal* const scatter_indices, Literal* const updates) {
@@ -119,11 +121,13 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result,
       Execute(std::move(module), {&operand, &scatter_indices, &updates}));
-  Literal expected_option_one =
-      LiteralUtil::CreateR2<int32_t>({{10, 20, 30}, {4, 5, 6}, {7, 8, 9}});
-  Literal expected_option_two =
-      LiteralUtil::CreateR2<int32_t>({{70, 80, 90}, {4, 5, 6}, {7, 8, 9}});
-  EXPECT_TRUE(result == expected_option_one || result == expected_option_two);
+  auto data = result.data<int32_t>();
+  // The first row is written twice, so it is not deterministic which of the two
+  // writes "wins".
+  EXPECT_TRUE(data[0] == 10 || data[0] == 70);
+  EXPECT_TRUE(data[1] == 20 || data[1] == 80);
+  EXPECT_TRUE(data[2] == 30 || data[2] == 90);
+  EXPECT_EQ(data.subspan(3), (std::vector<int32_t>{4, 5, 6, 7, 8, 9}));
 }
 
 TEST_F(ScatterTest, TensorFlowScatterV1_WithFusedAdds) {
@@ -1050,11 +1054,6 @@ ENTRY main {
 }
 
 TEST_F(ScatterTest, Scatter_Add_F32) {
-  if (GetDebugOptionsForTest().xla_gpu_enable_scatter_determinism_expander() &&
-      GetDebugOptionsForTest().xla_gpu_deterministic_ops()) {
-    // TODO(b/443204632): Re-enable this test.
-    GTEST_SKIP() << "Currently fails";
-  }
   const std::string hlo_text = R"(
 HloModule scatter_add
 

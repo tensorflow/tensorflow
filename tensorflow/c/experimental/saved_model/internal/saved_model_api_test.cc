@@ -19,7 +19,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
@@ -506,7 +508,7 @@ TEST_P(CSavedModelAPITest, LoadSavedModelWithUninitializedVariable) {
   EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
 
   tensorflow::TFSavedModelAPI* model_api =
-      tensorflow::down_cast<tensorflow::TFSavedModelAPI*>(
+      absl::down_cast<tensorflow::TFSavedModelAPI*>(
           tensorflow::unwrap(saved_model));
   tensorflow::Variable* uninitialized_variable;
   ASSERT_EQ(absl::OkStatus(), model_api->GetVariable("uninitialized_variable",

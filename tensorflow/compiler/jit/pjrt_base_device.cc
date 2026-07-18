@@ -17,8 +17,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-DeviceAttributes BuildPjRtBaseDeviceAttributes(const string& name_prefix,
-                                               const string& device_name,
+DeviceAttributes BuildPjRtBaseDeviceAttributes(const std::string& name_prefix,
+                                               const std::string& device_name,
                                                int device_ordinal) {
   return Device::BuildDeviceAttributes(
       absl::StrCat(name_prefix, "/device:", device_name, ":", device_ordinal),
@@ -48,11 +48,11 @@ PjRtBaseDevice::GetMetadataFromDevice(DeviceBase* device) {
   PjRtBaseDevice* pjrt_device =
       dynamic_cast<PjRtBaseDevice*>(device->UnderlyingDevice());
   if (pjrt_device == nullptr) {
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "Cannot get device metadata from non-PJRT device \"", device->name(),
         "\". GetMetadata must only be called on a device derived from "
         "PjRtBaseDevice. Either an internal bug has been triggered, or an "
-        "XLA-specific op has been placed on the wrong device.");
+        "XLA-specific op has been placed on the wrong device."));
   }
   return &pjrt_device->metadata_;
 }

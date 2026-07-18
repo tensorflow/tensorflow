@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -47,7 +48,7 @@ bool ShouldSkipForSideEffect(HloInstruction* instruction) {
 
 }  // namespace
 
-absl::StatusOr<bool> ZeroSizedHloElimination::Run(
+absl::StatusOr<bool> ZeroSizedHloElimination::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -71,7 +72,7 @@ absl::StatusOr<bool> ZeroSizedHloElimination::Run(
       }
 
       if (comp->IsSafelyRemovable(instruction)) {
-        TF_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
+        RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
             instruction,
             HloInstruction::CreateConstant(Literal::CreateFromShape(shape))));
         changed = true;
@@ -81,7 +82,7 @@ absl::StatusOr<bool> ZeroSizedHloElimination::Run(
         HloInstruction* constant =
             comp->AddInstruction(HloInstruction::CreateConstant(
                 Literal::CreateFromShape(instruction->shape())));
-        TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(constant));
+        RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(constant));
         changed = true;
       }
     }

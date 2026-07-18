@@ -29,8 +29,8 @@ namespace {
 
 // Makes a unique name for a temporary variable inside a while loop body,
 // because loop can be executed in multiple iterations in parallel.
-string TemporaryVariableName(const string& var_name,
-                             const FrameAndIter& control_frame) {
+std::string TemporaryVariableName(const std::string& var_name,
+                                  const FrameAndIter& control_frame) {
   if (control_frame.frame_id != kIllegalFrameId &&
       control_frame.iter_id != kIllegalIterId) {
     return strings::StrCat(var_name, "/frame:", control_frame.frame_id,
@@ -53,7 +53,7 @@ class LegacyVar : public ResourceBase {
   mutex* mu() { return &mu_; }
   Tensor* tensor() { return &tensor_; }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return absl::StrCat(DataTypeString(tensor_.dtype()), "/",
                         tensor_.shape().DebugString());
   }
@@ -106,11 +106,12 @@ class TemporaryVariableOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     absl::Status s;
     ResourceMgr* rm = context->resource_manager();
-    OP_REQUIRES(context, rm, errors::Internal("No per-step resource manager."));
+    OP_REQUIRES(context, rm,
+                absl::InternalError("No per-step resource manager."));
     auto unique_name = TemporaryVariableName(var_name_, context->frame_iter());
     auto* tmp_var = new TmpVar;
     OP_REQUIRES(context, tmp_var,
-                errors::ResourceExhausted("Could not allocate TmpVar."));
+                absl::ResourceExhaustedError("Could not allocate TmpVar."));
     tmp_var->name = unique_name;
     s = context->allocate_temp(dtype_, shape_, &tmp_var->val);
     if (!s.ok()) tmp_var->Unref();
@@ -130,14 +131,14 @@ class TemporaryVariableOp : public OpKernel {
   struct TmpVar : public ResourceBase {
     mutex mu;
     Tensor val;
-    string name;
-    string DebugString() const override { return name; }
+    std::string name;
+    std::string DebugString() const override { return name; }
     ~TmpVar() override { VLOG(3) << "TmpVar " << name << " deleted"; }
   };
 
   TensorShape shape_;
   DataType dtype_;
-  string var_name_;
+  std::string var_name_;
 };
 
 class DestroyTemporaryVariableOp : public OpKernel {
@@ -145,10 +146,10 @@ class DestroyTemporaryVariableOp : public OpKernel {
   explicit DestroyTemporaryVariableOp(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES(context, IsRefType(context->input_type(0)),
-                errors::InvalidArgument("lhs input needs to be a ref type"));
+                absl::InvalidArgumentError("lhs input needs to be a ref type"));
     OP_REQUIRES_OK(context, context->GetAttr("var_name", &var_name_));
     OP_REQUIRES(context, !var_name_.empty(),
-                errors::InvalidArgument("Missing var_name attribute"));
+                absl::InvalidArgumentError("Missing var_name attribute"));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -159,7 +160,8 @@ class DestroyTemporaryVariableOp : public OpKernel {
     Tensor tmpvar = context->mutable_input(0, false);
     context->set_output(0, tmpvar);
     ResourceMgr* rm = context->resource_manager();
-    OP_REQUIRES(context, rm, errors::Internal("No per-step resource manager."));
+    OP_REQUIRES(context, rm,
+                absl::InternalError("No per-step resource manager."));
     auto unique_name = TemporaryVariableName(var_name_, context->frame_iter());
     OP_REQUIRES_OK(
         context, context->step_container()->Delete<TemporaryVariableOp::TmpVar>(
@@ -171,7 +173,7 @@ class DestroyTemporaryVariableOp : public OpKernel {
   }
 
  private:
-  string var_name_;
+  std::string var_name_;
 };
 
 class IsVariableInitializedOp : public OpKernel {

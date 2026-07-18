@@ -1,5 +1,5 @@
 load(
-    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "@xla//xla/tsl/mkl:build_defs.bzl",
     "mkl_deps",
 )
 load(
@@ -36,7 +36,7 @@ MKL_DEPS = MKL_SHORT_DEPS + [
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/kernels:concat_lib",
     "//tensorflow/core/kernels:conv_2d",
-    "@local_xla//xla/tsl/framework/contraction:eigen_contraction_kernel",
+    "@xla//xla/tsl/framework/contraction:eigen_contraction_kernel",
     "//tensorflow/core/kernels:fill_functor",
     "//tensorflow/core/kernels:gather_functor",
     "//tensorflow/core/kernels:transpose_functor",
@@ -221,6 +221,18 @@ tf_cc_test_mkl(
         "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core/kernels:quantization_utils",
         "//tensorflow/core/kernels:quantized_ops",
+    ] + MKL_TEST_DEPS,
+)
+
+tf_cc_test_mkl(
+    name = "mkl_avgpooling_op_test",
+    size = "small",
+    srcs = ["mkl_avgpooling_op_test.cc"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
+    deps = [
+        ":mkl_pooling_ops",
+        "//tensorflow/core:mkl_nn_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
     ] + MKL_TEST_DEPS,
 )
 

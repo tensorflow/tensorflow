@@ -77,7 +77,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
   }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
@@ -96,7 +96,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
     return output_shapes_;
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
@@ -204,9 +204,9 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
 
         int64_t selected_input = selector_result[0].scalar<int64_t>()();
         if (selected_input < 0 || selected_input >= data_input_impls_.size()) {
-          return errors::InvalidArgument(
-              "Selector index out of range: ", selected_input,
-              " >= ", data_input_impls_.size());
+          return absl::InvalidArgumentError(
+              absl::StrCat("Selector index out of range: ", selected_input,
+                           " >= ", data_input_impls_.size()));
         }
 
         if (data_input_impls_[selected_input]) {
@@ -360,7 +360,7 @@ void DirectedInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
           selector_input->output_shapes().size() == 1 &&
           selector_input->output_shapes()[0].IsCompatibleWith(
               PartialTensorShape({})),
-      errors::InvalidArgument(
+      absl::InvalidArgumentError(
           "The selector input must be a dataset of scalar int64 elements."));
 
   // The first input is the selector, followed by dataset inputs.
@@ -371,12 +371,12 @@ void DirectedInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
     data_inputs.push_back(input);
 
     OP_REQUIRES(ctx, data_inputs[0]->output_dtypes() == input->output_dtypes(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "All inputs must have the same output_dtypes. First input "
                     "has types ",
                     DataTypeVectorString(data_inputs[0]->output_dtypes()),
                     ", and input ", i - 1, " has types ",
-                    DataTypeVectorString(input->output_dtypes())));
+                    DataTypeVectorString(input->output_dtypes()))));
   }
 
   *output = new Dataset(ctx, selector_input, std::move(data_inputs),

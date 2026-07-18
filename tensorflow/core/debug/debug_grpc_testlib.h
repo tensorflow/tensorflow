@@ -48,12 +48,12 @@ class TestEventListenerImpl final : public grpc::EventListener::Service {
       const EventReply::DebugOpStateChange::State new_state,
       const DebugNodeKey& debug_node_key);
 
-  std::vector<string> debug_metadata_strings;
-  std::vector<string> encoded_graph_defs;
-  std::vector<string> device_names;
-  std::vector<string> node_names;
-  std::vector<int32> output_slots;
-  std::vector<string> debug_ops;
+  std::vector<std::string> debug_metadata_strings;
+  std::vector<std::string> encoded_graph_defs;
+  std::vector<std::string> device_names;
+  std::vector<std::string> node_names;
+  std::vector<int32_t> output_slots;
+  std::vector<std::string> debug_ops;
   std::vector<Tensor> debug_tensors;
 
  private:
@@ -77,7 +77,7 @@ class TestEventListenerImpl final : public grpc::EventListener::Service {
 //
 // Returns:
 //   Whether the polling succeeded within max_attempts.
-bool PollTillFirstRequestSucceeds(const string& server_url,
+bool PollTillFirstRequestSucceeds(const std::string& server_url,
                                   const size_t max_attempts);
 
 }  // namespace test

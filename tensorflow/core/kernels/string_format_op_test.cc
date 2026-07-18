@@ -30,8 +30,8 @@ namespace {
 class StringFormatGraphTest : public OpsTestBase {
  protected:
   absl::Status Init(int num_inputs, DataType input_type,
-                    const string& template_ = "%s",
-                    const string& placeholder = "%s", int summarize = 3) {
+                    const std::string& template_ = "%s",
+                    const std::string& placeholder = "%s", int summarize = 3) {
     TF_CHECK_OK(NodeDefBuilder("op", "StringFormat")
                     .Input(FakeInput(num_inputs, input_type))
                     .Attr("template", template_)
@@ -45,7 +45,7 @@ class StringFormatGraphTest : public OpsTestBase {
 TEST_F(StringFormatGraphTest, Int32Success_7) {
   TF_ASSERT_OK(Init(1, DT_INT32, "First tensor: %s"));
 
-  AddInputFromArray<int32>(TensorShape({7}), {1, 2, 3, 4, 5, 6, 7});
+  AddInputFromArray<int32_t>(TensorShape({7}), {1, 2, 3, 4, 5, 6, 7});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_STRING, TensorShape({}));
   test::FillValues<tstring>(&expected, {"First tensor: [1 2 3 ... 5 6 7]"});
@@ -55,7 +55,7 @@ TEST_F(StringFormatGraphTest, Int32Success_7) {
 TEST_F(StringFormatGraphTest, Int32Success_3_3) {
   TF_ASSERT_OK(Init(1, DT_INT32, "First tensor: %s", "%s", 1));
 
-  AddInputFromArray<int32>(TensorShape({3, 3}), {1, 2, 3, 4, 5, 6, 7, 8, 9});
+  AddInputFromArray<int32_t>(TensorShape({3, 3}), {1, 2, 3, 4, 5, 6, 7, 8, 9});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_STRING, TensorShape({}));
   test::FillValues<tstring>(&expected, {"First tensor: [[1 ... 3]\n ..."

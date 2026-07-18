@@ -23,6 +23,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
@@ -85,7 +87,7 @@ class DatasetRandomAccessCache {
 
   // Extends the temporary cache up to a given index and then updates
   // out_tensors with the element at that index.
-  absl::Status Get(OpKernelContext* ctx, int64 index,
+  absl::Status Get(OpKernelContext* ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) {
     if (!iter_resource_) {
       TF_ASSIGN_OR_RETURN(iter_resource_,
@@ -95,6 +97,10 @@ class DatasetRandomAccessCache {
     if (index >= cache_.size()) {
       TF_RETURN_IF_ERROR(ExtendTempCacheToIndex(index, ctx));
     }
+    if (index < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected index >= 0; Received index: ", index));
+    }
     *out_tensors = cache_.at(index);
     return absl::OkStatus();
   }
@@ -103,15 +109,15 @@ class DatasetRandomAccessCache {
   std::vector<std::vector<Tensor>> GetCacheData() { return cache_; }
 
  private:
-  absl::Status ExtendTempCacheToIndex(int64 index, OpKernelContext* ctx) {
+  absl::Status ExtendTempCacheToIndex(int64_t index, OpKernelContext* ctx) {
     bool end_of_sequence;
     while (cache_.size() <= index) {
       std::vector<Tensor> out_tensors;
       TF_RETURN_IF_ERROR(
           iter_resource_->GetNext(ctx, &out_tensors, &end_of_sequence));
       if (end_of_sequence) {
-        return tensorflow::errors::OutOfRange("Index out of range [0, ",
-                                              cache_.size(), "):", index);
+        return absl::OutOfRangeError(absl::StrCat("Index out of range [0, ",
+                                                  cache_.size(), "):", index));
       }
       cache_.push_back(out_tensors);
     }
@@ -168,17 +174,14 @@ class IteratorRandomAccessCache {
 class CacheDatasetOp::FileDatasetBase : public DatasetBase {
  public:
   FileDatasetBase(OpKernelContext* ctx, const DatasetBase* input,
-                  string filename, Env* env)
+                  std::string filename, Env* env)
       : DatasetBase(DatasetContext(ctx)),
         input_(input),
         filename_(std::move(filename)),
         env_(env),
         num_tensors_(input->output_dtypes().size()),
         tensor_index_padding_size_(StringPaddingSize(num_tensors_)),
-        item_index_padding_size_(StringPaddingSize(kMaxItems)),
-        tensor_format_string_(strings::Printf(kKeyStrFormat,
-                                              item_index_padding_size_,
-                                              tensor_index_padding_size_)) {
+        item_index_padding_size_(StringPaddingSize(kMaxItems)) {
     input_->Ref();
     DCHECK_EQ(item_index_padding_size_, 7);
   }
@@ -186,7 +189,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
   ~FileDatasetBase() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     name_utils::IteratorPrefixParams params;
     params.dataset_prefix = kFileDatasetPrefix;
     return std::make_unique<FileIterator>(FileIterator::Params{
@@ -201,7 +204,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
     params.dataset_prefix = kFileDatasetPrefix;
     return name_utils::DatasetDebugString(kDatasetType, params);
@@ -227,12 +230,12 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
 
  private:
   static size_t StringPaddingSize(size_t num_tensors) {
-    return strings::Printf(kPaddingSizeStrFormat, num_tensors - 1).size();
+    return absl::StrFormat(kPaddingSizeStrFormat, num_tensors - 1).size();
   }
 
-  string FormatName(size_t item_index, size_t tensor_index) const {
-    return strings::Printf(tensor_format_string_.c_str(), item_index,
-                           tensor_index);
+  std::string FormatName(size_t item_index, size_t tensor_index) const {
+    return absl::StrFormat("%*zu_%*zu", item_index_padding_size_, item_index,
+                           tensor_index_padding_size_, tensor_index);
   }
 
   class FileIterator : public DatasetIterator<FileDatasetBase> {
@@ -330,14 +333,14 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
       ~FileWriterIterator() override {
         if (!dataset()->env_->FileExists(MetaFilename(filename_)).ok()) {
           LOG(WARNING) << kIncompleteCacheErrorMessage;
-          std::vector<string> cache_files;
+          std::vector<std::string> cache_files;
           absl::Status s = dataset()->env_->GetMatchingPaths(
               absl::StrCat(filename_, "*"), &cache_files);
           if (!s.ok()) {
             LOG(WARNING) << "Failed to get matching files on " << filename_
                          << "* : " << s.ToString();
           }
-          for (const string& path : cache_files) {
+          for (const std::string& path : cache_files) {
             s = dataset()->env_->DeleteFile(path);
             if (!s.ok()) {
               LOG(WARNING) << "Failed to delete " << path << " : "
@@ -368,9 +371,9 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           if (!s.ok()) {
             LOG(ERROR) << s;
           }
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Upstream iterator is producing more than ", kMaxItems,
-              " items, which is more than the cache limit.");
+              " items, which is more than the cache limit."));
         }
 
         TF_RETURN_IF_ERROR(
@@ -381,15 +384,15 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           return absl::OkStatus();
         }
         if (out_tensors->size() != dataset()->num_tensors_) {
-          return errors::Internal(
+          return absl::InternalError(absl::StrCat(
               "Upstream iterator returned invalid number of tensors. "
               "Expected ",
-              dataset()->num_tensors_, " got: ", out_tensors->size());
+              dataset()->num_tensors_, " got: ", out_tensors->size()));
         }
         size_t tensor_index = 0;
         for (const Tensor& t : *out_tensors) {
           DCHECK_LT(tensor_index, dataset()->num_tensors_);
-          string key = dataset()->FormatName(cur_index_, tensor_index++);
+          std::string key = dataset()->FormatName(cur_index_, tensor_index++);
           TF_RETURN_IF_ERROR(writer_->Add(key, t));
         }
         if (*end_of_sequence) {
@@ -452,7 +455,8 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIndex, &temp));
           cur_index_ = static_cast<size_t>(temp);
           if (cur_index_ != temp) {
-            return errors::Internal("Invalid value for cur_index ", temp);
+            return absl::InternalError(
+                absl::StrCat("Invalid value for cur_index ", temp));
           }
         }
 
@@ -469,7 +473,8 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kShardId, &temp));
           shard_id_ = static_cast<size_t>(temp);
           if (shard_id_ != temp) {
-            return errors::Internal("Invalid value for shard_id ", temp);
+            return absl::InternalError(
+                absl::StrCat("Invalid value for shard_id ", temp));
           }
         }
         filename_ = absl::StrCat(dataset()->filename_, "_", shard_id_);
@@ -495,10 +500,10 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         // 1. Check that a checkpoint for the shard has not already been
         // written.
         if (dataset()->env_->FileExists(MetaFilename(filename_)).ok()) {
-          return errors::AlreadyExists("Existing cache files found: \n",
-                                       MetaFilename(filename_), "\n",
-                                       DataFilename(filename_, 0, 1), "\n",
-                                       "To continue delete the above files.");
+          return absl::AlreadyExistsError(absl::StrCat(
+              "Existing cache files found: \n", MetaFilename(filename_), "\n",
+              DataFilename(filename_, 0, 1), "\n",
+              "To continue delete the above files."));
         }
 
         // 2. Check that there isn't a concurrent iterator that is writing
@@ -512,14 +517,14 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
             file->Read(0, contents, absl::MakeSpan(contents_scratch, 150))
                 .IgnoreError();
           }
-          return errors::AlreadyExists(
+          return absl::AlreadyExistsError(absl::StrCat(
               "There appears to be a concurrent caching iterator running - "
               "cache lockfile already exists ('",
               lockfile_,
               "'). If you are sure no other running TF computations are "
               "using this cache prefix, delete the lockfile and "
               "re-initialize the iterator. Lockfile contents: ",
-              contents);
+              contents));
         }
         // Create the file, and write some basic contents.
         std::unique_ptr<WritableFile> lockfile;
@@ -578,9 +583,9 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
       std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
       // The current prefix for the cache file. This is equal to
       // `StrCat(dataset()->filename_, "_", shard_id_)`.
-      string filename_;
+      std::string filename_;
       std::unique_ptr<BundleWriter> writer_ TF_GUARDED_BY(mu_);
-      string lockfile_ TF_GUARDED_BY(mu_);
+      std::string lockfile_ TF_GUARDED_BY(mu_);
       bool lockfile_created_ TF_GUARDED_BY(mu_);
       bool iteration_completed_ TF_GUARDED_BY(mu_);
     };  // FileWriterIterator
@@ -656,11 +661,12 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
               iterator_state_reader->ReadScalar(prefix(), kCurIndex, &temp));
           cur_index_ = static_cast<size_t>(temp);
           if (cur_index_ != temp) {
-            return errors::Internal("Invalid value for cur_index ", temp);
+            return absl::InternalError(
+                absl::StrCat("Invalid value for cur_index ", temp));
           }
         }
         if (!reader_.Valid()) {
-          return errors::Internal("Error initializing BundleReader.");
+          return absl::InternalError("Error initializing BundleReader.");
         }
         reader_.Seek(dataset()->FormatName(cur_index_, 0));
         iterator_restored_ = true;
@@ -710,7 +716,6 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
   const size_t tensor_index_padding_size_;
   static constexpr size_t kMaxItems = 10000000;  // 10 million
   const size_t item_index_padding_size_;
-  const string tensor_format_string_;
 };  // FileDatasetBase
 
 class CacheDatasetOp::FileDataset : public CacheDatasetOp::FileDatasetBase {
@@ -733,7 +738,7 @@ class CacheDatasetOp::FileDataset : public CacheDatasetOp::FileDatasetBase {
 class CacheDatasetOp::FileDatasetV2 : public CacheDatasetOp::FileDatasetBase {
  public:
   explicit FileDatasetV2(OpKernelContext* ctx, const DatasetBase* input,
-                         string filename, Env* env,
+                         std::string filename, Env* env,
                          const Tensor& resource_handle)
       : FileDatasetBase(ctx, input, filename, env),
         resource_handle_(resource_handle) {}
@@ -771,7 +776,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
   ~MemoryDatasetBase() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     name_utils::IteratorPrefixParams params;
     params.dataset_prefix = kMemoryDatasetPrefix;
     return std::make_unique<MemoryIterator>(
@@ -788,7 +793,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
     params.dataset_prefix = kMemoryDatasetPrefix;
     return name_utils::DatasetDebugString(kDatasetType, params);
@@ -798,7 +803,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
     return input_->Cardinality(options);
   };
 
-  absl::Status Get(OpKernelContext* ctx, int64 index,
+  absl::Status Get(OpKernelContext* ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
     mutex_lock l(mu_);
 
@@ -806,10 +811,11 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
     options.set_compute_level(CardinalityOptions::CARDINALITY_COMPUTE_LOW);
     int64_t cardinality = Cardinality(options);
 
-    if (cardinality != kUnknownCardinality &&
-        cardinality != kInfiniteCardinality && index >= cardinality) {
-      return errors::OutOfRange("Index out of range [0, ", cardinality,
-                                "):", index);
+    if (index < 0 ||
+        (cardinality != kUnknownCardinality &&
+         cardinality != kInfiniteCardinality && index >= cardinality)) {
+      return absl::OutOfRangeError(
+          absl::StrCat("Index out of range [0, ", cardinality, "):", index));
     }
     if (!dataset_random_access_cache_) {
       dataset_random_access_cache_ =
@@ -818,8 +824,18 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
     return dataset_random_access_cache_->Get(ctx, index, out_tensors);
   }
 
-  absl::Status Get(AnyContext ctx, int64 index,
+  absl::Status Get(AnyContext ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
+    CardinalityOptions options;
+    options.set_compute_level(CardinalityOptions::CARDINALITY_COMPUTE_LOW);
+    int64_t cardinality = Cardinality(options);
+
+    if (index < 0 ||
+        (cardinality != kUnknownCardinality &&
+         cardinality != kInfiniteCardinality && index >= cardinality)) {
+      return absl::OutOfRangeError(
+          absl::StrCat("Index out of range [0, ", cardinality, "):", index));
+    }
     mutex_lock l(mu_);
     if (!iterator_random_access_cache_) {
       iterator_random_access_cache_ =
@@ -1185,13 +1201,14 @@ void CacheDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, kFileName, &filename));
   if (filename.empty()) {
     static std::atomic<int64_t> resource_id_counter(0);
-    const string& container = ctx->resource_manager()->default_container();
+    const std::string& container = ctx->resource_manager()->default_container();
     auto name = strings::StrCat(ctx->op_kernel().name(), "/", kMemoryCache, "_",
                                 resource_id_counter.fetch_add(1));
     if (op_version_ == 2) {
       bool owns_resource = false;
       MemoryCacheManager* manager = nullptr;
-      auto handle = HandleFromInput(ctx, 2);
+      ResourceHandle handle;
+      OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 2, &handle));
       absl::Status s = ctx->resource_manager()->Lookup<MemoryCacheManager>(
           handle.container(), handle.name(), &manager);
       if (absl::IsNotFound(s)) {

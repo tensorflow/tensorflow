@@ -26,7 +26,7 @@ class RemoveCompressionMap : public TFDataOptimizerBase {
   RemoveCompressionMap() = default;
   ~RemoveCompressionMap() override = default;
 
-  string name() const override { return "remove_compression_map"; }
+  std::string name() const override { return "remove_compression_map"; }
 
   bool UsesFunctionLibrary() const override { return false; }
 

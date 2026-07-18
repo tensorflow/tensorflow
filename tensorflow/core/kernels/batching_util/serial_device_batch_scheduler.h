@@ -71,7 +71,7 @@ class SerialDeviceBatchScheduler : public std::enable_shared_from_this<
 
   struct Options {
     // The name to use for the pool of batch threads.
-    string thread_pool_name = {"batch_threads"};
+    std::string thread_pool_name = {"batch_threads"};
     // Maximum number of batch processing threads.
     int64_t num_batch_threads = port::NumSchedulableCPUs();
     // Although batch selection is primarily based on age, this parameter
@@ -87,7 +87,7 @@ class SerialDeviceBatchScheduler : public std::enable_shared_from_this<
     int64_t initial_in_flight_batches_limit = 3;
     // Returns the current number of batches directly waiting to be processed
     // by the serial device (i.e. GPU, TPU).
-    std::function<int64()> get_pending_on_serial_device;
+    std::function<int64_t()> get_pending_on_serial_device;
     // Desired average number of batches directly waiting to be processed by the
     // serial device. Small numbers of O(1) should deliver the best latency.
     double target_pending = 2;
@@ -298,7 +298,7 @@ absl::Status SerialDeviceBatchScheduler<TaskType>::Create(
         options.target_pending);
   }
   if (!options.get_pending_on_serial_device) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "get_pending_on_serial_device must be "
         "specified");
   }
@@ -501,7 +501,7 @@ absl::Status SDBSQueue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
     if (current_batch_ &&
         current_batch_->size() + size > options_.max_batch_size) {
       if (num_enqueued_batches_ >= options_.max_enqueued_batches) {
-        return errors::Unavailable("The batch scheduling queue is full");
+        return absl::UnavailableError("The batch scheduling queue is full");
       }
       current_batch_->Close();
       current_batch_ = nullptr;

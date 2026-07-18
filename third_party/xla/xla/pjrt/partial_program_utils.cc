@@ -46,8 +46,8 @@ ConvertCharBuffersToPjRtPartialProgramProtos(
   partial_programs.reserve(char_buffers.size());
   for (size_t i = 0; i < char_buffers.size(); ++i) {
     xla::PjRtPartialProgramProto partial_program;
-    bool success =
-        partial_program.ParseFromArray(char_buffers[i], char_buffer_sizes[i]);
+    bool success = partial_program.ParseFromString(
+        absl::string_view(char_buffers[i], char_buffer_sizes[i]));
     if (!success) {
       return absl::InvalidArgumentError(
           "Failed to deserialize PjRtPartialProgramProto");

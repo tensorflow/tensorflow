@@ -34,7 +34,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-void WriteCheckpoint(const string& prefix, absl::Span<const string> names,
+void WriteCheckpoint(const std::string& prefix,
+                     absl::Span<const std::string> names,
                      absl::Span<const Tensor> tensors) {
   BundleWriter writer(Env::Default(), prefix);
   ASSERT_TRUE(names.size() == tensors.size());
@@ -65,12 +66,12 @@ class MergeV2CheckpointsOpTest : public OpsTestBase {
 
   void RunMergeTest(bool delete_old_dirs, bool allow_missing_files) {
     // Writes two checkpoints.
-    const std::vector<string> prefixes = {
+    const std::vector<std::string> prefixes = {
         io::JoinPath(testing::TmpDir(), "worker0/ckpt0"),
         io::JoinPath(testing::TmpDir(), "worker1/ckpt1"),
         io::JoinPath(testing::TmpDir(), "merged/ckpt") /* merged prefix */};
     // In a different directory, to exercise "delete_old_dirs".
-    const string& kMergedPrefix = prefixes[2];
+    const std::string& kMergedPrefix = prefixes[2];
 
     // Only write this particular checkpoint if we do not allow missing files.
     if (!allow_missing_files) {
@@ -123,9 +124,10 @@ class MergeV2CheckpointsOpTest : public OpsTestBase {
     for (int i = 0; i < 2; ++i) {
       // If we allow missing files, the first checkpoint file did not exist.
       if (allow_missing_files && i == 0) continue;
-      int directory_found = Env::Default()
-                                ->IsDirectory(string(io::Dirname(prefixes[i])))
-                                .raw_code();
+      int directory_found =
+          Env::Default()
+              ->IsDirectory(std::string(io::Dirname(prefixes[i])))
+              .raw_code();
       if (delete_old_dirs) {
         EXPECT_EQ(error::NOT_FOUND, directory_found);
       } else {

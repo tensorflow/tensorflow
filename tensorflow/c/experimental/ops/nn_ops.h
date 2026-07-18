@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/framework/types.h"  // NOLINT
 
 namespace tensorflow {
 namespace ops {

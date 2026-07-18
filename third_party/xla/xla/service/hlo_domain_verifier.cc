@@ -15,14 +15,24 @@ limitations under the License.
 
 #include "xla/service/hlo_domain_verifier.h"
 
+#include <memory>
 #include <set>
+#include <string>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo_domain_map.h"
-#include "xla/service/hlo_graph_dumper.h"
-#include "xla/types.h"
+#include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -69,27 +79,27 @@ absl::Status HloDomainVerifier::RunContext::PopulateDomainKinds(
 absl::Status HloDomainVerifier::RunContext::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(4) << "Running HLO Domain Verifier";
-  TF_RETURN_IF_ERROR(PopulateDomainKinds(execution_threads));
+  RETURN_IF_ERROR(PopulateDomainKinds(execution_threads));
   for (HloComputation* computation : module_->computations(execution_threads)) {
     for (auto& kind : verifier_->kinds_) {
       // First create the domain instruction sets. A domain instruction set is
       // the set of instructions whose edges never cross a kDomain instruction.
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<HloDomainMap> domain_map,
-                          HloDomainMap::Create(computation, kind));
+      ASSIGN_OR_RETURN(std::unique_ptr<HloDomainMap> domain_map,
+                       HloDomainMap::Create(computation, kind));
       // Verify every domain populated within the map.
       for (auto& domain : domain_map->GetDomains()) {
-        TF_RETURN_IF_ERROR(VerifyDomain(*domain).status());
+        RETURN_IF_ERROR(VerifyDomain(*domain).status());
       }
     }
   }
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> HloDomainVerifier::Run(
+absl::StatusOr<bool> HloDomainVerifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   RunContext run_context(module, this);
-  TF_RETURN_IF_ERROR(run_context.Run(execution_threads));
+  RETURN_IF_ERROR(run_context.Run(execution_threads));
   return false;
 }
 

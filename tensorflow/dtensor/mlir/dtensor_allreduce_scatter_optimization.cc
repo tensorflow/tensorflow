@@ -14,12 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -64,16 +66,16 @@ mlir::DenseIntElementsAttr GetScatterGroupAssignment(
   auto partitions =
       GetAllReducePartitionsFromReducedDims(original_layout, scattered_dims)
           .value();
-  const int32 num_partitions = partitions.size();
+  const int32_t num_partitions = partitions.size();
 
   // Construct a flattened list of scatter partitions.
-  std::vector<int32> partitions_flat;
+  std::vector<int32_t> partitions_flat;
   for (auto& p : partitions) {
     partitions_flat.insert(partitions_flat.end(), p.second.begin(),
                            p.second.end());
   }
 
-  int32 partition_size = partitions.begin()->second.size();
+  int32_t partition_size = partitions.begin()->second.size();
   mlir::OpBuilder builder(all_scatter);
   auto group_shaped_type = mlir::RankedTensorType::get(
       {num_partitions, partition_size},
@@ -137,14 +139,14 @@ mlir::LogicalResult ApplyOptimization(mlir::func::FuncOp function) {
         VLOG(2) << "Fuse reduce scatter with scatter_dim: " << scatter_dim;
 
         mlir::OpBuilder builder(all_reduce);
-        auto scatter_dim_const_op = builder.create<mlir::TF::ConstOp>(
-            all_reduce.getLoc(),
+        auto scatter_dim_const_op = mlir::TF::ConstOp::create(
+            builder, all_reduce.getLoc(),
             mlir::DenseIntElementsAttr::get(
                 mlir::RankedTensorType::get({}, builder.getI32Type()),
                 {scatter_dim}));
 
-        auto reduce_scatter = builder.create<mlir::TF::DTensorReduceScatterOp>(
-            all_reduce.getLoc(), all_scatter->getResultTypes(),
+        auto reduce_scatter = mlir::TF::DTensorReduceScatterOp::create(
+            builder, all_reduce.getLoc(), all_scatter->getResultTypes(),
             all_reduce.getOperand(0), all_reduce.getGroupAssignment(),
             scatter_dim_const_op, all_reduce.getReduceOp(),
             all_reduce.getDeviceType());

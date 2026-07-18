@@ -43,7 +43,15 @@ class RocmComputeCapability {
 
   RocmComputeCapability() = default;
 
-  std::string gcn_arch_name() const { return gcn_arch_name_; }
+  static RocmComputeCapability EarliestCDNASupport() {
+    return RocmComputeCapability{"gfx908"};
+  }
+
+  static RocmComputeCapability EarliestRDNASupport() {
+    return RocmComputeCapability{"gfx1030"};
+  }
+
+  const std::string& gcn_arch_name() const { return gcn_arch_name_; }
 
   std::string ToString() const { return gcn_arch_name(); }
 
@@ -51,6 +59,11 @@ class RocmComputeCapability {
     RocmComputeCapabilityProto proto;
     proto.set_gcn_arch_name(gcn_arch_name_);
     return proto;
+  }
+
+  static RocmComputeCapability FromProto(
+      const RocmComputeCapabilityProto& proto) {
+    return RocmComputeCapability{proto.gcn_arch_name()};
   }
 
   bool operator==(const RocmComputeCapability& other) const {
@@ -74,8 +87,6 @@ class RocmComputeCapability {
   // hurt since they are immutable, but keeping them close to methods simplifies
   // maintanance.
   static constexpr absl::string_view kSupportedGfxVersions[]{
-      "gfx900",   // MI25
-      "gfx906",   // MI50 / MI60
       "gfx908",   // MI100
       "gfx90a",   // MI200
       "gfx942",   // MI300
@@ -83,8 +94,7 @@ class RocmComputeCapability {
       "gfx1030",  // RX68xx / RX69xx
       "gfx1100",  // RX7900
       "gfx1101",  // RX7700 / RX7800
-      "gfx1103", "gfx1150", "gfx1151", "gfx1200", "gfx1201",
-  };
+      "gfx1103", "gfx1150", "gfx1151", "gfx1200", "gfx1201", "gfx1250"};
 
   bool is_supported_gfx_version() const {
     return IsThisGfxInAnyList(kSupportedGfxVersions);
@@ -144,6 +154,8 @@ class RocmComputeCapability {
 
   bool gfx12_rx8900() const { return gfx12_discrete(); }
 
+  bool gfx1250() const { return gfx_version() == "gfx1250"; }
+
   bool has_nhwc_layout_support() const { return gfx9_mi100_or_later(); }
 
   bool has_bf16_dtype_support() const {
@@ -151,36 +163,51 @@ class RocmComputeCapability {
   }
 
   bool has_fast_fp16_support() const {
-    return gfx9_mi100_or_later() || gfx11() || gfx10_rx68xx() || gfx10_rx69xx();
+    return gfx9_mi100_or_later() || gfx11() || gfx10_rx68xx() ||
+           gfx10_rx69xx() || gfx1250();
   }
 
   bool has_mfma_instr_support() const { return gfx9_mi100_or_later(); }
 
-  bool has_amd_matrix_core() const {
+  bool has_amd_matrix_instr() const {
     return gfx9_mi100_or_later() || gfx12() || gfx11();
   }
 
-  bool has_packed_fp16_atomics_support() const { return gfx9_mi100_or_later(); }
+  bool has_packed_fp16_atomics_support() const {
+    return gfx9_mi100_or_later() || gfx12();
+  }
 
-  bool has_packed_bf16_atomics_support() const { return gfx9_mi300_series(); }
-
-  bool fence_before_barrier() const {
-    static constexpr absl::string_view kList[] = {"gfx900", "gfx906"};
-    return !IsThisGfxInAnyList(kList);
+  bool has_packed_bf16_atomics_support() const {
+    return gfx9_mi300_series() || gfx12();
   }
 
   bool has_hipblaslt() const {
     return IsThisGfxInAnyList(kMI300Series, kMI200Series, kGfx12Discrete,
-                              kGfx11Discrete, kGfx11Apu);
+                              kGfx11Discrete, kGfx11Apu) ||
+           gfx1250();
   }
 
   bool has_fp8_support() const {
     return has_ocp_fp8_support() || has_nanoo_fp8_support();
   }
 
-  bool has_ocp_fp8_support() const { return gfx9_mi350() || gfx12_discrete(); }
+  bool has_ocp_fp8_support() const {
+    return gfx9_mi350() || gfx12_discrete() || gfx1250();
+  }
 
   bool has_nanoo_fp8_support() const { return gfx9_mi300(); }
+
+  bool has_mx_type_support() const { return gfx9_mi350() || gfx1250(); }
+
+  // Native bf16 transcendental instructions (v_exp_bf16, v_sqrt_bf16,
+  // v_rsq_bf16, v_tanh_bf16, v_log_bf16, etc.), backed by the LLVM
+  // FeatureBF16TransInsts subtarget feature. Lets us compute these bf16 ops
+  // without upcasting to f32 (currently used for exp, log, sqrt, rsqrt, tanh).
+  bool has_bf16_transcendental_support() const { return gfx1250(); }
+
+  bool has_tdm_support() const { return gfx1250(); }
+
+  int threads_per_warp() const { return gfx9_mi100_or_later() ? 64 : 32; }
 
   /// \brief Invalid gfx id for default gcn_arch_name_ value and testing
   static constexpr absl::string_view kInvalidGfx = "gfx000";
@@ -191,7 +218,7 @@ class RocmComputeCapability {
   template <typename... ArrayOfStrings>
   bool IsThisGfxInAnyList(ArrayOfStrings&&... arr) const {
     static_assert(sizeof...(arr) >= 1);
-    const auto gfx = gfx_version();
+    const std::string gfx = gfx_version();
     return (implIsThisGfxInAnyList(std::begin(arr), std::end(arr), gfx) || ...);
   }
 
@@ -199,10 +226,9 @@ class RocmComputeCapability {
   /// \warning Don't use directly!
   bool implIsThisGfxInAnyList(const absl::string_view* beg,
                               const absl::string_view* end,
-                              const std::string& gfx) const {
-    return std::any_of(beg, end, [&gfx = gfx](const absl::string_view& s) {
-      return gfx == s;
-    });
+                              const absl::string_view gfx) const {
+    return std::any_of(
+        beg, end, [&gfx = gfx](const absl::string_view s) { return gfx == s; });
   }
 
   std::string gcn_arch_name_{kInvalidGfx};  // default to invalid arch.

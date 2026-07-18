@@ -42,7 +42,7 @@ class MockResource : public ResourceBase {
       *alive_ = false;
     }
   }
-  string DebugString() const override { return ""; }
+  std::string DebugString() const override { return ""; }
   bool* alive_;
   int payload_;
 };
@@ -53,15 +53,15 @@ class MockHandleCreationOpKernel : public OpKernel {
       : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
-        errors::InvalidArgument("Expected argument 0 to be a scalar. Received",
-                                ctx->input(0).DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Expected argument 0 to be a scalar. Received",
+                                 ctx->input(0).DebugString())));
     bool* alive = reinterpret_cast<bool*>(ctx->input(0).scalar<int64_t>()());
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsScalar(ctx->input(1).shape()),
-        errors::InvalidArgument("Expected argument 1 to be a scalar. Received",
-                                ctx->input(1).DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->input(1).shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Expected argument 1 to be a scalar. Received",
+                                 ctx->input(1).DebugString())));
     int payload = ctx->input(1).scalar<int>()();
     AllocatorAttributes attr;
     Tensor handle_tensor;
@@ -103,7 +103,7 @@ TEST_F(MockHandleCreationOpTest, RefCounting) {
   // Feed and run
   AddInputFromArray<int64_t>(TensorShape({}),
                              {reinterpret_cast<int64_t>(&alive)});
-  AddInputFromArray<int32>(TensorShape({}), {payload});
+  AddInputFromArray<int32_t>(TensorShape({}), {payload});
   TF_ASSERT_OK(RunOpKernel());
   EXPECT_TRUE(alive);
 

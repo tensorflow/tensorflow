@@ -33,7 +33,7 @@ static std::vector<const char*> SortedContents(const StringSet& set) {
 
 TEST(CompactPointerSetTest, Simple) {
   // Make some aligned and some unaligned pointers.
-  string data = "ABCDEFG";
+  std::string data = "ABCDEFG";
   const char* a = &data[0];
   const char* b = &data[1];
   const char* c = &data[2];

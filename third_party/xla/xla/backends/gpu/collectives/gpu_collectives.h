@@ -20,21 +20,29 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/communicator.h"
-#include "xla/executable_run_options.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/service/global_device_id.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/runtime/device_id.h"
+#include "xla/runtime/process_id.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -42,12 +50,32 @@ namespace xla::gpu {
 // XLA:GPU extension of the Collectives interface with GPU-specific APIs.
 class GpuCollectives : public Collectives {
  public:
-  // Returns the default collectives implementation for GPU backend.
-  static GpuCollectives* Default();
+  // Returns the default collectives implementation for the given platform.
+  static GpuCollectives* Default(absl::string_view platform_name);
 
-  // A callback to get a unique clique id.
+  // A callback to get a unique clique ids.
   using CliqueIdCallback =  // NOLINT
-      std::function<absl::StatusOr<CliqueId>(const CliqueKey&)>;
+      std::function<absl::StatusOr<CliqueIds>(const CliqueKey&)>;
+
+  // Topology describes how exactly the current process fits into the collection
+  // of distributed processes, and based on this information the underlying
+  // collective communication library can set up communication channels between
+  // all devices.
+  struct Topology {
+    ProcessId process_id;
+    size_t num_processes;
+    size_t device_count_per_process;
+    std::shared_ptr<KeyValueStoreInterface> kv_store;
+    absl::flat_hash_map<GlobalDeviceId, ProcessId> device_to_process;
+  };
+
+  // Initializes the collectives backend with the provided topology information
+  // and returns a callback that will generate unique ids for the cliques if
+  // topology spans multiple processes and clique id generation requires
+  // multi-process coordination. For local topologies returns a nullptr
+  // callback.
+  virtual absl::StatusOr<CliqueIdCallback> InitializeTopology(
+      const Topology& topology) = 0;
 
   // GPU collectives device is just a wrapper around the StreamExecutor.
   class Device : public Collectives::Device {
@@ -93,46 +121,77 @@ class GpuCollectives : public Collectives {
     //
     // If blocking_communicators is false, then async_execution must be true.
     bool async_execution = false;
+
+    // Decides whether communicators will be created to minimize resource
+    // utilization (i.e SM) during runtime. This is mainly used for overlapping
+    // with compute to avoid taking up compute resources.
+    bool use_minimal_resource = false;
   };
+
+  // A cancelable version of Collectives::CreateCommunicators.
+  virtual absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
+  CreateCommunicatorsWithCancel(const CliqueKey& clique_key,
+                                const std::optional<CliqueIds>& clique_ids,
+                                absl::Span<const DeviceRank> ranks,
+                                const Collectives::Config& config,
+                                std::shared_ptr<CancellationToken> cancel) {
+    // By default, we ignore cancel.
+    return CreateCommunicators(clique_key, clique_ids, ranks, config);
+  }
+
+  // A cancelable version of Collectives::SplitCommunicators.
+  virtual absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
+  SplitCommunicatorsWithCancel(absl::Span<const Communicator* const> comms,
+                               int32_t color, absl::Span<const RankId> keys,
+                               const Collectives::Config& config,
+                               absl::Span<const DeviceRank> ranks,
+                               std::shared_ptr<CancellationToken> cancel) {
+    // By default, we ignore cancel.
+    return SplitCommunicators(comms, color, keys, config, ranks);
+  }
 
   // Returns true if GPU collectives are implemented.
   virtual bool IsImplemented() const = 0;
 
-  // Returns true if collectives backend uses global config.
-  virtual bool IsGlobalConfig() const = 0;
-
-  // Returns a clique id callback passed as an argument if it's not null or a
-  // default callback to get create a clique id if we are running in local mode.
-  virtual absl::StatusOr<const CliqueIdCallback*> GetCliqueIdCallback(
-      const CliqueIdCallback* clique_id_callback, bool is_local) = 0;
+  // Executes a group of collective launches. All communicators used by the
+  // `group` must be listed in `comms`, otherwise behavior is undefined.
+  virtual absl::Status GroupLaunch(
+      absl::Span<const GpuCommunicator* const> comms,
+      absl::FunctionRef<absl::Status()> group) {
+    return group();
+  }
 
   // Returns a slice of device memory `buff` containing `count` values of data
   // type `dtype` starting from `offset`.
-  static stream_executor::DeviceMemoryBase Slice(
-      stream_executor::DeviceMemoryBase buff, PrimitiveType dtype,
+  static stream_executor::DeviceAddressBase Slice(
+      stream_executor::DeviceAddressBase buff, PrimitiveType dtype,
       size_t offset, size_t count);
 
   // TODO(b/410686553): Use smart wrapper instead of void*.
-  virtual absl::StatusOr<void*> Allocate(uint64_t bytes) = 0;
+  virtual absl::StatusOr<void*> Allocate(uint64_t bytes) {
+    return Unimplemented("Allocate is not implemented");
+  }
 
-  virtual absl::Status Deallocate(void* buffer) = 0;
-
-  struct Topology {
-    int32_t node_id;
-    int32_t num_nodes;
-    size_t device_count_per_process;
-    std::shared_ptr<KeyValueStoreInterface> kv_store;
-    absl::flat_hash_map<GlobalDeviceId, int32_t> device_id_to_node_id;
-    gpu::GpuExecutableRunOptions* gpu_executable_run_options;
-  };
-
-  // Initializes the topology information for the collectives backend.
-  virtual absl::Status InitializeTopology(Topology topology) = 0;
+  virtual absl::Status Deallocate(void* buffer) {
+    return Unimplemented("Deallocate is not implemented");
+  }
 
   // Creates a single communicator.
   virtual absl::StatusOr<std::unique_ptr<Communicator>>
   CreateCommunicator() = 0;
 };
+
+enum class FabricHomogeneity {
+  kUnknown = 0,       // Default: Unable to determine (e.g. legacy drivers)
+  kHomogeneous = 1,   // Confirmed: All devices share the same FabricInfo
+  kHeterogeneous = 2  // Confirmed: Devices belong to different clusters/cliques
+};
+
+// Checks whether the devices in clique_key have homogeneous NVML FabricInfo.
+// This is required as a safety check before launching one-shot kernels on
+// GB200/NVL72 racks.
+FabricHomogeneity CheckFabricHomogeneity(se::StreamExecutor* executor,
+                                         const CliqueKey& clique_key);
 
 }  // namespace xla::gpu
 

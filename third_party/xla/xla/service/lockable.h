@@ -45,12 +45,12 @@ class Lockable {
    public:
     Lock() = default;
 
-    Lock(Lock&& other) {
+    Lock(Lock&& other) noexcept {
       lockable_ = other.lockable_;
       other.lockable_ = nullptr;
     }
 
-    Lock& operator=(Lock&& other) {
+    Lock& operator=(Lock&& other) noexcept {
       lockable_ = other.lockable_;
       other.lockable_ = nullptr;
       return *this;

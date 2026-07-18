@@ -29,7 +29,7 @@ namespace tensorflow {
 
 // ReaderBase ------------------------------------------------------
 
-ReaderBase::ReaderBase(const string& name) : name_(name) {}
+ReaderBase::ReaderBase(const std::string& name) : name_(name) {}
 
 int64_t ReaderBase::NumRecordsProduced() {
   mutex_lock lock(mu_);
@@ -60,7 +60,7 @@ absl::Status ReaderBase::SerializeState(tstring* state) {
 }
 
 absl::Status ReaderBase::SerializeStateLocked(tstring* state) {
-  return errors::Unimplemented("Reader SerializeState");
+  return absl::UnimplementedError("Reader SerializeState");
 }
 
 absl::Status ReaderBase::RestoreState(const tstring& state) {
@@ -73,7 +73,7 @@ absl::Status ReaderBase::RestoreState(const tstring& state) {
 }
 
 absl::Status ReaderBase::RestoreStateLocked(const tstring& state) {
-  return errors::Unimplemented("Reader RestoreState");
+  return absl::UnimplementedError("Reader RestoreState");
 }
 
 int64_t ReaderBase::ReadUpTo(const int64_t num_records, QueueInterface* queue,
@@ -113,9 +113,9 @@ int64_t ReaderBase::ReadUpTo(const int64_t num_records, QueueInterface* queue,
     num_records_produced_ += num_records_produced;
 
     if (!at_end && status.ok() && num_records_produced == 0) {
-      status = errors::Internal(
+      status = absl::InternalError(absl::StrCat(
           "ReadManyLocked() for ", name(),
-          " must set *at_end=true, *num_produced > 0 or return an error.");
+          " must set *at_end=true, *num_produced > 0 or return an error."));
       context->SetStatus(status);
       return records_produced_this_call;
     }
@@ -175,14 +175,14 @@ void ReaderBase::Read(QueueInterface* queue, tstring* key, tstring* value,
     absl::Status status = ReadLocked(key, value, &produced, &at_end);
 
     if (!at_end && status.ok() && !produced) {
-      status = errors::Internal(
+      status = absl::InternalError(absl::StrCat(
           "ReadLocked() for ", name(),
-          " must set *at_end=true, *produced=true, or return an error.");
+          " must set *at_end=true, *produced=true, or return an error."));
     }
     if (!status.ok() && produced) {
-      status = errors::Internal(
+      status = absl::InternalError(absl::StrCat(
           "ReadLocked() for ", name(),
-          " set *produced=true *and* returned an error: ", status.message());
+          " set *produced=true *and* returned an error: ", status.message()));
     }
     if (status.ok() && at_end) {
       status = OnWorkFinishedLocked();
@@ -199,21 +199,21 @@ void ReaderBase::Read(QueueInterface* queue, tstring* key, tstring* value,
   }
 }
 
-string ReaderBase::GetNextWorkLocked(QueueInterface* queue,
-                                     OpKernelContext* context) const {
-  string work;
+std::string ReaderBase::GetNextWorkLocked(QueueInterface* queue,
+                                          OpKernelContext* context) const {
+  std::string work;
   absl::Notification n;
   queue->TryDequeue(
       context, [context, &n, &work](const QueueInterface::Tuple& tuple) {
         if (context->status().ok()) {
           if (tuple.size() != 1) {
             context->SetStatus(
-                errors::InvalidArgument("Expected single component queue"));
+                absl::InvalidArgumentError("Expected single component queue"));
           } else if (tuple[0].dtype() != DT_STRING) {
-            context->SetStatus(errors::InvalidArgument(
+            context->SetStatus(absl::InvalidArgumentError(
                 "Expected queue with single string component"));
           } else if (tuple[0].NumElements() != 1) {
-            context->SetStatus(errors::InvalidArgument(
+            context->SetStatus(absl::InvalidArgumentError(
                 "Expected to dequeue a one-element string tensor"));
           } else {
             work = tuple[0].flat<tstring>()(0);
@@ -246,21 +246,21 @@ absl::Status ReaderBase::RestoreBaseState(const ReaderBaseState& state) {
 #if defined(__ANDROID__) || defined(__EMSCRIPTEN__)
     const string debug_string = "<debug state not available>";
 #else
-    const string debug_string = state.DebugString();
+    const std::string debug_string = state.DebugString();
 #endif
-    return errors::InvalidArgument(
-        "Unexpected negative value when restoring in ", name(), ": ",
-        debug_string);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unexpected negative value when restoring in ", name(),
+                     ": ", debug_string));
   }
   if (work_started_ > work_finished_) {
 #if defined(__ANDROID__) || (__EMSCRIPTEN__)
     const string debug_string = "<debug state not available>";
 #else
-    const string debug_string = state.DebugString();
+    const std::string debug_string = state.DebugString();
 #endif
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Inconsistent work started vs. finished when restoring in ", name(),
-        ": ", debug_string);
+        ": ", debug_string));
   }
   return absl::OkStatus();
 }

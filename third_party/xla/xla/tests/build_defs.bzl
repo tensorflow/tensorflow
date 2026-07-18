@@ -6,7 +6,21 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "is_rocm_configured",
 )
-load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla:py_strict.bzl", "py_strict_test")
+load("//xla:xla.default.bzl", "xla_cc_test", "xla_py_test_deps")
+load(
+    "//xla/tests:backend_defs.bzl",
+    _ALL_BACKENDS = "ALL_BACKENDS",
+    _AMD_GPU_DEFAULT_BACKENDS = "AMD_GPU_DEFAULT_BACKENDS",
+    _DEFAULT_BACKENDS = "DEFAULT_BACKENDS",
+    _DEFAULT_DISABLED_BACKENDS = "DEFAULT_DISABLED_BACKENDS",
+    _GPU_BACKENDS = "GPU_BACKENDS",
+    _GPU_DEFAULT_BACKENDS = "GPU_DEFAULT_BACKENDS",
+    _INTEL_GPU_DEFAULT_BACKENDS = "INTEL_GPU_DEFAULT_BACKENDS",
+    _NVIDIA_GPU_BACKENDS = "NVIDIA_GPU_BACKENDS",
+    _NVIDIA_GPU_DEFAULT_BACKENDS = "NVIDIA_GPU_DEFAULT_BACKENDS",
+    _prepare_gpu_backend_data = "prepare_gpu_backend_data",
+)
 load("//xla/tests:plugin.bzl", "plugins")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load(
@@ -18,219 +32,14 @@ load("//xla/tsl/platform/default:cuda_build_defs.bzl", "is_cuda_configured")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
 
-# Possible backend values for the GPU family.
-NVIDIA_GPU_BACKENDS = [
-    "nvgpu_any",
-    "p100",
-    "v100",
-    "a100",
-    "h100",
-    "b200",
-]
-
-# The generic "gpu" backend includes the actual backends in this list.
-NVIDIA_GPU_DEFAULT_BACKENDS = [
-    "nvgpu_any",
-    "a100",
-    "h100",
-    "b200",
-]
-
-AMD_GPU_DEFAULT_BACKENDS = ["amdgpu_any"]
-
-INTEL_GPU_DEFAULT_BACKENDS = ["intelgpu_any"]
-
-_DEFAULT_BACKENDS = ["cpu"] + NVIDIA_GPU_DEFAULT_BACKENDS + AMD_GPU_DEFAULT_BACKENDS + INTEL_GPU_DEFAULT_BACKENDS
-
-GPU_BACKENDS = NVIDIA_GPU_BACKENDS + AMD_GPU_DEFAULT_BACKENDS + INTEL_GPU_DEFAULT_BACKENDS
-
-GPU_DEFAULT_BACKENDS = NVIDIA_GPU_DEFAULT_BACKENDS
-
-DEFAULT_DISABLED_BACKENDS = []
-
-_ALL_BACKENDS = ["cpu", "interpreter"] + NVIDIA_GPU_BACKENDS + AMD_GPU_DEFAULT_BACKENDS + INTEL_GPU_DEFAULT_BACKENDS + list(plugins.keys())
-
-# buildifier: disable=function-docstring
-def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args, common_tags):
-    # Expand "gpu" backend name into device specific backend names unless it's tagged rocm-only or oneapi-only
-    new_backends = [name for name in backends if name != "gpu"]
-    if len(new_backends) < len(backends) and "rocm-only" not in common_tags and "oneapi-only" not in common_tags:
-        new_backends.extend(NVIDIA_GPU_DEFAULT_BACKENDS)
-
-    new_disabled_backends = [name for name in disabled_backends if name != "gpu"]
-    if len(new_disabled_backends) < len(disabled_backends):
-        new_disabled_backends.extend(NVIDIA_GPU_BACKENDS)
-
-    new_backend_tags = {key: value for key, value in backend_tags.items() if key != "gpu"}
-    gpu_backend_tags = backend_tags.get("gpu", tf_gpu_tests_tags())
-    for key in NVIDIA_GPU_BACKENDS:
-        new_backend_tags.setdefault(key, gpu_backend_tags[:])
-
-    new_backend_args = {key: value for key, value in backend_args.items() if key != "gpu"}
-    if "gpu" in backend_args:
-        for key in NVIDIA_GPU_BACKENDS:
-            new_backend_args.setdefault(key, backend_args["gpu"])
-
-    # Disable backends that don't meet the device requirements.
-    sm_requirements = {
-        "nvgpu_any": (0, 0),
-        "p100": (6, 0),
-        "v100": (7, 0),
-        "a100": (8, 0),
-        "h100": (9, 0),
-        "b200": (10, 0),
-    }
-    for gpu_backend in NVIDIA_GPU_BACKENDS:
-        all_tags = new_backend_tags[gpu_backend]
-        requires_gpu = [t for t in all_tags if t.startswith("requires-gpu-")]
-        requires_sm, only = None, False
-        num_gpus = None
-        for tag in requires_gpu:
-            if ":" in tag:  # Multi-GPU tests are suffixed with colon and number of GPUs.
-                tag, suffix = tag.split(":")  # Remove the suffix from the tag for further parsing.
-                parsed_num_gpus = int(suffix)
-                if num_gpus and num_gpus != parsed_num_gpus:
-                    fail("Inconsistent number of GPUs: %d vs %d" % (num_gpus, parsed_num_gpus))
-                num_gpus = parsed_num_gpus
-            if tag.startswith("requires-gpu-sm"):
-                version = tag.split("-")[2][2:]
-                sm = (int(version[:-1]), int(version[-1]))
-                if not requires_sm or sm < requires_sm:
-                    requires_sm = sm
-                if tag.endswith("-only"):
-                    only = True
-        if only:
-            disable = requires_sm != sm_requirements[gpu_backend]
-        else:
-            disable = requires_sm and requires_sm > sm_requirements[gpu_backend]
-
-        if disable:
-            new_disabled_backends.append(gpu_backend)
-        else:
-            sm_major, sm_minor = sm_requirements[gpu_backend]
-            sm_tag = "requires-gpu-nvidia" if sm_major == 0 else "requires-gpu-sm%s%s-only" % (sm_major, sm_minor)
-            if num_gpus:
-                sm_tag += ":%d" % num_gpus
-            new_backend_tags[gpu_backend] = [t for t in all_tags if t not in requires_gpu]
-            new_backend_tags[gpu_backend].append(sm_tag)
-            new_backend_tags[gpu_backend].append("cuda-only")
-
-    return new_backends, new_disabled_backends, new_backend_tags, new_backend_args
-
-# buildifier: disable=function-docstring
-def prepare_amd_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args, common_tags):
-    new_backends = [name for name in backends if name != "gpu"]
-
-    # Expand "gpu" backend name into device specific backend names unless it's tagged cuda-only or oneapi-only
-    if len(new_backends) < len(backends) and "cuda-only" not in common_tags and "oneapi-only" not in common_tags:
-        new_backends.extend(AMD_GPU_DEFAULT_BACKENDS)
-
-    new_disabled_backends = [name for name in disabled_backends if name != "gpu"]
-    if len(new_disabled_backends) < len(disabled_backends):
-        new_disabled_backends.extend(AMD_GPU_DEFAULT_BACKENDS)
-
-    new_backend_tags = {
-        key: value
-        for key, value in backend_tags.items()
-        if key not in ["gpu"] + NVIDIA_GPU_BACKENDS
-    }
-
-    gpu_backend_tags = backend_tags.get("gpu", [])
-    nvidia_tags = []
-    for key in gpu_backend_tags:
-        if key.startswith("requires-"):
-            nvidia_tags.append(key)
-
-    for key in nvidia_tags:
-        gpu_backend_tags.remove(key)
-
-    for key in AMD_GPU_DEFAULT_BACKENDS:
-        new_backend_tags.setdefault(key, gpu_backend_tags[:])
-
-    for backend in AMD_GPU_DEFAULT_BACKENDS:
-        new_backend_tags[backend].append("requires-gpu-amd")
-        new_backend_tags[backend].append("rocm-only")
-
-    return new_backends, new_disabled_backends, new_backend_tags, backend_args
-
-# buildifier: disable=function-docstring
-def prepare_intel_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args, common_tags):
-    new_backends = [name for name in backends if name != "gpu"]
-
-    # Expand "gpu" backend name into device specific backend names unless it's tagged cuda-only or rocm-only
-    if len(new_backends) < len(backends) and "cuda-only" not in common_tags and "rocm-only" not in common_tags:
-        new_backends.extend(INTEL_GPU_DEFAULT_BACKENDS)
-
-    new_disabled_backends = [name for name in disabled_backends if name != "gpu"]
-    if len(new_disabled_backends) < len(disabled_backends):
-        new_disabled_backends.extend(INTEL_GPU_DEFAULT_BACKENDS)
-
-    new_backend_tags = {
-        key: value
-        for key, value in backend_tags.items()
-        if key not in ["gpu"] + NVIDIA_GPU_BACKENDS + AMD_GPU_DEFAULT_BACKENDS
-    }
-
-    gpu_backend_tags = backend_tags.get("gpu", [])
-    nvidia_tags = []
-    for key in gpu_backend_tags:
-        if key.startswith("requires-"):
-            nvidia_tags.append(key)
-
-    for key in nvidia_tags:
-        gpu_backend_tags.remove(key)
-
-    for key in INTEL_GPU_DEFAULT_BACKENDS:
-        new_backend_tags.setdefault(key, gpu_backend_tags[:])
-
-    for backend in INTEL_GPU_DEFAULT_BACKENDS:
-        new_backend_tags[backend].append("requires-gpu-intel")
-        new_backend_tags[backend].append("oneapi-only")
-
-    return new_backends, new_disabled_backends, new_backend_tags, backend_args
-
-# buildifier: disable=function-docstring
-def prepare_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args, common_tags):
-    nvidia_backends = [
-        backend
-        for backend in backends
-        if backend in ["gpu"] + NVIDIA_GPU_BACKENDS
-    ]
-    amd_backends = [
-        backend
-        for backend in backends
-        if backend in ["gpu"] + AMD_GPU_DEFAULT_BACKENDS
-    ]
-    intel_backends = [
-        backend
-        for backend in backends
-        if backend in ["gpu"] + INTEL_GPU_DEFAULT_BACKENDS
-    ]
-    other_backends = [
-        backend
-        for backend in backends
-        if backend not in ["gpu"] + NVIDIA_GPU_BACKENDS + AMD_GPU_DEFAULT_BACKENDS + INTEL_GPU_DEFAULT_BACKENDS
-    ]
-
-    nvidia_backends, nvidia_disabled_backends, nvidia_backend_tags, nvidia_backend_args = \
-        prepare_nvidia_gpu_backend_data(nvidia_backends, disabled_backends, backend_tags, backend_args, common_tags)
-    amd_backends, amd_disabled_backends, amd_backend_tags, amd_backend_args = \
-        prepare_amd_gpu_backend_data(amd_backends, disabled_backends, backend_tags, {}, common_tags)
-    intel_backends, intel_disabled_backends, intel_backend_tags, intel_backend_args = \
-        prepare_intel_gpu_backend_data(intel_backends, disabled_backends, backend_tags, {}, common_tags)
-
-    new_backends = [
-        backend
-        for backend in nvidia_backends + amd_backends + intel_backends + other_backends
-    ]
-
-    disabled_backends = nvidia_disabled_backends + amd_disabled_backends + intel_disabled_backends
-
-    backend_tags = nvidia_backend_tags | amd_backend_tags | intel_backend_tags
-
-    backend_args = nvidia_backend_args | amd_backend_args | intel_backend_args
-
-    return new_backends, disabled_backends, backend_tags, backend_args
+AMD_GPU_DEFAULT_BACKENDS = _AMD_GPU_DEFAULT_BACKENDS
+DEFAULT_DISABLED_BACKENDS = _DEFAULT_DISABLED_BACKENDS
+GPU_BACKENDS = _GPU_BACKENDS
+GPU_DEFAULT_BACKENDS = _GPU_DEFAULT_BACKENDS
+INTEL_GPU_DEFAULT_BACKENDS = _INTEL_GPU_DEFAULT_BACKENDS
+NVIDIA_GPU_BACKENDS = _NVIDIA_GPU_BACKENDS
+NVIDIA_GPU_DEFAULT_BACKENDS = _NVIDIA_GPU_DEFAULT_BACKENDS
+prepare_gpu_backend_data = _prepare_gpu_backend_data
 
 def xla_test(
         name,
@@ -250,6 +59,8 @@ def xla_test(
         linkstatic = None,
         fail_if_no_test_linked = True,
         fail_if_no_test_selected = True,
+        use_legacy_runtime = False,
+        test_cpu_fast_compile = False,
         **kwargs):
     """Generates strict_cc_test targets for the given XLA backends.
 
@@ -325,11 +136,18 @@ def xla_test(
         the default value decided by strict_cc_test.
       fail_if_no_test_linked: Whether to fail if no test case is linked into the test.
       fail_if_no_test_selected: Whether to fail if no test case is executed.
+      use_legacy_runtime: If true, adds the required dependencies for writing tests
+        using the legacy runtime.
+      test_cpu_fast_compile: If true, generate a specialized test target for CPU
+        with FAST_COMPILE preset enabled.
       **kwargs: Additional keyword arguments to pass to strict_cc_test.
     """
 
-    # precompile_test is not supported in OSS.
-    kwargs.pop("precompile_test", None)
+    # aot_compile_test is not supported in OSS.
+    kwargs.pop("aot_compile_test", None)
+
+    # TODO: b/382779188 - Remove this once all legacy tests have had this kwarg added.
+    kwargs.pop("use_legacy_runtime", None)
 
     test_names = []
     if not backends:
@@ -350,15 +168,16 @@ def xla_test(
         this_backend_tags = ["xla_%s" % backend] + tags + backend_tags.get(backend, [])
         this_backend_copts = []
         this_backend_args = backend_args.get(backend, [])
-        this_backend_kwargs = dict(kwargs) | backend_kwargs.get(backend, {})
+        this_backend_kwargs = dict(kwargs)
+        for k, v in backend_kwargs.get(backend, {}).items():
+            this_backend_kwargs[k] = v
         this_backend_data = []
         backend_deps = []
         if backend == "cpu":
             device_type_for_env = "cpu"
             backend_deps.append("//xla/service:cpu_plugin")
 
-            # TODO: b/382779188 - Remove this when all tests are migrated to PjRt.
-            if "test_migrated_to_hlo_runner_pjrt" in this_backend_tags:
+            if not use_legacy_runtime:
                 backend_deps.append("//xla/tests:pjrt_cpu_client_registry")
         elif backend in NVIDIA_GPU_BACKENDS + AMD_GPU_DEFAULT_BACKENDS + INTEL_GPU_DEFAULT_BACKENDS:
             device_type_for_env = "gpu"
@@ -374,6 +193,8 @@ def xla_test(
                 ]
             if backend in AMD_GPU_DEFAULT_BACKENDS:
                 this_backend_tags.append("gpu")
+                if "multi_gpu" in this_backend_tags:
+                    this_backend_tags.append("exclusive-if-local")
                 backend_deps += [
                     "//xla/stream_executor/rocm:all_runtime",
                     "//xla/stream_executor/rocm:gpu_test_kernels_rocm",
@@ -386,8 +207,7 @@ def xla_test(
                     "//xla/stream_executor/sycl:stream_executor_sycl",
                 ]
 
-            # TODO: b/382779188 - Remove this when all tests are migrated to PjRt.
-            if "test_migrated_to_hlo_runner_pjrt" in this_backend_tags:
+            if not use_legacy_runtime:
                 backend_deps.append("//xla/tests:pjrt_gpu_client_registry")
         elif backend == "interpreter":
             device_type_for_env = "interpreter"
@@ -395,8 +215,7 @@ def xla_test(
                 "//xla/service:interpreter_plugin",
             )
 
-            # TODO: b/382779188 - Remove this when all tests are migrated to PjRt.
-            if "test_migrated_to_hlo_runner_pjrt" in this_backend_tags:
+            if not use_legacy_runtime:
                 backend_deps.append("//xla/tests:pjrt_interpreter_client_registry")
         elif backend in plugins:
             device_type_for_env = "plugin"
@@ -408,8 +227,22 @@ def xla_test(
         else:
             fail("Unknown backend %s" % backend)
 
+        # Ensure that the tags are consistent with the runtime used.
+        if "pjrt_migration_candidate" in this_backend_tags and not use_legacy_runtime:
+            fail("xla_tests that do not use the legacy runtime configuration should not be tagged `pjrt_migration_candidate`.")
+        if "test_migrated_to_hlo_runner_pjrt" in this_backend_tags:
+            fail("The `test_migrated_to_hlo_runner_pjrt` tag is deprecated and should no longer be used.")
+
         modifiers = backend.split("_")
         device = modifiers.pop(0)
+
+        this_backend_env = dict(env)
+        for k, v in {
+            "XLA_TEST_DEVICE": device,
+            "XLA_TEST_DEVICE_TYPE": device_type_for_env,
+            "XLA_TEST_MODIFIERS": ",".join(modifiers),
+        }.items():
+            this_backend_env[k] = v
 
         xla_cc_test(
             name = test_name,
@@ -419,48 +252,45 @@ def xla_test(
             args = args + this_backend_args,
             deps = deps + backend_deps,
             data = data + this_backend_data,
-            env = env | {
-                "XLA_TEST_DEVICE": device,
-                "XLA_TEST_DEVICE_TYPE": device_type_for_env,
-                "XLA_TEST_MODIFIERS": ",".join(modifiers),
-            },
+            env = this_backend_env,
             linkstatic = linkstatic,
             fail_if_no_test_linked = fail_if_no_test_linked,
             fail_if_no_test_selected = fail_if_no_test_selected,
             **this_backend_kwargs
         )
-        if ((backend in NVIDIA_GPU_BACKENDS and is_cuda_configured()) or
-            (backend in AMD_GPU_DEFAULT_BACKENDS and is_rocm_configured())):
-            test_names.append(test_name)
 
-        # For coverage purposes, we want all GPU tests to also run with the PjRt
-        # StreamExecutor GPU client, unless they are incompatible or blocking
-        # the PjRt test migration. Only until the TFRT GPU client is fully
-        # supported.
-        if device_type_for_env == "gpu" and "incompatible_with_pjrt_se_gpu_client" not in this_backend_tags and "test_migrated_to_hlo_runner_pjrt" in this_backend_tags:
-            variant_test_name = test_name + "_notfrt"
+        if backend == "cpu" and test_cpu_fast_compile:
+            fast_compile_test_name = test_name + "_fast_compile"
+            fast_compile_env = dict(env)
+            for k, v in {
+                "XLA_TEST_DEVICE": device,
+                "XLA_TEST_DEVICE_TYPE": device_type_for_env,
+                "XLA_TEST_MODIFIERS": ",".join(modifiers),
+            }.items():
+                fast_compile_env[k] = v
+            if "XLA_FLAGS" in fast_compile_env:
+                fast_compile_env["XLA_FLAGS"] += " --xla_cpu_opt_preset=FAST_COMPILE"
+            else:
+                fast_compile_env["XLA_FLAGS"] = "--xla_cpu_opt_preset=FAST_COMPILE"
+
             xla_cc_test(
-                name = variant_test_name,
+                name = fast_compile_test_name,
                 srcs = srcs,
                 tags = this_backend_tags,
                 copts = copts + this_backend_copts,
                 args = args + this_backend_args,
                 deps = deps + backend_deps,
                 data = data + this_backend_data,
-                env = env | {
-                    "XLA_TEST_DEVICE": device,
-                    "XLA_TEST_DEVICE_TYPE": device_type_for_env,
-                    "XLA_TEST_MODIFIERS": ",".join(modifiers),
-                    "XLA_TEST_USE_STREAM_EXECUTOR_GPU_CLIENT": "",
-                },
+                env = fast_compile_env,
                 linkstatic = linkstatic,
                 fail_if_no_test_linked = fail_if_no_test_linked,
                 fail_if_no_test_selected = fail_if_no_test_selected,
                 **this_backend_kwargs
             )
-            if ((backend in NVIDIA_GPU_BACKENDS and is_cuda_configured()) or
-                (backend in AMD_GPU_DEFAULT_BACKENDS and is_rocm_configured())):
-                test_names.append(variant_test_name)
+
+        if ((backend in NVIDIA_GPU_BACKENDS and is_cuda_configured()) or
+            (backend in AMD_GPU_DEFAULT_BACKENDS and is_rocm_configured())):
+            test_names.append(test_name)
 
     # Notably, a test_suite with `tests = []` is not empty:
     # https://bazel.build/reference/be/general#test_suite_args and the default
@@ -515,3 +345,25 @@ def generate_backend_suites(backends = []):  # buildifier: disable=unnamed-macro
             name = "%s_tests" % backend,
             tags = ["xla_%s" % backend, "-broken", "manual"],
         )
+
+def xla_py_test(name, deps = None, data = None, env = None, **kwargs):
+    """A wrapper around py_strict_test that adds XLA-specific dependencies.
+
+    Args:
+      name: The name of the test.
+      deps: The dependencies of the test.
+      data: The data dependencies of the test.
+      env: The environment variables to set for the test.
+      **kwargs: Other arguments to pass to the test.
+    """
+    deps = deps or []
+    data = data or []
+    env = env or {}
+
+    py_strict_test(
+        name = name,
+        deps = deps + xla_py_test_deps(),
+        data = data,
+        env = env,
+        **kwargs
+    )

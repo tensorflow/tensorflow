@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -47,7 +48,7 @@ HloInstruction* ReshapeAndCastToWiderType(HloInstruction* input,
 
   std::vector<int64_t> bitcast_dimensions(input_shape.dimensions().begin(),
                                           input_shape.dimensions().end());
-  bitcast_dimensions.back() /= ratio;
+  bitcast_dimensions[input_shape.layout().minor_to_major(0)] /= ratio;
   bitcast_dimensions.push_back(ratio);
   Shape bitcast_shape =
       ShapeUtil::MakeShape(input_shape.element_type(), bitcast_dimensions);
@@ -97,10 +98,9 @@ bool CanBeRepresentedAs(const Shape& shape, const PrimitiveType casted_type) {
   const int64_t ratio = primitive_util::BitWidth(casted_type) /
                         primitive_util::BitWidth(shape.element_type());
   return primitive_util::IsSubByteNonPredType(shape.element_type()) &&
-         ShapeUtil::LastDimIsMinorMost(shape) &&
          shape.layout().element_size_in_bits() ==
              primitive_util::BitWidth(shape.element_type()) &&
-         shape.dimensions().back() % ratio == 0;
+         shape.dimensions(shape.layout().minor_to_major(0)) % ratio == 0;
 }
 
 class SubByteCollectiveNormalizationVisitor : public DfsHloRewriteVisitor {
@@ -138,8 +138,8 @@ absl::Status SubByteCollectiveNormalizationVisitor::HandleAllToAll(
                         primitive_util::BitWidth(hlo->shape().element_type());
   const auto* all_to_all = Cast<HloAllToAllInstruction>(hlo);
   if (all_to_all->split_dimension()) {
-    TF_ASSIGN_OR_RETURN(const CollectiveOpGroupMode group_mode,
-                        GetCollectiveOpGroupMode(all_to_all));
+    ASSIGN_OR_RETURN(const CollectiveOpGroupMode group_mode,
+                     GetCollectiveOpGroupMode(all_to_all));
     const int64_t split_dimension_size =
         hlo->shape().dimensions(*all_to_all->split_dimension());
     if (split_dimension_size %
@@ -173,7 +173,7 @@ SubByteCollectiveNormalizationVisitor::ProcessCollectiveInstruction(
 
   std::vector<int64_t> new_collective_dimensions(
       hlo.shape().dimensions().begin(), hlo.shape().dimensions().end());
-  new_collective_dimensions.back() /= ratio;
+  new_collective_dimensions[hlo.shape().layout().minor_to_major(0)] /= ratio;
   Shape new_collective_shape =
       ShapeUtil::MakeShape(casted_type_, new_collective_dimensions);
   if (hlo.shape().has_layout()) {
@@ -184,7 +184,7 @@ SubByteCollectiveNormalizationVisitor::ProcessCollectiveInstruction(
       hlo.parent()->AddInstruction(hlo.CloneWithNewOperands(
           new_collective_shape,
           {ReshapeAndCastToWiderType(hlo.mutable_operand(0), casted_type_)}));
-  TF_RETURN_IF_ERROR(hlo.parent()->ReplaceInstructionWithDifferentShape(
+  RETURN_IF_ERROR(hlo.parent()->ReplaceInstructionWithDifferentShape(
       &hlo, CastToNarrowerTypeAndReshape(new_collective, hlo.shape())));
 
   MarkAsChanged();
@@ -193,13 +193,13 @@ SubByteCollectiveNormalizationVisitor::ProcessCollectiveInstruction(
 
 }  // namespace
 
-absl::StatusOr<bool> SubByteCollectiveNormalization::Run(
+absl::StatusOr<bool> SubByteCollectiveNormalization::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   SubByteCollectiveNormalizationVisitor visitor;
   for (HloComputation* computation :
        module->MakeComputationPostOrder(execution_threads)) {
-    TF_RETURN_IF_ERROR(computation->Accept(&visitor));
+    RETURN_IF_ERROR(computation->Accept(&visitor));
   }
 
   return visitor.changed();

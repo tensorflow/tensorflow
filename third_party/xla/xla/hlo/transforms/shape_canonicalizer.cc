@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -50,7 +51,7 @@ class ShapeCanonicalizerVisitor : public DfsHloRewriteVisitor {
 ShapeCanonicalizer::ShapeCanonicalizer(ShapePool* shape_pool)
     : shape_pool_(shape_pool) {}
 
-absl::StatusOr<bool> ShapeCanonicalizer::Run(
+absl::StatusOr<bool> ShapeCanonicalizer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Every time we canonicalize shapes in a module, we garbage collect expired
@@ -59,7 +60,7 @@ absl::StatusOr<bool> ShapeCanonicalizer::Run(
   VLOG(3) << "Garbage collected " << num_erased << " expired shapes";
 
   ShapeCanonicalizerVisitor visitor(shape_pool_);
-  TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&visitor));
+  RETURN_IF_ERROR(module->entry_computation()->Accept(&visitor));
   return visitor.changed();
 }
 

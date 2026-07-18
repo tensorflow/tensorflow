@@ -16,7 +16,10 @@ limitations under the License.
 // See docs in ../ops/data_flow_ops.cc.
 
 #include <algorithm>
+#include <limits>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -45,7 +48,7 @@ template <class T>
 class DynamicStitchOpImplBase : public OpKernel {
  public:
   explicit DynamicStitchOpImplBase(OpKernelConstruction* c,
-                                   const string& op_name)
+                                   const std::string& op_name)
       : OpKernel(c) {
     // Compute expected input signature
     const DataType dt = DataTypeToEnum<T>::v();
@@ -58,10 +61,11 @@ class DynamicStitchOpImplBase : public OpKernel {
       expected.push_back(dt);
     }
     OP_REQUIRES_OK(c, c->MatchSignature(expected, {dt}));
-    OP_REQUIRES(c, c->num_inputs() > 0,
-                errors::InvalidArgument(op_name + ": Must have some inputs"));
+    OP_REQUIRES(
+        c, c->num_inputs() > 0,
+        absl::InvalidArgumentError(op_name + ": Must have some inputs"));
     OP_REQUIRES(c, c->num_inputs() % 2 == 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     op_name + ": Must have even number of arguments"));
   }
 
@@ -95,25 +99,32 @@ class DynamicStitchOpImplBase : public OpKernel {
     }
     for (const Tensor& indices : *indices_inputs) {
       if (indices.NumElements() > 0) {
-        Eigen::Tensor<int32, 0, Eigen::RowMajor> m =
-            indices.flat<int32>().maximum();
+        Eigen::Tensor<int32_t, 0, Eigen::RowMajor> m =
+            indices.flat<int32_t>().maximum();
         max_index = std::max(m(), max_index);
       }
       if (data_elements_size) {
-        *data_elements_size += indices.NumElements();
+        int64_t new_size = *data_elements_size + indices.NumElements();
+        OP_REQUIRES(c,
+                    FastBoundsCheck(new_size, std::numeric_limits<int>::max()),
+                    absl::InvalidArgumentError(
+                        "Total number of elements exceeds INT_MAX"));
+        *data_elements_size = static_cast<int>(new_size);
       }
     }
 
+    OP_REQUIRES(c, max_index < std::numeric_limits<int>::max(),
+                absl::InvalidArgumentError("max_index is too large"));
     *first_dim_size = max_index + 1;
 
     for (const Tensor& indices : *indices_inputs) {
-      auto indices_vec = indices.flat<int32>();
+      auto indices_vec = indices.flat<int32_t>();
 
       for (int i = 0; i < indices_vec.size(); i++) {
         int32_t index = internal::SubtleMustCopy(indices_vec(i));
-        OP_REQUIRES(
-            c, FastBoundsCheck(index, *first_dim_size),
-            errors::InvalidArgument("indices[", i, "] is out of range"));
+        OP_REQUIRES(c, FastBoundsCheck(index, *first_dim_size),
+                    absl::InvalidArgumentError(
+                        absl::StrCat("indices[", i, "] is out of range")));
       }
     }
 
@@ -126,10 +137,10 @@ class DynamicStitchOpImplBase : public OpKernel {
       const Tensor& data = (*data_inputs)[input_num];
       OP_REQUIRES(
           c, TensorShapeUtils::StartsWith(data.shape(), indices.shape()),
-          errors::InvalidArgument("data[", input_num,
-                                  "].shape = ", data.shape().DebugString(),
-                                  " does not start with indices[", input_num,
-                                  "].shape = ", indices.shape().DebugString()));
+          absl::InvalidArgumentError(absl::StrCat(
+              "data[", input_num, "].shape = ", data.shape().DebugString(),
+              " does not start with indices[", input_num,
+              "].shape = ", indices.shape().DebugString())));
       OP_REQUIRES(
           c, input_num == 0 || SameExtraShape(data0, indices0, data, indices),
           errors::InvalidArgument(
@@ -157,8 +168,7 @@ class DynamicStitchOpImplBase : public OpKernel {
 
 template <typename T>
 void DynamicStitchGPUImpl(const Eigen::GpuDevice& gpu_device,
-                          const int32_t slice_size,
-                          const int32_t first_dim_size,
+                          int32_t slice_size, int32_t first_dim_size,
                           const GpuDeviceArrayStruct<int>& input_indices,
                           const GpuDeviceArrayStruct<const T*>& input_ptrs,
                           T* output);
@@ -204,7 +214,7 @@ class DynamicStitchOpGPU : public DynamicStitchOpImplBase<T> {
       // implicitly using atomics to make sure the last index is the final
       // write.
       const int slice_size = merged->flat_outer_dims<T>().dimension(1);
-      GpuDeviceArrayOnHost<int32> indices_flat(c, first_dim_size);
+      GpuDeviceArrayOnHost<int32_t> indices_flat(c, first_dim_size);
       GpuDeviceArrayOnHost<const T*> data_flat(c, data_elements_size);
       OP_REQUIRES_OK(c, indices_flat.Init());
       OP_REQUIRES_OK(c, data_flat.Init());
@@ -218,7 +228,7 @@ class DynamicStitchOpGPU : public DynamicStitchOpImplBase<T> {
       // sum of indices_inputs[i].NumElements() for compute indices_flat value.
       int32_t base_size = 0;
       for (int i = 0; i < indices_inputs.size(); ++i) {
-        auto indices_vec = indices_inputs[i].flat<int32>();
+        auto indices_vec = indices_inputs[i].flat<int32_t>();
         auto data_ptr_base = data_inputs[i].template flat<T>().data();
         for (int j = 0; j < indices_vec.size(); ++j) {
           // indices_flat's indices represent the indices of output.
@@ -276,7 +286,7 @@ class DynamicStitchOpImplCPU : public DynamicStitchOpImplBase<T> {
       const size_t slice_bytes = slice_size * sizeof(T);
       auto OnInputNumber = [&](int input_num) {
         const Tensor& indices = indices_inputs[input_num];
-        auto indices_vec = indices.flat<int32>();
+        auto indices_vec = indices.flat<int32_t>();
         const Tensor& data = data_inputs[input_num];
         auto data_flat =
             data.shaped<T, 2>({indices_vec.dimension(0), slice_size});
@@ -284,17 +294,29 @@ class DynamicStitchOpImplCPU : public DynamicStitchOpImplBase<T> {
         if (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
           T* merged_base = merged_flat.data();
           const T* data_base = data_flat.data();
-          for (int i = 0; i < indices_vec.size(); i++) {
+          for (int64_t i = 0; i < indices_vec.size(); i++) {
+            if (!c->status().ok()) return;
             int32_t index = internal::SubtleMustCopy(indices_vec(i));
+            if (index < 0 || index >= first_dim_size) {
+              c->SetStatus(absl::InvalidArgumentError(absl::StrCat(
+                  "index out of range: ", index, " vs ", first_dim_size)));
+              return;
+            }
             memcpy(merged_base + index * slice_size, data_base + i * slice_size,
                    slice_bytes);
           }
         } else {
           Eigen::DSizes<Eigen::DenseIndex, 2> sizes(1, slice_size);
-          for (int i = 0; i < indices_vec.size(); i++) {
+          for (int64_t i = 0; i < indices_vec.size(); i++) {
+            if (!c->status().ok()) return;
             // Copy slice data[i] to merged[indices[i]]
             Eigen::DSizes<Eigen::DenseIndex, 2> data_indices(i, 0);
             int32_t index = internal::SubtleMustCopy(indices_vec(i));
+            if (index < 0 || index >= first_dim_size) {
+              c->SetStatus(absl::InvalidArgumentError(absl::StrCat(
+                  "index out of range: ", index, " vs ", first_dim_size)));
+              return;
+            }
             Eigen::DSizes<Eigen::DenseIndex, 2> merged_indices(index, 0);
             merged_flat.slice(merged_indices, sizes) =
                 data_flat.slice(data_indices, sizes);

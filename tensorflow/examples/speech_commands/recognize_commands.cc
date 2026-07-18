@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -28,7 +29,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-RecognizeCommands::RecognizeCommands(const std::vector<string>& labels,
+RecognizeCommands::RecognizeCommands(const std::vector<std::string>& labels,
                                      int32_t average_window_duration_ms,
                                      float detection_threshold,
                                      int32_t suppression_ms,
@@ -45,20 +46,20 @@ RecognizeCommands::RecognizeCommands(const std::vector<string>& labels,
 
 absl::Status RecognizeCommands::ProcessLatestResults(
     const Tensor& latest_results, const int64_t current_time_ms,
-    string* found_command, float* score, bool* is_new_command) {
+    std::string* found_command, float* score, bool* is_new_command) {
   if (latest_results.NumElements() != labels_count_) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "The results for recognition should contain ", labels_count_,
-        " elements, but there are ", latest_results.NumElements());
+        " elements, but there are ", latest_results.NumElements()));
   }
 
   if ((!previous_results_.empty()) &&
       (current_time_ms < previous_results_.front().first)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Results must be fed in increasing time order, but received a "
         "timestamp of ",
         current_time_ms, " that was earlier than the previous one of ",
-        previous_results_.front().first);
+        previous_results_.front().first));
   }
 
   // Add the latest results to the head of the queue.
@@ -108,7 +109,7 @@ absl::Status RecognizeCommands::ProcessLatestResults(
 
   // See if the latest top score is enough to trigger a detection.
   const int current_top_index = sorted_average_scores[0].first;
-  const string current_top_label = labels_[current_top_index];
+  const std::string current_top_label = labels_[current_top_index];
   const float current_top_score = sorted_average_scores[0].second;
   // If we've recently had another label trigger, assume one that occurs too
   // soon afterwards is a bad result.

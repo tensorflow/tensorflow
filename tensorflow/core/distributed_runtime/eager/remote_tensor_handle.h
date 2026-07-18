@@ -28,7 +28,7 @@ struct RemoteTensorHandleInternal {
   RemoteTensorHandleInternal(int64_t op_id, int32_t output_num)
       : op_id(op_id), output_num(output_num) {}
   int64_t op_id;
-  int32 output_num;
+  int32_t output_num;
 };
 
 struct RemoteTensorHandleInternalHash {

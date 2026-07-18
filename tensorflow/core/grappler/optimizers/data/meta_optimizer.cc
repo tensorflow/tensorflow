@@ -35,7 +35,7 @@ namespace grappler {
 namespace {
 
 using ConfigMap =
-    std::map<string, tensorflow::RewriterConfig_CustomGraphOptimizer>;
+    std::map<std::string, tensorflow::RewriterConfig_CustomGraphOptimizer>;
 
 // tf.data optimizations, in the order we want to perform them.
 // clang-format off
@@ -76,17 +76,17 @@ absl::Status ToConfigMap(
   for (const auto& option_string : options) {
     // The option string has the format
     // <optimizer_name>:<config_key>:<config_value>
-    std::vector<string> split = absl::StrSplit(option_string, ':');
+    std::vector<std::string> split = absl::StrSplit(option_string, ':');
     if (split.size() != 3) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Wrong format for optimizer options. Expect <optimizer name>:<config "
           "key>:<config value>, received: ",
-          option_string);
+          option_string));
     }
 
-    const string& optimizer_name = split[0];
-    const string& config_key = split[1];
-    const string& config_value = split[2];
+    const std::string& optimizer_name = split[0];
+    const std::string& config_key = split[1];
+    const std::string& config_value = split[2];
 
     auto optimizer_config = gtl::FindOrNull(*result, optimizer_name);
     if (!optimizer_config) {
@@ -168,7 +168,7 @@ absl::Status TFDataMetaOptimizer::Optimize(Cluster* cluster,
   return absl::OkStatus();
 }
 
-absl::Status TFDataMetaOptimizer::ApplyOptimization(const string& name,
+absl::Status TFDataMetaOptimizer::ApplyOptimization(const std::string& name,
                                                     Cluster* cluster,
                                                     GrapplerItem* item) const {
   GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
@@ -212,9 +212,9 @@ absl::Status TFDataMetaOptimizer::Init(
 
       enabled_optimizers_[optimizer_name] = std::move(optimizer);
     } else {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Tried to register a dataset optimizer that doesn't exist: ",
-          optimizer_name);
+          optimizer_name));
     }
   }
 

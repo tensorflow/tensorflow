@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -174,7 +175,7 @@ absl::StatusOr<HloInstruction*> InsertTokenIntoTuple(HloInstruction* tuple,
     for (int64_t idx : original_user->operand_indices(tuple)) {
       // We expect the shape to be same, but checking that it is the same is
       // expensive.
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           original_user->ReplaceOperandWithDifferentShape(idx, original_tuple));
     }
   }
@@ -188,7 +189,7 @@ absl::StatusOr<HloInstruction*> InsertTokenIntoTuple(HloInstruction* tuple,
   if (tuple->has_sharding()) {
     // Assign arbitrary sharding for the token.
     HloSharding sharding = tuple->sharding();
-    sharding.tuple_elements().push_back(HloSharding::AssignDevice(0));
+    sharding.tuple_elements().push_back(HloSharding::SingleDevice(0));
     tuple->set_sharding(sharding);
   }
 
@@ -215,7 +216,7 @@ absl::Status CanonicalizeConditionalInstruction(HloInstruction* conditional) {
       }
       HloInstruction* original = branch->AddInstruction(
           HloInstruction::CreateGetTupleElement(parameter, 0));
-      TF_RETURN_IF_ERROR(parameter->ReplaceAllUsesWithDifferentShape(original));
+      RETURN_IF_ERROR(parameter->ReplaceAllUsesWithDifferentShape(original));
     }
 
     // Tuplify the branch tuple if needed.
@@ -225,7 +226,7 @@ absl::Status CanonicalizeConditionalInstruction(HloInstruction* conditional) {
     if (!branch_tuple->shape().IsTuple()) {
       branch_tuple = conditional->parent()->AddInstruction(
           HloInstruction::CreateTuple({branch_tuple}));
-      TF_RETURN_IF_ERROR(conditional->ReplaceOperandWithDifferentShape(
+      RETURN_IF_ERROR(conditional->ReplaceOperandWithDifferentShape(
           branch_operand_idx, branch_tuple));
     }
 
@@ -235,7 +236,7 @@ absl::Status CanonicalizeConditionalInstruction(HloInstruction* conditional) {
       branch_tuple = TupleUtil::Duplicate(branch_tuple);
       // We expect the shape to be same, but checking that it is the same is
       // expensive.
-      TF_RETURN_IF_ERROR(conditional->ReplaceOperandWithDifferentShape(
+      RETURN_IF_ERROR(conditional->ReplaceOperandWithDifferentShape(
           branch_operand_idx, branch_tuple));
     }
 
@@ -278,8 +279,7 @@ absl::Status CanonicalizeWhileInstruction(HloInstruction* loop) {
     }
     HloInstruction* original = body->AddInstruction(
         HloInstruction::CreateGetTupleElement(body_parameter, 0));
-    TF_RETURN_IF_ERROR(
-        body_parameter->ReplaceAllUsesWithDifferentShape(original));
+    RETURN_IF_ERROR(body_parameter->ReplaceAllUsesWithDifferentShape(original));
   }
 
   // Tuplify the body root if needed.
@@ -301,8 +301,7 @@ absl::Status CanonicalizeWhileInstruction(HloInstruction* loop) {
     }
     HloInstruction* original = cond->AddInstruction(
         HloInstruction::CreateGetTupleElement(cond_parameter, 0));
-    TF_RETURN_IF_ERROR(
-        cond_parameter->ReplaceAllUsesWithDifferentShape(original));
+    RETURN_IF_ERROR(cond_parameter->ReplaceAllUsesWithDifferentShape(original));
   }
 
   // Tuplify the while instruction if needed.
@@ -315,7 +314,7 @@ absl::Status CanonicalizeWhileInstruction(HloInstruction* loop) {
     }
     HloInstruction* original = loop->parent()->AddInstruction(
         HloInstruction::CreateGetTupleElement(loop, 0));
-    TF_RETURN_IF_ERROR(loop->ReplaceAllUsesWithDifferentShape(original));
+    RETURN_IF_ERROR(loop->ReplaceAllUsesWithDifferentShape(original));
   }
 
   // Tuplify the while tuple if needed.
@@ -323,7 +322,7 @@ absl::Status CanonicalizeWhileInstruction(HloInstruction* loop) {
   if (!loop_tuple->shape().IsTuple()) {
     loop_tuple = loop->parent()->AddInstruction(
         HloInstruction::CreateTuple({loop_tuple}));
-    TF_RETURN_IF_ERROR(loop->ReplaceOperandWithDifferentShape(0, loop_tuple));
+    RETURN_IF_ERROR(loop->ReplaceOperandWithDifferentShape(0, loop_tuple));
   }
 
   // Explicitly disjoin computation parameters from loop inputs, so we can
@@ -332,7 +331,7 @@ absl::Status CanonicalizeWhileInstruction(HloInstruction* loop) {
     loop_tuple = TupleUtil::Duplicate(loop_tuple);
     // We expect the shape to be same, but checking that it is the same is
     // expensive.
-    TF_RETURN_IF_ERROR(loop->ReplaceOperandWithDifferentShape(0, loop_tuple));
+    RETURN_IF_ERROR(loop->ReplaceOperandWithDifferentShape(0, loop_tuple));
   }
 
   // Explicitly make the root of the body a tuple.
@@ -362,36 +361,36 @@ absl::Status InfeedTokenPropagation::PropagateTokenThroughConditionalBranch() {
   for (HloComputation* branch : dangling_instruction_->branch_computations()) {
     HloInstruction* root = branch->root_instruction();
     if (branch == comp) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           InsertTokenIntoTuple(root, /*add_token_operand=*/false).status());
       root->AppendOperand(output_token_);
     } else {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           InsertTokenIntoTuple(root, /*add_token_operand=*/true).status());
     }
   }
 
   // Insert the input token into the branch parameter.
   HloInstruction* parameter = comp->parameter_instruction(0);
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       HloInstruction * input_token_gte,
       InsertTokenIntoTuple(parameter, /*add_token_operand=*/false));
-  TF_RETURN_IF_ERROR(input_token_->ReplaceAllUsesWith(input_token_gte));
+  RETURN_IF_ERROR(input_token_->ReplaceAllUsesWith(input_token_gte));
 
   // Insert the input token into the branch tuple.
   int64_t branch_operand_idx = dangling_instruction_->branch_index(comp) + 1;
   HloInstruction* branch_tuple =
       dangling_instruction_->mutable_operand(branch_operand_idx);
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       HloInstruction * next_input_token_gte,
       InsertTokenIntoTuple(branch_tuple, /*add_token_operand=*/true));
-  TF_RETURN_IF_ERROR(dangling_instruction_->ReplaceOperandWithDifferentShape(
+  RETURN_IF_ERROR(dangling_instruction_->ReplaceOperandWithDifferentShape(
       branch_operand_idx, branch_tuple));
   input_token_ =
       branch_tuple->mutable_operand(next_input_token_gte->tuple_index());
 
   // Insert the output token into conditional instruction.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       output_token_,
       InsertTokenIntoTuple(dangling_instruction_, /*add_token_operand=*/false));
 
@@ -407,37 +406,36 @@ absl::Status InfeedTokenPropagation::PropagateTokenThroughWhileBody() {
 
   // Insert the output token into the body root.
   HloInstruction* root = comp->root_instruction();
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       InsertTokenIntoTuple(root, /*add_token_operand=*/false).status());
   root->AppendOperand(output_token_);
 
   // Insert the input token into the body parameter.
   HloInstruction* body_parameter = comp->parameter_instruction(0);
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       HloInstruction * input_token_gte,
       InsertTokenIntoTuple(body_parameter, /*add_token_operand=*/false));
-  TF_RETURN_IF_ERROR(input_token_->ReplaceAllUsesWith(input_token_gte));
+  RETURN_IF_ERROR(input_token_->ReplaceAllUsesWith(input_token_gte));
 
   // Insert the input token into the condition parameter.
   HloComputation* cond = dangling_instruction_->while_condition();
   HloInstruction* cond_parameter = cond->parameter_instruction(0);
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       InsertTokenIntoTuple(cond_parameter, /*add_token_operand=*/false)
           .status());
 
   // Insert the input token into the while tuple.
   HloInstruction* while_tuple = dangling_instruction_->mutable_operand(0);
-  TF_ASSIGN_OR_RETURN(
-      input_token_,
-      InsertTokenIntoTuple(while_tuple, /*add_token_operand=*/true));
+  ASSIGN_OR_RETURN(input_token_, InsertTokenIntoTuple(
+                                     while_tuple, /*add_token_operand=*/true));
   // Retrieve the actual token added to the tuple.
   input_token_ = input_token_->mutable_operand(0)->mutable_operand(
       input_token_->tuple_index());
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       dangling_instruction_->ReplaceOperandWithDifferentShape(0, while_tuple));
 
   // Insert the input token into the while instruction.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       output_token_,
       InsertTokenIntoTuple(dangling_instruction_, /*add_token_operand=*/false));
 
@@ -465,7 +463,7 @@ absl::Status InfeedTokenPropagation::PropagateToken(
           CHECK_EQ(begin->opcode(), HloOpcode::kInfeed);
           HloInstruction* parent_output_token = comp->AddInstruction(
               HloInstruction::CreateGetTupleElement(end, 1));
-          TF_RETURN_IF_ERROR(
+          RETURN_IF_ERROR(
               input_token_->ReplaceAllUsesWith(parent_output_token));
           input_token_ = begin->mutable_operand(0);
         } else if (ordering.ExecutesBefore(dangling_instruction_, begin)) {
@@ -474,7 +472,7 @@ absl::Status InfeedTokenPropagation::PropagateToken(
           CHECK_EQ(begin->opcode(), HloOpcode::kOutfeed);
           // We expect the shape to be same, but checking that it is the same
           // is expensive.
-          TF_RETURN_IF_ERROR(
+          RETURN_IF_ERROR(
               begin->ReplaceOperandWithDifferentShape(1, output_token_));
           output_token_ = end;
         } else {
@@ -500,12 +498,12 @@ absl::Status InfeedTokenPropagation::PropagateToken(
     return absl::OkStatus();
   }
   if (caller->opcode() == HloOpcode::kConditional) {
-    TF_RETURN_IF_ERROR(CanonicalizeConditionalInstruction(caller));
-    TF_RETURN_IF_ERROR(PropagateTokenThroughConditionalBranch());
+    RETURN_IF_ERROR(CanonicalizeConditionalInstruction(caller));
+    RETURN_IF_ERROR(PropagateTokenThroughConditionalBranch());
   } else if (caller->opcode() == HloOpcode::kWhile &&
              comp == caller->while_body()) {
-    TF_RETURN_IF_ERROR(CanonicalizeWhileInstruction(caller));
-    TF_RETURN_IF_ERROR(PropagateTokenThroughWhileBody());
+    RETURN_IF_ERROR(CanonicalizeWhileInstruction(caller));
+    RETURN_IF_ERROR(PropagateTokenThroughWhileBody());
   } else {
     // We only expect to encounter computations behind while and conditional
     // instructions. In the case of it being behind a while condition, there is
@@ -519,7 +517,7 @@ absl::Status InfeedTokenPropagation::PropagateToken(
   return PropagateToken(ordering);
 }
 
-absl::StatusOr<bool> InfeedTokenPropagation::Run(
+absl::StatusOr<bool> InfeedTokenPropagation::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(5) << "Before InfeedTokenPropagation:";
@@ -605,7 +603,7 @@ absl::StatusOr<bool> InfeedTokenPropagation::Run(
           ChainEnd(dangling_infeed)
               ->AddInstruction(
                   HloInstruction::CreateGetTupleElement(dangling_infeed, 1));
-      TF_RETURN_IF_ERROR(PropagateToken(ordering));
+      RETURN_IF_ERROR(PropagateToken(ordering));
     }
     for (HloInstruction* dangling_outfeed : dangling_outfeeds) {
       // In the process of token propagation, we might have stitched two
@@ -618,12 +616,11 @@ absl::StatusOr<bool> InfeedTokenPropagation::Run(
       original_opcode_ = HloOpcode::kOutfeed;
       input_token_ = ChainBegin(dangling_outfeed)->mutable_operand(1);
       output_token_ = ChainEnd(dangling_outfeed);
-      TF_RETURN_IF_ERROR(PropagateToken(ordering));
+      RETURN_IF_ERROR(PropagateToken(ordering));
     }
 
-    TF_RETURN_IF_ERROR(
-        TupleSimplifier().Run(module, execution_threads).status());
-    TF_RETURN_IF_ERROR(HloDCE().Run(module, execution_threads).status());
+    RETURN_IF_ERROR(TupleSimplifier().Run(module, execution_threads).status());
+    RETURN_IF_ERROR(HloDCE().Run(module, execution_threads).status());
   }
 
   VLOG(5) << "After InfeedTokenPropagation:";

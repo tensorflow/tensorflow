@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -85,7 +86,7 @@ absl::Status NormalizeInputCardinalities(
   }
   DCHECK_GT(max_weight, 0.0);
   double min_cardinality = std::numeric_limits<double>::max();
-  size_t min_cardinality_index;
+  size_t min_cardinality_index = 0;
   for (size_t i = 0; i < input_cardinalities->size(); ++i) {
     const double cardinality = static_cast<double>((*input_cardinalities)[i]) *
                                weights[i] / max_weight;
@@ -168,7 +169,7 @@ class WeightedFlatMapDatasetOp::Dataset : public DatasetBase {
     return output_shapes_;
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
@@ -509,6 +510,10 @@ void WeightedFlatMapDatasetOp::MakeDataset(OpKernelContext* ctx,
                 absl::InvalidArgumentError(
                     absl::StrCat("`weights` must be greater than 0.0. Input ",
                                  i, " has a weight of ", weight)));
+    OP_REQUIRES(ctx, std::isfinite(weight),
+                absl::InvalidArgumentError(
+                    absl::StrCat("`weights` must be finite. Input ", i,
+                                 " has a weight of ", weight)));
     weights.emplace_back(weight);
   }
   std::vector<uint64_t> input_cardinalities(inputs.size());

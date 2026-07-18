@@ -43,17 +43,17 @@ extern const char kSavedTensorSlicesKey[];
 //  <dim-1-start><dim-1-length>
 //  ...
 
-string EncodeTensorNameSlice(const string& name,
-                             const tensorflow::TensorSlice& slice);
+std::string EncodeTensorNameSlice(const std::string& name,
+                                  const tensorflow::TensorSlice& slice);
 
 // Parse out the name and the slice from string encoded as an ordered code.
-absl::Status DecodeTensorNameSlice(const string& code, string* name,
+absl::Status DecodeTensorNameSlice(const std::string& code, std::string* name,
                                    tensorflow::TensorSlice* slice);
 
 // Extracts the full shape, slice spec, and shape of the slice from
 // "shape_and_slice".  On non-OK return, caller must clear the out-arguments
 // before reusing.
-absl::Status ParseShapeAndSlice(const string& shape_and_slice,
+absl::Status ParseShapeAndSlice(const std::string& shape_and_slice,
                                 TensorShape* shape, TensorSlice* slice,
                                 TensorShape* shape_slice);
 
@@ -127,17 +127,17 @@ TENSOR_PROTO_EXTRACT_TYPE(float, float, float);
 TENSOR_PROTO_EXTRACT_TYPE(double, double, double);
 TENSOR_PROTO_EXTRACT_TYPE_COMPLEX(complex64, scomplex, float);
 TENSOR_PROTO_EXTRACT_TYPE_COMPLEX(complex128, dcomplex, double);
-TENSOR_PROTO_EXTRACT_TYPE(int32, int, int32);
-TENSOR_PROTO_EXTRACT_TYPE(uint32, uint32, uint32);
+TENSOR_PROTO_EXTRACT_TYPE(int32_t, int, int32_t);
+TENSOR_PROTO_EXTRACT_TYPE(uint32_t, uint32, uint32_t);
 TENSOR_PROTO_EXTRACT_TYPE(int64_t, int64, protobuf_int64);
-TENSOR_PROTO_EXTRACT_TYPE(uint64, uint64, protobuf_uint64);
-TENSOR_PROTO_EXTRACT_TYPE(uint16, int, int32);
-TENSOR_PROTO_EXTRACT_TYPE(uint8, int, int32);
-TENSOR_PROTO_EXTRACT_TYPE(int8, int, int32);
-TENSOR_PROTO_EXTRACT_TYPE(int16, int, int32);
-TENSOR_PROTO_EXTRACT_TYPE(qint8, int, int32);
-TENSOR_PROTO_EXTRACT_TYPE(quint8, int, int32);
-TENSOR_PROTO_EXTRACT_TYPE(quint16, int, int32);
+TENSOR_PROTO_EXTRACT_TYPE(uint64_t, uint64, protobuf_uint64);
+TENSOR_PROTO_EXTRACT_TYPE(uint16_t, int, int32_t);
+TENSOR_PROTO_EXTRACT_TYPE(uint8_t, int, int32_t);
+TENSOR_PROTO_EXTRACT_TYPE(int8_t, int, int32_t);
+TENSOR_PROTO_EXTRACT_TYPE(int16_t, int, int32_t);
+TENSOR_PROTO_EXTRACT_TYPE(qint8, int, int32_t);
+TENSOR_PROTO_EXTRACT_TYPE(quint8, int, int32_t);
+TENSOR_PROTO_EXTRACT_TYPE(quint16, int, int32_t);
 
 #undef TENSOR_PROTO_EXTRACT_TYPE_COMPLEX
 #undef TENSOR_PROTO_EXTRACT_TYPE_HELPER
@@ -146,7 +146,7 @@ TENSOR_PROTO_EXTRACT_TYPE(quint16, int, int32);
 // Custom implementation for qint32, based on the one for int32.
 
 template <>
-struct SaveTypeTraits<qint32> : SaveTypeTraits<int32> {};
+struct SaveTypeTraits<qint32> : SaveTypeTraits<int32_t> {};
 
 template <>
 inline int TensorProtoDataSize<qint32>(const TensorProto& t) {
@@ -154,15 +154,15 @@ inline int TensorProtoDataSize<qint32>(const TensorProto& t) {
 }
 
 template <>
-inline const int32* TensorProtoData<qint32>(const TensorProto& t) {
+inline const int32_t* TensorProtoData<qint32>(const TensorProto& t) {
   static_assert(SaveTypeTraits<qint32>::supported,
                 "Specified type qint32 not supported for Restore");
-  return reinterpret_cast<const int32*>(t.int_val().data());
+  return reinterpret_cast<const int32_t*>(t.int_val().data());
 }
 
 inline void Fill(const qint32* data, size_t n, TensorProto* t) {
-  const int32* p = reinterpret_cast<const int32*>(data);
-  typename protobuf::RepeatedField<int32> copy(p, p + n);
+  const int32_t* p = reinterpret_cast<const int32_t*>(data);
+  typename protobuf::RepeatedField<int32_t> copy(p, p + n);
   t->mutable_int_val()->Swap(&copy);
 }
 
@@ -172,7 +172,7 @@ template <>
 struct SaveTypeTraits<Eigen::half> {
   static constexpr bool supported = true;
   typedef int SavedType;
-  typedef protobuf::RepeatedField<int32> RepeatedField;
+  typedef protobuf::RepeatedField<int32_t> RepeatedField;
 };
 
 template <>
@@ -186,17 +186,17 @@ inline const int* TensorProtoData<Eigen::half>(const TensorProto& t) {
 }
 
 template <>
-inline protobuf::RepeatedField<int32>* MutableTensorProtoData<Eigen::half>(
+inline protobuf::RepeatedField<int32_t>* MutableTensorProtoData<Eigen::half>(
     TensorProto* t) {
   return t->mutable_half_val();
 }
 
 template <>
 inline void Fill(const Eigen::half* data, size_t n, TensorProto* t) {
-  typename protobuf::RepeatedField<int32>* val = t->mutable_half_val();
+  typename protobuf::RepeatedField<int32_t>* val = t->mutable_half_val();
   val->Resize(n, 0);
   for (size_t i = 0; i < n; ++i) {
-    val->Set(i, Eigen::numext::bit_cast<uint16>(data[i]));
+    val->Set(i, Eigen::numext::bit_cast<uint16_t>(data[i]));
   }
 }
 
@@ -205,8 +205,8 @@ inline void Fill(const Eigen::half* data, size_t n, TensorProto* t) {
 template <>
 struct SaveTypeTraits<tstring> {
   static constexpr bool supported = true;
-  typedef const string* SavedType;
-  typedef protobuf::RepeatedPtrField<string> RepeatedField;
+  typedef const std::string* SavedType;
+  typedef protobuf::RepeatedPtrField<std::string> RepeatedField;
 };
 
 template <>
@@ -215,14 +215,15 @@ inline int TensorProtoDataSize<tstring>(const TensorProto& t) {
 }
 
 template <>
-inline const string* const* TensorProtoData<tstring>(const TensorProto& t) {
+inline const std::string* const* TensorProtoData<tstring>(
+    const TensorProto& t) {
   static_assert(SaveTypeTraits<tstring>::supported,
                 "Specified type tstring not supported for Restore");
   return t.string_val().data();
 }
 
 template <>
-inline protobuf::RepeatedPtrField<string>* MutableTensorProtoData<tstring>(
+inline protobuf::RepeatedPtrField<std::string>* MutableTensorProtoData<tstring>(
     TensorProto* t) {
   static_assert(SaveTypeTraits<tstring>::supported,
                 "Specified type tstring not supported for Save");
@@ -231,7 +232,7 @@ inline protobuf::RepeatedPtrField<string>* MutableTensorProtoData<tstring>(
 
 template <>
 inline void Fill(const tstring* data, size_t n, TensorProto* t) {
-  typename protobuf::RepeatedPtrField<string> copy(data, data + n);
+  typename protobuf::RepeatedPtrField<std::string> copy(data, data + n);
   t->mutable_string_val()->Swap(&copy);
 }
 

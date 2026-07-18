@@ -13,7 +13,7 @@ package(
     default_visibility = internal_visibility([
         "//xla/stream_executor:__subpackages__",
         "//tensorflow/core/platform:__subpackages__",
-        "@local_tsl//tsl:__pkg__",
+        "@tsl//tsl:__pkg__",
         "//xla/tsl/platform/default:__pkg__",
     ]),
     licenses = ["notice"],
@@ -37,7 +37,7 @@ filegroup(
     ],
     visibility = internal_visibility([
         "//tensorflow/core/platform:__subpackages__",
-        "@local_tsl//tsl/platform:__pkg__",
+        "@tsl//tsl/platform:__pkg__",
     ]),
 )
 

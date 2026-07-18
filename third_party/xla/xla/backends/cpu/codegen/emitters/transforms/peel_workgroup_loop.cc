@@ -25,7 +25,6 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/IRMapping.h"
@@ -40,6 +39,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 
 namespace xla::cpu {
 
@@ -70,16 +70,17 @@ struct PeelWorkgroupLoopPattern : public mlir::OpRewritePattern<xla::LoopOp> {
 
     // We need to check this to be able to just check the constraints are
     // satisfied by setting the non-query dimensions to their upper bound.
-    for (const auto& [constraint, interval] : indexing_map.GetConstraints()) {
+    for (const auto& [constraint, interval] :
+         indexing_map.GetSymbolicConstraints()) {
       if (!IsMonotonicIncreasing(constraint)) {
         return rewriter.notifyMatchFailure(
             loop_op, "Indexing map may not be monotonic increasing.");
       }
     }
 
-    std::vector<mlir::AffineExpr> dimension_upper_bounds =
+    std::vector<SymbolicExpr> dimension_upper_bounds =
         GetDimensionUpperBounds(indexing_map, ctx);
-    std::vector<mlir::AffineExpr> symbol_upper_bounds =
+    std::vector<SymbolicExpr> symbol_upper_bounds =
         GetSymbolUpperBounds(indexing_map, ctx);
 
     auto work_group_dims = GatherWorkGroupDims(loop_op);
@@ -105,7 +106,7 @@ struct PeelWorkgroupLoopPattern : public mlir::OpRewritePattern<xla::LoopOp> {
              query_dimension_upper != 0) {
         query_dimension_upper--;
         dimension_upper_bounds[dim_id] =
-            mlir::getAffineConstantExpr(query_dimension_upper, ctx);
+            CreateSymbolicConstant(query_dimension_upper, ctx);
       }
 
       if (query_dimension_upper == 0 ||
@@ -114,9 +115,9 @@ struct PeelWorkgroupLoopPattern : public mlir::OpRewritePattern<xla::LoopOp> {
       }
 
       mlir::ImplicitLocOpBuilder builder(loop_op.getLoc(), rewriter);
-      auto cmp_op = builder.create<mlir::arith::CmpIOp>(
-          mlir::arith::CmpIPredicate::sle, work_group_dim.operand,
-          builder.create<mlir::arith::ConstantIndexOp>(query_dimension_upper));
+      auto cmp_op = mlir::arith::CmpIOp::create(
+          builder, mlir::arith::CmpIPredicate::sle, work_group_dim.operand,
+          mlir::arith::ConstantIndexOp::create(builder, query_dimension_upper));
 
       auto loop_body_cloner = GetLoopBodyCloner(loop_op);
 
@@ -128,11 +129,11 @@ struct PeelWorkgroupLoopPattern : public mlir::OpRewritePattern<xla::LoopOp> {
             query_dimension_upper;
         peeled_map.Simplify();
 
-        auto peeled_loop =
-            then_builder.create<LoopOp>(then_loc, peeled_map, loop_op.getDims(),
-                                        loop_op.getInits(), loop_body_cloner);
-        then_builder.create<mlir::scf::YieldOp>(then_loc,
-                                                peeled_loop.getResults());
+        auto peeled_loop = LoopOp::create(then_builder, then_loc, peeled_map,
+                                          loop_op.getDims(), loop_op.getInits(),
+                                          loop_body_cloner);
+        mlir::scf::YieldOp::create(then_builder, then_loc,
+                                   peeled_loop.getResults());
       };
       auto else_body_builder = [&](mlir::OpBuilder& else_builder,
                                    mlir::Location else_loc) -> void {
@@ -142,14 +143,14 @@ struct PeelWorkgroupLoopPattern : public mlir::OpRewritePattern<xla::LoopOp> {
         tail_map.Simplify();
 
         auto tail_loop =
-            else_builder.create<LoopOp>(else_loc, tail_map, loop_op.getDims(),
-                                        loop_op.getInits(), loop_body_cloner);
-        else_builder.create<mlir::scf::YieldOp>(else_loc,
-                                                tail_loop.getResults());
+            LoopOp::create(else_builder, else_loc, tail_map, loop_op.getDims(),
+                           loop_op.getInits(), loop_body_cloner);
+        mlir::scf::YieldOp::create(else_builder, else_loc,
+                                   tail_loop.getResults());
       };
 
-      auto if_op = builder.create<mlir::scf::IfOp>(cmp_op, then_body_builder,
-                                                   else_body_builder);
+      auto if_op = mlir::scf::IfOp::create(builder, cmp_op, then_body_builder,
+                                           else_body_builder);
 
       rewriter.replaceOp(loop_op, if_op.getResults());
       return mlir::success();
@@ -159,21 +160,21 @@ struct PeelWorkgroupLoopPattern : public mlir::OpRewritePattern<xla::LoopOp> {
   }
 
  private:
-  static std::vector<mlir::AffineExpr> GetDimensionUpperBounds(
+  static std::vector<SymbolicExpr> GetDimensionUpperBounds(
       const xla::IndexingMap& indexing_map, mlir::MLIRContext* ctx) {
-    std::vector<mlir::AffineExpr> dimension_upper_bounds;
+    std::vector<SymbolicExpr> dimension_upper_bounds;
     for (auto [lower, upper] : indexing_map.GetDimensionBounds()) {
-      dimension_upper_bounds.push_back(mlir::getAffineConstantExpr(upper, ctx));
+      dimension_upper_bounds.push_back(CreateSymbolicConstant(upper, ctx));
     }
 
     return dimension_upper_bounds;
   }
 
-  static std::vector<mlir::AffineExpr> GetSymbolUpperBounds(
+  static std::vector<SymbolicExpr> GetSymbolUpperBounds(
       const xla::IndexingMap& indexing_map, mlir::MLIRContext* ctx) {
-    std::vector<mlir::AffineExpr> symbol_upper_bounds;
+    std::vector<SymbolicExpr> symbol_upper_bounds;
     for (auto [lower, upper] : indexing_map.GetSymbolBounds()) {
-      symbol_upper_bounds.push_back(mlir::getAffineConstantExpr(upper, ctx));
+      symbol_upper_bounds.push_back(CreateSymbolicConstant(upper, ctx));
     }
 
     return symbol_upper_bounds;
@@ -183,23 +184,22 @@ struct PeelWorkgroupLoopPattern : public mlir::OpRewritePattern<xla::LoopOp> {
   // that it may return false in some cases where the constraint may actually be
   // monotonic increasing but it will never return true in the case where it is
   // monotonically decreasing.
-  static bool IsMonotonicIncreasing(const mlir::AffineExpr& constraint) {
+  static bool IsMonotonicIncreasing(const SymbolicExpr& constraint) {
     bool is_monotonic_increasing = true;
-    constraint.walk([&is_monotonic_increasing](mlir::AffineExpr expr) {
-      if (expr.getKind() == mlir::AffineExprKind::Mod) {
+    constraint.Walk([&is_monotonic_increasing](SymbolicExpr expr) {
+      if (expr.GetType() == SymbolicExprType::kMod) {
         is_monotonic_increasing = false;
         return;
       }
-      if (auto binary_op = mlir::dyn_cast<mlir::AffineBinaryOpExpr>(expr)) {
-        auto is_negative_constant = [&](mlir::AffineExpr expr) {
-          if (auto const_expr =
-                  mlir::dyn_cast<mlir::AffineConstantExpr>(expr)) {
-            return const_expr.getValue() < 0;
+      if (expr.IsBinaryOp()) {
+        auto is_negative_constant = [&](SymbolicExpr expr) {
+          if (expr.GetType() == SymbolicExprType::kConstant) {
+            return expr.GetValue() < 0;
           }
           return false;
         };
-        if (is_negative_constant(binary_op.getLHS()) ||
-            is_negative_constant(binary_op.getRHS())) {
+        if (is_negative_constant(expr.GetLHS()) ||
+            is_negative_constant(expr.GetRHS())) {
           is_monotonic_increasing = false;
           return;
         }
@@ -258,9 +258,4 @@ class PeelWorkgroupLoopPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreatePeelWorkgroupLoopPass() {
-  return std::make_unique<PeelWorkgroupLoopPass>();
-}
-
 }  // namespace xla::cpu

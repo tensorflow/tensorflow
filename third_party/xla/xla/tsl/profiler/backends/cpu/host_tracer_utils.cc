@@ -40,14 +40,16 @@ void MayAddDisplayName(XEventMetadata* xevent_metadata) {
 
 }  // namespace
 
-void ConvertCompleteEventsToXPlane(uint64 start_timestamp_ns,
+void ConvertCompleteEventsToXPlane(uint64_t start_timestamp_ns,
                                    TraceMeRecorder::Events&& events,
                                    XPlane* raw_plane) {
   XPlaneBuilder xplane(raw_plane);
   for (auto& thread : events) {
     XLineBuilder xline = xplane.GetOrCreateLine(thread.thread.tid);
     xline.SetName(thread.thread.name);
-    xline.SetTimestampNs(start_timestamp_ns);
+    if (xline.TimestampNs() == 0) {
+      xline.SetTimestampNs(start_timestamp_ns);
+    }
     xline.ReserveEvents(thread.events.size());
     while (!thread.events.empty()) {
       auto event = std::move(thread.events.front());

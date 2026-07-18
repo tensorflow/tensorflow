@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "xla/tsl/platform/status_macros.h"
 #include "tsl/platform/str_util.h"
 namespace tsl {
 
@@ -28,23 +29,22 @@ ComputeEngineZoneProvider::ComputeEngineZoneProvider(
     std::shared_ptr<ComputeEngineMetadataClient> google_metadata_client)
     : google_metadata_client_(std::move(google_metadata_client)) {}
 
-absl::Status ComputeEngineZoneProvider::GetZone(string* zone) {
+absl::Status ComputeEngineZoneProvider::GetZone(std::string* zone) {
   if (!cached_zone.empty()) {
     *zone = cached_zone;
     return absl::OkStatus();
   }
   std::vector<char> response_buffer;
-  TF_RETURN_IF_ERROR(google_metadata_client_->GetMetadata(kGceMetadataZonePath,
-                                                          &response_buffer));
+  RETURN_IF_ERROR(google_metadata_client_->GetMetadata(kGceMetadataZonePath,
+                                                       &response_buffer));
   absl::string_view location(&response_buffer[0], response_buffer.size());
 
-  std::vector<string> elems = str_util::Split(location, "/");
+  std::vector<std::string> elems = str_util::Split(location, "/");
   if (elems.size() == 4) {
     cached_zone = elems.back();
     *zone = cached_zone;
   } else {
-    LOG(ERROR) << "Failed to parse the zone name from location: "
-               << string(location);
+    LOG(ERROR) << "Failed to parse the zone name from location: " << location;
   }
 
   return absl::OkStatus();

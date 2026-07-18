@@ -1,4 +1,5 @@
 load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -22,6 +23,7 @@ cc_library(
         ":communicator",
         ":rank_id",
         "//xla:util",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/status",
@@ -51,6 +53,7 @@ cc_library(
         ":collectives",
         "//xla:util",
         "//xla/service:platform_util",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:btree",
@@ -60,7 +63,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:logging",
     ],
 )
 
@@ -69,13 +72,12 @@ cc_library(
     hdrs = ["communicator.h"],
     deps = [
         ":rank_id",
+        ":reduction_kind",
+        ":symmetric_memory",
         "//xla:future",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/service:collective_ops_utils",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:platform",
-        "//xla/tsl/concurrency:async_value",
+        "//xla/stream_executor:device_address",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -100,7 +102,7 @@ cc_library(
     hdrs = ["clique_key.h"],
     deps = [
         ":rank_id",
-        "//xla/service:global_device_id",
+        "//xla/runtime:device_id",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/types:span",
@@ -112,5 +114,47 @@ cc_library(
     hdrs = ["rank_id.h"],
     deps = [
         "//xla/tsl/lib/gtl:int_type",
+    ],
+)
+
+cc_library(
+    name = "reduction_kind",
+    srcs = ["reduction_kind.cc"],
+    hdrs = ["reduction_kind.h"],
+    deps = [
+        ":reduction_kind_proto_cc",
+        "//xla:util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+tf_proto_library(
+    name = "reduction_kind_proto",
+    srcs = ["reduction_kind.proto"],
+)
+
+cc_library(
+    name = "registered_memory",
+    hdrs = ["registered_memory.h"],
+    deps = [
+        "//xla/stream_executor:device_address",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
+    name = "symmetric_memory",
+    hdrs = ["symmetric_memory.h"],
+    deps = [
+        ":rank_id",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:kernel_args",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )

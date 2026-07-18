@@ -132,9 +132,9 @@ absl::Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
         VLOG(1) << "Skipping rendezvous re-initialization.";
         return absl::OkStatus();
       }
-      absl::Status s = errors::Internal(
+      absl::Status s = absl::InternalError(absl::StrCat(
           "Double init! Worker names would have changed from: ",
-          session_->worker_name(), " -> ", session->worker_name());
+          session_->worker_name(), " -> ", session->worker_name()));
       LOG(WARNING) << s;
       return s;
     }
@@ -171,9 +171,9 @@ absl::Status BaseRemoteRendezvous::Send(const Rendezvous::ParsedKey& parsed,
 
   if (!IsImplicitLocalDevice(parsed.src) &&
       !IsLocalDevice(sess->worker_name(), parsed.src_device)) {
-    return errors::InvalidArgument(
-        "Invalid rendezvous key (src): ", parsed.FullKey(), " @ ",
-        sess->worker_name());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid rendezvous key (src): ", parsed.FullKey(), " @ ",
+                     sess->worker_name()));
   }
 
   // Buffers "val" and "device_context" in local_.
@@ -189,20 +189,21 @@ absl::Status BaseRemoteRendezvous::ValidateDevices(const ParsedKey& parsed,
     tf_shared_lock l(mu_);
     if (!status_.ok()) return status_;
     if (!is_initialized_locked()) {
-      return errors::Internal("ValidateDevices called before initialization.");
+      return absl::InternalError(
+          "ValidateDevices called before initialization.");
     }
     sess = session_;
   }
   if (is_src && !IsImplicitLocalDevice(parsed.src) &&
       !IsLocalDevice(sess->worker_name(), parsed.src_device)) {
-    return errors::InvalidArgument(
-        "Invalid rendezvous key (src): ", parsed.FullKey(), " @ ",
-        sess->worker_name());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid rendezvous key (src): ", parsed.FullKey(), " @ ",
+                     sess->worker_name()));
   }
   if (!is_src && !IsLocalDevice(sess->worker_name(), parsed.dst_device)) {
-    return errors::InvalidArgument(
-        "Invalid rendezvous key (dst): ", parsed.FullKey(), " @ ",
-        sess->worker_name());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid rendezvous key (dst): ", parsed.FullKey(), " @ ",
+                     sess->worker_name()));
   }
   return absl::OkStatus();
 }
@@ -228,9 +229,10 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
   // checks happen inside CopyTensor::ViaDMA.
   if (!DMAHelper::CanUseDMA(&in) && in.dtype() != DT_VARIANT &&
       in.dtype() != DT_RESOURCE) {
-    done(errors::InvalidArgument(
-        "Non-DMA-safe ", DataTypeString(in.dtype()),
-        " tensor may not be copied from/to a device. Key: ", parsed.FullKey()));
+    done(absl::InvalidArgumentError(
+        absl::StrCat("Non-DMA-safe ", DataTypeString(in.dtype()),
+                     " tensor may not be copied from/to a device. Key: ",
+                     parsed.FullKey())));
     return;
   }
 
@@ -257,9 +259,10 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
                           recv_args.alloc_attrs.gpu_compatible());
   Allocator* out_allocator = dst_device->GetAllocator(attr);
   AllocationAttributes allocation_attr;
-  uint64 safe_alloc_frontier = dst_device->SafeAllocFrontier(0);
+  uint64_t safe_alloc_frontier = dst_device->SafeAllocFrontier(0);
   bool sync_dst_compute = (safe_alloc_frontier == 0);
-  std::function<uint64()> freed_by_func = [dst_device, &safe_alloc_frontier]() {
+  std::function<uint64_t()> freed_by_func = [dst_device,
+                                             &safe_alloc_frontier]() {
     safe_alloc_frontier = dst_device->SafeAllocFrontier(safe_alloc_frontier);
     return safe_alloc_frontier;
   };
@@ -432,7 +435,7 @@ void BaseRemoteRendezvous::CancelledByManager(CancellationManager* cm) {
       mutex_lock l(bucket.mu);
       for (auto& call : bucket.calls) {
         call->StartAbort(
-            errors::Cancelled("RecvFromRemoteAsync is cancelled."));
+            absl::CancelledError("RecvFromRemoteAsync is cancelled."));
       }
     }
     calls_.erase(it);
@@ -499,7 +502,7 @@ void BaseRemoteRendezvous::RegisterCall(BaseRecvTensorCall* call,
   }
 
   if (already_cancelled) {
-    call->StartAbort(errors::Cancelled("RecvFromRemoteAsync is cancelled."));
+    call->StartAbort(absl::CancelledError("RecvFromRemoteAsync is cancelled."));
   }
 }
 

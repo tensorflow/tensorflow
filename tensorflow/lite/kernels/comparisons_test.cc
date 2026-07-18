@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace {
@@ -35,21 +36,29 @@ class ComparisonOpModel : public SingleOpModel {
  public:
   ComparisonOpModel(std::initializer_list<int> input1_shape,
                     std::initializer_list<int> input2_shape,
-                    TensorType input_type, BuiltinOperator op) {
+                    TensorType input_type, BuiltinOperator op,
+                    bool allocate = true) {
     input1_ = AddInput(input_type);
     input2_ = AddInput(input_type);
     output_ = AddOutput(TensorType_BOOL);
     ConfigureBuiltinOp(op);
-    BuildInterpreter({input1_shape, input2_shape});
+    BuildInterpreter({input1_shape, input2_shape}, /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true,
+                     /*allocate_and_delegate=*/allocate);
   }
 
   ComparisonOpModel(const TensorData& input1, const TensorData& input2,
-                    TensorType input_type, BuiltinOperator op) {
+                    TensorType input_type, BuiltinOperator op,
+                    bool allocate = true) {
     input1_ = AddInput(input1);
     input2_ = AddInput(input2);
     output_ = AddOutput(TensorType_BOOL);
     ConfigureBuiltinOp(op);
-    BuildInterpreter({GetShape(input1_), GetShape(input2_)});
+    BuildInterpreter({GetShape(input1_), GetShape(input2_)}, /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true,
+                     /*allocate_and_delegate=*/allocate);
   }
 
   int input1() { return input1_; }
@@ -102,6 +111,12 @@ class ComparisonOpModel : public SingleOpModel {
   }
 };
 
+template <typename T>
+class FloatComparisonTest : public ::testing::Test {};
+
+using FloatComparisonTestTypes = ::testing::Types<float, half, Eigen::bfloat16>;
+TYPED_TEST_SUITE(FloatComparisonTest, FloatComparisonTestTypes);
+
 TEST(ComparisonsTest, EqualBool) {
   ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_BOOL,
                           BuiltinOperator_EQUAL);
@@ -113,12 +128,14 @@ TEST(ComparisonsTest, EqualBool) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
 }
 
-TEST(ComparisonsTest, EqualFloat) {
-  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_FLOAT32,
-                          BuiltinOperator_EQUAL);
-  model.PopulateTensor<float>(model.input1(), {0.1, 0.9, 0.7, 0.3});
-  model.PopulateTensor<float>(model.input2(), {0.1, 0.2, 0.6, 0.5});
-  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+TYPED_TEST(FloatComparisonTest, Equal) {
+  using T = TypeParam;
+  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, GetTensorType<T>(),
+                          BuiltinOperator_EQUAL, /*allocate=*/false);
+  TFLITE_ALLOCATE_AND_CHECK(T, &model);
+  model.template PopulateTensor<T>(model.input1(), {0.1, 0.9, 0.7, 0.3});
+  model.template PopulateTensor<T>(model.input2(), {0.1, 0.2, 0.6, 0.5});
+  TFLITE_INVOKE_AND_CHECK(T, &model);
 
   EXPECT_THAT(model.GetOutput(), ElementsAre(true, false, false, false));
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
@@ -183,6 +200,18 @@ TEST(ComparisonsTest, EqualBroadcastTwoD) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 2, 4));
 }
 
+TEST(ComparisonsTest, EqualBroadcastRankFive) {
+  ComparisonOpModel model({1, 2, 1, 2, 2}, {1, 1, 2}, TensorType_INT32,
+                          BuiltinOperator_EQUAL);
+  model.PopulateTensor<int>(model.input1(), {1, 2, 3, 4, 5, 6, 7, 8});
+  model.PopulateTensor<int>(model.input2(), {3, 4});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(false, false, true, true, false,
+                                             false, false, false));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 1, 2, 2));
+}
+
 TEST(ComparisonsTest, EqualBroadcastString) {
   if (SingleOpModel::GetForceUseNnapi()) {
     return;
@@ -197,6 +226,22 @@ TEST(ComparisonsTest, EqualBroadcastString) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
 }
 
+TEST(ComparisonsTest, EqualBroadcastStringRankFive) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  ComparisonOpModel model({1, 2, 1, 2, 2}, {1, 1, 2}, TensorType_STRING,
+                          BuiltinOperator_EQUAL);
+  model.PopulateTensor<std::string>(model.input1(),
+                                    {"A", "B", "A", "C", "A", "B", "D", "C"});
+  model.PopulateTensor<std::string>(model.input2(), {"A", "C"});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAre(true, false, true, true, true, false, false, true));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 1, 2, 2));
+}
+
 TEST(ComparisonsTest, NotEqualBool) {
   ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_BOOL,
                           BuiltinOperator_NOT_EQUAL);
@@ -208,12 +253,14 @@ TEST(ComparisonsTest, NotEqualBool) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
 }
 
-TEST(ComparisonsTest, NotEqualFloat) {
-  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_FLOAT32,
-                          BuiltinOperator_NOT_EQUAL);
-  model.PopulateTensor<float>(model.input1(), {0.1, 0.9, 0.7, 0.3});
-  model.PopulateTensor<float>(model.input2(), {0.1, 0.2, 0.6, 0.5});
-  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+TYPED_TEST(FloatComparisonTest, NotEqual) {
+  using T = TypeParam;
+  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, GetTensorType<T>(),
+                          BuiltinOperator_NOT_EQUAL, /*allocate=*/false);
+  TFLITE_ALLOCATE_AND_CHECK(T, &model);
+  model.template PopulateTensor<T>(model.input1(), {0.1, 0.9, 0.7, 0.3});
+  model.template PopulateTensor<T>(model.input2(), {0.1, 0.2, 0.6, 0.5});
+  TFLITE_INVOKE_AND_CHECK(T, &model);
 
   EXPECT_THAT(model.GetOutput(), ElementsAre(false, true, true, true));
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
@@ -281,12 +328,14 @@ TEST(ComparisonsTest, NotEqualBroadcastString) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
 }
 
-TEST(ComparisonsTest, GreaterFloat) {
-  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_FLOAT32,
-                          BuiltinOperator_GREATER);
-  model.PopulateTensor<float>(model.input1(), {0.1, 0.9, 0.7, 0.3});
-  model.PopulateTensor<float>(model.input2(), {0.1, 0.2, 0.6, 0.5});
-  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+TYPED_TEST(FloatComparisonTest, Greater) {
+  using T = TypeParam;
+  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, GetTensorType<T>(),
+                          BuiltinOperator_GREATER, /*allocate=*/false);
+  TFLITE_ALLOCATE_AND_CHECK(T, &model);
+  model.template PopulateTensor<T>(model.input1(), {0.1, 0.9, 0.7, 0.3});
+  model.template PopulateTensor<T>(model.input2(), {0.1, 0.2, 0.6, 0.5});
+  TFLITE_INVOKE_AND_CHECK(T, &model);
 
   EXPECT_THAT(model.GetOutput(), ElementsAre(false, true, true, false));
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
@@ -326,12 +375,14 @@ TEST(ComparisonsTest, GreaterBroadcastTwoD) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 2, 4));
 }
 
-TEST(ComparisonsTest, GreaterEqualFloat) {
-  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_FLOAT32,
-                          BuiltinOperator_GREATER_EQUAL);
-  model.PopulateTensor<float>(model.input1(), {0.1, 0.9, 0.7, 0.3});
-  model.PopulateTensor<float>(model.input2(), {0.1, 0.2, 0.6, 0.5});
-  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+TYPED_TEST(FloatComparisonTest, GreaterEqual) {
+  using T = TypeParam;
+  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, GetTensorType<T>(),
+                          BuiltinOperator_GREATER_EQUAL, /*allocate=*/false);
+  TFLITE_ALLOCATE_AND_CHECK(T, &model);
+  model.template PopulateTensor<T>(model.input1(), {0.1, 0.9, 0.7, 0.3});
+  model.template PopulateTensor<T>(model.input2(), {0.1, 0.2, 0.6, 0.5});
+  TFLITE_INVOKE_AND_CHECK(T, &model);
 
   EXPECT_THAT(model.GetOutput(), ElementsAre(true, true, true, false));
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
@@ -382,42 +433,14 @@ TEST(ComparisonsTest, GreaterEqualBroadcastTwoD) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 2, 4));
 }
 
-TEST(ComparisonsTest, LessFloat) {
-  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_FLOAT32,
-                          BuiltinOperator_LESS);
-  model.PopulateTensor<float>(model.input1(), {0.1, 0.9, 0.7, 0.3});
-  model.PopulateTensor<float>(model.input2(), {0.1, 0.2, 0.6, 0.5});
-  ASSERT_EQ(model.Invoke(), kTfLiteOk);
-
-  EXPECT_THAT(model.GetOutput(), ElementsAre(false, false, false, true));
-  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
-}
-
-TEST(ComparisonsTest, LessFloat16) {
-  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_FLOAT16,
-                          BuiltinOperator_LESS);
-  model.PopulateTensor<Eigen::half>(
-      model.input1(),
-      {Eigen::half(0.1), Eigen::half(0.9), Eigen::half(0.7), Eigen::half(0.3)});
-  model.PopulateTensor<Eigen::half>(
-      model.input2(),
-      {Eigen::half(0.1), Eigen::half(0.2), Eigen::half(0.6), Eigen::half(0.5)});
-  ASSERT_EQ(model.Invoke(), kTfLiteOk);
-
-  EXPECT_THAT(model.GetOutput(), ElementsAre(false, false, false, true));
-  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
-}
-
-TEST(ComparisonsTest, LessBFloat16) {
-  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_BFLOAT16,
-                          BuiltinOperator_LESS);
-  model.PopulateTensor<Eigen::bfloat16>(
-      model.input1(), {Eigen::bfloat16(0.1), Eigen::bfloat16(0.9),
-                       Eigen::bfloat16(0.7), Eigen::bfloat16(0.3)});
-  model.PopulateTensor<Eigen::bfloat16>(
-      model.input2(), {Eigen::bfloat16(0.1), Eigen::bfloat16(0.2),
-                       Eigen::bfloat16(0.6), Eigen::bfloat16(0.5)});
-  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+TYPED_TEST(FloatComparisonTest, Less) {
+  using T = TypeParam;
+  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, GetTensorType<T>(),
+                          BuiltinOperator_LESS, /*allocate=*/false);
+  TFLITE_ALLOCATE_AND_CHECK(T, &model);
+  model.template PopulateTensor<T>(model.input1(), {0.1, 0.9, 0.7, 0.3});
+  model.template PopulateTensor<T>(model.input2(), {0.1, 0.2, 0.6, 0.5});
+  TFLITE_INVOKE_AND_CHECK(T, &model);
 
   EXPECT_THAT(model.GetOutput(), ElementsAre(false, false, false, true));
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
@@ -468,12 +491,14 @@ TEST(ComparisonsTest, LessBroadcastTwoD) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 2, 4));
 }
 
-TEST(ComparisonsTest, LessEqualFloat) {
-  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_FLOAT32,
-                          BuiltinOperator_LESS_EQUAL);
-  model.PopulateTensor<float>(model.input1(), {0.1, 0.9, 0.7, 0.3});
-  model.PopulateTensor<float>(model.input2(), {0.1, 0.2, 0.6, 0.5});
-  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+TYPED_TEST(FloatComparisonTest, LessEqual) {
+  using T = TypeParam;
+  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, GetTensorType<T>(),
+                          BuiltinOperator_LESS_EQUAL, /*allocate=*/false);
+  TFLITE_ALLOCATE_AND_CHECK(T, &model);
+  model.template PopulateTensor<T>(model.input1(), {0.1, 0.9, 0.7, 0.3});
+  model.template PopulateTensor<T>(model.input2(), {0.1, 0.2, 0.6, 0.5});
+  TFLITE_INVOKE_AND_CHECK(T, &model);
 
   EXPECT_THAT(model.GetOutput(), ElementsAre(true, false, false, true));
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));

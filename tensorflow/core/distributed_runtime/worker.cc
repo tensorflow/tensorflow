@@ -123,8 +123,8 @@ void Worker::AbortStep(int64_t step_id) {
     // Delay a bit before aborting the step. This way, the root
     // cause may return first back to the client instead of this
     // cancellation generated abort error.
-    rendez->StartAbort(errors::Aborted("Step ", step_id,
-                                       " cancelled.  Cancelling rendezvous."));
+    rendez->StartAbort(absl::AbortedError(
+        absl::StrCat("Step ", step_id, " cancelled.  Cancelling rendezvous.")));
   });
 }
 
@@ -227,7 +227,7 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
     delete collector;
     delete device_profiler_session;
     delete out;
-    done(errors::Aborted("Call was aborted"));
+    done(absl::AbortedError("Call was aborted"));
     return;
   }
   session->graph_mgr()->ExecuteAsync(
@@ -251,7 +251,7 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
 
         if (s.ok()) {
           for (const auto& p : *out) {
-            const string& key = p.first;
+            const std::string& key = p.first;
             const Tensor& val = p.second;
             response->AddRecv(key, val);
           }
@@ -271,7 +271,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
                                MutableRunGraphResponseWrapper* response,
                                StatusCallback done) {
   const int64_t step_id = request->step_id();
-  const string& graph_handle = request->graph_handle();
+  const std::string& graph_handle = request->graph_handle();
   TRACEPRINTF("PartialRunGraph: %lld", step_id);
   absl::Status s = recent_request_ids_.TrackUnique(
       request->request_id(), "PartialRunGraph (Worker)", request);
@@ -345,7 +345,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
         if (s.ok()) {
           // Construct and return the resp.
           for (const auto& p : *out) {
-            const string& key = p.first;
+            const std::string& key = p.first;
             const Tensor& val = p.second;
             response->AddRecv(key, val);
           }
@@ -378,7 +378,7 @@ void Worker::CleanupGraphAsync(const CleanupGraphRequest* request,
 void Worker::CleanupAllAsync(const CleanupAllRequest* request,
                              CleanupAllResponse* response,
                              StatusCallback done) {
-  std::vector<string> containers;
+  std::vector<std::string> containers;
   for (const auto& c : request->container()) containers.push_back(c);
   env_->device_mgr->ClearContainers(containers);
   done(absl::OkStatus());
@@ -386,12 +386,12 @@ void Worker::CleanupAllAsync(const CleanupAllRequest* request,
 
 void Worker::LoggingAsync(const LoggingRequest* request,
                           LoggingResponse* response, StatusCallback done) {
-  done(errors::Unimplemented("Logging"));
+  done(absl::UnimplementedError("Logging"));
 }
 
 void Worker::TracingAsync(const TracingRequest* request,
                           TracingResponse* response, StatusCallback done) {
-  done(errors::Unimplemented("Tracing"));
+  done(absl::UnimplementedError("Tracing"));
 }
 
 void Worker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
@@ -400,7 +400,7 @@ void Worker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
   // it is not currently used for worker-to-worker communication. Use a
   // transport-specific implementation (such as `GrpcWorker::RecvBufAsync()`)
   // instead.
-  done(errors::Unimplemented("Worker::RecvBufAsync()"));
+  done(absl::UnimplementedError("Worker::RecvBufAsync()"));
 }
 
 void Worker::CompleteGroupAsync(CallOptions* opts,
@@ -408,7 +408,7 @@ void Worker::CompleteGroupAsync(CallOptions* opts,
                                 CompleteGroupResponse* response,
                                 StatusCallback done) {
   if (!request->has_device_attributes()) {
-    done(errors::Internal(
+    done(absl::InternalError(
         "CompleteGroupRequest device_attributes is not set. Make sure you're "
         "running the same version of Tensorflow on all workers."));
     return;
@@ -439,8 +439,8 @@ void Worker::CompleteGroupAsync(CallOptions* opts,
           done(s);
         });
   } else {
-    done(
-        errors::Internal("Runtime not initialized with CollectiveExecutorMgr"));
+    done(absl::InternalError(
+        "Runtime not initialized with CollectiveExecutorMgr"));
   }
 }
 
@@ -452,8 +452,8 @@ void Worker::CompleteInstanceAsync(CallOptions* opts,
     env_->collective_executor_mgr->GetParamResolver()->CompleteInstanceAsync(
         request, response, &cancellation_manager_, done);
   } else {
-    done(
-        errors::Internal("Runtime not initialized with CollectiveExecutorMgr"));
+    done(absl::InternalError(
+        "Runtime not initialized with CollectiveExecutorMgr"));
   }
 }
 
@@ -464,8 +464,8 @@ void Worker::GetStepSequenceAsync(const GetStepSequenceRequest* request,
     env_->collective_executor_mgr->GetStepSequenceAsync(request, response,
                                                         done);
   } else {
-    done(
-        errors::Internal("Runtime not initialized with CollectiveExecutorMgr"));
+    done(absl::InternalError(
+        "Runtime not initialized with CollectiveExecutorMgr"));
   }
 }
 
@@ -474,7 +474,7 @@ void Worker::GetStepSequenceAsync(const GetStepSequenceRequest* request,
 absl::Status Worker::PrepareRecvTensor(const Rendezvous::ParsedKey& parsed,
                                        Device** src_dev) {
   // Figures out which device the tensor is hosted on.
-  string local_name = DeviceNameUtils::LocalName(parsed.src_device);
+  std::string local_name = DeviceNameUtils::LocalName(parsed.src_device);
   TF_RETURN_IF_ERROR(env_->device_mgr->LookupDevice(local_name, src_dev));
 
   // Does the device have the right incarnation number we expect?
@@ -501,7 +501,7 @@ void Worker::RecvTensorAsync(CallOptions* opts,
   // it is not currently used for worker-to-worker communication. Use a
   // transport-specific implementation (such as `GrpcWorker::RecvTensorAsync()`)
   // instead.
-  done(errors::Unimplemented("Worker::RecvTensorAsync()"));
+  done(absl::UnimplementedError("Worker::RecvTensorAsync()"));
 }
 
 }  // namespace tensorflow

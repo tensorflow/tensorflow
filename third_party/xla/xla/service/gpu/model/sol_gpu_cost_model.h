@@ -40,6 +40,15 @@ class SolGPUCostModel {
     absl::Duration rtt;
     int64_t gpus_per_node;
     int64_t chunk_size_bytes;
+    // Partition size (devices per fast-interconnect domain). 0 means unset.
+    int64_t partition_size;
+
+    // --- Intra-node AllReduce cost model parameters (Triton or custom C++) ---
+    // Unidirectional NVLink / xGMI bandwidth per lane (GB/s).
+    double nvlink_bw_per_lane_gbps;
+    // Round-trip latency of the signal-buffer synchronization barrier used
+    // by the intra-node one-shot / two-shot kernels.
+    absl::Duration nvlink_barrier_latency;
   };
 
   enum CollectiveAlgorithmType {
@@ -48,8 +57,9 @@ class SolGPUCostModel {
   };
 
   enum class CollectiveType {
-    kAllReduce,
     kAllGather,
+    kAllReduce,
+    kAllToAll,
     kReduceScatter,
     kSendRecv,
   };
@@ -70,6 +80,30 @@ class SolGPUCostModel {
                                              int num_nodes,
                                              const CollectiveType& coll_type,
                                              int num_communicators) const;
+
+  // Returns the latency of an AllToAll collective across multiple nodes.
+  //
+  // `buff_size_bytes`: the size of the message to be transferred.
+  // `num_nodes`: the number of nodes participating in the all-to-all.
+  // `num_communicators`: the number of communicators participating in the
+  // all-to-all.
+  absl::StatusOr<absl::Duration> AllToAllLatency(int64_t buff_size_bytes,
+                                                 int num_nodes,
+                                                 int num_communicators) const;
+
+  // Returns the latency of an intra-node one-shot or two-shot AllReduce that
+  // uses NVLink / xGMI P2P symmetric memory (either a Triton codegen kernel or
+  // the built-in custom C++ kernel).  The strategy (kOneShot / kTwoShot) is
+  // derived internally from `size_bytes` using the same threshold as the
+  // runtime (256 KB / 4 MB).
+  //
+  // `size_bytes`         : total AllReduce buffer size in bytes.
+  // `num_gpus`           : number of GPUs in the communicator.
+  // `active_nvlink_links`: number of active NVLink / xGMI links on this GPU
+  //                        (from
+  //                        device_info.device_interconnect_info().active_links).
+  absl::StatusOr<absl::Duration> IntraNodeAllReduceLatency(
+      int64_t size_bytes, int num_gpus, int active_nvlink_links) const;
 
  private:
   // Helper functions to estimate the latency subcomponents

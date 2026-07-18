@@ -19,6 +19,8 @@ limitations under the License.
 #include <cstddef>
 #include <string>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
@@ -39,12 +41,21 @@ namespace {
 //   A string representation.
 std::string PyObject_ToString(PyObject* o, int length = -1) {
   auto str_o = make_safe(PyObject_Str(o));
-  std::string str = PyUnicode_AsUTF8(str_o.get());
+  if (!str_o) {
+    PyErr_Clear();
+    return "<failed to convert object to string>";
+  }
+  const char* utf8 = PyUnicode_AsUTF8(str_o.get());
+  if (utf8 == nullptr) {
+    PyErr_Clear();
+    return "<failed to convert unicode to utf8>";
+  }
+  std::string str(utf8);
   if (length < 0 || str.size() <= length) {
     return str;
   }
   absl::string_view str_piece(str);
-  return absl::StrCat(str_piece.substr(length), "...");
+  return absl::StrCat(str_piece.substr(0, length), "...");
 }
 
 // Gets a list of keys from a dict or mapping type object.
@@ -86,16 +97,39 @@ PyObject* FlattenDictItems(PyObject* dict) {
     return nullptr;
   }
   PyObject* flat_dictionary = PyDict_New();
+  if (flat_dictionary == nullptr) {
+    return nullptr;
+  }
   auto keys = make_safe(GetKeysFromDictOrMapping(dict));
+  if (!keys) {
+    Py_DecRef(flat_dictionary);
+    return nullptr;
+  }
   for (size_t i = 0; i < PyList_Size(keys.get()); ++i) {
     auto* key = PyList_GetItem(keys.get(), i);
+    if (key == nullptr) {
+      Py_DecRef(flat_dictionary);
+      return nullptr;
+    }
     // We use a general approach in case 'dict' is a PyMapping type,
     // but not a PyDict type.
-    auto* value = PyObject_GetItem(dict, key);
+    auto value = make_safe(PyObject_GetItem(dict, key));
+    if (!value) {
+      Py_DecRef(flat_dictionary);
+      return nullptr;
+    }
     if (swig::IsNested(key)) {
       // The dict might contain list - list pairs.
       auto flat_keys = make_safe(swig::Flatten(key, false));
-      auto flat_values = make_safe(swig::Flatten(value, false));
+      if (!flat_keys) {
+        Py_DecRef(flat_dictionary);
+        return nullptr;
+      }
+      auto flat_values = make_safe(swig::Flatten(value.get(), false));
+      if (!flat_values) {
+        Py_DecRef(flat_dictionary);
+        return nullptr;
+      }
       size_t flat_keys_sz = PyList_Size(flat_keys.get());
       size_t flat_values_sz = PyList_Size(flat_values.get());
       if (flat_keys_sz != flat_values_sz) {
@@ -112,7 +146,15 @@ PyObject* FlattenDictItems(PyObject* dict) {
       }
       for (size_t i = 0; i < flat_keys_sz; ++i) {
         auto* flat_key = PyList_GetItem(flat_keys.get(), i);
+        if (flat_key == nullptr) {
+          Py_DecRef(flat_dictionary);
+          return nullptr;
+        }
         auto* flat_value = PyList_GetItem(flat_values.get(), i);
+        if (flat_value == nullptr) {
+          Py_DecRef(flat_dictionary);
+          return nullptr;
+        }
         if (PyDict_GetItem(flat_dictionary, flat_key) != nullptr) {
           PyErr_SetString(
               PyExc_ValueError,
@@ -135,10 +177,8 @@ PyObject* FlattenDictItems(PyObject* dict) {
         Py_DecRef(flat_dictionary);
         return nullptr;
       }
-      PyDict_SetItem(flat_dictionary, key, value);
+      PyDict_SetItem(flat_dictionary, key, value.get());
     }
-    // Manually decrease because PyObject_GetItem() returns a new reference.
-    Py_DECREF(value);
   }
   return flat_dictionary;
 }

@@ -30,6 +30,7 @@
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/python/ifrt/client.h"
@@ -108,13 +109,13 @@ RemoteLoadedHostCallback::CreateFromSerialized(
          arg_protos) {
       xla::HostCallbackArgInfo& arg = args.emplace_back();
       arg.channel_id = static_cast<uint16_t>(arg_proto.channel_id());
-      TF_ASSIGN_OR_RETURN(arg.shape, xla::Shape::FromProto(arg_proto.shape()));
+      ASSIGN_OR_RETURN(arg.shape, xla::Shape::FromProto(arg_proto.shape()));
     }
     return args;
   };
 
-  TF_ASSIGN_OR_RETURN(auto operands, from_proto(proto.operands()));
-  TF_ASSIGN_OR_RETURN(auto results, from_proto(proto.results()));
+  ASSIGN_OR_RETURN(auto operands, from_proto(proto.operands()));
+  ASSIGN_OR_RETURN(auto results, from_proto(proto.results()));
   return tsl::MakeRef<RemoteLoadedHostCallback>(
       client, std::move(operands), std::move(results), std::move(queue));
 }
@@ -165,11 +166,11 @@ absl::Status RemoteLoadedHostCallback::Execute(void** result_ptrs,
   to_buffer(host_callback().results, result_ptrs, request.results);
 
   tsl::Future<> status;
-  std::tie(request.status, status) = tsl::Future<>::MakePromise();
+  std::tie(request.status, status) = tsl::MakePromise<>();
 
   // Enqueue the execution request. `IfrtBackend` retrieves this by calling
   // `PopExecutionRequest` and fulfills the `results` promise.
-  TF_RETURN_IF_ERROR(queue_->Push(std::move(request)));
+  RETURN_IF_ERROR(queue_->Push(std::move(request)));
 
   // Block until the execution finishes and return its status.
   return status.Await();

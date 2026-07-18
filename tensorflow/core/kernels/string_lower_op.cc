@@ -33,9 +33,9 @@ class StringLowerOp : public OpKernel {
   explicit StringLowerOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("encoding", &encoding_));
     OP_REQUIRES(context, encoding_.empty() || encoding_ == "utf-8",
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "only utf-8 or '' (no encoding) is supported, received ",
-                    encoding_));
+                    encoding_)));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -64,7 +64,7 @@ class StringLowerOp : public OpKernel {
   }
 
  private:
-  string encoding_;
+  std::string encoding_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("StringLower").Device(DEVICE_CPU), StringLowerOp);

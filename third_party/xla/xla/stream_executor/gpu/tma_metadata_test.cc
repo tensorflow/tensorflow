@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/gpu/tma_metadata.pb.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "tsl/platform/protobuf.h"
@@ -36,8 +35,6 @@ namespace {
 using absl::StatusCode;
 using testing::HasSubstr;
 using tsl::proto_testing::EqualsProto;
-using tsl::testing::IsOk;
-using tsl::testing::StatusIs;
 
 TEST(TmaMetadataTest, CreateValidTmaInfoReturnsOk) {
   EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{500, 360},

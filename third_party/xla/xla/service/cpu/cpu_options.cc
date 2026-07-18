@@ -65,7 +65,8 @@ bool FoldAllConstants(const HloModuleConfig& config) {
 bool DisablePlatformDependentMath(const HloModuleConfig& config) {
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();
-  return extra_options_map.count(kDisablePlatformDependentMath) > 0;
+  return !config.debug_options().xla_cpu_enable_platform_dependent_math() ||
+         extra_options_map.count(kDisablePlatformDependentMath) > 0;
 }
 
 std::optional<int64_t> LlvmIrGemvTilingFactor(const HloModuleConfig& config) {
@@ -159,6 +160,17 @@ bool UseMultiOutputFusion(const HloModuleConfig& config) {
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();
   return extra_options_map.count(kUseMultiOutputFusion) > 0;
+}
+
+bool EnableTiledEmitter(const HloModuleConfig& config) {
+  const auto& extra_options_map =
+      config.debug_options().xla_backend_extra_options();
+  return extra_options_map.count(kDisableTiledEmitter) == 0;
+}
+
+bool EnableExperimentalTiling(const HloModuleConfig& config) {
+  return config.debug_options()
+      .xla_cpu_experimental_enable_tiling_propagation();
 }
 
 }  // namespace xla::cpu::options

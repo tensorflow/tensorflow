@@ -146,6 +146,7 @@ cc_library(
             "src/cpu/**/*.hpp",
             "src/cpu/*.hpp",
             "src/cpu/aarch64/xbyak_aarch64/**/*.h",
+            "src/graph/**/*.hpp",
         ],
     ) + [
         ":dnnl_config_h",

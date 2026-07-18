@@ -39,13 +39,13 @@ absl::Status ClusterFunctionLibraryRuntime::ConstructFunctionGraph(
     const OpDef& sig, AttrSlice attrs,
     const FunctionLibraryRuntime::InstantiateOptions& options,
     const FunctionLibraryDefinition& flib_def, GraphDef* gdef,
-    std::vector<string>* send_keys, std::vector<string>* recv_keys) {
-  const string& target = options.target;
-  const string& func_name = sig.name();
+    std::vector<std::string>* send_keys, std::vector<std::string>* recv_keys) {
+  const std::string& target = options.target;
+  const std::string& func_name = sig.name();
   const FunctionDef* func_def = flib_def.Find(sig.name());
   if (func_def == nullptr) {
-    return errors::InvalidArgument("Function ", func_name,
-                                   " not found in flib_def.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Function ", func_name, " not found in flib_def."));
   }
 
   // Build a smaller flib_def containing only the functions used by the given
@@ -68,9 +68,10 @@ absl::Status ClusterFunctionLibraryRuntime::ConstructFunctionGraph(
     TF_RETURN_IF_ERROR(ArgNumType(attrs, in, &is_type_list, &dtypes));
     // TODO(rohanj): Handle list and variadic number of attrs. Here and below.
     if (is_type_list || dtypes.size() > 1) {
-      return errors::Unimplemented("Input arg: ", in.name(),
-                                   " has a list type or variadic number of "
-                                   "attrs. Currently unsupported.");
+      return absl::UnimplementedError(
+          absl::StrCat("Input arg: ", in.name(),
+                       " has a list type or variadic number of "
+                       "attrs. Currently unsupported."));
     }
 
     auto input_node_builder =
@@ -90,7 +91,7 @@ absl::Status ClusterFunctionLibraryRuntime::ConstructFunctionGraph(
 
     // src_incarnation = 1 works because the transfer is across the same device.
     // TODO(rohanj): Find the src_incarnation for the remote device and set it.
-    const string& key = Rendezvous::CreateKey(
+    const std::string& key = Rendezvous::CreateKey(
         target, 1 /* src_incarnation */, target, in.name(), FrameAndIter(0, 0));
     send_keys->push_back(key);
     ++i;
@@ -119,9 +120,10 @@ absl::Status ClusterFunctionLibraryRuntime::ConstructFunctionGraph(
     TF_RETURN_IF_ERROR(ArgNumType(attrs, out, &is_type_list, &dtypes));
     // TODO(rohanj): Handle list and variadic number of attrs. Here and below.
     if (is_type_list || dtypes.size() > 1) {
-      return errors::Unimplemented("Output arg: ", out.name(),
-                                   " has a list type or variadic number of "
-                                   "attrs. Currently unsupported.");
+      return absl::UnimplementedError(
+          absl::StrCat("Output arg: ", out.name(),
+                       " has a list type or variadic number of "
+                       "attrs. Currently unsupported."));
     }
 
     auto output_node_builder =
@@ -140,7 +142,7 @@ absl::Status ClusterFunctionLibraryRuntime::ConstructFunctionGraph(
 
     g.AddEdge(function_node, i, output_node, 0);
 
-    const string& key =
+    const std::string& key =
         Rendezvous::CreateKey(target, 1 /* src_incarnation */, target,
                               out.name(), FrameAndIter(0, 0));
     recv_keys->push_back(key);
@@ -180,7 +182,7 @@ ClusterFunctionLibraryRuntime::~ClusterFunctionLibraryRuntime() {
 }
 
 void ClusterFunctionLibraryRuntime::Instantiate(
-    const string& function_name, const FunctionLibraryDefinition& lib_def,
+    const std::string& function_name, const FunctionLibraryDefinition& lib_def,
     AttrSlice attrs, const FunctionLibraryRuntime::InstantiateOptions& options,
     FunctionLibraryRuntime::LocalHandle* handle,
     FunctionLibraryRuntime::DoneCallback done) {
@@ -192,18 +194,18 @@ void ClusterFunctionLibraryRuntime::Instantiate(
   WorkerInterface* wi = worker_cache->GetOrCreateWorker(target);
 
   if (wi == nullptr) {
-    std::vector<string> workers;
+    std::vector<std::string> workers;
     worker_session_->worker_cache()->ListWorkers(&workers);
-    done(errors::InvalidArgument(
-        "Could not find worker with target: ", target,
-        " Available workers: ", absl::StrJoin(workers, ", ")));
+    done(absl::InvalidArgumentError(
+        absl::StrCat("Could not find worker with target: ", target,
+                     " Available workers: ", absl::StrJoin(workers, ", "))));
     return;
   }
 
   // Make RPC and obtain a graph handle.
   GraphDef gdef;
-  auto* send_keys = new std::vector<string>;
-  auto* recv_keys = new std::vector<string>;
+  auto* send_keys = new std::vector<std::string>;
+  auto* recv_keys = new std::vector<std::string>;
   auto construct_graph_fn = [&](const FunctionLibraryDefinition* lib_def) {
     const FunctionDef* fdef = lib_def->Find(function_name);
     const OpDef& sig = fdef->signature();
@@ -269,7 +271,7 @@ void ClusterFunctionLibraryRuntime::Run(
   WorkerInterface* wi = function_data->wi;
 
   if (wi == nullptr) {
-    done(errors::Internal("Could not find worker"));
+    done(absl::InternalError("Could not find worker"));
     return;
   }
 
@@ -285,7 +287,7 @@ void ClusterFunctionLibraryRuntime::Run(
     args[i].AsProtoTensorContent(send->mutable_tensor());
     i++;
   }
-  const std::vector<string>& recv_keys = function_data->recv_keys;
+  const std::vector<std::string>& recv_keys = function_data->recv_keys;
   for (const auto& recv_key : recv_keys) {
     req->add_recv_key(recv_key);
   }
@@ -308,7 +310,7 @@ void ClusterFunctionLibraryRuntime::Run(
         if (!local_status->ok()) {
           return;
         }
-        std::map<string, TensorProto*> mapped_recvs;
+        std::map<std::string, TensorProto*> mapped_recvs;
         for (auto& recv : *resp->mutable_recv()) {
           mapped_recvs[recv.name()] = recv.mutable_tensor();
         }
@@ -316,16 +318,16 @@ void ClusterFunctionLibraryRuntime::Run(
         for (const auto& recv_key : recv_keys) {
           TensorProto* tp = mapped_recvs[recv_key];
           if (tp == nullptr) {
-            local_status->Update(
-                errors::Internal("Could not find key: ", recv_key));
+            local_status->Update(absl::InternalError(
+                absl::StrCat("Could not find key: ", recv_key)));
             return;
           }
           Tensor t;
           if (t.FromProto(*tp)) {
             rets->push_back(t);
           } else {
-            local_status->Update(errors::Internal(
-                "Could not convert tensor proto: ", tp->DebugString()));
+            local_status->Update(absl::InternalError(absl::StrCat(
+                "Could not convert tensor proto: ", tp->DebugString())));
             return;
           }
         }
@@ -343,8 +345,8 @@ void ClusterFunctionLibraryRuntime::Run(
       tensors.push_back(std::get<Tensor>(arg));
     } else {
       done(
-          errors::Internal("ClusterFunctionLibraryRuntime doesn't support "
-                           "eager::RemoteTensorHandle."));
+          absl::InternalError("ClusterFunctionLibraryRuntime doesn't support "
+                              "eager::RemoteTensorHandle."));
       return;
     }
   }
@@ -363,7 +365,7 @@ void ClusterFunctionLibraryRuntime::Run(
 }
 
 void ClusterFunctionLibraryRuntime::CleanUp(
-    uint64 step_id, FunctionLibraryRuntime::LocalHandle handle,
+    uint64_t step_id, FunctionLibraryRuntime::LocalHandle handle,
     FunctionLibraryRuntime::DoneCallback done) {
   FunctionData* function_data = nullptr;
   {
@@ -375,7 +377,7 @@ void ClusterFunctionLibraryRuntime::CleanUp(
   WorkerInterface* wi = function_data->wi;
 
   if (wi == nullptr) {
-    done(errors::Internal("Could not find worker"));
+    done(absl::InternalError("Could not find worker"));
     return;
   }
   CleanupGraphRequest* cleanup_req = new CleanupGraphRequest;

@@ -14,10 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/include_renderer.h"
 
+#include <string>
+#include <vector>
+
+#include "absl/strings/match.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/renderer.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/renderer_context.h"
+#include "tensorflow/c/experimental/ops/gen/cpp/views/op_argument_view.h"
+#include "tensorflow/c/experimental/ops/gen/cpp/views/op_view.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace generator {
@@ -30,24 +35,58 @@ void IncludeRenderer::SelfHeader() {
   BlankLine();
 }
 
-string IncludeRenderer::SelfHeaderPath() const {
+std::string IncludeRenderer::SelfHeaderPath() const {
   return io::JoinPath(context_.path_config.tf_root_dir,
                       context_.path_config.tf_output_dir,
                       context_.cpp_config.unit + "_ops.h");
 }
 
-void IncludeRenderer::Include(const string &tf_file_path) {
+void IncludeRenderer::Include(const std::string& tf_file_path) {
   CodeLine("#include \"$0\"",
            io::JoinPath(context_.path_config.tf_prefix_dir, tf_file_path));
 }
 
-void IncludeRenderer::Headers() {
+void IncludeRenderer::Headers(const std::vector<OpView>& ops) {
+  Include(
+      "absl"
+      "/status/status.h");
+  bool needs_span = false;
+  if (context_.mode == RendererContext::kSource) {
+    needs_span = true;
+  } else {
+    for (const OpView& op : ops) {
+      for (const OpArgumentView& arg : op.AllArguments()) {
+        if (absl::StrContains(arg.Declaration(), "absl::Span")) {
+          needs_span = true;
+          break;
+        }
+      }
+      if (needs_span) break;
+    }
+  }
+  if (needs_span) {
+    Include(
+        "absl"
+        "/types/span.h");
+  }
   Include("tensorflow/c/eager/abstract_context.h");
   Include("tensorflow/c/eager/abstract_tensor_handle.h");
+  if (context_.cpp_config.unit == "resource_variable") {
+    Include("tensorflow/core/framework/tensor_shape.h");
+  }
+  CodeLine("#include \"$0\"  // NOLINT",
+           io::JoinPath(context_.path_config.tf_prefix_dir,
+                        "tensorflow/core/framework/types.h"));
+  if (context_.cpp_config.unit == "resource_variable") {
+    CodeLine("#include <string>");
+  }
   if (context_.mode == RendererContext::kSource) {
+    CodeLine("#include <cstring>  // NOLINT");
+    Include("tensorflow/c/eager/abstract_operation.h");
     Include("tensorflow/c/eager/tracing_utils.h");
-    Include("tensorflow/core/framework/types.h");
-    Include("tensorflow/core/platform/errors.h");
+    CodeLine("#include \"$0\"  // NOLINT",
+             io::JoinPath(context_.path_config.tf_prefix_dir,
+                          "tensorflow/core/platform/errors.h"));
     BlankLine();
     Statement("using tensorflow::tracing::MaybeSetOpName");
   }

@@ -97,7 +97,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
     ~Dataset() override { input_->Unref(); }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       return std::make_unique<Iterator>(
           Iterator::Params{this, absl::StrCat(prefix, "::GroupByReducer")});
     }
@@ -109,7 +109,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() const override {
+    std::string DebugString() const override {
       return "GroupByReducerDatasetOp::Dataset";
     }
 
@@ -235,7 +235,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
                 key_func_output[0].dtype() != DT_INT64 ||
                 key_func_output[0].NumElements() != 1) {
               // TODO(b/78665031): Support non-int64 keys.
-              return errors::InvalidArgument(
+              return absl::InvalidArgumentError(
                   "`key_func` must return a scalar int64.");
             }
             const int64_t key = key_func_output[0].scalar<int64_t>()();
@@ -270,7 +270,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
           }
         }
 
-        if (keys_index_ == keys_.size()) {
+        if (keys_index_ >= keys_.size()) {
           *end_of_sequence = true;
           return absl::OkStatus();
         }

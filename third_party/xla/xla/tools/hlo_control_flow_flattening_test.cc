@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/despecializer.h"
@@ -49,7 +50,6 @@ class HloControlFlowFlatteningTest : public HloHardwareIndependentTestBase {
     spmd::SpmdPartitionerOptions options;
     auto collective_ops_creator =
         spmd::GetDefaultCollectiveOpsCreator(num_devices, /*num_replicas=*/1);
-    collective_ops_creator.create_cross_partition_all_gather = nullptr;
 
     HloModuleConfig config = GetModuleConfigForTest();
     config.set_use_spmd_partitioning(true);
@@ -61,7 +61,7 @@ class HloControlFlowFlatteningTest : public HloHardwareIndependentTestBase {
                                         options, collective_ops_creator);
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
-    TF_RETURN_IF_ERROR(pass.Run(hlo_module.get()).status());
+    RETURN_IF_ERROR(pass.Run(hlo_module.get()).status());
     return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(hlo_module));
   }
 };

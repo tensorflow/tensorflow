@@ -17,7 +17,10 @@ limitations under the License.
 
 #include <sstream>
 #include <string>
+#include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "xla/codegen/tiling/symbolic_tile.h"
 
@@ -28,7 +31,7 @@ std::string SymbolicTiledHloInstruction::ToString(
   std::stringstream ss;
   ss << "hlo: " << hlo_->ToString() << field_separator;
   if (symbolic_tile_.has_value()) {
-    ss << symbolic_tile().ToString();
+    ss << symbolic_tile().ToString(field_separator);
   } else {
     ss << "(no symbolic tile)";
   }
@@ -36,11 +39,22 @@ std::string SymbolicTiledHloInstruction::ToString(
   ss << "indexing map: " << indexing_map_;
   if (!runtime_variables_.empty()) {
     ss << field_separator;
-    ss << "runtime operands: (";
-    for (const auto& rt_var : runtime_variables_) {
-      ss << rt_var->ToString() << field_separator;
-    }
+    ss << "runtime variables: (" << field_separator;
+    ss << absl::StrJoin(
+        runtime_variables_, absl::StrCat(field_separator, field_separator),
+        [&](std::string* out, const SymbolicTiledHloInstruction* rt_var) {
+          out->append(rt_var->ToString(field_separator));
+        });
     ss << ")";
+  }
+  if (!regions_.empty()) {
+    ss << field_separator;
+    ss << "regions sizes: [";
+    ss << absl::StrJoin(regions_, ", ",
+                        [&](std::string* out, const auto& region) {
+                          absl::StrAppend(out, region.size());
+                        });
+    ss << "]";
   }
   return ss.str();
 }

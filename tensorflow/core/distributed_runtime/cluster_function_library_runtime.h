@@ -41,7 +41,7 @@ class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
 
   ~ClusterFunctionLibraryRuntime() override;
 
-  void Instantiate(const string& function_name,
+  void Instantiate(const std::string& function_name,
                    const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
                    const FunctionLibraryRuntime::InstantiateOptions& options,
                    FunctionLibraryRuntime::LocalHandle* handle,
@@ -57,7 +57,7 @@ class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
            absl::Span<const FunctionArg> args, std::vector<FunctionRet>* rets,
            FunctionLibraryRuntime::DoneCallback done) override;
 
-  void CleanUp(uint64 step_id, FunctionLibraryRuntime::LocalHandle handle,
+  void CleanUp(uint64_t step_id, FunctionLibraryRuntime::LocalHandle handle,
                FunctionLibraryRuntime::DoneCallback done) override;
 
   DeviceMgr* remote_device_mgr() const override { return remote_device_mgr_; }
@@ -67,7 +67,7 @@ class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
       const OpDef& sig, AttrSlice attrs,
       const FunctionLibraryRuntime::InstantiateOptions& options,
       const FunctionLibraryDefinition& flib_def, GraphDef* g,
-      std::vector<string>* send_keys, std::vector<string>* recv_keys);
+      std::vector<std::string>* send_keys, std::vector<std::string>* recv_keys);
   friend class ClusterFunctionLibraryRuntimeTest;
 
   mutable mutex mu_;
@@ -77,19 +77,19 @@ class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
   DeviceMgr* remote_device_mgr_;  // not owned.
 
   struct FunctionData {
-    const string graph_handle;
-    const string target;
+    const std::string graph_handle;
+    const std::string target;
     // Hold a shared pointer to the underlying worker cache to avoid it being
     // deleted in potential cluster update.
     const std::shared_ptr<WorkerCacheInterface> worker_cache;
     WorkerInterface* wi = nullptr;
-    const std::vector<string> send_keys;
-    const std::vector<string> recv_keys;
+    const std::vector<std::string> send_keys;
+    const std::vector<std::string> recv_keys;
 
-    FunctionData(const string& graph_handle, const string& target,
+    FunctionData(const std::string& graph_handle, const std::string& target,
                  std::shared_ptr<WorkerCacheInterface> worker_cache,
-                 WorkerInterface* wi, const std::vector<string>& send_keys,
-                 const std::vector<string>& recv_keys)
+                 WorkerInterface* wi, const std::vector<std::string>& send_keys,
+                 const std::vector<std::string>& recv_keys)
         : graph_handle(graph_handle),
           target(target),
           worker_cache(std::move(worker_cache)),

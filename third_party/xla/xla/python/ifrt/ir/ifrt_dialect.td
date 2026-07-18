@@ -215,9 +215,9 @@ def Ifrt_ArrayType : TypeDef<Ifrt_Dialect, "IfrtArray"> {
     ::llvm::ArrayRef<int> getDevices() const;
     // Get the memory kind from `memory_kind_attr`.
     ::xla::ifrt::MemoryKind MemoryKind() const;
-    // Get the layout mode from `layout_attr`. Returns std::nullopt if the
-    // layout attribute is not set.
-    std::optional<::xla::LayoutMode> LayoutMode() const;
+    // Get the layout mode from `layout_attr`. Returns default layout mode if
+    // the layout attribute is not set.
+    ::xla::LayoutMode LayoutMode() const;
   }];
 }
 
@@ -228,6 +228,14 @@ def Ifrt_ControlType : TypeDef<Ifrt_Dialect, "IfrtControl"> {
 
     When an op takes a control as argument, it will not be scheduled for
     execution before the op emitting the control has finished execution.
+  }];
+}
+
+def Ifrt_TokenType : TypeDef<Ifrt_Dialect, "IfrtToken"> {
+  let mnemonic = "token";
+  let summary = [{
+    Represents a dummy that can be used to create artificial data-dependencies
+    between operations.
   }];
 }
 

@@ -335,7 +335,7 @@ def TF_IfRegionOp : TF_Op<"IfRegion",
            "areTypesCompatible",
            "getEntrySuccessorOperands",
            "getRegionInvocationBounds",
-           "getSuccessorRegions"
+           "getSuccessorInputs",
        ]>
       ]> {
   let summary = "output = cond ? then_branch output : else_branch output";
@@ -395,7 +395,7 @@ def TF_GeneratorDatasetRegionOp : TF_Op<"GeneratorDatasetRegion",
            "areTypesCompatible",
            "getEntrySuccessorOperands",
            "getRegionInvocationBounds",
-           "getSuccessorRegions"
+           "getSuccessorInputs",
        ]>,
        SingleBlockImplicitTerminator<"YieldOp">,
        TF_GeneratorOpSideEffect,
@@ -739,9 +739,6 @@ body: A function that takes a list of tensors and returns another
 
 def TF_WhileRegionOp : TF_Op<"WhileRegion",
       [DeclareOpInterfaceMethods<LoopLikeOpInterface>,
-       DeclareOpInterfaceMethods<RegionBranchOpInterface, [
-           "getRegionInvocationBounds", "getEntrySuccessorOperands",
-           "areTypesCompatible"]>,
        SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = "while operation";
   let description = [{
@@ -2229,10 +2226,11 @@ def TF_XlaLocalSparseDenseMatmulOp : TF_Op<"XlaLocalSparseDenseMatmul", [Pure]> 
   let arguments = (ins
     TF_Int32Tensor:$embedding_ids,
     TF_Int32Tensor:$sample_ids,
-    TF_Float32Tensor:$gains,
     TF_Tensor:$embedding_table,
 
-    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$batch_size,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$sum_valency,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$num_tables,
+    DefaultValuedAttr<I64Attr, "0x7fffffff">:$pad_value,
     TypeAttr:$T
   );
 
@@ -3228,6 +3226,9 @@ def TF_XlaSparseActivationsUnstackOp : TF_Op<"XlaSparseActivationsUnstack", [Pur
   let results = (outs
     Variadic<TF_Tensor>:$unstacked_embedding_activations
   );
+
+  TF_DerivedOperandTypeAttr input_dtype = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_XlaSparseGradientsStackOp : TF_Op<"XlaSparseGradientsStack", [Pure]> {
@@ -3250,5 +3251,9 @@ def TF_XlaSparseGradientsStackOp : TF_Op<"XlaSparseGradientsStack", [Pure]> {
   let results = (outs
     TF_Tensor:$stacked_gradients
   );
+
+  TF_DerivedOperandTypeAttr input_dtype = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 #endif // TF_OPS
+

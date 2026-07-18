@@ -25,9 +25,19 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
+// Strategy for performing an all-reduce.
 enum class AllReduceStrategy : uint32_t {
+  // With one-shot strategy all GPUs gathers and reduces data from all peer
+  // GPUs.
   kOneShot,
+  // With two-shot strategy each GPU gathers and reduces only a part of the
+  // data in the first shot, as a second shot it gathers peer GPUs results to
+  // construct a final result.
   kTwoShot,
+  // With multimem strategy single GPU uses multimem instructions to perform
+  // reduce+broadcast directly on source and destination buffers that were
+  // pre-mapped to multimem addresses.
+  kMultimem,
 };
 
 template <typename Sink>
@@ -38,6 +48,9 @@ void AbslStringify(Sink& sink, AllReduceStrategy strategy) {
       break;
     case AllReduceStrategy::kTwoShot:
       sink.Append("kTwoShot");
+      break;
+    case AllReduceStrategy::kMultimem:
+      sink.Append("kMultimem");
       break;
   }
 }

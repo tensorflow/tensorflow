@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/tsl/lib/io/table.h"
 
+#include "absl/status/status.h"
 #include "xla/tsl/lib/io/block.h"
 #include "xla/tsl/lib/io/cache.h"
 #include "xla/tsl/lib/io/format.h"
@@ -34,17 +35,17 @@ struct Table::Rep {
   Options options;
   absl::Status status;
   RandomAccessFile* file;
-  uint64 cache_id;
+  uint64_t cache_id;
 
   BlockHandle metaindex_handle;  // Handle to metaindex_block: saved from footer
   Block* index_block;
 };
 
 absl::Status Table::Open(const Options& options, RandomAccessFile* file,
-                         uint64 size, Table** table) {
+                         uint64_t size, Table** table) {
   *table = nullptr;
   if (size < Footer::kEncodedLength) {
-    return errors::DataLoss("file is too short to be an sstable");
+    return absl::DataLossError("file is too short to be an sstable");
   }
 
   char footer_space[Footer::kEncodedLength];
@@ -181,10 +182,10 @@ absl::Status Table::InternalGet(absl::string_view key, void* arg,
   return s;
 }
 
-uint64 Table::ApproximateOffsetOf(absl::string_view key) const {
+uint64_t Table::ApproximateOffsetOf(absl::string_view key) const {
   Iterator* index_iter = rep_->index_block->NewIterator();
   index_iter->Seek(key);
-  uint64 result;
+  uint64_t result;
   if (index_iter->Valid()) {
     BlockHandle handle;
     absl::string_view input = index_iter->value();

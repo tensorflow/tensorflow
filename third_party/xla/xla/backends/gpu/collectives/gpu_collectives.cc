@@ -16,27 +16,34 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 
 #include <cstddef>
+#include <optional>
 
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
+#include "xla/runtime/device_id.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_interconnect_resource.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
 
 namespace xla::gpu {
 
-GpuCollectives* GpuCollectives::Default() {
+GpuCollectives* GpuCollectives::Default(absl::string_view platform_name) {
   absl::StatusOr<Collectives*> collectives =
-      CollectivesRegistry::Default("gpu");
+      CollectivesRegistry::Default(platform_name);
   CHECK_OK(collectives) << "Failed to get GPU collectives";  // Crash OK
 
-  if (auto* gpu_collectives = tsl::down_cast<GpuCollectives*>(*collectives)) {
+  if (auto* gpu_collectives = absl::down_cast<GpuCollectives*>(*collectives)) {
     return gpu_collectives;
   }
 
@@ -57,11 +64,55 @@ stream_executor::Stream* GpuCollectives::Executor::stream() const {
   return stream_;
 }
 
-se::DeviceMemoryBase GpuCollectives::Slice(se::DeviceMemoryBase buff,
-                                           PrimitiveType dtype, size_t offset,
-                                           size_t count) {
+se::DeviceAddressBase GpuCollectives::Slice(se::DeviceAddressBase buff,
+                                            PrimitiveType dtype, size_t offset,
+                                            size_t count) {
   size_t multiplier = ShapeUtil::ByteSizeOfPrimitiveType(dtype);
   return buff.GetByteSlice(offset * multiplier, count * multiplier);
+}
+
+FabricHomogeneity CheckFabricHomogeneity(se::StreamExecutor* executor,
+                                         const CliqueKey& clique_key) {
+  se::DeviceInterconnectResource* res =
+      executor->GetOrNullResource<se::DeviceInterconnectResource>();
+  if (!res) {
+    return FabricHomogeneity::kUnknown;
+  }
+
+  const se::DeviceInterconnectResource::InfoMap& interconnect_map =
+      res->interconnect_map();
+
+  std::optional<absl::string_view> cluster_uuid;
+  std::optional<absl::string_view> clique_id;
+
+  for (const GlobalDeviceId device : clique_key.devices()) {
+    se::DeviceInterconnectResource::InfoMap::const_iterator it =
+        interconnect_map.find(device.value());
+
+    if (it == interconnect_map.end()) {
+      return FabricHomogeneity::kUnknown;
+    }
+    const se::DeviceInterconnectInfo& info = it->second;
+
+    // Empty strings indicate uninitialized/unhealthy fabric state.
+    if (info.cluster_uuid.empty() || info.clique_id.empty()) {
+      return FabricHomogeneity::kUnknown;
+    }
+
+    if (!cluster_uuid.has_value()) {
+      // Initialize the baseline comparison values.
+      cluster_uuid = info.cluster_uuid;
+      clique_id = info.clique_id;
+    } else if (info.cluster_uuid != *cluster_uuid ||
+               info.clique_id != *clique_id) {
+      XLA_VLOG_DEVICE(1, executor->device_ordinal())
+          << "Fabric mismatch detected in clique for device " << device.value();
+      VLOG(1) << "Fabric mismatch detected in clique for device "
+              << device.value();
+      return FabricHomogeneity::kHeterogeneous;
+    }
+  }
+  return FabricHomogeneity::kHomogeneous;
 }
 
 }  // namespace xla::gpu

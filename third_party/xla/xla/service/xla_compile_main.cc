@@ -13,17 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdlib>
 #include <iostream>
+#include <string>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tools/xla_compile_lib.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/init_main.h"
-#include "tsl/platform/types.h"
 
 namespace xla {
 namespace xla_compile {
@@ -60,9 +62,13 @@ int main(int argc, char* argv[]) {
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("module_file", &options.module_path,
                 "The path to the HLO, MHLO or StableHLO file"),
+      tsl::Flag("module_config_file", &options.module_config_path,
+                "The path to the HloModuleConfig file. Should contain "
+                "serialized HloModuleConfig proto as a textproto."),
       tsl::Flag("output_file", &options.output_file,
                 "The path to the output file. Required if --result_output_file "
-                "is not set."),
+                "is not set. Setting output_file=sponge will dump the compiled "
+                "module as a sponge artifact."),
       tsl::Flag("platform", &options.platform,
                 "The platform on which the built executable runs"),
       tsl::Flag("gpu_target_config",
@@ -97,9 +103,32 @@ int main(int argc, char* argv[]) {
       tsl::Flag("result_output_file", &options.result_output_file,
                 "File to write a serialized xla.CompilationResult proto to. "
                 "Required if --output_file is not set."),
+      tsl::Flag("target_cpu", &options.cpu_options.target_cpu,
+                "The target cpu."),
+      tsl::Flag("target_features", &options.cpu_options.target_features,
+                "The target features."),
+      tsl::Flag("target_triple", &options.cpu_options.target_triple,
+                "The target triple."),
+      tsl::Flag("use_shardy_partitioner", &options.use_shardy_partitioner,
+                "Whether to use the Shardy partitioner."),
+      tsl::Flag("force_auto_layout", &options.force_auto_layout,
+                "Whether to clear the layouts from the loaded module and "
+                "allow xla to choose them automatically."),
+      tsl::Flag("num_partitions", &options.num_partitions,
+                "The number of partitions."),
+      tsl::Flag("num_replicas", &options.num_replicas,
+                "The number of replicas."),
+      tsl::Flag(
+          "target_platform_version",
+          &options.gpu_options.target_platform_version,
+          "The name of the target platform version, e.g. 'oberon_b200'. If "
+          "present, the target config path will be ignored and deduced "
+          "automatically. This flag is expected to be used when "
+          "cross-compiling for GPU, to pipe through the correct host target "
+          "machine options."),
   };
 
-  tsl::string usage = xla::xla_compile::kUsageHeader;
+  std::string usage = xla::xla_compile::kUsageHeader;
   usage += tsl::Flags::Usage(argv[0], flag_list);
   if (argc > 1 && absl::string_view(argv[1]) == "--help") {
     std::cerr << usage << "\n";
@@ -111,6 +140,10 @@ int main(int argc, char* argv[]) {
 
   tsl::port::InitMain(usage.c_str(), &argc, &argv);
 
+  if (options.output_file == "sponge") {
+    options.output_file =
+        absl::StrCat(std::getenv("TEST_UNDECLARED_OUTPUTS_DIR"), "/output.txt");
+  }
   absl::Status result = xla::XlaCompileMain(options);
   if (!result.ok()) {
     LOG(ERROR) << "Compilation failed: " << result;

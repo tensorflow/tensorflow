@@ -46,7 +46,7 @@ class GraphAnalyzer {
   absl::Status Run();
 
   // Returns the subgraphs found in Run() printed to text.
-  std::vector<string> DumpSubgraphs();
+  std::vector<std::string> DumpSubgraphs();
 
   // Prints the subgraphs found in Run() to stdout.
   absl::Status OutputSubgraphs();
@@ -78,7 +78,7 @@ class GraphAnalyzer {
   absl::Status CollateResult();
 
   // Returns the raw subgraphs found in FindSubgraphs() printed to text.
-  std::vector<string> DumpRawSubgraphs();
+  std::vector<std::string> DumpRawSubgraphs();
 
   // Finds and adds appropriately to either partial_ or result_ all the
   // subgraphs that can be created by extending the parent subgraph by one node.

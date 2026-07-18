@@ -35,7 +35,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
-        "//tensorflow/core/tpu/kernels:tpu_compile_proto_cc",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
@@ -43,13 +42,13 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:xla_proto_cc",
-        "@local_xla//xla/client:compile_only_client",
-        "@local_xla//xla/hlo/ir:hlo",
-        "@local_xla//xla/pjrt/proto:compile_options_proto_cc",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@tsl//tsl/platform:protobuf",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_proto_cc",
+        "@xla//xla/client:compile_only_client",
+        "@xla//xla/hlo/ir:hlo",
+        "@xla//xla/pjrt/proto:compile_options_proto_cc",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -75,12 +74,12 @@ tf_cc_test(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:Pass",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla/client:client_library",
-        "@local_xla//xla/stream_executor:platform",
-        "@local_xla//xla/stream_executor:platform_manager",
-        "@local_xla//xla/tsl/lib/monitoring:test_utils",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla:shape_util",
+        "@xla//xla/client:client_library",
+        "@xla//xla/stream_executor:platform",
+        "@xla//xla/stream_executor:platform_manager",
+        "@xla//xla/tsl/lib/monitoring:test_utils",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -102,10 +101,10 @@ tf_cc_test(
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest",
-        "@local_xla//xla/tsl/platform:status_matchers",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -150,8 +149,8 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:error_logging",
-        "@local_xla//xla/tsl/platform:errors",
+        "@tsl//tsl/platform:error_logging",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -178,8 +177,8 @@ tf_cc_test(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
-        "@local_xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/platform:status",
     ],
 )
 
@@ -209,10 +208,10 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/platform:error_logging",
-        "@local_xla//xla/tsl/lib/monitoring:counter",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:status",
+        "@tsl//tsl/platform:error_logging",
+        "@xla//xla/tsl/lib/monitoring:counter",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:status",
     ],
 )
 
@@ -236,7 +235,7 @@ tf_cc_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -278,7 +277,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_xla//xla:status_macros",
+        "@xla//xla:status_macros",
     ],
 )
 
@@ -306,10 +305,10 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
         "@riegeli//riegeli/bytes:fd_reader",
         "@riegeli//riegeli/bytes:read_all",
+        "@tsl//tsl/platform:protobuf",
+        "@xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -323,6 +322,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":mlir_roundtrip_flags",
         "//tensorflow/compiler/jit:shape_inference_helpers",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -349,13 +349,13 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:function_body",
-        "//tensorflow/core/platform:crash_analysis",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
@@ -364,8 +364,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_xla//xla:status_macros",
-        "@local_xla//xla/tsl/platform:status",
+        "@xla//xla:status_macros",
     ],
 )
 
@@ -381,6 +380,7 @@ tf_cc_test(
         "//tensorflow/compiler/jit",
         "//tensorflow/compiler/mlir:register_common_dialects",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
+        "//tensorflow/compiler/mlir/tf2xla/internal:graph_to_tf_executor_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/core:core_cpu_base",
@@ -392,10 +392,10 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
         "@riegeli//riegeli/bytes:fd_reader",
         "@riegeli//riegeli/bytes:read_all",
+        "@tsl//tsl/platform:protobuf",
+        "@xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 

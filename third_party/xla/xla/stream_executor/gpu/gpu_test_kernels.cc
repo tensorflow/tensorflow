@@ -59,6 +59,14 @@ absl::StatusOr<KernelLoaderSpec> GetAddI32TestKernelSpec(
       .FindKernel<internal::AddI32Kernel>(platform_id);
 }
 
+absl::StatusOr<KernelLoaderSpec>
+GetIncrementBy5I32TestKernelSpecWithCustomArgsPacking(
+    Platform::Id platform_id) {
+  return GpuKernelRegistry::GetGlobalRegistry()
+      .FindKernel<internal::IncrementBy5I32KernelWithCustomArgsPacking>(
+          platform_id);
+}
+
 KernelLoaderSpec GetAddI32PtxKernelSpec() {
   // PTX kernel compiled from:
   //
@@ -118,7 +126,7 @@ KernelLoaderSpec GetTmaPtxKernelSpec() {
   // test configuration:
   // m_1024_n_1024_k_512_dtype_float16_bm_128_bn_128_bk_32_gm_8
   // autotuner config:
-  // --xla_gpu_override_gemm_autotuner='16 block_n: 16 block_k: 128 split_k: 1
+  // --xla_gpu_override_gemm_autotuner='16 block_n: 16 block_k: 128
   // num_stages: 4 num_warps: 4 num_ctas: 1 is_tma_allowed: true '
   static constexpr absl::string_view kTmaKernelPtx = R"(
 .version 8.2
@@ -267,7 +275,7 @@ KernelLoaderSpec GetTmaPtxKernelSpec() {
     add.s64     %rd32, %rd22, %rd31;
     bar.sync     0;
     // begin inline asm
-    
+
 {
     .reg .pred complete;
     waitLoop:
@@ -379,7 +387,7 @@ KernelLoaderSpec GetTmaPtxKernelSpec() {
     // end inline asm
     bar.sync     0;
     // begin inline asm
-    
+
 {
     .reg .pred complete;
     waitLoop:
@@ -487,7 +495,7 @@ KernelLoaderSpec GetTmaPtxKernelSpec() {
     // end inline asm
     bar.sync     0;
     // begin inline asm
-    
+
 {
     .reg .pred complete;
     waitLoop:
@@ -595,7 +603,7 @@ KernelLoaderSpec GetTmaPtxKernelSpec() {
     bar.sync     0;
     mov.b32     %r581, 1;
     // begin inline asm
-    
+
 {
     .reg .pred complete;
     waitLoop:

@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 #include "absl/log/log.h"
@@ -39,10 +38,11 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-namespace {
 
 #define GEN_PASS_DEF_PEELLOOPSPASS
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h.inc"
+
+namespace {
 
 using mlir::Location;
 using mlir::OpBuilder;
@@ -79,7 +79,9 @@ struct PeelLoop : public OpRewritePattern<LoopOp> {
       peeled_map.Simplify();
 
       // If the symbol is still constrained, peeling does not help.
-      if (peeled_map.IsSymbolConstrained(sym_index)) continue;
+      if (peeled_map.IsSymbolConstrained(sym_index)) {
+        continue;
+      }
 
       // Create remainder indexing map.
       IndexingMap tail_map = indexing_map;
@@ -104,9 +106,11 @@ struct PeelLoop : public OpRewritePattern<LoopOp> {
     Location loc = loop_op.getLoc();
     SmallVector<Value, 4> inits = loop_op.getInits();
     for (const auto& indexing_map : llvm::reverse(indexing_maps)) {
-      if (indexing_map.IsKnownEmpty()) continue;
-      auto tail_loop = rewriter.create<LoopOp>(
-          loc, indexing_map, loop_op.getDims(), inits,
+      if (indexing_map.IsKnownEmpty()) {
+        continue;
+      }
+      auto tail_loop = LoopOp::create(
+          rewriter, loc, indexing_map, loop_op.getDims(), inits,
           [&](OpBuilder& nested_b, Location nested_loc, ValueRange ivs,
               ValueRange map_results, ValueRange iter_args) {
             OpBuilder::InsertionGuard guard(nested_b);
@@ -139,10 +143,5 @@ struct PeelLoopsPass : public impl::PeelLoopsPassBase<PeelLoopsPass> {
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreatePeelLoopsPass() {
-  return std::make_unique<PeelLoopsPass>();
-}
-
 }  // namespace gpu
 }  // namespace xla

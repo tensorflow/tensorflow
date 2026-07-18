@@ -230,7 +230,7 @@ TEST_F(ShapeInferenceTest, AttachContext) {
   // Error when a constant tensor value as shape was requested, but no partial
   // shapes provided.
   {
-    Tensor input_t = ::tensorflow::test::AsTensor<int32>({1, 2, 3, 4, 5});
+    Tensor input_t = ::tensorflow::test::AsTensor<int32_t>({1, 2, 3, 4, 5});
     InferenceContext c(kVersion, def, MakeOpDef(2, 2), {S({3}), S({4})},
                        {nullptr, &input_t}, {}, {});
     TF_ASSERT_OK(c.construction_status());
@@ -257,7 +257,7 @@ TEST_F(ShapeInferenceTest, AttachContext) {
   // Error when a constant tensor value as shape was requested, and a partial
   // shape was provided.
   {
-    Tensor input_t = ::tensorflow::test::AsTensor<int32>({1, 2, 3, 4, 5});
+    Tensor input_t = ::tensorflow::test::AsTensor<int32_t>({1, 2, 3, 4, 5});
     InferenceContext c(kVersion, def, MakeOpDef(2, 2), {S({3}), S({4})},
                        {nullptr, &input_t}, {S({10, -1, 5}), Unknown()}, {});
     TF_ASSERT_OK(c.construction_status());
@@ -1129,7 +1129,7 @@ TEST_F(ShapeInferenceTest, MakeShapeFromShapeTensor) {
   Tensor t;
   EXPECT_EQ("?", create(nullptr));
 
-  t = ::tensorflow::test::AsTensor<int32>({1, 2, 3});
+  t = ::tensorflow::test::AsTensor<int32_t>({1, 2, 3});
   EXPECT_EQ("[1,2,3]", create(&t));
 
   t = ::tensorflow::test::AsTensor<int64_t>({3, 2, 1});
@@ -1142,19 +1142,19 @@ TEST_F(ShapeInferenceTest, MakeShapeFromShapeTensor) {
   EXPECT_EQ("[]", create(&t));
 
   // Test negative scalar
-  t = ::tensorflow::test::AsScalar<int32>(-1);
+  t = ::tensorflow::test::AsScalar<int32_t>(-1);
   EXPECT_EQ("?", create(&t));
 
   t = ::tensorflow::test::AsTensor<float>({1, 2, 3});
   EXPECT_THAT(create(&t),
               HasSubstr("Input tensor must be int32 or int64, but was float"));
 
-  t = ::tensorflow::test::AsScalar<int32>(1);
+  t = ::tensorflow::test::AsScalar<int32_t>(1);
   auto s_scalar = create(&t);
   EXPECT_THAT(s_scalar, HasSubstr("Input tensor must be rank 1, or if its rank "
                                   "0 it must have value -1"));
 
-  t = ::tensorflow::test::AsTensor<int32>({1, 2}, TensorShape{2, 1});
+  t = ::tensorflow::test::AsTensor<int32_t>({1, 2}, TensorShape{2, 1});
   auto s_matrix = create(&t);
   EXPECT_THAT(s_matrix,
               HasSubstr("Input tensor must be rank 1, but was rank 2"));
@@ -1165,7 +1165,7 @@ TEST_F(ShapeInferenceTest, MakeShapeFromShapeTensor) {
               HasSubstr("Invalid value in tensor used for shape: -2"));
 
   // Test negative values for the dims.
-  t = ::tensorflow::test::AsTensor<int32>({3, -2, 1});
+  t = ::tensorflow::test::AsTensor<int32_t>({3, -2, 1});
   EXPECT_THAT(create(&t),
               HasSubstr("Invalid value in tensor used for shape: -2"));
 
@@ -1304,8 +1304,8 @@ TEST_F(ShapeInferenceTest, InputTensors) {
 }
 
 TEST_F(ShapeInferenceTest, MakeDimForScalarInput) {
-  Tensor t1 = tensorflow::test::AsScalar<int32>(20);
-  Tensor t2 = tensorflow::test::AsScalar<int32>(-1);
+  Tensor t1 = tensorflow::test::AsScalar<int32_t>(20);
+  Tensor t2 = tensorflow::test::AsScalar<int32_t>(-1);
   NodeDef def;
   InferenceContext c(kVersion, def, MakeOpDef(2, 2), {S({}), S({})}, {&t1, &t2},
                      {}, {});
@@ -1334,8 +1334,8 @@ TEST_F(ShapeInferenceTest, MakeDimForScalarInput) {
 }
 
 TEST_F(ShapeInferenceTest, MakeDimForScalarInputWithNegativeIndexing) {
-  Tensor t1 = tensorflow::test::AsScalar<int32>(-2);
-  Tensor t2 = tensorflow::test::AsScalar<int32>(3);
+  Tensor t1 = tensorflow::test::AsScalar<int32_t>(-2);
+  Tensor t2 = tensorflow::test::AsScalar<int32_t>(3);
   NodeDef def;
   InferenceContext c(kVersion, def, MakeOpDef(2, 2), {S({}), S({})}, {&t1, &t2},
                      {}, {});
@@ -1377,7 +1377,7 @@ TEST_F(ShapeInferenceTest, GetAttr) {
 
   std::vector<ShapeHandle> empty;
   InferenceContext c(kVersion, def, op_reg_data.op_def, empty, {}, {}, {});
-  string value;
+  std::string value;
   TF_EXPECT_OK(c.GetAttr("foo", &value));
   EXPECT_EQ("bar", value);
 }

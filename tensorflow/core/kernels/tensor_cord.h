@@ -114,7 +114,7 @@ class TensorCord {
   bool empty() const { return size() == 0; }
 
   // NOTE: This performs an expensive copy of the underlying data.
-  explicit operator string() const;
+  explicit operator std::string() const;
 
   class ChunkIterator {
    public:
@@ -188,9 +188,9 @@ class TensorCord {
     return ChunkIterator(this, chunks_.size());
   }
 
-  static string TypeName() { return kTypeName; }
+  static std::string TypeName() { return kTypeName; }
 
-  string DebugString() const {
+  std::string DebugString() const {
     return absl::StrCat("<TensorCord size=", size(), ">");
   }
 
@@ -217,7 +217,7 @@ class TensorCord {
       if (is_inline_) {
         return absl::string_view(
             rep_.internal.data() + 1,
-            *reinterpret_cast<const uint8*>(rep_.internal.data()));
+            *reinterpret_cast<const uint8_t*>(rep_.internal.data()));
       } else {
         return rep_.external.view;
       }
@@ -256,7 +256,7 @@ class TensorCord {
 
       explicit _rep_union(absl::string_view view) {
         DCHECK_LT(view.size(), kMaxInlineSize);
-        *reinterpret_cast<uint8*>(internal.data()) = view.size();
+        *reinterpret_cast<uint8_t*>(internal.data()) = view.size();
         std::memcpy(static_cast<char*>(internal.data() + 1), view.data(),
                     view.size());
       }

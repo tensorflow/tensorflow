@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_custom_op_py_strict_library", "tf_py_strict_test")
 
 package(
@@ -9,11 +9,12 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "failure_handling_lib",
     srcs = [
         "failure_handling.py",
     ],
+    strict_deps = True,
     deps = [
         ":check_preemption_py",
         ":failure_handling_util",
@@ -37,22 +38,24 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "failure_handling_util",
     srcs = [
         "failure_handling_util.py",
     ],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/eager:context",
         "//tensorflow/python/platform:tf_logging",
-        "@pypi_requests//:pkg",
+        "@pypi//requests",
         "@six_archive//:six",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "preemption_watcher",
     srcs = ["preemption_watcher.py"],
+    strict_deps = True,
     deps = [
         ":failure_handling_util",
         "//tensorflow/python/eager:context",
@@ -133,7 +136,7 @@ tf_py_strict_test(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/training:server_lib",
         "@absl_py//absl/testing:parameterized",
-        "@pypi_dill//:pkg",  # build_cleaner: keep
+        "@pypi//dill",  # build_cleaner: keep
     ],
 )
 

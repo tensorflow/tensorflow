@@ -46,7 +46,7 @@ using SliceSpecByName = absl::flat_hash_map<int64_t, std::vector<std::string>>;
 StatusOr<SliceSpecByName> BuildSliceSpecDeviceMap(
     absl::Span<const int64_t> global_shape, Layout layout) {
   if (!layout.mesh().is_cpu_mesh())
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "Saving tensors on non CPU mesh needs explicit send/receive and isn't "
         "implemented yet");
 
@@ -156,13 +156,12 @@ SaveOpSpecs BuildPerDeviceSave(
         shape_and_slice_specs.push_back({});
 
         mlir::Value new_prefix =
-            builder
-                .create<mlir::TF::AddOp>(
-                    prefix.getLoc(),
-                    mlir::dyn_cast<mlir::RankedTensorType>(prefix.getType()),
-                    prefix,
-                    StringScalarConst(builder, prefix.getLoc(),
-                                      DeviceSuffix(device_id, total_devices)))
+            mlir::TF::AddOp::create(
+                builder, prefix.getLoc(),
+                mlir::dyn_cast<mlir::RankedTensorType>(prefix.getType()),
+                prefix,
+                StringScalarConst(builder, prefix.getLoc(),
+                                  DeviceSuffix(device_id, total_devices)))
                 .getZ();
         // Generate new prefix based on device_id and save op index, only when
         // we need a new save_op.

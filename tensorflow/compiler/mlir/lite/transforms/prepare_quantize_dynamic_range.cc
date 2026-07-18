@@ -250,7 +250,7 @@ class PrepareDynamicRangeQuantizableOp
     }
     rewriter.setInsertionPointAfter(op);
     auto new_cast_op =
-        rewriter.create<CastOp>(op->getLoc(), new_result_type, op.getResult());
+        CastOp::create(rewriter, op->getLoc(), new_result_type, op.getResult());
     quantize_op->setOperand(quantize_operand_num, new_cast_op.getResult());
   }
 
@@ -337,8 +337,8 @@ class PrepareDynamicRangeQuantizableOp
       }
     }
     rewriter.setInsertionPointAfter(op);
-    auto q = rewriter.create<Q>(op->getLoc(), cast_type, op.getResult());
-    auto dq = rewriter.create<DQ>(op->getLoc(), expressed_type, q);
+    auto q = Q::create(rewriter, op->getLoc(), cast_type, op.getResult());
+    auto dq = DQ::create(rewriter, op->getLoc(), expressed_type, q);
     quantize_op->setOperand(quantize_operand_num, dq.getResult());
     return true;
   }
@@ -447,9 +447,9 @@ class PrepareDynamicRangeQuantizableOp
       // old ConstantOp is guaranteed to have one F32->F16 cast regardless of
       // its number of users.
       rewriter.setInsertionPointAfter(op);
-      auto new_const = rewriter.create<arith::ConstantOp>(
-          op->getLoc(), new_result_type, new_value_attr);
-      auto dq = rewriter.create<DQ>(op->getLoc(), old_result_type, new_const);
+      auto new_const = arith::ConstantOp::create(
+          rewriter, op->getLoc(), new_result_type, new_value_attr);
+      auto dq = DQ::create(rewriter, op->getLoc(), old_result_type, new_const);
       cast_op->replaceAllUsesWith(dq);
 
       // Return without scanning for the next CastOp as only one CastOp is

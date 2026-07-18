@@ -35,7 +35,7 @@ class ThreadFactory {
   //
   // NOTE: The caller is responsible for ensuring that this `ThreadFactory`
   // outlives the returned `Thread`.
-  virtual std::unique_ptr<Thread> StartThread(const string& name,
+  virtual std::unique_ptr<Thread> StartThread(const std::string& name,
                                               std::function<void()> fn) = 0;
 };
 

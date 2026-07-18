@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -199,7 +200,7 @@ absl::Status SinkSlices(
             user->shape(), {operation_on_slice_sources}));
     VLOG(10) << "Adding new slice: " << user_slice->ToString()
              << " to replace: " << user->ToString();
-    TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(user_slice));
+    RETURN_IF_ERROR(user->ReplaceAllUsesWith(user_slice));
   }
   return absl::OkStatus();
 }
@@ -252,7 +253,7 @@ absl::Status SinkSlices(
 // This pass currently doesn't transform non-elementwise instructions. We may
 // extend this pass to transform non-elementwise instructions, such as dot,
 // broadcast and reduce in the future.
-absl::StatusOr<bool> SliceSinker::Run(
+absl::StatusOr<bool> SliceSinker::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -288,7 +289,7 @@ absl::StatusOr<bool> SliceSinker::Run(
           instruction->operands(), std::back_inserter(slice_sources),
           [](HloInstruction* slice) { return slice->mutable_operand(0); });
 
-      TF_RETURN_IF_ERROR(SinkSlices(slice_sources, similar_operations.value()));
+      RETURN_IF_ERROR(SinkSlices(slice_sources, similar_operations.value()));
       changed = true;
     }
   }

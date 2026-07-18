@@ -13,11 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/framework/types.pb.h"
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 
 #include <algorithm>
-#include <vector>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/numeric_types.h"
@@ -172,7 +179,7 @@ __global__ void WriteUprightBoxesOutput(
 }
 
 template <typename T>
-Status ResetTensor(Tensor* t, const Eigen::GpuDevice& d) {
+absl::Status ResetTensor(Tensor* t, const Eigen::GpuDevice& d) {
   GpuLaunchConfig zconfig = GetGpuLaunchConfig(t->NumElements(), d);
   return GpuLaunchKernel(SetZero<T>, zconfig.block_count,
                          zconfig.thread_per_block, 0, d.stream(),
@@ -181,7 +188,7 @@ Status ResetTensor(Tensor* t, const Eigen::GpuDevice& d) {
 // Allocate scratch spaces that are needed for operation
 //
 
-Status AllocateGenerationTempTensors(
+absl::Status AllocateGenerationTempTensors(
     OpKernelContext* context, Tensor* d_conv_layer_indexes,
     Tensor* d_image_offset, Tensor* d_cub_temp_buffer,
     Tensor* d_sorted_conv_layer_indexes, Tensor* d_sorted_scores,
@@ -197,12 +204,12 @@ Status AllocateGenerationTempTensors(
       DataType::DT_INT32, TensorShape({num_images + 1}), d_image_offset));
   TF_RETURN_IF_ERROR(ResetTensor<int>(d_image_offset, d));
   TF_RETURN_IF_ERROR(context->allocate_temp(
-      DataType::DT_INT8, TensorShape({(int64)cub_temp_storage_bytes}),
+      DataType::DT_INT8, TensorShape({(int64_t)cub_temp_storage_bytes}),
       d_cub_temp_buffer));
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_INT32, TensorShape({num_images, conv_layer_nboxes}),
       d_sorted_conv_layer_indexes));
-  TF_RETURN_IF_ERROR(ResetTensor<int32>(d_sorted_conv_layer_indexes, d));
+  TF_RETURN_IF_ERROR(ResetTensor<int32_t>(d_sorted_conv_layer_indexes, d));
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_FLOAT, TensorShape({num_images, conv_layer_nboxes}),
       d_sorted_scores));
@@ -214,12 +221,12 @@ Status AllocateGenerationTempTensors(
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_INT8, TensorShape({num_images, num_boxes_to_generate}),
       dev_boxes_keep_flags));
-  TF_RETURN_IF_ERROR(ResetTensor<int8>(dev_boxes_keep_flags, d));
-  return OkStatus();
+  TF_RETURN_IF_ERROR(ResetTensor<int8_t>(dev_boxes_keep_flags, d));
+  return absl::OkStatus();
 }
 
 // Allocate workspace for NMS operation
-Status AllocatePreNMSTempTensors(
+absl::Status AllocatePreNMSTempTensors(
     OpKernelContext* context, Tensor* dev_image_prenms_boxes,
     Tensor* dev_image_prenms_scores, Tensor* dev_image_boxes_keep_list,
     Tensor* dev_postnms_rois, Tensor* dev_postnms_rois_probs,
@@ -239,7 +246,7 @@ Status AllocatePreNMSTempTensors(
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_INT32, TensorShape({num_boxes_to_generate}),
       dev_image_boxes_keep_list));
-  TF_RETURN_IF_ERROR(ResetTensor<int32>(dev_image_boxes_keep_list, d));
+  TF_RETURN_IF_ERROR(ResetTensor<int32_t>(dev_image_boxes_keep_list, d));
 
   const int max_postnms_nboxes = std::min(num_boxes_to_generate, post_nms_topn);
   TF_RETURN_IF_ERROR(context->allocate_temp(
@@ -255,9 +262,9 @@ Status AllocatePreNMSTempTensors(
 
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_INT32, TensorShape({num_images}), dev_prenms_nboxes));
-  TF_RETURN_IF_ERROR(ResetTensor<int32>(dev_prenms_nboxes, d));
+  TF_RETURN_IF_ERROR(ResetTensor<int32_t>(dev_prenms_nboxes, d));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Initialize index and offset arrays.
@@ -290,20 +297,20 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("post_nms_topn", &post_nms_topn_));
     OP_REQUIRES(context, post_nms_topn_ > 0,
-                errors::InvalidArgument("post_nms_topn can't be 0 or less"));
+                absl::InvalidArgumentError("post_nms_topn can't be 0 or less"));
     bbox_xform_clip_default_ = log(1000.0 / 16.);
   }
 
   template <typename T>
-  Status GetScalarValue(OpKernelContext* context, int input, T* value) {
+  absl::Status GetScalarValue(OpKernelContext* context, int input, T* value) {
     const Tensor& scalar_tensor = context->input(input);
     if (!TensorShapeUtils::IsScalar(scalar_tensor.shape())) {
-      return errors::InvalidArgument("Expected a scalar in input ", input,
-                                     "but got shape ",
-                                     scalar_tensor.shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected a scalar in input ", input, "but got shape ",
+                       scalar_tensor.shape().DebugString()));
     }
     *value = scalar_tensor.scalar<T>()();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void Compute(tensorflow::OpKernelContext* context) override {
@@ -314,19 +321,19 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
     const auto anchors = context->input(3);
 
     OP_REQUIRES(context, scores.dims() == 4,
-                errors::InvalidArgument("`scores` must be rank 4 but is rank ",
-                                        scores.dims()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "`scores` must be rank 4 but is rank ", scores.dims())));
     OP_REQUIRES(
         context, bbox_deltas.dims() == 4,
-        errors::InvalidArgument("`bbox_deltas` must be rank 4 but is rank ",
-                                bbox_deltas.dims()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "`bbox_deltas` must be rank 4 but is rank ", bbox_deltas.dims())));
     OP_REQUIRES(
         context, image_info.dims() == 2,
-        errors::InvalidArgument("`image_info` must be rank 2 but is rank ",
-                                image_info.dims()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "`image_info` must be rank 2 but is rank ", image_info.dims())));
     OP_REQUIRES(context, anchors.dims() == 3,
-                errors::InvalidArgument("`anchors` must be rank 3 but is rank ",
-                                        anchors.dims()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "`anchors` must be rank 3 but is rank ", anchors.dims())));
 
     const auto num_images = scores.dim_size(0);
     const auto num_anchors = scores.dim_size(3);
@@ -334,7 +341,7 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
     const auto width = scores.dim_size(2);
     const auto box_dim = anchors.dim_size(2) / num_anchors;
     OP_REQUIRES(context, box_dim == 4,
-                errors::OutOfRange("Box dimensions need to be 4"));
+                absl::OutOfRangeError("Box dimensions need to be 4"));
     // TODO(skama): make sure that inputs are ok.
     const int image_stride = height * width;
     const int conv_layer_nboxes =
@@ -348,14 +355,14 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
     float min_size;
     OP_REQUIRES_OK(context, GetScalarValue(context, 4, &nms_threshold));
     if (nms_threshold < 0 || nms_threshold > 1.0) {
-      context->SetStatus(errors::InvalidArgument(
-          "nms_threshold should be between 0 and 1. Got ", nms_threshold));
+      context->SetStatus(absl::InvalidArgumentError(absl::StrCat(
+          "nms_threshold should be between 0 and 1. Got ", nms_threshold)));
       return;
     }
     OP_REQUIRES_OK(context, GetScalarValue(context, 5, &pre_nms_topn));
     if (pre_nms_topn <= 0) {
-      context->SetStatus(errors::InvalidArgument(
-          "pre_nms_topn should be greater than 0", pre_nms_topn));
+      context->SetStatus(absl::InvalidArgumentError(
+          absl::StrCat("pre_nms_topn should be greater than 0", pre_nms_topn)));
       return;
     }
     OP_REQUIRES_OK(context, GetScalarValue(context, 6, &min_size));
@@ -412,7 +419,7 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
     TF_OP_REQUIRES_CUDA_SUCCESS(
         context,
         gpuprim::DeviceSegmentedRadixSort::SortPairsDescending(
-            d_cub_temp_buffer.flat<int8>().data(), cub_temp_storage_bytes,
+            d_cub_temp_buffer.flat<int8_t>().data(), cub_temp_storage_bytes,
             scores.flat<float>().data(), dev_sorted_scores.flat<float>().data(),
             d_conv_layer_indexes.flat<int>().data(),
             d_sorted_conv_layer_indexes.flat<int>().data(),
@@ -438,7 +445,7 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
             image_info.flat<float>().data(), bbox_xform_clip_default_,
             reinterpret_cast<float4*>(dev_boxes.flat<float>().data()),
             nboxes_to_generate,
-            (char*)dev_boxes_keep_flags.flat<int8>().data()));
+            (char*)dev_boxes_keep_flags.flat<int8_t>().data()));
     const int nboxes_generated = nboxes_to_generate;
     const int roi_cols = box_dim;
     Tensor dev_image_prenms_boxes;
@@ -457,14 +464,15 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
     // get the pointers for temp storages
     int* d_prenms_nboxes = dev_prenms_nboxes.flat<int>().data();
     int h_prenms_nboxes = 0;
-    char* d_cub_temp_storage = (char*)d_cub_temp_buffer.flat<int8>().data();
+    char* d_cub_temp_storage = (char*)d_cub_temp_buffer.flat<int8_t>().data();
     float* d_image_prenms_boxes = dev_image_prenms_boxes.flat<float>().data();
     float* d_image_prenms_scores = dev_image_prenms_scores.flat<float>().data();
     int* d_image_boxes_keep_list = dev_image_boxes_keep_list.flat<int>().data();
 
     int nrois_in_output = 0;
     // get the pointers to boxes and scores
-    char* d_boxes_keep_flags = (char*)dev_boxes_keep_flags.flat<int8>().data();
+    char* d_boxes_keep_flags =
+        (char*)dev_boxes_keep_flags.flat<int8_t>().data();
     float* d_boxes = dev_boxes.flat<float>().data();
     float* d_sorted_scores = dev_sorted_scores.flat<float>().data();
 
@@ -487,7 +495,7 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
     for (int image_index = 0; image_index < num_images; ++image_index) {
       // reset output workspaces
       OP_REQUIRES_OK(context,
-                     ResetTensor<int32>(&dev_image_boxes_keep_list, d));
+                     ResetTensor<int32_t>(&dev_image_boxes_keep_list, d));
       // Sub matrices for current image
       // boxes
       const float* d_image_boxes =

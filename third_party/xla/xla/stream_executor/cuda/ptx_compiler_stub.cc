@@ -13,10 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <string>
-
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/ptx_compiler.h"
@@ -25,7 +24,7 @@ limitations under the License.
 
 namespace stream_executor {
 absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingLibNvPtxCompiler(
-    const CudaComputeCapability& cc, const std::string& ptx, GpuAsmOpts options,
+    const CudaComputeCapability& cc, absl::string_view ptx, GpuAsmOpts options,
     bool cancel_if_reg_spill, bool dump_compilation_log) {
   return absl::UnimplementedError(
       "XLA was built without libnvptxcompiler support.");

@@ -14,24 +14,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <sstream>
 #include <string>
 
+#include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
+#include "Eigen/Core"  // from @eigen_archive
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/kernels/tensor_shape_utils.h"
+#include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
+#include "xla/tsl/platform/macros.h"
 #include "tensorflow/core/framework/registration/registration.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/bfloat16.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/protobuf.h"
 
 namespace {
 
@@ -90,7 +92,7 @@ void ScalarSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
       static_cast<tensorflow::tstring*>(TF_TensorData(params.tags));
   auto values_array = static_cast<T*>(TF_TensorData(params.values));
   // Copy tags and values into summary protobuf
-  for (int i = 0; i < TF_TensorElementCount(params.tags); ++i) {
+  for (int64_t i = 0; i < TF_TensorElementCount(params.tags); ++i) {
     tensorflow::Summary::Value* v = s.add_value();
     const tensorflow::tstring& Ttags_i = tags_array[i];
     v->set_tag(Ttags_i.data(), Ttags_i.size());
@@ -126,7 +128,7 @@ std::string SingleTag(TF_Tensor* tags) {
   if (TF_TensorElementCount(tags) == 1) {
     const char* single_tag =
         static_cast<tensorflow::tstring*>(TF_TensorData(tags))->c_str();
-    return tensorflow::strings::StrCat(" (tag '", single_tag, "')");
+    return absl::StrCat(" (tag '", single_tag, "')");
   } else {
     return "";
   }
@@ -155,13 +157,13 @@ void RegisterScalarSummaryOpKernel() {
 TF_ATTRIBUTE_UNUSED bool IsScalarSummaryOpKernelRegistered = []() {
   if (SHOULD_REGISTER_OP_KERNEL("ScalarSummary")) {
     RegisterScalarSummaryOpKernel<int64_t>();
-    RegisterScalarSummaryOpKernel<tensorflow::uint64>();
-    RegisterScalarSummaryOpKernel<tensorflow::int32>();
-    RegisterScalarSummaryOpKernel<tensorflow::uint32>();
-    RegisterScalarSummaryOpKernel<tensorflow::uint16>();
-    RegisterScalarSummaryOpKernel<tensorflow::int16>();
-    RegisterScalarSummaryOpKernel<tensorflow::int8>();
-    RegisterScalarSummaryOpKernel<tensorflow::uint8>();
+    RegisterScalarSummaryOpKernel<uint64_t>();
+    RegisterScalarSummaryOpKernel<int32_t>();
+    RegisterScalarSummaryOpKernel<uint32_t>();
+    RegisterScalarSummaryOpKernel<uint16_t>();
+    RegisterScalarSummaryOpKernel<int16_t>();
+    RegisterScalarSummaryOpKernel<int8_t>();
+    RegisterScalarSummaryOpKernel<uint8_t>();
     RegisterScalarSummaryOpKernel<Eigen::half>();
     RegisterScalarSummaryOpKernel<tensorflow::bfloat16>();
     RegisterScalarSummaryOpKernel<float>();

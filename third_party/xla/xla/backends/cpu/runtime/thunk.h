@@ -31,17 +31,18 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/xfeed_manager.h"
-#include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
-#include "xla/backends/cpu/runtime/xnnpack/xnn_threadpool.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_threadpool.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/runtime/device_id.h"
 #include "xla/runtime/resource_use.h"
-#include "xla/service/global_device_id.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
 #include "xla/tsl/platform/logging.h"
@@ -71,9 +72,9 @@ class Thunk {
   enum class Kind {
     kCall,
     kCollective,
-    kCopy,
     kConditional,
     kConvolution,
+    kCopy,
     kCustomCall,
     kDot,
     kFft,
@@ -83,10 +84,11 @@ class Thunk {
     kPartitionId,
     kReplicaId,
     kRngGetAndUpdateState,
+    kRngSeed,
     kSort,
     kTopK,
     kWhile,
-    kXnnFusion,
+    kYnnFusion,
     kOneDnnFusion,
   };
 
@@ -249,17 +251,17 @@ class Thunk {
   };
 
   //===--------------------------------------------------------------------===//
-  // XnnParams
+  // YnnParams
   //===--------------------------------------------------------------------===//
 
   // Parameters capturing all the details required for running XNNPACK fusions.
-  struct XnnParams {
-    static absl::StatusOr<XnnParams> Create(
+  struct YnnParams {
+    static absl::StatusOr<YnnParams> Create(
         const ExecutableRunOptions* run_options);
 
-    XnnThreadpool threadpool = nullptr;
+    YnnThreadpool threadpool = nullptr;
 
-    explicit XnnParams(XnnThreadpool threadpool);
+    explicit YnnParams(YnnThreadpool threadpool);
   };
 
   //===--------------------------------------------------------------------===//
@@ -276,11 +278,12 @@ class Thunk {
     TaskRunner* task_runner = nullptr;
     CollectiveExecuteParams* collective_params = nullptr;
     CustomCallExecuteParams* custom_call_params = nullptr;
-    XnnParams* xnn_params = nullptr;
+    YnnParams* ynn_params = nullptr;
     int64_t run_id = -1;          // -1 means no run id is set.
     int64_t device_ordinal = -1;  // -1 means no device ordinal is set.
     ExecuteSession session = ExecuteSession(ExecuteSession::kMaxWorkers,
                                             ExecuteSession::kSplitThreshold);
+    uint64_t rng_seed = 0;
   };
 
   // An execute event that becomes ready when all tasks are completed.
@@ -377,7 +380,7 @@ class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
   static absl::StatusOr<ThunkSequence> Of(Args&&... args) {
     static_assert(std::is_base_of_v<Thunk, T>,
                   "ThunkSequence::Of() requires `T` to be a `Thunk` subclass.");
-    TF_ASSIGN_OR_RETURN(auto thunk, T::Create(std::forward<Args>(args)...));
+    ASSIGN_OR_RETURN(auto thunk, T::Create(std::forward<Args>(args)...));
     return ThunkSequence(std::move(thunk));
   }
 

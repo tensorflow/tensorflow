@@ -23,9 +23,6 @@ except ImportError:
   # Fall back to the build-time dependency if the system package is not available.
   from .....third_party import wrapt  # pylint: disable=relative-beyond-top-level
 
-from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function as defun
-from tensorflow.python.ops import variables
 from tensorflow.python.trackable import base
 from tensorflow.python.trackable import layer_utils
 from tensorflow.python.util.compat import collections_abc
@@ -195,6 +192,8 @@ class TrackableDataStructure(base.Trackable):
 
   def _track_value(self, value, name):
     """Add a dependency on `value`."""
+    # pylint: disable=g-import-not-at-top
+    from tensorflow.python.ops import variables
     value = sticky_attribute_assignment(
         trackable=self, value=value, name=name)
     if isinstance(value, variables.Variable):
@@ -810,6 +809,12 @@ class _DictWrapper(TrackableDataStructure, wrapt.ObjectProxy):
             (self.__wrapped__,))
 
   def __getattribute__(self, name):
+    if name == "__dict__":
+      # Returns __dict__ from wrapt.ObjectProxy
+      try:
+        return object.__getattribute__(self, "__dict__")
+      except (AttributeError, TypeError):
+        return {}
     if (hasattr(type(self), name)
         and isinstance(getattr(type(self), name), property)):
       # Bypass ObjectProxy for properties. Whether this workaround is necessary
@@ -1108,6 +1113,9 @@ class _TupleWrapper(TrackableDataStructure, wrapt.ObjectProxy):
 
 
 def _is_function(x):
+  # pylint: disable=g-import-not-at-top
+  from tensorflow.python.eager import def_function
+  from tensorflow.python.eager import function as defun
   return isinstance(x, (def_function.Function, defun.ConcreteFunction))
 
 

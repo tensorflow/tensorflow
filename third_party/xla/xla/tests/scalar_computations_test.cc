@@ -21,6 +21,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -44,7 +45,7 @@ constexpr ErrorSpec kErrorSpec{0.0001};
 
 class ScalarComputationsTest
     : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+          HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  protected:
   // A template for building and running a binary comparison test.
   template <typename NativeT>
@@ -281,7 +282,7 @@ void PrintTo(const DivS32Params& p, std::ostream* os) {
 }
 
 class DivS32Test : public ClientLibraryTestRunnerMixin<
-                       HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
+                       HloPjRtInterpreterReferenceMixin<HloTestBase>>,
                    public ::testing::WithParamInterface<DivS32Params> {};
 
 TEST_P(DivS32Test, DivideTwoScalarsS32) {
@@ -385,6 +386,8 @@ TEST_F(ScalarComputationsTest, DivU32s) {
             LiteralUtil::CreateR0<uint32_t>(dividend);
         const Literal divisor_literal =
             LiteralUtil::CreateR0<uint32_t>(divisor);
+        *div_computation.mutable_proto()->mutable_name() =
+            absl::StrCat(TestName(), "_", dividend, "_", divisor);
         TF_ASSERT_OK_AND_ASSIGN(
             const Literal actual_literal,
             ExecuteAndTransfer(div_computation,
@@ -423,6 +426,8 @@ TEST_F(ScalarComputationsTest, RemU32s) {
             LiteralUtil::CreateR0<uint32_t>(dividend);
         const Literal divisor_literal =
             LiteralUtil::CreateR0<uint32_t>(divisor);
+        *rem_computation.mutable_proto()->mutable_name() =
+            absl::StrCat(TestName(), "_", dividend, "_", divisor);
         TF_ASSERT_OK_AND_ASSIGN(
             const Literal actual_literal,
             ExecuteAndTransfer(rem_computation,

@@ -11,11 +11,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/window_dataset_op.h"
 
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/name_utils.h"
@@ -42,7 +46,7 @@ class WindowDatasetParams : public DatasetParams {
                       int64_t stride, bool drop_remainder,
                       DataTypeVector output_dtypes,
                       std::vector<PartialTensorShape> output_shapes,
-                      string node_name)
+                      std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         size_(size),
@@ -62,7 +66,8 @@ class WindowDatasetParams : public DatasetParams {
             CreateTensor<bool>(TensorShape({}), {drop_remainder_})};
   }
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override {
     input_names->clear();
     input_names->emplace_back(WindowDatasetOp::kInputDataset);
     input_names->emplace_back(WindowDatasetOp::kSize);
@@ -80,7 +85,9 @@ class WindowDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  string dataset_type() const override { return WindowDatasetOp::kDatasetType; }
+  std::string dataset_type() const override {
+    return WindowDatasetOp::kDatasetType;
+  }
 
  private:
   int64_t size_;
@@ -577,6 +584,46 @@ TEST_F(WindowDatasetOpTest, InvalidArguments) {
     EXPECT_EQ(Initialize(dataset_params).code(),
               absl::StatusCode::kInvalidArgument);
   }
+}
+
+TEST_F(WindowDatasetOpTest, MalformedCheckpoint_TriggersOutOfBoundsRead) {
+  auto dataset_params = WindowDatasetParams1();
+  TF_ASSERT_OK(Initialize(dataset_params));
+
+  VariantTensorDataWriter writer;
+  std::string prefix = "Iterator::Range::Window";
+
+  TF_ASSERT_OK(writer.WriteScalar(prefix, "input_impl_empty", ""));
+  TF_ASSERT_OK(writer.WriteScalar(prefix, "buffer_size", 2));
+  TF_ASSERT_OK(writer.WriteScalar(prefix, "buffer[0].code", 0));
+  TF_ASSERT_OK(writer.WriteScalar(prefix, "buffer[0].size", 2));
+  TF_ASSERT_OK(writer.WriteTensor(prefix, "buffer[0][0]",
+                                  CreateTensor<int64_t>(TensorShape({}), {0})));
+  TF_ASSERT_OK(writer.WriteTensor(prefix, "buffer[0][1]",
+                                  CreateTensor<int64_t>(TensorShape({}), {0})));
+  TF_ASSERT_OK(writer.WriteScalar(prefix, "buffer[1].code", 0));
+  TF_ASSERT_OK(writer.WriteScalar(prefix, "buffer[1].size", 1));
+  TF_ASSERT_OK(writer.WriteTensor(prefix, "buffer[1][0]",
+                                  CreateTensor<int64_t>(TensorShape({}), {0})));
+
+  std::vector<const VariantTensorData*> data;
+  writer.GetData(&data);
+
+  VariantTensorDataReader reader(data);
+  TF_ASSERT_OK(RestoreIterator(iterator_ctx_.get(), &reader,
+                               dataset_params.iterator_prefix(), *dataset_,
+                               &iterator_));
+
+  bool end_of_sequence = false;
+  std::vector<Tensor> out_tensors;
+  absl::Status status =
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence);
+  EXPECT_EQ(absl::StatusCode::kInternal, status.code());
+  EXPECT_TRUE(absl::StrContains(
+      status.message(),
+      "Malformed checkpoint: window elements have inconsistent number of "
+      "components"))
+      << status.message();
 }
 
 }  // namespace

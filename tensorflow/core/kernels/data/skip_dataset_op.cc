@@ -14,8 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/skip_dataset_op.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -25,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 
@@ -63,7 +69,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     if (count_ < 0) {
       return std::make_unique<EmptyIterator>(EmptyIterator::Params{
           this, name_utils::IteratorPrefix(kEmptySkip, prefix)});
@@ -81,7 +87,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
@@ -103,7 +109,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
     return input_->CheckExternalState();
   }
 
-  absl::Status Get(OpKernelContext* ctx, int64 index,
+  absl::Status Get(OpKernelContext* ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     return input_->Get(ctx, index + count_, out_tensors);
@@ -257,6 +263,12 @@ class SkipDatasetOp::Dataset : public DatasetBase {
 
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIndex, &i_));
+      if (i_ < 0 || (dataset()->count_ >= 0 && i_ > dataset()->count_)) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Restored tf.data.Dataset.skip index ", i_,
+                         " is out of range [0, ", dataset()->count_, "]."));
+      }
+
       int64_t input_empty;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(prefix(), kInputImplEmpty, &input_empty));

@@ -39,8 +39,8 @@ using GPUDevice = Eigen::GpuDevice;
 // Kernel for Multinomial op.  Data is interpreted to have the following shapes:
 //   scores: [B, S, C];  maxima: [B, S];  output: [B, S].
 template <typename OutputType>
-__global__ void MultinomialKernel(int32 nthreads, const int32 num_classes,
-                                  const int32 num_samples,
+__global__ void MultinomialKernel(int32_t nthreads, const int32_t num_classes,
+                                  const int32_t num_samples,
                                   const float* __restrict__ scores,
                                   const float* __restrict__ maxima,
                                   OutputType* __restrict__ output) {
@@ -113,7 +113,7 @@ struct MultinomialFunctor<GPUDevice, T, OutputType> {
     // Necessary for atomicMax() inside the kernel.
     output.device(d) = output.constant(0LL);
 
-    const int32 work_items = batch_size * num_samples * num_classes;
+    const int32_t work_items = batch_size * num_samples * num_classes;
     GpuLaunchConfig config = GetGpuLaunchConfig(work_items, d);
     TF_CHECK_OK(GpuLaunchKernel(
         MultinomialKernel<OutputType>, config.block_count,
@@ -123,17 +123,17 @@ struct MultinomialFunctor<GPUDevice, T, OutputType> {
 };
 
 // Explicit instantiation of the GPU functors.
-template struct MultinomialFunctor<GPUDevice, Eigen::half, int32>;
-template struct MultinomialFunctor<GPUDevice, float, int32>;
-template struct MultinomialFunctor<GPUDevice, double, int32>;
-template struct MultinomialFunctor<GPUDevice, int32, int32>;
-template struct MultinomialFunctor<GPUDevice, int64, int32>;
+template struct MultinomialFunctor<GPUDevice, Eigen::half, int32_t>;
+template struct MultinomialFunctor<GPUDevice, float, int32_t>;
+template struct MultinomialFunctor<GPUDevice, double, int32_t>;
+template struct MultinomialFunctor<GPUDevice, int32_t, int32_t>;
+template struct MultinomialFunctor<GPUDevice, int64_t, int32_t>;
 
-template struct MultinomialFunctor<GPUDevice, Eigen::half, int64>;
-template struct MultinomialFunctor<GPUDevice, float, int64>;
-template struct MultinomialFunctor<GPUDevice, double, int64>;
-template struct MultinomialFunctor<GPUDevice, int32, int64>;
-template struct MultinomialFunctor<GPUDevice, int64, int64>;
+template struct MultinomialFunctor<GPUDevice, Eigen::half, int64_t>;
+template struct MultinomialFunctor<GPUDevice, float, int64_t>;
+template struct MultinomialFunctor<GPUDevice, double, int64_t>;
+template struct MultinomialFunctor<GPUDevice, int32_t, int64_t>;
+template struct MultinomialFunctor<GPUDevice, int64_t, int64_t>;
 
 }  // namespace functor
 }  // namespace tensorflow

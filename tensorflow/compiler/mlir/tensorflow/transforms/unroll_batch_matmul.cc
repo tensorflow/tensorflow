@@ -89,9 +89,9 @@ TF::ReshapeOp ConvertTFBatchMatMulOp<BatchMatMulOpType>::createReshapeOp(
   Type resultType = RankedTensorType::get(shape, element_type);
   auto constant_attr = DenseElementsAttr::get(shape_spec_type, shape);
   auto shape_tensor =
-      rewriter.create<TF::ConstOp>(loc, shape_spec_type, constant_attr);
-  return rewriter.create<TF::ReshapeOp>(loc, resultType, /*tensor=*/value,
-                                        /*shape=*/shape_tensor);
+      TF::ConstOp::create(rewriter, loc, shape_spec_type, constant_attr);
+  return TF::ReshapeOp::create(rewriter, loc, resultType, /*tensor=*/value,
+                               /*shape=*/shape_tensor);
 }
 
 template <typename BatchMatMulOpType>
@@ -122,16 +122,16 @@ std::vector<Value> ConvertTFBatchMatMulOp<BatchMatMulOpType>::sliceInput(
     auto split_dimension_type =
         RankedTensorType::get({}, rewriter.getIntegerType(32));
     auto split_dimension_attr = DenseElementsAttr::get(split_dimension_type, 0);
-    auto split_dimension_op = rewriter.create<TF::ConstOp>(
-        loc, split_dimension_type, split_dimension_attr);
+    auto split_dimension_op = TF::ConstOp::create(
+        rewriter, loc, split_dimension_type, split_dimension_attr);
 
     // Split along each batch.
     SmallVector<int64_t, 3> slice_size = {1, num_rows, num_cols};
     Type slice_result_type = RankedTensorType::get(slice_size, element_type);
     llvm::SmallVector<Type, 4> output_types(batch_size, slice_result_type);
-    auto split_op = rewriter.create<TF::SplitOp>(loc, output_types,
-                                                 split_dimension_op.getOutput(),
-                                                 reshape_op.getOutput());
+    auto split_op = TF::SplitOp::create(rewriter, loc, output_types,
+                                        split_dimension_op.getOutput(),
+                                        reshape_op.getOutput());
 
     // Squeeze each batch, i.e. reshape
     // [1, num_rows, num_cols] -> [num_rows, num_cols]
@@ -259,11 +259,11 @@ LogicalResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
       lhs_batch_idx = batch_idx;
       rhs_batch_idx = batch_idx;
     }
-    auto matmul = rewriter.create<TF::MatMulOp>(loc, matmul_type,
-                                                /*a=*/sliced_lhs[lhs_batch_idx],
-                                                /*b=*/sliced_rhs[rhs_batch_idx],
-                                                /*transpose_a=*/op.getAdjX(),
-                                                /*transpose_b=*/op.getAdjY());
+    auto matmul = TF::MatMulOp::create(rewriter, loc, matmul_type,
+                                       /*a=*/sliced_lhs[lhs_batch_idx],
+                                       /*b=*/sliced_rhs[rhs_batch_idx],
+                                       /*transpose_a=*/op.getAdjX(),
+                                       /*transpose_b=*/op.getAdjY());
     matmuls.emplace_back(matmul.getProduct());
   }
 
@@ -272,7 +272,7 @@ LogicalResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
       {bcast.output_batch_size(), rows, cols}, element_type);
   const auto axis = rewriter.getI64IntegerAttr(0);
   auto pack_op =
-      rewriter.create<TF::PackOp>(loc, packed_type, /*values=*/matmuls, axis);
+      TF::PackOp::create(rewriter, loc, packed_type, /*values=*/matmuls, axis);
 
   // Reshape the rank-3 tensor into the correct output shape.
   const auto& result_batch_shape = bcast.output_batch_shape().dim_sizes();

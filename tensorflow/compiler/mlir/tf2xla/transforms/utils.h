@@ -42,8 +42,8 @@ void BuildReduceBody(Type element_type, Region* body, OpBuilder* builder) {
   block->addArguments({type, type}, SmallVector<Location, 2>(2, loc));
 
   auto reducer =
-      builder->create<Op>(loc, block->getArgument(0), block->getArgument(1));
-  builder->create<ReturnOp>(loc, reducer.getResult());
+      Op::create(*builder, loc, block->getArgument(0), block->getArgument(1));
+  ReturnOp::create(*builder, loc, reducer.getResult());
 }
 
 ConstantOp GetScalarConstOfType(Type ty, Location loc, int64_t raw_value,

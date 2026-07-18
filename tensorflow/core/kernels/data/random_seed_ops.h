@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/random/philox_random.h"
@@ -139,7 +140,7 @@ class AnonymousSeedGeneratorHandleOp
   void Compute(OpKernelContext* ctx) override;
 
  private:
-  string name() override;
+  std::string name() override;
   absl::Status CreateResource(
       OpKernelContext* ctx, std::unique_ptr<FunctionLibraryDefinition> flib_def,
       std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,

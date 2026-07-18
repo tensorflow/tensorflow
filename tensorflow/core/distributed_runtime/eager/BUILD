@@ -37,6 +37,7 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:eager_operation",
@@ -100,6 +101,7 @@ cc_library(
         ":cluster_function_library_runtime",
         ":remote_mgr",
         ":remote_tensor_handle",
+        "//tensorflow/c/eager:abstract_tensor_handle",
         "//tensorflow/c/eager:immediate_execution_distributed_manager",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -123,7 +125,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-        "@local_xla//xla/tsl/distributed_runtime/preemption:preemption_notifier",
+        "@xla//xla/tsl/distributed_runtime/preemption:preemption_notifier",
     ] + tf_grpc_cc_dependencies(),
 )
 

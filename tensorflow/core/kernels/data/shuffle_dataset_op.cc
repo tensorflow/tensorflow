@@ -17,6 +17,7 @@ limitations under the License.
 #include <atomic>
 #include <cstdint>
 #include <deque>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <string>
@@ -25,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
@@ -99,13 +101,13 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
         count_(count),
         traceme_metadata_(
             {{"buffer_size",
-              strings::Printf("%lld", static_cast<long long>(buffer_size))}}) {
+              absl::StrFormat("%lld", static_cast<long long>(buffer_size))}}) {
     input_->Ref();
   }
 
   ~ShuffleDatasetBase() override { input_->Unref(); }
 
-  virtual string op_type() const = 0;
+  virtual std::string op_type() const = 0;
 
   const DataTypeVector& output_dtypes() const override {
     return input_->output_dtypes();
@@ -135,7 +137,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     return input_->CheckExternalState();
   }
 
-  absl::Status Get(OpKernelContext* ctx, int64 index,
+  absl::Status Get(OpKernelContext* ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     {
@@ -144,7 +146,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
         InitializeRandomAccessIndices();
       }
     }
-    int64 shuffled_index;
+    int64_t shuffled_index;
     {
       tf_shared_lock l(mu_);
       shuffled_index = shuffled_indices_[index];
@@ -153,7 +155,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     return absl::OkStatus();
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
     params.set_args(buffer_size_, seed_generator_->seed(),
                     seed_generator_->seed2(), count_);
@@ -161,14 +163,14 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
   }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(
         Iterator::Params{this, name_utils::IteratorPrefix(op_type(), prefix)},
         seed_generator_.get());
   }
 
   void InitializeRandomAccessIndices() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    const int64 cardinality = Cardinality();
+    const int64_t cardinality = Cardinality();
     shuffled_indices_ = std::vector<std::int64_t>(cardinality);
     std::iota(shuffled_indices_.begin(), shuffled_indices_.end(), 0);
     int64_t shuffled_index = 0;
@@ -357,6 +359,11 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
         int64_t temp;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(this->prefix(), kSlicesSize, &temp));
+        if (temp < 0 || temp > std::numeric_limits<size_t>::max()) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Invalid checkpoint for tf.data shuffle dataset: ", kSlicesSize,
+              " = ", temp, " is not a valid value."));
+        }
         slices_size = static_cast<size_t>(temp);
       }
       buffer_ = std::make_unique<std::vector<std::vector<Tensor>>>();
@@ -385,6 +392,11 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
         TF_RETURN_IF_ERROR(reader->ReadScalar(
             this->prefix(), absl::StrJoin(std::make_tuple(kSlicesEnd, i), "_"),
             &end));
+        if (start > end) {
+          return absl::InvalidArgumentError(
+              absl::StrCat("Slice start (", start,
+                           ") cannot be greater than slice end (", end, ")."));
+        }
         int64_t reached_end_of_sequence;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
             prefix(),
@@ -620,7 +632,7 @@ class ShuffleDatasetOp::Dataset : public ShuffleDatasetBase {
     }
   }
 
-  string op_type() const override { return kDatasetType; }
+  std::string op_type() const override { return kDatasetType; }
 
  protected:
   absl::Status AsGraphDefInternal(SerializationContext* ctx,
@@ -680,7 +692,7 @@ class ShuffleDatasetOp::DatasetV2 : public ShuffleDatasetBase {
     }
   }
 
-  string op_type() const override { return kDatasetType; }
+  std::string op_type() const override { return kDatasetType; }
 
  protected:
   absl::Status AsGraphDefInternal(SerializationContext* ctx,
@@ -735,7 +747,7 @@ class ShuffleDatasetOp::DatasetV3 : public ShuffleDatasetBase {
     }
   }
 
-  string op_type() const override { return kDatasetType; }
+  std::string op_type() const override { return kDatasetType; }
 
  protected:
   absl::Status AsGraphDefInternal(SerializationContext* ctx,
@@ -797,16 +809,17 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                  ParseScalarArgument<int64_t>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(
       ctx, buffer_size > 0 || buffer_size == kUnknownCardinality,
-      errors::InvalidArgument(
+      absl::InvalidArgumentError(
           "buffer_size must be greater than zero or UNKNOWN_CARDINALITY"));
 
   int64_t count = 1;
   static std::atomic<int64_t> resource_id_counter(0);
-  const string& container = ctx->resource_manager()->default_container();
+  const std::string& container = ctx->resource_manager()->default_container();
   auto name = strings::StrCat(ctx->op_kernel().name(), "/", kSeedGenerator, "_",
                               resource_id_counter.fetch_add(1));
   if (op_version_ == 3) {
-    auto handle = HandleFromInput(ctx, 4);
+    ResourceHandle handle;
+    OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 4, &handle));
     SeedGeneratorManager* manager = nullptr;
     absl::Status s = ctx->resource_manager()->Lookup<SeedGeneratorManager>(
         handle.container(), handle.name(), &manager);
@@ -843,7 +856,8 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                               std::move(seeds), manager,
                                               std::move(handle), owns_resource);
   } else if (op_version_ == 2) {
-    auto handle = HandleFromInput(ctx, 2);
+    ResourceHandle handle;
+    OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 2, &handle));
     SeedGeneratorManager* manager = nullptr;
     absl::Status s = ctx->resource_manager()->Lookup<SeedGeneratorManager>(
         handle.container(), handle.name(), &manager);
@@ -927,7 +941,7 @@ class ShuffleAndRepeatDatasetOp::Dataset : public ShuffleDatasetBase {
     }
   }
 
-  string op_type() const override { return kDatasetType; }
+  std::string op_type() const override { return kDatasetType; }
 
  protected:
   absl::Status AsGraphDefInternal(SerializationContext* ctx,
@@ -985,7 +999,7 @@ class ShuffleAndRepeatDatasetOp::DatasetV2 : public ShuffleDatasetBase {
     }
   }
 
-  string op_type() const override { return kDatasetType; }
+  std::string op_type() const override { return kDatasetType; }
 
  protected:
   absl::Status AsGraphDefInternal(SerializationContext* ctx,
@@ -1048,7 +1062,7 @@ void ShuffleAndRepeatDatasetOp::MakeDataset(OpKernelContext* ctx,
                  ParseScalarArgument<int64_t>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(
       ctx, buffer_size > 0 || buffer_size == kUnknownCardinality,
-      errors::InvalidArgument(
+      absl::InvalidArgumentError(
           "buffer_size must be greater than zero or UNKNOWN_CARDINALITY"));
 
   int64_t seed;
@@ -1061,17 +1075,18 @@ void ShuffleAndRepeatDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kCount, &count));
 
   OP_REQUIRES(ctx, count > 0 || count == -1,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(
                   "count must be greater than zero or equal to -1."));
 
   RandomSeeds seeds(seed, seed2);
 
   static std::atomic<int64_t> resource_id_counter(0);
-  const string& container = ctx->resource_manager()->default_container();
+  const std::string& container = ctx->resource_manager()->default_container();
   auto name = strings::StrCat(ctx->op_kernel().name(), "/", kSeedGenerator, "_",
                               resource_id_counter.fetch_add(1));
   if (op_version_ == 2) {
-    auto handle = HandleFromInput(ctx, 5);
+    ResourceHandle handle;
+    OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 5, &handle));
     SeedGeneratorManager* manager = nullptr;
     absl::Status s = ctx->resource_manager()->Lookup<SeedGeneratorManager>(
         handle.container(), handle.name(), &manager);

@@ -17,58 +17,74 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 
-#include <map>
+#include <cstdint>
+#include <numeric>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/container/btree_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
-#include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
-#include "xla/hlo/builder/lib/arithmetic.h"
-#include "xla/hlo/builder/lib/constants.h"
+#include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/refcount.h"
 
 namespace tensorflow {
 
 xla::XlaOp XlaHelpers::Zero(xla::XlaBuilder* b, DataType data_type) {
   xla::PrimitiveType type;
-  TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
+  CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
   return xla::ConstantLiteral(b, xla::LiteralUtil::Zero(type));
 }
 
 xla::XlaOp XlaHelpers::One(xla::XlaBuilder* b, DataType data_type) {
   xla::PrimitiveType type;
-  TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
+  CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
   return xla::ConstantLiteral(b, xla::LiteralUtil::One(type));
 }
 
 xla::XlaOp XlaHelpers::IntegerLiteral(xla::XlaBuilder* b, DataType data_type,
                                       int64_t value) {
   xla::PrimitiveType type;
-  TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
+  CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
   return ::tensorflow::IntegerLiteral(b, type, value);
 }
 
 xla::XlaOp XlaHelpers::FloatLiteral(xla::XlaBuilder* b, DataType data_type,
                                     double value) {
   xla::PrimitiveType type;
-  TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
+  CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
   return ::tensorflow::FloatLiteral(b, type, value);
 }
 
@@ -76,14 +92,15 @@ xla::XlaOp XlaHelpers::FloatLiteral(xla::XlaBuilder* b, DataType data_type,
     const xla::Literal& input, absl::Span<const int64_t> dimensions,
     xla::Literal* output) {
   if (input.shape().IsTuple()) {
-    return errors::InvalidArgument("ReshapeLiteral does not support tuples.");
+    return absl::InvalidArgumentError(
+        "ReshapeLiteral does not support tuples.");
   }
   xla::Shape shape =
       xla::ShapeUtil::MakeShape(input.shape().element_type(), dimensions);
   int64_t elements_before = xla::ShapeUtil::ElementsIn(input.shape());
   int64_t elements_after = xla::ShapeUtil::ElementsIn(shape);
   if (elements_before != elements_after) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Shapes before and after ReshapeLiteral have different numbers of "
         "elements.");
   }
@@ -139,7 +156,7 @@ DataType XlaHelpers::SumAccumulationType(const DataType& dtype) {
 xla::XlaOp XlaHelpers::ConvertElementType(const xla::XlaOp operand,
                                           const DataType new_element_type) {
   xla::PrimitiveType convert_to;
-  TF_CHECK_OK(DataTypeToPrimitiveType(new_element_type, &convert_to));
+  CHECK_OK(DataTypeToPrimitiveType(new_element_type, &convert_to));
   return xla::ConvertElementType(operand, convert_to);
 }
 
@@ -162,7 +179,7 @@ absl::Status ResolveDeviceAssignment(
   // TODO(nnigania): workaround for b/199436990
   static const int kTimeoutSeconds = 1000;
   if (ctx->collective_executor() == nullptr) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "CollectiveExecutor is required but not available");
   }
 
@@ -192,7 +209,7 @@ absl::Status ResolveDeviceAssignment(
         n.Notify();
       });
   if (!n.WaitForNotificationWithTimeout(absl::Seconds(kTimeoutSeconds))) {
-    return errors::InvalidArgument("Timeout reached");
+    return absl::InvalidArgumentError("Timeout reached");
   }
   TF_RETURN_IF_ERROR(st);
   VLOG(5) << "Collective params completed: " << params->ToString();
@@ -204,17 +221,17 @@ absl::Status ResolveDeviceAssignment(
     const DeviceAttributes& device = params->group.members[device_idx].device;
     if (device.xla_global_id() == -1) {
       if (params->group.device_type == DEVICE_TPU) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             absl::StrCat("No global ID was set for TPU device ", device.name(),
                          ". Try initializing the TPU system, e.g. "
                          "`tf.tpu.experimental.initialize_tpu_system()`."));
       } else if (params->group.device_type == DEVICE_GPU) {
-        return errors::Internal(
+        return absl::InternalError(
             absl::StrCat("No global ID was set for ", device.name(),
                          ". This is unexpected, please file a bug."));
       } else {
         // TODO(b/194942685): Implement CPU collectives.
-        return errors::Unimplemented(
+        return absl::UnimplementedError(
             absl::StrCat("Collectives are not yet implemented for ",
                          params->group.device_type.type_string(),
                          " devices when compiling with XLA. Attempted to "
@@ -233,7 +250,7 @@ absl::Status ResolveDeviceAssignment(
     // For GPU collectives, `xla_global_id`s are arbitrary integers, and XLA
     // requires a mapping from local device IDs to global device IDs.
     const DeviceMgr* device_mgr = ctx->function_library()->device_mgr();
-    std::map<int, xla::GlobalDeviceId> global_device_ids;
+    absl::btree_map<xla::LocalDeviceId, xla::GlobalDeviceId> global_device_ids;
 
     for (int device_idx = 0; device_idx < params->group.group_size;
          device_idx++) {
@@ -246,8 +263,8 @@ absl::Status ResolveDeviceAssignment(
         // This is a local device, so include it in the mapping.
         const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info =
             resolved_device->tensorflow_accelerator_device_info();
-        global_device_ids[accelerator_device_info->stream->parent()
-                              ->device_ordinal()] =
+        global_device_ids[xla::LocalDeviceId(
+            accelerator_device_info->stream->parent()->device_ordinal())] =
             device_attributes.xla_global_id();
       }
     }
@@ -256,7 +273,7 @@ absl::Status ResolveDeviceAssignment(
   const std::string& communicator_key =
       params->group.runtime_details.communicator_key;
   gpu_options.set_clique_id_callback([=](const xla::CliqueKey& key) {
-    return xla::CliqueId(communicator_key);
+    return xla::CliqueIds(xla::CliqueId(communicator_key));
   });
   run_options.set_device_assignment(&device_assignment);
   run_options.set_gpu_executable_run_options(&gpu_options);

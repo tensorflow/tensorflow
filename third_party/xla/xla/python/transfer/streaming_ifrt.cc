@@ -30,12 +30,13 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/python/transfer/streaming.h"
 #include "xla/python/transfer/transfer_socket.pb.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -93,17 +94,17 @@ absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> AllocateAndMapPjrtMemory(
 absl::StatusOr<std::vector<DmaCopyChunk>>
 DmaCopyChunk::DivideBufferCopiesEvenly(std::shared_ptr<xla::PjRtBuffer> buffer,
                                        size_t xfer_size, size_t buffer_id) {
-  TF_ASSIGN_OR_RETURN(size_t copy_size, buffer->GetOnDeviceSizeInBytes());
+  ASSIGN_OR_RETURN(size_t copy_size, buffer->GetOnDeviceSizeInBytes());
   size_t total_num_copies = (copy_size + xfer_size - 1) / xfer_size;
   std::vector<DmaCopyChunk> work_units;
   work_units.reserve(total_num_copies);
   for (size_t i = 0; i < total_num_copies; ++i) {
     work_units.push_back(
         DmaCopyChunk{[buffer](void* dst, int64_t offset,
-                              int64_t transfer_size) -> xla::Future<> {
+                              int64_t transfer_size) -> tsl::Future<> {
                        return buffer->CopyRawToHost(dst, offset, transfer_size);
                      },
-                     buffer_id, i* xfer_size,
+                     buffer_id, i * xfer_size,
                      std::min(copy_size - i * xfer_size, xfer_size)});
   }
   return work_units;
@@ -116,7 +117,6 @@ PremappedCopierState::PremappedCopierState(
       max_num_parallel_copies_(max_num_parallel_copies),
       xfer_size_(xfer_size) {
   max_copies_ = scratch->size() / xfer_size_;
-  max_copies_ = std::min(max_copies_, size_t(8));
   available_copy_offsets_.reserve(max_copies_);
   for (size_t i = 0; i < max_copies_; ++i) {
     available_copy_offsets_.push_back(reinterpret_cast<char*>(scratch->data()) +
@@ -171,7 +171,8 @@ PremappedCopierState::WorkList PremappedCopierState::FindWorkLocked() {
 void PremappedCopierState::StartWorkUnlocked(const WorkList& work_list) {
   for (WorkQueueItem* work_item : work_list) {
     auto& wu = work_item->work;
-    wu.copy_fn(work_item->dest_buffer, wu.offset, wu.size)
+    auto copy_fn = std::move(wu.copy_fn);
+    std::move(copy_fn)(work_item->dest_buffer, wu.offset, wu.size)
         .OnReady([this, this_shared = shared_from_this(),
                   work_item](absl::Status s) {
           WorkList work_list2;
@@ -180,7 +181,9 @@ void PremappedCopierState::StartWorkUnlocked(const WorkList& work_list) {
             --num_parallel_copies_;
             work_item->is_ready = true;
             work_item->result_status = s;
-            FlushReadyWorkItemsInOrder();
+            if (!currently_flushing_) {
+              FlushReadyWorkItemsInOrder();
+            }
             work_list2 = FindWorkLocked();
           }
           StartWorkUnlocked(work_list2);
@@ -194,14 +197,21 @@ void PremappedCopierState::FlushReadyWorkItemsInOrder() {
     if (!work_item->is_ready) {
       return;
     }
-    if (work_item->result_status.ok()) {
-      std::move(work_item->on_done)(this, work_item->dest_buffer,
-                                    work_item->work);
-    } else {
-      std::move(work_item->on_done)(this, work_item->result_status,
-                                    work_item->work);
+    if (!work_item->result_status.ok()) {
       available_copy_offsets_.push_back(work_item->dest_buffer);
     }
+    currently_flushing_ = true;
+    mu_.unlock();
+    {
+      auto on_done_fn = std::move(work_item->on_done);
+      if (work_item->result_status.ok()) {
+        std::move(on_done_fn)(this, work_item->dest_buffer, work_item->work);
+      } else {
+        std::move(on_done_fn)(this, work_item->result_status, work_item->work);
+      }
+    }
+    mu_.lock();
+    currently_flushing_ = false;
     work_queue_.pop_front();
     ++base_seq_id_;
   }
@@ -262,9 +272,9 @@ tsl::RCReference<ChunkDestination> MakeDmaDestination(
 
 class SlicedRawBufferChunkDestination : public ChunkDestination {
  public:
-  SlicedRawBufferChunkDestination(
-      tsl::RCReference<xla::PjRtRawBuffer> raw_buffer, size_t offset,
-      size_t size, xla::Promise<> promise)
+  SlicedRawBufferChunkDestination(xla::PjRtRawBufferRef raw_buffer,
+                                  size_t offset, size_t size,
+                                  tsl::Promise<> promise)
       : raw_buffer_(raw_buffer),
         slice_offset_(offset),
         slice_size_(size),
@@ -279,7 +289,7 @@ class SlicedRawBufferChunkDestination : public ChunkDestination {
     }
     {
       absl::MutexLock l(mu_);
-      TF_RETURN_IF_ERROR(saved_status_);
+      RETURN_IF_ERROR(saved_status_);
       sent_bytes_ += size;
     }
     auto future =
@@ -318,20 +328,20 @@ class SlicedRawBufferChunkDestination : public ChunkDestination {
   }
 
  private:
-  tsl::RCReference<xla::PjRtRawBuffer> raw_buffer_;
+  xla::PjRtRawBufferRef raw_buffer_;
   size_t slice_offset_;
   size_t slice_size_;
   size_t sent_bytes_ ABSL_GUARDED_BY(&mu_) = 0;
   size_t copied_bytes_ ABSL_GUARDED_BY(&mu_) = 0;
   absl::Mutex mu_;
   absl::Status saved_status_ ABSL_GUARDED_BY(&mu_);
-  xla::Promise<> promise_ ABSL_GUARDED_BY(&mu_);
+  tsl::Promise<> promise_ ABSL_GUARDED_BY(&mu_);
 };
 
-absl::StatusOr<std::pair<tsl::RCReference<ChunkDestination>, xla::Future<>>>
-CreateSlicedRawBufferDest(tsl::RCReference<xla::PjRtRawBuffer> raw_buffer,
-                          size_t offset, size_t size) {
-  auto [promise, future] = xla::Future<>::MakePromise();
+absl::StatusOr<std::pair<tsl::RCReference<ChunkDestination>, tsl::Future<>>>
+CreateSlicedRawBufferDest(xla::PjRtRawBufferRef raw_buffer, size_t offset,
+                          size_t size) {
+  auto [promise, future] = tsl::MakePromise();
   auto dest = tsl::MakeRef<SlicedRawBufferChunkDestination>(
       raw_buffer, offset, size, std::move(promise));
   return std::make_pair(std::move(dest), std::move(future));
@@ -383,7 +393,7 @@ bool RawBufferEntry::Handle(tsl::RCReference<ConnectionState> state,
             } else {
               DmaCopyChunk blob;
               blob.copy_fn = [buffer](void* dst, int64_t offset,
-                                      int64_t transfer_size) -> xla::Future<> {
+                                      int64_t transfer_size) -> tsl::Future<> {
                 return buffer->CopyRawDeviceToHost(dst, offset, transfer_size);
               };
               blob.buffer_id = bid;
@@ -456,9 +466,8 @@ bool PjRtBufferEntry::Handle(tsl::RCReference<ConnectionState> state,
           }
           for (size_t i = 0; i * xfer_size < buf_size; ++i) {
             DmaCopyChunk blob;
-            blob.copy_fn = [buffer = std::move(buffer)](
-                               void* dst, int64_t offset,
-                               int64_t transfer_size) -> xla::Future<> {
+            blob.copy_fn = [buffer](void* dst, int64_t offset,
+                                    int64_t transfer_size) -> tsl::Future<> {
               return buffer->CopyRawToHost(dst, offset, transfer_size);
             };
             blob.buffer_id = bid;

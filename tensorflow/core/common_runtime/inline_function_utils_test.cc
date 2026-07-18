@@ -50,7 +50,7 @@ TEST(InlineFunctionBody, ColocationConstraintPropagation) {
           {{"z"},
            "AddV2",
            {"x", "y"},
-           {{"T", DT_FLOAT}, {"_class", std::vector<string>({"loc:@x"})}}},
+           {{"T", DT_FLOAT}, {"_class", std::vector<std::string>({"loc:@x"})}}},
       });
   TF_ASSERT_OK(flib_def.AddFunctionDef(fdef));
 
@@ -98,7 +98,8 @@ TEST(InlineFunctionBody, ColocationConstraintPropagation) {
           // Func/call/input/_0.
           NDef("call/z", "AddV2", {"Func/call/input/_0", "Func/call/input/_1"},
                {{"T", DT_FLOAT},
-                {"_class", std::vector<string>({"loc:@Func/call/input/_0"})}}),
+                {"_class",
+                 std::vector<std::string>({"loc:@Func/call/input/_0"})}}),
           NDef("Func/call/output/_2", "Identity", {"call/z"},
                {{"T", DT_FLOAT}}),
       },

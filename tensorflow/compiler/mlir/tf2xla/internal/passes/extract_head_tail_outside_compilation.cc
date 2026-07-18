@@ -126,12 +126,13 @@ mlir::tf_device::LaunchOp CreateLaunchForBlock(OpBuilder* builder,
   }
 
   before ? builder->setInsertionPoint(op) : builder->setInsertionPointAfter(op);
-  auto launch = builder->create<mlir::tf_device::LaunchOp>(
-      op->getLoc(), builder->getStringAttr(host_device), launch_result_types);
+  auto launch = mlir::tf_device::LaunchOp::create(
+      *builder, op->getLoc(), builder->getStringAttr(host_device),
+      launch_result_types);
   launch.getBody().push_back(launch_block);
 
   builder->setInsertionPointToEnd(&launch.GetBody());
-  builder->create<mlir::tf_device::ReturnOp>(op->getLoc(), launch_results);
+  mlir::tf_device::ReturnOp::create(*builder, op->getLoc(), launch_results);
 
   return launch;
 }
@@ -345,8 +346,8 @@ mlir::tf_device::ClusterOp UpdateClusterResults(
     llvm::ArrayRef<Value> new_cluster_results) {
   Operation* old_terminator = cluster.GetBody().getTerminator();
   builder->setInsertionPoint(old_terminator);
-  builder->create<mlir::tf_device::ReturnOp>(old_terminator->getLoc(),
-                                             new_cluster_results);
+  mlir::tf_device::ReturnOp::create(*builder, old_terminator->getLoc(),
+                                    new_cluster_results);
   old_terminator->erase();
 
   builder->setInsertionPoint(cluster);
@@ -355,8 +356,8 @@ mlir::tf_device::ClusterOp UpdateClusterResults(
   for (const auto& new_cluster_result : new_cluster_results)
     new_cluster_result_types.push_back(new_cluster_result.getType());
 
-  auto new_cluster = builder->create<mlir::tf_device::ClusterOp>(
-      cluster.getLoc(), new_cluster_result_types,
+  auto new_cluster = mlir::tf_device::ClusterOp::create(
+      *builder, cluster.getLoc(), new_cluster_result_types,
       /*operands=*/llvm::ArrayRef<Value>{}, cluster->getAttrs());
   new_cluster.getBody().takeBody(cluster.getBody());
 
@@ -430,8 +431,8 @@ void RemoveClusterAliasedOutputs(OpBuilder* builder,
   if (new_cluster_results.size() == cluster.getNumResults()) return;
 
   builder->setInsertionPoint(cluster);
-  auto new_cluster = builder->create<mlir::tf_device::ClusterOp>(
-      cluster.getLoc(), new_cluster_result_types,
+  auto new_cluster = mlir::tf_device::ClusterOp::create(
+      *builder, cluster.getLoc(), new_cluster_result_types,
       /*operands=*/llvm::ArrayRef<Value>{}, cluster->getAttrs());
   new_cluster.getBody().takeBody(cluster.getBody());
   new_cluster.GetBody().getTerminator()->setOperands(new_cluster_results);

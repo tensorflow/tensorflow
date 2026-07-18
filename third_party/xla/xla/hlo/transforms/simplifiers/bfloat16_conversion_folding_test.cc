@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/status/statusor.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -80,11 +81,12 @@ class BFloat16ConversionFoldingTest : public HloHardwareIndependentTestBase {
 
   bool FoldConversions(HloModule* module) {
     TestBFloat16Support bfloat16_support_;
-    BFloat16ConversionFolding fold(&bfloat16_support_);
+    BFloat16ConversionFolding fold(&bfloat16_support_, &alias_info_);
     absl::StatusOr<bool> result = fold.Run(module);
     EXPECT_IS_OK(result.status());
     return result.value();
   }
+  AliasInfo alias_info_;
 };
 
 TEST_F(BFloat16ConversionFoldingTest, FoldIfSupported) {
@@ -289,7 +291,7 @@ TEST_F(BFloat16ConversionFoldingTest, FoldAllReduceTupleOutput) {
 
   HloInstruction* crs = builder.AddInstruction(HloInstruction::CreateAllReduce(
       ShapeUtil::MakeTupleShape({f32_shape, f32_shape}), {convert_a, b}, sum,
-      /*device_list=*/CollectiveDeviceList(),
+      std::make_shared<CollectiveDeviceList>(),
       /*constrain_layout=*/false,
       /*channel_id=*/std::nullopt, /*use_global_device_ids=*/false));
   HloInstruction* gte_a = builder.AddInstruction(

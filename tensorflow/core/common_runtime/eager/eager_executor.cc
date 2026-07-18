@@ -110,14 +110,15 @@ const char* EagerExecutor::StateStringLocked() {
 
 absl::Status EagerExecutor::SyncExecute(EagerNode* node) {
   if (Async()) {
-    return errors::Internal("SyncExecute does not support async execution.");
+    return absl::InternalError("SyncExecute does not support async execution.");
   }
   if (node->AsAsync() != nullptr) {
-    return errors::Internal("Executor does not support executing async nodes");
+    return absl::InternalError(
+        "Executor does not support executing async nodes");
   }
   // NOTE: SyncExecute runs every node regardless of error status in executor.
 
-  uint64 id = next_node_id_++;
+  uint64_t id = next_node_id_++;
 
   absl::Status s = node->Prepare();
   if (!s.ok()) {
@@ -153,10 +154,10 @@ absl::Status EagerExecutor::AddOrExecute(std::unique_ptr<EagerNode> node) {
     DVLOG(3) << "Add node [id " << item->id << "]" << item->node->DebugString()
              << " with status: " << status_;
     if (state_ != ExecutorState::kActive) {
-      status = errors::FailedPrecondition(
+      status = absl::FailedPreconditionError(absl::StrCat(
           "EagerExecutor accepts new EagerNodes to run only in Active state. "
           "Current state is '",
-          StateStringLocked(), "'");
+          StateStringLocked(), "'"));
     } else {
       status = status_;
       if (status.ok()) {
@@ -312,9 +313,9 @@ void EagerExecutor::NodeDone(const core::RefCountPtr<NodeItem>& item,
   // a deadlock.
 }
 
-void EagerExecutor::NotifyWaiters(uint64 id) {
+void EagerExecutor::NotifyWaiters(uint64_t id) {
   if (!node_done_notifications_.empty()) {
-    uint64 upperbound_id = 0;
+    uint64_t upperbound_id = 0;
     if (!unfinished_nodes_.empty()) {
       upperbound_id = unfinished_nodes_.begin()->first - 1;
     } else if (!node_queue_.empty()) {

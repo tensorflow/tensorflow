@@ -26,13 +26,13 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/codegen/hlo_fusion_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -40,14 +40,6 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
-
-int GetBitwidth(PrimitiveType type) {
-  if (type == PRED) {
-    return 8;
-  }
-  return primitive_util::BitWidth(type);
-}
-
 bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count) {
   // Number of operands should be in range [1, allowed_operand_count].
   if (instr->operand_count() == 0 ||
@@ -283,11 +275,11 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlace(
         root_index = {i};
       }
       // Get output buffer for the fusion root.
-      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_buffer,
-                          get_allocation_slice(fusion, root_index));
+      ASSIGN_OR_RETURN(BufferAllocation::Slice output_buffer,
+                       get_allocation_slice(fusion, root_index));
 
-      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice lhs_buffer,
-                          get_allocation_slice(&operand.instruction(), {}));
+      ASSIGN_OR_RETURN(BufferAllocation::Slice lhs_buffer,
+                       get_allocation_slice(&operand.instruction(), {}));
       if (lhs_buffer != output_buffer) {
         return false;
       }

@@ -54,7 +54,7 @@ std::function<int64_t(int64_t)> RamBudgetFunc(int64_t budget) {
   return [budget](int64_t) { return budget; };
 }
 
-int64_t CountParametersOnNode(const string& node_name,
+int64_t CountParametersOnNode(const std::string& node_name,
                               const Model::ModelParameters& parameters) {
   int64_t cnt = 0;
   for (const auto& pair : parameters) {
@@ -865,10 +865,11 @@ TEST(AsyncInterleaveManyGradientTest, Model) {
       (new_output_time - output_time) / kParameterStep, kComparisonPrecision);
 }
 
-class AsyncKnownRatioGradientTest : public ::testing::TestWithParam<string> {};
+class AsyncKnownRatioGradientTest
+    : public ::testing::TestWithParam<std::string> {};
 
 TEST_P(AsyncKnownRatioGradientTest, Model) {
-  const string parameter_name = GetParam();
+  const std::string parameter_name = GetParam();
   const double input_time = 100;
   const int64_t num_inputs_per_output = 2;
 
@@ -1165,7 +1166,7 @@ TEST(SaveModelTest, Model) {
 
   // Make Save->Load roundtrip.
   Env* env = Env::Default();
-  string tmpFile;
+  std::string tmpFile;
   EXPECT_TRUE(env->LocalTempFilename(&tmpFile));
   tmpFile += "_autotune_model_test";
 
@@ -1656,7 +1657,7 @@ TEST_F(ModelTimingTest, TestDefaultParallelismInParallelInterleave) {
   const int32_t parallelism = 1;
   const int32_t deterministic = 1;
   const int32_t cycle_length = 3;
-  ComputeModelTiming(strings::Printf(
+  ComputeModelTiming(absl::StrFormat(
       R"pb(
         nodes: {
           key: 1
@@ -1840,7 +1841,7 @@ TEST_P(ParallelInterleaveTimingTest, ScenarioTest) {
   const int32_t parallelism = std::get<0>(GetParam());
   const int32_t deterministic = std::get<1>(GetParam());
   const int32_t cycle_length = std::get<2>(GetParam());
-  ComputeModelTiming(strings::Printf(
+  ComputeModelTiming(absl::StrFormat(
       R"pb(
         nodes: {
           key: 1

@@ -23,16 +23,19 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_transfer_manager.h"
 #include "xla/service/gpu/outfeed_manager.h"
+#include "xla/service/shaped_slice.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -103,14 +106,14 @@ absl::Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
     if (!source_slice.allocation()) {
       return Internal("outfeed source missing buffer allocation");
     }
-    se::DeviceMemoryBase data_address =
+    se::DeviceAddressBase data_address =
         buffer_allocations.GetDeviceAddress(source_slice);
 
     // TODO(b/111309141): Run this on a separate stream so it doesn't block
     // the GPU from doing work during the transfer.
-    TF_RETURN_IF_ERROR(stream.Memcpy(buffer->destination()->untyped_data(),
-                                     data_address, buffer->length()));
-    TF_RETURN_IF_ERROR(stream.DoHostCallback([&buffer]() { buffer->Done(); }));
+    RETURN_IF_ERROR(stream.Memcpy(buffer->destination()->untyped_data(),
+                                  data_address, buffer->length()));
+    RETURN_IF_ERROR(stream.DoHostCallback([&buffer]() { buffer->Done(); }));
   }
 
   absl::Status block_status = stream.BlockHostUntilDone();
@@ -129,7 +132,7 @@ absl::StatusOr<std::unique_ptr<OutfeedThunk>> OutfeedThunk::FromProto(
   std::vector<ShapedSlice> source_slices;
   source_slices.reserve(proto.source_slices_size());
   for (const ShapedSliceProto& proto_source_slice : proto.source_slices()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         source_slices.emplace_back(),
         ShapedSlice::FromProto(proto_source_slice, source_allocations));
   }
@@ -143,9 +146,8 @@ absl::StatusOr<ThunkProto> OutfeedThunk::ToProto() const {
   *thunk_proto.mutable_thunk_info() = thunk_info().ToProto();
 
   for (const ShapedSlice& shaped_slice : source_slices_) {
-    TF_ASSIGN_OR_RETURN(
-        *thunk_proto.mutable_outfeed_thunk()->add_source_slices(),
-        shaped_slice.ToProto());
+    ASSIGN_OR_RETURN(*thunk_proto.mutable_outfeed_thunk()->add_source_slices(),
+                     shaped_slice.ToProto());
   }
 
   return thunk_proto;

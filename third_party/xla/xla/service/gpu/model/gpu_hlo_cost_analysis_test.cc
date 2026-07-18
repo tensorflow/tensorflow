@@ -17,25 +17,26 @@ limitations under the License.
 
 #include <cstdint>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
 
-class GpuHloCostAnalysisTest : public HloTestBase {
+class GpuHloCostAnalysisTest : public HloHardwareIndependentTestBase {
  public:
   HloCostAnalysis::Options options_{.count_multiple_input_accesses = true};
   GpuHloCostAnalysis analysis_{options_};
-  GpuHloCostAnalysisTest() : HloTestBase() {}
 };
 
 TEST_F(GpuHloCostAnalysisTest, ConvCustomCall) {
@@ -53,8 +54,7 @@ ENTRY entry {
   ROOT tuple = tuple(conv1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
   HloComputation* comp = module->entry_computation();
   const HloInstruction* conv1 = comp->GetInstructionWithName("conv1");
@@ -69,6 +69,41 @@ ENTRY entry {
   EXPECT_EQ(analysis_.bytes_accessed(*conv1),
             op0_size + op1_size + op2_size + out_size);
   EXPECT_EQ(analysis_.flop_count(*conv1), 159694848);
+}
+
+TEST_F(GpuHloCostAnalysisTest, CublasCustomCall) {
+  absl::string_view hlo_string = R"(
+  HloModule module, entry_computation_layout={(f32[100,100]{1,0}, f32[100,100]{1,0})->f32[100,100]{1,0}}
+
+  ENTRY %main (arg0: f32[100,100], arg1: f32[100,100]) -> f32[100,100] {
+    %arg0 = f32[100,100]{1,0} parameter(0)
+    %arg1 = f32[100,100]{1,0} parameter(1)
+    %custom-call.1 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%arg0, %arg1),
+    custom_call_target="__cublas$lt$matmul",
+    backend_config={
+      "gemm_backend_config":{
+        "dot_dimension_numbers":
+          {
+            "lhs_contracting_dimensions":["1"],
+            "rhs_contracting_dimensions":["0"],
+            "lhs_batch_dimensions":[],
+            "rhs_batch_dimensions":[]
+        }
+      }
+    }
+    ROOT %get-tuple-element = f32[100,100]{1,0} get-tuple-element(%custom-call.1), index=0
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+  HloComputation* comp = module->entry_computation();
+  const HloInstruction* instr = comp->GetInstructionWithName("custom-call.1");
+  int op0_size = sizeof(float) * 100 * 100;
+  int op1_size = sizeof(float) * 100 * 100;
+  int out_size = sizeof(float) * 100 * 100;
+  EXPECT_EQ(analysis_.operand_bytes_accessed(*instr, 0), op0_size);
+  EXPECT_EQ(analysis_.operand_bytes_accessed(*instr, 1), op1_size);
+  EXPECT_EQ(analysis_.output_bytes_accessed(*instr), out_size);
+  EXPECT_EQ(analysis_.bytes_accessed(*instr), op0_size + op1_size + out_size);
 }
 
 TEST_F(GpuHloCostAnalysisTest, ReduceWindowWithOverlapsRepeatedReads) {
@@ -87,8 +122,7 @@ ENTRY entry {
   ROOT _ = f32[3,4] reduce-window(p0, c0), window={size=4x5 stride=2x1}, to_apply=add
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   int n_output_elements = 3 * 4;
@@ -129,8 +163,7 @@ ENTRY e {
   ROOT r0 = s8[10000] fusion(p0), kind=kInput, calls=f
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
@@ -165,8 +198,7 @@ ENTRY e {
   ROOT r0 = s8[8000] fusion(p0), kind=kInput, calls=f
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   options_.count_multiple_input_accesses = false;
   GpuHloCostAnalysis analysis{options_};
@@ -195,8 +227,7 @@ ENTRY e {
   ROOT r = f32[1024,1024] fusion(), kind=kInput, calls=f
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
@@ -224,8 +255,7 @@ ENTRY e {
   ROOT r0 = s8[1] fusion(p0), kind=kInput, calls=f
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   const HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
@@ -255,8 +285,7 @@ ENTRY e {
 }
 
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   const HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
@@ -283,8 +312,7 @@ ENTRY e {
   ROOT r0 = s8[] fusion(param0), kind=kInput, calls=f
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
@@ -313,8 +341,7 @@ ENTRY e {
   ROOT fusion = (s8[10], u8[10]) fusion(param0), kind=kLoop, calls=f
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
@@ -345,8 +372,7 @@ ENTRY e {
   ROOT r0 = s8[17] fusion(param0), kind=kInput, calls=f
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
@@ -394,8 +420,7 @@ ENTRY e {
   ROOT r = s8[2] fusion(p0, p1), kind=kInput, calls=f
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
@@ -421,8 +446,7 @@ ENTRY e {
   ROOT r = s8[1000] fusion(p0), kind=kInput, calls=f
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
@@ -452,8 +476,8 @@ TEST_F(GpuHloCostAnalysisTest, DynUpdateSliceUsingOperandData) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_fusion_module_str));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_fusion_module_str));
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
   HloInstruction* fusion = module->entry_computation()->root_instruction();
@@ -481,8 +505,8 @@ TEST_F(GpuHloCostAnalysisTest, DynUpdateSliceNotUsingOperandData) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_fusion_module_str));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_fusion_module_str));
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ASSERT_EQ(fusion->opcode(), HloOpcode::kFusion);
@@ -518,8 +542,8 @@ TEST_F(GpuHloCostAnalysisTest, CommonElementwiseUseTwoParameters) {
     ROOT _ = s8[] fusion(p0, p1), kind=kLoop, calls=f
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_fusion_module_str));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_fusion_module_str));
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
 
@@ -546,8 +570,8 @@ TEST_F(GpuHloCostAnalysisTest, CommonElementwiseUseParameterAndRoot) {
     ROOT _ = s8[10] fusion(p0, p1), kind=kLoop, calls=f
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_fusion_module_str));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_fusion_module_str));
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
 
@@ -579,8 +603,8 @@ TEST_F(GpuHloCostAnalysisTest,
     ROOT _ = (s8[10], s8[10]) fusion(p0, p1), kind=kLoop, calls=f
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_fusion_module_str));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_fusion_module_str));
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
 
@@ -608,8 +632,7 @@ ENTRY entry_computation {
   ROOT reduce = f32[32]{0} reduce(param_0.3, constant), dimensions={1}, to_apply=add
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
   const HloInstruction* reduce =
       module->entry_computation()->root_instruction();
@@ -648,8 +671,7 @@ ENTRY entry_computation {
   ROOT reduce = (f32[32]{0}, f32[32]{0}) reduce(param_0.3, param_1.3, param_2.2, constant), dimensions={1}, to_apply=add
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
   const HloInstruction* reduce =
       module->entry_computation()->root_instruction();
@@ -669,6 +691,38 @@ ENTRY entry_computation {
   EXPECT_EQ(analysis_.flop_count(*reduce), 32 * 39 * 6);
 }
 
+TEST_F(GpuHloCostAnalysisTest, CollectivePermute) {
+  absl::string_view hlo_string = R"(
+HloModule m, num_partitions=2
+
+ENTRY entry {
+  p0 = f32[4096] parameter(0)
+  ROOT cp = f32[4096] collective-permute(p0), source_target_pairs={{0,1},{1,0}}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+  const HloInstruction* cp = module->entry_computation()->root_instruction();
+  EXPECT_EQ(analysis_.BytesTransferred(*cp), 4096 * 4);
+}
+
+TEST_F(GpuHloCostAnalysisTest, CollectivePermuteStart) {
+  absl::string_view hlo_string = R"(
+HloModule m, num_partitions=2
+
+ENTRY entry {
+  p0 = f32[4096] parameter(0)
+  cps = (f32[4096], f32[4096]) collective-permute-start(p0), source_target_pairs={{0,1},{1,0}}
+  ROOT r = f32[4096] collective-permute-done(cps)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+  const HloInstruction* cps =
+      module->entry_computation()->root_instruction()->operand(0);
+  EXPECT_EQ(analysis_.BytesTransferred(*cps), 4096 * 4);
+}
+
 TEST_F(GpuHloCostAnalysisTest, AsyncAllReduce) {
   absl::string_view hlo_string = R"(
 HloModule m
@@ -685,8 +739,7 @@ ENTRY entry_computation {
   ROOT _ = f32[4096] all-reduce-done(ar-start)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
@@ -706,8 +759,7 @@ ENTRY entry_computation {
     replica_groups={{0,1,2,3}}, channel_id=1
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
@@ -732,8 +784,7 @@ ENTRY entry_computation {
   ROOT _ = (f32[4096],f32[2048]) all-gather-done(ag-start)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
@@ -762,8 +813,7 @@ ENTRY entry_computation {
       use_global_device_ids=true, replica_groups={{0,1,2,3}}, channel_id=1
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
@@ -801,8 +851,7 @@ ENTRY entry_computation {
   ROOT _ = (f32[1024],f32[512]) async-done(rs-start)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
@@ -829,8 +878,7 @@ ENTRY entry_computation {
   ROOT clamp = f32[10] clamp(mul, param_2, param_3)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   HloOpProfiles::HloOpProfile hlo_op_profile;
 

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cassert>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <utility>
@@ -38,6 +40,10 @@ limitations under the License.
 
 namespace mlir {
 namespace deallocation {
+
+#define GEN_PASS_DEF_BUFFERREUSEPASS
+#include "deallocation/transforms/passes.h.inc"
+
 namespace {
 
 template <typename T>
@@ -394,8 +400,8 @@ bool hoistAllocs(Block& block) {
 void promoteToStack(memref::DeallocOp dealloc) {
   auto alloc = dealloc.getMemref().getDefiningOp<memref::AllocOp>();
   OpBuilder b(alloc);
-  auto alloca = b.create<memref::AllocaOp>(
-      alloc->getLoc(), mlir::cast<MemRefType>(alloc->getResultTypes()[0]),
+  auto alloca = memref::AllocaOp::create(
+      b, alloc->getLoc(), mlir::cast<MemRefType>(alloc->getResultTypes()[0]),
       alloc.getAlignmentAttr());
   alloc->replaceAllUsesWith(ValueRange{alloca.getResult()});
   alloc->erase();
@@ -452,7 +458,9 @@ bool simplifyLoopDeallocs(Block& block) {
 
     getAliases(RegionBranchPoint::parent());
     for (auto& region : rbi->getRegions()) {
-      getAliases(region);
+      if (region.empty()) continue;
+      getAliases(RegionBranchPoint(cast<RegionBranchTerminatorOpInterface>(
+          region.front().getTerminator())));
     }
 
     for (auto it = eq.begin(), e = eq.end(); it != e; ++it) {
@@ -524,9 +532,6 @@ void promoteBuffers(Block& block) {
   }
 }
 
-#define GEN_PASS_DEF_BUFFERREUSEPASS
-#include "deallocation/transforms/passes.h.inc"
-
 struct BufferReusePass : public impl::BufferReusePassBase<BufferReusePass> {
   void runOnOperation() override {
     bool result;
@@ -552,11 +557,5 @@ struct BufferReusePass : public impl::BufferReusePassBase<BufferReusePass> {
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createBufferReusePass() {
-  return std::make_unique<BufferReusePass>();
-}
-
 }  // namespace deallocation
 }  // namespace mlir

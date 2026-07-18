@@ -16,24 +16,26 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_bundle/naming.h"
 
 #include <cstdint>
+#include <string>
 
 #include "absl/log/check.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
-string MetaFilename(absl::string_view prefix) {
-  return strings::Printf("%.*s.index", static_cast<int>(prefix.size()),
+std::string MetaFilename(absl::string_view prefix) {
+  return absl::StrFormat("%.*s.index", static_cast<int>(prefix.size()),
                          prefix.data());
 }
 
-string DataFilename(absl::string_view prefix, int32_t shard_id,
-                    int32_t num_shards) {
+std::string DataFilename(absl::string_view prefix, int32_t shard_id,
+                         int32_t num_shards) {
   DCHECK_GT(num_shards, 0);
   DCHECK_LT(shard_id, num_shards);
-  return strings::Printf("%.*s.data-%05d-of-%05d",
+  return absl::StrFormat("%.*s.data-%05d-of-%05d",
                          static_cast<int>(prefix.size()), prefix.data(),
                          shard_id, num_shards);
 }

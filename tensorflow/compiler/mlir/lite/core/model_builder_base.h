@@ -173,8 +173,9 @@ class FlatBufferModelBase {
   /// `error_reporter` and must ensure its lifetime is longer than the
   /// FlatBufferModelBase instance.
   /// Returns a nullptr in case of failure.
-  /// NOTE: this does NOT validate the buffer so it should NOT be called on
-  /// invalid/untrusted input. Use VerifyAndBuildFromBuffer in that case
+  /// NOTE: this validates the base Flatbuffer buffer structure. Use
+  /// VerifyAndBuildFromBuffer if an additional TfLiteVerifier check is
+  /// required.
   static std::unique_ptr<T> BuildFromBuffer(
       const char* caller_owned_buffer, size_t buffer_size,
       ErrorReporter* error_reporter = T::GetDefaultErrorReporter()) {
@@ -207,16 +208,16 @@ class FlatBufferModelBase {
 
 #if FLATBUFFERS_LITTLEENDIAN == 0
 
-  void ByteSwapSerializedModel(std::string* serialized_model,
-                               bool from_big_endian) {
+  static void ByteSwapSerializedModel(std::string* serialized_model,
+                                      bool from_big_endian) {
     const uint8_t* buffer =
         reinterpret_cast<const uint8_t*>(serialized_model->c_str());
     const tflite::Model* input_model = tflite::GetModel(buffer);
     ByteSwapTFLiteModel(input_model, from_big_endian);
   }
 
-  void ByteSwapBuffer(int8_t tensor_type, size_t buffer_size, uint8_t* buffer,
-                      bool from_big_endian) {
+  static void ByteSwapBuffer(int8_t tensor_type, size_t buffer_size,
+                             uint8_t* buffer, bool from_big_endian) {
     switch (tensor_type) {
       case tflite::TensorType_STRING: {
         auto bp = reinterpret_cast<int32_t*>(buffer);
@@ -260,8 +261,8 @@ class FlatBufferModelBase {
     }
   }
 
-  void ByteSwapTFLiteModel(const tflite::Model* tfl_model,
-                           bool from_big_endian) {
+  static void ByteSwapTFLiteModel(const tflite::Model* tfl_model,
+                                  bool from_big_endian) {
     std::vector<bool> buffer_swapped(tfl_model->buffers()->size(), false);
     for (size_t subgraph_idx = 0; subgraph_idx < tfl_model->subgraphs()->size();
          subgraph_idx++) {
@@ -285,21 +286,21 @@ class FlatBufferModelBase {
     }
   }
 
-  std::unique_ptr<T> ByteConvertModel(std::unique_ptr<T> model,
-                                      ErrorReporter* error_reporter,
-                                      bool from_big_endian) {
+  static std::unique_ptr<T> ByteConvertModel(std::unique_ptr<T> model,
+                                             ErrorReporter* error_reporter,
+                                             bool from_big_endian = false) {
     if (model == nullptr) return model;
     auto tfl_model = model->GetModel();
     if (tfl_model->subgraphs()->size() == 0) return model;
     if (tfl_model->subgraphs()->Get(0)->tensors()->size() == 0) return model;
     if (tfl_model->buffers()->size() < 2) return model;
-    return ByteSwapFlatBufferModelBase<T>(std::move(model), error_reporter,
-                                          from_big_endian);
+    return ByteSwapFlatBufferModelBase(std::move(model), error_reporter,
+                                       from_big_endian);
   }
 
-  std::unique_ptr<T> ByteSwapFlatBufferModelBase(std::unique_ptr<T> model,
-                                                 ErrorReporter* error_reporter,
-                                                 bool from_big_endian) {
+  static std::unique_ptr<T> ByteSwapFlatBufferModelBase(
+      std::unique_ptr<T> model, ErrorReporter* error_reporter,
+      bool from_big_endian) {
     FlatBufferModelBase<T>* modelp = model.release();
     auto tflite_model = modelp->GetModel();
     auto copied_model = std::make_unique<tflite::ModelT>();
@@ -315,7 +316,8 @@ class FlatBufferModelBase {
         builder_->GetSize(), error_reporter);
   }
 
-  void ByteSwapTFLiteModelT(tflite::ModelT* tfl_modelt, bool from_big_endian) {
+  static void ByteSwapTFLiteModelT(tflite::ModelT* tfl_modelt,
+                                   bool from_big_endian) {
     size_t bytes_per_elem = 0;
     std::vector<bool> buffer_swapped(tfl_modelt->buffers.size(), false);
     for (size_t subgraph_idx = 0; subgraph_idx < tfl_modelt->subgraphs.size();
@@ -341,6 +343,21 @@ class FlatBufferModelBase {
 
 #endif
 
+ private:
+  // Internal helper to build a model from an allocation without running base
+  // verification.
+  static std::unique_ptr<T> BuildFromAllocationInternal(
+      std::unique_ptr<Allocation> allocation, ErrorReporter* error_reporter) {
+    std::unique_ptr<T> model(new T(std::move(allocation), error_reporter));
+    if (!model->initialized()) {
+      model.reset();
+    } else {
+      model->ValidateModelBuffers(model->error_reporter());
+    }
+    return model;
+  }
+
+ public:
   /// Builds a model directly from an allocation.
   /// Ownership of the allocation is passed to the model, but the caller
   /// retains ownership of `error_reporter` and must ensure its lifetime is
@@ -349,14 +366,13 @@ class FlatBufferModelBase {
   static std::unique_ptr<T> BuildFromAllocation(
       std::unique_ptr<Allocation> allocation,
       ErrorReporter* error_reporter = T::GetDefaultErrorReporter()) {
-    std::unique_ptr<T> model(
-        new T(std::move(allocation), ValidateErrorReporter(error_reporter)));
-    if (!model->initialized()) {
-      model.reset();
-    } else {
-      model->ValidateModelBuffers(error_reporter);
+    error_reporter = ValidateErrorReporter(error_reporter);
+    if (!allocation || !allocation->valid()) {
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "The model allocation is null/empty");
+      return nullptr;
     }
-    return model;
+    return BuildFromAllocationInternal(std::move(allocation), error_reporter);
   }
 
   /// Verifies whether the content of the allocation is legit, then builds a
@@ -404,7 +420,7 @@ class FlatBufferModelBase {
       }
     }
 
-    return BuildFromAllocation(std::move(allocation), error_reporter);
+    return BuildFromAllocationInternal(std::move(allocation), error_reporter);
   }
 
   /// Builds a model directly from a flatbuffer pointer
@@ -520,16 +536,111 @@ class FlatBufferModelBase {
   // backward compatibility reasons; it just provides a warning in case of
   // failures.
   void ValidateModelBuffers(ErrorReporter* error_reporter) {
+    if (!allocation_) {
+      auto buffers = model_->buffers();
+      if (buffers && !buffers->empty()) {
+        auto first_buffer = buffers->Get(0);
+        if (first_buffer && first_buffer->size() != 0) {
+          TF_LITE_REPORT_ERROR(
+              error_reporter,
+              "The 0th entry of the model buffer must be an empty buffer.");
+        }
+      }
+      return;
+    }
+
+    const uint8_t* base = reinterpret_cast<const uint8_t*>(allocation_->base());
+    size_t bytes = allocation_->bytes();
+    const uint8_t* model_ptr = reinterpret_cast<const uint8_t*>(model_);
+
+    // Validate the Model table VT_BUFFERS (12) field
+    if (model_ptr < base ||
+        model_ptr + sizeof(flatbuffers::soffset_t) > base + bytes) {
+      return;
+    }
+    flatbuffers::soffset_t vtable_offset =
+        flatbuffers::ReadScalar<flatbuffers::soffset_t>(model_ptr);
+    const uint8_t* vtable = model_ptr - vtable_offset;
+    if (vtable < base ||
+        vtable + sizeof(flatbuffers::voffset_t) > base + bytes) {
+      return;
+    }
+    flatbuffers::voffset_t vtable_size =
+        flatbuffers::ReadScalar<flatbuffers::voffset_t>(vtable);
+    if (vtable + vtable_size > base + bytes) return;
+
+    if (vtable_size <= 12) return;
+
+    flatbuffers::voffset_t field_offset =
+        flatbuffers::ReadScalar<flatbuffers::voffset_t>(vtable + 12);
+    if (field_offset == 0) return;
+
+    const uint8_t* field_ptr = model_ptr + field_offset;
+    if (field_ptr < base ||
+        field_ptr + sizeof(flatbuffers::uoffset_t) > base + bytes) {
+      return;
+    }
+
+    flatbuffers::uoffset_t vector_offset =
+        flatbuffers::ReadScalar<flatbuffers::uoffset_t>(field_ptr);
+    const uint8_t* vector_ptr = field_ptr + vector_offset;
+    if (vector_ptr < base ||
+        vector_ptr + sizeof(flatbuffers::uoffset_t) > base + bytes) {
+      return;
+    }
+
+    flatbuffers::uoffset_t vector_size =
+        flatbuffers::ReadScalar<flatbuffers::uoffset_t>(vector_ptr);
+    if (vector_ptr + sizeof(flatbuffers::uoffset_t) +
+            vector_size * sizeof(flatbuffers::uoffset_t) >
+        base + bytes) {
+      return;
+    }
+
+    if (vector_size == 0) return;
+
+    // Bounds check first_buffer (index 0)
+    const uint8_t* element_offset_ptr =
+        vector_ptr + sizeof(flatbuffers::uoffset_t);
+    flatbuffers::uoffset_t element_offset =
+        flatbuffers::ReadScalar<flatbuffers::uoffset_t>(element_offset_ptr);
+    const uint8_t* first_buffer_ptr = element_offset_ptr + element_offset;
+    if (first_buffer_ptr < base ||
+        first_buffer_ptr + sizeof(flatbuffers::soffset_t) > base + bytes) {
+      return;
+    }
+
+    flatbuffers::soffset_t b_vtable_offset =
+        flatbuffers::ReadScalar<flatbuffers::soffset_t>(first_buffer_ptr);
+    const uint8_t* b_vtable = first_buffer_ptr - b_vtable_offset;
+    if (b_vtable < base ||
+        b_vtable + sizeof(flatbuffers::voffset_t) > base + bytes) {
+      return;
+    }
+
+    flatbuffers::voffset_t b_vtable_size =
+        flatbuffers::ReadScalar<flatbuffers::voffset_t>(b_vtable);
+    if (b_vtable + b_vtable_size > base + bytes) return;
+
+    // buffers[0] is structurally valid.
+    // Make sure VT_SIZE (8) is also bounds check safe if
+    // present
+    if (8 < b_vtable_size) {
+      flatbuffers::voffset_t b_field_offset =
+          flatbuffers::ReadScalar<flatbuffers::voffset_t>(b_vtable + 8);
+      if (b_field_offset != 0 &&
+          first_buffer_ptr + b_field_offset + sizeof(uint64_t) > base + bytes) {
+        return;  // Invalid field offset
+      }
+    }
+
     auto buffers = model_->buffers();
     if (buffers && !buffers->empty()) {
       auto first_buffer = buffers->Get(0);
       if (first_buffer && first_buffer->size() != 0) {
-        // Note the 0th entry of this array must be an empty buffer (sentinel).
-        // This is a convention so that tensors without a buffer can provide 0
-        // as their buffer.
-        TF_LITE_REPORT_ERROR(
-            error_reporter,
-            "The 0th entry of the model buffer must be an empty buffer.");
+        TF_LITE_REPORT_ERROR(error_reporter,
+                             "The 0th entry of the model buffer must be an "
+                             "empty buffer.");
       }
     }
   }
@@ -582,6 +693,45 @@ class FlatBufferModelBase {
       : error_reporter_(ValidateErrorReporter(error_reporter)),
         allocation_(std::move(allocation)) {
     if (!allocation_ || !allocation_->valid() || !CheckModelIdentifier()) {
+      return;
+    }
+
+    const uint8_t* base = reinterpret_cast<const uint8_t*>(allocation_->base());
+    size_t bytes = allocation_->bytes();
+    if (bytes < sizeof(flatbuffers::uoffset_t)) {
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "The model is not a valid Flatbuffer buffer");
+      return;
+    }
+    flatbuffers::uoffset_t root_offset =
+        flatbuffers::ReadScalar<flatbuffers::uoffset_t>(base);
+    if (root_offset < sizeof(flatbuffers::uoffset_t) || root_offset >= bytes) {
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "The model is not a valid Flatbuffer buffer");
+      return;
+    }
+
+    const uint8_t* model_ptr = base + root_offset;
+    if (model_ptr < base ||
+        model_ptr + sizeof(flatbuffers::soffset_t) > base + bytes) {
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "The model is not a valid Flatbuffer buffer");
+      return;
+    }
+    flatbuffers::soffset_t vtable_offset =
+        flatbuffers::ReadScalar<flatbuffers::soffset_t>(model_ptr);
+    const uint8_t* vtable = model_ptr - vtable_offset;
+    if (vtable < base ||
+        vtable + sizeof(flatbuffers::voffset_t) > base + bytes) {
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "The model is not a valid Flatbuffer buffer");
+      return;
+    }
+    flatbuffers::voffset_t vtable_size =
+        flatbuffers::ReadScalar<flatbuffers::voffset_t>(vtable);
+    if (vtable + vtable_size > base + bytes) {
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "The model is not a valid Flatbuffer buffer");
       return;
     }
 

@@ -62,8 +62,8 @@ StatusOr<mlir::Operation*> IteratorGetNextSPMDExpander::ExpandOp(
         local_shape, global_output_type.getElementType());
   }
 
-  auto new_op = builder.create<mlir::TF::IteratorGetNextOp>(
-      DT_LOC(op->getLoc()), local_types, original_op->getOperand(0));
+  auto new_op = mlir::TF::IteratorGetNextOp::create(
+      builder, DT_LOC(op->getLoc()), local_types, original_op->getOperand(0));
 
   for (int i = 0; i < original_op->getNumResults(); ++i) {
     original_op.getResult(i).replaceAllUsesWith(new_op.getResult(i));
@@ -106,7 +106,7 @@ StatusOr<mlir::Operation*> IteratorGetNextAsOptionalSPMDExpander::ExpandOp(
 
   auto array_attr = op->getAttrOfType<mlir::ArrayAttr>(kIteratorOutputShapes);
   if (!array_attr)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         llvm::formatv("Could not find `{0}` attribute of op: {1}",
                       kIteratorOutputShapes, op->getName())
             .str());

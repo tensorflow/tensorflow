@@ -151,8 +151,8 @@ bool CompareSymbolicallyShapedTensorSizes(const TensorShapeProto& left,
   // For each shape dimension update "defined tensor size", if shape is defined,
   // or increment a counter for unknown dim.
   auto process_dimensions =
-      [&unknown_dim_id](const TensorShapeProto& shape, int64* defined_size,
-                        std::unordered_map<int64, int64>* unknown_dims) {
+      [&unknown_dim_id](const TensorShapeProto& shape, int64_t* defined_size,
+                        std::unordered_map<int64_t, int64_t>* unknown_dims) {
         for (int i = 0; i < shape.dim_size(); ++i) {
           const auto& dim = shape.dim(i);
           int64_t dim_size = dim.size();

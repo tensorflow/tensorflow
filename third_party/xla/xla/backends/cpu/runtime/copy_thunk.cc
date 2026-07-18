@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/copy_thunk.h"
 
+#include "absl/log/vlog_is_on.h"
+#include "xla/tsl/platform/status_macros.h"
+
 #define EIGEN_USE_THREADS
 
 #include <algorithm>
@@ -42,7 +45,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -57,7 +60,12 @@ absl::StatusOr<std::unique_ptr<CopyThunk>> CopyThunk::Create(
         "Source shape %s must be compatible with destination shape %s",
         src_shape.ToString(true), dst_shape.ToString(true));
   }
-
+  if (src_shape != dst_shape) {
+    if (!ShapeUtil::ByteStrides(src_shape).has_value()) {
+      return InvalidArgument("Source shape %s must have valid byte strides",
+                             src_shape.ToString(true));
+    }
+  }
   return absl::WrapUnique(new CopyThunk(std::move(info), src_buffer, src_shape,
                                         dst_buffer, dst_shape));
 }
@@ -78,7 +86,8 @@ CopyThunk::CopyThunk(Info info, BufferAllocation::Slice src_buffer,
     options.dims = src_shape_.dimensions();
 
     auto byte_strides = ShapeUtil::ByteStrides(src_shape_);
-    options.input_layout = TransposePlan::Striding{*byte_strides};
+    CHECK(byte_strides.has_value());
+    options.input_striding = TransposePlan::Striding{*byte_strides};
 
     absl::InlinedVector<int64_t, 4> permutation(options.dims.size());
     absl::c_reverse_copy(dst_shape_.layout().minor_to_major(),
@@ -91,7 +100,7 @@ CopyThunk::CopyThunk(Info info, BufferAllocation::Slice src_buffer,
 
 static std::tuple<void*, void*, int64_t> GetBlockCopyParameters(
     const CopyThunk::ParallelBlockParams& params, int64_t block_index,
-    se::DeviceMemoryBase destination, se::DeviceMemoryBase source) {
+    se::DeviceAddressBase destination, se::DeviceAddressBase source) {
   CHECK_LT(block_index, params.block_count);
 
   int64_t offset = block_index * params.block_size;
@@ -137,12 +146,12 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CopyThunk::Execute(
 
   const BufferAllocations* allocations = params.buffer_allocations;
 
-  se::DeviceMemoryBase src_data;
-  se::DeviceMemoryBase dst_data;
+  se::DeviceAddressBase src_data;
+  se::DeviceAddressBase dst_data;
 
   if constexpr (ShouldCheckBufferSlices()) {
-    TF_ASSIGN_OR_RETURN(src_data, allocations->GetDeviceAddress(src_buffer_));
-    TF_ASSIGN_OR_RETURN(dst_data, allocations->GetDeviceAddress(dst_buffer_));
+    ASSIGN_OR_RETURN(src_data, allocations->GetDeviceAddress(src_buffer_));
+    ASSIGN_OR_RETURN(dst_data, allocations->GetDeviceAddress(dst_buffer_));
   } else {
     src_data = allocations->GetDeviceAddressUnchecked(src_buffer_);
     dst_data = allocations->GetDeviceAddressUnchecked(dst_buffer_);
@@ -151,14 +160,17 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CopyThunk::Execute(
   // TODO(ezhulenev): Add extra checks for buffer aliasing, as we rely on the
   // fact that buffers do not alias each other to run copy in parallel.
 
-  VLOG(3) << absl::StreamFormat("Copy buffer: use_transpose=%s",
-                                transpose_plan_ ? "true" : "false");
-  VLOG(3) << absl::StreamFormat("  src: %s in slice %s (%p)",
-                                src_shape_.ToString(true),
-                                src_buffer_.ToString(), src_data.opaque());
-  VLOG(3) << absl::StreamFormat("  dst: %s in slice %s (%p)",
-                                dst_shape_.ToString(true),
-                                dst_buffer_.ToString(), dst_data.opaque());
+  // ToString operands to operator<< allocate even when VLOG is off.
+  if (ABSL_PREDICT_FALSE(VLOG_IS_ON(3))) {
+    VLOG(3) << absl::StreamFormat("Copy buffer: use_transpose=%s",
+                                  transpose_plan_ ? "true" : "false");
+    VLOG(3) << absl::StreamFormat("  src: %s in slice %s (%p)",
+                                  src_shape_.ToString(true),
+                                  src_buffer_.ToString(), src_data.opaque());
+    VLOG(3) << absl::StreamFormat("  dst: %s in slice %s (%p)",
+                                  dst_shape_.ToString(true),
+                                  dst_buffer_.ToString(), dst_data.opaque());
+  }
 
   // Skip no-op copy operations.
   if (ABSL_PREDICT_FALSE(parallel_block_params_.block_count == 0)) {

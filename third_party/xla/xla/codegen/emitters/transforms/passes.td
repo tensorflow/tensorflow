@@ -27,8 +27,8 @@ def LowerXlaIntrinsicLibPass : Pass<"xla-lower-xla-intrinsic-lib", "mlir::Module
   }];
   let dependentDialects = [
     "mlir::func::FuncDialect",
+    "mlir::vector::VectorDialect",
   ];
-  let constructor = "CreateLowerXlaIntrinsicLibPass()";
 }
 
 def ConvertPureCallOpsPass
@@ -43,7 +43,6 @@ def ConvertPureCallOpsPass
     "mlir::func::FuncDialect",
     "xla::XlaDialect"
   ];
-  let constructor = "CreateConvertPureCallOpsPass()";
 }
 
 def EraseDeadFunctionsPass : Pass<"xla-erase-dead-functions", "mlir::ModuleOp"> {
@@ -57,8 +56,6 @@ def EraseDeadFunctionsPass : Pass<"xla-erase-dead-functions", "mlir::ModuleOp"> 
     "mlir::func::FuncDialect",
     "xla::XlaDialect",
   ];
-
-  let constructor = "CreateEraseDeadFunctionsPass()";
 }
 
 def FlattenTensorsPass : Pass<"xla-flatten-tensors", "mlir::ModuleOp"> {
@@ -74,7 +71,6 @@ def FlattenTensorsPass : Pass<"xla-flatten-tensors", "mlir::ModuleOp"> {
     "xla::gpu::XlaGpuDialect",
     "xla::XlaDialect",
   ];
-  let constructor = "CreateFlattenTensorsPass()";
 }
 
 def ExpandFloatOpsPass : Pass<"xla-expand-float-ops", "mlir::ModuleOp"> {
@@ -96,8 +92,6 @@ def ExpandFloatOpsPass : Pass<"xla-expand-float-ops", "mlir::ModuleOp"> {
     Option<"approximate_tanh_", "approximate_tanh", "bool", /*default=*/"true",
            "Use built-in MLIR approximation for tanh.">,
   ];
-
-  let constructor = "CreateExpandFloatOpsPass()";
 }
 
 def LowerTensorsPass : Pass<"xla-lower-tensors", "mlir::ModuleOp"> {
@@ -125,30 +119,6 @@ def LowerTensorsPass : Pass<"xla-lower-tensors", "mlir::ModuleOp"> {
     Option<"target_type_", "target_type", "std::string", /*default=*/"\"gpu\"",
            "Whether the pass targets a 'cpu' or 'gpu'. If 'cpu', gpu_device_info_ must be empty.">,
   ];
-  let constructor = "CreateLowerTensorsPass()";
-}
-
-def LowerToLLVMPass :
-   Pass<"xla-lower-to-llvm", "mlir::ModuleOp"> {
-  let summary = "Lowers to LLVM.";
-
-  let description = [{
-    Lowers the rest to LLVM
-  }];
-
-  let dependentDialects = [
-    "mlir::func::FuncDialect",
-    "mlir::LLVM::LLVMDialect",
-    "mlir::NVVM::NVVMDialect",
-  ];
-
-  let options = [
-    Option<"gpu_device_info_", "gpu_device_info", "std::string", /*default=*/"",
-           "Serialized stream_executor::GPUDeviceInfo proto.">,
-    Option<"target_type_", "target_type", "std::string", /*default=*/"\"gpu\"",
-           "Whether the pass targets a 'cpu' or 'gpu'. If 'cpu', gpu_device_info_ must be empty.">,
-  ];
-  let constructor = "CreateLowerToLLVMPass()";
 }
 
 def LowerXlaToScfPass :
@@ -164,7 +134,6 @@ def LowerXlaToScfPass :
   let options = [
     Option<"warp_size", "warp_size", "int64_t", /*default=*/"32", "Warp size.">,
   ];
-  let constructor = "CreateLowerXlaToScfPass()";
 }
 
 def LowerXlaLoopsToScfPass : Pass<
@@ -183,8 +152,6 @@ def LowerXlaLoopsToScfPass : Pass<
     "xla::gpu::XlaGpuDialect",
     "xla::XlaDialect",
   ];
-
-  let constructor = "CreateLowerXlaLoopsToScfPass()";
 }
 
 def MergePointersToSameSlicePass :
@@ -199,8 +166,6 @@ def MergePointersToSameSlicePass :
   let dependentDialects = [
     "mlir::func::FuncDialect"
   ];
-
-  let constructor = "CreateMergePointersToSameSlicePass()";
 }
 
 def PropagateSliceIndicesPass :
@@ -215,8 +180,6 @@ def PropagateSliceIndicesPass :
   let dependentDialects = [
     "mlir::func::FuncDialect"
   ];
-
-  let constructor = "CreatePropagateSliceIndicesPass()";
 }
 
 def SimplifyAffinePass : Pass<"xla-simplify-affine", "mlir::ModuleOp"> {
@@ -234,8 +197,6 @@ def SimplifyAffinePass : Pass<"xla-simplify-affine", "mlir::ModuleOp"> {
     "mlir::affine::AffineDialect", "mlir::func::FuncDialect",
     "mlir::scf::SCFDialect",
   ];
-
-  let constructor = "CreateSimplifyAffinePass()";
 }
 
 def SimplifyArithPass : Pass<"xla-simplify-arith", "mlir::func::FuncOp"> {
@@ -254,9 +215,10 @@ def SimplifyArithPass : Pass<"xla-simplify-arith", "mlir::func::FuncOp"> {
   let options = [
     Option<"fast_min_max_", "fast_min_max", "bool", /*default=*/"false",
            "Use fast min/max (does not propagate nan).">,
+    Option<"explicit_nan_propagation_", "explicit_nan_propagation", "bool",
+           /*default=*/"false",
+           "Use explicit NaN propagation for min/max (OneAPI).">,
   ];
-
-  let constructor = "CreateSimplifyArithPass()";
 }
 
 def UnswitchLoopsPass :
@@ -303,8 +265,6 @@ def UnswitchLoopsPass :
   let dependentDialects = [
     "mlir::func::FuncDialect", "mlir::scf::SCFDialect"
   ];
-
-  let constructor = "CreateUnswitchLoopsPass()";
 }
 
 def VectorizeLoadsAndStoresPass :
@@ -327,8 +287,38 @@ def VectorizeLoadsAndStoresPass :
     Option<"target_type_", "target_type", "std::string", /*default=*/"\"gpu\"",
            "Whether the pass targets a 'cpu' or 'gpu'. If 'cpu', gpu_device_info_ must be empty.">,
   ];
+}
 
-  let constructor = "CreateVectorizeLoadsAndStoresPass()";
+def SafeIntegerArithmeticPass : Pass<"xla-safe-integer-arithmetic"> {
+  let summary = "Make integer arithmetics safe.";
+
+  let description = [{
+    This pass converts integer division and remainder to ones that do not cause
+    undefined behavior. It only converts operations that are marked with the
+    attribute "xla.guard_ub".
+  }];
+}
+
+def ExpandIntegerPowerPass : Pass<"xla-expand-integer-power"> {
+  let summary = "Expands mlir::math::IPowIop to Exponentiation by squaring.";
+
+  let description = [{
+    See https://en.wikipedia.org/wiki/Exponentiation_by_squaring.
+  }];
+
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "mlir::math::MathDialect",
+    "mlir::scf::SCFDialect",
+  ];
+}
+
+def LowerPdlWaitPass : Pass<"xla-lower-pdl-wait", "mlir::ModuleOp"> {
+  let summary = "Lowers xla_gpu.pdl_wait to NVVM griddepcontrol.";
+  let dependentDialects = [
+    "xla::gpu::XlaGpuDialect",
+    "mlir::NVVM::NVVMDialect",
+  ];
 }
 
 #endif  // XLA_CODEGEN_EMITTERS_TRANSFORMS_PASSES_TD_

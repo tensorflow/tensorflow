@@ -1,5 +1,8 @@
+# WARNING: this package is DEPRECATED.
+# See https://developer.android.com/ndk/guides/neuralnetworks/migration-guide.
+
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     licenses = ["notice"],
 )
 

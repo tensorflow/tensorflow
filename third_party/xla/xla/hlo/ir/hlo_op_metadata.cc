@@ -73,6 +73,16 @@ std::string OpMetadataToString(const OpMetadata& metadata, bool only_op_name) {
     result.push_back(
         absl::StrCat("scheduling_name=\"", metadata.scheduling_name(), "\""));
   }
+  if (metadata.stack_frame_id() != 0) {
+    result.push_back(
+        absl::StrCat("stack_frame_id=", metadata.stack_frame_id()));
+  }
+  if (metadata.has_metadata_payload() &&
+      metadata.metadata_payload().has_value()) {
+    result.push_back(
+        absl::StrCat("metadata_payload=\"",
+                     absl::CEscape(metadata.metadata_payload().value()), "\""));
+  }
   return absl::StrJoin(result, " ");
 }
 

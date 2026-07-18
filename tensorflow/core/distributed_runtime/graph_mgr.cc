@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -26,6 +27,8 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/common_runtime/build_graph_options.h"
 #include "tensorflow/core/common_runtime/debugger_state_interface.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -107,7 +110,7 @@ GraphMgr::Item::~Item() {
 // NOTE: node->device_name() is not set by GraphConstructor.  We
 // expects that NodeDef in GraphDef given to workers fully specifies
 // device names.
-static string SplitByDevice(const Node* node) {
+static std::string SplitByDevice(const Node* node) {
   return node->assigned_device_name();
 }
 
@@ -116,8 +119,8 @@ static absl::Status ValidateGraphDefForDevices(const GraphDef& gdef) {
   DeviceNameUtils::ParsedName parsed;
   for (const auto& ndef : gdef.node()) {
     if (!DeviceNameUtils::ParseFullName(ndef.device(), &parsed)) {
-      return errors::InvalidArgument("Missing device name in: ",
-                                     FormatNodeDefForError(ndef));
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Missing device name in: ", FormatNodeDefForError(ndef)));
     }
   }
   return absl::OkStatus();
@@ -144,7 +147,7 @@ absl::Status GraphMgr::DecorateAndPublishGraphForDebug(
 //
 // "executors" are filled with one executor per device if success and
 // the caller takes the ownership of returned executors.
-absl::Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
+absl::Status GraphMgr::InitItem(const std::string& handle, const GraphDef& gdef,
                                 const GraphOptions& graph_options,
                                 const DebugOptions& debug_options,
                                 const ConfigProto& config_proto,
@@ -187,14 +190,14 @@ absl::Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, gdef, &graph));
 
   // Splits "graph" into multiple subgraphs by device names.
-  std::unordered_map<string, GraphDef> partitions;
+  std::unordered_map<std::string, GraphDef> partitions;
   PartitionOptions popts;
   popts.node_to_loc = SplitByDevice;
-  popts.new_name = [this](const string& prefix) {
+  popts.new_name = [this](const std::string& prefix) {
     mutex_lock l(mu_);
     return absl::StrCat(prefix, "_G", next_id_++);
   };
-  popts.get_incarnation = [this](const string& name) -> int64 {
+  popts.get_incarnation = [this](const std::string& name) -> int64_t {
     Device* device = nullptr;
     absl::Status s = device_mgr_->LookupDevice(name, &device);
     if (s.ok()) {
@@ -211,7 +214,7 @@ absl::Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
     TF_RETURN_IF_ERROR(AddControlEdges(popts, &partitions));
   }
 
-  std::unordered_map<string, std::unique_ptr<Graph>> partition_graphs;
+  std::unordered_map<std::string, std::unique_ptr<Graph>> partition_graphs;
   for (auto& partition : partitions) {
     std::unique_ptr<Graph> device_graph(new Graph(OpRegistry::Global()));
     GraphConstructorOptions device_opts;
@@ -236,7 +239,7 @@ absl::Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
   const auto& optimizer_opts = graph_options.optimizer_options();
   GraphOptimizer optimizer(optimizer_opts);
   for (auto& p : partition_graphs) {
-    const string& device_name = p.first;
+    const std::string& device_name = p.first;
     std::unique_ptr<Graph>& subgraph = p.second;
     item->units.resize(item->units.size() + 1);
     ExecutionUnit* unit = &(item->units.back());
@@ -262,8 +265,8 @@ absl::Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
     // Function library runtime.
     FunctionLibraryRuntime* lib = item->proc_flr->GetFLR(unit->device->name());
     if (lib == nullptr) {
-      return errors::InvalidArgument("Cannot find FLR for device: ",
-                                     unit->device->name());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Cannot find FLR for device: ", unit->device->name()));
     }
 
     // Construct the root executor for the subgraph.
@@ -316,14 +319,14 @@ absl::Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
   return absl::OkStatus();
 }
 
-absl::Status GraphMgr::Register(const string& handle, const GraphDef& gdef,
+absl::Status GraphMgr::Register(const std::string& handle, const GraphDef& gdef,
                                 const GraphOptions& graph_options,
                                 const DebugOptions& debug_options,
                                 const ConfigProto& config_proto,
                                 int64_t collective_graph_key,
                                 WorkerSession* session,
                                 DistributedFunctionLibraryRuntime* cluster_flr,
-                                string* graph_handle) {
+                                std::string* graph_handle) {
   Item* item = new Item;
   absl::Status s =
       InitItem(handle, gdef, graph_options, debug_options, config_proto,
@@ -337,22 +340,23 @@ absl::Status GraphMgr::Register(const string& handle, const GraphDef& gdef,
   {
     mutex_lock l(mu_);
     *graph_handle =
-        strings::Printf("%016llx", static_cast<long long>(++next_id_));
+        absl::StrFormat("%016llx", static_cast<long long>(++next_id_));
     item->handle = *graph_handle;
     CHECK(table_.insert({*graph_handle, item}).second);
   }
   return absl::OkStatus();
 }
 
-absl::Status GraphMgr::Deregister(const string& handle) {
+absl::Status GraphMgr::Deregister(const std::string& handle) {
   Item* item = nullptr;
   // Removes one item from table_.
   {
     mutex_lock l(mu_);
     auto iter = table_.find(handle);
     if (iter == table_.end()) {
-      return errors::Aborted("Graph handle is not found: ", handle,
-                             ". Possibly, this worker just restarted.");
+      return absl::AbortedError(
+          absl::StrCat("Graph handle is not found: ", handle,
+                       ". Possibly, this worker just restarted."));
     }
     item = iter->second;
     table_.erase(iter);
@@ -380,7 +384,7 @@ absl::Status GraphMgr::DeregisterAll() {
 absl::Status GraphMgr::SendInputs(const int64_t step_id,
                                   const NamedTensors& in) {
   Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id).release();
-  std::vector<string> keys;
+  std::vector<std::string> keys;
   std::vector<Tensor> tensors_to_send;
   keys.reserve(in.size());
   tensors_to_send.reserve(in.size());
@@ -405,8 +409,9 @@ absl::Status GraphMgr::RecvOutputs(const int64_t step_id, NamedTensors* out) {
   if (!s.ok()) {
     // Failing to fetch the outputs should not be possible, so rewrite the error
     // status to an INTERNAL error.
-    s = errors::Internal("Failed to fetch outputs for step ", step_id,
-                         ". (Original error message: ", s.message(), ")");
+    s = absl::InternalError(
+        absl::StrCat("Failed to fetch outputs for step ", step_id,
+                     ". (Original error message: ", s.message(), ")"));
   }
   size_t output_size = 0;
   for (auto& p : *out) {
@@ -419,7 +424,7 @@ absl::Status GraphMgr::RecvOutputs(const int64_t step_id, NamedTensors* out) {
 void GraphMgr::RecvOutputsAsync(const int64_t step_id, NamedTensors* out,
                                 StatusCallback done) {
   Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id).release();
-  std::vector<string> keys;
+  std::vector<std::string> keys;
   std::vector<Tensor>* received_keys = new std::vector<Tensor>;
   keys.reserve(out->size());
   received_keys->reserve(out->size());
@@ -443,13 +448,13 @@ void GraphMgr::RecvOutputsAsync(const int64_t step_id, NamedTensors* out,
 }
 
 void GraphMgr::ExecuteAsync(
-    const string& handle, const int64_t step_id, const ExecutorOpts& opts,
+    const std::string& handle, const int64_t step_id, const ExecutorOpts& opts,
     const NamedTensors& in, WorkerSession* session,
     StepStatsCollector* collector, MutableRunGraphResponseWrapper* response,
     CancellationManager* cancellation_manager,
     tsl::CoordinationServiceAgent* coordination_service_agent,
     StatusCallback done) {
-  const uint64 start_time_usecs = Env::Default()->NowMicros();
+  const uint64_t start_time_usecs = Env::Default()->NowMicros();
   tsl::profiler::TraceMeProducer activity(
       // To TraceMeConsumers in ExecutorState::Process/Finish or RunGraphDone.
       [step_id] {
@@ -470,7 +475,8 @@ void GraphMgr::ExecuteAsync(
   }
 
   if (item == nullptr) {
-    done(errors::Aborted("Graph handle is not found: ", handle));
+    done(absl::AbortedError(
+        absl::StrCat("Graph handle is not found: ", handle)));
     return;
   }
 
@@ -498,7 +504,7 @@ void GraphMgr::ExecuteAsync(
   // Sends values specified by the caller.
   size_t input_size = 0;
   if (s.ok()) {
-    std::vector<string> keys;
+    std::vector<std::string> keys;
     std::vector<Tensor> tensors_to_send;
     keys.reserve(in.size());
     tensors_to_send.reserve(in.size());
@@ -543,17 +549,19 @@ void GraphMgr::ExecuteAsync(
 }
 
 void GraphMgr::StartParallelExecutors(
-    const string& handle, int64_t step_id, Item* item, Rendezvous* rendezvous,
-    CollectiveExecutor::Handle* ce_handle, StepStatsCollector* collector,
-    CostGraphDef* cost_graph, CancellationManager* cancellation_manager,
-    WorkerSession* session, int64_t start_time_usecs,
+    const std::string& handle, int64_t step_id, Item* item,
+    Rendezvous* rendezvous, CollectiveExecutor::Handle* ce_handle,
+    StepStatsCollector* collector, CostGraphDef* cost_graph,
+    CancellationManager* cancellation_manager, WorkerSession* session,
+    int64_t start_time_usecs,
     tsl::CoordinationServiceAgent* coordination_service_agent,
     StatusCallback done) {
   const int num_units = item->units.size();
   CHECK_GE(num_units, 1);
-  ScopedStepContainer* step_container = new ScopedStepContainer(
-      step_id,
-      [this](const string& name) { device_mgr_->ClearContainers({name}); });
+  ScopedStepContainer* step_container =
+      new ScopedStepContainer(step_id, [this](const std::string& name) {
+        device_mgr_->ClearContainers({name});
+      });
   // NOTE: Transfer one ref of rendezvous and item.
   ExecutorBarrier* barrier =
       new ExecutorBarrier(num_units, rendezvous,
@@ -602,7 +610,7 @@ void GraphMgr::BuildCostModel(Item* item, StepStatsCollector* collector,
                               CostGraphDef* cost_graph) {
   if (collector && !skip_cost_models_) {
     // Build the cost model
-    std::unordered_map<string, const Graph*> device_to_graph;
+    std::unordered_map<std::string, const Graph*> device_to_graph;
     for (const auto& unit : item->units) {
       if (unit.build_cost_model > 0) {
         device_to_graph[unit.device->name()] = unit.graph.get();

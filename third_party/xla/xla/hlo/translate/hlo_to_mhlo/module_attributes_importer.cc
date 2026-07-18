@@ -75,17 +75,19 @@ mlir::ArrayAttr ConvertCrossProgramPrefetches(
                                     param_map[index] = arg_index++;
                                   });
     }
-    for (const auto& [parameter, index, alt_memory_offset] : prefetches)
+    for (const auto& [parameter, index, alt_memory_offset] : prefetches) {
       shapes.push_back(mlir::mhlo::CrossProgramPrefetchAttr::get(
           builder->getContext(),
           original_param_index_to_flattened_arg_index[parameter][index],
           /*indices=*/{}, alt_memory_offset));
+    }
   } else {
-    for (const auto& [parameter, index, alt_memory_offset] : prefetches)
+    for (const auto& [parameter, index, alt_memory_offset] : prefetches) {
       shapes.push_back(mlir::mhlo::CrossProgramPrefetchAttr::get(
           builder->getContext(), parameter,
           llvm::ArrayRef<int64_t>(index.data(), index.size()),
           alt_memory_offset));
+    }
   }
 
   return mlir::ArrayAttr::get(builder->getContext(), shapes);
@@ -236,12 +238,14 @@ void ImportFrontendAttributes(const HloModule& hlo_module,
                               mlir::ModuleOp module, mlir::Builder builder) {
   if (!hlo_module.frontend_attributes().map().empty()) {
     llvm::SmallVector<mlir::NamedAttribute, 4> frontend_attributes;
-    for (const auto& [k, v] : hlo_module.frontend_attributes().map())
+    for (const auto& [k, v] : hlo_module.frontend_attributes().map()) {
       frontend_attributes.push_back(
           builder.getNamedAttr(k, builder.getStringAttr(v)));
-    if (!frontend_attributes.empty())
+    }
+    if (!frontend_attributes.empty()) {
       module->setAttr(xla::kMhloFrontendAttributes,
                       builder.getDictionaryAttr(frontend_attributes));
+    }
   }
 }
 
@@ -279,10 +283,11 @@ void ImportNumReplicas(const HloModule& hlo_module, mlir::ModuleOp module,
 
 void ImportSpmdOutputSharding(const xla::HloModule& hlo_module,
                               mlir::ModuleOp module, mlir::Builder builder) {
-  if (hlo_module.has_spmd_output_sharding())
+  if (hlo_module.has_spmd_output_sharding()) {
     module->setAttr(
         xla::kMhloSpmdOutputSharding,
         ConvertSharding(hlo_module.spmd_output_sharding(), &builder));
+  }
 }
 
 void ImportSpmdParametersShardings(const HloModule& hlo_module,
@@ -294,10 +299,12 @@ void ImportSpmdParametersShardings(const HloModule& hlo_module,
     parameter_shardings.reserve(hlo_module.spmd_parameters_shardings().size());
     for (const auto& root_sharding : hlo_module.spmd_parameters_shardings()) {
       llvm::ArrayRef<HloSharding> shardings = root_sharding;
-      if (root_sharding.IsTuple() && flatten_computation_args_result)
+      if (root_sharding.IsTuple() && flatten_computation_args_result) {
         shardings = root_sharding.tuple_elements();
-      for (const auto& sharding : shardings)
+      }
+      for (const auto& sharding : shardings) {
         parameter_shardings.push_back(ConvertSharding(sharding, &builder));
+      }
     }
     module->setAttr(xla::kMhloSpmdParametersShardings,
                     builder.getArrayAttr(parameter_shardings));
@@ -319,7 +326,9 @@ mlir::DictionaryAttr AppendAutoLayoutModeAttribute(mlir::Builder builder,
   llvm::SmallVector<mlir::NamedAttribute> attrs;
   if (dict) {
     for (auto attr : dict.getValue()) {
-      if (attr.getName() != xla::kMhloLayoutMode) attrs.push_back(attr);
+      if (attr.getName() != xla::kMhloLayoutMode) {
+        attrs.push_back(attr);
+      }
     }
   }
   attrs.push_back(builder.getNamedAttr(xla::kMhloLayoutMode,
@@ -342,9 +351,12 @@ void ImportParameterLayoutModes(mlir::func::FuncOp main,
   CHECK_EQ(parameter_shapes.size(), main.getNumArguments());
   for (size_t i = 0; i < main.getNumArguments(); ++i) {
     const Shape& shape = *parameter_shapes[i];
-    if (shape.IsTuple() || (shape.IsArray() && shape.dimensions().size() == 0))
+    if (shape.IsTuple() || (shape.IsArray() && shape.dimensions().empty())) {
       continue;
-    if (LayoutUtil::HasAnyLayout(*parameter_shapes[i])) continue;
+    }
+    if (LayoutUtil::HasAnyLayout(*parameter_shapes[i])) {
+      continue;
+    }
     main.setArgAttrs(
         i, AppendAutoLayoutModeAttribute(builder, main.getArgAttrDict(i)));
   }
@@ -362,9 +374,12 @@ void ImportResultLayoutModes(mlir::func::FuncOp main,
   CHECK_EQ(result_shapes.size(), main.getNumResults());
   for (size_t i = 0; i < main.getNumResults(); ++i) {
     const Shape& shape = *result_shapes[i];
-    if (shape.IsTuple() || (shape.IsArray() && shape.dimensions().size() == 0))
+    if (shape.IsTuple() || (shape.IsArray() && shape.dimensions().empty())) {
       continue;
-    if (LayoutUtil::HasAnyLayout(shape)) continue;
+    }
+    if (LayoutUtil::HasAnyLayout(shape)) {
+      continue;
+    }
     main.setResultAttrs(
         i, AppendAutoLayoutModeAttribute(builder, main.getResultAttrDict(i)));
   }

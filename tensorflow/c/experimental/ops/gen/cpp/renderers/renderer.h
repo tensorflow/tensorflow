@@ -34,7 +34,7 @@ class Renderer {
 
   // Append a line of source code, left-justified (not indented).
   // Use for preprocessors directives ("#include"), namespaces, etc.
-  Renderer &CodeLine(const string &text);
+  Renderer& CodeLine(const std::string& text);
   template <typename... Args>
   Renderer CodeLine(absl::string_view text, const Args &...args) {
     return CodeLine(absl::Substitute(text, args...));
@@ -44,7 +44,7 @@ class Renderer {
   // Note: Trims leading/trailing whitespace including newlines, making this
   //       method convenient for multiline raw strings.
   // Newlines ('\n') are allowed/expected.
-  Renderer &CodeLines(const string &text);
+  Renderer& CodeLines(const std::string& text);
   template <typename... Args>
   Renderer CodeLines(absl::string_view text, const Args &...args) {
     return CodeLines(absl::Substitute(text, args...));
@@ -52,7 +52,7 @@ class Renderer {
 
   // Indent and append a C++ statement.
   // Note: do *not* include a trailing semicolon in the statement text.
-  Renderer &Statement(const string &text);
+  Renderer& Statement(const std::string& text);
   template <typename... Args>
   Renderer Statement(absl::string_view text, const Args &...args) {
     return Statement(absl::Substitute(text, args...));
@@ -60,14 +60,14 @@ class Renderer {
 
   // Indent and append a call to a TF method returning a Status to check.
   // Note: do *not* include a trailing semicolon in the statement text.
-  Renderer &TFStatement(const string &text);
+  Renderer& TFStatement(const std::string& text);
   template <typename... Args>
   Renderer TFStatement(absl::string_view text, const Args &...args) {
     return TFStatement(absl::Substitute(text, args...));
   }
 
   // Indent and append a C++ single-line style comment (using '//').
-  Renderer &CommentLine(const string &text = "");
+  Renderer& CommentLine(const std::string& text = "");
   template <typename... Args>
   Renderer CommentLine(absl::string_view text, const Args &...args) {
     return CommentLine(absl::Substitute(text, args...));
@@ -75,7 +75,7 @@ class Renderer {
 
   // Append a line of code which starts a new block: trailing with '{') and
   // indenting.
-  Renderer &BlockOpen(const string &text);
+  Renderer& BlockOpen(const std::string& text);
   template <typename... Args>
   Renderer BlockOpen(absl::string_view text, const Args &...args) {
     return BlockOpen(absl::Substitute(text, args...));
@@ -83,7 +83,7 @@ class Renderer {
 
   // Append a line of code ending a block: unindenting and adding '}'.
   // Note: optional trailing text is often a comment, e.g. '// namespace xyz'.
-  Renderer &BlockClose(const string &text = "");
+  Renderer& BlockClose(const std::string& text = "");
   template <typename... Args>
   Renderer BlockClose(absl::string_view text, const Args &...args) {
     return BlockClose(absl::Substitute(text, args...));

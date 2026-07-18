@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/variants/list_ops_util.h"
 
+#include <cstdarg>
+#include <cstdio>
+#include <string>
 #include <utility>
 
 #include <gmock/gmock.h>
@@ -29,32 +32,85 @@ namespace tflite {
 namespace variants {
 namespace {
 
-TEST(TensorAsShape, ScalarTensor_ReturnsEmptyIntArray) {
+struct TestContext : public TfLiteContext {
+  std::string error;
+};
+
+void ReportError(TfLiteContext* context, const char* format, ...) {
+  TestContext* c = static_cast<TestContext*>(context);
+  const size_t kBufferSize = 1024;
+  char temp_buffer[kBufferSize];
+
+  va_list args;
+  va_start(args, format);
+  vsnprintf(temp_buffer, kBufferSize, format, args);
+  va_end(args);
+
+  c->error = temp_buffer;
+}
+
+class TensorAsShapeTest : public ::testing::Test {
+ public:
+  TensorAsShapeTest() { context_.ReportError = ReportError; }
+
+ protected:
+  TestContext context_;
+};
+
+TEST_F(TensorAsShapeTest, ScalarTensor_ReturnsEmptyIntArray) {
   TensorUniquePtr scalar_tensor =
       BuildTfLiteTensor(kTfLiteInt32, BuildTfLiteArray({}), kTfLiteDynamic);
 
-  IntArrayUniquePtr shape_from_tensor = TensorAsShape(*scalar_tensor);
+  IntArrayUniquePtr shape_from_tensor;
+  ASSERT_EQ(TensorAsShape(&context_, *scalar_tensor, shape_from_tensor),
+            kTfLiteOk);
   ASSERT_THAT(shape_from_tensor.get(), DimsAre({}));
 }
 
-TEST(TensorAsShape, SingleElementTensor_ReturnsSize1Shape) {
+TEST_F(TensorAsShapeTest, SingleElementTensor_ReturnsSize1Shape) {
   TensorUniquePtr single_el_tensor =
       BuildTfLiteTensor(kTfLiteInt32, BuildTfLiteArray({1}), kTfLiteDynamic);
   single_el_tensor->data.i32[0] = 10;
 
-  IntArrayUniquePtr shape_from_tensor = TensorAsShape(*single_el_tensor);
+  IntArrayUniquePtr shape_from_tensor;
+  ASSERT_EQ(TensorAsShape(&context_, *single_el_tensor, shape_from_tensor),
+            kTfLiteOk);
   ASSERT_THAT(shape_from_tensor.get(), DimsAre({10}));
 }
 
-TEST(TensorAsShape, OneDMultipleElementShape_ReturnsHighRankedShape) {
+TEST_F(TensorAsShapeTest, OneDMultipleElementShape_ReturnsHighRankedShape) {
   TensorUniquePtr one_d_mul_el_tensor =
       BuildTfLiteTensor(kTfLiteInt32, BuildTfLiteArray({3}), kTfLiteDynamic);
   one_d_mul_el_tensor->data.i32[0] = 10;
   one_d_mul_el_tensor->data.i32[1] = 9;
   one_d_mul_el_tensor->data.i32[2] = 8;
 
-  IntArrayUniquePtr shape_from_tensor = TensorAsShape(*one_d_mul_el_tensor);
+  IntArrayUniquePtr shape_from_tensor;
+  ASSERT_EQ(TensorAsShape(&context_, *one_d_mul_el_tensor, shape_from_tensor),
+            kTfLiteOk);
   ASSERT_THAT(shape_from_tensor.get(), DimsAre({10, 9, 8}));
+}
+
+TEST_F(TensorAsShapeTest, MultidimensionalTensor_ReturnsNull) {
+  TensorUniquePtr multi_d_tensor =
+      BuildTfLiteTensor(kTfLiteInt32, BuildTfLiteArray({2, 3}), kTfLiteDynamic);
+
+  IntArrayUniquePtr shape_from_tensor;
+  EXPECT_EQ(TensorAsShape(&context_, *multi_d_tensor, shape_from_tensor),
+            kTfLiteError);
+  EXPECT_EQ(shape_from_tensor.get(), nullptr);
+}
+
+TEST_F(TensorAsShapeTest, BufferTooSmall_ReturnsNull) {
+  TensorUniquePtr small_buffer_tensor =
+      BuildTfLiteTensor(kTfLiteInt32, BuildTfLiteArray({1000}), kTfLiteDynamic);
+  // Artificially reduce bytes to simulate OOB read vulnerability
+  small_buffer_tensor->bytes = 0;
+
+  IntArrayUniquePtr shape_from_tensor;
+  EXPECT_EQ(TensorAsShape(&context_, *small_buffer_tensor, shape_from_tensor),
+            kTfLiteError);
+  EXPECT_EQ(shape_from_tensor.get(), nullptr);
 }
 
 TEST(MergeShapesOrNull, IncompatibleSameRank_ReturnsNull) {
@@ -69,7 +125,7 @@ TEST(MergeShapesOrNull, NotSameRank_ReturnsNull) {
   EXPECT_EQ(MergeShapesOrNull(std::move(l), std::move(r)).get(), nullptr);
 }
 
-TEST(MergeShapesOrNull, MergeShapesOrNullSameRankNENull) {
+TEST(MergeShapesOrNull, IncompatibleSameRank1D_ReturnsNull) {
   IntArrayUniquePtr l = BuildTfLiteArray({1});
   IntArrayUniquePtr r = BuildTfLiteArray({2});
   EXPECT_EQ(MergeShapesOrNull(std::move(l), std::move(r)).get(), nullptr);
@@ -109,7 +165,7 @@ TEST(MergeShapesOrNull, BothUnranked_ReturnsUnranked) {
   EXPECT_THAT(MergeShapesOrNull(std::move(l), std::move(r)).get(), DimsAre({}));
 }
 
-TEST(MergeShapesOrNull, UrankedAndStatic1D_ReturnsStatic1D) {
+TEST(MergeShapesOrNull, UnrankedAndStatic1D_ReturnsStatic1D) {
   IntArrayUniquePtr l = BuildTfLiteArray({});
   IntArrayUniquePtr r = BuildTfLiteArray({1});
   EXPECT_THAT(MergeShapesOrNull(std::move(l), std::move(r)).get(),

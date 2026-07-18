@@ -2,7 +2,7 @@ load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application")
 load("@rules_cc//cc:objc_library.bzl", "objc_library")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -46,7 +46,7 @@ ios_application(
         "ipad",
     ],
     infoplists = ["Info.plist"],
-    minimum_os_version = "12.0",
+    minimum_os_version = "15.0",
     provisioning_profile = "//tensorflow/lite/delegates/gpu/metal/benchmarking:provisioning_profile.mobileprovision",
     tags = [
         "local",

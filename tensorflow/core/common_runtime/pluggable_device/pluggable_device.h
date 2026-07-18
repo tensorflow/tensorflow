@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_PLUGGABLE_DEVICE_PLUGGABLE_DEVICE_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -48,9 +49,9 @@ namespace tensorflow {
 class PluggableDevice : public LocalDevice {
  public:
   PluggableDevice(const SessionOptions& options, const std::string& name,
-                  const string& device_type, const string& platform_name,
-                  Bytes memory_limit, const DeviceLocality& locality,
-                  TfDeviceId tf_device_id,
+                  const std::string& device_type,
+                  const std::string& platform_name, Bytes memory_limit,
+                  const DeviceLocality& locality, TfDeviceId tf_device_id,
                   const std::string& physical_device_desc,
                   Allocator* device_allocator, Allocator* cpu_allocator,
                   bool sync_every_op);
@@ -58,7 +59,8 @@ class PluggableDevice : public LocalDevice {
   ~PluggableDevice() override;
 
   // Initialize the device and return the status of initialization.
-  absl::Status Init(const SessionOptions& options);
+  absl::Status Init(const SessionOptions& options,
+                    std::optional<int> stream_priority = std::nullopt);
 
   void ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                     AsyncOpKernel::DoneCallback done) override;
@@ -66,6 +68,9 @@ class PluggableDevice : public LocalDevice {
   void Compute(OpKernel* op_kernel, OpKernelContext* context) override;
 
   absl::Status Sync() override;
+
+  // Helper method for unit tests to reset the streams. Never use in production.
+  static void TestOnlyReset();
 
   Allocator* GetAllocator(AllocatorAttributes attr) override;
 
@@ -99,7 +104,7 @@ class PluggableDevice : public LocalDevice {
   // TODO(penpornk): Investigate renaming `GpuDeviceInfo` to `DeviceInfo`.
   DeviceBase::AcceleratorDeviceInfo* pluggable_device_info_ = nullptr;
   TfDeviceId tf_device_id_;
-  const string platform_name_;
+  const std::string platform_name_;
   const bool sync_every_op_ = false;
   EventMgr* em_ = nullptr;
   std::unique_ptr<thread::ThreadPool> thread_pool_;

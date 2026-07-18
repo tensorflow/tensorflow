@@ -34,7 +34,7 @@ class ParallelFilterDatasetParams : public DatasetParams {
       FunctionDefHelper::AttrValueWrapper pred_func,
       std::vector<FunctionDef> func_lib, DataTypeVector type_arguments,
       DataTypeVector output_dtypes,
-      std::vector<PartialTensorShape> output_shapes, string node_name)
+      std::vector<PartialTensorShape> output_shapes, std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         other_arguments_(std::move(other_arguments)),
@@ -56,7 +56,8 @@ class ParallelFilterDatasetParams : public DatasetParams {
     return input_tensors;
   }
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override {
     input_names->clear();
     input_names->reserve(input_dataset_params_.size() +
                          other_arguments_.size());
@@ -77,7 +78,7 @@ class ParallelFilterDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  string dataset_type() const override {
+  std::string dataset_type() const override {
     return ParallelFilterDatasetOp::kDatasetType;
   }
 

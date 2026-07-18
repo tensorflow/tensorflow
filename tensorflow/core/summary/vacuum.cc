@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <iostream>
+#include <string>
 
 #include "absl/log/log.h"
 #include "tensorflow/core/lib/db/sqlite.h"
@@ -110,7 +111,7 @@ void Vacuum(const char* path) {
 }
 
 int main(int argc, char* argv[]) {
-  string usage = Flags::Usage(argv[0], {});
+  std::string usage = Flags::Usage(argv[0], {});
   bool parse_result = Flags::Parse(&argc, argv, {});
   if (!parse_result) {
     std::cerr << "The vacuum tool rebuilds SQLite database files created by\n"

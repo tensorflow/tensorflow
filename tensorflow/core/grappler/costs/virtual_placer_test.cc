@@ -25,7 +25,7 @@ namespace grappler {
 
 TEST(VirtualPlacerTest, LocalDevices) {
   // Create a virtual cluster with a local CPU and a local GPU
-  std::unordered_map<string, DeviceProperties> devices;
+  std::unordered_map<std::string, DeviceProperties> devices;
   DeviceProperties cpu_device;
   cpu_device.set_type("CPU");
   devices["/job:localhost/replica:0/task:0/cpu:0"] = cpu_device;
@@ -55,7 +55,7 @@ TEST(VirtualPlacerTest, LocalDevices) {
 
 TEST(VirtualPlacerTest, ShortNames) {
   // Create a virtual cluster with a local CPU and a local GPU
-  std::unordered_map<string, DeviceProperties> devices;
+  std::unordered_map<std::string, DeviceProperties> devices;
   DeviceProperties cpu_device;
   cpu_device.set_type("CPU");
   devices["/CPU:0"] = cpu_device;
@@ -85,7 +85,7 @@ TEST(VirtualPlacerTest, PlacementOnNonDefaultDevice) {
   // Test that placement on TPU works
   // In contrast with GPU, TPU is not selected as default device at the moment.
 
-  std::unordered_map<string, DeviceProperties> devices;
+  std::unordered_map<std::string, DeviceProperties> devices;
   DeviceProperties cpu_device;
   cpu_device.set_type("CPU");
   devices["/job:localhost/replica:0/task:0/cpu:0"] = cpu_device;
@@ -112,8 +112,8 @@ TEST(VirtualPlacerTest, EmptyJobName) {
   // Virtual placer choose job name from the devices in cluster if a device name
   // of an op is empty. In case there are more than one kind of job name
   // or job names are missing in the devices in cluster, we use local_host.
-  for (const string& job_name : {"localhost", "worker", "worker_train"}) {
-    std::unordered_map<string, DeviceProperties> devices;
+  for (const std::string& job_name : {"localhost", "worker", "worker_train"}) {
+    std::unordered_map<std::string, DeviceProperties> devices;
     DeviceProperties cpu_device;
     cpu_device.set_type("CPU");
     devices[absl::StrCat("/job:", job_name, "/replica:0/task:0/cpu:0")] =
@@ -137,7 +137,7 @@ TEST(VirtualPlacerTest, EmptyJobName) {
 
   // When more than one job names are used, we use default "localhost"
   // This may be improved later.
-  std::unordered_map<string, DeviceProperties> devices;
+  std::unordered_map<std::string, DeviceProperties> devices;
   DeviceProperties cpu_device;
   cpu_device.set_type("CPU");
   devices["/job:localhost/replica:0/task:0/cpu:0"] = cpu_device;
@@ -153,8 +153,8 @@ TEST(VirtualPlacerTest, EmptyJobName) {
             placer.get_canonical_device_name(node));
 }
 
-string GetDefaultDeviceName(
-    const std::unordered_map<string, DeviceProperties>& devices) {
+std::string GetDefaultDeviceName(
+    const std::unordered_map<std::string, DeviceProperties>& devices) {
   VirtualCluster cluster(devices);
   VirtualPlacer placer(devices);
   NodeDef node;
@@ -165,7 +165,7 @@ string GetDefaultDeviceName(
 }
 
 TEST(VirtualPlacerTest, DefaultDevice) {
-  std::unordered_map<string, DeviceProperties> devices;
+  std::unordered_map<std::string, DeviceProperties> devices;
   DeviceProperties cpu_device;
   cpu_device.set_type("CPU");
   devices["/job:worker/replica:0/task:0/cpu:0"] = cpu_device;
@@ -187,7 +187,7 @@ TEST(VirtualPlacerTest, DefaultDevice) {
 
 TEST(VirtualPlacerTest, MultiReplica) {
   // Create a cluster with 8 workers, each with 8 GPUs.
-  std::unordered_map<string, DeviceProperties> devices;
+  std::unordered_map<std::string, DeviceProperties> devices;
   DeviceProperties cpu_device;
   cpu_device.set_type("CPU");
   DeviceProperties gpu_device;
@@ -204,7 +204,7 @@ TEST(VirtualPlacerTest, MultiReplica) {
   std::unique_ptr<VirtualCluster> cluster(new VirtualCluster(devices));
   std::unique_ptr<VirtualPlacer> placer(new VirtualPlacer(devices));
 
-  auto get_device_name = [&placer](const string& device) -> string {
+  auto get_device_name = [&placer](const std::string& device) -> std::string {
     NodeDef node;
     node.set_op("Conv2D");
     node.set_device(device);
@@ -250,7 +250,7 @@ TEST(VirtualPlacerTest, MultiReplica) {
 TEST(VirtualPlacerTest, FallBackUnknown) {
   // Virtual placer falls back to "UNKNOWN" only if there are no devices in the
   // cluster.
-  std::unordered_map<string, DeviceProperties> devices;
+  std::unordered_map<std::string, DeviceProperties> devices;
   VirtualCluster cluster(devices);
   VirtualPlacer placer(devices);
 
@@ -263,7 +263,7 @@ TEST(VirtualPlacerTest, FallBackUnknown) {
 }
 
 TEST(VirtualPlacerTest, FallBackCPU) {
-  std::unordered_map<string, DeviceProperties> devices;
+  std::unordered_map<std::string, DeviceProperties> devices;
   DeviceProperties cpu_device;
   cpu_device.set_type("CPU");
   devices["/job:my_job/replica:0/task:0/cpu:0"] = cpu_device;
@@ -280,7 +280,7 @@ TEST(VirtualPlacerTest, FallBackCPU) {
 }
 
 TEST(VirtualPlacerTest, RemoteDevices) {
-  std::unordered_map<string, DeviceProperties> devices;
+  std::unordered_map<std::string, DeviceProperties> devices;
   DeviceProperties cpu_device;
   cpu_device.set_type("CPU");
   devices["/job:my_job/replica:0/task:0/cpu:0"] = cpu_device;

@@ -136,11 +136,11 @@ class StateMap {
   BranchType FindBranchOf(CondId id, OutputTensor predicate) const;
 
   // Returns textual representation of node's CondState.
-  string CondStateToString(const Node* node) const;
-  string CondStateToString(CondId id) const;
+  std::string CondStateToString(const Node* node) const;
+  std::string CondStateToString(CondId id) const;
 
   // Returns textual representation of node's AncestorState.
-  string AncestorStateToString(const Node* node) const;
+  std::string AncestorStateToString(const Node* node) const;
 
   // Returns whether the cond state is the dead state.
   bool IsDead(CondId id) const;
@@ -201,7 +201,7 @@ class FunctionalizeCond {
   absl::Status PropagateUpdatedState(const Node* replacee);
 
   // Dump graph with the CondState annotated.
-  void DumpGraphWithCondState(const string& name);
+  void DumpGraphWithCondState(const std::string& name);
 
   // Adds `switch_id` to the list of Switch node ids.
   void AddSwitchId(int switch_id);

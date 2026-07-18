@@ -31,24 +31,24 @@ absl::Status RemoveAttribute(const GraphDef& input_graph_def,
                              GraphDef* output_graph_def) {
   if (!context.params.count("attribute_name") ||
       (context.params.at("attribute_name").size() != 1)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "remove_attribute expects exactly one 'attribute_name' "
         "argument, e.g. remove_attribute(op_name=Mul, attribute_name=foo)");
   }
 
-  string op_name;
+  std::string op_name;
   if (context.params.count("op_name")) {
     if (context.params.at("op_name").size() != 1) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "remove_attribute expects a single op_name argument, but found ",
-          context.params.at("op_name").size());
+          context.params.at("op_name").size()));
     }
     op_name = context.params.at("op_name")[0];
   } else {
     op_name = "*";
   }
 
-  const string attribute_name = context.params.at("attribute_name")[0];
+  const std::string attribute_name = context.params.at("attribute_name")[0];
   output_graph_def->Clear();
   for (const NodeDef& node : input_graph_def.node()) {
     NodeDef* new_node = output_graph_def->mutable_node()->Add();

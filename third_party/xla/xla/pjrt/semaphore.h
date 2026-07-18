@@ -41,6 +41,12 @@ class Semaphore {
   // Returns the capacity of the semaphore.
   int64_t capacity() const { return max_capacity_; }
 
+  // Returns the current value of the semaphore.
+  int64_t value() const {
+    absl::MutexLock lock(mu_);
+    return value_;
+  }
+
   class ScopedReservation {
    public:
     ScopedReservation(Semaphore* semaphore, int64_t amount)
@@ -69,7 +75,7 @@ class Semaphore {
   static bool CanAcquire(CanAcquireArgs* args)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(args->semaphore->mu_);
 
-  absl::Mutex mu_;
+  mutable absl::Mutex mu_;
   int64_t value_ ABSL_GUARDED_BY(mu_);
   const int64_t max_capacity_;
 };

@@ -29,10 +29,7 @@ cc_library(
     hdrs = SDY_CAPI_HEADERS,
     deps = [
         "//xla/service/spmd/shardy/sdy_round_trip:import_shardy_attrs",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:CAPIIR",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -53,10 +50,7 @@ cc_library(
     hdrs = SDY_CAPI_HEADERS,
     deps = [
         "//xla/service/spmd/shardy/sdy_round_trip:import_shardy_attrs",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:CAPIIRObjects",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
     ],
     alwayslink = True,
 )

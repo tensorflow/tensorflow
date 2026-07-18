@@ -26,8 +26,7 @@ namespace {
 
 SavedObjectGraph ParseSavedObjectGraph(absl::string_view text_proto) {
   SavedObjectGraph value;
-  CHECK(tensorflow::protobuf::TextFormat::ParseFromString(string(text_proto),
-                                                          &value));
+  CHECK(tensorflow::protobuf::TextFormat::ParseFromString(text_proto, &value));
   return value;
 }
 
@@ -301,39 +300,39 @@ nodes {
 
 TEST(ObjectGraphTraversalTest, Success) {
   SavedObjectGraph object_graph = ParseSavedObjectGraph(kSingleChildFoo);
-  absl::optional<int> node = internal::FindNodeAtPath("foo", object_graph);
+  std::optional<int> node = internal::FindNodeAtPath("foo", object_graph);
   ASSERT_TRUE(node.has_value());
   EXPECT_EQ(*node, 1);
 }
 
 TEST(ObjectGraphTraversalTest, ObjectNotFound) {
   SavedObjectGraph object_graph = ParseSavedObjectGraph(kSingleChildFoo);
-  absl::optional<int> node = internal::FindNodeAtPath("bar", object_graph);
+  std::optional<int> node = internal::FindNodeAtPath("bar", object_graph);
   EXPECT_FALSE(node.has_value());
 }
 
 TEST(ObjectGraphTraversalTest, CaseSensitiveMismatch) {
   SavedObjectGraph object_graph = ParseSavedObjectGraph(kSingleChildFoo);
-  absl::optional<int> node = internal::FindNodeAtPath("FOO", object_graph);
+  std::optional<int> node = internal::FindNodeAtPath("FOO", object_graph);
   EXPECT_FALSE(node.has_value());
 }
 
 TEST(ObjectGraphTraversalTest, NestedObjectFound) {
   SavedObjectGraph object_graph =
       ParseSavedObjectGraph(kSingleChildFooWithFuncBar);
-  absl::optional<int> node = internal::FindNodeAtPath("foo.bar", object_graph);
+  std::optional<int> node = internal::FindNodeAtPath("foo.bar", object_graph);
   ASSERT_TRUE(node.has_value());
   EXPECT_EQ(*node, 2);
 }
 
 TEST(ObjectGraphTraversalTest, MultiplePathsAliasSameObject) {
   SavedObjectGraph object_graph = ParseSavedObjectGraph(kMultiplePathsToChild);
-  absl::optional<int> foo_baz_node =
+  std::optional<int> foo_baz_node =
       internal::FindNodeAtPath("foo.baz", object_graph);
   ASSERT_TRUE(foo_baz_node.has_value());
   EXPECT_EQ(*foo_baz_node, 4);
 
-  absl::optional<int> bar_wombat_node =
+  std::optional<int> bar_wombat_node =
       internal::FindNodeAtPath("bar.wombat", object_graph);
   ASSERT_TRUE(bar_wombat_node.has_value());
   EXPECT_EQ(*bar_wombat_node, 4);
@@ -344,21 +343,21 @@ TEST(ObjectGraphTraversalTest, MultiplePathsAliasSameObject) {
 TEST(ObjectGraphTraversalTest, CyclesAreOK) {
   SavedObjectGraph object_graph =
       ParseSavedObjectGraph(kCycleBetweenParentAndChild);
-  absl::optional<int> foo = internal::FindNodeAtPath("foo", object_graph);
+  std::optional<int> foo = internal::FindNodeAtPath("foo", object_graph);
   ASSERT_TRUE(foo.has_value());
   EXPECT_EQ(*foo, 1);
 
-  absl::optional<int> foo_bar =
+  std::optional<int> foo_bar =
       internal::FindNodeAtPath("foo.bar", object_graph);
   ASSERT_TRUE(foo_bar.has_value());
   EXPECT_EQ(*foo_bar, 3);
 
-  absl::optional<int> foo_bar_parent =
+  std::optional<int> foo_bar_parent =
       internal::FindNodeAtPath("foo.bar.parent", object_graph);
   ASSERT_TRUE(foo_bar_parent.has_value());
   EXPECT_EQ(*foo_bar_parent, 1);
 
-  absl::optional<int> foo_bar_parent_bar =
+  std::optional<int> foo_bar_parent_bar =
       internal::FindNodeAtPath("foo.bar.parent.bar", object_graph);
   ASSERT_TRUE(foo_bar_parent_bar.has_value());
   EXPECT_EQ(*foo_bar_parent_bar, 3);

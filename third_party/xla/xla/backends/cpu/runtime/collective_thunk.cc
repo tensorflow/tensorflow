@@ -34,24 +34,26 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/collectives/cpu_clique_key.h"
 #include "xla/backends/cpu/collectives/cpu_cliques.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/debug_options_flags.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/runtime/device_id.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -91,11 +93,13 @@ CollectiveThunk::CollectiveThunk(CollectiveKind collective_kind,
 Thunk::BufferUses CollectiveThunk::buffer_uses() const {
   BufferUses uses;
   uses.reserve(source_buffers().size() + destination_buffers().size());
-  for (auto& source_buffer : source_buffers()) {
-    uses.push_back(BufferUse::Read(source_buffer));
+  for (int i = 0; i < source_buffers().size(); i++) {
+    uses.push_back(BufferUse::Read(op_buffers_.source_buffers[i],
+                                   op_buffers_.source_shapes[i]));
   }
-  for (auto& destination_buffer : destination_buffers()) {
-    uses.push_back(BufferUse::Write(destination_buffer));
+  for (int i = 0; i < destination_buffers().size(); i++) {
+    uses.push_back(BufferUse::Write(op_buffers_.destination_buffers[i],
+                                    op_buffers_.destination_shapes[i]));
   }
   return uses;
 }
@@ -133,16 +137,16 @@ CollectiveThunk::GetOpDeviceMemory(const ExecuteParams& params) {
   size_t num_dsts = destination_buffers().size();
   DCHECK_EQ(num_srcs, num_dsts) << "Number of src and dst buffers must match";
 
-  absl::InlinedVector<se::DeviceMemoryBase, 4> source_data(num_srcs);
+  absl::InlinedVector<se::DeviceAddressBase, 4> source_data(num_srcs);
   for (int i = 0; i < num_srcs; ++i) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         source_data[i],
         params.buffer_allocations->GetDeviceAddress(source_buffer(i)));
   }
 
-  absl::InlinedVector<se::DeviceMemoryBase, 4> destination_data(num_dsts);
+  absl::InlinedVector<se::DeviceAddressBase, 4> destination_data(num_dsts);
   for (int i = 0; i < num_dsts; ++i) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         destination_data[i],
         params.buffer_allocations->GetDeviceAddress(destination_buffer(i)));
   }
@@ -151,6 +155,11 @@ CollectiveThunk::GetOpDeviceMemory(const ExecuteParams& params) {
 }
 
 absl::Duration CollectiveThunk::DefaultCollectiveTimeout() {
+  static const int64_t timeout =
+      xla::GetDebugOptionsFromFlags().xla_cpu_collective_timeout_seconds();
+  if (timeout > 0) {
+    return absl::Seconds(timeout);
+  }
   return absl::Minutes(30);
 }
 
@@ -163,12 +172,11 @@ absl::StatusOr<RendezvousKey> CollectiveThunk::GetRendezvousKey(
                                                 ? RendezvousKey::kCrossModule
                                                 : RendezvousKey::kCrossReplica;
 
-  TF_ASSIGN_OR_RETURN(
-      CollectiveOpGroupMode group_mode,
-      GetCollectiveOpGroupMode(op_params_.has_channel_id,
-                               op_params_.use_global_device_ids));
+  ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                   GetCollectiveOpGroupMode(op_params_.has_channel_id,
+                                            op_params_.use_global_device_ids));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<GlobalDeviceId> participating_devices,
       GetParticipatingDevices(params.global_device_id, device_assignment,
                               op_params_.group, group_mode));
@@ -204,16 +212,15 @@ Future<> CollectiveThunk::ExecuteWithCommunicator(
       << "Collectives interface is not set for collective operation";
 
   // Find out rendezvous key and rank in global devices for the current device.
-  TF_ASSIGN_OR_RETURN(RendezvousKey key, GetRendezvousKey(*params));
-  TF_ASSIGN_OR_RETURN(int32_t rank,
-                      RankInGlobalDevices(key, params->global_device_id));
+  ASSIGN_OR_RETURN(RendezvousKey key, GetRendezvousKey(*params));
+  ASSIGN_OR_RETURN(int32_t rank,
+                   RankInGlobalDevices(key, params->global_device_id));
 
   VLOG(3) << absl::StreamFormat("  rank=%d, key=%s", rank, key.ToString());
 
   CpuCliqueKey clique_key(key.global_devices);
-  TF_ASSIGN_OR_RETURN(
-      Communicator * communicator,
-      AcquireCommunicator(collectives, clique_key, RankId(rank)));
+  ASSIGN_OR_RETURN(Communicator * communicator,
+                   AcquireCommunicator(collectives, clique_key, RankId(rank)));
 
   return callback(key, *communicator);
 }

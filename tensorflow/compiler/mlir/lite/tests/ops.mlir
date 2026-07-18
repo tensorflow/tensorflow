@@ -1,6 +1,20 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: litert-opt -split-input-file -verify-diagnostics -tfl-runtime-verify %s | FileCheck %s
 
-// Unary math ops
+// Unary math operations
 // -----
 
 // CHECK-LABEL: testCos
@@ -16,7 +30,7 @@ func.func @testCos(tensor<? x f32>) -> tensor<? x f32> {
 // test invalid Cos input
 func.func @testCosWithWrongInputType(tensor<?xi32>) -> tensor<?xi32> {
 ^bb0(%arg0: tensor<?xi32>):
-  // expected-error @+1 {{tfl.cos' op operand #0 must be tensor of 32-bit float values}}
+  // expected-error @+1 {{tfl.cos' op operand #0 must be tensor of 32-bit float or 16-bit float values}}
   %0 = "tfl.cos"(%arg0): (tensor<?xi32>) -> tensor<?xi32>
   func.return %0#0 : tensor<?xi32>
 }
@@ -204,7 +218,7 @@ func.func @testSin(tensor<? x f32>) -> tensor<? x f32> {
 // test invalid Sin input
 func.func @testSinWithWrongInputType(tensor<?xi32>) -> tensor<?xi32> {
 ^bb0(%arg0: tensor<?xi32>):
-  // expected-error @+1 {{tfl.sin' op operand #0 must be tensor of 32-bit float values}}
+  // expected-error @+1 {{tfl.sin' op operand #0 must be tensor of 32-bit float or 16-bit float values}}
   %0 = "tfl.sin"(%arg0): (tensor<?xi32>) -> tensor<?xi32>
   func.return %0#0 : tensor<?xi32>
 }
@@ -616,7 +630,7 @@ func.func @testConv2DNoBias(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3
 
 func.func @testConv2D4DBias(tensor<256x32x32x3xf32>, tensor<16x3x3x3xf32>, tensor<1x1x1x16xf32>) -> tensor<256x32x32x16xf32> {
 ^bb0(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3x3xf32>, %arg2: tensor<1x1x1x16xf32>):
-  // expected-error @+1 {{'tfl.conv_2d' op operand #2 must be 1D tensor of any type values or none type, but got 'tensor<1x1x1x16xf32>'}}
+  // expected-error-re @+1 {{'tfl.conv_2d' op operand #2 must be 1D tensor of any {{(non-token )?}}type values or none type, but got 'tensor<1x1x1x16xf32>'}}
   %0 = "tfl.conv_2d"(%arg0, %arg1, %arg2) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32, fused_activation_function = "RELU6"} : (tensor<256x32x32x3xf32>, tensor<16x3x3x3xf32>, tensor<1x1x1x16xf32>) -> tensor<256x32x32x16xf32>
   func.return %0 : tensor<256x32x32x16xf32>
 }
@@ -1646,7 +1660,7 @@ func.func @testBatchMatmulHybridQuant(%arg0 : tensor<1x4x384x32xf32>, %arg1 : te
 // -----
 
 func.func @testBatchMatmulHybridBf16F32(%arg0 : tensor<1x4x384x32xbf16>, %arg1 : tensor<1x4x384x32xbf16>) -> tensor<1x4x384x384xf32> {
-  // expected-error @+1 {{'tfl.batch_matmul' op operand #0 must be tensor of 32-bit float or QI8 type or QI16 type or 8-bit signless integer values}}
+  // expected-error @+1 {{'tfl.batch_matmul' op operand #0 must be tensor of 32-bit float or 16-bit float or QI8 type or QI16 type or 8-bit signless integer values}}
   %0 = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = true} : (tensor<1x4x384x32xbf16>, tensor<1x4x384x32xbf16>) -> tensor<1x4x384x384xf32>
   func.return %0 : tensor<1x4x384x384xf32>
 }
@@ -1748,18 +1762,34 @@ func.func @testConcatBenignDynamicDimSizeOperand(%arg0: tensor<1x?xi32>, %arg1: 
 // -----
 
 // CHECK-LABEL: testResizeBilinear
-func.func @testResizeBilinear(%arg0 : tensor<1x100x100x3xf32>, %arg1 : tensor<4xi32>) -> tensor<?xf32> {
+func.func @testResizeBilinear(%arg0 : tensor<1x100x100x3xf32>, %arg1 : tensor<2xi32>) -> tensor<?xf32> {
   // CHECK: "tfl.resize_bilinear"(%arg0, %arg1) <{align_corners = false, half_pixel_centers = false}>
-  %0 = "tfl.resize_bilinear"(%arg0, %arg1) {align_corners = false, half_pixel_centers = false} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  %0 = "tfl.resize_bilinear"(%arg0, %arg1) {align_corners = false, half_pixel_centers = false} : (tensor<1x100x100x3xf32>, tensor<2xi32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
 }
 
 // -----
 
-func.func @testResizeBilinearInvalidOutputType(%arg0 : tensor<1x100x100x3xf32>, %arg1 : tensor<4xi32>) -> tensor<?xi32> {
+func.func @testResizeBilinearInvalidOutputType(%arg0 : tensor<1x100x100x3xf32>, %arg1 : tensor<2xi32>) -> tensor<?xi32> {
   // expected-error @+1 {{'tfl.resize_bilinear' op failed to verify that input and output must have same element type}}
-  %0 = "tfl.resize_bilinear"(%arg0, %arg1) {align_corners = false} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xi32>
+  %0 = "tfl.resize_bilinear"(%arg0, %arg1) {align_corners = false} : (tensor<1x100x100x3xf32>, tensor<2xi32>) -> tensor<?xi32>
   func.return %0 : tensor<?xi32>
+}
+
+// -----
+
+func.func @testResizeBilinearInvalidSize(%arg0 : tensor<1x100x100x3xf32>, %arg1 : tensor<4xi32>) -> tensor<?xf32> {
+  // expected-error @+1 {{'tfl.resize_bilinear' op failed to verify that operand 1's dimension 0 is dynamic or equals 2}}
+  %0 = "tfl.resize_bilinear"(%arg0, %arg1) {align_corners = false} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// -----
+
+func.func @testResizeNearestNeighborInvalidSize(%arg0 : tensor<1x100x100x3xf32>, %arg1 : tensor<4xi32>) -> tensor<?xf32> {
+  // expected-error @+1 {{'tfl.resize_nearest_neighbor' op failed to verify that operand 1's dimension 0 is dynamic or equals 2}}
+  %0 = "tfl.resize_nearest_neighbor"(%arg0, %arg1) {align_corners = false, half_pixel_centers = false} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // -----
@@ -2687,7 +2717,7 @@ func.func @testFullyConnectedWith3DFilter(%arg0: tensor<1x37xf32>, %arg1: tensor
 
 // -----
 
-func.func @testFullyConnectedWithBadInputShape(%arg0: tensor<2x2x11xf32>, %arg1: tensor<40x40xf32>, %arg2: none) -> tensor<40xf32> {
+func.func @testFullyConnectedWithBadInputShape(%arg0: tensor<2x2x11xf32>, %arg1: tensor<40x40xf32>, %arg2: none) -> tensor<1x40xf32> {
   // expected-error @+1 {{expect 'input' num_elements % 40 == 0, got input type 'tensor<2x2x11xf32>'}}
   %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<2x2x11xf32>, tensor<40x40xf32>, none) -> tensor<1x40xf32>
   func.return %0 : tensor<1x40xf32>
@@ -3167,7 +3197,7 @@ func.func @select_v2_with_dynamic_shape_not_from_broadcast_args(%arg0: tensor<8x
 func.func @depthwise_conv_2D_invalid_bias(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x32xf32> {
   %w = arith.constant dense<127.0> : tensor<32x3x3x3xf32>
   %b = arith.constant dense<0.0> : tensor<32x1xf32>
-  // expected-error @+1 {{'tfl.depthwise_conv_2d' op operand #2 must be 1D tensor of any type values or none type, but got 'tensor<32x1xf32>'}}
+  // expected-error-re @+1 {{'tfl.depthwise_conv_2d' op operand #2 must be 1D tensor of any {{(non-token )?}}type values or none type, but got 'tensor<32x1xf32>'}}
   %dc = "tfl.depthwise_conv_2d"(%arg0, %w, %b) {depth_multiplier = 4 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 4 : i32, stride_w = 5 : i32} : (tensor<1x224x224x3xf32>, tensor<32x3x3x3xf32>, tensor<32x1xf32>) -> tensor<1x112x112x32xf32>
   func.return %dc : tensor<1x112x112x32xf32>
 }

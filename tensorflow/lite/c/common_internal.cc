@@ -20,6 +20,13 @@ limitations under the License.
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 
+bool TfLiteDelegateIsOpaque(const TfLiteDelegate* delegate) {
+  return delegate != nullptr && delegate->Prepare == nullptr &&
+         delegate->CopyFromBufferHandle == nullptr &&
+         delegate->FreeBufferHandle == nullptr &&
+         delegate->opaque_delegate_builder != nullptr;
+}
+
 TfLiteStatus TfLiteDelegatePrepareInternal(TfLiteContext* context,
                                            TfLiteDelegate* delegate) {
   TfLiteStatus status = kTfLiteOk;
@@ -27,7 +34,7 @@ TfLiteStatus TfLiteDelegatePrepareInternal(TfLiteContext* context,
   // TF Lite runtime implementation.  Apps using TF Lite should not rely on
   // TfLiteOpaqueContext and TfLiteContext being equivalent, or on
   // TfLiteOpaqueDelegate and TfLiteDelegate being equivalent.
-  if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate) &&
+  if (TfLiteDelegateIsOpaque(delegate) &&
       delegate->opaque_delegate_builder->Prepare) {
     status = delegate->opaque_delegate_builder->Prepare(
         reinterpret_cast<TfLiteOpaqueContext*>(context),
@@ -46,7 +53,7 @@ TfLiteStatus TfLiteDelegateCopyFromBufferHandleInternal(
   // TF Lite runtime implementation.  Apps using TF Lite should not rely on
   // TfLiteOpaqueContext and TfLiteContext being equivalent, or on
   // TfLiteOpaqueDelegate and TfLiteDelegate being equivalent.
-  if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate) &&
+  if (TfLiteDelegateIsOpaque(delegate) &&
       delegate->opaque_delegate_builder->CopyFromBufferHandle) {
     return delegate->opaque_delegate_builder->CopyFromBufferHandle(
         reinterpret_cast<TfLiteOpaqueContext*>(context),
@@ -67,7 +74,7 @@ TfLiteStatus TfLiteDelegateFreeBufferHandleInternal(
   // TF Lite runtime implementation.  Apps using TF Lite should not rely on
   // TfLiteOpaqueContext and TfLiteContext being equivalent, or on
   // TfLiteOpaqueDelegate and TfLiteDelegate being equivalent.
-  if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate) &&
+  if (TfLiteDelegateIsOpaque(delegate) &&
       delegate->opaque_delegate_builder->FreeBufferHandle) {
     delegate->opaque_delegate_builder->FreeBufferHandle(
         reinterpret_cast<TfLiteOpaqueContext*>(context),
@@ -84,7 +91,7 @@ TfLiteStatus TfLiteDelegateFreeBufferHandleInternal(
 }
 
 int64_t TfLiteDelegateGetFlagsInternal(TfLiteDelegate* delegate) {
-  if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate)) {
+  if (TfLiteDelegateIsOpaque(delegate)) {
     return delegate->opaque_delegate_builder->flags;
   }
   return delegate->flags;

@@ -24,8 +24,9 @@ limitations under the License.
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
-#include "xla/codegen/intrinsic/intrinsic.h"
+#include "xla/codegen/intrinsic/type.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::codegen::intrinsics {
 
@@ -165,8 +166,7 @@ llvm::Value* EmitFastTanhF64(llvm::IRBuilderBase* b, llvm::Value* input,
 
 absl::StatusOr<llvm::Function*> Tanh::CreateDefinition(llvm::Module* module,
                                                        Type type) {
-  CHECK(type.element_type() == F32 || type.element_type() == F64 ||
-        type.element_type() == F16)
+  CHECK(type.element_type() == F32 || type.element_type() == F64)
       << "Unsupported type: " << type.name();
   llvm::Type* input_type = Type::TypeToIrType(type, module->getContext());
   CHECK(input_type != nullptr);
@@ -185,13 +185,6 @@ absl::StatusOr<llvm::Function*> Tanh::CreateDefinition(llvm::Module* module,
     result = EmitFastTanhF64(&builder, input_x_arg, /*with_fma=*/false);
   } else if (type.element_type() == F32) {
     result = EmitFastTanh(&builder, input_x_arg, /*with_fma=*/true);
-  } else if (type.element_type() == F16) {
-    llvm::Value* f32_input = builder.CreateFPCast(
-        input_x_arg,
-        Type(F32, type.vector_width()).to_ir_type(module->getContext()),
-        "f16_to_f32");
-    result = EmitFastTanh(&builder, f32_input, /*with_fma=*/true);
-    result = builder.CreateFPCast(result, input_x_arg->getType(), "f32_to_f16");
   } else {
     LOG(FATAL) << "Unsupported type: " << type.name();
   }

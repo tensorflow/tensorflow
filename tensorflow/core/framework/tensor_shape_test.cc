@@ -34,7 +34,7 @@ namespace tensorflow {
 class TensorShapeTestHelper {
  public:
   static void set_data_type(TensorShape* s, DataType t) { s->set_data_type(t); }
-  static uint8 data_type(const TensorShape* s) { return s->data_type(); }
+  static uint8_t data_type(const TensorShape* s) { return s->data_type(); }
 };
 
 namespace {
@@ -620,11 +620,11 @@ class TensorShapeOld {
   TensorShapeIterOld end() const;
 
   /// For error messages.
-  string DebugString() const;
+  std::string DebugString() const;
 
   /// Same as `TensorShape(proto).DebugString()` but doesn't crash for
   /// invalid protos.
-  static string DebugString(const TensorShapeProto& proto);
+  static std::string DebugString(const TensorShapeProto& proto);
 
  private:
   // Recalculates the dimensions of this tensor after they are modified.
@@ -682,15 +682,15 @@ absl::Status TensorShapeOld::IsValidShape(const TensorShapeProto& proto) {
   int64_t num_elements = 1;
   for (const auto& d : proto.dim()) {
     if (d.size() < 0) {
-      return errors::InvalidArgument("Shape ", DebugString(proto),
-                                     " has negative dimensions; ",
-                                     "perhaps an un-fed placeholder?");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Shape ", DebugString(proto), " has negative dimensions; ",
+          "perhaps an un-fed placeholder?"));
     }
     num_elements *= d.size();
     if (num_elements > kMaxElements) {
-      return errors::InvalidArgument("Shape ", DebugString(proto),
-                                     " is too large (more than ", kMaxElements,
-                                     " entries)");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Shape ", DebugString(proto),
+                       " is too large (more than ", kMaxElements, " entries)"));
     }
   }
   return absl::OkStatus();
@@ -794,13 +794,13 @@ TensorShapeIterOld TensorShapeOld::end() const {
   return TensorShapeIterOld(this, dims());
 }
 
-string TensorShapeOld::DebugString() const {
+std::string TensorShapeOld::DebugString() const {
   return absl::StrCat(
       "[", absl::StrJoin(absl::Span<const int64_t>(dim_sizes_), ","), "]");
 }
 
-string TensorShapeOld::DebugString(const TensorShapeProto& proto) {
-  string s = "[";
+std::string TensorShapeOld::DebugString(const TensorShapeProto& proto) {
+  std::string s = "[";
   bool first = true;
   for (const auto& d : proto.dim()) {
     absl::StrAppend(&s, first ? "" : ",", d.size());
@@ -1006,6 +1006,31 @@ TEST(TensorShapeUtilsTest, NumElements) {
           error::Code::INVALID_ARGUMENT,
           ::testing::ContainsRegex(
               "Can't compute total size of shape.*product would overflow")));
+
+  // Test zero dimension with overflow sizes
+  TF_EXPECT_OK(
+      TensorShapeUtils::NumElements({0, int64_max_val}, &num_elements));
+  EXPECT_EQ(num_elements, 0);
+  TF_EXPECT_OK(
+      TensorShapeUtils::NumElements({int64_max_val, 0}, &num_elements));
+  EXPECT_EQ(num_elements, 0);
+
+  // Test zero dimension with negative dimensions in
+  // TensorShapeUtils::NumElements should fail
+  EXPECT_THAT(TensorShapeUtils::NumElements({0, -1}, &num_elements),
+              absl_testing::StatusIs(
+                  error::Code::INVALID_ARGUMENT,
+                  ::testing::ContainsRegex("Invalid dimension size.*")));
+  EXPECT_THAT(TensorShapeUtils::NumElements({-1, 0}, &num_elements),
+              absl_testing::StatusIs(
+                  error::Code::INVALID_ARGUMENT,
+                  ::testing::ContainsRegex("Invalid dimension size.*")));
+
+  // Test TensorShape with zero dimension and large sizes
+  TensorShape s1({0, int64_max_val});
+  TensorShape s2({int64_max_val, 0});
+  EXPECT_EQ(s1.num_elements(), 0);
+  EXPECT_EQ(s2.num_elements(), 0);
 }
 
 // A few different test cases for tensor sizes for benchmarks

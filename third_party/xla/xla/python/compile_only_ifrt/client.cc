@@ -19,7 +19,6 @@ namespace xla {
 
 [[maybe_unused]] char CompileOnlyMemory::ID = 0;
 [[maybe_unused]] char CompileOnlyDevice::ID = 0;
-[[maybe_unused]] char CompileOnlyIfrtCompiler::ID = 0;
 [[maybe_unused]] char CompileOnlyIfRtClient::ID = 0;
 
 }  // namespace xla

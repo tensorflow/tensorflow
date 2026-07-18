@@ -199,10 +199,10 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
             builder.getF64FloatAttr(min_max.second.value()),
             /*quant_dim=*/-1, num_bits, narrow_range, is_signed);
         builder.setInsertionPoint(block, insertion_point);
-        auto q_op = builder.create<quantfork::QuantizeCastOp>(
-            loc, params.getValue(), arg);
-        auto dq_op = builder.create<quantfork::DequantizeCastOp>(
-            loc, input_type, q_op.getResult());
+        auto q_op = quantfork::QuantizeCastOp::create(builder, loc,
+                                                      params.getValue(), arg);
+        auto dq_op = quantfork::DequantizeCastOp::create(
+            builder, loc, input_type, q_op.getResult());
         arg.replaceAllUsesWith(dq_op.getResult());
         q_op.setOperand(arg);
       }
@@ -412,7 +412,8 @@ void PrepareQuantizePass::runOnOperation() {
   // During the legalization, unsigned quantized type is used, so we have to
   // convert all of them to signed.
   RewritePatternSet patterns_2(&getContext());
-  if (is_signed) {
+  if (is_signed &&
+      quant_specs_.qdq_conversion_mode != QDQConversionMode::kQDQStrict) {
     patterns_2.add<ConvertUnsignedToSigned<quantfork::QuantizeCastOp>>(ctx);
   }
   // Convert quant stats to int8, unit8, int16 quantization parameters.

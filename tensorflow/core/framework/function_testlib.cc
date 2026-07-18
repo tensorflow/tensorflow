@@ -48,13 +48,14 @@ GraphDef GDef(absl::Span<const NodeDef> nodes,
 }
 
 // Helper to construct a NodeDef.
-NodeDef NDef(absl::string_view name, absl::string_view op,
-             absl::Span<const string> inputs,
-             absl::Span<const std::pair<string, FDH::AttrValueWrapper>> attrs,
-             const string& device) {
+NodeDef NDef(
+    absl::string_view name, absl::string_view op,
+    absl::Span<const std::string> inputs,
+    absl::Span<const std::pair<std::string, FDH::AttrValueWrapper>> attrs,
+    const std::string& device) {
   NodeDef n;
-  n.set_name(string(name));
-  n.set_op(string(op));
+  n.set_name(name);
+  n.set_op(op);
   for (const auto& in : inputs) n.add_input(in);
   n.set_device(device);
   for (const auto& na : attrs)
@@ -609,8 +610,8 @@ FunctionDef XYXLessThanOrEqualToN(int64_t N) {
 }
 
 FunctionDef RandomUniformLess() {
-  const Tensor kZero = test::AsScalar<int32>(0);
-  const Tensor kOne = test::AsScalar<int32>(1);
+  const Tensor kZero = test::AsScalar<int32_t>(0);
+  const Tensor kOne = test::AsScalar<int32_t>(1);
   const Tensor k005 = test::AsScalar<float>(0.05);
 
   return FDH::Define(
@@ -703,8 +704,8 @@ FunctionDef MakeBatchDataset() {
 }
 
 FunctionDef MakeMapDataset(bool has_other_args) {
-  std::vector<string> args = {"input_dataset: variant"};
-  std::vector<string> inputs = {"input_dataset"};
+  std::vector<std::string> args = {"input_dataset: variant"};
+  std::vector<std::string> inputs = {"input_dataset"};
   if (has_other_args) {
     args.emplace_back("other_arguments: Targuments");
     inputs.emplace_back("other_arguments");

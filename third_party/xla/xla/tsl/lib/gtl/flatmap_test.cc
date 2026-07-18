@@ -30,10 +30,10 @@ namespace tsl {
 namespace gtl {
 namespace {
 
-typedef FlatMap<int64_t, int32> NumMap;
+typedef FlatMap<int64_t, int32_t> NumMap;
 
 // If map has an entry for k, return the corresponding value, else return def.
-int32 Get(const NumMap& map, int64_t k, int32_t def = -1) {
+int32_t Get(const NumMap& map, int64_t k, int32_t def = -1) {
   auto iter = map.find(k);
   if (iter == map.end()) {
     EXPECT_EQ(map.count(k), 0);
@@ -47,7 +47,7 @@ int32 Get(const NumMap& map, int64_t k, int32_t def = -1) {
 }
 
 // Return contents of map as a sorted list of pairs.
-typedef std::vector<std::pair<int64_t, int32>> NumMapContents;
+typedef std::vector<std::pair<int64_t, int32_t>> NumMapContents;
 NumMapContents Contents(const NumMap& map) {
   NumMapContents result;
   for (const auto& p : map) {
@@ -146,8 +146,8 @@ TEST(FlatMapTest, Emplace) {
 }
 
 TEST(FlatMapTest, EmplaceUniquePtr) {
-  FlatMap<int64_t, std::unique_ptr<string>> smap;
-  smap.emplace(1, std::make_unique<string>("hello"));
+  FlatMap<int64_t, std::unique_ptr<std::string>> smap;
+  smap.emplace(1, std::make_unique<std::string>("hello"));
 }
 
 TEST(FlatMapTest, Size) {
@@ -344,7 +344,7 @@ TEST(FlatMap, InitializerList) {
   NumMap b({{1, 10}, {2, 20}, {3, 30}});
   NumMap c = {{1, 10}, {2, 20}, {3, 30}};
 
-  typedef std::unordered_map<int64_t, int32> StdNumMap;
+  typedef std::unordered_map<int64_t, int32_t> StdNumMap;
   StdNumMap std({{1, 10}, {2, 20}, {3, 30}});
   StdNumMap::value_type std_r1 = *std.find(1);
   StdNumMap::value_type std_r2 = *std.find(2);
@@ -591,17 +591,17 @@ TEST(FlatMap, ForwardIterator) {
 // or destructions will show up as errors under a sanitizer or
 // heap checker.
 TEST(FlatMap, ConstructDestruct) {
-  FlatMap<string, string> map;
-  string k1 = "the quick brown fox jumped over the lazy dog";
-  string k2 = k1 + k1;
-  string k3 = k1 + k2;
+  FlatMap<std::string, std::string> map;
+  std::string k1 = "the quick brown fox jumped over the lazy dog";
+  std::string k2 = k1 + k1;
+  std::string k3 = k1 + k2;
   map[k1] = k2;
   map[k3] = k1;
   EXPECT_EQ(k1, map.find(k1)->first);
   EXPECT_EQ(k2, map.find(k1)->second);
   EXPECT_EQ(k1, map[k3]);
   map.erase(k3);
-  EXPECT_EQ(string(), map[k3]);
+  EXPECT_EQ(std::string(), map[k3]);
 
   map.clear();
   map[k1] = k2;

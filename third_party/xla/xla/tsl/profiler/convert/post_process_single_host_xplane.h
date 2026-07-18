@@ -23,7 +23,9 @@ namespace profiler {
 
 // Post process XSpaces collected locally from multiple profilers.
 void PostProcessSingleHostXSpace(tensorflow::profiler::XSpace* space,
-                                 uint64 start_time_ns, uint64 stop_time_ns);
+                                 uint64_t start_time_ns, uint64_t stop_time_ns);
+
+void MergePlanesWithSameNames(tensorflow::profiler::XSpace* space);
 
 }  // namespace profiler
 }  // namespace tsl

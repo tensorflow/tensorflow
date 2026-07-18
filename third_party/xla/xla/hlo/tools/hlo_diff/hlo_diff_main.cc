@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "xla/service/hlo_module_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/init_main.h"
@@ -57,16 +57,15 @@ names, parameter ordering etc, layouts (in some instances).
       bazel run hlo_diff -- \
         --{first_hlo_snapshot,first_hlo_proto,first_hlo_module_proto,first_hlo_text}=path/to/first/binary_proto
         --{second_hlo_snapshot,second_hlo_proto,second_hlo_module_proto,second_hlo_text}=path/to/second/binary_proto
-        [--ignore_shape_during_instruction_matching]
+        [--ignore_shape]
         [--text_output=path/to/file/to/save/text]
         [--html_output=path/to/file/to/save/html]
 
 first and second hlo file paths are required flags. Optionally the following
 flags can be used:
 
-If --ignore_shape_during_instruction_matching is specified, the tool ignores
-array/tensor shapes when matching instructions allowing for more permissive
-matches.
+If --ignore_shape is specified, the tool ignores array/tensor shapes when
+matching instructions and reporting diffs, allowing for more permissive matches.
 If --text_output is specified, the full diff result will be printed in text
 format and saved to the specified file.
 if --html_output is specified, the diff result will be rendered in HTML
@@ -111,9 +110,9 @@ absl::Status CheckGroupFlags(const Options::HloPath& hlo_path) {
 // Builds a HloModule from the HloModuleProto.
 absl::StatusOr<std::unique_ptr<HloModule>> BuildHloModule(
     const HloModuleProto& hlo_module_proto) {
-  TF_ASSIGN_OR_RETURN(HloModuleConfig config,
-                      HloModule::CreateModuleConfigFromProto(
-                          hlo_module_proto, xla::GetDebugOptionsFromFlags()));
+  ASSIGN_OR_RETURN(HloModuleConfig config,
+                   HloModule::CreateModuleConfigFromProto(
+                       hlo_module_proto, xla::GetDebugOptionsFromFlags()));
   return HloModule::CreateFromProto(hlo_module_proto, config);
 }
 
@@ -121,8 +120,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadHLOModule(
     const Options::HloPath& hlo_path) {
   if (!hlo_path.hlo_snapshot.empty()) {
     HloSnapshot snapshot;
-    TF_CHECK_OK(tsl::ReadBinaryProto(tsl::Env::Default(), hlo_path.hlo_snapshot,
-                                     &snapshot))
+    CHECK_OK(tsl::ReadBinaryProto(tsl::Env::Default(), hlo_path.hlo_snapshot,
+                                  &snapshot))
         << "Can't open, read, or parse HloSnapshot proto at "
         << hlo_path.hlo_snapshot;
     return BuildHloModule(snapshot.hlo().hlo_module());
@@ -164,12 +163,11 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadHLOModule(
 // Runs Gumgraph algorithm based diff and renders the diff results.
 absl::Status RunGumgraphDiff(HloModule& first_module, HloModule& second_module,
                              const Options& opts) {
-  TF_RETURN_IF_ERROR(first_module.RemoveUnusedComputations());
-  TF_RETURN_IF_ERROR(second_module.RemoveUnusedComputations());
+  RETURN_IF_ERROR(first_module.RemoveUnusedComputations());
+  RETURN_IF_ERROR(second_module.RemoveUnusedComputations());
 
-  TF_ASSIGN_OR_RETURN(
-      auto hlo_gumgraph_diff,
-      ComputeDiff(first_module, second_module, opts.diff_options));
+  ASSIGN_OR_RETURN(auto hlo_gumgraph_diff,
+                   ComputeDiff(first_module, second_module, opts.diff_options));
   std::cout << "Diffing finished" << '\n';
 
   const DiffResult& diff = *hlo_gumgraph_diff.diff_result;
@@ -183,7 +181,7 @@ absl::Status RunGumgraphDiff(HloModule& first_module, HloModule& second_module,
   if (!text_output.empty()) {
     std::ostringstream text;
     RenderText(diff, text);
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         tsl::WriteStringToFile(tsl::Env::Default(), text_output, text.str()));
   }
 
@@ -191,7 +189,7 @@ absl::Status RunGumgraphDiff(HloModule& first_module, HloModule& second_module,
   if (!html_output.empty()) {
     std::ostringstream html;
     RenderHtml(diff, diff_summary, html);
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         tsl::WriteStringToFile(tsl::Env::Default(), html_output, html.str()));
 
     std::cout << "The diff summary is saved to: " << html_output << '\n';
@@ -201,23 +199,23 @@ absl::Status RunGumgraphDiff(HloModule& first_module, HloModule& second_module,
 }
 
 void RealMain(const Options& opts) {
-  TF_CHECK_OK(CheckGroupFlags(opts.first))
+  CHECK_OK(CheckGroupFlags(opts.first))
       << "Can only specify one and ony one of --first_hlo_snapshot, "
          "--first_hlo_proto, --first_hlo_module_proto, --first_hlo_text";
-  TF_CHECK_OK(CheckGroupFlags(opts.second))
+  CHECK_OK(CheckGroupFlags(opts.second))
       << "Can only specify one and ony one of --second_hlo_snapshot, "
          "--second_hlo_proto, --second_hlo_module_proto, --second_hlo_text";
 
   LOG(INFO) << "Loading first module";
   absl::StatusOr<std::unique_ptr<HloModule>> first_module =
       LoadHLOModule(opts.first);
-  TF_CHECK_OK(first_module.status()) << "Failed to build first HLO module";
+  CHECK_OK(first_module.status()) << "Failed to build first HLO module";
   LOG(INFO) << "Loaded first module";
 
   LOG(INFO) << "Loading second module";
   absl::StatusOr<std::unique_ptr<HloModule>> second_module =
       LoadHLOModule(opts.second);
-  TF_CHECK_OK(second_module.status()) << "Failed to build second HLO module";
+  CHECK_OK(second_module.status()) << "Failed to build second HLO module";
   LOG(INFO) << "Loaded second module";
 
   CHECK_OK(
@@ -248,9 +246,13 @@ int main(int argc, char** argv) {
                 "second XLA hlo module proto to compare"),
       tsl::Flag("second_hlo_text", &opts.second.hlo_text,
                 "second XLA hlo text to compare"),
-      tsl::Flag("ignore_shape_during_instruction_matching",
-                &opts.diff_options.fingerprint_options.ignore_shape,
-                "Ignore array/tensor shapes when matching instructions"),
+      tsl::Flag(
+          "ignore_shape", &opts.diff_options.fingerprint_options.ignore_shape,
+          "If true, ignore array/tensor shapes when matching instructions "
+          "and reporting diffs."),
+      tsl::Flag("precompute_instruction_dependencies",
+                &opts.diff_options.precompute_instruction_dependencies,
+                "If true, precompute instruction dependencies."),
       tsl::Flag("text_output", &opts.render_options.text_output,
                 "file to save diff blocks as text"),
       tsl::Flag("html_output", &opts.render_options.html_output,
@@ -259,8 +261,8 @@ int main(int argc, char** argv) {
   };
 
   std::string usage = tsl::Flags::Usage(argv[0], flag_list);
-  bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   tsl::port::InitMain(xla::hlo_diff::kUsage, &argc, &argv);
+  bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   LOG_IF(QFATAL, argc != 1 || !parse_ok || need_help) << usage;
   xla::hlo_diff::RealMain(opts);
   return 0;

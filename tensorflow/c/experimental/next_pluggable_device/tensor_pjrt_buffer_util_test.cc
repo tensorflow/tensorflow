@@ -22,14 +22,15 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_cpu.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
+#include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_api.h"
-#include "xla/pjrt/pjrt_c_api_client.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/shape.h"
@@ -59,7 +60,7 @@ PJRT_Buffer* CreateCBuffer() {
   }
   auto pjrt_client = xla::GetCApiClient(DEVICE_CPU);
   CHECK_OK(pjrt_client.status());
-  auto c_api_client = down_cast<xla::PjRtCApiClient*>(pjrt_client->get());
+  auto c_api_client = absl::down_cast<xla::PjRtCApiClient*>(pjrt_client->get());
   std::vector<int32_t> data(1, 0);
   xla::Shape shape = xla::ShapeUtil::MakeShape(xla::S32, {1});
 
@@ -146,7 +147,8 @@ TEST(TensorPjRtBufferUtilTest, SetPjRtCBufferToTensorNotAsyncValueTensor) {
   PJRT_Buffer* c_buffer = CreateCBuffer();
 
   TF_EXPECT_OK(SetPjRtCBufferToTensor(
-      c_buffer, down_cast<xla::PjRtCApiClient*>(pjrt_client.get()), &tensor));
+      c_buffer, absl::down_cast<xla::PjRtCApiClient*>(pjrt_client.get()),
+      &tensor));
 }
 
 TEST(TensorPjRtBufferUtilTest, SetPjRtCBufferToTensorSuccess) {
@@ -156,7 +158,8 @@ TEST(TensorPjRtBufferUtilTest, SetPjRtCBufferToTensorSuccess) {
   PJRT_Buffer* c_buffer = CreateCBuffer();
 
   TF_EXPECT_OK(SetPjRtCBufferToTensor(
-      c_buffer, down_cast<xla::PjRtCApiClient*>(pjrt_client.get()), &tensor));
+      c_buffer, absl::down_cast<xla::PjRtCApiClient*>(pjrt_client.get()),
+      &tensor));
 }
 
 TEST(TensorPjRtBufferUtilTest, GetPjRtCApiClientNotFound) {

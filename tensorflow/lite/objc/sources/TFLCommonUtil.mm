@@ -55,9 +55,13 @@ TFLTensorDataType TFLTensorDataTypeFromCTensor(const TfLiteTensor *cTensor) {
     case kTfLiteUInt16:
     case kTfLiteUInt32:
     case kTfLiteUInt64:
+    case kTfLiteUInt4:
     case kTfLiteInt4:
+    case kTfLiteInt2:
     case kTfLiteResource:
     case kTfLiteVariant:
+    case kTfLiteFloat8E4M3FN:
+    case kTfLiteFloat8E5M2:
       // Not all datatypes are supported in the TfLite Objc API.
       return TFLTensorDataTypeNoType;
   }

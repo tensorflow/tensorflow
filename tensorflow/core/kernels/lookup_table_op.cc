@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/lookup_table_op.h"
 #define EIGEN_USE_THREADS
-
 #include <string>
 #include <type_traits>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
@@ -220,10 +221,10 @@ class MutableHashTableOfTensors final : public LookupInterface {
   MutableHashTableOfTensors(OpKernelContext* ctx, OpKernel* kernel) {
     OP_REQUIRES_OK(ctx,
                    GetNodeAttr(kernel->def(), "value_shape", &value_shape_));
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsVector(value_shape_),
-        errors::InvalidArgument("Default value must be a vector, got shape ",
-                                value_shape_.DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(value_shape_),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Default value must be a vector, got shape ",
+                                 value_shape_.DebugString())));
   }
 
   size_t size() const override {
@@ -411,11 +412,11 @@ class MutableHashTableOfTensors final : public LookupInterface {
 namespace {
 
 template <typename T>
-inline uint64 HashScalar(const T& key) {
-  return static_cast<uint64>(key);
+inline uint64_t HashScalar(const T& key) {
+  return static_cast<uint64_t>(key);
 }
 
-inline uint64 HashScalar(const tstring& key) { return Hash64(key); }
+inline uint64_t HashScalar(const tstring& key) { return Hash64(key); }
 
 // If the given shape is a scalar return {1} instead. Otherwise leave it alone.
 TensorShape MaybeVectorizeShape(const TensorShape& shape) {
@@ -435,18 +436,18 @@ class MutableDenseHashTable final : public LookupInterface {
     OP_REQUIRES_OK(
         ctx, GetNodeAttr(kernel->def(), "max_load_factor", &max_load_factor_));
     OP_REQUIRES(ctx, max_load_factor_ > 0 && max_load_factor_ < 1,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "max_load_factor must be between 0 and 1, got: ",
-                    max_load_factor_));
+                    max_load_factor_)));
 
     OP_REQUIRES_OK(ctx,
                    GetNodeAttr(kernel->def(), "value_shape", &value_shape_));
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(value_shape_) ||
                     TensorShapeUtils::IsVector(value_shape_),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Empty value must be a scalar or a vector, got shape ",
-                    value_shape_.DebugString()));
+                    value_shape_.DebugString())));
 
     const Tensor* empty_key_input;
     OP_REQUIRES_OK(ctx, ctx->input("empty_key", &empty_key_input));
@@ -454,9 +455,9 @@ class MutableDenseHashTable final : public LookupInterface {
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(key_shape_) ||
                     TensorShapeUtils::IsVector(key_shape_),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Empty key must be a scalar or a vector, got shape ",
-                    key_shape_.DebugString()));
+                    key_shape_.DebugString())));
     empty_key_ = *empty_key_input;
     empty_key_hash_ = HashKey(
         empty_key_input->template shaped<K, 2>({1, key_shape_.num_elements()}),
@@ -465,10 +466,10 @@ class MutableDenseHashTable final : public LookupInterface {
     const Tensor* deleted_key_input;
     OP_REQUIRES_OK(ctx, ctx->input("deleted_key", &deleted_key_input));
     OP_REQUIRES(ctx, key_shape_.IsSameSize(deleted_key_input->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Empty and deleted keys must have same shape, got shapes: ",
                     key_shape_.DebugString(), " and ",
-                    deleted_key_input->shape().DebugString()));
+                    deleted_key_input->shape().DebugString())));
     deleted_key_ = *deleted_key_input;
     deleted_key_hash_ = HashKey(deleted_key_input->template shaped<K, 2>(
                                     {1, key_shape_.num_elements()}),
@@ -482,7 +483,7 @@ class MutableDenseHashTable final : public LookupInterface {
           deleted_key_.template shaped<K, 2>({1, key_size});
       OP_REQUIRES(
           ctx, !IsEqualKey(empty_key_matrix, 0, deleted_key_matrix, 0),
-          errors::InvalidArgument("Empty and deleted keys cannot be equal"));
+          absl::InvalidArgumentError("Empty and deleted keys cannot be equal"));
     }
 
     int64_t initial_num_buckets;
@@ -505,9 +506,9 @@ class MutableDenseHashTable final : public LookupInterface {
     if (key.NumElements() != num_elements * key_size) {
       TensorShape expected_shape({num_elements});
       expected_shape.AppendShape(key_shape_);
-      return errors::InvalidArgument("Expected key shape ",
-                                     expected_shape.DebugString(), " got ",
-                                     key.shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected key shape ", expected_shape.DebugString(),
+                       " got ", key.shape().DebugString()));
     }
     const auto key_matrix = key.shaped<K, 2>({num_elements, key_size});
     auto value_matrix = value->shaped<V, 2>({num_elements, value_size});
@@ -523,15 +524,15 @@ class MutableDenseHashTable final : public LookupInterface {
     const int64_t bit_mask = num_buckets_ - 1;
     // TODO(andreasst): parallelize using work_sharder
     for (int64_t i = 0; i < num_elements; ++i) {
-      const uint64 key_hash = HashKey(key_matrix, i);
+      const uint64_t key_hash = HashKey(key_matrix, i);
       if (empty_key_hash_ == key_hash &&
           IsEqualKey(empty_key_matrix, 0, key_matrix, i)) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Using the empty_key as a table key is not allowed");
       }
       if (deleted_key_hash_ == key_hash &&
           IsEqualKey(deleted_key_matrix, 0, key_matrix, i)) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Using the deleted_key as a table key is not allowed");
       }
       int64_t bucket_index = key_hash & bit_mask;
@@ -556,7 +557,7 @@ class MutableDenseHashTable final : public LookupInterface {
         bucket_index =
             (bucket_index + num_probes) & bit_mask;  // quadratic probing
         if (num_probes >= num_buckets_) {
-          return errors::Internal(
+          return absl::InternalError(
               "Internal error in MutableDenseHashTable lookup");
         }
       }
@@ -570,9 +571,9 @@ class MutableDenseHashTable final : public LookupInterface {
     if (key.NumElements() != batch_size * key_shape_.num_elements()) {
       TensorShape expected_shape({batch_size});
       expected_shape.AppendShape(key_shape_);
-      return errors::InvalidArgument("Expected key shape ",
-                                     expected_shape.DebugString(), " got ",
-                                     key.shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected key shape ", expected_shape.DebugString(),
+                       " got ", key.shape().DebugString()));
     }
     mutex_lock l(mu_);
     // For simplicity we assume that all keys in the input result in inserts
@@ -595,9 +596,9 @@ class MutableDenseHashTable final : public LookupInterface {
     if (key.NumElements() != key.dim_size(0) * key_shape_.num_elements()) {
       TensorShape expected_shape({key.dim_size(0)});
       expected_shape.AppendShape(key_shape_);
-      return errors::InvalidArgument("Expected key shape ",
-                                     expected_shape.DebugString(), " got ",
-                                     key.shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected key shape ", expected_shape.DebugString(),
+                       " got ", key.shape().DebugString()));
     }
     mutex_lock l(mu_);
     return DoRemove(ctx, key);
@@ -607,7 +608,13 @@ class MutableDenseHashTable final : public LookupInterface {
                             const Tensor& values) override
       TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
-    num_buckets_ = keys.dim_size(0);
+    int64_t num_buckets = keys.dim_size(0);
+    if (num_buckets < 4 || ((num_buckets & (num_buckets - 1)) != 0)) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Number of buckets must be at least 4 and a power of 2, got: ",
+          num_buckets));
+    }
+    num_buckets_ = num_buckets;
     key_buckets_ = keys;
     value_buckets_ = values;
     // Count the number of keys that are not the empty_key or deleted_key.
@@ -654,9 +661,9 @@ class MutableDenseHashTable final : public LookupInterface {
     expected_value_shape.RemoveLastDims(key_shape.dims());
     expected_value_shape.AppendShape(value_shape);
     if (values.shape() != expected_value_shape) {
-      return errors::InvalidArgument(
-          "Expected shape ", expected_value_shape.DebugString(),
-          " for value, got ", values.shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected shape ", expected_value_shape.DebugString(),
+                       " for value, got ", values.shape().DebugString()));
     }
     return absl::OkStatus();
   }
@@ -693,13 +700,13 @@ class MutableDenseHashTable final : public LookupInterface {
         deleted_key_.template shaped<K, 2>({1, key_size});
     const int64_t bit_mask = num_buckets_ - 1;
     for (int64_t i = 0; i < num_elements; ++i) {
-      const uint64 key_hash = HashKey(key_matrix, i);
+      const uint64_t key_hash = HashKey(key_matrix, i);
       if (empty_key_hash_ == key_hash &&
           IsEqualKey(empty_key_tensor, 0, key_matrix, i)) {
         if (ignore_empty_and_deleted_key) {
           continue;
         }
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Using the empty_key as a table key is not allowed");
       }
       if (deleted_key_hash_ == key_hash &&
@@ -707,7 +714,7 @@ class MutableDenseHashTable final : public LookupInterface {
         if (ignore_empty_and_deleted_key) {
           continue;
         }
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Using the deleted_key as a table key is not allowed");
       }
       int64_t bucket_index = key_hash & bit_mask;
@@ -738,7 +745,7 @@ class MutableDenseHashTable final : public LookupInterface {
         bucket_index =
             (bucket_index + num_probes) & bit_mask;  // quadratic probing
         if (num_probes >= num_buckets_) {
-          return errors::Internal(
+          return absl::InternalError(
               "Internal error in MutableDenseHashTable insert");
         }
       }
@@ -760,15 +767,15 @@ class MutableDenseHashTable final : public LookupInterface {
     const auto deleted_key_flat = deleted_key_.template flat<K>();
     const int64_t bit_mask = num_buckets_ - 1;
     for (int64_t i = 0; i < num_elements; ++i) {
-      const uint64 key_hash = HashKey(key_matrix, i);
+      const uint64_t key_hash = HashKey(key_matrix, i);
       if (empty_key_hash_ == key_hash &&
           IsEqualKey(empty_key_tensor, 0, key_matrix, i)) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Using the empty_key as a table key is not allowed");
       }
       if (deleted_key_hash_ == key_hash &&
           IsEqualKey(deleted_key_tensor, 0, key_matrix, i)) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Using the deleted_key as a table key is not allowed");
       }
       int64_t bucket_index = key_hash & bit_mask;
@@ -789,7 +796,7 @@ class MutableDenseHashTable final : public LookupInterface {
         bucket_index =
             (bucket_index + num_probes) & bit_mask;  // quadratic probing
         if (num_probes >= num_buckets_) {
-          return errors::Internal(
+          return absl::InternalError(
               "Internal error in MutableDenseHashTable remove");
         }
       }
@@ -801,9 +808,9 @@ class MutableDenseHashTable final : public LookupInterface {
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (new_num_buckets < 4 ||
         ((new_num_buckets & (new_num_buckets - 1)) != 0)) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Number of buckets must be at least 4 and a power of 2, got: ",
-          new_num_buckets);
+          new_num_buckets));
     }
     num_buckets_ = new_num_buckets;
     num_entries_ = 0;
@@ -843,11 +850,11 @@ class MutableDenseHashTable final : public LookupInterface {
     return DoInsert(ctx, old_key_buckets, old_value_buckets, true);
   }
 
-  uint64 HashKey(typename TTypes<K>::ConstMatrix key, int64_t index) const {
+  uint64_t HashKey(typename TTypes<K>::ConstMatrix key, int64_t index) const {
     if (key_shape_.num_elements() == 1) {
       return HashScalar(key(index, 0));
     }
-    uint64 result = 0;
+    uint64_t result = 0;
     for (int64_t i = 0; i < key_shape_.num_elements(); ++i) {
       result = Hash64Combine(result, HashScalar(key(index, i)));
     }
@@ -876,9 +883,9 @@ class MutableDenseHashTable final : public LookupInterface {
   Tensor key_buckets_ TF_GUARDED_BY(mu_);
   Tensor value_buckets_ TF_GUARDED_BY(mu_);
   Tensor empty_key_;
-  uint64 empty_key_hash_;
+  uint64_t empty_key_hash_;
   Tensor deleted_key_;
-  uint64 deleted_key_hash_;
+  uint64_t deleted_key_hash_;
 };
 
 }  // namespace lookup
@@ -1103,19 +1110,19 @@ REGISTER_KERNEL_BUILDER(Name("LookupTableImportV2").Device(DEVICE_CPU),
       AnonymousLookupTableOp<lookup::HashTable<key_dtype, value_dtype>,   \
                              key_dtype, value_dtype>)
 
-REGISTER_KERNEL(int32, double);
-REGISTER_KERNEL(int32, float);
-REGISTER_KERNEL(int32, int32);
-REGISTER_KERNEL(int32, tstring);
+REGISTER_KERNEL(int32_t, double);
+REGISTER_KERNEL(int32_t, float);
+REGISTER_KERNEL(int32_t, int32_t);
+REGISTER_KERNEL(int32_t, tstring);
 REGISTER_KERNEL(int64_t, double);
 REGISTER_KERNEL(int64_t, float);
-REGISTER_KERNEL(int64_t, int32);
+REGISTER_KERNEL(int64_t, int32_t);
 REGISTER_KERNEL(int64_t, int64_t);
 REGISTER_KERNEL(int64_t, tstring);
 REGISTER_KERNEL(tstring, bool);
 REGISTER_KERNEL(tstring, double);
 REGISTER_KERNEL(tstring, float);
-REGISTER_KERNEL(tstring, int32);
+REGISTER_KERNEL(tstring, int32_t);
 REGISTER_KERNEL(tstring, int64_t);
 REGISTER_KERNEL(tstring, tstring);
 
@@ -1146,19 +1153,19 @@ REGISTER_KERNEL(tstring, tstring);
           lookup::MutableHashTableOfScalars<key_dtype, value_dtype>,           \
           key_dtype, value_dtype>)
 
-REGISTER_KERNEL(int32, double);
-REGISTER_KERNEL(int32, float);
-REGISTER_KERNEL(int32, int32);
+REGISTER_KERNEL(int32_t, double);
+REGISTER_KERNEL(int32_t, float);
+REGISTER_KERNEL(int32_t, int32_t);
 REGISTER_KERNEL(int64_t, double);
 REGISTER_KERNEL(int64_t, float);
-REGISTER_KERNEL(int64_t, int32);
+REGISTER_KERNEL(int64_t, int32_t);
 REGISTER_KERNEL(int64_t, int64_t);
 REGISTER_KERNEL(int64_t, tstring);
 REGISTER_KERNEL(int64_t, Variant);
 REGISTER_KERNEL(tstring, bool);
 REGISTER_KERNEL(tstring, double);
 REGISTER_KERNEL(tstring, float);
-REGISTER_KERNEL(tstring, int32);
+REGISTER_KERNEL(tstring, int32_t);
 REGISTER_KERNEL(tstring, int64_t);
 
 #undef REGISTER_KERNEL
@@ -1188,18 +1195,18 @@ REGISTER_KERNEL(tstring, int64_t);
           lookup::MutableHashTableOfTensors<key_dtype, value_dtype>,           \
           key_dtype, value_dtype>)
 
-REGISTER_KERNEL(int32, double);
-REGISTER_KERNEL(int32, float);
-REGISTER_KERNEL(int32, int32);
+REGISTER_KERNEL(int32_t, double);
+REGISTER_KERNEL(int32_t, float);
+REGISTER_KERNEL(int32_t, int32_t);
 REGISTER_KERNEL(int64_t, double);
 REGISTER_KERNEL(int64_t, float);
-REGISTER_KERNEL(int64_t, int32);
+REGISTER_KERNEL(int64_t, int32_t);
 REGISTER_KERNEL(int64_t, int64_t);
 REGISTER_KERNEL(int64_t, tstring);
 REGISTER_KERNEL(tstring, bool);
 REGISTER_KERNEL(tstring, double);
 REGISTER_KERNEL(tstring, float);
-REGISTER_KERNEL(tstring, int32);
+REGISTER_KERNEL(tstring, int32_t);
 REGISTER_KERNEL(tstring, int64_t);
 
 #undef REGISTER_KERNEL
@@ -1229,19 +1236,19 @@ REGISTER_KERNEL(tstring, int64_t);
           lookup::MutableDenseHashTable<key_dtype, value_dtype>, key_dtype, \
           value_dtype>)
 
-REGISTER_KERNEL(int32, double);
-REGISTER_KERNEL(int32, float);
-REGISTER_KERNEL(int32, int32);
+REGISTER_KERNEL(int32_t, double);
+REGISTER_KERNEL(int32_t, float);
+REGISTER_KERNEL(int32_t, int32_t);
 REGISTER_KERNEL(int64_t, bool);
 REGISTER_KERNEL(int64_t, double);
 REGISTER_KERNEL(int64_t, float);
-REGISTER_KERNEL(int64_t, int32);
+REGISTER_KERNEL(int64_t, int32_t);
 REGISTER_KERNEL(int64_t, int64_t);
 REGISTER_KERNEL(int64_t, Variant);
 REGISTER_KERNEL(tstring, bool);
 REGISTER_KERNEL(tstring, double);
 REGISTER_KERNEL(tstring, float);
-REGISTER_KERNEL(tstring, int32);
+REGISTER_KERNEL(tstring, int32_t);
 REGISTER_KERNEL(tstring, int64_t);
 REGISTER_KERNEL(tstring, ResourceHandle);
 

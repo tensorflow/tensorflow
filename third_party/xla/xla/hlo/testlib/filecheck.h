@@ -20,21 +20,23 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/types.h"
+#include "absl/types/span.h"
 
 namespace xla {
 
 // Runs FileCheck with the given pattern over given input string. Provided that
 // FileCheck can execute, returns true if and only if FileCheck succeeded in
 // matching the input.
-absl::StatusOr<bool> RunFileCheck(const std::string& input,
-                                  absl::string_view pattern);
+absl::StatusOr<bool> RunFileCheck(
+    const std::string& input, absl::string_view pattern,
+    absl::Span<const absl::string_view> additional_check_prefixes = {});
 
 // Runs FileCheck with the given pattern file over given input string. Provided
 // that FileCheck can execute, returns true if and only if FileCheck succeeded
 // in matching the input.
 absl::StatusOr<bool> RunFileCheckWithPatternFile(
-    const std::string& input, const std::string& pattern_file);
+    const std::string& input, const std::string& pattern_file,
+    absl::Span<const absl::string_view> additional_check_prefixes = {});
 
 }  // namespace xla
 

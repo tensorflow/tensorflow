@@ -27,6 +27,7 @@ def _disable_onednn_impl(ctx):
         inputs = [ctx.executable.cc_binary],
         outputs = [out],
         command = "cp %s %s" % (ctx.executable.cc_binary.path, out.path),
+        mnemonic = "TslDisableOnednnBinaryCopy",
     )
 
     wrapped_defaultinfo = ctx.attr.cc_binary[0][DefaultInfo]

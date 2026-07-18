@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/array4d.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/padding.h"
@@ -54,13 +55,13 @@ absl::StatusOr<ConvolutionDimensionNumbers> CreateConvDimensionNumbers(
   dimension_numbers.set_output_feature_dimension(output_feature);
   dimension_numbers.add_output_spatial_dimensions(output_first_spatial);
   dimension_numbers.add_output_spatial_dimensions(output_second_spatial);
-  TF_RETURN_IF_ERROR(XlaBuilder::Validate(dimension_numbers));
+  RETURN_IF_ERROR(XlaBuilder::Validate(dimension_numbers));
   return dimension_numbers;
 }
 
 class ConvolutionDimensionNumbersTest
     : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {};
+          HloPjRtInterpreterReferenceMixin<HloTestBase>> {};
 
 // Tests the convolution operation with invalid input dimension numbers.
 TEST_F(ConvolutionDimensionNumbersTest, InvalidInputDimensionNumbers) {

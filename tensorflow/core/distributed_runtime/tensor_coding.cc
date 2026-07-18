@@ -16,10 +16,14 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 
 #include "google/protobuf/any.pb.h"
-
+#include "absl/status/status.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -55,7 +59,7 @@ absl::Status TensorResponse::InitFrom(RecvTensorResponse* response) {
   meta_.Swap(response);
   if (on_host_) {
     if (!tensor_.FromProto(allocator_, meta_.tensor())) {
-      s = errors::InvalidArgument("Cannot parse tensor from response");
+      s = absl::InvalidArgumentError("Cannot parse tensor from response");
     }
   } else {
     s = device_->MakeTensorFromProto(meta_.tensor(), alloc_attrs_, &tensor_);
@@ -68,15 +72,19 @@ absl::Status TensorResponse::InitFrom(RecvTensorResponse* response) {
   return s;
 }
 
-void TensorResponse::InitPartial(const RecvTensorResponse& response,
-                                 const AllocationAttributes& allocation_attr) {
+absl::Status TensorResponse::InitPartial(
+    const RecvTensorResponse& response,
+    const AllocationAttributes& allocation_attr) {
   // Everything except content is present in *response.  Content will
   // arrive later; allocate a Tensor with appropriate storage for that
   // content.
   meta_ = response;
-  TensorShape shape(meta_.tensor().tensor_shape());
+  TensorShape shape;
+  TF_RETURN_IF_ERROR(
+      TensorShape::BuildTensorShape(meta_.tensor().tensor_shape(), &shape));
   Tensor t(allocator_, meta_.tensor().dtype(), shape, allocation_attr);
   tensor_ = std::move(t);
+  return absl::OkStatus();
 }
 
 absl::Status TensorResponse::ParseFrom(Source* source) {
@@ -85,17 +93,17 @@ absl::Status TensorResponse::ParseFrom(Source* source) {
 
     // Pre-parse into local storage, then delegate to device.
     if (!meta_.ParseFromCodedStream(&input) || !input.ConsumedEntireMessage()) {
-      return errors::InvalidArgument("Cannot parse tensor from response");
+      return absl::InvalidArgumentError("Cannot parse tensor from response");
     }
-    absl::Status s =
-        device_->MakeTensorFromProto(meta_.tensor(), alloc_attrs_, &tensor_);
+    TF_RETURN_IF_ERROR(
+        device_->MakeTensorFromProto(meta_.tensor(), alloc_attrs_, &tensor_));
     // Reduce memory usage for big tensors.
     {
       TensorProto empty;
       meta_.mutable_tensor()->Swap(&empty);
     }
     meta_.clear_tensor();
-    return s;
+    return absl::OkStatus();
   }
   if (already_used_) {
     ClearTensor();
@@ -104,7 +112,7 @@ absl::Status TensorResponse::ParseFrom(Source* source) {
   if (ParseFast(source)) return absl::OkStatus();
   meta_.Clear();
   if (ParseSlow(source)) return absl::OkStatus();
-  return errors::InvalidArgument("Cannot parse tensor from response");
+  return absl::InvalidArgumentError("Cannot parse tensor from response");
 }
 
 // Define some helper routines for decoding protocol buffer wire format data
@@ -114,14 +122,14 @@ enum WireType {
   WIRETYPE_VARINT = 0,
   WIRETYPE_LENGTH_DELIMITED = 2,
 };
-inline int GetTagFieldNumber(uint32 tag) { return tag >> 3; }
-inline WireType GetTagWireType(uint32 tag) {
+inline int GetTagFieldNumber(uint32_t tag) { return tag >> 3; }
+inline WireType GetTagWireType(uint32_t tag) {
   return static_cast<WireType>(tag & 0x7);
 }
 
 bool ReadVarintSizeAsInt(protobuf::io::CodedInputStream* input, int* result) {
   protobuf_uint64 v;
-  if (input->ReadVarint64(&v) && v <= static_cast<uint64>(INT_MAX)) {
+  if (input->ReadVarint64(&v) && v <= static_cast<uint64_t>(INT_MAX)) {
     *result = static_cast<int>(v);
     return true;
   } else {
@@ -154,7 +162,11 @@ bool TensorResponse::ParseTensorSubmessage(
       bool ok = (tag == 0);
       if (ok && !seen_tensor_content) {
         // No tensor content: could be because it's a zero-length tensor
-        TensorShape shape(tensor_meta->tensor_shape());
+        TensorShape shape;
+        if (!TensorShape::BuildTensorShape(tensor_meta->tensor_shape(), &shape)
+                 .ok()) {
+          return false;
+        }
         Tensor t(allocator_, tensor_meta->dtype(), shape);
         tensor_ = std::move(t);
       }
@@ -162,7 +174,7 @@ bool TensorResponse::ParseTensorSubmessage(
     }
     switch (tag) {
       case TensorProto::kDtypeFieldNumber: {
-        uint32 v;
+        uint32_t v;
         if ((wt != WIRETYPE_VARINT) || !input->ReadVarint32(&v)) return false;
         if (seen_tensor_content) return false;
         tensor_meta->set_dtype(static_cast<DataType>(static_cast<int>(v)));
@@ -177,10 +189,10 @@ bool TensorResponse::ParseTensorSubmessage(
         break;
       }
       case TensorProto::kVersionNumberFieldNumber: {
-        uint32 v;
+        uint32_t v;
         if ((wt != WIRETYPE_VARINT) || !input->ReadVarint32(&v)) return false;
         if (seen_tensor_content) return false;
-        tensor_meta->set_version_number(static_cast<int32>(v));
+        tensor_meta->set_version_number(static_cast<int32_t>(v));
         break;
       }
       case TensorProto::kTensorContentFieldNumber: {
@@ -194,7 +206,11 @@ bool TensorResponse::ParseTensorSubmessage(
         int num_bytes;
         if (!ReadVarintSizeAsInt(input, &num_bytes)) return false;
         seen_tensor_content = true;
-        TensorShape shape(tensor_meta->tensor_shape());
+        TensorShape shape;
+        if (!TensorShape::BuildTensorShape(tensor_meta->tensor_shape(), &shape)
+                 .ok()) {
+          return false;
+        }
         Tensor t(allocator_, tensor_meta->dtype(), shape);
         absl::string_view buf = t.tensor_data();
         if (static_cast<size_t>(num_bytes) != buf.size()) return false;
@@ -242,7 +258,7 @@ bool TensorResponse::ParseFast(Source* source) {
         break;
       }
       case RecvTensorResponse::kIsDeadFieldNumber: {
-        uint32 v;
+        uint32_t v;
         if ((wt != WIRETYPE_VARINT) || !input.ReadVarint32(&v)) return false;
         meta_.set_is_dead(v != 0);
         break;
@@ -260,7 +276,7 @@ bool TensorResponse::ParseFast(Source* source) {
         break;
       }
       case RecvTensorResponse::kRequireAckFieldNumber: {
-        uint32 v;
+        uint32_t v;
         if ((wt != WIRETYPE_VARINT) || !input.ReadVarint32(&v)) return false;
         meta_.set_require_ack(v != 0);
         break;
@@ -277,6 +293,15 @@ bool TensorResponse::ParseFast(Source* source) {
 
 bool TensorResponse::ParseSlow(Source* source) {
   if (!meta_.ParseFromZeroCopyStream(source->contents())) {
+    return false;
+  }
+
+  // Ensure the tensor shape is valid before attempting to parse the tensor
+  // content. Tensor::FromProto also checks this, but being explicit here
+  // can prevent issues earlier.
+  TensorShape shape;
+  if (!TensorShape::BuildTensorShape(meta_.tensor().tensor_shape(), &shape)
+           .ok()) {
     return false;
   }
 

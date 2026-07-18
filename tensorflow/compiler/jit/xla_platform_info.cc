@@ -90,7 +90,7 @@ absl::StatusOr<std::optional<std::set<int>>> GetAllowedGpus(
   std::optional<std::set<int>> gpu_ids = std::nullopt;
 
   if (flr->config_proto()) {
-    string allowed_gpus =
+    std::string allowed_gpus =
         flr->config_proto()->gpu_options().visible_device_list();
     TF_ASSIGN_OR_RETURN(gpu_ids, ParseVisibleDeviceList(allowed_gpus));
   }
@@ -137,8 +137,8 @@ absl::Status GetCompilationDeviceTypeAndPjRtClient(
 
   const XlaOpRegistry::DeviceRegistration* registration;
   if (!XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration)) {
-    return errors::InvalidArgument("No JIT device registered for ",
-                                   device_type.type());
+    return absl::InvalidArgumentError(
+        absl::StrCat("No JIT device registered for ", device_type.type()));
   }
   *compilation_device_type = DeviceType(registration->compilation_device_name);
 
@@ -176,15 +176,15 @@ absl::StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
   if (visible_device_list.empty()) {
     return {{std::nullopt}};
   }
-  const std::vector<string> visible_devices =
+  const std::vector<std::string> visible_devices =
       absl::StrSplit(visible_device_list, ',');
-  for (const string& platform_device_id_str : visible_devices) {
+  for (const std::string& platform_device_id_str : visible_devices) {
     int32_t platform_device_id;
     if (!absl::SimpleAtoi(platform_device_id_str, &platform_device_id)) {
-      return errors::InvalidArgument(
-          "Could not parse entry in 'visible_device_list': '",
-          platform_device_id_str,
-          "'. visible_device_list = ", visible_device_list);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Could not parse entry in 'visible_device_list': '",
+                       platform_device_id_str,
+                       "'. visible_device_list = ", visible_device_list));
     }
     gpu_ids.insert(platform_device_id);
   }
@@ -197,8 +197,8 @@ absl::StatusOr<DeviceType> GetCompilationDeviceType(
   const XlaOpRegistry::DeviceRegistration* registration = nullptr;
   if (!XlaOpRegistry::GetCompilationDevice(platform_device_type.type(),
                                            &registration)) {
-    return errors::InvalidArgument("No JIT device registered for ",
-                                   platform_device_type.type());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "No JIT device registered for ", platform_device_type.type()));
   }
   compilation_device_type = DeviceType(registration->compilation_device_name);
   return compilation_device_type;
@@ -247,7 +247,7 @@ absl::Status BuildXlaDeviceCompiler(DeviceBase* device,
   }
 
   if (platform_info.platform_id() == nullptr) {
-    return errors::InvalidArgument("platform_id is null.");
+    return absl::InvalidArgumentError("platform_id is null.");
   }
   auto platform =
       se::PlatformManager::PlatformWithId(platform_info.platform_id());
@@ -256,7 +256,7 @@ absl::Status BuildXlaDeviceCompiler(DeviceBase* device,
   }
 
   absl::StatusOr<std::unique_ptr<xla::Compiler>> compiler_for_platform =
-      xla::Compiler::GetForPlatform(platform.value());
+      xla::Compiler::GetForPlatform(platform.value()->id());
   if (!compiler_for_platform.ok()) {
     // In some rare cases (usually in unit tests with very small clusters) we
     // may end up transforming an XLA cluster with at least one GPU operation
@@ -270,9 +270,9 @@ absl::Status BuildXlaDeviceCompiler(DeviceBase* device,
     // the situation for us.
     const absl::Status& status = compiler_for_platform.status();
     if (status.code() == error::NOT_FOUND) {
-      return errors::Unimplemented("Could not find compiler for platform ",
-                                   platform.value()->Name(), ": ",
-                                   status.ToString());
+      return absl::UnimplementedError(
+          absl::StrCat("Could not find compiler for platform ",
+                       platform.value()->Name(), ": ", status.ToString()));
     }
   }
 
@@ -369,7 +369,7 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
   se::Platform::Id platform_id = nullptr;
   const XlaDevice::Metadata* xla_device_metadata = nullptr;
   const PjRtBaseDevice::Metadata* pjrt_device_metadata = nullptr;
-  std::shared_ptr<se::DeviceMemoryAllocator> custom_allocator;
+  std::shared_ptr<stream_executor::DeviceAddressAllocator> custom_allocator;
 
   const std::string& device_type = device_base->device_type();
   if (device_type == DEVICE_CPU) {
@@ -404,7 +404,7 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
                          custom_allocator);
 }
 
-std::shared_ptr<se::DeviceMemoryAllocator> GetAllocator(
+std::shared_ptr<stream_executor::DeviceAddressAllocator> GetAllocator(
     DeviceBase* device, se::Stream* stream,
     const XlaPlatformInfo& platform_info) {
   if (platform_info.custom_allocator()) {

@@ -61,7 +61,7 @@ class StatsPublisherInterface {
   //
   // This method may return a null pointer, if no handler was created.
   virtual std::unique_ptr<ProfileHandler> GetProfileHandler(
-      uint64 step, int64_t execution_count, const RunOptions& ropts) = 0;
+      uint64_t step, int64_t execution_count, const RunOptions& ropts) = 0;
 
   virtual ~StatsPublisherInterface() {}
 
@@ -77,7 +77,7 @@ class StatsPublisherInterface {
 };
 
 std::unique_ptr<StatsPublisherInterface> CreateNoOpStatsPublisher(
-    const string& session, const BuildGraphOptions& bopts,
+    const std::string& session, const BuildGraphOptions& bopts,
     const SessionOptions& sopts);
 
 }  // namespace tensorflow

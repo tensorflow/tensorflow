@@ -58,9 +58,9 @@ absl::Status Instantiate(OpKernelContext* ctx, const NameAttrList& func,
 // If "t" is a scalar of a supported type, returns t != 0 in "*v".
 absl::Status ToBool(absl::Span<const Tensor> t, bool* v) {
   if (t.size() != 1) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Expected a single scalar which can be converted to a boolean, got ",
-        t.size(), " tensors.");
+        t.size(), " tensors."));
   }
   if (TensorShapeUtils::IsScalar(t[0].shape())) {
     switch (t[0].dtype()) {
@@ -71,10 +71,10 @@ absl::Status ToBool(absl::Span<const Tensor> t, bool* v) {
 
       CASE(float);
       CASE(double);
-      CASE(int32);
-      CASE(uint8);
-      CASE(int16);
-      CASE(int8);
+      CASE(int32_t);
+      CASE(uint8_t);
+      CASE(int16_t);
+      CASE(int8_t);
       CASE(int64_t);
 #undef CASE
       case DT_BOOL:
@@ -84,8 +84,8 @@ absl::Status ToBool(absl::Span<const Tensor> t, bool* v) {
         *v = !t[0].scalar<tstring>()().empty();
         break;
       default:
-        return errors::InvalidArgument(DataTypeString(t[0].dtype()),
-                                       " cannot be converted to a boolean");
+        return absl::InvalidArgumentError(absl::StrCat(
+            DataTypeString(t[0].dtype()), " cannot be converted to a boolean"));
     }
   } else {
     *v = t[0].NumElements() > 0;
@@ -98,14 +98,16 @@ absl::Status ToBool(absl::Span<const Tensor> t, bool* v) {
 absl::Status SetOutputs(const OpKernel* kernel, OpKernelContext* ctx,
                         absl::Span<const Tensor> rets) {
   if (rets.size() != ctx->num_outputs()) {
-    return errors::Internal("Expect to produce ", ctx->num_outputs(),
-                            " tensors, but only get ", rets.size());
+    return absl::InternalError(
+        absl::StrCat("Expect to produce ", ctx->num_outputs(),
+                     " tensors, but only get ", rets.size()));
   }
   for (int i = 0; i < rets.size(); ++i) {
     if (rets[i].dtype() != kernel->output_type(i)) {
-      return errors::Internal("Expect ", i, "-th output is of type ",
-                              DataTypeString(kernel->output_type(i)),
-                              " but get ", DataTypeString(rets[i].dtype()));
+      return absl::InternalError(
+          absl::StrCat("Expect ", i, "-th output is of type ",
+                       DataTypeString(kernel->output_type(i)), " but get ",
+                       DataTypeString(rets[i].dtype())));
     }
     ctx->set_output(i, rets[i]);
   }
@@ -129,7 +131,7 @@ class IfOp : public AsyncOpKernel {
  public:
   explicit IfOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
     OP_REQUIRES(ctx, ctx->function_library() != nullptr,
-                errors::Internal("No function library"));
+                absl::InternalError("No function library"));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("then_branch", &then_func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("else_branch", &else_func_));
   }
@@ -239,7 +241,7 @@ class IfOp : public AsyncOpKernel {
     // from `FunctionLibraryRuntime*` to `FHandle` pairs for the two
     // functions this op uses.
     auto lib = ctx->function_library();
-    if (lib == nullptr) return errors::Internal("No function library");
+    if (lib == nullptr) return absl::InternalError("No function library");
     *then_handle = kInvalidHandle;
     *else_handle = kInvalidHandle;
     {
@@ -272,7 +274,7 @@ class CaseOp : public AsyncOpKernel {
  public:
   explicit CaseOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
     OP_REQUIRES(ctx, ctx->function_library() != nullptr,
-                errors::Internal("No function library"));
+                absl::InternalError("No function library"));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("branches", &branch_funcs_));
   }
 
@@ -298,9 +300,9 @@ class CaseOp : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     const Tensor& branch_index = ctx->input(0);
     OP_REQUIRES_ASYNC(ctx, TensorShapeUtils::IsScalar(branch_index.shape()),
-                      errors::InvalidArgument("branch_index must be scalar"),
+                      absl::InvalidArgumentError("branch_index must be scalar"),
                       done);
-    int32_t branch = branch_index.scalar<int32>()();
+    int32_t branch = branch_index.scalar<int32_t>()();
 
     std::vector<FHandle> branch_handles(branch_funcs_.size());
     OP_REQUIRES_OK_ASYNC(ctx, GetHandles(ctx, branch_handles), done);
@@ -325,7 +327,7 @@ class CaseOp : public AsyncOpKernel {
     // from `FunctionLibraryRuntime*` to `FHandle` pairs for the two
     // functions this op uses.
     auto lib = ctx->function_library();
-    if (lib == nullptr) return errors::Internal("No function library");
+    if (lib == nullptr) return absl::InternalError("No function library");
 
     std::vector<FHandle> handles;
     {
@@ -433,7 +435,7 @@ class WhileOp : public AsyncOpKernel {
  public:
   explicit WhileOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
     OP_REQUIRES(ctx, ctx->function_library() != nullptr,
-                errors::Internal("No function library"));
+                absl::InternalError("No function library"));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("cond", &cond_func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("body", &body_func_));
   }
@@ -510,7 +512,7 @@ class WhileOp : public AsyncOpKernel {
         (opts.rets_alloc_attrs.empty() ||
          !opts.rets_alloc_attrs[0].on_host())) {
       // Copy the ret value to host if it's allocated on device.
-      Device* device = down_cast<Device*>(ctx->device());
+      Device* device = absl::down_cast<Device*>(ctx->device());
       DeviceContext* device_ctx = ctx->op_device_context();
       Tensor host_cond_t = Tensor(cond_t.dtype(), cond_t.shape());
       TF_RETURN_IF_ERROR(device_ctx->CopyDeviceTensorToCPUSync(
@@ -559,7 +561,8 @@ class WhileOp : public AsyncOpKernel {
         *val = &(*args_)[index];
         return absl::OkStatus();
       } else {
-        return errors::InvalidArgument("Argument ", index, " is out of range.");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Argument ", index, " is out of range."));
       }
     }
 
@@ -574,17 +577,17 @@ class WhileOp : public AsyncOpKernel {
 
     absl::Status SetRetval(int index, const Tensor& val) override {
       if (TF_PREDICT_FALSE(index < 0)) {
-        return errors::InvalidArgument(
-            "Expected non-negative return value index, but got: ", index, ".");
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Expected non-negative return value index, but got: ", index, "."));
       } else if (TF_PREDICT_FALSE(index >= retvals_->size())) {
-        return errors::InvalidArgument("While loop body returned ", index + 1,
-                                       " arguments. Expected: ", num_retvals(),
-                                       ".");
+        return absl::InvalidArgumentError(
+            absl::StrCat("While loop body returned ", index + 1,
+                         " arguments. Expected: ", num_retvals(), "."));
       } else if (TF_PREDICT_FALSE(val.dtype() != ret_types_[index])) {
-        return errors::InvalidArgument("Expected type ",
-                                       DataTypeString(ret_types_[index]),
-                                       " for return value ", index, " but got ",
-                                       DataTypeString(val.dtype()), ".");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Expected type ", DataTypeString(ret_types_[index]),
+                         " for return value ", index, " but got ",
+                         DataTypeString(val.dtype()), "."));
       }
       (*retvals_)[index] = val;
       return absl::OkStatus();
@@ -650,9 +653,9 @@ class WhileOp : public AsyncOpKernel {
     void StartBody() {
       absl::Status s;
       if (rets_.size() != 1) {
-        s = errors::InvalidArgument(
+        s = absl::InvalidArgumentError(absl::StrCat(
             "Expected a single scalar return value from WhileOp cond, got ",
-            rets_.size(), " tensors.");
+            rets_.size(), " tensors."));
         return Finish(s);
       }
 
@@ -680,9 +683,9 @@ class WhileOp : public AsyncOpKernel {
               return Finish(s);
             }
             if (args_.size() != rets_.size()) {
-              return Finish(errors::InvalidArgument(
-                  "While loop body returned ", rets_.size(),
-                  " arguments. Expected: ", args_.size()));
+              return Finish(absl::InvalidArgumentError(
+                  absl::StrCat("While loop body returned ", rets_.size(),
+                               " arguments. Expected: ", args_.size())));
             }
             args_.clear();
             using std::swap;
@@ -729,9 +732,9 @@ class WhileOp : public AsyncOpKernel {
         TF_RETURN_IF_ERROR(lib->RunSync(opts, cond_handle, args, &cond_rets));
       }
       if (cond_rets.size() != 1) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Expected a single scalar return value from WhileOp cond, got ",
-            cond_rets.size(), " tensors.");
+            cond_rets.size(), " tensors."));
       }
 
       // If the cond function evaluates to false, we are done: output the
@@ -766,7 +769,7 @@ class WhileOp : public AsyncOpKernel {
     // from `FunctionLibraryRuntime*` to `FHandle` pairs for the two
     // functions this op uses.
     auto lib = ctx->function_library();
-    if (lib == nullptr) return errors::Internal("No function library");
+    if (lib == nullptr) return absl::InternalError("No function library");
     *cond_handle = kInvalidHandle;
     *body_handle = kInvalidHandle;
     {
@@ -818,14 +821,14 @@ class ToBoolOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("ToBool").Device(DEVICE_CPU), ToBoolOp);
 
-absl::Status GetScalar(OpKernelContext* ctx, int index, int32* value,
+absl::Status GetScalar(OpKernelContext* ctx, int index, int32_t* value,
                        const char* label) {
   Tensor t = ctx->input(index);
   if (!TensorShapeUtils::IsScalar(t.shape())) {
-    return errors::InvalidArgument(label, " must be a scalar, but ",
-                                   t.shape().DebugString());
+    return absl::InvalidArgumentError(absl::StrCat(
+        label, " must be a scalar, but ", t.shape().DebugString()));
   }
-  *value = t.scalar<int32>()();
+  *value = t.scalar<int32_t>()();
   return absl::OkStatus();
 }
 
@@ -833,7 +836,7 @@ class ForOp : public AsyncOpKernel {
  public:
   explicit ForOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
     OP_REQUIRES(ctx, ctx->function_library() != nullptr,
-                errors::Internal("No function library"));
+                absl::InternalError("No function library"));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("body", &body_func_));
   }
 
@@ -876,7 +879,7 @@ class ForOp : public AsyncOpKernel {
     // from `FunctionLibraryRuntime*` to `FHandle` pairs for the two
     // functions this op uses.
     auto lib = ctx->function_library();
-    if (lib == nullptr) return errors::Internal("No function library");
+    if (lib == nullptr) return absl::InternalError("No function library");
     *body_handle = kInvalidHandle;
     {
       tf_shared_lock l(mu_);
@@ -911,7 +914,7 @@ class ForOp : public AsyncOpKernel {
           opts_(ctx->step_id()),
           args_(1 + ctx_->num_inputs() - 3) {
       args_[0] = Tensor(DT_INT32, {});
-      iter_ = &args_[0].scalar<int32>()();
+      iter_ = &args_[0].scalar<int32_t>()();
 
       const int32_t num_loop_inputs = ctx_->num_inputs() - 3;
       rets_.reserve(num_loop_inputs);
@@ -937,9 +940,9 @@ class ForOp : public AsyncOpKernel {
     TensorVec args_;
     TensorVec rets_;
 
-    int32* iter_;  // points to args_[0].
-    int32 limit_;
-    int32 delta_;
+    int32_t* iter_;  // points to args_[0].
+    int32_t limit_;
+    int32_t delta_;
 
     // If an error e is returned, caller must call Finish(e).
     // If OK is returned, the async loop execution has been started.
@@ -956,8 +959,8 @@ class ForOp : public AsyncOpKernel {
         RunNext();
         return absl::OkStatus();
       } else {
-        return errors::InvalidArgument("Invalid start/limit/delta: ", *iter_,
-                                       " ", limit_, " ", delta_);
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Invalid start/limit/delta: ", *iter_, " ", limit_, " ", delta_));
       }
     }
 
@@ -974,9 +977,9 @@ class ForOp : public AsyncOpKernel {
       }
 
       if (rets_.size() >= args_.size()) {
-        Finish(errors::InvalidArgument(
-            "For loop body returned ", rets_.size(),
-            " arguments. Expected: ", args_.size() - 1));
+        Finish(absl::InvalidArgumentError(
+            absl::StrCat("For loop body returned ", rets_.size(),
+                         " arguments. Expected: ", args_.size() - 1)));
         return;
       }
       for (int i = 0; i < rets_.size(); ++i) {
@@ -1072,11 +1075,11 @@ class DeviceIndexOp : public OpKernel {
         index = it - device_names_.begin();
       }
     }
-    device_name_t->scalar<int32>()() = index;
+    device_name_t->scalar<int32_t>()() = index;
   }
 
  private:
-  std::vector<string> device_names_;
+  std::vector<std::string> device_names_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("DeviceIndex").Device(DEVICE_CPU), DeviceIndexOp);

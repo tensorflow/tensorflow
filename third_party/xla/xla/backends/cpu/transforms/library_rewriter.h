@@ -23,12 +23,12 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/repeated_field.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/transforms/library_matcher.h"
-#include "xla/backends/cpu/transforms/xnn_matcher.h"
+#include "xla/backends/cpu/transforms/ynn_matcher.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -41,17 +41,16 @@ limitations under the License.
 
 namespace xla::cpu {
 
-enum class FusionDirection {
-  kUp,    // Traverse up (to parents).
-  kDown,  // Traverse down (to children).
-  kBoth,  // Traverse both up and down.
-};
+// The maximum number of instructions allowed in a library fusion. This avoids
+// crashing libraries with too large graphs. It could break good fusions, e.g.,
+// Softmax, etc. We should deploy a smarter logic in the future.
+static constexpr int kMaxInstructionsInFusion = 100;
 
 struct LibraryRewriterOptions {
   bool use_onednn = false;
-  bool use_xnnpack = false;
+  bool use_ynnpack = false;
   const tsl::protobuf::RepeatedField<int>* onednn_fusion_types = nullptr;
-  const tsl::protobuf::RepeatedField<int>* xnn_fusion_types = nullptr;
+  const tsl::protobuf::RepeatedField<int>* ynn_fusion_types = nullptr;
 };
 
 // Rewrites suitable Dot operations into library fusions.
@@ -69,11 +68,12 @@ class LibraryRewriter : public HloModulePass {
           target_machine_features_, options_.onednn_fusion_types));
     }
 #endif  // XLA_ONEDNN_USE_GRAPH_API
-    if (options_.use_xnnpack && options_.xnn_fusion_types != nullptr &&
-        !options_.xnn_fusion_types->empty()) {
-      libs_.push_back(std::make_unique<XnnMatcher>(target_machine_features_,
-                                                   options_.xnn_fusion_types));
+    if (options_.use_ynnpack && options_.ynn_fusion_types != nullptr &&
+        !options_.ynn_fusion_types->empty()) {
+      libs_.push_back(std::make_unique<YnnMatcher>(target_machine_features_,
+                                                   options_.ynn_fusion_types));
     }
+
     for (std::unique_ptr<LibraryMatcher>& lib : libs_) {
       supported_ops_.merge(lib->SupportedOps());
     }
@@ -85,6 +85,8 @@ class LibraryRewriter : public HloModulePass {
         libs_, [](const auto& lib) { return lib->fuse_reduce(); });
     fuse_eltwise_ = absl::c_any_of(
         libs_, [](const auto& lib) { return lib->fuse_eltwise(); });
+    fuse_conv_ =
+        absl::c_any_of(libs_, [](const auto& lib) { return lib->fuse_conv(); });
   }
   ~LibraryRewriter() override = default;
 
@@ -95,7 +97,8 @@ class LibraryRewriter : public HloModulePass {
   // eligible for fusion to `queue`.
   void AddFusionCandidates(
       HloInstruction* fusion, HloInstruction* instr, FusionDirection dir,
-      std::queue<std::pair<HloInstruction*, FusionDirection>>& queue);
+      std::queue<std::pair<HloInstruction*, FusionDirection>>& queue,
+      absl::flat_hash_set<HloInstruction*>& visited);
 
   // Merges two fusions `main` and `neighbor` together. `main` is the current
   // fusion instruction we are growing. `neighbor` is a neighboring fusion node
@@ -110,19 +113,30 @@ class LibraryRewriter : public HloModulePass {
                                              HloInstruction* to_fuse,
                                              FusionDirection dir);
 
-  // Fuses as many neighbors around `fusion` as possible
-  absl::Status FuseNeighbors(HloFusionInstruction* fusion, LibraryMatcher* lib);
+  // Fuses as many neighbors around `fusion` as possible. Returns true if any
+  // neighbors were fused.
+  absl::StatusOr<bool> FuseNeighbors(HloFusionInstruction*& fusion,
+                                     LibraryMatcher* lib);
 
   // Finds and creates fusions in the given computation.
   absl::StatusOr<bool> ProcessComputation(HloComputation* computation);
 
-  // Runs the pass.
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+  // Returns true if the library is in the list of matchers.
+  bool IsLibraryRegistered(absl::string_view lib_fusion_kind) const {
+    for (const auto& lib : libs_) {
+      if (lib->fusion_kind() == lib_fusion_kind) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   absl::string_view name() const override { return "dot-library-rewriter"; }
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   const TargetMachineFeatures* target_machine_features_;
@@ -133,6 +147,7 @@ class LibraryRewriter : public HloModulePass {
   bool fuse_dot_ = false;
   bool fuse_reduce_ = false;
   bool fuse_eltwise_ = false;
+  bool fuse_conv_ = false;
 };
 
 }  // namespace xla::cpu

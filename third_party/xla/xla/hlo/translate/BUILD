@@ -23,6 +23,7 @@ cc_library(
         ":stablehlo",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
@@ -54,7 +55,7 @@ xla_cc_binary(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TranslateLib",
-        "@local_tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -71,15 +72,13 @@ xla_cc_binary(
     srcs = ["xla_translate_opt_main.cc"],
     deps = [
         ":register",
-        "//xla/mlir/framework/ir:xla_framework",
-        "//xla/mlir/framework/transforms:passes",
         "//xla/service:cpu_plugin",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
-        "@llvm-project//mlir:RegisterAllDialects",
-        "@llvm-project//mlir:RegisterAllPasses",
-        "@local_tsl//tsl/platform:platform_port",
+        "@llvm-project//mlir:RegisterAllDialects",  # buildcleaner: keep
+        "@llvm-project//mlir:RegisterAllPasses",  # buildcleaner: keep
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -118,6 +117,7 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -131,5 +131,6 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:UBDialect",
         "@stablehlo//:stablehlo_passes",
+        "@stablehlo//:stablehlo_passes_optimization",
     ],
 )

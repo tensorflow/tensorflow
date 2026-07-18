@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/cloud/curl_http_request.h"
 
 namespace tsl {
@@ -41,9 +42,10 @@ ComputeEngineMetadataClient::ComputeEngineMetadataClient(
       retry_config_(config) {}
 
 absl::Status ComputeEngineMetadataClient::GetMetadata(
-    const string& path, std::vector<char>* response_buffer) {
-  const auto get_metadata_from_gce = [path, response_buffer, this]() {
-    string metadata_url;
+    const std::string& path, std::vector<char>* response_buffer) {
+  const auto get_metadata_from_gce = [path, response_buffer,
+                                      this]() -> absl::Status {
+    std::string metadata_url;
     const char* metadata_url_override = std::getenv(kGceMetadataHost);
     if (metadata_url_override) {
       metadata_url = absl::StrCat("http://", metadata_url_override,
@@ -55,7 +57,7 @@ absl::Status ComputeEngineMetadataClient::GetMetadata(
     request->SetUri(metadata_url + path);
     request->AddHeader("Metadata-Flavor", "Google");
     request->SetResultBuffer(response_buffer);
-    TF_RETURN_IF_ERROR(request->Send());
+    RETURN_IF_ERROR(request->Send());
     return absl::OkStatus();
   };
 

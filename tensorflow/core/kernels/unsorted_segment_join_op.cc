@@ -15,39 +15,42 @@ limitations under the License.
 
 // See docs in ../ops/string_ops.cc.
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
+#include <tuple>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/tstring.h"
 
 namespace tensorflow {
 
 namespace {
 
-template <typename INDICES_TYPE>
-gtl::InlinedVector<INDICES_TYPE, 8> GetFlattenedRelativeOffsets(
-    INDICES_TYPE small_stride, INDICES_TYPE big_stride) {
-  gtl::InlinedVector<INDICES_TYPE, 8> flattened_offsets(small_stride);
-  for (auto i = 0; i < small_stride; i++) {
+absl::InlinedVector<int64_t, 8UL> GetFlattenedRelativeOffsets(
+    int64_t small_stride, int64_t big_stride) {
+  absl::InlinedVector<int64_t, 8UL> flattened_offsets(small_stride);
+  for (int64_t i = 0; i < small_stride; i++) {
     flattened_offsets[i] = i * big_stride;
   }
   return flattened_offsets;
 }
 
-template <typename INDICES_TYPE>
-std::pair<INDICES_TYPE, INDICES_TYPE> GetStrides(
-    const TensorShape& input_shape, const TensorShape& segment_id_shape) {
+std::pair<int64_t, int64_t> GetStrides(const TensorShape& input_shape,
+                                       const TensorShape& segment_id_shape) {
   int64_t small_stride = 1;
   int64_t big_stride = 1;
-  for (auto i = 0; i < input_shape.dims(); i++) {
+  for (int i = 0; i < input_shape.dims(); i++) {
     if (i < segment_id_shape.dims()) {
       small_stride *= segment_id_shape.dim_size(i);
     } else {
@@ -90,11 +93,12 @@ class UnsortedSegmentJoinOp : public OpKernel {
     const int32_t segment_dims = segment_id_shape.dims();
 
     const Tensor& num_segments_tensor = context->input(2);
-    OP_REQUIRES(context, num_segments_tensor.NumElements() != 0,
-                errors::InvalidArgument("Number of segments cannot be empty."));
-    OP_REQUIRES(context,
-                TensorShapeUtils::IsScalar(num_segments_tensor.shape()),
-                errors::InvalidArgument("Number of segments must be a scalar"));
+    OP_REQUIRES(
+        context, num_segments_tensor.NumElements() != 0,
+        absl::InvalidArgumentError("Number of segments cannot be empty."));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(num_segments_tensor.shape()),
+        absl::InvalidArgumentError("Number of segments must be a scalar"));
     auto num_segments = num_segments_tensor.scalar<NUM_SEGMENTS_TYPE>()();
 
     OP_REQUIRES(
@@ -102,18 +106,18 @@ class UnsortedSegmentJoinOp : public OpKernel {
         errors::InvalidArgument(
             "Number of segments must be non-negative but got ", num_segments));
     OP_REQUIRES(context, segment_dims != 0,
-                errors::InvalidArgument("Segment_id cannot have rank 0"));
+                absl::InvalidArgumentError("Segment_id cannot have rank 0"));
 
-    OP_REQUIRES(
-        context, segment_dims <= input_dims,
-        errors::OutOfRange("Invalid segment_id rank ", segment_dims,
-                           " for input with ", input_dims, " dimension(s)"));
+    OP_REQUIRES(context, segment_dims <= input_dims,
+                absl::OutOfRangeError(absl::StrCat(
+                    "Invalid segment_id rank ", segment_dims,
+                    " for input with ", input_dims, " dimension(s)")));
     for (auto i = 0; i < segment_dims; i++) {
       OP_REQUIRES(
           context, segment_id_shape.dim_size(i) == input_shape.dim_size(i),
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Segment dimension is ", segment_id_shape.dim_size(i),
-              " while input dimension is ", input_dims, " in rank ", i));
+              " while input dimension is ", input_dims, " in rank ", i)));
     }
 
     // Making output tensor.
@@ -128,11 +132,11 @@ class UnsortedSegmentJoinOp : public OpKernel {
     auto flat_segment_id = segment_id.flat<INDICES_TYPE>();
     auto flat_input = input.flat<tstring>();
 
-    for (int i = 0; i < flat_segment_id.size(); i++) {
+    for (int64_t i = 0; i < flat_segment_id.size(); i++) {
       OP_REQUIRES(
           context,
           ((flat_segment_id(i) < num_segments) && (flat_segment_id(i) >= 0)),
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(
               "segment_ids are not allowed to exceed num_segments or"
               " to have negative values."));
     }
@@ -140,11 +144,11 @@ class UnsortedSegmentJoinOp : public OpKernel {
     int64_t big_stride;
     int64_t small_stride;
     std::tie(big_stride, small_stride) =
-        GetStrides<INDICES_TYPE>(input_shape, segment_id_shape);
+        GetStrides(input_shape, segment_id_shape);
     auto relative_offset_set =
-        GetFlattenedRelativeOffsets<INDICES_TYPE>(small_stride, big_stride);
-    for (auto start_offset = 0; start_offset < big_stride; start_offset++) {
-      for (auto i = 0; i < relative_offset_set.size(); i++) {
+        GetFlattenedRelativeOffsets(small_stride, big_stride);
+    for (int64_t start_offset = 0; start_offset < big_stride; start_offset++) {
+      for (int64_t i = 0; i < relative_offset_set.size(); i++) {
         auto output_index = start_offset + flat_segment_id(i) * big_stride;
         auto offset = start_offset + relative_offset_set[i];
         if (output_flat(output_index).length() != 0)
@@ -155,7 +159,7 @@ class UnsortedSegmentJoinOp : public OpKernel {
   }
 
  private:
-  string separator_;
+  std::string separator_;
 };
 
 #define REGISTER_CPU_KERNEL(indices_type, num_segments_type)  \
@@ -166,9 +170,9 @@ class UnsortedSegmentJoinOp : public OpKernel {
           .TypeConstraint<num_segments_type>("Tnumsegments"), \
       UnsortedSegmentJoinOp<indices_type, num_segments_type>);
 
-REGISTER_CPU_KERNEL(int32, int32);
-REGISTER_CPU_KERNEL(int32, int64_t);
-REGISTER_CPU_KERNEL(int64_t, int32);
+REGISTER_CPU_KERNEL(int32_t, int32_t);
+REGISTER_CPU_KERNEL(int32_t, int64_t);
+REGISTER_CPU_KERNEL(int64_t, int32_t);
 REGISTER_CPU_KERNEL(int64_t, int64_t);
 #undef REGISTER_CPU_KERNEL
 

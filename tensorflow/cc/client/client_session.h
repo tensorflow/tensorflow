@@ -65,7 +65,7 @@ class ClientSession {
 
   /// Create a new session to evaluate the graph contained in `scope` by
   /// connecting to the TensorFlow runtime specified by `target`.
-  ClientSession(const Scope& scope, const string& target);
+  ClientSession(const Scope& scope, const std::string& target);
 
   /// Same as above, but use the empty string ("") as the target specification.
   explicit ClientSession(const Scope& scope);

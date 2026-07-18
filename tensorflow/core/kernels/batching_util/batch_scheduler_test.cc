@@ -27,6 +27,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/clock.h"
 #include "xla/tsl/platform/criticality.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/notification.h"
@@ -49,6 +50,12 @@ TEST(MixedPriorityBatchingPolicyTest, InvalidAttrValueError) {
           absl::StatusCode::kInvalidArgument,
           ::testing::HasSubstr(
               "Unknown mixed priority batching policy: invalid_attr_value")));
+  EXPECT_THAT(
+      GetMixedPriorityBatchingPolicyString(
+          static_cast<MixedPriorityBatchingPolicy>(4)),
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          ::testing::HasSubstr("Unknown mixed priority batching policy: 4")));
 }
 
 using MixedPriorityBatchingPolicyParameterizedTest = ::testing::TestWithParam<
@@ -59,6 +66,8 @@ TEST_P(MixedPriorityBatchingPolicyParameterizedTest,
   auto [attr_name, policy] = GetParam();
   EXPECT_THAT(GetMixedPriorityBatchingPolicy(attr_name),
               absl_testing::IsOkAndHolds(Eq(policy)));
+  EXPECT_THAT(GetMixedPriorityBatchingPolicyString(policy),
+              absl_testing::IsOkAndHolds(Eq(attr_name)));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -97,6 +106,16 @@ class FakeTask : public BatchTask {
 TEST(TaskCriticalityTest, CriticalityDefaultsToCritical) {
   FakeTask fake_task(0);
   EXPECT_EQ(fake_task.criticality(), tsl::criticality::Criticality::kCritical);
+}
+
+TEST(BatchTaskTest, IsCancelledDefaultsToFalse) {
+  FakeTask fake_task(0);
+  EXPECT_FALSE(fake_task.IsCancelled());
+}
+
+TEST(BatchTaskTest, IsDeadlineExceededDefaultsToFalse) {
+  FakeTask fake_task(0);
+  EXPECT_FALSE(fake_task.IsDeadlineExceeded(absl::Now()));
 }
 
 TEST(TaskQueueTest, EmptyTaskQueue) {

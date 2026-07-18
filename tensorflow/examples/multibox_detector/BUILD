@@ -29,8 +29,8 @@ tf_cc_binary(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/tsl/platform:status",
-        "@local_xla//xla/tsl/platform:types",
-        "@local_xla//xla/tsl/util:command_line_flags",
+        "@xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/util:command_line_flags",
     ],
 )

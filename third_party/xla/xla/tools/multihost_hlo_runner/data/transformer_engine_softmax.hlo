@@ -1,0 +1,7 @@
+HloModule f
+
+ENTRY f {
+  // Softmax custom call requires rank 4 input.
+  %arg1 = bf16[4,1,16,32] parameter(0)
+  ROOT %custom-call = bf16[4,1,16,32] custom-call(bf16[4,1,16,32] %arg1), custom_call_target="te_scaled_softmax_forward_ffi", api_version=API_VERSION_TYPED_FFI, backend_config={scale_factor = 0.200000e+00 : f64}
+}

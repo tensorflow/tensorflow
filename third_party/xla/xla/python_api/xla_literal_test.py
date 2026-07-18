@@ -21,7 +21,7 @@ import operator
 from absl.testing import absltest
 import numpy as np
 
-from local_xla.xla import xla_data_pb2
+from xla import xla_data_pb2
 from xla.python_api import xla_literal
 
 

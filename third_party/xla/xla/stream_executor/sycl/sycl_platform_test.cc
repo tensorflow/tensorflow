@@ -26,5 +26,25 @@ TEST(SyclPlatformTest, TestPlatformName) {
   EXPECT_EQ(platform->Name(), "SYCL");
 }
 
+TEST(SyclPlatformTest, FindExistingWorks) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Platform * platform,
+      stream_executor::PlatformManager::PlatformWithId(kSyclPlatformId));
+  EXPECT_GT(platform->VisibleDeviceCount(), 0);
+  for (int i = 0; i < platform->VisibleDeviceCount(); ++i) {
+    EXPECT_FALSE(platform->FindExisting(i).ok());
+  }
+  absl::flat_hash_map<int, StreamExecutor*> executors;
+  for (int i = 0; i < platform->VisibleDeviceCount(); ++i) {
+    TF_ASSERT_OK_AND_ASSIGN(auto executor, platform->ExecutorForDevice(i));
+    executors[i] = executor;
+  }
+  EXPECT_EQ(executors.size(), platform->VisibleDeviceCount());
+  for (int i = 0; i < platform->VisibleDeviceCount(); ++i) {
+    TF_ASSERT_OK_AND_ASSIGN(auto executor, platform->FindExisting(i));
+    EXPECT_EQ(executor, executors[i]);
+  }
+}
+
 }  // namespace
 }  // namespace stream_executor::sycl

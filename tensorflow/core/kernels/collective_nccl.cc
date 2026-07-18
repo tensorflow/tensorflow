@@ -22,14 +22,15 @@ limitations under the License.
 
 namespace tensorflow {
 
-NcclBase::NcclBase(CollectiveType type, const string& name)
+NcclBase::NcclBase(CollectiveType type, const std::string& name)
     : type_(type), name_(name), col_ctx_(nullptr), col_params_(nullptr) {}
 
-Status NcclBase::InitializeCollectiveParams(CollectiveParams* col_params) {
+absl::Status NcclBase::InitializeCollectiveParams(
+    CollectiveParams* col_params) {
   if (type_ != col_params->instance.type) {
-    return errors::Internal("Expected initialized type ", type_,
-                            " to match type in CollectiveParams ",
-                            col_params->instance.type);
+    return absl::InternalError(absl::StrCat(
+        "Expected initialized type ", type_,
+        " to match type in CollectiveParams ", col_params->instance.type));
   }
 
   const char* expected_name;
@@ -50,20 +51,22 @@ Status NcclBase::InitializeCollectiveParams(CollectiveParams* col_params) {
       expected_name = "NcclAllToAll";
       break;
     default:
-      return errors::Internal("Unexpected CollectiveType ", type_);
+      return absl::InternalError(
+          absl::StrCat("Unexpected CollectiveType ", type_));
   }
 
   if (expected_name != col_params->instance.impl_details.collective_name) {
-    return errors::Internal("Unexpected combination of collective type ",
-                            col_params->instance.type, " and collective name ",
-                            col_params->instance.impl_details.collective_name,
-                            ", expected name ", expected_name);
+    return absl::InternalError(
+        absl::StrCat("Unexpected combination of collective type ",
+                     col_params->instance.type, " and collective name ",
+                     col_params->instance.impl_details.collective_name,
+                     ", expected name ", expected_name));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status NcclBase::InitializeCollectiveContext(
+absl::Status NcclBase::InitializeCollectiveContext(
     std::shared_ptr<CollectiveContext> col_ctx) {
   col_ctx_ = col_ctx;
   col_params_ = col_ctx->col_params.get();

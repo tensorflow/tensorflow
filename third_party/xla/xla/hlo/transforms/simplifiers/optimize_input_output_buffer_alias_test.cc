@@ -20,13 +20,13 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "absl/status/status.h"
+#include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/layout.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 
@@ -70,7 +70,7 @@ class OptimizeInputOutputBufferAliasTest
 
     auto changed = optimize_pass_->Build(input_shapes, output_shape,
                                          &alias_config_, &buffer_donor_config_);
-    TF_CHECK_OK(changed.status());
+    CHECK_OK(changed.status());
 
     return changed.value();
   }
@@ -189,7 +189,7 @@ TEST_F(OptimizeInputOutputBufferAliasTest, BufferDonorOnly) {
   std::vector<Shape> input = {ShapeUtil::MakeTupleShape({r1f32_, r2f32_})};
   Shape output = ShapeUtil::MakeTupleShape({r2f32_, r1f32_});
 
-  TF_CHECK_OK(buffer_donor_config_.AddBufferDonor(0, {0}));
+  CHECK_OK(buffer_donor_config_.AddBufferDonor(0, {0}));
   EXPECT_TRUE(buffer_donor_config_.ParameterIsBufferDonor(0, {0}));
 
   bool changed = BuildAliasConfig(input, output);

@@ -34,6 +34,7 @@ namespace ifrt {
 
 // For llvm::RTTI
 [[maybe_unused]] char UserContext::ID = 0;
+[[maybe_unused]] char BasicUserContext::ID = 0;
 [[maybe_unused]] char AnnotatedUserContext::ID = 0;
 [[maybe_unused]] char ChainedUserContext::ID = 0;
 [[maybe_unused]] char FusedUserContext::ID = 0;
@@ -47,24 +48,40 @@ ABSL_CONST_INIT thread_local
 
 }  // namespace
 
+absl_nonnull UserContextRef BasicUserContext::Create(std::string msg) {
+  return tsl::MakeRef<BasicUserContext>(std::move(msg));
+}
+
+BasicUserContext::BasicUserContext(std::string msg)
+    : id_(tsl::random::ThreadLocalNew64()), msg_(std::move(msg)) {}
+
 absl_nonnull UserContextRef
 AnnotatedUserContext::Create(UserContextRef user_context, std::string msg) {
   return tsl::MakeRef<AnnotatedUserContext>(std::move(user_context),
-                                            std::move(msg));
+                                            std::move(msg), kAfter);
+}
+
+absl_nonnull UserContextRef
+AnnotatedUserContext::Create(std::string msg, UserContextRef user_context) {
+  return tsl::MakeRef<AnnotatedUserContext>(std::move(user_context),
+                                            std::move(msg), kBefore);
 }
 
 AnnotatedUserContext::AnnotatedUserContext(UserContextRef user_context,
-                                           std::string msg)
+                                           std::string msg,
+                                           MessagePosition msg_position)
     : id_(tsl::random::ThreadLocalNew64()),
       user_context_(std::move(user_context)),
-      msg_(std::move(msg)) {}
+      msg_(std::move(msg)),
+      msg_position_(msg_position) {}
 
 UserContextId AnnotatedUserContext::Id() const { return id_; }
 
 std::string AnnotatedUserContext::DebugString() const {
-  return absl::StrCat(
-      (user_context_ ? user_context_->DebugString() : "(nullptr user context)"),
-      "; ", msg_);
+  const std::string context_str =
+      user_context_ ? user_context_->DebugString() : "(nullptr user context)";
+  return msg_position_ == kBefore ? absl::StrCat(msg_, context_str)
+                                  : absl::StrCat(context_str, msg_);
 }
 
 absl_nonnull UserContextRef
@@ -124,9 +141,6 @@ UserContextScope::~UserContextScope() {
 
 absl_nullable const UserContextRef& UserContextScope::current() {
   if (current_context == nullptr) {
-#ifdef IFRT_REQUIRE_USER_CONTEXT
-    CHECK(false) << "User context is required but not set";
-#endif
     return *kNullContext;
   }
   return *current_context;

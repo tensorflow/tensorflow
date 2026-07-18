@@ -24,16 +24,18 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_norm_runner.pb.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -66,7 +68,7 @@ struct GpuNormDescriptor {
   std::optional<Shape> dy_shape;
   std::optional<Shape> dscale_shape;
   std::optional<Shape> dbias_shape;
-  size_t scratch_size;
+  Shape scratch_shape;
 
   static absl::StatusOr<GpuNormDescriptor> FromProto(
       const GpuNormDescriptorProto& proto);
@@ -82,52 +84,48 @@ struct GpuNormConfig {
     GpuNormConfig config;
     config.epsilon = desc.backend_config.epsilon();
     config.algorithm = se::dnn::AlgorithmDesc(desc.backend_config.algorithm());
-    TF_ASSIGN_OR_RETURN(config.kind,
-                        AsCudnnNormKind(desc.backend_config.kind()));
+    ASSIGN_OR_RETURN(config.kind, AsCudnnNormKind(desc.backend_config.kind()));
 
     auto tensor_descriptor_from_shape =
         [](Shape shape) -> absl::StatusOr<se::dnn::TensorDescriptor> {
-      TF_ASSIGN_OR_RETURN(
-          se::dnn::DataType data_type,
-          GetDNNDataTypeFromPrimitiveType(shape.element_type()));
+      ASSIGN_OR_RETURN(se::dnn::DataType data_type,
+                       GetDNNDataTypeFromPrimitiveType(shape.element_type()));
       return se::dnn::TensorDescriptor::For(data_type, shape.dimensions(),
                                             shape.layout().minor_to_major());
     };
 
-    TF_ASSIGN_OR_RETURN(config.x_descriptor,
-                        tensor_descriptor_from_shape(desc.x_shape));
-    TF_ASSIGN_OR_RETURN(config.scale_descriptor,
-                        tensor_descriptor_from_shape(desc.scale_shape));
-    TF_ASSIGN_OR_RETURN(config.y_or_dx_descriptor,
-                        tensor_descriptor_from_shape(desc.y_or_dx_shape));
+    ASSIGN_OR_RETURN(config.x_descriptor,
+                     tensor_descriptor_from_shape(desc.x_shape));
+    ASSIGN_OR_RETURN(config.scale_descriptor,
+                     tensor_descriptor_from_shape(desc.scale_shape));
+    ASSIGN_OR_RETURN(config.y_or_dx_descriptor,
+                     tensor_descriptor_from_shape(desc.y_or_dx_shape));
     if (desc.bias_shape) {
-      TF_ASSIGN_OR_RETURN(config.bias_descriptor, tensor_descriptor_from_shape(
-                                                      desc.bias_shape.value()));
+      ASSIGN_OR_RETURN(config.bias_descriptor,
+                       tensor_descriptor_from_shape(desc.bias_shape.value()));
     }
     if (desc.expectation_shape) {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           config.expectation_descriptor,
           tensor_descriptor_from_shape(desc.expectation_shape.value()));
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           config.norm_factor_descriptor,
           tensor_descriptor_from_shape(desc.norm_factor_shape.value()));
     }
     if (desc.dscale_shape) {
-      TF_ASSIGN_OR_RETURN(config.dy_descriptor,
-                          tensor_descriptor_from_shape(desc.dy_shape.value()));
-      TF_ASSIGN_OR_RETURN(
-          config.dscale_descriptor,
-          tensor_descriptor_from_shape(desc.dscale_shape.value()));
-      TF_ASSIGN_OR_RETURN(
-          config.dbias_descriptor,
-          tensor_descriptor_from_shape(desc.dbias_shape.value()));
+      ASSIGN_OR_RETURN(config.dy_descriptor,
+                       tensor_descriptor_from_shape(desc.dy_shape.value()));
+      ASSIGN_OR_RETURN(config.dscale_descriptor,
+                       tensor_descriptor_from_shape(desc.dscale_shape.value()));
+      ASSIGN_OR_RETURN(config.dbias_descriptor,
+                       tensor_descriptor_from_shape(desc.dbias_shape.value()));
     }
     return config;
   }
 
   absl::StatusOr<se::dnn::NormOp::Config> AsDnnNormOpConfig() const {
-    TF_ASSIGN_OR_RETURN(se::dnn::NormKind norm_kind,
-                        GetDNNNormKindFromCudnnNormKind(kind));
+    ASSIGN_OR_RETURN(se::dnn::NormKind norm_kind,
+                     GetDNNNormKindFromCudnnNormKind(kind));
     return se::dnn::NormOp::Config{norm_kind,
                                    epsilon,
                                    x_descriptor,
@@ -186,16 +184,16 @@ struct RunNormOptions {
 };
 
 absl::Status RunGpuNorm(const GpuNormConfig& conv_config,
-                        const se::DeviceMemoryBase& x_buffer,
-                        const se::DeviceMemoryBase& scale_buffer,
-                        const se::DeviceMemoryBase& y_or_dx_buffer,
-                        std::optional<se::DeviceMemoryBase> bias_buffer,
-                        std::optional<se::DeviceMemoryBase> dy_buffer,
-                        std::optional<se::DeviceMemoryBase> expectation_buffer,
-                        std::optional<se::DeviceMemoryBase> norm_factor_buffer,
-                        std::optional<se::DeviceMemoryBase> dscale_buffer,
-                        std::optional<se::DeviceMemoryBase> dbias_buffer,
-                        const se::DeviceMemoryBase& scratch_memory,
+                        const se::DeviceAddressBase& x_buffer,
+                        const se::DeviceAddressBase& scale_buffer,
+                        const se::DeviceAddressBase& y_or_dx_buffer,
+                        std::optional<se::DeviceAddressBase> bias_buffer,
+                        std::optional<se::DeviceAddressBase> dy_buffer,
+                        std::optional<se::DeviceAddressBase> expectation_buffer,
+                        std::optional<se::DeviceAddressBase> norm_factor_buffer,
+                        std::optional<se::DeviceAddressBase> dscale_buffer,
+                        std::optional<se::DeviceAddressBase> dbias_buffer,
+                        const se::DeviceAddressBase& scratch_memory,
                         se::Stream* stream, RunNormOptions options = {});
 
 }  // namespace gpu

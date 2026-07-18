@@ -44,8 +44,8 @@ using stream_executor::dnn::AlgorithmDesc;
 using stream_executor::dnn::AlgorithmProto;
 
 template <typename Op>
-StatusOr<ConvMapProto> ConvMapToProto(
-    const AutotuneMap<ConvParameters, AutotuneEntry<Op>> &autotune_map) {
+absl::StatusOr<ConvMapProto> ConvMapToProto(
+    const AutotuneMap<ConvParameters, AutotuneEntry<Op>>& autotune_map) {
   ConvMapProto proto;
 
   // Deterministically sort the entries in autotune maps
@@ -55,7 +55,7 @@ StatusOr<ConvMapProto> ConvMapToProto(
   // This step also filters out duplicate entries (only device_id's are
   // different) in the autotune maps. So that there is only one entry for a
   // convolution operation with a specific GPU device type.
-  std::map<string, ConvMapProto::Entry> sorted_map;
+  std::map<std::string, ConvMapProto::Entry> sorted_map;
 
   for (auto const &p : autotune_map.GetMap()) {
     const ConvParameters &params = p.first;
@@ -91,11 +91,11 @@ StatusOr<ConvMapProto> ConvMapToProto(
 }
 
 template <typename Op>
-Status PopulateConvMap(
-    const ConvMapProto &m,
-    AutotuneMap<ConvParameters, AutotuneEntry<Op>> *autotune_map) {
+absl::Status PopulateConvMap(
+    const ConvMapProto& m,
+    AutotuneMap<ConvParameters, AutotuneEntry<Op>>* autotune_map) {
   if (m.kv_pairs().size() == 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Get the list of all GPU StreamExecutors.
@@ -106,7 +106,8 @@ Status PopulateConvMap(
   for (int i = 0; i < platform->VisibleDeviceCount(); i++) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<se::DeviceDescription> device_desc,
                         platform->DescriptionForDevice(i));
-    device_descs.push_back(device_desc->model_str());
+    device_descs.push_back(
+        DeviceIdentifierForAutotuning(device_desc->model_str()));
   }
 
   std::set<std::string> unmatched_device_descs;
@@ -118,21 +119,21 @@ Status PopulateConvMap(
     if (params_proto.version() != ConvParameters::kVersion) {
       VLOG(1) << "ConvParametersProto with the incompatible version:"
               << params_proto.DebugString();
-      return errors::Aborted(
+      return absl::AbortedError(absl::StrCat(
           "Aborted because the loaded autotune results for convolution "
           "operations have a version different "
           "from runtime's version. Expected version: ",
           ConvParameters::kVersion,
-          ". Actual version: ", params_proto.version());
+          ". Actual version: ", params_proto.version()));
     }
 
     const AlgorithmConfigProto &algorithm_config_proto = kv.value();
     const AlgorithmDesc primary(algorithm_config_proto.algorithm());
-    const absl::optional<AlgorithmDesc> fallback =
+    const std::optional<AlgorithmDesc> fallback =
         algorithm_config_proto.has_algorithm_no_scratch()
-            ? absl::optional<AlgorithmDesc>(
+            ? std::optional<AlgorithmDesc>(
                   AlgorithmDesc(algorithm_config_proto.algorithm_no_scratch()))
-            : absl::nullopt;
+            : std::nullopt;
 
     bool devices_matched = false;
     for (int ordinal = 0; ordinal < device_descs.size(); ordinal++) {
@@ -162,12 +163,11 @@ Status PopulateConvMap(
 
   if (!unmatched_device_descs.empty()) {
     LOG(WARNING) << "Unmatched device id's from AoT autotuning data: "
-                 << str_util::Join(unmatched_device_descs, ", ")
-                 << "; existing devices: "
-                 << str_util::Join(device_descs, ", ");
+                 << absl::StrJoin(unmatched_device_descs, ", ")
+                 << "; existing devices: " << absl::StrJoin(device_descs, ", ");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -191,8 +191,8 @@ absl::Status LoadSerializedAutotuneMaps(absl::string_view s) {
   // The explicit string conversion here is a workaround for
   // resolving the issue that OSS proto library's ParseFromString only accepts
   // std::string.
-  if (!proto.ParseFromString(string(s))) {
-    return errors::InvalidArgument(
+  if (!proto.ParseFromString(s)) {
+    return absl::InvalidArgumentError(
         "Failed to parse the autotune maps from string.");
   }
   TF_RETURN_IF_ERROR(

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -45,7 +46,7 @@ class OutfeedEnqueueOp : public XlaOpKernel {
     OP_REQUIRES_OK(
         ctx, TensorShapeToXLAShape(dtype_, ctx->InputShape(0), &xla_shape));
     // Outfeed configuration is only needed for embedding outfeed.
-    const string outfeed_config;
+    const std::string outfeed_config;
     xla::Outfeed(ctx->Input(0), xla_shape, outfeed_config);
   }
 
@@ -83,7 +84,7 @@ class OutfeedEnqueueTupleOp : public XlaOpKernel {
     auto b = ctx->builder();
     auto tuple = xla::Tuple(b, handles);
     // Outfeed configuration is only needed for embedding outfeed.
-    const string outfeed_config;
+    const std::string outfeed_config;
     xla::Outfeed(tuple, tuple_shape, outfeed_config);
   }
 

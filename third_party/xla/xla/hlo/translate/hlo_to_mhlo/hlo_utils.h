@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -53,7 +54,7 @@ absl::StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
 // Creates an DenseIntElementsAttr using the elements of the vector and the
 // optional shape.
 mlir::DenseIntElementsAttr CreateDenseIntElementsAttrFromVector(
-    const llvm::ArrayRef<int64_t> vector, mlir::Builder builder,
+    llvm::ArrayRef<int64_t> vector, mlir::Builder builder,
     llvm::ArrayRef<int64_t> shape = {});
 
 // Converts the given XLA shape for tensors to the template MLIR type.
@@ -62,7 +63,9 @@ static absl::StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
                                                       mlir::Builder builder) {
   auto element_type_or =
       ConvertPrimitiveTypeToMlirType(xla_ty.element_type(), builder);
-  if (!element_type_or.ok()) return element_type_or.status();
+  if (!element_type_or.ok()) {
+    return element_type_or.status();
+  }
 
   bool is_bounded_dynamic = false;
   int64_t rank = xla_ty.dimensions().size();
@@ -117,8 +120,8 @@ static absl::StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
     llvm::SmallVector<mlir::Type, 4> contents;
     contents.reserve(shape.tuple_shapes().size());
     for (const auto& subtype : shape.tuple_shapes()) {
-      TF_ASSIGN_OR_RETURN(auto mlir_subtype,
-                          ConvertShapeToType<TypeT>(subtype, builder));
+      ASSIGN_OR_RETURN(auto mlir_subtype,
+                       ConvertShapeToType<TypeT>(subtype, builder));
       contents.push_back(mlir_subtype);
     }
     return builder.getTupleType(contents);

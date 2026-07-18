@@ -17,10 +17,9 @@ limitations under the License.
 #include <optional>
 
 #include <gtest/gtest.h>
-#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/hlo/testlib/test_helpers.h"
 
 namespace xla {
 namespace {
@@ -41,7 +40,7 @@ add {
 ENTRY c {
     p = f32[5,3,4]{2,1,0} parameter(0)
     z = f32[] constant(0)
-    ROOT r = f32[5,4]{0,1} reduce(p, z), dimensions={1}, to_apply=add
+    ROOT r = f32[5,4]{0,1} reduce(p, z), dimensions={1}, to_apply=add, metadata={op_name="reduce"}
 }
 )";
 
@@ -54,8 +53,38 @@ ENTRY c {
 
   RunAndFilecheckHloRewrite(hlo, ReduceDecomposer{},
                             R"(
-// CHECK: [[reduce_0:%[^ ]+]] = f32[5,4]{1,0} reduce([[p_1:%[^ ]+]], [[z_2:%[^ ]+]]), dimensions={1}, to_apply=[[add_3:%[^ ]+]]
+// CHECK: [[reduce_0:%[^ ]+]] = f32[5,4]{1,0} reduce([[p_1:%[^ ]+]], [[z_2:%[^ ]+]]), dimensions={1}, to_apply=[[add_3:%[^ ]+]], metadata={op_name="reduce"}
 // CHECK-NEXT: ROOT [[copy_4:%[^ ]+]] = f32[5,4]{0,1} copy([[reduce_0]])
+      )");
+}
+
+TEST_F(ReduceDecomposerTest, ReducePerformsTranspositionAfterConvert) {
+  const char* hlo = R"(
+add {
+    a = f32[] parameter(0)
+    b = f32[] parameter(1)
+    ROOT out = add(a, b)
+}
+
+ENTRY c {
+    p = f32[5,3,4]{2,1,0} parameter(0)
+    z = f32[] constant(0)
+    r = f32[5,4]{0,1} reduce(p, z), dimensions={1}, to_apply=add, metadata={op_name="reduce"}
+    ROOT c = bf16[5,4]{0,1} convert(r), metadata={op_name="convert"}
+})";
+
+  RunAndFilecheckHloRewrite(
+      hlo,
+      ReduceDecomposer{/*custom_layout_allowed=*/[&](const HloInstruction*) {
+        return true;
+      }},
+      std::nullopt);
+
+  RunAndFilecheckHloRewrite(hlo, ReduceDecomposer{},
+                            R"(
+// CHECK: [[reduce:%[^ ]+]] = f32[5,4]{1,0} reduce([[p_1:%[^ ]+]], [[z_2:%[^ ]+]]), dimensions={1}, to_apply=[[add:%[^ ]+]], metadata={op_name="reduce"}
+// CHECK-NEXT: [[convert:%[^ ]+]] = bf16[5,4]{1,0} convert([[reduce]]), metadata={op_name="convert"}
+// CHECK-NEXT: ROOT [[copy:%[^ ]+]] = bf16[5,4]{0,1} copy([[convert]])
       )");
 }
 

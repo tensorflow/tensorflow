@@ -133,7 +133,7 @@ class GrpcClientSession : public ClientSession {
 
   const StreamTerminatedCallback stream_terminated_cb_;
 
-  // Threadpool used to perform `tsl::Future<>::Promise::Set()` for Futures
+  // Threadpool used to perform `tsl::Promise<>::Set()` for Futures
   // returned to callers of `Enqueue(std::unique_ptr<IfrtRequest> request)`. We
   // do this because `Set()` may block on arbitrary `OnReady` callbacks set by
   // those callers.

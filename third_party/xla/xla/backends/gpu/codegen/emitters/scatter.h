@@ -28,7 +28,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
-#include "xla/backends/gpu/codegen/emitters/emitter_base.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -60,7 +60,7 @@ struct ScatterDescription {
 };
 ScatterDescription GetScatterDescription(const HloFusionAnalysis& analysis);
 
-class ScatterFusion : public EmitterBase {
+class ScatterFusion : public MlirKernelEmitter {
  public:
   explicit ScatterFusion(const HloFusionAnalysis& analysis,
                          const ScatterDescription& description,
@@ -91,7 +91,7 @@ class ScatterFusion : public EmitterBase {
       mlir::ImplicitLocOpBuilder& b, const EmitterHelper& helper,
       const IndexingMap& updates_map, const IndexingMap& indices_map,
       mlir::ValueRange thread_and_block_ids,
-      mlir::Value output_tensor) const = 0;
+      mlir::ValueRange output_tensors) const = 0;
 
   virtual void ComputeIndexing(mlir::MLIRContext* ctx, IndexingMap* updates_map,
                                IndexingMap* indices_map) const = 0;
@@ -124,14 +124,14 @@ class ScatterWithDistributedUpdates : public ScatterFusion {
                                          int64_t vector_size);
 
  protected:
-  absl::Status EmitEntryFunctionImpl(mlir::ImplicitLocOpBuilder& b,
-                                     const EmitterHelper& helper,
-                                     const IndexingMap& updates_map,
-                                     const IndexingMap& indices_map,
-                                     mlir::ValueRange thread_and_block_ids,
-                                     mlir::Value output_tensor) const override;
+  absl::Status EmitEntryFunctionImpl(
+      mlir::ImplicitLocOpBuilder& b, const EmitterHelper& helper,
+      const IndexingMap& updates_map, const IndexingMap& indices_map,
+      mlir::ValueRange thread_and_block_ids,
+      mlir::ValueRange output_tensors) const override;
 
-  void ComputeIndexing(mlir::MLIRContext* ctx, IndexingMap* updates_map,
+  void ComputeIndexing(mlir::MLIRContext* mlir_context,
+                       IndexingMap* updates_map,
                        IndexingMap* indices_map) const override;
 };
 
@@ -191,15 +191,15 @@ class ScatterWithDistributedIndices : public ScatterFusion {
                                          int64_t indices_vector_size);
 
  protected:
-  void ComputeIndexing(mlir::MLIRContext* ctx, IndexingMap* updates_map,
+  void ComputeIndexing(mlir::MLIRContext* mlir_context,
+                       IndexingMap* updates_map,
                        IndexingMap* indices_map) const override;
 
-  absl::Status EmitEntryFunctionImpl(mlir::ImplicitLocOpBuilder& b,
-                                     const EmitterHelper& helper,
-                                     const IndexingMap& updates_map,
-                                     const IndexingMap& indices_map,
-                                     mlir::ValueRange thread_and_block_ids,
-                                     mlir::Value output_tensor) const override;
+  absl::Status EmitEntryFunctionImpl(
+      mlir::ImplicitLocOpBuilder& b, const EmitterHelper& helper,
+      const IndexingMap& updates_map, const IndexingMap& indices_map,
+      mlir::ValueRange thread_and_block_ids,
+      mlir::ValueRange output_tensors) const override;
 
  private:
   // Creates a 2D vector to store the accumulated updates in each thread.

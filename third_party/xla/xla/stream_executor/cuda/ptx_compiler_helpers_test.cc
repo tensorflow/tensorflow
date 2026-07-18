@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "xla/stream_executor/kernel_stats.h"
 
 namespace stream_executor {
 namespace {
@@ -49,7 +50,15 @@ ptxas fatal   : Ptx assembly aborted due to errors
 
 constexpr absl::string_view kPtxasLogRegisterSpillWarning = R"(
 // Something in the log before the warning.
-ptxas warning : Registers are spilled to local memory in function '__kernel', 8 bytes spill stores, 8 bytes spill loads
+ptxas warning : Registers are spilled to local memory in function '__kernel', 18 bytes spill stores, 8 bytes spill loads
+// Something in the log after the warning.
+)";
+
+constexpr absl::string_view kPtxasLogMultipleKernelsSpillingRegisters = R"(
+// Something in the log before the warning.
+ptxas warning : Registers are spilled to local memory in function '__kernel', 18 bytes spill stores, 8 bytes spill loads
+// Log log log.
+ptxas warning : Registers are spilled to local memory in function '__kernel2', 1024 bytes spill stores, 1099 bytes spill loads
 // Something in the log after the warning.
 )";
 
@@ -104,6 +113,23 @@ TEST(PtxCompilerHelpersTest, IsPtxRegisterAllocationErrorStatus) {
   EXPECT_FALSE(
       IsPtxRegisterAllocationError(absl::ResourceExhaustedError("OOM")));
   EXPECT_FALSE(IsPtxRegisterAllocationError(absl::OkStatus()));
+}
+
+TEST(PtxCompilerHelpersTest, ModuleStatsAreCorrectlyExtractedFromLog) {
+  ModuleStats kernel_stats_map =
+      ExtractModuleStatsFromLog(kPtxasLogRegisterSpillWarning);
+  EXPECT_EQ(kernel_stats_map.size(), 1);
+  EXPECT_EQ(kernel_stats_map["__kernel"].store_bytes_spilled, 18);
+  EXPECT_EQ(kernel_stats_map["__kernel"].load_bytes_spilled, 8);
+  kernel_stats_map =
+      ExtractModuleStatsFromLog(kPtxasLogMultipleKernelsSpillingRegisters);
+  EXPECT_EQ(kernel_stats_map.size(), 2);
+  EXPECT_EQ(kernel_stats_map["__kernel"].store_bytes_spilled, 18);
+  EXPECT_EQ(kernel_stats_map["__kernel"].load_bytes_spilled, 8);
+  EXPECT_EQ(kernel_stats_map["__kernel2"].store_bytes_spilled, 1024);
+  EXPECT_EQ(kernel_stats_map["__kernel2"].load_bytes_spilled, 1099);
+  kernel_stats_map = ExtractModuleStatsFromLog(kPtxasLogSuccessfulCompilation);
+  EXPECT_EQ(kernel_stats_map.size(), 0);
 }
 
 }  // namespace

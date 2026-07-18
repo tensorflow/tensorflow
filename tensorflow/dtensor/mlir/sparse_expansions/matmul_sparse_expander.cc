@@ -38,8 +38,8 @@ StatusOr<mlir::Operation*> MatMulSparseExpander::ExpandOp(mlir::Operation* op) {
     // Since operand 0 is a SparseValue, we don't need to check that
     // the indices, values, and dense_shapes exist.
     mlir::TF::SparseTensorDenseMatMulOp new_op =
-        builder.create<mlir::TF::SparseTensorDenseMatMulOp>(
-            op->getLoc(), op->getResultTypes(),
+        mlir::TF::SparseTensorDenseMatMulOp::create(
+            builder, op->getLoc(), op->getResultTypes(),
             mlir::ValueRange{
                 GetIndicesFromSparseTensor(op->getOperand(0)).value(),
                 GetValuesFromSparseTensor(op->getOperand(0)).value(),

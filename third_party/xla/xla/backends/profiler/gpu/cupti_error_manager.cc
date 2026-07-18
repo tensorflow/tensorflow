@@ -20,13 +20,17 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/debugging/leak_check.h"
 #include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
-#include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_profiler_target.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_result.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_target.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
 
 namespace xla {
@@ -65,6 +69,9 @@ void CuptiErrorManager::RegisterUndoFunction(
 CUptiResult CuptiErrorManager::ActivityDisable(CUpti_ActivityKind kind) {
   IGNORE_CALL_IF_DISABLED;
   CUptiResult error = interface_->ActivityDisable(kind);
+  if (error != CUPTI_SUCCESS) {
+    LOG(ERROR) << "ActivityDisable() error on activity kind: " << kind;
+  }
   LOG_AND_DISABLE_IF_ERROR(error);
   return error;
 }
@@ -75,6 +82,8 @@ CUptiResult CuptiErrorManager::ActivityEnable(CUpti_ActivityKind kind) {
   if (error == CUPTI_SUCCESS) {
     auto f = std::bind(&CuptiErrorManager::ActivityDisable, this, kind);
     RegisterUndoFunction(f);
+  } else {
+    LOG(ERROR) << "ActivityEnable() error on activity kind: " << kind;
   }
   LOG_AND_DISABLE_IF_ERROR(error);
   return error;
@@ -127,6 +136,69 @@ CUptiResult CuptiErrorManager::ActivityRegisterCallbacks(
   absl::LeakCheckDisabler disabler;
   CUptiResult error = interface_->ActivityRegisterCallbacks(
       func_buffer_requested, func_buffer_completed);
+  LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+}
+
+CUptiResult CuptiErrorManager::ActivityRegisterCallbacksV2(
+    CUpti_SubscriberHandle subscriber,
+    CuptiBuffersCallbackRequestFuncV2 func_buffer_requested,
+    CuptiBuffersCallbackCompleteFuncV2 func_buffer_completed) {
+  IGNORE_CALL_IF_DISABLED;
+  absl::LeakCheckDisabler disabler;
+  CUptiResult error = interface_->ActivityRegisterCallbacksV2(
+      subscriber, func_buffer_requested, func_buffer_completed);
+  LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+}
+
+CUptiResult CuptiErrorManager::ActivityEnableV2(
+    CUpti_SubscriberHandle subscriber, CUpti_ActivityKind kind, void* cfg) {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->ActivityEnableV2(subscriber, kind, cfg);
+  if (error == CUPTI_SUCCESS) {
+    auto f = std::bind(&CuptiErrorManager::ActivityDisableV2, this, subscriber,
+                       kind, nullptr);
+    RegisterUndoFunction(f);
+  } else {
+    LOG(ERROR) << "ActivityEnableV2() error on activity kind: " << kind;
+  }
+  LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+}
+
+CUptiResult CuptiErrorManager::ActivityDisableV2(
+    CUpti_SubscriberHandle subscriber, CUpti_ActivityKind kind, void* cfg) {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->ActivityDisableV2(subscriber, kind, cfg);
+  if (error != CUPTI_SUCCESS) {
+    LOG(ERROR) << "ActivityDisableV2() error on activity kind: " << kind;
+  }
+  LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+}
+
+CUptiResult CuptiErrorManager::ActivitySetAttributeV2(
+    CUpti_SubscriberHandle subscriber, CUpti_ActivityAttribute attr,
+    size_t* valueSize, void* value) {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error =
+      interface_->ActivitySetAttributeV2(subscriber, attr, valueSize, value);
+  LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+}
+
+CUptiResult CuptiErrorManager::ActivityUseSystemThreadIdV2(
+    CUpti_SubscriberHandle subscriber) {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->ActivityUseSystemThreadIdV2(subscriber);
+  LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+}
+
+CUptiResult CuptiErrorManager::ActivityUsePerThreadBufferV2() {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->ActivityUsePerThreadBufferV2();
   LOG_AND_DISABLE_IF_ERROR(error);
   return error;
 }
@@ -222,6 +294,22 @@ CUptiResult CuptiErrorManager::Subscribe(CUpti_SubscriberHandle* subscriber,
   return error;
 }
 
+CUptiResult CuptiErrorManager::SubscribeV2(CUpti_SubscriberHandle* subscriber,
+                                           CUpti_CallbackFunc callback,
+                                           void* userdata) {
+  IGNORE_CALL_IF_DISABLED;
+  absl::LeakCheckDisabler disabler;
+  CUptiResult error = interface_->SubscribeV2(subscriber, callback, userdata);
+  if (error == CUPTI_SUCCESS) {
+    auto f = std::bind(&CuptiErrorManager::Unsubscribe, this, *subscriber);
+    RegisterUndoFunction(f);
+  }
+  ALLOW_ERROR(error, CUPTI_ERROR_NOT_SUPPORTED);
+  ALLOW_ERROR(error, CUPTI_ERROR_UNKNOWN);
+  LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+}
+
 CUptiResult CuptiErrorManager::Unsubscribe(CUpti_SubscriberHandle subscriber) {
   IGNORE_CALL_IF_DISABLED;
   CUptiResult error = interface_->Unsubscribe(subscriber);
@@ -301,6 +389,14 @@ CUptiResult CuptiErrorManager::SetThreadIdType(
   IGNORE_CALL_IF_DISABLED;
   CUptiResult error = interface_->SetThreadIdType(type);
   LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+}
+
+CUptiResult CuptiErrorManager::ActivityEnableHWTrace(bool enable) {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->ActivityEnableHWTrace(enable);
+  // Don't disable cupti just because the gpu hardware or cuda don't support
+  // hardware event system.
   return error;
 }
 
@@ -687,9 +783,9 @@ void CuptiErrorManager::CleanUp() {
   undo_disabled_ = false;
 }
 
-std::string CuptiErrorManager::ResultString(CUptiResult error) const {
+std::string CuptiErrorManager::ResultString(CUptiResult result) const {
   const char* error_message = nullptr;
-  if (interface_->GetResultString(error, &error_message) == CUPTI_SUCCESS &&
+  if (interface_->GetResultString(result, &error_message) == CUPTI_SUCCESS &&
       error_message != nullptr) {
     return error_message;
   }

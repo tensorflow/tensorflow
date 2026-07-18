@@ -111,7 +111,7 @@ absl::Status PrepareArguments(
         break;
       }
       case XlaExpression::Kind::kInvalid:
-        return errors::InvalidArgument("Invalid function argument");
+        return absl::InvalidArgumentError("Invalid function argument");
     }
   }
   return absl::OkStatus();
@@ -199,8 +199,9 @@ absl::Status GraphCompiler::Compile() {
     for (int o = 0; o < n->num_outputs(); ++o) {
       outputs[o] = op_context.release_output(o);
       if (outputs[o].tensor == nullptr) {
-        return errors::Internal("Missing xla_context ", o, "-th output from ",
-                                FormatNodeForError(*n));
+        return absl::InternalError(absl::StrCat("Missing xla_context ", o,
+                                                "-th output from ",
+                                                FormatNodeForError(*n)));
       }
     }
   }
@@ -216,9 +217,9 @@ absl::Status GetFunctionNameAndAttr(const FunctionLibraryRuntime& flib,
     TF_RETURN_IF_ERROR(
         node.attrs().Find(FunctionLibraryDefinition::kFuncAttr, &attr_value));
     if (!attr_value->has_func()) {
-      return errors::InvalidArgument(
-          "The attribute value for attribute 'f' in node ", node.DebugString(),
-          " does not have 'func' field set");
+      return absl::InvalidArgumentError(
+          absl::StrCat("The attribute value for attribute 'f' in node ",
+                       node.DebugString(), " does not have 'func' field set"));
     }
     *func = attr_value->func();
     return absl::OkStatus();
@@ -292,12 +293,12 @@ absl::Status GraphCompiler::CompileFunctionalNode(Node* n,
     }
   }
   if (add_token_input_output) {
-    std::vector<string> token_input_nodes;
+    std::vector<std::string> token_input_nodes;
     TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(&func.attr()),
                                    kXlaTokenInputNodesAttrName,
                                    &token_input_nodes));
     std::vector<xla::XlaOp> token_inputs;
-    for (const string& node_name : token_input_nodes) {
+    for (const std::string& node_name : token_input_nodes) {
       auto token_or = compiler->GetNodeToken(node_name);
       TF_RETURN_IF_ERROR(token_or.status());
       token_inputs.push_back(std::move(token_or).value());

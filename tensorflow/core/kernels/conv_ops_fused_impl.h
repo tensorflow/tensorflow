@@ -212,15 +212,17 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
                   const FusedComputationArgs& fusion_args,
                   const Conv2DParameters& params,
                   const Conv2DDimensions& dimensions, Tensor* output) {
-    OP_REQUIRES(context, dimensions.in_depth == filter.dim_size(2),
-                errors::Unimplemented("Fused conv implementation does not "
-                                      "support grouped convolutions for now."));
-    OP_REQUIRES(context, params.data_format == FORMAT_NHWC,
-                errors::Unimplemented("Fused conv implementation only supports "
-                                      "NHWC tensor format for now."));
+    OP_REQUIRES(
+        context, dimensions.in_depth == filter.dim_size(2),
+        absl::UnimplementedError("Fused conv implementation does not "
+                                 "support grouped convolutions for now."));
+    OP_REQUIRES(
+        context, params.data_format == FORMAT_NHWC,
+        absl::UnimplementedError("Fused conv implementation only supports "
+                                 "NHWC tensor format for now."));
     OP_REQUIRES(context, DataTypeToEnum<T>::value != DT_HALF,
-                errors::Unimplemented("Fused conv implementation with half "
-                                      "precision is not supported on CPU."));
+                absl::UnimplementedError("Fused conv implementation with half "
+                                         "precision is not supported on CPU."));
 
     BiasAddArgs<T> bias_add_args;
     if (BiasAddArgs<T>::IsSupported(fusion)) {
@@ -253,7 +255,8 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
 
     switch (fusion) {
       case FusedComputationType::kUndefined:
-        OP_REQUIRES_OK(context, errors::Internal("Fusion type is undefined"));
+        OP_REQUIRES_OK(context,
+                       absl::InternalError("Fusion type is undefined"));
         break;
       case FusedComputationType::kBiasAdd:
         conv2d(WithBiasAdd<T>(bias_add_args), context, input, filter, output);
@@ -300,14 +303,15 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
                context, input, filter, output);
         break;
       default:
-        OP_REQUIRES_OK(context, errors::Internal("Fusion type is unsupported"));
+        OP_REQUIRES_OK(context,
+                       absl::InternalError("Fusion type is unsupported"));
         break;
     }
   }
 };
 
 template <>
-struct LaunchFusedConv2DOp<CPUDevice, int8>;
+struct LaunchFusedConv2DOp<CPUDevice, int8_t>;
 
 template <>
 struct LaunchFusedConv2DOp<CPUDevice, qint8>;
@@ -333,26 +337,27 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     OP_REQUIRES(
         context,
         params.data_format == FORMAT_NHWC || params.data_format == FORMAT_NCHW,
-        errors::Unimplemented("Fused conv implementation only supports "
-                              "NHWC and HCHW tensor formats for now."));
+        absl::UnimplementedError("Fused conv implementation only supports "
+                                 "NHWC and HCHW tensor formats for now."));
 
     auto* stream = context->op_device_context()->stream();
-    OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
-    OP_REQUIRES(
-        context, use_cudnn,
-        errors::Unimplemented("FusedConv2D for GPU is not currently supported "
-                              "without cudnn"));
+    OP_REQUIRES(context, stream,
+                absl::InternalError("No GPU stream available."));
+    OP_REQUIRES(context, use_cudnn,
+                absl::UnimplementedError(
+                    "FusedConv2D for GPU is not currently supported "
+                    "without cudnn"));
 
     bool is_supported_activation =
         fusion == FusedComputationType::kBiasAddWithRelu ||
         fusion == FusedComputationType::kBiasAddWithRelu6 ||
         fusion == FusedComputationType::kBiasAddWithElu ||
         fusion == FusedComputationType::kBiasAddWithLeakyRelu;
-    OP_REQUIRES(
-        context, is_supported_activation,
-        errors::Unimplemented("FusedConv2D implementation only supports "
-                              "fusing with `BiasAdd + Relu|Relu6|Elu|LeakyRlue`"
-                              " for now."));
+    OP_REQUIRES(context, is_supported_activation,
+                absl::UnimplementedError(
+                    "FusedConv2D implementation only supports "
+                    "fusing with `BiasAdd + Relu|Relu6|Elu|LeakyRlue`"
+                    " for now."));
 
     Tensor input = input_param;
 
@@ -373,11 +378,12 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     // Bias of the following dimensions: [ output_depth ]
     const Tensor& bias = context->input(2);
     OP_REQUIRES(context, bias.dims() == 1,
-                errors::InvalidArgument("bias must be 1-dimensional",
-                                        bias.shape().DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "bias must be 1-dimensional", bias.shape().DebugString())));
     OP_REQUIRES(context, bias.dim_size(0) == out_depths,
-                errors::InvalidArgument("bias depth must be equal to out depth",
-                                        bias.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("bias depth must be equal to out depth",
+                                 bias.shape().DebugString())));
 
     const int64_t common_padding_rows =
         std::min(dimensions.pad_rows_before, dimensions.pad_rows_after);
@@ -423,7 +429,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
           FastBoundsCheck(input_pad_left, std::numeric_limits<int>::max()) &&
           FastBoundsCheck(input_pad_right, std::numeric_limits<int>::max());
       if (!in_bounds) {
-        context->SetStatus(errors::InvalidArgument("Padding is too large."));
+        context->SetStatus(absl::InvalidArgumentError("Padding is too large."));
         return;
       }
       functor::PadInput<GPUDevice, T, int, 4>()(
@@ -531,7 +537,8 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
         .set_layout(compute_data_layout);
 
     Tensor transformed_filter;
-    const auto transform_filter = [&](FilterTensorFormat dst_format) -> Status {
+    const auto transform_filter =
+        [&](FilterTensorFormat dst_format) -> absl::Status {
       VLOG(4) << "Transform filter tensor from " << ToString(FORMAT_HWIO)
               << " to " << ToString(dst_format);
 
@@ -549,7 +556,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
           To32Bit(filter.tensor<T, 4>()),
           To32Bit(transformed_filter.tensor<T, 4>()));
 
-      return OkStatus();
+      return absl::OkStatus();
     };
 
     if (compute_in_nhwc) {
@@ -626,7 +633,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     auto autotune_entry = std::move(entry_or).value();
 
     DnnScratchAllocator scratch_allocator(ConvolveScratchSize(), context);
-    Status cudnn_launch_status;
+    absl::Status cudnn_launch_status;
     if (!autotune_entry.is_algorithm_config()) {
       auto& runners = autotune_entry.GetOpRunners();
       se::dnn::FusedConvOp::Config config{se::dnn::ConvolutionKind::FORWARD,
@@ -662,7 +669,8 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
       auto& runner =
           *std::get<const se::dnn::FusedConvRunner*>(runner_and_scratch);
       cudnn_launch_status = runner(
-          stream, nullptr, std::get<se::DeviceMemoryBase>(runner_and_scratch),
+          stream, nullptr,
+          std::get<stream_executor::DeviceAddressBase>(runner_and_scratch),
           input_ptr, filter_ptr, side_input_ptr, bias_ptr, output_ptr);
     } else {
       auto dnn = stream->parent()->AsDnn();
@@ -693,7 +701,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
 };
 
 template <>
-struct LaunchFusedConv2DOp<GPUDevice, int8>;
+struct LaunchFusedConv2DOp<GPUDevice, int8_t>;
 
 template <>
 struct LaunchFusedConv2DOp<GPUDevice, qint8>;
@@ -732,7 +740,7 @@ class FusedConv2DOp : public OpKernel {
     // convolution with BiasAdd, but in practice it doesn't work, cuDNN ignores
     // this parameter and always does Relu activation.
     if (std::is_same<Device, GPUDevice>::value) {
-      if (std::is_same<T, int8>::value || std::is_same<T, qint8>::value) {
+      if (std::is_same<T, int8_t>::value || std::is_same<T, qint8>::value) {
         patterns = {{FCT::kBiasAdd, {"BiasAdd"}},
                     {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}}};
       } else {

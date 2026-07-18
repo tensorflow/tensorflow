@@ -140,7 +140,7 @@ class ModelBatchStats {
   // size.
   //
   // The returned reference persist for as long as 'this' is alive.
-  BatchSizeStats& batch_size(int32 batch_size) {
+  BatchSizeStats& batch_size(int32_t batch_size) {
     mutex_lock l(mu_);
     return batch_size_stats_by_batch_size_[batch_size];
   }
@@ -161,8 +161,8 @@ class ModelBatchStats {
   // Returns the list of batch sizes for which this model has statistics.
   //
   // The returned list is not guaranteed to be sorted.
-  std::vector<int32> BatchSizes() const {
-    std::vector<int32> result;
+  std::vector<int32_t> BatchSizes() const {
+    std::vector<int32_t> result;
     mutex_lock l(mu_);
     result.reserve(batch_size_stats_by_batch_size_.size());
     for (const auto& [key, value] : batch_size_stats_by_batch_size_) {
@@ -198,7 +198,7 @@ class ModelBatchStats {
   // element deletion is possible because we return references to items in this
   // map and don't track their lifetime. We are using the node hash map so that
   // elements, once created, are fixed in memory.
-  absl::node_hash_map<int32, BatchSizeStats> batch_size_stats_by_batch_size_
+  absl::node_hash_map<int32_t, BatchSizeStats> batch_size_stats_by_batch_size_
       TF_GUARDED_BY(mu_);
 
   // The total count of individual unit-sized queries processed by this model.

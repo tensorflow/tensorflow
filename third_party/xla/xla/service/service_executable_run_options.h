@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/stream_pool.h"
 #include "xla/stream_executor/platform.h"
@@ -55,7 +56,7 @@ class ServiceExecutableRunOptions {
 
   // Delegate to `ExecutableRunOptions` member.
   se::Stream* stream() const { return run_options_.stream(); }
-  se::DeviceMemoryAllocator* allocator() const {
+  se::DeviceAddressAllocator* allocator() const {
     return run_options_.allocator();
   }
   int device_ordinal() const { return run_options_.device_ordinal(); }
@@ -71,7 +72,7 @@ class ServiceExecutableRunOptions {
                           "No stream borrower");
     }
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         std::vector<StreamPool::Ptr> streams,
         stream_borrower_(device_ordinal, /*num_streams=*/1, priority));
     StreamPool::Ptr stream = std::move(streams.back());

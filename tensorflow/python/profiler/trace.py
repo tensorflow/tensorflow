@@ -19,9 +19,9 @@ import functools
 from tensorflow.python.profiler.internal import _pywrap_traceme
 from tensorflow.python.util.tf_export import tf_export
 
-# This variable is modified by PythonHooks::Start/Stop() in C++. Such
-# arrangement will reduce the number of calls through pybind11.
-enabled = False
+# This is a low-overhead function that directly calls C++ to check if the
+# profiler is enabled.
+enabled = _pywrap_traceme.traceme_enabled
 
 
 @tf_export('profiler.experimental.Trace', v1=[])
@@ -74,7 +74,7 @@ class Trace(object):
       The example above uses the keyword argument "step_num" to specify the
       training step being traced.
     """
-    if enabled:
+    if enabled():
       # Creating _pywrap_traceme.TraceMe starts the clock.
       self._traceme = _pywrap_traceme.TraceMe(name, **kwargs)
     else:
@@ -177,7 +177,7 @@ def trace_wrapper(trace_name, **trace_kwargs):
 
     @functools.wraps(func)
     def wrapped(*args, **kwargs):
-      if enabled:
+      if enabled():
         with Trace(trace_name, **trace_kwargs):
           return func(*args, **kwargs)
       return func(*args, **kwargs)

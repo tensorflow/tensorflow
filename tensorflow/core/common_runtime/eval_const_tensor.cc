@@ -178,7 +178,8 @@ absl::StatusOr<std::optional<Tensor>> TryInferFromShapes(
     // Make sure that the result fits to int32. Otherwise, return null.
     for (const int64_t value : data) {
       if (TF_PREDICT_FALSE(value >= std::numeric_limits<int32_t>::max())) {
-        return errors::InvalidArgument("Value is out of int32 range: ", value);
+        return absl::InvalidArgumentError(
+            absl::StrCat("Value is out of int32 range: ", value));
       }
     }
   }
@@ -246,7 +247,7 @@ struct Subgraph {
 // Node along with output index.
 using NodeOutput = std::pair<const Node*, int>;
 std::string OutputName(const NodeOutput& output) {
-  return strings::StrCat(output.first->name(), ":", output.second);
+  return absl::StrCat(output.first->name(), ":", output.second);
 }
 
 // Assuming that the subgraph ending at `target_node` is constant-foldable,
@@ -373,7 +374,7 @@ absl::StatusOr<std::optional<Tensor>> EvaluateConstantTensor(
     TF_RETURN_IF_ERROR(GetNodeAttr(node.def(), "value", &proto));
     result.emplace();
     if (TF_PREDICT_FALSE(!result->FromProto(*proto))) {
-      return errors::InvalidArgument("Unable to evaluate a constant node");
+      return absl::InvalidArgumentError("Unable to evaluate a constant node");
     }
     return result;
   }

@@ -21,10 +21,14 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/serdes_base.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 
 namespace xla::cpu {
@@ -36,10 +40,13 @@ void ForEachThunkProto(const ThunkSequenceProto& proto,
 
 class ThunkSequenceSerDesProtobuf : public SerDesBase<ThunkSequence> {
  public:
+  // For serialization, `hlo_module` and `buffer_allocations` are optional. For
+  // deserialization, both are required as we rely on the HLO module to resolve
+  // thunks that were generated from `HloComputation`s, and we also need buffer
+  // allocations to resolve buffer slices.
   explicit ThunkSequenceSerDesProtobuf(
-      const std::vector<BufferAllocation>* buffer_allocations =
-          nullptr);  // NOTE buffer allocations aren't
-                     // needed for serialization.
+      const HloModule* hlo_module = nullptr,
+      const std::vector<BufferAllocation>* buffer_allocations = nullptr);
 
   absl::StatusOr<std::string> Serialize(
       const ThunkSequence& thunk_sequence) override;
@@ -52,7 +59,29 @@ class ThunkSequenceSerDesProtobuf : public SerDesBase<ThunkSequence> {
       const ThunkSequenceProto& proto) const;
 
  private:
+  const HloModule* hlo_module_;
   const std::vector<BufferAllocation>* buffer_allocations_;
+};
+
+// Registry for Thunk serialization/deserialization.
+class ThunkSerDesRegistry {
+ public:
+  using ToProtoFn = std::function<absl::Status(const Thunk&, ThunkProto&)>;
+  using FromProtoFn = std::function<absl::StatusOr<std::unique_ptr<Thunk>>(
+      const ThunkProto&, const std::vector<BufferAllocation>&, const HloModule*,
+      const std::vector<std::shared_ptr<Resource>>*)>;
+
+  static ThunkSerDesRegistry& Get();
+
+  absl::Status Register(Thunk::Kind kind, ToProtoFn to_proto,
+                        FromProtoFn from_proto);
+
+  absl::StatusOr<ToProtoFn> GetToProtoFn(Thunk::Kind kind) const;
+  absl::StatusOr<FromProtoFn> GetFromProtoFn(Thunk::Kind kind) const;
+
+ private:
+  absl::flat_hash_map<Thunk::Kind, ToProtoFn> to_proto_fns_;
+  absl::flat_hash_map<Thunk::Kind, FromProtoFn> from_proto_fns_;
 };
 
 }  // namespace xla::cpu

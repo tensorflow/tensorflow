@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_value.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 
@@ -65,17 +66,13 @@ class CopyInsertion : public HloModulePass {
   // buffer.
   explicit CopyInsertion(
       const AliasInfo* alias_info,
-      int64_t use_region_based_live_range_analysis = kUseRegionAnalysisLimit)
+      int64_t use_region_based_live_range_analysis = kUseRegionAnalysisLimit,
+      std::function<bool(const HloInstruction* copy)> should_skip_removal =
+          nullptr)
       : alias_info_(alias_info),
+        should_skip_removal_(should_skip_removal),
         use_region_based_live_range_analysis_(
             use_region_based_live_range_analysis) {}
-
-  // Run the pass on the given module. Returns whether the module was changed
-  // (copies were inserted).
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Try to remove as many copies from the module as possible without
   // introducing live range interference. Only copy instructions that are
@@ -84,6 +81,12 @@ class CopyInsertion : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads = {},
       bool insert_post_scheduling_control_dependencies = false);
+
+  // A callback that allows backends to perform analysis on the HloAliasAnalysis
+  // and suggest additional copies.
+  using CustomBufferAnalysisFn = std::function<void(
+      HloModule* module, const HloAliasAnalysis& alias_analysis,
+      std::function<void(HloInstruction*, const ShapeIndex&)> add_copy_fn)>;
 
   // Add copies to address special constraints on the roots of computations not
   // related to live range interference:
@@ -98,17 +101,14 @@ class CopyInsertion : public HloModulePass {
   absl::Status AddSpecialCaseCopies(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads = {},
-      std::function<bool(const HloValue* value)>
-          should_add_target_specific_copies = nullptr);
+      CustomBufferAnalysisFn custom_buffer_analysis = nullptr);
 
  protected:
   // Override which requires the caller to pass in a call graph.
   virtual absl::Status AddSpecialCaseCopies(
       const CallGraph& call_graph,
       const absl::flat_hash_set<absl::string_view>& execution_threads,
-      HloModule* module,
-      std::function<bool(const HloValue* value)>
-          should_add_target_specific_copies);
+      HloModule* module, CustomBufferAnalysisFn custom_buffer_analysis);
 
   // Add copies for conditional instructions.
   virtual absl::Status AddCopiesForConditional(
@@ -125,6 +125,15 @@ class CopyInsertion : public HloModulePass {
   // Backend specific information about whether an instruction can share buffer
   // with its operand.
   const AliasInfo* alias_info_;
+
+  // Function to determine whether a copy should be skipped during removal.
+  std::function<bool(const HloInstruction* copy)> should_skip_removal_;
+
+  // Run the pass on the given module. Returns whether the module was changed
+  // (copies were inserted).
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   absl::Status AddCopiesToResolveInterference(

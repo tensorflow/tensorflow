@@ -80,7 +80,7 @@ For communicating with frameworks, buffers know how to convert to and from an
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(...) {...}
 
 // Buffer to Literal
-xla::PjRtFuture<> ToLiteral(xla::MutableLiteralBase* literal) override {...}
+xla::Future<> ToLiteral(xla::MutableLiteralBase* literal) override {...}
 ```
 
 APIs for creating a buffer have [Buffer Semantics](https://github.com/openxla/xla/blob/3e448cf9e86775a37ec5f7d3c69dfb20e0c760df/xla/pjrt/pjrt_client.h#L858)
@@ -138,7 +138,7 @@ reference. These buffers are then provided as arguments to the `Execute` method.
 
 ## PJRT Concepts
 
-### PjRtFutures & Async Computations
+### Futures & Async Computations
 
 If any part of a plugin is implemented asynchronously, it _must_ properly
 implement futures.

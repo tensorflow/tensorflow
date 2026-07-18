@@ -27,7 +27,6 @@
 #include "absl/strings/string_view.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/shape.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -39,8 +38,6 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::Not;
 using ::testing::TestWithParam;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::IsOkAndHolds;
 
 constexpr DType::Kind kF64 = DType::Kind::kF64;
 constexpr DType::Kind kS32 = DType::Kind::kS32;
@@ -211,9 +208,11 @@ TEST(StringHostBufferTest,
   TF_ASSERT_OK_AND_ASSIGN(auto serialized, SerializeStringHostBuffer(input));
 
   std::vector<absl::Cord> deserialized(input.size());
-  ASSERT_THAT(DeserializeFromCordIntoPreallocatedStringHostBuffer(
-                  absl::Cord(*serialized), deserialized.data()),
-              absl_testing::IsOk());
+  ASSERT_THAT(
+      DeserializeFromCordIntoPreallocatedStringHostBuffer(
+          absl::Cord(*serialized), static_cast<int64_t>(deserialized.size()),
+          deserialized.data()),
+      absl_testing::IsOk());
 
   EXPECT_EQ(deserialized, input);
 }

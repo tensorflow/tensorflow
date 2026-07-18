@@ -22,6 +22,14 @@ limitations under the License.
 #include "tensorflow/core/util/autotune_maps/conv_parameters.pb.h"
 
 namespace tensorflow {
+
+// Returns a string that uniquely identifies the device model based on the
+// device identifier string from the stream executor. There are cases where
+// the same device model may have different identifiers (e.g. different RAM).
+// This function normalizes the identifier to make it comparable to other
+// autotuning results.
+std::string DeviceIdentifierForAutotuning(absl::string_view device_identifier);
+
 // Uniquely identifies a convolution operation that runs on a particular device
 // model.
 //
@@ -61,15 +69,18 @@ class ConvParameters {
   // directory.  The two fused convolutions ultimately correspond to the same
   // cudnn calls, but have slightly different semantics (e.g. they interpret
   // padding differently).
-  ConvParameters(
-      se::StreamExecutor* stream_exec, int64_t batch, int64_t in_depths,
-      absl::Span<const int64_t> in, int data_format, int64_t out_depths,
-      absl::Span<const int64_t> filter, absl::Span<const int64_t> dilation,
-      absl::Span<const int64_t> stride, absl::Span<const int64_t> padding,
-      DataType dtype, int group_count,
-      absl::optional<FusionInfo> fusion_info = absl::optional<FusionInfo>(),
-      // This argument should be set only for test use.
-      int version = kVersion);
+  ConvParameters(se::StreamExecutor* stream_exec, int64_t batch,
+                 int64_t in_depths, absl::Span<const int64_t> in,
+                 int data_format, int64_t out_depths,
+                 absl::Span<const int64_t> filter,
+                 absl::Span<const int64_t> dilation,
+                 absl::Span<const int64_t> stride,
+                 absl::Span<const int64_t> padding, DataType dtype,
+                 int group_count,
+                 std::optional<ConvParameters::FusionInfo> fusion_info =
+                     std::optional<ConvParameters::FusionInfo>(),
+                 // This argument should be set only for test use.
+                 int version = kVersion);
 
   ConvParameters(int device_id, const ConvParametersProto& proto);
 
@@ -82,16 +93,16 @@ class ConvParameters {
   bool operator!=(const ConvParameters& other) const {
     return !(*this == other);
   }
-  uint64 hash() const { return hash_code_; }
+  uint64_t hash() const { return hash_code_; }
 
-  string ToString() const;
+  std::string ToString() const;
 
   const ConvParametersProto& proto() const { return proto_; }
 
  private:
   int device_id_;
   ConvParametersProto proto_;
-  uint64 hash_code_;
+  uint64_t hash_code_;
 };
 
 class MatmulParameters {
@@ -119,16 +130,16 @@ class MatmulParameters {
   bool operator!=(const MatmulParameters& other) const {
     return !(*this == other);
   }
-  uint64 hash() const { return hash_code_; }
+  uint64_t hash() const { return hash_code_; }
 
-  string ToString() const;
+  std::string ToString() const;
 
   const MatmulParametersProto& proto() const { return proto_; }
 
  private:
   int device_id_;
   MatmulParametersProto proto_;
-  uint64 hash_code_;
+  uint64_t hash_code_;
 };
 
 }  // namespace tensorflow

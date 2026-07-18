@@ -38,28 +38,31 @@ class DecodeWavOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& contents = context->input(0);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(contents.shape()),
-                errors::InvalidArgument("contents must be scalar, got shape ",
-                                        contents.shape().DebugString()));
-    const string& wav_string = contents.scalar<tstring>()();
-    OP_REQUIRES(context, wav_string.size() <= std::numeric_limits<int>::max(),
-                errors::InvalidArgument("WAV contents are too large for int: ",
-                                        wav_string.size()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("contents must be scalar, got shape ",
+                                 contents.shape().DebugString())));
+    const std::string& wav_string = contents.scalar<tstring>()();
+    OP_REQUIRES(
+        context, wav_string.size() <= std::numeric_limits<int>::max(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "WAV contents are too large for int: ", wav_string.size())));
 
     std::vector<float> decoded_samples;
-    uint32 decoded_sample_count;
-    uint16 decoded_channel_count;
-    uint32 decoded_sample_rate;
+    uint32_t decoded_sample_count;
+    uint16_t decoded_channel_count;
+    uint32_t decoded_sample_rate;
     OP_REQUIRES_OK(context,
                    wav::DecodeLin16WaveAsFloatVector(
                        wav_string, &decoded_samples, &decoded_sample_count,
                        &decoded_channel_count, &decoded_sample_rate));
 
-    OP_REQUIRES(context, desired_channels_ >= -1,
-                errors::InvalidArgument("desired_channels must be >= -1, got ",
-                                        desired_channels_));
+    OP_REQUIRES(
+        context, desired_channels_ >= -1,
+        absl::InvalidArgumentError(absl::StrCat(
+            "desired_channels must be >= -1, got ", desired_channels_)));
     OP_REQUIRES(context, desired_samples_ >= -1,
-                errors::InvalidArgument("desired_samples must be >= -1, got ",
-                                        desired_samples_));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "desired_samples must be >= -1, got ", desired_samples_)));
     int32_t output_sample_count;
     if (desired_samples_ == -1) {
       output_sample_count = decoded_sample_count;
@@ -75,12 +78,12 @@ class DecodeWavOp : public OpKernel {
 
     OP_REQUIRES(
         context, output_sample_count >= 0,
-        errors::InvalidArgument("Output sample count must be >= 0, got ",
-                                output_sample_count));
+        absl::InvalidArgumentError(absl::StrCat(
+            "Output sample count must be >= 0, got ", output_sample_count)));
     OP_REQUIRES(
         context, output_channel_count >= 0,
-        errors::InvalidArgument("Output channel count must be >= 0, got ",
-                                output_channel_count));
+        absl::InvalidArgumentError(absl::StrCat(
+            "Output channel count must be >= 0, got ", output_channel_count)));
     Tensor* output = nullptr;
     OP_REQUIRES_OK(
         context,
@@ -112,12 +115,12 @@ class DecodeWavOp : public OpKernel {
     Tensor* sample_rate_output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(1, TensorShape({}),
                                                      &sample_rate_output));
-    sample_rate_output->flat<int32>()(0) = decoded_sample_rate;
+    sample_rate_output->flat<int32_t>()(0) = decoded_sample_rate;
   }
 
  private:
-  int32 desired_channels_;
-  int32 desired_samples_;
+  int32_t desired_channels_;
+  int32_t desired_samples_;
 };
 REGISTER_KERNEL_BUILDER(Name("DecodeWav").Device(DEVICE_CPU), DecodeWavOp);
 

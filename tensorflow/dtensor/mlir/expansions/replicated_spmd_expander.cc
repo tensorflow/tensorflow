@@ -82,8 +82,8 @@ ReplicatedOpSPMDExpander::ReplicatedRelayoutOperandsAndOutputs(
   builder.setInsertionPointAfter(last_op_after_splitting);
 
   // Tie all outputs together with identity_n
-  auto identity_op = builder.create<mlir::TF::IdentityNOp>(
-      op->getLoc(), generated_types, generated_outputs);
+  auto identity_op = mlir::TF::IdentityNOp::create(
+      builder, op->getLoc(), generated_types, generated_outputs);
   newly_created_ops.insert(identity_op);
   for (int i = 0; i < output_layouts.size(); ++i) {
     op->getOpResult(i).replaceAllUsesExcept(identity_op.getResult(i),
@@ -103,7 +103,7 @@ StatusOr<mlir::Operation*> ReplicatedOpSPMDExpander::ExpandOp(
     return ReplicatedRelayoutOperandsAndOutputs(op, operand_layouts,
                                                 output_layouts);
   if (!AllReplicated(output_layouts) || !AllReplicated(operand_layouts)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         llvm::formatv("Expecting {0} to have input and output layouts to be "
                       "fully replicated but was not. ",
                       OpName(op))

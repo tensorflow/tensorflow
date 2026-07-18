@@ -103,10 +103,10 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         }
       }
       OP_REQUIRES(ctx, shape_ok,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "dense_shapes[", i,
                       "] has unknown rank or unknown inner dimensions: ",
-                      dense_shapes_[i].DebugString()));
+                      dense_shapes_[i].DebugString())));
       TensorShape dense_shape;
       if (dense_shapes_[i].dims() > 0 && dense_shapes_[i].dim_size(0) == -1) {
         variable_length_.push_back(true);
@@ -131,17 +131,18 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                                             &num_parallel_calls));
     OP_REQUIRES(
         ctx, num_parallel_calls > 0 || num_parallel_calls == model::kAutotune,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(
             "num_parallel_calls must be greater than zero."));
 
     OpInputList dense_default_tensors;
     OP_REQUIRES_OK(ctx,
                    ctx->input_list("dense_defaults", &dense_default_tensors));
 
-    OP_REQUIRES(ctx, dense_default_tensors.size() == dense_keys_.size(),
-                errors::InvalidArgument(
-                    "Expected len(dense_defaults) == len(dense_keys) but got: ",
-                    dense_default_tensors.size(), " vs. ", dense_keys_.size()));
+    OP_REQUIRES(
+        ctx, dense_default_tensors.size() == dense_keys_.size(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "Expected len(dense_defaults) == len(dense_keys) but got: ",
+            dense_default_tensors.size(), " vs. ", dense_keys_.size())));
 
     std::vector<Tensor> dense_defaults(dense_default_tensors.begin(),
                                        dense_default_tensors.end());
@@ -150,7 +151,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       const Tensor& def_value = dense_defaults[d];
       if (variable_length_[d]) {
         OP_REQUIRES(ctx, def_value.NumElements() == 1,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "dense_shape[", d, "] is a variable length shape: ",
                         dense_shapes_[d].DebugString(),
                         ", therefore "
@@ -158,47 +159,47 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                         d,
                         "] must contain a single element ("
                         "the padding element).  But its shape is: ",
-                        def_value.shape().DebugString()));
+                        def_value.shape().DebugString())));
       } else if (def_value.NumElements() > 0) {
         OP_REQUIRES(ctx, dense_shapes_[d].IsCompatibleWith(def_value.shape()),
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "def_value[", d,
                         "].shape() == ", def_value.shape().DebugString(),
                         " is not compatible with dense_shapes_[", d,
-                        "] == ", dense_shapes_[d].DebugString()));
+                        "] == ", dense_shapes_[d].DebugString())));
       }
       OP_REQUIRES(ctx, def_value.dtype() == dense_types_[d],
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "dense_defaults[", d, "].dtype() == ",
                       DataTypeString(def_value.dtype()), " != dense_types_[", d,
-                      "] == ", DataTypeString(dense_types_[d])));
+                      "] == ", DataTypeString(dense_types_[d]))));
     }
 
     example::FastParseExampleConfig config;
-    std::map<string, int> key_to_output_index;
+    std::map<std::string, int> key_to_output_index;
     for (int d = 0; d < dense_keys_.size(); ++d) {
       config.dense.push_back({dense_keys_[d], dense_types_[d], dense_shapes_[d],
                               dense_default_tensors[d], variable_length_[d],
                               elements_per_stride_[d]});
       auto result = key_to_output_index.insert({dense_keys_[d], 0});
       OP_REQUIRES(ctx, result.second,
-                  errors::InvalidArgument("Duplicate key not allowed: ",
-                                          dense_keys_[d]));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Duplicate key not allowed: ", dense_keys_[d])));
     }
     for (int d = 0; d < sparse_keys_.size(); ++d) {
       config.sparse.push_back({sparse_keys_[d], sparse_types_[d]});
       auto result = key_to_output_index.insert({sparse_keys_[d], 0});
       OP_REQUIRES(ctx, result.second,
-                  errors::InvalidArgument("Duplicate key not allowed: ",
-                                          sparse_keys_[d]));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Duplicate key not allowed: ", sparse_keys_[d])));
     }
     for (int d = 0; d < ragged_keys_.size(); ++d) {
       config.ragged.push_back(
           {ragged_keys_[d], ragged_value_types_[d], ragged_split_types_[d]});
       auto result = key_to_output_index.insert({ragged_keys_[d], 0});
       OP_REQUIRES(ctx, result.second,
-                  errors::InvalidArgument("Duplicate key not allowed: ",
-                                          ragged_keys_[d]));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Duplicate key not allowed: ", ragged_keys_[d])));
     }
     int i = 0;
     for (auto it = key_to_output_index.begin(); it != key_to_output_index.end();
@@ -218,9 +219,10 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            std::vector<Tensor> dense_defaults, std::vector<string> sparse_keys,
-            std::vector<string> dense_keys,
-            std::map<string, int> key_to_output_index,
+            std::vector<Tensor> dense_defaults,
+            std::vector<std::string> sparse_keys,
+            std::vector<std::string> dense_keys,
+            std::map<std::string, int> key_to_output_index,
             example::FastParseExampleConfig config, int32_t num_parallel_calls,
             const DataTypeVector& sparse_types,
             const DataTypeVector& dense_types,
@@ -228,7 +230,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes,
             const DeterminismPolicy& deterministic, bool has_ragged_keys,
-            std::vector<string> ragged_keys,
+            std::vector<std::string> ragged_keys,
             const DataTypeVector& ragged_value_types,
             const DataTypeVector& ragged_split_types, int op_version)
         : DatasetBase(DatasetContext(ctx)),
@@ -256,7 +258,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
     ~Dataset() override { input_->Unref(); }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       name_utils::IteratorPrefixParams params;
       params.op_version = op_version_;
       return std::make_unique<Iterator>(Iterator::Params{
@@ -271,7 +273,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() const override {
+    std::string DebugString() const override {
       name_utils::DatasetDebugStringParams params;
       params.op_version = op_version_;
       return name_utils::DatasetDebugString(kDatasetType, params);
@@ -412,7 +414,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
             RecordStart(ctx);
           }
           if (cancelled_) {
-            return errors::Cancelled("Iterator was cancelled");
+            return absl::CancelledError("Iterator was cancelled");
           }
         }
         RecordStop(ctx);
@@ -443,7 +445,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
           cond_var_->wait(l);
         }
         if (num_calls_ != 0) {
-          return errors::FailedPrecondition(
+          return absl::FailedPreconditionError(
               "Unexpected outstanding calls encountered.");
         }
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
@@ -495,7 +497,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                 &size));
             num_return_values = static_cast<size_t>(size);
             if (num_return_values != size) {
-              return errors::InvalidArgument(absl::StrCat(
+              return absl::InvalidArgumentError(absl::StrCat(
                   full_name(strings::StrCat(kInvocationResults, "[", i, "]",
                                             kSizeSuffix)),
                   ": ", size, " is not a valid value of type size_t."));
@@ -534,7 +536,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         result.push_back(std::make_pair(
             "parallelism", parallelism == -1
                                ? kTraceInfoUnavailable
-                               : strings::Printf("%lld", static_cast<long long>(
+                               : absl::StrFormat("%lld", static_cast<long long>(
                                                              parallelism))));
         return result;
       }
@@ -637,19 +639,19 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       absl::Status CheckOutputTensor(const Tensor& tensor, size_t value_index,
                                      size_t output_index) const {
         if (tensor.dtype() != dataset()->output_dtypes()[output_index]) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Got wrong type for FastParseExample return value ", value_index,
               " (expected ",
               DataTypeString(dataset()->output_dtypes()[output_index]),
-              ", got ", DataTypeString(tensor.dtype()), ").");
+              ", got ", DataTypeString(tensor.dtype()), ")."));
         }
         if (!dataset()->output_shapes()[output_index].IsCompatibleWith(
                 tensor.shape())) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Got wrong shape for FastParseExample return value ", value_index,
               " (expected ",
               dataset()->output_shapes()[output_index].DebugString(), ", got ",
-              tensor.shape().DebugString(), ").");
+              tensor.shape().DebugString(), ")."));
         }
         return absl::OkStatus();
       }
@@ -747,9 +749,9 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
           // To guarantee that the transformation preserves the cardinality of
           // the dataset, we convert `OutOfRange` to `InvalidArgument` as the
           // former may be interpreted by a caller as the end of sequence.
-          return errors::InvalidArgument(
-              "Function invocation produced OutOfRangeError: ",
-              result->status.message());
+          return absl::InvalidArgumentError(
+              absl::StrCat("Function invocation produced OutOfRangeError: ",
+                           result->status.message()));
         }
         *end_of_sequence = result->end_of_input;
         return result->status;
@@ -887,12 +889,12 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         return absl::OkStatus();
       }
 
-      string CodeKey(size_t index) {
+      std::string CodeKey(size_t index) {
         return full_name(
             strings::StrCat(kInvocationResults, "[", index, "]", kCodeSuffix));
       }
 
-      string ErrorMessageKey(size_t index) {
+      std::string ErrorMessageKey(size_t index) {
         return full_name(strings::StrCat(kInvocationResults, "[", index, "]",
                                          kErrorMessage));
       }
@@ -926,10 +928,10 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
 
     const DatasetBase* const input_;
     const std::vector<Tensor> dense_defaults_;
-    const std::vector<string> sparse_keys_;
-    const std::vector<string> dense_keys_;
-    const std::vector<string> ragged_keys_;
-    const std::map<string, int> key_to_output_index_;
+    const std::vector<std::string> sparse_keys_;
+    const std::vector<std::string> dense_keys_;
+    const std::vector<std::string> ragged_keys_;
+    const std::map<std::string, int> key_to_output_index_;
     const example::FastParseExampleConfig config_;
     const int64_t num_parallel_calls_;
     const DataTypeVector sparse_types_;
@@ -948,9 +950,9 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
   DeterminismPolicy deterministic_;
-  std::vector<string> sparse_keys_;
-  std::vector<string> dense_keys_;
-  std::vector<string> ragged_keys_;
+  std::vector<std::string> sparse_keys_;
+  std::vector<std::string> dense_keys_;
+  std::vector<std::string> ragged_keys_;
   DataTypeVector sparse_types_;
   DataTypeVector dense_types_;
   DataTypeVector ragged_value_types_;

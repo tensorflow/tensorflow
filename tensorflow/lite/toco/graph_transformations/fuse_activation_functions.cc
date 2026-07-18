@@ -48,7 +48,7 @@ absl::Status FuseActivationFunctions::Run(Model* model, std::size_t op_index,
   if (CountTrueOutputs(*model, *op) > 1) {
     AddMessageF(
         "Not fusing activation function %s into %s because it has more than "
-        "one  consumed output",
+        "one consumed output",
         LogName(*ac_op), LogName(*op));
     return absl::OkStatus();
   }
@@ -59,8 +59,8 @@ absl::Status FuseActivationFunctions::Run(Model* model, std::size_t op_index,
   DCHECK_GE(count_ops_consuming_output, 1);
   if (count_ops_consuming_output > 1) {
     AddMessageF(
-        "Not fusing activation function into %s because it is consumed by more "
-        "than 1 other operator",
+        "Not fusing activation function %s into %s because it is consumed by "
+        "more than 1 other operator",
         LogName(*ac_op), LogName(*op));
     return absl::OkStatus();
   }

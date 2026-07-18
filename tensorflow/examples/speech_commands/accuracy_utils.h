@@ -34,25 +34,26 @@ struct StreamingAccuracyStats {
         how_many_false_positives(0),
         how_many_correct_words(0),
         how_many_wrong_words(0) {}
-  int32 how_many_ground_truth_words;
-  int32 how_many_ground_truth_matched;
-  int32 how_many_false_positives;
-  int32 how_many_correct_words;
-  int32 how_many_wrong_words;
+  int32_t how_many_ground_truth_words;
+  int32_t how_many_ground_truth_matched;
+  int32_t how_many_false_positives;
+  int32_t how_many_correct_words;
+  int32_t how_many_wrong_words;
 };
 
 // Takes a file name, and loads a list of expected word labels and times from
 // it, as comma-separated variables.
 absl::Status ReadGroundTruthFile(
-    const string& file_name, std::vector<std::pair<string, int64_t>>* result);
+    const std::string& file_name,
+    std::vector<std::pair<std::string, int64_t>>* result);
 
 // Given ground truth labels and corresponding predictions found by a model,
 // figure out how many were correct. Takes a time limit, so that only
 // predictions up to a point in time are considered, in case we're evaluating
 // accuracy when the model has only been run on part of the stream.
 void CalculateAccuracyStats(
-    const std::vector<std::pair<string, int64_t>>& ground_truth_list,
-    const std::vector<std::pair<string, int64_t>>& found_words,
+    const std::vector<std::pair<std::string, int64_t>>& ground_truth_list,
+    const std::vector<std::pair<std::string, int64_t>>& found_words,
     int64_t up_to_time_ms, int64_t time_tolerance_ms,
     StreamingAccuracyStats* stats);
 

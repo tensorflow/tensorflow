@@ -104,10 +104,10 @@ void AddFunctionsForExportedNamesPass::runOnOperation() {
       module_body.push_front(other);
       other.addEntryBlock();
       OpBuilder builder(other.getRegion());
-      auto call_op = builder.create<mlir::func::CallOp>(
-          f.getLoc(), f.getFunctionType().getResults(), f.getSymName(),
+      auto call_op = mlir::func::CallOp::create(
+          builder, f.getLoc(), f.getFunctionType().getResults(), f.getSymName(),
           other.getRegion().getArguments());
-      builder.create<mlir::func::ReturnOp>(f.getLoc(), call_op.getResults());
+      mlir::func::ReturnOp::create(builder, f.getLoc(), call_op.getResults());
     }
 
     Unexport(f);

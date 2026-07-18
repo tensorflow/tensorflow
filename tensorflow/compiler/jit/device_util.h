@@ -75,9 +75,9 @@ class DeviceSet {
     // iterator if this ends up being used widely.
     for (int word_index = 0, end = storage_.size(); word_index < end;
          word_index++) {
-      uint64 word = storage_[word_index];
+      uint64_t word = storage_[word_index];
       while (word != 0) {
-        uint64 only_lowest_bit_set = word & -word;
+        uint64_t only_lowest_bit_set = word & -word;
         // The number of trailing zeros in a non-zero word is the index of the
         // least significant 1.
         int bit_index = absl::countr_zero(word);
@@ -90,7 +90,7 @@ class DeviceSet {
   }
 
  private:
-  absl::InlinedVector<uint64, 1> storage_;
+  absl::InlinedVector<uint64_t, 1> storage_;
 
   const int kWordSize = 64;
 };
@@ -131,17 +131,17 @@ class DeviceInfoCache {
     return std::cref(*id_to_device_type_[device_id.id()]);
   }
 
-  string DebugString(const DeviceSet& device_set) const;
+  std::string DebugString(const DeviceSet& device_set) const;
 
  private:
-  absl::flat_hash_map<string, DeviceId> name_to_id_;
+  absl::flat_hash_map<std::string, DeviceId> name_to_id_;
 
   // These fields are populated for a device in GetIdFor, *before* we give out a
   // DeviceId.
   std::vector<const XlaOpRegistry::DeviceRegistration*>
       id_to_compilation_device_;
   std::vector<std::unique_ptr<DeviceType>> id_to_device_type_;
-  std::vector<string> names_;
+  std::vector<std::string> names_;
   std::vector<bool> is_cpu_;
   std::vector<bool> is_gpu_;
 };
@@ -149,7 +149,7 @@ class DeviceInfoCache {
 }  // namespace jit
 
 // Returns the DeviceType corresponding to 'device'.
-absl::Status DeviceNameToDeviceType(const string& device,
+absl::Status DeviceNameToDeviceType(const std::string& device,
                                     DeviceType* device_type);
 
 // Picks the device for which XLA should compile a cluster that contains

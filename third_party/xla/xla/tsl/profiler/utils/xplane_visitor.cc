@@ -92,7 +92,7 @@ void XPlaneVisitor::BuildEventTypeMap(
     const XPlane* plane, const TypeGetterList& event_type_getter_list) {
   if (event_type_getter_list.empty()) return;
   for (const auto& event_metadata : plane->event_metadata()) {
-    uint64 metadata_id = event_metadata.first;
+    uint64_t metadata_id = event_metadata.first;
     const auto& metadata = event_metadata.second;
     for (const auto& event_type_getter : event_type_getter_list) {
       std::optional<int64_t> event_type = event_type_getter(metadata.name());
@@ -124,7 +124,7 @@ void XPlaneVisitor::BuildStatTypeMap(
     const XPlane* plane, const TypeGetterList& stat_type_getter_list) {
   if (stat_type_getter_list.empty()) return;
   for (const auto& stat_metadata : plane->stat_metadata()) {
-    uint64 metadata_id = stat_metadata.first;
+    uint64_t metadata_id = stat_metadata.first;
     const auto& metadata = stat_metadata.second;
     for (const auto& stat_type_getter : stat_type_getter_list) {
       std::optional<int64_t> stat_type = stat_type_getter(metadata.name());

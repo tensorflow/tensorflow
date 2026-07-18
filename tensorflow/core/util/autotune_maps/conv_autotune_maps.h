@@ -39,7 +39,7 @@ namespace tensorflow {
 
 // A dummy type to group forward convolution autotune results together.
 struct ConvAutotuneGroup {
-  static string name() { return "Conv"; }
+  static std::string name() { return "Conv"; }
 };
 
 using ConvAutotuneMap = AutotuneSingleton<ConvAutotuneGroup, ConvParameters,
@@ -47,7 +47,7 @@ using ConvAutotuneMap = AutotuneSingleton<ConvAutotuneGroup, ConvParameters,
 
 // A dummy type to group fused convolution autotune results together.
 struct ConvFusedAutotuneGroup {
-  static string name() { return "FusedConv"; }
+  static std::string name() { return "FusedConv"; }
 };
 
 using FusedConvAutotuneMap =

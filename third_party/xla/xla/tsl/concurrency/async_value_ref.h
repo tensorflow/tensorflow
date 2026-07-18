@@ -357,7 +357,7 @@ class AsyncValueRef {
     SetError(absl::InternalError(message_view));
   }
 
-  explicit operator bool() const { return value_.get() != nullptr; }
+  explicit operator bool() const { return value_ != nullptr; }
   bool operator==(const AsyncValueRef& r) const { return value_ == r.value_; }
   bool operator!=(const AsyncValueRef& r) const { return value_ != r.value_; }
 
@@ -451,6 +451,8 @@ class AsyncValuePtr {
   AsyncValue* value() const { return value_; }
 
   AsyncValueRef<T> CopyRef() const { return AsyncValueRef<T>(FormRef(value_)); }
+
+  RCReference<AsyncValue> CopyRCRef() const { return FormRef(value_); }
 
   T& get() const { return value_->template get<T>(); }
   T* operator->() const { return &get(); }
@@ -565,14 +567,12 @@ class AsyncValuePtr {
   // An overload that executes `waiter` on a user-provided executor.
   template <typename Waiter, StatusOrWaiter<Waiter>* = nullptr>
   void AndThen(Executor& executor, Waiter&& waiter) const {
-    // We don't know when the executor will run the callback, so we need to
-    // copy the AsyncValueRef to keep the underlying value alive.
     AndThen(executor,
-            [waiter = std::forward<Waiter>(waiter), ref = CopyRef()]() mutable {
-              if (ABSL_PREDICT_FALSE(ref.IsError())) {
-                return waiter(ref.GetError());
+            [waiter = std::forward<Waiter>(waiter), ptr = *this]() mutable {
+              if (ABSL_PREDICT_FALSE(ptr.IsError())) {
+                return waiter(ptr.GetError());
               }
-              return waiter(&ref.get());
+              return waiter(&ptr.get());
             });
   }
 
@@ -606,12 +606,10 @@ class AsyncValuePtr {
   // An overload that executes `waiter` on a user-provided executor.
   template <typename Waiter, StatusWaiter<Waiter>* = nullptr>
   void AndThen(Executor& executor, Waiter&& waiter) const {
-    // We don't know when the executor will run the callback, so we need to
-    // copy the AsyncValueRef to keep the underlying value alive.
     AndThen(executor,
-            [waiter = std::forward<Waiter>(waiter), ref = CopyRef()]() mutable {
-              if (ABSL_PREDICT_FALSE(ref.IsError())) {
-                return waiter(ref.GetError());
+            [waiter = std::forward<Waiter>(waiter), ptr = *this]() mutable {
+              if (ABSL_PREDICT_FALSE(ptr.IsError())) {
+                return waiter(ptr.GetError());
               }
               return waiter(absl::OkStatus());
             });
@@ -644,16 +642,13 @@ class AsyncValuePtr {
   template <typename R, typename F, MapFunctor<R, F>* = nullptr>
   AsyncValueRef<R> Map(Executor& executor, F&& f) {
     auto result = MakeUnconstructedAsyncValueRef<R>();
-    // We don't know when the executor will run the callback, so we need to
-    // copy the AsyncValueRef to keep the underlying value alive.
-    AndThen(executor,
-            [f = std::forward<F>(f), result, ref = CopyRef()]() mutable {
-              if (ABSL_PREDICT_FALSE(ref.IsError())) {
-                result.SetError(ref.GetError());
-              } else {
-                result.emplace(f(*ref));
-              }
-            });
+    AndThen(executor, [f = std::forward<F>(f), result, ptr = *this]() mutable {
+      if (ABSL_PREDICT_FALSE(ptr.IsError())) {
+        result.SetError(ptr.GetError());
+      } else {
+        result.emplace(f(*ptr));
+      }
+    });
     return result;
   }
 
@@ -693,21 +688,18 @@ class AsyncValuePtr {
   template <typename R, typename F, TryMapFunctor<R, F>* = nullptr>
   AsyncValueRef<R> TryMap(Executor& executor, F&& f) {
     auto result = MakeUnconstructedAsyncValueRef<R>();
-    // We don't know when the executor will run the callback, so we need to
-    // copy the AsyncValueRef to keep the underlying value alive.
-    AndThen(executor,
-            [f = std::forward<F>(f), result, ref = CopyRef()]() mutable {
-              if (ABSL_PREDICT_FALSE(ref.IsError())) {
-                result.SetError(ref.GetError());
-              } else {
-                auto status_or = f(*ref);
-                if (status_or.ok()) {
-                  result.emplace(std::move(status_or.value()));
-                } else {
-                  result.SetError(status_or.status());
-                }
-              }
-            });
+    AndThen(executor, [f = std::forward<F>(f), result, ptr = *this]() mutable {
+      if (ABSL_PREDICT_FALSE(ptr.IsError())) {
+        result.SetError(ptr.GetError());
+      } else {
+        auto status_or = f(*ptr);
+        if (status_or.ok()) {
+          result.emplace(std::move(status_or.value()));
+        } else {
+          result.SetError(status_or.status());
+        }
+      }
+    });
     return result;
   }
 
@@ -791,20 +783,17 @@ class AsyncValuePtr {
     // we must execute user functor on a separate executor and can't call it in
     // the caller thread.
     auto promise = MakePromise<R>();
-    // We don't know when the executor will run the callback, so we need to
-    // copy the AsyncValueRef to keep the underlying value alive.
-    AndThen(executor,
-            [f = std::forward<F>(f), promise, ref = CopyRef()]() mutable {
-              if (ABSL_PREDICT_FALSE(ref.IsError())) {
-                promise->SetError(ref.GetError());
-              } else {
-                if constexpr (std::is_invocable_v<F, T&>) {
-                  promise->ForwardTo(f(*ref));
-                } else {
-                  promise->ForwardTo(f(ref.AsPtr()));
-                }
-              }
-            });
+    AndThen(executor, [f = std::forward<F>(f), promise, ptr = *this]() mutable {
+      if (ABSL_PREDICT_FALSE(ptr.IsError())) {
+        promise->SetError(ptr.GetError());
+      } else {
+        if constexpr (std::is_invocable_v<F, T&>) {
+          promise->ForwardTo(f(*ptr));
+        } else {
+          promise->ForwardTo(f(ptr));
+        }
+      }
+    });
     return AsyncValueRef<R>(promise);
   }
 
@@ -880,7 +869,7 @@ class CountDownAsyncValueRef {
     DCHECK_GE(state_->cnt.load(), count) << "Invalid count down value";
 
     if (ABSL_PREDICT_FALSE(!status.ok())) {
-      absl::MutexLock lock(&state_->mutex);
+      absl::MutexLock lock(state_->mutex);
       state_->is_error.store(true, std::memory_order_release);
       state_->status = status;
     }
@@ -909,10 +898,10 @@ class CountDownAsyncValueRef {
       if (ABSL_PREDICT_FALSE(is_error)) {
         // Ownership of the CountDownAsyncValueRef can be transferred to
         // AsyncValueRef itself (via the `AndThen` callback), and `ref.SetError`
-        // call can destroy the `state_` and the `mutex`. We take the error
-        // status by copy to avoid using memory after it was freed.
+        // call can destroy the `state_` and its mutex. We take the
+        // error status by copy to avoid using memory after it was freed.
         auto take_error = [&] {
-          absl::MutexLock lock(&state_->mutex);
+          absl::MutexLock lock(state_->mutex);
           return state_->status;
         };
         state_->ref.SetError(take_error());

@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/interpreter/platform_id.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/executor_cache.h"
@@ -32,8 +33,9 @@ namespace interpreter {
 class XlaInterpreterPlatform : public Platform {
  public:
   XlaInterpreterPlatform()
-      : XlaInterpreterPlatform("Interpreter", kXlaInterpreterPlatformId) {}
-  XlaInterpreterPlatform(const std::string& name, const Platform::Id& id);
+      : XlaInterpreterPlatform(kXlaInterpreterPlatformId->ToName(),
+                               kXlaInterpreterPlatformId) {}
+  XlaInterpreterPlatform(absl::string_view name, const Platform::Id& id);
   ~XlaInterpreterPlatform() override;
 
   Platform::Id id() const override;

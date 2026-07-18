@@ -166,4 +166,16 @@ def TFL_ConstBytesAttr : AttrDef<TFL_Dialect, "ConstBytes"> {
   let hasCustomAssemblyFormat = 1;
 }
 
+def TFL_ExternalBufferAttr : AttrDef<TFL_Dialect, "ExternalBuffer"> {
+  let mnemonic = "external_buffer";
+  let parameters = (ins
+      "::mlir::StringAttr":$group_name,
+      "uint64_t":$offset,
+      "uint64_t":$length,
+      "::mlir::StringAttr":$packing
+  );
+  let summary = "Flatbuffer external buffer metadata.";
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
 #endif // TFL_OP_ENUMS

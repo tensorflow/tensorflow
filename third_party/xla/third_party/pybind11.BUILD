@@ -1,3 +1,5 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 package(default_visibility = ["//visibility:public"])
 
 cc_library(
@@ -23,7 +25,7 @@ cc_library(
     includes = ["include"],
     strip_include_prefix = "include",
     deps = [
-        "@local_xla//third_party/python_runtime:headers",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 
@@ -52,7 +54,7 @@ cc_library(
     strip_include_prefix = "include",
     deps = [
         "@eigen_archive//:eigen3",
-        "@local_xla//third_party/python_runtime:headers",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 

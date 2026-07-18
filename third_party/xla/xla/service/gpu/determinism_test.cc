@@ -16,44 +16,52 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/autotuner/backends.pb.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/literal.h"
-#include "xla/service/backend.h"
-#include "xla/service/gpu/autotuning/autotuner_util.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
-#include "xla/service/platform_util.h"
+#include "xla/service/gpu/autotuning/autotuner_cache.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/mock_stream_executor.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
-class DeterminismTest : public GpuCodegenTest {
+class DeterminismTest : public HloPjRtGpuTestBase {
  public:
-  DeterminismTest() : debug_options_(HloTestBase::GetDebugOptionsForTest()) {
+  DeterminismTest()
+      : debug_options_(HloPjRtGpuTestBase::GetDebugOptionsForTest()) {
     debug_options_.set_xla_gpu_exclude_nondeterministic_ops(true);
-    // TODO(b/393299275): remove when the flag is enabled by default.
-    debug_options_.clear_xla_gpu_unsupported_generic_triton_emitter_features();
-    debug_options_.add_xla_gpu_unsupported_generic_triton_emitter_features(
-        DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
+  }
+
+  se::StreamExecutor* stream_executor() const {
+    auto platform =
+        se::PlatformManager::PlatformWithId(stream_executor_platform_id());
+    CHECK_OK(platform);
+    auto executor = (*platform)->ExecutorForDevice(0);
+    CHECK_OK(executor);
+    return *executor;
+  }
+
+  se::CudaComputeCapability get_cuda_cc() const {
+    return device_description().cuda_compute_capability();
   }
 
   // Runs the HLO several times with the same random inputs, and asserts the
@@ -67,19 +75,20 @@ class DeterminismTest : public GpuCodegenTest {
     for (int i = 0; i < num_runs; ++i) {
       // Clear the autotune cache every iteration to ensure autotuning, if run,
       // is deterministic.
-      AutotunerUtil::ClearAutotuneResults();
+      AutotunerCache::ClearAutotuneResults();
 
-      TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                              ParseAndReturnVerifiedModule(hlo_string));
+      ASSERT_OK_AND_ASSIGN(
+          std::unique_ptr<HloModule> module,
+          ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest()));
       if (i == 0) {
-        fake_arguments = MakeFakeArguments(module.get()).value();
+        ASSERT_OK_AND_ASSIGN(fake_arguments, MakeFakeArguments(module.get()));
         for (Literal& literal : fake_arguments) {
           fake_arguments_ptrs.push_back(&literal);
         }
       }
 
-      TF_ASSERT_OK_AND_ASSIGN(Literal output,
-                              Execute(std::move(module), fake_arguments_ptrs));
+      ASSERT_OK_AND_ASSIGN(Literal output,
+                           Execute(std::move(module), fake_arguments_ptrs));
       if (!canonical_output.has_value()) {
         canonical_output = std::move(output);
       } else {
@@ -102,18 +111,19 @@ class DeterminismTest : public GpuCodegenTest {
   // Calls to GpuExecutor::CreateEventBasedTimer can be forbidden by setting
   // timer_creation to kForbidden. (The test fails when the function is called
   // in this case.)
-  void MatchOptimizedHlo(absl::string_view hlo_string,
-                         absl::string_view expected_hlo_regex,
-                         TimerCreation timer_creation) {
+  absl::StatusOr<bool> MatchOptimizedHlo(absl::string_view hlo_string,
+                                         absl::string_view expected_hlo_regex,
+                                         TimerCreation timer_creation) {
     if (timer_creation == TimerCreation::kAllowed) {
-      HloTestBase::MatchOptimizedHlo(hlo_string, expected_hlo_regex);
-      return;
+      HloPjRtGpuTestBase::MatchOptimizedHlo(hlo_string, expected_hlo_regex);
+      return true;
     }
 
     // If timer creation is forbidden we inject a mock GPU executor that
     // prevents timer creation.
-    TF_ASSERT_OK_AND_ASSIGN(stream_executor::Platform * default_platform,
-                            PlatformUtil::GetDefaultPlatform());
+    ASSIGN_OR_RETURN(
+        stream_executor::Platform * default_platform,
+        se::PlatformManager::PlatformWithId(stream_executor_platform_id()));
     stream_executor::MockStreamExecutor executor;
     EXPECT_CALL(executor, GetPlatform).WillRepeatedly([&] {
       return default_platform;
@@ -121,153 +131,151 @@ class DeterminismTest : public GpuCodegenTest {
     EXPECT_CALL(executor, CreateEventBasedTimer).Times(0);
     EXPECT_CALL(executor, GetDeviceDescription)
         .WillRepeatedly([this]() -> const se::DeviceDescription& {
-          return backend().default_stream_executor()->GetDeviceDescription();
+          return device_description();
         });
     EXPECT_CALL(executor, GetPlatform).WillRepeatedly([&]() {
       return default_platform;
     });
     EXPECT_CALL(executor, AsDnn).WillRepeatedly([&]() {
-      return backend().default_stream_executor()->AsDnn();
+      return stream_executor()->AsDnn();
     });
     EXPECT_CALL(executor, device_ordinal).WillRepeatedly([]() { return 0; });
     EXPECT_CALL(executor, SynchronizeAllActivity).WillRepeatedly([&]() -> bool {
       return true;
     });
+    EXPECT_CALL(executor, CreateStream).WillRepeatedly([&] {
+      return stream_executor()->CreateStream();
+    });
+    EXPECT_CALL(executor, AsBlas).WillRepeatedly([&] {
+      return stream_executor()->AsBlas();
+    });
 
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnVerifiedModule(hlo_string));
-    TF_ASSERT_OK_AND_ASSIGN(auto optimized_module,
-                            backend().compiler()->RunHloPasses(
-                                std::move(module), &executor, GetAllocator()));
+    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     ParseAndReturnVerifiedModule(hlo_string));
+    ASSIGN_OR_RETURN(
+        auto optimized_module,
+        compiler()->RunHloPasses(std::move(module), &executor, nullptr));
     absl::StatusOr<bool> filecheck_result =
         RunFileCheck(optimized_module->ToString(), expected_hlo_regex);
-    TF_ASSERT_OK(filecheck_result.status());
-    EXPECT_TRUE(filecheck_result.value());
+    CHECK_OK(filecheck_result.status());
+    return *filecheck_result;
   }
 
-  bool IsAmpereOrLater() const {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .cuda_compute_capability()
-        .IsAtLeastAmpere();
-  }
+  bool IsAmpereOrLater() const { return get_cuda_cc().IsAtLeastAmpere(); }
 
   bool IsRocm() const {
-    return std::holds_alternative<stream_executor::RocmComputeCapability>(
-        backend()
-            .default_stream_executor()
-            ->GetDeviceDescription()
-            .gpu_compute_capability());
+    return device_description().gpu_compute_capability().IsRocm();
   }
 
   bool HasHipblasLt() const {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .rocm_compute_capability()
-        .has_hipblaslt();
+    return device_description().rocm_compute_capability().has_hipblaslt();
   }
 };
 
-TEST_F(DeterminismTest, CublasDot) {
-  constexpr absl::string_view kHloText = R"(
-ENTRY e {
-  p0 = f32[128,128] parameter(0)
-  p1 = f32[128,128] parameter(1)
-  ROOT d = f32[128,128] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
-
+TEST_F(DeterminismTest, CublasLtDot) {
+  debug_options_.clear_xla_gpu_experimental_autotune_backends();
   if (IsRocm()) {
     if (!HasHipblasLt()) {
       GTEST_SKIP() << "No hipblas-lt support on this architecture!";
     }
-    debug_options_.set_xla_gpu_enable_triton_gemm(false);
   }
+  auto backend =
+      IsRocm() ? autotuner::Backend::HIPBLASLT : autotuner::Backend::CUBLASLT;
+  debug_options_.add_xla_gpu_experimental_autotune_backends(backend);
 
-  MatchOptimizedHlo(kHloText, R"(; CHECK: custom_call_target="__cublas$gemm")",
-                    TimerCreation::kForbidden);
-  AssertDeterminism(kHloText);
+  constexpr absl::string_view kHloText = R"hlo(
+ENTRY e {
+  p0 = f32[128,128] parameter(0)
+  p1 = f32[128,128] parameter(1)
+  ROOT d = f32[128,128] dot(p0, p1),
+    lhs_contracting_dims={1},
+    rhs_contracting_dims={0}
+})hlo";
 
-  debug_options_.set_xla_gpu_enable_cublaslt(true);
-  MatchOptimizedHlo(kHloText,
-                    R"(; CHECK: custom_call_target="__cublas$lt$matmul")",
-                    TimerCreation::kForbidden);
+  debug_options_.set_xla_gpu_enable_triton_gemm(false);
+
+  EXPECT_THAT(
+      MatchOptimizedHlo(kHloText,
+                        R"(; CHECK: custom_call_target="__cublas$lt$matmul")",
+                        TimerCreation::kForbidden),
+      absl_testing::IsOkAndHolds(true));
   AssertDeterminism(kHloText);
 }
 
-TEST_F(DeterminismTest, DeterministicTritonGemmUsesDefaultConfig) {
+TEST_F(DeterminismTest, DeterministicOpsUsesFirstConfig) {
   if (!IsAmpereOrLater()) {
     GTEST_SKIP() << "Triton is not supported on non-NVIDIA and "
                     "pre-Ampere NVIDIA GPUs.";
   }
+  if (get_cuda_cc().IsAtLeastBlackwell()) {
+    // TODO(b/445172709): Re-enable once fixed.
+    GTEST_SKIP();
+  }
 
-  constexpr absl::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"hlo(
 ENTRY e {
   p0 = bf16[128,128] parameter(0)
   p0_convert = f32[128,128] convert(p0)
   p1 = f32[128,128] parameter(1)
-  ROOT d = f32[128,128] dot(p0_convert, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
+  ROOT d = f32[128,128] dot(p0_convert, p1),
+    lhs_contracting_dims={1},
+    rhs_contracting_dims={0}
+})hlo";
 
   // Disable autotuning.
   debug_options_.set_xla_gpu_deterministic_ops(true);
-  // Check that triton is used but without autotuning (default config).
-  // TODO: b/407494653 - This is a bad test because it relies on particular
-  // implementation details to succeed. Thus, it tests that there is no
-  // autotuning happening in a brittle way. Fix this when refactoring the
-  // autotuner.
-  AutotunerUtil::ClearAutotuneResults();
-  MatchOptimizedHlo(kHloText, R"(
+  AutotunerCache::ClearAutotuneResults();
+  // Deterministic GEMM should use the first config from the list and with the
+  // current backend order this should be cuBLAS LT.
+  EXPECT_THAT(MatchOptimizedHlo(kHloText, R"(
     CHECK: ENTRY
-    CHECK: __triton_nested_gemm_fusion
-    CHECK-SAME: "num_warps":"2","output_tiles":[{"sizes":["16","16"]}]
-    CHECK-SAME: "num_ctas":1,"num_stages":4,"is_tma_allowed":false
+    CHECK: __cublas$lt$matmul
   )",
-                    TimerCreation::kForbidden);
+                                TimerCreation::kForbidden),
+              absl_testing::IsOkAndHolds(true));
   AssertDeterminism(kHloText, /*num_runs=*/3);
 }
 
-TEST_F(DeterminismTest, ExcludingNonDeterministicOpsDoesNotDisableAutotuning) {
+TEST_F(DeterminismTest, ExcludingNonDeterministicOpsUsesFirstConfig) {
   if (!IsAmpereOrLater()) {
     GTEST_SKIP() << "Triton is not supported on non-NVIDIA and "
                     "pre-Ampere NVIDIA GPUs.";
   }
 
-  debug_options_.set_xla_gpu_cublas_fallback(false);
-  debug_options_.set_xla_gpu_cudnn_gemm_fusion_level(0);
   ASSERT_TRUE(debug_options_.xla_gpu_exclude_nondeterministic_ops());
   ASSERT_FALSE(debug_options_.xla_gpu_deterministic_ops());
-  AutotunerUtil::ClearAutotuneResults();
-  // The default config is not used when autotuning is on.
-  // TODO(b/431794189): it's not very clear why test considers (32, 32) tiling
-  // to be the default. It seems to pick (16, 16) and it does not change
-  // when changing the flags above.
-  MatchOptimizedHlo(R"(
+  AutotunerCache::ClearAutotuneResults();
+  // We select the first config from the list and with the current backend order
+  // this should be cuBLAS LT.
+  EXPECT_THAT(MatchOptimizedHlo(R"hlo(
 ENTRY e {
   p0 = bf16[128,128] parameter(0)
   p0_convert = f32[128,128] convert(p0)
   p1 = f32[128,128] parameter(1)
-  ROOT d = f32[128,128] dot(p0_convert, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})",
-                    R"(
+  ROOT d = f32[128,128] dot(p0_convert, p1),
+    lhs_contracting_dims={1},
+    rhs_contracting_dims={0}
+})hlo",
+                                R"(
     CHECK: ENTRY
-    CHECK: __triton_nested_gemm_fusion
-    CHECK-NOT: "output_tiles":[{"sizes":["32","32"]}]
+    CHECK: __cublas$lt$matmul
   )",
-                    TimerCreation::kAllowed);
+                                TimerCreation::kAllowed),
+              absl_testing::IsOkAndHolds(true));
 }
 
 TEST_F(DeterminismTest, Conv) {
-  constexpr absl::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"hlo(
 ENTRY e {
   input = f32[16,3,64,64] parameter(0)
   filter = f32[3,3,3,64] parameter(1)
-  conv = f32[16,64,64,64] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
-})";
+  conv = f32[16,64,64,64] convolution(input, filter),
+    window={size=3x3 pad=1_1x1_1},
+    dim_labels=bf01_01io->bf01,
+    feature_group_count=1
+})hlo";
 
   AssertDeterminism(kHloText);
 }
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

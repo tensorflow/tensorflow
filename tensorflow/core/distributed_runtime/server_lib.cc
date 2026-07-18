@@ -28,7 +28,7 @@ mutex* get_server_factory_lock() {
   return &server_factory_lock;
 }
 
-typedef std::unordered_map<string, ServerFactory*> ServerFactories;
+typedef std::unordered_map<std::string, ServerFactory*> ServerFactories;
 ServerFactories* server_factories() {
   static ServerFactories* factories = new ServerFactories;
   return factories;
@@ -36,7 +36,7 @@ ServerFactories* server_factories() {
 }  // namespace
 
 /* static */
-void ServerFactory::Register(const string& server_type,
+void ServerFactory::Register(const std::string& server_type,
                              ServerFactory* factory) {
   mutex_lock l(*get_server_factory_lock());
   if (!server_factories()->insert({server_type, factory}).second) {
@@ -56,15 +56,15 @@ absl::Status ServerFactory::GetFactory(const ServerDef& server_def,
     }
   }
 
-  std::vector<string> server_names;
+  std::vector<std::string> server_names;
   for (const auto& server_factory : *server_factories()) {
     server_names.push_back(server_factory.first);
   }
 
-  return errors::NotFound(
+  return absl::NotFoundError(absl::StrCat(
       "No server factory registered for the given ServerDef: ",
       server_def.DebugString(), "\nThe available server factories are: [ ",
-      absl::StrJoin(server_names, ", "), " ]");
+      absl::StrJoin(server_names, ", "), " ]"));
 }
 
 // Creates a server based on the given `server_def`, and stores it in

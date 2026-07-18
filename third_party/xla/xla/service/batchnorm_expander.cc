@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -37,10 +38,9 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -146,7 +146,7 @@ bool BatchNormExpanderVisitor::Run(HloComputation* computation,
       /*rewrite_training_op=*/rewrite_training_op,
       /*rewrite_inference_op=*/rewrite_inference_op,
       /*rewrite_grad_op=*/rewrite_grad_op);
-  TF_CHECK_OK(computation->Accept(&visitor));
+  CHECK_OK(computation->Accept(&visitor));
   return visitor.changed();
 }
 
@@ -180,11 +180,11 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormTraining(
   const Shape feature_shape = scale->shape();
 
   auto zero_literal = LiteralUtil::CreateR0(0.0f);
-  TF_ASSIGN_OR_RETURN(zero_literal, zero_literal.Convert(ptype));
+  ASSIGN_OR_RETURN(zero_literal, zero_literal.Convert(ptype));
   auto zero = add(HloInstruction::CreateConstant(std::move(zero_literal)));
 
   auto epsilon_literal = LiteralUtil::CreateR0(batch_norm->epsilon());
-  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
+  ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
   Shape scalar_broadcast_shape = ShapeUtil::MakeStaticShape(operand_shape);
   auto epsilon = add(HloInstruction::CreateBroadcast(
       scalar_broadcast_shape,
@@ -283,7 +283,7 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormTraining(
     optional<int64_t> unique_device = batch_norm->sharding_unique_device();
     HloSharding default_sharding =
         unique_device.has_value()
-            ? HloSharding::AssignDevice(unique_device.value())
+            ? HloSharding::SingleDevice(unique_device.value())
             : HloSharding::Replicate();
     for (HloInstruction* inst : added_instructions) {
       if (ShapeUtil::Equal(inst->shape(), operand_shape)) {
@@ -294,7 +294,7 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormTraining(
     }
     tuple->set_sharding(sharding);
   }
-  TF_CHECK_OK(ReplaceWithNewInstruction(batch_norm, std::move(tuple)));
+  CHECK_OK(ReplaceWithNewInstruction(batch_norm, std::move(tuple)));
   return absl::OkStatus();
 }
 
@@ -316,14 +316,6 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormInference(
   const Shape feature_shape = scale->shape();
   Shape scalar_broadcast_shape = ShapeUtil::MakeStaticShape(feature_shape);
 
-  auto epsilon_literal = LiteralUtil::CreateR0(batch_norm->epsilon());
-  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
-  auto epsilon = computation_->AddInstruction(HloInstruction::CreateBroadcast(
-      scalar_broadcast_shape,
-      computation_->AddInstruction(
-          HloInstruction::CreateConstant(std::move(epsilon_literal))),
-      {}));
-
   std::vector<int64_t> dimensions_without_feature;
   const int64_t rank = operand_shape.dimensions().size();
   dimensions_without_feature.reserve(rank - 1);
@@ -334,6 +326,7 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormInference(
     }
   }
 
+  int64_t instruction_count_before = computation_->instruction_count();
   std::vector<HloInstruction*> added_instructions;
   auto add = [&](std::unique_ptr<HloInstruction> inst) {
     HloInstruction* added_inst = computation_->AddInstruction(std::move(inst));
@@ -345,6 +338,13 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormInference(
                         HloInstruction* a, HloInstruction* b) {
     return add(HloInstruction::CreateBinary(shape, opcode, a, b));
   };
+
+  auto epsilon_literal = LiteralUtil::CreateR0(batch_norm->epsilon());
+  ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
+  auto epsilon = add(HloInstruction::CreateBroadcast(
+      scalar_broadcast_shape,
+      add(HloInstruction::CreateConstant(std::move(epsilon_literal))), {}));
+
   auto feature_broadcast = [&](HloInstruction* a) {
     Shape broadcast_shape = ShapeUtil::MakeStaticShape(operand_shape);
     broadcast_shape.set_dynamic_dimension(feature_index,
@@ -353,7 +353,6 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormInference(
         HloInstruction::CreateBroadcast(broadcast_shape, a, {feature_index}));
   };
 
-  int64_t instruction_count_before = computation_->instruction_count();
   auto true_scale = add_binary(
       feature_shape, HloOpcode::kMultiply, scale,
       add(Rsqrt(add_binary(feature_shape, HloOpcode::kAdd, var, epsilon))));
@@ -375,7 +374,7 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormInference(
     optional<int64_t> unique_device = batch_norm->sharding_unique_device();
     HloSharding default_sharding =
         unique_device.has_value()
-            ? HloSharding::AssignDevice(unique_device.value())
+            ? HloSharding::SingleDevice(unique_device.value())
             : HloSharding::Replicate();
     for (HloInstruction* inst : added_instructions) {
       if (ShapeUtil::Equal(inst->shape(), operand_shape)) {
@@ -386,7 +385,7 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormInference(
     }
     shifted_normalized->set_sharding(sharding);
   }
-  TF_CHECK_OK(ReplaceInstruction(batch_norm, shifted_normalized));
+  CHECK_OK(ReplaceInstruction(batch_norm, shifted_normalized));
   return absl::OkStatus();
 }
 
@@ -435,11 +434,11 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormGrad(
       add(DynamicElementCountPerFeature(activation, feature_index, add));
 
   auto zero_literal = LiteralUtil::CreateR0(0.0f);
-  TF_ASSIGN_OR_RETURN(zero_literal, zero_literal.Convert(ptype));
+  ASSIGN_OR_RETURN(zero_literal, zero_literal.Convert(ptype));
   auto zero = add(HloInstruction::CreateConstant(std::move(zero_literal)));
 
   auto epsilon_literal = LiteralUtil::CreateR0(batch_norm->epsilon());
-  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
+  ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
   auto epsilon_scalar =
       add(HloInstruction::CreateConstant(std::move(epsilon_literal)));
   auto epsilon_activation = add(HloInstruction::CreateBroadcast(
@@ -564,7 +563,7 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormGrad(
     auto unique_device = batch_norm->sharding_unique_device();
     HloSharding default_sharding =
         unique_device.has_value()
-            ? HloSharding::AssignDevice(unique_device.value())
+            ? HloSharding::SingleDevice(unique_device.value())
             : HloSharding::Replicate();
     for (HloInstruction* inst : added_instructions) {
       if (ShapeUtil::Equal(inst->shape(), activation_shape)) {
@@ -576,15 +575,16 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormGrad(
     tuple->set_sharding(sharding);
   }
 
-  TF_CHECK_OK(ReplaceWithNewInstruction(batch_norm, std::move(tuple)));
+  CHECK_OK(ReplaceWithNewInstruction(batch_norm, std::move(tuple)));
 
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> BatchNormExpander::Run(
+absl::StatusOr<bool> BatchNormExpander::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_VLOG_LINES(2, "BatchNormExpander::Run(), before:\n" + module->ToString());
+  XLA_VLOG_LINES(
+      2, "BatchNormExpander::RunImpl(), before:\n" + module->ToString());
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
@@ -594,7 +594,8 @@ absl::StatusOr<bool> BatchNormExpander::Run(
       changed = true;
     }
   }
-  XLA_VLOG_LINES(2, "BatchNormExpander::Run(), after:\n" + module->ToString());
+  XLA_VLOG_LINES(2,
+                 "BatchNormExpander::RunImpl(), after:\n" + module->ToString());
   return changed;
 }
 

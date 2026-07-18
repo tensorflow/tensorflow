@@ -17,13 +17,14 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_AUTOTUNER_CUDNN_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/compiler.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -58,9 +59,9 @@ class CudnnBackend : public GpuCodegenBackend {
  public:
   explicit CudnnBackend(stream_executor::StreamExecutor* stream_executor,
                         const DebugOptions* debug_options, Compiler* compiler,
-                        const Compiler::TargetConfig* target_config)
-      : GpuCodegenBackend("Cudnn", debug_options, compiler, target_config,
-                          stream_executor) {}
+                        const Compiler::GpuTargetConfig* target_config)
+      : GpuCodegenBackend(autotuner::Backend::CUDNN, debug_options, compiler,
+                          target_config, stream_executor) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(const HloInstruction& instr) override;
@@ -72,6 +73,15 @@ class CudnnBackend : public GpuCodegenBackend {
   // apply the configs with non-zero workspace size.
   absl::Status ApplyConfig(HloInstruction& instr,
                            const BackendConfig& config) override;
+
+  bool CanProduceWrongResults() const override { return true; }
+
+  std::string version() const override {
+    return target_config().dnn_version_info.ToString();
+  }
+
+ private:
+  bool IsSupported(const HloInstruction& instr) override;
 };
 
 }  // namespace gpu

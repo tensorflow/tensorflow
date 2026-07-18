@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/metrics.pb.h"
 #include "xla/tsl/platform/env.h"
@@ -38,16 +39,15 @@ HloModuleMetadata::GetCurrentHloPassMetadata() {
     return NotFound(
         "HloPassMetadata for currently running pass not found, either because "
         "the pass did not call RecordPassStart or because a pass is "
-        "creating/switching modules without using "
-        "HloModuleGroup::ReplaceModule.");
+        "creating/switching modules.");
   }
   return running_passes_.back();
 }
 
 absl::Status HloModuleMetadata::MutateCurrentHloPassMetadata(
     absl::FunctionRef<void(HloPassMetadata*)> mutator) {
-  TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
-                      GetCurrentHloPassMetadata());
+  ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
+                   GetCurrentHloPassMetadata());
   mutator(pass_metadata);
   return absl::OkStatus();
 }
@@ -60,8 +60,8 @@ void HloModuleMetadata::RecordPassStart() {
 }
 
 absl::Status HloModuleMetadata::RecordPassEnd() {
-  TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
-                      GetCurrentHloPassMetadata());
+  ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
+                   GetCurrentHloPassMetadata());
   pass_metadata->set_end_timestamp_usec(env_->NowMicros());
   running_passes_.pop_back();
   return absl::OkStatus();
@@ -97,8 +97,8 @@ void HloModuleMetadata::set_prepartitioning_metadata(
 
 absl::Status HloModuleMetadata::set_custom_metadata(
     const ::tsl::protobuf::Message& message) {
-  TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
-                      GetCurrentHloPassMetadata());
+  ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
+                   GetCurrentHloPassMetadata());
   if (!pass_metadata->mutable_custom_metadata()->PackFrom(message)) {
     LOG(WARNING) << "failed to pack custom metadata for "
                  << pass_metadata->pass_id();
@@ -109,8 +109,8 @@ absl::Status HloModuleMetadata::set_custom_metadata(
 
 absl::Status HloModuleMetadata::set_key_value_metric(const std::string& key,
                                                      int64_t value) {
-  TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
-                      GetCurrentHloPassMetadata());
+  ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
+                   GetCurrentHloPassMetadata());
   auto* kv_metrics = pass_metadata->mutable_kv_metrics();
   // Iterating here since we expect only a few kv_metrics per pass ..
   for (auto& kv_metric : *kv_metrics) {

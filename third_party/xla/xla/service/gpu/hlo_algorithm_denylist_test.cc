@@ -21,18 +21,20 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/autotuning.pb.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
@@ -42,7 +44,6 @@ namespace gpu {
 namespace {
 using ::testing::IsEmpty;
 using ::testing::SizeIs;
-using ::tsl::testing::IsOk;
 
 class DenylistTest : public HloHardwareIndependentTestBase {
  protected:
@@ -64,7 +65,7 @@ class DenylistTest : public HloHardwareIndependentTestBase {
     ParseDebugOptionFlagsFromEnv(false);
     config_ =
         ParseTextProto<GpuBackendConfig>(
-            "operation_queue_id: 0 wait_on_operation_queues: [] "
+            "operation_queue_id: 0 "
             "cudnn_conv_backend_config: { activation_mode: kNone "
             "conv_result_scale: 1 side_input_scale: 0 leakyrelu_alpha: 0} "
             "force_earliest_schedule: false")
@@ -80,7 +81,7 @@ TEST_F(DenylistTest, DefaultTest) {
       ENTRY main {
           arg1 = f16[256,224,224,4]{3,2,1,0} parameter(0)
           arg2 = f16[7,7,4,64]{2,1,0,3} parameter(1)
-          ROOT root = (f16[256,112,112,64]{3,2,1,0}, u8[0]{0}) custom-call(arg1, arg2), window={size=7x7 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convForward", backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"cudnn_conv_backend_config":{"activation_mode":"kNone","conv_result_scale":1,"side_input_scale":0,"leakyrelu_alpha":0},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_DEVICE"}
+          ROOT root = (f16[256,112,112,64]{3,2,1,0}, u8[0]{0}) custom-call(arg1, arg2), window={size=7x7 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convForward", backend_config={"operation_queue_id":"0","cudnn_conv_backend_config":{"activation_mode":"kNone","conv_result_scale":1,"side_input_scale":0,"leakyrelu_alpha":0},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_DEVICE"}
       }
   )hlo"));
 
@@ -88,12 +89,12 @@ TEST_F(DenylistTest, DefaultTest) {
             HloOpcode::kCustomCall);
 
   ComputeCapability cc;
-  cc.set_major(7);
-  cc.set_minor(0);
+  cc.set_major_version(7);
+  cc.set_minor_version(0);
   CudnnVersion cudnn_version;
-  cudnn_version.set_major(7);
-  cudnn_version.set_minor(6);
-  cudnn_version.set_patch(2);
+  cudnn_version.set_major_version(7);
+  cudnn_version.set_minor_version(6);
+  cudnn_version.set_patch_version(2);
   auto list = GetDisabledConvAlgorithms(
       cc, cudnn_version, /*blas_version=*/"9000",
       static_cast<const HloCustomCallInstruction&>(
@@ -119,7 +120,7 @@ TEST_F(DenylistTest, NoBlasVersionSet) {
       ENTRY main {
           arg1 = f16[256,224,224,4]{3,2,1,0} parameter(0)
           arg2 = f16[7,7,4,64]{2,1,0,3} parameter(1)
-          ROOT root = (f16[256,112,112,64]{3,2,1,0}, u8[0]{0}) custom-call(arg1, arg2), window={size=7x7 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convForward", backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"cudnn_conv_backend_config":{"activation_mode":"kNone","conv_result_scale":1,"side_input_scale":0,"leakyrelu_alpha":0},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_DEVICE"}
+          ROOT root = (f16[256,112,112,64]{3,2,1,0}, u8[0]{0}) custom-call(arg1, arg2), window={size=7x7 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convForward", backend_config={"operation_queue_id":"0","cudnn_conv_backend_config":{"activation_mode":"kNone","conv_result_scale":1,"side_input_scale":0,"leakyrelu_alpha":0},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_DEVICE"}
       }
   )hlo"));
 
@@ -127,12 +128,12 @@ TEST_F(DenylistTest, NoBlasVersionSet) {
             HloOpcode::kCustomCall);
 
   ComputeCapability cc;
-  cc.set_major(7);
-  cc.set_minor(0);
+  cc.set_major_version(7);
+  cc.set_minor_version(0);
   CudnnVersion cudnn_version;
-  cudnn_version.set_major(7);
-  cudnn_version.set_minor(6);
-  cudnn_version.set_patch(2);
+  cudnn_version.set_major_version(7);
+  cudnn_version.set_minor_version(6);
+  cudnn_version.set_patch_version(2);
   auto list = GetDisabledConvAlgorithms(
       cc, cudnn_version, /*blas_version=*/"120301",
       static_cast<const HloCustomCallInstruction&>(
@@ -150,7 +151,7 @@ TEST_F(DenylistTest, EntryFromHardcodedList) {
          arg1 = f32[512,512,7,7]{3,2,1,0} parameter(0)
          arg2 = f32[512,512,3,3]{3,2,1,0} parameter(1)
          arg3 = f32[512]{0} parameter(2)
-         ROOT root = (f32[512,512,7,7]{3,2,1,0}, u8[0]{0}) custom-call(arg1, arg2, arg3), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target="__cudnn$convBiasActivationForward", backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"cudnn_conv_backend_config":{"activation_mode":"kNone","conv_result_scale":1,"side_input_scale":0,"leakyrelu_alpha":0},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_DEVICE"}
+         ROOT root = (f32[512,512,7,7]{3,2,1,0}, u8[0]{0}) custom-call(arg1, arg2, arg3), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target="__cudnn$convBiasActivationForward", backend_config={"operation_queue_id":"0","cudnn_conv_backend_config":{"activation_mode":"kNone","conv_result_scale":1,"side_input_scale":0,"leakyrelu_alpha":0},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_DEVICE"}
       }
   )hlo"));
 
@@ -158,12 +159,12 @@ TEST_F(DenylistTest, EntryFromHardcodedList) {
             HloOpcode::kCustomCall);
 
   ComputeCapability cc;
-  cc.set_major(7);
-  cc.set_minor(0);
+  cc.set_major_version(7);
+  cc.set_minor_version(0);
   CudnnVersion cudnn_version;
-  cudnn_version.set_major(9);
-  cudnn_version.set_minor(0);
-  cudnn_version.set_patch(0);
+  cudnn_version.set_major_version(9);
+  cudnn_version.set_minor_version(0);
+  cudnn_version.set_patch_version(0);
   auto list = GetDisabledConvAlgorithms(
       cc, cudnn_version, /*blas_version=*/"9000",
       static_cast<const HloCustomCallInstruction&>(
@@ -180,7 +181,7 @@ TEST_F(DenylistTest, GenerateDenyListEntry) {
          arg1 = f32[512,512,7,7]{3,2,1,0} parameter(0)
          arg2 = f32[512,512,3,3]{3,2,1,0} parameter(1)
          arg3 = f32[512]{0} parameter(2)
-         ROOT root = (f32[512,512,7,7]{3,2,1,0}, u8[0]{0}) custom-call(arg1, arg2, arg3), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target="__cudnn$convBiasActivationForward", backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"cudnn_conv_backend_config":{"activation_mode":"kNone","conv_result_scale":1,"side_input_scale":0,"leakyrelu_alpha":0},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_DEVICE"}
+         ROOT root = (f32[512,512,7,7]{3,2,1,0}, u8[0]{0}) custom-call(arg1, arg2, arg3), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target="__cudnn$convBiasActivationForward", backend_config={"operation_queue_id":"0","cudnn_conv_backend_config":{"activation_mode":"kNone","conv_result_scale":1,"side_input_scale":0,"leakyrelu_alpha":0},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_DEVICE"}
       }
   )hlo"));
 
@@ -188,12 +189,12 @@ TEST_F(DenylistTest, GenerateDenyListEntry) {
             HloOpcode::kCustomCall);
 
   ComputeCapability cc;
-  cc.set_major(7);
-  cc.set_minor(0);
+  cc.set_major_version(7);
+  cc.set_minor_version(0);
   CudnnVersion cudnn_version;
-  cudnn_version.set_major(9);
-  cudnn_version.set_minor(0);
-  cudnn_version.set_patch(0);
+  cudnn_version.set_major_version(9);
+  cudnn_version.set_minor_version(0);
+  cudnn_version.set_patch_version(0);
   absl::string_view blas_version = "9000";
 
   TF_ASSERT_OK_AND_ASSIGN(

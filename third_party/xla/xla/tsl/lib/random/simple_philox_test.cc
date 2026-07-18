@@ -76,10 +76,10 @@ TEST(SimplePhiloxTest, Regression_CloseSeedsAreDifferent) {
   PhiloxRandom philox1(0, 1), philox2(1, 1);
   SimplePhilox gen1(&philox1), gen2(&philox2);
 
-  std::set<uint32> first;
-  std::set<uint32> all;
+  std::set<uint32_t> first;
+  std::set<uint32_t> all;
   for (int i = 0; i < kCount; ++i) {
-    uint32 v = gen1.Rand32();
+    uint32_t v = gen1.Rand32();
     first.insert(v);
     all.insert(v);
     all.insert(gen2.Rand32());
@@ -96,13 +96,13 @@ TEST(SimplePhiloxTest, TestUniform) {
   PhiloxRandom philox(17, 17);
   SimplePhilox gen(&philox);
 
-  uint32 range = 3 * (1L << 29);
-  uint32 threshold = 1L << 30;
+  uint32_t range = 3 * (1L << 29);
+  uint32_t threshold = 1L << 30;
 
   size_t count = 0;
   static const int kTrials = 100000;
   for (int i = 0; i < kTrials; ++i) {
-    uint32 rnd = gen.Uniform(range);
+    uint32_t rnd = gen.Uniform(range);
     if (rnd < threshold) {
       ++count;
     }
@@ -115,13 +115,13 @@ TEST(SimplePhiloxTest, TestUniform64) {
   PhiloxRandom philox(17, 17);
   SimplePhilox gen(&philox);
 
-  uint64 range = 3 * (1LL << 59);
-  uint64 threshold = 1LL << 60;
+  uint64_t range = 3 * (1LL << 59);
+  uint64_t threshold = 1LL << 60;
 
   size_t count = 0;
   static const int kTrials = 100000;
   for (int i = 0; i < kTrials; ++i) {
-    uint64 rnd = gen.Uniform64(range);
+    uint64_t rnd = gen.Uniform64(range);
     if (rnd < threshold) {
       ++count;
     }

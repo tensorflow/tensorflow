@@ -2,14 +2,14 @@ path: "tensorflow.__internal__.tracking.ObjectGraphView"
 tf_class {
   is_instance: "<class \'tensorflow.python.checkpoint.graph_view.ObjectGraphView\'>"
   is_instance: "<class \'tensorflow.python.checkpoint.trackable_view.TrackableView\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "attached_dependencies"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "root"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

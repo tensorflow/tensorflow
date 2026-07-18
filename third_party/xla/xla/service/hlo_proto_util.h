@@ -18,7 +18,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_HLO_PROTO_UTIL_H_
 #define XLA_SERVICE_HLO_PROTO_UTIL_H_
 
+#include <string>
+
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/hlo.pb.h"
@@ -28,10 +31,13 @@ namespace xla {
 // Returns a serialized representation of the HLO state.
 HloProto MakeHloProto(const HloModule& module,
                       const BufferAssignment& assignment);
+void MakeHloProto(const HloModule& module, const BufferAssignment& assignment,
+                  HloProto* proto);
 
 // Returns a serialized representation of the HLO state, but buffer assignment
 // will not be included in the output.
 HloProto MakeHloProto(const HloModule& module);
+void MakeHloProto(const HloModule& module, HloProto* proto);
 
 // Returns the shapes of the parameters of the entry computation. Shape pointers
 // refer to shapes inside of the given HloProto.
@@ -42,6 +48,18 @@ absl::StatusOr<std::vector<const ShapeProto*>> EntryComputationParameterShapes(
 // refers to the output shape inside of the given HloProto.
 absl::StatusOr<const ShapeProto*> EntryComputationOutputShape(
     const HloProto& hlo_proto);
+
+// Extracts the backend_config string from an HloInstructionProto.
+// If the payload is stored externally, module must be provided to look up the
+// string using the stored ID.
+absl::StatusOr<std::string> GetBackendConfigString(
+    const HloInstructionProto& instruction,
+    const HloModuleProto* module = nullptr);
+
+// Returns a self-contained HloInstructionProto by inlining payloads that were
+// previously deduplicated and stored in the module's payloads list.
+HloInstructionProto ToProtoWithInlinedPayloads(HloInstructionProto proto,
+                                               const HloModuleProto* module);
 
 }  // namespace xla
 

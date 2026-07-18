@@ -69,9 +69,9 @@ namespace proxy {
     ::grpc::ServerReaderWriter<IfrtResponse, IfrtRequest>* stream) {
   GrpcIfrtSessionMetadata metadata;
   {
-    const auto it = context->client_metadata().find(
+    const auto [it, end] = context->client_metadata().equal_range(
         "ifrt-proxy-grpc-ifrt-session-metadata-bin");
-    if (it == context->client_metadata().end()) {
+    if (it == end) {
       return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
                             "Missing metadata for GrpcIfrtService.IfrtSession: "
                             "ifrt-proxy-grpc-ifrt-session-metadata-bin");
@@ -158,9 +158,9 @@ namespace proxy {
     ::grpc::ServerReader<GrpcHostBufferStoreRequest>* stream,
     GrpcHostBufferStoreResponse* response) {
   tsl::profiler::TraceMe traceme("HostBufferStore");
-  const auto it = context->client_metadata().find(
+  const auto [it, end] = context->client_metadata().equal_range(
       "ifrt-proxy-grpc-host-buffer-store-metadata-bin");
-  if (it == context->client_metadata().end()) {
+  if (it == end) {
     LOG(WARNING) << "Missing gRPC metadata for GrpcHostBufferService.Store";
     return ::grpc::Status(
         ::grpc::StatusCode::INTERNAL,

@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla::cpu {
@@ -61,8 +62,8 @@ class WhileThunk final : public Thunk {
 
  private:
   WhileThunk(Info info, BufferAllocation::Slice cond_buffer,
-             ThunkExecutor cond_executor, ThunkExecutor body_executor,
-             std::optional<int64_t> trip_count);
+             Shape cond_buffer_shape, ThunkExecutor cond_executor,
+             ThunkExecutor body_executor, std::optional<int64_t> trip_count);
 
   tsl::AsyncValueRef<ExecuteEvent> ExecuteForLoop(const ExecuteParams& params,
                                                   int64_t trip_count);
@@ -84,6 +85,7 @@ class WhileThunk final : public Thunk {
       bool* condition);
 
   BufferAllocation::Slice cond_buffer_;
+  Shape cond_buffer_shape_;
   ThunkExecutor cond_executor_;
   ThunkExecutor body_executor_;
 

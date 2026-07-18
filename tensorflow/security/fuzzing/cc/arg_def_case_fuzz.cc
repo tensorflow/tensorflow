@@ -17,6 +17,7 @@ limitations under the License.
 #include <string_view>
 
 #include "fuzztest/fuzztest.h"
+#include "absl/strings/ascii.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/stringpiece.h"
 
@@ -27,8 +28,8 @@ namespace {
 void FuzzTest(std::string_view data) {
   std::string ns = tensorflow::str_util::ArgDefCase(data);
   for (const auto &c : ns) {
-    const bool is_letter = 'a' <= c && c <= 'z';
-    const bool is_digit = '0' <= c && c <= '9';
+    const bool is_letter = absl::ascii_isalpha(c);
+    const bool is_digit = absl::ascii_isdigit(c);
     if (!is_letter && !is_digit) {
       assert(c == '_');
     }

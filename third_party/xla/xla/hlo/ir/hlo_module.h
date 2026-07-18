@@ -29,6 +29,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/stack_frames.h"
 #include "xla/iterator_util.h"
 #include "xla/online_topsort.h"
 #include "xla/printer.h"
@@ -63,6 +65,7 @@ limitations under the License.
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/fingerprint.h"
 
 namespace xla {
 
@@ -88,6 +91,7 @@ using NumericOrString = std::variant<std::string, int64_t, double>;
 // computation is attached to an HloInstruction within some other computation.
 // The meaning of the nested computation depends on the instruction it's
 // attached to.
+
 class HloModule {
  public:
   HloModule(const std::string& name, HloModuleConfig config);
@@ -183,7 +187,15 @@ class HloModule {
 
   bool has_entry_computation() const { return entry_computation_ != nullptr; }
 
-  // Returns the root instruction shape of entry computation.
+  // Returns the output shape in entry computation layout. This is the final
+  // result shape when HLO finishes the full compilation.
+  const Shape& output_shape() const {
+    return entry_computation_layout().result_shape();
+  }
+
+  // Returns the shape of the HLO root instruction.
+  // This can be different from the output_shape() when HLO is in an
+  // intermediate state. E.g. when compilation exits early.
   //
   // Precondition: entry_computation_ is not nullptr.
   const Shape& result_shape() const {
@@ -349,6 +361,23 @@ class HloModule {
     }
   }
 
+  // Canonicalizes the local_ids of all instructions in all computations
+  // in this module and updates the schedule's instruction unique IDs.
+  //
+  // WARNING: This is a dangerous API because it reassigns local IDs in all
+  // computations. It should only be used in contexts where you are certain
+  // that nothing is caching instruction unique IDs or relying on the stability
+  // of local IDs.
+  void CanonicalizeComputationLocalIds();
+
+  // Reorders the computations in the module to match the post-order.
+  //
+  // Many analysis and optimization passes benefit from processing computations
+  // in post-order (callees before callers). Canonicalizing them in this order
+  // makes simple iteration over computations() yield a valid traversal order,
+  // improving determinism.
+  absl::Status ReorderComputationsToPostOrder();
+
   // Compute and return a topological sort of all computations in the module.
   // The sort is defined like so: if computation A has an instruction which
   // calls computation B, then A will appear after B in the sort.
@@ -444,9 +473,15 @@ class HloModule {
   void set_is_dynamic(bool is_dynamic) { is_dynamic_ = is_dynamic; }
 
  private:
+  // Private constructor which accepts the id to allow specifying pre-allocated
+  // module id.
+  HloModule(const std::string& name, HloModuleConfig config,
+            std::unique_ptr<CompilationEnvironments> comp_envs, int module_id);
   void PrintComputations(Printer* printer,
                          const HloPrintOptions& options) const;
   void PrintConfig(Printer* printer, const HloModuleConfig& config) const;
+  void PrintStackFrameIndex(Printer* printer,
+                            const HloPrintOptions& options) const;
 
  public:
   // Prints a string representation of the module.
@@ -492,33 +527,79 @@ class HloModule {
   // for loading a proto that had its ids manually created, created incorrectly
   // or in an older version of the compiler. Instructions will only have the
   // local id in the id field.
+  ABSL_DEPRECATED(
+      "Use CreateFromProto with preserve_instruction_ids=false "
+      "instead.")
   static absl::StatusOr<HloModuleProto> RemapInstructionIds(
       const HloModuleProto& proto);
 
   // Updates the instruction ids in the computation's schedule to match the new
   // instruction ids as defined by the old_instr_id_to_new_id map. The map only
   // needs to be consistent and unique within the computation level.
+  ABSL_DEPRECATED(
+      "Use CreateFromProto with preserve_instruction_ids=false "
+      "instead when loading the HLO module.")
   static absl::Status UpdateIdsInSchedule(
       HloModuleProto& proto, int64_t computation_proto_id,
       absl::flat_hash_map<int64_t, int64_t>& old_instr_id_to_new_id);
 
-  // Convert an HloModule to or from a proto.
-  HloModuleProto ToProto() const;
+  // Updates all instruction ids in the buffer assignment proto with modified
+  // instruction ids as defined in the map.
+  static absl::Status UpdateBufferAssignmentProto(
+      BufferAssignmentProto* buffer_assignment_proto,
+      const absl::flat_hash_map<int64_t, absl::flat_hash_map<int64_t, int64_t>>&
+          computation_id_to_id_remap_map);
 
-  // Converts an HloModuleProto to an HloModule. If the module had its ids
-  // manually changed or was created in an older version of the compiler, it
-  // might be necessary to call RemapInstructionIds to make the ids consistent
-  // and compact.
+  // Convert an HloModule to a proto.
+  void ToProto(HloModuleProto* proto,
+               HloProtoOptions options = HloProtoOptions()) const;
+
+  HloModuleProto ToProto(HloProtoOptions options = HloProtoOptions()) const {
+    HloModuleProto proto;
+    ToProto(&proto, options);
+    return proto;
+  }
+
+  // Converts an HloModuleProto to an HloModule. If preserve_instruction_ids is
+  // true, the instruction ids in the proto will be preserved. Otherwise, the
+  // instruction ids will be remapped to be consecutive starting from 0. If the
+  // conversion is using too much memory, preserve_instruction_ids should be
+  // set to false. If a pointer to a buffer assignment proto is provided, that
+  // means the proto will be updated to keep the HloModule and the Buffer
+  // Assignment proto consistent.
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProto(
       const HloModuleProto& proto, const HloModuleConfig& module_config,
       bool prohibit_empty_literal = true,
-      std::unique_ptr<CompilationEnvironments> comp_envs = nullptr);
+      std::unique_ptr<CompilationEnvironments> comp_envs = nullptr,
+      bool preserve_instruction_ids = true,
+      BufferAssignmentProto* buffer_assignment_proto = nullptr);
+
+  static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProto(
+      const HloModuleProto& proto, const HloModuleConfig& module_config,
+      BufferAssignmentProto* buffer_assignment_proto,
+      bool preserve_instruction_ids = true);
 
   // Convert an HloModule to or from a proto that includes module configuration
-  HloModuleProtoWithConfig ToProtoWithConfig() const;
+  void ToProtoWithConfig(HloModuleProtoWithConfig* proto,
+                         HloProtoOptions options = HloProtoOptions()) const;
+
+  HloModuleProtoWithConfig ToProtoWithConfig(
+      HloProtoOptions options = HloProtoOptions()) const {
+    HloModuleProtoWithConfig proto;
+    ToProtoWithConfig(&proto, options);
+    return proto;
+  }
+
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProtoWithConfig(
       const HloModuleProtoWithConfig& proto, bool prohibit_empty_literal = true,
-      std::unique_ptr<CompilationEnvironments> comp_envs = nullptr);
+      std::unique_ptr<CompilationEnvironments> comp_envs = nullptr,
+      bool preserve_instruction_ids = true,
+      BufferAssignmentProto* buffer_assignment_proto = nullptr);
+
+  static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProtoWithConfig(
+      const HloModuleProtoWithConfig& proto,
+      BufferAssignmentProto* buffer_assignment_proto,
+      bool preserve_instruction_ids = true);
 
   // Creates and returns an HloModuleConfig with an appropriate program shape
   // for the HLO module in the given proto.
@@ -663,6 +744,54 @@ class HloModule {
     spmd_output_sharding_ = sharding;
   }
 
+  // Returns the next unique module id.
+  static int GetNextUniqueModuleId() { return next_unique_module_id_++; }
+
+  // Base class for cached backend-specific data.
+  class CacheEntry {
+   public:
+    virtual ~CacheEntry() = default;
+    virtual tsl::Fprint128 GetCacheKey() const = 0;
+  };
+
+  // Returns a shared pointer to a cached entry of type T for the given
+  // fingerprint. Returns nullptr if not found, or if a key exists but the
+  // stored entry is not of type T. T must be a subclass of CacheEntry. The
+  // object pointed to by the shared pointer remains valid as long as the caller
+  // holds a reference to it, even if the entry is removed from the cache. The
+  // entry remains in the cache until the module is destroyed or the cache entry
+  // is overwritten.
+  template <typename T>
+  std::shared_ptr<T> GetCacheEntry(tsl::Fprint128 key) const {
+    static_assert(std::is_base_of_v<CacheEntry, T>);
+    absl::MutexLock lock(cache_mutex_);
+    auto it = cache_.find(key);
+    // dynamic_pointer_cast will return nullptr if the key exists but the
+    // stored entry is of a different type than T.
+    return it == cache_.end() ? nullptr
+                              : std::dynamic_pointer_cast<T>(it->second);
+  }
+
+  // Sets a cached entry of type T for the given fingerprint. T must be a
+  // subclass of CacheEntry. If 'overwrite' is false (the default), this method
+  // will not overwrite an existing entry for the given key and will return
+  // false. If 'overwrite' is true, it will overwrite any existing entry.
+  // Returns true if the cache entry was set, false if it was not.
+  template <typename T>
+  bool SetCacheEntry(std::shared_ptr<T> entry, bool overwrite = false) {
+    static_assert(std::is_base_of_v<CacheEntry, T>);
+    if (entry == nullptr) {
+      return false;
+    }
+    tsl::Fprint128 key = entry->GetCacheKey();
+    absl::MutexLock lock(cache_mutex_);
+    if (overwrite) {
+      cache_.insert_or_assign(key, std::move(entry));
+      return true;
+    }
+    return cache_.try_emplace(key, std::move(entry)).second;
+  }
+
   // Describes a buffer to be used for cross program prefetching.
   struct CrossProgramPrefetchInfo {
     // The parameter to prefetch.
@@ -700,9 +829,11 @@ class HloModule {
   const HloModuleMetadata& metadata() const { return metadata_; }
   HloModuleMetadata* metadata() { return &metadata_; }
 
+  bool hlo_passes_started() const { return hlo_passes_started_; }
+  void set_hlo_passes_started(bool started) { hlo_passes_started_ = started; }
+
   // Moves (not copies) metadata from this HloModule to `module`. To be used
-  // in cases like HloModuleGroup::ReplaceModule when metadata should be
-  // transferred out of a module before it's destroyed.
+  // when metadata should be transferred out of a module before it's destroyed.
   void MoveMetadataToModule(HloModule* module) {
     module->metadata_ = std::move(metadata_);
   }
@@ -768,30 +899,30 @@ class HloModule {
                                     HloPrintOptions::ModuleFingerprint()) const;
 
   // Describes a stack frame.
-  struct StackFrame {
-    absl::string_view file_name;
-    absl::string_view function_name;
-    int line = 0;
-    int column = 0;
+  using StackFrame = HloStackFrame;
 
-    // 1-based index of the parent frame.
-    // 0 value indicates that the current frame is the root.
-    int parent_frame_id = 0;
+  // Getter for the specific stack frame.
+  HloStackFrame get_stack_frame(StackFrameId id) const;
 
-    bool empty() const {
-      return line == 0 && column == 0 && file_name.empty() &&
-             function_name.empty();
-    }
-  };
+  // Setter for the stack frame DAG.
+  void set_stack_frames(StackFrames stack_frames) {
+    stack_frames_ = std::move(stack_frames);
+  }
 
-  // Getter for the specific stack frame. Argument is a 1-based index.
-  StackFrame get_stack_frame(int id) const;
+  // Getter for the stack frame DAG.
+  const StackFrames& stack_frames() const { return stack_frames_; }
+  StackFrames& mutable_stack_frames() { return stack_frames_; }
 
   // Finalizes this module by destroying internal data structures that might be
   // used for building or modifying the module. It is undefined behavior to
   // modify the module (add computations or instructions) after the call. Should
   // be called once, after HLO module is compiled to executable.
   void Finalize();
+
+  // Populates the stack_frames metadata from `index_proto`. Canonicalizes
+  // the stack frame IDs and remaps any stack frame IDs in the module's
+  // instructions' metadata to refer to the canonical `StackFrameId`s.
+  void CanonicalizeStackFrameIds(const StackFrameIndexProto& index_proto);
 
  private:
   friend class HloComputation;
@@ -897,6 +1028,13 @@ class HloModule {
   // True if the module contains dynamic computation.
   bool is_dynamic_ = false;
 
+  // This only has an effect when debug_options.xla_run_hlo_passes_starting_from
+  // is not empty.
+  // - false: We are skipping passes until we reach the pass specified by
+  // debug_options.xla_run_hlo_passes_starting_from.
+  // - true: We have reached the starting pass and passes are run as normal.
+  bool hlo_passes_started_ = false;
+
   // Optional compilation profile handle.
   int64_t profile_version_ = 0;
 
@@ -925,8 +1063,8 @@ class HloModule {
   // environment variables).
   std::unique_ptr<CompilationEnvironments> comp_envs_;
 
-  // Stack frame indexes flat representation.
-  std::optional<StackFrameIndexProto> stack_frame_index_;
+  // Stack frame representation.
+  StackFrames stack_frames_;
 
   // Topological ordering of the computations in this module.
   // The topological order only contains computations whose parent() is this
@@ -942,6 +1080,26 @@ class HloModule {
       topological_sort_;
 
  public:
+  struct DebugAttributes {
+    enum class DebugLogMode {
+      // No debug log.
+      kNone,
+      // Log using TPU logging without perturbing the execution.
+      kDefault,
+      // Log using Fusion Debugger, without perturbing the execution.
+      kFusionDebugger,
+    };
+    DebugLogMode log_mode = DebugLogMode::kNone;
+    int64_t callback_id = 0;
+    // Whether to undo automatic sharding when logging the tensor.
+    bool partitioned = false;
+    // The operand index in the xla_debug_log custom call in the original HLO
+    // module that this tensor is associated with.
+    int64_t op_id = 0;
+
+    std::string ToString() const;
+  };
+
   class OriginalValueRecoveryTable {
    public:
     using Table = absl::flat_hash_map<
@@ -979,8 +1137,8 @@ class HloModule {
     // `std::optional<std::unique_ptr<HloModule>>(
     //     const ShapeIndex& index,
     //     const OriginalArray& old_original_array,
-    //     const xla::Shape& old_array_shape,
-    //     const xla::Shape& new_array_shape)`
+    //     const xla::Shape& old_shape,
+    //     const xla::Shape& new_shape)`
     //
     // It is called for each `OriginalArray` in `old_inst` and should
     // return one of the following:
@@ -1011,9 +1169,8 @@ class HloModule {
         const HloInstruction* old_inst, HloInstruction* new_inst,
         std::function<std::optional<std::unique_ptr<HloModule>>(
             const ShapeIndex& index, const OriginalArray& old_original_array,
-            const xla::Shape& old_array_shape,
-            const xla::Shape& new_array_shape)>&& build_recovery_computation =
-            nullptr);
+            const xla::Shape& old_shape, const xla::Shape& new_shape)>&&
+            build_recovery_computation = nullptr);
 
     // Similar to `AddRecoveryComputation`, but the callback is provided an
     // HLO module builder so that caller can directly build the recovery
@@ -1023,8 +1180,8 @@ class HloModule {
         std::function<std::optional<HloInstruction*>(
             xla::HloComputation::Builder& builder, const ShapeIndex& index,
             const OriginalArray& old_original_array,
-            const xla::Shape& old_array_shape,
-            const xla::Shape& new_array_shape)>&& build_recovery_computation);
+            const xla::Shape& old_shape, const xla::Shape& new_shape)>&&
+            build_recovery_computation);
 
     bool empty() const { return table_.empty(); }
 
@@ -1038,6 +1195,8 @@ class HloModule {
     iterator end() { return table_.end(); }
     const_iterator begin() const { return table_.begin(); }
     const_iterator end() const { return table_.end(); }
+
+    size_t size() const { return table_.size(); }
 
    private:
     friend class HloModule;
@@ -1057,8 +1216,25 @@ class HloModule {
         std::move(original_value_recovery_table.table_);
   }
 
+  void AddDebugAttributes(const OriginalArray& original_array,
+                          const DebugAttributes& debug_attributes) {
+    debug_attributes_[original_array].push_back(debug_attributes);
+  }
+
+  const absl::flat_hash_map<OriginalArray, std::vector<DebugAttributes>>&
+  debug_attributes() const {
+    return debug_attributes_;
+  }
+
  private:
+  absl::flat_hash_map<OriginalArray, std::vector<DebugAttributes>>
+      debug_attributes_;
   OriginalValueRecoveryTable original_value_recovery_table_;
+
+  mutable absl::Mutex cache_mutex_;
+  absl::flat_hash_map<tsl::Fprint128, std::shared_ptr<CacheEntry>,
+                      tsl::Fprint128Hasher>
+      cache_ ABSL_GUARDED_BY(cache_mutex_);
 };
 
 using OriginalValueRecoveryTable = HloModule::OriginalValueRecoveryTable;

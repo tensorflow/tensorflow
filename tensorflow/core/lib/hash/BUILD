@@ -26,7 +26,7 @@ cc_library(
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:cord",
         "//tensorflow/core/platform:types",
-        "@local_xla//xla/tsl/lib/hash:crc32c",
+        "@xla//xla/tsl/lib/hash:crc32c",
     ],
 )
 
@@ -40,7 +40,7 @@ cc_library(
 
 # Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
-    name = "mobile_srcs_no_runtime",
+    name = "mobile_hdrs_no_runtime",
     srcs = [
         "hash.h",
     ],
@@ -50,8 +50,16 @@ filegroup(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
+        "@xla//xla/tsl/lib/hash:mobile_srcs_only_runtime",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
         "crc32c.h",
-        "@local_xla//xla/tsl/lib/hash:mobile_srcs_only_runtime",
+        "@xla//xla/tsl/lib/hash:mobile_hdrs_only_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -61,7 +69,7 @@ filegroup(
     srcs = [
         "crc32c.h",
         "hash.h",
-        "@local_xla//xla/tsl/lib/hash:legacy_lib_hash_all_headers",
+        "@xla//xla/tsl/lib/hash:legacy_lib_hash_all_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

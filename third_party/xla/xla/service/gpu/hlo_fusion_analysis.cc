@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -31,7 +30,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/codegen/hlo_fusion_spec.h"
-#include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -42,6 +40,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -72,7 +71,9 @@ std::optional<TransposeDescription> FindConsistentTransposeHero(
     }
   }
 
-  if (!tiled_transpose_hero) return std::nullopt;
+  if (!tiled_transpose_hero) {
+    return std::nullopt;
+  }
 
   for (auto* root : non_transpose_roots) {
     // Roots that don't have a transpose hero, should have a shape compatible
@@ -89,13 +90,21 @@ std::optional<TransposeDescription> FindConsistentTransposeHero(
 
 bool UseConcatenateFusion(absl::Span<const HloInstructionAdaptor> roots,
                           absl::Span<const HloInstructionAdaptor> heroes) {
-  if (heroes.size() != 1) return false;
-  if (heroes.front().opcode() != HloOpcode::kConcatenate) return false;
+  if (heroes.size() != 1) {
+    return false;
+  }
+  if (heroes.front().opcode() != HloOpcode::kConcatenate) {
+    return false;
+  }
   // The concat emitter does not support multiple outputs yet. TODO(csigg): fix.
-  if (roots.front().shape().IsTuple()) return false;
+  if (roots.front().shape().IsTuple()) {
+    return false;
+  }
   // Limit the number of operands because the concat emitter produces code for
   // each operand, hurting occupancy.
-  if (heroes.front().instruction().operand_count() > 4) return false;
+  if (heroes.front().instruction().operand_count() > 4) {
+    return false;
+  }
   // The loop emitter is faster when warp divergence and occupancy are both low.
   // TODO(csigg): exclude this case.
   return true;
@@ -114,12 +123,8 @@ HloFusionAnalysis::EmitterFusionKind GetEmitterFusionKind(
   if (fusion_backend_config.kind() == kTritonFusionKind ||
       fusion_backend_config.kind() == kTritonGemmFusionKind ||
       fusion_backend_config.kind() == kTritonNestedGemmFusionKind ||
-      fusion_backend_config.kind() == kTritonScaledDotFusionKind) {
+      fusion_backend_config.kind() == kTritonCollectiveFusionKind) {
     return HloFusionAnalysis::EmitterFusionKind::kTriton;
-  }
-
-  if (fusion_backend_config.kind() == kDynamicMemcpyFusionKind) {
-    return HloFusionAnalysis::EmitterFusionKind::kDynamicMemcpy;
   }
 
   if (fusion_backend_config.kind() == kCuDnnFusionKind) {
@@ -174,6 +179,10 @@ HloFusionAnalysis::EmitterFusionKind GetEmitterFusionKind(
     return HloFusionAnalysis::EmitterFusionKind::kScatter;
   }
 
+  if (fusion_roots[0].opcode() == HloOpcode::kSort) {
+    return HloFusionAnalysis::EmitterFusionKind::kSort;
+  }
+
   if (UseConcatenateFusion(fusion_roots, fusion_heroes)) {
     return HloFusionAnalysis::EmitterFusionKind::kConcatenate;
   }
@@ -203,6 +212,14 @@ int SmallestBitWidth(const Container& args) {
 }
 
 }  // namespace
+
+bool IsGpuFusionKind(const HloInstruction& hlo, absl::string_view kind) {
+  auto gpu_config = hlo.backend_config<GpuBackendConfig>();
+  if (!gpu_config.ok()) {
+    return false;
+  }
+  return gpu_config->fusion_backend_config().kind() == kind;
+}
 
 HloFusionAnalysis::HloFusionAnalysis(
     FusionBackendConfig fusion_backend_config, HloFusionSpec fusion_spec,
@@ -292,6 +309,14 @@ HloFusionAnalysis HloFusionAnalysis::Create(
       std::move(fusion_backend_config),
       HloFusionAdaptor::ForProducerConsumer(&producer, &consumer),
       &device_info);
+}
+
+const Shape& HloFusionAnalysis::first_result_shape() const {
+  const Shape* shape = &fusion_root(0).shape();
+  while (shape->IsTuple()) {
+    shape = &shape->tuple_shapes(0);
+  }
+  return *shape;
 }
 
 const HloInstruction* HloFusionAnalysis::FindHeroReduction() const {

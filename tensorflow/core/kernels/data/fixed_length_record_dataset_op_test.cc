@@ -36,7 +36,7 @@ class FixedLengthRecordDatasetParams : public DatasetParams {
                                  int64_t header_bytes, int64_t record_bytes,
                                  int64_t footer_bytes, int64_t buffer_size,
                                  CompressionType compression_type,
-                                 string node_name)
+                                 std::string node_name)
       : DatasetParams({DT_STRING}, {PartialTensorShape({})},
                       std::move(node_name)),
         filenames_(filenames),
@@ -59,7 +59,8 @@ class FixedLengthRecordDatasetParams : public DatasetParams {
         CreateTensor<tstring>(TensorShape({}), {ToString(compression_type_)})};
   }
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override {
     input_names->clear();
     *input_names = {FixedLengthRecordDatasetOp::kFileNames,
                     FixedLengthRecordDatasetOp::kHeaderBytes,
@@ -76,7 +77,7 @@ class FixedLengthRecordDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  string dataset_type() const override {
+  std::string dataset_type() const override {
     return FixedLengthRecordDatasetOp::kDatasetType;
   }
 
@@ -92,10 +93,10 @@ class FixedLengthRecordDatasetParams : public DatasetParams {
 class FixedLengthRecordDatasetOpTest : public DatasetOpsTestBase {};
 
 absl::Status CreateTestFiles(const std::vector<tstring>& filenames,
-                             const std::vector<string>& contents,
+                             const std::vector<std::string>& contents,
                              CompressionType compression_type) {
   if (filenames.size() != contents.size()) {
-    return tensorflow::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "The number of files does not match with the contents");
   }
   if (compression_type == CompressionType::UNCOMPRESSED) {
@@ -117,7 +118,7 @@ absl::Status CreateTestFiles(const std::vector<tstring>& filenames,
 // Test case 1: multiple fixed-length record files with ZLIB compression.
 FixedLengthRecordDatasetParams FixedLengthRecordDatasetParams1() {
   std::vector<tstring> filenames = {LocalTempFilename(), LocalTempFilename()};
-  std::vector<string> contents = {
+  std::vector<std::string> contents = {
       absl::StrCat("HHHHH", "111", "222", "333", "FF"),
       absl::StrCat("HHHHH", "aaa", "bbb", "FF")};
   CompressionType compression_type = CompressionType::ZLIB;
@@ -138,7 +139,7 @@ FixedLengthRecordDatasetParams FixedLengthRecordDatasetParams1() {
 // Test case 2: multiple fixed-length record files with GZIP compression.
 FixedLengthRecordDatasetParams FixedLengthRecordDatasetParams2() {
   std::vector<tstring> filenames = {LocalTempFilename(), LocalTempFilename()};
-  std::vector<string> contents = {
+  std::vector<std::string> contents = {
       absl::StrCat("HHHHH", "111", "222", "333", "FF"),
       absl::StrCat("HHHHH", "aaa", "bbb", "FF")};
   CompressionType compression_type = CompressionType::GZIP;
@@ -158,7 +159,7 @@ FixedLengthRecordDatasetParams FixedLengthRecordDatasetParams2() {
 // Test case 3: multiple fixed-length record files without compression.
 FixedLengthRecordDatasetParams FixedLengthRecordDatasetParams3() {
   std::vector<tstring> filenames = {LocalTempFilename(), LocalTempFilename()};
-  std::vector<string> contents = {
+  std::vector<std::string> contents = {
       absl::StrCat("HHHHH", "111", "222", "333", "FF"),
       absl::StrCat("HHHHH", "aaa", "bbb", "FF")};
   CompressionType compression_type = CompressionType::UNCOMPRESSED;
@@ -246,6 +247,58 @@ TEST_F(FixedLengthRecordDatasetOpTest, IteratorPrefix) {
   TF_ASSERT_OK(CheckIteratorPrefix(name_utils::IteratorPrefix(
       FixedLengthRecordDatasetOp::kDatasetType,
       dataset_params.iterator_prefix(), iterator_prefix_params)));
+}
+
+TEST_F(FixedLengthRecordDatasetOpTest, FileSmallerThanHeaderAndFooter) {
+  std::vector<tstring> filenames = {LocalTempFilename()};
+  std::vector<std::string> contents = {"123"};
+  TF_ASSERT_OK(
+      CreateTestFiles(filenames, contents, CompressionType::UNCOMPRESSED));
+
+  auto dataset_params = FixedLengthRecordDatasetParams(
+      filenames,
+      /*header_bytes=*/5,
+      /*record_bytes=*/3,
+      /*footer_bytes=*/2,
+      /*buffer_size=*/10,
+      /*compression_type=*/CompressionType::UNCOMPRESSED,
+      /*node_name=*/kNodeName);
+
+  TF_ASSERT_OK(Initialize(dataset_params));
+  bool end_of_sequence = false;
+  std::vector<Tensor> out_tensors;
+  absl::Status status =
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_TRUE(absl::StrContains(
+      status.message(),
+      "smaller than the sum of the header (5 bytes) and footer (2 bytes)"))
+      << status.message();
+}
+
+TEST_F(FixedLengthRecordDatasetOpTest, FileTooSmallForCompressedReader) {
+  std::vector<tstring> filenames = {LocalTempFilename()};
+  std::vector<std::string> contents = {"123"};
+  TF_ASSERT_OK(CreateTestFiles(filenames, contents, CompressionType::ZLIB));
+
+  auto dataset_params =
+      FixedLengthRecordDatasetParams(filenames,
+                                     /*header_bytes=*/5,
+                                     /*record_bytes=*/3,
+                                     /*footer_bytes=*/2,
+                                     /*buffer_size=*/10,
+                                     /*compression_type=*/CompressionType::ZLIB,
+                                     /*node_name=*/kNodeName);
+
+  TF_ASSERT_OK(Initialize(dataset_params));
+  bool end_of_sequence = false;
+  std::vector<Tensor> out_tensors;
+  // This error is caught by the compressed reader when reading the data.
+  absl::Status status =
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_TRUE(absl::StrContains(status.message(), "EOF reached"))
+      << status.message();
 }
 
 std::vector<IteratorSaveAndRestoreTestCase<FixedLengthRecordDatasetParams>>

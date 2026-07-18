@@ -15,13 +15,15 @@ limitations under the License.
 
 // This files implements a pass that partially bufferized IR.
 
-#include <cstdint>
-#include <memory>
 #include <tuple>
 #include <utility>
 
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "transforms/passes.h"
 
@@ -92,8 +94,8 @@ void AllocToArgPass::runOnOperation() {
         // buffer.
         rewriter.setInsertionPoint(allocOp);
         Value arg = funcOp.getArguments().back();
-        Value collapsedArg = rewriter.create<memref::CollapseShapeOp>(
-            loc, arg, expandOp.getReassociationIndices());
+        Value collapsedArg = memref::CollapseShapeOp::create(
+            rewriter, loc, arg, expandOp.getReassociationIndices());
 
         // Replace alloc and its expansion.
         rewriter.replaceOp(allocOp, collapsedArg);
@@ -111,10 +113,6 @@ void AllocToArgPass::runOnOperation() {
     return signalPassFailure();
   }
   returnOp->eraseOperands(resultsToErase);
-}
-
-std::unique_ptr<OperationPass<func::FuncOp>> hlo::createAllocToArgPass() {
-  return std::make_unique<AllocToArgPass>();
 }
 
 }  // namespace mlir

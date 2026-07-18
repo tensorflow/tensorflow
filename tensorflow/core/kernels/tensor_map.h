@@ -93,14 +93,14 @@ class TensorMap {
 
   static const char kTypeName[];
 
-  string TypeName() const { return kTypeName; }
+  std::string TypeName() const { return kTypeName; }
 
   void Encode(VariantTensorData* data) const;
 
   bool Decode(const VariantTensorData& data);
 
   // TODO(apassos) fill this out
-  string DebugString() const { return "TensorMap"; }
+  std::string DebugString() const { return "TensorMap"; }
 
   // Access to the underlying tensor container.
   absl::flat_hash_map<TensorKey, Tensor>& tensors() {

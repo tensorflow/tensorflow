@@ -1174,8 +1174,10 @@ void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
   dims a_dims = dims{m, k};
   dims b_dims = dims{k, n};
   dims c_dims = dims{m, n};
-  dims a_strides = tolower(transa) == 'n' ? dims{lda, 1} : dims{1, lda};
-  dims b_strides = tolower(transb) == 'n' ? dims{ldb, 1} : dims{1, ldb};
+  dims a_strides =
+      absl::ascii_tolower(transa) == 'n' ? dims{lda, 1} : dims{1, lda};
+  dims b_strides =
+      absl::ascii_tolower(transb) == 'n' ? dims{ldb, 1} : dims{1, ldb};
   dims c_strides = dims{ldc, 1};
 
   // MklMatMul uses const alpha and beta, make guarantee here to ensure

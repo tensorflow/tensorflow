@@ -21,6 +21,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -45,17 +48,27 @@ class LegacyCache : public AutotunerCacheInterface {
   absl::Status Insert(const HloInstruction* instr,
                       const Config& best_config) override;
 
+  absl::StatusOr<std::string> Serialize(absl::Span<const HloInstruction* const>
+                                            instructions_to_serialize) override;
+  absl::Status Deserialize(absl::string_view serialized_cache) override;
+
+  CacheStats GetCacheStats() const override { return stats_; }
+
+  void ClearCache();
+
  private:
   AutotuneCacheKey GetAutotuneCacheKey(const HloInstruction& instr);
 
   // Translates between the AutotunerCacheInterface::Config and the
   // AutotuneResult.
-  std::optional<Config> GetConfig(const AutotuneResult& result);
-  std::optional<AutotuneResult> GetAutotuneResult(const Config& config);
+  std::optional<Config> GetConfig(const AutotuneResult& result,
+                                  bool is_fusion_instruction);
+  AutotuneResult GetAutotuneResult(const Config& config);
 
   const std::string cache_dir_;
   const DebugOptions::AutotuneCacheMode cache_mode_;
   const se::DeviceDescription device_desc_;
+  CacheStats stats_;
 };
 
 }  // namespace gpu

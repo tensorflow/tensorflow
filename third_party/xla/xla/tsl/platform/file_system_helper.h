@@ -16,13 +16,16 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_FILE_SYSTEM_HELPER_H_
 #define XLA_TSL_PLATFORM_FILE_SYSTEM_HELPER_H_
 
-#include <algorithm>
+#include <cstdint>
+#include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
-#include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace tsl {
 
@@ -45,8 +48,9 @@ namespace internal {
 //   results: will be cleared and may not be null.
 //
 // Returns an error status if any call to 'fs' failed.
-absl::Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
-                              std::vector<string>* results);
+absl::Status GetMatchingPaths(FileSystem* fs, Env* env,
+                              const std::string& pattern,
+                              std::vector<std::string>* results);
 
 // Given a file path, determines whether the file exists. This helper simplifies
 // the use of Env::FileExists.
@@ -57,7 +61,7 @@ absl::Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
 //
 // Returns true if the file exists, false if it does not exist, or an error
 // Status.
-absl::StatusOr<bool> FileExists(Env* env, const string& fname);
+absl::StatusOr<bool> FileExists(Env* env, const std::string& fname);
 
 }  // namespace internal
 
@@ -67,10 +71,10 @@ absl::StatusOr<bool> FileExists(Env* env, const string& fname);
 //  convert it to a ZeroCopyOutputStream easily using
 //  CopyingOutputStreamAdaptor.
 class WritableFileCopyingOutputStream
-    : public tsl::protobuf::io::CopyingOutputStream {
+    : public ::tsl::protobuf::io::CopyingOutputStream {
  public:
   explicit WritableFileCopyingOutputStream(WritableFile* file)
-      : tsl::protobuf::io::CopyingOutputStream(), file_(file) {}
+      : ::tsl::protobuf::io::CopyingOutputStream(), file_(file) {}
 
   bool Write(const void* buffer, int size) override {
     return file_
@@ -113,7 +117,7 @@ class RandomAccessFileCopyingInputStream
       if (result.size() > size) {
         return -1;
       }
-      std::copy(result.begin(), result.end(), static_cast<char*>(buffer));
+      absl::c_copy(result, static_cast<char*>(buffer));
     }
 
     position_ += result.size();

@@ -13,30 +13,38 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <string>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/raw_ostream.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
-#include "xla/codegen/mlir_kernel_definition.h"
+#include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/tools/test_lib.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/init_main.h"
 
 namespace xla::cpu {
 
 absl::Status Run(const std::string& filename) {
-  auto context = FusionCompiler::CreateContext();
-  TF_ASSIGN_OR_RETURN(auto module, LoadTestModule(filename));
-  auto fusion = DynCast<HloFusionInstruction>(
-      module->entry_computation()->root_instruction());
+  auto mlir_context = FusionCompiler::CreateContext();
+  ASSIGN_OR_RETURN(auto module, LoadTestModule(filename));
+  auto* inst = module->entry_computation()->root_instruction();
+  while (inst && (inst->opcode() == HloOpcode::kTuple ||
+                  inst->opcode() == HloOpcode::kGetTupleElement)) {
+    inst = inst->mutable_operand(0);
+  }
+  auto fusion = DynCast<HloFusionInstruction>(inst);
   fusion->SetAndSanitizeName("main");
-  TF_ASSIGN_OR_RETURN(MlirKernelDefinition kernel_definition,
-                      EmitFusionKernel(*context, *fusion, nullptr, false));
+  ASSIGN_OR_RETURN(
+      KernelDefinition kernel_definition,
+      EmitFusionKernel(*mlir_context, *fusion, nullptr, false, false));
   llvm::outs() << kernel_definition.source().ToString();
   return absl::OkStatus();
 }

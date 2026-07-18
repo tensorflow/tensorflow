@@ -36,6 +36,12 @@ namespace xla {
 // store for that). For single host collective operations XLA automatically
 // generates a unique id for local cliques (cliques consisting of devices
 // visible from a process).
+//
+// In a distributed environment clique id typically encodes the address of the
+// coordinator node that is responsible for bootstrapping communicators, however
+// collective implementations can choose to encode whatever information they
+// need in the clique id, and XLA is responsible for distributing it to all
+// participating processes.
 class CliqueId {
  public:
   CliqueId() = default;
@@ -65,9 +71,11 @@ class CliqueIds {
  public:
   CliqueIds() = default;
 
-  explicit CliqueIds(const CliqueId& id);
+  CliqueIds(const CliqueId& id);  // NOLINT
 
   void Add(const CliqueId& id);
+
+  size_t size() const;
 
   absl::Span<const CliqueId> data() const;
 

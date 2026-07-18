@@ -23,6 +23,8 @@ import lit.formats
 # from xla.lit_google_cfg import ENV_FLAGS as google_env_flags
 # copybara:uncomment_end
 
+from xla.sh_test_with_runfiles import ShTestWithRunfiles
+
 # pylint: disable=undefined-variable
 
 extra_env_flags = []
@@ -34,12 +36,12 @@ extra_env_flags = []
 config.name = "XLA"
 config.suffixes = [".cc", ".hlo", ".json", ".mlir", ".pbtxt", ".py", ".ll"]
 
-config.test_format = lit.formats.ShTest(execute_external=True)
-
+config.test_format = lit.formats.ShTest()
 
 for env in [
     # Passthrough XLA_FLAGS.
     "XLA_FLAGS",
+    "CUDA_VISIBLE_DEVICES",
     # Propagate environment variables used by 'bazel coverage'.
     # These are exported by tools/coverage/collect_coverage.sh
     "BULK_COVERAGE_RUN",
@@ -75,3 +77,6 @@ if lit_config.params.get("PTX") == "GCN":
 config.substitutions.extend(
     ("%%{%s}" % key, val) for key, val in lit_config.params.items()
 )
+
+# Replace the default test format with our wrapped version
+config.test_format = ShTestWithRunfiles()

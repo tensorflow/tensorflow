@@ -84,7 +84,7 @@ class Master {
   Thread* gc_thread_;
 
   // Maps session handles to sessions.
-  std::unordered_map<string, MasterSession*> sessions_ TF_GUARDED_BY(mu_);
+  std::unordered_map<std::string, MasterSession*> sessions_ TF_GUARDED_BY(mu_);
 
   // Moving average of step times.
   MovingAverage last_1000_steps_ TF_GUARDED_BY(mu_);
@@ -107,7 +107,7 @@ class Master {
 
   // Find master session by session handle, and increments the reference count
   // on the returned MasterSession if not null.
-  MasterSession* FindMasterSession(const string& handle);
+  MasterSession* FindMasterSession(const std::string& handle);
 
   Master(const Master&) = delete;
   void operator=(const Master&) = delete;

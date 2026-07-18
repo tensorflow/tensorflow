@@ -16,8 +16,11 @@ limitations under the License.
 // See docs in ../ops/io_ops.cc.
 
 #include <memory>
+#include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/reader_base.h"
 #include "tensorflow/core/framework/reader_base.pb.h"
@@ -35,7 +38,7 @@ limitations under the License.
 namespace tensorflow {
 
 template <typename T>
-static absl::Status ReadEntireFile(Env* env, const string& filename,
+static absl::Status ReadEntireFile(Env* env, const std::string& filename,
                                    T* contents) {
   std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename, &file));
@@ -47,7 +50,7 @@ static absl::Status ReadEntireFile(Env* env, const string& filename,
 
 class WholeFileReader : public ReaderBase {
  public:
-  WholeFileReader(Env* env, const string& node_name)
+  WholeFileReader(Env* env, const std::string& node_name)
       : ReaderBase(absl::StrCat("WholeFileReader '", node_name, "'")),
         env_(env) {}
 
@@ -72,8 +75,8 @@ class WholeFileReader : public ReaderBase {
   absl::Status RestoreStateLocked(const tstring& state) override {
     ReaderBaseState base_state;
     if (!ParseProtoUnlimited(&base_state, state)) {
-      return errors::InvalidArgument("Could not parse state for ", name(), ": ",
-                                     absl::CEscape(state));
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Could not parse state for ", name(), ": ", absl::CEscape(state)));
     }
     TF_RETURN_IF_ERROR(RestoreBaseState(base_state));
     return absl::OkStatus();
@@ -105,9 +108,9 @@ class ReadFileOp : public OpKernel {
     const Tensor* input;
     OP_REQUIRES_OK(context, context->input("filename", &input));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(input->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input filename tensor must be scalar, but had shape: ",
-                    input->shape().DebugString()));
+                    input->shape().DebugString())));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output("contents",
@@ -129,15 +132,15 @@ class WriteFileOp : public OpKernel {
     OP_REQUIRES_OK(context, context->input("filename", &filename_input));
     OP_REQUIRES_OK(context, context->input("contents", &contents_input));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(filename_input->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input filename tensor must be scalar, but had shape: ",
-                    filename_input->shape().DebugString()));
+                    filename_input->shape().DebugString())));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(contents_input->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Contents tensor must be scalar, but had shape: ",
-                    contents_input->shape().DebugString()));
-    const string& filename = filename_input->scalar<tstring>()();
-    const string dir(io::Dirname(filename));
+                    contents_input->shape().DebugString())));
+    const std::string& filename = filename_input->scalar<tstring>()();
+    const std::string dir(io::Dirname(filename));
     if (!context->env()->FileExists(dir).ok()) {
       OP_REQUIRES_OK(context, context->env()->RecursivelyCreateDir(dir));
     }

@@ -18,13 +18,16 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <utility>
+#include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "oneapi/dnnl/dnnl_common.hpp"
 #include "oneapi/dnnl/dnnl_graph.hpp"
 #include "oneapi/dnnl/dnnl_threadpool.hpp"
@@ -33,7 +36,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -49,8 +52,8 @@ struct OneDnnFusionThunk::OneDnnRuntime {
 
   tsl::AsyncValueRef<OneDnnFusionThunk::ExecuteEvent> Invoke(
       Eigen::ThreadPoolInterface* thread_pool,
-      absl::Span<se::DeviceMemoryBase> arguments,
-      absl::Span<se::DeviceMemoryBase> results);
+      absl::Span<se::DeviceAddressBase> arguments,
+      absl::Span<se::DeviceAddressBase> results);
 
   OneDnnFusion fusion;
 
@@ -72,8 +75,8 @@ OneDnnFusionThunk::OneDnnRuntime::OneDnnRuntime(
 tsl::AsyncValueRef<OneDnnFusionThunk::ExecuteEvent>
 OneDnnFusionThunk::OneDnnRuntime::Invoke(
     Eigen::ThreadPoolInterface* thread_pool,
-    absl::Span<se::DeviceMemoryBase> arguments,
-    absl::Span<se::DeviceMemoryBase> results) {
+    absl::Span<se::DeviceAddressBase> arguments,
+    absl::Span<se::DeviceAddressBase> results) {
   // Number of arguments and results must match the number of logical tensors.
   TF_RET_CHECK(arguments.size() == fusion.parameters.size())
       << "Arguments size mismatch";
@@ -116,7 +119,7 @@ OneDnnFusionThunk::CreateOneDnnRuntime(
       info().op_name, onednn_runtime_pool_.num_created());
 
   // Construct oneDNN fusion using user-provided builder function.
-  TF_ASSIGN_OR_RETURN(OneDnnFusion fusion, builder());
+  ASSIGN_OR_RETURN(OneDnnFusion fusion, builder());
 
   OneDnnRuntime runtime(std::move(fusion), thread_pool);
 
@@ -154,10 +157,10 @@ OneDnnFusionThunk::~OneDnnFusionThunk() = default;
 OneDnnFusionThunk::BufferUses OneDnnFusionThunk::buffer_uses() const {
   BufferUses buffer_uses;
   for (const Argument& argument : arguments_) {
-    buffer_uses.push_back(BufferUse::Read(argument.slice));
+    buffer_uses.push_back(BufferUse::Read(argument.slice, argument.shape));
   }
   for (const Result& result : results_) {
-    buffer_uses.push_back(BufferUse::Write(result.slice));
+    buffer_uses.push_back(BufferUse::Write(result.slice, result.shape));
   }
   return buffer_uses;
 }
@@ -172,12 +175,12 @@ tsl::AsyncValueRef<OneDnnFusionThunk::ExecuteEvent> OneDnnFusionThunk::Execute(
   }
 
   // Resolve device memory for arguments.
-  absl::InlinedVector<se::DeviceMemoryBase, 8> arguments_buffers;
+  absl::InlinedVector<se::DeviceAddressBase, 8> arguments_buffers;
   arguments_buffers.resize(arguments_.size());
   for (size_t i = 0; i < arguments_.size(); ++i) {
     Argument& argument = arguments_[i];
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         arguments_buffers[i],
         params.buffer_allocations->GetDeviceAddress(argument.slice));
 
@@ -188,12 +191,12 @@ tsl::AsyncValueRef<OneDnnFusionThunk::ExecuteEvent> OneDnnFusionThunk::Execute(
   }
 
   // Resolve device memory for results.
-  absl::InlinedVector<se::DeviceMemoryBase, 4> results_buffers;
+  absl::InlinedVector<se::DeviceAddressBase, 4> results_buffers;
   results_buffers.resize(results_.size());
   for (size_t i = 0; i < results_.size(); ++i) {
     Result& result = results_[i];
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         results_buffers[i],
         params.buffer_allocations->GetDeviceAddress(results_[i].slice));
 
@@ -207,8 +210,7 @@ tsl::AsyncValueRef<OneDnnFusionThunk::ExecuteEvent> OneDnnFusionThunk::Execute(
       params.intra_op_threadpool->getPool();
 
   // Borrow oneDNN runtime from the pool.
-  TF_ASSIGN_OR_RETURN(auto runtime,
-                      onednn_runtime_pool_.GetOrCreate(thread_pool));
+  ASSIGN_OR_RETURN(auto runtime, onednn_runtime_pool_.GetOrCreate(thread_pool));
   auto executed =
       runtime->Invoke(thread_pool, absl::MakeSpan(arguments_buffers),
                       absl::MakeSpan(results_buffers));

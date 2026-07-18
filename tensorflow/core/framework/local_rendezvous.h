@@ -82,7 +82,7 @@ class LocalRendezvous {
     Item* tail = nullptr;
   };
 
-  typedef gtl::FlatMap<uint64, ItemQueue> Table;
+  typedef gtl::FlatMap<uint64_t, ItemQueue> Table;
 
   const int num_buckets_;
   // Pointer to the owner class of this LocalRendezvous if it is refcounted,

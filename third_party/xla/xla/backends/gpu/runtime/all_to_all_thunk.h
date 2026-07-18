@@ -24,15 +24,21 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/collective_ops_utils.h"
+#include "xla/runtime/buffer_use.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -43,10 +49,14 @@ struct AllToAllConfig {
 };
 
 // Thunk that performs an All-to-All among CUDA GPU-based replicas.
-class AllToAllStartThunk : public CollectiveThunk {
+class AllToAllThunk : public CollectiveThunk {
  public:
-  AllToAllStartThunk(ThunkInfo thunk_info, const HloAllToAllInstruction* instr,
-                     std::vector<Buffer> buffers, bool p2p_memcpy_enabled);
+  AllToAllThunk(ThunkInfo thunk_info, const HloAllToAllInstruction* instr,
+                std::vector<Buffer> buffers, bool p2p_memcpy_enabled);
+
+  AllToAllThunk(ThunkInfo thunk_info, const AllToAllConfig& config,
+                std::vector<CollectiveThunk::Buffer> buffers,
+                bool p2p_memcpy_enabled);
 
   // Returns whether the given instruction can be lowered to an all-to-all
   // call.
@@ -56,28 +66,32 @@ class AllToAllStartThunk : public CollectiveThunk {
 
   absl::Status Initialize(const InitializeParams& params) override;
 
-  static const char* GetHloOpName() { return "all-to-all-start"; }
+  static absl::string_view GetHloOpName() { return "all-to-all-start"; }
 
   static CollectiveOpGroupMode GetGroupMode(
       const HloAllToAllInstruction* instr);
 
+  static absl::StatusOr<std::unique_ptr<AllToAllThunk>> FromProto(
+      ThunkInfo thunk_info, const AllToAllThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
   const CollectiveConfig& config() const override { return config_.config; }
   bool has_split_dimension() const { return config_.has_split_dimension; }
-  absl::Span<const Buffer> buffers() const { return buffers_; }
 
  protected:
-  absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
-                                     se::Stream& stream,
-                                     CommunicatorHandle comm) override;
+  // No rendezvous needed when using P2P memcpy in local mode instead of NCCL.
+  bool RequiresRendezvous() const override { return !p2p_memcpy_enabled_; }
 
-  AsyncStreamKind GetAsyncStreamKind() const override;
+  absl::Status RunCollective(const ExecuteParams& params,
+                             const GpuCliqueKey& clique_key, se::Stream& stream,
+                             Communicator& comm) override;
 
-  bool is_local() const;
+  bool CanUseSymmetricBuffer() const override { return true; }
 
  private:
   const AllToAllConfig config_;
-  const std::vector<Buffer> buffers_;
-  int64_t device_count_ = 1;
   bool p2p_memcpy_enabled_ = false;
 
   absl::Mutex pointer_maps_mutex_;
@@ -98,12 +112,12 @@ class AllToAllStartThunk : public CollectiveThunk {
 
 absl::Status RunAllToAll(bool has_split_dimension,
                          std::vector<DeviceBufferPair>& buffers,
-                         se::Stream& stream, Communicator* comm,
+                         se::Stream& stream, Communicator& comm,
                          bool use_symmetric_buffer = false);
 
 absl::Status RunMemCpyAllToAll(bool has_split_dimension,
                                std::vector<DeviceBufferPair>& buffers,
-                               se::Stream& stream, Communicator* comm,
+                               se::Stream& stream, Communicator& comm,
                                uint64_t receive_pointer_map[],
                                const GpuCliqueKey& clique_key, RankId rank,
                                se::Event* event,

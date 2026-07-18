@@ -26,10 +26,10 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "xla/stream_executor/tpu/c_api_conversions.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
-#include "xla/stream_executor/tpu/status_helper.h"
-#include "xla/stream_executor/tpu/tpu_api.h"
+#include "xla/tpu/c_api_conversions.h"
+#include "xla/tpu/c_api_decl.h"
+#include "xla/tpu/status_helper.h"
+#include "xla/tpu/tpu_api.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/platform/types.h"
@@ -46,15 +46,15 @@ namespace tensorflow {
 // Computes (and VLOGs) the expected shapes of the embedding table shards.
 absl::Status ComputeExpectedTableShardShapes(
     const TPUEmbeddingConfiguration& config, int shard_id, int num_shards,
-    const string& op_name, std::vector<TensorShape>* table_shapes) {
+    const std::string& op_name, std::vector<TensorShape>* table_shapes) {
   std::vector<TensorShapeProto> shape_protos;
   const int num_tables = config.table_descriptor_size();
   TF_RETURN_IF_ERROR(TpuEmbeddingShapeUtil::ComputeTableShapes(
       config, shard_id, num_shards, &shape_protos));
   if (num_tables != shape_protos.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         op_name, ": The size of the shape_protos vector ", shape_protos.size(),
-        " must be the same as the number of tables ", num_tables);
+        " must be the same as the number of tables ", num_tables));
   }
   for (int table_id = 0; table_id < num_tables; ++table_id) {
     const TensorShape& shape = TensorShape(shape_protos[table_id]);
@@ -70,7 +70,7 @@ absl::Status ComputeExpectedTableShardShapes(
 }
 
 // Logs min/max/avg for the specified state_variable array.
-void LogRangeStatistics(int32 table_id, int32 state_variable_index,
+void LogRangeStatistics(int32_t table_id, int32_t state_variable_index,
                         absl::Span<const float> state_variable) {
   if (VLOG_IS_ON(5)) {
     float min = std::numeric_limits<float>::infinity();
@@ -91,14 +91,14 @@ void LogRangeStatistics(int32 table_id, int32 state_variable_index,
 LoadAllTPUEmbeddingParametersOp::LoadAllTPUEmbeddingParametersOp(
     OpKernelConstruction* ctx)
     : OpKernel(ctx) {
-  string config_string;
+  std::string config_string;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &config_string));
 
   OP_REQUIRES(
       ctx, config_.ParseFromString(config_string),
-      errors::InvalidArgument("LoadAllTPUEmbeddingParametersOp: Failed to "
-                              "parse TPUEmbeddingConfiguration "
-                              "proto from config attr"));
+      absl::InvalidArgumentError("LoadAllTPUEmbeddingParametersOp: Failed to "
+                                 "parse TPUEmbeddingConfiguration "
+                                 "proto from config attr"));
   // Auto populate the feature descriptor
   // TODO (b/201806244): remove this logic after the change to the
   // initialization to the config proto.
@@ -131,10 +131,10 @@ void LoadAllTPUEmbeddingParametersOp::GetStateVariables(
   }
 
   OP_REQUIRES(ctx, num_tables == table_shapes_.size(),
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "LoadAllTPUEmbeddingParametersOp has ", num_tables,
                   " inputs in lists but config specifies ",
-                  table_shapes_.size(), " embedding tables."));
+                  table_shapes_.size(), " embedding tables.")));
 
   CHECK_EQ(num_tables, config_.table_descriptor_size());
   for (int table_id = 0; table_id < num_tables; ++table_id) {
@@ -143,40 +143,40 @@ void LoadAllTPUEmbeddingParametersOp::GetStateVariables(
     absl::Status status = tpu::GetOptimizationAlgorithmStateVariables(
         table_descriptor.optimization_parameters(), &state_variable_specs);
     OP_REQUIRES(ctx, status.ok(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "LoadAllTPUEmbeddingParametersOp: No optimization "
                     "algorithm specified for table ",
-                    table_id, " (named ", table_descriptor.name(), ")"));
+                    table_id, " (named ", table_descriptor.name(), ")")));
     OP_REQUIRES(
         ctx, state_variable[0][table_id].shape() == table_shapes_[table_id],
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "LoadAllTPUEmbeddingParametersOp: Embeddings for table ", table_id,
             " (named ", table_descriptor.name(), ") has shape ",
             state_variable[0][table_id].shape().DebugString(),
             " but config specifies table shape ",
-            table_shapes_[table_id].DebugString()));
+            table_shapes_[table_id].DebugString())));
     for (int i = 1; i < state_variable_specs.size(); ++i) {
       OP_REQUIRES(
           ctx, state_variable[i][table_id].shape() == table_shapes_[table_id],
-          errors::InvalidArgument(
-              "LoadAllTPUEmbeddingParametersOp: Auxiliary ", i - 1,
-              " for table ", table_id, " has shape ",
-              state_variable[i][table_id].shape().DebugString(),
-              " but config specifies table shape ",
-              table_shapes_[table_id].DebugString()));
+          absl::InvalidArgumentError(
+              absl::StrCat("LoadAllTPUEmbeddingParametersOp: Auxiliary ", i - 1,
+                           " for table ", table_id, " has shape ",
+                           state_variable[i][table_id].shape().DebugString(),
+                           " but config specifies table shape ",
+                           table_shapes_[table_id].DebugString())));
     }
-    const int64 num_elements = state_variable[0][table_id].NumElements();
+    const int64_t num_elements = state_variable[0][table_id].NumElements();
     VLOG(1) << "Table " << table_id << " (name " << table_descriptor.name()
             << ") has shape: " << table_shapes_[table_id].DebugString()
             << ", number of elements: " << num_elements;
     for (int i = 0; i < state_variable_specs.size(); ++i) {
       OP_REQUIRES(ctx,
                   state_variable[i][table_id].NumElements() == num_elements,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "LoadAllTPUEmbeddingParametersOp: Embeddings/auxiliary ",
                       i, " for table ", table_id, " has element count ",
                       state_variable[i][table_id].NumElements(),
-                      " but config requires count ", num_elements));
+                      " but config requires count ", num_elements)));
       const float* state_variable_i_ptr =
           state_variable[i][table_id].flat<float>().data();
       state_variable_vector[i].push_back(absl::MakeConstSpan(
@@ -187,11 +187,11 @@ void LoadAllTPUEmbeddingParametersOp::GetStateVariables(
     for (int i = state_variable_specs.size();
          i <= tpu::kMaxAuxiliaryParameterCount; ++i) {
       OP_REQUIRES(ctx, state_variable[i][table_id].NumElements() == 0,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "LoadAllTPUEmbeddingParametersOp: Auxiliary ", i,
                       " for table ", table_id, " has element count ",
                       state_variable[i][table_id].NumElements(),
-                      " but config requires empty tensor"));
+                      " but config requires empty tensor")));
       state_variable_vector[i].push_back(absl::Span<const float>());
     }
   }
@@ -232,13 +232,13 @@ void LoadAllTPUEmbeddingParametersOp::Compute(OpKernelContext* ctx) {
 RetrieveAllTPUEmbeddingParametersOp::RetrieveAllTPUEmbeddingParametersOp(
     OpKernelConstruction* ctx)
     : OpKernel(ctx) {
-  string config_string;
+  std::string config_string;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &config_string));
 
   OP_REQUIRES(
       ctx, config_.ParseFromString(config_string),
-      errors::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
-                              "proto from config attr"));
+      absl::InvalidArgumentError("Failed to parse TPUEmbeddingConfiguration "
+                                 "proto from config attr"));
 
   // Auto populate the feature descriptor
   // TODO (b/201806244): remove this logic after the change to the
@@ -274,10 +274,10 @@ void RetrieveAllTPUEmbeddingParametersOp::GetStateVariables(
   }
 
   OP_REQUIRES(ctx, num_tables == table_shapes_.size(),
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "RetrieveAllTPUEmbeddingParametersOp has ", num_tables,
                   " outputs in lists but config specifies ",
-                  table_shapes_.size(), " embedding tables."));
+                  table_shapes_.size(), " embedding tables.")));
 
   for (auto& v : state_variable_vector) {
     v.resize(num_tables);
@@ -291,13 +291,13 @@ void RetrieveAllTPUEmbeddingParametersOp::GetStateVariables(
     std::vector<tpu::StateVariableSpecification> state_variable_specs;
     absl::Status status = tpu::GetOptimizationAlgorithmStateVariables(
         table_descriptor.optimization_parameters(), &state_variable_specs);
-    OP_REQUIRES(
-        ctx, status.ok(),
-        errors::InvalidArgument("RetrieveAllTPUEmbeddingParametersOp: No "
-                                "optimization algorithm specified for table ",
-                                table_id));
+    OP_REQUIRES(ctx, status.ok(),
+                absl::InvalidArgumentError(
+                    absl::StrCat("RetrieveAllTPUEmbeddingParametersOp: No "
+                                 "optimization algorithm specified for table ",
+                                 table_id)));
     num_state_variables[table_id] = state_variable_specs.size();
-    const int64 num_elements = table_shapes_[table_id].num_elements();
+    const int64_t num_elements = table_shapes_[table_id].num_elements();
     for (int i = 0; i < state_variable_specs.size(); ++i) {
       Tensor* state_variable_tensor;
       OP_REQUIRES_OK(
@@ -313,7 +313,7 @@ void RetrieveAllTPUEmbeddingParametersOp::GetStateVariables(
          i <= tpu::kMaxAuxiliaryParameterCount; ++i) {
       Tensor* auxiliary_tensor;
       TensorShape shape;
-      std::array<int32, 2> dims = {{0, 0}};
+      std::array<int32_t, 2> dims = {{0, 0}};
       OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(dims, &shape));
       OP_REQUIRES_OK(
           ctx, state_variable[i].allocate(table_id, shape, &auxiliary_tensor));

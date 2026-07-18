@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: xla-translate --stablehlo-to-hlo-text -split-input-file %s | FileCheck %s
 // RUN: mlir-hlo-opt --stablehlo-legalize-to-hlo=convert-xla-supported-stablehlo=false -split-input-file %s | FileCheck %s --check-prefix CHECK-DIRECT
 
@@ -1171,7 +1185,7 @@ func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> t
 // CHECK:       ENTRY %[[$main_3:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[128,32] parameter(0)
 // CHECK-NEXT:  ROOT %[[collective_broadcast_2:[^ ]+]] = f32[128,32] collective-broadcast(%[[Arg_0_1]]), channel_id=1,
-// CHECK-SAME{LITERAL}: replica_groups={{0,1},{2,3}}, metadata=
+// CHECK-SAME{LITERAL}: replica_groups={{0,1},{2,3}}, has_dynamic_root=false, metadata=
 
 func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
   %0 = "stablehlo.collective_broadcast"(%arg0) <{channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>, replica_groups = dense<[[0, 1], [2, 3]]> : tensor<2x2xi64>}> : (tensor<128x32xf32>) -> tensor<128x32xf32>
@@ -1955,7 +1969,7 @@ module {
 // CHECK-LITERAL:: f32[192] parameter(0), origin={{"a"}}
 
 module {
-  func.func @main(%arg0: tensor<192xf32> {mhlo.original_value = "{{\22a\22}}"}) -> tensor<192xf32> {
+  func.func @main(%arg0: tensor<192xf32> {mhlo.original_value = #mhlo.original_value<false, [<[], <"a", []>>]>}) -> tensor<192xf32> {
     return %arg0 : tensor<192xf32>
   }
 }
@@ -1968,7 +1982,7 @@ module {
 
 module {
   func.func @main() -> tensor<i32> {
-    %0 = stablehlo.constant {mhlo.original_value = "{{\22constant.5\22}}"} dense<0> : tensor<i32>
+    %0 = stablehlo.constant {mhlo.original_value = #mhlo.original_value<false, [<[], <"constant.5", []>>]>} dense<0> : tensor<i32>
     return %0 : tensor<i32>
   }
 }
@@ -1982,7 +1996,7 @@ module {
 
 module {
   func.func @main(%arg0: tensor<192xf32>) -> tensor<1x17x17x192xf32> {
-    %0 = stablehlo.broadcast_in_dim %arg0, dims = [3] {mhlo.original_value = "{{\22broadcast.2342\22}}"} : (tensor<192xf32>) -> tensor<1x17x17x192xf32>
+    %0 = stablehlo.broadcast_in_dim %arg0, dims = [3] {mhlo.original_value = #mhlo.original_value<false, [<[], <"broadcast.2342", []>>]>} : (tensor<192xf32>) -> tensor<1x17x17x192xf32>
     return %0 : tensor<1x17x17x192xf32>
   }
 }
@@ -1996,7 +2010,7 @@ module {
 // CHECK-LITERAL:  ROOT %[[GTE0:.*]] = f32[8] get-tuple-element(%[[TOPK]]), index=0, origin={{"t" {0}}}
 // CHECK-LITERAL:  %[[GTE1:.*]] = s32[8] get-tuple-element(%[[TOPK]]), index=1, origin={{"t" {1}}}
 func.func @main(%arg0: tensor<10xf32>) -> tensor<8xf32> {
-  %0:2 = mhlo.topk(%arg0, k=8, largest=true) {mhlo.original_value="{({\22t\22 {0}}, {\22t\22 {1}})}"} : tensor<10xf32> -> (tensor<8xf32>, tensor<8xi32>)
+  %0:2 = mhlo.topk(%arg0, k=8, largest=true) {mhlo.original_value = #mhlo.original_value<false, [<[0], <"t", [0]>>, <[1], <"t", [1]>>]>} : tensor<10xf32> -> (tensor<8xf32>, tensor<8xi32>)
   return %0#0 : tensor<8xf32>
 }
 
@@ -2007,9 +2021,9 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<8xf32> {
 // CHECK-LITERAL:  %[[ARG0:.*]] = s32[] parameter(0), origin={{"a"}}
 // CHECK-LITERAL:  %[[ARG1:.*]] = s32[] parameter(1), origin={{"b"}}
 // CHECK-LITERAL:  tuple(%[[CONSTANT]], %[[ARG0]], %[[ARG1]]), origin={({"c"}, {"a"}, {"b"})}
-func.func @main(%arg0: tensor<i32> {mhlo.original_value = "{{\22a\22}}"}, %arg1: tensor<i32> {mhlo.original_value = "{{\22b\22}}"}) -> (tensor<i32>) {
-  %c = stablehlo.constant {mhlo.original_value = "{{\22c\22}}"} dense<0> : tensor<i32>
-  %0:2 = stablehlo.while(%iterArg = %c, %iterArg_0 = %arg0) : tensor<i32>, tensor<i32> attributes {mhlo.original_value = "{({\22while\22 {0}}, {\22while\22 {1}}, {\22while\22 {2}})}"}
+func.func @main(%arg0: tensor<i32> {mhlo.original_value = #mhlo.original_value<false, [<[], <"a", []>>]>}, %arg1: tensor<i32> {mhlo.original_value = #mhlo.original_value<false, [<[], <"b", []>>]>}) -> (tensor<i32>) {
+  %c = stablehlo.constant {mhlo.original_value = #mhlo.original_value<false, [<[], <"c", []>>]>} dense<0> : tensor<i32>
+  %0:2 = stablehlo.while(%iterArg = %c, %iterArg_0 = %arg0) : tensor<i32>, tensor<i32> attributes {mhlo.original_value = #mhlo.original_value<false, [<[0], <"while", [0]>>, <[1], <"while", [1]>>, <[2], <"while", [2]>>]>}
   cond {
     %1 = stablehlo.compare  LT, %iterArg, %arg1 : (tensor<i32>, tensor<i32>) -> tensor<i1>
     stablehlo.return %1 : tensor<i1>
@@ -2168,4 +2182,50 @@ func.func @main(%arg0: tensor<4xf32>, %arg1: tensor<i32>) -> tensor<?xf32> {
   %0 = stablehlo.set_dimension_size %arg0, %arg1, dim = 0 : (tensor<4xf32>, tensor<i32>) -> tensor<?xf32, #stablehlo.bounds<4>>
   %cast = tensor.cast %0 : tensor<?xf32, #stablehlo.bounds<4>> to tensor<?xf32>
   return %cast : tensor<?xf32>
+}
+
+// -----
+
+// CHECK: HloModule
+// CHECK: ENTRY
+func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x6xf32> {
+  // CHECK: [[RES:%custom.*]] = (f32[8,6]) custom-call(%{{.*}}), custom_call_target="SparseActivationsUnstackInterleaved"
+  // CHECK-NEXT: ROOT %[[ROOT:.*]] = f32[8,6] get-tuple-element([[RES]]), index=0
+  %0 = "stablehlo.custom_call"(%arg0) {call_target_name = "SparseActivationsUnstackInterleaved", backend_config = "", operand_layouts = [dense<[1, 0]> : tensor<2xindex>], result_layout = [dense<[0, 1]> : tensor<2xindex>], result_layouts = [dense<[0, 1]> : tensor<2xindex>], xla_shape = "(f32[8,6]{0,1})"} : (tensor<8x8xf32>) -> tensor<8x6xf32>
+  func.return %0: tensor<8x6xf32>
+}
+
+// -----
+
+// CHECK: HloModule
+// CHECK: ENTRY
+func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x6xf32> {
+  // CHECK: [[RES:%custom.*]] = (f32[8,6]) custom-call(%{{.*}}), custom_call_target="SparseActivationsUnstack"
+  // CHECK-NEXT: ROOT %[[ROOT:.*]] = f32[8,6] get-tuple-element([[RES]]), index=0
+  %0 = "stablehlo.custom_call"(%arg0) {call_target_name = "SparseActivationsUnstack", backend_config = "", operand_layouts = [dense<[1, 0]> : tensor<2xindex>], result_layout = [dense<[0, 1]> : tensor<2xindex>], result_layouts = [dense<[0, 1]> : tensor<2xindex>], xla_shape = "(f32[8,6]{0,1})"} : (tensor<8x8xf32>) -> tensor<8x6xf32>
+  func.return %0: tensor<8x6xf32>
+}
+
+// -----
+
+// CHECK: HloModule
+// CHECK: ENTRY
+func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x6xf32> {
+  // CHECK: [[RES:%custom.*]] = (f32[8,6]) custom-call(%{{.*}}), custom_call_target="SparseActivationsUnstack"
+  // CHECK-NEXT: ROOT %[[ROOT:.*]] = f32[8,6] get-tuple-element([[RES]]), index=0
+  %0 = "stablehlo.custom_call"(%arg0) {call_target_name = "SparseActivationsUnstack", backend_config = "", operand_layouts = [dense<[1, 0]> : tensor<2xindex>], result_layout = [dense<[0, 1]> : tensor<2xindex>], result_layouts = [dense<[0, 1]> : tensor<2xindex>], xla_shape = "(f32[8,6]{0,1})"} : (tensor<8x8xf32>) -> tuple<tensor<8x6xf32>>
+  %1 = stablehlo.get_tuple_element %0[0] : (tuple<tensor<8x6xf32>>) -> tensor<8x6xf32>
+  func.return %1: tensor<8x6xf32>
+}
+
+// -----
+
+// CHECK: HloModule
+// CHECK: ENTRY
+func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x6xf32> {
+  // CHECK: [[RES:%custom.*]] = (f32[8,6], f32[8,6]) custom-call(%{{.*}}), custom_call_target="SparseActivationsUnstack"
+  // CHECK-NEXT: ROOT %[[ROOT:.*]] = f32[8,6] get-tuple-element([[RES]]), index=0
+  %0 = "stablehlo.custom_call"(%arg0, %arg0) {call_target_name = "SparseActivationsUnstack", backend_config = "", xla_shape = "(f32[8,6]{0,1}, f32[8,6]{0,1})"} : (tensor<8x8xf32>, tensor<8x8xf32>) -> tuple<tensor<8x6xf32>, tensor<8x6xf32>>
+  %1 = stablehlo.get_tuple_element %0[0] : (tuple<tensor<8x6xf32>, tensor<8x6xf32>>) -> tensor<8x6xf32>
+  func.return %1: tensor<8x6xf32>
 }

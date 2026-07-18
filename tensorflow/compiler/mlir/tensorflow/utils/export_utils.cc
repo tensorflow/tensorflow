@@ -400,12 +400,12 @@ absl::Status ConvertAttributes(
     if (auto symbol_ref = mlir::dyn_cast<mlir::SymbolRefAttr>(attr)) {
       TF_RETURN_IF_ERROR(ConvertAttribute(
           mlir::cast<mlir::FlatSymbolRefAttr>(symbol_ref), &value));
-      func_call_attrs[string(name)] = std::move(value);
+      func_call_attrs[std::string(name)] = std::move(value);
       continue;
     }
     if (auto func_attr = mlir::dyn_cast<mlir::TF::FuncAttr>(attr)) {
       TF_RETURN_IF_ERROR(ConvertAttribute(func_attr, remove_ref_type, &value));
-      func_call_attrs[string(name)] = std::move(value);
+      func_call_attrs[std::string(name)] = std::move(value);
       continue;
     }
     if (mlir::isa<mlir::AffineMapAttr>(attr)) {
@@ -434,12 +434,12 @@ absl::Status ConvertAttributes(
     // input TensorFlow GraphDef shouldn't contain '.'. If it does appear in
     // the attribute from MLIR, it is treated as an attribute from function
     // calls.
-    std::vector<string> name_tokens =
+    std::vector<std::string> name_tokens =
         absl::StrSplit(name, '.', absl::SkipEmpty());
     TF_RET_CHECK(name_tokens.size() <= 2);
     auto it = func_call_attrs.find(name_tokens[0]);
     if (it == func_call_attrs.end()) {
-      (*values)[string(name)] = std::move(value);
+      (*values)[std::string(name)] = std::move(value);
     } else {
       (*it->second.mutable_func()->mutable_attr())[name_tokens[1]] =
           std::move(value);
@@ -457,7 +457,7 @@ absl::Status SetShapeAttribute(absl::string_view name,
   AttrValue value;
   SetTensorShapeProto(shaped_type, value.mutable_list()->add_shape());
 
-  auto result = values->insert({string(name), value});
+  auto result = values->insert({std::string(name), value});
   if (!result.second) {
     // This should be extremely rare as it means we are adding the same
     // attribute multiple times/have some redundancy in representing this

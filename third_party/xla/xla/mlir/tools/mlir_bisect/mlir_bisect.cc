@@ -263,8 +263,8 @@ void ReplaceArgsWithConstants(ModuleOp module,
         bbarg.getType());
     CHECK_EQ(attr.size(), 1) << "unsupported argument";
 
-    auto constant = b.create<arith::ConstantOp>(
-        main.getLoc(), bbarg.getType(), llvm::cast<TypedAttr>(attr.front()));
+    auto constant = arith::ConstantOp::create(
+        b, main.getLoc(), bbarg.getType(), llvm::cast<TypedAttr>(attr.front()));
     bbarg.replaceAllUsesWith(constant);
   }
 
@@ -272,8 +272,8 @@ void ReplaceArgsWithConstants(ModuleOp module,
   for (auto arg :
        main.getBody().getArguments().drop_front(snapshot.arguments().size())) {
     CHECK(llvm::isa<MemRefType>(arg.getType())) << "unsupported argument";
-    arg.replaceAllUsesWith(b.create<memref::AllocOp>(
-        module.getLoc(), llvm::cast<MemRefType>(arg.getType())));
+    arg.replaceAllUsesWith(memref::AllocOp::create(
+        b, module.getLoc(), llvm::cast<MemRefType>(arg.getType())));
   }
   while (main.getBody().getNumArguments() > 0) {
     main.getBody().eraseArgument(0);

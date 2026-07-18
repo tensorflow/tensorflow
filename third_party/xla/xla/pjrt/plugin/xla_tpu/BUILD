@@ -46,6 +46,18 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_compile_only_static_registration",
+    srcs = ["tpu_static_registration.cc"],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    deps = [
+        "//xla/pjrt/c:pjrt_c_api_tpu_internal",
+        "//xla/pjrt/plugin:plugin_names",
+        "//xla/pjrt/plugin:static_registration",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
     name = "tpu_dynamic_registration",
     srcs = ["tpu_dynamic_registration.cc"],
     compatible_with = get_compatible_with_libtpu_portable(),

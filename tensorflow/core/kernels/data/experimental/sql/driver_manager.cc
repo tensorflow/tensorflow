@@ -24,7 +24,7 @@ namespace experimental {
 namespace sql {
 
 std::unique_ptr<QueryConnection> DriverManager::CreateQueryConnection(
-    const string& driver_name) {
+    const std::string& driver_name) {
   if (driver_name == "sqlite") {
     return std::make_unique<SqliteQueryConnection>();
   } else {  // TODO(b/64276826, b/64276995) Add support for other db types.

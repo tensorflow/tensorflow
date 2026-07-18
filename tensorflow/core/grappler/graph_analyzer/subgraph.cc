@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -81,9 +82,9 @@ size_t Subgraph::Identity::Hash() const {
   return result;
 }
 
-string Subgraph::Dump() {
+std::string Subgraph::Dump() {
   // TODO(babkin): this is simplified for now.
-  std::vector<string> nodes;
+  std::vector<std::string> nodes;
   for (const auto& n : id_) {
     if (specific_) {
       nodes.emplace_back(absl::StrFormat("%s(%s)", n->opcode(), n->name()));

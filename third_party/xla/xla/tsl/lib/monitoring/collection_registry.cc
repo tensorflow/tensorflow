@@ -15,12 +15,17 @@ limitations under the License.
 
 #include "xla/tsl/lib/monitoring/collection_registry.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/base/no_destructor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/lib/monitoring/collected_metrics.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/types.h"
-#include "tsl/platform/stringpiece.h"
 
 // We replace this implementation with a null implementation for mobile
 // platforms.
@@ -33,28 +38,28 @@ namespace monitoring {
 namespace internal {
 
 void Collector::CollectMetricValues(
-    const CollectionRegistry::CollectionInfo& info) {
-  info.collection_function(MetricCollectorGetter(
-      this, info.metric_def, info.registration_time_millis));
+    const CollectionRegistry::CollectionInfo& collection_info) {
+  collection_info.collection_function(
+      MetricCollectorGetter(this, collection_info.metric_def,
+                            collection_info.registration_time_millis));
 }
 
 std::unique_ptr<CollectedMetrics> Collector::ConsumeCollectedMetrics() {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   return std::move(collected_metrics_);
 }
 
 void Collector::CollectMetricDescriptor(
     const AbstractMetricDef* const metric_def) {
   auto* const metric_descriptor = [&]() {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     return collected_metrics_->metric_descriptor_map
-        .insert(std::make_pair(
-            string(metric_def->name()),
-            std::unique_ptr<MetricDescriptor>(new MetricDescriptor())))
+        .insert(std::make_pair(std::string(metric_def->name()),
+                               std::make_unique<MetricDescriptor>()))
         .first->second.get();
   }();
-  metric_descriptor->name = string(metric_def->name());
-  metric_descriptor->description = string(metric_def->description());
+  metric_descriptor->name = std::string(metric_def->name());
+  metric_descriptor->description = std::string(metric_def->description());
 
   for (const absl::string_view label_name : metric_def->label_descriptions()) {
     metric_descriptor->label_names.emplace_back(label_name);
@@ -65,6 +70,39 @@ void Collector::CollectMetricDescriptor(
 }
 
 }  // namespace internal
+
+namespace exporter_registration {
+
+// static
+ExporterRegistration* ExporterRegistration::Get() {
+  static absl::NoDestructor<ExporterRegistration> instance;
+  return instance.get();
+}
+
+void ExporterRegistration::Register(Exporter* exporter) {
+  CHECK(exporter != nullptr)
+      << "ExporterRegistration::Register() called with a null exporter.";
+
+  absl::MutexLock l(exporters_mu_);
+  CHECK(!start_exporters_called_)
+      << "ExporterRegistration registered after "
+         "StartExporters() was called. The newly added exporter "
+         "will not be initialized.";
+  exporters_.emplace_back(exporter);
+}
+
+// static
+void ExporterRegistration::StartExporters() { Get()->StartExportersImpl(); }
+
+void ExporterRegistration::StartExportersImpl() {
+  absl::MutexLock l(exporters_mu_);
+  start_exporters_called_ = true;
+  for (Exporter* exporter : exporters_) {
+    exporter->PeriodicallyExportMetrics();
+  }
+}
+
+}  // namespace exporter_registration
 
 // static
 CollectionRegistry* CollectionRegistry::Default() {
@@ -81,7 +119,7 @@ CollectionRegistry::Register(const AbstractMetricDef* const metric_def,
   CHECK(collection_function)
       << "Requires collection_function to contain an implementation.";
 
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
 
   const auto found_it = registry_.find(metric_def->name());
   if (found_it != registry_.end()) {
@@ -98,12 +136,11 @@ CollectionRegistry::Register(const AbstractMetricDef* const metric_def,
       {metric_def->name(),
        {metric_def, collection_function, env_->NowMicros() / 1000}});
 
-  return std::unique_ptr<RegistrationHandle>(
-      new RegistrationHandle(this, metric_def));
+  return std::make_unique<RegistrationHandle>(this, metric_def);
 }
 
 void CollectionRegistry::Unregister(const AbstractMetricDef* const metric_def) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   registry_.erase(metric_def->name());
 }
 
@@ -111,13 +148,17 @@ std::unique_ptr<CollectedMetrics> CollectionRegistry::CollectMetrics(
     const CollectMetricsOptions& options) const {
   internal::Collector collector(env_->NowMicros() / 1000);
 
-  absl::MutexLock l(&mu_);
-  for (const auto& registration : registry_) {
+  absl::MutexLock l(mu_);
+  // Though `registry_` doesn't itself have a deterministic iteration order,
+  // `CollectMetricDescriptor` inserts each metric into an ordered container,
+  // implicitly sorting the metrics in the process. This loop's result is
+  // therefore deterministic.
+  for (const auto& [unused_name, collection_info] : registry_) {  // NOLINT
     if (options.collect_metric_descriptors) {
-      collector.CollectMetricDescriptor(registration.second.metric_def);
+      collector.CollectMetricDescriptor(collection_info.metric_def);
     }
 
-    collector.CollectMetricValues(registration.second /* collection_info */);
+    collector.CollectMetricValues(collection_info);
   }
   return collector.ConsumeCollectedMetrics();
 }

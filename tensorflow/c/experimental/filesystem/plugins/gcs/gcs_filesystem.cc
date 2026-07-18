@@ -40,7 +40,6 @@ limitations under the License.
 #include "google/cloud/storage/client.h"
 #include "tensorflow/c/env.h"
 #include "tensorflow/c/experimental/filesystem/plugins/gcs/gcs_helper.h"
-#include "tensorflow/c/logging.h"
 #include "tensorflow/c/tf_status.h"
 
 // Implementation of a filesystem for GCS environments.
@@ -151,10 +150,20 @@ static int64_t LoadBufferFromGCS(const std::string& path, size_t offset,
     TF_SetStatus(status, TF_UNKNOWN, "Could not get content-length header");
     return -1;
   }
+  if (read < 0 || read > static_cast<int64_t>(buffer_size)) {
+    TF_SetStatus(status, TF_INTERNAL,
+                 "Read length from GCS exceeds buffer size.");
+    return -1;
+  }
   // `TF_OUT_OF_RANGE` isn't considered as an error. So we clear it here.
   TF_SetStatus(status, TF_OK, "");
   VLOG(1) << absl::StrFormat("Successful read of %s @ %u of size: %u", path,
                              offset, read);
+  if (read < 0) {
+    TF_SetStatus(status, TF_INTERNAL, "Invalid negative content-length");
+    return -1;
+  }
+  read = std::min<int64_t>(read, buffer_size);
   stream.read(buffer, read);
   read = stream.gcount();
   if (read < buffer_size) {
@@ -215,10 +224,10 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
   if (gcs_file->is_cache_enable || n > gcs_file->buffer_size) {
     return gcs_file->read_fn(gcs_file->path, offset, n, buffer, status);
   } else {
-    absl::MutexLock l(&gcs_file->buffer_mutex);
+    absl::MutexLock l(gcs_file->buffer_mutex);
     size_t buffer_end = gcs_file->buffer_start + gcs_file->buffer.size();
     size_t copy_size = 0;
-    if (offset < buffer_end && gcs_file->buffer_start) {
+    if (offset >= gcs_file->buffer_start && offset < buffer_end) {
       copy_size = (std::min)(n, static_cast<size_t>(buffer_end - offset));
       memcpy(buffer,
              gcs_file->buffer.data() + (offset - gcs_file->buffer_start),
@@ -583,7 +592,7 @@ void NewRandomAccessFile(const TF_Filesystem* filesystem, const char* path,
   auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
   bool is_cache_enabled;
   {
-    absl::MutexLock l(&gcs_file->block_cache_lock);
+    absl::MutexLock l(gcs_file->block_cache_lock);
     is_cache_enabled = gcs_file->file_block_cache->IsCacheEnabled();
   }
   auto read_fn = [gcs_file, is_cache_enabled, bucket, object](
@@ -591,7 +600,7 @@ void NewRandomAccessFile(const TF_Filesystem* filesystem, const char* path,
                      char* buffer, TF_Status* status) -> int64_t {
     int64_t read = 0;
     if (is_cache_enabled) {
-      absl::ReaderMutexLock l(&gcs_file->block_cache_lock);
+      absl::ReaderMutexLock l(gcs_file->block_cache_lock);
       GcsFileStat stat;
       gcs_file->stat_cache->LookupOrCompute(
           path, &stat,
@@ -715,15 +724,21 @@ void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
   int64_t read =
       tf_random_access_file::Read(&reader, 0, metadata->size(), buffer, status);
   tf_random_access_file::Cleanup(&reader);
-  if (TF_GetCode(status) != TF_OK) return;
+  if (TF_GetCode(status) != TF_OK) {
+    plugin_memory_free(buffer);
+    return;
+  }
 
   if (read > 0 && buffer) {
     region->plugin_memory_region =
         new tf_read_only_memory_region::GCSMemoryRegion(
             {buffer, static_cast<uint64_t>(read)});
     TF_SetStatus(status, TF_OK, "");
-  } else if (read == 0) {
-    TF_SetStatus(status, TF_INVALID_ARGUMENT, "File is empty");
+  } else {
+    if (read == 0) {
+      TF_SetStatus(status, TF_INVALID_ARGUMENT, "File is empty");
+    }
+    plugin_memory_free(buffer);
   }
 }
 
@@ -845,7 +860,7 @@ static bool FolderExists(GCSFile* gcs_file, std::string dir,
 }
 
 static void ClearFileCaches(GCSFile* gcs_file, const std::string& path) {
-  absl::ReaderMutexLock l(&gcs_file->block_cache_lock);
+  absl::ReaderMutexLock l(gcs_file->block_cache_lock);
   gcs_file->file_block_cache->RemoveFile(path);
   gcs_file->stat_cache->Delete(path);
 }
@@ -1162,7 +1177,7 @@ static char* TranslateName(const TF_Filesystem* filesystem, const char* uri) {
 
 static void FlushCaches(const TF_Filesystem* filesystem) {
   auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
-  absl::ReaderMutexLock l(&gcs_file->block_cache_lock);
+  absl::ReaderMutexLock l(gcs_file->block_cache_lock);
   gcs_file->file_block_cache->Flush();
   gcs_file->stat_cache->Clear();
 }

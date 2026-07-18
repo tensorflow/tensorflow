@@ -82,8 +82,8 @@ void UnwrapXlaCallModuleOp(TF::XlaCallModuleOp call_op,
   // TODO: b/310291615 - find a better way for multi-platform support.
   if (call_op_has_platform_index_arg) {
     arg_mapper.map(func_op.getArgument(0),
-                   builder.create<mhlo::ConstantOp>(
-                       func_op.getLoc(), builder.getI16IntegerAttr(0)));
+                   mhlo::ConstantOp::create(builder, func_op.getLoc(),
+                                            builder.getI16IntegerAttr(0)));
   }
   for (auto [func_arg, operand] : llvm::zip_equal(
            func_op.getArguments().take_back(call_op.getNumOperands()),

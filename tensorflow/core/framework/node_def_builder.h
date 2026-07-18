@@ -56,7 +56,7 @@ class NodeDefBuilder {
     NodeOut(absl::string_view n, int i, DataType dt);
     NodeOut();  // uninitialized, call Reset() before use.
     void Reset(absl::string_view n, int i, DataType dt);
-    string node;
+    std::string node;
     int index;
     DataType data_type;
   };
@@ -112,9 +112,10 @@ class NodeDefBuilder {
                        absl::Span<const absl::string_view> value);
   NodeDefBuilder& Attr(absl::string_view name,
                        absl::Span<const char* const> value);
-  NodeDefBuilder& Attr(absl::string_view name, absl::Span<const string> value);
+  NodeDefBuilder& Attr(absl::string_view name,
+                       absl::Span<const std::string> value);
   NodeDefBuilder& Attr(absl::string_view name, absl::Span<const tstring> value);
-  NodeDefBuilder& Attr(absl::string_view name, absl::Span<const int32> value);
+  NodeDefBuilder& Attr(absl::string_view name, absl::Span<const int32_t> value);
   NodeDefBuilder& Attr(absl::string_view name, absl::Span<const int64_t> value);
   NodeDefBuilder& Attr(absl::string_view name, absl::Span<const float> value);
   NodeDefBuilder& Attr(absl::string_view name, absl::Span<const bool> value);
@@ -145,7 +146,7 @@ class NodeDefBuilder {
   absl::Status Finalize(NodeDef* node_def, bool consume = false);
 
   // Accessors for the values set in the constructor.
-  const string& node_name() const { return node_def_.name(); }
+  const std::string& node_name() const { return node_def_.name(); }
   const OpDef& op_def() const { return *op_def_; }
 
  private:
@@ -189,8 +190,8 @@ class NodeDefBuilder {
   const OpDef* op_def_;
   NodeDef node_def_;
   int inputs_specified_;
-  std::vector<string> control_inputs_;
-  std::vector<string> errors_;
+  std::vector<std::string> control_inputs_;
+  std::vector<std::string> errors_;
 };
 
 }  // namespace tensorflow

@@ -1,3 +1,5 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # BSD 3-Clause
@@ -12,14 +14,16 @@ cc_library(
         "snappy.h",
         "snappy-internal.h",
         "snappy-sinksource.cc",
-        "snappy-sinksource.h",
         "snappy-stubs-internal.cc",
         "snappy-stubs-internal.h",
         "snappy-stubs-public.h",
     ],
-    hdrs = ["snappy.h"],
+    hdrs = [
+        "snappy.h",
+        "snappy-sinksource.h",
+    ],
     copts = ["-DHAVE_CONFIG_H"] + select({
-        "@local_xla//xla/tsl:windows": [],
+        "@xla//xla/tsl:windows": [],
         "//conditions:default": [
             "-fno-exceptions",
             "-Wno-sign-compare",
@@ -28,7 +32,7 @@ cc_library(
         ],
     }),
     defines = select({
-        "@local_xla//xla/tsl:windows": [],
+        "@xla//xla/tsl:windows": [],
         "//conditions:default": ["HAVE_SYS_UIO_H"],
     }),
 )

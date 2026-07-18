@@ -51,7 +51,7 @@ std::string TmpDir() {
   return tmp_dir;
 }
 
-int PickUnusedPortOrDie() { return internal::PickUnusedPortOrDie(); }
+int PickUnusedPortOrDie() { return net::PickUnusedPortOrDie(); }
 
 int RandomSeed() {
   const char* random_seed_str = std::getenv("TEST_RANDOM_SEED");
@@ -78,16 +78,6 @@ std::string XlaSrcRoot() {
   return kIsOpenSource ? io::JoinPath(srcdir, workspace, "xla")
                        : io::JoinPath(srcdir, workspace,
                                       "third_party/tensorflow/compiler/xla");
-}
-
-std::string TslSrcRoot() {
-  std::string workspace = GetEnvVarOrDie("TEST_WORKSPACE");
-  std::string srcdir = GetEnvVarOrDie("TEST_SRCDIR");
-  const char* tsl_path = "tsl";
-
-  return kIsOpenSource
-             ? io::JoinPath(srcdir, workspace, tsl_path)
-             : io::JoinPath(srcdir, workspace, "third_party", tsl_path);
 }
 
 }  // namespace testing

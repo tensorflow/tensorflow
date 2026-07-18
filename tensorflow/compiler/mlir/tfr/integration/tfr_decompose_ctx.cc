@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/LogicalResult.h"
@@ -81,16 +82,17 @@ absl::StatusOr<std::unique_ptr<TFRDecomposeContext>> TFRDecomposeContext::Get(
   std::string tfr_lib_dir;
   TF_RETURN_IF_ERROR(ReadStringFromEnvVar(
       kTFRLibEnv, "tensorflow/compiler/mlir/tfr/resources", &tfr_lib_dir));
-  string composite_mlir_dir = io::JoinPath(env->GetRunfilesDir(), tfr_lib_dir);
-  std::vector<string> files;
+  std::string composite_mlir_dir =
+      io::JoinPath(env->GetRunfilesDir(), tfr_lib_dir);
+  std::vector<std::string> files;
   TF_RETURN_IF_ERROR(env->GetChildren(composite_mlir_dir, &files));
   if (files.empty()) {
-    return errors::Internal(absl::StrCat(
+    return absl::InternalError(absl::StrCat(
         "Failed to find the decomposition lib from path ", composite_mlir_dir));
   }
   std::string tfr_raw_text;
   for (const auto& file : files) {
-    string fullpath = io::JoinPath(composite_mlir_dir, file);
+    std::string fullpath = io::JoinPath(composite_mlir_dir, file);
     if (env->MatchPath(fullpath, io::JoinPath(composite_mlir_dir, "*.mlir"))) {
       std::string text;
       TF_RETURN_IF_ERROR(ReadFileToString(env, fullpath, &text));
@@ -100,7 +102,7 @@ absl::StatusOr<std::unique_ptr<TFRDecomposeContext>> TFRDecomposeContext::Get(
 
   auto ctx = TFRDecomposeContext::GetFromText(tfr_raw_text, mlir_ctx);
   if (!ctx) {
-    return errors::Internal(absl::StrCat(
+    return absl::InternalError(absl::StrCat(
         "Failed to load the imported decomposition lib: ", tfr_raw_text));
   }
   return ctx;
@@ -203,7 +205,7 @@ absl::StatusOr<FunctionDef> TFRDecomposeContext::ExpandNode(
 absl::Status TFRDecomposeContext::DecomposeGraph(mlir::ModuleOp user_module) {
   // Call the decompose passes by using the external symbol table.
   if (failed(pm_.run(user_module))) {
-    return errors::Internal("Failed to run the decompose passes.");
+    return absl::InternalError("Failed to run the decompose passes.");
   }
   return absl::OkStatus();
 }

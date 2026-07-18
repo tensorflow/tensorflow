@@ -21,6 +21,8 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -28,10 +30,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Value.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/shape.h"
@@ -71,15 +74,14 @@ std::ostream& operator<<(std::ostream& out,
 
 // Computes indexing maps for all input operands necessary to compute an element
 // of the `output_id` instruction output.
-HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
-                                                    int output_id,
-                                                    mlir::MLIRContext* ctx);
+HloInstructionIndexing ComputeOutputToInputIndexing(
+    const HloInstruction* instr, int output_id,
+    mlir::MLIRContext* mlir_context);
 
 // Computes indexing maps for all output operands that the element of the
 // `input_id` instruction input will participate in.
-HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
-                                                    int input_id,
-                                                    mlir::MLIRContext* ctx);
+HloInstructionIndexing ComputeInputToOutputIndexing(
+    const HloInstruction* instr, int input_id, mlir::MLIRContext* mlir_context);
 
 // Computes the indexing for `epilogue_parent`'s epilogue. For example, if
 // `epilogue_parent` is a transpose, computes the input to output indexing for
@@ -109,15 +111,37 @@ IndexingMap ComputeEpilogueInputToOutputIndexing(
     HloInstructionAdaptor epilogue_parent, HloInstructionAdaptor epilogue_root,
     mlir::MLIRContext* mlir_context);
 
-// Indexing of the runtime variable of the HLO instruction.
+// Type for referencing either an HloInstruction or MLIR Value
+using InstructionRef = std::variant<const HloInstruction*, mlir::Value>;
+
+// Indexing of the runtime variable of the HLO instruction or MLIR operation.
 struct RuntimeVarIndexing {
-  // Instruction of the runtime variable. Note that while in trivial cases it
+  // Instruction reference. Can be either HloInstruction* (for XLA HLO) or
+  // mlir::Value (for StableHLO/MLIR). Note that while in trivial cases it
   // points to one of the operands of the instruction, with multiple
   // instructions and fusions it may point to an arbitrary instruction in the
   // computation.
-  const HloInstruction* hlo;
-  // Output-to-input indexing map from the instruction to the output of `hlo`.
+  InstructionRef instruction_ref;
+
+  // Output-to-input indexing map from the instruction to the output.
   IndexingMap map;
+
+  // Accessor for HloInstruction*
+  const HloInstruction* hlo() const {
+    if (auto* hlo = std::get_if<const HloInstruction*>(&instruction_ref)) {
+      return *hlo;
+    }
+    return nullptr;
+  }
+
+  // Accessor for MLIR operations
+  mlir::Operation* mlir_op() const {
+    if (auto* val = std::get_if<mlir::Value>(&instruction_ref)) {
+      return val->getDefiningOp();
+    }
+    return nullptr;
+  }
+
   std::string ToString() const;
 };
 
@@ -206,13 +230,18 @@ using GroupedByOpIndexing =
 // cluster starting with `target_instr` and going from def to use.
 GroupedByOpIndexing ComputeGroupedOutputToInputIndexing(
     const HloFusionAdaptor& fusion_adaptor, HloInstructionAdaptor target_instr,
-    mlir::MLIRContext* ctx);
+    mlir::MLIRContext* mlir_context);
 
 // Returns the indexing map from logical to linearized physical shape for each
 // operand.
 llvm::SmallVector<IndexingMap, 4> MapLogicalToLinearizedPhysicalShape(
     absl::Span<const HloInstruction* const> operands,
     mlir::MLIRContext* mlir_context);
+
+// Optimizes a runtime variable if it's possible to replace it with a constant.
+std::optional<SymbolicExpr> OptimizeRTVar(const RuntimeVarIndexing& rt_var,
+                                          const Interval& feasible_values,
+                                          mlir::MLIRContext* mlir_context);
 
 // Computes the indexing map from logical to linearized physical shape for each
 // operand and adds them to `result`. `result` may be non-empty when this
@@ -259,15 +288,14 @@ IndexingMap GetIndexingMapFromLogicalToPhysicalLayout(
 const Shape& GetOutputShape(const HloInstruction* instr, int64_t output_id);
 
 // Computes 1D index given a shape and N-d indexing expressions.
-mlir::AffineExpr LinearizeShape(
-    absl::Span<const int64_t> dims,
-    absl::Span<const mlir::AffineExpr> dimension_exprs,
-    mlir::MLIRContext* mlir_context);
+SymbolicExpr LinearizeShape(absl::Span<const int64_t> dims,
+                            absl::Span<const SymbolicExpr> dimension_exprs,
+                            mlir::MLIRContext* mlir_context);
 
 // Computes N-d indexing expressions given a linear index and a shape.
-std::vector<mlir::AffineExpr> DelinearizeIndex(absl::Span<const int64_t> dims,
-                                               mlir::AffineExpr linear_index,
-                                               mlir::MLIRContext* mlir_context);
+llvm::SmallVector<SymbolicExpr, 4> DelinearizeIndex(
+    absl::Span<const int64_t> dims, SymbolicExpr linear_index,
+    mlir::MLIRContext* mlir_context);
 
 // Creates an identity indexing map corresponding to the parameter shape.
 IndexingMap CreateIdentityMap(const Shape& shape,
@@ -275,8 +303,8 @@ IndexingMap CreateIdentityMap(const Shape& shape,
 IndexingMap CreateIdentityMap(absl::Span<const int64_t> dimensions,
                               mlir::MLIRContext* mlir_context);
 
-llvm::SmallVector<mlir::AffineExpr, 4> DelinearizeInBoundsIndex(
-    mlir::AffineExpr linear, absl::Span<const int64_t> sizes);
+llvm::SmallVector<SymbolicExpr, 4> DelinearizeInBoundsIndex(
+    SymbolicExpr linear, absl::Span<const int64_t> sizes);
 
 }  // namespace xla
 

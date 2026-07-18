@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
 
-#include <functional>
+#include <cstdint>
 #include <memory>
+#include <optional>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -51,29 +56,29 @@ namespace tensorflow {
 }
 
 /*static*/ std::unique_ptr<XlaResource> XlaResource::CreateStack(
-    string name, DataType type, int64_t max_size) {
+    std::string name, DataType type, int64_t max_size) {
   return std::make_unique<XlaResource>(
       XlaResource::kStack, /*arg_num=*/-1, std::move(name), type, TensorShape(),
       /*initial_value=*/xla::XlaOp(),
       /*max_array_size=*/max_size,
-      /*tensor_array_gradients=*/std::set<string>{},
+      /*tensor_array_gradients=*/std::set<std::string>{},
       /*tensor_array_multiple_writes_aggregate=*/false);
 }
 
 /*static*/ std::unique_ptr<XlaResource> XlaResource::CreateTensorArray(
-    string name, DataType type, TensorShape shape, xla::XlaOp initial_value,
-    int64_t max_array_size) {
+    std::string name, DataType type, TensorShape shape,
+    xla::XlaOp initial_value, int64_t max_array_size) {
   return std::make_unique<XlaResource>(
       XlaResource::kTensorArray, /*arg_num=*/-1, std::move(name), type, shape,
       initial_value, max_array_size,
-      /*tensor_array_gradients=*/std::set<string>{},
+      /*tensor_array_gradients=*/std::set<std::string>{},
       /*tensor_array_multiple_writes_aggregate=*/false);
 }
 
 XlaResource::XlaResource(
-    Kind kind, int arg_num, string name, DataType type, TensorShape shape,
+    Kind kind, int arg_num, std::string name, DataType type, TensorShape shape,
     xla::XlaOp initial_value, int64_t max_array_size,
-    const std::set<string>& tensor_array_gradients,
+    const std::set<std::string>& tensor_array_gradients,
     bool tensor_array_multiple_writes_aggregate,
     const std::optional<ManagedStackTrace>& definition_stack_trace)
     : kind_(kind),
@@ -89,7 +94,7 @@ XlaResource::XlaResource(
       definition_stack_trace_(definition_stack_trace) {
   CHECK(kind_ != kInvalid);
 
-  for (const string& gradient : tensor_array_gradients) {
+  for (const std::string& gradient : tensor_array_gradients) {
     tensor_array_gradients_[gradient].reset(new XlaResource(
         /*kind=*/kTensorArray, /*arg_num=*/-1,
         /*name=*/absl::StrCat("TensorArrayGrad: ", name_), type_, shape_,
@@ -101,23 +106,23 @@ XlaResource::XlaResource(
 absl::Status XlaResource::SetTypeAndShape(DataType type,
                                           const TensorShape& shape) {
   if (type == DT_INVALID) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Attempted to set type of resource '", name_, "'' to an invalid type",
-        DefinitionLocationMsg(definition_stack_trace_));
+        DefinitionLocationMsg(definition_stack_trace_)));
   }
   if (initialized() && type_ != type) {
-    return errors::InvalidArgument(
-        "Trying to assign variable with wrong dtype. Expected ",
-        DataTypeString(type_), " got ", DataTypeString(type),
-        DefinitionLocationMsg(definition_stack_trace_));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Trying to assign variable with wrong dtype. Expected ",
+                     DataTypeString(type_), " got ", DataTypeString(type),
+                     DefinitionLocationMsg(definition_stack_trace_)));
   }
   if (initialized() && shape_ != shape) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Shape of resource ", name_,
         " cannot be changed after initialization: "
         "old shape was ",
         shape_.DebugString(), ", new shape is ", shape.DebugString(),
-        DefinitionLocationMsg(definition_stack_trace_));
+        DefinitionLocationMsg(definition_stack_trace_)));
   }
   type_ = type;
   shape_ = shape;
@@ -126,9 +131,9 @@ absl::Status XlaResource::SetTypeAndShape(DataType type,
 
 absl::Status XlaResource::SetValue(const xla::XlaOp value) {
   if (type_ == DT_INVALID) {
-    return errors::InvalidArgument(
-        "Resource '", name_,
-        "' must be initialized with a valid type before use.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Resource '", name_,
+                     "' must be initialized with a valid type before use."));
   }
   value_ = value;
   is_overwritten_ = true;
@@ -138,9 +143,9 @@ absl::Status XlaResource::SetValue(const xla::XlaOp value) {
 absl::Status XlaResource::SetZeroValue(xla::XlaBuilder* builder) {
   is_overwritten_ = true;
   if (type_ == DT_INVALID) {
-    return errors::InvalidArgument(
-        "Resource '", name_,
-        "' must be initialized with a valid type before use.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Resource '", name_,
+                     "' must be initialized with a valid type before use."));
   }
   switch (kind_) {
     case kVariable: {
@@ -163,7 +168,7 @@ absl::Status XlaResource::SetZeroValue(xla::XlaBuilder* builder) {
       value_ =
           xla::Tuple(builder, {xla::Broadcast(XlaHelpers::Zero(builder, type_),
                                               ta_shape.dim_sizes()),
-                               xla::ConstantR0<int32>(builder, 0)});
+                               xla::ConstantR0<int32_t>(builder, 0)});
       break;
     }
 
@@ -175,7 +180,7 @@ absl::Status XlaResource::SetZeroValue(xla::XlaBuilder* builder) {
 }
 
 absl::Status XlaResource::GetOrCreateTensorArrayGradient(
-    const string& source, xla::XlaBuilder* builder,
+    const std::string& source, xla::XlaBuilder* builder,
     XlaResource** gradient_out) {
   VLOG(2) << "Gradient lookup for resource: " << name_
           << " gradient: " << source;
@@ -214,9 +219,9 @@ absl::Status XlaResource::Pack(xla::XlaOp* pack,
   return absl::OkStatus();
 }
 
-absl::Status XlaResource::SetFromPack(const std::set<string>& gradient_sources,
-                                      const xla::XlaOp pack,
-                                      xla::XlaBuilder* builder) {
+absl::Status XlaResource::SetFromPack(
+    const std::set<std::string>& gradient_sources, const xla::XlaOp pack,
+    xla::XlaBuilder* builder) {
   if (gradient_sources.empty()) {
     if (!initialized()) {
       initial_value_ = pack;

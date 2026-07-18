@@ -1,6 +1,6 @@
 # platform package
 
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_oss",
@@ -29,12 +29,17 @@ tf_py_build_info_genrule(
     out = "build_info.py",
 )
 
-py_strict_library(
+py_library(
     name = "build_info",
     srcs = ["build_info.py"],
 )
 
-py_strict_library(
+py_library(
+    name = "windows_lib_diagnostics",
+    srcs = ["windows_lib_diagnostics.py"],
+)
+
+py_library(
     name = "self_check",
     srcs = ["self_check.py"],
     deps = if_oss(
@@ -45,7 +50,7 @@ py_strict_library(
     ),
 )
 
-py_strict_library(
+py_library(
     name = "benchmark",
     srcs = ["benchmark.py"],
     visibility = visibility + ["//tensorflow:internal"],
@@ -61,12 +66,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "analytics",
     srcs = ["analytics.py"],
 )
 
-py_strict_library(
+py_library(
     name = "device_context",
     srcs = ["device_context.py"],
     deps = [
@@ -75,7 +80,7 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "test",
     srcs = ["googletest.py"],
     # copybara:uncomment_begin(google-only)
@@ -186,16 +191,16 @@ tf_python_pybind_extension(
     srcs = ["stacktrace_handler_wrapper.cc"],
     hdrs = [
         "//tensorflow/core/platform:stacktrace_handler_hdrs",
-        "@local_tsl//tsl/platform:stacktrace_handler_hdrs",
+        "@tsl//tsl/platform:stacktrace_handler_hdrs",
     ],
     enable_stub_generation = True,
     pytype_srcs = [
         "_pywrap_stacktrace_handler.pyi",
     ],
     deps = [
-        "@local_tsl//tsl/platform:stacktrace_handler_hdrs_lib",
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
+        "@tsl//tsl/platform:stacktrace_handler_hdrs_lib",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 
@@ -208,18 +213,17 @@ tf_python_pybind_extension(
     ],
     deps = [
         "//tensorflow/core/platform:cpu_feature_guard_hdr",  # Only depend on header to avoid ODR issues.
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "client_testlib",
     srcs = ["test.py"],
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + [
     # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
-    # "//third_party/mlperf:__subpackages__",
     # "//third_party/py/tf_slim:__subpackages__",
     # "//tensorflow:internal",
     # "//tensorflow_models:__subpackages__",
@@ -237,7 +241,7 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "app",
     srcs = ["app.py"],
     deps = [
@@ -248,7 +252,7 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "sysconfig",
     srcs = ["sysconfig.py"],
     deps = [
@@ -259,33 +263,33 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "__init__",
     srcs = ["__init__.py"],
     deps = [
     ],
 )
 
-py_strict_library(
+py_library(
     name = "control_imports",
     srcs = ["control_imports.py"],
     deps = [
     ],
 )
 
-py_strict_library(
+py_library(
     name = "parameterized",
     srcs = ["parameterized.py"],
 )
 
-py_strict_library(
+py_library(
     name = "remote_utils",
     srcs = ["remote_utils.py"],
     deps = [
     ],
 )
 
-py_strict_library(
+py_library(
     name = "gfile",
     srcs = ["gfile.py"],
     # copybara:uncomment_begin(google-only)
@@ -302,13 +306,18 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tf_logging",
     srcs = ["tf_logging.py"],
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + [
     # "//learning/brain/contrib/learn:__pkg__",
     # "//learning/brain/mobile/lite/lstm:__pkg__",
+    # "//third_party/py/tf_keras/distribute:__pkg__",
+    # "//third_party/py/tf_keras/layers/preprocessing:__pkg__",
+    # "//third_party/py/tf_keras/models:__pkg__",
+    # "//third_party/py/tf_keras/optimizers:__pkg__",
+    # "//third_party/py/tf_keras/tests:__pkg__",
     # "//third_party/py/tf_slim/training:__pkg__",
     # ],
     # copybara:uncomment_end_and_comment_begin
@@ -322,7 +331,7 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "flags",
     srcs = ["flags.py"],
     visibility = ["//visibility:public"],
@@ -332,7 +341,7 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "resource_loader",
     srcs = ["resource_loader.py"],
     visibility = ["//visibility:public"],

@@ -54,8 +54,8 @@ class TensorSlice {
   static absl::Status BuildTensorSlice(const TensorSliceProto& proto,
                                        TensorSlice* output);
 
-  static absl::Status Parse(const string& str, TensorSlice* output);
-  static TensorSlice ParseOrDie(const string& str) {
+  static absl::Status Parse(const std::string& str, TensorSlice* output);
+  static TensorSlice ParseOrDie(const std::string& str) {
     TensorSlice ret;
     absl::Status s = Parse(str, &ret);
     if (!s.ok()) {
@@ -117,7 +117,7 @@ class TensorSlice {
 
   // Conversion of a TensorSlice to other formats
   void AsProto(TensorSliceProto* proto) const;
-  string DebugString() const;
+  std::string DebugString() const;
 
   // Fill *indices and *sizes from *this (so that we can use the slice()
   // function in eigen tensor). We need a tensor shape in case some of the

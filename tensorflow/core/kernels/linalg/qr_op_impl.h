@@ -22,6 +22,7 @@ limitations under the License.
 // individual kernels. A separate file is used for each instantiated kernel to
 // improve compilation times.
 #include <algorithm>
+#include <limits>
 #include <numeric>
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -89,8 +90,9 @@ class QrOp : public LinearAlgebraOp<Scalar> {
                   2 * min_size * min_size * min_size / 3.;
     // TODO(jpoulson): Increase the cost if full_matrices is true in a manner
     // that reflects the algorithm used for the expansion.
-    return cost >= static_cast<double>(kint64max) ? kint64max
-                                                  : static_cast<int64_t>(cost);
+    return cost >= static_cast<double>(std::numeric_limits<int64_t>::max())
+               ? std::numeric_limits<int64_t>::max()
+               : static_cast<int64_t>(cost);
   }
 
   using Matrix = typename Base::Matrix;
@@ -147,10 +149,10 @@ class QrOpGpu : public AsyncOpKernel {
         input.template flat_inner_dims<Scalar, 3>().dimension(0);
 
     // Validate inputs.
-    OP_REQUIRES_ASYNC(
-        context, ndims >= 2,
-        errors::InvalidArgument("Input must have rank >= 2, got ", ndims),
-        done);
+    OP_REQUIRES_ASYNC(context, ndims >= 2,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "Input must have rank >= 2, got ", ndims)),
+                      done);
 
     // Allocate output.
     // If full_matrices_ is true then Q is m x m and R is m x n.

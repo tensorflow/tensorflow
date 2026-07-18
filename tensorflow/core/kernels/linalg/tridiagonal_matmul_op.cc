@@ -16,7 +16,9 @@ limitations under the License.
 // See docs in ../ops/linalg_ops.cc.
 
 #include <cstdint>
+#include <limits>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -48,17 +50,17 @@ class TridiagonalMatMulOp : public LinearAlgebraOp<Scalar> {
     OP_REQUIRES(context,
                 input_matrix_shapes[0].dim_size(0) == 1 &&
                     input_matrix_shapes[0].dim_size(1) == n,
-                errors::InvalidArgument("Invalid superdiagonal shape."));
+                absl::InvalidArgumentError("Invalid superdiagonal shape."));
 
     OP_REQUIRES(context,
                 input_matrix_shapes[1].dim_size(0) == 1 &&
                     input_matrix_shapes[1].dim_size(1) == n,
-                errors::InvalidArgument("Invalid main diagonal shape."));
+                absl::InvalidArgumentError("Invalid main diagonal shape."));
 
     OP_REQUIRES(context,
                 input_matrix_shapes[2].dim_size(0) == 1 &&
                     input_matrix_shapes[2].dim_size(1) == n,
-                errors::InvalidArgument("Invalid subdiagonal shape."));
+                absl::InvalidArgumentError("Invalid subdiagonal shape."));
   }
 
   TensorShapes GetOutputMatrixShapes(
@@ -75,8 +77,9 @@ class TridiagonalMatMulOp : public LinearAlgebraOp<Scalar> {
 
     const double cost = num_rhss * ((3 * num_eqs - 2) * mult_cost +
                                     (2 * num_eqs - 2) * add_cost);
-    return cost >= static_cast<double>(kint64max) ? kint64max
-                                                  : static_cast<int64_t>(cost);
+    return cost >= static_cast<double>(std::numeric_limits<int64_t>::max())
+               ? std::numeric_limits<int64_t>::max()
+               : static_cast<int64_t>(cost);
   }
 
   // Needed to prevent writing result to the same location where input is.

@@ -1,3 +1,17 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: tf-tfrt-opt -split-input-file -tf-mlrt-rewrite-ifrt-load-variable %s | FileCheck %s
 
 // Variable is used by both CPU and TPU
@@ -8,14 +22,14 @@
 // CHECK-SAME:       <{used_by_host = true}> : (tensor<!tf_type.resource<tensor<3x1xf32>>>) -> (tensor<!tf_type.string>, !mlrt.future)
 // CHECK-NEXT:    [[TENSOR:%.*]] = "tf_mlrt.tf_await"([[FURTURE]]) : (!mlrt.future) -> tensor<3x1xf32>
 // CHECK-NEXT:    "tf.MatMul"(%arg0, [[TENSOR]]) : (tensor<1x3xf32>, tensor<3x1xf32>) -> tensor<1x1xf32>
-// CHECK-NEXT:    "tf.IfrtCall"(%arg0, [[ARRAYKEY]]) <{program_id = 6515870160938153680 : i64, variable_arg_indices = [1 : i32]}> {__tpu_compile_metadata_text = "retvals { sharding { } }"} : (tensor<1x3xf32>, tensor<!tf_type.string>) -> tensor<1x1xf32>
+// CHECK-NEXT:    "tf.IfrtCall"(%arg0, [[ARRAYKEY]]) <{operandSegmentSizes = array<i32: 2, 0>, program_id = 6515870160938153680 : i64, variable_arg_indices = [1 : i32]}> {__tpu_compile_metadata_text = "retvals { sharding { } }"} : (tensor<1x3xf32>, tensor<!tf_type.string>) -> tensor<1x1xf32>
 // CHECK-NEXT:    return
 //
  func.func @serving_default(%arg0: tensor<1x3xf32>) -> tensor<1x1xf32> {
     %0 = "tf.VarHandleOp"() <{container = "", shared_name = "y"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
     %array_key, %tensor = "tf.IfrtLoadVariable"(%0) <{used_by_host = true}> : (tensor<!tf_type.resource<tensor<3x1xf32>>>) -> (tensor<!tf_type.string>, tensor<3x1xf32>)
     %1 = "tf.MatMul"(%arg0, %tensor) : (tensor<1x3xf32>, tensor<3x1xf32>) -> tensor<1x1xf32>
-    %2 = "tf.IfrtCall"(%arg0, %array_key) <{program_id = 6515870160938153680 : i64, variable_arg_indices = [1 : i32]}> {__tpu_compile_metadata_text = "retvals { sharding { } }"} : (tensor<1x3xf32>, tensor<!tf_type.string>) -> tensor<1x1xf32>
+    %2 = "tf.IfrtCall"(%arg0, %array_key) <{operandSegmentSizes = array<i32: 2, 0>, program_id = 6515870160938153680 : i64, variable_arg_indices = [1 : i32]}> {__tpu_compile_metadata_text = "retvals { sharding { } }"} : (tensor<1x3xf32>, tensor<!tf_type.string>) -> tensor<1x1xf32>
     return %2 : tensor<1x1xf32>
   }
 

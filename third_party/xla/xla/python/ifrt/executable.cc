@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/execute_options.pb.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -31,15 +32,15 @@ char Executable::ID = 0;
 char LoadedExecutable::ID = 0;
 [[maybe_unused]] char ExecutableVersion::ID = 0;
 
-absl::StatusOr<ExecuteOptionsProto> ExecuteOptions::ToProto(
-    SerDesVersion version) const {
+absl::Status ExecuteOptions::ToProto(ExecuteOptionsProto& proto,
+                                     SerDesVersion version) const {
   if (version.version_number() < SerDesVersionNumber(0)) {
     return absl::FailedPreconditionError(
         absl::StrCat("Unsupported ", version.version_number(),
                      " for ExecuteOptions serialization"));
   }
 
-  ExecuteOptionsProto proto;
+  proto.Clear();
   proto.set_version_number(SerDesVersionNumber(0).value());
 
   proto.set_launch_id(launch_id);
@@ -48,10 +49,10 @@ absl::StatusOr<ExecuteOptionsProto> ExecuteOptions::ToProto(
   proto.set_fill_status(fill_status);
   proto.set_execution_stream_id(execution_stream_id);
   if (custom_options.has_value()) {
-    *proto.mutable_custom_options() = custom_options->ToProto(version);
+    custom_options->ToProto(*proto.mutable_custom_options(), version);
   }
 
-  return proto;
+  return absl::OkStatus();
 }
 
 absl::StatusOr<ExecuteOptions> ExecuteOptions::FromProto(
@@ -70,8 +71,8 @@ absl::StatusOr<ExecuteOptions> ExecuteOptions::FromProto(
   options.fill_status = proto.fill_status();
   options.execution_stream_id = proto.execution_stream_id();
   if (proto.has_custom_options()) {
-    TF_ASSIGN_OR_RETURN(options.custom_options,
-                        AttributeMap::FromProto(proto.custom_options()));
+    ASSIGN_OR_RETURN(options.custom_options,
+                     AttributeMap::FromProto(proto.custom_options()));
   }
   return options;
 }

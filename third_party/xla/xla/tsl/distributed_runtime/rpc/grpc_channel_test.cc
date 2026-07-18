@@ -95,10 +95,10 @@ TEST(GrpcChannelTest, HostPorts) {
   }
 
   {
-    std::vector<string> workers;
+    std::vector<std::string> workers;
     cc->ListWorkers(&workers);
     EXPECT_EQ(
-        std::vector<string>(
+        std::vector<std::string>(
             {"/job:mnist/replica:0/task:0", "/job:mnist/replica:0/task:1",
              "/job:mnist/replica:0/task:2", "/job:mnist/replica:0/task:3",
              "/job:mnist/replica:0/task:4", "/job:mnist/replica:0/task:5"}),
@@ -106,10 +106,10 @@ TEST(GrpcChannelTest, HostPorts) {
   }
 
   {
-    std::vector<string> workers;
+    std::vector<std::string> workers;
     cc->ListWorkersInJob("mnist", &workers);
     EXPECT_EQ(
-        std::vector<string>(
+        std::vector<std::string>(
             {"/job:mnist/replica:0/task:0", "/job:mnist/replica:0/task:1",
              "/job:mnist/replica:0/task:2", "/job:mnist/replica:0/task:3",
              "/job:mnist/replica:0/task:4", "/job:mnist/replica:0/task:5"}),
@@ -117,7 +117,7 @@ TEST(GrpcChannelTest, HostPorts) {
   }
 
   {
-    std::vector<string> workers;
+    std::vector<std::string> workers;
     cc->ListWorkersInJob("other", &workers);
     EXPECT_TRUE(workers.empty());
   }
@@ -179,25 +179,25 @@ TEST(GrpcChannelTest, HostPortsMultiChannelPerTarget) {
   }
 
   {
-    std::vector<string> workers;
+    std::vector<std::string> workers;
     cc->ListWorkers(&workers);
-    EXPECT_EQ(std::vector<string>({"/job:mnist/replica:0/task:0",
-                                   "/job:mnist/replica:0/task:1",
-                                   "/job:mnist/replica:0/task:2"}),
+    EXPECT_EQ(std::vector<std::string>({"/job:mnist/replica:0/task:0",
+                                        "/job:mnist/replica:0/task:1",
+                                        "/job:mnist/replica:0/task:2"}),
               workers);
   }
 
   {
-    std::vector<string> workers;
+    std::vector<std::string> workers;
     cc->ListWorkersInJob("mnist", &workers);
-    EXPECT_EQ(std::vector<string>({"/job:mnist/replica:0/task:0",
-                                   "/job:mnist/replica:0/task:1",
-                                   "/job:mnist/replica:0/task:2"}),
+    EXPECT_EQ(std::vector<std::string>({"/job:mnist/replica:0/task:0",
+                                        "/job:mnist/replica:0/task:1",
+                                        "/job:mnist/replica:0/task:2"}),
               workers);
   }
 
   {
-    std::vector<string> workers;
+    std::vector<std::string> workers;
     cc->ListWorkersInJob("other", &workers);
     EXPECT_TRUE(workers.empty());
   }
@@ -262,10 +262,10 @@ TEST(GrpcChannelTest, HostPortsMultiGrpcMultiChannelPerTarget) {
   }
 
   {
-    std::vector<string> workers;
+    std::vector<std::string> workers;
     cc->ListWorkers(&workers);
     EXPECT_EQ(
-        std::vector<string>(
+        std::vector<std::string>(
             {"/job:mnist/replica:0/task:0", "/job:mnist/replica:0/task:1",
              "/job:mnist/replica:0/task:2", "/job:mnist2/replica:0/task:0",
              "/job:mnist2/replica:0/task:1", "/job:mnist2/replica:0/task:2"}),
@@ -273,21 +273,21 @@ TEST(GrpcChannelTest, HostPortsMultiGrpcMultiChannelPerTarget) {
   }
 
   {
-    std::vector<string> workers, workers2;
+    std::vector<std::string> workers, workers2;
     cc->ListWorkersInJob("mnist", &workers);
-    EXPECT_EQ(std::vector<string>({"/job:mnist/replica:0/task:0",
-                                   "/job:mnist/replica:0/task:1",
-                                   "/job:mnist/replica:0/task:2"}),
+    EXPECT_EQ(std::vector<std::string>({"/job:mnist/replica:0/task:0",
+                                        "/job:mnist/replica:0/task:1",
+                                        "/job:mnist/replica:0/task:2"}),
               workers);
     cc->ListWorkersInJob("mnist2", &workers2);
-    EXPECT_EQ(std::vector<string>({"/job:mnist2/replica:0/task:0",
-                                   "/job:mnist2/replica:0/task:1",
-                                   "/job:mnist2/replica:0/task:2"}),
+    EXPECT_EQ(std::vector<std::string>({"/job:mnist2/replica:0/task:0",
+                                        "/job:mnist2/replica:0/task:1",
+                                        "/job:mnist2/replica:0/task:2"}),
               workers2);
   }
 
   {
-    std::vector<string> workers;
+    std::vector<std::string> workers;
     cc->ListWorkersInJob("other", &workers);
     EXPECT_TRUE(workers.empty());
   }
@@ -332,26 +332,26 @@ TEST(GrpcChannelTest, SparseHostPorts) {
   }
 
   {
-    std::vector<string> workers;
+    std::vector<std::string> workers;
     cc->ListWorkers(&workers);
     std::sort(workers.begin(), workers.end());
-    EXPECT_EQ(std::vector<string>({"/job:mnist/replica:0/task:0",
-                                   "/job:mnist/replica:0/task:3",
-                                   "/job:mnist/replica:0/task:4"}),
+    EXPECT_EQ(std::vector<std::string>({"/job:mnist/replica:0/task:0",
+                                        "/job:mnist/replica:0/task:3",
+                                        "/job:mnist/replica:0/task:4"}),
               workers);
   }
 
   {
-    std::vector<string> workers;
+    std::vector<std::string> workers;
     cc->ListWorkersInJob("mnist", &workers);
-    EXPECT_EQ(std::vector<string>({"/job:mnist/replica:0/task:0",
-                                   "/job:mnist/replica:0/task:3",
-                                   "/job:mnist/replica:0/task:4"}),
+    EXPECT_EQ(std::vector<std::string>({"/job:mnist/replica:0/task:0",
+                                        "/job:mnist/replica:0/task:3",
+                                        "/job:mnist/replica:0/task:4"}),
               workers);
   }
 
   {
-    std::vector<string> workers;
+    std::vector<std::string> workers;
     cc->ListWorkersInJob("other", &workers);
     EXPECT_TRUE(workers.empty());
   }

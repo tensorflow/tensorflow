@@ -170,7 +170,7 @@ class PrepareCompositeFunctionsPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareCompositeFunctionsPass)
 
-  explicit PrepareCompositeFunctionsPass() {}
+  explicit PrepareCompositeFunctionsPass() = default;
 
  private:
   // TODO(b/160915525): Consolidate FuncAttr and StringAttr into one.

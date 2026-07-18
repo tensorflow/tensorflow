@@ -8,7 +8,7 @@ load(
 )
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -388,6 +388,34 @@ cc_library(
 
 # copybara:uncomment_begin(google-only)
 # cc_library(
+#     name = "gl_interop_no_gl",
+#     srcs = ["gl_interop.cc"],
+#     hdrs = ["gl_interop.h"],
+#     defines = ["CL_DELEGATE_NO_GL"],
+#     deps = [
+#         ":cl_command_queue",
+#         ":cl_device",
+#         ":environment",
+#         "//third_party/GL:EGL_headers",
+#         "//tensorflow/lite/delegates/gpu:spi",
+#         "//tensorflow/lite/delegates/gpu/common:access_type",
+#         "//tensorflow/lite/delegates/gpu/common:status",
+#     ],
+# )
+#
+# cc_test(
+#     name = "gl_interop_no_gl_test",
+#     srcs = ["gl_interop_no_gl_test.cc"],
+#     tags = ["requires-gpu-nvidia"],
+#     deps = [
+#         ":gl_interop_no_gl",
+#         "@com_google_googletest//:gtest_main",
+#     ],
+# )
+# copybara:uncomment_end
+
+# copybara:uncomment_begin(google-only)
+# cc_library(
 #     name = "gpu_api_delegate_no_gl",
 #     srcs = ["gpu_api_delegate.cc"],
 #     hdrs = ["gpu_api_delegate.h"],
@@ -484,8 +512,9 @@ cc_library(
     hdrs = ["opencl_wrapper.h"],
     linkopts = select({
         "//tensorflow:android": ["-lm"],
-        "//conditions:default": [],
-    }) + ["-ldl"],  # opencl_wrapper calls dlopen()
+        "//tensorflow:windows": [],  # Windows does not support dlopen().
+        "//conditions:default": ["-ldl"],  # opencl_wrapper calls dlopen()
+    }),
     local_defines = select({
         # copybara:uncomment_begin(google-only)
         # "//tools/cc_target_os:linux-google": ["__LINUX_GOOGLE__"],
@@ -499,9 +528,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl/" + if_google("google", "default") + ":qcom_wrapper",
         "//tensorflow/lite/tools:logging",
     ] + select({
-        # copybara:uncomment_begin(google-only)
-        # "//tools/cc_target_os:linux-google": ["//third_party/opencl_icd_loader"],
-        # copybara:uncomment_end
         "//conditions:default": [],
     }),
 )

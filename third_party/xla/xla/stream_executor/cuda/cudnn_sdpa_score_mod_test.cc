@@ -21,18 +21,16 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"
 #include "json/json.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/test.h"
 
 namespace stream_executor {
 namespace gpu {
-
-using tsl::testing::IsOk;
 
 TEST(CudnnSdpaScoreModTest, CompileFwd) {
   absl::string_view hlo = R"(
@@ -74,6 +72,48 @@ TEST(CudnnSdpaScoreModTest, CompileFwd) {
   // 2 inputs and 1 output in the graph
   EXPECT_THAT(parsed_json["tensors"].size(), 3);
   EXPECT_THAT(parsed_json["nodes"][0]["mode"], "MUL");
+}
+
+TEST(CudnnSdpaScoreModTest, CompileGraphWithReversedOperands) {
+  absl::string_view hlo = R"(
+  HloModule jit__unnamed_wrapped_function_
+
+  %rev (Arg_0: f32[4,4,1024,1024], Arg_1: f32[4,4,1024,1024]) -> f32[4,4,1024,1024] {
+    %Arg_0 = f32[4,4,1024,1024]{3,2,1,0} parameter(0)
+    %Arg_1 = f32[4,4,1024,1024]{3,2,1,0} parameter(1)
+    ROOT %sub.1 = f32[4,4,1024,1024]{3,2,1,0} subtract(%Arg_1, %Arg_0)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          xla::ParseAndReturnUnverifiedModule(hlo));
+  xla::HloComputation* comp = module->GetComputationWithName("rev");
+  ASSERT_NE(comp, nullptr);
+  int64_t uid = 0;
+  auto next_uid = [&]() -> int64_t { return uid++; };
+  Graph graph = std::make_shared<cudnn_frontend::graph::Graph>();
+  auto score_mod = std::make_shared<ScoreModFunc>(comp, nullptr);
+  EXPECT_THAT(score_mod->UpdateCudnnMap(*graph, next_uid),
+              absl_testing::IsOk());
+  Tensor attn_score =
+      graph->tensor(cudnn_frontend::graph::Tensor_attributes()
+                        .set_dim({4, 4, 1024, 1024})
+                        .set_stride({4194304, 1048576, 1024, 1})
+                        .set_data_type(cudnn_frontend::DataType_t::FLOAT)
+                        .set_uid(next_uid())
+                        .set_is_virtual(true));
+  auto output = score_mod->Forward(graph, attn_score);
+  std::string json_string = graph->print();
+  Json::Value parsed_json;
+  Json::Reader json_reader;
+  json_reader.parse(json_string, parsed_json,
+                    /* collectComments */ false);
+  EXPECT_TRUE(parsed_json.isObject());
+  // We reverse the operands of subtract because the first operand of sub is non
+  // virtual. A negate is needed to ensure correctness.
+  EXPECT_THAT(parsed_json["nodes"].size(), 2);
+  EXPECT_THAT(parsed_json["tensors"].size(), 4);
+  EXPECT_THAT(parsed_json["nodes"][0]["mode"], "SUB");
+  EXPECT_THAT(parsed_json["nodes"][1]["mode"], "NEG");
 }
 
 TEST(CudnnSdpaScoreModTest, CompileBwd) {

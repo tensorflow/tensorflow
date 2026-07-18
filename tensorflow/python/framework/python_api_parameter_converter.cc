@@ -14,11 +14,20 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/python/framework/python_api_parameter_converter.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <string>
+#include <vector>
+
+#include "absl/base/attributes.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/framework/op_def_util.h"
+#include "tensorflow/python/framework/python_api_info.h"
+#include "tensorflow/python/framework/python_tensor_converter.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tensorflow/python/util/util.h"
 
@@ -68,7 +77,7 @@ Safe_PyObjectPtr GetAttr_DType(PyObject* tensor) {
 // is called, then add its message as a suffix to the message string.
 template <typename... Args>
 void RaiseTypeError(Args... args) {
-  string message = absl::StrCat(args...);
+  std::string message = absl::StrCat(args...);
   if (!PyErr_Occurred()) {
     PyErr_SetString(PyExc_TypeError, message.c_str());
   } else {
@@ -432,10 +441,27 @@ bool InferLengthAttributes(const absl::Span<PyObject*> params,
 
 }  // namespace
 
+int GetPythonAPIMaxIndex(const PythonAPIInfo& api_info) {
+  int max_index = -1;
+  for (const auto& attr : api_info.attributes()) {
+    max_index = std::max(max_index, attr.index);
+  }
+  for (const auto& input : api_info.inputs()) {
+    max_index = std::max(max_index, input.index);
+  }
+  return max_index;
+}
+
 bool ConvertPythonAPIParameters(const PythonAPIInfo& api_info,
                                 const PythonTensorConverter& tensor_converter,
                                 absl::Span<PyObject*> params,
                                 InferredAttributes* inferred_attrs) {
+  int max_index = GetPythonAPIMaxIndex(api_info);
+  if (static_cast<int>(params.size()) <= max_index) {
+    PyErr_SetString(PyExc_ValueError,
+                    "Parameters span size is smaller than expected");
+    return false;
+  }
   // Make room for inferred attributes.
   if (inferred_attrs) {
     inferred_attrs->types.resize(api_info.inferred_type_attrs().size());
@@ -475,6 +501,12 @@ bool ConvertPythonAPIParameters(const PythonAPIInfo& api_info,
 
 bool CopyPythonAPITensorLists(const PythonAPIInfo& api_info,
                               absl::Span<PyObject*> params) {
+  int max_index = GetPythonAPIMaxIndex(api_info);
+  if (static_cast<int>(params.size()) <= max_index) {
+    PyErr_SetString(PyExc_ValueError,
+                    "Parameters span size is smaller than expected");
+    return false;
+  }
   for (const auto& input : api_info.inputs()) {
     if (input.is_list) {
       PyObject* src = params[input.index];

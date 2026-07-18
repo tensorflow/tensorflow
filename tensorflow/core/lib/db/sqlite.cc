@@ -15,10 +15,15 @@ limitations under the License.
 #include "tensorflow/core/lib/db/sqlite.h"
 
 #include <cstdlib>
+#include <string>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/strcat.h"
@@ -81,7 +86,8 @@ absl::StatusCode GetTfErrorCode(int code) {
 }
 
 template <typename... Args>
-absl::Status PrintfStatus(int rc, const char* fmt, Args&&... args) {
+absl::Status PrintfStatus(int rc, const absl::FormatSpec<Args...>& fmt,
+                          Args&&... args) {
   return {GetTfErrorCode(rc),
           strings::Printf(fmt, std::forward<Args>(args)...)};
 }
@@ -97,9 +103,8 @@ absl::Status SetPragma(Sqlite* db, const char* pragma,
                        const absl::string_view& value) {
   if (value.empty()) return absl::OkStatus();
   for (auto p = value.begin(); p < value.end(); ++p) {
-    if (!(('0' <= *p && *p <= '9') || ('A' <= *p && *p <= 'Z') ||
-          ('a' <= *p && *p <= 'z') || *p == '-')) {
-      return errors::InvalidArgument("Illegal pragma character");
+    if (!(absl::ascii_isalnum(*p) || *p == '-')) {
+      return absl::InvalidArgumentError("Illegal pragma character");
     }
   }
   SqliteStatement stmt;
@@ -123,7 +128,7 @@ absl::Status EnvPragma(Sqlite* db, const char* pragma, const char* var) {
 }  // namespace
 
 /* static */
-absl::Status Sqlite::Open(const string& path, int flags, Sqlite** db) {
+absl::Status Sqlite::Open(const std::string& path, int flags, Sqlite** db) {
   flags |= SQLITE_OPEN_PRIVATECACHE;
   flags |= SQLITE_OPEN_URI;
   sqlite3* sqlite = nullptr;
@@ -222,7 +227,7 @@ absl::Status SqliteStatement::StepOnce() {
   bool is_done;
   TF_RETURN_IF_ERROR(Step(&is_done));
   if (TF_PREDICT_FALSE(is_done)) {
-    return errors::Internal("No rows returned: ", sql());
+    return absl::InternalError(absl::StrCat("No rows returned: ", sql()));
   }
   return absl::OkStatus();
 }
@@ -236,7 +241,7 @@ absl::Status SqliteStatement::StepAndReset() {
   bool is_done;
   absl::Status s = Step(&is_done);
   if (TF_PREDICT_FALSE(s.ok() && !is_done)) {
-    s = errors::Internal("Unexpected row: ", sql());
+    s = absl::InternalError(absl::StrCat("Unexpected row: ", sql()));
   }
   Reset();
   return s;

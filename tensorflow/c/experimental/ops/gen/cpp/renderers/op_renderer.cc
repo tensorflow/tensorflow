@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/op_renderer.h"
 
 #include <iterator>
+#include <string>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -25,18 +26,18 @@ limitations under the License.
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/renderer_context.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/views/op_argument_view.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/views/op_view.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace generator {
 namespace cpp {
 
-string OpRenderer::Signature() const {
-  std::vector<string> args_with_default_val;
-  std::vector<string> args_without_default_val;
+std::string OpRenderer::Signature() const {
+  std::vector<std::string> args_with_default_val;
+  std::vector<std::string> args_without_default_val;
   for (OpArgumentView const& argument : op_.AllArguments()) {
-    string text = argument.Declaration();
-    if (context_.mode == RendererContext::kHeader) {
+    bool is_header = (context_.mode == RendererContext::kHeader);
+    std::string text = argument.Declaration(is_header);
+    if (is_header) {
       absl::StrAppend(&text, argument.Initializer());
     }
     if (argument.HasDefaultValue()) {
@@ -45,7 +46,7 @@ string OpRenderer::Signature() const {
       args_without_default_val.push_back(text);
     }
   }
-  std::vector<string> arguments;
+  std::vector<std::string> arguments;
   arguments.reserve(args_without_default_val.size() +
                     args_with_default_val.size());
   arguments.insert(arguments.end(),
@@ -54,7 +55,7 @@ string OpRenderer::Signature() const {
   arguments.insert(arguments.end(),
                    std::make_move_iterator(args_with_default_val.begin()),
                    std::make_move_iterator(args_with_default_val.end()));
-  return absl::Substitute("$0 $1($2)", "Status", op_.FunctionName(),
+  return absl::Substitute("$0 $1($2)", "absl::Status", op_.FunctionName(),
                           absl::StrJoin(arguments, ", "));
 }
 

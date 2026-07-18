@@ -20,40 +20,20 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
-#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
-
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
-
-using AsyncExecutionStreamIds =
-    ::xla::gpu::ExecutionStreamAssignment::AsyncExecutionStreamIds;
 
 namespace xla::gpu {
 namespace {
 
-class ExecutionStreamAssignmentTest : public HloHardwareIndependentTestBase {
- protected:
-  // Adds expectations for the `ExecutionStreamId` for all synchronous
-  // `HloInstructions` in the given `HloComputation`.
-  void ExpectExecutionStreamForSyncInstructions(
-      const ExecutionStreamAssignment& assignment, HloComputation* computation,
-      ExecutionStreamId stream) const {
-    for (const HloInstruction* instruction : computation->instructions()) {
-      if (instruction->IsAsynchronous()) continue;
-      EXPECT_THAT(assignment.GetSyncExecutionStreamId(instruction),
-                  absl_testing::IsOkAndHolds(stream));
-    }
-  }
-};
+class ExecutionStreamAssignmentTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(ExecutionStreamAssignmentTest, AsyncFusion) {
   const char* kModuleStr = R"(
@@ -97,49 +77,29 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncFusion) {
 
   ExecutionStreamAssignment assignment(
       module.get(),
-      ExecutionStreamAssignmentOptions{/*number_of_execution_streams=*/2});
+      ExecutionStreamAssignment::Options{/*number_of_execution_streams=*/2});
 
-  // The outermost computation should run on `ExecutionStreamId(0)`. The two
-  // asynchronous branches should be launched on `ExecutionStreamId(1)` and
-  // `ExecutionStreamId(2)`, respectively. The third asynchronous branch should
-  // reuse `ExecutionStreamId(1)` because we set `number_of_execution_streams`
-  // to `2`.
-  ExpectExecutionStreamForSyncInstructions(
-      assignment, FindComputation(module.get(), "entry"), ExecutionStreamId(0));
-  for (absl::string_view instruction : {"start1", "update1", "done1"}) {
-    EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(Cast<HloAsyncInstruction>(
-                    FindInstruction(module.get(), instruction))),
-                absl_testing::IsOkAndHolds(AsyncExecutionStreamIds{
-                    /*source_stream_id=*/ExecutionStreamId(0),
-                    /*destination_stream_id=*/ExecutionStreamId(1)}));
-  }
-  for (absl::string_view instruction : {"start2", "update2", "done2"}) {
-    EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(Cast<HloAsyncInstruction>(
-                    FindInstruction(module.get(), instruction))),
-                absl_testing::IsOkAndHolds(AsyncExecutionStreamIds{
-                    /*source_stream_id=*/ExecutionStreamId(0),
-                    /*destination_stream_id=*/ExecutionStreamId(2)}));
-  }
-  for (absl::string_view instruction : {"start3", "update3", "done3"}) {
-    EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(Cast<HloAsyncInstruction>(
-                    FindInstruction(module.get(), instruction))),
-                absl_testing::IsOkAndHolds(AsyncExecutionStreamIds{
-                    /*source_stream_id=*/ExecutionStreamId(0),
-                    /*destination_stream_id=*/ExecutionStreamId(1)}));
-  }
+  // Only start operations get execution stream IDs. With 2 compute streams,
+  // start1 gets ComputationStreamId(0), start2 gets ComputationStreamId(1),
+  // start3 wraps around to ComputationStreamId(0).
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "start1")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(0))));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "start2")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(1))));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "start3")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(0))));
 
-  // Leaf computations should run on the respective asynchronous
-  // `ExecutionStreamIds`.
-  ExpectExecutionStreamForSyncInstructions(
-      assignment,
-      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "start1"))
-          ->async_wrapped_computation(),
-      ExecutionStreamId(1));
-  ExpectExecutionStreamForSyncInstructions(
-      assignment,
-      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "start2"))
-          ->async_wrapped_computation(),
-      ExecutionStreamId(2));
+  // Update and done operations do not get assigned stream IDs (they inherit
+  // from the parent scope at run time via structured concurrency).
+  for (absl::string_view instruction :
+       {"update1", "update2", "update3", "done1", "done2", "done3"}) {
+    EXPECT_THAT(assignment.GetExecutionStreamId(
+                    FindInstruction(module.get(), instruction)),
+                absl_testing::StatusIs(absl::StatusCode::kNotFound));
+  }
 }
 
 TEST_F(ExecutionStreamAssignmentTest, CopyStartStreamIdTest) {
@@ -157,14 +117,11 @@ TEST_F(ExecutionStreamAssignmentTest, CopyStartStreamIdTest) {
 
   ExecutionStreamAssignment assignment(module.get());
 
-  for (absl::string_view instruction : {"copy-start"}) {
-    EXPECT_THAT(
-        assignment.GetAsyncExecutionStreamIds(Cast<HloCopyStartInstruction>(
-            FindInstruction(module.get(), instruction))),
-        absl_testing::IsOkAndHolds(AsyncExecutionStreamIds{
-            /*source_stream_id=*/ExecutionStreamId(0),
-            /*destination_stream_id=*/ExecutionStreamId(1)}));
-  }
+  // copy-start is a compute scope start, gets ComputationStreamId(0).
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "copy-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(0))));
 }
 
 TEST_F(ExecutionStreamAssignmentTest, FusionComputations) {
@@ -182,7 +139,7 @@ TEST_F(ExecutionStreamAssignmentTest, FusionComputations) {
       ROOT reduce = f32[] reduce(p0, c0), dimensions={0}, to_apply=reduce
     }
 
-    // Entry computation that calls each of the leaves asynchronously.
+    // Entry computation with a synchronous fusion.
     ENTRY entry {
       p0 = f32[4] parameter(0)
       ROOT done = f32[] fusion(p0), kind=kLoop, calls=fusion
@@ -193,24 +150,16 @@ TEST_F(ExecutionStreamAssignmentTest, FusionComputations) {
 
   ExecutionStreamAssignment assignment(module.get());
 
-  // The outermost computation should run on `ExecutionStreamId(0)`.
-  ExpectExecutionStreamForSyncInstructions(
-      assignment, FindComputation(module.get(), "entry"), ExecutionStreamId(0));
-
-  // Computations only reachable through fusion nodes should have no assigned
-  // `ExecutionStreamId`.
-  for (absl::string_view computation : {"reduce", "fusion"}) {
-    for (const HloInstruction* instruction :
-         FindComputation(module.get(), computation)->instructions()) {
-      EXPECT_THAT(assignment.GetSyncExecutionStreamId(instruction),
-                  absl_testing::StatusIs(absl::StatusCode::kNotFound));
-    }
+  // Synchronous instructions (including fusions) do not get execution stream
+  // IDs. They run on the default stream or inherit from a parent scope.
+  for (const HloInstruction* instruction :
+       FindComputation(module.get(), "entry")->instructions()) {
+    EXPECT_THAT(assignment.GetExecutionStreamId(instruction),
+                absl_testing::StatusIs(absl::StatusCode::kNotFound));
   }
 }
 
 TEST_F(ExecutionStreamAssignmentTest, UnreachableComputation) {
-  // We'll create an `HloModule` with two computations: the ENTRY computation,
-  // and another unreachable embedded computation.
   const char* kModuleStr = R"(
     HloModule m
 
@@ -229,13 +178,11 @@ TEST_F(ExecutionStreamAssignmentTest, UnreachableComputation) {
                           ParseAndReturnVerifiedModule(kModuleStr));
 
   ExecutionStreamAssignment assignment(module.get());
-  ExpectExecutionStreamForSyncInstructions(
-      assignment, FindComputation(module.get(), "entry"), ExecutionStreamId(0));
 
-  // Unreachable instructions should have no assigned `ExecutionStreamId`.
+  // No scope-start operations exist, so nothing gets assigned.
   for (const HloInstruction* instruction :
-       FindComputation(module.get(), "unreachable")->instructions()) {
-    EXPECT_THAT(assignment.GetSyncExecutionStreamId(instruction),
+       FindComputation(module.get(), "entry")->instructions()) {
+    EXPECT_THAT(assignment.GetExecutionStreamId(instruction),
                 absl_testing::StatusIs(absl::StatusCode::kNotFound));
   }
 }
@@ -246,14 +193,14 @@ TEST_F(ExecutionStreamAssignmentTest, ExplicitStreams) {
   %gemm1 (x: f32[2048,2048], y: f32[2048,2048]) -> f32[2048,2048] {
     %y = f32[2048,2048]{1,0} parameter(1)
     %x = f32[2048,2048]{1,0} parameter(0)
-    %custom-call.1 = (f32[2048,2048]{1,0}, s8[33554432]{0}) custom-call(f32[2048,2048]{1,0} %x, f32[2048,2048]{1,0} %y), custom_call_target="__cublas$gemm", backend_config={"gemm_backend_config":{"alpha_real":1,"alpha_imag":0,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"precision_config":{"operand_precision":["DEFAULT","DEFAULT"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","damax_output":false,"lhs_stride":"4194304","rhs_stride":"4194304","grad_x":false,"grad_y":false},"force_earliest_schedule":false}
+    %custom-call.1 = (f32[2048,2048]{1,0}, s8[33554432]{0}) custom-call(f32[2048,2048]{1,0} %x, f32[2048,2048]{1,0} %y), custom_call_target="__cublas$gemm", backend_config={"gemm_backend_config":{"alpha_real":1,"alpha_imag":0,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"precision_config":{"operand_precision":["DEFAULT","DEFAULT"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","damax_output":false,"lhs_stride":"4194304","rhs_stride":"4194304","grad_x":false,"grad_y":false}}
     ROOT %get-tuple-element = f32[2048,2048]{1,0} get-tuple-element((f32[2048,2048]{1,0}, s8[33554432]{0}) %custom-call.1), index=0
   }
 
   %gemm2 (x: f32[2048,2048], y: f32[2048,2048]) -> f32[2048,2048] {
     %y = f32[2048,2048]{1,0} parameter(1)
     %x = f32[2048,2048]{1,0} parameter(0)
-    %custom-call.2 = (f32[2048,2048]{1,0}, s8[33554432]{0}) custom-call(f32[2048,2048]{1,0} %x, f32[2048,2048]{1,0} %y), custom_call_target="__cublas$gemm", backend_config={"gemm_backend_config":{"alpha_real":1,"alpha_imag":0,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"precision_config":{"operand_precision":["DEFAULT","DEFAULT"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","damax_output":false,"lhs_stride":"4194304","rhs_stride":"4194304","grad_x":false,"grad_y":false},"force_earliest_schedule":false}
+    %custom-call.2 = (f32[2048,2048]{1,0}, s8[33554432]{0}) custom-call(f32[2048,2048]{1,0} %x, f32[2048,2048]{1,0} %y), custom_call_target="__cublas$gemm", backend_config={"gemm_backend_config":{"alpha_real":1,"alpha_imag":0,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"precision_config":{"operand_precision":["DEFAULT","DEFAULT"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","damax_output":false,"lhs_stride":"4194304","rhs_stride":"4194304","grad_x":false,"grad_y":false}}
     ROOT %get-tuple-element = f32[2048,2048]{1,0} get-tuple-element((f32[2048,2048]{1,0}, s8[33554432]{0}) %custom-call.2), index=0
   }
 
@@ -271,33 +218,24 @@ TEST_F(ExecutionStreamAssignmentTest, ExplicitStreams) {
 
   ExecutionStreamAssignment assignment(
       module.get(),
-      ExecutionStreamAssignmentOptions{/*number_of_execution_streams=*/4});
-  // The outermost computation should run on `ExecutionStreamId(0)`.
-  ExpectExecutionStreamForSyncInstructions(
-      assignment, FindComputation(module.get(), "entry"), ExecutionStreamId(0));
+      ExecutionStreamAssignment::Options{/*number_of_execution_streams=*/4});
 
-  // Called computations should run on the respective asynchronous
-  // `ExecutionStreamIds`.
-  ExpectExecutionStreamForSyncInstructions(
-      assignment,
-      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "call-start"))
-          ->async_wrapped_computation(),
-      ExecutionStreamId(1));
-  // Computations within the async-called computation should also be on the
-  // the asynchronous stream.
-  EXPECT_THAT(assignment.GetSyncExecutionStreamId(
-                  FindInstruction(module.get(), "custom-call.1")),
-              absl_testing::IsOkAndHolds(ExecutionStreamId(1)));
+  // call-start has explicit annotation "1" -> ComputationStreamId(1).
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "call-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(1))));
 
-  // Same checks as above but now on stream #2.
-  ExpectExecutionStreamForSyncInstructions(
-      assignment,
-      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "call-start.2"))
-          ->async_wrapped_computation(),
-      ExecutionStreamId(2));
-  EXPECT_THAT(assignment.GetSyncExecutionStreamId(
-                  FindInstruction(module.get(), "custom-call.2")),
-              absl_testing::IsOkAndHolds(ExecutionStreamId(2)));
+  // call-start.2 has explicit annotation "2" -> ComputationStreamId(2).
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "call-start.2")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(2))));
+
+  // Done operations don't get stream IDs.
+  EXPECT_THAT(assignment.GetExecutionStreamId(
+                  FindInstruction(module.get(), "call-done")),
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST_F(ExecutionStreamAssignmentTest, AsyncCollectiveTest) {
@@ -323,47 +261,119 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncCollectiveTest) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  // Expect ar-start and rs-start to be scheduled on stream 5 (4 + 1) and 6 (4 +
-  // 2), respectively.
+  // With 4 compute streams and 2 collective streams, ar-start and rs-start
+  // get CommunicationStreamId(0) and CommunicationStreamId(1).
   ExecutionStreamAssignment assignment(
       module.get(), {/*number_of_compute_execution_streams=*/4,
-                     /*number_of_collective_execution_streams=*/2});
-  EXPECT_THAT(assignment.GetSyncExecutionStreamId(
-                  FindInstruction(module.get(), "add.0")),
-              absl_testing::IsOkAndHolds(ExecutionStreamId(0)));
+                     /*number_of_communication_execution_streams=*/2});
   EXPECT_THAT(
-      assignment.GetAsyncExecutionStreamIds(Cast<HloAllReduceInstruction>(
-          FindInstruction(module.get(), "ar-start"))),
-      absl_testing::IsOkAndHolds(AsyncExecutionStreamIds{
-          /*source_stream_id=*/ExecutionStreamId(0),
-          /*destination_stream_id=*/ExecutionStreamId(5)}));
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "ar-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(0))));
   EXPECT_THAT(
-      assignment.GetAsyncExecutionStreamIds(Cast<HloAsyncStartInstruction>(
-          FindInstruction(module.get(), "rs-start"))),
-      absl_testing::IsOkAndHolds(AsyncExecutionStreamIds{
-          /*source_stream_id=*/ExecutionStreamId(0),
-          /*destination_stream_id=*/ExecutionStreamId(6)}));
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "rs-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(1))));
 
-  // Redo stream assignment, with number_of_collective_execution_streams = 1
-  // this time, expect rs-start to be scheduled on stream 5.
+  // Redo with 1 collective stream: both should get CommunicationStreamId(0).
   assignment = ExecutionStreamAssignment(
       module.get(), {/*number_of_compute_execution_streams=*/4,
-                     /*number_of_collective_execution_streams=*/1});
-  EXPECT_THAT(assignment.GetSyncExecutionStreamId(
-                  FindInstruction(module.get(), "add.0")),
-              absl_testing::IsOkAndHolds(ExecutionStreamId(0)));
+                     /*number_of_communication_execution_streams=*/1});
   EXPECT_THAT(
-      assignment.GetAsyncExecutionStreamIds(Cast<HloAllReduceInstruction>(
-          FindInstruction(module.get(), "ar-start"))),
-      absl_testing::IsOkAndHolds(AsyncExecutionStreamIds{
-          /*source_stream_id=*/ExecutionStreamId(0),
-          /*destination_stream_id=*/ExecutionStreamId(5)}));
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "ar-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(0))));
   EXPECT_THAT(
-      assignment.GetAsyncExecutionStreamIds(Cast<HloAsyncStartInstruction>(
-          FindInstruction(module.get(), "rs-start"))),
-      absl_testing::IsOkAndHolds(AsyncExecutionStreamIds{
-          /*source_stream_id=*/ExecutionStreamId(0),
-          /*destination_stream_id=*/ExecutionStreamId(5)}));
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "rs-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(0))));
+
+  // Done operations don't get stream IDs.
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "ar-done")),
+      absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
+
+TEST_F(ExecutionStreamAssignmentTest, PipelinedSendRecv) {
+  const char* kModuleStr = R"(
+    HloModule test, num_partitions=2
+
+    cond {
+      param = (u32[], (f32[2,2], u32[], token[]), (f32[2,2], u32[], token[]))
+          parameter(0)
+      i = u32[] get-tuple-element(param), index=0
+      c2 = u32[] constant(2)
+      ROOT cmp = pred[] compare(i, c2), direction=LT
+    }
+
+    body {
+      param = (u32[], (f32[2,2], u32[], token[]), (f32[2,2], u32[], token[]))
+          parameter(0)
+      i = u32[] get-tuple-element(param), index=0
+      send_ctx = get-tuple-element(param), index=1
+      recv_ctx = get-tuple-element(param), index=2
+      send_done_inner = token[] send-done(send_ctx), channel_id=1
+      recv_done_inner = (f32[2,2], token[]) recv-done(recv_ctx), channel_id=2
+      data = get-tuple-element(recv_done_inner), index=0
+      after_all = token[] after-all()
+      send_ctx_inner = (f32[2,2], u32[], token[]) send(data, after_all),
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}},
+          channel_id=1
+      recv_ctx_inner = (f32[2,2], u32[], token[]) recv(after_all),
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}},
+          channel_id=2
+      c1 = u32[] constant(1)
+      i_ = u32[] add(i, c1)
+      ROOT result = (u32[], (f32[2,2], u32[], token[]),
+          (f32[2,2], u32[], token[])) tuple(i_, send_ctx_inner, recv_ctx_inner)
+    }
+
+    ENTRY test_computation {
+      data = f32[2,2] parameter(0)
+      i = u32[] constant(0)
+      after_all = token[] after-all()
+      send_ctx_ = (f32[2,2], u32[], token[]) send(data, after_all),
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}},
+          channel_id=1
+      recv_ctx_ = (f32[2,2], u32[], token[]) recv(after_all),
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}},
+          channel_id=2
+      init = (u32[], (f32[2,2], u32[], token[]), (f32[2,2], u32[], token[]))
+          tuple(i, send_ctx_, recv_ctx_)
+      while = (u32[], (f32[2,2], u32[], token[]), (f32[2,2], u32[], token[]))
+          while(init), condition=cond, body=body
+      send_ctx = get-tuple-element(while), index=1
+      recv_ctx = get-tuple-element(while), index=2
+      send_done = token[] send-done(send_ctx), channel_id=1
+      recv_done = (f32[2,2], token[]) recv-done(recv_ctx), channel_id=2
+      ROOT data_ = get-tuple-element(recv_done), index=0
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  ExecutionStreamAssignment assignment(
+      module.get(), ExecutionStreamAssignment::Options{4, 4});
+
+  // Only the canonical send/recv starts get stream IDs.
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "send_ctx_")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(0))));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "recv_ctx_")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(1))));
+
+  // Non-canonical send/recv and done operations don't get stream IDs.
+  for (absl::string_view instruction :
+       {"send_ctx_inner", "recv_ctx_inner", "send_done_inner",
+        "recv_done_inner", "send_done", "recv_done"}) {
+    EXPECT_THAT(assignment.GetExecutionStreamId(
+                    FindInstruction(module.get(), instruction)),
+                absl_testing::StatusIs(absl::StatusCode::kNotFound));
+  }
+}
+
 }  // namespace
 }  // namespace xla::gpu

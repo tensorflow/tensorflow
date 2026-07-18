@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
@@ -107,9 +108,15 @@ std::string HloModuleConfig::compilation_cache_key() const {
     StrAppend(&key, "::fdo_profile=", absl::BytesToHexString(fdo_profile()));
   }
   if (device_memory_size() != 0) {
-    StrAppend(&key, "::device_memory_size=", device_memory_size());
+    StrAppend(&key, "::device_address_size=", device_memory_size());
   }
   StrAppend(&key, "::use_shardy_partitioner=", use_shardy_partitioner());
+  if (partition_size() != 0) {
+    StrAppend(&key, "::partition_size=", partition_size());
+  }
+  if (page_size_kib() != 0) {
+    StrAppend(&key, "::page_size_kib=", page_size_kib());
+  }
   return key;
 }
 
@@ -339,6 +346,7 @@ HloModuleConfigProto HloModuleConfig::ToProto() const {
   proto.set_fdo_profile(fdo_profile_);
   proto.set_device_memory_size(device_memory_size_);
   proto.set_use_shardy_partitioner(use_shardy_partitioner_);
+  proto.set_partition_size(partition_size_);
   *proto.mutable_sharding_config() = ShardingConfig::ToProto(sharding_config_);
   *proto.mutable_schedule_config() = ScheduleConfig::ToProto(schedule_config_);
   return proto;
@@ -349,9 +357,8 @@ HloModuleConfig::CreateFromProto(const HloModuleConfigProto& proto) {
   auto config = std::make_unique<HloModuleConfig>();
 
   if (proto.has_entry_computation_layout()) {
-    TF_ASSIGN_OR_RETURN(
-        auto comp_layout,
-        ProgramShape::FromProto(proto.entry_computation_layout()));
+    ASSIGN_OR_RETURN(auto comp_layout,
+                     ProgramShape::FromProto(proto.entry_computation_layout()));
     config->SetComputationLayoutIfExists(comp_layout);
   } else {
     config->clear_entry_computation_layout();
@@ -383,7 +390,7 @@ HloModuleConfig::CreateFromProto(const HloModuleConfigProto& proto) {
     config->debug_options_ = proto.debug_options();
   }
   if (proto.has_static_device_assignment()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         std::unique_ptr<DeviceAssignment> device_assignment,
         DeviceAssignment::Deserialize(proto.static_device_assignment()));
     config->static_device_assignment_ = std::move(*device_assignment);
@@ -418,6 +425,7 @@ HloModuleConfig::CreateFromProto(const HloModuleConfigProto& proto) {
   config->fdo_profile_ = proto.fdo_profile();
   config->device_memory_size_ = proto.device_memory_size();
   config->use_shardy_partitioner_ = proto.use_shardy_partitioner();
+  config->partition_size_ = proto.partition_size();
   config->sharding_config_ = ShardingConfig::FromProto(proto.sharding_config());
   config->schedule_config_ = ScheduleConfig::FromProto(proto.schedule_config());
   return std::move(config);

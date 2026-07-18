@@ -20,15 +20,18 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "Eigen/Core"  // from @eigen_archive
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace {
 
 using ::testing::ElementsAreArray;
+using ::testing::Pointwise;
 
 class GatherNdOpModel : public SingleOpModel {
  public:
@@ -244,21 +247,19 @@ TEST(GatherNdOpTest, BFloat16Int32) {
 TEST(GatherNdOpTest, Float16Int32) {
   GatherNdOpModel m({TensorType_FLOAT16, {3, 2, 3}},
                     {TensorType_INT32, {2, 2}});
-  m.SetInput<Eigen::half>(
-      {Eigen::half(1.1), Eigen::half(-1.2), Eigen::half(1.3), Eigen::half(-2.1),
-       Eigen::half(2.2), Eigen::half(2.3),  //
-       Eigen::half(3.1), Eigen::half(3.2), Eigen::half(-3.3), Eigen::half(-4.1),
-       Eigen::half(-4.2), Eigen::half(4.3),  //
-       Eigen::half(5.1), Eigen::half(-5.2), Eigen::half(5.3), Eigen::half(6.1),
-       Eigen::half(-6.2), Eigen::half(6.3)});
+  m.SetInput<half>({half(1.1f), half(-1.2f), half(1.3f), half(-2.1f),
+                    half(2.2f), half(2.3f),  //
+                    half(3.1f), half(3.2f), half(-3.3f), half(-4.1f),
+                    half(-4.2f), half(4.3f),  //
+                    half(5.1f), half(-5.2f), half(5.3f), half(6.1f),
+                    half(-6.2f), half(6.3f)});
   m.SetPositions<int32_t>({0, 1, 1, 0});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(
-      m.GetOutput<Eigen::half>(),
-      Pointwise(FloatingPointEq(),
-                {Eigen::half(-2.1), Eigen::half(2.2), Eigen::half(2.3),
-                 Eigen::half(3.1), Eigen::half(3.2), Eigen::half(-3.3)}));
+      m.GetOutput<half>(),
+      Pointwise(FloatingPointEq(), {half(-2.1f), half(2.2f), half(2.3f),
+                                    half(3.1f), half(3.2f), half(-3.3f)}));
 }
 
 TEST(GatherNdOpTest, Float32Int32) {
@@ -297,21 +298,19 @@ TEST(GatherNdOpTest, BFloat16Int64) {
 TEST(GatherNdOpTest, Float16Int64) {
   GatherNdOpModel m({TensorType_FLOAT16, {3, 2, 3}},
                     {TensorType_INT64, {2, 2}});
-  m.SetInput<Eigen::half>(
-      {Eigen::half(1.1), Eigen::half(-1.2), Eigen::half(1.3), Eigen::half(-2.1),
-       Eigen::half(2.2), Eigen::half(2.3),  //
-       Eigen::half(3.1), Eigen::half(3.2), Eigen::half(-3.3), Eigen::half(-4.1),
-       Eigen::half(-4.2), Eigen::half(4.3),  //
-       Eigen::half(5.1), Eigen::half(-5.2), Eigen::half(5.3), Eigen::half(6.1),
-       Eigen::half(-6.2), Eigen::half(6.3)});
+  m.SetInput<half>({half(1.1f), half(-1.2f), half(1.3f), half(-2.1f),
+                    half(2.2f), half(2.3f),  //
+                    half(3.1f), half(3.2f), half(-3.3f), half(-4.1f),
+                    half(-4.2f), half(4.3f),  //
+                    half(5.1f), half(-5.2f), half(5.3f), half(6.1f),
+                    half(-6.2f), half(6.3f)});
   m.SetPositions<int64_t>({0LL, 1LL, 1LL, 0LL});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(
-      m.GetOutput<Eigen::half>(),
-      Pointwise(FloatingPointEq(),
-                {Eigen::half(-2.1), Eigen::half(2.2), Eigen::half(2.3),
-                 Eigen::half(3.1), Eigen::half(3.2), Eigen::half(-3.3)}));
+      m.GetOutput<half>(),
+      Pointwise(FloatingPointEq(), {half(-2.1f), half(2.2f), half(2.3f),
+                                    half(3.1f), half(3.2f), half(-3.3f)}));
 }
 
 TEST(GatherNdOpTest, Float32Int64) {
@@ -462,21 +461,19 @@ TEST(GatherNdOpTest, BFloat16Int16) {
 TEST(GatherNdOpTest, Float16Int16) {
   GatherNdOpModel m({TensorType_FLOAT16, {3, 2, 3}},
                     {TensorType_INT16, {2, 2}});
-  m.SetInput<Eigen::half>(
-      {Eigen::half(1.1), Eigen::half(-1.2), Eigen::half(1.3), Eigen::half(-2.1),
-       Eigen::half(2.2), Eigen::half(2.3),  //
-       Eigen::half(3.1), Eigen::half(3.2), Eigen::half(-3.3), Eigen::half(-4.1),
-       Eigen::half(-4.2), Eigen::half(4.3),  //
-       Eigen::half(5.1), Eigen::half(-5.2), Eigen::half(5.3), Eigen::half(6.1),
-       Eigen::half(-6.2), Eigen::half(6.3)});
+  m.SetInput<half>({half(1.1f), half(-1.2f), half(1.3f), half(-2.1f),
+                    half(2.2f), half(2.3f),  //
+                    half(3.1f), half(3.2f), half(-3.3f), half(-4.1f),
+                    half(-4.2f), half(4.3f),  //
+                    half(5.1f), half(-5.2f), half(5.3f), half(6.1f),
+                    half(-6.2f), half(6.3f)});
   m.SetPositions<int16_t>({0, 1, 1, 0});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(
-      m.GetOutput<Eigen::half>(),
-      Pointwise(FloatingPointEq(),
-                {Eigen::half(-2.1), Eigen::half(2.2), Eigen::half(2.3),
-                 Eigen::half(3.1), Eigen::half(3.2), Eigen::half(-3.3)}));
+      m.GetOutput<half>(),
+      Pointwise(FloatingPointEq(), {half(-2.1f), half(2.2f), half(2.3f),
+                                    half(3.1f), half(3.2f), half(-3.3f)}));
 }
 
 TEST(GatherNdOpTest, Float32Int16) {
@@ -537,9 +534,9 @@ TEST(GatherNdOpTest, StringOutOfBoundsTooLarge) {
                            "M", "N", "O",  //
                            "P", "Q", "R"});
   m.SetPositions<int32_t>({0, 0, 3, 0});
-  ASSERT_EQ(m.Invoke(), kTfLiteError);
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
   m.SetPositions<int32_t>({0, 0, 2, 2});
-  ASSERT_EQ(m.Invoke(), kTfLiteError);
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
 }
 
 TEST(GatherNdOpTest, StringOutOfBoundsNegative) {
@@ -553,12 +550,22 @@ TEST(GatherNdOpTest, StringOutOfBoundsNegative) {
                            "M", "N", "O",  //
                            "P", "Q", "R"});
   m.SetPositions<int32_t>({1, -1, 0, 0});
-  ASSERT_EQ(m.Invoke(), kTfLiteError);
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
+
+TEST(GatherNdOpTest, StringMismatchedStringCount) {
+  GatherNdOpModel m({TensorType_STRING, {3, 2, 3}}, {TensorType_INT32, {2, 2}});
+  // Populate only 3 strings, but FlatSize() is 18.
+  m.SetInput<std::string>({"A", "B", "C"});
+  // Accessing slice at index (1, 0) starting at flat index 3. FlatSize check
+  // (3 + 3 <= 18) passes, but it exceeds the populated string count (3).
+  m.SetPositions<int32_t>({0, 1, 1, 0});
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
 }
 
 TEST(GatherNdOpTest, EmptyParamsAndIndex) {
   GatherNdOpModel m({TensorType_FLOAT32, {1, 0}}, {TensorType_INT32, {0, 2}});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({0}));
 }
 

@@ -32,11 +32,12 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace {
 template <typename T, typename OutType>
 __global__ void UpperBoundKernel(const T* __restrict__ sorted_inputs,
-                                 int batch_size, int sorted_inputs_size,
-                                 int values_size, const T* __restrict__ values,
+                                 int64_t batch_size, int64_t sorted_inputs_size,
+                                 int64_t values_size,
+                                 const T* __restrict__ values,
                                  OutType* __restrict__ outputs) {
-  GPU_1D_KERNEL_LOOP(work_unit_id, values_size * batch_size) {
-    int bid = work_unit_id / values_size;
+  for (int64_t work_unit_id : GpuGridRangeX(values_size * batch_size)) {
+    int64_t bid = work_unit_id / values_size;
     T value = values[work_unit_id];
     outputs[work_unit_id] = gpu_helper::upper_bound<T, OutType>(
         sorted_inputs + bid * sorted_inputs_size, sorted_inputs_size, value);
@@ -45,11 +46,12 @@ __global__ void UpperBoundKernel(const T* __restrict__ sorted_inputs,
 
 template <typename T, typename OutType>
 __global__ void LowerBoundKernel(const T* __restrict__ sorted_inputs,
-                                 int batch_size, int sorted_inputs_size,
-                                 int values_size, const T* __restrict__ values,
+                                 int64_t batch_size, int64_t sorted_inputs_size,
+                                 int64_t values_size,
+                                 const T* __restrict__ values,
                                  OutType* __restrict__ outputs) {
-  GPU_1D_KERNEL_LOOP(work_unit_id, values_size * batch_size) {
-    int bid = work_unit_id / values_size;
+  for (int64_t work_unit_id : GpuGridRangeX(values_size * batch_size)) {
+    int64_t bid = work_unit_id / values_size;
     T value = values[work_unit_id];
     outputs[work_unit_id] = gpu_helper::lower_bound<T, OutType>(
         sorted_inputs + bid * sorted_inputs_size, sorted_inputs_size, value);
@@ -60,15 +62,16 @@ __global__ void LowerBoundKernel(const T* __restrict__ sorted_inputs,
 namespace functor {
 template <typename T, typename OutType>
 struct UpperBoundFunctor<GPUDevice, T, OutType> {
-  static Status Compute(OpKernelContext* context,
-                        const typename TTypes<T, 1>::ConstTensor& sorted_inputs,
-                        const typename TTypes<T, 1>::ConstTensor& values,
-                        int batch_size, int num_inputs, int num_values,
-                        typename TTypes<OutType, 1>::Tensor* output) {
+  static absl::Status Compute(
+      OpKernelContext* context,
+      const typename TTypes<T, 1>::ConstTensor& sorted_inputs,
+      const typename TTypes<T, 1>::ConstTensor& values, int64_t batch_size,
+      int64_t num_inputs, int64_t num_values,
+      typename TTypes<OutType, 1>::Tensor* output) {
     const GPUDevice& device = context->eigen_device<GPUDevice>();
     if (values.size() == 0) {
       // GetGpuLaunchConfig requires work_element_count > 0
-      return OkStatus();
+      return absl::OkStatus();
     }
     GpuLaunchConfig config = GetGpuLaunchConfig(values.size(), device);
 
@@ -77,21 +80,22 @@ struct UpperBoundFunctor<GPUDevice, T, OutType> {
         config.thread_per_block, 0, device.stream(), sorted_inputs.data(),
         batch_size, num_inputs, num_values, values.data(), output->data()));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
 template <typename T, typename OutType>
 struct LowerBoundFunctor<GPUDevice, T, OutType> {
-  static Status Compute(OpKernelContext* context,
-                        const typename TTypes<T, 1>::ConstTensor& sorted_inputs,
-                        const typename TTypes<T, 1>::ConstTensor& values,
-                        int batch_size, int num_inputs, int num_values,
-                        typename TTypes<OutType, 1>::Tensor* output) {
+  static absl::Status Compute(
+      OpKernelContext* context,
+      const typename TTypes<T, 1>::ConstTensor& sorted_inputs,
+      const typename TTypes<T, 1>::ConstTensor& values, int64_t batch_size,
+      int64_t num_inputs, int64_t num_values,
+      typename TTypes<OutType, 1>::Tensor* output) {
     const GPUDevice& device = context->eigen_device<GPUDevice>();
     if (values.size() == 0) {
       // GetGpuLaunchConfig requires work_element_count > 0
-      return OkStatus();
+      return absl::OkStatus();
     }
     GpuLaunchConfig config = GetGpuLaunchConfig(values.size(), device);
 
@@ -100,7 +104,7 @@ struct LowerBoundFunctor<GPUDevice, T, OutType> {
         config.thread_per_block, 0, device.stream(), sorted_inputs.data(),
         batch_size, num_inputs, num_values, values.data(), output->data()));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 }  // namespace functor

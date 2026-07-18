@@ -222,7 +222,7 @@ StatusOr<Mesh> Mesh::ParseFromProto(const MeshProto& proto) {
       mesh.mesh_dims_[i].size = dim.size();
     }
     // Check invariants.
-    int64 mesh_size = mesh.size();
+    int64_t mesh_size = mesh.size();
     int num_devices = proto.global_device_ids_size();
     if (mesh_size > 0 && mesh_size != num_devices) {
       TF_RETURN_WITH_CONTEXT(absl::InvalidArgumentError(
@@ -448,12 +448,12 @@ int Mesh::GetMeshDimIndexWithName(const std::string& mesh_name) const {
   return mesh_index;
 }
 
-int64 Mesh::rank() const { return mesh_dims_.size(); }
+int64_t Mesh::rank() const { return mesh_dims_.size(); }
 
-int64 Mesh::size() const {
+int64_t Mesh::size() const {
   if (mesh_dims_.empty()) return 0;
 
-  int64 size = 1;
+  int64_t size = 1;
   for (const MeshDimension& dim : mesh_dims_) size *= dim.size;
   return size;
 }
@@ -545,7 +545,7 @@ std::string Mesh::ToString() const {
   return mesh_str;
 }
 
-uint64 Mesh::GlobalFingerprint() const {
+uint64_t Mesh::GlobalFingerprint() const {
   if (Mesh::IsEmpty()) return Fingerprint64(kEmptyMeshString);
 
   std::string mesh_str;
@@ -595,7 +595,7 @@ StatusOr<Mesh> GenerateMeshDevicesForTests(
   std::string device_type = instruction_parts[1];
 
   // Get Mesh Size.
-  int64 mesh_size = 0;
+  int64_t mesh_size = 0;
   if (!mesh_dims.empty()) {
     mesh_size = 1;
     for (const MeshDimension& mesh_dim : mesh_dims) mesh_size *= mesh_dim.size;
@@ -721,7 +721,7 @@ StatusOr<Mesh> Mesh::FromString(absl::string_view str) {
   return mesh;
 }
 
-int64 Mesh::num_devices() const { return global_device_ids_.size(); }
+int64_t Mesh::num_devices() const { return global_device_ids_.size(); }
 
 StatusOr<const DeviceLocation> Mesh::device_location(int offset) const {
   if (offset < 0 || offset > size() - 1)
@@ -730,8 +730,8 @@ StatusOr<const DeviceLocation> Mesh::device_location(int offset) const {
         offset, " and Mesh size:", size()));
 
   DeviceLocation dev_loc;
-  std::vector<int64> mesh_dim_lengths = dim_sizes();
-  int64 i = mesh_dim_lengths.size() - 1;
+  std::vector<int64_t> mesh_dim_lengths = dim_sizes();
+  int64_t i = mesh_dim_lengths.size() - 1;
   while (i >= 0) {
     dev_loc.insert(dev_loc.begin(), offset % mesh_dim_lengths[i]);
     offset /= mesh_dim_lengths[i];
@@ -740,11 +740,11 @@ StatusOr<const DeviceLocation> Mesh::device_location(int offset) const {
   return dev_loc;
 }
 
-int64 Mesh::GetFlattenedCoordinate(const DeviceLocation& loc) const {
-  const std::vector<int64> mesh_dim_sizes = dim_sizes();
-  int64 i = mesh_dim_sizes.size() - 1;
-  int64 acc = 1;
-  int64 device_pos = 0;
+int64_t Mesh::GetFlattenedCoordinate(const DeviceLocation& loc) const {
+  const std::vector<int64_t> mesh_dim_sizes = dim_sizes();
+  int64_t i = mesh_dim_sizes.size() - 1;
+  int64_t acc = 1;
+  int64_t device_pos = 0;
   while (i >= 0) {
     device_pos += loc[i] * acc;
     acc *= mesh_dim_sizes[i];
@@ -753,7 +753,7 @@ int64 Mesh::GetFlattenedCoordinate(const DeviceLocation& loc) const {
   return device_pos;
 }
 
-StatusOr<int32> Mesh::idx_for_dim(absl::string_view dim_name) const {
+StatusOr<int32_t> Mesh::idx_for_dim(absl::string_view dim_name) const {
   for (int i = 0; i < mesh_dims_.size(); ++i) {
     if (mesh_dims_[i].name == dim_name) return i;
   }
@@ -886,7 +886,7 @@ Mesh Layout::ReducedMesh() const {
   std::vector<int64_t> reduced_global_device_ids;
   std::vector<std::string> reduced_global_devs;
   for (const DeviceLocation& loc : ComputeDeviceLocations(reduced_mesh)) {
-    int64 pos = mesh().GetFlattenedCoordinate(loc);
+    int64_t pos = mesh().GetFlattenedCoordinate(loc);
     reduced_global_device_ids.push_back(mesh().global_device_ids().at(pos));
     if (!mesh().global_devices().empty()) {
       reduced_global_devs.push_back(mesh().global_devices().at(pos));
@@ -956,7 +956,7 @@ ShardVector Layout::GetShardVector() const {
     for (size_t i = 0; i < sharding_specs_.size(); ++i) {
       std::string spec = sharding_specs_[i];
       if (Layout::IsShardedDimension(spec)) {
-        StatusOr<int64> dim_size = mesh().dim_size(spec);
+        StatusOr<int64_t> dim_size = mesh().dim_size(spec);
         num_shards_per_dim[i] = dim_size.value();
       } else {
         num_shards_per_dim[i] = 1;
@@ -1014,15 +1014,14 @@ const std::string& Layout::sharding_spec(int idx) const {
   return sharding_specs_[idx];
 }
 
-std::vector<int32> Layout::num_shards() const {
-  std::vector<int32> num_shards;
+std::vector<int32_t> Layout::num_shards() const {
+  std::vector<int32_t> num_shards;
   num_shards.reserve(sharding_specs_.size());
   for (int64_t index = 0; index < sharding_specs_.size(); ++index) {
     num_shards.push_back(num_shards_for_dim(index));
   }
   return num_shards;
 }
-
 
 size_t Layout::num_shards_for_dim(int dim) const {
   const std::string spec = sharding_specs_[dim];
@@ -1180,7 +1179,7 @@ std::vector<int64_t> Layout::LocalShapeFromGlobalShape(
   if (IsFullyReplicated()) {
     return std::vector<int64_t>(global_shape.begin(), global_shape.end());
   }
-  std::vector<int32> shards = num_shards();
+  std::vector<int32_t> shards = num_shards();
   std::vector<int64_t> local_shape;
   for (int i = 0; i < sharding_specs_.size(); ++i) {
     int64_t dim_shards = shards[i];
@@ -1198,7 +1197,7 @@ PartialTensorShape Layout::LocalShapeFromGlobalShape(
   if (IsFullyReplicated() || global_shape.dims() == -1) {
     return global_shape;
   }
-  std::vector<int32> shards = num_shards();
+  std::vector<int32_t> shards = num_shards();
   PartialTensorShape local_shape({});
   for (int spec_index = 0; spec_index < sharding_specs_.size(); ++spec_index) {
     int64_t dim_size = global_shape.dim_size(spec_index);
@@ -1247,14 +1246,14 @@ Layout Layout::ReplicatedLike(const Layout& layout) {
 }
 
 Layout Layout::BatchShardedOnMesh(const Mesh& mesh, int rank,
-                                  const string& mesh_dim, int axis) {
+                                  const std::string& mesh_dim, int axis) {
   std::vector<std::string> specs(rank, kUnshardedDim);
   specs[axis] = mesh_dim;
   return Layout::GetLayout(specs, mesh).value();
 }
 
-Layout Layout::BatchShardedLike(const Layout& layout, const string& mesh_dim,
-                                int axis) {
+Layout Layout::BatchShardedLike(const Layout& layout,
+                                const std::string& mesh_dim, int axis) {
   std::vector<std::string> specs(layout.rank(), kUnshardedDim);
   specs[axis] = mesh_dim;
   return Layout::GetLayout(specs, layout.mesh()).value();
@@ -1361,7 +1360,7 @@ StatusOr<Layout> Layout::GetLayoutWithReducedDims(
   return Layout::GetLayout(sharding_specs, mesh());
 }
 
-Layout Layout::Truncate(int64 split_point, bool end) const {
+Layout Layout::Truncate(int64_t split_point, bool end) const {
   if ((split_point == 0 && end) || (split_point == rank() && !end))
     return *this;
 

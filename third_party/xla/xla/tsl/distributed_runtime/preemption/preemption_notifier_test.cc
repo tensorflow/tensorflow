@@ -19,12 +19,12 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #if defined(PLATFORM_GOOGLE)
@@ -60,7 +60,7 @@ TEST_F(PreemptNotifierTest, WillBePreemptedAt) {
 
   // Preempt time should be current timestamp.
   absl::StatusOr<absl::Time> result = preempt_notifier->WillBePreemptedAt();
-  TF_CHECK_OK(result.status());
+  CHECK_OK(result.status());
   absl::Time preempt_time = result.value();
 
   // Make sure that preempt time is approximately correct.
@@ -85,7 +85,7 @@ TEST_F(PreemptNotifierTest,
 
   // Preempt time should be current timestamp.
   absl::StatusOr<absl::Time> result = preempt_notifier->WillBePreemptedAt();
-  TF_CHECK_OK(result.status());
+  CHECK_OK(result.status());
   absl::Time preempt_time = result.value();
 
   // Make sure that preempt time is approximately correct.
@@ -122,8 +122,8 @@ TEST_F(PreemptNotifierTest, WillBePreemptedAtAsync_SameResultForAllCallbacks) {
   n.WaitForNotification();
   n_2.WaitForNotification();
 
-  TF_CHECK_OK(preempt_time.status());
-  TF_CHECK_OK(preempt_time_2.status());
+  CHECK_OK(preempt_time.status());
+  CHECK_OK(preempt_time_2.status());
   // Make sure that the same preempt time is returned for both calls.
   EXPECT_EQ(preempt_time.value(), preempt_time_2.value());
 }
@@ -136,7 +136,7 @@ TEST_F(PreemptNotifierTest, Reset_TwoDifferentPreemptTimesRecorded) {
   // Raise first signal.
   std::raise(SIGTERM);
   absl::StatusOr<absl::Time> result = preempt_notifier->WillBePreemptedAt();
-  TF_CHECK_OK(result.status());
+  CHECK_OK(result.status());
   absl::Time preempt_time = result.value();
 
   preempt_notifier =

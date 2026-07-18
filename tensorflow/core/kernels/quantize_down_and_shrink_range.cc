@@ -45,12 +45,12 @@ class QuantizeDownAndShrinkRangeOp : public OpKernel {
 
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsScalar(input_min.shape()),
-        errors::InvalidArgument("`input_min` must be rank 0 but is rank ",
-                                input_min.dims()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "`input_min` must be rank 0 but is rank ", input_min.dims())));
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsScalar(input_max.shape()),
-        errors::InvalidArgument("`input_max` must be rank 0 but is rank ",
-                                input_max.dims()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "`input_max` must be rank 0 but is rank ", input_max.dims())));
 
     const float input_min_float = input_min.scalar<float>()();
     const float input_max_float = input_max.scalar<float>()();
@@ -64,9 +64,9 @@ class QuantizeDownAndShrinkRangeOp : public OpKernel {
     // See QuantizationRangeOp as well, which has a copy of this logic.
     auto input_array = input.flat<T1>();
     const int32_t input_lowest_quantized =
-        static_cast<int32>(Eigen::NumTraits<T1>::lowest());
+        static_cast<int32_t>(Eigen::NumTraits<T1>::lowest());
     const int32_t input_highest_quantized =
-        static_cast<int32>(Eigen::NumTraits<T1>::highest());
+        static_cast<int32_t>(Eigen::NumTraits<T1>::highest());
     T1 actual_min_quantized = input_highest_quantized;
     T1 actual_max_quantized = input_lowest_quantized;
     for (int i = 0; i < input_array.size(); ++i) {

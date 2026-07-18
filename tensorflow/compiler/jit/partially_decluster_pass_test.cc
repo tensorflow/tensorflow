@@ -100,7 +100,7 @@ absl::Status PartiallyDecluster(std::unique_ptr<Graph>* graph) {
   return pass.Run(opt_options);
 }
 
-Node* FindNodeByName(const Graph& graph, const string& name) {
+Node* FindNodeByName(const Graph& graph, const std::string& name) {
   for (Node* node : graph.nodes()) {
     if (node->name() == name) {
       return node;
@@ -109,7 +109,7 @@ Node* FindNodeByName(const Graph& graph, const string& name) {
   return nullptr;
 }
 
-bool GetInputsForNode(const Graph& graph, const string& node_name,
+bool GetInputsForNode(const Graph& graph, const std::string& node_name,
                       std::vector<Node*>* inputs) {
   const Node* node = FindNodeByName(graph, node_name);
   if (node == nullptr) {
@@ -292,7 +292,7 @@ TEST(PartiallyDeclusterPassTest, DeclusterDependentNodes) {
 void AddToCluster(absl::Span<Node* const> nodes,
                   absl::string_view cluster_name) {
   for (Node* n : nodes) {
-    n->AddAttr(kXlaClusterAttr, string(cluster_name));
+    n->AddAttr(kXlaClusterAttr, std::string(cluster_name));
   }
 }
 

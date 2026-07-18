@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/internal/mlir_bridge_pass_util.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -202,7 +203,7 @@ TEST(IsInferenceGraph, GraphContrainsTPUPartitionedCall) {
           {{"two"},
            "Const",
            {},
-           {{"value", test::AsScalar<int32>(2)}, {"dtype", DT_INT64}}},
+           {{"value", test::AsScalar<int32_t>(2)}, {"dtype", DT_INT64}}},
           {{"scale"},
            "Cast",
            {"two"},
@@ -244,7 +245,7 @@ TEST(IsInferenceGraph, GraphDoesNotContrainTPUPartitionedCall) {
           {{"two"},
            "Const",
            {},
-           {{"value", test::AsScalar<int32>(2)}, {"dtype", DT_INT64}}},
+           {{"value", test::AsScalar<int32_t>(2)}, {"dtype", DT_INT64}}},
           {{"scale"},
            "Cast",
            {"two"},
@@ -284,7 +285,7 @@ TEST(IsInferenceGraph, FlibDefIsNotNullptrAndContainsTPUPartitionedCall) {
           {{"two"},
            "Const",
            {},
-           {{"value", test::AsScalar<int32>(2)}, {"dtype", DT_INT64}}},
+           {{"value", test::AsScalar<int32_t>(2)}, {"dtype", DT_INT64}}},
           {{"scale"},
            "Cast",
            {"two"},

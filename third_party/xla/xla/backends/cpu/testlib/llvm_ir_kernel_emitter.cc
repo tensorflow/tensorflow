@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/cpu/testlib/llvm_ir_kernel_emitter.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -29,12 +30,14 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
-#include "xla/codegen/llvm_ir_kernel_source.h"
-#include "xla/codegen/llvm_kernel_definition.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.h"
+#include "xla/shape.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 namespace {}  // namespace
@@ -53,11 +56,11 @@ LlvmTestKernelEmitter::LlvmTestKernelEmitter(absl::string_view llvm_ir,
   }
 }
 
-absl::StatusOr<LlvmKernelDefinition>
+absl::StatusOr<LlvmTestKernelEmitter::KernelDefinition>
 LlvmTestKernelEmitter::EmitKernelDefinition() {
   auto context = std::make_unique<llvm::LLVMContext>();
 
-  // Parse LLVM IR into a module and create a LlvmIrKernelSource.
+  // Parse LLVM IR into a module and create a LlvmKernelSource.
   llvm::SMDiagnostic diagnostic;
   std::unique_ptr<llvm::Module> module = llvm::parseAssembly(
       llvm::MemoryBufferRef(llvm_ir_, kernel_name_), diagnostic, *context);
@@ -67,7 +70,7 @@ LlvmTestKernelEmitter::EmitKernelDefinition() {
                     diagnostic.getMessage().str());
   }
 
-  LlvmIrKernelSource source(std::move(context), std::move(module));
+  LlvmKernelSource source(std::move(context), std::move(module));
 
   // Convert kernel arguments to fake allocations and buffer uses.
   KernelSpec::Buffers argument_buffers;
@@ -75,17 +78,19 @@ LlvmTestKernelEmitter::EmitKernelDefinition() {
 
   for (const auto& [arg, allocation] : llvm::zip(args_, buffer_allocations_)) {
     BufferAllocation::Slice slice(&allocation, 0, arg.size_bytes);
+    Shape shape =
+        ShapeUtil::MakeShape(U8, {static_cast<int64_t>(arg.size_bytes)});
     if (arg.memory_access == BufferUse::MemoryAccess::kRead) {
-      argument_buffers.push_back(slice);
+      argument_buffers.push_back({slice, shape});
     } else {
-      result_buffers.push_back(slice);
+      result_buffers.push_back({slice, shape});
     }
   }
 
   KernelSpec kernel_spec(kernel_name_, num_workgroups_,
                          std::move(argument_buffers), std::move(result_buffers),
                          /*invariant_arguments=*/{});
-  return LlvmKernelDefinition(std::move(kernel_spec), std::move(source));
+  return KernelDefinition(std::move(kernel_spec), std::move(source));
 }
 
 }  // namespace xla::cpu

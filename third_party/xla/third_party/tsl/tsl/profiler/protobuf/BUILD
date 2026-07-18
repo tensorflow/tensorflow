@@ -1,14 +1,15 @@
+# copybara:uncomment(oss-unused) load("//devtools/clif/python:clif_build_rule.bzl", "pyclif_proto_library")
 # copybara:uncomment(oss-unused) load("//net/grpc/go/build_defs:go_grpc_library.bzl", "go_grpc_library")
 # Placeholder: load py_proto_library
-load("@local_xla//xla/tsl:tsl.bzl", "internal_visibility")
-load("@local_xla//xla/tsl/platform:build_config.bzl", "tf_proto_library")
+load("@xla//xla/tsl:tsl.bzl", "internal_visibility")
+load("@xla//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
 package_group(
     name = "friends",
     includes = [
-        "@local_xla//xla/tsl/profiler:friends",
+        "@xla//xla/tsl/profiler:friends",
     ],
 )
 
@@ -18,6 +19,16 @@ tf_proto_library(
     make_default_target_header_only = True,
     visibility = internal_visibility([":friends"]),
 )
+
+# copybara:uncomment_begin(google-only)
+# pyclif_proto_library(
+#     name = "xplane_pyclif",
+#     proto_lib = ":xplane_proto",
+#     visibility = [
+#         "//visibility:public",
+#     ],
+# )
+# copybara:uncomment_end
 
 tf_proto_library(
     name = "profiler_options_proto",
@@ -91,7 +102,7 @@ tf_proto_library(
     srcs = ["profile.proto"],
     visibility = internal_visibility([
         ":friends",
-        "@local_xla//xla/tsl/profiler:internal",
+        "@xla//xla/tsl/profiler:internal",
     ]),
 )
 

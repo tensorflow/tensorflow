@@ -13,7 +13,7 @@ cc_library(
     ],
     deps = [
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:logging",
     ],
 )
 

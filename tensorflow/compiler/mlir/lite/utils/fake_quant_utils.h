@@ -150,10 +150,10 @@ class InsertTFLQuantOpsAfterTFFakeQuantOp {
     // dequantize ops, and insert them between the tf.FakeQuantWithMinMaxVarsOp
     // and its users.
     Value value = tf_op.getOutputs();
-    auto quantize = rewriter.create<TFL::QuantizeOp>(
-        tf_op.getLoc(), qtype.getValue(), value, qtype);
-    auto dequantize = rewriter.create<TFL::DequantizeOp>(
-        tf_op.getLoc(), res_type, quantize.getOutput());
+    auto quantize = TFL::QuantizeOp::create(rewriter, tf_op.getLoc(),
+                                            qtype.getValue(), value, qtype);
+    auto dequantize = TFL::DequantizeOp::create(rewriter, tf_op.getLoc(),
+                                                res_type, quantize.getOutput());
     value.replaceAllUsesWith(dequantize);
     quantize.getOperation()->replaceUsesOfWith(dequantize, value);
 

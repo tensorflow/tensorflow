@@ -27,7 +27,7 @@ limitations under the License.
 namespace tensorflow::graph_regularization {
 
 // Computes the Fingerprint64 hash of the GraphDef.
-uint64 ComputeHash(const GraphDef& graph_def);
+uint64_t ComputeHash(const GraphDef& graph_def);
 
 // Returns the suffix UID of `function_name`, returns an error if there is none.
 absl::StatusOr<int64_t> GetSuffixUID(absl::string_view function_name);

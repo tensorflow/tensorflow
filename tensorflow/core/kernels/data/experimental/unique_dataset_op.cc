@@ -17,12 +17,14 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -47,7 +49,7 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(
         Iterator::Params{this, absl::StrCat(prefix, "::Unique")});
   }
@@ -60,7 +62,7 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return absl::StrCat("UniqueDatasetOp::Dataset");
   }
 
@@ -157,7 +159,7 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
             &unique_element));
         auto insert_result = unique_elements_.insert(unique_element);
         if (!insert_result.second) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               "Checkpoint contained two unique elements with the same "
               "value.");
         }
@@ -173,7 +175,7 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
         } else {
           DCHECK_EQ(DT_STRING, t.dtype());
           auto flat_t = t.flat<tstring>();
-          uint64 hash = 0;
+          uint64_t hash = 0;
           for (int64_t i = 0; i < t.NumElements(); ++i) {
             hash = Hash64Combine(hash, Hash64(flat_t(i)));
           }
@@ -224,14 +226,14 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
 void UniqueDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                   DatasetBase** output) {
   OP_REQUIRES(ctx, input->output_dtypes().size() == 1,
-              errors::InvalidArgument("UniqueDataset only supports "
-                                      "inputs with a single component."));
+              absl::InvalidArgumentError("UniqueDataset only supports "
+                                         "inputs with a single component."));
 
   DataType input_dtype = input->output_dtypes()[0];
   OP_REQUIRES(ctx,
               input_dtype == DT_INT32 || input_dtype == DT_INT64 ||
                   input_dtype == DT_STRING,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(
                   "UniqueDataset only supports inputs with a single "
                   "`tf.int32`, `tf.int64`, or `tf.string` component."));
 

@@ -93,19 +93,26 @@ class TraceMeRecorder {
   // recording. Filter will be applied only if record function (e.g. TraceMe,
   // ActivityStart, InstantActivity etc.) with filter_mask is called.
   static bool Start(int level, uint64_t filter_mask);
+  // Starts recording of TraceMe() with filter and source location option.
+  static bool Start(int level, uint64_t filter_mask,
+                    bool enable_source_location);
 
   // Stops recording and returns events recorded since Start().
   // Events passed to Record after Stop has started will be dropped.
   static Events Stop();
 
+  // Flushes events recorded since Start() or the last Flush() without stopping.
+  static Events Flush();
+
   // Returns whether we're currently recording. Racy, but cheap!
-  static inline bool Active(int level = 1) {
+  static bool Active(int level = 1) {
     return internal::g_trace_level.load(std::memory_order_acquire) >= level;
   }
 
   // Returns whether the filter is enabled.
-  static inline bool CheckFilter(uint64_t filter) {
-    return internal::g_trace_filter_bitmap & filter;
+  static bool CheckFilter(uint64_t filter) {
+    return internal::g_trace_filter_bitmap.load(std::memory_order_relaxed) &
+           filter;
   }
 
   // Default value for trace_level_ when tracing is disabled

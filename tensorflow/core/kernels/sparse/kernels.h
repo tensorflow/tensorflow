@@ -42,7 +42,7 @@ template <typename Device>
 struct CalculateNNZPerBatchMatrixFromIndices {
   absl::Status operator()(OpKernelContext* c,
                           TTypes<int64_t>::ConstMatrix indices,
-                          TTypes<int32>::Vec nnz_per_batch);
+                          TTypes<int32_t>::Vec nnz_per_batch);
 };
 
 // Split a subset of a SparseTensors' indices into two vectors:
@@ -63,8 +63,8 @@ template <typename Device>
 struct SparseTensorToCOOSparseMatrix {
   void operator()(const Device& d, TTypes<int64_t>::ConstVec host_dense_shape,
                   TTypes<int64_t>::ConstMatrix indices,
-                  TTypes<int32>::Vec coo_row_ind,
-                  TTypes<int32>::Vec coo_col_ind);
+                  TTypes<int32_t>::Vec coo_row_ind,
+                  TTypes<int32_t>::Vec coo_col_ind);
 };
 
 // Write coo batch, row, and column vectors to output matrix indices:
@@ -89,9 +89,9 @@ template <typename Device>
 struct COOSparseMatrixToSparseTensor {
   absl::Status operator()(OpKernelContext* c,
                           TTypes<int64_t>::ConstVec host_dense_shape,
-                          TTypes<int32>::ConstVec host_batch_ptrs,
-                          TTypes<int32>::Vec coo_row_ind,
-                          TTypes<int32>::ConstVec coo_col_ind,
+                          TTypes<int32_t>::ConstVec host_batch_ptrs,
+                          TTypes<int32_t>::Vec coo_row_ind,
+                          TTypes<int32_t>::ConstVec coo_col_ind,
                           TTypes<int64_t>::Matrix indices);
 };
 
@@ -105,8 +105,8 @@ struct COOSparseMatrixToSparseTensor {
 template <typename Device>
 struct COOSparseMatrixToCSRSparseMatrix {
   absl::Status operator()(OpKernelContext* c, const int rows, const int cols,
-                          TTypes<int32>::UnalignedVec coo_row_ind,
-                          TTypes<int32>::UnalignedVec csr_row_ptr);
+                          TTypes<int32_t>::UnalignedVec coo_row_ind,
+                          TTypes<int32_t>::UnalignedVec csr_row_ptr);
 };
 
 // Convert a matrix of (batched) coo row and column indices to CSR SparseMatrix
@@ -126,9 +126,9 @@ struct COOSparseMatrixToCSRSparseMatrix {
 struct SparseTensorToCSRSparseMatrixCPUFunctor {
   absl::Status operator()(int64_t batch_size, int num_rows, int num_cols,
                           TTypes<int64_t>::ConstMatrix indices,
-                          TTypes<int32>::Vec batch_ptr,
-                          TTypes<int32>::Vec csr_row_ptr,
-                          TTypes<int32>::Vec csr_col_ind);
+                          TTypes<int32_t>::Vec batch_ptr,
+                          TTypes<int32_t>::Vec csr_row_ptr,
+                          TTypes<int32_t>::Vec csr_col_ind);
 };
 
 // Convert a vector of csr row pointers to coo row indices.
@@ -141,8 +141,8 @@ struct SparseTensorToCSRSparseMatrixCPUFunctor {
 template <typename Device>
 struct CSRSparseMatrixToCOOSparseMatrix {
   absl::Status operator()(OpKernelContext* c,
-                          TTypes<int32>::UnalignedConstVec csr_row_ptr,
-                          TTypes<int32>::UnalignedVec coo_row_ind);
+                          TTypes<int32_t>::UnalignedConstVec csr_row_ptr,
+                          TTypes<int32_t>::UnalignedVec coo_row_ind);
 };
 
 // Calculates C = matmul(A, B) or C = matmul(A, B)^T, where A is in CSR format
@@ -176,10 +176,10 @@ struct CSRStructureModifyingFunctor {
                                         const ConstCSRComponent<T>& b,
                                         size_t* bufferSize) = 0;
 
-  virtual absl::Status GetOutputStructure(const ConstCSRComponent<T>& a,
-                                          const ConstCSRComponent<T>& b,
-                                          TTypes<int32>::UnalignedVec c_row_ptr,
-                                          int* output_nnz, void* workspace) = 0;
+  virtual absl::Status GetOutputStructure(
+      const ConstCSRComponent<T>& a, const ConstCSRComponent<T>& b,
+      TTypes<int32_t>::UnalignedVec c_row_ptr, int* output_nnz,
+      void* workspace) = 0;
 
   virtual absl::Status Compute(const ConstCSRComponent<T>& a,
                                const ConstCSRComponent<T>& b,

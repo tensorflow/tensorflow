@@ -80,10 +80,10 @@ Operation *DuplicateOp(TF::PartitionedCallOp call_op, PatternRewriter &rewriter,
   // Create PartitionedCallOp to the copied composite function. This
   // PartitionedCallOp does not have kQuantTraitAttrName, and therefore won't
   // get quantized.
-  auto new_call_op = rewriter.create<TF::PartitionedCallOp>(
-      call_op.getLoc(), call_op.getResultTypes(), call_op.getOperands(),
-      call_op.getArgAttrsAttr(), call_op.getResAttrsAttr(),
-      FlatSymbolRefAttr::get(new_ref_func_name));
+  auto new_call_op = TF::PartitionedCallOp::create(
+      rewriter, call_op.getLoc(), call_op.getResultTypes(),
+      call_op.getOperands(), call_op.getArgAttrsAttr(),
+      call_op.getResAttrsAttr(), FlatSymbolRefAttr::get(new_ref_func_name));
   return new_call_op;
 }
 
@@ -92,9 +92,10 @@ Operation *DuplicateOp(TF::XlaCallModuleOp call_op, PatternRewriter &rewriter,
   // Create XlaCallModuleOp to the copied composite function. This
   // XlaCallModuleOp does not have kQuantTraitAttrName, and therefore won't get
   // quantized.
-  auto new_call_op = rewriter.create<TF::XlaCallModuleOp>(
-      call_op.getLoc(), call_op.getResultTypes(), call_op.getOperands(),
-      call_op.getVersionAttr(), call_op.getModuleAttr(), call_op.getSoutAttr());
+  auto new_call_op = TF::XlaCallModuleOp::create(
+      rewriter, call_op.getLoc(), call_op.getResultTypes(),
+      call_op.getOperands(), call_op.getVersionAttr(), call_op.getModuleAttr(),
+      call_op.getSoutAttr());
   new_call_op->setAttr(TF::kStablehloEntryFunctionAttrName,
                        rewriter.getStringAttr(new_ref_func_name.getValue()));
   new_call_op->setAttrs(call_op->getAttrs());
@@ -259,8 +260,8 @@ class AddDumpTensorOp : public OpRewritePattern<LiftedOpT> {
     SmallVector<NamedAttribute> dump_attributes =
         CreateDumpAttributes(rewriter, folder_name, file_name,
                              /*enabled=*/true, func_name, node_name);
-    rewriter.create<TF::DumpTensorOp>(op->getLoc(), TypeRange{}, result,
-                                      dump_attributes);
+    TF::DumpTensorOp::create(rewriter, op->getLoc(), TypeRange{}, result,
+                             dump_attributes);
 
     // Per-layer mode.
     if (debugger_type_ == DebuggerConfig::DEBUGGER_TYPE_INT_PER_LAYER ||
@@ -274,8 +275,8 @@ class AddDumpTensorOp : public OpRewritePattern<LiftedOpT> {
       SmallVector<NamedAttribute> dump_attributes = CreateDumpAttributes(
           rewriter, folder_name, /*file_name=*/"unquantized_tensor_data.pb",
           /*enabled=*/true, func_name, node_name);
-      rewriter.create<TF::DumpTensorOp>(op.getLoc(), TypeRange{},
-                                        new_op->getResult(0), dump_attributes);
+      TF::DumpTensorOp::create(rewriter, op.getLoc(), TypeRange{},
+                               new_op->getResult(0), dump_attributes);
 
       if (debugger_type_ == DebuggerConfig::DEBUGGER_TYPE_FLOAT_PER_LAYER) {
         // Swap all uses between call_op and ref_call_op, except for the

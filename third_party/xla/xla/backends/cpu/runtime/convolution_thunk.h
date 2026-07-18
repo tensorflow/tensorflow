@@ -20,11 +20,11 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/statusor.h"
-#include "xla/backends/cpu/runtime/convolution_lib.h"
+#include "xla/backends/cpu/runtime/convolution_dims.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/xla_data.pb.h"
 
@@ -33,8 +33,9 @@ namespace xla::cpu {
 // Performs 1D, 2D or 3D convolution.
 class ConvolutionThunk final : public Thunk {
  public:
+  // TODO(ezhulenev): Remove this struct as we always use thread pool.
   struct Options {
-    bool multi_threaded = false;
+    bool multi_threaded = true;
   };
 
   static absl::StatusOr<std::unique_ptr<ConvolutionThunk>> Create(
@@ -68,12 +69,12 @@ class ConvolutionThunk final : public Thunk {
                    ConvolutionDimensionNumbers dnums, Window window);
 
   tsl::AsyncValueRef<Thunk::ExecuteEvent> HandleEigen2DConvolution(
-      const ExecuteParams& params, se::DeviceMemoryBase input,
-      se::DeviceMemoryBase kernel, se::DeviceMemoryBase output);
+      const ExecuteParams& params, se::DeviceAddressBase input,
+      se::DeviceAddressBase kernel, se::DeviceAddressBase output);
 
   tsl::AsyncValueRef<Thunk::ExecuteEvent> HandleEigen3DConvolution(
-      const ExecuteParams& params, se::DeviceMemoryBase input,
-      se::DeviceMemoryBase kernel, se::DeviceMemoryBase output);
+      const ExecuteParams& params, se::DeviceAddressBase input,
+      se::DeviceAddressBase kernel, se::DeviceAddressBase output);
 
   Options options_;
   ConvolutionSlices convolution_slices_;

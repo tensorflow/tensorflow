@@ -65,16 +65,16 @@ const bool kFailOnDecodeError = true;
 // type of the output tensor.
 struct DefaultValue {
   DataType dtype = DataType::DT_INVALID;
-  absl::variant<bool,     // DT_BOOL
-                double,   // DT_DOUBLE
-                float,    // DT_FLOAT
-                int8,     // DT_INT8
-                int32,    // DT_INT32
-                int64_t,  // DT_INT64
-                tstring,  // DT_STRING
-                uint8,    // DT_UINT8
-                uint32,   // DT_UINT32
-                uint64>   // DT_UINT64
+  std::variant<bool,      // DT_BOOL
+               double,    // DT_DOUBLE
+               float,     // DT_FLOAT
+               int8_t,    // DT_INT8
+               int32_t,   // DT_INT32
+               int64_t,   // DT_INT64
+               tstring,   // DT_STRING
+               uint8_t,   // DT_UINT8
+               uint32_t,  // DT_UINT32
+               uint64_t>  // DT_UINT64
       value;
 };
 
@@ -100,28 +100,28 @@ absl::Status InitDefaultValue(DataType dtype, const T value,
       result->value = static_cast<float>(value);
       break;
     case DT_INT8:
-      result->value = static_cast<int8>(value);
+      result->value = static_cast<int8_t>(value);
       break;
     case DT_INT32:
-      result->value = static_cast<int32>(value);
+      result->value = static_cast<int32_t>(value);
       break;
     case DT_INT64:
       result->value = static_cast<int64_t>(value);
       break;
     case DT_UINT8:
-      result->value = static_cast<uint8>(value);
+      result->value = static_cast<uint8_t>(value);
       break;
     case DT_UINT32:
-      result->value = static_cast<uint32>(value);
+      result->value = static_cast<uint32_t>(value);
       break;
     case DT_UINT64:
-      result->value = static_cast<uint64>(value);
+      result->value = static_cast<uint64_t>(value);
       break;
     default:
       // We should never get here, given the type checking that occurs earlier.
-      return errors::Internal(
-          "Cannot initialize default value for unsupported type: ",
-          DataTypeString(dtype));
+      return absl::InternalError(
+          absl::StrCat("Cannot initialize default value for unsupported type: ",
+                       DataTypeString(dtype)));
   }
   return absl::OkStatus();
 }
@@ -132,7 +132,7 @@ absl::Status InitDefaultValue(DataType dtype, const tstring value,
   // These are sanity checks that should never trigger given the code that
   // leads here.
   if (TF_PREDICT_FALSE(dtype != DT_STRING)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Cannot cast field to anything but DT_STRING");
   }
   result->dtype = DT_STRING;
@@ -245,7 +245,7 @@ class CountCollector {
   CountCollector() = delete;
 
   // The count may be stored inside an Eigen Tensor to eliminate copying.
-  explicit CountCollector(int32* count) : count_ptr_(count) {}
+  explicit CountCollector(int32_t* count) : count_ptr_(count) {}
 
   // Reads (in this case counts) a single value.
   absl::Status ReadValue(CodedInputStream* input, const FieldInfo& field) {
@@ -256,7 +256,8 @@ class CountCollector {
     // We expect a wire type based on the schema field_type, to allow a little
     // more checking.
     if (!SkipValue(input, field)) {
-      return errors::DataLoss("ReadValue: Failed skipping field when counting");
+      return absl::DataLossError(
+          "ReadValue: Failed skipping field when counting");
     }
     return absl::OkStatus();
   }
@@ -275,13 +276,14 @@ class CountCollector {
     // This is safe because the underlying storage for the CodedInputStream is
     // owned by the input tensor. If it were a Cord or file-backed stream this
     // pointer would go stale after the bytes were skipped.
-    const uint8* buf = reinterpret_cast<const uint8*>(tmpbuf);
+    const uint8_t* buf = reinterpret_cast<const uint8_t*>(tmpbuf);
 
     // Important: we skipped the input->{Push,Pop}Limit() calls for speed,
     // so the bounds check on buf_size inside Skip() is critical, and
     // must be done before scanning the contents.
     if (!input->Skip(buf_size)) {
-      return errors::DataLoss("ReadPackedValues: Skipping packed field failed");
+      return absl::DataLossError(
+          "ReadPackedValues: Skipping packed field failed");
     }
 
     // Dispatch to the appropriately typed field reader based on the schema
@@ -304,25 +306,25 @@ class CountCollector {
         st = CountPackedVarint(buf, buf_size);
         break;
       case WireFormatLite::TYPE_FIXED64:
-        st = CountPackedFixed<uint64>(buf, buf_size);
+        st = CountPackedFixed<uint64_t>(buf, buf_size);
         break;
       case WireFormatLite::TYPE_FIXED32:
-        st = CountPackedFixed<uint32>(buf, buf_size);
+        st = CountPackedFixed<uint32_t>(buf, buf_size);
         break;
       case WireFormatLite::TYPE_BOOL:
         st = CountPackedVarint(buf, buf_size);
         break;
       case WireFormatLite::TYPE_STRING:
-        st = errors::DataLoss("TYPE_STRING encountered as packed");
+        st = absl::DataLossError("TYPE_STRING encountered as packed");
         break;
       case WireFormatLite::TYPE_GROUP:
-        st = errors::DataLoss("TYPE_GROUP encountered as packed");
+        st = absl::DataLossError("TYPE_GROUP encountered as packed");
         break;
       case WireFormatLite::TYPE_MESSAGE:
-        st = errors::DataLoss("TYPE_MESSAGE encountered as packed");
+        st = absl::DataLossError("TYPE_MESSAGE encountered as packed");
         break;
       case WireFormatLite::TYPE_BYTES:
-        st = errors::DataLoss("TYPE_BYTES encountered as packed");
+        st = absl::DataLossError("TYPE_BYTES encountered as packed");
         break;
       case WireFormatLite::TYPE_UINT32:
         st = CountPackedVarint(buf, buf_size);
@@ -331,7 +333,7 @@ class CountCollector {
         st = CountPackedVarint(buf, buf_size);
         break;
       case WireFormatLite::TYPE_SFIXED32:
-        st = CountPackedFixed<int32>(buf, buf_size);
+        st = CountPackedFixed<int32_t>(buf, buf_size);
         break;
       case WireFormatLite::TYPE_SFIXED64:
         st = CountPackedFixed<int64_t>(buf, buf_size);
@@ -357,7 +359,7 @@ class CountCollector {
  private:
   // Skips a length-delimited value.
   static bool SkipBytes(CodedInputStream* input) {
-    uint32 length;
+    uint32_t length;
     if (!input->ReadVarint32(&length)) {
       return false;
     }
@@ -367,8 +369,8 @@ class CountCollector {
   // Counts the number of packed varints in an array. The end of a varint is
   // signaled by a value < 0x80, so counting them requires parsing the
   // bytestream. It is the caller's responsibility to ensure that len > 0.
-  absl::Status CountPackedVarint(const uint8* buf, size_t len) {
-    const uint8* bound = buf + len;
+  absl::Status CountPackedVarint(const uint8_t* buf, size_t len) {
+    const uint8_t* bound = buf + len;
     int count;
 
     // The last byte in a valid encoded varint is guaranteed to have the high
@@ -376,16 +378,16 @@ class CountCollector {
     // going out of bounds, so validate the end of the buf before scanning
     // anything.
     if (bound[-1] & 0x80) {
-      return errors::DataLoss("Corrupt packed varint");
+      return absl::DataLossError("Corrupt packed varint");
     }
 
     // Now we can trust ReadVarint64FromArray to stay in bounds.
     for (count = 0; buf < bound; ++count) {
-      uint64 temp;
+      uint64_t temp;
       bool ok;
       buf = internal::ReadVarint64FromArray(buf, &ok, &temp);
       if (!ok) {
-        return errors::DataLoss("Corrupt packed varint");
+        return absl::DataLossError("Corrupt packed varint");
       }
     }
 
@@ -396,11 +398,11 @@ class CountCollector {
   // Counts the number of fixed-size values in a packed field. This can be done
   // without actually parsing anything.
   template <typename T>
-  absl::Status CountPackedFixed(const uint8* unused_buf, size_t len) {
+  absl::Status CountPackedFixed(const uint8_t* unused_buf, size_t len) {
     int count = len / sizeof(T);
     if (count * sizeof(T) != len) {
-      return errors::DataLoss(
-          "Illegal data length for packed fixed-size type: ", len);
+      return absl::DataLossError(absl::StrCat(
+          "Illegal data length for packed fixed-size type: ", len));
     }
     *count_ptr_ += len / sizeof(T);
     return absl::OkStatus();
@@ -410,7 +412,7 @@ class CountCollector {
   // typed field skipper based on the schema type tag. This is not as permissive
   // as just handling the wire type.
   static bool SkipValue(CodedInputStream* input, const FieldInfo& field) {
-    uint32 tmp32;
+    uint32_t tmp32;
     protobuf_uint64 tmp64;
     switch (field.type) {
       case WireFormatLite::TYPE_DOUBLE:
@@ -455,7 +457,7 @@ class CountCollector {
     }
   }
 
-  int32* count_ptr_ = nullptr;
+  int32_t* count_ptr_ = nullptr;
 };
 
 // A DenseCollector accumulates values from a proto into a tensor.
@@ -473,7 +475,8 @@ class DenseCollector {
 
   // A DenseCollector applies to one field of a serialized message.
   // Note that default_value.dtype is the type of the output tensor.
-  DenseCollector(uint8* datap, DefaultValue default_value, int max_repeat_count)
+  DenseCollector(uint8_t* datap, DefaultValue default_value,
+                 int max_repeat_count)
       : datap_(datap),
         default_value_(default_value),
         max_repeat_count_(max_repeat_count) {}
@@ -510,9 +513,9 @@ class DenseCollector {
     // owned by the input tensor. If it were a Cord or file-backed stream this
     // pointer would go stale after the bytes were skipped.
     if (!input->Skip(buf_size)) {
-      return errors::DataLoss(
+      return absl::DataLossError(absl::StrCat(
           "ReadPackedValues: Skipping packed field failed.  Field tag: ",
-          field.number);
+          field.number));
     }
 
     // Setting stride=0 causes new values to overwrite old ones for
@@ -520,10 +523,10 @@ class DenseCollector {
     const int stride = field.is_repeated ? 1 : 0;
 
     if (next_repeat_index_ >= max_repeat_count_) {
-      return errors::DataLoss(
+      return absl::DataLossError(absl::StrCat(
           "ReadPackedValues: Tried to write more entries than allowed.  "
           "Field tag: ",
-          field.number, ", Max entries allowed: ", max_repeat_count_);
+          field.number, ", Max entries allowed: ", max_repeat_count_));
     } else {
       return internal::ReadPackedFromArray(buf, buf_size, field.type,
                                            field.number, default_value_.dtype,
@@ -542,25 +545,26 @@ class DenseCollector {
       case DataType::DT_DOUBLE:
         return FillDefault(absl::get<double>(default_value_.value));
       case DataType::DT_INT8:
-        return FillDefault(absl::get<int8>(default_value_.value));
+        return FillDefault(absl::get<int8_t>(default_value_.value));
       case DataType::DT_INT32:
-        return FillDefault(absl::get<int32>(default_value_.value));
+        return FillDefault(absl::get<int32_t>(default_value_.value));
       case DataType::DT_INT64:
         return FillDefault(absl::get<int64_t>(default_value_.value));
       case DataType::DT_STRING:
         return FillDefault(absl::get<tstring>(default_value_.value));
       case DataType::DT_UINT8:
-        return FillDefault(absl::get<uint8>(default_value_.value));
+        return FillDefault(absl::get<uint8_t>(default_value_.value));
       case DataType::DT_UINT32:
-        return FillDefault(absl::get<uint32>(default_value_.value));
+        return FillDefault(absl::get<uint32_t>(default_value_.value));
       case DataType::DT_UINT64:
-        return FillDefault(absl::get<uint64>(default_value_.value));
+        return FillDefault(absl::get<uint64_t>(default_value_.value));
       default:
         // There are many tensorflow dtypes not handled here, but they
         // should not come up unless type casting is added to the Op.
         // Chaining with tf.cast() should do the right thing until then.
-        return errors::DataLoss("Failed filling defaults for ",
-                                DataTypeString(default_value_.dtype));
+        return absl::DataLossError(
+            absl::StrCat("Failed filling defaults for ",
+                         DataTypeString(default_value_.dtype)));
     }
   }
 
@@ -576,7 +580,7 @@ class DenseCollector {
     return absl::OkStatus();
   }
 
-  int32 next_repeat_index_ = 0;
+  int32_t next_repeat_index_ = 0;
 
   // This is a pointer to data_[message_index_]. There is no bounds checking at
   // this level: we computed the max repeat size for each field in
@@ -591,7 +595,7 @@ class DenseCollector {
 class DecodeProtoOp : public OpKernel {
  public:
   explicit DecodeProtoOp(OpKernelConstruction* context) : OpKernel(context) {
-    string descriptor_source;
+    std::string descriptor_source;
     OP_REQUIRES_OK(context,
                    context->GetAttr("descriptor_source", &descriptor_source));
 
@@ -601,31 +605,31 @@ class DecodeProtoOp : public OpKernel {
     OP_REQUIRES_OK(context, GetDescriptorPool(context->env(), descriptor_source,
                                               &desc_pool, &owned_desc_pool_));
 
-    string message_type;
+    std::string message_type;
     OP_REQUIRES_OK(context, context->GetAttr("message_type", &message_type));
 
     const Descriptor* message_desc =
         desc_pool->FindMessageTypeByName(message_type);
     OP_REQUIRES(context, message_desc != nullptr,
-                errors::InvalidArgument("No descriptor found for message type ",
-                                        message_type));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "No descriptor found for message type ", message_type)));
 
-    std::vector<string> field_names;
+    std::vector<std::string> field_names;
     OP_REQUIRES_OK(context, context->GetAttr("field_names", &field_names));
     std::vector<DataType> output_types;
     OP_REQUIRES_OK(context, context->GetAttr("output_types", &output_types));
-    OP_REQUIRES(
-        context, field_names.size() == output_types.size(),
-        errors::InvalidArgument("field_names and output_types attributes must "
-                                "have the same length"));
+    OP_REQUIRES(context, field_names.size() == output_types.size(),
+                absl::InvalidArgumentError(
+                    "field_names and output_types attributes must "
+                    "have the same length"));
 
     // Gather the field descriptors and check that requested output types match.
     int field_index = 0;
     std::vector<const FieldDescriptor*> field_descs;
     std::vector<const FieldDescriptor*> exts;
-    absl::flat_hash_map<string, const FieldDescriptor*> ext_name_to_field;
+    absl::flat_hash_map<std::string, const FieldDescriptor*> ext_name_to_field;
     std::vector<const FieldDescriptor*>::iterator ext_it = exts.begin();
-    for (const string& name : field_names) {
+    for (const std::string& name : field_names) {
       auto fd = message_desc->FindFieldByName(name);
       if (fd == nullptr) {
         // If field can't be found in original message, try to find a matching
@@ -653,9 +657,10 @@ class DecodeProtoOp : public OpKernel {
           }
         }
       }
-      OP_REQUIRES(context, fd != nullptr,
-                  errors::InvalidArgument("Unknown field: ", name,
-                                          " in message type ", message_type));
+      OP_REQUIRES(
+          context, fd != nullptr,
+          absl::InvalidArgumentError(absl::StrCat(
+              "Unknown field: ", name, " in message type ", message_type)));
       OP_REQUIRES(
           context,
           proto_utils::IsCompatibleType(fd->type(), output_types[field_index]),
@@ -663,10 +668,10 @@ class DecodeProtoOp : public OpKernel {
           // user will get an error if they are requested. It would be nice to
           // allow conversions here, but tf.cast already exists so we don't
           // duplicate the functionality.
-          errors::InvalidArgument("Unexpected output type for ",
-                                  fd->full_name(), ": ", fd->cpp_type_name(),
-                                  " to ",
-                                  DataType_Name(output_types[field_index])));
+          absl::InvalidArgumentError(
+              absl::StrCat("Unexpected output type for ", fd->full_name(), ": ",
+                           fd->cpp_type_name(), " to ",
+                           DataType_Name(output_types[field_index]))));
 
       field_index++;
       field_descs.push_back(fd);
@@ -698,14 +703,15 @@ class DecodeProtoOp : public OpKernel {
     }
 
     message_prototype_ = message_factory_.GetPrototype(message_desc);
-    OP_REQUIRES(context, message_prototype_ != nullptr,
-                errors::InvalidArgument("Couldn't get prototype message: ",
-                                        message_desc->full_name()));
-    string format;
+    OP_REQUIRES(
+        context, message_prototype_ != nullptr,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Couldn't get prototype message: ", message_desc->full_name())));
+    std::string format;
     OP_REQUIRES_OK(context, context->GetAttr("message_format", &format));
     OP_REQUIRES(
         context, format == "binary" || format == "text",
-        errors::InvalidArgument("format must be one of binary or text"));
+        absl::InvalidArgumentError("format must be one of binary or text"));
     is_binary_ = format == "binary";
 
     // Enable the initial protobuf sanitizer, which is much more expensive than
@@ -718,7 +724,7 @@ class DecodeProtoOp : public OpKernel {
     const Tensor& buf_tensor = ctx->input(0);
     int message_count = buf_tensor.NumElements();
     OP_REQUIRES(ctx, message_count >= 1,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Bufs argument must contain at least one value"));
 
     int field_count = fields_.size();
@@ -769,7 +775,7 @@ class DecodeProtoOp : public OpKernel {
     // conditional when handling the output data. The caller can distinguish
     // between real data and defaults using the repeat count matrix that is
     // returned by decode_proto.
-    std::vector<int32> max_sizes(field_count, 1);
+    std::vector<int32_t> max_sizes(field_count, 1);
     for (int mi = 0; mi < message_count; ++mi) {
       CountFields(ctx, mi, *bufs[mi], sizes_tensor, &max_sizes);
       if (!ctx->status().ok()) {
@@ -808,31 +814,33 @@ class DecodeProtoOp : public OpKernel {
                           tstring* binary_buf) {
     // Handle text protos by translating them to binary.
     std::unique_ptr<Message> message(message_prototype_->New());
-    OP_REQUIRES(ctx, message, errors::DataLoss("Initializing message failed"));
+    OP_REQUIRES(ctx, message,
+                absl::DataLossError("Initializing message failed"));
 
     if (is_binary_) {
       // If we get here we are sanitizing the input protobuf by parsing
       // and reserializing it with a trusted (but very slow) library.
       OP_REQUIRES(ctx, message->ParseFromString(buf),
-                  errors::DataLoss("Unable to parse binary protobuf"));
+                  absl::DataLossError("Unable to parse binary protobuf"));
     } else {
       OP_REQUIRES(ctx, TextFormat::ParseFromString(buf, message.get()),
-                  errors::DataLoss("Unable to parse text protobuf"));
+                  absl::DataLossError("Unable to parse text protobuf"));
     }
 
-    OP_REQUIRES(ctx, SerializeToTString(*message, binary_buf),
-                errors::DataLoss("Unable to reserialize text proto as binary"));
+    OP_REQUIRES(
+        ctx, SerializeToTString(*message, binary_buf),
+        absl::DataLossError("Unable to reserialize text proto as binary"));
   }
 
   // Count the number of occurrences of each requested field in a message batch.
   void CountFields(OpKernelContext* ctx, int message_index, const tstring& buf,
-                   Tensor* sizes_tensor, std::vector<int32>* max_sizes) {
+                   Tensor* sizes_tensor, std::vector<int32_t>* max_sizes) {
     int field_count = fields_.size();
 
-    CodedInputStream input(reinterpret_cast<const uint8*>(buf.c_str()),
+    CodedInputStream input(reinterpret_cast<const uint8_t*>(buf.c_str()),
                            buf.size());
 
-    std::vector<int32> field_sizes(field_count, 0);
+    std::vector<int32_t> field_sizes(field_count, 0);
     std::vector<CountCollector> counters;
     counters.reserve(field_count);
     for (int i = 0; i < field_count; i++) {
@@ -841,7 +849,7 @@ class DecodeProtoOp : public OpKernel {
 
     absl::Status st = Collect(&input, absl::MakeSpan(counters));
     if (st.ok() && !input.ConsumedEntireMessage()) {
-      st = errors::DataLoss("CountFields: Failed to consume entire buffer");
+      st = absl::DataLossError("CountFields: Failed to consume entire buffer");
     }
     if (kFailOnDecodeError) {
       OP_REQUIRES_OK(ctx, st);  // NOLINT
@@ -860,7 +868,7 @@ class DecodeProtoOp : public OpKernel {
     }
 
     // Update the size tensor and max repeat size for each field.
-    auto sizes = sizes_tensor->flat_inner_dims<int32>();
+    auto sizes = sizes_tensor->flat_inner_dims<int32_t>();
     for (int fi = 0; fi < field_count; fi++) {
       int32_t size = field_sizes[fi];
       sizes(message_index, fields_[fi]->output_index) = size;
@@ -886,21 +894,21 @@ class DecodeProtoOp : public OpKernel {
         if (dtype != DT_STRING) {
           const int element_size = DataTypeSize(dtype);
           CHECK_GT(element_size, 0);
-          stride = last_dim_size * element_size;
+          stride = static_cast<int64_t>(last_dim_size) * element_size;
 
           const int64_t flatshape[1] = {tensor->NumElements() * element_size};
-          data = tensor->bit_casted_shaped<uint8, 1>(flatshape).data();
+          data = tensor->bit_casted_shaped<uint8_t, 1>(flatshape).data();
         } else {
           // DataTypeSize() returns 0 for string types.
-          stride = last_dim_size * sizeof(tstring);
-          data = reinterpret_cast<uint8*>(tensor->flat<tstring>().data());
+          stride = static_cast<int64_t>(last_dim_size) * sizeof(tstring);
+          data = reinterpret_cast<uint8_t*>(tensor->flat<tstring>().data());
         }
       }
 
       DataType dtype;
       int last_dim_size;
-      int stride;
-      uint8* data;
+      int64_t stride;
+      uint8_t* data;
     };
 
     int field_count = fields_.size();
@@ -926,11 +934,11 @@ class DecodeProtoOp : public OpKernel {
       }
 
       // Fill in output tensors from the wire.
-      CodedInputStream input(reinterpret_cast<const uint8*>(buf.c_str()),
+      CodedInputStream input(reinterpret_cast<const uint8_t*>(buf.c_str()),
                              buf.size());
       absl::Status st = Collect(&input, absl::MakeSpan(collectors));
       if (st.ok() && !input.ConsumedEntireMessage()) {
-        st = errors::DataLoss(
+        st = absl::DataLossError(
             "AccumulateFields: Failed to consume entire buffer");
       }
       if (kFailOnDecodeError) {
@@ -965,7 +973,7 @@ class DecodeProtoOp : public OpKernel {
     auto expected_field_info_iter = fields_.begin();
 
     // The 'tag' variable should always be treated as tainted.
-    for (uint32 tag = input->ReadTag();
+    for (uint32_t tag = input->ReadTag();
          tag != 0 && WireFormatLite::GetTagWireType(tag) !=
                          WireFormatLite::WIRETYPE_END_GROUP;
          tag = input->ReadTag()) {
@@ -1019,7 +1027,7 @@ class DecodeProtoOp : public OpKernel {
                 (field_number < (*(expected_field_info_iter))->number)));
         // Unknown and unrequested fields are skipped.
         if (!WireFormatLite::SkipField(input, tag)) {
-          return errors::DataLoss("Failed skipping unrequested field");
+          return absl::DataLossError("Failed skipping unrequested field");
         }
         continue;
       }
@@ -1057,7 +1065,7 @@ class DecodeProtoOp : public OpKernel {
       // Handle packed repeated primitives.
       int length;
       if (!input->ReadVarintSizeAsInt(&length)) {
-        return errors::DataLoss("CollectField: Failed reading packed size");
+        return absl::DataLossError("CollectField: Failed reading packed size");
       }
       return collector->ReadPackedValues(input, field, length);
     }
@@ -1066,7 +1074,7 @@ class DecodeProtoOp : public OpKernel {
     if (wire_type != schema_wire_type) {
       if (!WireFormatLite::SkipField(
               input, WireFormatLite::MakeTag(field.number, wire_type))) {
-        return errors::DataLoss(
+        return absl::DataLossError(
             "CollectField: Failed skipping malformed field");
       }
       return absl::OkStatus();
@@ -1074,7 +1082,7 @@ class DecodeProtoOp : public OpKernel {
     return collector->ReadValue(input, field);
   }
 
-  string message_type_;
+  std::string message_type_;
   // Note that fields are sorted by increasing field number, which is not in
   // general the order given by the user-specified field_names and output_types
   // Op attributes.

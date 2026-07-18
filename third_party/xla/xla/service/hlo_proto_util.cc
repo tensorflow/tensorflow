@@ -15,26 +15,38 @@ limitations under the License.
 
 #include "xla/service/hlo_proto_util.h"
 
-#include <memory>
+#include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "xla/util.h"
 
 namespace xla {
 
 HloProto MakeHloProto(const HloModule& module,
                       const BufferAssignment& assignment) {
-  BufferAssignmentProto proto_assignment = assignment.ToProto();
-  HloProto proto = MakeHloProto(module);
-  proto.mutable_buffer_assignment()->Swap(&proto_assignment);
+  HloProto proto;
+  MakeHloProto(module, assignment, &proto);
   return proto;
 }
 
+void MakeHloProto(const HloModule& module, const BufferAssignment& assignment,
+                  HloProto* proto) {
+  MakeHloProto(module, proto);
+  assignment.ToProto(proto->mutable_buffer_assignment());
+}
+
 HloProto MakeHloProto(const HloModule& module) {
-  HloModuleProto proto_module = module.ToProto();
   HloProto proto;
-  proto.mutable_hlo_module()->Swap(&proto_module);
+  MakeHloProto(module, &proto);
   return proto;
+}
+
+void MakeHloProto(const HloModule& module, HloProto* proto) {
+  module.ToProto(proto->mutable_hlo_module());
 }
 
 absl::StatusOr<std::vector<const ShapeProto*>> EntryComputationParameterShapes(
@@ -67,6 +79,53 @@ absl::StatusOr<const ShapeProto*> EntryComputationOutputShape(
   }
 
   return &hlo_proto.hlo_module().host_program_shape().result();
+}
+
+absl::StatusOr<std::string> GetBackendConfigString(
+    const HloInstructionProto& instruction, const HloModuleProto* module) {
+  const tsl::protobuf::RepeatedPtrField<std::string>* payloads =
+      module ? &module->payloads() : nullptr;
+
+  if (instruction.has_backend_config_payload()) {
+    const Payload& payload = instruction.backend_config_payload();
+    if (payload.has_id()) {
+      if (module == nullptr) {
+        return absl::InvalidArgumentError(
+            "Module must be provided for external payload lookup.");
+      }
+      if (payload.id() < 0 || payload.id() >= payloads->size()) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Payload requested ID %d but payloads array has size %d",
+            payload.id(), payloads ? payloads->size() : 0));
+      }
+      return payloads->at(payload.id());
+    }
+    return payload.value();
+  }
+  return instruction.backend_config();
+}
+
+static void InlinePayloadIfReferenced(Payload* payload,
+                                      const HloModuleProto* module) {
+  if (payload == nullptr || !payload->has_id() || module == nullptr) {
+    return;
+  }
+  const auto& payloads = module->payloads();
+  if (payload->id() >= 0 && payload->id() < payloads.size()) {
+    payload->set_value(payloads.at(payload->id()));
+  }
+}
+
+HloInstructionProto ToProtoWithInlinedPayloads(HloInstructionProto proto,
+                                               const HloModuleProto* module) {
+  if (proto.has_backend_config_payload()) {
+    InlinePayloadIfReferenced(proto.mutable_backend_config_payload(), module);
+  }
+  if (proto.has_metadata() && proto.metadata().has_metadata_payload()) {
+    InlinePayloadIfReferenced(
+        proto.mutable_metadata()->mutable_metadata_payload(), module);
+  }
+  return proto;
 }
 
 }  // namespace xla

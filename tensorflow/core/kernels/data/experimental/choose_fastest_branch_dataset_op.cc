@@ -53,7 +53,7 @@ class WrapperDataset : public DatasetBase {
     return *output_shapes_;
   }
 
-  string DebugString() const override { return "WrapperDataset"; }
+  std::string DebugString() const override { return "WrapperDataset"; }
 
   absl::Status InputDatasets(
       std::vector<const DatasetBase*>* inputs) const override {
@@ -66,11 +66,12 @@ class WrapperDataset : public DatasetBase {
   absl::Status AsGraphDefInternal(SerializationContext* ctx,
                                   DatasetGraphDefBuilder* b,
                                   Node** node) const override {
-    return errors::Unimplemented(DebugString(), "::AsGraphDefInternal");
+    return absl::UnimplementedError(
+        absl::StrCat(DebugString(), "::AsGraphDefInternal"));
   }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     // MakeIterator should only be called once per WrapperDataset. However,
     // since this function expects an iterator return value, we raise the
     // error only at iterator initialization time.
@@ -89,7 +90,7 @@ class WrapperDataset : public DatasetBase {
 
     absl::Status Initialize(IteratorContext* ctx) override {
       if (error_) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Cannot create more than one WrapperIterator per WrapperDataset. "
             "Make sure the branches to ChooseFastestDataset do not expect the "
             "input to repeat.");
@@ -156,7 +157,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
 
     OP_REQUIRES(
         ctx, func_metadatas_.size() == other_arguments_lengths_.size(),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(
             "branches and other_arguments_lengths must have the same length."));
   }
 
@@ -167,14 +168,15 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, "ratio_denominator",
                                                      &ratio_denominator_));
     OP_REQUIRES(ctx, ratio_numerator_ > 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "`ratio_numerator` must be greater than zero."));
     OP_REQUIRES(ctx, ratio_denominator_ > 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "`ratio_denominator` must be greater than zero."));
-    OP_REQUIRES(ctx, num_elements_per_branch_ % ratio_denominator_ == 0,
-                errors::InvalidArgument("`num_elements_per_branch` must be "
-                                        "divisible by `ratio_denominator`."));
+    OP_REQUIRES(
+        ctx, num_elements_per_branch_ % ratio_denominator_ == 0,
+        absl::InvalidArgumentError("`num_elements_per_branch` must be "
+                                   "divisible by `ratio_denominator`."));
 
     std::vector<std::unique_ptr<CapturedFunction>> captured_funcs(
         func_metadatas_.size());
@@ -222,7 +224,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
     ~Dataset() override { input_->Unref(); }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       return std::make_unique<ChooseFastestIterator>(
           ChooseFastestIterator::Params{
               this, absl::StrCat(prefix, "::ChooseFastestBranch")});
@@ -236,7 +238,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() const override {
+    std::string DebugString() const override {
       return "ChooseFastestBranchDatasetOp::Dataset";
     }
 
@@ -276,7 +278,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(
           b->AddScalar(ratio_denominator_, &ratio_denominator_node));
 
-      std::vector<int32> other_arguments_lengths;
+      std::vector<int32_t> other_arguments_lengths;
       other_arguments_lengths.reserve(captured_funcs_.size());
       int num_captured_inputs = 0;
       for (const auto& func : captured_funcs_) {
@@ -582,7 +584,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
   std::vector<std::shared_ptr<FunctionMetadata>> func_metadatas_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  std::vector<int32> other_arguments_lengths_;
+  std::vector<int32_t> other_arguments_lengths_;
 };  // class ChooseFastestBranchDatasetOp
 
 // Register the kernel implementation for ChooseFastestBranchDataset.

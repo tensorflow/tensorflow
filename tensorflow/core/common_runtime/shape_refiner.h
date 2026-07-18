@@ -87,7 +87,7 @@ class ShapeRefiner {
   }
 
   // Getters and setters for graph_def_version_.
-  int32 graph_def_version() const { return graph_def_version_; }
+  int32_t graph_def_version() const { return graph_def_version_; }
   void set_graph_def_version(int32_t version) { graph_def_version_ = version; }
 
   void set_require_shape_inference_fns(bool require_shape_inference_fns) {
@@ -250,7 +250,7 @@ class ShapeRefiner {
       shape_inference::InferenceContext* context,
       shape_inference::InferenceContext* outer_context = nullptr);
 
-  int32 graph_def_version_;
+  int32_t graph_def_version_;
   const OpRegistryInterface* const ops_registry_;
 
   // The lifetime of the tensors are bound to the runner, so it should be the

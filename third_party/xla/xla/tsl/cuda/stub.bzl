@@ -12,16 +12,16 @@ def cuda_stub(name, srcs):
     native.genrule(
         name = "{}_stub_gen".format(name),
         srcs = srcs,
-        tools = ["//third_party/implib_so:make_stub"],
+        tools = [Label("//third_party/implib_so:make_stub")],
         outs = [
             "{}.inc".format(name),
             "{}.tramp.S".format(name),
         ],
         tags = ["gpu"],
         cmd = select({
-            "@local_xla//xla/tsl:linux_aarch64": "$(location //third_party/implib_so:make_stub) $< --outdir $(RULEDIR) --target aarch64",
-            "@local_xla//xla/tsl:linux_x86_64": "$(location //third_party/implib_so:make_stub) $< --outdir $(RULEDIR) --target x86_64",
-            "@local_xla//xla/tsl:linux_ppc64le": "$(location //third_party/implib_so:make_stub) $< --outdir $(RULEDIR) --target powerpc64le",
+            Label("//xla/tsl:linux_aarch64"): "$(location //third_party/implib_so:make_stub) $< --outdir $(RULEDIR) --target aarch64",
+            Label("//xla/tsl:linux_x86_64"): "$(location //third_party/implib_so:make_stub) $< --outdir $(RULEDIR) --target x86_64",
+            Label("//xla/tsl:linux_ppc64le"): "$(location //third_party/implib_so:make_stub) $< --outdir $(RULEDIR) --target powerpc64le",
             "//conditions:default": "NOT_IMPLEMENTED_FOR_THIS_PLATFORM_OR_ARCHITECTURE",
         }),
     )

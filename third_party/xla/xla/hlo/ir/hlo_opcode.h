@@ -62,9 +62,10 @@ namespace xla {
   V(kAllToAll, "all-to-all", kHloOpcodeIsVariadic)                             \
   V(kAnd, "and", 2)                                                            \
   V(kAsin, "asin", 1)                                                          \
+  V(kAsinh, "asinh", 1)                                                        \
   V(kAsyncDone, "async-done", 1)                                               \
   V(kAsyncStart, "async-start", kHloOpcodeIsVariadic)                          \
-  V(kAsyncUpdate, "async-update", 1)                                           \
+  V(kAsyncUpdate, "async-update", kHloOpcodeIsVariadic)                        \
   V(kAtan2, "atan2", 2)                                                        \
   V(kAtanh, "atanh", 1)                                                        \
   V(kBatchNormGrad, "batch-norm-grad", 5)                                      \
@@ -121,6 +122,7 @@ namespace xla {
   V(kMap, "map", kHloOpcodeIsVariadic)                                         \
   V(kMaximum, "maximum", 2)                                                    \
   V(kMinimum, "minimum", 2)                                                    \
+  V(kMulhi, "mulhi", 2)                                                        \
   V(kMultiply, "multiply", 2)                                                  \
   V(kNegate, "negate", 1)                                                      \
   V(kNot, "not", 1)                                                            \
@@ -152,6 +154,7 @@ namespace xla {
   V(kRoundNearestEven, "round-nearest-even", 1)                                \
   V(kRsqrt, "rsqrt", 1)                                                        \
   V(kScaledDot, "scaled-dot", 4)                                               \
+  V(kScan, "scan", kHloOpcodeIsVariadic)                                       \
   V(kScatter, "scatter", kHloOpcodeIsVariadic)                                 \
   V(kSelect, "select", 3)                                                      \
   V(kSelectAndScatter, "select-and-scatter", 3)                                \
@@ -222,6 +225,7 @@ inline bool HloOpcodeIsBinaryCommutative(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kAdd:
     case HloOpcode::kMultiply:
+    case HloOpcode::kMulhi:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kAnd:

@@ -1,0 +1,49 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
+edition = "2023";
+
+package xla.ifrt;
+
+import "xla/python/ifrt/ir/ifrt_ir_compile_options.proto";
+
+option features.field_presence = IMPLICIT;
+option java_multiple_files = true;
+
+// Larger sections of a serialized IFRT IR loaded executable are stored after
+// the metadata  and this location is used to access them.
+message SerializedObjectLocation {
+  int64 offset = 1;
+  int64 size = 2;
+}
+
+// Serialized metadata for an IFRT IR atom executable.
+message SerializedIfrtIrAtomExecutableMetadata {
+  string name = 1;
+
+  // Logical device ids in IFRT IR MLIR module that the atom executable is used
+  // on. This is used to map to the device assignments in IFRT Program
+  repeated int32 logical_device_ids = 2;
+  SerializedObjectLocation executable_location = 3;
+}
+
+// Serialized metadata for an IFRT IR executable.
+message SerializedIfrtIrExecutableMetadata {
+  // Serialization and deserialization version.
+  int32 version_number = 1;
+  SerializedObjectLocation ifrt_ir_program_location = 2;
+  xla.ifrt.IfrtIrCompileOptionsProto compile_options = 3;
+  repeated SerializedIfrtIrAtomExecutableMetadata atom_program_executables = 5;
+}

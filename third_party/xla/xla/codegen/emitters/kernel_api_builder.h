@@ -22,7 +22,6 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
@@ -35,6 +34,8 @@ limitations under the License.
 #include "xla/shape.h"
 
 namespace xla::emitters {
+
+inline constexpr absl::string_view kXlaNotInvariantAttr = "xla.not_invariant";
 
 // Emits and return the kernel entry function into the provided module it for
 // the given HLO instruction.
@@ -54,7 +55,7 @@ void SetIndexDataLayout(mlir::ModuleOp module,
 // and output shape.
 IndexingMap GetDefaultWorkItemIndexingMap(const WorkDimensions& work_dimensions,
                                           const Shape& shape,
-                                          mlir::MLIRContext* ctx);
+                                          mlir::MLIRContext* mlir_context);
 
 // Emits the work group id ops annotated with the range of each dimension.
 llvm::SmallVector<mlir::Value> EmitWorkGroupIds(

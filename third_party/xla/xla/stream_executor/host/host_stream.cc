@@ -17,17 +17,15 @@ limitations under the License.
 // the HostExecutor implementation.
 #include "xla/stream_executor/host/host_stream.h"
 
-#include <string.h>
-
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
-#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/notification.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/host/host_event.h"
 #include "xla/stream_executor/stream.h"
@@ -40,8 +38,8 @@ HostStream::HostStream(StreamExecutor* executor) : StreamCommon(executor) {}
 
 HostStream::~HostStream() { parent()->DeallocateStream(this); }
 
-absl::Status HostStream::Memcpy(DeviceMemoryBase* gpu_dst,
-                                const DeviceMemoryBase& gpu_src,
+absl::Status HostStream::Memcpy(DeviceAddressBase* gpu_dst,
+                                const DeviceAddressBase& gpu_src,
                                 uint64_t size) {
   void* dst_mem = gpu_dst->opaque();
   void* src_mem = const_cast<void*>(gpu_src.opaque());
@@ -49,47 +47,53 @@ absl::Status HostStream::Memcpy(DeviceMemoryBase* gpu_dst,
   return absl::OkStatus();
 }
 
-absl::Status HostStream::Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
+absl::Status HostStream::Memcpy(void* host_dst,
+                                const DeviceAddressBase& gpu_src,
                                 uint64_t size) {
   void* src_mem = const_cast<void*>(gpu_src.opaque());
   memcpy(host_dst, src_mem, size);
   return absl::OkStatus();
 }
 
-absl::Status HostStream::Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
-                                uint64_t size) {
+absl::Status HostStream::Memcpy(DeviceAddressBase* gpu_dst,
+                                const void* host_src, uint64_t size) {
   void* dst_mem = gpu_dst->opaque();
   memcpy(dst_mem, host_src, size);
   return absl::OkStatus();
 }
 
-absl::Status HostStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
+absl::Status HostStream::Memset32(DeviceAddressBase* location, uint32_t pattern,
                                   uint64_t size) {
-  void* gpu_mem = location->opaque();
-  memset(gpu_mem, pattern, size);
+  if (size % sizeof(uint32_t) != 0) {
+    return absl::InvalidArgumentError(
+        "Memset32 requires size to be a multiple of 4 bytes.");
+  }
+  char* dst = static_cast<char*>(location->opaque());
+  for (uint64_t i = 0; i < size; i += sizeof(uint32_t)) {
+    memcpy(dst + i, &pattern, sizeof(uint32_t));
+  }
   return absl::OkStatus();
 }
 
-absl::Status HostStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
+absl::Status HostStream::MemZero(DeviceAddressBase* location, uint64_t size) {
   void* gpu_mem = location->opaque();
   memset(gpu_mem, 0, size);
   return absl::OkStatus();
 }
 
-absl::Status HostStream::WaitFor(Stream* other) { return absl::OkStatus(); }
+absl::Status HostStream::WaitFor(Stream* other) {
+  return other->BlockHostUntilDone();
+}
 
 absl::Status HostStream::WaitFor(Event* event) {
-  std::shared_ptr<absl::Notification> notification =
+  const std::shared_ptr<absl::Notification>& notification =
       static_cast<HostEvent*>(event)->notification();
   notification->WaitForNotification();
   return absl::OkStatus();
 }
 
 absl::Status HostStream::RecordEvent(Event* event) {
-  std::shared_ptr<absl::Notification> notification =
-      static_cast<HostEvent*>(event)->notification();
-  CHECK(!notification->HasBeenNotified());
-  notification->Notify();
+  static_cast<HostEvent*>(event)->Record();
   return absl::OkStatus();
 }
 

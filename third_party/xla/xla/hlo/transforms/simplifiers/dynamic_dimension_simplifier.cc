@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/status_macros.h"
@@ -51,7 +52,7 @@ absl::StatusOr<bool> ConcatForwarding(HloInstruction* concat) {
   if (changed) {
     auto new_concat = parent->AddInstruction(HloInstruction::CreateConcatenate(
         concat->shape(), new_operands, concat->concatenate_dimension()));
-    TF_RETURN_IF_ERROR(parent->ReplaceInstruction(concat, new_concat));
+    RETURN_IF_ERROR(parent->ReplaceInstruction(concat, new_concat));
   }
   return changed;
 }
@@ -86,7 +87,7 @@ absl::StatusOr<bool> SliceConcatForwarding(HloInstruction* slice) {
     if (size_so_far == slice->slice_starts(0) &&
         operand->shape().dimensions(0) == slice_size) {
       // Found an operand that can be forwarded.
-      TF_RETURN_IF_ERROR(slice->ReplaceAllUsesWith(operand));
+      RETURN_IF_ERROR(slice->ReplaceAllUsesWith(operand));
       return true;
     }
     size_so_far += operand->shape().dimensions(concat_dim);
@@ -117,8 +118,7 @@ absl::StatusOr<bool> ReshapeBroadcastForwarding(HloInstruction* reshape) {
     return false;
   }
 
-  TF_RETURN_IF_ERROR(
-      reshape->ReplaceAllUsesWith(broadcast->mutable_operand(0)));
+  RETURN_IF_ERROR(reshape->ReplaceAllUsesWith(broadcast->mutable_operand(0)));
 
   return true;
 }
@@ -136,8 +136,7 @@ absl::StatusOr<bool> ReshapeReshapeForwarding(HloInstruction* reshape) {
   if (!Shape::Equal()(reshape->shape(), reshape_2->operand(0)->shape())) {
     return false;
   }
-  TF_RETURN_IF_ERROR(
-      reshape->ReplaceAllUsesWith(reshape_2->mutable_operand(0)));
+  RETURN_IF_ERROR(reshape->ReplaceAllUsesWith(reshape_2->mutable_operand(0)));
 
   return true;
 }
@@ -149,7 +148,7 @@ absl::StatusOr<bool> IdentityConvertRemoving(HloInstruction* convert) {
   }
   auto operand = convert->mutable_operand(0);
   if (Shape::Equal()(convert->shape(), operand->shape())) {
-    TF_RETURN_IF_ERROR(convert->ReplaceAllUsesWith(operand));
+    RETURN_IF_ERROR(convert->ReplaceAllUsesWith(operand));
     return true;
   }
   return false;
@@ -162,7 +161,7 @@ absl::StatusOr<bool> IdentityReshapeRemoving(HloInstruction* reshape) {
   }
   auto operand = reshape->mutable_operand(0);
   if (Shape::Equal()(reshape->shape(), operand->shape())) {
-    TF_RETURN_IF_ERROR(reshape->ReplaceAllUsesWith(operand));
+    RETURN_IF_ERROR(reshape->ReplaceAllUsesWith(operand));
     return true;
   }
   return false;
@@ -170,53 +169,53 @@ absl::StatusOr<bool> IdentityReshapeRemoving(HloInstruction* reshape) {
 
 }  // namespace
 
-absl::StatusOr<bool> DynamicDimensionSimplifier::Run(
+absl::StatusOr<bool> DynamicDimensionSimplifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_VLOG_LINES(
-      2, "DynamicDimensionSimplifier::Run(), before:\n" + module->ToString());
+  XLA_VLOG_LINES(2, "DynamicDimensionSimplifier::RunImpl(), before:\n" +
+                        module->ToString());
   bool changed = false;
 
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     for (auto* inst : comp->MakeInstructionPostOrder()) {
-      TF_ASSIGN_OR_RETURN(bool local_changed, ConcatForwarding(inst));
+      ASSIGN_OR_RETURN(bool local_changed, ConcatForwarding(inst));
       changed |= local_changed;
     }
   }
 
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     for (auto* inst : comp->MakeInstructionPostOrder()) {
-      TF_ASSIGN_OR_RETURN(bool local_changed, SliceConcatForwarding(inst));
+      ASSIGN_OR_RETURN(bool local_changed, SliceConcatForwarding(inst));
       changed |= local_changed;
     }
   }
 
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     for (auto* inst : comp->MakeInstructionPostOrder()) {
-      TF_ASSIGN_OR_RETURN(bool local_changed, ReshapeBroadcastForwarding(inst));
+      ASSIGN_OR_RETURN(bool local_changed, ReshapeBroadcastForwarding(inst));
       changed |= local_changed;
     }
   }
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     for (auto* inst : comp->MakeInstructionPostOrder()) {
-      TF_ASSIGN_OR_RETURN(bool local_changed, ReshapeReshapeForwarding(inst));
+      ASSIGN_OR_RETURN(bool local_changed, ReshapeReshapeForwarding(inst));
       changed |= local_changed;
     }
   }
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     for (auto* inst : comp->MakeInstructionPostOrder()) {
-      TF_ASSIGN_OR_RETURN(bool local_changed, IdentityConvertRemoving(inst));
+      ASSIGN_OR_RETURN(bool local_changed, IdentityConvertRemoving(inst));
       changed |= local_changed;
     }
   }
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     for (auto* inst : comp->MakeInstructionPostOrder()) {
-      TF_ASSIGN_OR_RETURN(bool local_changed, IdentityReshapeRemoving(inst));
+      ASSIGN_OR_RETURN(bool local_changed, IdentityReshapeRemoving(inst));
       changed |= local_changed;
     }
   }
-  XLA_VLOG_LINES(
-      2, "DynamicDimensionSimplifier::Run(), after:\n" + module->ToString());
+  XLA_VLOG_LINES(2, "DynamicDimensionSimplifier::RunImpl(), after:\n" +
+                        module->ToString());
   return changed;
 }
 }  // namespace xla

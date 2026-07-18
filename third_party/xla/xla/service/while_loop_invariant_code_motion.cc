@@ -24,10 +24,10 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/map_util.h"
 #include "xla/service/compile_time_cap.h"
+#include "xla/service/memory_annotations.h"
 #include "xla/service/while_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -145,11 +146,18 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
     return false;
   }
 
-  // LICM in the presence of domain instructions is complex, bail.
   for (auto* instruction : while_body->MakeInstructionPostOrder()) {
+    // LICM in the presence of domain instructions is complex, bail.
     if (instruction->opcode() == HloOpcode::kDomain ||
         instruction->IsCustomCall("SPMDFullToShardShape") ||
         instruction->IsCustomCall("SPMDShardShapeToFull")) {
+      return false;
+    }
+
+    // Host offloading annotation should stay in its original position.
+    if (instruction->IsCustomCall(std::vector<absl::string_view>{
+            memory_annotations::kMoveToDeviceCustomCallTarget,
+            memory_annotations::kMoveToHostCustomCallTarget})) {
       return false;
     }
   }
@@ -262,7 +270,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       WhileUtil::MakeInstructionsLiveInResult live_in_instructions_result,
       WhileUtil::MakeInstructionsLiveIn(while_instr, replacement_instructions));
 
@@ -273,7 +281,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
     HloInstruction* instruction_to_replace_in_new_while =
         FindOrDie(live_in_instructions_result.while_body_instruction_map,
                   instructions_to_replace[i]);
-    TF_RETURN_IF_ERROR(new_while_body->ReplaceInstruction(
+    RETURN_IF_ERROR(new_while_body->ReplaceInstruction(
         instruction_to_replace_in_new_while,
         live_in_instructions_result.while_body_live_in_values[i]));
   }
@@ -284,7 +292,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
   return true;
 }
 
-absl::StatusOr<bool> WhileLoopInvariantCodeMotion::Run(
+absl::StatusOr<bool> WhileLoopInvariantCodeMotion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(3) << "HLO module before WhileLoopInvariantCodeMotion:";
@@ -331,9 +339,8 @@ absl::StatusOr<bool> WhileLoopInvariantCodeMotion::Run(
       continue;
     }
 
-    TF_ASSIGN_OR_RETURN(
-        bool result,
-        TryHoistingInvariantInstructionsFromWhileBody(while_instr, &allowance));
+    ASSIGN_OR_RETURN(bool result, TryHoistingInvariantInstructionsFromWhileBody(
+                                      while_instr, &allowance));
     changed |= result;
   }
 
@@ -343,10 +350,10 @@ absl::StatusOr<bool> WhileLoopInvariantCodeMotion::Run(
     // verification failures (e.g., the verifier may see multiple channel
     // instructions that have the same channel ids).
     HloDCE dce;
-    TF_RETURN_IF_ERROR(dce.Run(module).status());
+    RETURN_IF_ERROR(dce.Run(module).status());
     // Simplify while loops after narrowing / widening.
     TupleSimplifier tuple_simplifier;
-    TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
+    RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
   }
 
   if (changed) {

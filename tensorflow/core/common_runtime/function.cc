@@ -88,11 +88,11 @@ struct Endpoint {
   int index;
 
   // Returns the string name represents this endpoint.
-  string name() const {
+  std::string name() const {
     if (index == 0) {
       return node->name();
     } else {
-      return strings::StrCat(node->name(), ":", index);
+      return absl::StrCat(node->name(), ":", index);
     }
   }
 
@@ -100,7 +100,7 @@ struct Endpoint {
 };
 
 struct EndpointHash {
-  uint64 operator()(const Endpoint& x) const {
+  uint64_t operator()(const Endpoint& x) const {
     return Hash64(reinterpret_cast<const char*>(&x.node), sizeof(Node*),
                   x.index);
   }
@@ -166,7 +166,7 @@ class FunctionLibraryRuntimeOverlay : public FunctionLibraryRuntime {
       : base_flr_(base_flr), lib_def_(std::move(lib_def)) {}
   ~FunctionLibraryRuntimeOverlay() override;
 
-  absl::Status Instantiate(const string& function_name, AttrSlice attrs,
+  absl::Status Instantiate(const std::string& function_name, AttrSlice attrs,
                            const InstantiateOptions& options,
                            Handle* handle) override;
 
@@ -192,7 +192,7 @@ class FunctionLibraryRuntimeOverlay : public FunctionLibraryRuntime {
   absl::Status CreateKernel(const std::shared_ptr<const NodeProperties>& props,
                             OpKernel** kernel) override;
 
-  bool IsStateful(const string& function_name) const override;
+  bool IsStateful(const std::string& function_name) const override;
 
   const FunctionLibraryDefinition* GetFunctionLibraryDefinition()
       const override;
@@ -204,7 +204,7 @@ class FunctionLibraryRuntimeOverlay : public FunctionLibraryRuntime {
   std::function<void(std::function<void()>)>* runner() override;
   const DeviceMgr* device_mgr() const override;
 
-  string DebugString(Handle handle) override;
+  std::string DebugString(Handle handle) override;
   int graph_def_version() const override;
 
   absl::Status Clone(std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
@@ -220,7 +220,7 @@ class FunctionLibraryRuntimeOverlay : public FunctionLibraryRuntime {
 FunctionLibraryRuntimeOverlay::~FunctionLibraryRuntimeOverlay() = default;
 
 absl::Status FunctionLibraryRuntimeOverlay::Instantiate(
-    const string& function_name, AttrSlice attrs,
+    const std::string& function_name, AttrSlice attrs,
     const InstantiateOptions& options, Handle* handle) {
   // We automatically set the `lib_def` option for all instantiations, if the
   // caller doesn't set this option explicitly.
@@ -279,12 +279,12 @@ absl::Status FunctionLibraryRuntimeOverlay::CreateKernel(
   // When we call Instantiate from the base runtime with the lib_def option,
   // the base runtime implementation is responsible for correctly passing it
   // through to all kernel constructions.
-  return errors::Internal(
+  return absl::InternalError(
       "Overlay function library runtime doesn't support kernel creation.");
 }
 
 bool FunctionLibraryRuntimeOverlay::IsStateful(
-    const string& function_name) const {
+    const std::string& function_name) const {
   // Important: we do not forward lookup to the base FLR.
   const OpDef* op_def;
   const absl::Status s = lib_def_.LookUpOpDef(function_name, &op_def);
@@ -317,7 +317,7 @@ FunctionLibraryRuntimeOverlay::GetFunctionLibraryDefinition() const {
   return &lib_def_;
 }
 
-string FunctionLibraryRuntimeOverlay::DebugString(Handle handle) {
+std::string FunctionLibraryRuntimeOverlay::DebugString(Handle handle) {
   return base_flr_->DebugString(handle);
 }
 
@@ -348,7 +348,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   ~FunctionLibraryRuntimeImpl() override;
 
-  absl::Status Instantiate(const string& function_name, AttrSlice attrs,
+  absl::Status Instantiate(const std::string& function_name, AttrSlice attrs,
                            const InstantiateOptions& options,
                            Handle* handle) override;
 
@@ -375,7 +375,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   absl::Status RunSync(Options opts, Handle handle,
                        CallFrameInterface* call_frame) override;
 
-  bool IsStateful(const string& function) const override;
+  bool IsStateful(const std::string& function) const override;
 
   // TODO: b/396484774 - Consider handling the case where the FLR is already
   // finalized instead of always returning the pointer to the unowned library
@@ -397,7 +397,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   const ConfigProto* const config_proto() override { return config_; }
   int graph_def_version() const override { return graph_def_version_; }
 
-  string DebugString(Handle h) override;
+  std::string DebugString(Handle h) override;
 
   absl::Status Clone(std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
                      std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
@@ -416,9 +416,9 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   GraphOptimizer optimizer_;
   const SessionMetadata* const session_metadata_;
   Executor::Args::Runner default_runner_;
-  const string device_name_;
+  const std::string device_name_;
 
-  std::function<absl::Status(const string&, const OpDef**)> get_func_sig_;
+  std::function<absl::Status(const std::string&, const OpDef**)> get_func_sig_;
   std::function<absl::Status(const std::shared_ptr<const NodeProperties>&,
                              OpKernel**)>
       create_kernel_;
@@ -432,13 +432,13 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   // The instantiated and transformed function is encoded as a Graph
   // object, and an executor is created for the graph.
   struct Item {
-    uint64 instantiation_counter = 0;
+    uint64_t instantiation_counter = 0;
     std::unique_ptr<const Graph> graph = nullptr;
     const FunctionLibraryDefinition* lib_def = nullptr;  // Not owned.
     FunctionBody* func_graph = nullptr;
     Executor* exec = nullptr;
     core::RefCountPtr<FunctionLibraryRuntimeOverlay> overlay_flr = nullptr;
-    string executor_type;
+    std::string executor_type;
     bool allow_small_function_optimizations = false;
     bool allow_control_flow_sync_execution = false;
     bool function_runs_at_most_once = false;
@@ -517,7 +517,7 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
              absl::flat_hash_map<Handle, std::unique_ptr<Item>>>()),
       function_handle_cache_(std::make_unique<FunctionHandleCache>(this)),
       parent_(parent) {
-  get_func_sig_ = [this](const string& op, const OpDef** sig) {
+  get_func_sig_ = [this](const std::string& op, const OpDef** sig) {
     return base_lib_def_->LookUpOpDef(op, sig);
   };
   create_kernel_ = [this](const std::shared_ptr<const NodeProperties>& props,
@@ -563,7 +563,7 @@ class CallOp : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     FunctionLibraryRuntime* lib = ctx->function_library();
     OP_REQUIRES_ASYNC(ctx, lib != nullptr,
-                      errors::Internal("No function library is provided."),
+                      absl::InternalError("No function library is provided."),
                       done);
     FunctionLibraryRuntime::Options opts(ctx->step_id());
     opts.rendezvous = ctx->rendezvous();
@@ -624,7 +624,8 @@ absl::Status FunctionLibraryRuntimeImpl::GetRetTypes(
   }
   LocalHandle local_handle = parent_->GetHandleOnDevice(device_name_, h);
   if (local_handle == kInvalidLocalHandle) {
-    return errors::InvalidArgument("Handle ", h, " not found.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Handle ", h, " not found."));
   }
   const FunctionBody* fbody = GetFunctionBody(h);
   *ret_types = fbody->ret_types;
@@ -714,7 +715,7 @@ absl::Status FunctionLibraryRuntimeImpl::FunctionDefToBody(
     return FunctionDefToBodyHelper(std::move(record), attrs, lib_def,
                                    get_func_sig_, fbody);
   } else {
-    auto get_func_sig = [lib_def](const string& op, const OpDef** sig) {
+    auto get_func_sig = [lib_def](const std::string& op, const OpDef** sig) {
       return lib_def->LookUpOpDef(op, sig);
     };
     return FunctionDefToBodyHelper(std::move(record), attrs, lib_def,
@@ -731,8 +732,8 @@ absl::Status FunctionLibraryRuntimeImpl::InstantiateSymbolicGradient(
     gradient::Creator creator;
     TF_RETURN_IF_ERROR(gradient::GetOpGradientCreator(func.name(), &creator));
     if (creator == nullptr) {
-      return errors::InvalidArgument("No gradient is defined for ",
-                                     func.name());
+      return absl::InvalidArgumentError(
+          absl::StrCat("No gradient is defined for ", func.name()));
     }
     FunctionDef grad_fdef;
     // TODO(josh11b): Should filter out the attrs from func that aren't used
@@ -779,7 +780,7 @@ bool FunctionLibraryRuntimeImpl::IsLocalTarget(
 }
 
 absl::Status FunctionLibraryRuntimeImpl::Instantiate(
-    const string& function_name, AttrSlice attrs,
+    const std::string& function_name, AttrSlice attrs,
     const InstantiateOptions& options, Handle* handle) {
   if (!IsLocalTarget(options)) {
     return parent_->Instantiate(function_name, attrs, options, handle);
@@ -796,7 +797,7 @@ absl::Status FunctionLibraryRuntimeImpl::Instantiate(
   // in the canonical key.
   InstantiateOptions options_copy(options);
   options_copy.target = device_name_;
-  const string key = Canonicalize(function_name, attrs, options_copy);
+  const std::string key = Canonicalize(function_name, attrs, options_copy);
 
   {
     mutex_lock l(mu_);
@@ -811,14 +812,14 @@ absl::Status FunctionLibraryRuntimeImpl::Instantiate(
       FunctionLibraryRuntime::LocalHandle handle_on_device =
           parent_->GetHandleOnDevice(device_name_, *handle);
       if (handle_on_device == kInvalidLocalHandle) {
-        return errors::Internal("LocalHandle not found for handle ", *handle,
-                                ".");
+        return absl::InternalError(
+            absl::StrCat("LocalHandle not found for handle ", *handle, "."));
       }
       auto item_handle = items_->find(handle_on_device);
       if (item_handle == items_->end()) {
-        return errors::Internal("LocalHandle ", handle_on_device,
-                                " for handle ", *handle,
-                                " not found in items.");
+        return absl::InternalError(
+            absl::StrCat("LocalHandle ", handle_on_device, " for handle ",
+                         *handle, " not found in items."));
       }
       ++item_handle->second->instantiation_counter;
       return absl::OkStatus();
@@ -831,13 +832,14 @@ absl::Status FunctionLibraryRuntimeImpl::Instantiate(
   if (function_name == kGradientOp) {
     const AttrValue* f = attrs.Find(kFuncAttr);
     if (f == nullptr) {
-      return errors::InvalidArgument("SymbolicGradient is missing attr: f");
+      return absl::InvalidArgumentError("SymbolicGradient is missing attr: f");
     }
     const auto& func = f->func();
     if (func.name() == kGradientOp) {
-      return errors::InvalidArgument("Can't take gradient of SymbolicGradient");
+      return absl::InvalidArgumentError(
+          "Can't take gradient of SymbolicGradient");
     }
-    const string grad = lib_def->FindGradient(func.name());
+    const std::string grad = lib_def->FindGradient(func.name());
     if (!grad.empty()) {
       return Instantiate(grad, AttrSlice(&func.attr()), options, handle);
     }
@@ -845,7 +847,8 @@ absl::Status FunctionLibraryRuntimeImpl::Instantiate(
   } else {
     core::RefCountPtr<FunctionRecord> fdef = lib_def->FindRecord(function_name);
     if (fdef == nullptr) {
-      return errors::NotFound("Function ", function_name, " is not defined.");
+      return absl::NotFoundError(
+          absl::StrCat("Function ", function_name, " is not defined."));
     }
     TF_RETURN_IF_ERROR(
         FunctionDefToBody(std::move(fdef), attrs, lib_def, &fbody));
@@ -917,10 +920,10 @@ absl::Status FunctionLibraryRuntimeImpl::ReleaseHandle(Handle handle) {
 
     auto it = items_->find(h);
     if (it == items_->end()) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Inconsistent FunctionLibraryRuntime. Expected to find an item for "
           "handle ",
-          h, " but found none");
+          h, " but found none"));
     }
     std::unique_ptr<Item>& item = it->second;
     --item->instantiation_counter;
@@ -941,7 +944,7 @@ absl::Status FunctionLibraryRuntimeImpl::ReleaseHandle(Handle handle) {
 absl::Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   const FunctionBody* fbody;
   FunctionLibraryRuntime* flr;
-  string executor_type;
+  std::string executor_type;
   {
     tf_shared_lock l(mu_);
     fbody = (*item)->func_graph;
@@ -1012,8 +1015,9 @@ absl::Status FunctionLibraryRuntimeImpl::GetOrCreateItem(
     tf_shared_lock l(mu_);
     auto iter = items_->find(local_handle);
     if (iter == items_->end()) {
-      return errors::Internal("Local function handle ", local_handle,
-                              " is not valid. Likely an internal error.");
+      return absl::InternalError(
+          absl::StrCat("Local function handle ", local_handle,
+                       " is not valid. Likely an internal error."));
     }
     *item = iter->second.get();
     if ((*item)->exec != nullptr) {
@@ -1120,8 +1124,8 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
                                            absl::Span<const Tensor> args,
                                            std::vector<Tensor>* rets,
                                            Item* item, DoneCallback done) {
-  string target_device = parent_->GetDeviceName(handle);
-  string source_device = opts.source_device;
+  std::string target_device = parent_->GetDeviceName(handle);
+  std::string source_device = opts.source_device;
   RendezvousInterface* rendezvous = opts.rendezvous;
   DeviceContext* device_context;
   absl::Status s = parent_->GetDeviceContext(target_device, &device_context);
@@ -1212,7 +1216,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
                                      std::vector<Tensor>* rets,
                                      DoneCallback done) {
   if (opts.cancellation_manager && opts.cancellation_manager->IsCancelled()) {
-    done(errors::Cancelled("Function was cancelled before it was started"));
+    done(absl::CancelledError("Function was cancelled before it was started"));
     return;
   }
   Options run_opts = opts;
@@ -1295,7 +1299,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
                                      CallFrameInterface* frame,
                                      DoneCallback done) {
   if (opts.cancellation_manager && opts.cancellation_manager->IsCancelled()) {
-    done(errors::Cancelled(""));
+    done(absl::CancelledError(""));
     return;
   }
 
@@ -1323,7 +1327,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     // calls back into this class, and the current implementation of
     // `ProcessFunctionLibraryRuntime` currently always uses the vector-based
     // `args`/`rets` interface.
-    done(errors::Unimplemented("Remote calling with CallFrameInterface"));
+    done(absl::UnimplementedError("Remote calling with CallFrameInterface"));
     return;
   }
 
@@ -1360,7 +1364,7 @@ absl::Status FunctionLibraryRuntimeImpl::PrepareRunSync(
     std::unique_ptr<PrivateIntraProcessRendezvous>* out_rendezvous) {
   if (run_opts->cancellation_manager &&
       run_opts->cancellation_manager->IsCancelled()) {
-    return errors::Cancelled("");
+    return absl::CancelledError("");
   }
 
   if (run_opts->remote_execution) {
@@ -1368,7 +1372,7 @@ absl::Status FunctionLibraryRuntimeImpl::PrepareRunSync(
     // calls back into this class, and the current implementation of
     // `ProcessFunctionLibraryRuntime` currently always uses the asynchronous
     // Run() method.
-    return errors::Unimplemented("Remote calling with RunSync()");
+    return absl::UnimplementedError("Remote calling with RunSync()");
   }
 
   if (run_opts->create_rendezvous) {
@@ -1436,13 +1440,13 @@ absl::Status FunctionLibraryRuntimeImpl::RunSync(
   return absl::OkStatus();
 }
 
-bool FunctionLibraryRuntimeImpl::IsStateful(const string& func) const {
+bool FunctionLibraryRuntimeImpl::IsStateful(const std::string& func) const {
   const OpDef* op_def;
   const absl::Status s = base_lib_def_->LookUpOpDef(func, &op_def);
   return s.ok() && op_def->is_stateful();
 }
 
-string FunctionLibraryRuntimeImpl::DebugString(Handle handle) {
+std::string FunctionLibraryRuntimeImpl::DebugString(Handle handle) {
   Item* item = nullptr;
   LocalHandle local_handle = parent_->GetHandleOnDevice(device_name_, handle);
   absl::Status s = GetOrCreateItem(local_handle, &item);
@@ -1468,7 +1472,7 @@ absl::Status FunctionLibraryRuntimeImpl::Clone(
   if (*out_flr != nullptr) {
     return absl::OkStatus();
   } else {
-    return errors::Internal("Cloning FunctionLibraryRuntime failed.");
+    return absl::InternalError("Cloning FunctionLibraryRuntime failed.");
   }
 }
 

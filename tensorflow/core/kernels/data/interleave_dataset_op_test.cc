@@ -17,7 +17,18 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/tstring.h"
 
 namespace tensorflow {
 namespace data {
@@ -36,7 +47,7 @@ class InterleaveDatasetParams : public DatasetParams {
                           DataTypeVector type_arguments,
                           DataTypeVector output_dtypes,
                           std::vector<PartialTensorShape> output_shapes,
-                          string node_name)
+                          std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         other_arguments_(std::move(other_arguments)),
@@ -60,7 +71,8 @@ class InterleaveDatasetParams : public DatasetParams {
     return input_tensors;
   }
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override {
     input_names->clear();
     input_names->reserve(input_dataset_params_.size() +
                          other_arguments_.size() + 2);
@@ -85,7 +97,7 @@ class InterleaveDatasetParams : public DatasetParams {
 
   std::vector<FunctionDef> func_lib() const override { return func_lib_; }
 
-  string dataset_type() const override {
+  std::string dataset_type() const override {
     return InterleaveDatasetOp::kDatasetType;
   }
 
@@ -270,9 +282,9 @@ InterleaveDatasetParams InterleaveDatasetParams7() {
       /*node_name=*/kNodeName);
 }
 
-// test case 8: cycle_length = 0, block_length = 5.
-InterleaveDatasetParams InterleaveDatasetParamsWithInvalidCycleLength() {
-  auto tensor_slice_dataset_params = TensorSliceDatasetParams(
+InterleaveDatasetParams InterleaveDatasetParamsWithBounds(
+    int64_t cycle_length, int64_t block_length) {
+  TensorSliceDatasetParams tensor_slice_dataset_params(
       /*components=*/
       {CreateTensor<int64_t>(TensorShape{3, 3, 1},
                              {0, 1, 2, 3, 4, 5, 6, 7, 8})},
@@ -280,8 +292,8 @@ InterleaveDatasetParams InterleaveDatasetParamsWithInvalidCycleLength() {
   return InterleaveDatasetParams(
       std::move(tensor_slice_dataset_params),
       /*other_arguments=*/{},
-      /*cycle_length=*/0,
-      /*block_length=*/5,
+      /*cycle_length=*/cycle_length,
+      /*block_length=*/block_length,
       /*func=*/
       MakeTensorSliceDatasetFunc(
           DataTypeVector({DT_INT64}),
@@ -293,27 +305,30 @@ InterleaveDatasetParams InterleaveDatasetParamsWithInvalidCycleLength() {
       /*node_name=*/kNodeName);
 }
 
-// test case 9: cycle_length = 1, block_length = -1.
+// Test case 8: cycle_length = 0, block_length = 5.
+InterleaveDatasetParams InterleaveDatasetParamsWithInvalidCycleLength() {
+  return InterleaveDatasetParamsWithBounds(/*cycle_length=*/0,
+                                           /*block_length=*/5);
+}
+
+// Test case 9: cycle_length = 1, block_length = -1.
 InterleaveDatasetParams InterleaveDatasetParamsWithInvalidBlockLength() {
-  auto tensor_slice_dataset_params = TensorSliceDatasetParams(
-      /*components=*/
-      {CreateTensor<int64_t>(TensorShape{3, 3, 1},
-                             {0, 1, 2, 3, 4, 5, 6, 7, 8})},
-      /*node_name=*/"tensor_slice_dataset");
-  return InterleaveDatasetParams(
-      std::move(tensor_slice_dataset_params),
-      /*other_arguments=*/{},
+  return InterleaveDatasetParamsWithBounds(/*cycle_length=*/1,
+                                           /*block_length=*/-1);
+}
+
+// Test case 10: cycle_length = kMaxCycleOrBlockLength + 1, block_length = 5.
+InterleaveDatasetParams InterleaveDatasetParamsWithCycleLengthOutOfBounds() {
+  return InterleaveDatasetParamsWithBounds(
+      /*cycle_length=*/InterleaveDatasetOp::kMaxCycleOrBlockLength + 1,
+      /*block_length=*/5);
+}
+
+// Test case 11: cycle_length = 1, block_length = kMaxCycleOrBlockLength + 1.
+InterleaveDatasetParams InterleaveDatasetParamsWithBlockLengthOutOfBounds() {
+  return InterleaveDatasetParamsWithBounds(
       /*cycle_length=*/1,
-      /*block_length=*/-1,
-      /*func=*/
-      MakeTensorSliceDatasetFunc(
-          DataTypeVector({DT_INT64}),
-          std::vector<PartialTensorShape>({PartialTensorShape({1})})),
-      /*func_lib=*/{test::function::MakeTensorSliceDataset()},
-      /*type_arguments=*/{},
-      /*output_dtypes=*/{DT_INT64},
-      /*output_shapes=*/{PartialTensorShape({1})},
-      /*node_name=*/kNodeName);
+      /*block_length=*/InterleaveDatasetOp::kMaxCycleOrBlockLength + 1);
 }
 
 std::vector<GetNextTestCase<InterleaveDatasetParams>> GetNextTestCases() {
@@ -573,13 +588,29 @@ ITERATOR_SAVE_AND_RESTORE_TEST_P(InterleaveDatasetOpTest,
                                  IteratorSaveAndRestoreTestCases())
 
 TEST_F(InterleaveDatasetOpTest, InvalidCycleLength) {
-  auto dataset_params = InterleaveDatasetParamsWithInvalidCycleLength();
+  const InterleaveDatasetParams dataset_params =
+      InterleaveDatasetParamsWithInvalidCycleLength();
   EXPECT_EQ(Initialize(dataset_params).code(),
             absl::StatusCode::kInvalidArgument);
 }
 
-TEST_F(InterleaveDatasetOpTest, InvalidLength) {
-  auto dataset_params = InterleaveDatasetParamsWithInvalidBlockLength();
+TEST_F(InterleaveDatasetOpTest, InvalidBlockLength) {
+  const InterleaveDatasetParams dataset_params =
+      InterleaveDatasetParamsWithInvalidBlockLength();
+  EXPECT_EQ(Initialize(dataset_params).code(),
+            absl::StatusCode::kInvalidArgument);
+}
+
+TEST_F(InterleaveDatasetOpTest, CycleLengthOutOfBounds) {
+  const InterleaveDatasetParams dataset_params =
+      InterleaveDatasetParamsWithCycleLengthOutOfBounds();
+  EXPECT_EQ(Initialize(dataset_params).code(),
+            absl::StatusCode::kInvalidArgument);
+}
+
+TEST_F(InterleaveDatasetOpTest, BlockLengthOutOfBounds) {
+  const InterleaveDatasetParams dataset_params =
+      InterleaveDatasetParamsWithBlockLengthOutOfBounds();
   EXPECT_EQ(Initialize(dataset_params).code(),
             absl::StatusCode::kInvalidArgument);
 }

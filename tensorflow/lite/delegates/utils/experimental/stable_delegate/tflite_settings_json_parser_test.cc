@@ -14,8 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/utils/experimental/stable_delegate/tflite_settings_json_parser.h"
 
+#include <cstdint>
+#include <string>
+
 #include <gtest/gtest.h>
 #include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/util.h"  // from @flatbuffers
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 
 namespace {
@@ -68,4 +72,36 @@ TEST(TfLiteSettingsJsonParserTest, FailedToParseInvalidSettings) {
   EXPECT_EQ(parser.GetBufferSize(), 0);
 }
 
+TEST(TfLiteSettingsJsonParserTest, FailedToParseWithDifferentRootType) {
+  std::string temp_file_path =
+      testing::TempDir() + "/test_corrupted_settings.json";
+  std::string malicious_payload =
+      "table FakeTFLiteSettings { fake_offset : int32 (id: 0); }\n"
+      "root_type FakeTFLiteSettings;\n"
+      "{ \"fake_offset\": 55555555 }\n";
+  ASSERT_TRUE(flatbuffers::SaveFile(temp_file_path.c_str(),
+                                    malicious_payload.c_str(),
+                                    malicious_payload.size(), false));
+  TfLiteSettingsJsonParser parser;
+  EXPECT_EQ(parser.Parse(temp_file_path), nullptr);
+  EXPECT_EQ(parser.GetBufferPointer(), nullptr);
+  EXPECT_EQ(parser.GetBufferSize(), 0);
+}
+TEST(TfLiteSettingsJsonParserTest, FailedToVerifyDueToTooManyTables) {
+  std::string temp_file_path =
+      testing::TempDir() + "/test_too_many_tables.json";
+  std::string payload;
+  uint64_t n = 1000000;
+  payload.reserve(100 + n * 3);
+  payload += "{\"edgetpu_settings\":{\"inactive_power_configs\":[{}";
+  for (uint64_t i = 1; i < n; ++i) {
+    payload += ",{}";
+  }
+  payload += "]}}";
+  ASSERT_TRUE(flatbuffers::SaveFile(temp_file_path.c_str(), payload.c_str(),
+                                    payload.size(), false));
+  TfLiteSettingsJsonParser parser;
+  EXPECT_EQ(parser.Parse(temp_file_path), nullptr);
+  EXPECT_EQ(parser.GetBufferPointer(), nullptr);
+}
 }  // namespace

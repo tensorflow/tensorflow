@@ -29,7 +29,7 @@ namespace {
 TEST(ReplicateOnSplit, TensorSliceDataset) {
   using test::function::NDef;
   GrapplerItem item;
-  Tensor tensor = test::AsTensor<int32>({32, 32});
+  Tensor tensor = test::AsTensor<int32_t>({32, 32});
   item.graph = test::function::GDef(
       {NDef("tensor", "Const", {}, {{"value", tensor}, {"dtype", DT_INT32}}),
        graph_tests_utils::MakeTensorSliceNode("tensor_slice_dataset", "tensor",

@@ -17,27 +17,105 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/substitute.h"
+#include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/literal.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/utils.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
+
+PjRtMemorySpace* PjRtMemorySpace::FromC(PJRT_Memory* c_space) {
+  if (!c_space || !c_space->vtable || !c_space->vtable->get_user_data) {
+    return nullptr;
+  }
+  void* owner = c_space->vtable->get_user_data(
+      c_space, reinterpret_cast<const void*>(&PjRtMemorySpace::FromC));
+  return static_cast<PjRtMemorySpace*>(owner);
+}
+
+PjRtMemorySpaceCApiDelegator::~PjRtMemorySpaceCApiDelegator() {
+  for (auto& [key, value] : user_data_) {
+    if (value.dtor && value.data) {
+      value.dtor(value.data);
+    }
+  }
+}
+
+void* PjRtMemorySpaceCApiDelegator::GetUserDataImpl(PJRT_Memory* memory,
+                                                    const void* key) {
+  auto* d = reinterpret_cast<PjRtMemorySpaceCApiDelegator*>(memory);
+  if (key == &PjRtMemorySpace::FromC) {
+    return d->owner_;
+  }
+  auto it = d->user_data_.find(key);
+  if (it != d->user_data_.end()) {
+    return it->second.data;
+  }
+  return nullptr;
+}
+
+void PjRtMemorySpaceCApiDelegator::SetUserDataImpl(PJRT_Memory* memory,
+                                                   const void* key, void* data,
+                                                   CApiDtor dtor) {
+  auto* d = reinterpret_cast<PjRtMemorySpaceCApiDelegator*>(memory);
+  if (key == &PjRtMemorySpace::FromC) {
+    if (dtor && data) {
+      dtor(data);
+    }
+    return;
+  }
+  auto it = d->user_data_.find(key);
+  if (it != d->user_data_.end()) {
+    if (it->second.dtor && it->second.data) {
+      it->second.dtor(it->second.data);
+    }
+  }
+  if (data == nullptr) {
+    d->user_data_.erase(key);
+  } else {
+    d->user_data_[key] = UserData{data, dtor};
+  }
+}
+
+/*static*/ const PJRT_Memory_FunctionTable
+    PjRtMemorySpaceCApiDelegator::kDelegatorVtable = []() {
+      PJRT_Memory_FunctionTable vtable;
+      vtable.struct_size = PJRT_Memory_FunctionTable_STRUCT_SIZE;
+      vtable.instance_struct_size = PJRT_Memory_STRUCT_SIZE;
+      vtable.extension_start = nullptr;
+      vtable.get_user_data = &PjRtMemorySpaceCApiDelegator::GetUserDataImpl;
+      vtable.set_user_data = &PjRtMemorySpaceCApiDelegator::SetUserDataImpl;
+      return vtable;
+    }();
+
+PjRtMemorySpaceCApiDelegator::PjRtMemorySpaceCApiDelegator(
+    PjRtMemorySpace* owner)
+    : owner_(owner) {
+  c_memory_.vtable = &kDelegatorVtable;
+}
 
 PjRtBuffer::ExternalReference::~ExternalReference() = default;
 
@@ -48,11 +126,23 @@ absl::StatusOr<std::uintptr_t> PjRtClient::UnsafeBufferPointer(
         "unsafe_buffer_pointer is not implemented for tuple buffers.");
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold,
       buffer->AcquireExternalReference());
   const void* ptr = external_reference_hold->OpaqueDeviceMemoryDataPointer();
   return absl::bit_cast<std::uintptr_t>(ptr);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtClient::BufferFromHostBuffer(
+    const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+    std::optional<absl::Span<int64_t const>> byte_strides,
+    HostBufferSemantics host_buffer_semantics,
+    absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+    PjRtBuffer* donated_dst, const Layout* device_layout) {
+  return BufferFromHostBuffer(data, type, dims, byte_strides,
+                              host_buffer_semantics,
+                              std::move(on_done_with_host_buffer),
+                              donated_dst->memory_space(), device_layout);
 }
 
 Future<> PjRtBuffer::CopyRawToHostFuture(Future<void*> dst, int64_t offset,
@@ -90,14 +180,74 @@ CopyToDeviceStream::~CopyToDeviceStream() = default;
 
 absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
 PjRtLoadedExecutable::GetCostAnalysis() const {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloCostAnalysis> hlo_cost_analysis,
-                      client()->GetHloCostAnalysis());
+  ASSIGN_OR_RETURN(std::unique_ptr<HloCostAnalysis> hlo_cost_analysis,
+                   client()->GetHloCostAnalysis());
   return PjRtExecutableUtil::RunHloCostAnalysis(*GetExecutable(),
                                                 hlo_cost_analysis.get());
 }
 
 PjRtExecutable* PjRtLoadedExecutable::GetExecutable() const {
   return executable_forwarder_.get();
+}
+
+absl::StatusOr<Shape> PjRtBuffer::HostShape() {
+  Shape device_shape;
+  if (!IsTuple()) {
+    absl::Span<const int64_t> literal_dims;
+    std::optional<std::vector<int64_t>> logical_dims_storage;
+    if (has_dynamic_dimensions()) {
+      ASSIGN_OR_RETURN(std::vector<int64_t> logical_dims, logical_dimensions());
+      logical_dims_storage.emplace(std::move(logical_dims));
+      literal_dims = *logical_dims_storage;
+    } else {
+      literal_dims = dimensions();
+    }
+    if (element_type() == TOKEN) {
+      device_shape = ShapeUtil::MakeTokenShape();
+    } else {
+      device_shape = ShapeUtil::MakeShape(element_type(), literal_dims);
+      // TODO(b/327524065): use PjRtLayout directly instead of xla::Layout
+      *device_shape.mutable_layout() = layout()->xla_layout();
+    }
+  } else {
+    // TODO(skyewm): does anything need to create tuple literals? The PJRT C
+    // API doesn't support tuples or {logical_}on_device_shape(), so we prefer
+    // to use the above non-tuple code path where possible.
+    device_shape = on_device_shape();
+    if (device_shape.is_dynamic()) {
+      ASSIGN_OR_RETURN(device_shape, logical_on_device_shape());
+    }
+  }
+  return ShapeUtil::DeviceShapeToHostShape(device_shape);
+}
+
+xla::Future<std::shared_ptr<Literal>> PjRtBuffer::ToLiteral() {
+  absl::StatusOr<Shape> host_shape = HostShape();
+  if (!host_shape.ok()) {
+    return xla::Future<std::shared_ptr<Literal>>(host_shape.status());
+  }
+  auto [promise, future] = xla::MakePromise<std::shared_ptr<Literal>>();
+  auto shared_literal = std::make_shared<Literal>();
+  Literal* literal = shared_literal.get();
+  LazyToLiteral([literal, host_shape = *std::move(
+                              host_shape)]() -> Future<MutableLiteralBase*> {
+    auto literal_or = Literal::Make(host_shape);
+    if (!literal_or.ok()) {
+      return Future<MutableLiteralBase*>(literal_or.status());
+    }
+    *literal = *std::move(literal_or);
+    return Future<MutableLiteralBase*>(literal);
+  })
+      .OnReady(
+          [promise = std::move(promise),
+           shared_literal = std::move(shared_literal)](absl::Status s) mutable {
+            if (!s.ok()) {
+              std::move(promise).Set(s);
+            } else {
+              std::move(promise).Set(std::move(shared_literal));
+            }
+          });
+  return future;
 }
 
 }  // namespace xla

@@ -25,7 +25,7 @@ class AssertOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 
  private:
-  int32 summarize_ = 0;
+  int32_t summarize_ = 0;
 };
 
 }  // namespace tensorflow

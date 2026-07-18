@@ -95,8 +95,15 @@ std::string GetSoftmaxTwoPassKernelCode(const OperationDef& op_def,
   c += "    float4 m_i, n_i;\n";
   c += "    FLT4 result;\n";
   c += GetExpCalculation("t", "m_i", "n_i", exp_func);
-  c += "    result = TO_FLT4(m_i * " + pow_func +
-       "(2.0f, n_i - n_sum) / m_sum);\n";
+  c += "    float4 normalized = m_i * " + pow_func +
+       "(2.0f, n_i - n_sum) / m_sum;\n";
+  c +=
+      "    if (d * 4 + 1 >= args.dst_tensor.Channels()) normalized.y = 0.0f;\n";
+  c +=
+      "    if (d * 4 + 2 >= args.dst_tensor.Channels()) normalized.z = 0.0f;\n";
+  c +=
+      "    if (d * 4 + 3 >= args.dst_tensor.Channels()) normalized.w = 0.0f;\n";
+  c += "    result = TO_FLT4(normalized);\n";
   c += "    args.dst_tensor.Write(result, X, Y, d);\n";
   c += "  }\n";
   c += "}\n";
@@ -142,6 +149,9 @@ std::string GetSoftmaxThreePassKernelCode(const OperationDef& op_def) {
   c += "    float4 t = args.src_tensor.Read<float>(X, Y, d) - "
        "INIT_FLOAT4(maximum);\n";
   c += "    t = exp(t) / sum;\n";
+  c += "    if (d * 4 + 1 >= args.dst_tensor.Channels()) t.y = 0.0f;\n";
+  c += "    if (d * 4 + 2 >= args.dst_tensor.Channels()) t.z = 0.0f;\n";
+  c += "    if (d * 4 + 3 >= args.dst_tensor.Channels()) t.w = 0.0f;\n";
   c += "    FLT4 result = TO_FLT4(t);\n";
   c += "    args.dst_tensor.Write(result, X, Y, d);\n";
   c += "  }\n";
