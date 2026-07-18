@@ -468,23 +468,54 @@ void HloSharding::Print(Printer* printer, bool include_metadata) const {
   }
 
   auto print_metadata = [&] {
-    if (include_metadata && !metadata_.empty()) {
-      printer->Append(" metadata={");
-      if (metadata_.size() == 1) {
-        printer->Append(OpMetadataToString(metadata_.front()));
-      } else {
-        AppendJoin(printer, metadata_, ", ",
-                   [](Printer* printer, auto& metadata) {
-                     AppendCat(printer, "{", OpMetadataToString(metadata), "}");
-                   });
-      }
-      printer->Append("}");
+    if (!include_metadata) {
+      return;
     }
+    bool need_reduction =
+        !UseNamedShardingLeaf() &&
+        (unreduced_ || reduction_op_ != ReductionOp::kSum ||
+         absl::c_linear_search(subgroup_types_, OpSharding::UNREDUCED));
+    if (metadata_.empty() && !need_reduction) {
+      return;
+    }
+    printer->Append(" metadata={");
+    int64_t total_count = metadata_.size() + (need_reduction ? 1 : 0);
+    auto print_one = [&](const OpMetadata& md, bool is_single) {
+      if (is_single) {
+        printer->Append(OpMetadataToString(md));
+      } else {
+        AppendCat(printer, "{", OpMetadataToString(md), "}");
+      }
+    };
+    bool is_single = (total_count == 1);
+    if (!metadata_.empty()) {
+      print_one(metadata_.front(), is_single);
+      for (size_t i = 1; i < metadata_.size(); ++i) {
+        printer->Append(", ");
+        print_one(metadata_[i], is_single);
+      }
+      if (need_reduction) {
+        printer->Append(", ");
+      }
+    }
+    if (need_reduction) {
+      OpMetadata reduction_metadata;
+      reduction_metadata.set_op_type("sdy::reduction_op");
+      if (reduction_op_ == ReductionOp::kMax) {
+        reduction_metadata.set_op_name("MAX");
+      } else if (reduction_op_ == ReductionOp::kMin) {
+        reduction_metadata.set_op_name("MIN");
+      } else {
+        reduction_metadata.set_op_name("SUM");
+      }
+      print_one(reduction_metadata, is_single);
+    }
+    printer->Append("}");
   };
   auto print_shard_group = [&] {
     auto shard_group_str = shard_group_.ToString();
     if (!shard_group_str.empty()) {
-      printer->Append(" " + shard_group_str);
+      AppendCat(printer, " ", shard_group_str);
     }
   };
 
@@ -965,6 +996,51 @@ const TileAssignment& HloSharding::TileAgnosticDeviceAssignment() const {
     return HloSharding(NamedSharding::FromProto(proto.named_sharding()));
   }
 
+  bool has_reduction_op = false;
+  for (const auto& md : proto.metadata()) {
+    if (md.op_type() == "sdy::reduction_op") {
+      has_reduction_op = true;
+      break;
+    }
+  }
+
+  if (!has_reduction_op) {
+    return FromProtoInternal(proto);
+  }
+
+  std::vector<OpMetadata> metadata;
+  metadata.reserve(proto.metadata_size());
+
+  ReductionOp reduction_op = ReductionOp::kSum;
+  for (const auto& md : proto.metadata()) {
+    if (md.op_type() == "sdy::reduction_op") {
+      if (md.op_name() == "MAX") {
+        reduction_op = ReductionOp::kMax;
+      } else if (md.op_name() == "MIN") {
+        reduction_op = ReductionOp::kMin;
+      }
+    } else {
+      metadata.push_back(md);
+    }
+  }
+
+  OpSharding proto_clone = proto;
+  proto_clone.clear_metadata();
+  for (const auto& md : metadata) {
+    *proto_clone.add_metadata() = md;
+  }
+
+  ASSIGN_OR_RETURN(HloSharding sharding, FromProtoInternal(proto_clone));
+  sharding.set_reduction_op(reduction_op);
+  return sharding;
+}
+
+/*static*/ absl::StatusOr<HloSharding> HloSharding::FromProtoInternal(
+    const OpSharding& proto) {
+  if (proto.has_named_sharding()) {
+    return HloSharding(NamedSharding::FromProto(proto.named_sharding()));
+  }
+
   std::vector<OpMetadata> metadata(proto.metadata().begin(),
                                    proto.metadata().end());
   std::vector<int> subgroup_types_int(proto.last_tile_dims().begin(),
@@ -1100,9 +1176,23 @@ OpSharding HloSharding::ToProto() const {
     return result;
   }
 
-  result.mutable_metadata()->Reserve(metadata_.size());
+  result.mutable_metadata()->Reserve(metadata_.size() + 1);
   for (const auto& metadata : metadata_) {
     *result.add_metadata() = metadata;
+  }
+  if (!UseNamedShardingLeaf() &&
+      (unreduced_ || reduction_op_ != ReductionOp::kSum ||
+       absl::c_linear_search(subgroup_types_, OpSharding::UNREDUCED))) {
+    OpMetadata reduction_metadata;
+    reduction_metadata.set_op_type("sdy::reduction_op");
+    if (reduction_op_ == ReductionOp::kMax) {
+      reduction_metadata.set_op_name("MAX");
+    } else if (reduction_op_ == ReductionOp::kMin) {
+      reduction_metadata.set_op_name("MIN");
+    } else {
+      reduction_metadata.set_op_name("SUM");
+    }
+    *result.add_metadata() = reduction_metadata;
   }
 
   if (tile_assignment_.iota_) {
@@ -1288,87 +1378,92 @@ OpSharding HloSharding::ToProto() const {
   }
 
   return NamedSharding(mesh, dim_shardings, replicated_axes, unreduced_axes,
-                       manual_axes, sharding.metadata());
+                       manual_axes, sharding.metadata(),
+                       sharding.reduction_op());
 }
 
 /*static*/ HloSharding HloSharding::V3ToV2Sharding(
     const NamedSharding& sharding) {
   // TODO(b/477900810): Remove sharding conversions.
-  const Mesh& mesh = sharding.mesh();
-  absl::Span<const OpMetadata> metadata = sharding.metadata();
-  if (sharding.IsReplicated()) {
-    return HloSharding::Replicate(metadata);
-  }
-  if (sharding.IsSingleDevice()) {
-    return HloSharding::SingleDevice(mesh.device_assignment()(0), metadata);
-  }
-
-  std::vector<int64_t> tile_assignment_dims;
-  tile_assignment_dims.reserve(sharding.dim_shardings().size());
-  absl::flat_hash_map<AxisRef, int64_t> axis_ref_to_sharded_pos;
-  int64_t sharded_pos = 0;
-  for (const NamedSharding::DimensionSharding& dim_sharding :
-       sharding.dim_shardings()) {
-    tile_assignment_dims.push_back(dim_sharding.getShardedSize(mesh));
-    for (const AxisRef& axis_ref : dim_sharding.axes()) {
-      axis_ref_to_sharded_pos[axis_ref] = sharded_pos++;
+  HloSharding res = [&]() {
+    const Mesh& mesh = sharding.mesh();
+    absl::Span<const OpMetadata> metadata = sharding.metadata();
+    if (sharding.IsReplicated()) {
+      return HloSharding::Replicate(metadata);
     }
-  }
-
-  std::vector<OpSharding::Type> types;
-  auto add_subgroup_axes = [&](absl::Span<const AxisRef> axes,
-                               OpSharding::Type type) {
-    if (axes.empty()) {
-      return;
+    if (sharding.IsSingleDevice()) {
+      return HloSharding::SingleDevice(mesh.device_assignment()(0), metadata);
     }
-    types.push_back(type);
-    int64_t& dim = tile_assignment_dims.emplace_back(1);
-    for (const AxisRef& axis_ref : axes) {
-      dim *= axis_ref.size(mesh);
-      axis_ref_to_sharded_pos[axis_ref] = sharded_pos++;
+
+    std::vector<int64_t> tile_assignment_dims;
+    tile_assignment_dims.reserve(sharding.dim_shardings().size());
+    absl::flat_hash_map<AxisRef, int64_t> axis_ref_to_sharded_pos;
+    int64_t sharded_pos = 0;
+    for (const NamedSharding::DimensionSharding& dim_sharding :
+         sharding.dim_shardings()) {
+      tile_assignment_dims.push_back(dim_sharding.getShardedSize(mesh));
+      for (const AxisRef& axis_ref : dim_sharding.axes()) {
+        axis_ref_to_sharded_pos[axis_ref] = sharded_pos++;
+      }
     }
-  };
-  add_subgroup_axes(sharding.manual_axes(), OpSharding::MANUAL);
-  add_subgroup_axes(sharding.unreduced_axes(), OpSharding::UNREDUCED);
 
-  std::vector<AxisRef> mesh_axis_refs = GetOrderedAxisRefs(sharding);
-  std::vector<int64_t> reshape_dims;
-  reshape_dims.reserve(mesh_axis_refs.size());
-  std::vector<int> transpose_perm(mesh_axis_refs.size());
+    std::vector<OpSharding::Type> types;
+    auto add_subgroup_axes = [&](absl::Span<const AxisRef> axes,
+                                 OpSharding::Type type) {
+      if (axes.empty()) {
+        return;
+      }
+      types.push_back(type);
+      int64_t& dim = tile_assignment_dims.emplace_back(1);
+      for (const AxisRef& axis_ref : axes) {
+        dim *= axis_ref.size(mesh);
+        axis_ref_to_sharded_pos[axis_ref] = sharded_pos++;
+      }
+    };
+    add_subgroup_axes(sharding.manual_axes(), OpSharding::MANUAL);
+    add_subgroup_axes(sharding.unreduced_axes(), OpSharding::UNREDUCED);
 
-  int64_t total_replicated_size = 1;
-  int64_t replicated_pos = sharded_pos;
-  for (int64_t i = 0; i < mesh_axis_refs.size(); ++i) {
-    const AxisRef& axis_ref = mesh_axis_refs[i];
-    reshape_dims.push_back(axis_ref.size(mesh));
+    std::vector<AxisRef> mesh_axis_refs = GetOrderedAxisRefs(sharding);
+    std::vector<int64_t> reshape_dims;
+    reshape_dims.reserve(mesh_axis_refs.size());
+    std::vector<int> transpose_perm(mesh_axis_refs.size());
 
-    auto sharded_pos_it = axis_ref_to_sharded_pos.find(axis_ref);
-    if (sharded_pos_it == axis_ref_to_sharded_pos.end()) {
-      transpose_perm[replicated_pos++] = i;
-      total_replicated_size *= axis_ref.size(mesh);
-    } else {
-      transpose_perm[sharded_pos_it->second] = i;
+    int64_t total_replicated_size = 1;
+    int64_t replicated_pos = sharded_pos;
+    for (int64_t i = 0; i < mesh_axis_refs.size(); ++i) {
+      const AxisRef& axis_ref = mesh_axis_refs[i];
+      reshape_dims.push_back(axis_ref.size(mesh));
+
+      auto sharded_pos_it = axis_ref_to_sharded_pos.find(axis_ref);
+      if (sharded_pos_it == axis_ref_to_sharded_pos.end()) {
+        transpose_perm[replicated_pos++] = i;
+        total_replicated_size *= axis_ref.size(mesh);
+      } else {
+        transpose_perm[sharded_pos_it->second] = i;
+      }
     }
-  }
 
-  if (total_replicated_size > 1) {
-    tile_assignment_dims.push_back(total_replicated_size);
-    types.push_back(OpSharding::REPLICATED);
-  }
+    if (total_replicated_size > 1) {
+      tile_assignment_dims.push_back(total_replicated_size);
+      types.push_back(OpSharding::REPLICATED);
+    }
 
-  if (mesh.device_assignment().iota().has_value() &&
-      mesh.device_assignment().iota()->reshape_dims().size() == 1) {
-    // Simple iota case
-    return HloSharding::Subgroup(
-        TileAssignment(tile_assignment_dims, reshape_dims, transpose_perm),
-        types, metadata);
-  }
+    if (mesh.device_assignment().iota().has_value() &&
+        mesh.device_assignment().iota()->reshape_dims().size() == 1) {
+      // Simple iota case
+      return HloSharding::Subgroup(
+          TileAssignment(tile_assignment_dims, reshape_dims, transpose_perm),
+          types, metadata);
+    }
 
-  TileAssignment tile_assignment = mesh.device_assignment()
-                                       .Reshape(reshape_dims)
-                                       .Transpose(transpose_perm)
-                                       .Reshape(tile_assignment_dims);
-  return HloSharding::Subgroup(tile_assignment, types, metadata);
+    TileAssignment tile_assignment = mesh.device_assignment()
+                                         .Reshape(reshape_dims)
+                                         .Transpose(transpose_perm)
+                                         .Reshape(tile_assignment_dims);
+    return HloSharding::Subgroup(tile_assignment, types, metadata);
+  }();
+  res.set_reduction_op(sharding.reduction_op());
+  return res;
 }
 
 /*static*/ HloSharding HloSharding::V3ToV2Sharding(

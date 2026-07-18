@@ -1215,6 +1215,24 @@ TEST(V3ToV2Sharding, Unreduced) {
                                   {OpSharding::UNREDUCED}));
 }
 
+TEST(V3ToV2Sharding, UnreducedMax) {
+  ASSERT_OK_AND_ASSIGN(
+      xla::HloSharding ns,
+      xla::ParseSharding(
+          "{mesh['a'=2, 'b'=2], [{'a'}, {}], unreduced=max{'b'}}"));
+  HloSharding v2 = HloSharding::V3ToV2Sharding(ns.named_sharding());
+  EXPECT_EQ(v2.reduction_op(), ReductionOp::kMax);
+}
+
+TEST(V3ToV2Sharding, UnreducedMin) {
+  ASSERT_OK_AND_ASSIGN(
+      xla::HloSharding ns,
+      xla::ParseSharding(
+          "{mesh['a'=2, 'b'=2], [{'a'}, {}], unreduced=min{'b'}}"));
+  HloSharding v2 = HloSharding::V3ToV2Sharding(ns.named_sharding());
+  EXPECT_EQ(v2.reduction_op(), ReductionOp::kMin);
+}
+
 TEST(V3ToV2Sharding, Manual) {
   Mesh mesh({2, 2}, {"a", "b"});
   NamedSharding ns = test_utils::FromAxisNames(mesh, {{"a"}, {}}, {}, {},
