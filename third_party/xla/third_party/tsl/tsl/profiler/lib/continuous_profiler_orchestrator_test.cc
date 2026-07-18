@@ -69,13 +69,13 @@ TEST(ContinuousProfilerOrchestratorTest,
   // the interval
   std::atomic<int> consume_count(0);
   EXPECT_CALL(*mock, Consume())
-      .WillRepeatedly(Invoke([&]() -> absl::StatusOr<ConsumeResult> {
+      .WillRepeatedly([&]() -> absl::StatusOr<ConsumeResult> {
         int count = ++consume_count;
         return ConsumeResult{
             .data = std::any(count),
             .estimated_size_bytes = 1000 * 1024 * 1024  // 1000MB (>512MB)
         };
-      }));
+      });
 
   ContinuousProfilerOrchestrator<ProfilerInterface> orchestrator(
       std::move(mock_profiler));
@@ -123,12 +123,12 @@ TEST(ContinuousProfilerOrchestratorTest, DynamicIntervalLowWatermarkScaling) {
 
   // Consume returns a very small chunk (1MB < 5MB low watermark)
   EXPECT_CALL(*mock, Consume())
-      .WillRepeatedly(Invoke([]() -> absl::StatusOr<ConsumeResult> {
+      .WillRepeatedly([]() -> absl::StatusOr<ConsumeResult> {
         return ConsumeResult{
             .data = std::any(1),
             .estimated_size_bytes = 1 * 1024 * 1024  // 1MB (<5MB)
         };
-      }));
+      });
 
   ContinuousProfilerOrchestrator<ProfilerInterface> orchestrator(
       std::move(mock_profiler));
