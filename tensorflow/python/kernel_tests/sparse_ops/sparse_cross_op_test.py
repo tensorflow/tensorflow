@@ -1081,8 +1081,8 @@ class SparseCrossHashedOpTest(BaseSparseCrossOpTest):
     dense = constant_op.constant([[1], [2]], dtype=dtypes.int64)
     idx = constant_op.constant([[0, 0], [1, 0]], dtype=dtypes.int64)
     shape = constant_op.constant([2, 1], dtype=dtypes.int64)
-    val1 = constant_op.constant(["a", "b"], dtype=dtypes.string)
-    val2 = constant_op.constant(["c", "d"], dtype=dtypes.string)
+    val1 = constant_op.constant(['a', 'b'], dtype=dtypes.string)
+    val2 = constant_op.constant(['c', 'd'], dtype=dtypes.string)
 
     indices = [idx, idx]
     values = [val1, val2]
