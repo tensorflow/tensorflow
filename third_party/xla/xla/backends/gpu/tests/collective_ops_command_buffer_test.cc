@@ -142,8 +142,6 @@ TEST_F(CollectiveOpsCommandBufferPeerAccessTest, RaggedAllToAll_Simple) {
   config.mutable_debug_options().add_xla_gpu_enable_command_buffer(
       DebugOptions::COLLECTIVES);
   config.mutable_debug_options().set_xla_gpu_graph_min_graph_size(1);
-  config.mutable_debug_options()
-      .set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(false);
 
   ASSERT_OK_AND_ASSIGN(auto module,
                        ParseAndReturnVerifiedModule(hlo_text, config));
@@ -364,8 +362,6 @@ TEST_F(CollectiveOpsCommandBufferPeerAccessTest, FilterRaggedAllToAllOnly) {
   config.mutable_debug_options()
       .add_xla_gpu_enable_collectives_command_buffer_filter(
           DebugOptions::RAGGEDALLTOALL);
-  config.mutable_debug_options()
-      .set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(false);
 
   ASSERT_OK_AND_ASSIGN(auto module,
                        ParseAndReturnVerifiedModule(hlo_text, config));
