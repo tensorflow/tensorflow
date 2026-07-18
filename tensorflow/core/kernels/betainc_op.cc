@@ -15,6 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #define EIGEN_USE_THREADS
 // TODO(b/31098934): Figure out why this is necessary here but not in
 // any other place, e.g., the cwise lgamma ops.
