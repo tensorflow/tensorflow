@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/tsl/platform/logging.h"
 
