@@ -253,13 +253,14 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
     opts.set_xla_gpu_unsupported_enable_ragged_all_to_all_decomposer(
         impl_type_ == RaggedAllToAllImplType::kDecomposer);
     opts.set_xla_gpu_ragged_all_to_all_mode(collectives_mode_);
+    // Requires symmetric memory.
+    opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(
+        false);
     if (IsSymmetricNcclPath()) {
       opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(false);
     }
     if (impl_type_ == RaggedAllToAllImplType::kOneShotWithMultiGpuBarrier) {
       opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(true);
-      opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(
-          false);
     }
     if (impl_type_ ==
             RaggedAllToAllImplType::kOneShotWithMultiGpuBarrierWithNccl &&
