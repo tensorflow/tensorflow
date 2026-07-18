@@ -353,9 +353,6 @@ message DebugOptions {
   //--------------------------------------------------------------------------//
   // XLA:GPU options.
   //--------------------------------------------------------------------------//
-  // clang-format off
-  // go/keep-sorted start newline_separated=yes skip_lines=2 ignore_prefixes=["optional AutotuneCacheMode","optional bool","optional float","optional int32","optional int64","optional LibNvJitLinkMode","map<string, string>","optional PGLEStrictnessLevel","optional PipelineParallelismOptLevel","repeated CollectiveOpType","repeated CommandBufferCmdType","repeated string","optional ShapeChecks","optional string","optional WhileLoopUnrolling","repeated GenericTritonEmitterFeature","optional CommandBufferSchedulingMode", "repeated AutotuneBackend", "optional CollectivesMode","optional CommandBufferUpdateMode"] // NOLINT
-  // clang-format on
 
   // Memory mode for XLA:GPU collective operations.
   //
@@ -1271,8 +1268,6 @@ message DebugOptions {
   // If true, will verify that the numerical results of Triton fusions match
   // the results of regular emitters.
   optional bool xla_gpu_verify_triton_fusion_numerics = 291;
-
-  // go/keep-sorted end
 
   //--------------------------------------------------------------------------//
   // XLA:TPU options.
