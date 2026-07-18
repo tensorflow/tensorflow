@@ -188,9 +188,9 @@ class SparseConcatOp : public OpKernel {
                     "Concat dimension must be in range [", -input_rank, ", ",
                     input_rank, "), got ", concat_dim_attr_)));
     TensorShape output_shape = input_shape;
-    // When accumulating the output dimension at concat_dim, do a safe add to
-    // ensure the addition itself does not overflow; then use SetDimWithStatus to
-    // get proper error status if the TensorShape internals detect invalid dims.
+    // Accumulate the concat dimension with overflow-safe addition,
+    // then use SetDimWithStatus so RecomputeNumElements can catch
+    // output volume overflow from the enlarged shape.
     for (int i = 1; i < N; ++i) {
       const TensorShape current_shape(shapes[i].vec<int64_t>());
       OP_REQUIRES(
