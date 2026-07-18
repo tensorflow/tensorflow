@@ -12,16 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tensorflow.ops.parsing_ops."""
+"""Tests for parsing_ops, validating various TF parsing configs and features."""
 
 import copy
 import itertools
-
-import numpy as np
 import sys
 
-from google.protobuf import json_format
+import numpy as np
 
+from google.protobuf import json_format
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python.eager import context
@@ -701,7 +700,7 @@ class ParseExampleTest(test.TestCase):
     # entries.  This test identified a bug where the code that copied
     # data out of the buffers and into the output tensors assumed each
     # buffer only contained one minibatch entry.  The bug has since been fixed.
-    truth_int = [i for i in range(batch_size)]
+    truth_int = list(range(batch_size))
     truth_str = [[("foo%d" % i).encode(), ("bar%d" % i).encode()]
                  for i in range(batch_size)]
 
@@ -2299,6 +2298,37 @@ class ParseSequenceExampleTest(test.TestCase):
             "|.* do not form a valid RaggedTensor"
             # Message for batch=false in eager mode:
             "|Incompatible shapes|required broadcastable shapes"))
+
+  def testSerializedContainingMisalignedNestedRaggedFeatureRowLengths(self):
+    """FeatureList with 4 values but RowLengths partition total sum is 3."""
+    original = sequence_example(
+        feature_lists=feature_lists({
+            "b_values":
+                feature_list(
+                    [float_feature([1, 2, 3, 4]),
+                     float_feature([2, 4, 6])]),
+            "b_lengths":
+                feature_list([int64_feature([1, 2])]),
+        }))
+    sequence_features = {
+        "b":
+            parsing_ops.RaggedFeature(
+                value_key="b_values",
+                dtype=dtypes.float32,
+                partitions=[parsing_ops.RaggedFeature.RowLengths("b_lengths")])
+    }
+    self._testBoth(
+        dict(
+            serialized=ops.convert_to_tensor(original.SerializeToString()),
+            sequence_features=sequence_features),
+        expected_err=(
+            (errors_impl.InvalidArgumentError, ValueError),
+            # Message for batch=true:
+            "Feature b: values and partitions are not aligned"
+            # Message for batch=false in graph mode:
+            + "|.* do not form a valid RaggedTensor"
+            # Message for batch=false in eager mode:
+            + "|Incompatible shapes|required broadcastable shapes"))
 
 
 @test_util.run_all_in_graph_and_eager_modes
