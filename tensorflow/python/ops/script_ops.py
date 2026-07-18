@@ -348,14 +348,23 @@ def _internal_py_func(func,
   # i.e., when the current graph is destroyed, we remove its py funcs.
   graph = ops.get_default_graph()
 
-  while True:
-    current_graph = graph
-    if isinstance(graph, function._FuncGraph):  # pylint: disable=protected-access
-      graph = graph._outer_graph  # pylint: disable=protected-access
-    elif isinstance(graph, func_graph.FuncGraph):
-      graph = graph.outer_graph
-    if graph is current_graph:
-      break
+  # If we are already inside a FuncGraph (e.g. during tf.function tracing or
+  # tf.data.Dataset.from_generator), keep the strong reference on that FuncGraph
+  # rather than walking up to the outermost ops.Graph.  The FuncGraph's lifetime
+  # is tied to its ConcreteFunction, so the py_func is released as soon as the
+  # dataset (or tf.function object) is garbage-collected.  Walking up to the
+  # outermost ops.Graph causes a memory leak in eager mode because that graph is
+  # a process-lifetime singleton: every py_func ever registered accumulates there
+  # and is never freed (GitHub #123269).
+  if not isinstance(graph, func_graph.FuncGraph):
+    while True:
+      current_graph = graph
+      if isinstance(graph, function._FuncGraph):  # pylint: disable=protected-access
+        graph = graph._outer_graph  # pylint: disable=protected-access
+      elif isinstance(graph, func_graph.FuncGraph):
+        graph = graph.outer_graph
+      if graph is current_graph:
+        break
 
   # TODO(zhifengc): Consider adding a Graph method to collect
   # `cleanup` objects in one of its member.
