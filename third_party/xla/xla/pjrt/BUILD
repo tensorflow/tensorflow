@@ -237,6 +237,7 @@ xla_cc_test(
         "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:future",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
