@@ -22,6 +22,7 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <limits>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -70,6 +71,7 @@ struct SparseConcatFunctor<CPUDevice, T> {
     }
 
     std::vector<sparse::SparseTensor> sp_inputs;
+    sp_inputs.reserve(N);
     for (int i = 0; i < N; ++i) {
       const TensorShape current_shape(shapes[i].vec<int64_t>());
       sparse::SparseTensor tensor;
@@ -102,6 +104,8 @@ class SparseConcatOp : public OpKernel {
     OpInputList inds;
     OP_REQUIRES_OK(context, context->input_list("indices", &inds));
     const int N = inds.size();
+    OP_REQUIRES(context, N > 0,
+                absl::InvalidArgumentError("Input list must not be empty"));
     for (int i = 0; i < N; i++) {
       OP_REQUIRES(context, TensorShapeUtils::IsMatrix(inds[i].shape()),
                   absl::InvalidArgumentError(absl::StrCat(
@@ -184,6 +188,9 @@ class SparseConcatOp : public OpKernel {
                     "Concat dimension must be in range [", -input_rank, ", ",
                     input_rank, "), got ", concat_dim_attr_)));
     TensorShape output_shape = input_shape;
+    // Accumulate the concat dimension with overflow-safe addition,
+    // then use SetDimWithStatus so RecomputeNumElements can catch
+    // output volume overflow from the enlarged shape.
     for (int i = 1; i < N; ++i) {
       const TensorShape current_shape(shapes[i].vec<int64_t>());
       OP_REQUIRES(
@@ -205,7 +212,8 @@ class SparseConcatOp : public OpKernel {
           OP_REQUIRES(context, new_dim >= 0,
                       absl::InvalidArgumentError(absl::StrCat(
                           "Concat dimension overflowed at position ", i)));
-          output_shape.set_dim(j, new_dim);
+          OP_REQUIRES_OK(context,
+                         output_shape.SetDimWithStatus(j, new_dim));
         }
       }
     }
@@ -219,10 +227,20 @@ class SparseConcatOp : public OpKernel {
       output_shape_t(j) = output_shape.dim_size(j);
     }
 
+    // Sum output_nnz carefully and check for overflow while summing.
     int64_t output_nnz = 0;
     for (int i = 0; i < N; ++i) {
-      output_nnz += inds[i].dim_size(0);
+      const int64_t add = inds[i].dim_size(0);
+      OP_REQUIRES(context, add >= 0,
+                  absl::InvalidArgumentError("Input nnz must be non-negative"));
+      OP_REQUIRES(context,
+                  output_nnz <=
+                      (std::numeric_limits<int64_t>::max() - add),
+                  absl::InvalidArgumentError(
+                      "Sum of nnz across inputs would overflow int64"));
+      output_nnz += add;
     }
+
     if (output_nnz == 0) {
       Tensor* output_inds = nullptr;
       OP_REQUIRES_OK(context,

@@ -413,5 +413,33 @@ class SparseConcatTest(test.TestCase):
         self.evaluate(concat_op)
 
 
+  def testSparseConcatOutputVolumeOverflow(self):
+    # Individual volumes fit in int64, but the concatenated
+    # output volume overflows int64, triggering
+    # SetDimWithStatus -> RecomputeNumElements.
+    # Axis = 1, X = int64_max // 11
+    # Input 1 volume: 10 * X < int64_max
+    # Input 2 volume:  2 * X < int64_max
+    # Output volume:  12 * X > int64_max
+    int64_max = 9223372036854775807
+    X = int64_max // 11
+
+    indices1 = constant_op.constant([[0, 0, 0]], dtype=dtypes.int64)
+    values1 = constant_op.constant([1.0], dtype=dtypes.float32)
+    shape1 = constant_op.constant([1, 10, X], dtype=dtypes.int64)
+
+    indices2 = constant_op.constant([[0, 0, 0]], dtype=dtypes.int64)
+    values2 = constant_op.constant([2.0], dtype=dtypes.float32)
+    shape2 = constant_op.constant([1, 2, X], dtype=dtypes.int64)
+
+    sp1 = sparse_tensor.SparseTensor(indices1, values1, shape1)
+    sp2 = sparse_tensor.SparseTensor(indices2, values2, shape2)
+
+    with self.assertRaisesOpError(
+        "results in overflow when computing number of elements"
+    ):
+      self.evaluate(
+          sparse_ops.sparse_concat(axis=1, sp_inputs=[sp1, sp2]))
+
 if __name__ == "__main__":
   test.main()
