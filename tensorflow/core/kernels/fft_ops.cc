@@ -177,10 +177,10 @@ class FFTBase : public OpKernel {
 
       auto fft_length_as_vec = fft_length.vec<int32_t>();
       for (int i = 0; i < fft_rank; ++i) {
-        OP_REQUIRES(ctx, fft_length_as_vec(i) >= 0,
+        OP_REQUIRES(ctx, fft_length_as_vec(i) > 0,
                     errors::InvalidArgument(
                         "fft_length[", i,
-                        "] must >= 0, but got: ", fft_length_as_vec(i)));
+                        "] must be > 0, but got: ", fft_length_as_vec(i)));
         fft_shape[i] = fft_length_as_vec(i);
         // Each input dimension must have length of at least fft_shape[i]. For
         // IRFFTs, the inner-most input dimension must have length of at least
