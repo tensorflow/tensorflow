@@ -334,14 +334,16 @@ class DecodeImageV2Op : public OpKernel {
           const int64_t temp_buffer_size =
               static_cast<int64_t>(height) * width * channels;
 
-          // Bounds check: reject JPEG images requiring excessive memory,
-          // consistent with the limit enforced by DecodeBmpV2.
-          if (temp_buffer_size >=
-              static_cast<int64_t>(std::numeric_limits<int32_t>::max() / 8)) {
+          // Bounds check on total allocated bytes. DecodeBmpV2 applies
+          // int32_max/8 to pixel count (width*height), which with up to 4
+          // channels implies a ~1GB (2^30) allocation ceiling. Check bytes
+          // directly so JPEG matches that effective limit without being 4x
+          // more restrictive.
+          if (temp_buffer_size >= (1LL << 30)) {
             context->SetStatus(absl::InvalidArgumentError(absl::StrCat(
                 "JPEG image too large: ", temp_buffer_size, " bytes (", height,
                 "x", width, "x", channels, ").",
-                " Total must be less than 2^28 bytes.")));
+                " Total possible pixel bytes must be less than 2^30")));
             return nullptr;
           }
           buffer_size = static_cast<int>(temp_buffer_size);
@@ -541,14 +543,16 @@ class DecodeImageV2Op : public OpKernel {
           buffer_size =
               static_cast<int64_t>(num_frames) * height * width * channels;
 
-          // Bounds check: reject GIFs whose total allocation exceeds 2^28
-          // bytes, consistent with the limit enforced by DecodeBmpV2.
-          if (buffer_size >=
-              static_cast<int64_t>(std::numeric_limits<int32_t>::max() / 8)) {
+          // Bounds check on total allocation across all frames. Matches
+          // DecodeBmpV2's effective ~1GB ceiling (pixel limit int32_max/8
+          // with up to 4 channels). Total bytes matter for multi-frame GIF
+          // DoS (per-frame pixel limits alone would still allow huge
+          // animations).
+          if (buffer_size >= (1LL << 30)) {
             context->SetStatus(absl::InvalidArgumentError(absl::StrCat(
                 "GIF image too large: ", buffer_size, " bytes (",
                 num_frames, " frame(s) x ", height, "x", width, "x",
-                channels, "). Total must be less than 2^28 bytes.")));
+                channels, "). Total allocation must be less than 2^30 bytes")));
             return nullptr;
           }
 
