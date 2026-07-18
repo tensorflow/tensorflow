@@ -18,10 +18,10 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_runner_interface.h"
