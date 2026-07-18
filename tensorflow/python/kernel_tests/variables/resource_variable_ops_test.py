@@ -1765,6 +1765,22 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
         validate_indices=True
       )
 
+  @test_util.run_in_graph_and_eager_modes
+  def testGatherWithBatchDimsGreaterThanIndicesRank(self):
+    var = resource_variable_ops.ResourceVariable(
+        [[10, 20], [30, 40]], name="var0", dtype=dtypes.float32)
+    # indices has rank 0 (scalar)
+    indices = constant_op.constant(1, dtype=dtypes.int32)
+    # batch_dims = 1 > indices.dims() = 0
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                "rank"):
+      _ = resource_variable_ops.resource_gather(
+          resource=var.handle,
+          indices=indices,
+          dtype=dtypes.float32,
+          batch_dims=1,
+          validate_indices=True)
+
   @parameterized.parameters([
       dict(dtype=dtypes.bool),
       dict(dtype=dtypes.int64),
