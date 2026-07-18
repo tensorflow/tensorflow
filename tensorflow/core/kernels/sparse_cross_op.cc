@@ -132,7 +132,7 @@ int64_t KeyedSparseTensorColumn<int64_t>::Feature(int64_t batch, int64_t n,
     return StrongKeyedHash(
         key_,
         {reinterpret_cast<const char*>(&values_.vec<int64_t>()(start + n)),
-         sizeof(values_.dtype())});
+         sizeof(int64_t)});
   }
   if (DT_STRING == values_.dtype())
     return Fingerprint64(values_.vec<tstring>()(start + n));
