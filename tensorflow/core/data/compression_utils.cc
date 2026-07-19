@@ -250,6 +250,16 @@ absl::Status UncompressElement(const CompressedElement& compressed,
         compressed.component_metadata(i);
     if (!DataTypeCanUseMemcpy(metadata.dtype()) &&
         metadata.dtype() != DT_STRING) {
+      TensorShape shape(metadata.tensor_shape());
+      if (shape.num_elements() == 0) {
+        // The first two passes reserve and fill `nonmemcpyable` only for
+        // components with a non-zero element count, so there are no bytes
+        // here to deserialize from.
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Zero-element component ", i, " with non-memcpyable dtype ",
+            DataTypeString(metadata.dtype()),
+            " has no uncompressed bytes to deserialize"));
+      }
       TensorProto tp;
       if (!tp.ParseFromString(
               {nonmemcpyable_pos,
