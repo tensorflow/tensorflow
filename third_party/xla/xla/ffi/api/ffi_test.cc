@@ -1605,6 +1605,56 @@ TEST(FfiTest, MetadataTraits) {
   EXPECT_EQ(metadata.state_type_id.type_id, XLA_FFI_UNKNOWN_TYPE_ID.type_id);
 }
 
+TEST(FfiTest, RecordStage) {
+  bool called = false;
+  bool call_frame_configured = false;
+
+  auto handler = Ffi::BindRecord()
+                     .Ctx<RecordContext>()
+                     .Ctx<RecordAction>()
+                     .Ctx<BoundedCommandVector>()
+                     .To([&](RecordContext ctx, RecordAction action,
+                             BoundedCommandVector commands) {
+                       called = true;
+                       EXPECT_EQ(action, RecordAction::kCreate);
+                       EXPECT_EQ(commands.capacity(), 10);
+                       EXPECT_EQ(commands.size(), 0);
+                       return Error::Success();
+                     });
+
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  auto call_frame = builder.Build();
+
+  XLA_FFI_RecordApi mock_api{};
+
+  const XLA_FFI_Command* commands_storage[10] = {nullptr};
+  size_t num_commands = 0;
+
+  XLA_FFI_RecordFrame_Extension record_frame_ext;
+  XLA_FFI_RecordFrame record_frame;
+
+  auto configure_call_frame = [&](XLA_FFI_CallFrame* raw_call_frame) {
+    record_frame = {
+        raw_call_frame,
+        /*record_ctx=*/nullptr, &mock_api,     XLA_FFI_RecordAction_Create,
+        commands_storage,       &num_commands, 10};
+    record_frame_ext.extension_base.struct_size =
+        XLA_FFI_RecordFrame_Extension_STRUCT_SIZE;
+    record_frame_ext.extension_base.type = XLA_FFI_Extension_RecordFrame;
+    record_frame_ext.extension_base.next = nullptr;
+    record_frame_ext.record_frame = &record_frame;
+    raw_call_frame->extension_start = &record_frame_ext.extension_base;
+    call_frame_configured = true;
+  };
+
+  auto status =
+      Invoke(Api(), *handler, call_frame, /*context=*/{},
+             ExecutionStage::kRecord, std::move(configure_call_frame));
+  ASSERT_OK(status);
+  EXPECT_TRUE(call_frame_configured);
+  EXPECT_TRUE(called);
+}
+
 // Test that we can automatically generate FFI handler type signature from a C++
 // function declaration.
 static Error BufferR2F32Function(BufferR2<F32> buffer) {

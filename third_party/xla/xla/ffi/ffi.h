@@ -21,7 +21,6 @@ limitations under the License.
        See README.md for more details.
 #endif  // XLA_FFI_API_FFI_H_
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -29,6 +28,8 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 // IWYU pragma: begin_exports
 #include "xla/ffi/api/api.h"
@@ -547,6 +548,253 @@ struct AttrDecoding<Dictionary> {
     return Dictionary(reinterpret_cast<XLA_FFI_Attrs*>(attr));
   }
 };
+
+//===----------------------------------------------------------------------===//
+// Command Buffer Recording API (FFI Record)
+//===----------------------------------------------------------------------===//
+
+enum class RecordAction {
+  kCreate = XLA_FFI_RecordAction_Create,
+  kUpdate = XLA_FFI_RecordAction_Update,
+};
+
+struct KernelArg {
+  const void* address;
+  size_t size;
+
+  // Implicit conversion from pointer (device buffer)
+  explicit KernelArg(const void* device_ptr)  // NOLINT
+      : address(device_ptr), size(0) {}
+
+  // Constructor for host values
+  KernelArg(const void* host_val_ptr, size_t sz)
+      : address(host_val_ptr), size(sz) {}
+};
+
+enum class SourceFormat : uint8_t {
+  kPtx = XLA_FFI_SourceFormat_PTX,
+  kCubin = XLA_FFI_SourceFormat_CUBIN,
+};
+
+class RecordContext {
+ public:
+  RecordContext(XLA_FFI_RecordContext* ctx, const XLA_FFI_RecordApi* api)
+      : ctx_(ctx), api_(api) {}
+
+  XLA_FFI_RecordContext* ctx() const { return ctx_; }
+  const XLA_FFI_RecordApi* api() const { return api_; }
+
+  absl::StatusOr<const XLA_FFI_Command*> CreateLaunch(
+      const char* kernel_name, const void* kernel_data, size_t kernel_size,
+      SourceFormat format, XLA_FFI_LaunchDims launch_dims,
+      uint32_t shared_mem_bytes, absl::Span<const KernelArg> args,
+      absl::Span<const XLA_FFI_Command* const> dependencies = {}) {
+    std::vector<XLA_FFI_KernelArg> raw_args;
+    raw_args.reserve(args.size());
+    for (size_t i = 0; i < args.size(); ++i) {
+      raw_args.push_back({args[i].address, args[i].size});
+    }
+
+    XLA_FFI_KernelArgs ffi_args;
+    ffi_args.args = raw_args.data();
+    ffi_args.num_args = raw_args.size();
+
+    const XLA_FFI_Command* out_command = nullptr;
+    XLA_FFI_Error* err = api_->create_launch(
+        ctx_, kernel_name, kernel_data, kernel_size,
+        static_cast<XLA_FFI_SourceFormat>(format), launch_dims,
+        shared_mem_bytes, &ffi_args, dependencies.data(), dependencies.size(),
+        &out_command);
+    if (err) {
+      return ConvertError(err);
+    }
+    return out_command;
+  }
+
+  absl::StatusOr<const XLA_FFI_Command*> CreateLaunch(
+      const char* kernel_name, const void* kernel_data, size_t kernel_size,
+      SourceFormat format, XLA_FFI_LaunchDims launch_dims,
+      uint32_t shared_mem_bytes, absl::Span<const void* const> args,
+      absl::Span<const XLA_FFI_Command* const> dependencies = {}) {
+    std::vector<KernelArg> kernel_args;
+    kernel_args.reserve(args.size());
+    for (size_t i = 0; i < args.size(); ++i) {
+      kernel_args.emplace_back(args[i]);
+    }
+    return CreateLaunch(kernel_name, kernel_data, kernel_size, format,
+                        launch_dims, shared_mem_bytes,
+                        absl::MakeSpan(kernel_args), dependencies);
+  }
+
+  absl::StatusOr<const XLA_FFI_Command*> CreateEmptyCommand(
+      absl::Span<const XLA_FFI_Command* const> dependencies = {}) {
+    const XLA_FFI_Command* out_command = nullptr;
+    XLA_FFI_Error* err = api_->create_empty_command(
+        ctx_, dependencies.data(), dependencies.size(), &out_command);
+    if (err) {
+      return ConvertError(err);
+    }
+    return out_command;
+  }
+
+  absl::Status RequestStreamCapture() {
+    XLA_FFI_Error* err = api_->request_stream_capture(ctx_);
+    if (err) {
+      return ConvertError(err);
+    }
+    return absl::OkStatus();
+  }
+
+  absl::Status UpdateLaunch(const XLA_FFI_Command* command,
+                            absl::Span<const KernelArg> args) {
+    std::vector<XLA_FFI_KernelArg> raw_args;
+    raw_args.reserve(args.size());
+    for (size_t i = 0; i < args.size(); ++i) {
+      raw_args.push_back({args[i].address, args[i].size});
+    }
+
+    XLA_FFI_KernelArgs ffi_args;
+    ffi_args.args = raw_args.data();
+    ffi_args.num_args = raw_args.size();
+
+    XLA_FFI_Error* err = api_->update_launch(ctx_, command, &ffi_args);
+    if (err) {
+      return ConvertError(err);
+    }
+    return absl::OkStatus();
+  }
+
+  absl::Status UpdateLaunch(const XLA_FFI_Command* command,
+                            absl::Span<const void* const> args) {
+    std::vector<KernelArg> kernel_args;
+    kernel_args.reserve(args.size());
+    for (size_t i = 0; i < args.size(); ++i) {
+      kernel_args.emplace_back(args[i]);
+    }
+    return UpdateLaunch(command, absl::MakeSpan(kernel_args));
+  }
+
+  absl::StatusOr<const XLA_FFI_Command*> CreateMemcpyD2D(
+      void* dst, void* src, size_t size,
+      absl::Span<const XLA_FFI_Command* const> dependencies = {}) {
+    const XLA_FFI_Command* out_command = nullptr;
+    XLA_FFI_Error* err =
+        api_->create_memcpy_d2d(ctx_, dst, src, size, dependencies.data(),
+                                dependencies.size(), &out_command);
+    if (err) {
+      return ConvertError(err);
+    }
+    return out_command;
+  }
+
+ private:
+  absl::Status ConvertError(XLA_FFI_Error* err) {
+    const XLA_FFI_Api* api = XLA_FFI_GetApi();
+    std::string msg = internal::GetErrorMessage(api, err);
+    internal::DestroyError(api, err);
+    return absl::InternalError(std::move(msg));
+  }
+
+  XLA_FFI_RecordContext* ctx_;
+  const XLA_FFI_RecordApi* api_;
+};
+
+class BoundedCommandVector {
+ public:
+  BoundedCommandVector(const XLA_FFI_Command** commands, size_t* num_commands,
+                       size_t max_commands)
+      : commands_(commands),
+        num_commands_(num_commands),
+        max_commands_(max_commands) {}
+
+  const XLA_FFI_Command* operator[](size_t index) const {
+    return commands_[index];
+  }
+
+  absl::Status push_back(const XLA_FFI_Command* command) {
+    if (*num_commands_ >= max_commands_) {
+      return absl::ResourceExhaustedError("CommandVector overflow");
+    }
+    commands_[(*num_commands_)++] = command;
+    return absl::OkStatus();
+  }
+
+  size_t size() const { return *num_commands_; }
+  size_t capacity() const { return max_commands_; }
+
+ private:
+  const XLA_FFI_Command** commands_;
+  size_t* num_commands_;
+  size_t max_commands_;
+};
+
+namespace internal {
+template <typename ExtensionStruct>
+ExtensionStruct* FindExtension(const XLA_FFI_CallFrame* call_frame,
+                               XLA_FFI_Extension_Type type) {
+  if (call_frame == nullptr) {
+    return nullptr;
+  }
+  XLA_FFI_Extension_Base* ext = call_frame->extension_start;
+  while (ext != nullptr) {
+    if (ext->type == type) {
+      // The whole point of having tagged types is to be able to do
+      // reinterpret_cast safely.
+      // NOLINTNEXTLINE
+      return reinterpret_cast<ExtensionStruct*>(ext);
+    }
+    ext = ext->next;
+  }
+  return nullptr;
+}
+
+template <>
+struct Decode<internal::CtxTag<RecordContext>> {
+  using R = RecordContext;
+  static std::optional<R> call(DecodingOffsets& offsets, DecodingContext& ctx,
+                               DiagnosticEngine& diagnostic) {
+    auto* ext = internal::FindExtension<XLA_FFI_RecordFrame_Extension>(
+        ctx.call_frame, XLA_FFI_Extension_RecordFrame);
+    if (ext == nullptr || ext->record_frame == nullptr) {
+      diagnostic.Emit("RecordContext is only available during RECORD stage");
+      return std::nullopt;
+    }
+    return RecordContext(ext->record_frame->record_ctx, ext->record_frame->api);
+  }
+};
+
+template <>
+struct Decode<internal::CtxTag<RecordAction>> {
+  using R = RecordAction;
+  static std::optional<R> call(DecodingOffsets& offsets, DecodingContext& ctx,
+                               DiagnosticEngine& diagnostic) {
+    auto* ext = internal::FindExtension<XLA_FFI_RecordFrame_Extension>(
+        ctx.call_frame, XLA_FFI_Extension_RecordFrame);
+    if (ext == nullptr || ext->record_frame == nullptr) {
+      diagnostic.Emit("RecordContext is only available during RECORD stage");
+      return std::nullopt;
+    }
+    return static_cast<RecordAction>(ext->record_frame->action);
+  }
+};
+
+template <>
+struct Decode<internal::CtxTag<BoundedCommandVector>> {
+  using R = BoundedCommandVector;
+  static std::optional<R> call(DecodingOffsets& offsets, DecodingContext& ctx,
+                               DiagnosticEngine& diagnostic) {
+    auto* ext = internal::FindExtension<XLA_FFI_RecordFrame_Extension>(
+        ctx.call_frame, XLA_FFI_Extension_RecordFrame);
+    if (ext == nullptr || ext->record_frame == nullptr) {
+      diagnostic.Emit("RecordContext is only available during RECORD stage");
+      return std::nullopt;
+    }
+    return BoundedCommandVector(ext->record_frame->commands,
+                                ext->record_frame->num_commands,
+                                ext->record_frame->max_commands);
+  }
+};
+}  // namespace internal
 
 //===----------------------------------------------------------------------===//
 // Type-safe wrapper for accessing context.

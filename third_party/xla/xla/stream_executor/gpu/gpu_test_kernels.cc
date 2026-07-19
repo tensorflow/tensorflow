@@ -736,4 +736,59 @@ KernelLoaderSpec GetTmaPtxKernelSpec() {
   return KernelLoaderSpec::CreateCudaPtxInMemorySpec(kTmaKernelPtx,
                                                      "tma_dot_kernel", 3);
 }  // NOLINT
+
+KernelLoaderSpec GetMinimalClusterKernelSpec() {
+  static constexpr absl::string_view kClusterKernelPtx = R"(
+    .version 8.7
+    .target sm_90
+    .address_size 64
+    .visible .entry minimal_cluster_kernel(
+        .param .u64 .ptr .align 256 param_0
+    )
+    .explicitcluster
+    .maxntid 128, 1, 1
+    .minnctapersm 1
+    {
+        .reg .pred p0, p1;
+        .reg .b32 %r<4>;
+        .reg .b64 %rd<4>;
+        .shared .align 4 .b32 shared_val;
+
+        // CTA 0 writes 1234 into its shared memory
+        mov.u32 %r0, %ctaid.x;
+        setp.eq.u32 p0, %r0, 0;
+        @p0 mov.u32 %r1, 1234;
+        @p0 st.shared.u32 [shared_val], %r1;
+
+        // Wait for CTA 0 write to complete
+        barrier.cluster.arrive;
+        barrier.cluster.wait;
+
+        // CTA 0 can exit now. But it will wait at exit.
+        setp.eq.u32 p1, %r0, 1;
+        @!p1 bra L_syncexit;
+
+        mov.u64 %rd0, shared_val;
+        cvta.to.shared.u64 %rd0, %rd0;
+        mov.u32 %r2, 0;
+        mapa.shared::cluster.u64 %rd1, %rd0, %r2;
+        ld.shared::cluster.u32 %r3, [%rd1];
+
+        // Write the cross-cluster loaded value to global memory
+        ld.param.u64 %rd2, [param_0];
+        cvta.to.global.u64 %rd3, %rd2;
+        st.global.u32 [%rd3], %r3;
+
+    L_syncexit:
+        // Barrier 2: Keep CTA 0 alive until CTA 1 finishes reading
+        barrier.cluster.arrive;
+        barrier.cluster.wait;
+
+        ret;
+    }
+  )";
+  return KernelLoaderSpec::CreateCudaPtxInMemorySpec(
+      kClusterKernelPtx, "minimal_cluster_kernel", 1);
+}
+
 }  // namespace stream_executor::gpu
