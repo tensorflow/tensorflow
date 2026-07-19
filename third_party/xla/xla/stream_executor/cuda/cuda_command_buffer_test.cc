@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"  // IWYU pragma: keep - cudnn frontend headers are not hermetic
 #include "third_party/cudnn_frontend/include/cudnn_frontend/graph_interface.h"
@@ -181,9 +182,6 @@ TEST(CudaCommandBufferTest, CuDnnExplicitConstructionAndUpdateWork) {
 }
 
 TEST(CudaCommandBufferTest, PdlKernelEdgeUsesProgrammaticDependency) {
-#if CUDA_VERSION < 12030
-  GTEST_SKIP() << "Requires CUDA toolkit 12.3+";
-#else
   Platform* platform = CudaPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
   if (!executor->GetDeviceDescription()
@@ -191,8 +189,8 @@ TEST(CudaCommandBufferTest, PdlKernelEdgeUsesProgrammaticDependency) {
            .IsAtLeastHopper()) {
     GTEST_SKIP() << "Requires at least a Hopper GPU.";
   }
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
-                          executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
+                       executor->CreateStream());
   KernelLoaderSpec add_spec = ::stream_executor::gpu::GetAddI32TestKernelSpec(
                                   executor->GetPlatform()->id())
                                   .value();
@@ -201,19 +199,19 @@ TEST(CudaCommandBufferTest, PdlKernelEdgeUsesProgrammaticDependency) {
 
   DeviceAddress<int32_t> a = executor->AllocateArray<int32_t>(4);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> cmd_buffer,
-                          executor->CreateCommandBuffer(primary));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> cmd_buffer,
+                       executor->CreateCommandBuffer(primary));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const CommandBuffer::Command* first,
-      cmd_buffer->CreateLaunch(ThreadDim(4, 1, 1), BlockDim(1, 1, 1), *kernel,
-                               *stream_executor::PackKernelArgs(0, a, a, a),
-                               {}));
+      cmd_buffer->CreateLaunch(
+          ThreadDim(4, 1, 1), BlockDim(1, 1, 1), std::nullopt, *kernel,
+          *stream_executor::PackKernelArgs(0, a, a, a), {}));
   std::array<const CommandBuffer::Command*, 1> dependencies = {first};
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const CommandBuffer::Command* second,
       cmd_buffer->CreateLaunch(
-          ThreadDim(4, 1, 1), BlockDim(1, 1, 1), *kernel,
+          ThreadDim(4, 1, 1), BlockDim(1, 1, 1), std::nullopt, *kernel,
           *stream_executor::PackKernelArgs(0, a, a, a),
           absl::Span<const CommandBuffer::Command* const>(dependencies)));
 
@@ -244,7 +242,6 @@ TEST(CudaCommandBufferTest, PdlKernelEdgeUsesProgrammaticDependency) {
   EXPECT_EQ(dep_node, first_node);
   EXPECT_EQ(edge_data.from_port, CU_GRAPH_KERNEL_NODE_PORT_PROGRAMMATIC);
   EXPECT_EQ(edge_data.type, CU_GRAPH_DEPENDENCY_TYPE_PROGRAMMATIC);
-#endif
 }
 
 TEST(CudaCommandBufferTest, TraceDisallowsForbiddenOpsOnCaptureStream) {
@@ -274,6 +271,82 @@ TEST(CudaCommandBufferTest, TraceDisallowsForbiddenOpsOnCaptureStream) {
             return absl::OkStatus();
           },
           CommandBuffer::Mode::kPrimary));
+}
+
+TEST(CudaCommandBufferTest, LaunchClusterKernelWithoutClusterDimsFails) {
+  Platform* platform = CudaPlatform();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+  if (!executor->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeastHopper()) {
+    GTEST_SKIP() << "Requires at least a Hopper GPU.";
+  }
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
+                       executor->CreateStream());
+
+  // Minimal PTX that uses cluster features (sm_90) and map addressing (mapa).
+  static constexpr absl::string_view kClusterKernelPtx = R"(
+    .version 8.7
+    .target sm_90
+    .address_size 64
+    .visible .entry kernel_cluster_test(
+        .param .u64 .ptr .align 256 param_0
+    )
+    .maxntid 128, 1, 1
+    .minnctapersm 1
+    {
+        .reg .pred 	%p<1>;
+        .reg .b32 	%r<5>;
+        .reg .b64 	%rd<3>;
+        .shared .align 8 .b64 mbar;
+
+        mov.u32 %r0, %ctaid.x;
+        setp.ne.u32 %p0, %r0, 0;
+        @%p0 bra L_exit;
+
+        mov.u32 %r1, mbar;
+        mov.u32 %r2, 1;
+        mbarrier.init.shared.b64 [%r1], %r2;
+
+        mov.u32 %r3, 1;
+        mapa.shared::cluster.u32 %r4, %r1, %r3;
+        mbarrier.arrive.release.cta.shared::cluster.b64 _, [%r4], %r2;
+
+        // Write to global memory to prevent optimization and verify execution
+        ld.param.u64 %rd0, [param_0];
+        cvta.to.global.u64 %rd1, %rd0;
+        mov.u32 %r0, 42;
+        st.global.u32 [%rd1], %r0;
+
+    L_exit:
+        ret;
+    }
+  )";
+
+  KernelLoaderSpec spec = KernelLoaderSpec::CreateCudaPtxInMemorySpec(
+      kClusterKernelPtx, "kernel_cluster_test", 1);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> kernel,
+                       executor->LoadKernel(spec));
+
+  DeviceAddress<uint8_t> dummy = executor->AllocateArray<uint8_t>(256);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> cmd_buffer,
+                       executor->CreateCommandBuffer(primary));
+
+  // Launch with grid size 2 and cluster dims 2x1x1.
+  ClusterDim cluster_dims{2, 1, 1};
+  ASSERT_OK_AND_ASSIGN(
+      const CommandBuffer::Command* cmd,
+      cmd_buffer->CreateLaunch(ThreadDim(128, 1, 1), BlockDim(2, 1, 1),
+                               cluster_dims, *kernel,
+                               *stream_executor::PackKernelArgs(
+                                   /*shmem_bytes=*/0, dummy),
+                               {}));
+  ASSERT_NE(cmd, nullptr);
+
+  ASSERT_OK(cmd_buffer->Finalize());
+  ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
 }
 
 }  // namespace

@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/executable_run_options.h"
+#include "xla/ffi/api/c_api.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -94,6 +95,7 @@ struct XLA_FFI_ExecutionContext {
     xla::ffi::ExecutionState* instantiate = nullptr;
     xla::ffi::ExecutionState* prepare = nullptr;
     xla::ffi::ExecutionState* initialize = nullptr;
+    xla::ffi::ExecutionState* record = nullptr;
   };
 
   xla::RunId run_id = xla::RunId{0};
@@ -104,6 +106,7 @@ struct XLA_FFI_ExecutionContext {
 
   const xla::HloComputation* called_computation = nullptr;
   const xla::ffi::ExecutionContext* execution_context = nullptr;
+  XLA_FFI_RecordFrame* record_frame = nullptr;
 };
 
 #endif  // XLA_FFI_FFI_STRUCTS_H_

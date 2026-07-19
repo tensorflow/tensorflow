@@ -138,6 +138,7 @@ cc_library(
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:kernel",
+        "//xla/stream_executor:kernel_args",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:platform",
@@ -689,6 +690,10 @@ xla_test(
 tf_proto_library(
     name = "tma_metadata_proto",
     srcs = ["tma_metadata.proto"],
+    visibility = internal_visibility([
+        ":friends",
+        "//third_party/py/jax/jaxlib/mosaic/gpu:__subpackages__",
+    ]),
 )
 
 cc_library(
@@ -696,6 +701,10 @@ cc_library(
     srcs = ["tma_metadata.cc"],
     hdrs = ["tma_metadata.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    visibility = internal_visibility([
+        ":friends",
+        "//third_party/py/jax/jaxlib/mosaic/gpu:__subpackages__",
+    ]),
     deps = [
         ":tma_metadata_proto_cc",
         "//xla/stream_executor:device_description",

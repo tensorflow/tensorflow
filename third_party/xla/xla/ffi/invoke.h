@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <variant>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -117,14 +118,17 @@ struct InvokeContext {
 // synchronous call and it might block the caller thread if the handler is
 // asynchronous. It is unsafe to call if from a thread pool that runs tasks
 // scheduled by the handler itself.
-absl::Status Invoke(const XLA_FFI_Api* api, Ffi& handler, CallFrame& call_frame,
-                    const InvokeContext& context = {},
-                    ExecutionStage stage = ExecutionStage::kExecute);
+absl::Status Invoke(
+    const XLA_FFI_Api* api, Ffi& handler, CallFrame& call_frame,
+    const InvokeContext& context = {},
+    ExecutionStage stage = ExecutionStage::kExecute,
+    absl::AnyInvocable<void(XLA_FFI_CallFrame*) &&> configure_call_frame = {});
 
 absl::Status Invoke(
     const XLA_FFI_Api* api, XLA_FFI_Handler* handler, CallFrame& call_frame,
     const InvokeContext& context = {},
-    XLA_FFI_ExecutionStage stage = XLA_FFI_ExecutionStage_EXECUTE);
+    XLA_FFI_ExecutionStage stage = XLA_FFI_ExecutionStage_EXECUTE,
+    absl::AnyInvocable<void(XLA_FFI_CallFrame*) &&> configure_call_frame = {});
 
 // Invokes an XLA FFI handler with the given call frame and context. This is an
 // asynchronous call and it will not block the caller thread. Returned async
@@ -132,12 +136,14 @@ absl::Status Invoke(
 tsl::AsyncValueRef<tsl::Chain> InvokeAsync(
     const XLA_FFI_Api* api, Ffi& handler, CallFrame& call_frame,
     const InvokeContext& context = {},
-    ExecutionStage stage = ExecutionStage::kExecute);
+    ExecutionStage stage = ExecutionStage::kExecute,
+    absl::AnyInvocable<void(XLA_FFI_CallFrame*) &&> configure_call_frame = {});
 
 tsl::AsyncValueRef<tsl::Chain> InvokeAsync(
     const XLA_FFI_Api* api, XLA_FFI_Handler* handler, CallFrame& call_frame,
     const InvokeContext& context = {},
-    XLA_FFI_ExecutionStage stage = XLA_FFI_ExecutionStage_EXECUTE);
+    XLA_FFI_ExecutionStage stage = XLA_FFI_ExecutionStage_EXECUTE,
+    absl::AnyInvocable<void(XLA_FFI_CallFrame*) &&> configure_call_frame = {});
 
 // Gets metadata from the handler by invoking it with a special call frame.
 absl::StatusOr<XLA_FFI_Metadata> GetMetadata(const XLA_FFI_Api* api,

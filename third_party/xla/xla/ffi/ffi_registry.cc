@@ -88,6 +88,7 @@ absl::Status RegisterHandler(const XLA_FFI_Api* api, absl::string_view name,
                              absl::string_view platform,
                              XLA_FFI_Handler_Bundle bundle,
                              XLA_FFI_Handler_Traits traits) {
+  XLA_FFI_Handler* record = bundle.record;
   ASSIGN_OR_RETURN(std::string canonical_platform,
                    PlatformUtil::CanonicalPlatformName(platform));
 
@@ -131,7 +132,7 @@ absl::Status RegisterHandler(const XLA_FFI_Api* api, absl::string_view name,
       name, platform, canonical_platform,
       absl::StrJoin(GetHandlerStages(bundle), ", "), metadata, &registry);
 
-  HandlerRegistration registration{metadata, bundle};
+  HandlerRegistration registration{metadata, bundle, record};
   auto [it, emplaced] = registry.map.try_emplace(
       registry.MakeKey(name, canonical_platform), registration);
 

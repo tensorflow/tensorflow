@@ -40,6 +40,7 @@ namespace xla::ffi {
 struct HandlerRegistration {
   XLA_FFI_Metadata metadata;
   XLA_FFI_Handler_Bundle bundle;
+  XLA_FFI_Handler* record = nullptr;
 };
 
 // Returns registered FFI handler for a given name and platform, or an error if

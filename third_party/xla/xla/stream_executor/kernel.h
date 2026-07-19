@@ -122,6 +122,11 @@ class Kernel {
   virtual absl::StatusOr<int32_t> GetMaxOccupiedBlocksPerCore(
       ThreadDim threads, size_t dynamic_shared_memory_bytes) const = 0;
 
+  virtual absl::Status UpdateMaxDynamicSharedMemoryBytes(
+      int32_t shared_memory_bytes) const {
+    return absl::OkStatus();
+  }
+
   const KernelMetadata& metadata() const { return metadata_; }
   void set_metadata(KernelMetadata metadata) { metadata_ = metadata; }
 

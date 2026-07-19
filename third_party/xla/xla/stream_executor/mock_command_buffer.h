@@ -49,14 +49,16 @@ class MockCommandBuffer : public CommandBuffer {
               (override));
   MOCK_METHOD(absl::StatusOr<const Command*>, CreateLaunch,
               (const ThreadDim& threads, const BlockDim& blocks,
+               const std::optional<ClusterDim>& cluster_dims,
                const Kernel& kernel, const KernelArgs& args,
                absl::Span<const Command* const> dependencies,
                StreamPriority priority),
               (override));
   MOCK_METHOD(absl::Status, UpdateLaunch,
               (const Command* command, const ThreadDim& threads,
-               const BlockDim& blocks, const Kernel& kernel,
-               const KernelArgs& args),
+               const BlockDim& blocks,
+               const std::optional<ClusterDim>& cluster_dims,
+               const Kernel& kernel, const KernelArgs& args),
               (override));
   MOCK_METHOD(absl::StatusOr<const Command*>, CreateChildCommand,
               (const CommandBuffer& nested,

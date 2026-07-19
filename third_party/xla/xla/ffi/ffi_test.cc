@@ -153,6 +153,73 @@ TEST(FfiTest, StaticHandlerSymbolRegistration) {
   ASSERT_EQ(handler0->metadata.traits, 0);
 }
 
+struct XLA_FFI_Handler_Bundle_V0 {
+  XLA_FFI_Handler* instantiate;
+  XLA_FFI_Handler* prepare;
+  XLA_FFI_Handler* initialize;
+  XLA_FFI_Handler* execute;
+};
+
+struct XLA_FFI_Handler_Register_Args_V0 {
+  size_t struct_size;
+  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_ByteSpan name;
+  XLA_FFI_ByteSpan platform;
+  XLA_FFI_Handler_Bundle_V0 bundle;
+  XLA_FFI_Handler_Traits traits;
+};
+
+TEST(FfiTest, RegisterWithRecordHandler) {
+  static constexpr auto* execute =
+      +[](XLA_FFI_CallFrame* call_frame) -> XLA_FFI_Error* {
+    auto handler = Ffi::Bind().To([]() { return absl::OkStatus(); });
+    return handler->Call(call_frame);
+  };
+  static constexpr auto* record =
+      +[](XLA_FFI_CallFrame*) -> XLA_FFI_Error* { return nullptr; };
+
+  XLA_FFI_Handler_Bundle bundle = {nullptr, nullptr, nullptr, execute, record};
+
+  auto status =
+      RegisterHandler(GetXlaFfiApi(), "with-record", "Host", bundle, 0);
+  ASSERT_OK(status);
+
+  auto handler = FindHandler("with-record", "Host");
+  ASSERT_OK(handler.status());
+  EXPECT_EQ(handler->bundle.execute, execute);
+  EXPECT_EQ(handler->bundle.record, record);
+  EXPECT_EQ(handler->record, record);
+}
+
+TEST(FfiTest, RegisterWithV0Args) {
+  static constexpr auto* execute =
+      +[](XLA_FFI_CallFrame* call_frame) -> XLA_FFI_Error* {
+    auto handler = Ffi::Bind().To([]() { return absl::OkStatus(); });
+    return handler->Call(call_frame);
+  };
+
+  XLA_FFI_Handler_Bundle_V0 bundle_v0 = {nullptr, nullptr, nullptr, execute};
+
+  XLA_FFI_Handler_Register_Args_V0 args_v0;
+  args_v0.struct_size =
+      XLA_FFI_STRUCT_SIZE(XLA_FFI_Handler_Register_Args_V0, traits);
+  args_v0.extension_start = nullptr;
+  args_v0.name = XLA_FFI_ByteSpan{"v0-handler", 10};
+  args_v0.platform = XLA_FFI_ByteSpan{"Host", 4};
+  args_v0.bundle = bundle_v0;
+  args_v0.traits = 0;
+
+  XLA_FFI_Error* error = GetXlaFfiApi()->XLA_FFI_Handler_Register(
+      reinterpret_cast<XLA_FFI_Handler_Register_Args*>(&args_v0));
+  ASSERT_EQ(error, nullptr);
+
+  auto handler = FindHandler("v0-handler", "Host");
+  ASSERT_OK(handler.status());
+  EXPECT_EQ(handler->bundle.execute, execute);
+  EXPECT_EQ(handler->bundle.record, nullptr);
+  EXPECT_EQ(handler->record, nullptr);
+}
+
 TEST(FfiTest, ForwardError) {
   auto call_frame = CallFrameBuilder(/*num_args=*/0, /*num_rets=*/0).Build();
   auto handler = Ffi::Bind().To([] { return absl::AbortedError("Ooops!"); });

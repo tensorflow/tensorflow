@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -189,8 +190,8 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateSetWhileConditionNode(
   auto kernel_args = PackKernelArgs(set_while_condition_kernel_,
                                     ToCudaGraphHandle(conditional), predicate);
   return CreateKernelNode(dependencies, StreamPriority::Default, ThreadDim(),
-                          BlockDim(), *set_while_condition_kernel_,
-                          *kernel_args);
+                          BlockDim(), /*cluster_dims=*/std::nullopt,
+                          *set_while_condition_kernel_, *kernel_args);
 }
 
 absl::Status CudaCommandBuffer::UpdateSetWhileConditionNode(
@@ -199,6 +200,7 @@ absl::Status CudaCommandBuffer::UpdateSetWhileConditionNode(
   auto kernel_args = PackKernelArgs(set_while_condition_kernel_,
                                     ToCudaGraphHandle(conditional), predicate);
   return UpdateKernelNode(handle, ThreadDim(), BlockDim(),
+                          /*cluster_dims=*/std::nullopt,
                           *set_while_condition_kernel_, *kernel_args);
 }
 
@@ -246,8 +248,8 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateSetCaseConditionNode(
       set_case_condition_kernel_, conditionals, index, index_is_bool,
       batch_offset, enable_conditional_default);
   return CreateKernelNode(dependencies, StreamPriority::Default, ThreadDim(),
-                          BlockDim(), *set_case_condition_kernel_,
-                          *kernel_args);
+                          BlockDim(), /*cluster_dims=*/std::nullopt,
+                          *set_case_condition_kernel_, *kernel_args);
 }
 
 absl::Status CudaCommandBuffer::UpdateSetCaseConditionNode(
@@ -259,6 +261,7 @@ absl::Status CudaCommandBuffer::UpdateSetCaseConditionNode(
       set_case_condition_kernel_, conditionals, index, index_is_bool,
       batch_offset, enable_conditional_default);
   return UpdateKernelNode(handle, ThreadDim(), BlockDim(),
+                          /*cluster_dims=*/std::nullopt,
                           *set_case_condition_kernel_, *kernel_args);
 }
 
@@ -504,7 +507,8 @@ absl::Status CudaCommandBuffer::UpdateClonedChildNode(
 
 absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateKernelNode(
     absl::Span<const GraphNodeHandle> dependencies, StreamPriority priority,
-    const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
+    const ThreadDim& threads, const BlockDim& blocks,
+    const std::optional<ClusterDim>& cluster_dims, const Kernel& kernel,
     const KernelArgsPackedArrayBase& args) {
   const uint64_t shared_mem_bytes = args.number_of_shared_bytes();
 
@@ -547,6 +551,10 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateKernelNode(
 
   std::vector<CUgraphNode> deps = ToCudaGraphHandles(dependencies);
 
+  VLOG(1) << "CudaCommandBuffer::CreateLaunchWithPackedArgs: kernel: "
+          << kernel.name() << ", use_pdl: " << kernel.use_pdl()
+          << ", deps size: " << deps.size();
+
   if (stream_exec_->GetDeviceDescription().driver_version() >=
       SemanticVersion{12, 3, 0}) {
     CUgraphNodeParams cu_params;
@@ -565,7 +573,9 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateKernelNode(
           cuGraphNodeGetType(deps[i], &type),
           absl::StrCat("Failed to get CUDA graph node type for dependency ",
                        i)));
+      VLOG(1) << "  dep " << i << " node: " << deps[i] << ", type: " << type;
       if (kernel.use_pdl() && type == CU_GRAPH_NODE_TYPE_KERNEL) {
+        VLOG(1) << "    Setting programmatic dependency!";
         edge_data_item.from_port = CU_GRAPH_KERNEL_NODE_PORT_PROGRAMMATIC;
         edge_data_item.type = CU_GRAPH_DEPENDENCY_TYPE_PROGRAMMATIC;
       }
@@ -597,13 +607,27 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateKernelNode(
                            node_handle, CU_LAUNCH_ATTRIBUTE_PRIORITY, &value),
                        "Failed to set kernel node priority"));
   }
+
+  if (cluster_dims.has_value()) {
+    CUlaunchAttributeValue value;
+    value.clusterDim.x = static_cast<unsigned int>(cluster_dims->x);
+    value.clusterDim.y = static_cast<unsigned int>(cluster_dims->y);
+    value.clusterDim.z = static_cast<unsigned int>(cluster_dims->z);
+    RETURN_IF_ERROR(cuda::ToStatus(
+        cuGraphKernelNodeSetAttribute(
+            node_handle, CU_LAUNCH_ATTRIBUTE_CLUSTER_DIMENSION, &value),
+        "Failed to set kernel node cluster dimensions"));
+  }
+
+  VLOG(1) << "CudaCommandBuffer::CreateLaunchWithPackedArgs: created node: "
+          << node_handle;
   return FromCudaGraphHandle(node_handle);
 }
 
 absl::Status CudaCommandBuffer::UpdateKernelNode(
     GraphNodeHandle node_handle, const ThreadDim& threads,
-    const BlockDim& blocks, const Kernel& kernel,
-    const KernelArgsPackedArrayBase& args) {
+    const BlockDim& blocks, const std::optional<ClusterDim>& cluster_dims,
+    const Kernel& kernel, const KernelArgsPackedArrayBase& args) {
   const uint64_t shared_mem_bytes = args.number_of_shared_bytes();
 
   VLOG(2) << "Set kernel node params " << node_handle << " in graph executable "
@@ -808,6 +832,7 @@ absl::Status CudaCommandBuffer::WriteGraphToDotFile(absl::string_view path) {
 }
 
 absl::Status CudaCommandBuffer::InstantiateGraph() {
+  VLOG(2) << "CUDA Graph DOT:\n" << ToString();
   // If we get a "resource exhausted error" we retry instantiating Gpu graph
   // one more time after releasing unused device memory allocated for graphs.
   auto instantiated = GraphInstantiate(&graph_exec_, graph_);

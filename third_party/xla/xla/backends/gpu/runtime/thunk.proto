@@ -359,6 +359,7 @@ message CustomCallThunkProto {
   // the HloModule that is used to deserialize the thunk.
   optional string called_computation = 7;
   optional xla.ffi.ExecutionStateProto execution_state = 8;
+  bool use_pdl = 9;
 }
 
 message CustomKernelThunkProto {

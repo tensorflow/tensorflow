@@ -189,6 +189,8 @@ inline std::ostream& operator<<(std::ostream& os,
       return os << "initialize";
     case XLA_FFI_ExecutionStage_EXECUTE:
       return os << "execute";
+    case XLA_FFI_ExecutionStage_RECORD:
+      return os << "record";
   }
 }
 
@@ -242,6 +244,7 @@ enum class ExecutionStage : uint8_t {
   kPrepare = XLA_FFI_ExecutionStage_PREPARE,
   kInitialize = XLA_FFI_ExecutionStage_INITIALIZE,
   kExecute = XLA_FFI_ExecutionStage_EXECUTE,
+  kRecord = XLA_FFI_ExecutionStage_RECORD,
 };
 
 enum class Traits : uint32_t {
@@ -296,6 +299,9 @@ class Ffi {
   // Creates an empty binding for the execute stage.
   static Binding<ExecutionStage::kExecute> BindExecute();
 
+  // Creates an empty binding for the record stage.
+  static Binding<ExecutionStage::kRecord> BindRecord();
+
   // Automatic FFI binding that does binding specification inference from the
   // `fn` type signature and binds `fn` to it. This enables a more concise FFI
   // handler registration with fully automatic type inference at the cost of
@@ -306,6 +312,7 @@ class Ffi {
 
   virtual ~Ffi() = default;
   virtual XLA_FFI_Error* Call(XLA_FFI_CallFrame* call_frame) const = 0;
+  virtual bool SupportsRecord() const { return false; }
 
   // Registers FFI handler bundle with an XLA runtime under the given name on a
   // given platform.
@@ -775,6 +782,10 @@ inline Binding<ExecutionStage::kExecute> Ffi::BindExecute() {
   return Bind<ExecutionStage::kExecute>();
 }
 
+inline Binding<ExecutionStage::kRecord> Ffi::BindRecord() {
+  return Bind<ExecutionStage::kRecord>();
+}
+
 //===----------------------------------------------------------------------===//
 // Template metaprograming to automatically infer Binding from invocable
 // object.
@@ -1204,9 +1215,9 @@ struct DecodingOffsets {
 
 struct DecodingContext {
   XLA_FFI_CallFrame* call_frame;
-
   const std::string* attrs_names;  // not owned
   const std::size_t* attrs_idx;    // not owned
+  XLA_FFI_RecordFrame* record_frame = nullptr;
 };
 
 template <typename T>
@@ -1694,13 +1705,30 @@ class Handler : public Ffi {
                                   call_frame->extension_start));
     }
 
-    // Check that handler is called during correct execution stage.
-    if (XLA_FFI_PREDICT_FALSE(call_frame->stage !=
-                              static_cast<XLA_FFI_ExecutionStage>(stage))) {
-      return InvalidArgument(call_frame->api,
-                             StrCat("Wrong execution stage: expected `",
-                                    static_cast<XLA_FFI_ExecutionStage>(stage),
-                                    "` but got `", call_frame->stage, "`"));
+    // Extract RecordFrame from extension if we are in Record stage.
+    XLA_FFI_RecordFrame* record_frame = nullptr;
+    if (call_frame->stage == XLA_FFI_ExecutionStage_RECORD) {
+      XLA_FFI_Extension_Base* ext = call_frame->extension_start;
+      while (ext != nullptr) {
+        if (ext->type == XLA_FFI_Extension_RecordFrame) {
+          if (XLA_FFI_Error* err = StructSizeIsGreaterOrEqual(
+                  call_frame->api, "XLA_FFI_RecordFrame_Extension",
+                  XLA_FFI_RecordFrame_Extension_STRUCT_SIZE,
+                  ext->struct_size)) {
+            return err;
+          }
+          // We know what type we are looking for here through ext->type.
+          // NOLINTNEXTLINE
+          record_frame = reinterpret_cast<XLA_FFI_RecordFrame_Extension*>(ext)
+                             ->record_frame;
+          break;
+        }
+        ext = ext->next;
+      }
+      if (XLA_FFI_PREDICT_FALSE(record_frame == nullptr)) {
+        return InvalidArgument(call_frame->api,
+                               "Missing record frame extension");
+      }
     }
 
     // Check that the number of passed arguments matches the signature. Each
@@ -1807,7 +1835,11 @@ class Handler : public Ffi {
     // Define index sequences to access custom call operands.
     using Is = std::make_index_sequence<kSize>;
 
-    return Call(call_frame, Is{});
+    return Call(call_frame, record_frame, Is{});
+  }
+
+  bool SupportsRecord() const override {
+    return stage == ExecutionStage::kRecord;
   }
 
  private:
@@ -1860,13 +1892,14 @@ class Handler : public Ffi {
 
   template <size_t... Is>
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE XLA_FFI_Error* Call(
-      XLA_FFI_CallFrame* call_frame, std::index_sequence<Is...>) const {
+      XLA_FFI_CallFrame* call_frame, XLA_FFI_RecordFrame* record_frame,
+      std::index_sequence<Is...>) const {
     // A helper structure to allow each decoder find the correct offset.
     internal::DecodingOffsets offsets;
 
     // Package all the data required for decoding ffi handler operands.
     internal::DecodingContext ctx = {call_frame, attrs_.data(),
-                                     attrs_idx_.data()};
+                                     attrs_idx_.data(), record_frame};
 
     DiagnosticEngine diagnostic;
 
