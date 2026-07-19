@@ -834,5 +834,47 @@ class NextAfterTest(test.TestCase):
         self.assertLess(err, 1e-3)
 
 
+class IgammaGradTest(test.TestCase):
+
+  def _x_grad(self, op, a, x):
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = op(a, x)
+    return self.evaluate(tape.gradient(y, x))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testIgammaGradXNonZero(self):
+    # Interior point: d/dx igamma(a, x) = x^(a-1) * e^-x / Gamma(a).
+    for dtype in [dtypes.float32, dtypes.float64]:
+      a = constant_op.constant(2.0, dtype=dtype)
+      x = constant_op.constant(1.5, dtype=dtype)
+      xgrad = self._x_grad(math_ops.igamma, a, x)
+      expected = np.array(1.5 * np.exp(-1.5), dtype=dtype.as_numpy_dtype)
+      self.assertAllClose(expected, xgrad)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testIgammaGradXAtZero(self):
+    # igamma(1, x) = 1 - e^-x, so d/dx at (a=1, x=0) is e^0 = 1 (not NaN).
+    # For a > 1 the derivative is 0; for a < 1 it diverges to +inf.
+    for dtype in [dtypes.float32, dtypes.float64]:
+      a = constant_op.constant([0.5, 1.0, 1.5, 2.0], dtype=dtype)
+      x = constant_op.constant([0.0, 0.0, 0.0, 0.0], dtype=dtype)
+      xgrad = self._x_grad(math_ops.igamma, a, x)
+      self.assertAllClose(
+          np.array([np.inf, 1.0, 0.0, 0.0], dtype=dtype.as_numpy_dtype), xgrad)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testIgammacGradXAtZero(self):
+    # igammac(a, x) = 1 - igamma(a, x), so its x-gradient is the negation;
+    # _IgammacGrad delegates to _IgammaGrad and inherits the same fix.
+    for dtype in [dtypes.float32, dtypes.float64]:
+      a = constant_op.constant([0.5, 1.0, 1.5, 2.0], dtype=dtype)
+      x = constant_op.constant([0.0, 0.0, 0.0, 0.0], dtype=dtype)
+      xgrad = self._x_grad(math_ops.igammac, a, x)
+      self.assertAllClose(
+          np.array([-np.inf, -1.0, 0.0, 0.0], dtype=dtype.as_numpy_dtype),
+          xgrad)
+
+
 if __name__ == "__main__":
   test.main()

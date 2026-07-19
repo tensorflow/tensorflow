@@ -1166,7 +1166,12 @@ def _IgammaGrad(op: ops.Operation, grad):
     partial_a = gen_math_ops.igamma_grad_a(a, x)
     # Perform operations in log space before summing, because Gamma(a)
     # and Gamma'(a) can grow large.
-    partial_x = math_ops.exp(-x + (a - 1) * math_ops.log(x) -
+    # Use xlogy so that the (a - 1) * log(x) term evaluates to 0 (not NaN)
+    # when a == 1 and x == 0. The true derivative there is
+    # d/dx igamma(1, x) = e^-x = 1, so `(a - 1) * log(x)` computing
+    # `0 * -inf = NaN` is incorrect. This mirrors the neighboring Betainc
+    # gradient, which already uses xlogy for the same reason.
+    partial_x = math_ops.exp(-x + math_ops.xlogy(a - 1, x) -
                              math_ops.lgamma(a))
     return (array_ops.reshape(math_ops.reduce_sum(partial_a * grad, ra), sa),
             array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx))
