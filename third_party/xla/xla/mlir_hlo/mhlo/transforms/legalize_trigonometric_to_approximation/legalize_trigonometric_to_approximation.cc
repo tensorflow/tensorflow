@@ -19,7 +19,6 @@ limitations under the License.
 #include <array>
 #include <cassert>
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 #include "mhlo/transforms/passes.h"
