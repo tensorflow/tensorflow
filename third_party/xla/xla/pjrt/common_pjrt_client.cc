@@ -69,6 +69,7 @@ limitations under the License.
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/staging_buffer.h"
 #include "xla/pjrt/transpose.h"
+#include "xla/pjrt/undonatable_common_pjrt_buffer.h"
 #include "xla/pjrt/utils.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/device_id.h"
@@ -487,6 +488,37 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::DefineBuffer(
           std::move(raw_buffer), std::move(definition_device_events),
           use_stream_based_compaction()),
       memory_space);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::MakeUndonatable(
+    std::unique_ptr<PjRtBuffer> buffer) {
+  if (!buffer) {
+    return absl::InvalidArgumentError("buffer cannot be null");
+  }
+  auto* common_pjrt_buffer = dynamic_cast<CommonPjRtBuffer*>(buffer.get());
+  if (!common_pjrt_buffer) {
+    return absl::InvalidArgumentError(
+        "MakeUndonatable requires a buffer backed by CommonPjRtBuffer");
+  }
+  std::shared_ptr<const Shape> on_device_shape =
+      std::make_shared<const Shape>(common_pjrt_buffer->on_device_shape());
+  PjRtMemorySpace* memory_space = common_pjrt_buffer->memory_space();
+
+  ASSIGN_OR_RETURN(auto tracked_buffer,
+                   common_pjrt_buffer->DonateTrackedBuffer());
+
+  PjRtRawBufferRef raw_buffer = tracked_buffer->raw_buffer();
+  absl::InlinedVector<PjRtDeviceEventRef, 2> definition_events(
+      tracked_buffer->definition_events().begin(),
+      tracked_buffer->definition_events().end());
+
+  // Defer raw buffer reclamation until in-flight definition and usage events
+  // finish.
+  tracked_buffer.release()->Delete(memory_space);
+
+  return std::make_unique<UndonatableCommonPjRtBuffer>(
+      std::move(on_device_shape), std::move(raw_buffer),
+      std::move(definition_events), memory_space);
 }
 
 Future<> CommonPjRtClient::CreateProfiledFuture(PjRtMemorySpace* memory_space,

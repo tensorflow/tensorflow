@@ -18,6 +18,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_CONV_GRAD_INPUT_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_CONV_GRAD_INPUT_OPS_H_
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
