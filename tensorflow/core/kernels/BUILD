@@ -4301,10 +4301,14 @@ tf_kernel_library(
         "//tensorflow/core/util/proto:proto_utils",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
         "@xla//xla/tsl/framework/contraction:eigen_contraction_kernel",
+        "@xla//xla/tsl/protobuf:dnn_proto_cc",
     ] + if_cuda([
         ":numeric_options_utils",
         "@xla//xla/stream_executor/cuda:cublas_plugin",
@@ -8231,6 +8235,8 @@ cc_library(
         "//tensorflow:__subpackages__",
     ] + LOOSE_HEADER_VISIBILITY,
     deps = [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
