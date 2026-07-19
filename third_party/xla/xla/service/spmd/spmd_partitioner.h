@@ -743,6 +743,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   absl::Status HandleReshape(HloInstruction* hlo) override;
   absl::Status HandleReverse(HloInstruction* hlo) override;
   absl::Status HandleRng(HloInstruction* hlo) override;
+  absl::Status HandleRotate(HloInstruction* hlo) override;
   absl::Status HandleScatter(HloInstruction* hlo) override;
   absl::Status HandleSelectAndScatter(HloInstruction* hlo) override;
   absl::Status HandleSlice(HloInstruction* hlo) override;

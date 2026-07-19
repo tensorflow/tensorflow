@@ -3929,6 +3929,66 @@ ENTRY TopK {
   ASSERT_TRUE(status.ok());
 }
 
+TEST_F(HloVerifierTest, RotateOK) {
+  constexpr absl::string_view kHlo = R"(
+HloModule rotate, entry_computation_layout={(f32[10,20]{1,0})->f32[10,20]{1,0}}
+
+ENTRY Rotate {
+  x = f32[10,20]{1,0} parameter(0)
+  ROOT rotate = f32[10,20]{1,0} rotate(x), dimensions={0,1}, shifts={2,5}
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTest, RotateInvalidDimensions) {
+  constexpr absl::string_view kHlo = R"(
+HloModule rotate, entry_computation_layout={(f32[10,20]{1,0})->f32[10,20]{1,0}}
+
+ENTRY Rotate {
+  x = f32[10,20]{1,0} parameter(0)
+  ROOT rotate = f32[10,20]{1,0} rotate(x), dimensions={0,2}, shifts={2,5}
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  ASSERT_THAT(status.message(), HasSubstr("out-of-bounds"));
+}
+
+TEST_F(HloVerifierTest, RotateMismatchedShiftsSize) {
+  constexpr absl::string_view kHlo = R"(
+HloModule rotate, entry_computation_layout={(f32[10,20]{1,0})->f32[10,20]{1,0}}
+
+ENTRY Rotate {
+  x = f32[10,20]{1,0} parameter(0)
+  ROOT rotate = f32[10,20]{1,0} rotate(x), dimensions={0,1}, shifts={2}
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  ASSERT_THAT(status.message(),
+              HasSubstr("dimensions and shifts must have the same size"));
+}
+
+TEST_F(HloVerifierTest, RotateDuplicatedDimensions) {
+  constexpr absl::string_view kHlo = R"(
+HloModule rotate, entry_computation_layout={(f32[10,20]{1,0})->f32[10,20]{1,0}}
+
+ENTRY Rotate {
+  x = f32[10,20]{1,0} parameter(0)
+  ROOT rotate = f32[10,20]{1,0} rotate(x), dimensions={0,0}, shifts={2,5}
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  ASSERT_THAT(status.message(), HasSubstr("duplicated"));
+}
+
 TEST_F(HloVerifierTest, InputLayoutMismatchIgnored) {
   // Note: The mismatch is between the entry_computation_layout and the layout
   // of parameter(1).

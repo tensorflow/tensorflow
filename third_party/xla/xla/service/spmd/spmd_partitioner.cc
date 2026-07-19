@@ -5072,6 +5072,25 @@ absl::Status SpmdPartitioningVisitor::HandleReverse(HloInstruction* hlo) {
   return absl::OkStatus();
 }
 
+absl::Status SpmdPartitioningVisitor::HandleRotate(HloInstruction* hlo) {
+  auto rotate = Cast<HloRotateInstruction>(hlo);
+  if (rotate->sharding().IsReplicatedOrSingleDevice()) {
+    return DefaultAction(hlo);
+  }
+  const HloSharding& sharding = rotate->sharding();
+  for (int64_t dim : rotate->dimensions()) {
+    TF_RET_CHECK(sharding.dimension(dim) == 1)
+        << "Rotate along sharded dimension " << dim
+        << " should have been preprocessed into custom call: "
+        << hlo->ToString();
+  }
+  auto operand =
+      GetPartitionedHlo(rotate->operand(0)).Reshard(rotate->sharding());
+  SetPartitionedHlo(hlo, b_.AddInstruction(hlo->CloneWithNewOperands(
+                             operand.hlo()->shape(), {operand.hlo()})));
+  return absl::OkStatus();
+}
+
 absl::Status SpmdPartitioningVisitor::HandleWhile(HloInstruction* hlo) {
   const HloSharding& sharding = hlo->sharding();
   HloInstruction* whileOp = b_.AddInstruction(HloInstruction::CreateWhile(
@@ -6706,22 +6725,34 @@ absl::Status SpmdPartitioner::PreprocessHlos(
           }
         }
       }
+      while (std::optional<RotateRightPatternMatch> match =
+                 FindRotateRightPattern(hlo)) {
+        if (hlo->sharding().dimension(match->dim) == 1) {
+          break;
+        }
+        HloInstruction* to_rotate =
+            (hlo->opcode() == HloOpcode::kConcatenate)
+                ? SkipCopyOperands(hlo->mutable_operand(0))->mutable_operand(0)
+                : SkipCopyOperands(hlo->mutable_operand(0));
+
+        HloInstruction* comm_rotate = computation->AddInstruction(
+            CreateCustomCallSPMDInternal_RotateRight(to_rotate, match->dim,
+                                                     match->amount));
+        comm_rotate->set_metadata(hlo->metadata());
+        comm_rotate->set_sharding(hlo->sharding());
+
+        if (match->rotate_dim_idx < 0) {
+          RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(comm_rotate));
+          RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(hlo));
+          break;
+        }
+        RETURN_IF_ERROR(hlo->ReplaceOperandWith(0, comm_rotate));
+        ASSIGN_OR_RETURN(hlo, PopRotateDimension(hlo, match->rotate_dim_idx));
+      }
       if (hlo->opcode() == HloOpcode::kConcatenate) {
         const int64_t dim = hlo->concatenate_dimension();
         if (hlo->sharding().dimension(dim) == 1) {
           continue;
-        }
-
-        if (std::optional<int64_t> amount = FindRotateRightPattern(hlo)) {
-          HloInstruction* lhs = SkipCopyOperands(hlo->mutable_operand(0));
-          HloInstruction* to_rotate = lhs->mutable_operand(0);
-          HloInstruction* rotate = computation->AddInstruction(
-              CreateCustomCallSPMDInternal_RotateRight(to_rotate, dim,
-                                                       *amount));
-          rotate->set_metadata(hlo->metadata());
-          rotate->set_sharding(hlo->sharding());
-          RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(rotate));
-          RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(hlo));
         }
 
         if (std::optional<PadWithWrapPattern> pad_pattern =

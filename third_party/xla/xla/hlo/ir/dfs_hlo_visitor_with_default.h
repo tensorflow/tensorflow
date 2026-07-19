@@ -167,6 +167,9 @@ class DfsHloVisitorWithDefaultBase
   absl::Status HandleReverse(HloInstructionPtr reverse) override {
     return DefaultAction(reverse);
   }
+  absl::Status HandleRotate(HloInstructionPtr rotate) override {
+    return DefaultAction(rotate);
+  }
   absl::Status HandleSort(HloInstructionPtr sort) override {
     return DefaultAction(sort);
   }
