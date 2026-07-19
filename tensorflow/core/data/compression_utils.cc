@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tstring.h"
@@ -250,7 +251,9 @@ absl::Status UncompressElement(const CompressedElement& compressed,
         compressed.component_metadata(i);
     if (!DataTypeCanUseMemcpy(metadata.dtype()) &&
         metadata.dtype() != DT_STRING) {
-      TensorShape shape(metadata.tensor_shape());
+      TensorShape shape;
+      TF_RETURN_IF_ERROR(
+          TensorShape::BuildTensorShape(metadata.tensor_shape(), &shape));
       if (shape.num_elements() == 0) {
         // The first two passes reserve and fill `nonmemcpyable` only for
         // components with a non-zero element count, so there are no bytes
