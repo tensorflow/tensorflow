@@ -221,6 +221,12 @@ class CommonPjRtClient : public PjRtClient {
         std::move(raw_buffer), std::move(definition_device_events));
   }
 
+  // Turns an existing buffer into an undonatable buffer. Consumes the input
+  // buffer and returns an equivalent hold-free buffer aliasing the same device
+  // memory.
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> MakeUndonatable(
+      std::unique_ptr<PjRtBuffer> buffer);
+
   // When calling APIs that take extra debug information, we may want
   // to omit this debug information if it is not going to be used.
   virtual bool event_tracking_enabled() { return false; }

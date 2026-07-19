@@ -94,7 +94,7 @@ struct BufferLiveRange {
 
 BufferLiveRange GetHloBufferLiveRange(
     const HloBuffer* hlo_buffer,
-    const absl::flat_hash_map<const HloValue*, HloLiveRange::TimeBound>&
+    const absl::flat_hash_map<const HloValue*, HloLiveRange::LiveRangeBounds>&
         value_live_ranges) {
   BufferLiveRange result;
   for (const HloValue* value : hlo_buffer->values()) {
@@ -363,7 +363,7 @@ std::optional<bool> ComparePosition(
 
 // Compares two buffers by their earliest live range start time.
 std::optional<bool> CompareLiveRangeStart(
-    const absl::flat_hash_map<const HloValue*, HloLiveRange::TimeBound>*
+    const absl::flat_hash_map<const HloValue*, HloLiveRange::LiveRangeBounds>*
         buffer_live_ranges,
     absl::flat_hash_map<const HloBuffer*, int64_t>* min_start_cache,
     const HloBuffer* a, const HloBuffer* b) {
@@ -1822,16 +1822,16 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
 }
 
 bool BufferAssigner::LiveRangeInterferes(
-    const HloValue* buffer1, const HloLiveRange::TimeBound& live_range1,
-    const HloValue* buffer2, const HloLiveRange::TimeBound& live_range2,
+    const HloValue* buffer1, const HloLiveRange::LiveRangeBounds& live_range1,
+    const HloValue* buffer2, const HloLiveRange::LiveRangeBounds& live_range2,
     BufferAssignment* assignment) {
   CHECK((assignment->hlo_live_range().total_order_scheduled()));
 
   // Check if a user value can share the same buffer as its operand.
   auto can_share_as_operand =
-      [&assignment, this](const HloValue* user_value,
-                          const HloValue* operand_value,
-                          const HloLiveRange::TimeBound& operand_live_range) {
+      [&assignment, this](
+          const HloValue* user_value, const HloValue* operand_value,
+          const HloLiveRange::LiveRangeBounds& operand_live_range) {
         // An hlo value can hold multiple instructions during its life time. We
         // only look at the last instruction and check if it can be shared with
         // the operand.
@@ -1961,7 +1961,7 @@ absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
   // below results in O(N*M) lookups. Caching them in a contiguous vector
   // reduces the total lookups to O(N+M) and significantly improves CPU cache
   // locality in the hot inner loop.
-  std::vector<const HloLiveRange::TimeBound*> cached_new_live_ranges;
+  std::vector<const HloLiveRange::LiveRangeBounds*> cached_new_live_ranges;
   if (assignment->hlo_live_range().total_order_scheduled()) {
     const auto& buffer_live_ranges =
         assignment->hlo_live_range().buffer_live_ranges();
@@ -1980,7 +1980,7 @@ absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
     const HloValue& assigned_buffer =
         *CHECK_NOTNULL(dynamic_cast<const HloValue*>(buffer_offset_size.first));
 
-    const HloLiveRange::TimeBound* assigned_live_range = nullptr;
+    const HloLiveRange::LiveRangeBounds* assigned_live_range = nullptr;
     if (assignment->hlo_live_range().total_order_scheduled()) {
       const auto& buffer_live_ranges =
           assignment->hlo_live_range().buffer_live_ranges();
