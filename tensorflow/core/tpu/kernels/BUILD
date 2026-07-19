@@ -127,11 +127,11 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core/framework:types_proto_cc",
-        "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@xla//xla:literal_util",
@@ -863,8 +863,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/jit:flags",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/platform:status",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -872,6 +870,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:xla_builder",
         "@xla//xla/hlo/builder:xla_computation",
         "@xla//xla/tpu:status_helper",
@@ -941,8 +940,10 @@ tf_cc_test(
     srcs = ["sparse_core_ops_utils_test.cc"],
     deps = [
         ":sparse_core_ops_utils",
-        "//tensorflow/core:portable_gif_internal",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@xla//xla:xla_data_proto_cc",
     ],
 )
 
