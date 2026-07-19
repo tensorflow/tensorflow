@@ -37,26 +37,10 @@ absl::Status GetWindowedOutputSizeVerbose(
   int64_t effective_filter_size = (filter_size - 1) * dilation_rate + 1;
   switch (padding_type) {
     case Padding::VALID:
-      if (input_size < effective_filter_size) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("input_size (", input_size,
-                         ") must be at least effective_filter_size (",
-                         effective_filter_size,
-                         ") for VALID padding."));
-      }
       *output_size = (input_size - effective_filter_size + stride) / stride;
       *padding_before = *padding_after = 0;
       break;
     case Padding::EXPLICIT:
-      if (input_size + *padding_before + *padding_after <
-          effective_filter_size) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("input_size + padding (",
-                         input_size + *padding_before + *padding_after,
-                         ") must be at least effective_filter_size (",
-                         effective_filter_size,
-                         ") for EXPLICIT padding."));
-      }
       *output_size = (input_size + *padding_before + *padding_after -
                       effective_filter_size + stride) /
                      stride;
