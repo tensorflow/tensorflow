@@ -844,6 +844,36 @@ struct functor_traits<scalar_erfinv_op<float>> {
   };
 };
 
+// Eigen's default scalar rsqrt for bfloat16 is `1 / sqrt(x)`, and both the
+// division and the sqrt cast back to bfloat16. That double-rounds, so results
+// depend on whether Eigen takes the scalar path (tensors shorter than the
+// packet width) or the packet path (which converts the whole packet to float,
+// computes float rsqrt, and casts once). Specialize the scalar path to match
+// the packet path: compute in float and cast back once.
+//
+// See https://github.com/tensorflow/tensorflow/issues/123551.
+template <>
+struct scalar_rsqrt_op<bfloat16> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bfloat16 operator()(
+      const bfloat16& a) const {
+    return bfloat16(numext::rsqrt(static_cast<float>(a)));
+  }
+
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(
+      const Packet& a) const {
+    return prsqrt(a);
+  }
+};
+
+template <>
+struct functor_traits<scalar_rsqrt_op<bfloat16>> {
+  enum {
+    Cost = 5 * NumTraits<bfloat16>::MulCost,
+    PacketAccess = packet_traits<bfloat16>::HasRsqrt,
+  };
+};
+
 }  // end namespace internal
 }  // end namespace Eigen
 
