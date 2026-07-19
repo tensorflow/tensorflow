@@ -13,7 +13,7 @@
 # limitations under the License.
 # ============================================================================
 
-load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
+load("@rules_ml_toolchain//cc/sanitizers:sanitizer_wrapper.bzl", "sanitizer_wrapper")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 
 package(
@@ -21,57 +21,27 @@ package(
     default_visibility = ["//visibility:public"],
 )
 
-string_flag(
-    name = "sanitizer",
-    build_setting_default = "none",
-    values = [
-        "none",
-        "asan",
-        "tsan",
-    ],
-)
+# Export ignore lists for use by sanitizer wrappers
+exports_files([
+    "asan_ignore_list.txt",
+    "lsan_ignore_list.txt",
+    "tsan_ignore_list.txt",
+])
 
-config_setting(
-    name = "asan",
-    flag_values = {"//build_tools/rocm:sanitizer": "asan"},
-)
-
-config_setting(
-    name = "tsan",
-    flag_values = {"//build_tools/rocm:sanitizer": "tsan"},
-)
-
-filegroup(
-    name = "sanitizer_ignore_lists",
-    srcs = select({
-        ":asan": [
-            "asan_ignore_list.txt",
-            "lsan_ignore_list.txt",
-        ],
-        ":tsan": ["tsan_ignore_list.txt"],
-        "//conditions:default": [],
-    }),
-    visibility = ["//visibility:public"],
-)
-
-genrule(
-    name = "san_wrapper_script",
-    srcs = [":sanitizer_ignore_lists"],
-    outs = ["san_wrapper.sh"],
-    cmd = """
-      echo '#!/bin/bash' > $@
-      echo 'exec "$$@"' >> $@
-      chmod +x $@
-    """,
-)
-
-# this wrapper ensures the test target
-# take into account any changes in the ignore list files
-sh_binary(
+# Sanitizer wrapper using rules_ml_toolchain macro
+# This replaces the custom genrule+sh_binary implementation
+# Uses XLA's custom suppression lists for ROCm/HIP libraries
+# buildifier: disable=platform-specific-binaries
+sanitizer_wrapper(
     name = "sanitizer_wrapper",
-    srcs = [":san_wrapper_script"],
-    data = [":sanitizer_ignore_lists"],
-    tags = ["manual"],
+    additional_data = ["@llvm_linux_x86_64//:distro_libs"],
+    asan_ignore_list = ":asan_ignore_list.txt",
+    # XLA-specific sanitizer options
+    asan_options = "detect_leaks=0:use_sigaltstack=0",
+    llvm_symbolizer = "@llvm_linux_x86_64//:llvm-symbolizer",
+    lsan_ignore_list = ":lsan_ignore_list.txt",
+    tsan_ignore_list = ":tsan_ignore_list.txt",
+    tsan_options = "halt_on_error=1:exitcode=66:history_size=7:ignore_noninstrumented_modules=1",
     visibility = ["//visibility:public"],
 )
 
@@ -79,9 +49,27 @@ sh_binary(
     name = "parallel_gpu_execute",
     srcs = ["parallel_gpu_execute.sh"],
     data = [
-        ":sanitizer_ignore_lists",
         "@local_config_rocm//rocm:rocminfo",
     ],
     tags = ["manual"],
+    visibility = ["//visibility:public"],
+)
+
+# Sanitizer wrapper that runs under parallel_gpu_execute
+# Combines sanitizer setup with GPU locking and device visibility
+# buildifier: disable=platform-specific-binaries
+sanitizer_wrapper(
+    name = "sanitizer_wrapper_parallel_gpu_execute",
+    additional_data = [
+        "@llvm_linux_x86_64//:distro_libs",
+        "@local_config_rocm//rocm:rocminfo",
+    ],
+    asan_ignore_list = ":asan_ignore_list.txt",
+    asan_options = "detect_leaks=0:use_sigaltstack=0",
+    llvm_symbolizer = "@llvm_linux_x86_64//:llvm-symbolizer",
+    lsan_ignore_list = ":lsan_ignore_list.txt",
+    run_under = ":parallel_gpu_execute",
+    tsan_ignore_list = ":tsan_ignore_list.txt",
+    tsan_options = "halt_on_error=1:exitcode=66:history_size=7:ignore_noninstrumented_modules=1",
     visibility = ["//visibility:public"],
 )

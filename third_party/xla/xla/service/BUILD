@@ -5359,6 +5359,7 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
         "//xla/hlo/utils:hlo_matchers",
@@ -5808,6 +5809,7 @@ cc_library(
     deps = [
         ":hlo_creation_utils",
         ":pattern_matcher",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -6611,6 +6613,7 @@ cc_library(
     hdrs = ["algorithm_util.h"],
     deps = [
         "//xla:shape_util",
+        "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:blas",
