@@ -79,6 +79,19 @@ class Conv1DTest(test.TestCase):
               output,
               [[2 * 1 + 1 * 2, 2 * 3 + 1 * 4], [2 * 1 + 1 * 2, 2 * 3 + 1 * 4]])
 
+  def testTensorLikeInputsWithValidPadding(self):
+    values = [[[1.0], [2.0], [3.0]]]
+    filters = [[[1.0]], [[1.0]]]
+    for value, filter_value in (
+        (values, filters),
+        (np.asarray(values, dtype=np.float32),
+         np.asarray(filters, dtype=np.float32)),
+    ):
+      with self.subTest(input_type=type(value).__name__):
+        result = nn_ops.conv1d(
+            value, filter_value, stride=1, padding="VALID")
+        self.assertAllClose(self.evaluate(result), [[[3.0], [5.0]]])
+
   def testConv1DRejectsNegativeValidOutputShape(self):
     with context.eager_mode():
       x = array_ops.zeros([1, 2, 1])

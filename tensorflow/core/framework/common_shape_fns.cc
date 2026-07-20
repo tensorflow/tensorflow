@@ -60,24 +60,31 @@ absl::Status GetWindowedOutputSizeFromDimsV2(
     case Padding::VALID:
       padding_before = padding_after = 0;
       TF_FALLTHROUGH_INTENDED;
-    case Padding::EXPLICIT:
+    case Padding::EXPLICIT: {
       TF_RETURN_IF_ERROR(
           c->Add(input_size, padding_before + padding_after, &input_size));
+      DimensionHandle window_size = c->MakeDim(filter_size);
       if (dilation_rate > 1) {
-        DimensionHandle window_size;
         TF_RETURN_IF_ERROR(
-            c->Subtract(c->MakeDim(filter_size), 1, &window_size));
+            c->Subtract(window_size, 1, &window_size));
         TF_RETURN_IF_ERROR(
             c->Multiply(window_size, dilation_rate, &window_size));
         TF_RETURN_IF_ERROR(c->Add(window_size, 1, &window_size));
-        TF_RETURN_IF_ERROR(c->Subtract(input_size, window_size, output_size));
-      } else {
-        TF_RETURN_IF_ERROR(c->Subtract(input_size, filter_size, output_size));
       }
-      TF_RETURN_IF_ERROR(c->Add(*output_size, stride, output_size));
-      TF_RETURN_IF_ERROR(c->Divide(*output_size, stride,
-                                   /*evenly_divisible=*/false, output_size));
+      // A negative intermediate can still produce a valid zero after the
+      // stride is added, but DimensionHandle cannot represent that value.
+      if (c->ValueKnown(input_size) && c->ValueKnown(window_size) &&
+          c->Value(input_size) < c->Value(window_size) &&
+          c->Value(window_size) - c->Value(input_size) <= stride) {
+        *output_size = c->MakeDim(0);
+      } else {
+        TF_RETURN_IF_ERROR(c->Subtract(input_size, window_size, output_size));
+        TF_RETURN_IF_ERROR(c->Add(*output_size, stride, output_size));
+        TF_RETURN_IF_ERROR(c->Divide(*output_size, stride,
+                                     /*evenly_divisible=*/false, output_size));
+      }
       break;
+    }
     case Padding::SAME:
       TF_RETURN_IF_ERROR(c->Add(input_size, stride - 1, output_size));
       TF_RETURN_IF_ERROR(c->Divide(*output_size, stride,

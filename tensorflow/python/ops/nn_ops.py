@@ -2048,10 +2048,14 @@ def conv1d(
     A `Tensor`.  Has the same type as input.
 
   Raises:
-    ValueError: if `data_format` is invalid.
+    ValueError: If `data_format` is invalid, or if `padding="VALID"` would
+      produce a statically known negative output width.
   """
   value = deprecation.deprecated_argument_lookup("input", input, "value", value)
   with ops.name_scope(name, "conv1d", [value, filters]) as name:
+    value = ops.convert_to_tensor(value, name="input")
+    filters = ops.convert_to_tensor(filters, name="filters")
+
     # Reshape the input tensor to batch_shape + [1, in_width, in_channels]
     if data_format is None or data_format == "NHWC" or data_format == "NWC":
       data_format = "NHWC"
@@ -2173,7 +2177,8 @@ def conv1d_v2(
     A `Tensor`.  Has the same type as input.
 
   Raises:
-    ValueError: if `data_format` is invalid.
+    ValueError: If `data_format` is invalid, or if `padding="VALID"` would
+      produce a statically known negative output width.
   """
   return conv1d(
       input,  # pylint: disable=redefined-builtin
