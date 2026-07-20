@@ -29,8 +29,10 @@ namespace xla::codegen::intrinsics {
 class Erf : public Intrinsic<Erf> {
  public:
   static constexpr absl::string_view kName = "erf";
-  static std::vector<std::vector<Type>> SupportedVectorTypes() {
+  static std::vector<std::vector<Type>> SupportedVectorTypes(
+      absl::string_view features = "") {
     return {{Type::S(F32)},
+            {Type::S(F64)},
             {Type::V(F32, 2)},
             {Type::V(F32, 4)},
             {Type::V(F32, 8)}};

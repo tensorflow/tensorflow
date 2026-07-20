@@ -43,10 +43,9 @@ ENTRY %entry (p0: f32[1, 4], p1: f32[1, 1], p2: s32[1, 1]) -> f32[1, 1] {
   %p0 = f32[1, 4] parameter(0)
   %p1 = f32[1, 1] parameter(1)
   %p2 = s32[1, 1] parameter(2)
-  %kernel = (f32[1, 1], s32[1, 1]) tuple(f32[1, 1] %p1, s32[1, 1] %p2)
-  ROOT %convolution.1 = f32[1, 1] convolution(%p0, %kernel), dim_labels=bf_io->bf,
+  ROOT %convolution.1 = f32[1, 1] convolution(%p0, %p1, %p2), dim_labels=bf_io->bf,
       sparsity_config={
-        rhs={sparsity=1x4 dimension=0 stride=1}
+        rhs={sparsity=1x4 dimension=0 stride=1 idx=2}
       }
 }
 )";
@@ -75,10 +74,9 @@ ENTRY %entry (p0: f32[1, 8], p1: f32[2, 1], p2: s32[2, 1]) -> f32[1, 1] {
   %p0 = f32[1, 8] parameter(0)
   %p1 = f32[2, 1] parameter(1)
   %p2 = s32[2, 1] parameter(2)
-  %kernel = (f32[2, 1], s32[2, 1]) tuple(f32[2, 1] %p1, s32[2, 1] %p2)
-  ROOT %convolution.1 = f32[1, 1] convolution(%p0, %kernel), dim_labels=bf_io->bf,
+  ROOT %convolution.1 = f32[1, 1] convolution(%p0, %p1, %p2), dim_labels=bf_io->bf,
       sparsity_config={
-        rhs={sparsity=1x4 dimension=0 stride=1}
+        rhs={sparsity=1x4 dimension=0 stride=1 idx=2}
       }
 }
 )";
@@ -109,10 +107,9 @@ ENTRY %entry (p0: f32[1, 8], p1: f32[1, 1], p2: s32[1, 1]) -> f32[1, 1] {
   %p0 = f32[1, 8] parameter(0)
   %p1 = f32[1, 1] parameter(1)
   %p2 = s32[1, 1] parameter(2)
-  %kernel = (f32[1, 1], s32[1, 1]) tuple(f32[1, 1] %p1, s32[1, 1] %p2)
-  ROOT %convolution.1 = f32[1, 1] convolution(%p0, %kernel), dim_labels=bf_io->bf,
+  ROOT %convolution.1 = f32[1, 1] convolution(%p0, %p1, %p2), dim_labels=bf_io->bf,
       sparsity_config={
-        rhs={sparsity=1x8 dimension=0 stride=1}
+        rhs={sparsity=1x8 dimension=0 stride=1 idx=2}
       }
 }
 )";
@@ -142,10 +139,9 @@ ENTRY %entry (p0: f32[1, 4], p1: f32[1, 1], p2: s32[1, 1]) -> f32[1, 1] {
   %p0 = f32[1, 4] parameter(0)
   %p1 = f32[1, 1] parameter(1)
   %p2 = s32[1, 1] parameter(2)
-  %kernel = (f32[1, 1], s32[1, 1]) tuple(f32[1, 1] %p1, s32[1, 1] %p2)
-  ROOT %convolution.1 = f32[1, 1] convolution(%p0, %kernel), dim_labels=bf_io->bf,
+  ROOT %convolution.1 = f32[1, 1] convolution(%p0, %p1, %p2), dim_labels=bf_io->bf,
       sparsity_config={
-        rhs={sparsity=1x1000000000 dimension=0 stride=1}
+        rhs={sparsity=1x1000000000 dimension=0 stride=1 idx=2}
       }
 }
 )";
