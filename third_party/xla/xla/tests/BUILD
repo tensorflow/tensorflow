@@ -465,6 +465,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:ir_headers",
+        "@tsl//tsl/platform:stacktrace",
     ],
 )
 

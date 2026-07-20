@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "tsl/platform/stacktrace.h"
 
 namespace xla {
 
@@ -51,6 +52,7 @@ absl::StatusOr<std::unique_ptr<Executable>> CompileToExecutable(
 namespace {
 void IrHook(const llvm::Module& module, std::string& ir) {
   ir += llvm_ir::DumpToString(&module);
+  ir += tsl::CurrentStackTrace();
 }
 
 void SetIrHook(LLVMCompiler* llvm_compiler,
@@ -96,18 +98,42 @@ absl::Status CompileAndVerifyIr(LLVMCompiler* compiler,
                                 absl::string_view pattern,
                                 bool match_optimized_ir,
                                 bool run_optimization_passes) {
+  std::string prehook_ir;
+  if (run_optimization_passes) {
+    ScopedHookHandler prehook_handler(compiler, match_optimized_ir);
+    // Run optimization passes before we set the hook so that we don't capture
+    // intermediate compilations from autotuner.
+    ASSIGN_OR_RETURN(hlo_module, compiler->RunHloPasses(std::move(hlo_module),
+                                                        /*executor=*/nullptr,
+                                                        compile_options));
+    prehook_ir = prehook_handler.ir();
+  }
+
+  LOG(INFO) << "===================\n\nRunHloPasses IR: ===================\n"
+            << prehook_ir;
+
   ScopedHookHandler hook_handler(compiler, match_optimized_ir);
 
   RETURN_IF_ERROR(CompileToExecutable(compiler, compile_options,
                                       std::move(hlo_module),
-                                      run_optimization_passes)
+                                      /*run_optimization_passes=*/false)
                       .status());
+
+  LOG(INFO) << "===================\n\nRunBackend IR: ===================\n"
+            << hook_handler.ir();
 
   ASSIGN_OR_RETURN(bool succeeded,
                    RunFileCheck(FileCheckInput(hook_handler.ir()), pattern));
   if (!succeeded) {
+    ASSIGN_OR_RETURN(bool succeeded2, RunFileCheck(prehook_ir, pattern));
+    if (succeeded2) {
+      return absl::InternalError(
+          absl::StrCat("FAILED BUT PREHOOK HANDLER OK: ", prehook_ir,
+                       "=============== ORIG IR: ", hook_handler.ir()));
+    }
     return absl::InternalError(
-        absl::StrCat("FileCheck failed. Full IR: ", hook_handler.ir()));
+        absl::StrCat("FileCheck failed. Full IR: ", hook_handler.ir(),
+                     " ============ prehook ir: ", prehook_ir));
   }
   return absl::OkStatus();
 }

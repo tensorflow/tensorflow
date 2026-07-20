@@ -63,13 +63,13 @@ CodegenOrchestrator::GetSupportedConfigs(const HloInstruction& instr) const {
         per_backend_configs = codegen_backend->GetSupportedConfigs(instr);
     if (!per_backend_configs.ok()) {
       errors.push_back(per_backend_configs.status());
-      VLOG(3) << "Failed to get supported configs for backend "
-              << codegen_backend->name() << ": "
-              << per_backend_configs.status();
+      LOG(INFO) << "Failed to get supported configs for backend "
+                << codegen_backend->name() << ": "
+                << per_backend_configs.status();
       continue;
     }
-    VLOG(3) << "Found " << per_backend_configs->size()
-            << " supported configs for backend " << codegen_backend->name();
+    LOG(INFO) << "Found " << per_backend_configs->size()
+              << " supported configs for backend " << codegen_backend->name();
     for (auto& config : *per_backend_configs) {
       configs.push_back({codegen_backend.get(), std::move(config)});
     }
@@ -112,8 +112,8 @@ absl::StatusOr<std::unique_ptr<Executable>> CodegenOrchestrator::Compile(
            autotuner::Backend::HIPBLASLT_FISSION)) {
     return absl::CancelledError("exclude_cublas_config is set.");
   }
-  VLOG(4) << "Compiling config " << config.ToString() << " for HLO "
-          << instr.ToString();
+  LOG(INFO) << "Compiling config " << config.ToString() << " for HLO "
+            << instr.ToString();
   absl::StatusOr<std::unique_ptr<Executable>> executable =
       config.codegen_backend->Compile(instr, *config.backend_config);
   if (absl::Status status = IsValidExecutable(executable, instr);

@@ -100,22 +100,22 @@ bool IsValidMxScaledDot(const HloInstruction* scaled_dot) {
   PrimitiveType lhs_type = lhs_shape.element_type();
   PrimitiveType rhs_type = rhs_shape.element_type();
   if (!IsValidInputType(lhs_type) || !IsValidInputType(rhs_type)) {
-    VLOG(2) << "hipBLASLt MX: unsupported data type, lhs="
-            << PrimitiveType_Name(lhs_type)
-            << " rhs=" << PrimitiveType_Name(rhs_type);
+    LOG(INFO) << "hipBLASLt MX: unsupported data type, lhs="
+              << PrimitiveType_Name(lhs_type)
+              << " rhs=" << PrimitiveType_Name(rhs_type);
     return false;
   }
 
   if (lhs_scale_shape.element_type() != F8E8M0FNU ||
       rhs_scale_shape.element_type() != F8E8M0FNU) {
-    VLOG(2) << "hipBLASLt MX: scale type must be F8E8M0FNU";
+    LOG(INFO) << "hipBLASLt MX: scale type must be F8E8M0FNU";
     return false;
   }
 
   PrimitiveType out_type = output_shape.element_type();
   if (out_type != F32 && out_type != F16 && out_type != BF16) {
-    VLOG(2) << "hipBLASLt MX: output type must be F32/F16/BF16, got "
-            << PrimitiveType_Name(out_type);
+    LOG(INFO) << "hipBLASLt MX: output type must be F32/F16/BF16, got "
+              << PrimitiveType_Name(out_type);
     return false;
   }
 
@@ -124,7 +124,8 @@ bool IsValidMxScaledDot(const HloInstruction* scaled_dot) {
     batch_size *= lhs_shape.dimensions(dim);
   }
   if (batch_size != 1) {
-    VLOG(2) << "hipBLASLt MX: batch_size > 1 not supported, got " << batch_size;
+    LOG(INFO) << "hipBLASLt MX: batch_size > 1 not supported, got "
+              << batch_size;
     return false;
   }
 
@@ -150,13 +151,13 @@ bool IsValidMxScaledDot(const HloInstruction* scaled_dot) {
   }
 
   if (m % 16 != 0 || n % 16 != 0) {
-    VLOG(2) << "hipBLASLt MX: M and N must be divisible by 16, got M=" << m
-            << " N=" << n;
+    LOG(INFO) << "hipBLASLt MX: M and N must be divisible by 16, got M=" << m
+              << " N=" << n;
     return false;
   }
 
   if (k % 32 != 0) {
-    VLOG(2) << "hipBLASLt MX: K must be divisible by 32, got K=" << k;
+    LOG(INFO) << "hipBLASLt MX: K must be divisible by 32, got K=" << k;
     return false;
   }
 
@@ -170,9 +171,9 @@ bool IsValidMxScaledDot(const HloInstruction* scaled_dot) {
   }
   if (lhs_scale_k == 0 || k / lhs_scale_k != 32 || rhs_scale_k == 0 ||
       k / rhs_scale_k != 32) {
-    VLOG(2) << "hipBLASLt MX: block size must be 32, got lhs="
-            << (lhs_scale_k > 0 ? k / lhs_scale_k : 0)
-            << " rhs=" << (rhs_scale_k > 0 ? k / rhs_scale_k : 0);
+    LOG(INFO) << "hipBLASLt MX: block size must be 32, got lhs="
+              << (lhs_scale_k > 0 ? k / lhs_scale_k : 0)
+              << " rhs=" << (rhs_scale_k > 0 ? k / rhs_scale_k : 0);
     return false;
   }
 
