@@ -144,6 +144,10 @@ class MockCommandBuffer : public CommandBuffer {
               (const Command* command, DeviceAddress<bool> pred,
                UpdateCommands update_cond, UpdateCommands update_body),
               (override));
+  MOCK_METHOD(absl::StatusOr<const Command*>, CreateHost,
+              (absl::AnyInvocable<void()> callback,
+               absl::Span<const Command* const> dependencies),
+              (override));
   MOCK_METHOD(absl::Status, SetPriority, (StreamPriority priority), (override));
   MOCK_METHOD(absl::Status, Submit, (Stream * stream), (override));
   MOCK_METHOD(absl::Status, Finalize, (), (override));
