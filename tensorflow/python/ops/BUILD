@@ -1888,6 +1888,7 @@ py_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops/linalg:linalg_impl",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -3629,7 +3630,6 @@ cuda_py_strict_test(
         ":array_ops",
         ":gradients",
         ":math_ops",
-        ":resource_variable_ops",
         ":tensor_array_ops",
         ":variables",
         "//tensorflow/core:protos_all_py",

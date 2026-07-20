@@ -1394,6 +1394,21 @@ class RangeTest(test_util.TensorFlowTestCase):
     actual = math_ops.range(start, end, step)
     self.assertAllEqual(expected, self.evaluate(actual))
 
+  def testExcessiveFloatAllocation(self):
+    # Regression test for https://github.com/tensorflow/tensorflow/issues/122746
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        "Requires Range output size in bytes",
+    ):
+      self.evaluate(
+          math_ops.range(
+              start=-0.5,
+              limit=2.6623919835808085e307,
+              delta=1.0162754537078317e295,
+              dtype=dtypes.float64,
+          )
+      )
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class ErfcinvTest(test_util.TensorFlowTestCase):
