@@ -911,7 +911,7 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
           }
         }
         if (instruction->shape().IsTuple() &&
-            instruction->shape().tuple_shapes_size() > 1 &&
+            instruction->shape().tuple_shapes().size() > 1 &&
             instruction->shape().tuple_shapes(1).IsArray() &&
             async_layout.result_layout().shape().has_layout()) {
           auto result_layout = InferArrayLayout(instruction, {1});
@@ -941,7 +941,7 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
         }
         if (async_layout.result_layout().shape().has_layout() &&
             instruction->shape().IsTuple() &&
-            instruction->shape().tuple_shapes_size() > 1) {
+            instruction->shape().tuple_shapes().size() > 1) {
           Shape result_tuple_shape = instruction->shape();
           *ShapeUtil::GetMutableSubshape(&result_tuple_shape, {1}) =
               async_layout.result_layout().shape();
