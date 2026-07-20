@@ -594,11 +594,13 @@ absl::StatusOr<Value> EmitRegularDot(
   if (precision_spec.algorithm ==
       ::xla::PrecisionConfig::ALG_DOT_BF16_BF16_F32) {
     if (ElementType(lhs).isF32()) {
-      lhs = ::xla::xtile::Cast(b, lhs, b.getBF16Type());
+      auto lhs_shaped = mlir::cast<ShapedType>(lhs.getType());
+      lhs = arith::TruncFOp::create(b, lhs_shaped.clone(b.getBF16Type()), lhs);
     }
 
     if (ElementType(rhs).isF32()) {
-      rhs = ::xla::xtile::Cast(b, rhs, b.getBF16Type());
+      auto rhs_shaped = mlir::cast<ShapedType>(rhs.getType());
+      rhs = arith::TruncFOp::create(b, rhs_shaped.clone(b.getBF16Type()), rhs);
     }
   }
 
@@ -645,10 +647,13 @@ std::vector<Value> SplitF32(mlir::ImplicitLocOpBuilder& b, Value input,
                             int split_count) {
   std::vector<Value> split_inputs;
   split_inputs.reserve(split_count);
+  auto shaped_type = mlir::cast<ShapedType>(input.getType());
+  Type bf16_type = shaped_type.clone(b.getBF16Type());
+  Type f32_type = shaped_type.clone(b.getF32Type());
   for (int i = 0; i < split_count; ++i) {
-    Value input_as_bf16 = ::xla::xtile::Cast(b, input, b.getBF16Type());
+    Value input_as_bf16 = arith::TruncFOp::create(b, bf16_type, input);
     if (i != split_count - 1) {
-      Value input_as_f32 = ::xla::xtile::Cast(b, input_as_bf16, b.getF32Type());
+      Value input_as_f32 = arith::ExtFOp::create(b, f32_type, input_as_bf16);
       input = arith::SubFOp::create(b, input, input_as_f32);
     }
     split_inputs.push_back(input_as_bf16);

@@ -93,6 +93,7 @@ limitations under the License.
 #include "xla/service/gpu/llvm_gpu_backend/load_ir_module.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/kernel_stats.h"
 #include "xla/tsl/platform/env.h"
@@ -104,6 +105,7 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/random.h"
+#include "tsl/platform/stacktrace.h"
 #include "tsl/profiler/lib/traceme.h"
 
 #ifdef HAS_SUPPORT_FOR_LLD_AS_A_LIBRARY
@@ -562,6 +564,10 @@ absl::StatusOr<std::string> EmitModuleToHsaco(
     pm.add(new llvm::TargetLibraryInfoWrapperPass(
         llvm::Triple(module->getTargetTriple())));
 
+    LOG(INFO) << "Data layout module: " << module->getDataLayoutStr();
+    LOG(INFO) << "Data layout machine: "
+              << target_machine->createDataLayout().getStringRepresentation();
+
     llvm::raw_fd_ostream isabin_fs(isabin_path, ec, llvm::sys::fs::OF_Text);
     module->setDataLayout(target_machine->createDataLayout());
     target_machine->addPassesToEmitFile(pm, isabin_fs, nullptr,
@@ -715,15 +721,34 @@ absl::StatusOr<amdgpu::HsacoResult> CompileToHsacoInternal(
   auto target_machine =
       GetTargetMachine(default_target_triple, gfx, debug_options, feature_str);
 
+  LOG(INFO) << "Data layout module: " << module->getDataLayoutStr();
+  LOG(INFO) << "Data layout machine: "
+            << target_machine->createDataLayout().getStringRepresentation();
+  LOG(INFO) << tsl::CurrentStackTrace();
+
+  // module->setDataLayout(target_machine->createDataLayout());
+
+  VLOG(1) << "\n================\n"
+          << "Module pre LinkAndOptimizeModule "
+          << llvm_ir::DumpToString(module) << "\n================\n";
+
   // Link with ROCm-Device-Libs, and optimize the LLVM module.
   RETURN_IF_ERROR(gpu::LinkAndOptimizeModule(
       module, gpu_version, debug_options, {}, AMDGPUTargetModuleLinker,
       default_target_triple, target_machine.get(), kAMDGPUInlineThreshold));
 
+  VLOG(1) << "\n================\n"
+          << "Module post LinkAndOptimizeModule "
+          << llvm_ir::DumpToString(module) << "\n================\n";
+
   // Lower optimized LLVM module to HSA code object.
   ASSIGN_OR_RETURN(
       std::string hsaco_path,
       EmitModuleToHsaco(module, target_machine.get(), debug_options));
+
+  VLOG(1) << "\n================\n"
+          << "Module post EmitModuleToHsaco " << llvm_ir::DumpToString(module)
+          << "\n================\n";
 
   // Check for register spilling using HSACO metadata
   VLOG(2) << "Checking for register spilling in: "
@@ -927,6 +952,10 @@ absl::StatusOr<HsacoResult> CompileToHsaco(
   if (!comp_c) {
     return xla::Internal("Incompatible compute capability was specified.");
   }
+
+  VLOG(1) << "\n================\n"
+          << "Module pre CompileToHsaco " << llvm_ir::DumpToString(module)
+          << "\n================\n";
 
   llvm::SHA256 sha256;
   sha256_ostream os(sha256);

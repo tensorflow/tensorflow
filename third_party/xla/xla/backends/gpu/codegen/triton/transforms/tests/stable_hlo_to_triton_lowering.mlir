@@ -204,6 +204,32 @@ func.func @lower_dot_f8_no_ieee_has_max_num_imprecise_acc_set_to_max(%arg0: tens
   return %1 : tensor<2x8xf8E4M3FN>
 }
 
+// CHECK-LABEL: func @lower_dot_bf16_bf16_f32_x3_to_triton
+// CHECK-SAME: (%[[LHS:.*]]: tensor<2x4xf32>, %[[RHS:.*]]: tensor<4x8xf32>, %[[ACC:.*]]: tensor<2x8xf32>) -> tensor<2x8xf32>
+func.func @lower_dot_bf16_bf16_f32_x3_to_triton(%arg0: tensor<2x4xf32>, %arg1: tensor<4x8xf32>, %arg2: tensor<2x8xf32>) -> tensor<2x8xf32> {
+  // CHECK-NOT: stablehlo.convert
+  // CHECK-DAG: %[[LHS_BF16_HIGH:.*]] = arith.truncf %[[LHS]] : tensor<2x4xf32> to tensor<2x4xbf16>
+  // CHECK-DAG: %[[LHS_F32_HIGH:.*]] = arith.extf %[[LHS_BF16_HIGH]] : tensor<2x4xbf16> to tensor<2x4xf32>
+  // CHECK-DAG: %[[LHS_DIFF:.*]] = arith.subf %[[LHS]], %[[LHS_F32_HIGH]] : tensor<2x4xf32>
+  // CHECK-DAG: %[[LHS_BF16_LOW:.*]] = arith.truncf %[[LHS_DIFF]] : tensor<2x4xf32> to tensor<2x4xbf16>
+  // CHECK-DAG: %[[RHS_BF16_HIGH:.*]] = arith.truncf %[[RHS]] : tensor<4x8xf32> to tensor<4x8xbf16>
+  // CHECK-DAG: %[[RHS_F32_HIGH:.*]] = arith.extf %[[RHS_BF16_HIGH]] : tensor<4x8xbf16> to tensor<4x8xf32>
+  // CHECK-DAG: %[[RHS_DIFF:.*]] = arith.subf %[[RHS]], %[[RHS_F32_HIGH]] : tensor<4x8xf32>
+  // CHECK-DAG: %[[RHS_BF16_LOW:.*]] = arith.truncf %[[RHS_DIFF]] : tensor<4x8xf32> to tensor<4x8xbf16>
+  // CHECK: %[[DOT0:.*]] = tt.dot %[[LHS_BF16_LOW]], %[[RHS_BF16_HIGH]], %{{.*}} : tensor<2x4xbf16> * tensor<4x8xbf16> -> tensor<2x8xf32>
+  // CHECK: %[[DOT1:.*]] = tt.dot %[[LHS_BF16_HIGH]], %[[RHS_BF16_LOW]], %[[DOT0]] : tensor<2x4xbf16> * tensor<4x8xbf16> -> tensor<2x8xf32>
+  // CHECK: %[[DOT2:.*]] = tt.dot %[[LHS_BF16_HIGH]], %[[RHS_BF16_HIGH]], %{{.*}} : tensor<2x4xbf16> * tensor<4x8xbf16> -> tensor<2x8xf32>
+  // CHECK: %[[RES:.*]] = arith.addf %[[ACC]], %[[DOT2]] : tensor<2x8xf32>
+  // CHECK: return %[[RES]] : tensor<2x8xf32>
+  %0 = "stablehlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #stablehlo.dot<lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [0]>,
+    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>],
+    algorithm = #stablehlo.dot_algorithm<lhs_precision_type = bf16, rhs_precision_type = bf16, accumulation_type = f32, lhs_component_count = 1, rhs_component_count = 1, num_primitive_operations = 3, allow_imprecise_accumulation = false>
+  } : (tensor<2x4xf32>, tensor<4x8xf32>) -> tensor<2x8xf32>
+  %1 = arith.addf %0, %arg2 : tensor<2x8xf32>
+  return %1 : tensor<2x8xf32>
+}
+
 func.func @all_reduce_without_xtile_entry_func_doesnt_lower(%input: tensor<10xf32>, %output: tensor<10xf32>) -> tensor<10xf32> {
   // CHECK: stablehlo.all_reduce
   %all_reduce = "stablehlo.all_reduce"(%input) <{replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>}> ({

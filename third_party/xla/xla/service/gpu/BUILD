@@ -466,6 +466,7 @@ cc_library(
         "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",
+        "@tsl//tsl/platform:stacktrace",
     ],
 )
 

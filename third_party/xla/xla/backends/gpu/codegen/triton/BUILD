@@ -314,6 +314,7 @@ cc_library(
         "@triton//:TritonDialects",
         "@triton//:TritonTransforms",
         "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:stacktrace",
     ],
 )
 

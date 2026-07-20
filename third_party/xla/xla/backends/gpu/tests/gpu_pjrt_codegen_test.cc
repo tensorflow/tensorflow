@@ -61,11 +61,22 @@ void GpuPjRtCodegenTest::CompileAndOptionallyVerifyPtx(
   GpuCompiler* gpu_compiler = dynamic_cast<GpuCompiler*>(compiler());
   CHECK_NOTNULL(gpu_compiler);
 
+  std::unique_ptr<HloModule> module = std::move(hlo_module);
+
+  if (run_optimization_passes) {
+    // Run optimization passes before we set the hook so that we don't capture
+    // intermediate compilations from autotuner.
+    auto status_or_module = gpu_compiler->RunHloPasses(
+        std::move(module), /*stream_exec=*/nullptr, compile_options_);
+    ASSERT_OK(status_or_module);
+    module = std::move(*status_or_module);
+  }
+
   std::string ptx_str;
   gpu_compiler->SetAsmHook([&](absl::string_view ptx) { ptx_str += ptx; });
 
-  auto status_or_executable =
-      CompileToExecutable(std::move(hlo_module), run_optimization_passes);
+  auto status_or_executable = gpu_compiler->RunBackend(
+      std::move(module), /*stream_exec=*/nullptr, compile_options_);
   gpu_compiler->RemoveAsmHook();
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
