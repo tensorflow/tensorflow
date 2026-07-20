@@ -76,9 +76,9 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
     input: A `[..., samples]` `float32`/`float64` `Tensor` containing the
       signals to take the DCT of.
     type: The DCT type to perform. Must be 1, 2, 3 or 4.
-    n: The length of the transform. If length is less than sequence length,
-      only the first n elements of the sequence are considered for the DCT.
-      If n is greater than the sequence length, zeros are padded and then
+    n: The length of the transform. If `n` is less than the sequence length,
+      only the first `n` elements of the sequence are considered for the DCT.
+      If `n` is greater than the sequence length, zeros are padded and then
       the DCT is computed as usual.
     axis: For future expansion. The axis to compute the DCT along. Must be `-1`.
     norm: The normalization to apply. `None` for no normalization or `'ortho'`
@@ -91,9 +91,9 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
 
   Raises:
     ValueError: If `type` is not `1`, `2`, `3` or `4`, `axis` is
-      not `-1`, `n` is not `None` or greater than 0,
+      not `-1`, `n` is neither `None` nor greater than 0,
       or `norm` is not `None` or `'ortho'`.
-    ValueError: If `type` is `1` and `norm` is `ortho`.
+    ValueError: If `type` is `1` and `norm` is `'ortho'`.
 
   [dct]: https://en.wikipedia.org/wiki/Discrete_cosine_transform
   """
@@ -111,9 +111,9 @@ def _dct_internal(input, type=2, n=None, axis=-1, norm=None, name=None):  # pyli
     input: A `[..., samples]` `float32`/`float64` `Tensor` containing the
       signals to take the DCT of.
     type: The DCT type to perform. Must be 1, 2, 3 or 4.
-    n: The length of the transform. If length is less than sequence length,
-      only the first n elements of the sequence are considered for the DCT.
-      If n is greater than the sequence length, zeros are padded and then
+    n: The length of the transform. If `n` is less than the sequence length,
+      only the first `n` elements of the sequence are considered for the DCT.
+      If `n` is greater than the sequence length, zeros are padded and then
       the DCT is computed as usual. Can be an int or rank 0 tensor.
     axis: For future expansion. The axis to compute the DCT along. Must be `-1`.
     norm: The normalization to apply. `None` for no normalization or `'ortho'`
@@ -212,7 +212,7 @@ def _dct_internal(input, type=2, n=None, axis=-1, norm=None, name=None):  # pyli
       return dct4
 
 
-# TODO(rjryan): Implement `n` and `axis` parameters.
+# TODO(rjryan): Implement `axis` parameter.
 @tf_export("signal.idct", v1=["signal.idct", "spectral.idct"])
 @dispatch.add_dispatch_support
 def idct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disable=redefined-builtin
@@ -253,7 +253,7 @@ def idct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disab
 
   Raises:
     ValueError: If `type` is not `1`, `2`, `3` or `4`, `axis` is
-      not `-1`, `n` is not `None` or greater than 0,
+      not `-1`, `n` is neither `None` nor greater than 0,
       or `norm` is not `None` or `'ortho'`.
     ValueError: If `type` is `1` and `norm` is `'ortho'`, or `type` is `1`
       and `n` is less than 2.
