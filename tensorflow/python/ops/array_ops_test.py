@@ -527,7 +527,8 @@ class TestFoldGradients(test.TestCase):
     self.assertIsNotNone(grad)
     self.assertGreater(
       self.evaluate(math_ops.reduce_sum(math_ops.abs(grad))), 0.0)
-
+    
+  @test_util.run_in_graph_and_eager_modes
   def test_fold_gradient_numerical_correctness(self):
     """To check if autodiff matches numerical gradient """
     x = random_ops.random_normal([1, 4, 4, 1]) 
@@ -542,7 +543,8 @@ class TestFoldGradients(test.TestCase):
         padding="VALID")
       return math_ops.reduce_sum(y)
 
-    theoretical, numerical = gradient_checker_v2.compute_gradient(forward, [x])
+    with self.cached_session():
+      theoretical, numerical = gradient_checker_v2.compute_gradient(forward, [x])
 
     self.assertAllClose(
       theoretical[0],
