@@ -453,6 +453,16 @@ class GemmDimensionAdapter {
       result.strides[one_sized_dim_idx] = result.sizes[1] * result.sizes[2];
     }
 
+    // For 2D tensors with an implicit batch dimension, set the batch stride to
+    // the total packed size of the non-batch dimensions as required by cuDNN
+    // for operations like block-scale dequantization.
+    if (dim_indices[kBatchDimensionIndex] == -1 &&
+        result.sizes[kBatchDimensionIndex] == 1) {
+      result.strides[kBatchDimensionIndex] =
+          std::max(result.sizes[1] * result.strides[1],
+                   result.sizes[2] * result.strides[2]);
+    }
+
     if (!slicing_is_present) {
       result.slices.reset();
     }

@@ -351,10 +351,10 @@ TEST_P(NVPTXCompilationTests, CompareBinaryOutput) {
     return text_sections;
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executable_text_sections,
-                          get_text_sections(executable_binary));
-  TF_ASSERT_OK_AND_ASSIGN(auto reference_text_sections,
-                          get_text_sections(reference_binary));
+  ASSERT_OK_AND_ASSIGN(auto executable_text_sections,
+                       get_text_sections(executable_binary));
+  ASSERT_OK_AND_ASSIGN(auto reference_text_sections,
+                       get_text_sections(reference_binary));
 
   if (linking_method == reference_linking_method) {
     EXPECT_THAT(executable_text_sections,
