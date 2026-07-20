@@ -122,6 +122,20 @@ absl::StatusOr<mlrt::bc::Buffer> ConvertTfMlirToBytecode(
 
         tensorflow::CreateTFInvariantOptimizationPipelineHelper(pm, options);
 
+        if (mlir::failed(pm.run(module))) {
+          return diag_handler.Combine(
+              absl::InternalError("failed to finish passes before (including) "
+                                  "tf invariant optimization."));
+        }
+
+        if (VLOG_IS_ON(1)) {
+          tensorflow::DumpMlirOpToFile("tf_dialect_before_while_to_map_fn",
+                                       module);
+        }
+
+        // Clear passes already run.
+        pm.clear();
+
         pm.addPass(mlrt_compiler::CreateWhileToMapFnPass());
         // Remove unreachable private functions after map_fn conversion.
         pm.addPass(mlir::createSymbolDCEPass());
