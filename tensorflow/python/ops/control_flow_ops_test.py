@@ -460,6 +460,40 @@ class CondTest(test_util.TensorFlowTestCase):
     self.assertEqual(None if context.executing_eagerly() else 0.,
                      self.evaluate(grads_false[0]))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testCondEagerConstantValidation(self):
+    if not context.executing_eagerly():
+      return
+
+    x = constant_op.constant(1.0, dtype=dtypes.float32)
+
+    def true_fn():
+      return constant_op.constant(5.0)
+
+    def false_fn():
+      # Type mismatch: adding a float32 tensor and an int32 tensor. Only fails
+      # when false_fn is actually traced/executed.
+      return math_ops.add(x, constant_op.constant(1, dtype=dtypes.int32))
+
+    # By default the inactive branch is not validated, so the bug in false_fn is
+    # not surfaced when the constant predicate selects true_fn.
+    self.assertEqual(
+        5.0,
+        self.evaluate(
+            tf_cond.cond(constant_op.constant(True), true_fn, false_fn)
+        ),
+    )
+
+    # With validation opted in, both branches are traced up front, so the error
+    # in the inactive branch is raised even though true_fn is selected.
+    validation_was_enabled = tf_cond._VALIDATE_INACTIVE_BRANCH
+    tf_cond._VALIDATE_INACTIVE_BRANCH = True
+    try:
+      with self.assertRaises((TypeError, ValueError)):
+        tf_cond.cond(constant_op.constant(True), true_fn, false_fn)
+    finally:
+      tf_cond._VALIDATE_INACTIVE_BRANCH = validation_was_enabled
+
   def testCondWithGroupAndSummaries(self):
     with ops.Graph().as_default():
       writer = summary_ops_v2.create_file_writer(self.get_temp_dir())
