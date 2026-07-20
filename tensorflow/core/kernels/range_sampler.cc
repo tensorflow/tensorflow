@@ -17,27 +17,36 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "absl/status/status.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
-#include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/core/lib/random/distribution_sampler.h"
+#include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
 using gtl::ArraySlice;
 using gtl::MutableArraySlice;
 
-RangeSampler::~RangeSampler() {}
+RangeSampler::~RangeSampler() = default;
 
 void RangeSampler::SampleBatch(random::SimplePhilox* rnd, bool unique,
                                absl::Span<int64_t> batch) const {
@@ -237,13 +246,16 @@ void UnigramSampler::Update(absl::Span<const int64_t> values) {
 }
 
 FixedUnigramSampler::FixedUnigramSampler(int64_t range, float distortion,
-                                         int32_t num_reserved_ids,
-                                         int32_t num_shards, int32_t shard)
+                                         int64_t num_reserved_ids,
+                                         int64_t num_shards, int64_t shard)
     : RangeSampler(range),
       total_weight_(0.0),
       num_shards_(num_shards),
       shard_(shard),
       distortion_(distortion) {
+  CHECK_GT(num_shards_, 0);       // Crash OK
+  CHECK_GE(shard_, 0);            // Crash OK
+  CHECK_LT(shard_, num_shards_);  // Crash OK
   FillReservedIds(num_reserved_ids);
 }
 
@@ -254,7 +266,7 @@ absl::Status FixedUnigramSampler::SetDistributionSampler(
     return (absl::InvalidArgumentError(
         absl::StrCat("range is ", FixedUnigramSampler::range(),
                      " must be equal to weights size  ", weights_.size())));
-  dist_sampler_.reset(new random::DistributionSampler(weights_));
+  dist_sampler_ = std::make_unique<random::DistributionSampler>(weights_);
   return absl::OkStatus();
 }
 
@@ -265,7 +277,7 @@ absl::Status FixedUnigramSampler::SetDistributionSampler(
     return (absl::InvalidArgumentError(
         absl::StrCat("range is ", FixedUnigramSampler::range(),
                      " must be equal to weights size  ", weights_.size())));
-  dist_sampler_.reset(new random::DistributionSampler(weights_));
+  dist_sampler_ = std::make_unique<random::DistributionSampler>(weights_);
   return absl::OkStatus();
 }
 
@@ -280,8 +292,8 @@ int64_t FixedUnigramSampler::Sample(random::SimplePhilox* rnd) const {
   return dist_sampler_->Sample(rnd);
 }
 
-void FixedUnigramSampler::FillReservedIds(int32_t num_reserved_ids) {
-  for (int32_t word_id = 0; word_id < num_reserved_ids; ++word_id) {
+void FixedUnigramSampler::FillReservedIds(int64_t num_reserved_ids) {
+  for (int64_t word_id = 0; word_id < num_reserved_ids; ++word_id) {
     if (word_id % num_shards_ == shard_) weights_.push_back(0.0);
   }
 }
@@ -294,7 +306,7 @@ absl::Status FixedUnigramSampler::LoadFromFile(Env* env,
 
   io::InputBuffer in(file.get(), 262144 /*bytes*/);
   std::string line;
-  int32_t word_id = weights_.size();
+  int64_t word_id = weights_.size();
   while (in.ReadLine(&line).ok()) {
     // The vocabulary file should be in csv like format, with the last
     // field the weight associated with the word.
@@ -318,7 +330,7 @@ absl::Status FixedUnigramSampler::LoadFromFile(Env* env,
 
 void FixedUnigramSampler::LoadFromUnigrams(const std::vector<float>& unigrams,
                                            float distortion) {
-  int32_t word_id = weights_.size();
+  int64_t word_id = weights_.size();
   for (float w : unigrams) {
     // Skip entries that do not belong to this shard.
     if (word_id % num_shards_ == shard_) {
