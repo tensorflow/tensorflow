@@ -217,7 +217,8 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
 
     is_clip_norm_inf = None
     if np.isscalar(clip_norm):
-      if np.isinf(clip_norm):
+      if (np.isposinf(clip_norm) or
+          clip_norm > values.dtype.real_dtype.max):
         if isinstance(t, indexed_slices.IndexedSlices):
           return indexed_slices.IndexedSlices(
               array_ops.identity(values, name=name), t.indices, t.dense_shape)
@@ -228,7 +229,7 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
     else:
       clip_norm = math_ops.maximum(clip_norm, 0)
       is_clip_norm_inf = math_ops.is_inf(
-          math_ops.cast(clip_norm, dtypes.float64))
+          math_ops.cast(clip_norm, values.dtype.real_dtype))
       clip_norm = math_ops.cast(clip_norm, dtype=values.dtype)
       clip_norm_safe = array_ops.where(
           is_clip_norm_inf,
@@ -372,7 +373,8 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
                       t_list + [clip_norm]) as name:
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
     if np.isscalar(clip_norm):
-      if np.isinf(clip_norm):
+      if (np.isposinf(clip_norm) or
+          clip_norm > use_norm.dtype.real_dtype.max):
         scale = constant_op.constant(1.0, dtype=use_norm.dtype)
       else:
         scale = clip_norm * math_ops.minimum(
