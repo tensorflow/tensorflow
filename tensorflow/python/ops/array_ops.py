@@ -6483,8 +6483,12 @@ def fold(patches, output_size, sizes, strides, padding='VALID',
       pad_top = pad_bottom = pad_left = pad_right = 0
     elif padding == 'SAME':
       # Calculate total padding required
-      pad_total_h = max(0, (out_h - 1) * stride_h + k_eff_h - height)
-      pad_total_w = max(0, (out_w - 1) * stride_w + k_eff_w - width)
+      val_h = (out_h - 1) * stride_h + k_eff_h - height
+      val_w = (out_w - 1) * stride_w + k_eff_w - width
+      pad_total_h = gen_math_ops.maximum(
+        constant_op.constant(0, dtype=val_h.dtype), val_h)
+      pad_total_w = gen_math_ops.maximum(
+        constant_op.constant(0, dtype=val_w.dtype), val_w)
       # For odd values of total padding, add more padding at the 'right' side of the given dimension.
       pad_top = pad_total_h // 2
       pad_bottom = pad_total_h - pad_top
@@ -6556,8 +6560,9 @@ def fold(patches, output_size, sizes, strides, padding='VALID',
 
   # Crop to desired output_size by removing the calculated padding
   # No-op if padding='VALID' or 0
-  if pad_top > 0 or pad_bottom > 0 or pad_left > 0 or pad_right > 0:
-    output = output[:, pad_top:pad_top+height, pad_left:pad_left+width, :]
+  # Safer check for Graph mode
+  if padding == "SAME" or (isinstance(padding, int) and padding > 0):
+    output = output[:, pad_top : pad_top + height, pad_left : pad_left + width, :]
     
   return output
 
