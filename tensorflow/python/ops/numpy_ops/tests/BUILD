@@ -200,9 +200,14 @@ py_test(
         "--num_generated_cases=90",
         "--enable_x64",  # Needed to enable dtype check
     ],
+    env = {
+        "TF_FORCE_GPU_ALLOW_GROWTH": "true",
+        "XLA_PYTHON_CLIENT_PREALLOCATE": "false",
+    },
     shard_count = 20,
     strict_deps = True,
     tags = [
+        "exclusive-if-local",
         "gpu",
         "no_pip",
         "requires-gpu-nvidia",
