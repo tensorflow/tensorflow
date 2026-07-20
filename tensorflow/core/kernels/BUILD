@@ -175,12 +175,15 @@ tf_kernel_library(
     prefix = "clustering_ops",
     deps = [
         "//tensorflow/core:framework",
-        "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:blocking_counter",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
     ],
 )
 
