@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/debug/debug_callback_registry.h"
 
+#include <string>
+#include <utility>
+
 namespace tensorflow {
 
 DebugCallbackRegistry::DebugCallbackRegistry() {}
