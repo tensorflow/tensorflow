@@ -831,7 +831,20 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
 
       if test.is_gpu_available(cuda_only=True):
         with self.cached_session(use_gpu=True):
-          self.evaluate(rfft_fn(x, fft_length))
+          self.assertAllClose(
+              self.evaluate(rfft_fn(x, fft_length)), expected, atol=1e-4)
+
+  @test_util.run_gpu_only
+  def testRawRFFTNDFFTLengthGreaterThanInputDim(self):
+    x = np.arange(8).reshape([2, 2, 2]).astype(np.float32)
+    fft_length = [4, 4]
+    axes = [-2, -1]
+    expected = np.fft.rfftn(x, s=fft_length, axes=axes)
+
+    with self.cached_session(use_gpu=True):
+      actual = self.evaluate(
+          gen_spectral_ops.rfftnd(x, fft_length, axes))
+    self.assertAllClose(actual, expected, atol=1e-4)
 
   @parameterized.parameters(itertools.product(
       VALID_FFT_RANKS, range(3), (5, 6), (np.float32, np.float64)))
