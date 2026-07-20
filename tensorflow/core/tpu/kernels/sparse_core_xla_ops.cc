@@ -548,6 +548,100 @@ class XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp
 REGISTER_XLA_OP(Name("XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInput"),
                 XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp);
 
+// Similar to XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp, but without
+// `sorted_gains` in the input Csr. `weights` which is a tensor of shape
+// [num_weights] that represents the positional weights to be applied to the
+// embedding lookup results. It produces the same embedding look up result as
+// `XlaSparseDenseMatmulWithCsrInputOp`.
+//
+// Comparing to the same positional weighting combiner implemented with
+// XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp, this op is much more
+// efficient with both HBM usage and MST because the aggregation of lookup
+// results are pinned on to the SparseCore, which avoids materializing the
+// intermediate lookup results.
+class XlaSparseDenseMatmulPositionalWeightedWithCsrInputOp
+    : public XlaSparseDenseMatmulWithCsrInputOp {
+ public:
+  explicit XlaSparseDenseMatmulPositionalWeightedWithCsrInputOp(
+      OpKernelConstruction* ctx)
+      : XlaSparseDenseMatmulWithCsrInputOp(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("num_weights", &num_weights_));
+  }
+
+  ~XlaSparseDenseMatmulPositionalWeightedWithCsrInputOp() override = default;
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    int64_t per_sparse_core_batch_size =
+        input_size_ / num_sparsecores_per_device_;
+    int64_t max_ids_per_partition = 0;
+    int64_t max_unique_ids_per_partition = 0;
+
+    xla::XlaBuilder* builder = ctx->builder();
+    xla::XlaOp row_pointers = ctx->Input("row_pointers");
+    xla::XlaOp sorted_sample_ids = ctx->Input("sorted_sample_ids");
+    xla::XlaOp sorted_token_ids = ctx->Input("sorted_token_ids");
+    xla::XlaOp sorted_pos_ids = ctx->Input("sorted_pos_ids");
+    xla::XlaOp embedding_table = ctx->Input("embedding_table");
+    xla::XlaOp positional_weights = ctx->Input("weights");
+
+    OP_REQUIRES_VALUE(xla::Shape embedding_table_shape, ctx,
+                      ctx->InputXlaShape("embedding_table"));
+    const int32_t vocab_size = embedding_table_shape.dimensions(0);
+    const int32_t feature_width = embedding_table_shape.dimensions(1);
+
+    OP_REQUIRES_OK(
+        ctx, GetMaxIdsAndUniques(per_sparse_core_batch_size, feature_width,
+                                 &max_ids_per_partition,
+                                 &max_unique_ids_per_partition));
+    // Log max_ids and max_uniques for offline analysis. We do this here since
+    // these values are fixed at TPU compile time and remain fixed during
+    // training.
+    max_ids_per_partition_gauge_->GetCell(device_name_, table_name_)
+        ->Set(max_ids_per_partition);
+    max_unique_ids_per_partition_gauge_->GetCell(device_name_, table_name_)
+        ->Set(max_unique_ids_per_partition);
+    LOG(INFO) << "Lowering "
+                 "XlaSparseDenseMatmulPositionalWeightedWithCsrInputOp to HLO: "
+              << "table_name = '" << table_name_
+              << "', max_ids = " << max_ids_per_partition
+              << ", max_uniques = " << max_unique_ids_per_partition;
+
+    xla::FrontendAttributes sc_frontend_attributes;
+    OP_REQUIRES_OK(
+        ctx, SetSparseCoreFrontendAttributes(
+                 &sc_frontend_attributes, max_ids_per_partition,
+                 max_unique_ids_per_partition, num_sparsecores_per_device_,
+                 vocab_size, feature_width, input_size_, table_name_,
+                 /*max_valency=*/std::nullopt, quantization_config_low_,
+                 quantization_config_high_, quantization_config_num_buckets_));
+
+    // Emit the positional weighted forward pass custom call. Output is an array
+    // of the 2D activations buffer.
+    builder->SetFrontendAttributes(sc_frontend_attributes);
+    xla::Shape activation_shape =
+        xla::ShapeUtil::MakeShape(xla::F32, {input_size_, feature_width});
+    xla::XlaOp activations = xla::CustomCall(
+        builder, "SparseDenseMatmulPositionalWeightedMegachipOp",
+        {row_pointers, sorted_sample_ids, sorted_token_ids, sorted_pos_ids,
+         embedding_table, positional_weights},
+        activation_shape);
+
+    // Embedding layer output.
+    ctx->SetOutput(0, activations);
+  }
+
+ private:
+  int num_weights_;
+
+  XlaSparseDenseMatmulPositionalWeightedWithCsrInputOp(
+      const XlaSparseDenseMatmulPositionalWeightedWithCsrInputOp&) = delete;
+  void operator=(const XlaSparseDenseMatmulPositionalWeightedWithCsrInputOp&) =
+      delete;
+};
+
+REGISTER_XLA_OP(Name("XlaSparseDenseMatmulPositionalWeightedWithCsrInput"),
+                XlaSparseDenseMatmulPositionalWeightedWithCsrInputOp);
+
 // Base class for all the minibatch with CSR input optimizer kernel.
 class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
  public:

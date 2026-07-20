@@ -2269,6 +2269,31 @@ def TF_XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp : TF_Op<"XlaSparseDe
   );
 }
 
+def TF_XlaSparseDenseMatmulPositionalWeightedWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulPositionalWeightedWithCsrInput", [Pure]> {
+  let summary = "This op looks up the embedding vectors on SparseCores and performs the positional weighted combiner computation on SparseCores.";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Int32Tensor:$sorted_pos_ids,
+    TF_Float32Tensor:$embedding_table,
+    TF_Float32Tensor:$weights,
+
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$input_size,
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$num_weights,
+    OptionalAttr<F32Attr>:$quantization_config_low,
+    OptionalAttr<F32Attr>:$quantization_config_high,
+    OptionalAttr<I64Attr>:$quantization_config_num_buckets,
+
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$activations
+  );
+}
+
 def TF_XlaSparseDenseMatmulGradWithSgdAndCsrInputOp : TF_Op<"XlaSparseDenseMatmulGradWithSgdAndCsrInput", [Pure]> {
   let summary = "";
 
