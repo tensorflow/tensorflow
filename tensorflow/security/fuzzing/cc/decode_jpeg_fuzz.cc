@@ -22,15 +22,15 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
-#include <string_view>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "fuzztest/fuzztest.h"
 #include "tensorflow/core/lib/jpeg/jpeg_mem.h"
 
 namespace {
 
-void FuzzDecodeJpeg(std::string_view data) {
+void FuzzDecodeJpeg(absl::string_view data) {
   // Allocate at most 256 MB of output to avoid OOM in the fuzzer itself.
   // The purpose of the bounds-check patch (PR #115498) is to enforce this
   // limit inside the TF op kernel, consistent with the existing 512 MB cap
@@ -43,8 +43,7 @@ void FuzzDecodeJpeg(std::string_view data) {
   std::vector<uint8_t> output;
   auto allocate_output = [&](int width, int height,
                              int components) -> uint8_t* {
-    int64_t total =
-        static_cast<int64_t>(width) * height * components;
+    int64_t total = static_cast<int64_t>(width) * height * components;
     if (total <= 0 || total > kMaxFuzzerAlloc) {
       return nullptr;
     }
