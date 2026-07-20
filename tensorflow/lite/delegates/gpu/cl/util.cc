@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 
+#include <cstddef>
 #include <string>
 
 #include "absl/status/status.h"

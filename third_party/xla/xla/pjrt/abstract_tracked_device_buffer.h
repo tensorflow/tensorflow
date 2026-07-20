@@ -42,6 +42,8 @@ limitations under the License.
 
 namespace xla {
 
+class CommonPjRtClient;
+
 class AbstractTrackedDeviceBuffer {
  public:
   ~AbstractTrackedDeviceBuffer() = default;
@@ -152,6 +154,8 @@ class AbstractTrackedDeviceBuffer {
 };
 
 class CommonPjRtBuffer : public PjRtBuffer {
+  friend class CommonPjRtClient;
+
  public:
   // Helper class to retain a "hold" on a CommonPjRtBuffer. A ScopedHold
   // may not outlive its parent CommonPjRtBuffer.
