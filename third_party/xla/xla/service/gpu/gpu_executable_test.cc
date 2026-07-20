@@ -62,6 +62,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/gpu_executable_buffer_allocator.h"
+#include "xla/service/gpu/gpu_module_globals.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/logical_buffer.h"
@@ -77,6 +78,8 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
+#include "xla/stream_executor/mock_stream.h"
+#include "xla/stream_executor/mock_stream_executor.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -99,6 +102,7 @@ using ::testing::Optional;
 using ::testing::Pair;
 using ::testing::Pointee;
 using ::testing::Property;
+using ::testing::Return;
 using ::testing::SizeIs;
 using ::testing::UnorderedElementsAre;
 using ::tsl::proto_testing::EqualsProto;
@@ -121,6 +125,22 @@ Thunk::ThunkInfo ThunkInfoWithId(int thunk_id) {
   Thunk::ThunkInfo thunk_info;
   thunk_info.thunk_id = thunk_id;
   return thunk_info;
+}
+
+TEST(GpuModuleGlobalsTest, EmptyBinarySkipsModuleLoading) {
+  std::vector<uint8_t> binary;
+  std::vector<GpuModuleGlobals::ConstantInfo> constants;
+  se::MockStreamExecutor executor;
+  se::MockStream stream;
+  GpuModuleGlobals module_globals(binary, constants);
+
+  EXPECT_CALL(stream, parent()).WillOnce(Return(&executor));
+  EXPECT_CALL(executor, GetPlatform()).Times(0);
+  EXPECT_CALL(executor, LoadModule(::testing::_)).Times(0);
+
+  ASSERT_OK_AND_ASSIGN(const auto* resolved, module_globals.Resolve(&stream));
+
+  EXPECT_TRUE(resolved->empty());
 }
 
 TEST_F(GpuExecutableTest, OutputInfoToAndFromProto) {

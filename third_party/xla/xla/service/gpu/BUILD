@@ -942,6 +942,8 @@ xla_cc_test(
         "//xla/service:xla_debug_info_manager",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:mock_stream",
+        "//xla/stream_executor:mock_stream_executor",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/abi:executable_abi_version",
