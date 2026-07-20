@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/canonicalize_boundary_value_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/cast_bf16_ops_to_f32_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/cleanup_optimization_barrier_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/downcast_x64_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_batch_matmul_pass.h"
@@ -373,6 +374,7 @@ inline void registerTensorFlowLitePasses() {
   Register<SplitMergedOperandsPass>();
   Register<CleanupOptimizationBarrierPass>();
   Register<DowncastX64Pass>();
+  Register<CastBf16OpsToF32Pass>();
 
   // Utility Passes
   Register<DenseToDenseResourceElementsPass>();

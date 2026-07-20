@@ -568,6 +568,7 @@ cc_library(
     hdrs = [
         "ir/tfl_ops.h",
         "transforms/canonicalize_boundary_value_pass.h",
+        "transforms/cast_bf16_ops_to_f32_pass.h",
         "transforms/cleanup_optimization_barrier_pass.h",
         "transforms/optimize_batch_matmul_pass.h",
         "transforms/optimize_broadcast_like_pass.h",
@@ -587,6 +588,7 @@ cc_library(
     deps = [
         ":attribute_utils",
         ":canonicalize_boundary_value",
+        ":cast_bf16_ops_to_f32",
         ":cleanup_optimization_barrier",
         ":converter_inc",
         ":cost_estimators",
@@ -1036,6 +1038,30 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "cast_bf16_ops_to_f32",
+    srcs = [
+        "transforms/cast_bf16_ops_to_f32_pass.cc",
+    ],
+    hdrs = [
+        "transforms/cast_bf16_ops_to_f32_pass.h",
+    ],
+    deps = [
+        ":pass",
+        ":pass_options",
+        ":tensorflow_lite_ops",
+        ":utils",
+        "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ControlFlowInterfaces",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )
 
