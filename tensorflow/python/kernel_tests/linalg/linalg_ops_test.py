@@ -112,8 +112,9 @@ class LogdetTest(test.TestCase):
 
   def test_gradient_non_spd_positive_determinant_matrix(self):
     matrix = np.array([[-1.0, 0.5], [0.0, -2.0]], dtype=np.float64)
-    theoretical, numerical = gradient_checker_v2.compute_gradient(
-        linalg.logdet, [matrix])
+    with self.session():
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          linalg.logdet, [matrix])
     self.assertAllClose(theoretical, numerical, atol=1e-5, rtol=1e-5)
 
 

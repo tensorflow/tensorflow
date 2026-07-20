@@ -137,6 +137,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:gradient_checker_v2",
         "//tensorflow/python/ops:linalg_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:random_ops",
