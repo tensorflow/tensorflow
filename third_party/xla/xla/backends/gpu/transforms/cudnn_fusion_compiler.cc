@@ -37,6 +37,7 @@ limitations under the License.
 #include "third_party/cudnn_frontend/include/cudnn_frontend/graph_interface.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend/graph_properties.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_utils.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend_version.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cudnn/cudnn_version.h"
 #include "xla/backends/gpu/transforms/block_scaling_rewriter.h"
@@ -153,6 +154,8 @@ inline std::optional<fe::PointwiseMode_t> GetElementwiseMode(
 inline std::optional<fe::DataType_t> ToCudnnDataType(const PrimitiveType type) {
   using t = fe::DataType_t;
   switch (type) {
+    case PrimitiveType::F64:
+      return t::DOUBLE;
     case PrimitiveType::F32:
       return t::FLOAT;
     case PrimitiveType::F16:
@@ -573,6 +576,10 @@ HandleConstantHloToCudnnGraph(const HloInstruction& hlo, graph::Graph& graph,
       return LiteralToCudnnTensor<BF16, __nv_bfloat16>(hlo, graph, rank);
     case F32:
       return LiteralToCudnnTensor<F32, float>(hlo, graph, rank);
+#if CUDNN_FRONTEND_VERSION >= 12300
+    case F64:
+      return LiteralToCudnnTensor<F64, double>(hlo, graph, rank);
+#endif
     case S32:
       return LiteralToCudnnTensor<S32, int>(hlo, graph, rank);
     case S8:
