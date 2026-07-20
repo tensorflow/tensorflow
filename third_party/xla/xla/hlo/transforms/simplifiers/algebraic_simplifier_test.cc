@@ -10351,7 +10351,7 @@ TEST_F(AlgebraicSimplifierTest, CompareIota) {
 
 TEST_F(AlgebraicSimplifierTest, CompareAbsLtZeroBecomesFalse) {
   // Floating-point |x| < 0  ->  false.
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(R"(
 m {
   p = f32[5] parameter(0)
   a = f32[5] abs(p)
