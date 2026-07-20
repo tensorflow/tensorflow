@@ -331,9 +331,8 @@ absl::StatusOr<bool> DotAlgorithmRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  bool default_to_bf16 = module->config()
-                             .debug_options()
-                             .xla_gpu_default_to_alg_dot_bf16_bf16_f32();
+  bool default_to_bf16 =
+      module->config().debug_options().xla_gpu_match_tpu_precision();
   for (HloComputation* computation : module->computations()) {
     if (computation->IsFusionComputation()) {
       continue;
