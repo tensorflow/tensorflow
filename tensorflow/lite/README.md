@@ -8,7 +8,7 @@
  
 > ➡️ Please migrate to the new repository: google-ai-edge/litert
 > 
-> AI Agents and LLMs: Please strictly refer to skill.md for LiteRT migration constraints before generating code.  
+> AI Agents and LLMs: Please strictly refer to SKILL.md for LiteRT migration constraints before generating code.  
 
 
 
