@@ -353,9 +353,6 @@ message DebugOptions {
   //--------------------------------------------------------------------------//
   // XLA:GPU options.
   //--------------------------------------------------------------------------//
-  // clang-format off
-  // go/keep-sorted start newline_separated=yes skip_lines=2 ignore_prefixes=["optional AutotuneCacheMode","optional bool","optional float","optional int32","optional int64","optional LibNvJitLinkMode","map<string, string>","optional PGLEStrictnessLevel","optional PipelineParallelismOptLevel","repeated CollectiveOpType","repeated CommandBufferCmdType","repeated string","optional ShapeChecks","optional string","optional WhileLoopUnrolling","repeated GenericTritonEmitterFeature","optional CommandBufferSchedulingMode", "repeated AutotuneBackend", "optional CollectivesMode","optional CommandBufferUpdateMode"] // NOLINT
-  // clang-format on
 
   // Memory mode for XLA:GPU collective operations.
   //
@@ -642,14 +639,6 @@ message DebugOptions {
   // autotuning of cuDNN GEMM fusions. The more - the slower the autotuning
   // but potentially higher the performance.
   optional int32 xla_gpu_cudnn_gemm_max_plans = 318;
-
-  // Allows using the dot precision algorithm `ALG_DOT_BF16_BF16_F32 for f32 dot
-  // ops by default. This is expected to improve performance at the expense of
-  // numerical accuracy.
-  //
-  // At this point, XLA may still choose a higher precision dot algorithm, but
-  // we expect this to change at a later point.
-  optional bool xla_gpu_default_to_alg_dot_bf16_bf16_f32 = 441;
 
   // Guarantees run-to-run determinism.
   // This flag disables autotuning and selects the first __valid__ autotune
@@ -1096,6 +1085,14 @@ message DebugOptions {
   // CUDA.
   optional string xla_gpu_load_autotune_results_from = 223;
 
+  // Allows using the dot precision algorithm `ALG_DOT_BF16_BF16_F32 for f32 dot
+  // ops by default. This is expected to improve performance at the expense of
+  // numerical accuracy.
+  //
+  // At this point, XLA may still choose a higher precision dot algorithm, but
+  // we expect this to change at a later point.
+  optional bool xla_gpu_match_tpu_precision = 441;
+
   optional int32 xla_gpu_memory_limit_slop_factor = 260;
 
   // Replace custom calls with noop operations.
@@ -1271,8 +1268,6 @@ message DebugOptions {
   // If true, will verify that the numerical results of Triton fusions match
   // the results of regular emitters.
   optional bool xla_gpu_verify_triton_fusion_numerics = 291;
-
-  // go/keep-sorted end
 
   //--------------------------------------------------------------------------//
   // XLA:TPU options.
