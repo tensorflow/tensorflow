@@ -1,5 +1,5 @@
 > [!WARNING]
-> **This repository path is deprecated.** > TensorFlow Lite is now **LiteRT**. All active development has migrated to google-ai-edge/litert
+> **This repository path is deprecated.** TensorFlow Lite is now **LiteRT**. All active development has migrated to google-ai-edge/litert
 
 >LiteRT includes: 
 > * The modern CompiledModel API and legacy Interpreter API 
