@@ -511,6 +511,7 @@ class WindowPrefetchedAllocation final : public Allocation {
     int64_t bytes = 0;
     int64_t uid = 0;
     int64_t alternate_memory_space = 0;
+    int64_t dma_base_offset = 0;
     std::function<void(HloInstruction*, int64_t, int64_t)>
         notify_operand_appended_fn =
             [](const HloInstruction*, int64_t, int64_t) {};
