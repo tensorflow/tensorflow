@@ -100,7 +100,7 @@ absl::Status ConvertLocation(mlir::Location inst_loc, llvm::StringRef node_name,
   } else if (auto fused = mlir::dyn_cast<mlir::FusedLoc>(unwrapped_inst_loc)) {
     auto locations = fused.getLocations();
     if (locations.size() <= 1)
-      return errors::InvalidArgument("expected experimental debuf info.");
+      return absl::InvalidArgumentError("expected experimental debuf info.");
     // skip the first one, which is the name of the node_def.
     for (int i = 0, end = locations.size() - 1; i < end; ++i) {
       TF_RETURN_IF_ERROR(ConvertLocation(locations[i], node_name, debug_info));
@@ -175,7 +175,7 @@ absl::Status ConvertAttribute(const mlir::StringAttr& attr, AttrValue* value) {
           mangling_util::DemangleShape(attr_value, value->mutable_shape()));
       return absl::OkStatus();
     default:
-      return errors::Unimplemented("Mangled string couldn't be handled!");
+      return absl::UnimplementedError("Mangled string couldn't be handled!");
   }
   return absl::OkStatus();
 }
@@ -223,7 +223,7 @@ absl::Status ConvertAttribute(const mlir::ArrayAttr& attr, bool remove_ref_type,
           *list->add_shape() = nested_value.shape();
           break;
         default:
-          return errors::Unimplemented("Unhandled nested attribute!");
+          return absl::UnimplementedError("Unhandled nested attribute!");
       }
     } else if (auto attr = mlir::dyn_cast<mlir::ElementsAttr>(a)) {
       TensorProto tensor;
@@ -252,7 +252,7 @@ absl::Status ConvertAttribute(const mlir::ArrayAttr& attr, bool remove_ref_type,
       for (mlir::Attribute a : attr.getValue()) {
         auto i = mlir::dyn_cast<mlir::IntegerAttr>(a);
         if (!i)
-          return errors::Unimplemented(
+          return absl::UnimplementedError(
               "Expected 64-bit integer array attributes!");
         vals.push_back(i.getInt());
       }
@@ -264,7 +264,7 @@ absl::Status ConvertAttribute(const mlir::ArrayAttr& attr, bool remove_ref_type,
           mlir::DenseIntElementsAttr::get(ty, vals), &tensor));
       *list->add_tensor() = tensor;
     } else {
-      return errors::Unimplemented("Unhandled attribute!");
+      return absl::UnimplementedError("Unhandled attribute!");
     }
   }
   return absl::OkStatus();
@@ -311,8 +311,8 @@ absl::StatusOr<llvm::StringRef> GetTensorFlowOpName(llvm::StringRef op_name) {
   if (std::none_of(prefixes->begin(), prefixes->end(), [&](std::string prefix) {
         return op_name.consume_front(prefix);
       })) {
-    return errors::FailedPrecondition("op node '", op_name.str(),
-                                      "' was not a TF op!");
+    return absl::FailedPreconditionError(
+        absl::StrCat("op node '", op_name.str(), "' was not a TF op!"));
   }
   // Control dialect NextIteration sink ends with ".sink" and Executor dialect
   // NextIteration sink ends with ".Sink".
@@ -410,8 +410,9 @@ absl::Status ConvertAttributes(
     }
     if (mlir::isa<mlir::AffineMapAttr>(attr)) {
       // AffineMapAttr is not implemented.
-      return errors::Unimplemented("AffineMap attribute (needed for '",
-                                   name_strref, "') unimplemented");
+      return absl::UnimplementedError(
+          absl::StrCat("AffineMap attribute (needed for '", name_strref,
+                       "') unimplemented"));
     }
     TF_RETURN_IF_ERROR(
         llvm::TypeSwitch<mlir::Attribute, absl::Status>(attr)
@@ -467,9 +468,9 @@ absl::Status SetShapeAttribute(absl::string_view name,
     // should be trivially the same, else fail.
     std::string new_shape_string = value.list().shape(0).ShortDebugString();
     if (actual_shape.ShortDebugString() != new_shape_string) {
-      return errors::InvalidArgument("Expected ", new_shape_string, " '", name,
-                                     "' attribute but found ",
-                                     actual_shape.ShortDebugString());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Expected ", new_shape_string, " '", name, "' attribute but found ",
+          actual_shape.ShortDebugString()));
     }
   }
   return absl::OkStatus();
