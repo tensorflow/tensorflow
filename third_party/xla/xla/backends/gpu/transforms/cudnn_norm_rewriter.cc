@@ -44,17 +44,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/types.h"
 #include "xla/util.h"
-
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"  // IWYU pragma: keep
-#include "third_party/gpus/cudnn/cudnn.h"        // IWYU pragma: keep
-#include "third_party/gpus/cudnn/cudnn_version.h"
-#endif
 
 namespace xla {
 namespace gpu {
