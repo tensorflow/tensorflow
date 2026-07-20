@@ -963,32 +963,24 @@ PJRT_Error* PJRT_Device_ClearMemoryStats(
 
 PJRT_Error* PJRT_Device_PoisonExecution(
     PJRT_Device_PoisonExecution_Args* args) {
-  // TODO: b/488892533 - Make this check stricter after 12week compatibility
-  // window.
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Device_PoisonExecution_Args",
-      PJRT_STRUCT_SIZE(PJRT_Device_PoisonExecution_Args, poisoned),
-      args->struct_size));
+      PJRT_Device_PoisonExecution_Args_STRUCT_SIZE, args->struct_size));
 
   absl::Status error = absl::Status(
       pjrt::PjrtErrorCodeToStatusCode(args->error_code),
       absl::string_view(args->error_message, args->error_message_size));
-  // TODO: b/488892533 - Make this check stricter after 12week compatibility
-  // window.
-  if (args->struct_size >=
-      PJRT_STRUCT_SIZE(PJRT_Device_PoisonExecution_Args, num_payload)) {
-    absl::flat_hash_map<std::string, xla::PjRtValueType> payload_map =
-        pjrt::ConvertFromPjRtNamedValueList(args->payload, args->num_payload);
-    // Populateing error payload map, iteration order not important.
-    for (auto& [name, value] : payload_map) {  // NOLINT
-      if (auto* string_value = std::get_if<std::string>(&value);
-          string_value != nullptr) {
-        error.SetPayload(name, absl::Cord(std::move(*string_value)));
-      } else {
-        return StatusToPjRtError(absl::InvalidArgumentError(
-            absl::StrCat("PJRT_Device_PoisonExecution error ", args->error_code,
-                         " payload is not a string")));
-      }
+  absl::flat_hash_map<std::string, xla::PjRtValueType> payload_map =
+      pjrt::ConvertFromPjRtNamedValueList(args->payload, args->num_payload);
+  // Populateing error payload map, iteration order not important.
+  for (auto& [name, value] : payload_map) {  // NOLINT
+    if (auto* string_value = std::get_if<std::string>(&value);
+        string_value != nullptr) {
+      error.SetPayload(name, absl::Cord(std::move(*string_value)));
+    } else {
+      return StatusToPjRtError(absl::InvalidArgumentError(
+          absl::StrCat("PJRT_Device_PoisonExecution error ", args->error_code,
+                       " payload is not a string")));
     }
   }
 
@@ -1329,32 +1321,25 @@ PJRT_Error* PJRT_Client_CreateUninitializedBuffer(
 
 PJRT_Error* PJRT_Client_CreateErrorBuffer(
     PJRT_Client_CreateErrorBuffer_Args* args) {
-  // TODO: b/488892533 - Make this check stricter after 12week compatibility
-  // window.
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Client_CreateErrorBuffer_Args",
-      PJRT_STRUCT_SIZE(PJRT_Client_CreateErrorBuffer_Args, buffer),
-      args->struct_size));
+      PJRT_Client_CreateErrorBuffer_Args_STRUCT_SIZE, args->struct_size));
 
   absl::Status error = absl::Status(
       pjrt::PjrtErrorCodeToStatusCode(args->error_code),
       absl::string_view(args->error_message, args->error_message_size));
 
-  // TODO: b/488892533 - Remove this check after 12week compatibility window.
-  if (args->struct_size >=
-      PJRT_STRUCT_SIZE(PJRT_Client_CreateErrorBuffer_Args, num_payload)) {
-    absl::flat_hash_map<std::string, xla::PjRtValueType> payload_map =
-        pjrt::ConvertFromPjRtNamedValueList(args->payload, args->num_payload);
-    // Populating error payload map, iteration order not important.
-    for (auto& [name, value] : payload_map) {  // NOLINT
-      if (auto* string_value = std::get_if<std::string>(&value);
-          string_value != nullptr) {
-        error.SetPayload(name, absl::Cord(std::move(*string_value)));
-      } else {
-        return StatusToPjRtError(absl::InvalidArgumentError(
-            absl::StrCat("PJRT_Client_CreateErrorBuffer error ",
-                         args->error_code, " payload is not a string")));
-      }
+  absl::flat_hash_map<std::string, xla::PjRtValueType> payload_map =
+      pjrt::ConvertFromPjRtNamedValueList(args->payload, args->num_payload);
+  // Populating error payload map, iteration order not important.
+  for (auto& [name, value] : payload_map) {  // NOLINT
+    if (auto* string_value = std::get_if<std::string>(&value);
+        string_value != nullptr) {
+      error.SetPayload(name, absl::Cord(std::move(*string_value)));
+    } else {
+      return StatusToPjRtError(absl::InvalidArgumentError(
+          absl::StrCat("PJRT_Client_CreateErrorBuffer error ", args->error_code,
+                       " payload is not a string")));
     }
   }
 
