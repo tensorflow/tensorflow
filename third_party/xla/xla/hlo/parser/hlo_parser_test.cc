@@ -4516,6 +4516,20 @@ TEST_F(HloParserTest, ParseSharding) {
   EXPECT_EQ(sharding.ToString(), original);
 }
 
+TEST_F(HloParserTest, ParseNamedShardingUnreducedMax) {
+  const std::string original = "{mesh['x'=2], [{}], unreduced=max{'x'}}";
+  ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_TRUE(sharding.UseNamedShardingLeaf());
+  EXPECT_EQ(sharding.ToString(), original);
+}
+
+TEST_F(HloParserTest, ParseNamedShardingScalarUnreducedMax) {
+  const std::string original = "{mesh['x'=2,'y'=2], unreduced=max{'x', 'y'}}";
+  ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_TRUE(sharding.UseNamedShardingLeaf());
+  EXPECT_EQ(sharding.ToString(), "{mesh['x'=2,'y'=2], unreduced=max}");
+}
+
 TEST_F(HloParserTest, ParseShardingPartialReplication) {
   const std::string original = "{devices=[2,2]0,1,2,3 last_tile_dim_replicate}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
