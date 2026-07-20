@@ -369,6 +369,10 @@ class _GraphTensorArray:
       with self._maybe_colocate_with(value):
         lengths_64 = math_ops.cast(lengths, dtypes.int64)
         if not context.executing_eagerly():
+          if value.shape.rank == 0:
+            raise ValueError(
+                "Expected value to be at least a vector, but received shape: %s"
+                % value.shape.as_list())
           clengths = tensor_util.constant_value(lengths_64)
           if (value.shape.rank is not None and value.shape.rank > 0 and
               clengths is not None):
