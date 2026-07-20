@@ -20,11 +20,10 @@ fusion {
 }
 // CHECK:     xtile.extract {{.*}} -> tensor<f32>
 // CHECK:     tt.extern_elementwise {{.*}} (f32) -> f32
-// CHECK:     arith.negf {{.*}} f32
 // CHECK:     xtile.extract {{.*}} -> tensor<f32>
 // CHECK:     tt.extern_elementwise {{.*}} (f32) -> f32
 // CHECK:     arith.negf {{.*}} f32
-// CHECK:     arith.addf {{.*}} f32
+// CHECK:     arith.subf {{.*}} f32
 // CHECK:     arith.mulf {{.*}} f32
 // CHECK:     arith.divf {{.*}} f32
 // CHECK:     arith.truncf {{.*}} f32 to bf16
