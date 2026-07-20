@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/tests/cpu_pjrt_codegen_test.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -75,8 +74,8 @@ TEST_P(HloSpecTest, DoIt) {
   LLVMInitializeAArch64TargetInfo();
   LLVMInitializeAArch64TargetMC();
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(spec.hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(spec.hlo_text));
 
   std::string triple{spec.triple.data(), spec.triple.size()};
   std::string features{spec.features.data(), spec.features.size()};

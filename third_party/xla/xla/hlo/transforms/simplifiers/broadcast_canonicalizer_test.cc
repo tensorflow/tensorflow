@@ -79,5 +79,34 @@ ENTRY fusion.1644 {
   EXPECT_TRUE(status_or_module.ok());
 }
 
+TEST_F(BroadcastCanonicalizerTest, CalledComputationTwice) {
+  const char* hlo = R"(
+HloModule module
+
+foo {
+  param = f32[2,3,2]{2,1,0} parameter(0)
+  ROOT broadcast = f32[3,2,8,2]{3,2,1,0} broadcast(param), dimensions={1,0,3}
+}
+
+ENTRY entry {
+  p0 = f32[2,3,2]{2,1,0} parameter(0)
+  p1 = f32[2,3,2]{2,1,0} parameter(1)
+  call.0 = f32[3,2,8,2]{3,2,1,0} call(p0), to_apply=foo
+  call.1 = f32[3,2,8,2]{3,2,1,0} call(p1), to_apply=foo
+  ROOT add = f32[3,2,8,2]{3,2,1,0} add(call.0, call.1)
+}
+)";
+
+  RunAndFilecheckHloRewrite(hlo, BroadcastCanonicalizer{}, R"(
+// CHECK: %foo ({{.*}}) -> f32[3,2,8,2] {
+// CHECK-NEXT: [[param_0:%[^ ]+]] = f32[2,3,2]{2,1,0} parameter(0)
+// CHECK-NEXT: [[transpose_0:%[^ ]+]] = f32[3,2,2]{2,1,0} transpose([[param_0]]), dimensions={1,0,2}
+// CHECK-NEXT: ROOT [[broadcast_1:%[^ ]+]] = f32[3,2,8,2]{3,2,1,0} broadcast([[transpose_0]]), dimensions={0,1,3}
+// CHECK: ENTRY %entry
+// CHECK: call([[p0:%[^ ]+]]), to_apply=%foo
+// CHECK: call([[p1:%[^ ]+]]), to_apply=%foo
+      )");
+}
+
 }  // namespace
 }  // namespace xla

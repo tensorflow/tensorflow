@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/IR/Argument.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -104,8 +104,8 @@ TEST_F(IrArrayTest, EmitArrayElementAddress) {
     CHECK: getelementptr inbounds float, ptr %[[ptr]], i32 %[[idx]]
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_match,
-                          RunFileCheck(ir_str, filecheck_pattern));
+  ASSERT_OK_AND_ASSIGN(bool filecheck_match,
+                       RunFileCheck(ir_str, filecheck_pattern));
   EXPECT_TRUE(filecheck_match);
 }
 
@@ -132,8 +132,8 @@ TEST_F(IrArrayTest, EmitArrayElementAddressNonLinear) {
     CHECK: getelementptr inbounds [3 x [5 x float]], ptr %0, i32 0, i32 %[[udiv2]], i32 %[[urem]]
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_match,
-                          RunFileCheck(ir_str, filecheck_pattern));
+  ASSERT_OK_AND_ASSIGN(bool filecheck_match,
+                       RunFileCheck(ir_str, filecheck_pattern));
   EXPECT_TRUE(filecheck_match);
 }
 
@@ -163,8 +163,8 @@ TEST_F(IrArrayTest, EmitArrayElementAddressInt4) {
     CHECK: getelementptr inbounds i8, ptr %[[ptr]], i32 %[[div]]
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_match,
-                          RunFileCheck(ir_str, filecheck_pattern));
+  ASSERT_OK_AND_ASSIGN(bool filecheck_match,
+                       RunFileCheck(ir_str, filecheck_pattern));
   EXPECT_TRUE(filecheck_match);
 }
 
@@ -200,8 +200,8 @@ TEST_F(IrArrayTest, EmitArrayElementAddressInt4NonLinear) {
     CHECK: %[[gep:[0-9]+]] = getelementptr inbounds i8, ptr %[[ptr]], i32 %[[udiv]]
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_match,
-                          RunFileCheck(ir_str, filecheck_pattern));
+  ASSERT_OK_AND_ASSIGN(bool filecheck_match,
+                       RunFileCheck(ir_str, filecheck_pattern));
   EXPECT_TRUE(filecheck_match);
 }
 
@@ -235,8 +235,8 @@ TEST_F(IrArrayTest, EmitReadArrayElementInt4) {
     CHECK: trunc i8 %[[shift]] to i4
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_match,
-                          RunFileCheck(ir_str, filecheck_pattern));
+  ASSERT_OK_AND_ASSIGN(bool filecheck_match,
+                       RunFileCheck(ir_str, filecheck_pattern));
   EXPECT_TRUE(filecheck_match);
 }
 
@@ -275,8 +275,8 @@ TEST_F(IrArrayTest, EmitWriteArrayElementInt4) {
     CHECK: store i8 %[[towrite]], ptr %[[gep]], align 1
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_match,
-                          RunFileCheck(ir_str, filecheck_pattern));
+  ASSERT_OK_AND_ASSIGN(bool filecheck_match,
+                       RunFileCheck(ir_str, filecheck_pattern));
   EXPECT_TRUE(filecheck_match);
 }
 

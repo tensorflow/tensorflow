@@ -41,8 +41,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -68,9 +66,9 @@ ENTRY main {
   ROOT root = f32[] multiply(sum, neg)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
       ScheduleModule(module.get(), &alias_info_, [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape());
@@ -80,8 +78,8 @@ ENTRY main {
 
   EXPECT_EQ(entry_schedule.size(), 6);
 
-  TF_ASSERT_OK(schedule.Update());
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Update());
+  ASSERT_OK(schedule.Verify());
 
   EXPECT_EQ(entry_schedule,
             schedule.sequence(module->entry_computation()).instructions());
@@ -102,9 +100,9 @@ ENTRY main {
   ROOT root = f32[] multiply(sum, neg)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
       ScheduleModule(module.get(), &alias_info_, [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape());
@@ -127,8 +125,8 @@ ENTRY main {
   EXPECT_FALSE(in_schedule(sub));
 
   ASSERT_IS_NOT_OK(schedule.Verify());
-  TF_ASSERT_OK(schedule.Update());
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Update());
+  ASSERT_OK(schedule.Verify());
 
   EXPECT_EQ(schedule.sequence(entry).size(), 8);
   EXPECT_TRUE(in_schedule(constant));
@@ -151,9 +149,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
       ScheduleModule(module.get(), &alias_info_, [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape());
@@ -171,13 +169,13 @@ ENTRY main {
 
   // DCE should remove everything but the parameters and the newly added code.
   HloDCE dce;
-  TF_ASSERT_OK(dce.Run(module.get()).status());
+  ASSERT_OK(dce.Run(module.get()).status());
 
   EXPECT_EQ(schedule.sequence(entry).size(), 6);
 
   ASSERT_IS_NOT_OK(schedule.Verify());
-  TF_ASSERT_OK(schedule.Update());
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Update());
+  ASSERT_OK(schedule.Verify());
 
   EXPECT_EQ(schedule.sequence(entry).size(), 4);
 }
@@ -195,9 +193,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
       ScheduleModule(module.get(), &alias_info_, [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape());
@@ -213,13 +211,13 @@ ENTRY main {
 
   // DCE the old instructions.
   HloDCE dce;
-  TF_ASSERT_OK(dce.Run(module.get()).status());
+  ASSERT_OK(dce.Run(module.get()).status());
 
   EXPECT_EQ(schedule.sequence(entry).size(), 3);
 
   ASSERT_IS_NOT_OK(schedule.Verify());
-  TF_ASSERT_OK(schedule.Update());
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Update());
+  ASSERT_OK(schedule.Verify());
 
   EXPECT_EQ(schedule.sequence(entry).size(), 2);
 }
@@ -256,9 +254,9 @@ ENTRY %WhileLoop () -> s32[] {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
       ScheduleModule(module.get(), &alias_info_, [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape(),
@@ -281,14 +279,14 @@ ENTRY %WhileLoop () -> s32[] {
 
   // DCE the dead code in the body.
   HloDCE dce;
-  TF_ASSERT_OK(dce.Run(module.get()).status());
+  ASSERT_OK(dce.Run(module.get()).status());
 
   EXPECT_EQ(schedule.sequence(body).size(), 7);
   EXPECT_EQ(schedule.sequence(cond).size(), 4);
 
   ASSERT_IS_NOT_OK(schedule.Verify());
-  TF_ASSERT_OK(schedule.Update());
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Update());
+  ASSERT_OK(schedule.Verify());
 
   EXPECT_EQ(schedule.sequence(body).size(), 1);
   EXPECT_EQ(schedule.sequence(cond).size(), 5);
@@ -325,9 +323,9 @@ ENTRY %WhileLoop () -> s32[] {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
       ScheduleModule(module.get(), &alias_info_, [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape(),
@@ -340,17 +338,17 @@ ENTRY %WhileLoop () -> s32[] {
 
   // Replace the while with its init value. The conditional and body
   // computations should then be dead.
-  TF_ASSERT_OK(xla_while->ReplaceAllUsesWith(init));
+  ASSERT_OK(xla_while->ReplaceAllUsesWith(init));
 
   // DCE the dead code in the body.
   HloDCE dce;
   ASSERT_EQ(module->computation_count(), 3);
-  TF_ASSERT_OK(dce.Run(module.get()).status());
+  ASSERT_OK(dce.Run(module.get()).status());
   ASSERT_EQ(module->computation_count(), 1);
 
   ASSERT_IS_NOT_OK(schedule.Verify());
-  TF_ASSERT_OK(schedule.Update());
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Update());
+  ASSERT_OK(schedule.Verify());
 }
 
 TEST_F(HloScheduleTest, UpdateScheduleComputationRemovedWithMultiThreads) {
@@ -396,9 +394,9 @@ ENTRY %WhileLoop () -> (s32[], f32[10]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
       ScheduleModule(module.get(), &alias_info_,
                      [](const BufferValue& buffer) {
@@ -416,17 +414,17 @@ ENTRY %WhileLoop () -> (s32[], f32[10]) {
 
   // Replace the while with its init value. The conditional and body
   // computations should then be dead.
-  TF_ASSERT_OK(xla_while->ReplaceAllUsesWith(init));
+  ASSERT_OK(xla_while->ReplaceAllUsesWith(init));
 
   // DCE the dead code in the body.
   HloDCE dce;
   ASSERT_EQ(module->computation_count(), 4);
-  TF_ASSERT_OK(dce.Run(module.get()).status());
+  ASSERT_OK(dce.Run(module.get()).status());
   ASSERT_EQ(module->computation_count(), 2);
 
   ASSERT_IS_NOT_OK(schedule.Verify());
-  TF_ASSERT_OK(schedule.Update({HloInstruction::kMainExecutionThread}));
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Update({HloInstruction::kMainExecutionThread}));
+  ASSERT_OK(schedule.Verify());
 
   ASSERT_EQ(module->MakeNonfusionComputations({"parallel_thread"}).size(), 1);
   ASSERT_FALSE(schedule.is_computation_scheduled(
@@ -476,9 +474,9 @@ ENTRY %WhileLoop () -> (s32[], f32[10]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
       ScheduleModule(module.get(), &alias_info_,
                      [](const BufferValue& buffer) {
@@ -508,7 +506,7 @@ ENTRY %WhileLoop () -> (s32[], f32[10]) {
       entry_computation->CreateCallInstruction(instructions_in_new_computation);
 
   Shape completion_sflag_shape = ShapeUtil::MakeScalarShape(U32);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       HloInstruction * async_done,
       entry_computation->CreateAsyncInstructions(
           call, {completion_sflag_shape}, entry_computation->execution_thread(),
@@ -520,7 +518,7 @@ ENTRY %WhileLoop () -> (s32[], f32[10]) {
       entry_computation->AddInstruction(HloInstruction::CreateBinary(
           result_2->shape(), HloOpcode::kAdd, async_done, result_2));
 
-  TF_ASSERT_OK(result_2->ReplaceAllUsesWith(modified_result_2));
+  ASSERT_OK(result_2->ReplaceAllUsesWith(modified_result_2));
 
   auto added_computation_name =
       async_done->operand(0)->called_computations()[0]->name();
@@ -528,8 +526,8 @@ ENTRY %WhileLoop () -> (s32[], f32[10]) {
       module->GetComputationWithName(added_computation_name)));
 
   ASSERT_IS_NOT_OK(schedule.Verify());
-  TF_ASSERT_OK(schedule.Update({HloInstruction::kMainExecutionThread}));
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Update({HloInstruction::kMainExecutionThread}));
+  ASSERT_OK(schedule.Verify());
 
   ASSERT_TRUE(schedule.is_computation_scheduled(
       module->GetComputationWithName(added_computation_name)));
@@ -550,9 +548,9 @@ ENTRY main {
   ROOT root = f32[] multiply(sum, neg)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
       ScheduleModule(module.get(), &alias_info_, [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape());
@@ -571,7 +569,7 @@ ENTRY main {
       // Do not add a control dependency to self.
       continue;
     }
-    TF_ASSERT_OK(constant->AddControlDependencyTo(instruction));
+    ASSERT_OK(constant->AddControlDependencyTo(instruction));
   }
 
   auto in_schedule = [&](const HloInstruction* hlo) {
@@ -582,8 +580,8 @@ ENTRY main {
   EXPECT_FALSE(in_schedule(constant));
 
   ASSERT_IS_NOT_OK(schedule.Verify());
-  TF_ASSERT_OK(schedule.Update());
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Update());
+  ASSERT_OK(schedule.Verify());
 
   EXPECT_EQ(schedule.sequence(entry).instructions().front(), constant);
   EXPECT_EQ(schedule.sequence(entry).size(), 7);
@@ -605,9 +603,9 @@ ENTRY main {
   ROOT root = f32[] multiply(sum, neg)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
       ScheduleModule(module.get(), &alias_info_, [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape());
@@ -626,7 +624,7 @@ ENTRY main {
       // Do not add a control dependency to self.
       continue;
     }
-    TF_ASSERT_OK(instruction->AddControlDependencyTo(constant));
+    ASSERT_OK(instruction->AddControlDependencyTo(constant));
   }
 
   auto in_schedule = [&](const HloInstruction* hlo) {
@@ -637,8 +635,8 @@ ENTRY main {
   EXPECT_FALSE(in_schedule(constant));
 
   ASSERT_IS_NOT_OK(schedule.Verify());
-  TF_ASSERT_OK(schedule.Update());
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Update());
+  ASSERT_OK(schedule.Verify());
 
   EXPECT_EQ(schedule.sequence(entry).instructions().back(), constant);
   EXPECT_EQ(schedule.sequence(entry).size(), 7);
