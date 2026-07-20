@@ -1563,10 +1563,10 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     int process_id, int num_nodes,
     gpu::GpuExecutableRunOptions* gpu_executable_run_options,
     std::shared_ptr<KeyValueStoreInterface> kv_store, bool enable_mock_nccl,
-    std::optional<absl::string_view> mock_gpu_topology,
-    std::optional<int> partition_index,
-    absl::Duration get_local_topology_timeout,
-    absl::Duration get_global_topology_timeout) {
+    std::optional<absl::string_view> mock_gpu_topology = std::nullopt,
+    std::optional<int> partition_index = std::nullopt,
+    absl::Duration get_local_topology_timeout = absl::Minutes(2),
+    absl::Duration get_global_topology_timeout = absl::Minutes(5)) {
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   LocalTopologyProto local_topology;
   local_topology.set_process_id(process_id);
@@ -2099,7 +2099,28 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetSharedStreamExecutorGpuClient(
       /*abort_collectives_on_failure=*/false,
       /*gpu_topology=*/std::move(gpu_topology),
       /*num_nodes=*/options.num_nodes);
-};
+}
+
+absl::Status ExchangeEmptyStreamExecutorGpuTopology(
+    int process_id, int num_nodes,
+    std::shared_ptr<KeyValueStoreInterface> kv_store,
+    absl::Duration get_local_topology_timeout,
+    absl::Duration get_global_topology_timeout) {
+#if TENSORFLOW_USE_ROCM
+  auto platform_name = xla::RocmName();
+#elif TENSORFLOW_USE_SYCL
+  auto platform_name = xla::SyclName();
+#else   // TENSORFLOW_USE_ROCM
+  auto platform_name = xla::CudaName();
+#endif  // TENSORFLOW_USE_ROCM
+  LocalTopologyProto local_topology;
+  local_topology.set_process_id(process_id);
+  GlobalTopologyProto global_topology;
+  return ExchangeTopologies(
+      platform_name, process_id, num_nodes, get_local_topology_timeout,
+      get_global_topology_timeout, kv_store.get(), local_topology,
+      &global_topology, /*assign_global_device_ids=*/true);
+}
 
 absl::StatusOr<PjRtStreamExecutorExecutionOutput>
 StreamExecutorGpuClient::RunAsync(
