@@ -827,12 +827,14 @@ TEST_P(Conv2DShapeTest, Conv2DShapeTest) {
          /*data_format=*/"NHWC", /*filter_format=*/"HWIO");
   INFER_OK(op, "[1,4,4,1];[2,1,1,1]", "[d0_0,3,2,d1_3]");
 
-  // VALID padding permits zero-sized output dimensions but not negative ones.
-  set_op(/*strides=*/{{1, 1, 2, 1}}, /*padding=*/"VALID",
-         /*data_format=*/"NHWC", /*filter_format=*/"HWIO");
-  INFER_OK(op, "[1,1,3,1];[1,5,1,1]", "[d0_0,1,0,d1_3]");
-  INFER_ERROR("Negative dimension size", op,
-              "[1,1,2,1];[1,5,1,1]");
+  if (op_name == "Conv2D") {
+    // VALID padding permits zero-sized output dimensions but not negative ones.
+    set_op(/*strides=*/{{1, 1, 2, 1}}, /*padding=*/"VALID",
+           /*data_format=*/"NHWC", /*filter_format=*/"HWIO");
+    INFER_OK(op, "[1,1,3,1];[1,5,1,1]", "[d0_0,1,0,d1_3]");
+    INFER_ERROR("Negative dimension size", op,
+                "[1,1,2,1];[1,5,1,1]");
+  }
 
   // Unknown dims in the critical fields lead to partial inference.
   INFER_OK(op, "[1,4,4,1];[2,1,1,1]", "[d0_0,3,2,d1_3]");
@@ -1428,6 +1430,10 @@ TEST(CommonShapeFnsTest, MaxPool2DShapeTest) {
   // depth 3 stride, 1x1x1 filter, NCHW
   set_op({1, 3, 1, 1}, {1, 1, 1, 1}, "VALID", "NCHW");
   INFER_OK(op, "[1,7,5,5]", "[d0_0,3,5,5]");
+
+  // Pooling requires the filter window to fit within the input.
+  set_op({1, 1, 1, 1}, {1, 1, 2, 1}, "VALID", "NHWC");
+  INFER_ERROR("Negative dimension size", op, "[1,1,1,1]");
 
   // 5x7 input, 2x2 ksize, 1x1 stride, NCHW_VECT_C tests
   set_op({{1, 1, 1, 1}}, {1, 1, 2, 2}, "SAME", "NCHW_VECT_C");
