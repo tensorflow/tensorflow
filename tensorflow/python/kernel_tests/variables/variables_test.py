@@ -58,22 +58,25 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testSliceAssignment(self):
-    v = variables.Variable([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=dtypes.float32)
+    v = variables.Variable(
+        [[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=dtypes.float32)
     self.evaluate(variables.global_variables_initializer())
-    
+
     # Assign via slice
     assign_op = v[:2, :2].assign(22. * array_ops.ones((2, 2)))
     self.evaluate(assign_op)
-    
+
     # Also test syntactic sugar
     def assign_sugar():
       v[:2, :2] = 33. * array_ops.ones((2, 2))
-    
+
     if context.executing_eagerly():
       assign_sugar()
-      self.assertAllEqual(v.numpy(), [[33., 33., 3.], [33., 33., 6.], [7., 8., 9.]])
+      self.assertAllEqual(
+          v.numpy(), [[33., 33., 3.], [33., 33., 6.], [7., 8., 9.]])
     else:
-      # In graph mode, __setitem__ does not automatically execute, but it shouldn't raise TypeError
+      # In graph mode, __setitem__ does not automatically execute, but it
+      # shouldn't raise TypeError
       assign_sugar()
 
   @test_util.run_v1_only("b/120545219")
