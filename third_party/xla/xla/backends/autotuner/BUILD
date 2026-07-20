@@ -125,6 +125,7 @@ cc_library(
     deps = [
         ":backends_proto_cc",
         ":codegen_backend",
+        "//xla:autotune_cache_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:executable",
         "//xla/stream_executor:kernel_stats",
@@ -137,11 +138,13 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -168,7 +171,9 @@ xla_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:path",
     ],
 )
 
@@ -220,6 +225,7 @@ cc_library(
         ":codegen_backend",
         ":codegen_orchestrator",
         ":hlo_extractor",
+        "//xla:autotune_cache_proto_cc",
         "//xla:autotuning_proto_cc",
         "//xla:status_macros",
         "//xla/hlo/ir:hlo",
@@ -245,6 +251,7 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:fingerprint",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -277,6 +284,7 @@ xla_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
