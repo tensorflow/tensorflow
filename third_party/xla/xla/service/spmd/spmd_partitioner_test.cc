@@ -285,6 +285,29 @@ ENTRY entry {
               AllOf(op::CustomCall(op::Parameter(0)), op::Shape("f32[8,128]")));
   EXPECT_TRUE(module->has_spmd_output_sharding());
   EXPECT_EQ(module->spmd_output_sharding(), HloSharding::Unreduced());
+}
+
+TEST_P(SpmdPartitioningTest, LayoutConstraintCustomCallUnreducedMax) {
+  if (GetParam() != ShardingFormatPicker::ShardingType::kNamed) {
+    GTEST_SKIP();
+  }
+  absl::string_view hlo_string = R"(
+HloModule module
+ENTRY entry {
+  %param = f32[8,128]{1,0} parameter(0), sharding={mesh['x'=2], [{}, {}], unreduced=max{'x'}}
+  ROOT %cc = f32[8,128]{0,1} custom-call(%param), custom_call_target="LayoutConstraint",
+    operand_layout_constraints={f32[8,128]{0,1}}, sharding={mesh['x'=2], [{}, {}], unreduced=max{'x'}}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              AllOf(op::CustomCall(op::Parameter(0)), op::Shape("f32[8,128]")));
+  EXPECT_TRUE(module->has_spmd_output_sharding());
+  EXPECT_TRUE(module->spmd_output_sharding().UseNamedShardingLeaf());
+  EXPECT_EQ(module->spmd_output_sharding().named_sharding().reduction_op(),
+            ReductionOp::kMax);
   VerifyNoCollectives(module.get());
 }
 
