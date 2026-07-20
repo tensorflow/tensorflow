@@ -32,7 +32,7 @@ description: >
 #include "litert/cc/litert_environment.h"
 #include "litert/cc/litert_tensor_buffer.h"
 
-void RunModel(const char* model_path) {
+litert::Status RunModel(const char* model_path) {
     LITERT_ASSIGN_OR_RETURN(auto env, litert::Environment::Create({}));
     LITERT_ASSIGN_OR_RETURN(auto compiled_model,
         litert::CompiledModel::Create(env, model_path,
@@ -42,7 +42,7 @@ void RunModel(const char* model_path) {
     LITERT_ASSIGN_OR_RETURN(auto output_buffers,
         compiled_model.CreateOutputBuffers());
     // Fill inputs: input_buffers[0].Write<float>(data);
-    compiled_model.Run(input_buffers, output_buffers);
+    return compiled_model.Run(input_buffers, output_buffers);
 }
 ```
 
