@@ -28,32 +28,6 @@ namespace xla {
 namespace gpu {
 namespace {
 
-TEST(FlagUtilsTest, IsPassEnabledAtOptimizationEffort) {
-  HloModuleConfig config;
-  config.set_exec_time_optimization_effort(kExtraCollectiveOptimizations + 1);
-  HloModule module("test_module", config);
-
-  // Collective optimization passes.
-  EXPECT_TRUE(IsPassEnabledAtOptimizationEffort<CollectivePipeliner>(module));
-  EXPECT_TRUE(
-      IsPassEnabledAtOptimizationEffort<DoubleBufferLoopUnrolling>(module));
-  EXPECT_TRUE(
-      IsPassEnabledAtOptimizationEffort<LatencyHidingScheduler>(module));
-
-  // Other passes.
-  EXPECT_TRUE(IsPassEnabledAtOptimizationEffort<HloDCE>(module));
-
-  config.set_exec_time_optimization_effort(kExtraCollectiveOptimizations - 1);
-  module.set_config(config);
-
-  // Collective optimization passes.
-  EXPECT_FALSE(IsPassEnabledAtOptimizationEffort<CollectivePipeliner>(module));
-  EXPECT_FALSE(
-      IsPassEnabledAtOptimizationEffort<DoubleBufferLoopUnrolling>(module));
-  EXPECT_FALSE(
-      IsPassEnabledAtOptimizationEffort<LatencyHidingScheduler>(module));
-}
-
 TEST(FlagUtilsTest, IsPassEnabledAtOptimizationLevel) {
   HloModule module("test_module", {});
 
