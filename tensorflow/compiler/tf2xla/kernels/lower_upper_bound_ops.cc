@@ -20,12 +20,7 @@ limitations under the License.
 #include "xla/comparison_util.h"
 #include "xla/hlo/builder/lib/math.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/op_requires.h"
-#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -48,6 +43,10 @@ void BuildLowerUpperBoundOp(XlaOpKernelContext* ctx, DataType out_dtype,
   OP_REQUIRES(ctx, values_shape.dims() == 2,
               absl::FailedPreconditionError("values must be 2D"));
 
+  bool is_fp = tensorflow::DataTypeIsFloating(ctx->InputType("sorted_inputs"));
+
+  xla::XlaBuilder* builder = ctx->builder();
+
   // Add a new inner dimension to values, to allow broadcasting along the inner
   // dimension of sorted_sequence.
   auto new_values_shape = values_shape;
@@ -61,43 +60,29 @@ void BuildLowerUpperBoundOp(XlaOpKernelContext* ctx, DataType out_dtype,
   auto sorted_inputs_reshaped =
       xla::Reshape(sorted_inputs, new_sorted_inputs_shape.dim_sizes());
 
-  // We are relying on broadcasting to compare each value against each entry in
-  // the associated sorted_inputs row.
-  // The reshapes above leave the tensors with equal rank of 3, so broadcast
-  // dimensions are not explicitly specified.
-  // Use +inf replacement for NaN: NaN in sorted_inputs or values is replaced
-  // with +inf, so standard IEEE 754 comparisons naturally give correct
-  // NaN-as-largest semantics without special-case logic or Select-based fixes.
-  xla::XlaBuilder* builder = ctx->builder();
-  bool is_fp = tensorflow::DataTypeIsFloating(ctx->InputType("sorted_inputs"));
-
-  xla::XlaOp sorted_clean;
-  xla::XlaOp values_clean;
-  if (is_fp) {
-    DataType input_type = ctx->InputType("sorted_inputs");
-    xla::XlaOp pos_inf = XlaHelpers::FloatLiteral(
-        builder, input_type, std::numeric_limits<double>::infinity());
-    sorted_clean = xla::Select(
-        xla::IsNan(sorted_inputs_reshaped),
-        xla::Broadcast(pos_inf, new_sorted_inputs_shape.dim_sizes()),
-        sorted_inputs_reshaped);
-    values_clean = xla::Select(
-        xla::IsNan(values_reshaped),
-        xla::Broadcast(pos_inf, new_values_shape.dim_sizes()),
-        values_reshaped);
-  } else {
-    sorted_clean = sorted_inputs_reshaped;
-    values_clean = values_reshaped;
-  }
-
   const DataType accumulation_type = XlaHelpers::SumAccumulationType(out_dtype);
   xla::XlaOp zero = XlaHelpers::Zero(builder, accumulation_type);
 
   xla::XlaOp cmp;
-  if (comparison_direction == xla::ComparisonDirection::kGt) {
-    cmp = xla::Gt(values_clean, sorted_clean);
+  if (is_fp) {
+    xla::XlaOp is_val_nan = xla::IsNan(values_reshaped);
+    xla::XlaOp is_seq_nan = xla::IsNan(sorted_inputs_reshaped);
+
+    if (comparison_direction == xla::ComparisonDirection::kGt) {
+      // NanAwareGt(a, b) = (!is_b_nan && (is_a_nan || (a > b)))
+      xla::XlaOp standard_gt = xla::Gt(values_reshaped, sorted_inputs_reshaped);
+      cmp = xla::And(xla::Not(is_seq_nan), xla::Or(is_val_nan, standard_gt));
+    } else {
+      // NanAwareGe(a, b) = is_a_nan || (!is_b_nan && (a >= b))
+      xla::XlaOp standard_ge = xla::Ge(values_reshaped, sorted_inputs_reshaped);
+      cmp = xla::Or(is_val_nan, xla::And(xla::Not(is_seq_nan), standard_ge));
+    }
   } else {
-    cmp = xla::Ge(values_clean, sorted_clean);
+    if (comparison_direction == xla::ComparisonDirection::kGt) {
+      cmp = xla::Gt(values_reshaped, sorted_inputs_reshaped);
+    } else {
+      cmp = xla::Ge(values_reshaped, sorted_inputs_reshaped);
+    }
   }
 
   xla::XlaOp cmp_int = XlaHelpers::ConvertElementType(cmp, accumulation_type);

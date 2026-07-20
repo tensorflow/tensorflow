@@ -2599,7 +2599,7 @@ tf_kernel_library(
     name = "lower_upper_bound_ops",
     srcs = ["lower_upper_bound_ops.cc"],
     deps = [
-        "//tensorflow/compiler/tf2xla:common",
+        "@com_google_absl//absl/status",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -2607,13 +2607,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:errors",
-        "@com_google_absl//absl/status",
         "@xla//xla:comparison_util",
-        "@xla//xla/hlo/builder/lib:math",
         "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:math",
+        "//tensorflow/core:framework",
     ],
 )
 
