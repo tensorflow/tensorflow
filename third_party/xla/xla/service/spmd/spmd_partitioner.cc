@@ -1513,6 +1513,11 @@ HloInstruction* PartitionedHlo::ReplicatePartial(
     auto dus =
         state_.b->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
             final_result_shape, zero_bcast, result, offsets));
+    ReductionOp reduction_op = ReductionOp::kSum;
+    if (sharding().UseNamedShardingLeaf()) {
+      reduction_op = sharding().named_sharding().reduction_op();
+    }
+    CHECK(reduction_op == ReductionOp::kSum);
     HloComputation* reduction =
         MakeBinaryAdd(shard_shape.element_type(), state_.module);
     result = state_.partitioner->AllReduceAlongShardingDims(
@@ -1721,7 +1726,7 @@ HloSharding GetAllToAllSharding(const HloSharding& source_sharding,
         old_named_sharding.mesh(), new_dim_shardings,
         old_named_sharding.replicated_axes(),
         old_named_sharding.unreduced_axes(), old_named_sharding.manual_axes(),
-        old_named_sharding.metadata()));
+        old_named_sharding.metadata(), old_named_sharding.reduction_op()));
   }
 
   TileAssignment result = source_sharding.tile_assignment();
@@ -4681,6 +4686,7 @@ SpmdPartitioningVisitor::HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
     const HloInstruction* update_tensor) {
   std::vector<int64_t> top_dus_starts;
   const auto* dus = Cast<HloDynamicUpdateSliceInstruction>(hlo);
+  top_dus_starts.reserve(dus->index_operands().size());
   for (const HloInstruction* dus_index : dus->index_operands()) {
     CHECK(dus_index->IsConstant());
     top_dus_starts.push_back(dus_index->literal().GetIntegralAsS64({}).value());
@@ -6275,6 +6281,74 @@ int64_t SpmdPartitioner::CommunicationCostInBytes(HloInstruction* hlo) {
   }
 }
 
+static HloSharding ResolveReductionOpForSharding(
+    const HloInstruction* instruction, HloSharding sharding) {
+  if (sharding.IsTuple()) {
+    std::vector<HloSharding> new_elements;
+    new_elements.reserve(sharding.tuple_elements().size());
+    for (int i = 0; i < sharding.tuple_elements().size(); ++i) {
+      const HloInstruction* element_instr = nullptr;
+      if (instruction->opcode() == HloOpcode::kTuple &&
+          i < instruction->operand_count()) {
+        element_instr = instruction->operand(i);
+      } else {
+        element_instr = instruction;
+      }
+      new_elements.push_back(ResolveReductionOpForSharding(
+          element_instr, sharding.tuple_elements()[i]));
+    }
+    Shape tuple_shape;
+    if (instruction->shape().IsTuple()) {
+      tuple_shape = instruction->shape();
+    } else {
+      std::vector<Shape> shapes(new_elements.size(), instruction->shape());
+      tuple_shape = ShapeUtil::MakeTupleShape(shapes);
+    }
+    return HloSharding::Tuple(tuple_shape, new_elements);
+  }
+
+  if (sharding.UseNamedShardingLeaf()) {
+    if (sharding.named_sharding().unreduced_axes().empty()) {
+      return sharding;
+    }
+  } else if (!sharding.IsUnreducedSubgroup()) {
+    return sharding;
+  }
+
+  const HloInstruction* current = instruction;
+  while (current && current->opcode() != HloOpcode::kReduce &&
+         current->opcode() != HloOpcode::kAllReduce &&
+         current->opcode() != HloOpcode::kReduceScatter &&
+         current->operand_count() > 0) {
+    current = current->operand(0);
+  }
+  if (current && (current->opcode() == HloOpcode::kReduce ||
+                  current->opcode() == HloOpcode::kAllReduce ||
+                  current->opcode() == HloOpcode::kReduceScatter)) {
+    const HloComputation* computation = current->to_apply();
+    if (computation) {
+      const HloInstruction* root = computation->root_instruction();
+      ReductionOp reduction_op = ReductionOp::kSum;
+      if (root && root->opcode() == HloOpcode::kMaximum) {
+        reduction_op = ReductionOp::kMax;
+      } else if (root && root->opcode() == HloOpcode::kMinimum) {
+        reduction_op = ReductionOp::kMin;
+      }
+      sharding.set_reduction_op(reduction_op);
+    }
+  } else if (current && current->opcode() == HloOpcode::kParameter) {
+    const HloModule* module = current->parent()->parent();
+    if (module && module->has_spmd_parameters_shardings() &&
+        current->parameter_number() <
+            module->spmd_parameters_shardings().size()) {
+      sharding.set_reduction_op(
+          module->spmd_parameters_shardings()[current->parameter_number()]
+              .reduction_op());
+    }
+  }
+  return sharding;
+}
+
 /* static */ void SpmdPartitioner::RecordInputsOutputsSharding(
     HloModule* module) {
   // Add the parameters' and output's shardings to the module.
@@ -6289,7 +6363,9 @@ int64_t SpmdPartitioner::CommunicationCostInBytes(HloInstruction* hlo) {
   module->set_spmd_parameters_shardings(entry_params_shardings);
   auto entry_root = module->entry_computation()->root_instruction();
   CHECK(entry_root->has_sharding()) << "Missing sharding in entry root.";
-  module->set_spmd_output_sharding(entry_root->sharding());
+  HloSharding output_sharding =
+      ResolveReductionOpForSharding(entry_root, entry_root->sharding());
+  module->set_spmd_output_sharding(std::move(output_sharding));
 }
 
 absl::StatusOr<bool> SpmdPartitioner::RunImpl(
@@ -6472,6 +6548,14 @@ absl::StatusOr<bool> SpmdPartitioner::RunImpl(
 
   RETURN_IF_ERROR(ClearShardingAttributes(
       module, num_replicas() * num_partitions(), execution_threads));
+
+  auto entry_root = module->entry_computation()->root_instruction();
+  if (entry_root->has_sharding()) {
+    HloSharding final_sharding =
+        ResolveReductionOpForSharding(entry_root, entry_root->sharding());
+    entry_root->set_sharding(std::move(final_sharding));
+  }
+
   return changed;
 }
 
@@ -6541,9 +6625,12 @@ absl::Status SpmdPartitioner::ConvertUnreducedSharding(
   for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* hlo : computation->instructions()) {
       const HloSharding& sharding = hlo->sharding();
-      auto convert_unreduced_sharding = [](HloInstruction* hlo) -> HloSharding {
+      auto convert_unreduced_sharding =
+          [&](HloInstruction* hlo) -> HloSharding {
         hlo->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
-        return HloSharding::Replicate();
+        HloSharding res = HloSharding::Replicate(sharding.metadata());
+        res.set_reduction_op(sharding.reduction_op());
+        return res;
       };
       auto convert_unreduced_subgroup_sharding =
           [](HloInstruction* hlo,
@@ -6565,7 +6652,10 @@ absl::Status SpmdPartitioner::ConvertUnreducedSharding(
           new_dims.erase(new_dims.begin() + unreduced_dim);
           tile_assignment = tile_assignment.Reshape(new_dims);
         }
-        return HloSharding::PartialTile(tile_assignment, sharding.metadata());
+        HloSharding res =
+            HloSharding::PartialTile(tile_assignment, sharding.metadata());
+        res.set_reduction_op(sharding.reduction_op());
+        return res;
       };
       auto convert_unreduced_named_sharding =
           [](HloInstruction* hlo,
@@ -6589,7 +6679,8 @@ absl::Status SpmdPartitioner::ConvertUnreducedSharding(
         return HloSharding(NamedSharding(
             named_sharding.mesh(), named_sharding.dim_shardings(),
             new_replicated_axes, /*unreduced_axes=*/{},
-            named_sharding.manual_axes(), named_sharding.metadata()));
+            named_sharding.manual_axes(), named_sharding.metadata(),
+            named_sharding.reduction_op()));
       };
 
       if (sharding.IsTuple()) {
