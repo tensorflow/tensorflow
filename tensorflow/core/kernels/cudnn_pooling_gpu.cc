@@ -201,7 +201,9 @@ void DnnPooling3dGradImpl(
   // If output size has 0, we can skip as well to avoid CUDNN errors.
   for (int64_t dim : output_size) {
     if (dim == 0) {
-      input_backprop->flat<T>().device(context->eigen_device<GPUDevice>()).setZero();
+      input_backprop->flat<T>()
+          .device(context->eigen_device<GPUDevice>())
+          .setZero();
       return;
     }
   }

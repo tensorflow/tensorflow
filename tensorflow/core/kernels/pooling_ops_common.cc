@@ -240,6 +240,11 @@ void DnnPoolingImpl(OpKernelContext* context, se::dnn::PoolingMode pooling_mode,
   PoolParameters params{
       context,           size,        stride,           padding,
       explicit_paddings, data_format, tensor_in.shape()};
+
+  if (params.out_height == 0 || params.out_width == 0) {
+    return;
+  }
+  
   if (!context->status().ok()) {
     return;
   }
@@ -535,6 +540,14 @@ void DnnPoolingGradImpl(OpKernelContext* context,
 
   PoolParameters params{context,           size,        stride,         padding,
                         explicit_paddings, data_format, tensor_in_shape};
+
+  if (params.out_height == 0 || params.out_width == 0) {
+    input_backprop->flat<T>()
+         .device(context->eigen_device<GPUDevice>())
+         .setZero();
+    return;
+  }
+
   if (!context->status().ok()) {
     return;
   }
