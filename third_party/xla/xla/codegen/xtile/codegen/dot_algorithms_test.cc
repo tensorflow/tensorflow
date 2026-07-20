@@ -72,7 +72,7 @@ TEST_F(DotAlgorithmsTest, EmitSingleTileDotDefaultToBF16) {
 
   // Set the flag in debug options.
   DebugOptions debug_options = module->config().debug_options();
-  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
+  debug_options.set_xla_gpu_match_tpu_precision(true);
   module->mutable_config().set_debug_options(debug_options);
 
   // Setup operands.
@@ -125,7 +125,7 @@ TEST_F(DotAlgorithmsTest, EmitSingleTileDotHighestPrecision) {
 
   // Set the flag in debug options.
   DebugOptions debug_options = module->config().debug_options();
-  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
+  debug_options.set_xla_gpu_match_tpu_precision(true);
   module->mutable_config().set_debug_options(debug_options);
 
   // Setup operands.
