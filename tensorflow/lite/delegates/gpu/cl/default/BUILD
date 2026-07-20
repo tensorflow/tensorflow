@@ -22,5 +22,8 @@ cc_library(
 cc_library(
     name = "util",
     srcs = ["util.cc"],
-    deps = ["//tensorflow/lite/delegates/gpu/cl:opencl_wrapper"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/cl:opencl_wrapper",
+        "@com_google_absl//absl/status",
+    ],
 )

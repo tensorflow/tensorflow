@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/recordable_queue.h"
 
 #include <memory>
+#include <vector>
 
 namespace tflite {
 namespace gpu {
