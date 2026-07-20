@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Fuzzer for tensorflow::gif::Decode (underlying decoder for tf.image.decode_gif).
+// Fuzzer for tensorflow::gif::Decode (underlying decoder for
+// tf.image.decode_gif).
 //
 // This fuzzer exercises the GIF decoder directly, without going through the
 // TF op layer, to catch memory-safety issues (OOM, buffer overflow, etc.)
@@ -21,15 +22,15 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
-#include <string_view>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "fuzztest/fuzztest.h"
 #include "tensorflow/core/lib/gif/gif_io.h"
 
 namespace {
 
-void FuzzDecodeGif(std::string_view data) {
+void FuzzDecodeGif(absl::string_view data) {
   std::string error_string;
   // Allocate at most 256 MB of output to avoid OOM in the fuzzer itself.
   // The purpose of the bounds-check patch (PR #115498) is to enforce this
