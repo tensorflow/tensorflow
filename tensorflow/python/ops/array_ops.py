@@ -6309,7 +6309,8 @@ def fold(patches, output_size, sizes, strides, padding='VALID',
   This op acts as an inverse of `tf.image.extract_patches`.It takes a 
   tensor of patches and folds them back into an image. When patches overlap 
   (i.e., when strides are smaller than the patch sizes), the `reduction` 
-  argument determines whether the overlapping pixel values are accumulated(summed) or averaged.
+  argument determines whether the overlapping pixel values are 
+  accumulated(summed) or averaged.
 
   Note: For overlapping patches with floating-point data, the output may be
   nondeterministic due to the order of accumulation in `scatter_nd`. To ensure
@@ -6318,7 +6319,8 @@ def fold(patches, output_size, sizes, strides, padding='VALID',
     `tf.config.experimental.enable_op_determinism()`
   
   When op determinism is enabled, TensorFlow ops will be deterministic.
-  This means that if an op is run multiple times with the same inputs on the same hardware, 
+  This means that if an op is run multiple times with 
+  the same inputs on the same hardware, 
   it will have the exact same outputs each time.
   refer: https://www.tensorflow.org/api_docs/python/tf/config/experimental/enable_op_determinism
     
