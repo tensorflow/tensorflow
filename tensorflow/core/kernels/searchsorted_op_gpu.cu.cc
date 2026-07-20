@@ -32,11 +32,32 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace {
 
 template <typename T>
+__device__ bool IsNanBitwise(T val) {
+  if constexpr (std::is_same_v<T, float>) {
+    uint32_t u = *reinterpret_cast<const uint32_t*>(&val);
+    return (u & 0x7F800000u) == 0x7F800000u && (u & 0x007FFFFFu) != 0;
+  } else if constexpr (std::is_same_v<T, double>) {
+    uint64_t u = *reinterpret_cast<const uint64_t*>(&val);
+    return (u & 0x7FF0000000000000ULL) == 0x7FF0000000000000ULL &&
+           (u & 0x000FFFFFFFFFFFFFULL) != 0;
+  } else if constexpr (std::is_same_v<T, Eigen::half>) {
+    uint16_t u = *reinterpret_cast<const uint16_t*>(&val);
+    return (u & 0x7C00u) == 0x7C00u && (u & 0x03FFu) != 0;
+  } else if constexpr (std::is_same_v<T, Eigen::bfloat16>) {
+    uint16_t u = *reinterpret_cast<const uint16_t*>(&val);
+    return (u & 0x7F80u) == 0x7F80u && (u & 0x007Fu) != 0;
+  }
+  return false;
+}
+
+template <typename T>
 struct GpuNanAwareCompare {
-  __device__ bool operator()(const T& a, const T& b) const {
+  __device__ bool operator()(T a, T b) const {
     if constexpr (!Eigen::NumTraits<T>::IsInteger) {
-      if (Eigen::numext::isnan(a)) return false;
-      if (Eigen::numext::isnan(b)) return true;
+      bool is_nan_a = IsNanBitwise(a);
+      bool is_nan_b = IsNanBitwise(b);
+      if (is_nan_a) return false;
+      if (is_nan_b) return true;
     }
     return a < b;
   }
