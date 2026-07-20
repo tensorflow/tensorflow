@@ -4581,39 +4581,68 @@ XlaOp XlaBuilder::AllToAllTupleWithDeviceList(
 XlaOp XlaBuilder::CollectiveBroadcast(
     XlaOp operand, absl::Span<const ReplicaGroup> replica_groups,
     const std::optional<ChannelHandle>& channel_id) {
-  return CollectiveBroadcastImpl(operand, CollectiveDeviceList(replica_groups),
-                                 channel_id);
+  return CollectiveBroadcastImpl({operand},
+                                 CollectiveDeviceList(replica_groups),
+                                 channel_id, /*has_dynamic_root=*/false);
 }
 
 XlaOp XlaBuilder::CollectiveBroadcastWithDeviceList(
     XlaOp operand, const CollectiveDeviceListBase& replica_groups,
     const std::optional<ChannelHandle>& channel_id) {
-  return CollectiveBroadcastImpl(operand, replica_groups, channel_id);
+  return CollectiveBroadcastImpl({operand}, replica_groups, channel_id,
+                                 /*has_dynamic_root=*/false);
+}
+
+XlaOp XlaBuilder::CollectiveBroadcast(
+    absl::Span<const XlaOp> operands,
+    absl::Span<const ReplicaGroup> replica_groups,
+    const std::optional<ChannelHandle>& channel_id, bool has_dynamic_root) {
+  return CollectiveBroadcastImpl(operands, CollectiveDeviceList(replica_groups),
+                                 channel_id, has_dynamic_root);
+}
+
+XlaOp XlaBuilder::CollectiveBroadcastWithDeviceList(
+    absl::Span<const XlaOp> operands,
+    const CollectiveDeviceListBase& replica_groups,
+    const std::optional<ChannelHandle>& channel_id, bool has_dynamic_root) {
+  return CollectiveBroadcastImpl(operands, replica_groups, channel_id,
+                                 has_dynamic_root);
 }
 
 XlaOp XlaBuilder::CollectiveBroadcastImpl(
-    XlaOp operand, absl::Span<const ReplicaGroup> replica_groups,
-    const std::optional<ChannelHandle>& channel_id) {
-  return CollectiveBroadcastImpl(operand, CollectiveDeviceList(replica_groups),
-                                 channel_id);
+    absl::Span<const XlaOp> operands,
+    absl::Span<const ReplicaGroup> replica_groups,
+    const std::optional<ChannelHandle>& channel_id, bool has_dynamic_root) {
+  return CollectiveBroadcastImpl(operands, CollectiveDeviceList(replica_groups),
+                                 channel_id, has_dynamic_root);
 }
 
 XlaOp XlaBuilder::CollectiveBroadcastImpl(
-    XlaOp operand, const CollectiveDeviceListBase& replica_groups,
-    const std::optional<ChannelHandle>& channel_id) {
+    absl::Span<const XlaOp> operands,
+    const CollectiveDeviceListBase& replica_groups,
+    const std::optional<ChannelHandle>& channel_id, bool has_dynamic_root) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    std::vector<const Shape*> operand_shapes;
+    for (const auto& operand : operands) {
+      ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+      operand_shapes.push_back(operand_shape);
+    }
+    if (has_dynamic_root) {
+      TF_RET_CHECK(operand_shapes.size() > 1);
+    }
     HloInstructionProto instr;
-    ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferCollectiveBroadcastShape(
-                                      {operand_shape}));
+    Shape shape;
+    ASSIGN_OR_RETURN(
+        shape, ShapeInference::InferCollectiveBroadcastShape(
+                   operand_shapes, /*has_dynamic_root=*/has_dynamic_root));
     *instr.mutable_shape() = shape.ToProto();
     PopulateDeviceList(&instr, replica_groups);
     if (channel_id.has_value()) {
       instr.set_channel_id(channel_id->handle());
     }
-
+    instr.set_has_dynamic_root(has_dynamic_root);
     return AddInstruction(std::move(instr), HloOpcode::kCollectiveBroadcast,
-                          {operand});
+                          operands);
   });
 }
 
@@ -6380,6 +6409,15 @@ XlaOp CollectiveBroadcast(const XlaOp operand,
                                                 channel_id);
 }
 
+XlaOp CollectiveBroadcast(const absl::Span<const XlaOp> operands,
+                          absl::Span<const ReplicaGroup> replica_groups,
+                          const std::optional<ChannelHandle>& channel_id,
+                          bool has_dynamic_root) {
+  CHECK(!operands.empty());
+  return operands.at(0).builder()->CollectiveBroadcast(
+      operands, replica_groups, channel_id, has_dynamic_root);
+}
+
 XlaOp CollectivePermute(
     const XlaOp operand,
     const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
@@ -7070,6 +7108,14 @@ XlaOp CollectiveBroadcastWithDeviceList(
     const std::optional<ChannelHandle>& channel_id) {
   return operand.builder()->CollectiveBroadcastWithDeviceList(
       operand, replica_groups, channel_id);
+}
+
+XlaOp CollectiveBroadcastWithDeviceList(
+    absl::Span<const XlaOp> operands,
+    const CollectiveDeviceListBase& replica_groups,
+    const std::optional<ChannelHandle>& channel_id, bool has_dynamic_root) {
+  return operands.at(0).builder()->CollectiveBroadcastWithDeviceList(
+      operands, replica_groups, channel_id, has_dynamic_root);
 }
 
 }  // namespace xla

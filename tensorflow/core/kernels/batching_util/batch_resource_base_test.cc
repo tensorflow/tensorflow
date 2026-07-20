@@ -1352,6 +1352,41 @@ TEST(RecordBatchDelayMetricsTest,
                                 absl::ToDoubleMilliseconds(queueing_delay))));
 }
 
+TEST(RecordBatchDelayMetricsTest, StreamzBatchAndQueueingDelayUsV2) {
+  auto batch_delay_v2_reader = std::make_unique<CellReader<Histogram>>(
+      "/tensorflow/serving/batching/batch_delay_us_v2");
+  auto queueing_delay_v2_reader = std::make_unique<CellReader<Histogram>>(
+      "/tensorflow/serving/batching/queueing_delay_us_v2");
+
+  const absl::Duration batch_timeout = absl::Seconds(1);
+  const absl::Duration queueing_delay = absl::Seconds(5);
+  const absl::Time task_start_time = absl::Now();
+  const absl::Time batch_schedule_time =
+      task_start_time + batch_timeout + queueing_delay;
+  const int64_t processed_size = 20;
+
+  BatchResourceBase::BatchT batch;
+  RequestCost cost;
+  batch.AddTask(MakeBatchTask(/*task_size=*/1, &cost, task_start_time));
+  batch.Close();
+
+  BatchResourceBase::RecordBatchDelayMetrics(
+      batch, "model_name", "op_name", processed_size, batch_schedule_time,
+      batch_timeout);
+
+  const std::string criticality_str = absl::StrCat(batch.task(0).criticality());
+  EXPECT_GT(batch_delay_v2_reader
+                ->Delta("model_name", "op_name", std::to_string(processed_size),
+                        criticality_str)
+                .num(),
+            0);
+  EXPECT_GT(queueing_delay_v2_reader
+                ->Delta("model_name", "op_name", std::to_string(processed_size),
+                        criticality_str)
+                .num(),
+            0);
+}
+
 class BatchResourceBaseTest : public ::testing::Test {
  protected:
   // Like BatchResourceBase but overrides abstract methods, one of which

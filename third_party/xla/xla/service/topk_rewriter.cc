@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
@@ -513,6 +514,8 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
     bool is_stable = true;
     if (auto* topk_inst = DynCast<HloTopKInstruction>(call)) {
       is_stable = topk_inst->is_stable();
+    } else if (auto* custom_call = DynCast<HloCustomCallInstruction>(call)) {
+      is_stable = hlo_instruction_utils::IsTopKStable(custom_call);
     }
     std::vector<int64_t> zeroes(iota_shape.dimensions().size(), 0);
     std::vector<int64_t> ones(iota_shape.dimensions().size(), 1);

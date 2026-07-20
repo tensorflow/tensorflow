@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -57,13 +58,13 @@ TEST_F(GpuMemorySpaceAssignmentTest, TestDefaultColorAssignment) {
   HloModuleConfig config = GetModuleConfigForTest();
   BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
   AliasInfo alias_info;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                          HloAliasAnalysis::Run(module.get(), &alias_info));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
   DependencyHloOrdering ordering(module.get());
-  TF_EXPECT_OK(colorer(alias_analysis.get(), ordering));
+  EXPECT_OK(colorer(alias_analysis.get(), ordering));
 
   EXPECT_EQ(alias_analysis->buffers().size(), 1);
   EXPECT_EQ(alias_analysis->buffers()[0].values().size(), 1);
@@ -108,18 +109,21 @@ TEST_P(GpuCollectiveMemorySpaceAssignmentTest,
   HloModuleConfig config = GetModuleConfigForTest();
   DebugOptions debug_options = config.debug_options();
   debug_options.set_xla_gpu_enable_nccl_user_buffers(UseNcclUserBuffers());
-  debug_options.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(
-      UseNcclSymmetricBuffers());
+  if (UseNcclSymmetricBuffers()) {
+    auto* filter =
+        debug_options.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+    filter->set_collective(DebugOptions::ALLCOLLECTIVES);
+  }
   config.set_debug_options(debug_options);
   BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
   AliasInfo alias_info;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                          HloAliasAnalysis::Run(module.get(), &alias_info));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
   DependencyHloOrdering ordering(module.get());
-  TF_EXPECT_OK(colorer(alias_analysis.get(), ordering));
+  EXPECT_OK(colorer(alias_analysis.get(), ordering));
 
   const int kExpectedBuffersCount = 5;
   const int kExpectedDefaultBuffersCount = 3;
@@ -163,10 +167,269 @@ INSTANTIATE_TEST_SUITE_P(
                               : "without_nccl_symmetric_buffers");
     });
 
+TEST_F(GpuMemorySpaceAssignmentTest,
+       TestCollectiveMemorySpaceAssignmentFilters) {
+  absl::string_view kHloModule = R"(
+    HloModule m, replica_count=2
 
+    add_f32 {
+      Arg_0 = f32[] parameter(0)
+      Arg_1 = f32[] parameter(1)
+      ROOT add = f32[] add(Arg_0, Arg_1)
+    }
 
+    add_s32 {
+      Arg_0 = s32[] parameter(0)
+      Arg_1 = s32[] parameter(1)
+      ROOT add = s32[] add(Arg_0, Arg_1)
+    }
 
+    ENTRY main {
+      p_f32_1024 = f32[1024]{0} parameter(0)
+      p_s32_1024 = s32[1024]{0} parameter(1)
+      p_f32_2048 = f32[2048]{0} parameter(2)
 
+      ar_f32 = f32[1024]{0} all-reduce(p_f32_1024), replica_groups={}, to_apply=add_f32
+      ar_s32 = s32[1024]{0} all-reduce(p_s32_1024), replica_groups={}, to_apply=add_s32
+      ar_f32_large = f32[2048]{0} all-reduce(p_f32_2048), replica_groups={}, to_apply=add_f32
+
+      ROOT tuple = (f32[1024]{0}, s32[1024]{0}, f32[2048]{0}) tuple(ar_f32, ar_s32, ar_f32_large)
+    }
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  DebugOptions debug_options = config.debug_options();
+
+  // Enable symmetric buffers only for AllReduce F32 up to 4096 bytes.
+  auto* filter =
+      debug_options.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+  filter->set_collective(DebugOptions::ALLREDUCE);
+  filter->set_max_size_bytes(4096);
+  filter->set_op_type(xla::F32);
+
+  config.set_debug_options(debug_options);
+  BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
+  AliasInfo alias_info;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
+  DependencyHloOrdering ordering(module.get());
+  EXPECT_OK(colorer(alias_analysis.get(), ordering));
+
+  auto get_color = [&](absl::string_view name) {
+    const HloInstruction* instr =
+        module->entry_computation()->GetInstructionWithName(name);
+    const HloBuffer& buffer = alias_analysis->GetUniqueBufferAt(instr);
+    EXPECT_EQ(buffer.values().size(), 1);
+    EXPECT_TRUE(buffer.values()[0]->has_color());
+    return buffer.values()[0]->color();
+  };
+
+  // ar_f32 (F32, 4096 bytes) -> should be colored as Collective
+  EXPECT_EQ(get_color("ar_f32"), (int)MemorySpaceColor::kCollective);
+
+  // ar_s32 (S32, 4096 bytes) -> should be colored as Default (wrong type)
+  EXPECT_EQ(get_color("ar_s32"), (int)MemorySpaceColor::kDefault);
+
+  // ar_f32_large (F32, 8192 bytes) -> should be colored as Default (too large)
+  EXPECT_EQ(get_color("ar_f32_large"), (int)MemorySpaceColor::kDefault);
+}
+
+TEST_F(GpuMemorySpaceAssignmentTest,
+       TestCollectiveMemorySpaceAssignmentMultipleCollectives) {
+  absl::string_view kHloModule = R"(
+    HloModule m, replica_count=2
+
+    add_f32 {
+      Arg_0 = f32[] parameter(0)
+      Arg_1 = f32[] parameter(1)
+      ROOT add = f32[] add(Arg_0, Arg_1)
+    }
+
+    ENTRY main {
+      p0 = f32[1024]{0} parameter(0)
+      p_ag = f32[512]{0} parameter(1)
+      p1 = f32[2048]{0} parameter(2)
+
+      ar = f32[1024]{0} all-reduce(p0), replica_groups={}, to_apply=add_f32
+      ag = f32[1024]{0} all-gather(p_ag), replica_groups={{0,1}}, dimensions={0}, use_global_device_ids=true, channel_id=1
+      ar_large = f32[2048]{0} all-reduce(p1), replica_groups={}, to_apply=add_f32
+
+      ROOT tuple = (f32[1024]{0}, f32[1024]{0}, f32[2048]{0}) tuple(ar, ag, ar_large)
+    }
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  DebugOptions debug_options = config.debug_options();
+
+  // Enable symmetric buffers for ALL collectives F32 up to 4096 bytes.
+  auto* filter =
+      debug_options.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+  filter->set_collective(DebugOptions::ALLCOLLECTIVES);
+  filter->set_max_size_bytes(4096);
+  filter->set_op_type(xla::F32);
+
+  config.set_debug_options(debug_options);
+  BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
+  AliasInfo alias_info;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
+  DependencyHloOrdering ordering(module.get());
+  EXPECT_OK(colorer(alias_analysis.get(), ordering));
+
+  auto get_color = [&](absl::string_view name) {
+    const HloInstruction* instr =
+        module->entry_computation()->GetInstructionWithName(name);
+    const HloBuffer& buffer = alias_analysis->GetUniqueBufferAt(instr);
+    EXPECT_EQ(buffer.values().size(), 1);
+    EXPECT_TRUE(buffer.values()[0]->has_color());
+    return buffer.values()[0]->color();
+  };
+
+  // ar (F32, 4096 bytes) -> should be colored as Collective
+  EXPECT_EQ(get_color("ar"), (int)MemorySpaceColor::kCollective);
+
+  // ag (F32, 4096 bytes output) -> should be colored as Collective
+  EXPECT_EQ(get_color("ag"), (int)MemorySpaceColor::kCollective);
+
+  // ar_large (F32, 8192 bytes) -> should be colored as Default (too large)
+  EXPECT_EQ(get_color("ar_large"), (int)MemorySpaceColor::kDefault);
+}
+
+TEST_F(GpuMemorySpaceAssignmentTest,
+       TestCollectiveMemorySpaceAssignmentSeveralFilters) {
+  absl::string_view kHloModule = R"(
+    HloModule m, replica_count=2
+
+    add_f32 {
+      Arg_0 = f32[] parameter(0)
+      Arg_1 = f32[] parameter(1)
+      ROOT add = f32[] add(Arg_0, Arg_1)
+    }
+
+    ENTRY main {
+      p0 = f32[1024]{0} parameter(0)
+      p1 = s32[1024]{0} parameter(1)
+
+      ar = f32[1024]{0} all-reduce(p0), replica_groups={}, to_apply=add_f32
+      ag = s32[2048]{0} all-gather(p1), replica_groups={{0,1}}, dimensions={0}, use_global_device_ids=true, channel_id=1
+
+      ROOT tuple = (f32[1024]{0}, s32[2048]{0}) tuple(ar, ag)
+    }
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  DebugOptions debug_options = config.debug_options();
+
+  // Filter 1: AllReduce F32
+  {
+    auto* filter =
+        debug_options.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+    filter->set_collective(DebugOptions::ALLREDUCE);
+    filter->set_op_type(xla::F32);
+  }
+  // Filter 2: AllGather S32
+  {
+    auto* filter =
+        debug_options.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+    filter->set_collective(DebugOptions::ALLGATHER);
+    filter->set_op_type(xla::S32);
+  }
+
+  config.set_debug_options(debug_options);
+  BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
+  AliasInfo alias_info;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
+  DependencyHloOrdering ordering(module.get());
+  EXPECT_OK(colorer(alias_analysis.get(), ordering));
+
+  auto get_color = [&](absl::string_view name) {
+    const HloInstruction* instr =
+        module->entry_computation()->GetInstructionWithName(name);
+    const HloBuffer& buffer = alias_analysis->GetUniqueBufferAt(instr);
+    EXPECT_EQ(buffer.values().size(), 1);
+    EXPECT_TRUE(buffer.values()[0]->has_color());
+    return buffer.values()[0]->color();
+  };
+
+  EXPECT_EQ(get_color("ar"), (int)MemorySpaceColor::kCollective);
+  EXPECT_EQ(get_color("ag"), (int)MemorySpaceColor::kCollective);
+}
+
+TEST_F(GpuMemorySpaceAssignmentTest,
+       TestCollectiveMemorySpaceAssignmentOverlappingFilters) {
+  absl::string_view kHloModule = R"(
+    HloModule m
+
+    add_f32 {
+      Arg_0 = f32[] parameter(0)
+      Arg_1 = f32[] parameter(1)
+      ROOT add = f32[] add(Arg_0, Arg_1)
+    }
+
+    ENTRY main {
+      p0 = f32[1024]{0} parameter(0)
+      p1 = f32[2048]{0} parameter(1)
+
+      ar_small = f32[1024]{0} all-reduce(p0), replica_groups={}, to_apply=add_f32
+      ar_large = f32[2048]{0} all-reduce(p1), replica_groups={}, to_apply=add_f32
+
+      ROOT tuple = (f32[1024]{0}, f32[2048]{0}) tuple(ar_small, ar_large)
+    }
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  DebugOptions debug_options = config.debug_options();
+
+  // Filter 1: AllReduce F32 up to 4096 bytes
+  {
+    auto* filter =
+        debug_options.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+    filter->set_collective(DebugOptions::ALLREDUCE);
+    filter->set_max_size_bytes(4096);
+    filter->set_op_type(xla::F32);
+  }
+  // Filter 2: AllReduce F32 up to 8192 bytes
+  {
+    auto* filter =
+        debug_options.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+    filter->set_collective(DebugOptions::ALLREDUCE);
+    filter->set_max_size_bytes(8192);
+    filter->set_op_type(xla::F32);
+  }
+
+  config.set_debug_options(debug_options);
+  BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
+  AliasInfo alias_info;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
+  DependencyHloOrdering ordering(module.get());
+  EXPECT_OK(colorer(alias_analysis.get(), ordering));
+
+  auto get_color = [&](absl::string_view name) {
+    const HloInstruction* instr =
+        module->entry_computation()->GetInstructionWithName(name);
+    const HloBuffer& buffer = alias_analysis->GetUniqueBufferAt(instr);
+    EXPECT_EQ(buffer.values().size(), 1);
+    EXPECT_TRUE(buffer.values()[0]->has_color());
+    return buffer.values()[0]->color();
+  };
+
+  EXPECT_EQ(get_color("ar_small"), (int)MemorySpaceColor::kCollective);
+  EXPECT_EQ(get_color("ar_large"), (int)MemorySpaceColor::kCollective);
+}
 
 TEST_F(GpuMemorySpaceAssignmentTest, TestMultimemMosaicMemorySpaceAssignment) {
   constexpr absl::string_view kHloModule = R"(
@@ -180,13 +443,13 @@ TEST_F(GpuMemorySpaceAssignmentTest, TestMultimemMosaicMemorySpaceAssignment) {
   HloModuleConfig config = GetModuleConfigForTest();
   BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
   AliasInfo alias_info;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                          HloAliasAnalysis::Run(module.get(), &alias_info));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
   const DependencyHloOrdering ordering(module.get());
-  TF_EXPECT_OK(colorer(alias_analysis.get(), ordering));
+  EXPECT_OK(colorer(alias_analysis.get(), ordering));
 
   const int kExpectedBuffersCount = 3;
   ASSERT_THAT(alias_analysis->buffers(), SizeIs(kExpectedBuffersCount));
@@ -204,14 +467,14 @@ TEST_F(GpuMemorySpaceAssignmentTest, TestMultimemMosaicMemorySpaceAssignment) {
 }
 
 TEST(ParseIndexMemorySpacePairsTest, SinglePair) {
-  TF_ASSERT_OK_AND_ASSIGN(auto pairs, ParseIndexMemorySpacePairs("{0:1}"));
+  ASSERT_OK_AND_ASSIGN(auto pairs, ParseIndexMemorySpacePairs("{0:1}"));
   ASSERT_EQ(pairs.size(), 1);
   EXPECT_EQ(pairs[0].first, 0);
   EXPECT_EQ(pairs[0].second, MemorySpaceColor::kCollective);
 }
 
 TEST(ParseIndexMemorySpacePairsTest, MultiplePairs) {
-  TF_ASSERT_OK_AND_ASSIGN(auto pairs, ParseIndexMemorySpacePairs("{0:1,2:2}"));
+  ASSERT_OK_AND_ASSIGN(auto pairs, ParseIndexMemorySpacePairs("{0:1,2:2}"));
   ASSERT_EQ(pairs.size(), 2);
   EXPECT_EQ(pairs[0].first, 0);
   EXPECT_EQ(pairs[0].second, MemorySpaceColor::kCollective);
@@ -220,13 +483,13 @@ TEST(ParseIndexMemorySpacePairsTest, MultiplePairs) {
 }
 
 TEST(ParseIndexMemorySpacePairsTest, EmptyBraces) {
-  TF_ASSERT_OK_AND_ASSIGN(auto pairs, ParseIndexMemorySpacePairs("{}"));
+  ASSERT_OK_AND_ASSIGN(auto pairs, ParseIndexMemorySpacePairs("{}"));
   EXPECT_TRUE(pairs.empty());
 }
 
 TEST(ParseIndexMemorySpacePairsTest, WhitespaceHandling) {
-  TF_ASSERT_OK_AND_ASSIGN(auto pairs,
-                          ParseIndexMemorySpacePairs("{ 0 : 1 , 2 : 0 }"));
+  ASSERT_OK_AND_ASSIGN(auto pairs,
+                       ParseIndexMemorySpacePairs("{ 0 : 1 , 2 : 0 }"));
   ASSERT_EQ(pairs.size(), 2);
   EXPECT_EQ(pairs[0].first, 0);
   EXPECT_EQ(pairs[0].second, MemorySpaceColor::kCollective);
@@ -279,13 +542,13 @@ TEST_F(GpuMemorySpaceAssignmentTest, CustomCallOperandMemorySpace) {
   HloModuleConfig config = GetModuleConfigForTest();
   BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
   AliasInfo alias_info;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                          HloAliasAnalysis::Run(module.get(), &alias_info));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
   DependencyHloOrdering ordering(module.get());
-  TF_EXPECT_OK(colorer(alias_analysis.get(), ordering));
+  EXPECT_OK(colorer(alias_analysis.get(), ordering));
 
   // Operand 0 (p0) should be colored with memory space 1.
   EXPECT_EQ(FindColorByName(*alias_analysis, "p0"), 1);
@@ -309,13 +572,13 @@ TEST_F(GpuMemorySpaceAssignmentTest, CustomCallResultMemorySpace) {
   HloModuleConfig config = GetModuleConfigForTest();
   BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
   AliasInfo alias_info;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                          HloAliasAnalysis::Run(module.get(), &alias_info));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
   DependencyHloOrdering ordering(module.get());
-  TF_EXPECT_OK(colorer(alias_analysis.get(), ordering));
+  EXPECT_OK(colorer(alias_analysis.get(), ordering));
 
   // The custom call result should be colored with memory space 1.
   EXPECT_EQ(FindColorByName(*alias_analysis, "custom-call"), 1);
@@ -337,13 +600,13 @@ TEST_F(GpuMemorySpaceAssignmentTest, CustomCallTupleResultMemorySpace) {
   HloModuleConfig config = GetModuleConfigForTest();
   BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
   AliasInfo alias_info;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                          HloAliasAnalysis::Run(module.get(), &alias_info));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
   DependencyHloOrdering ordering(module.get());
-  TF_EXPECT_OK(colorer(alias_analysis.get(), ordering));
+  EXPECT_OK(colorer(alias_analysis.get(), ordering));
 
   // Find values defined by the custom call at tuple indices 0 and 1.
   for (const auto& buffer : alias_analysis->buffers()) {
@@ -384,13 +647,13 @@ TEST_P(GpuMosaicCollectiveMemorySpaceAssignmentTest,
 
   BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kMosaicModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kMosaicModule, config));
   AliasInfo alias_info;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                          HloAliasAnalysis::Run(module.get(), &alias_info));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
   DependencyHloOrdering ordering(module.get());
-  TF_EXPECT_OK(colorer(alias_analysis.get(), ordering));
+  EXPECT_OK(colorer(alias_analysis.get(), ordering));
 
   EXPECT_EQ(alias_analysis->buffers().size(), 3);
 

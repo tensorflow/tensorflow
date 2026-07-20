@@ -2098,7 +2098,6 @@ ENTRY entry {
                    collective_pipeliner_utils::PipeliningDirection::kBackward,
                    /*should_process=*/IsAllGather)
           .value());
-  XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
   // CHECK: %while_body
   // CHECK: %[[cp:.+]] = {{.+}} collective-permute({{.+}})
@@ -2106,8 +2105,7 @@ ENTRY entry {
   // CHECK: ROOT {{.+}} = {{.+}} tuple({{.*}}%[[dus]], {{.*}})
   // CHECK: ENTRY %entry
   // CHECK: %[[while:.+]] = {{.+}} while({{.*}})
-  // CHECK: %[[gte:.+]] = {{.+}} get-tuple-element({{.*}}%[[while]]), index=1
-  // CHECK: %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[gte]])
+  // CHECK: %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[while]]#1)
   // CHECK: %[[dus:.+]] = {{.+}} dynamic-update-slice({{.*}}%[[cp2]], {{.*}})
   // CHECK: %[[tuple:.+]] = {{.+}} tuple({{.*}}%[[dus]], {{.*}})
   // CHECK: ROOT {{.+}} = {{.+}} get-tuple-element({{.*}}%[[tuple]]), index=1
@@ -2176,7 +2174,6 @@ ENTRY entry {
                    collective_pipeliner_utils::PipeliningDirection::kBackward,
                    /*should_process=*/IsAllGather)
           .value());
-  XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
   // CHECK: %while_body
   // CHECK: %[[cp:.+]] = {{.+}} collective-permute({{.+}})
@@ -2184,8 +2181,7 @@ ENTRY entry {
   // CHECK: ROOT {{.+}} = {{.+}} tuple({{.*}}%[[dus]], {{.*}})
   // CHECK: ENTRY %entry
   // CHECK: %[[while:.+]] = {{.+}} while({{.+}})
-  // CHECK: %[[gte:.+]] = {{.+}} get-tuple-element({{.*}}%[[while]]), index=1
-  // CHECK: %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[gte]])
+  // CHECK: %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[while]]#1)
   // CHECK: %[[dus:.+]] = {{.+}} dynamic-update-slice({{.*}}%[[cp2]], {{.*}})
   // CHECK: %[[tuple:.+]] = {{.+}} tuple({{.*}}%[[dus]], {{.*}})
   // CHECK: ROOT {{.+}} = {{.+}} get-tuple-element({{.*}}%[[tuple]]), index=1

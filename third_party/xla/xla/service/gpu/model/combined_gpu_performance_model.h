@@ -51,7 +51,7 @@ class CombinedGpuPerformanceModel : public GpuPerformanceModelBase {
           ABSL_ATTRIBUTE_LIFETIME_BOUND,
       mlir::MLIRContext& mlir_context ABSL_ATTRIBUTE_LIFETIME_BOUND,
       HloCostAnalysis::ShapeSizeFunction shape_size,
-      bool use_experimental_tiling);
+      bool use_experimental_tiling, bool enable_same_shape_multi_output_fusion);
 
   // Returns runtime data analysis results of a single instruction.
   //

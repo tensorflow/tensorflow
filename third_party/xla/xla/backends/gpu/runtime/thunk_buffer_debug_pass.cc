@@ -15,14 +15,13 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_pass.h"
 
-#include <cstddef>
+#include <memory>
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -44,6 +43,20 @@ limitations under the License.
 
 namespace xla::gpu {
 
+absl::StatusOr<std::unique_ptr<ThunkBufferDebugPass>>
+ThunkBufferDebugPass::Create(Mode mode,
+                             std::vector<ShapedSlice> module_output_slices) {
+  for (const ShapedSlice& slice : module_output_slices) {
+    if (slice.shape.IsTuple()) {
+      return absl::InvalidArgumentError(
+          "Module output slices must not contain tuple shapes");
+    }
+  }
+
+  return absl::WrapUnique(
+      new ThunkBufferDebugPass(mode, std::move(module_output_slices)));
+}
+
 absl::StatusOr<bool> ThunkBufferDebugPass::Run(
     ThunkSequence* thunk_sequence, const DebugOptions& debug_options,
     const HloModule* absl_nullable hlo_module,
@@ -61,63 +74,43 @@ absl::StatusOr<bool> ThunkBufferDebugPass::Run(
   switch (mode_) {
     case Mode::kChecksum:
       RETURN_IF_ERROR(RunChecksumPassInternal(thunk_sequence, debug_options,
-                                              hlo_module, buffer_assignment_,
+                                              hlo_module, module_output_slices_,
                                               allocator));
       break;
     case Mode::kFloatChecker:
-      RETURN_IF_ERROR(RunFloatCheckPassInternal(thunk_sequence, debug_options,
-                                                hlo_module, buffer_assignment_,
-                                                allocator));
+      RETURN_IF_ERROR(
+          RunFloatCheckPassInternal(thunk_sequence, debug_options, hlo_module,
+                                    module_output_slices_, allocator));
       break;
     case Mode::kBufferSaver:
-      RETURN_IF_ERROR(RunDebugSaverInserter(thunk_sequence, debug_options,
-                                            *hlo_module, buffer_assignment_));
+      RETURN_IF_ERROR(RunDebugSaverInserter(
+          thunk_sequence, debug_options, *hlo_module, module_output_slices_));
       break;
   }
 
   return true;
 }
 
-absl::StatusOr<absl::flat_hash_map<size_t, ShapedSlice>> GetOutputShapedBuffers(
+absl::StatusOr<std::vector<ShapedSlice>> GetOutputShapedBuffers(
     const HloModule* hlo_module, const BufferAssignment* buffer_assignment) {
-  absl::flat_hash_map<size_t, ShapedSlice> buffers_to_check;
+  std::vector<ShapedSlice> buffers_to_check;
   if (hlo_module == nullptr || buffer_assignment == nullptr) {
     return buffers_to_check;
   }
   const HloInstruction* root =
       hlo_module->entry_computation()->root_instruction();
-  size_t buffer_idx = 0;
   RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       root->shape(),
       [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
         if (subshape.IsArray()) {
-          size_t current_idx = buffer_idx++;
           ASSIGN_OR_RETURN(auto slice,
                            buffer_assignment->GetUniqueSlice(root, index));
-          buffers_to_check.emplace(current_idx, ShapedSlice{slice, subshape});
+          buffers_to_check.push_back(ShapedSlice{slice, subshape});
         }
         return absl::OkStatus();
       }));
   // It is already sorted by construction because ShapeUtil::ForEachSubshape
-  // visits in a deterministic order and we use an incrementing counter.
-  return buffers_to_check;
-}
-
-absl::StatusOr<absl::flat_hash_map<size_t, BufferAllocation::Slice>>
-GetOutputBuffers(const HloModule* hlo_module,
-                 const BufferAssignment* buffer_assignment) {
-  absl::flat_hash_map<size_t, BufferAllocation::Slice> buffers_to_check;
-  ASSIGN_OR_RETURN(auto shaped_buffers,
-                   GetOutputShapedBuffers(hlo_module, buffer_assignment));
-  buffers_to_check.reserve(shaped_buffers.size());
-  std::vector<std::pair<size_t, ShapedSlice>> sorted_shaped_buffers;
-  sorted_shaped_buffers.reserve(shaped_buffers.size());
-  sorted_shaped_buffers.assign(shaped_buffers.begin(), shaped_buffers.end());
-  absl::c_sort(sorted_shaped_buffers,
-               [](const auto& a, const auto& b) { return a.first < b.first; });
-  for (const auto& [idx, shaped_slice] : sorted_shaped_buffers) {
-    buffers_to_check.emplace(idx, shaped_slice.slice);
-  }
+  // visits in a deterministic order.
   return buffers_to_check;
 }
 

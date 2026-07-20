@@ -2784,7 +2784,30 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
 
 /* static */ absl::StatusOr<Shape>
 ShapeInference::InferCollectiveBroadcastShape(
-    absl::Span<const Shape* const> operand_shapes) {
+    absl::Span<const Shape* const> operand_shapes, bool has_dynamic_root) {
+  if (has_dynamic_root) {
+    TF_RET_CHECK(operand_shapes.size() > 1);
+    const Shape& dynamic_root = *operand_shapes.back();
+    RETURN_IF_ERROR(
+        ExpectArray(dynamic_root,
+                    "last operand of collective-broadcast with dynamic root"));
+
+    TF_RET_CHECK(dynamic_root.IsArray() && dynamic_root.element_type() == S32 &&
+                 dynamic_root.dimensions().size() == 1 &&
+                 ShapeUtil::ElementsIn(dynamic_root) ==
+                     (operand_shapes.size() - 1))
+        << "The last operand of collective-broadcast with dynamic root must be "
+           "a 1-D array of S32 with the same number of elements as the number "
+           "of "
+           "non-root operands, but got "
+        << ShapeUtil::HumanString(dynamic_root);
+    absl::Span<const Shape* const> data_operand_shapes =
+        operand_shapes.first(operand_shapes.size() - 1);
+    if (data_operand_shapes.size() == 1) {
+      return *data_operand_shapes[0];
+    }
+    return ShapeUtil::MakeTupleShapeWithPtrs(data_operand_shapes);
+  }
   RETURN_IF_ERROR(
       ExpectArray(*(operand_shapes[0]), "operand of collective-broadcast"));
   return *(operand_shapes[0]);

@@ -427,6 +427,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/core/platform:errors",
         "//tensorflow/dtensor/cc:dstatus",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:optional",
         "@llvm-project//llvm:Support",

@@ -125,8 +125,8 @@ typedef PJRT_Error* (*PJRT_Clear_Xla_Transform_Fn)(
 
 typedef struct PJRT_Xla_Transform_Extension {
   PJRT_Extension_Base base;
-  PJRT_Register_Xla_Transform_Fn register_xla_transform;
-  PJRT_Clear_Xla_Transform_Fn clear_xla_transform;
+  PJRT_NO_DISCARD PJRT_Register_Xla_Transform_Fn register_xla_transform;
+  PJRT_NO_DISCARD PJRT_Clear_Xla_Transform_Fn clear_xla_transform;
 } PJRT_Xla_Transform_Extension;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Xla_Transform_Extension, clear_xla_transform);
 

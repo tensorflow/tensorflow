@@ -33,30 +33,59 @@ PythonAPIInfo::InferredAttributes Convert(
     const PythonTensorConverter& tensor_converter, py::handle arg_list) {
   PythonAPIInfo::InferredAttributes inferred_attrs;
 
-  if (!PyList_Check(arg_list.ptr())) {
-    PyErr_SetString(PyExc_TypeError, "Expected a list");
+  Py_ssize_t size = PySequence_Size(arg_list.ptr());
+  if (size < 0) {
     throw py::error_already_set();
   }
 
-  PyObject* args_fast = PySequence_Fast(arg_list.ptr(), "Expected a list");
-  if (!args_fast) {
-    throw py::error_already_set();
+  std::vector<PyObject*> args_raw_vec(size);
+  for (Py_ssize_t i = 0; i < size; ++i) {
+    PyObject* item = PySequence_GetItem(arg_list.ptr(), i);
+    if (!item) {
+      for (Py_ssize_t j = 0; j < i; ++j) {
+        Py_XDECREF(args_raw_vec[j]);
+      }
+      throw py::error_already_set();
+    }
+    args_raw_vec[i] = item;
   }
 
-  absl::Span<PyObject*> args_raw(PySequence_Fast_ITEMS(args_fast),
-                                 PySequence_Fast_GET_SIZE(args_fast));
+  absl::Span<PyObject*> args_raw(args_raw_vec.data(), args_raw_vec.size());
+
+  int max_index = GetPythonAPIMaxIndex(api_info);
+  if (static_cast<int>(args_raw.size()) <= max_index) {
+    for (PyObject* item : args_raw_vec) {
+      Py_XDECREF(item);
+    }
+    PyErr_SetString(PyExc_ValueError,
+                    "Parameters span size is smaller than expected");
+    throw py::error_already_set();
+  }
 
   if (!CopyPythonAPITensorLists(api_info, args_raw)) {
-    Py_DECREF(args_fast);
+    for (PyObject* item : args_raw_vec) {
+      Py_XDECREF(item);
+    }
     throw py::error_already_set();
   }
   if (!ConvertPythonAPIParameters(api_info, tensor_converter, args_raw,
                                   &inferred_attrs)) {
-    Py_DECREF(args_fast);
+    for (PyObject* item : args_raw_vec) {
+      Py_XDECREF(item);
+    }
     throw py::error_already_set();
   }
 
-  Py_DECREF(args_fast);
+  if (PyList_Check(arg_list.ptr())) {
+    for (Py_ssize_t i = 0; i < size; ++i) {
+      PyObject* new_item = args_raw_vec[i];
+      PyList_SET_ITEM(arg_list.ptr(), i, new_item);
+    }
+  } else {
+    for (Py_ssize_t i = 0; i < size; ++i) {
+      Py_DECREF(args_raw_vec[i]);
+    }
+  }
 
   return inferred_attrs;
 }

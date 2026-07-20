@@ -392,7 +392,7 @@ TEST_F(PjrtCApiGpuTest, CreateAndDestroyExecuteContext) {
   destroy_args.extension_start = nullptr;
   destroy_args.context = create_arg.context;
 
-  api_->PJRT_ExecuteContext_Destroy(&destroy_args);
+  EXPECT_EQ(api_->PJRT_ExecuteContext_Destroy(&destroy_args), nullptr);
 }
 
 TEST_F(PjrtCApiGpuTest, DmaMapAndUnmap) {

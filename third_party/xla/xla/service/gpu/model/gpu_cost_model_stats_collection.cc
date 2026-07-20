@@ -120,10 +120,17 @@ absl::StatusOr<EstimateRunTimeData> MaybeGetIndexingCostModelForFusion(
     return absl::FailedPreconditionError("Not a custom fusion.");
   }
 
-  ASSIGN_OR_RETURN(EstimateRunTimeData runtime,
-                   perf_model.EstimateRunTimeForTriton(&instruction));
+  ASSIGN_OR_RETURN(GpuBackendConfig config,
+                   fusion->backend_config<GpuBackendConfig>());
 
-  return runtime;
+  if (config.fusion_backend_config().has_block_level_fusion_config()) {
+    const BlockLevelParameters block_params =
+        BlockLevelParameters::FromBlockLevelFusionConfig(
+            config.fusion_backend_config().block_level_fusion_config());
+    return perf_model.EstimateRunTimeForTriton(&instruction, &block_params);
+  }
+
+  return perf_model.EstimateRunTimeForTriton(&instruction);
 }
 
 absl::Status RecordIndexingPerformanceModelEstimateIfApplicable(

@@ -34,11 +34,11 @@ cc_library(
     hdrs = ["gpu_abi_version_extension.h"],
     deps = [
         ":abi_version_extension",
-        "//xla/pjrt:stream_executor_pjrt_abi_version",
         "//xla/pjrt/c:pjrt_c_api_abi_version_extension_hdrs",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/gpu:se_gpu_pjrt_runtime_abi_version",
         "//xla/pjrt/proto:pjrt_abi_version_proto_cc",
+        "//xla/pjrt/se:stream_executor_pjrt_abi_version",
         "//xla/stream_executor/abi:runtime_abi_version_manager",
     ],
 )

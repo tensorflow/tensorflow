@@ -152,7 +152,26 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
       return false;
     case HloOpcode::kLog:
       if (LowPrecisionType() == BF16) {
-        return compute_capability_.IsCuda();
+        if (compute_capability_.IsCuda()) {
+          return true;
+        }
+        // gfx1250 has a native bf16 logarithm instruction, so there is no
+        // need to upcast bf16 log to f32.
+        if (auto* rocm_cc = compute_capability_.rocm_compute_capability()) {
+          return rocm_cc->has_bf16_transcendental_support();
+        }
+      }
+      return false;
+    case HloOpcode::kRsqrt:
+    case HloOpcode::kSqrt:
+    case HloOpcode::kTanh:
+      // gfx1250 has native bf16 transcendental instructions (v_sqrt_bf16,
+      // v_rsq_bf16, v_tanh_bf16), so there is no need to upcast these bf16 ops
+      // to f32.
+      if (LowPrecisionType() == BF16) {
+        if (auto* rocm_cc = compute_capability_.rocm_compute_capability()) {
+          return rocm_cc->has_bf16_transcendental_support();
+        }
       }
       return false;
     case HloOpcode::kAbs:

@@ -156,13 +156,13 @@ absl::Status UpdateCompileMetadata(
     absl::Span<const DtypeAndShape> inputs) {
   VLOG(3) << "TpuCompileMetadata before shape is populated " << metadata;
   if (metadata.num_replicas() < 1 || metadata.num_cores_per_replica() < 1) {
-    return absl::InternalError(
+    return absl::InvalidArgumentError(
         absl::StrCat("Number of replicas ", metadata.num_replicas(),
                      " and number of cores per replica ",
                      metadata.num_cores_per_replica(), " must be >= 1"));
   }
   if (metadata.args_size() != inputs.size()) {
-    return absl::InternalError(
+    return absl::InvalidArgumentError(
         absl::StrCat("Number of inputs mismatched! Expected ",
                      metadata.args_size(), " got ", inputs.size()));
   }
@@ -170,14 +170,14 @@ absl::Status UpdateCompileMetadata(
   for (int i = 0; i < metadata.args_size(); ++i) {
     if (metadata.args(i).kind() !=
         tensorflow::tpu::TPUCompileMetadataProto::Arg::PARAMETER) {
-      return absl::InternalError(absl::StrCat(
+      return absl::FailedPreconditionError(absl::StrCat(
           "Only support PARAMETER, but got ", metadata.args(i).kind()));
     }
 
     if (metadata.args(i).dtype() != inputs[i].dtype) {
-      return absl::InternalError(absl::StrCat("Dtype mismatched! Expected ",
-                                              metadata.args(i).dtype(), " got ",
-                                              inputs[i].dtype));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Dtype mismatched! Expected ", metadata.args(i).dtype(),
+                       " got ", inputs[i].dtype));
     }
 
     // Update shape.

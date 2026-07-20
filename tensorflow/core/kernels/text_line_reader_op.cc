@@ -102,8 +102,8 @@ class TextLineReaderOp : public ReaderOpKernel {
     OP_REQUIRES_OK(context,
                    context->GetAttr("skip_header_lines", &skip_header_lines));
     OP_REQUIRES(context, skip_header_lines >= 0,
-                errors::InvalidArgument("skip_header_lines must be >= 0 not ",
-                                        skip_header_lines));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "skip_header_lines must be >= 0 not ", skip_header_lines)));
     Env* env = context->env();
     SetReaderFactory([this, skip_header_lines, env]() {
       return new TextLineReader(name(), skip_header_lines, env);

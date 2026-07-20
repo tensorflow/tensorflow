@@ -751,6 +751,26 @@ absl::Status SyclExecutor::SynchronousMemcpy(void* host_dst,
                                   AsSyclDevicePtr(gpu_src), size);
 }
 
+absl::StatusOr<MemorySpace> SyclExecutor::GetPointerMemorySpace(
+    const void* ptr) {
+  ASSIGN_OR_RETURN(sycl::context context, GetContext());
+  sycl::usm::alloc alloc_type = sycl::get_pointer_type(ptr, context);
+  switch (alloc_type) {
+    case sycl::usm::alloc::device:
+      return MemorySpace::kDevice;
+    case sycl::usm::alloc::host:
+      return MemorySpace::kHost;
+    case sycl::usm::alloc::shared:
+      return MemorySpace::kUnified;
+    case sycl::usm::alloc::unknown:
+    default:
+      return absl::InternalError(
+          absl::StrFormat("SyclExecutor::GetPointerMemorySpace: unknown USM "
+                          "allocation type (%d) for pointer %p",
+                          static_cast<int>(alloc_type), ptr));
+  }
+}
+
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 SyclExecutor::CreateDeviceDescription(int device_ordinal) {
   return CreateOneApiDeviceDescription(device_ordinal);

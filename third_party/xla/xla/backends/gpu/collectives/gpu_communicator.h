@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gxl_communicator.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
@@ -36,6 +37,8 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args.h"
+#include "xla/stream_executor/memory_allocation.h"
+#include "xla/tsl/util/tied_ref.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -143,6 +146,13 @@ class GpuCommunicator : public Communicator {
     return nullptr;
   }
 
+  // Returns GXL communicator if supported.
+  virtual GxlCommunicator* gxl_communicator() const { return nullptr; }
+
+  // Sets GXL communicator.
+  virtual void set_gxl_communicator(
+      std::unique_ptr<GxlCommunicator> gxl_communicator) {}
+
   // Creates a new device communicator linked to *this GPU communicator object.
   virtual absl::StatusOr<std::unique_ptr<GpuDeviceCommunicator>>
   CreateDeviceComm(const GpuDeviceCommunicator::Requirements& requirements) {
@@ -236,6 +246,23 @@ class GpuCommunicator : public Communicator {
                                         const Executor& executor) {
     return Unimplemented("LaunchWaitSignal is not implemented");
   }
+
+  virtual absl::Status LaunchWaitSignals(
+      absl::Span<const PeerWaitDesc> peer_wait_descs,
+      const Executor& executor) {
+    return Unimplemented("LaunchWaitSignals is not implemented");
+  }
+
+  virtual absl::Status LaunchMultiGpuBarrier(const Executor& executor) {
+    return Unimplemented("LaunchMultiGpuBarrier is not implemented");
+  }
+
+  virtual void InitializeCrossDeviceBarrier(
+      tsl::TiedRef<se::MemoryAllocation> tied_signal_value,
+      tsl::TiedRef<se::MemoryAllocation> tied_signal,
+      tsl::TiedRef<SymmetricMemory> tied_symmetric_memory) {}
+
+  virtual bool IsCrossDeviceBarrierInitiated() const { return false; }
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const GpuCommunicator& comm) {

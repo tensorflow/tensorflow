@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/lite/kernels/shim/op_kernel.h"
+#include "tensorflow/lite/kernels/shim/shape.h"
 #include "tensorflow/lite/kernels/shim/status_macros.h"
 
 namespace tflite {
@@ -152,9 +153,12 @@ Outputs
       SH_ASSIGN_OR_RETURN(auto output_t,
                           ctx->GetOutput(kOutput3 + i, output_shape));
       const auto input_data = input_t->template Data<int64_t>();
-      auto output_buffer = output_t->template Data<int64_t>().data();
-      std::transform(input_data.begin(), input_data.end(), output_buffer,
-                     [](int64_t v) { return v + 1; });
+      auto& output_data = output_t->template Data<int64_t>();
+      const auto count = std::min(input_data.size(), output_data.size());
+      if (count > 0) {
+        std::transform(input_data.begin(), input_data.begin() + count,
+                       output_data.begin(), [](int64_t v) { return v + 1; });
+      }
     }
     return absl::OkStatus();
   }
@@ -197,7 +201,6 @@ Outputs
     return absl::OkStatus();
   }
 };
-
 
 }  // namespace shim
 }  // namespace tflite

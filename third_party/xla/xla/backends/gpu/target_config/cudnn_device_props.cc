@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/backends/gpu/target_config/cudnn_device_props.h"
 
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/status/statusor.h"

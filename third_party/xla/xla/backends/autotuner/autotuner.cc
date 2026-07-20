@@ -88,10 +88,7 @@ absl::StatusOr<std::vector<Autotuner::TuningResult>> Autotuner::TuneConfigs(
 
   std::vector<tsl::Future<Config>> future_configs;
   std::vector<const HloInstruction*> leaders;
-
-  tsl::Executor* executor = thread_pool_ != nullptr
-                                ? thread_pool_->AsExecutor()
-                                : &tsl::InlineExecutor::Instance();
+  leaders.reserve(instruction_groups.size());
 
   const int num_runners = runners_.size();
   for (int i = 0; i < instruction_groups.size(); ++i) {
@@ -100,10 +97,7 @@ absl::StatusOr<std::vector<Autotuner::TuningResult>> Autotuner::TuneConfigs(
     const HloInstruction* leader = group.front();
     leaders.push_back(leader);
     int runner_index = i % num_runners;
-    future_configs.push_back(
-        tsl::MakeFutureOn(*executor, [this, leader, runner_index]() {
-          return GetTunedConfig(leader, runner_index).Await();
-        }));
+    future_configs.push_back(GetTunedConfig(leader, runner_index));
   }
 
   // Await and verify all configuration selections.

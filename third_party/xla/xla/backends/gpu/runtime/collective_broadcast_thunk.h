@@ -34,15 +34,10 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 
 namespace xla::gpu {
 
-struct CollectiveBroadcastMetadata {
-  int64_t num_roots;
-  std::unique_ptr<se::MemoryAllocation> bcast_roots = nullptr;
-};
 // Thunk that performs a collective broadcast.
 class CollectiveBroadcastThunk : public CollectiveThunk {
  public:
@@ -62,11 +57,9 @@ class CollectiveBroadcastThunk : public CollectiveThunk {
   CollectiveBroadcastThunk(ThunkInfo thunk_info,
                            const HloCollectiveBroadcastInstruction* instr,
                            std::vector<Buffer> buffers,
-                           bool p2p_memcpy_enabled = false,
-                           bool has_dynamic_root = false);
+                           bool p2p_memcpy_enabled = false);
   CollectiveBroadcastThunk(ThunkInfo thunk_info, CollectiveConfig config,
                            std::vector<Buffer> buffers);
-  absl::Status Initialize(const InitializeParams& params) override;
 
   static absl::StatusOr<std::unique_ptr<CollectiveBroadcastThunk>> FromProto(
       ThunkInfo thunk_info, const CollectiveBroadcastThunkProto& thunk_proto,
@@ -83,17 +76,10 @@ class CollectiveBroadcastThunk : public CollectiveThunk {
 
  private:
   const CollectiveConfig config_;
-  mutable absl::Mutex mutex_;
-  absl::flat_hash_map<se::StreamExecutor*,
-                      std::unique_ptr<CollectiveBroadcastMetadata>>
-      per_executor_cb_metadata_ ABSL_GUARDED_BY(mutex_);
-  bool has_dynamic_root_;
 };
 
 absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
-                                    se::Stream& stream, Communicator& comm,
-                                    CollectiveBroadcastMetadata* cb_metadata,
-                                    bool has_dynamic_root = false);
+                                    se::Stream& stream, Communicator& comm);
 
 }  // namespace xla::gpu
 

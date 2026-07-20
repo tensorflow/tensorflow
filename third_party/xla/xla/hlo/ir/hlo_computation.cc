@@ -1743,9 +1743,19 @@ bool HloComputation::EqualInternal(
 
 absl::Status HloComputation::ReplaceWithNewInstruction(
     HloInstruction* old_instruction,
-    std::unique_ptr<HloInstruction> new_instruction) {
-  return ReplaceInstruction(old_instruction,
-                            AddInstruction(std::move(new_instruction)));
+    std::unique_ptr<HloInstruction> new_instruction, bool preserve_sharding,
+    bool relay_control_dependency, bool remove_unused_operands,
+    bool preserve_frontend_attributes) {
+  ASSIGN_OR_RETURN(
+      bool changed,
+      ReplaceInstruction(
+          old_instruction, AddInstruction(std::move(new_instruction)),
+          /*preserve_sharding=*/preserve_sharding,
+          /*relay_control_dependency=*/relay_control_dependency,
+          /*remove_unused_operands=*/remove_unused_operands,
+          /*preserve_frontend_attributes=*/preserve_frontend_attributes));
+  DCHECK(changed);
+  return absl::OkStatus();
 }
 
 absl::Status HloComputation::ReplaceWithNewEntryComputationParameter(

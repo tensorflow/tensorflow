@@ -578,10 +578,10 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
   TFLITE_LOG_PROD(tflite::TFLITE_LOG_VERBOSE,
                   "Replacing %d out of %d node(s) with delegate (%s) node, "
                   "yielding %zu partitions "
-                  "for subgraph %d.",
+                  "for subgraph %d (%s).",
                   nodes_to_replace->size, execution_plan_.size(),
                   GetDelegateKernalName(registration), node_subsets.size(),
-                  subgraph_index_);
+                  subgraph_index_, name_.c_str());
 
   execution_plan_.clear();
 

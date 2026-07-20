@@ -386,14 +386,11 @@ class StridedSliceOp : public XlaOpKernel {
             }
             operand_size = xla::Min(operand_size, end_size);
           }
-          // Degenerate slices can produce begin > end after index wrapping;
-          // dynamic dimension sizes must stay non-negative.
-          xla::XlaOp dim_size = xla::Sub(
-              operand_size,
-              xla::ConstantR0<int32_t>(ctx->builder(), begin[input_index]));
-          dim_size =
-              xla::Max(dim_size, xla::ConstantR0<int32_t>(ctx->builder(), 0));
-          slice = xla::SetDimensionSize(slice, dim_size, i);
+          slice = xla::SetDimensionSize(
+              slice,
+              xla::Sub(operand_size, xla::ConstantR0<int32_t>(
+                                         ctx->builder(), begin[input_index])),
+              i);
         }
       }
       ctx->SetOutput(0, slice);

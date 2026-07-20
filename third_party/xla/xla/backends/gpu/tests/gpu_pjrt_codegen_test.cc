@@ -85,11 +85,8 @@ std::string GpuPjRtCodegenTest::MakePlatformSpecificLlvm(
     absl::string_view input) {
   return absl::StrReplaceAll(
       input,
-      {{"KERNEL_ANNOTATION",
-        IsBuiltWithRocm() ? "amdgpu_kernel void" : "ptx_kernel void"},
-       {"BARRIER()", IsBuiltWithRocm()
-                         ? "@llvm.amdgcn.s.barrier()"
-                         : "@llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)"},
+      {{"KERNEL_ANNOTATION", GpuKernelType() + " void"},
+       {"BARRIER()", GpuBarrier()},
        {"SHUFFLE", IsBuiltWithRocm() ? "i32 @llvm.amdgcn.ds.swizzle"
                                      : "float @llvm.nvvm.shfl.sync.down.f32"},
        {"TIDX", IsBuiltWithRocm() ? "@llvm.amdgcn.workitem.id.x"

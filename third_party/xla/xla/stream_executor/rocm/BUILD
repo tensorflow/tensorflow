@@ -363,7 +363,9 @@ cc_library(
     ],
     deps = [
         "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@local_config_rocm//rocm:rocm_headers",
         "@local_config_rocm//rocm:rocm_smi",
     ],
@@ -381,6 +383,7 @@ cc_library(
         ":rocm_smi_util",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@local_config_rocm//rocm:rocm_headers",
         "@local_config_rocm//rocm:rocm_smi",
     ],
@@ -398,6 +401,7 @@ cc_library(
         ":rocm_smi_util",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@local_config_rocm//rocm:rocm_headers",
         "@local_config_rocm//rocm:rocm_smi",
     ],
@@ -1465,11 +1469,11 @@ xla_cc_test(
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:statusor",
-        "@tsl//tsl/platform:test",
     ],
 )
 
@@ -1520,13 +1524,13 @@ xla_cc_test(
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:statusor",
-        "@tsl//tsl/platform:test",
     ],
 )
 
@@ -1631,6 +1635,7 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
 )

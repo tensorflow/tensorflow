@@ -151,8 +151,7 @@ class DynamicPadderTest : public HloTestBase {
   const Shape scalar_shape_ = ShapeUtil::MakeShape(S32, {});
 };
 
-class MemoryAlignmentTest
-    : public HloPjRtInterpreterReferenceMixin<HloTestBase> {};
+class MemoryAlignmentTest : public HloInterpreterReferenceMixin<HloTestBase> {};
 
 // Test that dynamic padder will not cause memory misalignment in CUDA
 // when the read or write address is not aligned with 32 bits.

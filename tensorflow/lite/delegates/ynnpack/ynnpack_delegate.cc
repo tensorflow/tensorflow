@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "ynnpack/include/ynnpack.h"  // from @XNNPACK
+#include "slinky/base/thread_pool.h"  // from @slinky
 #include "slinky/base/thread_pool_impl.h"  // from @slinky
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
@@ -43,13 +44,12 @@ namespace ynnpack {
 
 class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
  public:
-  explicit YNNPackDelegateKernel(const TfLiteYNNPackDelegateOptions& options)
-      : options_(options), subgraph_(nullptr), runtime_(nullptr) {
-    if (options_.num_threads > 1) {
-      thread_pool_ =
-          std::make_unique<slinky::thread_pool_impl>(options_.num_threads - 1);
-    }
-  }
+  explicit YNNPackDelegateKernel(const TfLiteYNNPackDelegateOptions& options,
+                                 slinky::thread_pool* thread_pool)
+      : options_(options),
+        thread_pool_(thread_pool),
+        subgraph_(nullptr),
+        runtime_(nullptr) {}
 
   ~YNNPackDelegateKernel() override {
     if (runtime_) ynn_delete_runtime(runtime_);
@@ -241,10 +241,7 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       }
     }
 
-    ynn_threadpool_t ynn_tp = nullptr;
-    if (thread_pool_) {
-      ynn_tp = reinterpret_cast<ynn_threadpool_t>(thread_pool_.get());
-    }
+    ynn_threadpool_t ynn_tp = reinterpret_cast<ynn_threadpool_t>(thread_pool_);
     TF_LITE_ENSURE_YNN_STATUS(ynn_optimize_subgraph(subgraph_, ynn_tp, 0));
     TF_LITE_ENSURE_YNN_STATUS(
         ynn_create_runtime(subgraph_, ynn_tp, 0, &runtime_));
@@ -361,7 +358,7 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
 
  private:
   const TfLiteYNNPackDelegateOptions options_;
-  std::unique_ptr<slinky::thread_pool_impl> thread_pool_;
+  slinky::thread_pool* thread_pool_ = nullptr;
   ynn_subgraph_t subgraph_;
   ynn_runtime_t runtime_;
 
@@ -382,7 +379,12 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
 class YNNPackDelegate : public SimpleDelegateInterface {
  public:
   explicit YNNPackDelegate(const TfLiteYNNPackDelegateOptions& options)
-      : options_(options) {}
+      : options_(options) {
+    if (options_.num_threads > 1) {
+      thread_pool_ =
+          std::make_unique<slinky::thread_pool_impl>(options_.num_threads - 1);
+    }
+  }
 
   bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration,
                                  const TfLiteNode* node,
@@ -456,7 +458,8 @@ class YNNPackDelegate : public SimpleDelegateInterface {
 
   std::unique_ptr<SimpleDelegateKernelInterface> CreateDelegateKernelInterface()
       override {
-    return std::make_unique<YNNPackDelegateKernel>(options_);
+    return std::make_unique<YNNPackDelegateKernel>(options_,
+                                                   thread_pool_.get());
   }
 
   SimpleDelegateInterface::Options DelegateOptions() const override {
@@ -465,6 +468,7 @@ class YNNPackDelegate : public SimpleDelegateInterface {
 
  private:
   const TfLiteYNNPackDelegateOptions options_;
+  std::unique_ptr<slinky::thread_pool_impl> thread_pool_;
 };
 
 }  // namespace ynnpack

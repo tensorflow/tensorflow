@@ -73,8 +73,6 @@ limitations under the License.
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/extensions/cross_host_transfers/pjrt_c_api_cross_host_transfers_extension.h"
 #include "xla/pjrt/extensions/executable_metadata/executable_metadata_extension.h"
-#include "xla/pjrt/extensions/host_allocator/host_allocator_extension.h"
-#include "xla/pjrt/extensions/host_allocator/host_allocator_interface_impl.h"
 #include "xla/pjrt/extensions/host_memory_allocator/host_memory_allocator_extension.h"
 #include "xla/pjrt/extensions/host_memory_allocator/host_memory_allocator_interface_impl.h"
 #include "xla/pjrt/host_memory_allocator.h"
@@ -155,17 +153,6 @@ InitExtensions(const PJRT_Api* c_api) {
   return extensions;
 }
 
-static absl::StatusOr<std::unique_ptr<PjRtClient::HostAllocator>>
-InitHostAllocator(const PJRT_Api* c_api, PJRT_Client* c_client) {
-  PJRT_HostAllocator_Extension* extension =
-      pjrt::FindExtension<PJRT_HostAllocator_Extension>(
-          c_api, PJRT_Extension_Type::PJRT_Extension_Type_HostAllocator);
-  if (extension == nullptr) {
-    return absl::UnimplementedError("HostAllocator extension not found");
-  }
-  return std::make_unique<HostAllocatorInterfaceImpl>(c_client, extension);
-}
-
 static std::unique_ptr<HostMemoryAllocator> InitHostMemoryAllocator(
     const PJRT_Api* c_api, PJRT_Client* c_client) {
   PJRT_HostMemoryAllocator_Extension* extension =
@@ -186,7 +173,6 @@ PjRtCApiClient::PjRtCApiClient(
       kv_callback_data_(std::move(kv_callback_data)),
       topo_desc_(InitClientTopoDesc(c_api, c_client)),
       extensions_(InitExtensions(c_api)),
-      host_allocator_(InitHostAllocator(c_api, c_client)),
       host_memory_allocator_(InitHostMemoryAllocator(c_api, c_client)),
       // Example platform version string:
       //   PJRT C API
@@ -1054,14 +1040,6 @@ PjRtCApiClient::GetTopologyDescription() const {
     return topo_desc_.status();
   }
   return &(*topo_desc_);
-}
-
-absl::StatusOr<PjRtClient::HostAllocator*> PjRtCApiClient::GetHostAllocator()
-    const {
-  if (!host_allocator_.ok()) {
-    return host_allocator_.status();
-  }
-  return host_allocator_->get();
 }
 
 HostMemoryAllocator* PjRtCApiClient::GetHostMemoryAllocator() const {
@@ -2442,7 +2420,8 @@ PjRtCApiExecutable::GetSerializedExecutableMetadata() const {
   PJRT_ExecutableMetadata_GetExecutableMetadata_Args args;
   args.executable = c_executable();
   args.metadata = nullptr;
-  executable_metadata_extension->get_executable_metadata(&args);
+  RETURN_STATUS_IF_PJRT_ERROR(
+      executable_metadata_extension->get_executable_metadata(&args), c_api_);
   absl::Cleanup cleanup = [&args, &executable_metadata_extension] {
     if (args.metadata != nullptr) {
       PJRT_ExecutableMetadata_DestroySerializedMetadata_Args free_args;
@@ -4257,7 +4236,7 @@ void PjRtCApiBuffer::CopyToRemoteDevice(
           pjrt::StatusCodeToPjrtErrorCode(descriptor.status().code());
       event_set_args.error_message = descriptor.status().message().data();
       event_set_args.error_message_size = descriptor.status().message().size();
-      c_api->PJRT_Event_Set(&event_set_args);
+      pjrt::LogFatalIfPjrtError(c_api->PJRT_Event_Set(&event_set_args), c_api);
     });
   }
 #endif

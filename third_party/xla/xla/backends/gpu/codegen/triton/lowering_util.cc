@@ -303,8 +303,17 @@ std::pair<mlir::Value, mlir::Value> CreateTensorOfPointersAndMask(
       upper_bound =
           arith::SubIOp::create(builder, upper_bound, cast_offsets[dim]);
       upper_bound = ttir::SplatOp::create(builder, i64_tile_type, upper_bound);
-      mlir::Value mask = arith::CmpIOp::create(
+      mlir::Value mask_right = arith::CmpIOp::create(
           builder, arith::CmpIPredicate::slt, range, upper_bound);
+
+      mlir::Value lower_bound =
+          arith::ConstantIntOp::create(builder, i64_type, 0);
+      lower_bound =
+          arith::SubIOp::create(builder, lower_bound, cast_offsets[dim]);
+      lower_bound = ttir::SplatOp::create(builder, i64_tile_type, lower_bound);
+      mlir::Value mask_left = arith::CmpIOp::create(
+          builder, arith::CmpIPredicate::sge, range, lower_bound);
+      mlir::Value mask = arith::AndIOp::create(builder, mask_left, mask_right);
 
       // Combine mask with previous iteration.
       mask_tile = add_if(arith::AndIOp(), mask, mask_tile);

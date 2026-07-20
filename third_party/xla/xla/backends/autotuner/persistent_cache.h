@@ -17,12 +17,15 @@ limitations under the License.
 #define XLA_BACKENDS_AUTOTUNER_PERSISTENT_CACHE_H_
 
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -33,13 +36,17 @@ namespace xla {
 // to a backing store (e.g., filesystem, database).
 class PersistentCache : public AutotunerCacheInterface {
  public:
-  PersistentCache(AutotuneScope context, CacheMode mode,
+  PersistentCache(AutotuneCacheContext context, CacheMode mode,
                   KeyMatchingMode matching_mode);
 
   std::optional<Config> Lookup(const HloInstruction* instr) override;
 
   absl::Status Insert(const HloInstruction* instr,
                       const Config& config) override;
+
+  absl::StatusOr<std::string> Serialize(absl::Span<const HloInstruction* const>
+                                            instructions_to_serialize) override;
+  absl::Status Deserialize(absl::string_view serialized_cache) override;
 
   CacheStats GetCacheStats() const override;
   CacheMode GetMode() const override { return mode_; }
@@ -58,7 +65,7 @@ class PersistentCache : public AutotunerCacheInterface {
   virtual absl::Status Write(const autotuner::AutotuneEntry& entry) = 0;
 
  private:
-  AutotuneScope context_;
+  AutotuneCacheContext context_;
   CacheMode mode_;
   KeyMatchingMode matching_mode_;
 

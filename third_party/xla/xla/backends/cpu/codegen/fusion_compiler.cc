@@ -359,6 +359,16 @@ static void AddTiledOptimizationPasses(mlir::OpPassManager& pm) {
       mlir::stablehlo::createStablehloTargetIndependentOptimizationPass());
 
   pm.addPass(xtile::createStablehloLowerToArithPass());
+  // Has to run before legalize-to-linalg for specialized implementations of
+  // SHLO ops for XTile. It also has to run before
+  // legalize-unsigned-integers-as-signless, as we need to choose the right
+  // lowering for Convert based on unsigned type.
+  pm.addPass(xtile::createStablehloLowerToXtilePass());
+  // This pass and the Canonicalizer pass need to run before ShloToVectorPass,
+  // otherwise the LowerReduce pattern does not work due to
+  // UnrealizedConversionCast in the reducer body.
+  pm.addPass(xtile::createLegalizeUnsignedIntegersAsSignlessPass());
+  pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(cpu::createShloToVectorPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -369,9 +379,6 @@ static void AddTiledOptimizationPasses(mlir::OpPassManager& pm) {
   mlir::stablehlo::StablehloLegalizeToLinalgPassOptions
       stablehlo_to_linalg_options;
   stablehlo_to_linalg_options.enablePrimitiveOps = true;
-  // Has to run before legalize-to-linalg for specialzed implementations of SHLO
-  // ops for XTile.
-  pm.addPass(xtile::createStablehloLowerToXtilePass());
   pm.addPass(mlir::stablehlo::createStablehloLegalizeToLinalgPass());
   pm.addPass(xtile::createConvertElementwise0DTensorToScalarPass());
 

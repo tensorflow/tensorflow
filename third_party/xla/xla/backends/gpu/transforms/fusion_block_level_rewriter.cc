@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/IR/MLIRContext.h"
@@ -44,8 +46,10 @@ limitations under the License.
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
@@ -152,21 +156,47 @@ bool ShouldRewriteReductionFusion(
   return true;
 }
 
+bool IsTupleWithSameSizeSubshapes(const Shape& shape) {
+  if (!shape.IsTuple()) {
+    return false;
+  }
+  if (shape.tuple_shapes().empty()) {
+    return true;
+  }
+  const Shape& first_subshape = shape.tuple_shapes()[0];
+  Shape::Equal eq = Shape::Equal().IgnoreElementType();
+  return absl::c_all_of(
+      absl::MakeSpan(shape.tuple_shapes()).subspan(1),
+      [&](const Shape& subshape) { return eq(subshape, first_subshape); });
+}
+
 absl::StatusOr<bool> ShouldTryRewriteFusion(
     const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_description) {
+  // If a dot fusion can be handled by Triton, GemmRewriter would have already
+  // taken care of it.
+  for (const HloInstruction* instr :
+       fusion->fused_instructions_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kDot ||
+        instr->opcode() == HloOpcode::kScaledDot) {
+      return false;
+    }
+  }
+
+  const DebugOptions& debug_options =
+      fusion->GetModule()->config().debug_options();
+  const bool is_same_shape_fusion =
+      IsTupleWithSameSizeSubshapes(fusion->shape());
+
   if (fusion->IsMultiOutputFusion() &&
-      !fusion->GetModule()
-           ->config()
-           .debug_options()
-           .xla_gpu_unsupported_enable_triton_multi_output_fusion()) {
+      !(is_same_shape_fusion &&
+        debug_options
+            .xla_experimental_enable_same_shape_multi_output_fusion()) &&
+      !debug_options.xla_gpu_unsupported_enable_triton_multi_output_fusion()) {
     return false;
   }
 
-  if (fusion->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_experimental_enable_fusion_block_level_rewriter()) {
+  if (debug_options.xla_gpu_experimental_enable_fusion_block_level_rewriter()) {
     return true;
   }
 
@@ -181,6 +211,11 @@ absl::StatusOr<bool> ProcessFusionInstruction(
     const se::DeviceDescription& device_info,
     HloCostAnalysis::ShapeSizeFunction shape_size,
     mlir::MLIRContext* mlir_context, bool use_experimental_tiling) {
+  bool dump_fusion_visualization = fusion_instruction->GetModule()
+                                       ->config()
+                                       .debug_options()
+                                       .xla_dump_fusion_visualization();
+
   ASSIGN_OR_RETURN(bool should_try_rewrite,
                    ShouldTryRewriteFusion(fusion_instruction, device_info));
   if (!should_try_rewrite) {
@@ -197,6 +232,13 @@ absl::StatusOr<bool> ProcessFusionInstruction(
     VLOG(2) << "Can't rewrite fusion " << fusion_instruction->ToString()
             << " because one or more instructions is not supported by Triton: "
             << can_codegen.Explain();
+    if (dump_fusion_visualization) {
+      RegisterFusionState(
+          *fusion_instruction->parent(),
+          absl::StrCat("Can't rewrite |", fusion_instruction->name(),
+                       "|: not supported by Triton: ", can_codegen.Explain()),
+          *fusion_instruction);
+    }
     return false;
   }
 
@@ -212,7 +254,11 @@ absl::StatusOr<bool> ProcessFusionInstruction(
   HloFusionAnalysisCache fusion_analysis_cache(device_info);
   GpuPerformanceModelWithIndexingAnalysis indexing_performance_model(
       &device_info, &fusion_analysis_cache, shape_size, mlir_context,
-      use_experimental_tiling);
+      use_experimental_tiling,
+      fusion_instruction->GetModule()
+          ->config()
+          .debug_options()
+          .xla_experimental_enable_same_shape_multi_output_fusion());
 
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
       Cast<HloFusionInstruction>(fusion_instruction));
@@ -227,6 +273,13 @@ absl::StatusOr<bool> ProcessFusionInstruction(
     VLOG(2) << "Can't rewrite fusion " << fusion_instruction->ToString()
             << " because tiling search failed. (The most likely cause for "
             << "is that SymbolicTileAnalysis failed.)";
+    if (dump_fusion_visualization) {
+      RegisterFusionState(
+          *fusion_instruction->parent(),
+          absl::StrCat("Can't rewrite |", fusion_instruction->name(),
+                       "|: tiling search failed: ", fusion_decision->Explain()),
+          *fusion_instruction);
+    }
     return false;
   }
 
@@ -249,6 +302,13 @@ absl::StatusOr<bool> ProcessFusionInstruction(
   backend_config.mutable_fusion_backend_config()->set_kind(kTritonFusionKind);
   RETURN_IF_ERROR(fusion_instruction->set_backend_config(backend_config));
   fusion_instruction->set_fusion_kind(HloInstruction::FusionKind::kCustom);
+
+  if (dump_fusion_visualization) {
+    RegisterFusionState(*fusion_instruction->parent(),
+                        absl::StrCat("Rewrote |", fusion_instruction->name(),
+                                     "| to Triton block-level fusion"),
+                        *fusion_instruction);
+  }
   return true;
 }
 
