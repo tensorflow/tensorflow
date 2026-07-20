@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 
 #include <cmath>
-#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

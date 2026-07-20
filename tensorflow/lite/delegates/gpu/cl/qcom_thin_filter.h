@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_QCOM_THIN_FILTER_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_QCOM_THIN_FILTER_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/common/task/qcom_thin_filter_desc.h"

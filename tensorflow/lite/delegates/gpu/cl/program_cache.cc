@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/program_cache.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/types/span.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/delegates/gpu/cl/cl_program.h"
 #include "tensorflow/lite/delegates/gpu/cl/compiled_program_cache_generated.h"

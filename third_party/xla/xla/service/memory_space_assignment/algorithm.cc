@@ -4796,7 +4796,7 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
   if (is_sequential_call) {
     for (const HloComputation* called_computation :
          hlo_use.instruction->called_computations()) {
-      const HloLiveRange::TimeBound& computation_span =
+      const HloLiveRange::LiveRangeBounds& computation_span =
           hlo_live_range_.computation_span_times().at(called_computation);
       latest_prefetch_time =
           std::min(computation_span.start - 1, latest_prefetch_time);

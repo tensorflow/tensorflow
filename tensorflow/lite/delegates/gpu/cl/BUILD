@@ -560,6 +560,7 @@ cc_library(
         ":gpu_object",
         ":util",
         "//tensorflow/lite/delegates/gpu/common/task:qcom_thin_filter_desc",
+        "@com_google_absl//absl/status",
     ],
 )
 
