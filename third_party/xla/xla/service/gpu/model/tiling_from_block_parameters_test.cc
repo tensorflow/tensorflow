@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -44,11 +45,11 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/test.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 namespace {
 
 using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 using ::testing::ElementsAre;
 
 class TilingFromBlockParametersTest : public HloHardwareIndependentTestBase {
@@ -212,7 +213,10 @@ class GetTileTilingSpaceConcreteSizesTest
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
     ASSIGN_OR_RETURN(auto tiling_space, experimental::TilingSpace::Create(
                                             *fusion_adaptor, &mlir_context_));
-    return GetTilingSpaceConcreteSizes(*tiling_space, block_level_parameters);
+    return GetTilingSpaceConcreteSizes(
+        *tiling_space, block_level_parameters,
+        GetDebugOptionsForTest()
+            .xla_experimental_enable_same_shape_multi_output_fusion());
   }
 
   DebugOptions GetDebugOptionsForTest() const override {
@@ -308,6 +312,145 @@ ENTRY entry {
   EXPECT_THAT(tile_sizes, ElementsAre(16, 128, 256));
 }
 
+TEST_F(GetTileTilingSpaceConcreteSizesTest, FailsOnMultiOutputFusions) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+f {
+  p0 = f32[64,128] parameter(0)
+  p1 = f32[64,128] parameter(1)
+  add = f32[64,128] add(p0, p1)
+  mul = f32[64,128] multiply(p0, p1)
+  ROOT t = (f32[64,128], f32[64,128]) tuple(add, mul)
+}
+
+ENTRY entry {
+  param_0 = f32[64,128] parameter(0)
+  param_1 = f32[64,128] parameter(1)
+  ROOT fusion = (f32[64,128], f32[64,128]) fusion(param_0, param_1),
+    kind=kLoop, calls=f,
+    backend_config={fusion_backend_config:{block_level_fusion_config:{output_tiles:[
+      {sizes:[8, 16]},
+      {sizes:[8, 16]}
+    ]}}}
+}
+)hlo"));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      ComputeConcreteTileSizesOfFusion(root),
+      StatusIs(
+          absl::StatusCode::kUnimplemented,
+          ::testing::HasSubstr(
+              "TilingSpace does not support fusions with multiple roots.")));
+}
+
+TEST_F(GetTileTilingSpaceConcreteSizesTest,
+       FailsOnSameShapeMultiOutputFusionsByDefault) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+f {
+  p0 = f32[64,128] parameter(0)
+  p1 = f32[64,128] parameter(1)
+  add = f32[64,128] add(p0, p1)
+  mul = f32[64,128] multiply(p0, p1)
+  ROOT t = (f32[64,128], f32[64,128]) tuple(add, mul)
+}
+
+ENTRY entry {
+  param_0 = f32[64,128] parameter(0)
+  param_1 = f32[64,128] parameter(1)
+  ROOT fusion = (f32[64,128], f32[64,128]) fusion(param_0, param_1),
+    kind=kLoop, calls=f,
+    backend_config={fusion_backend_config:{block_level_fusion_config:{output_tiles:[
+      {sizes:[8, 16]}
+    ]}}}
+}
+)hlo"));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      ComputeConcreteTileSizesOfFusion(root),
+      StatusIs(
+          absl::StatusCode::kUnimplemented,
+          ::testing::HasSubstr(
+              "TilingSpace does not support fusions with multiple roots.")));
+}
+
+class GetTileTilingSpaceConcreteSizesWithSameShapeMultiOutputTest
+    : public GetTileTilingSpaceConcreteSizesTest {
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        GetTileTilingSpaceConcreteSizesTest::GetDebugOptionsForTest();
+    debug_options.set_xla_experimental_enable_same_shape_multi_output_fusion(
+        true);
+    return debug_options;
+  }
+};
+
+TEST_F(GetTileTilingSpaceConcreteSizesWithSameShapeMultiOutputTest,
+       SucceedsOnSameShapeMultiOutputFusions) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+f {
+  p0 = f32[64,128] parameter(0)
+  p1 = f32[64,128] parameter(1)
+  add = f32[64,128] add(p0, p1)
+  mul = f32[64,128] multiply(p0, p1)
+  ROOT t = (f32[64,128], f32[64,128]) tuple(add, mul)
+}
+
+ENTRY entry {
+  param_0 = f32[64,128] parameter(0)
+  param_1 = f32[64,128] parameter(1)
+  ROOT fusion = (f32[64,128], f32[64,128]) fusion(param_0, param_1),
+    kind=kLoop, calls=f,
+    backend_config={fusion_backend_config:{block_level_fusion_config:{output_tiles:[
+      {sizes:[8, 16]},
+      {sizes:[8, 16]}
+    ]}}}
+}
+)hlo"));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_experimental_enable_same_shape_multi_output_fusion(true);
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_OK_AND_ASSIGN(llvm::SmallVector<int64_t> tile_sizes,
+                       ComputeConcreteTileSizesOfFusion(root));
+  EXPECT_THAT(tile_sizes, ElementsAre(8, 16));
+}
+
+TEST_F(GetTileTilingSpaceConcreteSizesWithSameShapeMultiOutputTest,
+       FailsWhenMultiOutputRootsHaveDifferentTileSizes) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+f {
+  p0 = f32[64,128] parameter(0)
+  p1 = f32[64,128] parameter(1)
+  add = f32[64,128] add(p0, p1)
+  mul = f32[64,128] multiply(p0, p1)
+  ROOT t = (f32[64,128], f32[64,128]) tuple(add, mul)
+}
+
+ENTRY entry {
+  param_0 = f32[64,128] parameter(0)
+  param_1 = f32[64,128] parameter(1)
+  ROOT fusion = (f32[64,128], f32[64,128]) fusion(param_0, param_1),
+    kind=kLoop, calls=f,
+    backend_config={fusion_backend_config:{block_level_fusion_config:{output_tiles:[
+      {sizes:[8, 16]},
+      {sizes:[8, 32]}
+    ]}}}
+}
+)hlo"));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_experimental_enable_same_shape_multi_output_fusion(true);
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      ComputeConcreteTileSizesOfFusion(root),
+      StatusIs(absl::StatusCode::kUnimplemented,
+               ::testing::HasSubstr("Same-shape multi-output fusions must have "
+                                    "identical tile sizes for all outputs.")));
+}
+
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
