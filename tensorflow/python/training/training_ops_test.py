@@ -23,6 +23,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.test_util import TensorFlowTestCase
@@ -492,6 +493,99 @@ class TrainingOpsTest(TensorFlowTestCase):
         adagrad_op = gen_training_ops.resource_sparse_apply_adagrad_v2(
             var.handle, accum.handle, lr, epsilon, grad,
             constant_op.constant(indices, dtypes.int32))
+
+  @test_util.run_v1_only(
+      "SparseApply ops return a ref, so they are not supported in eager mode."
+  )
+  def testSparseApplyInvalidDimensions(self):
+    with self.session(use_gpu=False):
+      var = variable_v1.VariableV1(np.ones([3, 2], dtype=np.float32))
+      accum = variable_v1.VariableV1(np.ones([3, 2], dtype=np.float32))
+      accum_update = variable_v1.VariableV1(np.ones([3, 2], dtype=np.float32))
+      lr = np.array(2.0, dtype=np.float32)
+      rho = np.array(0.9, dtype=np.float32)
+      epsilon = np.array(1e-6, dtype=np.float32)
+      grad = np.array([1.0, 2.0], dtype=np.float32)
+      indices = np.array([0, 2], dtype=np.int32)
+      self.evaluate(variables.global_variables_initializer())
+
+      with self.assertRaisesRegex(
+          (errors_impl.InvalidArgumentError, ValueError),
+          "(grad must have the same number of dimensions as var|Shapes must be"
+          " equal rank)",
+      ):
+        self.evaluate(
+            gen_training_ops.sparse_apply_adadelta(
+                var, accum, accum_update, lr, rho, epsilon, grad, indices
+            )
+        )
+
+      # Also test SparseApplyRMSProp to verify the rank check behaves correctly
+      var_rms = variable_v1.VariableV1(np.ones([3, 2], dtype=np.float32))
+      ms = variable_v1.VariableV1(np.ones([3, 2], dtype=np.float32))
+      mom = variable_v1.VariableV1(np.ones([3, 2], dtype=np.float32))
+      momentum = np.array(0.9, dtype=np.float32)
+      self.evaluate(variables.global_variables_initializer())
+      with self.assertRaisesRegex(
+          (errors_impl.InvalidArgumentError, ValueError),
+          "(grad must have the same number of dimensions as var|Shapes must be"
+          " equal rank)",
+      ):
+        self.evaluate(
+            gen_training_ops.sparse_apply_rms_prop(
+                var_rms, ms, mom, lr, rho, momentum, epsilon, grad, indices
+            )
+        )
+
+  @test_util.run_v1_only(
+      "SparseApply ops return a ref, so they are not supported in eager mode."
+  )
+  def testResourceSparseApplyInvalidDimensions(self):
+    with self.session(use_gpu=False):
+      var = resource_variable_ops.ResourceVariable(
+          np.ones([3, 2], dtype=np.float32))
+      accum = resource_variable_ops.ResourceVariable(
+          np.ones([3, 2], dtype=np.float32))
+      accum_update = resource_variable_ops.ResourceVariable(
+          np.ones([3, 2], dtype=np.float32))
+      lr = np.array(2.0, dtype=np.float32)
+      rho = np.array(0.9, dtype=np.float32)
+      epsilon = np.array(1e-6, dtype=np.float32)
+      grad = np.array([1.0, 2.0], dtype=np.float32)
+      indices = np.array([0, 2], dtype=np.int32)
+      self.evaluate(variables.global_variables_initializer())
+
+      with self.assertRaisesRegex(
+          (errors_impl.InvalidArgumentError, ValueError),
+          "(grad must have the same number of dimensions as var|Shapes must be"
+          " equal rank)",
+      ):
+        self.evaluate(
+            gen_training_ops.resource_sparse_apply_adadelta(
+                var.handle, accum.handle, accum_update.handle,
+                lr, rho, epsilon, grad, indices
+            )
+        )
+
+      var_rms = resource_variable_ops.ResourceVariable(
+          np.ones([3, 2], dtype=np.float32))
+      ms = resource_variable_ops.ResourceVariable(
+          np.ones([3, 2], dtype=np.float32))
+      mom = resource_variable_ops.ResourceVariable(
+          np.ones([3, 2], dtype=np.float32))
+      momentum = np.array(0.9, dtype=np.float32)
+      self.evaluate(variables.global_variables_initializer())
+      with self.assertRaisesRegex(
+          (errors_impl.InvalidArgumentError, ValueError),
+          "(grad must have the same number of dimensions as var|Shapes must be"
+          " equal rank)",
+      ):
+        self.evaluate(
+            gen_training_ops.resource_sparse_apply_rms_prop(
+                var_rms.handle, ms.handle, mom.handle,
+                lr, rho, momentum, epsilon, grad, indices
+            )
+        )
         with ops.control_dependencies([adagrad_op]):
           ret += i
       return ret
