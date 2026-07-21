@@ -161,6 +161,10 @@ bool IsPositive(const HloInstruction* hlo,
       }
     }
     case HloOpcode::kPower:
+      if (HasSignedIntegralElementType(hlo)) {
+        return false;
+      }
+      return IsPositive(hlo->operand(0), options);
     case HloOpcode::kAbs:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSqrt:
@@ -545,9 +549,11 @@ bool AlgebraicSimplifierVisitor::IsNonNegative(
       return hlo->operand(0) == hlo->operand(1) &&
              !HasSignedIntegralElementType(hlo);
     }
-    case HloOpcode::kExp:
-    case HloOpcode::kIota: {
+    case HloOpcode::kExp: {
       return true;
+    }
+    case HloOpcode::kIota: {
+      return !HasSignedIntegralElementType(hlo);
     }
     case HloOpcode::kAbs: {
       return !HasSignedIntegralElementType(hlo);
@@ -571,7 +577,8 @@ bool AlgebraicSimplifierVisitor::IsNonNegative(
              IsNonNegative(hlo->operand(1), options);
     }
     case HloOpcode::kPower: {
-      return IsNonNegative(hlo->operand(0), options);
+      return !HasSignedIntegralElementType(hlo) &&
+             IsNonNegative(hlo->operand(0), options);
     }
     case HloOpcode::kSelect: {
       return IsNonNegative(hlo->operand(1), options) &&

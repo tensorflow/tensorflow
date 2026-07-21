@@ -169,7 +169,8 @@ TEST_F(AlgebraicSimplifierTest, IsNonNegative_Op_NegativeTestCase) {
 
 TEST_F(AlgebraicSimplifierTest,
        IsNonNegativeSignedIntegerOverflowNegativeTestCase) {
-  for (const auto op : {"abs(p0)", "multiply(p0, p0)"}) {
+  for (const auto op : {"abs(p0)", "multiply(p0, p0)",
+                        "power(constant(10), constant(10))"}) {
     const auto kModuleStr = absl::StrFormat(R"(
       HloModule m
       test {
@@ -182,6 +183,17 @@ TEST_F(AlgebraicSimplifierTest,
     ASSERT_FALSE(AlgebraicSimplifierVisitor::IsNonNegative(
         m->entry_computation()->root_instruction(), default_options_));
   }
+}
+
+TEST_F(AlgebraicSimplifierTest, IsNonNegativeSignedIntegerIotaCanOverflow) {
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(R"(
+    HloModule m
+    ENTRY test {
+      ROOT iota = s8[129] iota(), iota_dimension=0
+    }
+  )"));
+  ASSERT_FALSE(AlgebraicSimplifierVisitor::IsNonNegative(
+      m->entry_computation()->root_instruction(), default_options_));
 }
 
 // Test that the result of Broadcast is non-negative if its operand is
