@@ -34,6 +34,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.module import module
+from tensorflow.python.ops import gen_summary_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import summary_ops_v2 as summary_ops
 from tensorflow.python.ops import variables
@@ -1568,6 +1569,50 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
         r'graph\(\) cannot be invoked inside a graph context.',
     ):
       self.exec_summary_op(summary_op_fn)
+
+
+class WriteScalarSummaryRawOpsTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testValidScalarAndSingleElementInputs(self):
+    logdir = self.get_temp_dir()
+    writer = summary_ops.create_file_writer_v2(logdir)
+    self.evaluate(writer.init())
+    step = constant_op.constant(1, dtype=dtypes.int64)
+    tag = constant_op.constant("test_tag", dtype=dtypes.string)
+
+    for val in [2.5, [2.5], [[2.5]]]:
+      t = constant_op.constant(val, dtype=dtypes.float32)
+      self.evaluate(
+          gen_summary_ops.write_scalar_summary(
+              writer=writer._resource,  # pylint: disable=protected-access
+              step=step,
+              tag=tag,
+              value=t,
+          )
+      )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testInvalidEmptyAndMultiElementInputs(self):
+    logdir = self.get_temp_dir()
+    writer = summary_ops.create_file_writer_v2(logdir)
+    self.evaluate(writer.init())
+    step = constant_op.constant(1, dtype=dtypes.int64)
+    tag = constant_op.constant("test_tag", dtype=dtypes.string)
+
+    for invalid_val in [[], [1.0, 2.0], [[1.0, 2.0]]]:
+      t = constant_op.constant(invalid_val, dtype=dtypes.float32)
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, "must contain exactly one element"
+      ):
+        self.evaluate(
+            gen_summary_ops.write_scalar_summary(
+                writer=writer._resource,  # pylint: disable=protected-access
+                step=step,
+                tag=tag,
+                value=t,
+            )
+        )
 
 
 def events_from_file(filepath):
