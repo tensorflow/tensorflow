@@ -46,6 +46,7 @@ cc_library(
         "//xla:side_effect_util",
         "//xla:status_macros",
         "//xla:types",
+        "//xla:union_find",
         "//xla:util",
         "//xla:window_util",
         "//xla:xla_data_proto_cc",
