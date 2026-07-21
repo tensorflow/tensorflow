@@ -225,11 +225,6 @@ class TilingSpace {
   absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>> GetValidTilings();
 
  private:
-  absl::Status InitializeDimensions(
-      absl::Span<const HloInstructionAdaptor> roots);
-  absl::Status InitializeDimensionsForSimpleMultiOutputFusion(
-      absl::Span<const HloInstructionAdaptor> roots);
-
   void ProcessDotLike(const HloInstruction& hlo);
   void ProcessReduce(const HloInstruction& hlo);
   void ProcessScan(const HloInstruction& hlo);

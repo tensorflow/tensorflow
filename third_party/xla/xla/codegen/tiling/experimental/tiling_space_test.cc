@@ -21,7 +21,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
-#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
@@ -322,85 +321,6 @@ TEST_F(TilingSpaceTest, TwoOutputsParallelDims) {
       1 root tile:
            offsets [tid_0 * ts_2, tid_1 * ts_3] sizes [ts_2, ts_3]
            strides [1, 1] upper bounds [11, 9]
-  )"));
-}
-
-TEST_F(TilingSpaceTest, TwoOutputsEqualShapesParallelDims) {
-  HloInstruction* root = ParseAndGetRoot(R"(
-    HloModule m
-    f {
-      p0 = f32[10,8] parameter(0)
-      p1 = f32[10,8] parameter(1)
-      p2 = f32[10,8] parameter(2)
-      p3 = f32[10,8] parameter(3)
-      add = f32[10,8] add(p0, p1)
-      mul = f32[10,8] multiply(p2, p3)
-      ROOT t = (f32[10,8], f32[10,8]) tuple(add, mul)
-    }
-
-    ENTRY e {
-      p0 = f32[10,8] parameter(0)
-      p1 = f32[10,8] parameter(1)
-      p2 = f32[10,8] parameter(2)
-      p3 = f32[10,8] parameter(3)
-      ROOT fusion = (f32[10,8], f32[10,8]) fusion(p0, p1, p2, p3),
-        kind=kLoop, calls=f
-    }
-  )");
-  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-  auto tiling_space_or = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
-  EXPECT_FALSE(tiling_space_or.ok());
-  EXPECT_EQ(tiling_space_or.status().code(), absl::StatusCode::kUnimplemented);
-}
-
-class TilingSpaceSameShapeMultiOutputTest : public TilingSpaceTest {
- protected:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = TilingSpaceTest::GetDebugOptionsForTest();
-    debug_options.set_xla_experimental_enable_same_shape_multi_output_fusion(
-        true);
-    return debug_options;
-  }
-};
-
-TEST_F(TilingSpaceSameShapeMultiOutputTest, TwoOutputsEqualShapesParallelDims) {
-  HloInstruction* root = ParseAndGetRoot(R"(
-    HloModule m
-    f {
-      p0 = f32[10,8] parameter(0)
-      p1 = f32[10,8] parameter(1)
-      p2 = f32[10,8] parameter(2)
-      p3 = f32[10,8] parameter(3)
-      add = f32[10,8] add(p0, p1)
-      mul = f32[10,8] multiply(p2, p3)
-      ROOT t = (f32[10,8], f32[10,8]) tuple(add, mul)
-    }
-
-    ENTRY e {
-      p0 = f32[10,8] parameter(0)
-      p1 = f32[10,8] parameter(1)
-      p2 = f32[10,8] parameter(2)
-      p3 = f32[10,8] parameter(3)
-      ROOT fusion = (f32[10,8], f32[10,8]) fusion(p0, p1, p2, p3),
-        kind=kLoop, calls=f
-    }
-  )");
-  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-  ASSERT_OK_AND_ASSIGN(auto tiling_space,
-                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
-  EXPECT_THAT(*tiling_space, MatchString(R"(
-    Dimensions:
-        0 type: parallel size: 10 dim ID:0
-          hlo: %add = f32[10,8]{1,0} add(%p0, %p1)
-        1 type: parallel size: 8 dim ID:1
-          hlo: %add = f32[10,8]{1,0} add(%p0, %p1)
-    Root tiles:
-      0 root tile:
-           offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
-           strides [1, 1] upper bounds [10, 8]
-      1 root tile:
-           offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
-           strides [1, 1] upper bounds [10, 8]
   )"));
 }
 
