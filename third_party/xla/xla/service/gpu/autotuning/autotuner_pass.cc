@@ -32,14 +32,15 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/autotuner/autotune_cache_store.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
 #include "xla/backends/autotuner/config_assigner.h"
-#include "xla/backends/autotuner/directory_cache.h"
+#include "xla/backends/autotuner/directory_store.h"
 #include "xla/backends/autotuner/hlo_extractor.h"
-#include "xla/backends/autotuner/local_cache.h"
+#include "xla/backends/autotuner/in_memory_store.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/autotuner/tiered_cache.h"
 #include "xla/backends/gpu/autotuner/factory.h"
@@ -244,17 +245,16 @@ std::unique_ptr<AutotunerCacheInterface> CreateAutotunerCache(
 
   AutotuneCacheContext cache_ctx =
       AutotuneCacheContext::Create(target_config.device_description, backends);
-  auto local_cache =
-      std::make_unique<LocalCache>(cache_ctx, KeyMatchingMode::kLoose);
-  if (cache_dir.empty()) {
-    return local_cache;
+  auto primary = std::make_unique<InMemoryStore>();
+  std::unique_ptr<AutotuneCacheStore> secondary = nullptr;
+  if (!cache_dir.empty()) {
+    secondary = std::make_unique<DirectoryStore>(
+        cache_dir,
+        GetCacheMode(debug_options.xla_gpu_experimental_autotune_cache_mode()));
   }
-  auto dir_cache = std::make_unique<DirectoryCache>(
-      cache_ctx, cache_dir,
-      GetCacheMode(debug_options.xla_gpu_experimental_autotune_cache_mode()),
-      KeyMatchingMode::kLoose);
-  return std::make_unique<TieredCache>(std::move(local_cache),
-                                       std::move(dir_cache));
+  return std::make_unique<TieredCache>(cache_ctx, KeyMatchingMode::kLoose,
+                                       std::move(primary),
+                                       std::move(secondary));
 }
 
 }  // namespace

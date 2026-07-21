@@ -37,9 +37,9 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
 #include "xla/backends/autotuner/config_assigner.h"
-#include "xla/backends/autotuner/directory_cache.h"
+#include "xla/backends/autotuner/directory_store.h"
 #include "xla/backends/autotuner/hlo_extractor.h"
-#include "xla/backends/autotuner/local_cache.h"
+#include "xla/backends/autotuner/in_memory_store.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/autotuner/tiered_cache.h"
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
@@ -249,18 +249,17 @@ absl::Status RunAutotuning(const std::vector<std::string>& hlo_files,
   ASSIGN_OR_RETURN(AutotunerEnvironment env,
                    CreateAutotunerEnvironment(debug_options));
 
-  std::unique_ptr<AutotunerCacheInterface> l2_cache;
+  std::unique_ptr<AutotunerCacheInterface> autotuner_cache;
   if (!cache_dir.empty()) {
-    l2_cache = std::make_unique<DirectoryCache>(
-        env.cache_ctx, std::string(cache_dir), CacheMode::kReadWrite,
-        KeyMatchingMode::kLoose);
+    auto primary = std::make_unique<InMemoryStore>();
+    auto secondary = std::make_unique<DirectoryStore>(std::string(cache_dir),
+                                                      CacheMode::kReadWrite);
+    autotuner_cache =
+        std::make_unique<TieredCache>(env.cache_ctx, KeyMatchingMode::kLoose,
+                                      std::move(primary), std::move(secondary));
   } else {
-    l2_cache = std::make_unique<PrintingAutotunerCache>();
+    autotuner_cache = std::make_unique<PrintingAutotunerCache>();
   }
-  auto local_cache = std::make_unique<LocalCache>(
-      env.cache_ctx, l2_cache->GetKeyMatchingMode());
-  auto autotuner_cache = std::make_unique<TieredCache>(std::move(local_cache),
-                                                       std::move(l2_cache));
 
   InstructionFilterFn should_autotune_instr = GetShouldAutotuneInstructionFn(
       debug_options,
