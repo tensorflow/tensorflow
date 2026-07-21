@@ -47,6 +47,7 @@ using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::Contains;
 using ::testing::ElementsAre;
+using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Not;
 using ::xla::details::ParseIntRangeInclusive;
@@ -273,6 +274,19 @@ TEST(ParsingDebugOptionsTest, ParseFromDebugOptionsFile) {
   EXPECT_TRUE(absl::StrContains(contents, "xla_hlo_pass_fix_detect_cycles"));
   EXPECT_FALSE(parsed_debug_options.xla_dump_hlo_as_long_text());
   EXPECT_TRUE(parsed_debug_options.xla_hlo_pass_fix_detect_cycles());
+}
+
+TEST(ParsingDebugOptionsTest, DefaultCollectivePipeliningModes) {
+  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
+  EXPECT_TRUE(debug_options.has_xla_gpu_pipeline_all_reduce());
+  EXPECT_TRUE(debug_options.has_xla_gpu_pipeline_all_gather());
+  EXPECT_TRUE(debug_options.has_xla_gpu_pipeline_reduce_scatter());
+  EXPECT_EQ(debug_options.xla_gpu_pipeline_all_reduce(),
+            DebugOptions::COLLECTIVE_PIPELINING_MODE_DEFAULT);
+  EXPECT_EQ(debug_options.xla_gpu_pipeline_all_gather(),
+            DebugOptions::COLLECTIVE_PIPELINING_MODE_DEFAULT);
+  EXPECT_EQ(debug_options.xla_gpu_pipeline_reduce_scatter(),
+            DebugOptions::COLLECTIVE_PIPELINING_MODE_ON);
 }
 
 TEST(ParsingDebugOptionsTest, EnvOverwritesDebugOptionsFile) {
@@ -594,6 +608,139 @@ TEST(CollectivesModeParsingTest, CaseInsensitive) {
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
   EXPECT_EQ(debug_options.xla_gpu_collective_permute_mode(),
             DebugOptions::COLLECTIVES_PEER_MEMORY);
+}
+
+TEST(CollectivesModeParsingTest, DisplaysConfiguredValues) {
+  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
+  debug_options.set_xla_gpu_collective_permute_mode(
+      DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY);
+  debug_options.set_xla_gpu_all_gather_mode(
+      DebugOptions::COLLECTIVES_PEER_MEMORY);
+  debug_options.set_xla_gpu_ragged_all_to_all_mode(
+      DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY);
+
+  std::vector<tsl::Flag> flag_objects;
+  MakeDebugOptionsFlags(&flag_objects, &debug_options);
+
+  const std::string usage = tsl::Flags::Usage("", flag_objects);
+
+  EXPECT_THAT(usage,
+              HasSubstr("--xla_gpu_collective_permute_mode=\"symmetric\""));
+  EXPECT_THAT(usage, HasSubstr("--xla_gpu_all_gather_mode=\"peer\""));
+  EXPECT_THAT(usage,
+              HasSubstr("--xla_gpu_ragged_all_to_all_mode=\"symmetric\""));
+}
+
+TEST(CollectivePipeliningModeParsingTest, CaseInsensitive) {
+  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
+  std::vector<tsl::Flag> flag_objects;
+  MakeDebugOptionsFlags(&flag_objects, &debug_options);
+
+  debug_options.set_xla_gpu_pipeline_all_gather(
+      DebugOptions::COLLECTIVE_PIPELINING_MODE_ON);
+  SetXlaFlagsEnvVar(
+      "--xla_gpu_pipeline_all_gather=DeFaUlT "
+      "--xla_gpu_pipeline_all_reduce=On "
+      "--xla_gpu_pipeline_reduce_scatter=EXPLICIT");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+
+  EXPECT_EQ(debug_options.xla_gpu_pipeline_all_gather(),
+            DebugOptions::COLLECTIVE_PIPELINING_MODE_DEFAULT);
+  EXPECT_EQ(debug_options.xla_gpu_pipeline_all_reduce(),
+            DebugOptions::COLLECTIVE_PIPELINING_MODE_ON);
+  EXPECT_EQ(debug_options.xla_gpu_pipeline_reduce_scatter(),
+            DebugOptions::COLLECTIVE_PIPELINING_MODE_EXPLICIT);
+}
+
+TEST(CollectivePipeliningModeParsingTest, DisplaysConfiguredValues) {
+  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
+  debug_options.set_xla_gpu_pipeline_all_reduce(
+      DebugOptions::COLLECTIVE_PIPELINING_MODE_DEFAULT);
+  debug_options.set_xla_gpu_pipeline_all_gather(
+      DebugOptions::COLLECTIVE_PIPELINING_MODE_ON);
+  debug_options.set_xla_gpu_pipeline_reduce_scatter(
+      DebugOptions::COLLECTIVE_PIPELINING_MODE_OFF);
+
+  std::vector<tsl::Flag> flag_objects;
+  MakeDebugOptionsFlags(&flag_objects, &debug_options);
+
+  const std::string usage = tsl::Flags::Usage("", flag_objects);
+
+  EXPECT_THAT(usage, HasSubstr("--xla_gpu_pipeline_all_reduce=\"default\""));
+  EXPECT_THAT(usage, HasSubstr("--xla_gpu_pipeline_all_gather=\"on\""));
+  EXPECT_THAT(usage, HasSubstr("--xla_gpu_pipeline_reduce_scatter=\"off\""));
+}
+
+TEST(CollectivePipeliningModeParsingTest, LegacyBooleanCompatibility) {
+  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
+  std::vector<tsl::Flag> flag_objects;
+  MakeDebugOptionsFlags(&flag_objects, &debug_options);
+
+  SetXlaFlagsEnvVar(
+      "--xla_gpu_enable_pipelined_all_gather=true "
+      "--xla_gpu_enable_pipelined_all_reduce=true "
+      "--xla_gpu_enable_pipelined_reduce_scatter=true");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_TRUE(debug_options.has_xla_gpu_pipeline_all_gather());
+  EXPECT_TRUE(debug_options.has_xla_gpu_pipeline_all_reduce());
+  EXPECT_TRUE(debug_options.has_xla_gpu_pipeline_reduce_scatter());
+  EXPECT_EQ(debug_options.xla_gpu_pipeline_all_gather(),
+            DebugOptions::COLLECTIVE_PIPELINING_MODE_ON);
+  EXPECT_EQ(debug_options.xla_gpu_pipeline_all_reduce(),
+            DebugOptions::COLLECTIVE_PIPELINING_MODE_ON);
+  EXPECT_EQ(debug_options.xla_gpu_pipeline_reduce_scatter(),
+            DebugOptions::COLLECTIVE_PIPELINING_MODE_ON);
+
+  SetXlaFlagsEnvVar(
+      "--xla_gpu_enable_pipelined_all_gather=false "
+      "--xla_gpu_enable_pipelined_all_reduce=false "
+      "--xla_gpu_enable_pipelined_reduce_scatter=false");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_TRUE(debug_options.has_xla_gpu_pipeline_all_gather());
+  EXPECT_TRUE(debug_options.has_xla_gpu_pipeline_all_reduce());
+  EXPECT_TRUE(debug_options.has_xla_gpu_pipeline_reduce_scatter());
+  EXPECT_EQ(debug_options.xla_gpu_pipeline_all_gather(),
+            DebugOptions::COLLECTIVE_PIPELINING_MODE_DEFAULT);
+  EXPECT_EQ(debug_options.xla_gpu_pipeline_all_reduce(),
+            DebugOptions::COLLECTIVE_PIPELINING_MODE_DEFAULT);
+  EXPECT_EQ(debug_options.xla_gpu_pipeline_reduce_scatter(),
+            DebugOptions::COLLECTIVE_PIPELINING_MODE_DEFAULT);
+}
+
+TEST(CollectivePipeliningModeParsingTest, LastFlagWins) {
+  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
+  std::vector<tsl::Flag> flag_objects;
+  MakeDebugOptionsFlags(&flag_objects, &debug_options);
+
+  SetXlaFlagsEnvVar(
+      "--xla_gpu_enable_pipelined_all_gather=true "
+      "--xla_gpu_pipeline_all_gather=explicit");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_EQ(debug_options.xla_gpu_pipeline_all_gather(),
+            DebugOptions::COLLECTIVE_PIPELINING_MODE_EXPLICIT);
+
+  SetXlaFlagsEnvVar(
+      "--xla_gpu_pipeline_all_gather=explicit "
+      "--xla_gpu_enable_pipelined_all_gather=true");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_EQ(debug_options.xla_gpu_pipeline_all_gather(),
+            DebugOptions::COLLECTIVE_PIPELINING_MODE_ON);
+
+  SetXlaFlagsEnvVar(
+      "--xla_gpu_pipeline_all_gather=off "
+      "--xla_gpu_enable_pipelined_all_gather=false");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_TRUE(debug_options.has_xla_gpu_pipeline_all_gather());
+  EXPECT_EQ(debug_options.xla_gpu_pipeline_all_gather(),
+            DebugOptions::COLLECTIVE_PIPELINING_MODE_DEFAULT);
+
+  SetXlaFlagsEnvVar(
+      "--xla_gpu_enable_pipelined_all_gather=false "
+      "--xla_gpu_pipeline_all_gather=off");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_TRUE(debug_options.has_xla_gpu_pipeline_all_gather());
+  EXPECT_EQ(debug_options.xla_gpu_pipeline_all_gather(),
+            DebugOptions::COLLECTIVE_PIPELINING_MODE_OFF);
 }
 
 TEST(ParseIntRangeInclusiveTest, SingleInteger) {

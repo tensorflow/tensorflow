@@ -605,9 +605,9 @@ TEST_F(CollectiveCombinerUtilsTest, MergeFrontendAttributesDeduplicates) {
     ENTRY entry {
       p0 = bf16[8] parameter(0)
       ar.0 = bf16[8] all-reduce(p0), to_apply=add,
-        frontend_attributes={is_pipelinable="true", key_a="val_a"}
+        frontend_attributes={is_pipelineable="true", key_a="val_a"}
       ROOT ar.1 = bf16[8] all-reduce(ar.0), to_apply=add,
-        frontend_attributes={is_pipelinable="true", key_b="val_b"}
+        frontend_attributes={is_pipelineable="true", key_b="val_b"}
     }
   )";
 
@@ -622,9 +622,10 @@ TEST_F(CollectiveCombinerUtilsTest, MergeFrontendAttributesDeduplicates) {
   ASSERT_EQ(instructions.size(), 2);
 
   FrontendAttributes merged = MergeFrontendAttributes(instructions);
-  EXPECT_THAT(merged.map(), UnorderedElementsAre(Pair("is_pipelinable", "true"),
-                                                 Pair("key_a", "val_a"),
-                                                 Pair("key_b", "val_b")));
+  EXPECT_THAT(
+      merged.map(),
+      UnorderedElementsAre(Pair("is_pipelineable", "true"),
+                           Pair("key_a", "val_a"), Pair("key_b", "val_b")));
 }
 
 TEST_F(CollectiveCombinerUtilsTest, MergeFrontendAttributesConflictingValues) {
