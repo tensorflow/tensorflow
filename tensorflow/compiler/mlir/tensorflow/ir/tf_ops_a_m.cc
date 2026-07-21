@@ -1730,7 +1730,7 @@ void ConstOp::build(OpBuilder& builder, OperationState& result, Type type,
 
 LogicalResult ConstOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
+    DictionaryAttr attributes, PropertyRef properties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   ConstOpAdaptor adaptor(operands, attributes, properties, regions);
   auto value = adaptor.getValue();
@@ -1972,8 +1972,8 @@ static LogicalResult inferConvReturnTypeComponents(
 
 LogicalResult Conv2DOp::inferReturnTypeComponents(
     MLIRContext* context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes,
-    OpaqueProperties properties, RegionRange regions,
+    ValueShapeRange operands, DictionaryAttr attributes, PropertyRef properties,
+    RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   Conv2DOpAdaptor op(operands.getValues(), attributes, properties, regions);
   ArrayRef<Attribute> explicit_padding;
@@ -2172,8 +2172,8 @@ StringRef Conv2DBackpropInputOp::GetOptimalLayout(
 
 LogicalResult Conv3DOp::inferReturnTypeComponents(
     MLIRContext* context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes,
-    OpaqueProperties properties, RegionRange regions,
+    ValueShapeRange operands, DictionaryAttr attributes, PropertyRef properties,
+    RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   Conv3DOpAdaptor op(operands.getValues(), attributes, properties, regions);
   ArrayAttr explicit_pad = ::mlir::Builder(context).getI64ArrayAttr({});
@@ -2250,7 +2250,7 @@ class DivNoNanOrMulNoNanConstantY : public OpRewritePattern<OpT> {
 
     // Returns true iff `val` (a complex constant with float real and imaginary
     // parts) is zero.
-    auto complexIsZero = [](const std::complex<APFloat> val) {
+    auto complexIsZero = [](const mlir::Complex<APFloat> val) {
       // Note that when `val` is of complex type, it is zero iff both
       // its real and imaginary parts are zero.
       if (val.real().isZero() && val.imag().isZero())
@@ -2273,7 +2273,7 @@ class DivNoNanOrMulNoNanConstantY : public OpRewritePattern<OpT> {
               if (foundZero && foundNonzero) return true;
             }
           } else {
-            for (const auto val : attr.getValues<std::complex<APFloat>>()) {
+            for (const auto val : attr.getValues<mlir::Complex<APFloat>>()) {
               if (complexIsZero(val))
                 foundZero = true;
               else
@@ -2308,7 +2308,7 @@ class DivNoNanOrMulNoNanConstantY : public OpRewritePattern<OpT> {
           if (splatAttr.getSplatValue<APFloat>().isZero())
             splatAttrIsZero = true;
         } else {
-          if (complexIsZero(splatAttr.getSplatValue<std::complex<APFloat>>()))
+          if (complexIsZero(splatAttr.getSplatValue<mlir::Complex<APFloat>>()))
             splatAttrIsZero = true;
         }
         if (splatAttrIsZero) {
@@ -3006,7 +3006,7 @@ void GeneratorDatasetRegionOp::getRegionInvocationBounds(
 OperandRange GeneratorDatasetRegionOp::getEntrySuccessorOperands(
     RegionSuccessor successor) {
   auto end = this->getOperation()->operand_end();
-  if (successor.isParent()) {
+  if (successor.isOperation()) {
     // The op itself doesn't branch back to itself.
     return ::mlir::OperandRange(end, end);
   } else if (successor.getSuccessor() == &getInit()) {
@@ -3018,38 +3018,54 @@ OperandRange GeneratorDatasetRegionOp::getEntrySuccessorOperands(
   }
 }
 
+ValueRange GeneratorDatasetRegionOp::getSuccessorInputs(
+    RegionSuccessor successor) {
+  // For GeneratorDatasetRegionOp, the control flow carries:
+  // - parent -> init: the init_func_other_args
+  // - init -> next: state values yielded by init
+  // - next -> next/finalize: state values yielded by next
+  // - finalize -> parent: nothing (finalize's return is discarded)
+  //
+  // The "other args" for next/finalize are NOT carried through terminators;
+  // they are implicit captures from the parent operation's operands.
+  // Therefore, getSuccessorInputs returns only the portion of block arguments
+  // that correspond to what the incoming terminators provide.
+
+  if (successor.isOperation()) {
+    return ValueRange();
+  }
+
+  Region* succ = successor.getSuccessor();
+  if (succ == &getInit()) {
+    return succ->getArguments();
+  }
+
+  Operation* initTerminator = getInit().front().getTerminator();
+  size_t stateCount = initTerminator->getNumOperands();
+  return succ->getArguments().take_front(stateCount);
+}
+
 void GeneratorDatasetRegionOp::getSuccessorRegions(
     RegionBranchPoint point, SmallVectorImpl<RegionSuccessor>& regions) {
-  int n;
   if (point.isParent()) {
     // The op itself branches to `init` first.
-    regions.push_back(
-        RegionSuccessor(&getInit(), getInit().front().getArguments()));
+    regions.push_back(RegionSuccessor(&getInit()));
   } else if (point.getTerminatorPredecessorOrNull()->getParentRegion() ==
              &getInit()) {
-    // `init` branches to `next`, passing along the arguments given to `init`'s
-    // yield. Said arguments precede the "other args".
-    n = getInitFuncOtherArgs().size();
-    regions.push_back(RegionSuccessor(
-        &getNext(), getNext().front().getArguments().drop_back(n)));
+    // `init` branches to `next`.
+    regions.push_back(RegionSuccessor(&getNext()));
   } else if (point.getTerminatorPredecessorOrNull()->getParentRegion() ==
              &getNext()) {
     // `next` branches to itself, or to `finalize`, passing all arguments given
     // to `next`s yield.
 
-    // The number of values we're passing along.
-    int num = getNext().front().getTerminator()->getNumOperands();
-
     // The number of extra values from the parent ops that should go to `next`
     // and `finalize`.
-    regions.push_back(RegionSuccessor(
-        &getNext(), getNext().front().getArguments().slice(0, num)));
-    regions.push_back(RegionSuccessor(
-        &getFinalize(), getFinalize().front().getArguments().slice(0, num)));
+    regions.push_back(RegionSuccessor(&getNext()));
+    regions.push_back(RegionSuccessor(&getFinalize()));
   } else {
-    // `finalize` branches back to the op itself, not passing any arguments.
-    regions.push_back(RegionSuccessor(
-        point.getTerminatorPredecessorOrNull()->getParentRegion()));
+    // `finalize` branches back to the parent op.
+    regions.push_back(RegionSuccessor(getOperation()));
   }
 }
 
@@ -3268,7 +3284,7 @@ void IfRegionOp::getRegionInvocationBounds(
 OperandRange IfRegionOp::getEntrySuccessorOperands(RegionSuccessor successor) {
   // IfRegionOp currently only allows one op (the condition), so there are no
   // remaining operands for the successor.
-  assert((successor.isParent() ||
+  assert((successor.isOperation() ||
           (successor.getSuccessor() == &(*this)->getRegion(0) ||
            successor.getSuccessor() == &(*this)->getRegion(1))) &&
          "Invalid IfRegionOp region index.");
@@ -3276,23 +3292,26 @@ OperandRange IfRegionOp::getEntrySuccessorOperands(RegionSuccessor successor) {
   return ::mlir::OperandRange(end, end);
 }
 
+::mlir::ValueRange IfRegionOp::getSuccessorInputs(
+    ::mlir::RegionSuccessor successor) {
+  if (successor.isOperation()) return getResults();
+  return ::mlir::ValueRange();
+}
+
 void IfRegionOp::getSuccessorRegions(
     RegionBranchPoint point, SmallVectorImpl<RegionSuccessor>& regions) {
   if (!point.isParent()) {
     // The `then` and the `else` region branch back to the parent operation.
-    regions.push_back(RegionSuccessor::parent(getResults()));
+    regions.push_back(RegionSuccessor(getOperation()));
     return;
   } else {
     // The parent can branch to either `then` or `else`.
-    regions.push_back(
-        RegionSuccessor(&getThenBranch(), getThenBranch().getArguments()));
+    regions.push_back(RegionSuccessor(&getThenBranch()));
     Region* elseRegion = &this->getElseBranch();
     if (!elseRegion->empty())
-      regions.push_back(
-          RegionSuccessor(elseRegion, elseRegion->getArguments()));
+      regions.push_back(RegionSuccessor(elseRegion));
     else
-      regions.push_back(RegionSuccessor(
-          point.getTerminatorPredecessorOrNull()->getParentRegion()));
+      regions.push_back(RegionSuccessor(getOperation()));
   }
 }
 

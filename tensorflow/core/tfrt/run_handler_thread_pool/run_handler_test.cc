@@ -31,6 +31,7 @@ limitations under the License.
 
 #include "absl/synchronization/barrier.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/blocking_counter.h"
@@ -209,6 +210,42 @@ TEST(RunHandlerUtilTest, IntraOpThreadPool) {
   absl::Notification notification;
   intra_pool->Schedule([&notification]() { notification.Notify(); });
   notification.WaitForNotification();
+}
+
+// Verifies that ScheduleIntraOpClosure enqueues work to the non-blocking
+// (intra-op) queue.
+TEST(RunHandlerUtilTest, ScheduleIntraOpClosureRoutesToNonBlockingQueue) {
+  RunHandlerPool::Options options;
+  options.num_inter_op_threads = 1;  // 1 blocking thread
+  options.num_intra_op_threads = 1;  // 1 non-blocking thread
+  options.num_threads_in_sub_thread_pool = {2};
+
+  // Notifications must be declared before the pool and handler to avoid race
+  // conditions in destruction.
+  absl::Notification blocker_started;
+  absl::Notification blocker_release;
+  absl::Notification intra_done;
+
+  std::unique_ptr<RunHandlerPool> pool(new RunHandlerPool(options));
+  auto handler = pool->Get(/*step_id=*/1, /*timeout_in_ms=*/0);
+
+  // Block the sole inter-op (blocking) thread.
+  handler->ScheduleInterOpClosure(TaskFunction([&]() {
+    blocker_started.Notify();
+    blocker_release.WaitForNotification();
+  }));
+  blocker_started.WaitForNotification();
+
+  // Schedule an intra-op closure. With the correct implementation this goes
+  // to the non-blocking queue and the intra-op thread picks it up.
+  handler->ScheduleIntraOpClosure(TaskFunction([&]() { intra_done.Notify(); }));
+
+  // If ScheduleIntraOpClosure incorrectly enqueued as blocking work, the
+  // intra-op thread cannot pick it up and this would hang.
+  EXPECT_TRUE(intra_done.WaitForNotificationWithTimeout(absl::Seconds(10)));
+
+  // Unblock the inter-op thread so the pool can shut down cleanly.
+  blocker_release.Notify();
 }
 
 class RunHandlerThreadPoolTest

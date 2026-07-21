@@ -1,9 +1,10 @@
 load(
     "//xla:xla.default.bzl",
     "xla_cc_test",
+    "xla_internal",
 )
 load("//xla/tsl:tsl.bzl", "internal_visibility")
-load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_binary", "cc_library")
 load("//xla/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
@@ -14,6 +15,7 @@ cc_library(
     visibility = internal_visibility([
         "//xla/backends/profiler:__pkg__",
         # copybara:uncomment "//tensorflow/core/profiler:internal",
+        "//xla/tsl/profiler:friends",
     ]),
     deps = [
         ":host_tracer_impl",
@@ -41,6 +43,7 @@ cc_library(
         "//xla/tsl/profiler/utils:xplane_utils",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@tsl//tsl/profiler/lib:profiler_collection",
         "@tsl//tsl/profiler/lib:profiler_interface",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
@@ -54,6 +57,7 @@ cc_library(
         "//xla/python:__pkg__",
         # copybara:uncomment "//tensorflow/core/profiler:internal",
         # copybara:uncomment "//tensorflow:internal",
+        "//xla/tsl/profiler:friends",
     ]),
     deps = [
         ":python_tracer_impl",
@@ -74,6 +78,7 @@ cc_library(
         # copybara:uncomment "//tensorflow/core/profiler:internal",
     ]),
     deps = [
+        "//xla/backends/profiler/util:metadata_registry",
         "//xla/python/profiler/internal:python_hooks",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/log",
@@ -93,6 +98,7 @@ cc_library(
     ]),
     deps = [
         ":metadata_utils",
+        "//xla/backends/profiler/util:metadata_registry",
         "//xla/service:hlo_proto_cc",
         "//xla/service:xla_debug_info_manager",
         "//xla/tsl/profiler/utils:xplane_builder",
@@ -130,15 +136,47 @@ xla_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:types",
         "//xla/tsl/profiler/utils:tf_xplane_visitor",
         "//xla/tsl/profiler/utils:timespan",
         "//xla/tsl/profiler/utils:xplane_schema",
         "//xla/tsl/profiler/utils:xplane_visitor",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/profiler/lib:profiler_interface",
         "@tsl//tsl/profiler/lib:traceme",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ] + xla_internal([
+        "//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",
+    ]),
+)
+
+cc_binary(
+    name = "traceme_encode_benchmark_with_cpu_tracer",
+    testonly = True,
+    srcs = [],
+    deps = [
+        "//xla/backends/profiler/cpu:host_tracer",
+        "//xla/tsl/profiler/backends/cpu:traceme_encode_benchmark",
+    ],
+)
+
+cc_binary(
+    name = "traceme_benchmark_with_cpu_tracer",
+    testonly = True,
+    srcs = [],
+    deps = [
+        "//xla/backends/profiler/cpu:host_tracer",
+        "//xla/tsl/profiler/backends/cpu:traceme_benchmark",
+    ],
+)
+
+cc_binary(
+    name = "connected_traceme_benchmark_with_cpu_tracer",
+    testonly = True,
+    srcs = [],
+    deps = [
+        "//xla/backends/profiler/cpu:host_tracer",
+        "//xla/tsl/profiler/backends/cpu:connected_traceme_benchmark",
     ],
 )

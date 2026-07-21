@@ -84,7 +84,7 @@ TEST_F(ModelPrunerTest, StopGradientPruning) {
 
   CompareGraphs(expected, output);
 
-  std::vector<string> fetch = {"e"};
+  std::vector<std::string> fetch = {"e"};
   auto expected_tensors = EvaluateNodes(item.graph, fetch);
   auto actual_tensors = EvaluateNodes(output, fetch);
   ASSERT_EQ(expected_tensors.size(), 1);
@@ -261,7 +261,7 @@ TEST_F(ModelPrunerTest, NoOpPruning) {
 
   CompareGraphs(expected, output);
 
-  std::vector<string> fetch = {"e"};
+  std::vector<std::string> fetch = {"e"};
   auto actual_tensors = EvaluateNodes(output, fetch);
   ASSERT_EQ(actual_tensors.size(), 1);
   auto expected_tensors = EvaluateNodes(item.graph, fetch);
@@ -347,7 +347,7 @@ TEST_F(ModelPrunerTest, PruningSkipsRefOutputs) {
 
   CompareGraphs(expected, output);
 
-  std::vector<string> fetch = {"e"};
+  std::vector<std::string> fetch = {"e"};
   auto a_t = GenerateRandomTensor<DT_INT64>(TensorShape({}));
   auto actual_tensors = EvaluateNodes(output, fetch, {{"a", a_t}});
   ASSERT_EQ(actual_tensors.size(), 1);
@@ -357,7 +357,7 @@ TEST_F(ModelPrunerTest, PruningSkipsRefOutputs) {
 }
 
 // TODO(rmlarsen): Reenable this test when the issues with
-// //robotics/learning/sensor_predict:utils_multi_sensor_rnn_test
+// robotics/learning/sensor_predict:utils_multi_sensor_rnn_test
 // have been resolved.
 /*
 TEST_F(ModelPrunerTest, PruningForwardsCtrlDependencies) {

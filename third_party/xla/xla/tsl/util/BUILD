@@ -4,7 +4,8 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
-load("//xla:py_strict.bzl", "py_strict_binary")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 load(
     "//xla/tsl:tsl.bzl",
     "check_deps",
@@ -26,6 +27,7 @@ load(
     "cc_library",
 )
 load(":cc_embed_data.bzl", "cc_embed_data")
+load(":memfile_embed_data.bzl", "memfile_embed_data")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -39,6 +41,12 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "byte_swap_array.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs_no_runtime",
+    srcs = [
         "byte_swap_array.h",
     ],
 )
@@ -47,14 +55,20 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "command_line_flags.cc",
-        "command_line_flags.h",
         "determinism.cc",
-        "determinism.h",
         "device_name_utils.cc",
-        "device_name_utils.h",
         "env_var.cc",
-        "env_var.h",
         "use_cudnn.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
+        "command_line_flags.h",
+        "determinism.h",
+        "device_name_utils.h",
+        "env_var.h",
         "use_cudnn.h",
     ],
 )
@@ -224,6 +238,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -246,6 +261,7 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:test_log_proto_cc",
         "@com_google_absl//absl/status",
@@ -410,6 +426,45 @@ tsl_cc_test(
     ],
 )
 
+cc_library(
+    name = "tied_ref",
+    hdrs = ["tied_ref.h"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tsl_cc_test(
+    name = "tied_ref_test",
+    srcs = ["tied_ref_test.cc"],
+    deps = [
+        ":tied_ref",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+    ],
+)
+
+cc_library(
+    name = "unique_any",
+    hdrs = ["unique_any.h"],
+    deps = [
+        "@com_google_absl//absl/log:check",
+    ],
+)
+
+tsl_cc_test(
+    name = "unique_any_test",
+    srcs = ["unique_any_test.cc"],
+    deps = [
+        ":unique_any",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
+    ],
+)
+
 cc_binary(
     name = "filewrapper",
     srcs = ["filewrapper.cc"],
@@ -418,6 +473,7 @@ cc_binary(
     deps = [
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/flags:parse",
@@ -425,15 +481,17 @@ cc_binary(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/platform:platform_port",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "filewrapper_testdata_generator",
     testonly = True,
     srcs = ["filewrapper_testdata_generator.py"],
@@ -471,18 +529,6 @@ cc_embed_data(
     visibility = ["//visibility:private"],
 )
 
-cc_library(
-    name = "filewrapper_testdata_lib",
-    testonly = True,
-    srcs = ["filewrapper_testdata.cc"],
-    hdrs = ["filewrapper_testdata.h"],
-    visibility = ["//visibility:private"],
-    deps = [
-        ":file_toc",
-        ":filewrapper_testdata",
-    ],
-)
-
 tsl_cc_test(
     name = "filewrapper_embed_test",
     srcs = [
@@ -495,12 +541,128 @@ tsl_cc_test(
         ":filewrapper_testdata.txt",
     ],
     deps = [
-        ":filewrapper_testdata_lib",
+        ":filewrapper_testdata",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/strings:string_view",
         "@tsl//tsl/platform:path",
+    ],
+)
+
+cc_library(
+    name = "memfile_builtin",
+    srcs = ["memfile_builtin.cc"],
+    hdrs = ["memfile_builtin.h"],
+    deps = [
+        ":file_toc",
+        "//xla/tsl/platform:embedded_filesystem",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@tsl//tsl/platform:path",
+    ],
+)
+
+tsl_cc_test(
+    name = "memfile_builtin_test",
+    srcs = ["memfile_builtin_test.cc"],
+    deps = [
+        ":file_toc",
+        ":memfile_builtin",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_for_library",
+    ],
+)
+
+cc_binary(
+    name = "memfile_stub_generator",
+    srcs = ["memfile_stub_generator.cc"],
+    deps = [
+        ":command_line_flags",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:str_format",
+        "@tsl//tsl/platform:platform_port",
+    ],
+)
+
+memfile_embed_data(
+    name = "test_memfile",
+    testonly = True,
+    srcs = ["memfile_test.txt"],
+)
+
+tsl_cc_test(
+    name = "memfile_embed_data_test",
+    srcs = ["memfile_embed_data_test.cc"],
+    data = ["memfile_test.txt"],
+    deps = [
+        ":test_memfile",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:path",
+    ],
+)
+
+bzl_library(
+    name = "cc_embed_data",
+    srcs = ["cc_embed_data.bzl"],
+    deps = [
+        "@bazel_skylib//lib:paths",
+        "@bazel_skylib//lib:sets",
+        "@rules_cc//cc:find_cc_toolchain_bzl",
+        "@rules_cc//cc/common",
+    ],
+)
+
+bzl_library(
+    name = "memfile_embed_data",
+    srcs = ["memfile_embed_data.bzl"],
+    deps = [
+        ":cc_embed_data",
+        "//xla/tsl/platform:rules_cc_bzl",
+    ],
+)
+
+cc_library(
+    name = "sorted_range",
+    hdrs = [
+        "sorted_range.h",
+        "sorted_range_internal.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    deps = ["@com_google_absl//absl/container:fixed_array"],
+)
+
+cc_library(
+    name = "maybe_owning",
+    hdrs = ["maybe_owning.h"],
+    deps = [":safe_reinterpret_cast"],
+)
+
+tsl_cc_test(
+    name = "sorted_range_test",
+    srcs = ["sorted_range_test.cc"],
+    deps = [
+        ":sorted_range",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_googletest//:gtest_main",
     ],
 )

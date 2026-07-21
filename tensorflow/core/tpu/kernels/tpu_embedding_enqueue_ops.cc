@@ -23,9 +23,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_helper.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
-#include "xla/stream_executor/tpu/status_helper.h"
-#include "xla/stream_executor/tpu/tpu_api.h"
+#include "xla/tpu/status_helper.h"
+#include "xla/tpu/tpu_api.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
@@ -55,8 +54,8 @@ absl::Status GetValidatedModeOverride(
   } else if (mode_override == "unspecified") {
     *mode = tpu::TPUEmbeddingConfiguration::UNSPECIFIED;
   } else {
-    return errors::InvalidArgument("Unsupported value ", mode_override,
-                                   " specified for mode_override.");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Unsupported value ", mode_override, " specified for mode_override."));
   }
   return absl::OkStatus();
 }

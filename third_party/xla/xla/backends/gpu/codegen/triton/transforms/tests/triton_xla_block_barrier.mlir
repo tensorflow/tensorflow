@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: xla-opt %s --triton-xla-block-barrier | FileCheck %s
 
 // CHECK-LABEL: block_barrier_kernel
@@ -28,9 +42,9 @@ tt.func @block_barrier_kernel(
   // CHECK-NEXT:   %[[ADD_PTR_4:.+]] = tt.addptr %[[INT_TO_PTR_2]], %[[MULI]]
   // CHECK-NEXT:   %[[SPLAT_ADD_PTR_4:.+]] = tt.splat %[[ADD_PTR_4]]
   // CHECK-NEXT:   %[[ADD_PTR_5:.+]] = tt.addptr %[[SPLAT_ADD_PTR_4]], %[[RANGE]]
-  // CHECK-NEXT:   triton_xla.atomic_spin_wait sys, acquire, %[[ADD_PTR_5]], less_than, %[[SIGNAL_VALUE]]
+  // CHECK-NEXT:   triton_xla.atomic_spin_wait sys, acquire, %[[ADD_PTR_5]], greater_than_or_equal_to, %[[SIGNAL_VALUE]]
   // CHECK-NEXT: }
-  // CHECK-NEXT:   ttg.local_barrier
+  // CHECK-NEXT: ttg.barrier local
   // CHECK-NEXT: tt.return
   triton_xla.block_barrier %ptr, %rank, %signal_value, { world_size = 8 : i32 } :
     (!tt.ptr<!tt.ptr<i32>>, i32, i32) -> ()

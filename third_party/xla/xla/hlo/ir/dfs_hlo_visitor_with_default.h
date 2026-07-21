@@ -347,12 +347,19 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
   // Returns the absl::Status representing the result of the replace operation.
   absl::Status ReplaceWithNewInstruction(
       HloInstruction* old_instruction,
-      std::unique_ptr<HloInstruction> new_instruction) {
+      std::unique_ptr<HloInstruction> new_instruction,
+      bool preserve_sharding = false, bool relay_control_dependency = false,
+      bool remove_unused_operands = true,
+      bool preserve_frontend_attributes = true) {
     VLOG(3) << "Replacing instruction:" << "\n  old: "
             << old_instruction->ToString()
             << "\n  new: " << new_instruction->ToString();
     absl::Status status = old_instruction->parent()->ReplaceWithNewInstruction(
-        old_instruction, std::move(new_instruction));
+        old_instruction, std::move(new_instruction),
+        /*preserve_sharding=*/preserve_sharding,
+        /*relay_control_dependency=*/relay_control_dependency,
+        /*remove_unused_operands=*/remove_unused_operands,
+        /*preserve_frontend_attributes=*/preserve_frontend_attributes);
     if (ABSL_PREDICT_TRUE(status.ok())) {
       changed_ = true;
     }
@@ -364,14 +371,16 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
   // Returns the absl::Status representing the result of the replace operation.
   absl::StatusOr<bool> ReplaceInstruction(HloInstruction* old_instruction,
                                           HloInstruction* new_instruction,
-                                          bool preserve_sharding) {
+                                          bool preserve_sharding,
+                                          bool preserve_frontend_attributes) {
     VLOG(3) << "Replacing instruction:" << "\n  old: "
             << old_instruction->ToString()
             << "\n  new: " << new_instruction->ToString();
     absl::StatusOr<bool> changed_or =
         old_instruction->parent()->ReplaceInstruction(
             old_instruction, new_instruction, preserve_sharding,
-            /*relay_control_dependency=*/true);
+            /*relay_control_dependency=*/true, /*remove_unused_operands=*/true,
+            preserve_frontend_attributes);
     if (ABSL_PREDICT_TRUE(changed_or.ok())) {
       changed_ |= changed_or.value();
     }
@@ -379,10 +388,11 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
   }
 
   absl::Status ReplaceInstruction(HloInstruction* old_instruction,
-                                  HloInstruction* new_instruction) {
-    absl::StatusOr<bool> changed_or =
-        ReplaceInstruction(old_instruction, new_instruction,
-                           /*preserve_sharding=*/false);
+                                  HloInstruction* new_instruction,
+                                  bool preserve_frontend_attributes = true) {
+    absl::StatusOr<bool> changed_or = ReplaceInstruction(
+        old_instruction, new_instruction,
+        /*preserve_sharding=*/false, preserve_frontend_attributes);
     if (ABSL_PREDICT_TRUE(changed_or.ok())) {
       DCHECK(changed_or.value());
     }

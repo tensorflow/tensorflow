@@ -23,14 +23,14 @@ absl::Status ValidateSegmentReduction(OpKernelContext* context,
                                       const Tensor& input,
                                       const Tensor& segment_ids) {
   if (!TensorShapeUtils::IsVectorOrHigher(input.shape())) {
-    return errors::InvalidArgument("input must be at least rank 1");
+    return absl::InvalidArgumentError("input must be at least rank 1");
   }
   if (!TensorShapeUtils::IsVector(segment_ids.shape())) {
-    return errors::InvalidArgument("segment_ids should be a vector.");
+    return absl::InvalidArgumentError("segment_ids should be a vector.");
   }
   const int64_t num_indices = segment_ids.NumElements();
   if (num_indices != input.dim_size(0)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "segment_ids should be the same size as dimension 0 of"
         " input.");
   }
@@ -45,15 +45,16 @@ absl::Status ValidateUnsortedSegmentReduction(OpKernel* op_kernel,
                                               const Tensor& segment_ids,
                                               const Tensor& num_segments) {
   if (!TensorShapeUtils::IsScalar(num_segments.shape())) {
-    return errors::InvalidArgument(
-        "num_segments should be a scalar, not shape ",
-        num_segments.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("num_segments should be a scalar, not shape ",
+                     num_segments.shape().DebugString()));
   }
 
   if (!TensorShapeUtils::StartsWith(data.shape(), segment_ids.shape())) {
-    return errors::InvalidArgument("data.shape = ", data.shape().DebugString(),
-                                   " does not start with segment_ids.shape = ",
-                                   segment_ids.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("data.shape = ", data.shape().DebugString(),
+                     " does not start with segment_ids.shape = ",
+                     segment_ids.shape().DebugString()));
   }
 
   return absl::OkStatus();
@@ -67,41 +68,49 @@ absl::Status ValidateSparseSegmentReduction(OpKernelContext* context,
   if (has_num_segments) {
     const Tensor& num_segments_t = context->input(3);
     if (!TensorShapeUtils::IsScalar(num_segments_t.shape())) {
-      return errors::InvalidArgument(
-          "num_segments should be a scalar, not shape ",
-          num_segments_t.shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("num_segments should be a scalar, not shape ",
+                       num_segments_t.shape().DebugString()));
     }
     int64_t output_rows =
         internal::SubtleMustCopy(num_segments_t.dtype() == DT_INT32
-                                     ? num_segments_t.scalar<int32>()()
+                                     ? num_segments_t.scalar<int32_t>()()
                                      : num_segments_t.scalar<int64_t>()());
     if (output_rows < 0) {
-      return errors::InvalidArgument("segment ids must be >= 0");
+      return absl::InvalidArgumentError("segment ids must be >= 0");
     }
   }
 
   if (!TensorShapeUtils::IsVector(indices.shape())) {
-    return errors::InvalidArgument("indices should be a vector.");
+    return absl::InvalidArgumentError("indices should be a vector.");
   }
 
   if (!TensorShapeUtils::IsVector(segment_ids.shape())) {
-    return errors::InvalidArgument("segment_ids should be a vector.");
+    return absl::InvalidArgumentError("segment_ids should be a vector.");
   }
 
   const int64_t num_indices = indices.NumElements();
   if (num_indices != segment_ids.NumElements()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "segment_ids and indices should have same size.");
   }
 
   if (input.dims() < 1) {
-    return errors::InvalidArgument("Shape must be at least rank 1");
+    return absl::InvalidArgumentError("Shape must be at least rank 1");
   }
 
   return absl::OkStatus();
 }
 
 }  // namespace internal
+
+template <typename T>
+using MinReducerPropagateNaN =
+    Eigen::internal::MinReducer<T, Eigen::PropagateNaN>;
+
+template <typename T>
+using MaxReducerPropagateNaN =
+    Eigen::internal::MaxReducer<T, Eigen::PropagateNaN>;
 
 #define REGISTER_CPU_KERNEL_SEGMENT(name, functor, type, index_type, \
                                     default_value)                   \
@@ -119,9 +128,9 @@ absl::Status ValidateSparseSegmentReduction(OpKernelContext* context,
       "SegmentMean", Eigen::internal::MeanReducer<type>, type, index_type, 0); \
   REGISTER_CPU_KERNEL_SEGMENT(                                                 \
       "SegmentProd", Eigen::internal::ProdReducer<type>, type, index_type, 1); \
-  REGISTER_CPU_KERNEL_SEGMENT("SegmentMin", Eigen::internal::MinReducer<type>, \
+  REGISTER_CPU_KERNEL_SEGMENT("SegmentMin", MinReducerPropagateNaN<type>,      \
                               type, index_type, 0);                            \
-  REGISTER_CPU_KERNEL_SEGMENT("SegmentMax", Eigen::internal::MaxReducer<type>, \
+  REGISTER_CPU_KERNEL_SEGMENT("SegmentMax", MaxReducerPropagateNaN<type>,      \
                               type, index_type, 0)
 
 #define REGISTER_COMPLEX_CPU_KERNELS(type, index_type)                         \

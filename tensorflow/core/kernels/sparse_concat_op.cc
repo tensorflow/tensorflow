@@ -23,6 +23,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -102,53 +104,75 @@ class SparseConcatOp : public OpKernel {
     const int N = inds.size();
     for (int i = 0; i < N; i++) {
       OP_REQUIRES(context, TensorShapeUtils::IsMatrix(inds[i].shape()),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Input indices should be a matrix but received shape ",
-                      inds[i].shape().DebugString(), " at position ", i));
+                      inds[i].shape().DebugString(), " at position ", i)));
     }
 
     OpInputList vals;
     OP_REQUIRES_OK(context, context->input_list("values", &vals));
     OP_REQUIRES(context, vals.size() == N,
-                errors::InvalidArgument("Expected ", N, " input values, got ",
-                                        vals.size()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Expected ", N, " input values, got ", vals.size())));
     for (int i = 0; i < N; i++) {
       OP_REQUIRES(context, TensorShapeUtils::IsVector(vals[i].shape()),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Input values should be a vector but received shape ",
-                      vals[i].shape().DebugString(), " at position ", i));
+                      vals[i].shape().DebugString(), " at position ", i)));
+      OP_REQUIRES(context, inds[i].dim_size(0) == vals[i].dim_size(0),
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Indices and values rows (indexing dimension) must "
+                      "match: indices = ",
+                      inds[i].dim_size(0), ", values = ", vals[i].dim_size(0),
+                      " at position ", i)));
     }
 
     OpInputList shapes;
     OP_REQUIRES_OK(context, context->input_list("shapes", &shapes));
     OP_REQUIRES(context, shapes.size() == N,
-                errors::InvalidArgument("Expected ", N, " input shapes, got ",
-                                        shapes.size()));
-    bool overflow_ocurred = false;
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Expected ", N, " input shapes, got ", shapes.size())));
+    bool overflow_occurred = false;
     for (int i = 0; i < N; i++) {
       int64_t new_num_elements = 1;
       OP_REQUIRES(context, TensorShapeUtils::IsVector(shapes[i].shape()),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Input shapes should be a vector but received shape ",
-                      shapes[i].shape().DebugString(), " at position ", i));
+                      shapes[i].shape().DebugString(), " at position ", i)));
+      OP_REQUIRES(context, inds[i].dim_size(1) == shapes[i].dim_size(0),
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Indices rank and shape rank must match: indices = ",
+                      inds[i].dim_size(1), ", shape = ", shapes[i].dim_size(0),
+                      " at position ", i)));
       auto input_shape_vector = shapes[i].vec<int64_t>();
       for (int j = 0; j < input_shape_vector.size(); j++) {
+        OP_REQUIRES(context, input_shape_vector(j) >= 0,
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Input shape dimensions must be non-negative, got ",
+                        input_shape_vector(j), " for dimension ", j,
+                        " at position ", i)));
         new_num_elements =
             MultiplyWithoutOverflow(new_num_elements, input_shape_vector(j));
         if (new_num_elements < 0) {
-          overflow_ocurred = true;
+          overflow_occurred = true;
           break;
         }
       }
 
-      if (overflow_ocurred) {
+      if (overflow_occurred) {
         break;
       }
+      OP_REQUIRES(context, new_num_elements > 0 || inds[i].dim_size(0) == 0,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "SparseTensor cannot have non-zero indices if dense "
+                      "shape has zero volume: dense_shape = ",
+                      shapes[i].SummarizeValue(10), " with nnz = ",
+                      inds[i].dim_size(0), " at position ", i)));
     }
 
-    OP_REQUIRES(
-        context, !overflow_ocurred,
-        errors::Internal("Encountered overflow from large input shape."));
+    OP_REQUIRES(context, !overflow_occurred,
+                absl::InvalidArgumentError(
+                    "Encountered overflow from large input shape."));
 
     const TensorShape input_shape(shapes[0].vec<int64_t>());
     const int input_rank = input_shape.dims();
@@ -156,28 +180,32 @@ class SparseConcatOp : public OpKernel {
                                ? input_rank + concat_dim_attr_
                                : concat_dim_attr_;
     OP_REQUIRES(context, concat_dim >= 0 && concat_dim < input_rank,
-                errors::InvalidArgument("Concat dimension must be in range [",
-                                        -input_rank, ", ", input_rank,
-                                        "), got ", concat_dim_attr_));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Concat dimension must be in range [", -input_rank, ", ",
+                    input_rank, "), got ", concat_dim_attr_)));
     TensorShape output_shape = input_shape;
     for (int i = 1; i < N; ++i) {
       const TensorShape current_shape(shapes[i].vec<int64_t>());
       OP_REQUIRES(
           context, current_shape.dims() == input_rank,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Ranks of all input tensors must match: expected ", input_rank,
-              " but got ", current_shape.dims(), " at position ", i));
+              " but got ", current_shape.dims(), " at position ", i)));
       for (int j = 0; j < input_rank; ++j) {
         if (j != concat_dim) {
           OP_REQUIRES(
               context, input_shape.dim_size(j) == current_shape.dim_size(j),
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "Input shapes must match: expected ", input_shape.dim_size(j),
                   " for dimension ", j, " but got ", current_shape.dim_size(j),
-                  " at position ", i));
+                  " at position ", i)));
         } else {
-          output_shape.set_dim(
-              j, output_shape.dim_size(j) + current_shape.dim_size(j));
+          int64_t new_dim = AddWithoutOverflow(output_shape.dim_size(j),
+                                               current_shape.dim_size(j));
+          OP_REQUIRES(context, new_dim >= 0,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "Concat dimension overflowed at position ", i)));
+          output_shape.set_dim(j, new_dim);
         }
       }
     }

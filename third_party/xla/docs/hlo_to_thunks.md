@@ -219,9 +219,9 @@ that runs on the ThunkSequence itself.
 The pass identifies contiguous sub-sequences of compatible thunks (e.g., a
 series of `KernelThunk`s and `GemmThunk`s). It then replaces the found
 sub-sequence with a single `CommandBufferThunk`. The new thunk encapsulates the
-logic of the original thunks as a list of lightweight CommandBufferCmd objects.
-When a `CommandBufferThunk` executes for the first time on a given GPU stream,
-it "records" its sequence of commands into a hardware command buffer. On all
+logic of the original thunks as a list of lightweight Command objects. When a
+`CommandBufferThunk` executes for the first time on a given GPU stream, it
+"records" its sequence of commands into a hardware command buffer. On all
 subsequent executions, it simply issues a single command to the GPU to "replay"
 the recorded sequence. This avoids the CPU overhead of launching each individual
 kernel.

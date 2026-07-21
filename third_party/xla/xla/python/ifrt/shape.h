@@ -19,14 +19,19 @@ limitations under the License.
 #include <stdbool.h>
 
 #include <cstdint>
+#include <memory>
 #include <ostream>
 #include <string>
 #include <utility>
 #include <variant>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/nullability.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -46,7 +51,8 @@ class Shape {
   using Dimensions = absl::InlinedVector<int64_t, kInlineDimensionSize>;
 
   explicit Shape(absl::Span<const int64_t> dims)
-      : dims_(Dimensions(dims.begin(), dims.end())) {}
+      : dims_(std::make_shared<Dimensions>(dims.begin(), dims.end())) {}
+
   Shape(const Shape&) = default;
   Shape(Shape&&) = default;
   Shape& operator=(const Shape&) = default;
@@ -68,10 +74,12 @@ class Shape {
     return proto;
   }
 
-  absl::Span<const int64_t> dims() const { return dims_; }
+  absl::Span<const int64_t> dims() const { return *dims_; }
 
-  bool operator==(const Shape& other) const { return dims_ == other.dims_; }
-  bool operator!=(const Shape& other) const { return dims_ != other.dims_; }
+  bool operator==(const Shape& other) const {
+    return dims_ == other.dims_ || *dims_ == *other.dims_;
+  }
+  bool operator!=(const Shape& other) const { return !(*this == other); }
 
   template <typename H>
   friend H AbslHashValue(H h, const Shape& shape);
@@ -79,21 +87,18 @@ class Shape {
   // Total number of elements in this shape.
   int64_t num_elements() const;
 
-  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
-  std::string DebugString() const;
-
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const Shape& shape) {
-    sink.Append(shape.DebugString());
+    sink.Append(absl::StrCat("[", absl::StrJoin(shape.dims(), ","), "]"));
   }
 
  private:
-  Dimensions dims_;
+  absl_nonnull std::shared_ptr<const Dimensions> dims_;
 };
 
 template <typename H>
 H AbslHashValue(H h, const Shape& shape) {
-  return H::combine(std::move(h), shape.dims_);
+  return H::combine(std::move(h), *shape.dims_);
 }
 
 // A tag for `Shape` to indicate bounded dynamism. Should be used together with
@@ -214,7 +219,21 @@ class DynamicShape {
     return proto;
   }
 
-  std::string DebugString() const;
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const DynamicShape& shape) {
+    std::visit(
+        [&sink, &shape](const BoundedDynamicShapeTag& tag) {
+          absl::InlinedVector<std::string, Shape::kInlineDimensionSize>
+              dim_reps;
+          dim_reps.reserve(shape.shape_.dims().size());
+          for (int i = 0; i < shape.shape_.dims().size(); ++i) {
+            absl::string_view prefix = tag.DynamicDims()[i] ? "<=" : "";
+            dim_reps.push_back(absl::StrCat(prefix, shape.shape_.dims()[i]));
+          }
+          sink.Append(absl::StrCat("[", absl::StrJoin(dim_reps, ","), "]"));
+        },
+        shape.tag_);
+  }
 
  private:
   DynamicShape(Shape shape, DynamicShapeTag tag)

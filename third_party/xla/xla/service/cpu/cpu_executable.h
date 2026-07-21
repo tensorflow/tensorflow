@@ -62,7 +62,7 @@ class CpuExecutable : public Executable {
       std::unique_ptr<BufferAssignment> assignment,
       std::unique_ptr<HloModule> hlo_module, ThunkSequence thunks,
       std::vector<ConstantAllocation> constants,
-      TargetMachineOptions target_machine_options);
+      TargetMachineOptions target_machine_options, std::string data_layout);
 
   ~CpuExecutable() override;
 
@@ -155,6 +155,8 @@ class CpuExecutable : public Executable {
     return target_machine_options_;
   }
 
+  const std::string& data_layout() const { return data_layout_; }
+
  private:
   // Creates an array suitable for passing as the "buffer_table" argument to the
   // JIT compiled function pointer.
@@ -240,13 +242,15 @@ class CpuExecutable : public Executable {
   bool has_ynn_fusions_ = false;
 
   TargetMachineOptions target_machine_options_;
+  std::string data_layout_;
 
   // Entry function name for the computation.
   std::string entry_function_name_;
 
   CpuExecutable(std::unique_ptr<HloModule> hlo_module,
                 std::unique_ptr<BufferAssignment> assignment,
-                TargetMachineOptions target_machine_options);
+                TargetMachineOptions target_machine_options,
+                std::string data_layout);
   CpuExecutable(const CpuExecutable&) = delete;
   CpuExecutable& operator=(const CpuExecutable&) = delete;
 };

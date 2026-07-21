@@ -16,75 +16,68 @@ limitations under the License.
 #include "xla/service/hlo_graph_dumper.h"
 
 #include <cstdint>
+#include <deque>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <tuple>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
-#include "xla/comparison_util.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/shape.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/file_system.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/thread_annotations.h"
-
-#ifndef _WIN32
-#include <unistd.h>
-#endif
-
-#include <algorithm>
-#include <atomic>
-#include <deque>
-#include <functional>
-#include <map>
-#include <memory>
-#include <optional>
-#include <queue>
-#include <string>
-#include <tuple>
-#include <utility>
-#include <vector>
-
-#include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "sqlite3.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/layout_util.h"
+#include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/viewer_html.h"
+#include "xla/service/viewer_server.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/tsl/lib/gtl/map_util.h"
+#include "xla/tsl/lib/io/zip_writer.h"
 #include "xla/tsl/lib/io/zlib_compression_options.h"
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
-#include "xla/types.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/file_system.h"
 #include "xla/util.h"
-#include "xla/window_util.h"
-#include "tsl/platform/base64.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/numbers.h"
-#include "tsl/platform/protobuf.h"
-#include "tsl/platform/regexp.h"
-#include "tsl/platform/status.h"
+#include "tsl/platform/path.h"
+#include "tsl/platform/thread_annotations.h"
+
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 namespace xla {
 namespace {
@@ -247,27 +240,35 @@ std::string NodeFillColorForStatistic(const Statistic& statistic) {
   auto stat_val = statistic.stat_val();
   if (stat_val == 0) {
     return "#f5f5f5";
-  } else if (stat_val < 10) {
-    return "#f7d4cc";
-  } else if (stat_val < 20) {
-    return "#f8b2a3";
-  } else if (stat_val < 30) {
-    return "#f9a28f";
-  } else if (stat_val < 40) {
-    return "#fa917b";
-  } else if (stat_val < 50) {
-    return "#fb8066";
-  } else if (stat_val < 60) {
-    return "#fc7052";
-  } else if (stat_val < 70) {
-    return "#fd5f3d";
-  } else if (stat_val < 80) {
-    return "#fd4e29";
-  } else if (stat_val < 90) {
-    return "#fe3e14";
-  } else {
-    return "#ff2d00";
   }
+  if (stat_val < 10) {
+    return "#f7d4cc";
+  }
+  if (stat_val < 20) {
+    return "#f8b2a3";
+  }
+  if (stat_val < 30) {
+    return "#f9a28f";
+  }
+  if (stat_val < 40) {
+    return "#fa917b";
+  }
+  if (stat_val < 50) {
+    return "#fb8066";
+  }
+  if (stat_val < 60) {
+    return "#fc7052";
+  }
+  if (stat_val < 70) {
+    return "#fd5f3d";
+  }
+  if (stat_val < 80) {
+    return "#fd4e29";
+  }
+  if (stat_val < 90) {
+    return "#fe3e14";
+  }
+  return "#ff2d00";
 }
 
 // Given a Statistic object, returns a hex string for the font color of the node
@@ -275,9 +276,8 @@ std::string NodeFillColorForStatistic(const Statistic& statistic) {
 std::string NodeFontColorForStatistic(const Statistic& statistic) {
   if (statistic.stat_val() < 60) {
     return "black";
-  } else {
-    return "white";
   }
+  return "white";
 }
 
 // Given a ColorScheme, returns an attribute string for a node of that color.
@@ -1133,7 +1133,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     if (it != sharding_colors_.end()) {
       return it->second;
     }
-    ColorScheme color = static_cast<ColorScheme>(
+    auto color = static_cast<ColorScheme>(
         kBlue + (next_shard_color_++ % (kDashedBorder - kBlue)));
     sharding_colors_.emplace(instr->sharding(), color);
     return color;
@@ -1190,6 +1190,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
+    case HloOpcode::kMulhi:
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
     case HloOpcode::kPopulationCount:
@@ -1368,8 +1369,8 @@ std::string HloDotDumper::GetInstructionNodeMetadata(
   }
   if (instr->metadata().stack_frame_id() != 0) {
     auto hlo_module = instr->parent()->parent();
-    int frame_id = instr->metadata().stack_frame_id();
-    while (frame_id != 0) {
+    StackFrameId frame_id{instr->metadata().stack_frame_id()};
+    while (frame_id.valid()) {
       HloModule::StackFrame frame = hlo_module->get_stack_frame(frame_id);
       if (frame.empty()) {
         break;
@@ -1456,7 +1457,7 @@ std::string HloDotDumper::GetInstructionNodeBackendConfig(
       props = ExtractCudnnConvBackendConfigProps(
           config->cudnn_conv_backend_config());
     }
-  } else if (gpu::IsCublasGemm(*instr)) {
+  } else if (gpu::IsCublasLtGemm(*instr)) {
     absl::StatusOr<gpu::GpuBackendConfig> config =
         instr->backend_config<gpu::GpuBackendConfig>();
     if (config.ok()) {
@@ -1715,12 +1716,15 @@ bool IsAcfPrameter(const xla::HloInstruction* instruction) {
   // Parameter is fused
   // Require a real fusion parent to avoid nullptr FusionInstruction.
   if (instruction->opcode() != xla::HloOpcode::kParameter ||
-      !IsFusedWithParentFusionInstNotNull(instruction))
+      !IsFusedWithParentFusionInstNotNull(instruction)) {
     return false;
+  }
 
   // Parameter piped through and is only consumed by 1 user
   // Parameter 0 consumed by both root and all-gather will always persist.
-  if (instruction->user_count() != 1) return false;
+  if (instruction->user_count() != 1) {
+    return false;
+  }
 
   const xla::HloComputation* parent_computation = instruction->parent();
   int64_t parameter_number = instruction->parameter_number();
@@ -1984,49 +1988,160 @@ static std::pair<int, int> FusionVisualizerStateKey(
                         computation.unique_id());
 }
 
-}  // namespace
+class WritableStringFile : public tsl::WritableFile {
+ public:
+  explicit WritableStringFile(std::string* data) : data_(data) {};
+  ~WritableStringFile() override = default;
 
-// Compress with zlib + b64 encode.
-static absl::StatusOr<std::string> CompressAndEncode(absl::string_view input) {
-  class WritableStringFile : public tsl::WritableFile {
-   public:
-    explicit WritableStringFile(std::string* data) : data_(data) {};
-    ~WritableStringFile() override = default;
+  absl::Status Append(absl::string_view data) override {
+    absl::StrAppend(data_, data);
+    return absl::OkStatus();
+  }
 
-    absl::Status Append(absl::string_view data) override {
-      absl::StrAppend(data_, data);
-      return absl::OkStatus();
-    }
+  absl::Status Close() override { return absl::OkStatus(); }
+  absl::Status Flush() override { return absl::OkStatus(); }
+  absl::Status Sync() override { return absl::OkStatus(); }
 
-    absl::Status Close() override { return absl::OkStatus(); }
-    absl::Status Flush() override { return absl::OkStatus(); }
-    absl::Status Sync() override { return absl::OkStatus(); }
+  absl::Status Tell(int64_t* position) override {
+    *position = data_->size();
+    return absl::OkStatus();
+  }
 
-   private:
-    std::string* data_;
-  };
+ private:
+  std::string* data_;
+};
 
+static absl::StatusOr<std::string> Compress(absl::string_view input) {
   std::string compressed;
   WritableStringFile f(&compressed);
 
   auto gz_opts = tsl::io::ZlibCompressionOptions::GZIP();
   tsl::io::ZlibOutputBuffer gz_file(&f, gz_opts.input_buffer_size,
                                     gz_opts.output_buffer_size, gz_opts);
-  TF_RETURN_IF_ERROR(gz_file.Init());
-  TF_RETURN_IF_ERROR(gz_file.Append(input));
-  TF_RETURN_IF_ERROR(gz_file.Close());
+  RETURN_IF_ERROR(gz_file.Init());
+  RETURN_IF_ERROR(gz_file.Append(input));
+  RETURN_IF_ERROR(gz_file.Close());
 
-  std::string encoded;
-  TF_RETURN_IF_ERROR(tsl::Base64Encode(compressed, &encoded));
-  return absl::StrReplaceAll(encoded, {{"_", "/"}, {"-", "+"}});
+  return compressed;
 }
 
-static std::string EscapeJSONString(absl::string_view raw) {
-  return absl::StrCat(
-      "\"",
-      absl::StrReplaceAll(raw, {{"\n", "\\n"}, {"\"", "\\\""}, {"\\", "\\\\"}}),
-      "\"");
+using Sqlite3StmtPtr =
+    std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)>;
+
+static absl::Status RunSql(sqlite3* db, const char* sql,
+                           absl::string_view error_prefix) {
+  char* err_msg = nullptr;
+  if (sqlite3_exec(db, sql, nullptr, nullptr, &err_msg) != SQLITE_OK) {
+    auto cleanup = absl::MakeCleanup([err_msg] { sqlite3_free(err_msg); });
+    return Internal("%s: %s", error_prefix,
+                    err_msg ? err_msg : "unknown error");
+  }
+  return absl::OkStatus();
 }
+
+static absl::StatusOr<Sqlite3StmtPtr> PrepareStatement(
+    sqlite3* db, const char* sql, absl::string_view error_prefix) {
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+    return Internal("%s: %s", error_prefix, sqlite3_errmsg(db));
+  }
+  return Sqlite3StmtPtr(stmt, sqlite3_finalize);
+}
+
+static absl::Status CreateSqliteDb(
+    const FusionVisualizerProgress& visualizer_progress,
+    absl::string_view graph_title, const std::string& db_path) {
+  sqlite3* db_raw = nullptr;
+  int rc = sqlite3_open(db_path.c_str(), &db_raw);
+  std::unique_ptr<sqlite3, decltype(&sqlite3_close)> db(db_raw, sqlite3_close);
+  if (rc != SQLITE_OK) {
+    return Internal("Failed to open SQLite DB at %s: %s", db_path,
+                    sqlite3_errmsg(db.get()));
+  }
+
+  const char* create_metadata_table =
+      "CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT);";
+  const char* create_graphs_table =
+      "CREATE TABLE graphs (id INTEGER PRIMARY KEY, content BLOB);";
+  const char* create_frames_table =
+      "CREATE TABLE frames (id INTEGER PRIMARY KEY, label TEXT, graph_id "
+      "INTEGER, to_highlight TEXT);";
+
+  RETURN_IF_ERROR(RunSql(db.get(), create_metadata_table,
+                         "Failed to create metadata table"));
+  RETURN_IF_ERROR(
+      RunSql(db.get(), create_graphs_table, "Failed to create graphs table"));
+  RETURN_IF_ERROR(
+      RunSql(db.get(), create_frames_table, "Failed to create frames table"));
+
+  RETURN_IF_ERROR(
+      RunSql(db.get(), "BEGIN TRANSACTION;", "Failed to begin transaction"));
+
+  // Insert title into metadata
+  const char* insert_metadata_sql =
+      "INSERT INTO metadata (key, value) VALUES ('title', ?);";
+  ASSIGN_OR_RETURN(
+      Sqlite3StmtPtr metadata_stmt,
+      PrepareStatement(db.get(), insert_metadata_sql,
+                       "Failed to prepare metadata insert statement"));
+
+  sqlite3_bind_text(metadata_stmt.get(), 1, graph_title.data(),
+                    graph_title.size(), SQLITE_TRANSIENT);
+  if (sqlite3_step(metadata_stmt.get()) != SQLITE_DONE) {
+    return Internal("Failed to insert title metadata: %s",
+                    sqlite3_errmsg(db.get()));
+  }
+
+  const char* insert_graph_sql =
+      "INSERT INTO graphs (id, content) VALUES (?, ?);";
+  ASSIGN_OR_RETURN(
+      Sqlite3StmtPtr graph_stmt,
+      PrepareStatement(db.get(), insert_graph_sql,
+                       "Failed to prepare graph insert statement"));
+
+  for (int i = 0; i < visualizer_progress.dot_graphs.size(); ++i) {
+    ASSIGN_OR_RETURN(std::string compressed,
+                     Compress(visualizer_progress.dot_graphs[i]));
+    sqlite3_bind_int(graph_stmt.get(), 1, i);
+    sqlite3_bind_blob(graph_stmt.get(), 2, compressed.data(), compressed.size(),
+                      SQLITE_TRANSIENT);
+    if (sqlite3_step(graph_stmt.get()) != SQLITE_DONE) {
+      return Internal("Failed to insert graph %d: %s", i,
+                      sqlite3_errmsg(db.get()));
+    }
+    sqlite3_reset(graph_stmt.get());
+  }
+
+  const char* insert_frame_sql =
+      "INSERT INTO frames (id, label, graph_id, to_highlight) VALUES (?, ?, ?, "
+      "?);";
+  ASSIGN_OR_RETURN(
+      Sqlite3StmtPtr frame_stmt,
+      PrepareStatement(db.get(), insert_frame_sql,
+                       "Failed to prepare frame insert statement"));
+
+  for (int i = 0; i < visualizer_progress.frames.size(); ++i) {
+    const auto& f = visualizer_progress.frames[i];
+    sqlite3_bind_int(frame_stmt.get(), 1, i);
+    sqlite3_bind_text(frame_stmt.get(), 2, f.label.c_str(), -1,
+                      SQLITE_TRANSIENT);
+    sqlite3_bind_int(frame_stmt.get(), 3, f.dot_graph);
+    sqlite3_bind_text(frame_stmt.get(), 4, f.to_highlight.c_str(), -1,
+                      SQLITE_TRANSIENT);
+    if (sqlite3_step(frame_stmt.get()) != SQLITE_DONE) {
+      return Internal("Failed to insert frame %d: %s", i,
+                      sqlite3_errmsg(db.get()));
+    }
+    sqlite3_reset(frame_stmt.get());
+  }
+
+  RETURN_IF_ERROR(
+      RunSql(db.get(), "COMMIT TRANSACTION;", "Failed to commit transaction"));
+
+  return absl::OkStatus();
+}
+
+}  // namespace
 
 absl::StatusOr<std::string> WrapFusionExplorer(
     const FusionVisualizerProgress& visualizer_progress,
@@ -2035,213 +2150,35 @@ absl::StatusOr<std::string> WrapFusionExplorer(
     return Internal("Empty");
   }
 
-  std::string dot_graphs =
-      StrFormat("[%s]", StrJoin(visualizer_progress.dot_graphs, ", ",
-                                [&](std::string* out, const std::string& dot) {
-                                  StrAppend(out, EscapeJSONString(dot));
-                                }));
+  std::string db_path = tsl::io::GetTempFilename("db");
+  auto cleanup = absl::MakeCleanup(
+      [&db_path] { tsl::Env::Default()->DeleteFile(db_path).IgnoreError(); });
 
-  std::string frames = StrJoin(
-      visualizer_progress.frames, ", ", [&](std::string* out, const auto& p) {
-        StrAppend(out, StrFormat("[%d, %s, %s]", p.dot_graph,
-                                 EscapeJSONString(p.label),
-                                 EscapeJSONString(p.to_highlight)));
-      });
+  RETURN_IF_ERROR(CreateSqliteDb(visualizer_progress, graph_title, db_path));
 
-  TF_ASSIGN_OR_RETURN(std::string dot_graphs_compressed,
-                      CompressAndEncode(dot_graphs));
+  std::string zip_data = "#!/usr/bin/env python3\n";
 
-  return absl::StrReplaceAll(
-      R"wrapper(
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    html, body {height: 100%; text-align: center;}
-    #rendered {height: 70%; width: 80%; border:1px solid black; margin: auto; }
-    #label {width: 80%; margin: auto;}
-    #performance_note { font-size: small; color: gray; }
-    #frames_list {
-      list-style: none; text-align: left; height: 20%; overflow: scroll;
-    }
-    #frames_list   li { padding: 0.2em; margin: 0.2em; }
-    .selected { background-color: #e0e0e0; }
-    .selected a { color: black; text-decoration: none; }
-    #rendered svg { height: 100% !important; width: 100% !important; }
-  </style>
-</head>
-<body>
-  <script src="https://www.gstatic.com/external_hosted/hpcc_js_wasm/index.min.js"
-      integrity="sha384-LigJPbR3TOfU/Xbb+PjiN1dGJYPweLk7kiGnaMgmxnUmKWaCFKbb5tH6iLlyVhPZ"
-      crossorigin="anonymous"></script>
-  <script src="https://www.gstatic.com/external_hosted/svg_pan_zoom/svg-pan-zoom.js">
-  </script>
+  {
+    auto file = std::make_unique<WritableStringFile>(&zip_data);
+    ASSIGN_OR_RETURN(tsl::io::ZipWriter zip_writer,
+                     tsl::io::ZipWriter::Create(std::move(file)));
 
-  <title>Fusion Explorer: $TITLE</title>
-  <div id='rendered'><center>Loading...</center></div>
-  <ul id='frames_list'></ul>
-  <p>Use j/k for keyboard navigation.</p>
-  <p id='performance_note'>Loading data...</p>
-  <script>
-  <!--
-  const renderCache = {};
+    RETURN_IF_ERROR(zip_writer.AddFile("__main__.py", kPythonServerCode));
+    RETURN_IF_ERROR(zip_writer.AddFile("viewer.html", kViewerHtmlCode));
 
-  const cssregex = new RegExp('stylesheet=<([^]*)\n>\n', 'gm');
-  const hpccWasm = window["@hpcc-js/wasm"];
+    // Stream SQLite DB file directly into zip_writer to prevent buffering
+    // a large string in memory.
+    std::unique_ptr<tsl::ReadOnlyMemoryRegion> region;
+    RETURN_IF_ERROR(
+        tsl::Env::Default()->NewReadOnlyMemoryRegionFromFile(db_path, &region));
+    absl::string_view db_view(static_cast<const char*>(region->data()),
+                              region->length());
+    RETURN_IF_ERROR(zip_writer.AddFile("fusions.db", db_view));
 
-  const getIdFromHash = () => {
-    let hash = window.location.hash;
-    if (hash.indexOf('frame') == -1) {
-      return 0;
-    }
-    return parseInt(window.location.hash.substring('#frame'.length, window.location.hash.length));
+    RETURN_IF_ERROR(std::move(zip_writer).Finish());
   }
 
-  const renderCurrentFrame = () => {
-    if (!window.loaded) { return; }
-    const frames_list = document.getElementById('frames_list');
-    const currId = getIdFromHash();
-
-    for (let selected of frames_list.getElementsByClassName('selected')) {
-        selected.classList.remove('selected');
-    }
-
-    const selected = frames_list.children[currId];
-    selected.classList.add('selected');
-    selected.scrollIntoView();
-
-    const frame = frames[currId];
-    const dot_ptr = frame[0];
-    let dot_txt = window.dots[dot_ptr];
-    const label = frame[1];
-    document.getElementById('performance_note').innerText = "Rendering...";
-    const results = cssregex.exec(dot_txt)
-    let css_data = ''
-    if (results !== null) {
-        css_data = results[1].replace(/\s*data:.*\s*,/,''); // Strip content-type field.
-        // CSS inside DOT is URL-escaped, so we must unescape it
-        // before we can insert it into SVG.
-        css_data = unescape(css_data);
-        dot_txt = dot_txt.replace(cssregex, ''); // Remove the stylesheet
-    }
-
-    let render_start = performance.now();
-    const render_callback = svg => {
-      renderCache[dot_ptr] = svg;
-      var area = document.getElementById('rendered');
-      area.innerHTML = `${svg}<style>${css_data}</style>`;
-      var panzoom = svgPanZoom(area.children[0], {
-          zoomEnabled: true, controlIconsEnabled: true, maxZoom: 200, });
-      var to_highlight = frame[2].length ?
-        document.querySelector(`${frame[2]}`) : null;
-      if (to_highlight) {
-        to_highlight.style.setProperty('fill', 'red');
-      }
-      document.getElementById('performance_note').innerText =
-        `Rendering took ${(performance.now() - render_start).toFixed(2)}ms`;
-
-      // Change cursor.
-      let text_nodes = document.getElementsByTagName("text");
-      for (var el of text_nodes) {
-        if (title_to_id.has(el.innerHTML)) {
-          el.style.cursor = "pointer";
-        }
-      }
-    };
-    if (renderCache[dot_ptr]) {
-      render_callback(renderCache[dot_ptr]);
-    } else {
-      hpccWasm.graphviz.layout(dot_txt, "svg", "dot").then(render_callback);
-    }
-  };
-
-  const update = (delta) => {
-    let currId = getIdFromHash();
-    currId = (currId + delta + frames.length) % frames.length;
-    window.location.hash = `#frame${currId}`
-  };
-
-  const renderFrameList = () => {
-    const currId = getIdFromHash();
-    const frames_list = document.getElementById('frames_list');
-    for (let i=0; i<frames.length; i++) {
-      const f = frames[i];
-      let frame_descr = f[1];
-      const rendered = document.createElement("li");
-      if (frame_descr == "") {
-        frame_descr = "Unnamed state";
-      }
-      rendered.innerHTML = `<a href="#frame${i}">${frame_descr}</a>`;
-      if (i == currId) {
-        rendered.classList.add('selected');
-      }
-      frames_list.appendChild(rendered);
-    }
-  };
-
-  const decompress = async function(compressed) {
-    const ds = new DecompressionStream('gzip');
-    const in_fetch = await fetch(`data:application/octet-stream;base64,${compressed}`);
-    const in_blob = await in_fetch.blob();
-    const out_stream = in_blob.stream().pipeThrough(ds);
-    const out_blob = await new Response(out_stream).blob();
-    return await out_blob.text();
-  }
-
-  const dots_compressed = "$DOTS";
-  const frames = [$FRAMES];
-  let loaded = false;
-
-  window.addEventListener('hashchange', () => {
-    renderCurrentFrame();
-  });
-
-  window.addEventListener("keydown", (event) => {
-    if (event.defaultPrevented) {
-      return;
-    }
-    if (event.key == "j") {
-      update(1);
-    } else if (event.key == "k") {
-      update(-1);
-    } else {
-      return;
-    }
-    event.preventDefault();
-  }, true);
-
-  document.addEventListener("DOMContentLoaded", () => {
-    decompress(dots_compressed).then(text => {
-      window.dots = JSON.parse(text);
-      window.loaded = true;
-      renderFrameList();
-      renderCurrentFrame();
-    });
-
-    window.title_to_id = new Map();
-    for (let i=0; i < frames.length; i++) {
-       title_to_id.set(frames[i][1], i);
-     }
-
-    // Navigate to next elements on click.
-    document.addEventListener("click", (event) => {
-      let txt = event.target.innerHTML;
-      if (title_to_id.has(txt)) {
-        let id = title_to_id.get(txt);
-        window.location.hash = `#frame${id}`;
-      }
-    });
-  });
-
-  //-->
-  </script>
-  </body>
-</html>
-  )wrapper",
-      {{"$DOTS", dot_graphs_compressed},
-       {"$FRAMES", frames},
-       {"$TITLE", graph_title}});
+  return zip_data;
 }
 
 static std::string GraphTitle(const HloComputation& computation) {

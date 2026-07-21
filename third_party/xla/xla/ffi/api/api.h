@@ -293,10 +293,13 @@ class Ffi {
   // Creates an empty binding for the initialize stage.
   static Binding<ExecutionStage::kInitialize> BindInitialize();
 
+  // Creates an empty binding for the execute stage.
+  static Binding<ExecutionStage::kExecute> BindExecute();
+
   // Automatic FFI binding that does binding specification inference from the
   // `fn` type signature and binds `fn` to it. This enables a more concise FFI
   // handler registration with fully automatic type inference at the cost of
-  // less readable error messages, template metaprogramming "magic" and a risk
+  // less readable error messages, template metaprograming "magic" and a risk
   // to accidentally change handler type without noticing it.
   template <typename Fn, ExecutionStage stage = ExecutionStage::kExecute>
   static auto BindTo(Fn fn, std::initializer_list<Traits> traits = {});
@@ -366,7 +369,7 @@ class Ffi {
   template <typename... Args>
   static std::string StrCat(Args... args);
 
-  static XLA_FFI_Error* Sucess();
+  static XLA_FFI_Error* Success();
 
   static XLA_FFI_Error* MakeError(const XLA_FFI_Api* api,
                                   XLA_FFI_Error_Code errc, std::string message);
@@ -428,7 +431,7 @@ std::string Ffi::StrCat(Args... args) {
   return ss.str();
 }
 
-inline XLA_FFI_Error* Ffi::Sucess() { return nullptr; }
+inline XLA_FFI_Error* Ffi::Success() { return nullptr; }
 
 inline XLA_FFI_Error* Ffi::MakeError(const XLA_FFI_Api* api,
                                      XLA_FFI_Error_Code errc,
@@ -516,7 +519,7 @@ class Context;
 
 namespace internal {
 
-// WARNING: A lot of template metaprogramming on top of C++ variadic templates
+// WARNING: A lot of template metaprograming on top of C++ variadic templates
 // parameter packs. We need this to be able to pattern match FFI handler
 // signature at compile time.
 
@@ -768,12 +771,16 @@ inline Binding<ExecutionStage::kInitialize> Ffi::BindInitialize() {
   return Bind<ExecutionStage::kInitialize>();
 }
 
+inline Binding<ExecutionStage::kExecute> Ffi::BindExecute() {
+  return Bind<ExecutionStage::kExecute>();
+}
+
 //===----------------------------------------------------------------------===//
-// Template metaprogramming to automatically infer Binding from invocable
+// Template metaprograming to automatically infer Binding from invocable
 // object.
 //===----------------------------------------------------------------------===//
 
-// A little bit of metaprogramming that automatically infers the binding schema
+// A little bit of metaprograming that automatically infers the binding schema
 // from an invocable type signature.
 
 // XLA FFI binding for an argument.
@@ -1545,7 +1552,7 @@ class ContextBase {
 }  // namespace internal
 
 //===----------------------------------------------------------------------===//
-// Template metaprogramming for decoding handler signature
+// Template metaprograming for decoding handler signature
 //===----------------------------------------------------------------------===//
 
 // Forward declare classes for decoding variadic number of arguments and
@@ -1607,16 +1614,17 @@ struct FnArgType<internal::CtxTag<T>> {
 
 // A template to detect result encodings that are state constructors. We use
 // this to report back the TypeId of the state as a part of the metadata.
-template <typename ResultEnconding, typename = void>
+template <typename ResultEncoding, typename = void>
 struct IsStateConstructor : std::false_type {};
 
-// Check if the ResultEncoding has a static `state_type_id()` method returning
-// the XLA_FFI_TypeId.
+// Check if the ResultEncoding has a static `state_type_id(const XLA_FFI_Api*)`
+// method returning the XLA_FFI_TypeId.
 template <typename ResultEncoding>
 struct IsStateConstructor<
     ResultEncoding,
     std::enable_if_t<std::is_same_v<XLA_FFI_TypeId,
-                                    decltype(ResultEncoding::state_type_id())>>>
+                                    decltype(ResultEncoding::state_type_id(
+                                        std::declval<const XLA_FFI_Api*>()))>>>
     : std::true_type {};
 
 template <typename ResultEncoding>
@@ -1663,13 +1671,10 @@ class Handler : public Ffi {
   using ResultType = std::invoke_result_t<Fn, FnArgType<Ts>...>;
 
  public:
-  // We deliberately opt-out from the cognitive complexity check, as this
-  // function is on a hot path, any any attempt to split it leads to measurable
-  // regressions in microbenchmarks. It is a straight line block of mostly
-  // constexpr conditionals, that gets optimized to a much smaller code size in
-  // all template instantiations.
-  //
-  // NOLINTNEXTLINE(readability-function-cognitive-complexity)
+  // Note: this function is on a hot path, any any attempt to split it leads to
+  // measurable regressions in microbenchmarks. It is a straight line block of
+  // mostly constexpr conditionals, that gets optimized to a much smaller code
+  // size in all template instantiations.
   XLA_FFI_Error* Call(XLA_FFI_CallFrame* call_frame) const override {
     // Sanity checking call frame struct size.
     if (XLA_FFI_Error* err = CheckStructSize(
@@ -1719,7 +1724,7 @@ class Handler : public Ffi {
                    call_frame->args.size));
       }
     } else {
-      // It is safe to not theck the number of arguments if we don't plan to
+      // It is safe to not check the number of arguments if we don't plan to
       // decode any of them, i.e. for prepare/initialize stages where the FFI
       // handler might be interested only in the attributes or context.
       if (XLA_FFI_PREDICT_FALSE(call_frame->args.size != kNumArgs &&
@@ -1753,7 +1758,7 @@ class Handler : public Ffi {
                    call_frame->rets.size));
       }
     } else {
-      // It is safe to not theck the number of results if we don't plan to
+      // It is safe to not check the number of results if we don't plan to
       // decode any of them, i.e. for prepare/initialize stages where the FFI
       // handler might be interested only in the attributes or context.
       if (XLA_FFI_PREDICT_FALSE(call_frame->rets.size != kNumRets &&
@@ -1840,17 +1845,17 @@ class Handler : public Ffi {
     // type id in the metadata.
     using ResultEncoding = ResultEncoding<stage, ResultType>;
     if constexpr (internal::is_state_constructor_v<ResultEncoding>) {
-      if (ResultEncoding::state_type_id() == XLA_FFI_UNKNOWN_TYPE_ID) {
+      if (ResultEncoding::state_type_id(api) == XLA_FFI_UNKNOWN_TYPE_ID) {
         return FailedPrecondition(api,
                                   "Types used by FFI handlers must be "
                                   "registered before the handler registration");
       }
-      extension->metadata->state_type_id = ResultEncoding::state_type_id();
+      extension->metadata->state_type_id = ResultEncoding::state_type_id(api);
     } else {
       extension->metadata->state_type_id = XLA_FFI_UNKNOWN_TYPE_ID;
     }
 
-    return Sucess();
+    return Success();
   }
 
   template <size_t... Is>

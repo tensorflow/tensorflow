@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/profiler/convert/trace_events_to_json.h"
@@ -136,7 +137,7 @@ absl::Status Profile(const std::string& repository_root,
   ProfileRequest request = PopulateProfileRequest(repository_root, session_id,
                                                   /*host_name=*/"", opts);
   auto session = RemoteProfilerSessionManager::Create(opts, request, status);
-  TF_RETURN_IF_ERROR(status);
+  RETURN_IF_ERROR(status);
   // Expect one or more service addresses.
   DCHECK_GT(opts.service_addresses_size(), 0);
   std::vector<Response> responses = session->WaitForCompletion();
@@ -154,9 +155,9 @@ absl::Status Profile(const std::string& repository_root,
       // If server side returns tool data in the response, saves that into the
       // repository. This improves backward compatibility by reducing assumption
       // of what server side does.
-      TF_RETURN_IF_ERROR(SaveProfile(repository_root, session_id,
-                                     client_response.service_address, response,
-                                     &std::cout));
+      RETURN_IF_ERROR(SaveProfile(repository_root, session_id,
+                                  client_response.service_address, response,
+                                  &std::cout));
     }
     if (!client_response.status.ok()) {
       LOG(WARNING) << client_response.service_address << " returned "
@@ -182,7 +183,7 @@ absl::Status NewSession(absl::string_view repository_root,
   NewProfileSessionRequest request =
       PopulateNewProfileSessionRequest(repository_root, session_id, opts);
   NewProfileSessionResponse response;
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       NewSessionGrpc(opts.service_addresses(0), request, &response));
 
   std::cout << "Profile session succeed for host(s):"
@@ -205,14 +206,22 @@ absl::Status StartContinuousProfiling(
       /*repository_root=*/"", session_id,
       /*host_name=*/service_addr, opts);
   tensorflow::ContinuousProfilingResponse response;
-  TF_RETURN_IF_ERROR(ContinuousProfilingGrpc(service_addr, request, &response));
+  RETURN_IF_ERROR(ContinuousProfilingGrpc(service_addr, request, &response));
+  return absl::OkStatus();
+}
+
+absl::Status StopContinuousProfiling(const char* service_addr) {
+  tensorflow::StopContinuousProfilingRequest request;
+  tensorflow::StopContinuousProfilingResponse response;
+  RETURN_IF_ERROR(tsl::profiler::StopContinuousProfilingGrpc(
+      service_addr, request, &response));
   return absl::OkStatus();
 }
 
 absl::Status GetSnapshot(const char* service_addr, const char* logdir) {
   tensorflow::GetSnapshotRequest request;
   ProfileResponse response;
-  TF_RETURN_IF_ERROR(GetSnapshotGrpc(service_addr, request, &response));
+  RETURN_IF_ERROR(GetSnapshotGrpc(service_addr, request, &response));
 
   if (response.empty_trace()) {
     return absl::OkStatus();
@@ -220,11 +229,11 @@ absl::Status GetSnapshot(const char* service_addr, const char* logdir) {
 
   std::string repository_root = GetTensorBoardProfilePluginDir(logdir);
   std::string snapshot_session_id = GetCurrentTimeStampAsString();
-  TF_RETURN_IF_ERROR(SaveProfile(repository_root, snapshot_session_id,
-                                 service_addr, response, &std::cout));
+  RETURN_IF_ERROR(SaveProfile(repository_root, snapshot_session_id,
+                              service_addr, response, &std::cout));
   if (response.has_xspace()) {
-    TF_RETURN_IF_ERROR(SaveXSpace(repository_root, snapshot_session_id,
-                                  service_addr, response.xspace()));
+    RETURN_IF_ERROR(SaveXSpace(repository_root, snapshot_session_id,
+                               service_addr, response.xspace()));
   }
 
   return absl::OkStatus();
@@ -286,7 +295,7 @@ absl::Status Monitor(const std::string& service_addr, int duration_ms,
   MonitorRequest request =
       PopulateMonitorRequest(duration_ms, monitoring_level, display_timestamp);
   MonitorResponse response;
-  TF_RETURN_IF_ERROR(MonitorGrpc(service_addr, request, &response));
+  RETURN_IF_ERROR(MonitorGrpc(service_addr, request, &response));
   *result = response.data();
   return absl::OkStatus();
 }
@@ -298,7 +307,7 @@ absl::Status ExportToTensorBoard(const XSpace& xspace,
   std::string repository_root =
       tsl::profiler::GetTensorBoardProfilePluginDir(logdir);
   std::string host = tsl::port::Hostname();
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       tsl::profiler::SaveXSpace(repository_root, run, host, xspace));
   if (also_export_trace_json) {
     tsl::profiler::TraceContainer container =
@@ -329,11 +338,11 @@ absl::Status CaptureRemoteTrace(
       GetRemoteSessionManagerOptionsLocked(service_addr, logdir, worker_list,
                                            include_dataset_ops, duration_ms,
                                            options, &is_cloud_tpu_session);
-  TF_RETURN_IF_ERROR(ValidateRemoteProfilerSessionManagerOptions(opts));
+  RETURN_IF_ERROR(ValidateRemoteProfilerSessionManagerOptions(opts));
 
   {
-    TF_RETURN_IF_ERROR(CaptureRemoteTrace(logdir, num_tracing_attempts, opts,
-                                          is_cloud_tpu_session));
+    RETURN_IF_ERROR(CaptureRemoteTrace(logdir, num_tracing_attempts, opts,
+                                       is_cloud_tpu_session));
   }
   return absl::OkStatus();
 }

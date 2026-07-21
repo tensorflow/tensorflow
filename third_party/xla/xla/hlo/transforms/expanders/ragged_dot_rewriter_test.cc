@@ -24,6 +24,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -31,7 +35,16 @@ namespace {
 
 namespace op = ::xla::testing::opcode_matchers;
 
-using RaggedDotRewriterTest = HloHardwareIndependentTestBase;
+class RaggedDotRewriterTest : public HloHardwareIndependentTestBase {
+ protected:
+  se::GpuComputeCapability GetCudaComputeCapability() {
+    return se::CudaComputeCapability{se::CudaComputeCapability::kAmpere, 0};
+  }
+
+  se::GpuComputeCapability GetRocmComputeCapability() {
+    return se::GpuComputeCapability(se::RocmComputeCapability{"gfx942"});
+  }
+};
 
 TEST_F(RaggedDotRewriterTest, DontDoAnythingIfNoRaggedDot) {
   absl::string_view module_string = R"(
@@ -48,7 +61,9 @@ TEST_F(RaggedDotRewriterTest, DontDoAnythingIfNoRaggedDot) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RaggedDotRewriter().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      RaggedDotRewriter(GetCudaComputeCapability()).Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -70,8 +85,163 @@ TEST_F(RaggedDotRewriterTest, DontRewriteIfUsingRaggedDotFusion) {
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_gpu_experimental_use_ragged_dot_fusion(true);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RaggedDotRewriter().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RaggedDotRewriter(GetCudaComputeCapability(),
+                                            kMinCudnnVersionForRaggedDotFusion)
+                              .Run(module.get()));
   EXPECT_FALSE(changed);
+}
+
+TEST_F(RaggedDotRewriterTest, RewriteIfPreAmpereForRaggedDotFusion) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = bf16[64,9]{1,0} parameter(0)
+    p1 = bf16[2,9,8]{2,1,0} parameter(1)
+    p2 = s64[2]{0} parameter(2)
+    ROOT ragged-dot = bf16[64,8]{1,0} ragged-dot(p0, p1, p2),
+                      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+                      lhs_ragged_dims={0}, rhs_group_dims={0}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_use_ragged_dot_fusion(true);
+  // Volta is pre-Ampere, so even with a recent cuDNN the fusion gate must
+  // fail and the rewriter must fall back to expansion.
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      RaggedDotRewriter(
+          se::CudaComputeCapability{se::CudaComputeCapability::kVolta, 0},
+          kMinCudnnVersionForRaggedDotFusion)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+}
+
+TEST_F(RaggedDotRewriterTest, RewriteIfCudnnVersionTooOldForRaggedDotFusion) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = bf16[64,9]{1,0} parameter(0)
+    p1 = bf16[2,9,8]{2,1,0} parameter(1)
+    p2 = s64[2]{0} parameter(2)
+    ROOT ragged-dot = bf16[64,8]{1,0} ragged-dot(p0, p1, p2),
+                      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+                      lhs_ragged_dims={0}, rhs_group_dims={0}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_use_ragged_dot_fusion(true);
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      RaggedDotRewriter(GetCudaComputeCapability(), se::dnn::VersionInfo{9, 21})
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+}
+
+TEST_F(RaggedDotRewriterTest, DontRewriteIfUsingRaggedDotFusionRocm) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = bf16[64,9]{1,0} parameter(0)
+    p1 = bf16[2,9,8]{2,1,0} parameter(1)
+    p2 = s64[2]{0} parameter(2)
+    ROOT ragged-dot = bf16[64,8]{1,0} ragged-dot(p0, p1, p2),
+                      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+                      lhs_ragged_dims={0}, rhs_group_dims={0}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_use_ragged_dot_fusion(true);
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      RaggedDotRewriter(GetRocmComputeCapability()).Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(RaggedDotRewriterTest, DontRewriteIfUsingRaggedDotGroupedGemm) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = bf16[64,9]{1,0} parameter(0)
+    p1 = bf16[2,9,8]{2,1,0} parameter(1)
+    p2 = s64[2]{0} parameter(2)
+    ROOT ragged-dot = bf16[64,8]{1,0} ragged-dot(p0, p1, p2),
+                      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+                      lhs_ragged_dims={0}, rhs_group_dims={0}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  auto& debug_option = module->mutable_config().mutable_debug_options();
+  debug_option.set_xla_gpu_experimental_use_ragged_dot_grouped_gemm(true);
+  debug_option.set_xla_gpu_enable_cublaslt(true);
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      RaggedDotRewriter(GetRocmComputeCapability()).Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(RaggedDotRewriterTest,
+       RewriteIfUsingRaggedDotGroupedGemmAndUnsupportedDatatype) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = f32[64,9]{1,0} parameter(0)
+    p1 = f32[2,9,8]{2,1,0} parameter(1)
+    p2 = s64[2]{0} parameter(2)
+    ROOT ragged-dot = f32[64,8]{1,0} ragged-dot(p0, p1, p2),
+                      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+                      lhs_ragged_dims={0}, rhs_group_dims={0}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  auto& debug_option = module->mutable_config().mutable_debug_options();
+  debug_option.set_xla_gpu_experimental_use_ragged_dot_grouped_gemm(true);
+  debug_option.set_xla_gpu_enable_cublaslt(true);
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      RaggedDotRewriter(GetRocmComputeCapability()).Run(module.get()));
+  EXPECT_TRUE(changed);
+}
+
+TEST_F(RaggedDotRewriterTest,
+       RewriteIfUsingRaggedDotGroupedGemmWithCudaComputeCapability) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = bf16[64,9]{1,0} parameter(0)
+    p1 = bf16[2,9,8]{2,1,0} parameter(1)
+    p2 = s64[2]{0} parameter(2)
+    ROOT ragged-dot = bf16[64,8]{1,0} ragged-dot(p0, p1, p2),
+                      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+                      lhs_ragged_dims={0}, rhs_group_dims={0}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  auto& debug_option = module->mutable_config().mutable_debug_options();
+  debug_option.set_xla_gpu_experimental_use_ragged_dot_grouped_gemm(true);
+  debug_option.set_xla_gpu_enable_cublaslt(true);
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      RaggedDotRewriter(GetCudaComputeCapability()).Run(module.get()));
+  EXPECT_TRUE(changed);
 }
 
 TEST_F(RaggedDotRewriterTest, RaggedNonContracting) {
@@ -89,11 +259,14 @@ TEST_F(RaggedDotRewriterTest, RaggedNonContracting) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RaggedDotRewriter().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      RaggedDotRewriter(GetCudaComputeCapability()).Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Dot(op::Select(), op::Parameter()));
-  RunAndFilecheckHloRewrite(module_string, RaggedDotRewriter(), R"(
+  RunAndFilecheckHloRewrite(module_string,
+                            RaggedDotRewriter(GetCudaComputeCapability()), R"(
   // CHECK: ROOT [[dot:%[^ ]+]] = bf16[64,8]{1,0}
   // CHECK-SAME: lhs_contracting_dims={0,2}, rhs_contracting_dims={0,1}
   )");
@@ -115,11 +288,14 @@ TEST_F(RaggedDotRewriterTest, RaggedNonContractingWithBatchDimensions) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RaggedDotRewriter().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      RaggedDotRewriter(GetCudaComputeCapability()).Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Dot(op::Select(), op::Parameter()));
-  RunAndFilecheckHloRewrite(module_string, RaggedDotRewriter(), R"(
+  RunAndFilecheckHloRewrite(module_string,
+                            RaggedDotRewriter(GetCudaComputeCapability()), R"(
   // CHECK: ROOT [[dot:%[^ ]+]] = bf16[3,64,8]{2,1,0}
   // CHECK-SAME: lhs_batch_dims={0}, lhs_contracting_dims={1,3},
   // CHECK-SAME: rhs_batch_dims={0}, rhs_contracting_dims={1,2}
@@ -142,11 +318,14 @@ TEST_F(RaggedDotRewriterTest, RaggedContracting) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RaggedDotRewriter().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      RaggedDotRewriter(GetCudaComputeCapability()).Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Dot(op::Select(), op::Select()));
-  RunAndFilecheckHloRewrite(module_string, RaggedDotRewriter(), R"(
+  RunAndFilecheckHloRewrite(module_string,
+                            RaggedDotRewriter(GetCudaComputeCapability()), R"(
   // CHECK: ROOT [[dot:%[^ ]+]] = f32[3,11,7]{2,1,0}
   // CHECK-SAME: lhs_batch_dims={0}, lhs_contracting_dims={2},
   // CHECK-SAME: rhs_batch_dims={0}, rhs_contracting_dims={1}
@@ -171,12 +350,15 @@ TEST_F(RaggedDotRewriterTest, RaggedContractingWithBatchDims) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RaggedDotRewriter().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      RaggedDotRewriter(GetCudaComputeCapability()).Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       op::Dot(op::Transpose(op::Select()), op::Transpose(op::Select())));
-  RunAndFilecheckHloRewrite(module_string, RaggedDotRewriter(), R"(
+  RunAndFilecheckHloRewrite(module_string,
+                            RaggedDotRewriter(GetCudaComputeCapability()), R"(
   // CHECK: ROOT [[dot:%[^ ]+]] = f32[3,2,11,7]{3,2,1,0}
   // CHECK-SAME: lhs_batch_dims={0,1}, lhs_contracting_dims={3},
   // CHECK-SAME: rhs_batch_dims={0,1}, rhs_contracting_dims={2}
@@ -199,7 +381,9 @@ TEST_F(RaggedDotRewriterTest, BatchContracting) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RaggedDotRewriter().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      RaggedDotRewriter(GetCudaComputeCapability()).Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Dot(op::Parameter(0), op::Parameter(1),

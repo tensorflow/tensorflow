@@ -6,6 +6,7 @@ load(
     _filegroup = "filegroup",
     _get_compatible_with_libtpu_portable = "get_compatible_with_libtpu_portable",
     _get_compatible_with_portable = "get_compatible_with_portable",
+    _if_include_google_deps = "if_include_google_deps",
     _if_not_mobile_or_arm_or_macos_or_lgpl_restricted = "if_not_mobile_or_arm_or_macos_or_lgpl_restricted",
     _tsl_extra_config_settings = "tsl_extra_config_settings",
     _tsl_extra_config_settings_targets = "tsl_extra_config_settings_targets",
@@ -17,6 +18,7 @@ visibility(DEFAULT_LOAD_VISIBILITY)
 
 get_compatible_with_portable = _get_compatible_with_portable
 get_compatible_with_libtpu_portable = _get_compatible_with_libtpu_portable
+if_include_google_deps = _if_include_google_deps
 filegroup = _filegroup
 if_not_mobile_or_arm_or_macos_or_lgpl_restricted = _if_not_mobile_or_arm_or_macos_or_lgpl_restricted
 tsl_pybind_extension = _tsl_pybind_extension

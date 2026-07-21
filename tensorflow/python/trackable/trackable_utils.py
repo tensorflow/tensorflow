@@ -153,7 +153,7 @@ def extract_object_name(key):
 
 def extract_local_name(key, prefix=None):
   """Returns the substring after the "/.ATTIBUTES/" in the checkpoint key."""
-  # "local name" refers to the the keys of `Trackable._serialize_to_tensors.`
+  # "local name" refers to the keys of `Trackable._serialize_to_tensors.`
   prefix = prefix or ""
   search_key = OBJECT_ATTRIBUTES_NAME + "/" + prefix
   # If checkpoint is saved from TF1, return key as is.

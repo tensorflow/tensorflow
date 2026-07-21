@@ -27,12 +27,14 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/execute_options.pb.h"
@@ -156,7 +158,7 @@ struct ExecuteOptions {
   absl::StatusOr<ExecuteOptionsProto> ToProto(
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
     ExecuteOptionsProto proto;
-    TF_RETURN_IF_ERROR(ToProto(proto, version));
+    RETURN_IF_ERROR(ToProto(proto, version));
     return proto;
   }
 
@@ -182,7 +184,7 @@ class LoadedExecutable
 
   // Returns the executable version that can be used for verifying the
   // compatibility with a runtime.
-  virtual absl::StatusOr<std::unique_ptr<ExecutableVersion>>
+  virtual absl::StatusOr<std::shared_ptr<const ExecutableVersion>>
   executable_version() const = 0;
 
   // Serializes this executable into a string. The compatibility of the
@@ -198,16 +200,6 @@ class LoadedExecutable
   // May be `nullptr` if the user context is unset or the runtime does not
   // support it.
   virtual UserContextRef user_context() const = 0;
-
-  // Returns a future that becomes ready when the executable is ready to be
-  // used for execution.
-  //
-  // This can be used by implementations that support async compilation, where
-  // `Compiler::Compile()` returns an executable ~immediately and does heavy
-  // compilation work in the background. Implementations must still ensure that
-  // all other methods can be used even without explicitly waiting for the ready
-  // future (e.g., via blocking).
-  virtual tsl::Future<> GetReadyFuture() const = 0;
 
   // The following APIs are taken from `xla::PjRtExecutable` for fast
   // prototyping.
@@ -289,6 +281,22 @@ class LoadedExecutable
     CancellationHandle cancellation_handle;
   };
 
+  // Result from an execution using Bundle.
+  struct ExecuteBundleResult {
+    // Output bundles. If `CompileOptions::outputs_bundle_slices` is unset, all
+    // outputs will be in a single bundle. Otherwise, the output bundles will be
+    // sliced accordingly.
+    std::vector<BundleRef> outputs;
+
+    // Resulting status of the execution. Filled only if
+    // `ExecuteOptions::fill_status` is true.
+    tsl::Future<> status;
+
+    // Handle that can be passed to `CancelExecution` to perform best-effort
+    // cancellation of the enqueued execution. May be `nullptr` in which case
+    // cancellation will be ignored.
+    CancellationHandle cancellation_handle;
+  };
   // Executes the executable on devices.
   //
   // The runtime expects input arrays to be present on the execution devices.
@@ -310,6 +318,10 @@ class LoadedExecutable
       absl::Span<ArrayRef> args, const ExecuteOptions& options,
       std::optional<DeviceListRef> devices) = 0;
 
+  // Executes the executable on devices using `Bundle`s.
+  virtual absl::StatusOr<ExecuteBundleResult> ExecuteBundle(
+      absl::Span<BundleRef> args, const ExecuteOptions& options) = 0;
+
   // Returns the list of devices where the executable has been compiled and
   // loaded onto. Returns `std::nullopt` if the executable is not bound to a
   // particular device list, e.g., portable executables.
@@ -321,6 +333,15 @@ class LoadedExecutable
   // pjrt_executable.h and put it in an `XlaCompatibleExecutable`.
 
   virtual absl::Span<Device* const> addressable_devices() const = 0;
+
+  struct DeleteOptions {
+    // Analogous to `ExecuteOptions::execution_stream_id` for any side-effects
+    // of deleting the executable.
+    int64_t deletion_stream_id = 0;
+  };
+
+  // Sets options that will be used when the executable is deleted/destroyed.
+  virtual void SetDeleteOptions(const DeleteOptions& options) = 0;
 
   static char ID;  // NOLINT
 };

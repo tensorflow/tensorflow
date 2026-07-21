@@ -15,10 +15,8 @@ limitations under the License.
 
 #include "xla/hlo/ir/replica_group.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -47,11 +45,7 @@ std::optional<IotaReplicaGroupList>
 CollectiveDeviceListBase::MaybeConvertToIotaReplicaGroupList() const {
   switch (version()) {
     case CollectiveDeviceListVersion::kIota:
-      if (typeid(*this) == typeid(IotaReplicaGroupList)) {
-        return static_cast<const IotaReplicaGroupList&>(*this);
-      }
-      return static_cast<const CollectiveDeviceList&>(*this)
-          .iota_replica_group_list();
+      return static_cast<const IotaReplicaGroupList&>(*this);
     case CollectiveDeviceListVersion::kMeshAxes:
       return static_cast<const MeshAxesReplicaGroupList&>(*this)
           .ToIotaReplicaGroupList();
@@ -59,6 +53,22 @@ CollectiveDeviceListBase::MaybeConvertToIotaReplicaGroupList() const {
     default:
       return std::nullopt;
   }
+}
+
+std::unique_ptr<CollectiveDeviceListBase>
+CollectiveDeviceListBase::DeviceListFromProto(
+    const HloInstructionProto& proto) {
+  if (proto.has_iota_collective_device_list()) {
+    return std::make_unique<IotaReplicaGroupList>(
+        IotaReplicaGroupList::FromProto(proto.iota_collective_device_list()));
+  }
+  if (proto.has_mesh_axes_replica_group_list()) {
+    return std::make_unique<MeshAxesReplicaGroupList>(
+        MeshAxesReplicaGroupList::FromProto(
+            proto.mesh_axes_replica_group_list()));
+  }
+  return std::make_unique<CollectiveDeviceList>(
+      CollectiveDeviceList::FromProto(proto));
 }
 
 std::string ReplicaGroupsToString(
@@ -99,13 +109,12 @@ void HandleMultiAxisRefPerDimension(std::vector<AxisRef>& axes,
   // sub_axis_info()->pre_size. This allows us to maintain user specified order
   // of AxisRef while still building the reshape and aggregate axes.
   std::vector<int> original_order(axes.size());
-  std::iota(original_order.begin(), original_order.end(), 0);
-  std::sort(original_order.begin(), original_order.end(),
-            [&axes](int i, int j) {
-              return axes[i].sub_axis_info()->pre_size <
-                     axes[j].sub_axis_info()->pre_size;
-            });
-  std::sort(axes.begin(), axes.end(), [](const AxisRef& a, const AxisRef& b) {
+  absl::c_iota(original_order, 0);
+  absl::c_sort(original_order, [&axes](int i, int j) {
+    return axes[i].sub_axis_info()->pre_size <
+           axes[j].sub_axis_info()->pre_size;
+  });
+  absl::c_sort(axes, [](const AxisRef& a, const AxisRef& b) {
     return a.sub_axis_info()->pre_size < b.sub_axis_info()->pre_size;
   });
 
@@ -153,9 +162,7 @@ void HandleMultiAxisRefPerDimension(std::vector<AxisRef>& axes,
 MeshAxesReplicaGroupList::MeshAxesReplicaGroupList(Mesh mesh,
                                                    std::vector<AxisRef> axes)
     : mesh_(std::move(mesh)), axes_(std::move(axes)) {
-  CHECK_GT(num_devices_per_group(), 1)
-      << "MeshAxesReplicaGroupList: " << ToString()
-      << " has only one device per replica group.";
+  // MeshAxesReplicaGroupList can have groups of size 1 (NO-OP reduce).
 
   CHECK_OK(ValidateSpanOfAxes(axes_, mesh_));
 }
@@ -243,22 +250,36 @@ MeshAxesReplicaGroupList::ComputeReindexedAxes() const {
   std::vector<int64_t> reindex_axis_sizes, reindexed_grouped_axes;
   absl::flat_hash_map<int64_t, ReshapeAndAggregateAxes> dim_map =
       GetDimToReshapeAndAggregateAxes();
+
+  std::vector<int64_t> offsets(mesh_.axis_sizes().size(), 0);
+  int64_t current_offset = 0;
   for (int64_t i = 0; i < mesh_.axis_sizes().size(); ++i) {
+    offsets[i] = current_offset;
     int64_t axis_size = mesh_.axis_size(i);
     auto it = dim_map.find(i);
     if (it == dim_map.end()) {
       reindex_axis_sizes.push_back(axis_size);
-      continue;
-    }
-    int64_t offset_index = reindex_axis_sizes.size();
-    const ReshapeAndAggregateAxes& reshape_and_aggregate_axes = it->second;
-    for (int64_t reshape_dim : reshape_and_aggregate_axes.reshape_dims) {
-      reindex_axis_sizes.push_back(reshape_dim);
-    }
-    for (int64_t aggregate_dim : reshape_and_aggregate_axes.aggregate_axes) {
-      reindexed_grouped_axes.push_back(aggregate_dim + offset_index);
+      current_offset += 1;
+    } else {
+      const ReshapeAndAggregateAxes& reshape_and_aggregate_axes = it->second;
+      for (int64_t reshape_dim : reshape_and_aggregate_axes.reshape_dims) {
+        reindex_axis_sizes.push_back(reshape_dim);
+      }
+      current_offset += reshape_and_aggregate_axes.reshape_dims.size();
     }
   }
+
+  absl::flat_hash_map<int64_t, int> dim_consumed_counts;
+  for (const AxisRef& axis : axes_) {
+    int64_t dim = axis.mesh_axis_index();
+    auto it = dim_map.find(dim);
+    CHECK(it != dim_map.end());
+    int consumed = dim_consumed_counts[dim]++;
+    CHECK_LT(consumed, it->second.aggregate_axes.size());
+    reindexed_grouped_axes.push_back(it->second.aggregate_axes[consumed] +
+                                     offsets[dim]);
+  }
+
   return std::make_pair(reindex_axis_sizes, reindexed_grouped_axes);
 }
 
@@ -275,6 +296,15 @@ void MeshAxesReplicaGroupList::Print(Printer* printer) const {
   printer->Append(ToString());
 }
 
+void MeshAxesReplicaGroupList::Print(Printer* printer,
+                                     bool print_full_replica_group_list) const {
+  if (print_full_replica_group_list) {
+    ToCollectiveDeviceList()->Print(printer, print_full_replica_group_list);
+    return;
+  }
+  Print(printer);
+}
+
 std::string MeshAxesReplicaGroupList::ToString() const {
   std::string rg_str = "";
   // Add the axes defining the replica group, using names from the mesh.
@@ -287,6 +317,14 @@ std::string MeshAxesReplicaGroupList::ToString() const {
   absl::StrAppend(&rg_str, mesh_.ToString(), " {",
                   absl::StrJoin(group_axes_str, ","), "}");
   return rg_str;
+}
+
+std::string MeshAxesReplicaGroupList::ToString(
+    bool print_full_replica_group_list) const {
+  if (print_full_replica_group_list) {
+    return ToCollectiveDeviceList()->ToString(print_full_replica_group_list);
+  }
+  return ToString();
 }
 
 MeshAxesReplicaGroupListProto MeshAxesReplicaGroupList::ToProto() const {
@@ -330,8 +368,9 @@ IotaReplicaGroupList MeshAxesReplicaGroupList::ToIotaReplicaGroupList() const {
                               *ta.iota());
 }
 
-CollectiveDeviceList MeshAxesReplicaGroupList::ToCollectiveDeviceList() const {
-  return CollectiveDeviceList(flattened_replica_groups());
+std::unique_ptr<CollectiveDeviceList>
+MeshAxesReplicaGroupList::ToCollectiveDeviceList() const {
+  return std::make_unique<CollectiveDeviceList>(flattened_replica_groups());
 }
 
 /************** IotaReplicaGroupList implementation ***************************/
@@ -349,8 +388,27 @@ std::string IotaReplicaGroupList::ToString() const {
   return iota_tile_assignment_.ToString();
 }
 
+std::string IotaReplicaGroupList::ToString(
+    bool print_full_replica_group_list) const {
+  if (print_full_replica_group_list) {
+    return CollectiveDeviceList(flattened_replica_groups())
+        .ToString(print_full_replica_group_list);
+  }
+  return ToString();
+}
+
 void IotaReplicaGroupList::Print(Printer* printer) const {
   iota_tile_assignment_.Print(printer);
+}
+
+void IotaReplicaGroupList::Print(Printer* printer,
+                                 bool print_full_replica_group_list) const {
+  if (print_full_replica_group_list) {
+    CollectiveDeviceList(flattened_replica_groups())
+        .Print(printer, print_full_replica_group_list);
+    return;
+  }
+  Print(printer);
 }
 
 IotaReplicaGroupListProto IotaReplicaGroupList::ToProto() const {
@@ -388,35 +446,10 @@ IotaReplicaGroupList::flattened_replica_groups() const {
   return result;
 }
 
-namespace {
-std::shared_ptr<std::vector<ReplicaGroup>> ExpandIota(
-    const IotaReplicaGroupList& iota) {
-  VLOG(3) << "Expanding iota replica group list: " << iota.ToString();
-  auto result = std::make_shared<std::vector<ReplicaGroup>>();
-  const int64_t num_replica_groups = iota.num_replica_groups();
-  result->reserve(num_replica_groups);
-
-  Array<int64_t> array = iota.ToArray();
-  // Iota replica group list array must only have 2 dimensions.
-  DCHECK_EQ(array.num_dimensions(), 2);
-  const int64_t num_devices_per_group = iota.num_devices_per_group();
-  DCHECK_EQ(array.end() - array.begin(),
-            num_devices_per_group * num_replica_groups);
-  for (auto it = array.begin(); it != array.end();
-       it += num_devices_per_group) {
-    auto& group = result->emplace_back();
-    *group.mutable_replica_ids() = {it, it + num_devices_per_group};
-  }
-  return result;
-}
-}  // namespace
-
 /************** CollectiveDeviceList implementation ***************************/
 const std::vector<ReplicaGroup>& CollectiveDeviceList::replica_groups() const {
   if (replica_groups_ == nullptr) {
-    CHECK(iota_replica_group_list_.has_value());
-    replica_groups_ = ExpandIota(iota_replica_group_list_.value());
-    CHECK(replica_groups_ != nullptr);
+    replica_groups_ = std::make_shared<std::vector<ReplicaGroup>>();
   }
   return *replica_groups_;
 }
@@ -437,9 +470,6 @@ std::string CollectiveDeviceList::ToString() const {
 
 std::string CollectiveDeviceList::ToString(
     bool print_full_replica_group_list) const {
-  if (iota_replica_group_list_.has_value() && !print_full_replica_group_list) {
-    return iota_replica_group_list_->ToString();
-  }
   return ReplicaGroupsToString(replica_groups());
 }
 
@@ -449,10 +479,6 @@ void CollectiveDeviceList::Print(Printer* printer) const {
 
 void CollectiveDeviceList::Print(Printer* printer,
                                  bool print_full_replica_group_list) const {
-  if (iota_replica_group_list_.has_value() && !print_full_replica_group_list) {
-    iota_replica_group_list_->Print(printer);
-    return;
-  }
   printer->Append("{");
   bool leading_comma = false;
   for (const ReplicaGroup& group : replica_groups()) {
@@ -464,11 +490,6 @@ void CollectiveDeviceList::Print(Printer* printer,
 
 CollectiveDeviceListProto CollectiveDeviceList::ToProto() const {
   CollectiveDeviceListProto proto;
-  if (iota_replica_group_list_.has_value()) {
-    *(proto.mutable_iota_replica_group_list()) =
-        iota_replica_group_list_->ToProto();
-    return proto;
-  }
 
   proto.mutable_replica_groups()->Assign(replica_groups().begin(),
                                          replica_groups().end());
@@ -477,11 +498,6 @@ CollectiveDeviceListProto CollectiveDeviceList::ToProto() const {
 
 CollectiveDeviceList CollectiveDeviceList::FromProto(
     const CollectiveDeviceListProto& proto) {
-  if (proto.has_iota_replica_group_list()) {
-    return CollectiveDeviceList(
-        IotaReplicaGroupList::FromProto(proto.iota_replica_group_list()));
-  }
-
   if (proto.replica_groups_size() > 0) {
     return CollectiveDeviceList(proto.replica_groups().begin(),
                                 proto.replica_groups().end());
@@ -501,6 +517,18 @@ CollectiveDeviceList CollectiveDeviceList::FromProto(
                                 proto.replica_groups().end());
   }
 
+  if (proto.has_iota_collective_device_list()) {
+    return CollectiveDeviceList(
+        IotaReplicaGroupList::FromProto(proto.iota_collective_device_list())
+            .flattened_replica_groups());
+  }
+
+  if (proto.has_mesh_axes_replica_group_list()) {
+    return *MeshAxesReplicaGroupList::FromProto(
+                proto.mesh_axes_replica_group_list())
+                .ToCollectiveDeviceList();
+  }
+
   if (!proto.has_collective_device_list()) {
     return CollectiveDeviceList();
   }
@@ -516,19 +544,15 @@ CollectiveDeviceList ConvertToV1CollectiveDeviceList(
       return dynamic_cast<const CollectiveDeviceList&>(device_list);
     }
     case CollectiveDeviceListVersion::kIota: {
-      if (const auto* v2 =
-              dynamic_cast<const IotaReplicaGroupList*>(&device_list)) {
-        return CollectiveDeviceList(*v2);
-      }
-      const auto* v1 = dynamic_cast<const CollectiveDeviceList*>(&device_list);
-      CHECK(v1 != nullptr) << "Failed to convert kIota to V1 list.";
-      return *v1;
+      const auto* v2 = dynamic_cast<const IotaReplicaGroupList*>(&device_list);
+      CHECK(v2 != nullptr) << "Failed to convert kIota to V1 list.";
+      return CollectiveDeviceList(v2->flattened_replica_groups());
     }
     case CollectiveDeviceListVersion::kMeshAxes: {
       const auto* v3 =
           dynamic_cast<const MeshAxesReplicaGroupList*>(&device_list);
       CHECK(v3 != nullptr) << "Failed to convert kMeshAxes to V1 list.";
-      return v3->ToCollectiveDeviceList();
+      return *v3->ToCollectiveDeviceList();
     }
     default:
       LOG(FATAL) << "Unknown CollectiveDeviceListVersion: "

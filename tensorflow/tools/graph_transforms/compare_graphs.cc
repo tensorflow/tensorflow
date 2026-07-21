@@ -61,7 +61,7 @@ int ParseFlagsAndCompareGraphs(int argc, char* argv[]) {
     return -1;
   }
 
-  string diff;
+  std::string diff;
   if (EqualGraphDef(a, b, &diff)) {
     std::cout << "Graphs are equal." << std::endl;
     return 0;

@@ -59,7 +59,7 @@
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/platform.h"
-#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
+#include "tsl/platform/protobuf.h"
 
 using ::testing::_;
 using ::testing::ElementsAre;
@@ -147,7 +147,6 @@ TEST_F(LoadedExecutableTest, Metadata) {
       /*num_devices=*/2, /*devices=*/{},
       /*addressable_devices=*/{},
       /*fingerprint=*/"fingerprint",
-      /*ready_future=*/tsl::Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
   EXPECT_EQ(requests_queue.Pop()
@@ -229,7 +228,6 @@ TEST_F(LoadedExecutableTest, Execute) {
       &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",
       /*num_devices=*/2, /*devices=*/{}, /*addressable_devices=*/{},
       /*fingerprint=*/"fingerprint",
-      /*ready_future=*/tsl::Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
   xla::ifrt::LoadedExecutable::ExecuteOptions exec_options;
@@ -396,7 +394,6 @@ TEST_F(LoadedExecutableTest, DeviceTime) {
       &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",
       /*num_devices=*/1, /*devices=*/{}, /*addressable_devices=*/{},
       /*fingerprint=*/"fingerprint",
-      /*ready_future=*/tsl::Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
   xla::ifrt::LoadedExecutable::ExecuteOptions exec_options;

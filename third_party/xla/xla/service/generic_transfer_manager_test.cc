@@ -89,7 +89,7 @@ TEST_F(GenericTransferManagerTest, TransferLiteralToDevice) {
                                                          buffer));
 
   se::DeviceAddressBase device_mem = buffer.buffers().element({});
-  uint16_t* device_ptr = static_cast<uint16_t*>(device_mem.opaque());
+  auto* device_ptr = static_cast<uint16_t*>(device_mem.opaque());
   std::vector<uint16_t> expected = {1, 2, 3, 4};
   EXPECT_EQ(absl::Span<uint16_t>(device_ptr, expected.size()), expected);
 }
@@ -123,7 +123,7 @@ TEST_F(GenericTransferManagerTest, TransferLiteralToDeviceInt4) {
                                                            literal, buffer));
     se::DeviceAddressBase device_mem = buffer.buffers().element({});
     ASSERT_EQ(device_mem.size(), pack ? 2 : 4);
-    int8_t* device_ptr = static_cast<int8_t*>(device_mem.opaque());
+    auto* device_ptr = static_cast<int8_t*>(device_mem.opaque());
     std::vector<int8_t> expected =
         pack ? std::vector<int8_t>{static_cast<int8_t>(0xe1),
                                    static_cast<int8_t>(0x4d)}
@@ -138,7 +138,7 @@ TEST_F(GenericTransferManagerTest, TransferLiteralFromDevice) {
   ScopedShapedBuffer buffer = AllocateBuffer(ShapeUtil::MakeShape(U16, {2, 2}));
 
   se::DeviceAddressBase device_mem = buffer.buffers().element({});
-  uint16_t* device_ptr = static_cast<uint16_t*>(device_mem.opaque());
+  auto* device_ptr = static_cast<uint16_t*>(device_mem.opaque());
   for (int i = 0; i < 4; i++) {
     device_ptr[i] = i + 1;
   }
@@ -159,7 +159,7 @@ TEST_F(GenericTransferManagerTest, TransferLiteralFromDeviceInt4) {
         AllocateBuffer(ShapeUtil::MakeShape(S4, {2, 2}));
 
     se::DeviceAddressBase device_mem = buffer.buffers().element({});
-    uint8_t* device_ptr = static_cast<uint8_t*>(device_mem.opaque());
+    auto* device_ptr = static_cast<uint8_t*>(device_mem.opaque());
     if (pack) {
       ASSERT_EQ(device_mem.size(), 2);
       device_ptr[0] = 0xe1;  // Packed S4 values {1, -2}

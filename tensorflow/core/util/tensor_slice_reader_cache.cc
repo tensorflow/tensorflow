@@ -30,7 +30,7 @@ TensorSliceReaderCacheWrapper::~TensorSliceReaderCacheWrapper() {
 }
 
 const TensorSliceReader* TensorSliceReaderCacheWrapper::GetReader(
-    const string& filepattern,
+    const std::string& filepattern,
     TensorSliceReader::OpenTableFunction open_function,
     int preferred_shard) const {
   mutex_lock l(mu_);
@@ -50,7 +50,7 @@ TensorSliceReaderCache::~TensorSliceReaderCache() {
 }
 
 const TensorSliceReader* TensorSliceReaderCache::GetReader(
-    const string& filepattern,
+    const std::string& filepattern,
     TensorSliceReader::OpenTableFunction open_function, int preferred_shard) {
   mutex_lock l(mu_);
 

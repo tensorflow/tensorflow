@@ -16,16 +16,24 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/lowering_util.h"
 
 #include <string>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMTypes.h"
+#include "mlir/IR/Block.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Parser/Parser.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/statusor.h"
@@ -52,6 +60,20 @@ class EmitterHelpersTest : public ::testing::Test {
         mlir::parseSourceString<mlir::ModuleOp>(mlir_module, &context_);
     CHECK(module);
     return module;
+  }
+
+  std::pair<mlir::Block*, mlir::OwningOpRef<mlir::ModuleOp>>
+  CreateModuleAndEntryBlock(llvm::ArrayRef<mlir::Type> arg_types = {}) {
+    mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
+        xla::llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(&context_));
+    mlir::OpBuilder op_builder(mlir_module->getBodyRegion());
+    const auto func_type = mlir::LLVM::LLVMFunctionType::get(
+        mlir::LLVM::LLVMVoidType::get(&context_),
+        mlir::SmallVector<mlir::Type>(arg_types));
+    auto func_op = mlir::LLVM::LLVMFuncOp::create(
+        op_builder, mlir::UnknownLoc::get(&context_), "test_func", func_type);
+    mlir::Block* entry_block = func_op.addEntryBlock(op_builder);
+    return {entry_block, std::move(mlir_module)};
   }
 
   mlir::MLIRContext context_;
@@ -111,6 +133,151 @@ module attributes {ttg.global_scratch_memory_alignment = 1 : i32, ttg.global_scr
   TF_ASSERT_OK_AND_ASSIGN(stream_executor::ThreadDim thread_dims,
                           xgt::ExtractThreadDims(module.get(), func_op));
   EXPECT_EQ(thread_dims, stream_executor::ThreadDim(32, 1, 1));
+}
+
+TEST_F(EmitterHelpersTest, ExpandAndBroadcastValueWorksCorrectly) {
+  auto [entry_block, mlir_module] = CreateModuleAndEntryBlock();
+  mlir::ImplicitLocOpBuilder builder(mlir_module->getLoc(), entry_block,
+                                     entry_block->begin());
+  const mlir::Type i32_type = builder.getI32Type();
+  const auto tile_2d_type = mlir::RankedTensorType::get({16, 32}, i32_type);
+
+  const auto row_type = mlir::RankedTensorType::get({16}, i32_type);
+  const auto row_value =
+      mlir::triton::MakeRangeOp::create(builder, row_type, 0, 16).getResult();
+  // 2D broadcast (dim 0)
+  const auto broadcast_0 =
+      xgt::ExpandAndBroadcastValue(builder, row_value, 0, tile_2d_type);
+  EXPECT_EQ(broadcast_0.getType(), tile_2d_type);
+
+  // 2D broadcast (dim 1)
+  const auto col_type = mlir::RankedTensorType::get({32}, i32_type);
+  const auto col_value =
+      mlir::triton::MakeRangeOp::create(builder, col_type, 0, 32).getResult();
+  const auto broadcast_1 =
+      xgt::ExpandAndBroadcastValue(builder, col_value, 1, tile_2d_type);
+  EXPECT_EQ(broadcast_1.getType(), tile_2d_type);
+
+  // 3D broadcast (dim 1)
+  const auto tile_3d_type = mlir::RankedTensorType::get({8, 16, 32}, i32_type);
+  const auto mid_dim_value =
+      mlir::triton::MakeRangeOp::create(builder, row_type, 0, 16).getResult();
+  const auto broadcast_3d =
+      xgt::ExpandAndBroadcastValue(builder, mid_dim_value, 1, tile_3d_type);
+  EXPECT_EQ(broadcast_3d.getType(), tile_3d_type);
+
+  // 4. 1D broadcast (identity-like)
+  const auto broadcast_1d =
+      xgt::ExpandAndBroadcastValue(builder, row_value, 0, row_type);
+  EXPECT_EQ(broadcast_1d.getType(), row_type);
+
+  // Check that we have the expected number of ops.
+  int expand_dims_count = 0;
+  int broadcast_count = 0;
+  for (mlir::Operation& op : entry_block->getOperations()) {
+    if (mlir::isa<mlir::triton::ExpandDimsOp>(op)) {
+      expand_dims_count++;
+    }
+    if (mlir::isa<mlir::triton::BroadcastOp>(op)) {
+      broadcast_count++;
+    }
+  }
+  // dim 0 -> 1 expand_dims, 1 broadcast
+  // dim 1 -> 1 expand_dims, 1 broadcast
+  // 3D dim 1 -> 2 expand_dims, 1 broadcast
+  // 1D -> 0 expand_dims, 1 broadcast
+  EXPECT_EQ(expand_dims_count, 1 + 1 + 2 + 0);
+  EXPECT_EQ(broadcast_count, 4);
+}
+
+TEST_F(EmitterHelpersTest, CreateTensorOfPointersAndMask1DNoMask) {
+  auto [entry_block, mlir_module] = CreateModuleAndEntryBlock(
+      {mlir::LLVM::LLVMPointerType::get(&context_, 1)});
+  mlir::ImplicitLocOpBuilder builder(mlir_module->getLoc(), entry_block,
+                                     entry_block->begin());
+
+  mlir::Value base_ptr = entry_block->getArgument(0);
+  mlir::Value offset =
+      builder.create<mlir::arith::ConstantIndexOp>(0).getResult();
+
+  auto [tile, mask_tile] = xgt::CreateTensorOfPointersAndMask(
+      builder, base_ptr, /*original_shape=*/{128}, /*layout=*/{0},
+      /*offsets=*/{offset}, /*sizes=*/{128}, /*strides=*/{1},
+      /*reduced_dims=*/{}, /*tile_shape=*/{128});
+
+  ASSERT_TRUE(tile);
+  EXPECT_FALSE(mask_tile);
+  const auto tile_type = mlir::cast<mlir::RankedTensorType>(tile.getType());
+  EXPECT_THAT(tile_type.getShape(), ElementsAre(128));
+  EXPECT_EQ(tile_type.getElementType(), base_ptr.getType());
+}
+
+TEST_F(EmitterHelpersTest, CreateTensorOfPointersAndMask1DWithMask) {
+  auto [entry_block, mlir_module] = CreateModuleAndEntryBlock(
+      {mlir::LLVM::LLVMPointerType::get(&context_, 1)});
+  mlir::ImplicitLocOpBuilder builder(mlir_module->getLoc(), entry_block,
+                                     entry_block->begin());
+
+  mlir::Value base_ptr = entry_block->getArgument(0);
+  mlir::Value offset =
+      builder.create<mlir::arith::ConstantIndexOp>(0).getResult();
+
+  auto [tile, mask] = xgt::CreateTensorOfPointersAndMask(
+      builder, base_ptr, /*original_shape=*/{100}, /*layout=*/{0},
+      /*offsets=*/{offset}, /*sizes=*/{128}, /*strides=*/{1},
+      /*reduced_dims=*/{}, /*tile_shape=*/{128});
+
+  ASSERT_TRUE(tile);
+  ASSERT_TRUE(mask);
+  const auto mask_tile_type =
+      mlir::cast<mlir::RankedTensorType>(mask.getType());
+  EXPECT_THAT(mask_tile_type.getShape(), ElementsAre(128));
+  EXPECT_TRUE(mask_tile_type.getElementType().isInteger(1));
+}
+
+TEST_F(EmitterHelpersTest, CreateTensorOfPointersAndMask2DWithReducedDim) {
+  auto [entry_block, mlir_module] = CreateModuleAndEntryBlock(
+      {mlir::LLVM::LLVMPointerType::get(&context_, 1)});
+  mlir::ImplicitLocOpBuilder builder(mlir_module->getLoc(), entry_block,
+                                     entry_block->begin());
+
+  mlir::Value base_ptr = entry_block->getArgument(0);
+  mlir::Value offset_0 =
+      builder.create<mlir::arith::ConstantIndexOp>(0).getResult();
+  mlir::Value offset_1 =
+      builder.create<mlir::arith::ConstantIndexOp>(0).getResult();
+
+  auto [tile, mask_tile] = xgt::CreateTensorOfPointersAndMask(
+      builder, base_ptr, /*original_shape=*/{64, 128}, /*layout=*/{1, 0},
+      /*offsets=*/{offset_0, offset_1}, /*sizes=*/{1, 128}, /*strides=*/{1, 1},
+      /*reduced_dims=*/{0}, /*tile_shape=*/{128});
+
+  ASSERT_TRUE(tile);
+  EXPECT_FALSE(mask_tile);
+  const auto tile_type = mlir::cast<mlir::RankedTensorType>(tile.getType());
+  EXPECT_THAT(tile_type.getShape(), ElementsAre(128));
+}
+
+TEST_F(EmitterHelpersTest, CreateTensorOfPointersAndMaskWithTensorBasePtr) {
+  auto [entry_block, mlir_module] = CreateModuleAndEntryBlock(
+      {mlir::LLVM::LLVMPointerType::get(&context_, 1)});
+  mlir::ImplicitLocOpBuilder builder(mlir_module->getLoc(), entry_block,
+                                     entry_block->begin());
+
+  mlir::Value scalar_base_ptr = entry_block->getArgument(0);
+  auto tile_type =
+      mlir::RankedTensorType::get({128}, scalar_base_ptr.getType());
+  const mlir::Value base_ptr =
+      mlir::triton::SplatOp::create(builder, tile_type, scalar_base_ptr);
+  const mlir::Value offset =
+      mlir::arith::ConstantIndexOp::create(builder, 1024).getResult();
+  auto [ptr_tile, mask_tile] = xgt::CreateTensorOfPointersAndMask(
+      builder, base_ptr, /*original_shape=*/{2048}, /*layout=*/{0},
+      /*offsets=*/{offset}, /*sizes=*/{128}, /*strides=*/{1},
+      /*reduced_dims=*/{}, /*tile_shape=*/{128});
+  ASSERT_TRUE(ptr_tile);
+  EXPECT_FALSE(mask_tile);
+  EXPECT_EQ(ptr_tile.getType(), tile_type);
 }
 }  // namespace
 }  // namespace xla::gpu

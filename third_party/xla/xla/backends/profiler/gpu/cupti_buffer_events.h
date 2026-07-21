@@ -148,6 +148,11 @@ struct MarkerDataDetails {
   absl::string_view marker_string;
 };
 
+struct EnvironmentDetails {
+  // The value of the environment metric collected (e.g., power, temp).
+  uint64_t metric_value;
+};
+
 inline std::string ToXStat(const KernelDetails& kernel_info,
                            double occupancy_pct) {
   return absl::StrCat(
@@ -185,6 +190,7 @@ enum class CuptiTracerEventType {
   ThreadMarkerEnd = 18,
   CudaGraphNodeMap = 19,
   MarkerData = 20,
+  Environment = 21,
   Generic = 100,
 };
 
@@ -249,6 +255,8 @@ struct CuptiTracerEvent {
     CudaGraphDetails cuda_graph_info;
     // Used for `source` Activity, `type` must be ThreadMarkerRange.
     MarkerDataDetails marker_data_info;
+    // Used for environment activities. `type` must be Environment.
+    EnvironmentDetails environment_info;
   };
 };
 

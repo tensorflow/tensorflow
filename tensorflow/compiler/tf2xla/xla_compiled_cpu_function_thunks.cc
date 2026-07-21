@@ -48,8 +48,8 @@ XlaCompiledCpuFunctionThunks::XlaCompiledCpuFunctionThunks(
   // To load a CPU executable we don't need a compiler or a stream executor.
   CHECK_OK(aot_compilation_result.status());
   // NO_CDC: aot_compilation_result is checked to be OK above.
-  auto cpu_executable = std::move(*aot_compilation_result.value())
-                            .LoadExecutable(/*stream_exec=*/nullptr);
+  auto cpu_executable =
+      std::move(*aot_compilation_result.value()).LoadExecutable();
 
   CHECK_OK(cpu_executable.status());
   auto executable_or_err =

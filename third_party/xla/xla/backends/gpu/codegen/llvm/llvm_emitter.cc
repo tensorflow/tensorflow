@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -36,6 +35,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/Argument.h"
@@ -59,7 +59,11 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/codegen/emitters/computation_fingerprint.h"
+#include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/codegen/kernel_definition.h"
+#include "xla/codegen/kernel_spec.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -70,7 +74,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/gpu/gpu_constants.h"
-#include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/hlo_to_ir_bindings.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
@@ -88,11 +91,10 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
-#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 namespace {
@@ -313,7 +315,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
                            FusedIrEmitter* fused_emitter);
 };
 
-
 absl::Status IrEmitter::DefaultAction(HloInstruction* hlo) {
   ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
   for (const HloInstruction* operand : hlo->operands()) {
@@ -363,10 +364,10 @@ absl::Status CallNestedComputation(llvm::IRBuilderBase* builder,
                                    llvm::Value* output) {
   TF_RET_CHECK(computation.num_parameters() > 0);
 
-  ASSIGN_OR_RETURN(
-      llvm::Function * emitted_function,
-      IrEmitter(&ir_emitter_context, llvm_module, /*is_nested=*/true)
-          .CodegenNestedComputation(computation));
+  ASSIGN_OR_RETURN(llvm::Function * emitted_function,
+                   IrEmitter(&ir_emitter_context, llvm_module,
+                             /*is_nested=*/true)
+                       .CodegenNestedComputation(computation));
 
   // Operands are in default address space for non-AMDGPU target.
   // However for AMDGPU target, addrspacecast alloca variables from
@@ -415,7 +416,6 @@ void IrEmitter::BindFusionArguments(const HloInstruction* fusion,
 // Emits constants to generated LLVM IR, and also populates related information
 // to 'ir_emitter_context' for large-constant initializations.
 absl::Status EmitConstants(llvm::Module* module,
-                           IrEmitterContext* ir_emitter_context,
                            const HloComputation& computation) {
   for (HloInstruction* instr : computation.instructions()) {
     if (instr->opcode() != HloOpcode::kConstant) {
@@ -434,13 +434,13 @@ absl::Status EmitConstants(llvm::Module* module,
     std::string global_name = llvm_ir::ConstantHloToGlobalName(*instr);
 
     auto base = static_cast<const uint8_t*>(literal.untyped_data());
-    GpuExecutable::ConstantInfo info = AppendGlobalConstant(
+    AppendGlobalConstant(
         module, literal.element_count(),
         ShapeUtil::ByteSizeOfPrimitiveType(literal.shape().element_type()),
         global_name, /*allocation_idx=*/-1,
         DenseDataIntermediate::Alias(
-            absl::MakeSpan(base, base + literal.size_bytes())));
-    ir_emitter_context->constants().push_back(std::move(info));
+            absl::MakeSpan(base, base + literal.size_bytes())),
+        /*emit_initializer=*/true);
   }
   return absl::OkStatus();
 }
@@ -461,8 +461,7 @@ absl::StatusOr<llvm::Function*> IrEmitter::CodegenNestedComputation(
     return function;
   }
 
-  RETURN_IF_ERROR(
-      EmitConstants(module_, ir_emitter_context_, nested_computation));
+  RETURN_IF_ERROR(EmitConstants(module_, nested_computation));
   std::vector<const HloInstruction*> io_hlos;
   std::vector<llvm::Type*> argument_types;
   std::vector<int64_t> argument_dereferenceable_bytes;
@@ -590,34 +589,8 @@ struct KernelThunkInfo {
   std::unique_ptr<Thunk> thunk;
 };
 
-absl::StatusOr<KernelThunkInfo> BuildKernelThunkForNonFusionOp(
-    llvm::Module* llvm_module, const HloInstruction* hlo,
-    const BufferAssignment& buffer_assignment, ThunkId thunk_id,
-    const se::DeviceDescription& gpu_device_info,
-    const std::string& sanitized_kernel_name,
-
-    IrEmitter& ir_emitter, const LaunchDimensions& launch_dimensions) {
-  std::string suggested_kernel_name(hlo->name());
-
-  ASSIGN_OR_RETURN(auto kernel_arguments,
-                   emitters::KernelArguments::Create(
-                       buffer_assignment, GetDefaultBufferAlignment(), hlo));
-
-  VLOG(3) << "Generating (without reuse check): " << suggested_kernel_name;
-
-  ASSIGN_OR_RETURN(
-      llvm::Function * kernel,
-      BuildKernelPrototype(llvm_module, gpu_device_info, suggested_kernel_name,
-                           sanitized_kernel_name, kernel_arguments,
-                           launch_dimensions, ir_emitter.builder()));
-
-  auto thunk = std::make_unique<KernelThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(hlo, thunk_id),
-      kernel->getName().str(), kernel_arguments, launch_dimensions,
-      /*cluster_dim=*/std::nullopt,
-      /*shmem_bytes=*/0,
-      /*tma_metadata=*/se::gpu::TmaMetadata());
-
+std::vector<llvm_ir::IrArray> IrArraysFor(
+    llvm::Function* kernel, const emitters::KernelArguments& kernel_arguments) {
   std::vector<llvm_ir::IrArray> ir_arrays;
   ir_arrays.reserve(kernel_arguments.args().size());
   for (const auto& [kernel_argument, llvm_arg] :
@@ -631,7 +604,7 @@ absl::StatusOr<KernelThunkInfo> BuildKernelThunkForNonFusionOp(
     }
     ir_arrays.push_back(ir_array);
   }
-  return {KernelThunkInfo{ir_arrays, std::move(thunk)}};
+  return ir_arrays;
 }
 
 llvm::Value* CreateLoad(llvm::Value* address, llvm::Type* data_type,
@@ -687,18 +660,67 @@ void CreateStore(llvm::Value* data, llvm::Value* address, int alignment_bytes,
   }
 }
 
+const uint64_t kBitonicSortUnrollFactor = 4;
+
+absl::StatusOr<LlvmKernelSource> EmitModuleForBitonicSortStage(
+    const HloSortInstruction* sort, IrEmitterContext* ir_emitter_context,
+    const std::string& sanitized_kernel_name,
+    const emitters::KernelArguments& kernel_arguments,
+    const LaunchDimensions& launch_dimensions,
+    absl::Span<const int64_t> xor_masks, bool emit_iota_operands,
+    uint64_t tile_size, uint64_t num_iterations_in_sort_dim) {
+  auto llvm_context = std::make_unique<llvm::LLVMContext>();
+
+  std::string op_name(sort->name());
+  std::unique_ptr<llvm::Module> llvm_module =
+      ir_emitter_context->CreateLLVMModule(op_name, *llvm_context);
+  IrEmitter ir_emitter(ir_emitter_context, llvm_module.get(),
+                       /*is_nested=*/false);
+
+  bool is_fusion = sort->parent()->IsFusionComputation();
+  const HloInstruction* hlo_with_buffers =
+      is_fusion ? sort->parent()->FusionInstruction() : sort;
+  std::string suggested_kernel_name(hlo_with_buffers->name());
+
+  ASSIGN_OR_RETURN(
+      llvm::Function * kernel,
+      BuildKernelPrototype(
+          llvm_module.get(), ir_emitter_context->gpu_device_info(),
+          suggested_kernel_name, sanitized_kernel_name, kernel_arguments,
+          launch_dimensions, ir_emitter.builder()));
+
+  std::vector<llvm_ir::IrArray> ir_arrays =
+      IrArraysFor(kernel, kernel_arguments);
+
+  // The first `operand_count()` elements of `ir_arrays` are the input
+  // operands and the rest are the output arrays. Inputs are aliases with
+  // outputs, so we need to pass only the outputs to the in-place sort kernel.
+  auto output_arrays_span =
+      absl::Span<const llvm_ir::IrArray>(ir_arrays).subspan(
+          hlo_with_buffers->operand_count());
+
+  auto* comparator = sort->called_computations().front();
+  auto* builder = ir_emitter.builder();
+  RETURN_IF_ERROR(llvm_ir::EmitSortInPlace(
+      sort, output_arrays_span, emit_iota_operands, llvm_ir::IrName(op_name),
+      xor_masks, ir_emitter.module(), ir_emitter.builder(), launch_dimensions,
+      num_iterations_in_sort_dim, tile_size, kBitonicSortUnrollFactor,
+      [&](absl::Span<llvm::Value* const> operands, llvm::Value* output) {
+        return CallNestedComputation(builder, *ir_emitter_context,
+                                     llvm_module.get(), *comparator, operands,
+                                     output);
+      }));
+
+  return LlvmKernelSource(std::move(llvm_context), std::move(llvm_module));
+}
+
 }  // namespace
 
-GpuExecutable::ConstantInfo AppendGlobalConstant(
-    llvm::Module* module, int64_t num_elements, int64_t bytes_per_element,
-    absl::string_view symbol_name, int allocation_idx,
-    DenseDataIntermediate content) {
-  // LLVM and PTXAS don't deal well with large constants, so we only emit very
-  // small constants directly in LLVM IR.  Larger constants are emitted with
-  // zero initializers in LLVM IR and are later overwritten when the PTX/CUBIN
-  // is loaded.
-  bool should_emit_initializer = num_elements <= 1;
-
+void AppendGlobalConstant(llvm::Module* module, int64_t num_elements,
+                          int64_t bytes_per_element,
+                          absl::string_view symbol_name, int allocation_idx,
+                          DenseDataIntermediate content,
+                          bool emit_initializer) {
   llvm::IRBuilder<> b(module->getContext());
   // Ptxas has issues if the constant allocation is smaller than 64 bytes.
   // TODO(b/253259975): Remove when fixed ptxas version is submitted.
@@ -710,10 +732,9 @@ GpuExecutable::ConstantInfo AppendGlobalConstant(
       b.getInt8Ty(),
       std::max(num_elements * bytes_per_element, kMinConstAllocationInBytes));
 
-  GpuExecutable::ConstantInfo info;
   llvm::Constant* initializer = [&]() -> llvm::Constant* {
-    if (!should_emit_initializer) {
-      info.content = std::move(content);
+    if (!emit_initializer) {
+      // Content is filled by GpuExecutable during initialization.
       return llvm::ConstantAggregateZero::get(global_type);
     }
 
@@ -726,8 +747,9 @@ GpuExecutable::ConstantInfo AppendGlobalConstant(
                                                 content.span().size()));
   }();
 
-  // Explicitly set global addrspace for SPIR backend.
-  int addrspace = llvm::Triple(module->getTargetTriple()).isSPIR() ? 1 : 0;
+  // Explicitly set global addrspace for SPIR-V backend.
+  int addrspace =
+      llvm::Triple(module->getTargetTriple()).isSPIROrSPIRV() ? 1 : 0;
   // These globals will be looked up by name by GpuExecutable so we need to
   // give them an external linkage.  Not all of their uses are visible in
   // the LLVM IR so we can't give then a linkage that merely preserves their
@@ -736,27 +758,20 @@ GpuExecutable::ConstantInfo AppendGlobalConstant(
   //
   // We may have to be more clever here in the future if we notice that we're
   // keeping around too many globals because of their linkage.
-  auto* global_for_const = new llvm::GlobalVariable(
-      global_type, /*isConstant=*/should_emit_initializer,
-      llvm::GlobalValue::ExternalLinkage,
-      /*Initializer=*/initializer, symbol_name,
-      /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
-      /*AddressSpace=*/addrspace,
-      /*isExternallyInitialized=*/false);
+  auto* global_for_const =
+      new llvm::GlobalVariable(global_type, /*isConstant=*/emit_initializer,
+                               llvm::GlobalValue::ExternalLinkage,
+                               /*Initializer=*/initializer, symbol_name,
+                               /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
+                               /*AddressSpace=*/addrspace,
+                               /*isExternallyInitialized=*/false);
   global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
   module->insertGlobalVariable(global_for_const);
-
-  info.symbol_name.assign(symbol_name);
-  info.allocation_index = allocation_idx;
-  return info;
 }
 
-absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
-    const HloSortInstruction* sort, llvm::Module* llvm_module,
-    IrEmitterContext* ir_emitter_context) {
+AsyncThunkSequence EmitBitonicSortLLVMIR(const HloSortInstruction* sort,
+                                         IrEmitterContext* ir_emitter_context) {
   std::string op_name(sort->name());
-
-  IrEmitter ir_emitter(ir_emitter_context, llvm_module, /*nested=*/false);
 
   int64_t dimension_to_sort = sort->sort_dimension();
   const Shape& keys_shape = sort->operand(0)->shape();
@@ -793,7 +808,6 @@ absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
   // tile size, and pass them to SortInPlace. Each block then
   // processes one tile of data.
 
-  const uint64_t kUnrollFactor = 4;
   // Determine the total element size of all sort operands. We need to choose a
   // tile size such that we have enough shared memory to store a tile of
   // elements from each operand.
@@ -811,7 +825,7 @@ absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
   // Choose the tile size based on actual amount of elements to sort, the amount
   // of shared memory available, and the maximum number of threads per block.
   uint64_t tile_size =
-      std::min(std::min(kMaxThreadsPerBlock * kUnrollFactor,
+      std::min(std::min(kMaxThreadsPerBlock * kBitonicSortUnrollFactor,
                         max_tile_size_fitting_into_shared_memory),
                uint64_t{1} << num_stages);
   // The tile size needs to be a power of 2.
@@ -825,8 +839,8 @@ absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
   Shape standard_iteration_shape = keys_shape;
   uint64_t standard_num_iterations_in_sort_dim = 1ULL << (num_stages - 1);
   standard_iteration_shape.set_dimensions(
-      dimension_to_sort,
-      CeilOfRatio(standard_num_iterations_in_sort_dim, kUnrollFactor));
+      dimension_to_sort, CeilOfRatio(standard_num_iterations_in_sort_dim,
+                                     kBitonicSortUnrollFactor));
 
   LaunchDimensions standard_launch_dimensions = CalculateLaunchDimensions(
       standard_iteration_shape, ir_emitter_context->gpu_device_info());
@@ -840,68 +854,60 @@ absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
 
   // We iterate through the element pairs that should be compared.
   uint64_t num_iterations_in_sort_dim =
-      CeilOfRatio(rounded_bound, kUnrollFactor);
+      CeilOfRatio(rounded_bound, kBitonicSortUnrollFactor);
   iteration_shape.set_dimensions(dimension_to_sort, num_iterations_in_sort_dim);
   uint64_t num_iterations = ShapeUtil::ElementsIn(iteration_shape);
 
-  // For correctness reasons we need exactly `tile_size` / `kUnrollFactor` many
-  // threads per block. Each thread is responsible for copying
-  // exactly `kUnrollFactor` many adjacent elements into shared memory, and then
-  // does `kUnrollFactor` / 2 many comparisons of two elements taken from shared
-  // memory.
+  // For correctness reasons we need exactly `tile_size` /
+  // `kBitonicSortUnrollFactor` many threads per block. Each thread is
+  // responsible for copying exactly `kBitonicSortUnrollFactor` many adjacent
+  // elements into shared memory, and then does `kBitonicSortUnrollFactor` / 2
+  // many comparisons of two elements taken from shared memory.
   const uint64_t kThreadsPerBlock =
-      std::max(uint64_t{1}, tile_size / kUnrollFactor);
+      std::max(uint64_t{1}, tile_size / kBitonicSortUnrollFactor);
 
   uint64_t num_blocks = CeilOfRatio(num_iterations, kThreadsPerBlock);
   LaunchDimensions tiled_launch_dimensions(num_blocks, kThreadsPerBlock);
   VLOG(2) << absl::StreamFormat("%s launch dims: %d blocks, %d threads/block",
                                 op_name, num_blocks, kThreadsPerBlock);
-  ThunkSequence thunks;
+  std::vector<tsl::Future<std::unique_ptr<Thunk>>> thunks;
   bool emit_iota_operands = true;
-  auto emit_kernel = [&](absl::Span<const int64_t> xor_masks) {
+  auto emit_thunk = [&](absl::Span<const int64_t> xor_masks) -> absl::Status {
     VLOG(2) << absl::StreamFormat(
         "%s uses kernel for xor masks [%s]", op_name,
         absl::StrJoin(xor_masks, ", ", [](std::string* out, int64_t xor_mask) {
           absl::StrAppendFormat(out, "0x%x", xor_mask);
         }));
+
     LaunchDimensions launch_dimensions = xor_masks.size() > 1
                                              ? tiled_launch_dimensions
                                              : standard_launch_dimensions;
     bool is_fusion = sort->parent()->IsFusionComputation();
     const HloInstruction* hlo_with_buffers =
         is_fusion ? sort->parent()->FusionInstruction() : sort;
-    ASSIGN_OR_RETURN(KernelThunkInfo kernel_thunk_info,
-                     BuildKernelThunkForNonFusionOp(
-                         llvm_module, hlo_with_buffers,
+    std::string sanitized_kernel_name =
+        ir_emitter_context->GetSanitizedUniqueName(op_name);
+    ASSIGN_OR_RETURN(auto kernel_arguments,
+                     emitters::KernelArguments::Create(
                          ir_emitter_context->buffer_assignment(),
-                         ir_emitter_context->GetNextThunkId(),
-                         ir_emitter_context->gpu_device_info(),
-                         ir_emitter_context->GetSanitizedUniqueName(op_name),
-                         ir_emitter, launch_dimensions));
-    thunks.push_back(std::move(kernel_thunk_info.thunk));
+                         GetDefaultBufferAlignment(), hlo_with_buffers));
 
-    // The first `operand_count()` elements of `ir_arrays` are the input
-    // operands and the rest are the output arrays. Inputs are aliases with
-    // outputs, so we need to pass only the outputs to the in-place sort kernel.
-    auto output_arrays_span =
-        absl::Span<const llvm_ir::IrArray>(kernel_thunk_info.ir_arrays)
-            .subspan(hlo_with_buffers->operand_count());
-
-    auto* comparator = sort->called_computations().front();
-    auto* builder = ir_emitter.builder();
-    auto result = llvm_ir::EmitSortInPlace(
-        sort, output_arrays_span, emit_iota_operands, llvm_ir::IrName(op_name),
-        xor_masks, ir_emitter.module(), ir_emitter.builder(), launch_dimensions,
-        xor_masks.size() > 1 ? num_iterations_in_sort_dim
-                             : standard_num_iterations_in_sort_dim,
-        tile_size, kUnrollFactor,
-        [&](absl::Span<llvm::Value* const> operands, llvm::Value* output) {
-          return CallNestedComputation(builder, *ir_emitter_context,
-                                       llvm_module, *comparator, operands,
-                                       output);
-        });
+    ASSIGN_OR_RETURN(
+        LlvmKernelSource llvm_kernel_source,
+        EmitModuleForBitonicSortStage(
+            sort, ir_emitter_context, sanitized_kernel_name, kernel_arguments,
+            launch_dimensions, xor_masks, emit_iota_operands, tile_size,
+            xor_masks.size() > 1 ? num_iterations_in_sort_dim
+                                 : standard_num_iterations_in_sort_dim));
     emit_iota_operands = false;
-    return result;
+
+    thunks.push_back(ir_emitter_context->kernel_compiler()->Compile(
+        Thunk::ThunkInfo::WithProfileAnnotation(
+            hlo_with_buffers, ir_emitter_context->GetNextThunkId()),
+        std::move(llvm_kernel_source), sanitized_kernel_name, kernel_arguments,
+        launch_dimensions));
+
+    return absl::OkStatus();
   };
   std::vector<int64_t> xor_masks;
   for (int64_t stage = 0; stage < num_stages; ++stage) {
@@ -914,52 +920,59 @@ absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
       }
       if (xor_mask >= tile_size) {
         if (!xor_masks.empty()) {
-          RETURN_IF_ERROR(emit_kernel(xor_masks));
+          RETURN_IF_ERROR(emit_thunk(xor_masks));
           xor_masks.clear();
         }
-        RETURN_IF_ERROR(emit_kernel({xor_mask}));
+        RETURN_IF_ERROR(emit_thunk({xor_mask}));
       } else {
         xor_masks.push_back(xor_mask);
       }
     }
   }
   if (!xor_masks.empty()) {
-    RETURN_IF_ERROR(emit_kernel(xor_masks));
+    RETURN_IF_ERROR(emit_thunk(xor_masks));
   }
-  return thunks;
+  return tsl::JoinFutures(absl::MakeSpan(thunks))
+      .Map([](std::vector<std::unique_ptr<Thunk>> thunks) {
+        return ThunkSequence(std::move(thunks));
+      });
 }
 
 // Input = {dynamic array(with dynamic dimension meta data at the
 // end)} Output = {static array, dynamic_dim0, dynamic_dim1}
-absl::StatusOr<ThunkSequence> EmitPadToStaticLLVMIR(
-    const HloCustomCallInstruction* hlo, llvm::Module* llvm_module,
-    IrEmitterContext* ir_emitter_context) {
-  std::string ir_name = std::string(hlo->name());
+absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitPadToStaticLLVMIR(
+    const HloCustomCallInstruction* hlo, IrEmitterContext* ir_emitter_context,
+    const emitters::KernelArguments& kernel_arguments) {
+  auto llvm_context = std::make_unique<llvm::LLVMContext>();
+  std::string op_name = std::string(hlo->name());
 
-  IrEmitter ir_emitter(ir_emitter_context, llvm_module, /*nested=*/false);
+  std::unique_ptr<llvm::Module> llvm_module =
+      ir_emitter_context->CreateLLVMModule(op_name, *llvm_context);
+  IrEmitter ir_emitter(ir_emitter_context, llvm_module.get(),
+                       /*is_nested=*/false);
 
   constexpr int kUnrollFactor = 1;
   const Shape& input_shape = hlo->operand(0)->shape();
 
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      input_shape, ir_emitter_context->gpu_device_info(), {kUnrollFactor});
+      input_shape, ir_emitter_context->gpu_device_info(), kUnrollFactor);
 
-  ASSIGN_OR_RETURN(
-      KernelThunkInfo kernel_thunk_info,
-      BuildKernelThunkForNonFusionOp(
-          llvm_module, hlo, ir_emitter_context->buffer_assignment(),
-          ir_emitter_context->GetNextThunkId(),
-          ir_emitter_context->gpu_device_info(),
-          ir_emitter_context->GetSanitizedUniqueName(ir_name), ir_emitter,
-          launch_dimensions));
-  ThunkSequence thunk_sequence;
-  thunk_sequence.push_back(std::move(kernel_thunk_info.thunk));
+  std::string sanitized_kernel_name =
+      ir_emitter_context->GetSanitizedUniqueName(op_name);
 
-  const llvm_ir::IrArray& source_array = kernel_thunk_info.ir_arrays[0];
-  const llvm_ir::IrArray& output_array = kernel_thunk_info.ir_arrays[1];
+  ASSIGN_OR_RETURN(llvm::Function * kernel,
+                   BuildKernelPrototype(
+                       llvm_module.get(), ir_emitter_context->gpu_device_info(),
+                       op_name, sanitized_kernel_name, kernel_arguments,
+                       launch_dimensions, ir_emitter.builder()));
+
+  std::vector<llvm_ir::IrArray> ir_arrays =
+      IrArraysFor(kernel, kernel_arguments);
+
+  const llvm_ir::IrArray& source_array = ir_arrays[0];
+  const llvm_ir::IrArray& output_array = ir_arrays[1];
   auto output_dim_arrays =
-      absl::Span<const llvm_ir::IrArray>(kernel_thunk_info.ir_arrays)
-          .subspan(2);
+      absl::Span<const llvm_ir::IrArray>(ir_arrays).subspan(2);
 
   llvm::Type* index_ty = GetIndexTypeForKernel(
       hlo, launch_dimensions.launch_bound(), ir_emitter.builder());
@@ -1052,7 +1065,7 @@ absl::StatusOr<ThunkSequence> EmitPadToStaticLLVMIR(
         array_index.Linearize(input_shape.dimensions(), ir_emitter.builder());
     auto if_in_dyn_bounds = llvm_ir::EmitIfThenElse(
         ir_emitter.builder()->CreateICmpULT(linearIndex, dyn_element_total),
-        llvm_ir::IrName(ir_name, "in_dyn_bounds"), ir_emitter.builder(), false);
+        llvm_ir::IrName(op_name, "in_dyn_bounds"), ir_emitter.builder(), false);
     // Set IR builder insertion point to the body of the if
     // structure.
     llvm_ir::SetToFirstInsertPoint(if_in_dyn_bounds.true_block,
@@ -1072,36 +1085,48 @@ absl::StatusOr<ThunkSequence> EmitPadToStaticLLVMIR(
   const Shape& data_shape = hlo->shape().tuple_shapes(0);
   RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
                                       launch_dimensions, ir_emitter.builder(),
-                                      {kUnrollFactor})
-                      .EmitLoop(ir_name, index_ty));
-  return thunk_sequence;
+                                      kUnrollFactor)
+                      .EmitLoop(op_name, index_ty));
+
+  ASSIGN_OR_RETURN(
+      KernelSpec kernel_spec,
+      emitters::GetKernelSpec(sanitized_kernel_name, *hlo,
+                              &ir_emitter_context->buffer_assignment(),
+                              launch_dimensions.AsWorkDimensions()));
+  return KernelDefinition<LlvmKernelSource>(
+      std::move(kernel_spec),
+      LlvmKernelSource{std::move(llvm_context), std::move(llvm_module)});
 }
 
 // Input = {dynamic array(with dynamic dimension meta data at the
 // end)} Output = {static array, dynamic_dim0, dynamic_dim1}
-absl::StatusOr<ThunkSequence> EmitSliceToDynamicLLVMIR(
-    const HloCustomCallInstruction* hlo, llvm::Module* llvm_module,
-    IrEmitterContext* ir_emitter_context) {
-  std::string ir_name = std::string(hlo->name());
+absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitSliceToDynamicLLVMIR(
+    const HloCustomCallInstruction* hlo, IrEmitterContext* ir_emitter_context,
+    const emitters::KernelArguments& kernel_arguments) {
+  auto llvm_context = std::make_unique<llvm::LLVMContext>();
+  std::string op_name = std::string(hlo->name());
 
-  IrEmitter ir_emitter(ir_emitter_context, llvm_module, /*nested=*/false);
+  std::unique_ptr<llvm::Module> llvm_module =
+      ir_emitter_context->CreateLLVMModule(op_name, *llvm_context);
+  IrEmitter ir_emitter(ir_emitter_context, llvm_module.get(),
+                       /*is_nested=*/false);
+
   constexpr int kUnrollFactor = 1;
   const Shape& input_shape = hlo->operand(0)->shape();
 
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      input_shape, ir_emitter_context->gpu_device_info(), {kUnrollFactor});
+      input_shape, ir_emitter_context->gpu_device_info(), kUnrollFactor);
   llvm::Type* index_ty = GetIndexTypeForKernel(
       hlo, launch_dimensions.launch_bound(), ir_emitter.builder());
-  ASSIGN_OR_RETURN(
-      KernelThunkInfo kernel_thunk_info,
-      BuildKernelThunkForNonFusionOp(
-          llvm_module, hlo, ir_emitter_context->buffer_assignment(),
-          ir_emitter_context->GetNextThunkId(),
-          ir_emitter_context->gpu_device_info(),
-          ir_emitter_context->GetSanitizedUniqueName(ir_name), ir_emitter,
-          launch_dimensions));
-  ThunkSequence thunk_sequence;
-  thunk_sequence.push_back(std::move(kernel_thunk_info.thunk));
+
+  std::string sanitized_kernel_name =
+      ir_emitter_context->GetSanitizedUniqueName(op_name);
+
+  ASSIGN_OR_RETURN(llvm::Function * kernel,
+                   BuildKernelPrototype(
+                       llvm_module.get(), ir_emitter_context->gpu_device_info(),
+                       op_name, sanitized_kernel_name, kernel_arguments,
+                       launch_dimensions, ir_emitter.builder()));
 
   const Shape& data_shape = ShapeUtil::MakeStaticShape(hlo->shape());
   TF_RET_CHECK(data_shape.IsArray());
@@ -1122,7 +1147,8 @@ absl::StatusOr<ThunkSequence> EmitSliceToDynamicLLVMIR(
   // pseudo code for sliceToDynamic on a 2d array
   //   int* source_array = args[0];
   //   int* dest_array = args.back();
-  const auto& ir_arrays = kernel_thunk_info.ir_arrays;
+  std::vector<llvm_ir::IrArray> ir_arrays =
+      IrArraysFor(kernel, kernel_arguments);
   const llvm_ir::IrArray& data_array = ir_arrays.back();
   llvm::Value* dest_buffer = data_array.GetBasePointer();
 
@@ -1190,7 +1216,7 @@ absl::StatusOr<ThunkSequence> EmitSliceToDynamicLLVMIR(
         array_index.Linearize(input_shape.dimensions(), ir_emitter.builder());
     auto if_in_dyn_bounds = llvm_ir::EmitIfThenElse(
         ir_emitter.builder()->CreateICmpULT(linearIndex, dyn_element_total),
-        llvm_ir::IrName(ir_name, "in_dyn_bounds"), ir_emitter.builder(), false);
+        llvm_ir::IrName(op_name, "in_dyn_bounds"), ir_emitter.builder(), false);
     // Set IR builder insertion point to the body of the if
     // structure.
     llvm_ir::SetToFirstInsertPoint(if_in_dyn_bounds.true_block,
@@ -1210,41 +1236,64 @@ absl::StatusOr<ThunkSequence> EmitSliceToDynamicLLVMIR(
 
   RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
                                       launch_dimensions, ir_emitter.builder(),
-                                      {kUnrollFactor})
-                      .EmitLoop(ir_name, index_ty));
-  return thunk_sequence;
+                                      kUnrollFactor)
+                      .EmitLoop(op_name, index_ty));
+
+  ASSIGN_OR_RETURN(
+      KernelSpec kernel_spec,
+      emitters::GetKernelSpec(sanitized_kernel_name, *hlo,
+                              &ir_emitter_context->buffer_assignment(),
+                              launch_dimensions.AsWorkDimensions()));
+  return KernelDefinition<LlvmKernelSource>(
+      std::move(kernel_spec),
+      LlvmKernelSource{std::move(llvm_context), std::move(llvm_module)});
 }
 
-absl::StatusOr<ThunkSequence> EmitRngGetAndUpdateStateLLVMIR(
-    const HloRngGetAndUpdateStateInstruction* hlo, llvm::Module* llvm_module,
-    IrEmitterContext* ir_emitter_context) {
-  std::string ir_name = std::string(hlo->name());
+absl::StatusOr<KernelDefinition<LlvmKernelSource>>
+EmitRngGetAndUpdateStateLLVMIR(
+    const HloRngGetAndUpdateStateInstruction* hlo,
+    IrEmitterContext* ir_emitter_context,
+    const emitters::KernelArguments& kernel_arguments) {
+  auto llvm_context = std::make_unique<llvm::LLVMContext>();
 
-  IrEmitter ir_emitter(ir_emitter_context, llvm_module, /*nested=*/false);
+  std::string op_name(hlo->name());
+  std::unique_ptr<llvm::Module> llvm_module =
+      ir_emitter_context->CreateLLVMModule(op_name, *llvm_context);
+  IrEmitter ir_emitter(ir_emitter_context, llvm_module.get(),
+                       /*is_nested=*/false);
 
-  auto& b = *ir_emitter.builder();
-  // Emit a kernel to increment the global state for Philox RNG
-  // algorithm.
-  ASSIGN_OR_RETURN(
-      KernelThunkInfo kernel_thunk_info,
-      BuildKernelThunkForNonFusionOp(
-          llvm_module, hlo, ir_emitter_context->buffer_assignment(),
-          ir_emitter_context->GetNextThunkId(),
-          ir_emitter_context->gpu_device_info(),
-          ir_emitter_context->GetSanitizedUniqueName(ir_name), ir_emitter,
-          LaunchDimensions()));
-  ThunkSequence thunk_sequence;
-  thunk_sequence.push_back(std::move(kernel_thunk_info.thunk));
+  llvm::IRBuilderBase& b = *ir_emitter.builder();
 
-  auto& ir_arrays = kernel_thunk_info.ir_arrays;
+  VLOG(3) << "Generating (without reuse check): " << op_name;
+
+  LaunchDimensions launch_dimensions;
+  std::string sanitized_kernel_name =
+      ir_emitter_context->GetSanitizedUniqueName(op_name);
+
+  ASSIGN_OR_RETURN(llvm::Function * kernel,
+                   BuildKernelPrototype(
+                       llvm_module.get(), ir_emitter_context->gpu_device_info(),
+                       op_name, sanitized_kernel_name, kernel_arguments,
+                       launch_dimensions, ir_emitter.builder()));
+
+  std::vector<llvm_ir::IrArray> ir_arrays =
+      IrArraysFor(kernel, kernel_arguments);
   llvm::Value* old_state =
-      llvm_ir::RngGetAndUpdateState(hlo->delta(), llvm_module, &b);
+      llvm_ir::RngGetAndUpdateState(hlo->delta(), llvm_module.get(), &b);
   llvm::Value* output_address = ir_arrays[0].EmitArrayElementAddress(
       llvm_ir::IrArray::Index(
           /*linear=*/b.getInt64(0), hlo->shape(), &b),
       &b, "rng_state_address");
   b.CreateStore(old_state, output_address);
-  return thunk_sequence;
+
+  ASSIGN_OR_RETURN(
+      KernelSpec kernel_spec,
+      emitters::GetKernelSpec(sanitized_kernel_name, *hlo,
+                              &ir_emitter_context->buffer_assignment(),
+                              launch_dimensions.AsWorkDimensions()));
+  return KernelDefinition<LlvmKernelSource>(
+      std::move(kernel_spec),
+      LlvmKernelSource{std::move(llvm_context), std::move(llvm_module)});
 }
 
 }  // namespace xla::gpu

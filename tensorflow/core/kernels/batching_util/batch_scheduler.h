@@ -39,9 +39,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
 #include "xla/tsl/platform/criticality.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
@@ -96,6 +99,31 @@ class BatchTask {
   // kCritical.
   virtual tsl::criticality::Criticality criticality() const {
     return tsl::criticality::Criticality::kCritical;
+  }
+
+  // If true, the task is a warmup task.
+  virtual bool is_warmup() const { return false; }
+
+  virtual bool is_subtask() const { return false; }
+
+  // Returns true if the task's deadline has expired.
+  // `now` is passed by the caller to amortize absl::Now() across iterations.
+  virtual bool IsDeadlineExceeded(absl::Time now) const { return false; }
+
+  // Returns true if the RPC has been cancelled by the client.
+  virtual bool IsCancelled() const { return false; }
+
+  // Called when the task is finished, either successfully or with an error.
+  //
+  // BatchScheduler guarantees that this method is invoked exactly once for each
+  // BatchTask. This frees the task implementation from worrying about thread
+  // safety or idempotency of this method.
+  void FinishTask(const absl::Status& status) { FinishTaskImpl(status); }
+
+ protected:
+  // TODO: Make this method pure-virtual once all subclasses implement it.
+  virtual void FinishTaskImpl(const absl::Status& status) {
+    // Default implementation does nothing. Subclasses should override.
   }
 };
 

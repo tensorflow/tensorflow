@@ -19,7 +19,7 @@ set -e
 set -x
 
 SCRIPT_DIR=$(realpath $(dirname $0))
-TAG_FILTERS=$($SCRIPT_DIR/rocm_tag_filters.sh),-skip_rocprofiler_sdk,-no_oss,-oss_excluded,-oss_serial
+TAG_FILTERS=$($SCRIPT_DIR/rocm_tag_filters.sh)
 
 mkdir -p /tf/pkg
 
@@ -28,18 +28,24 @@ for arg in "$@"; do
         TAG_FILTERS="${TAG_FILTERS},multi_gpu"
     fi
     if [[ "$arg" == "--config=ci_single_gpu" ]]; then
-        TAG_FILTERS="${TAG_FILTERS},gpu,-multi_gpu"
+        TAG_FILTERS="${TAG_FILTERS},requires-gpu-rocm,requires-gpu-amd,-multi_gpu"
+    fi
+    if [[ "$arg" == "--config=ci_rocm_cpu" ]]; then
+        TAG_FILTERS="${TAG_FILTERS},gpu,-requires-gpu-rocm,-requires-gpu-amd"
     fi
 done
 
 SCRIPT_DIR=$(dirname $0)
 bazel --bazelrc="$SCRIPT_DIR/rocm_xla_ci.bazelrc" test \
-	--build_tag_filters=$TAG_FILTERS \
+    --build_tag_filters=$TAG_FILTERS \
     --test_tag_filters=$TAG_FILTERS \
-	--profile=/tf/pkg/profile.json.gz \
-	--keep_going \
-	--test_env=TF_TESTS_PER_GPU=1 \
-	--action_env=XLA_FLAGS="--xla_gpu_enable_llvm_module_compilation_parallelism=true --xla_gpu_force_compilation_parallelism=16" \
-	--test_output=errors \
-	--run_under=//build_tools/rocm:parallel_gpu_execute \
-	"$@"
+    --test_timeout=920,2400,7200,9600 \
+    --profile=/tf/pkg/profile.json.gz \
+    --test_sharding_strategy=disabled \
+    --flaky_test_attempts=3 \
+    --nokeep_going \
+    --test_env=TF_TESTS_PER_GPU=1 \
+    --action_env=XLA_FLAGS="--xla_gpu_force_compilation_parallelism=16" \
+    --test_output=errors \
+    --run_under=//build_tools/rocm:parallel_gpu_execute \
+    "$@"

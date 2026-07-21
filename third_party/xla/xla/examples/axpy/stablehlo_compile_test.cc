@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectRegistry.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_cpu.h"
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -84,7 +86,7 @@ class StableHloAxpyTest : public ::testing::Test {
 
     // Read StableHLO program to string.
     std::string program_string;
-    TF_RETURN_IF_ERROR(tsl::ReadFileToString(
+    RETURN_IF_ERROR(tsl::ReadFileToString(
         tsl::Env::Default(), std::string(program_path), &program_string));
 
     std::cerr << "Loaded StableHLO program from " << program_path << ":\n"
@@ -123,8 +125,10 @@ TEST_F(StableHloAxpyTest, CompileCPUTestProgram) {
                           CreateStableHloProgram(GetTestProgramPath()));
 
   // Use our client to compile our StableHLO program to an executable.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                          client->CompileAndLoad(*program, CompileOptions{}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      client->CompileAndLoad(xla::MaybeOwningMlirModule(std::move(program)),
+                             CompileOptions{}));
 }
 
 TEST_F(StableHloAxpyTest, CompileAndExecuteCPUTestProgram) {
@@ -139,8 +143,10 @@ TEST_F(StableHloAxpyTest, CompileAndExecuteCPUTestProgram) {
                           CreateStableHloProgram(GetTestProgramPath()));
 
   // Use our client to compile our StableHLO program to an executable.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                          client->CompileAndLoad(*program, CompileOptions{}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      client->CompileAndLoad(xla::MaybeOwningMlirModule(std::move(program)),
+                             CompileOptions{}));
 
   // Create inputs to our computation.
   auto alpha_literal = xla::LiteralUtil::CreateR0<float>(3.14f);

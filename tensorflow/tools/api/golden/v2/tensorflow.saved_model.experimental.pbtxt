@@ -2,7 +2,7 @@ path: "tensorflow.saved_model.experimental"
 tf_module {
   member {
     name: "Fingerprint"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "TrackableResource"

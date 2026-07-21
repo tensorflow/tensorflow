@@ -19,6 +19,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/client.h"
@@ -30,6 +32,8 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
+#include "xla/python/pjrt_ifrt/xla_sharding.pb.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -37,6 +41,8 @@ namespace ifrt {
 namespace {
 
 using ::testing::ElementsAreArray;
+using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
 
 using XlaShardingSerDesTestParam =
     std::tuple<SerDesVersion, test_util::DeviceTestParam>;
@@ -79,11 +85,34 @@ TEST_P(XlaShardingSerDesTest, HloShardingRoundTrip) {
   EXPECT_EQ(out_sharding->xla_hlo_sharding(), sharding->xla_hlo_sharding());
 }
 
+TEST_P(XlaShardingSerDesTest, RejectHloShardingV3Serialization) {
+  DeviceListRef device_list = GetDevices({0, 1});
+  xla::HloSharding xla_hlo_sharding =
+      xla::HloSharding::ToV3Sharding(xla::HloSharding::IotaTile({2, 1}));
+  std::unique_ptr<HloSharding> sharding = HloSharding::Create(
+      device_list, MemoryKind("abc"), /*xla_hlo_sharding=*/xla_hlo_sharding);
+
+  auto options = std::make_unique<SerializeOptions>(version());
+  EXPECT_THAT(
+      Serialize(*sharding, std::move(options)),
+      StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr(
+              "XLA HloShardingV3 format is not supported for serialization")));
+}
+
 INSTANTIATE_TEST_SUITE_P(
     SerDesVersion_NumDevices, XlaShardingSerDesTest,
     testing::Combine(testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
                      testing::Values(test_util::DeviceTestParam{
-                         /*num_devices=*/2, /*num_addressable_devices=*/2})));
+                         /*num_devices=*/2, /*num_addressable_devices=*/2})),
+    [](const testing::TestParamInfo<XlaShardingSerDesTestParam>& info) {
+      return absl::StrCat("version_",
+                          std::get<0>(info.param).version_number().value(),
+                          "_num_devices_", std::get<1>(info.param).num_devices,
+                          "_num_addressable_devices_",
+                          std::get<1>(info.param).num_addressable_devices);
+    });
 
 }  // namespace
 }  // namespace ifrt

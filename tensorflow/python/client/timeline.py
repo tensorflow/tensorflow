@@ -76,7 +76,7 @@ class _ChromeTraceFormatter(object):
     """Creates a new Chrome Trace event.
 
     For details of the file format, see:
-    https://github.com/catapult-project/catapult/blob/master/tracing/README.md
+    https://chromium.googlesource.com/catapult/+/refs/heads/main/tracing/README.md
 
     Args:
       ph:  The type of event - usually a single character.

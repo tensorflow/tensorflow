@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -74,7 +75,7 @@ TEST(GraphToFunctionDefTest, Basics) {
   GraphDef graph_def;
   TF_EXPECT_OK(root.ToGraphDef(&graph_def));
 
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
   GraphConstructorOptions options;
   TF_EXPECT_OK(ConvertGraphDefToGraph(options, graph_def, graph.get()));
 
@@ -356,7 +357,7 @@ TEST(GraphToFunctionDefTest, ControlDependencies) {
   GraphDef graph_def;
   TF_EXPECT_OK(root.ToGraphDef(&graph_def));
 
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
   GraphConstructorOptions options;
   TF_EXPECT_OK(ConvertGraphDefToGraph(options, graph_def, graph.get()));
 
@@ -390,15 +391,15 @@ TEST(GraphToFunctionDefTest, ControlOutputs) {
   GraphDef graph_def;
   TF_EXPECT_OK(root.ToGraphDef(&graph_def));
 
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
   GraphConstructorOptions options;
   TF_EXPECT_OK(ConvertGraphDefToGraph(options, graph_def, graph.get()));
 
   // Add a 'b' node to the control return set.
-  const auto control_ret = [](const Node* n) -> absl::optional<std::string> {
+  const auto control_ret = [](const Node* n) -> std::optional<std::string> {
     if (n->name() == "b")
       return absl::make_optional<std::string>("must_execute");
-    return absl::nullopt;
+    return std::nullopt;
   };
 
   FunctionDef fdef;

@@ -48,22 +48,23 @@ absl::Status SpaceToBatchOpCompute(OpKernelContext* context,
                                    const Tensor& orig_paddings) {
   const int input_dims = orig_input_tensor.dims();
   if (!TensorShapeUtils::IsVector(orig_block_shape.shape())) {
-    return errors::InvalidArgument("block_shape rank should be 1 instead of ",
-                                   orig_block_shape.dims());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "block_shape rank should be 1 instead of ", orig_block_shape.dims()));
   }
 
   const int block_dims = orig_block_shape.dim_size(0);
   if (orig_input_tensor.dims() < 1 + block_dims) {
-    return errors::InvalidArgument("input rank should be >= ", 1 + block_dims,
-                                   " instead of ", orig_input_tensor.dims());
+    return absl::InvalidArgumentError(
+        absl::StrCat("input rank should be >= ", 1 + block_dims, " instead of ",
+                     orig_input_tensor.dims()));
   }
 
   if (!(TensorShapeUtils::IsMatrix(orig_paddings.shape()) &&
         block_dims == orig_paddings.dim_size(0) &&
         2 == orig_paddings.dim_size(1))) {
-    return errors::InvalidArgument("paddings should have shape [", block_dims,
-                                   ", 2] instead of ",
-                                   orig_paddings.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("paddings should have shape [", block_dims,
+                     ", 2] instead of ", orig_paddings.shape().DebugString()));
   }
 
   // To avoid out-of-bounds access in the case that the block_shape and/or
@@ -100,25 +101,25 @@ absl::Status SpaceToBatchOpCompute(OpKernelContext* context,
   int64_t block_shape_product = 1;
   for (int block_dim = 0; block_dim < block_dims; ++block_dim) {
     if (block_shape[block_dim] < 1) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "All values in block_shape must be positive, got value, ",
-          block_shape[block_dim], " at index ", block_dim, ".");
+          block_shape[block_dim], " at index ", block_dim, "."));
     }
     block_shape_product =
         MultiplyWithoutOverflow(block_shape_product, block_shape[block_dim]);
   }
   if (block_shape_product <= 0) {
-    return errors::InvalidArgument(
-        "Product of block sizes must be positive, got ", block_shape_product);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Product of block sizes must be positive, got ", block_shape_product));
   }
 
   const int internal_block_dims =
       block_dims - removed_prefix_block_dims - removed_suffix_block_dims;
   if (internal_block_dims > kMaxSpaceToBatchBlockDims) {
-    return errors::InvalidArgument(
-        "Maximum number of non-combined block dimensions is ",
-        internal_block_dims, " but must not exceed ",
-        kMaxSpaceToBatchBlockDims);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Maximum number of non-combined block dimensions is ",
+                     internal_block_dims, " but must not exceed ",
+                     kMaxSpaceToBatchBlockDims));
   }
 
   if (internal_block_dims == 0) {
@@ -140,9 +141,9 @@ absl::Status SpaceToBatchOpCompute(OpKernelContext* context,
   const int64_t output_shape = MultiplyWithoutOverflow(
       orig_input_tensor.dim_size(0), block_shape_product);
   if (output_shape < 0) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Negative output dimension size caused by overflow when multiplying ",
-        orig_input_tensor.dim_size(0), " and ", block_shape_product);
+        orig_input_tensor.dim_size(0), " and ", block_shape_product));
   }
   TF_RETURN_IF_ERROR(external_output_shape.AddDimWithStatus(output_shape));
 
@@ -161,16 +162,16 @@ absl::Status SpaceToBatchOpCompute(OpKernelContext* context,
     const int64_t pad_start = paddings[2 * block_dim],
                   pad_end = paddings[2 * block_dim + 1];
     if (pad_start < 0 || pad_end < 0) {
-      return errors::InvalidArgument("Paddings must be non-negative");
+      return absl::InvalidArgumentError("Paddings must be non-negative");
     }
     const int64_t input_size = orig_input_tensor.dim_size(block_dim + 1);
     const int64_t block_shape_value = block_shape[block_dim];
     const int64_t padded_size = input_size + pad_start + pad_end;
     if (padded_size % block_shape_value != 0) {
-      return errors::InvalidArgument("padded_shape[", block_dim,
-                                     "]=", padded_size,
-                                     " is not divisible by block_shape[",
-                                     block_dim, "]=", block_shape_value);
+      return absl::InvalidArgumentError(
+          absl::StrCat("padded_shape[", block_dim, "]=", padded_size,
+                       " is not divisible by block_shape[", block_dim,
+                       "]=", block_shape_value));
     }
     TF_RETURN_IF_ERROR(internal_input_shape.AddDimWithStatus(input_size));
     const int64_t output_size = padded_size / block_shape_value;
@@ -238,9 +239,9 @@ class SpaceToBatchOp : public OpKernel {
  public:
   explicit SpaceToBatchOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("block_size", &block_size_));
-    OP_REQUIRES(
-        context, block_size_ > 1,
-        errors::InvalidArgument("Block size should be > 1: ", block_size_));
+    OP_REQUIRES(context, block_size_ > 1,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Block size should be > 1: ", block_size_)));
     block_shape_ = Tensor(tensorflow::DT_INT64, TensorShape({2}));
     auto block_shape_vec = block_shape_.vec<int64_t>();
     block_shape_vec(0) = block_size_;
@@ -253,9 +254,10 @@ class SpaceToBatchOp : public OpKernel {
     const int dims = in0.dims();
 
     static const int kRequiredDims = 4;
-    OP_REQUIRES(context, kRequiredDims == dims,
-                errors::InvalidArgument("Input rank should be: ", kRequiredDims,
-                                        "instead of: ", dims));
+    OP_REQUIRES(
+        context, kRequiredDims == dims,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Input rank should be: ", kRequiredDims, "instead of: ", dims)));
     OP_REQUIRES_OK(context, SpaceToBatchOpCompute<Device, T>(
                                 context, in0, block_shape_, in1));
   }

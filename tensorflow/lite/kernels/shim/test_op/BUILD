@@ -6,7 +6,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_kernel_library")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//tensorflow/lite/kernels/shim:__subpackages__"],
     licenses = ["notice"],
 )
@@ -15,7 +15,9 @@ cc_library(
     name = "simple_op",
     hdrs = ["simple_op.h"],
     deps = [
+        "//tensorflow/core/platform:tstring",
         "//tensorflow/lite/kernels/shim:op_kernel",
+        "//tensorflow/lite/kernels/shim:shape",
         "//tensorflow/lite/kernels/shim:status_macros",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -71,7 +73,6 @@ cc_test(
     srcs = ["simple_tflite_op_test.cc"],
     deps = [
         ":simple_tflite_op",
-        "//tensorflow/core/platform:tstring",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:test_util",
@@ -149,10 +150,6 @@ tf_cc_test(
     ],
     deps = [
         ":tmpl_tflite_op",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/schema:schema_fbs",

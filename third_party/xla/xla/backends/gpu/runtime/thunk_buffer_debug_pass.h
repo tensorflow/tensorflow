@@ -16,12 +16,19 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_THUNK_BUFFER_DEBUG_PASS_H_
 #define XLA_BACKENDS_GPU_RUNTIME_THUNK_BUFFER_DEBUG_PASS_H_
 
+#include <cstddef>
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 
@@ -37,19 +44,30 @@ class ThunkBufferDebugPass : public ThunkPassInterface {
     kBufferSaver,
   };
 
-  explicit ThunkBufferDebugPass(Mode mode) : mode_(mode) {}
+  // Returns an error if any of the provided module_output_slices is a tuple.
+  static absl::StatusOr<std::unique_ptr<ThunkBufferDebugPass>> Create(
+      Mode mode, std::vector<ShapedSlice> module_output_slices);
 
   absl::string_view name() const override { return "thunk-buffer-debug"; }
 
-  absl::StatusOr<bool> Run(SequentialThunk* root_thunk,
+  absl::StatusOr<bool> Run(ThunkSequence* thunk_sequence,
                            const DebugOptions& debug_options,
                            const HloModule* absl_nullable hlo_module,
                            const se::DeviceDescription& device_info,
                            ThunkPassBufferAllocator& allocator) override;
 
  private:
+  explicit ThunkBufferDebugPass(Mode mode,
+                                std::vector<ShapedSlice> module_output_slices)
+      : mode_(mode), module_output_slices_(std::move(module_output_slices)) {}
+
   Mode mode_;
+  // Outputs of the entire HLO module graph.
+  std::vector<ShapedSlice> module_output_slices_;
 };
+
+absl::StatusOr<std::vector<ShapedSlice>> GetOutputShapedBuffers(
+    const HloModule* hlo_module, const BufferAssignment* buffer_assignment);
 
 }  // namespace gpu
 }  // namespace xla

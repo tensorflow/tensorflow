@@ -35,14 +35,13 @@ namespace {
 
 std::unique_ptr<xla::CoordinationService> EnableCoordinationService(
     const xla::CoordinationServiceImpl::Options& options) {
-  const std::string job_name = "jax_worker";
   xla::CoordinationService::Config config;
   config.cluster_register_timeout = options.cluster_register_timeout;
   config.cluster_register_with_barrier = true;
   config.heartbeat_timeout = options.heartbeat_timeout;
   config.shutdown_barrier_timeout = options.shutdown_timeout;
-  config.job_name = job_name;
   config.num_tasks = options.num_nodes;
+  config.recoverable = options.recoverable;
   auto service =
       std::make_unique<xla::CoordinationService>(options.env, config);
   return service;

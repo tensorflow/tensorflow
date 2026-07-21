@@ -28,6 +28,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/base/macros.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
@@ -59,6 +60,11 @@ limitations under the License.
 namespace mlir {
 class DialectRegistry;
 }  // namespace mlir
+
+namespace stream_executor {
+class DeviceDescription;
+
+}  // namespace stream_executor
 
 namespace xla {
 
@@ -325,9 +331,10 @@ class Compiler {
 
   // Creates an `Executable` based on the given `aot_result`.
   virtual absl::StatusOr<std::unique_ptr<Executable>>
-  LoadExecutableFromAotResult(const CompiledModule& aot_result,
-                              const se::StreamExecutor& stream_exec) {
-    return Unimplemented("LoadExecutableFromAotResult unimplemented");
+  LoadExecutableFromLegacyAotResult(
+      const CompiledModule& aot_result,
+      const se::DeviceDescription& device_description) {
+    return Unimplemented("LoadExecutableFromLegacyAotResult unimplemented");
   }
 
  private:

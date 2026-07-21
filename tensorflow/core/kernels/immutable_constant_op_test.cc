@@ -65,7 +65,7 @@ class TestFileSystem : public NullFileSystem {
   using NullFileSystem::NewReadOnlyMemoryRegionFromFile;
 
   absl::Status NewReadOnlyMemoryRegionFromFile(
-      const std::string& fname, TransactionToken* token,
+      const std::string& fname,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
     float val = 0;
     absl::string_view scheme, host, path;

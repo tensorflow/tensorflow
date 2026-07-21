@@ -110,7 +110,9 @@ CompileAndRegisterIfrtPrograms(absl::string_view model_name,
             ifrt_model_context.GetIfrtServingCoreSelector(),
             ifrt_model_context.GetCompilationEnvOrOverrides(),
             ifrt_model_context.GetTfToHloCompiler(),
-            ifrt_model_context.GetPersistentCompilationCache()));
+            ifrt_model_context.GetPersistentCompilationCache(),
+            ifrt_model_context.GetH2DTransferExecutorFactory(),
+            ifrt_model_context.use_output_arena()));
 
     // Register the Ifrt program to `ServingExecutableRegistry` so that
     // the client TF program can invoke them via `IfrtCall` op.
@@ -125,12 +127,14 @@ CompileAndRegisterIfrtPrograms(absl::string_view model_name,
 
 absl::Status CompileTensorflowForIfrtServing(
     absl::string_view model_name, IfrtModelContext& ifrt_model_context,
-    mlir::ModuleOp module) {
+    mlir::ModuleOp module, bool enable_async_ifrt) {
   tsl::profiler::TraceMe trace_me("CompileTensorflowForIfrtServing");
   mlir::Builder builder(module.getContext());
 
-  TF_RETURN_IF_ERROR(
-      RunClusterToIfrtRuntimeOpsPassPipeline(module, model_name));
+  TF_RETURN_IF_ERROR(RunClusterToIfrtRuntimeOpsPassPipeline(
+      module, model_name,
+      ifrt_model_context.enable_propagate_static_shapes_pass(),
+      enable_async_ifrt));
 
   TF_ASSIGN_OR_RETURN(
       auto handles,
@@ -198,7 +202,9 @@ absl::Status IfrtBackendCompiler::CompileTensorflow(
 
   // Extract TPU program for IFRT call.
   TF_RETURN_IF_ERROR(CompileTensorflowForIfrtServing(
-      model_context.name(), **ifrt_model_context, module));
+      model_context.name(), **ifrt_model_context, module,
+      model_context.graph_execution_options()
+          .compile_options.enable_async_ifrt));
 
   if (VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile("after_ifrt_outlining", module);

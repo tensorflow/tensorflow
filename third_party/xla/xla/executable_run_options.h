@@ -89,6 +89,11 @@ class RunId {
     return H::combine(std::move(h), id.data_);
   }
 
+  template <typename Sink>
+  friend void AbslStringify(Sink sink, const RunId& id) {
+    return sink.Append(std::to_string(id.data_));
+  }
+
  private:
   int64_t data_;
 };

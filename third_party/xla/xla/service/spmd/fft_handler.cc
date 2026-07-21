@@ -281,13 +281,17 @@ HloInstruction* GetFinalFftUsingCollectivePermute(
       dest_transform));
   // collective permute for source partition_id and source_transfrom.
   std::vector<std::pair<int64_t, int64_t>> src_dst_pairs;
-  sharding.tile_assignment().Each(
-      [&](absl::Span<const int64_t> indices, int64_t src_device) {
-        std::vector<int64_t> target_indices(indices.begin(), indices.end());
-        target_indices.back() = (indices.back() + 1) % num_partitions;
-        int64_t dst_device = sharding.tile_assignment()(target_indices);
-        src_dst_pairs.emplace_back(src_device, dst_device);
-      });
+  HloSharding tile_based_sharding =
+      sharding.UseNamedShardingLeaf()
+          ? HloSharding::V3ToV2Sharding(sharding.named_sharding())
+          : std::move(sharding);
+  tile_based_sharding.EachTile([&](absl::Span<const int64_t> indices,
+                                   int64_t src_device) {
+    std::vector<int64_t> target_indices(indices.begin(), indices.end());
+    target_indices.back() = (indices.back() + 1) % num_partitions;
+    int64_t dst_device = tile_based_sharding.tile_assignment()(target_indices);
+    src_dst_pairs.emplace_back(src_device, dst_device);
+  });
 
   source_partition_id = collective_ops_creator.create_collective_permute(
       &body_b, source_partition_id, src_dst_pairs, (*next_channel_id)++);
@@ -383,9 +387,15 @@ absl::Status SpmdPartitioningVisitor::HandleFft(HloInstruction* hlo) {
       partitioned_input.state().next_channel_id,
       partitioned_input.state().partition_id, partitioned_input.state().b);
 
-  if (padded_hlo.has_value()) {
-    result = padded_hlo.value();
+  if (!padded_hlo.has_value()) {
+    // Halo exchange is what establishes the divisibility that
+    // ShuffleWithinEachPartitionUsingOneHot requires (its CHECK_EQ). If it was
+    // not possible for this sharding (e.g. a halo larger than the per-shard
+    // size), fall back to the default partitioning instead of proceeding with
+    // an un-padded operand and hitting that CHECK.
+    return DefaultAction(hlo);
   }
+  result = padded_hlo.value();
 
   // 1.b Shuffle data within each partition using one hot and matmul.
   // If partition 0 has {0, 1, 2, 3} and num partitions is 2, after shuffling,

@@ -58,7 +58,7 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 namespace xla {
 namespace profiler {
-extern std::unique_ptr<tensorflow::profiler::ProfilerInterface> CreateGpuTracer(
+extern std::unique_ptr<tsl::profiler::ProfilerInterface> CreateGpuTracer(
     const tensorflow::ProfileOptions& options);
 }  // namespace profiler
 }  // namespace xla
@@ -67,8 +67,8 @@ namespace tensorflow {
 namespace profiler {
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-std::unique_ptr<ProfilerInterface> CreateGpuTracer() {
-  ProfileOptions options = ProfilerSession::DefaultOptions();
+std::unique_ptr<tsl::profiler::ProfilerInterface> CreateGpuTracer() {
+  ProfileOptions options = tsl::ProfilerSession::DefaultOptions();
   return xla::profiler::CreateGpuTracer(options);
 }
 
@@ -290,15 +290,15 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
   TF_ASSERT_OK(session->Create(def_));
-  std::vector<std::pair<string, Tensor>> inputs;
+  std::vector<std::pair<std::string, Tensor>> inputs;
 
   // Request two targets: one fetch output and one non-fetched output.
-  std::vector<string> output_names = {y_ + ":0"};
-  std::vector<string> target_nodes = {y_neg_};
+  std::vector<std::string> output_names = {y_ + ":0"};
+  std::vector<std::string> target_nodes = {y_neg_};
   std::vector<Tensor> outputs;
 
   TF_ASSERT_OK(tracer->Start());
-  Status s = session->Run(inputs, output_names, target_nodes, &outputs);
+  absl::Status s = session->Run(inputs, output_names, target_nodes, &outputs);
   TF_ASSERT_OK(s);
 
   TF_ASSERT_OK(tracer->Stop());

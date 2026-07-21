@@ -38,18 +38,18 @@ class EndpointSpec {
   // name: name of this endpoint class
   // javadoc: the endpoint class documentation
   // TODO(annarev): hardcode deprecated to false until deprecated is possible
-  EndpointSpec(const string& package, const string& name,
+  EndpointSpec(const std::string& package, const std::string& name,
                const Javadoc& javadoc)
       : package_(package), name_(name), javadoc_(javadoc), deprecated_(false) {}
 
-  const string& package() const { return package_; }
-  const string& name() const { return name_; }
+  const std::string& package() const { return package_; }
+  const std::string& name() const { return name_; }
   const Javadoc& javadoc() const { return javadoc_; }
   bool deprecated() const { return deprecated_; }
 
  private:
-  const string package_;
-  const string name_;
+  const std::string package_;
+  const std::string name_;
   const Javadoc javadoc_;
   const bool deprecated_;
 };
@@ -63,25 +63,25 @@ class ArgumentSpec {
   // type: the tensor type of this argument
   // description: a description of this argument, in javadoc
   // iterable: true if this argument is a list
-  ArgumentSpec(const string& op_def_name, const Variable& var, const Type& type,
-               const string& description, bool iterable)
+  ArgumentSpec(const std::string& op_def_name, const Variable& var,
+               const Type& type, const std::string& description, bool iterable)
       : op_def_name_(op_def_name),
         var_(var),
         type_(type),
         description_(description),
         iterable_(iterable) {}
 
-  const string& op_def_name() const { return op_def_name_; }
+  const std::string& op_def_name() const { return op_def_name_; }
   const Variable& var() const { return var_; }
   const Type& type() const { return type_; }
-  const string& description() const { return description_; }
+  const std::string& description() const { return description_; }
   bool iterable() const { return iterable_; }
 
  private:
-  const string op_def_name_;
+  const std::string op_def_name_;
   const Variable var_;
   const Type type_;
-  const string description_;
+  const std::string description_;
   const bool iterable_;
 };
 
@@ -99,9 +99,9 @@ class AttributeSpec {
   //                value referenced by this pointer must outlive the lifetime
   //                of the AttributeSpec. This is guaranteed if the value is
   //                issued by an OpDef of the global OpRegistry.
-  AttributeSpec(const string& op_def_name, const Variable& var,
+  AttributeSpec(const std::string& op_def_name, const Variable& var,
                 const Type& type, const Type& jni_type,
-                const string& description, bool iterable,
+                const std::string& description, bool iterable,
                 const AttrValue* default_value)
       : op_def_name_(op_def_name),
         var_(var),
@@ -111,20 +111,20 @@ class AttributeSpec {
         jni_type_(jni_type),
         default_value_(default_value) {}
 
-  const string& op_def_name() const { return op_def_name_; }
+  const std::string& op_def_name() const { return op_def_name_; }
   const Variable& var() const { return var_; }
   const Type& type() const { return type_; }
-  const string& description() const { return description_; }
+  const std::string& description() const { return description_; }
   bool iterable() const { return iterable_; }
   const Type& jni_type() const { return jni_type_; }
   bool has_default_value() const { return default_value_ != nullptr; }
   const AttrValue* default_value() const { return default_value_; }
 
  private:
-  const string op_def_name_;
+  const std::string op_def_name_;
   const Variable var_;
   const Type type_;
-  const string description_;
+  const std::string description_;
   const bool iterable_;
   const Type jni_type_;
   const AttrValue* default_value_;
@@ -139,9 +139,9 @@ class OpSpec {
   // api_def: Op API definition
   static OpSpec Create(const OpDef& op_def, const ApiDef& api_def);
 
-  const string& graph_op_name() const { return graph_op_name_; }
+  const std::string& graph_op_name() const { return graph_op_name_; }
   bool hidden() const { return hidden_; }
-  const string& deprecation_explanation() const {
+  const std::string& deprecation_explanation() const {
     return deprecation_explanation_;
   }
   const std::vector<EndpointSpec> endpoints() const { return endpoints_; }
@@ -158,15 +158,15 @@ class OpSpec {
   // graph_op_name: name of this op, as known by TensorFlow core engine
   // hidden: true if this op should not be visible through the Graph Ops API
   // deprecation_explanation: message to show if all endpoints are deprecated
-  explicit OpSpec(const string& graph_op_name, bool hidden,
-                  const string& deprecation_explanation)
+  explicit OpSpec(const std::string& graph_op_name, bool hidden,
+                  const std::string& deprecation_explanation)
       : graph_op_name_(graph_op_name),
         hidden_(hidden),
         deprecation_explanation_(deprecation_explanation) {}
 
-  const string graph_op_name_;
+  const std::string graph_op_name_;
   const bool hidden_;
-  const string deprecation_explanation_;
+  const std::string deprecation_explanation_;
   std::vector<EndpointSpec> endpoints_;
   std::vector<ArgumentSpec> inputs_;
   std::vector<ArgumentSpec> outputs_;

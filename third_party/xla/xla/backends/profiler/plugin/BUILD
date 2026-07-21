@@ -24,11 +24,12 @@ cc_library(
     srcs = ["plugin_tracer.cc"],
     hdrs = ["plugin_tracer.h"],
     copts = tf_profiler_copts(),
-    visibility = ["//xla:internal"],
+    visibility = ["//xla:friends"],
     deps = [
         ":profiler_c_api_hdrs",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@tsl//tsl/profiler/lib:profiler_interface",
         "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
@@ -79,9 +80,6 @@ cc_library(
     name = "plugin_metadata_hdr",
     hdrs = ["plugin_metadata.h"],
     visibility = ["//xla/backends/profiler/plugin:__subpackages__"],
-    deps = [
-        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
-    ],
 )
 
 cc_library(
@@ -91,7 +89,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":plugin_metadata_hdr",
-        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ] + if_google(
         ["//xla/backends/profiler/plugin/google:plugin_metadata_google"],
         ["//xla/backends/profiler/plugin/oss:plugin_metadata_oss"],
@@ -108,6 +105,7 @@ xla_cc_test(
         ":profiler_c_api_hdrs",
         ":profiler_error",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:test",
         "//xla/tsl/profiler/utils:xplane_builder",
         "//xla/tsl/profiler/utils:xplane_utils",
         "//xla/tsl/profiler/utils:xplane_visitor",

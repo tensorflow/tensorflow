@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -85,7 +86,7 @@ absl::StatusOr<HloInstruction*> MakeConvolveHlo(
     const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config,
     std::optional<PrimitiveType> preferred_element_type,
-    const OpMetadata* metadata = nullptr,
+    const SparsityConfig& sparsity_config, const OpMetadata* metadata = nullptr,
     const FrontendAttributes* frontend_attributes = nullptr);
 
 // Creates a transpose HLO instruction and adds it to the computation containing
@@ -299,7 +300,7 @@ absl::StatusOr<HloInstruction*> MakeR1ConstantHlo(
     absl::Span<const NativeT> values) {
   Literal literal = LiteralUtil::CreateR1<NativeT>(values);
   if (literal.shape().element_type() != type) {
-    TF_ASSIGN_OR_RETURN(literal, literal.Convert(type));
+    ASSIGN_OR_RETURN(literal, literal.Convert(type));
   }
   return computation->AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));

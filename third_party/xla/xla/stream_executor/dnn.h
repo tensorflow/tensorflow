@@ -24,6 +24,8 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -66,13 +68,30 @@ enum class DimIndex : int {
 // Return a reordered dims.
 std::vector<int64_t> ReorderDims(const std::vector<int64_t>& input,
                                  const DataLayout& from, const DataLayout& to);
+std::vector<int64_t> ReorderDims(const std::vector<int64_t>& input,
+                                 const FilterLayout& from,
+                                 const FilterLayout& to);
 
 // Helper functions to make methods more readable.
 inline int64_t GetDim(absl::Span<const int64_t> data, DimIndex dim) {
+  if (static_cast<size_t>(dim) >= data.size()) {
+    std::fprintf(stderr,
+                 "Check failed: static_cast<size_t>(dim) < data.size() (%zu "
+                 "vs. %zu)\n",
+                 static_cast<size_t>(dim), data.size());
+    std::abort();
+  }
   return data.rbegin()[static_cast<int64_t>(dim)];
 }
 
 inline void SetDim(absl::Span<int64_t> data, DimIndex dim, int64_t value) {
+  if (static_cast<size_t>(dim) >= data.size()) {
+    std::fprintf(stderr,
+                 "Check failed: static_cast<size_t>(dim) < data.size() (%zu "
+                 "vs. %zu)\n",
+                 static_cast<size_t>(dim), data.size());
+    std::abort();
+  }
   data.rbegin()[static_cast<int64_t>(dim)] = value;
 }
 
@@ -1092,8 +1111,10 @@ class DnnGraph {
   DnnGraph() = default;
   virtual ~DnnGraph() = default;
 
-  virtual absl::Status Prepare(DnnSupport&, const EngineOptions&) = 0;
-  virtual absl::Status Build(DnnSupport&, std::optional<int64_t> plan_id) = 0;
+  virtual absl::Status Prepare(DnnSupport*, const DeviceDescription&,
+                               const EngineOptions&) = 0;
+  virtual absl::Status Build(DnnSupport*, const DeviceDescription&,
+                             std::optional<int64_t> plan_id) = 0;
   virtual absl::Status Execute(Stream& stream,
                                absl::Span<DeviceAddressBase> operands,
                                int64_t local_device_ordinal) const = 0;
@@ -1939,8 +1960,8 @@ class DnnSupport {
   //    afterwards.
   virtual absl::Status DoCtcLoss(
       Stream* stream, DataType element_type,
-      const RnnStateTensorDescriptor& probs_desc,
-      const DeviceAddressBase probs_data, absl::Span<const int> labels_data,
+      const RnnStateTensorDescriptor& probs_desc, DeviceAddressBase probs_data,
+      absl::Span<const int> labels_data,
       absl::Span<const int> labels_lengths_data,
       absl::Span<const int> input_lengths_data, DeviceAddressBase costs_data,
       const RnnStateTensorDescriptor& grads_desc, DeviceAddressBase grads_data,

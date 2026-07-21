@@ -68,7 +68,7 @@ class DnnScratchAllocator : public se::ScratchAllocator {
   DnnScratchAllocator(int64_t memory_limit, OpKernelContext* context)
       : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
   int64_t GetMemoryLimitInBytes() override { return memory_limit_; }
-  absl::StatusOr<stream_executor::DeviceAddress<uint8>> AllocateBytes(
+  absl::StatusOr<stream_executor::DeviceAddress<uint8_t>> AllocateBytes(
       int64_t byte_size) override {
     Tensor temporary_memory;
     if (byte_size < 0) {
@@ -96,7 +96,7 @@ class DnnScratchAllocator : public se::ScratchAllocator {
     // allocator.
     allocated_tensors_.push_back(temporary_memory);
     total_byte_size_ += byte_size;
-    return absl::StatusOr<stream_executor::DeviceAddress<uint8>>(
+    return absl::StatusOr<stream_executor::DeviceAddress<uint8_t>>(
         AsDeviceMemory(temporary_memory.flat<uint8_t>().data(),
                        temporary_memory.flat<uint8_t>().size()));
   }
@@ -163,11 +163,11 @@ AllocateScratchOrFallback(se::ScratchAllocator* scratch_allocator,
       scratch_memory = scratch_or.value();
     } else if ((selected_runner = no_scratch_fallback)) {
       if (selected_runner->GetWorkspaceSize() > 0) {
-        return errors::Internal(
+        return absl::InternalError(
             "No-scratch fallback runner requires nonzero scratch space");
       }
     } else {
-      return errors::Unknown(
+      return absl::UnknownError(
           "CUDNN failed to allocate the scratch space for the runner or to "
           "find a working no-scratch runner.");
     }

@@ -1,0 +1,13 @@
+--- a/proto/private/native.bzl
++++ b/proto/private/native.bzl
+@@ -26,7 +26,10 @@
+ """Lovely workaround to be able to expose native constants pretending to be Starlark."""
+
++load("@com_google_protobuf//bazel/common:proto_common.bzl", "proto_common")
++load("@com_google_protobuf//bazel/common:proto_info.bzl", "ProtoInfo")
++
+ # buildifier: disable=native-proto
+ NativeProtoInfo = ProtoInfo
+
+ # buildifier: disable=native-proto
+ native_proto_common = proto_common

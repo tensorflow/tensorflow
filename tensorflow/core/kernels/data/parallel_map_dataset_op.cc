@@ -15,10 +15,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <functional>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -27,7 +28,9 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "xla/tsl/platform/logging.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -36,7 +39,9 @@ limitations under the License.
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/stats_utils.h"
 #include "tensorflow/core/data/unbounded_thread_pool.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -136,7 +141,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     name_utils::IteratorPrefixParams params;
     params.op_version = op_version_;
     return std::make_unique<Iterator>(Iterator::Params{
@@ -149,7 +154,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     return output_shapes_;
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
     params.op_version = op_version_;
     return name_utils::DatasetDebugString(ParallelMapDatasetOp::kDatasetType,
@@ -164,7 +169,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     }
   }
 
-  absl::Status Get(OpKernelContext* ctx, int64 index,
+  absl::Status Get(OpKernelContext* ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     absl::call_once(instantiated_captured_func_once_, [this, ctx] {
@@ -209,7 +214,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     // Input: num_parallel_calls
     Node* num_parallel_calls = nullptr;
     if (op_version_ == 1) {
-      TF_RETURN_IF_ERROR(b->AddScalar(static_cast<int32>(num_parallel_calls_),
+      TF_RETURN_IF_ERROR(b->AddScalar(static_cast<int32_t>(num_parallel_calls_),
                                       &num_parallel_calls));
     } else {
       TF_RETURN_IF_ERROR(
@@ -331,7 +336,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           RecordStart(ctx);
         }
         if (cancelled_) {
-          return errors::Cancelled("Iterator was cancelled");
+          return absl::CancelledError("Iterator was cancelled");
         }
       }
       RecordStop(ctx);
@@ -398,7 +403,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         cond_var_->wait(l);
       }
       if (num_calls_ != 0) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(
             "Unexpected outstanding calls encountered.");
       }
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
@@ -450,9 +455,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           TF_RETURN_IF_ERROR(reader->ReadScalar(element_prefix, kSize, &size));
           num_return_values = static_cast<size_t>(size);
           if (num_return_values != size) {
-            return errors::InvalidArgument(
-                element_prefix, ",", kSize, ": ", size,
-                " is not a valid value of type size_t.");
+            return absl::InvalidArgumentError(
+                absl::StrCat(element_prefix, ",", kSize, ": ", size,
+                             " is not a valid value of type size_t."));
           }
         }
         result.return_values.reserve(num_return_values);
@@ -492,10 +497,10 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           "parallelism",
           parallelism == -1
               ? kTraceInfoUnavailable
-              : strings::Printf("%lld", static_cast<long long>(parallelism))));
+              : absl::StrFormat("%lld", static_cast<long long>(parallelism))));
       result.push_back(std::make_pair(
           "interleave_depth",
-          strings::Printf("%lld", static_cast<long long>(interleave_depth_))));
+          absl::StrFormat("%lld", static_cast<long long>(interleave_depth_))));
       return result;
     }
 
@@ -514,7 +519,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     };
 
     void CancelThreads(bool wait) TF_LOCKS_EXCLUDED(mu_) {
-      cancellation_manager_->StartCancel();
+      if (cancellation_manager_ != nullptr) {
+        cancellation_manager_->StartCancel();
+      }
       mutex_lock l(*mu_);
       cancelled_ = true;
       cond_var_->notify_all();
@@ -631,9 +638,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           // To guarantee that the transformation preserves the cardinality of
           // the dataset, we convert `OutOfRange` to `InvalidArgument` as the
           // former may be interpreted by a caller as the end of sequence.
-          return errors::InvalidArgument(
-              "Function invocation produced OutOfRangeError: ",
-              result->status.message());
+          return absl::InvalidArgumentError(
+              absl::StrCat("Function invocation produced OutOfRangeError: ",
+                           result->status.message()));
         } else {
           // `f` may deliberately raise `errors::OutOfRange` to indicate
           // that we should terminate the iteration early.
@@ -819,7 +826,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     // root node to this node (not including this node) in the input pipeline
     // tree. We record the interleave depth so that it can be included in the
     // trace metadata.
-    int64 interleave_depth_ = -1;
+    int64_t interleave_depth_ = -1;
   };
 
   const DatasetBase* const input_;
@@ -884,9 +891,10 @@ void ParallelMapDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument(ctx, kNumParallelCalls, &num_parallel_calls));
   }
-  OP_REQUIRES(
-      ctx, num_parallel_calls > 0 || num_parallel_calls == model::kAutotune,
-      errors::InvalidArgument("num_parallel_calls must be greater than zero."));
+  OP_REQUIRES(ctx,
+              num_parallel_calls > 0 || num_parallel_calls == model::kAutotune,
+              absl::InvalidArgumentError(
+                  "num_parallel_calls must be greater than zero."));
 
   std::unique_ptr<CapturedFunction> captured_func;
   OP_REQUIRES_OK(ctx,

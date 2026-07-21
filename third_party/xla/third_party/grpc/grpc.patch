@@ -8,7 +8,7 @@ diff --git a/bazel/cc_grpc_library.bzl b/bazel/cc_grpc_library.bzl
 +        plugin_flags = [],
          **kwargs):
      """Generates C++ grpc classes for services defined in a proto file.
- 
+
 @@ -109,6 +110,7 @@ def cc_grpc_library(
              well_known_protos = well_known_protos,
              generate_mocks = generate_mocks,
@@ -16,13 +16,13 @@ diff --git a/bazel/cc_grpc_library.bzl b/bazel/cc_grpc_library.bzl
 +            flags = plugin_flags,
              **kwargs
          )
- 
+
 diff --git a/src/core/lib/promise/party.h b/src/core/lib/promise/party.h
 --- a/src/core/lib/promise/party.h
 +++ b/src/core/lib/promise/party.h
 @@ -21,6 +21,7 @@
  #include <stdint.h>
- 
+
  #include <atomic>
 +#include <cinttypes>
  #include <limits>
@@ -36,7 +36,7 @@ diff --git a/src/core/lib/promise/party.h b/src/core/lib/promise/party.h
 +        << absl::StrFormat("%016lx -> %016lx", prev_state,
                             new_state);
    }
- 
+
 diff --git a/src/python/grpcio/grpc/BUILD.bazel b/src/python/grpcio/grpc/BUILD.bazel
 --- a/src/python/grpcio/grpc/BUILD.bazel
 +++ b/src/python/grpcio/grpc/BUILD.bazel
@@ -53,3 +53,92 @@ diff --git a/src/python/grpcio/grpc/BUILD.bazel b/src/python/grpcio/grpc/BUILD.b
      imports = ["../"],
      deps = [
          ":_observability",
+
+diff --git a/src/core/resolver/dns/dns_resolver_plugin.cc b/src/core/resolver/dns/dns_resolver_plugin.cc
+--- a/src/core/resolver/dns/dns_resolver_plugin.cc
++++ b/src/core/resolver/dns/dns_resolver_plugin.cc
+@@ -48,6 +48,9 @@
+     return;
+   }
+   auto resolver = ConfigVars::Get().DnsResolver();
++  if (resolver.empty()) {
++    resolver = "native";
++  }
+   // ---- Ares resolver ----
+   if (ShouldUseAresDnsResolver(resolver)) {
+     VLOG(2) << "Using ares dns resolver";
+
+
+
+
+
+diff --git a/bazel/cython_library.bzl b/bazel/cython_library.bzl
+--- a/bazel/cython_library.bzl
++++ b/bazel/cython_library.bzl
+@@ -69,5 +69,7 @@ def pyx_library(name, deps = [], py_deps
+
+     shared_objects = []
+     defines = kwargs.pop("defines", [])
++    copts = kwargs.pop("copts", [])
++    linkopts = kwargs.pop("linkopts", [])
+     for src in pyx_srcs:
+         stem = src.split(".")[0]
+@@ -81,9 +81,16 @@ def pyx_library(name, deps = [], py_deps
+             defines = defines,
++            copts = copts,
++            features = kwargs.get("features", []),
+             linkshared = 1,
+-            linkopts = select({
+-                # The "-undefined dynamic_lookup" flag allows the shared library to use symbols
+-                # that are not defined at link time but will be resolved at runtime.
+-                # This is necessary for Python extensions on macOS to access Python C API symbols.
+-                "@platforms//os:macos": ["-undefined", "dynamic_lookup"],
+-                "//conditions:default": [],
+-            }),
++            linkopts = select({
++                # The "-undefined dynamic_lookup" flag allows the shared library to use symbols
++                # that are not defined at link time but will be resolved at runtime.
++                # This is necessary for Python extensions on macOS to access Python C API symbols.
++                "@platforms//os:macos": ["-undefined", "dynamic_lookup"],
++                "@platforms//os:windows": [
++                    "/NODEFAULTLIB:python3.lib",
++                    "/OPT:REF",
++                    "/OPT:ICF",
++                ],
++                "//conditions:default": [],
++            }),
+        )
+        shared_objects.append(shared_object_name)
+
+diff --git a/src/python/grpcio/grpc/_cython/BUILD.bazel b/src/python/grpcio/grpc/_cython/BUILD.bazel
+--- a/src/python/grpcio/grpc/_cython/BUILD.bazel
++++ b/src/python/grpcio/grpc/_cython/BUILD.bazel
+@@ -35,1 +35,17 @@
+     defines = ["GRPC_PYTHON_BUILD=1"],
++    # -Wno-unused-result is needed because Cython generated code triggers unused result warnings.
++    copts = select({
++        "@platforms//os:windows": [],
++        "//conditions:default": ["-Wno-unused-result"],
++    }),
++    linkopts = select({
++        "@platforms//os:windows": [
++            "/NODEFAULTLIB:python3.lib",
++            "/WX:NO",
++        ],
++        "//conditions:default": [],
++    }),
++    features = select({
++        "@platforms//os:windows": ["-layering_check", "force_no_whole_archive"],
++        "//conditions:default": ["-layering_check"],
++    }),
+
+diff --git a/src/python/grpcio/grpc/_cython/_cygrpc/private_key_signing/BUILD.bazel b/src/python/grpcio/grpc/_cython/_cygrpc/private_key_signing/BUILD.bazel
+--- a/src/python/grpcio/grpc/_cython/_cygrpc/private_key_signing/BUILD.bazel
++++ b/src/python/grpcio/grpc/_cython/_cygrpc/private_key_signing/BUILD.bazel
+@@ -41,6 +41,5 @@
+     deps = [
+         "//:gpr",
+         "//:grpc",
+         "@rules_python//python/cc:current_py_cc_headers",
+-        "@rules_python//python/cc:current_py_cc_libs",
+     ],

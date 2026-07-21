@@ -33,12 +33,12 @@ namespace sdy {
 class ShardyXLA : public xla::HloModulePass {
  public:
   explicit ShardyXLA(bool runSdyShardingPropagation = true,
-                     mlir::sdy::PropagationOptions defaultOptions =
+                     mlir::sdy::PropagationOptions propagationOptions =
                          mlir::sdy::PropagationOptions{},
-                     bool dedupFunctionsFully = false)
+                     bool enableNativeNonFlatSupport = false)
       : runSdyShardingPropagation(runSdyShardingPropagation),
-        defaultOptions(defaultOptions),
-        dedupFunctionsFully(dedupFunctionsFully) {}
+        propagationOptions(propagationOptions),
+        enableNativeNonFlatSupport(enableNativeNonFlatSupport) {}
 
   absl::string_view name() const override { return "shardy-xla"; }
 
@@ -49,12 +49,11 @@ class ShardyXLA : public xla::HloModulePass {
 
  private:
   bool runSdyShardingPropagation;
-  mlir::sdy::PropagationOptions defaultOptions;
-  // Whether to deduplicate functions fully, regardless of the input and output
-  // shardings of functions, and it keeps one callee function for each caller
-  // function. The default is false, meaning it will deduplicate only if the
-  // input and output shardings are the same.
-  bool dedupFunctionsFully;
+  mlir::sdy::PropagationOptions propagationOptions;
+  // Whether to propagate shardings directly on a non-flat graph without
+  // flattening it. The default is false, meaning it will flatten the graph and
+  // then propagate.
+  bool enableNativeNonFlatSupport;
   // TODO. Run other SDY passes with flags.
 };
 

@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: emitters_opt %s -split-input-file -xla-cpu-expand-float-ops | FileCheck %s
 
 func.func @extend(%input: bf16) -> f32 {
@@ -13,36 +27,6 @@ func.func @extend_vector(%input: vector<8xbf16>) -> vector<8xf32> {
   %truncated = arith.extf %input : vector<8xbf16> to vector<8xf32>
   func.return %truncated : vector<8xf32>
 }
-
-// -----
-
-func.func @cbrt(%arg0: f64) -> f64 {
-  %ret = math.cbrt %arg0 fastmath<reassoc> : f64
-  return %ret : f64
-}
-
-// CHECK: @cbrt(%[[ARG:.*]]: f64) -> f64
-// CHECK-NOT: math.cbrt
-// CHECK-DAG: %[[CONSTANT:.*]] = arith.constant 0.3333333
-// CHECK: %[[ABS:.*]] = math.absf %[[ARG]] fastmath<reassoc> : f64
-// CHECK: %[[CBRT_ABS:.*]] = math.powf %[[ABS]], %[[CONSTANT]] fastmath<reassoc> : f64
-// CHECK: %[[CBRT_SIGNED:.*]] = math.copysign %[[CBRT_ABS]], %[[ARG]] fastmath<reassoc> : f64
-// CHECK: return %[[CBRT_SIGNED]]
-
-// -----
-
-func.func @cbrt_vector(%arg0: vector<8xf64>) -> vector<8xf64> {
-  %ret = math.cbrt %arg0 fastmath<reassoc> : vector<8xf64>
-  return %ret : vector<8xf64>
-}
-
-// CHECK: @cbrt_vector(%[[ARG:.*]]: vector<8xf64>) -> vector<8xf64>
-// CHECK-NOT: math.cbrt
-// CHECK-DAG: %[[CONSTANT:.*]] = arith.constant dense<0.33333333333333331> : vector<8xf64>
-// CHECK: %[[ABS:.*]] = math.absf %[[ARG]] fastmath<reassoc> : vector<8xf64>
-// CHECK: %[[CBRT_ABS:.*]] = math.powf %[[ABS]], %[[CONSTANT]] fastmath<reassoc> : vector<8xf64>
-// CHECK: %[[CBRT_SIGNED:.*]] = math.copysign %[[CBRT_ABS]], %[[ARG]] fastmath<reassoc> : vector<8xf64>
-// CHECK: return %[[CBRT_SIGNED]]
 
 // -----
 

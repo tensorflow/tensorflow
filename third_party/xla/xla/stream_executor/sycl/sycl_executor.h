@@ -23,9 +23,11 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/sycl/sycl_kernel.h"
 #include "xla/stream_executor/sycl/sycl_stream.h"
+#include "xla/stream_executor/sycl/sycl_timer.h"
 
 namespace stream_executor::sycl {
 
@@ -40,6 +42,9 @@ class SyclExecutor : public gpu::GpuExecutor {
   // Initializes the SYCL executor for the given device ordinal.
   // Returns OK on success, error status on failure.
   absl::Status Init() override;
+
+  // Blas support implementation for SYCL.
+  blas::BlasSupport* AsBlas() override;
 
   // Returns the DNN support implementation for SYCL.
   dnn::DnnSupport* AsDnn() override;
@@ -69,16 +74,28 @@ class SyclExecutor : public gpu::GpuExecutor {
   absl::StatusOr<std::shared_ptr<DeviceMemoryBase>> CreateOrShareConstant(
       Stream* stream, absl::Span<const uint8_t> content) override;
 
+  // Allocates memory of the given size (in bytes) in the specified memory
+  // space. Returns a DeviceMemoryBase for the allocation, or a null pointer
+  // on failure. Caller must deallocate using Deallocate().
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
 
+  // Deallocates memory previously allocated with Allocate().
+  // Does nothing if the pointer is null.
   void Deallocate(DeviceMemoryBase* mem) override;
 
   // Synchronizes all device activity.
   bool SynchronizeAllActivity() override;
 
-  // Sets the specified device memory to zero synchronously.
-  absl::Status SynchronousMemZero(DeviceMemoryBase* location,
-                                  uint64_t size) override;
+  // Creates an EventBasedTimer (i.e. SyclTimer) for timing operations in the
+  // given stream using SYCL events.
+  // TODO(intel-tf): Support delay kernel based timing.
+  absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(
+      Stream* stream, bool use_delay_kernel) override;
+
+  // Returns the device address for the given symbol in the specified module. If
+  // the symbol is not found, returns a NotFound error.
+  absl::StatusOr<DeviceAddressBase> GetSymbol(
+      const std::string& symbol_name, ModuleHandle module_handle) override;
 
   // Copies memory from host to device synchronously.
   absl::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
@@ -88,6 +105,8 @@ class SyclExecutor : public gpu::GpuExecutor {
   absl::Status SynchronousMemcpy(void* host_dst,
                                  const DeviceMemoryBase& gpu_src,
                                  uint64_t size) override;
+
+  absl::StatusOr<MemorySpace> GetPointerMemorySpace(const void* ptr) override;
 
   // Returns the Stream for the given raw GPU stream pointer, or nullptr if
   // not found.
@@ -122,6 +141,8 @@ class SyclExecutor : public gpu::GpuExecutor {
   // Creates a new SYCL event.
   absl::StatusOr<std::unique_ptr<Event>> CreateEvent() override;
 
+  // Allocates host memory of the given size (in bytes).
+  // Returns a unique_ptr to the allocation or an error on failure.
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) override;
 
@@ -144,6 +165,11 @@ class SyclExecutor : public gpu::GpuExecutor {
 
   // Returns the SyclKernel for the given Kernel, or NotFound error.
   absl::StatusOr<const SyclKernel*> GetSyclKernel(const Kernel* kernel);
+
+  // Returns a memory allocator for the given memory type, or an error if
+  // unsupported.
+  absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
+      MemoryType type) override;
 
   // Return by value since sycl::device is a lightweight object.
   ::sycl::device GetDevice() const { return device_; }
@@ -215,6 +241,11 @@ class SyclExecutor : public gpu::GpuExecutor {
   // Returns true if the module was unloaded, false otherwise.
   bool UnloadGpuBinary(ModuleHandle module_handle)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
+
+  // Mutex for blas, dnn, and fft.
+  absl::Mutex mu_;
+  std::unique_ptr<blas::BlasSupport> blas_ ABSL_GUARDED_BY(mu_);
+  absl::Status InitBlas();
 };
 
 }  // namespace stream_executor::sycl

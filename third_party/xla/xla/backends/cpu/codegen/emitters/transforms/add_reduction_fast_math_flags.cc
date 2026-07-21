@@ -107,9 +107,4 @@ class AddReductionFastMathFlagsPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateAddReductionFastMathFlagsPass() {
-  return std::make_unique<AddReductionFastMathFlagsPass>();
-}
-
 }  // namespace xla::cpu

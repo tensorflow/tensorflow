@@ -22,7 +22,7 @@ limitations under the License.
 namespace tensorflow {
 using Eigen::GpuDevice;
 
-template struct functor::TopKFunctor<GPUDevice, int32, int32>;
+template struct functor::TopKFunctor<GPUDevice, int32_t, int32_t>;
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -18,6 +18,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -25,13 +26,15 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/memory_annotations.h"
 #include "xla/shape_util.h"
@@ -56,8 +59,7 @@ bool CustomCallReusesBuffer(const HloInstruction* custom_call,
   // Check the custom call's output_to_operand_aliasing.
   const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>&
       aliases = custom_call->output_operand_aliasing();
-  for (const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>& alias :
-       aliases) {
+  for (const auto& alias : aliases) {
     int64_t alias_operand_index = alias.second.first;
     if (alias_operand_index == operand_index) {
       // This operand aliases with the output.
@@ -177,7 +179,8 @@ absl::StatusOr<std::vector<InstructionAndShapeIndex>> GetSuccessors(
 }
 
 std::vector<InstructionAndShapeIndex> GetPredecessors(
-    const InstructionAndShapeIndex& instruction_and_shape_index) {
+    const InstructionAndShapeIndex& instruction_and_shape_index,
+    std::optional<int64_t> operand_index) {
   std::vector<InstructionAndShapeIndex> result;
   HloInstruction* instruction = instruction_and_shape_index.instruction;
   if (instruction->opcode() == HloOpcode::kGetTupleElement) {
@@ -203,16 +206,35 @@ std::vector<InstructionAndShapeIndex> GetPredecessors(
   } else if (instruction->opcode() == HloOpcode::kParameter) {
     std::unique_ptr<CallGraph> call_graph =
         CallGraph::Build(instruction->GetModule());
-    auto callers = call_graph->GetComputationCallers(instruction->parent());
-    for (HloInstruction* caller : callers) {
-      result.push_back(
-          {caller->mutable_operand(instruction->parameter_number()),
-           instruction_and_shape_index.shape_index});
+    const std::vector<HloInstruction*> callers =
+        call_graph->GetComputationCallers(instruction->parent());
+    absl::flat_hash_set<HloInstruction*> unique_callers(callers.begin(),
+                                                        callers.end());
+    for (HloInstruction* caller : unique_callers) {
+      if (caller->opcode() == HloOpcode::kConditional) {
+        bool found_computation = false;
+        for (int64_t i = 0; i < caller->branch_computations().size(); ++i) {
+          if (caller->branch_computation(i) == instruction->parent()) {
+            found_computation = true;
+            // Operand 0 is the predicate/index, so the input to the i-th branch
+            // computation is operand (i + 1).
+            result.push_back({caller->mutable_operand(i + 1),
+                              instruction_and_shape_index.shape_index});
+          }
+        }
+        CHECK(found_computation) << "Computation not found in conditional";
+      } else {
+        result.push_back(
+            {caller->mutable_operand(instruction->parameter_number()),
+             instruction_and_shape_index.shape_index});
+      }
     }
   } else if (instruction->opcode() == HloOpcode::kDynamicSlice) {
-    result.push_back({instruction->mutable_operand(0),
+    result.push_back({instruction->mutable_operand(operand_index.value_or(0)),
                       instruction_and_shape_index.shape_index});
   } else if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    // Ensure that we are only following the base data operand (index 0).
+    CHECK(!operand_index.has_value() || *operand_index == 0);
     result.push_back({instruction->mutable_operand(0),
                       instruction_and_shape_index.shape_index});
   } else if (instruction->opcode() == HloOpcode::kWhile) {
@@ -222,11 +244,23 @@ std::vector<InstructionAndShapeIndex> GetPredecessors(
   } else if (instruction->opcode() == HloOpcode::kPad) {
     result.push_back({instruction->mutable_operand(0),
                       instruction_and_shape_index.shape_index});
-  } else {
-    CHECK(instruction->operand_count() == 1) << absl::StreamFormat(
-        "Expecting instruction %s to have 1 operand, but it has %d.",
-        instruction->name(), instruction->operand_count());
+  } else if (instruction->opcode() == HloOpcode::kSend) {
+    // Explicitly handle Send, which has 2 operands (data, token).
+    // We follow the data path (operand 0).
     result.push_back({instruction->mutable_operand(0),
+                      instruction_and_shape_index.shape_index});
+  } else if (instruction->opcode() == HloOpcode::kConditional) {
+    for (HloComputation* computation : instruction->called_computations()) {
+      result.push_back({computation->root_instruction(),
+                        instruction_and_shape_index.shape_index});
+    }
+  } else {
+    if (!operand_index.has_value()) {
+      CHECK_EQ(instruction->operands().size(), 1)
+          << "Expected instruction to have 1 operand. Found: "
+          << instruction->ToString();
+    }
+    result.push_back({instruction->mutable_operand(operand_index.value_or(0)),
                       instruction_and_shape_index.shape_index});
   }
   return result;
@@ -234,12 +268,21 @@ std::vector<InstructionAndShapeIndex> GetPredecessors(
 
 bool IsValidDuringPureMemoryOffload(const HloInstruction* instruction) {
   static constexpr std::array allowed_opcodes = {
-      HloOpcode::kGetTupleElement, HloOpcode::kBitcast,
-      HloOpcode::kTuple,           HloOpcode::kCall,
-      HloOpcode::kWhile,           HloOpcode::kConditional,
-      HloOpcode::kParameter,       HloOpcode::kOptimizationBarrier,
-      HloOpcode::kAsyncStart,      HloOpcode::kAsyncDone,
-      HloOpcode::kCustomCall};
+      HloOpcode::kGetTupleElement,
+      HloOpcode::kBitcast,
+      HloOpcode::kTuple,
+      HloOpcode::kCall,
+      HloOpcode::kWhile,
+      HloOpcode::kConditional,
+      HloOpcode::kParameter,
+      HloOpcode::kOptimizationBarrier,
+      HloOpcode::kAsyncStart,
+      HloOpcode::kAsyncDone,
+      HloOpcode::kCustomCall,
+      HloOpcode::kSend,
+      HloOpcode::kRecv,
+      HloOpcode::kSendDone,
+      HloOpcode::kRecvDone};
   return absl::c_linear_search(allowed_opcodes, instruction->opcode());
 }
 
@@ -381,13 +424,11 @@ absl::flat_hash_set<int64_t> FindTupleIndicesInOperand(
 
 }  // namespace
 
-absl::Status MarkDynamicVariables(HloInstruction* while_loop) {
-  if (while_loop->opcode() != HloOpcode::kWhile) {
-    return absl::OkStatus();
-  }
-
-  if (!while_loop->while_body()) {
-    return absl::OkStatus();
+absl::flat_hash_set<int64_t> CollectDynamicVariableTupleIndices(
+    const HloInstruction* while_loop) {
+  absl::flat_hash_set<int64_t> tuple_indices;
+  if (while_loop->opcode() != HloOpcode::kWhile || !while_loop->while_body()) {
+    return tuple_indices;
   }
 
   bool has_host_offloading = false;
@@ -399,41 +440,26 @@ absl::Status MarkDynamicVariables(HloInstruction* while_loop) {
     }
   }
   if (!has_host_offloading) {
-    return absl::OkStatus();
+    return tuple_indices;
   }
 
-  WhileLoopBackendConfig config;
-  TF_ASSIGN_OR_RETURN(config,
-                      while_loop->backend_config<WhileLoopBackendConfig>());
-
-  config.clear_dynamic_variable_tuple_indices();
-
-  std::set<int64_t> dynamic_slice_indices;
-
-  for (auto* instr : while_loop->while_body()->instructions()) {
-    if (instr->opcode() == HloOpcode::kDynamicUpdateSlice ||
-        instr->opcode() == HloOpcode::kDynamicSlice) {
-      int first_index_operand =
-          (instr->opcode() == HloOpcode::kDynamicUpdateSlice)
-              ? Cast<HloDynamicUpdateSliceInstruction>(instr)
-                    ->first_index_operand_number()
-              : Cast<HloDynamicSliceInstruction>(instr)
-                    ->first_index_operand_number();
-
-      for (int i = first_index_operand; i < instr->operand_count(); ++i) {
-        auto* index_op = instr->operand(i);
-        auto op_indices = FindTupleIndicesInOperand(index_op);
-        dynamic_slice_indices.insert(op_indices.begin(), op_indices.end());
-      }
+  for (const HloInstruction* instr : while_loop->while_body()->instructions()) {
+    if (instr->opcode() != HloOpcode::kDynamicUpdateSlice &&
+        instr->opcode() != HloOpcode::kDynamicSlice) {
+      continue;
+    }
+    int first_index_operand =
+        (instr->opcode() == HloOpcode::kDynamicUpdateSlice)
+            ? Cast<HloDynamicUpdateSliceInstruction>(instr)
+                  ->first_index_operand_number()
+            : Cast<HloDynamicSliceInstruction>(instr)
+                  ->first_index_operand_number();
+    for (int i = first_index_operand; i < instr->operand_count(); ++i) {
+      auto op_indices = FindTupleIndicesInOperand(instr->operand(i));
+      tuple_indices.insert(op_indices.begin(), op_indices.end());
     }
   }
-
-  for (int64_t tuple_idx : dynamic_slice_indices) {
-    config.add_dynamic_variable_tuple_indices(tuple_idx);
-  }
-
-  TF_RETURN_IF_ERROR(while_loop->set_backend_config(config));
-  return absl::OkStatus();
+  return tuple_indices;
 }
 
 }  // namespace host_offload_utils

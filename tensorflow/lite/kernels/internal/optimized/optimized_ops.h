@@ -24,10 +24,9 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <limits>
-#include <memory>
-#include <tuple>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -2344,10 +2343,6 @@ inline void BroadcastMulFivefold(const ArithmeticParams& params,
                        output_shape, output_data);
 }
 
-// TODO(jiawen): We can implement BroadcastDiv on buffers of arbitrary
-// dimensionality if the runtime code does a single loop over one dimension
-// that handles broadcasting as the base case. The code generator would then
-// generate max(D1, D2) nested for loops.
 // TODO(benoitjacob): BroadcastDiv is intentionally duplicated from
 // reference_ops.h. Once an optimized version is implemented and NdArrayDesc<T>
 // is no longer referenced in this file, move NdArrayDesc<T> from types.h to
@@ -2365,37 +2360,13 @@ void BroadcastDivSlow(const ArithmeticParams& params,
   T output_activation_max;
   GetActivationParams(params, &output_activation_min, &output_activation_max);
 
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), N);
-  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), N);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), N);
-
-  NdArrayDesc<N> desc1;
-  NdArrayDesc<N> desc2;
-  NdArrayDesc<N> output_desc;
-  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
-                                      unextended_input2_shape, &desc1, &desc2);
-  CopyDimsToDesc(RuntimeShape::ExtendedShape(N, unextended_output_shape),
-                 &output_desc);
-
-  // In Tensorflow, the dimensions are canonically named (batch_number, row,
-  // col, channel), with extents (batches, height, width, depth), with the
-  // trailing dimension changing most rapidly (channels has the smallest stride,
-  // typically 1 element).
-  //
-  // In generated C code, we store arrays with the dimensions reversed. The
-  // first dimension has smallest stride.
-  //
-  // We name our variables by their Tensorflow convention, but generate C code
-  // nesting loops such that the innermost loop has the smallest stride for the
-  // best cache behavior.
-  auto div_func = [&](int indexes[N]) {
-    output_data[SubscriptToIndex(output_desc, indexes)] =
-        ActivationFunctionWithMinMax(
-            input1_data[SubscriptToIndex(desc1, indexes)] /
-                input2_data[SubscriptToIndex(desc2, indexes)],
-            output_activation_min, output_activation_max);
+  auto op = [output_activation_min, output_activation_max](T a, T b) {
+    return ActivationFunctionWithMinMax(a / b, output_activation_min,
+                                        output_activation_max);
   };
-  NDOpsHelper<N>(output_desc, div_func);
+  reference_ops::BroadcastBinaryOpSimple(
+      unextended_input1_shape, input1_data, unextended_input2_shape,
+      input2_data, unextended_output_shape, output_data, op);
 }
 
 // BroadcastDiv is intentionally duplicated from reference_ops.h.
@@ -2407,18 +2378,6 @@ inline void BroadcastDivSlowQuantized(
     const T* input1_data, const RuntimeShape& unextended_input2_shape,
     const T* input2_data, const RuntimeShape& unextended_output_shape,
     T* output_data) {
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), N);
-  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), N);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), N);
-
-  NdArrayDesc<N> desc1;
-  NdArrayDesc<N> desc2;
-  NdArrayDesc<N> output_desc;
-  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
-                                      unextended_input2_shape, &desc1, &desc2);
-  CopyDimsToDesc(RuntimeShape::ExtendedShape(N, unextended_output_shape),
-                 &output_desc);
-
   if (std::is_same<T, uint8_t>::value) {
     TFLITE_DCHECK_GT(params.input1_offset, -256);
     TFLITE_DCHECK_LT(params.input1_offset, 256);
@@ -2442,15 +2401,14 @@ inline void BroadcastDivSlowQuantized(
     TFLITE_DCHECK_LT(params.output_offset, 32768);
   }
 
-  auto div_func = [&](int indexes[N]) {
-    int32_t input1_val =
-        params.input1_offset + input1_data[SubscriptToIndex(desc1, indexes)];
-    int32_t input2_val =
-        params.input2_offset + input2_data[SubscriptToIndex(desc2, indexes)];
+  auto op = [&params](T a, T b) {
+    int32_t input1_val = params.input1_offset + a;
+    int32_t input2_val = params.input2_offset + b;
     TFLITE_DCHECK_NE(input2_val, 0);
     if (input2_val < 0) {
-      // Invert signs to avoid a negative input2_val as input2_inv needs to be
-      // positive to be used as multiplier of MultiplyByQuantizedMultiplier.
+      // Invert signs to avoid a negative input2_val as input2_inv needs to
+      // be positive to be used as multiplier of
+      // MultiplyByQuantizedMultiplier.
       input1_val = -input1_val;
       input2_val = -input2_val;
     }
@@ -2468,10 +2426,12 @@ inline void BroadcastDivSlowQuantized(
     const int32_t clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, unclamped_result));
-    output_data[SubscriptToIndex(output_desc, indexes)] =
-        static_cast<T>(clamped_output);
+    return static_cast<T>(clamped_output);
   };
-  NDOpsHelper<N>(output_desc, div_func);
+
+  reference_ops::BroadcastBinaryOpSimple(
+      unextended_input1_shape, input1_data, unextended_input2_shape,
+      input2_data, unextended_output_shape, output_data, op);
 }
 
 template <int N = 5>
@@ -4439,6 +4399,13 @@ inline void PadImpl(const tflite::PadParams& op_params,
       RuntimeShape::ExtendedShape(max_supported_dims, input_shape);
   const RuntimeShape ext_output_shape =
       RuntimeShape::ExtendedShape(max_supported_dims, output_shape);
+  // A zero-element tensor may legitimately have null data pointers. There is
+  // nothing to copy or fill in that case, and even a zero-byte memcpy must not
+  // receive those null pointers under UBSan. Scan dimensions instead of using
+  // FlatSize(), which intentionally does not check for integer overflow.
+  if (output_shape.HasZeroDimension()) {
+    return;
+  }
   TFLITE_DCHECK_LE(op_params.left_padding_count, max_supported_dims);
   TFLITE_DCHECK_LE(op_params.right_padding_count, max_supported_dims);
 
@@ -4513,13 +4480,16 @@ inline void PadImpl(const tflite::PadParams& op_params,
                            pad_value, left_c_padding);
           }
 
-          T* out = output_data + Offset(ext_output_shape, out_b, out_p, out_h,
-                                        out_w, left_c_padding);
-          const T* in = input_data +
-                        Offset(ext_input_shape, out_b - left_b_padding,
-                               out_p - left_s1_padding, out_h - left_s2_padding,
-                               out_w - left_s3_padding, 0);
-          memcpy(out, in, input_depth * sizeof(T));
+          if (input_depth != 0) {
+            T* out = output_data + Offset(ext_output_shape, out_b, out_p, out_h,
+                                          out_w, left_c_padding);
+            const T* in =
+                input_data + Offset(ext_input_shape, out_b - left_b_padding,
+                                    out_p - left_s1_padding,
+                                    out_h - left_s2_padding,
+                                    out_w - left_s3_padding, 0);
+            memcpy(out, in, input_depth * sizeof(T));
+          }
 
           if (right_c_padding != 0) {
             TypedMemset<T>(
@@ -4615,6 +4585,9 @@ inline void PadImageStyleMemset(const tflite::PadParams& op_params,
       RuntimeShape::ExtendedShape(4, input_shape);
   const RuntimeShape ext_output_shape =
       RuntimeShape::ExtendedShape(4, output_shape);
+  if (output_shape.HasZeroDimension()) {
+    return;
+  }
   TFLITE_DCHECK_LE(op_params.left_padding_count, 4);
   TFLITE_DCHECK_LE(op_params.right_padding_count, 4);
 
@@ -4666,9 +4639,10 @@ inline void PadImageStyleMemset(const tflite::PadParams& op_params,
   const int inner_line_size = input_width * depth;
   const size_t num_inner_line_bytes = inner_line_size * sizeof(T);
 
-  if (input_height == 0) {
-    memset(output_data, pad_value,
-           num_top_block_bytes + num_bottom_block_bytes);
+  // Empty tensors may have null data pointers. If an empty spatial dimension
+  // is padded into a non-empty output, every output element is padding.
+  if (input_height == 0 || input_width == 0) {
+    TypedMemset<T>(output_data, pad_value, ext_output_shape.FlatSize());
   } else {
     for (int i = 0; i < batch; ++i) {
       // For each image in the batch, apply the top padding, then iterate
@@ -5104,6 +5078,7 @@ inline void TransposeConvV2(
     dst_params.rows = hwoi_ordered_filter_total_size;
     dst_params.cols = input_image_size;
     cpu_backend_gemm::GemmParams<float, float> gemm_params;
+    std::fill_n(col2im_data, dst_params.rows * dst_params.cols, 0);
     cpu_backend_gemm::Gemm(lhs_params, hwoi_ordered_filter_data, rhs_params,
                            input_data + input_offset * i, dst_params,
                            col2im_data, gemm_params, cpu_backend_context);
@@ -5617,6 +5592,7 @@ inline void TransposeConvV2(
     dst_params.cols = input_image_size;
 
     cpu_backend_gemm::GemmParams<int32_t, int32_t> gemm_params;
+    std::fill_n(col2im_data, dst_params.rows * dst_params.cols, 0);
     cpu_backend_gemm::Gemm(lhs_params, hwoi_ordered_filter_data, rhs_params,
                            input_data + input_offset * i, dst_params,
                            col2im_data, gemm_params, cpu_backend_context);
@@ -5663,47 +5639,46 @@ inline void ResizeNearestNeighbor(
   const RuntimeShape output_shape =
       RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
-  int32_t batches = MatchingDim(input_shape, 0, output_shape, 0);
-  int32_t input_height = input_shape.Dims(1);
-  int32_t input_width = input_shape.Dims(2);
-  int32_t depth = MatchingDim(input_shape, 3, output_shape, 3);
+  const int32_t batches = MatchingDim(input_shape, 0, output_shape, 0);
+  const int64_t input_height = input_shape.Dims(1);
+  const int64_t input_width = input_shape.Dims(2);
+  const int64_t depth = MatchingDim(input_shape, 3, output_shape, 3);
 
   // The Tensorflow version of this op allows resize on the width and height
   // axis only.
   TFLITE_DCHECK_EQ(output_size_shape.FlatSize(), 2);
-  int32_t output_height = output_size_data[0];
-  int32_t output_width = output_size_data[1];
+  const int32_t output_height = output_size_data[0];
+  const int32_t output_width = output_size_data[1];
 
   // Convert scales to fixed-point with 16 fractional bits. We add 1 as an
   // error factor and to avoid zero scales. For example, with input_height = 1,
   // output_height = 3, the float scaling factor would be non-zero at 1/3.
   // With fixed-point, this is zero.
-  int32_t height_scale = (input_height << 16) / output_height + 1;
-  int32_t width_scale = (input_width << 16) / output_width + 1;
+  const int64_t height_scale = (input_height << 16) / output_height + 1;
+  const int64_t width_scale = (input_width << 16) / output_width + 1;
 
-  const int col_offset = input_shape.Dims(3);
-  const int row_offset = input_shape.Dims(2) * col_offset;
-  const int batch_offset = input_shape.Dims(1) * row_offset;
+  const int64_t col_offset = input_shape.Dims(3);
+  const int64_t row_offset = input_shape.Dims(2) * col_offset;
+  const int64_t batch_offset = input_shape.Dims(1) * row_offset;
 
   const uint8_t* input_ptr = input_data;
   uint8_t* output_ptr = output_data;
-  for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < output_height; ++y) {
-      int32_t in_y = std::min((y * height_scale) >> 16, input_height - 1);
+  for (int32_t b = 0; b < batches; ++b) {
+    for (int32_t y = 0; y < output_height; ++y) {
+      const int64_t in_y = std::min((y * height_scale) >> 16, input_height - 1);
       // Check offset calculation is the same as the reference version. See
       // function comment for details. We check using a non-float version of:
-      // TFLITE_DCHECK_EQ(in_y, std::floor(y * (static_cast<float>(input_height)
-      //                                            / output_height)));
+      // in_y == std::floor(y * (static_cast<float>(input_height) /
+      // output_height));
       TFLITE_DCHECK_LT(y * input_height, output_height + in_y * output_height);
       TFLITE_DCHECK_GE(y * input_height, in_y * output_height);
       const uint8_t* y_input_ptr = input_ptr + in_y * row_offset;
-      for (int x = 0; x < output_width; ++x) {
-        int32_t in_x = std::min((x * width_scale) >> 16, input_width - 1);
+      for (int32_t x = 0; x < output_width; ++x) {
+        const int64_t in_x = std::min((x * width_scale) >> 16, input_width - 1);
         // Check offset calculation is the same as the reference version. See
         // function comment for details. We check using a non-float version of:
-        // TFLITE_DCHECK_EQ(in_y,
-        //                  std::floor(y * (static_cast<float>(input_width)
-        //                                      / output_width)));
+        // in_x == std::floor(x * (static_cast<float>(input_width) /
+        // output_width));
         TFLITE_DCHECK_LT(x * input_width, output_width + in_x * output_width);
         TFLITE_DCHECK_GE(x * input_width, in_x * output_width);
         const uint8_t* x_input_ptr = y_input_ptr + in_x * col_offset;

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <type_traits>
 #include <utility>
 
@@ -361,9 +360,5 @@ class TritonXLAFoldTransposePass
 };
 
 }  // namespace
-
-std::unique_ptr<Pass> CreateTritonXLAFoldTransposePass() {
-  return std::make_unique<TritonXLAFoldTransposePass>();
-}
 
 }  // namespace mlir::triton::xla

@@ -16,16 +16,19 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_COMMAND_BUFFER_CONVERSION_PASS_H_
 #define XLA_BACKENDS_GPU_RUNTIME_COMMAND_BUFFER_CONVERSION_PASS_H_
 
+#include <bitset>
+#include <cstdint>
 #include <string>
 
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -40,7 +43,7 @@ class CommandBufferConversionPass : public ThunkPassInterface {
     return "command-buffer-conversion";
   }
 
-  absl::StatusOr<bool> Run(SequentialThunk* root_thunk,
+  absl::StatusOr<bool> Run(ThunkSequence* thunk_sequence,
                            const DebugOptions& debug_options,
                            const HloModule* absl_nullable hlo_module,
                            const se::DeviceDescription& device_info,
@@ -49,7 +52,16 @@ class CommandBufferConversionPass : public ThunkPassInterface {
     // DebugOptions control which commands are enabled. Long term we want to
     // remove that flag and enable all supported commands by default.
     absl::flat_hash_set<DebugOptions::CommandBufferCmdType> enabled_commands;
+
+    constexpr static int kMaxCollectiveOps =
+        DebugOptions::CollectiveOpType_MAX + 1;
+    // Collective operations enabled to be executed in a command buffer.
+    std::bitset<kMaxCollectiveOps> enabled_collectives;
     const se::DeviceDescription& device_description;
+    bool enable_loop_unroll = false;
+    // Number of devices in a fast-interconnect domain (host/node).
+    // 0 means unknown.
+    int64_t num_local_devices = 0;
     std::string ToString() const;
   };
 

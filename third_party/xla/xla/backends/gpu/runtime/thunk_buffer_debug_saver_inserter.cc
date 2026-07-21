@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -23,11 +22,12 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/runtime_intrinsics.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
-#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_filter.h"
 #include "xla/ffi/attribute_map.h"
@@ -35,41 +35,18 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/shape.h"
-#include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/service/shaped_slice.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
-Shape FindShapeFor(const BufferAllocation::Slice& slice, const Thunk& thunk) {
-  for (const auto& [hlo, offset_size] :
-       slice.allocation()->assigned_buffers()) {
-    if (offset_size.offset != slice.offset() ||
-        offset_size.size != slice.size()) {
-      continue;
-    }
-    if (hlo->instruction()->name() != thunk.thunk_info().profile_annotation) {
-      continue;
-    }
-    if (hlo->shape().element_type() != slice.element_type()) {
-      continue;
-    }
-    return hlo->shape();
-  }
-
-  LOG(WARNING) << "Buffer assigment not found. Assuming flat shape.";
-  return ShapeUtil::MakeShape(
-      slice.element_type(),
-      std::vector<int64_t>{slice.size() / ShapeUtil::ByteSizeOfPrimitiveType(
-                                              slice.element_type())});
-}
 
 absl::StatusOr<std::unique_ptr<Thunk>> InsertBufferSaverCustomCall(
     const HloModule& hlo_module, std::unique_ptr<Thunk> thunk,
     const std::string& path) {
-  std::vector<std::unique_ptr<Thunk>> sequence;
+  ThunkSequence sequence;
   sequence.emplace_back(std::move(thunk));
 
   absl::flat_hash_set<BufferAllocation::Slice> processed;
@@ -88,7 +65,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> InsertBufferSaverCustomCall(
       continue;
     }
 
-    ShapedSlice output{slice, FindShapeFor(slice, *sequence[0])};
+    ShapedSlice output{slice, buffer.shape()};
     ffi::AttributesMap attributes{
         {"dir", ffi::Attribute{path}},
         {"metadata", {sequence[0]->thunk_info().profile_annotation}}};
@@ -96,14 +73,13 @@ absl::StatusOr<std::unique_ptr<Thunk>> InsertBufferSaverCustomCall(
     Thunk::ThunkInfo info;
     info.profile_annotation =
         absl::StrCat("Buffer saver ", sequence[0]->profile_annotation());
-    info.execution_stream_id = sequence[0]->execution_stream_id();
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         auto log_thunk,
         CustomCallThunk::Create(
             info, std::string{kXlaGpuAppendToFileCustomCallTag}, {output},
-            {std::nullopt}, attributes, hlo_module.entry_computation(), "GPU"));
-    log_thunk->add_control_predecessor(sequence[0].get());
+            {std::nullopt}, attributes, hlo_module.entry_computation(), "GPU",
+            stream_executor::GpuComputeCapability()));
     sequence.emplace_back(std::move(log_thunk));
   }
 
@@ -112,26 +88,63 @@ absl::StatusOr<std::unique_ptr<Thunk>> InsertBufferSaverCustomCall(
   return std::unique_ptr<Thunk>(std::move(wrapped_thunk));
 }
 
+absl::Status AppendOutputBufferSaverThunks(
+    ThunkSequence& thunk_sequence, const HloModule& hlo_module,
+    const std::vector<ShapedSlice>& module_output_slices,
+    const DebugOptions& debug_options) {
+  if (!debug_options.xla_gpu_experimental_thunk_buffer_debug_module_outputs()) {
+    return absl::OkStatus();
+  }
+
+  std::string metadata_str =
+      absl::StrCat("Module ", hlo_module.name(), " Output Check");
+  std::string profile_annotation_str =
+      absl::StrCat("Buffer saver Module ", hlo_module.name(), " Output Check");
+
+  for (const ShapedSlice& shaped_slice : module_output_slices) {
+    ffi::AttributesMap attributes{
+        {"dir", ffi::Attribute{debug_options.xla_dump_to()}},
+        {"metadata", {metadata_str}}};
+
+    Thunk::ThunkInfo info;
+    info.profile_annotation = profile_annotation_str;
+
+    ASSIGN_OR_RETURN(
+        auto log_thunk,
+        CustomCallThunk::Create(
+            info, std::string{kXlaGpuAppendToFileCustomCallTag}, {shaped_slice},
+            {std::nullopt}, attributes, hlo_module.entry_computation(), "GPU",
+            stream_executor::GpuComputeCapability()));
+    thunk_sequence.push_back(std::move(log_thunk));
+  }
+
+  return absl::OkStatus();
+}
+
 }  // namespace
 
-absl::Status RunDebugSaverInserter(SequentialThunk& root_thunk,
-                                   const DebugOptions& debug_options,
-                                   const HloModule& hlo_module) {
+absl::Status RunDebugSaverInserter(
+    ThunkSequence* thunk_sequence, const DebugOptions& debug_options,
+    const HloModule& hlo_module,
+    const std::vector<ShapedSlice>& module_output_slices) {
   if (debug_options.xla_dump_to().empty()) {
     LOG(WARNING)
         << "Buffer saver enabled but target directory is not provided.";
     return absl::OkStatus();
   }
   ThunkFilter thunk_filter = CreateThunkFilter(debug_options);
-  return root_thunk.TransformAllNestedThunks(
-      [&](std::unique_ptr<Thunk> thunk)
-          -> absl::StatusOr<std::unique_ptr<Thunk>> {
-        if (thunk_filter(*thunk) == InstrumentAction::kSkip) {
-          return thunk;
-        }
-        return InsertBufferSaverCustomCall(hlo_module, std::move(thunk),
-                                           debug_options.xla_dump_to());
-      });
+  auto transform_callback = [&](std::unique_ptr<Thunk> thunk)
+      -> absl::StatusOr<std::unique_ptr<Thunk>> {
+    if (thunk_filter(*thunk) == InstrumentAction::kSkip) {
+      return thunk;
+    }
+    return InsertBufferSaverCustomCall(hlo_module, std::move(thunk),
+                                       debug_options.xla_dump_to());
+  };
+
+  RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
+  return AppendOutputBufferSaverThunks(*thunk_sequence, hlo_module,
+                                       module_output_slices, debug_options);
 }
 
 }  // namespace xla::gpu

@@ -18,17 +18,20 @@ limitations under the License.
 #include <atomic>
 #include <memory>
 
+#include "absl/base/attributes.h"
+
 namespace tensorflow {
 namespace activity_watcher {
-void MaybeEnableMultiWorkersWatching(tsl::CoordinationServiceAgent* agent) {}
+ABSL_ATTRIBUTE_WEAK void MaybeEnableMultiWorkersWatching(
+    tsl::CoordinationServiceAgent* agent) {}
 
 namespace tfw_internal {
 
-std::atomic<int> g_watcher_level(kWatcherDisabled);
-ActivityId RecordActivityStart(std::unique_ptr<Activity>) {
+ABSL_ATTRIBUTE_WEAK std::atomic<int> g_watcher_level(kWatcherDisabled);
+ABSL_ATTRIBUTE_WEAK ActivityId RecordActivityStart(std::unique_ptr<Activity>) {
   return kActivityNotRecorded;
 }
-void RecordActivityEnd(ActivityId id) {}
+ABSL_ATTRIBUTE_WEAK void RecordActivityEnd(ActivityId id) {}
 
 }  // namespace tfw_internal
 

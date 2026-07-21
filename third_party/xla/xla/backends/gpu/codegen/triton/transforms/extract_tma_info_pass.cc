@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
 #include <optional>
 
 #include "mlir/IR/BuiltinOps.h"
@@ -28,17 +27,17 @@ limitations under the License.
 #include "triton/Dialect/TritonNvidiaGPU/Transforms/TMAUtilities.h"
 
 namespace mlir::triton::xla {
-namespace {
 
 #define GEN_PASS_DEF_EXTRACTTMAINFOPASS
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
 
+namespace {
+
 struct ExtractTmaInfoPass
     : public impl::ExtractTmaInfoPassBase<ExtractTmaInfoPass> {
-  std::optional<SwizzleMode> GetSwizzleMode(TensorDescType type) {
-    auto swizzle_mode = nvidia_gpu::getTMASwizzleMode(
-        /*op=*/nullptr, type);
-    if (!swizzle_mode.has_value()) {
+  std::optional<SwizzleMode> GetSwizzleMode(Location loc, TensorDescType type) {
+    auto swizzle_mode = nvidia_gpu::getTMASwizzleMode(loc, type);
+    if (failed(swizzle_mode)) {
       return std::nullopt;
     }
     SwizzleMode swizzle_mode_enum;
@@ -79,8 +78,8 @@ struct ExtractTmaInfoPass
           return;
         }
 
-        auto swizzle_mode =
-            GetSwizzleMode(mlir::cast<TensorDescType>(arg.getType()));
+        auto swizzle_mode = GetSwizzleMode(
+            arg.getLoc(), mlir::cast<TensorDescType>(arg.getType()));
         if (!swizzle_mode.has_value()) {
           emitError(arg.getLoc(),
                     "Unable to determine swizzle mode from TensorDescType");
@@ -104,9 +103,5 @@ struct ExtractTmaInfoPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateExtractTmaInfoPass() {
-  return std::make_unique<ExtractTmaInfoPass>();
-}
 
 }  // namespace mlir::triton::xla

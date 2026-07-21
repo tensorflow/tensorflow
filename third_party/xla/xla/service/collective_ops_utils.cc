@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/collective_ops_utils.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -24,14 +26,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/optimization.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/numbers.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -43,23 +48,20 @@ limitations under the License.
 #include "xla/runtime/device_id.h"
 #include "xla/service/collective_permute_cycle.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/source_target_pairs.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 using CycleType = collective_permute_cycle::CycleType;
 
-// Match the instruction to a reduction kind. We can represent and/or of pred as
-// min/max. This works because pred is stored as an 8-bit int of value 0 or 1.
-std::optional<ReductionKind> MatchReductionInstruction(
-    const HloInstruction* hlo) {
-  PrimitiveType type = hlo->shape().element_type();
-  switch (hlo->opcode()) {
+std::optional<ReductionKind> OpcodeToReductionKind(HloOpcode hlo_opcode,
+                                                   PrimitiveType type) {
+  switch (hlo_opcode) {
     case HloOpcode::kAdd:
       return ReductionKind::SUM;
     case HloOpcode::kMultiply:
@@ -77,6 +79,14 @@ std::optional<ReductionKind> MatchReductionInstruction(
     default:
       return std::nullopt;
   }
+}
+
+// Match the instruction to a reduction kind. We can represent and/or of pred as
+// min/max. This works because pred is stored as an 8-bit int of value 0 or 1.
+std::optional<ReductionKind> MatchReductionInstruction(
+    const HloInstruction* hlo) {
+  PrimitiveType type = hlo->shape().element_type();
+  return OpcodeToReductionKind(hlo->opcode(), type);
 }
 
 std::optional<ReductionKind> MatchReductionComputation(
@@ -101,23 +111,24 @@ std::unique_ptr<HloComputation> MakeReductionComputation(
   auto rhs = builder.AddInstruction(HloInstruction::CreateParameter(
       1, ShapeUtil::MakeShape(element_type, {}), "rhs"));
   builder.AddInstruction(HloInstruction::CreateBinary(
-      lhs->shape(), *ReductionKindToOpcode(reduction_kind), lhs, rhs));
+      lhs->shape(), ReductionKindToOpcode(reduction_kind, element_type), lhs,
+      rhs));
   return builder.Build();
 }
 
-std::optional<HloOpcode> ReductionKindToOpcode(ReductionKind reduction_kind) {
+HloOpcode ReductionKindToOpcode(ReductionKind reduction_kind,
+                                PrimitiveType element_type) {
   switch (reduction_kind) {
     case ReductionKind::SUM:
       return HloOpcode::kAdd;
     case ReductionKind::PRODUCT:
       return HloOpcode::kMultiply;
     case ReductionKind::MIN:
-      return HloOpcode::kMinimum;
+      return element_type == PRED ? HloOpcode::kAnd : HloOpcode::kMinimum;
     case ReductionKind::MAX:
-      return HloOpcode::kMaximum;
-    default:
-      return std::nullopt;
+      return element_type == PRED ? HloOpcode::kOr : HloOpcode::kMaximum;
   }
+  ABSL_UNREACHABLE();
 }
 
 std::optional<Literal> GetReductionIdentity(ReductionKind kind,
@@ -145,71 +156,65 @@ std::optional<Literal> GetReductionIdentity(ReductionKind kind,
 absl::StatusOr<std::vector<int>> GetParticipatingIDs(
     CollectiveOpGroupMode group_mode, int current_id,
     std::optional<int> total_participant_count,
-    absl::Span<const ReplicaGroup> groups) {
-  // Empty replica_groups() means that all replicas participate.
-  if (groups.empty()) {
+    absl::Span<const ReplicaGroup> replica_groups) {
+  // Empty replica_groups means that all replicas participate.
+  if (replica_groups.empty()) {
     TF_RET_CHECK(total_participant_count.has_value());
     std::vector<int> all_participants(*total_participant_count);
     absl::c_iota(all_participants, 0);
     return all_participants;
   }
 
-  // Formatter for printing replica groups in StrJoin.
+  // Find the replica group containing current_id.
+  for (const ReplicaGroup& g : replica_groups) {
+    if (absl::c_linear_search(g.replica_ids(), current_id)) {
+      return std::vector<int>(g.replica_ids().begin(), g.replica_ids().end());
+    }
+  }
+
+  // Formatter for printing replica groups in error messages.
   auto group_formatter = [](std::string* out, const ReplicaGroup& group) {
     out->append("[");
     out->append(absl::StrJoin(group.replica_ids(), ", "));
     out->append("]");
   };
 
-  // Figure out the other replicas that go together with this one.
-  std::optional<ReplicaGroup> group;
-  for (const ReplicaGroup& g : groups) {
-    if (absl::c_linear_search(g.replica_ids(), current_id)) {
-      TF_RET_CHECK(!group.has_value())
-          << "Replica ID " << current_id << " appears twice in replica groups"
-          << "; group_mode=" << CollectiveOpGroupModeToString(group_mode)
-          << "; groups_size=" << groups.size()
-          << "; groups= " << absl::StrJoin(groups, ", ", group_formatter);
-      group = g;
-    }
-  }
-  TF_RET_CHECK(group.has_value())
-      << "Replica ID " << current_id << " doesn't appear in replica groups"
-      << "; group_mode=" << CollectiveOpGroupModeToString(group_mode)
-      << "; groups_size=" << groups.size()
-      << "; groups= " << absl::StrJoin(groups, ", ", group_formatter);
-  return std::vector<int>(group->replica_ids().begin(),
-                          group->replica_ids().end());
+  return Internal(
+      "Replica ID %d doesn't appear in replica groups; group_mode=%s; "
+      "groups_size=%d; groups= %s",
+      current_id, CollectiveOpGroupModeToString(group_mode),
+      replica_groups.size(),
+      absl::StrJoin(replica_groups, ", ", group_formatter));
 }
 
-absl::StatusOr<std::vector<std::vector<int64_t>>> GetAsyncReplicaGroups(
+absl::StatusOr<std::vector<int>> GetParticipatingIDs(
+    CollectiveOpGroupMode group_mode, int current_id,
+    std::optional<int> total_participant_count,
+    const CollectiveDeviceListBase& groups) {
+  return GetParticipatingIDs(group_mode, current_id, total_participant_count,
+                             groups.replica_groups());
+}
+
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>> GetAsyncReplicaGroups(
     const HloInstruction* instruction) {
-  std::vector<std::vector<int64_t>> replica_groups;
   if (instruction->opcode() == HloOpcode::kCollectivePermuteStart) {
-    absl::c_transform(instruction->source_target_pairs(),
-                      std::back_inserter(replica_groups),
-                      [](const std::pair<int64_t, int64_t>& pair) {
-                        std::vector<int64_t> ids({pair.first, pair.second});
-                        return ids;
-                      });
-  } else if (instruction->IsAsynchronous() ||
-             instruction->opcode() == HloOpcode::kAllGatherStart ||
-             instruction->opcode() == HloOpcode::kAllReduceStart) {
-    absl::c_transform(
-        instruction->replica_groups(), std::back_inserter(replica_groups),
-        [](const ReplicaGroup& group) {
-          std::vector<int64_t> ids;
-          absl::c_transform(group.replica_ids(), std::back_inserter(ids),
-                            [](auto id) { return id; });
-          return ids;
-        });
-  } else {
-    return InvalidArgument(
-        "Unexpected instruction type: %s is not an async collective "
-        "instruction",
-        instruction->ToString());
+    std::vector<ReplicaGroup> replica_groups;
+    for (const auto& pair : instruction->source_target_pairs()) {
+      ReplicaGroup& group = replica_groups.emplace_back();
+      group.add_replica_ids(pair.first);
+      group.add_replica_ids(pair.second);
+    }
+    return std::make_unique<CollectiveDeviceList>(replica_groups);
   }
-  return replica_groups;
+  if (instruction->IsAsynchronous() ||
+      instruction->opcode() == HloOpcode::kAllGatherStart ||
+      instruction->opcode() == HloOpcode::kAllReduceStart) {
+    return instruction->device_list()->Clone();
+  }
+  return InvalidArgument(
+      "Unexpected instruction type: %s is not an async collective "
+      "instruction",
+      instruction->ToString());
 }
 
 absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
@@ -236,16 +241,6 @@ absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
                                     std::nullopt);
   }
   return Internal("Unexpected instruction type.");
-}
-
-const CollectiveDeviceListBase& GetCollectiveDeviceList(
-    const HloInstruction* hlo) {
-  return Cast<HloCollectiveInstruction>(hlo)->device_list();
-}
-
-const std::vector<ReplicaGroup>& GetCollectiveReplicaGroups(
-    const HloInstruction* hlo) {
-  return Cast<HloCollectiveInstruction>(hlo)->replica_groups();
 }
 
 absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>>
@@ -370,10 +365,10 @@ GetParticipatingDevicesGroups(const HloInstruction* collective) {
   CHECK(collective->GetModule()->config().has_static_device_assignment());
   const DeviceAssignment& device_assignment =
       collective->GetModule()->config().static_device_assignment();
-  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
-                      GetCollectiveOpGroupMode(collective));
-  return GetParticipatingDevicesGroups(
-      device_assignment, GetCollectiveReplicaGroups(collective), mode);
+  ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
+                   GetCollectiveOpGroupMode(collective));
+  return GetParticipatingDevicesGroups(device_assignment,
+                                       collective->replica_groups(), mode);
 }
 
 absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
@@ -465,12 +460,11 @@ GetParticipatingFlattenedIdGroups(
 absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
 GetParticipatingFlattenedIdGroups(const HloInstruction* hlo,
                                   const DeviceAssignment& device_assignment) {
-  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
-                      GetCollectiveOpGroupMode(hlo));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(CollectiveOpGroupMode mode, GetCollectiveOpGroupMode(hlo));
+  ASSIGN_OR_RETURN(
       std::unique_ptr<CollectiveDeviceListBase> collective_device_list,
-      GetParticipatingFlattenedIdGroups(device_assignment,
-                                        GetCollectiveDeviceList(hlo), mode));
+      GetParticipatingFlattenedIdGroups(device_assignment, *hlo->device_list(),
+                                        mode));
   return collective_device_list;
 }
 
@@ -481,8 +475,8 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
   int replica_count = device_assignment.replica_count();
   int partition_count = device_assignment.computation_count();
 
-  TF_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID logical_id,
-                      device_assignment.LogicalIdForDevice(device_id));
+  ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID logical_id,
+                   device_assignment.LogicalIdForDevice(device_id));
   int current_replica_id = logical_id.replica_id;
   int current_partition_id = logical_id.computation_id;
   TF_RET_CHECK(0 <= current_replica_id && current_replica_id < replica_count)
@@ -497,9 +491,9 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
       // This is a cross replica operation. replica group contains replica id.
       // use current replica id to find the set of participating replicas. If
       // replica groups are empty, assume a group with all replicas.
-      TF_ASSIGN_OR_RETURN(std::vector<int> participating_replicas,
-                          GetParticipatingIDs(group_mode, current_replica_id,
-                                              replica_count, replica_groups));
+      ASSIGN_OR_RETURN(std::vector<int> participating_replicas,
+                       GetParticipatingIDs(group_mode, current_replica_id,
+                                           replica_count, replica_groups));
 
       // The set of participating devices is the replicas from the current
       // partition.
@@ -516,9 +510,9 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
     case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION: {
       // replica_groups contain partition_id, group contains all partitions for
       // the current replica.
-      TF_ASSIGN_OR_RETURN(std::vector<int> participating_partitions,
-                          GetParticipatingIDs(group_mode, current_partition_id,
-                                              partition_count, replica_groups));
+      ASSIGN_OR_RETURN(std::vector<int> participating_partitions,
+                       GetParticipatingIDs(group_mode, current_partition_id,
+                                           partition_count, replica_groups));
       participants.reserve(participating_partitions.size());
       for (int partition_id : participating_partitions) {
         TF_RET_CHECK(0 <= partition_id && partition_id < partition_count)
@@ -533,9 +527,9 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
         COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION: {
       // replica_groups contain replica_ids. Group contains replicas for all
       // partitions.
-      TF_ASSIGN_OR_RETURN(std::vector<int> participating_replicas,
-                          GetParticipatingIDs(group_mode, current_replica_id,
-                                              replica_count, replica_groups));
+      ASSIGN_OR_RETURN(std::vector<int> participating_replicas,
+                       GetParticipatingIDs(group_mode, current_replica_id,
+                                           replica_count, replica_groups));
       participants.reserve(participating_replicas.size() * partition_count);
       for (int replica_id : participating_replicas) {
         TF_RET_CHECK(0 <= replica_id && replica_id < replica_count)
@@ -559,7 +553,7 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
 
       // Find participants based on flattened id. replica_groups cannot be empty
       // so no need to pass in total_participant_count.
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           std::vector<int> participating_flattened_ids,
           GetParticipatingIDs(group_mode, current_flattened_id,
                               /*total_participant_count=*/std::nullopt,
@@ -656,19 +650,19 @@ absl::StatusOr<std::vector<int64_t>> GetPariticipantCountsForReplicaGroups(
 
 absl::StatusOr<std::optional<std::pair<int64_t, int64_t>>>
 GetReplicaGroupCountAndSize(const HloInstruction* hlo) {
-  const CollectiveDeviceListBase& device_list = GetCollectiveDeviceList(hlo);
+  std::shared_ptr<CollectiveDeviceListBase> device_list = hlo->device_list();
   auto config = hlo->GetModule()->config();
 
-  if (device_list.version() == CollectiveDeviceListVersion::kIota) {
-    return std::make_pair(device_list.num_replica_groups(),
-                          device_list.num_devices_per_group());
+  if (device_list->version() == CollectiveDeviceListVersion::kIota) {
+    return std::make_pair(device_list->num_replica_groups(),
+                          device_list->num_devices_per_group());
   }
-  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
-                      GetCollectiveOpGroupMode(hlo));
-  TF_ASSIGN_OR_RETURN(std::vector<int64_t> participant_counts,
-                      GetPariticipantCountsForReplicaGroups(
-                          config.replica_count(), config.num_partitions(),
-                          device_list.replica_groups(), group_mode));
+  ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                   GetCollectiveOpGroupMode(hlo));
+  ASSIGN_OR_RETURN(std::vector<int64_t> participant_counts,
+                   GetPariticipantCountsForReplicaGroups(
+                       config.replica_count(), config.num_partitions(),
+                       device_list->replica_groups(), group_mode));
   int64_t replica_group_size = participant_counts[0];
   for (int64_t participant_count : participant_counts) {
     if (participant_count != replica_group_size) {
@@ -803,6 +797,24 @@ absl::StatusOr<bool> IsAsyncCollective(const HloInstruction* instruction) {
   }
 }
 
+bool IsRaggedAllToAllOrAsyncStartRaggedAllToAll(
+    const HloInstruction* instruction) {
+  return instruction->opcode() == HloOpcode::kRaggedAllToAll ||
+         (instruction->opcode() == HloOpcode::kAsyncStart &&
+          instruction->async_wrapped_opcode() == HloOpcode::kRaggedAllToAll);
+}
+
+bool IsRaggedAllToAllOrAsyncDoneRaggedAllToAll(
+    const HloInstruction* instruction) {
+  return instruction->opcode() == HloOpcode::kRaggedAllToAll ||
+         (instruction->opcode() == HloOpcode::kAsyncDone &&
+          instruction->async_wrapped_opcode() == HloOpcode::kRaggedAllToAll);
+}
+
+bool IsOneShotRaggedAllToAllWithNcclEnabled(const DebugOptions& opts) {
+  return opts.xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl();
+}
+
 HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction) {
   if (instruction->opcode() == HloOpcode::kFusion) {
     for (auto* inner_inst : instruction->fused_instructions()) {
@@ -898,22 +910,6 @@ bool HasDuplicateSourcesOrTargets(const SourceTargetPairs& pairs) {
   return false;
 }
 
-std::optional<double> GetCustomCallLatencyMetadata(
-    const HloInstruction* instr) {
-  if (instr->opcode() == HloOpcode::kCustomCall &&
-      instr->has_frontend_attributes()) {
-    auto it = instr->frontend_attributes().map().find("latency_metadata");
-    if (it != instr->frontend_attributes().map().end()) {
-      int64_t latency_metadata_ns = 0;
-      CHECK(absl::SimpleAtoi(it->second, &latency_metadata_ns))
-          << "Failed to parse latency from custom call for " << instr->name()
-          << " from latency_metadata:" << it->second;
-      return static_cast<double>(latency_metadata_ns) / 1000.0;
-    }
-  }
-  return std::nullopt;
-}
-
 int64_t GetSubgroupSize(const HloCollectiveInstruction* hlo,
                         CollectiveOpGroupMode group_mode) {
   const HloModuleConfig& config = hlo->GetModule()->config();
@@ -943,6 +939,135 @@ int64_t GetSubgroupSize(const HloCollectiveInstruction* hlo,
     default:
       LOG(FATAL) << "Invalid collective op group mode: " << group_mode;
   }
+}
+
+namespace {
+
+std::optional<DebugOptions::CollectiveOpType> GetCollectiveOpType(
+    const HloInstruction* instruction) {
+  if (!IsNonFusionCollective(instruction)) {
+    return std::nullopt;
+  }
+  HloOpcode opcode = instruction->opcode();
+  if (opcode == HloOpcode::kAsyncStart || opcode == HloOpcode::kAsyncDone) {
+    opcode = instruction->async_wrapped_opcode();
+  }
+  switch (opcode) {
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduceDone:
+      return DebugOptions::ALLREDUCE;
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kAllGatherDone:
+      return DebugOptions::ALLGATHER;
+    case HloOpcode::kReduceScatter:
+      return DebugOptions::REDUCESCATTER;
+    case HloOpcode::kCollectiveBroadcast:
+      return DebugOptions::COLLECTIVEBROADCAST;
+    case HloOpcode::kAllToAll:
+      return DebugOptions::ALLTOALL;
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCollectivePermuteStart:
+    case HloOpcode::kCollectivePermuteDone:
+      return DebugOptions::COLLECTIVEPERMUTE;
+    case HloOpcode::kRaggedAllToAll:
+      return DebugOptions::RAGGEDALLTOALL;
+    default:
+      return std::nullopt;
+  }
+}
+
+}  // namespace
+
+NcclSymmetricBuffersSpec::NcclSymmetricBuffersSpec(
+    const DebugOptions& debug_options) {
+  for (const auto& filter_proto :
+       debug_options.xla_enable_nccl_symmetric_buffers_for_collectives()) {
+    Filter filter;
+    filter.collective = filter_proto.collective();
+    if (filter_proto.has_max_size_bytes()) {
+      filter.max_size_bytes = filter_proto.max_size_bytes();
+    }
+    if (filter_proto.has_op_type()) {
+      filter.op_type = filter_proto.op_type();
+    }
+    filters_.push_back(filter);
+  }
+}
+
+bool NcclSymmetricBuffersSpec::IsEnabled(const HloInstruction& inst) const {
+  const HloInstruction* collective = &inst;
+  if (collective->opcode() == HloOpcode::kAsyncStart ||
+      collective->opcode() == HloOpcode::kAsyncDone) {
+    collective = collective->async_wrapped_instruction();
+  }
+
+  if (collective->opcode() == HloOpcode::kAllReduceDone ||
+      collective->opcode() == HloOpcode::kAllGatherDone ||
+      collective->opcode() == HloOpcode::kCollectivePermuteDone) {
+    collective = collective->operand(0);
+  }
+
+  auto op_type_opt = GetCollectiveOpType(collective);
+  if (!op_type_opt.has_value()) {
+    return false;
+  }
+  DebugOptions::CollectiveOpType op_type = *op_type_opt;
+
+  const size_t size_in_bytes =
+      ShapeUtil::ByteSizeOfElementsRecursive(collective->shape());
+
+  std::optional<PrimitiveType> operand_type;
+  if (collective->operand_count() > 0) {
+    operand_type = collective->operand(0)->shape().element_type();
+  }
+
+  auto filter_matches = [&](const Filter& filter) {
+    bool match = true;
+    // Check the collective type.
+    if (filter.collective != DebugOptions::ALLCOLLECTIVES &&
+        filter.collective != op_type) {
+      match = false;
+    }
+    // Check the size.
+    if (filter.max_size_bytes.has_value() &&
+        size_in_bytes > filter.max_size_bytes.value_or(0)) {
+      match = false;
+    }
+    // Check the operand type.
+    if (filter.op_type.has_value()) {
+      if (!operand_type.has_value() || *operand_type != *filter.op_type) {
+        match = false;
+      }
+    }
+    return match;
+  };
+
+  if (std::any_of(filters_.begin(), filters_.end(), filter_matches)) {
+    return true;
+  }
+
+  return false;
+}
+
+bool IsNcclSymmetricBuffersEnabledForCollective(
+    const HloInstruction* instruction, const DebugOptions& opts) {
+  if (opts.xla_gpu_experimental_enable_nccl_symmetric_buffers()) {
+    return true;
+  }
+  if (opts.xla_enable_nccl_symmetric_buffers_for_collectives().empty()) {
+    return false;
+  }
+  if (instruction == nullptr) {
+    return false;
+  }
+
+  if (!IsNonFusionCollective(instruction)) {
+    return false;
+  }
+  NcclSymmetricBuffersSpec spec(opts);
+  return spec.IsEnabled(*instruction);
 }
 
 }  // end namespace xla

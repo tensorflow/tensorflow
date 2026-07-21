@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -137,8 +138,8 @@ absl::Status MaybeRewriteLayoutWithShardedShape(
 
   xla::OpSharding op_sharding;
   if (tensorflow::DecodeShardingAttribute(sharding, op_sharding).failed()) {
-    return errors::InvalidArgument("failed to parse sharding '",
-                                   sharding.getValue().str(), "'");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "failed to parse sharding '", sharding.getValue().str(), "'"));
   }
   std::optional<xla::HloSharding> hlo_sharding;
   TF_ASSIGN_OR_RETURN(hlo_sharding, xla::HloSharding::FromProto(op_sharding));
@@ -272,7 +273,7 @@ absl::Status GetOutputInfo(
         // below.
         buffer_ty = GetBufferType(owner.getOperand().getType());
         if (!buffer_ty || !buffer_ty.hasStaticShape()) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               "results needs to be static or bounded");
         }
       }
@@ -280,7 +281,7 @@ absl::Status GetOutputInfo(
 
     xla::Shape shape = xla::TypeToShape(buffer_ty);
     if (shape.element_type() == xla::PRIMITIVE_TYPE_INVALID) {
-      return errors::InvalidArgument("XLA conversion failed for MLIR type.");
+      return absl::InvalidArgumentError("XLA conversion failed for MLIR type.");
     }
     TF_ASSIGN_OR_RETURN(shape, shape_representation_fn_no_fast_memory(shape));
 
@@ -641,7 +642,7 @@ absl::Status RefineShapes(llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
 
   if (failed(result)) {
     return error_handler.Combine(
-        errors::Internal("MLIR Shape refinement failed"));
+        absl::InternalError("MLIR Shape refinement failed"));
   }
   return error_handler.ConsumeStatus();
 }
@@ -681,9 +682,7 @@ absl::Status BuildHloFromTfInner(
                                             custom_legalization_passes,
                                             /*lower_to_xla_hlo=*/true));
 
-  mlir::Block& block =
-      module_op.lookupSymbol<mlir::func::FuncOp>("main").front();
-  return mlir::BuildHloFromMlirHlo(block, builder, xla_params, returns);
+  return mlir::BuildHloFromMlirHlo(module_op, builder, xla_params, returns);
 }
 
 absl::Status ConvertMLIRWithOptionalXlaComputation(
@@ -939,7 +938,7 @@ static absl::StatusOr<std::vector<int>> RewriteWithArgs(
     if (xla_arg.kind == XlaArgument::kResource) {
       mlir::Type element_type;
       if (xla_arg.type == DT_INVALID) {
-        return errors::Unimplemented(absl::StrCat(
+        return absl::UnimplementedError(absl::StrCat(
             "Argument ", idx,
             " is an uninitialized resource variable which is currently"
             " unsupported in the MLIR-based TPU bridge"));
@@ -1055,10 +1054,8 @@ absl::Status BuildHloFromModule(mlir::ModuleOp module_op,
 
   TF_RETURN_IF_ERROR(RunMlirPipelineAndMaybeDumpResults(tf2xla, module_op));
 
-  mlir::Block& block =
-      module_op.lookupSymbol<mlir::func::FuncOp>("main").front();
-  TF_RETURN_IF_ERROR(
-      mlir::BuildHloFromMlirHlo(block, builder, remaining_xla_params, returns));
+  TF_RETURN_IF_ERROR(mlir::BuildHloFromMlirHlo(module_op, builder,
+                                               remaining_xla_params, returns));
 
   if (VLOG_IS_ON(2)) {
     tensorflow::DumpMlirOpToFile("build_hlo_tf_after", module_op);

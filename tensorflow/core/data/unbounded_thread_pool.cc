@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/lib/core/notification.h"

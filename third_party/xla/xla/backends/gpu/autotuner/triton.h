@@ -17,17 +17,19 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_AUTOTUNER_TRITON_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -38,8 +40,11 @@ class TritonBackend : public GpuCodegenBackend {
  public:
   explicit TritonBackend(const DebugOptions* debug_options, Compiler* compiler,
                          const Compiler::GpuTargetConfig* target_config,
+                         const AliasInfo* alias_info,
                          mlir::MLIRContext* mlir_context)
-      : GpuCodegenBackend("Triton", debug_options, compiler, target_config),
+      : GpuCodegenBackend(autotuner::Backend::TRITON, debug_options, compiler,
+                          target_config),
+        alias_info_(alias_info),
         mlir_context_(mlir_context) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
@@ -51,6 +56,7 @@ class TritonBackend : public GpuCodegenBackend {
                            const BackendConfig& config) override;
 
   bool CanProduceWrongResults() const override { return true; }
+  std::string version() const override;
 
  private:
   bool IsSupported(const HloInstruction& instr) override;
@@ -59,11 +65,14 @@ class TritonBackend : public GpuCodegenBackend {
   GetSupportedConfigsForDot(const HloInstruction* instr);
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigsForScaledDot(const HloInstruction* instr);
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
+  GetOverriddenConfigs(const HloInstruction* instr);
 
   absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> hlo_module,
       const Compiler::CompileOptions& options) override;
 
+  const AliasInfo* alias_info_;
   mlir::MLIRContext* mlir_context_;
 };
 

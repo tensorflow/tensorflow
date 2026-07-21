@@ -43,6 +43,11 @@ class CoordinationServiceImpl {
     // Number of nodes in the job. Mandatory. Must be non-negative.
     int num_nodes = -1;
 
+    // If true, a job can continue running even if some tasks have failed, and
+    // tasks are allowed to rejoin. If false, tasks share fate. As soon as one
+    // task fails, all tasks are permanently failed.
+    bool recoverable = false;
+
     tsl::Env* env = tsl::Env::Default();
 
     // The duration after which the service concludes a client has vanished if

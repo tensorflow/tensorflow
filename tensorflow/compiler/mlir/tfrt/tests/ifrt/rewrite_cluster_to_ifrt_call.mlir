@@ -1,3 +1,17 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: tf-tfrt-opt -split-input-file -rewrite-cluster-to-ifrt-call %s | FileCheck %s
 // TODO(b/316226111): the printer may not guarantee the same order of fields. Rewrite the checks to be less sensitive to proto serialization formats.
 // -----
@@ -5,7 +19,7 @@
 //
 // CHECK-LABEL: func.func @serving_default(%arg0: tensor<1x3xf32>) -> tensor<1x3xf32> {
 // CHECK-NEXT:  "tf.IfrtCall"(%arg0)
-// CHECK-SAME:       {program_id = [[PROGRAM_ID:.*]] : i64, variable_arg_indices = []}
+// CHECK-SAME:       {operandSegmentSizes = array<i32: 1, 0>, program_id = [[PROGRAM_ID:.*]] : i64, variable_arg_indices = []}
 // CHECK-SAME:       (tensor<1x3xf32>) -> tensor<1x3xf32>
 // CHECK:    return
 //
@@ -34,7 +48,7 @@ func.func private @_func(%arg0: tensor<1x3xf32>) -> (tensor<1x3xf32>) {
 //
 // CHECK-LABEL: func.func @serving_default(%arg0: tensor<1x3xf32>) {
 // CHECK-NEXT:  "tf.IfrtCall"(%arg0)
-// CHECK-SAME:       {program_id = [[PROGRAM_ID:.*]] : i64, variable_arg_indices = []}
+// CHECK-SAME:       {operandSegmentSizes = array<i32: 1, 0>, program_id = [[PROGRAM_ID:.*]] : i64, variable_arg_indices = []}
 // CHECK-SAME:       (tensor<1x3xf32>) -> ()
 // CHECK:    return
 //
@@ -62,11 +76,11 @@ func.func private @_func(%arg0: tensor<1x3xf32>) -> () {
 
 // CHECK-LABEL: func.func @serving_default(%arg0: tensor<3x1xf32>, %arg1: tensor<1x3xf32>) -> tensor<1x1xf32> {
 // CHECK-NEXT:  %0 = "tf.IfrtCall"(%arg1, %arg0)
-// CHECK-SAME:       {program_id = [[PROGRAM_ID:.*]] : i64, variable_arg_indices = []
+// CHECK-SAME:       {operandSegmentSizes = array<i32: 2, 0>, program_id = [[PROGRAM_ID:.*]] : i64, variable_arg_indices = []
 // CHECK-SAME:       (tensor<1x3xf32>, tensor<3x1xf32>) -> tensor<1x1xf32>
 // CHECK-NEXT:    %1 = "tf.Identity"(%arg1) {device = ""} : (tensor<1x3xf32>) -> tensor<1x3xf32>
 // CHECK-NEXT:    %2 = "tf.IfrtCall"(%1, %arg0)
-// CHECK-SAME:       {program_id = [[PROGRAM_ID]] : i64, variable_arg_indices = []
+// CHECK-SAME:       {operandSegmentSizes = array<i32: 2, 0>, program_id = [[PROGRAM_ID]] : i64, variable_arg_indices = []
 // CHECK-SAME:       (tensor<1x3xf32>, tensor<3x1xf32>) -> tensor<1x1xf32>
 // CHECK-NEXT:    %3 = "tf.add"(%0, %2) : (tensor<1x1xf32>, tensor<1x1xf32>) -> tensor<1x1xf32>
 // CHECK:    return
@@ -100,7 +114,7 @@ func.func private @_func(%arg0: tensor<1x3xf32>, %arg1: tensor<3x1xf32>) -> (ten
 
 // CHECK-LABEL: func.func @serving_default(%arg0: tensor<3x1xf32>, %arg1: tensor<1x3xf32>) -> tensor<1x1xf32> {
 // CHECK-NEXT:  %0 = "tf.IfrtCall"(%arg1, %arg0)
-// CHECK-SAME:       {program_id = [[PROGRAM_ID:.*]] : i64, variable_arg_indices = []
+// CHECK-SAME:       {operandSegmentSizes = array<i32: 2, 0>, program_id = [[PROGRAM_ID:.*]] : i64, variable_arg_indices = []
 // CHECK-SAME:       (tensor<1x3xf32>, tensor<3x1xf32>) -> tensor<1x1xf32>
 // CHECK:    return
 //

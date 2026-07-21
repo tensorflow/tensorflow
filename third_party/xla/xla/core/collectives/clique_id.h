@@ -71,9 +71,11 @@ class CliqueIds {
  public:
   CliqueIds() = default;
 
-  explicit CliqueIds(const CliqueId& id);
+  CliqueIds(const CliqueId& id);  // NOLINT
 
   void Add(const CliqueId& id);
+
+  size_t size() const;
 
   absl::Span<const CliqueId> data() const;
 

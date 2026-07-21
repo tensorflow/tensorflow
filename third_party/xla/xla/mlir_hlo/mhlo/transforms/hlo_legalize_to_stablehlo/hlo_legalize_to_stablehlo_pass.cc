@@ -111,8 +111,8 @@ struct HloLegalizeToStablehloPass
       // since we're specifically legalizing to StableHLO, not to CHLO.)
       target.addLegalOp<  //
           mhlo::AcosOp, mhlo::AcoshOp, mhlo::AsinOp, mhlo::AsinhOp,
-          mhlo::AtanhOp, mhlo::CoshOp, mhlo::ErfOp, mhlo::RaggedDotOp,
-          mhlo::SinhOp, mhlo::TopKOp>();
+          mhlo::AtanhOp, mhlo::CoshOp, mhlo::ErfOp, mhlo::MulhiOp,
+          mhlo::RaggedDotOp, mhlo::ScanOp, mhlo::SinhOp, mhlo::TopKOp>();
 
       // These ops do not exist in StableHLO. (They don't exist in CHLO, either;
       // MHLO is the appropriate dialect for expressing XLA-specific features

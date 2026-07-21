@@ -89,6 +89,11 @@ TEST_P(TopKKernelTest, TopKFloat) {
 
   auto name =
       absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
+  // TODO(intel-tf): Remove this check once specialization for SYCL/oneAPI
+  // backend is added.
+  if (name == "SYCL") {
+    GTEST_SKIP() << "No specialization exists for SYCL/oneAPI backend.";
+  }
   se::Platform* platform = se::PlatformManager::PlatformWithName(name).value();
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -120,7 +125,7 @@ TEST_P(TopKKernelTest, TopKFloat) {
                           executor->LoadKernel(custom_kernel->kernel_spec()));
 
   // Launch topk kernel with device memory arguments.
-  se::KernelArgsDeviceMemoryArray arr(
+  stream_executor::KernelArgsDeviceAddressArray arr(
       std::vector<se::DeviceAddressBase>(
           {input_buffer, output_values, output_indices}),
       custom_kernel->shared_memory_bytes());
@@ -145,6 +150,11 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
 
   auto name =
       absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
+  // TODO(intel-tf): Remove this check once specialization for SYCL/oneAPI
+  // backend is added.
+  if (name == "SYCL") {
+    GTEST_SKIP() << "No specialization exists for SYCL/oneAPI backend.";
+  }
   se::Platform* platform = se::PlatformManager::PlatformWithName(name).value();
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -176,7 +186,7 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
                           executor->LoadKernel(custom_kernel->kernel_spec()));
 
   // Launch topk kernel with device memory arguments.
-  se::KernelArgsDeviceMemoryArray arr(
+  stream_executor::KernelArgsDeviceAddressArray arr(
       std::vector<se::DeviceAddressBase>(
           {input_buffer, output_values, output_indices}),
       custom_kernel->shared_memory_bytes());
@@ -199,6 +209,11 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
 TEST_P(TopKKernelTest, EnsureSerializable) {
   auto name =
       absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
+  // TODO(intel-tf): Remove this check once specialization for SYCL/oneAPI
+  // backend is added.
+  if (name == "SYCL") {
+    GTEST_SKIP() << "No specialization exists for SYCL/oneAPI backend.";
+  }
   se::Platform* platform = se::PlatformManager::PlatformWithName(name).value();
 
   const auto [n_kb, k, batch_size, offset] = GetParam();

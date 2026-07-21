@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
@@ -157,10 +158,36 @@ TEST_P(ShardingSpecSerDesTest, ShardingParamShardingSpecRoundTrip) {
               sharding_spec->sharding_param());
 }
 
+TEST_P(ShardingSpecSerDesTest,
+       ShardingParamShardingSpecWithUnreducedDimsRoundTrip) {
+  if (version().version_number() < SerDesVersionNumber(1)) {
+    GTEST_SKIP() << "Unreduced dims not supported before version 1.";
+  }
+  auto sharding_spec = ShardingParamShardingSpec::Create(
+      ShardingParam({1, 1}, {{0}, {num_shards()}},
+                    /*unreduced_axes=*/{0}));
+
+  auto options = std::make_unique<SerializeOptions>(version());
+  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                          Serialize(*sharding_spec, std::move(options)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto out_sharding_spec,
+      Deserialize<ShardingParamShardingSpec>(serialized, /*options=*/nullptr));
+
+  EXPECT_THAT(out_sharding_spec->num_shards(), sharding_spec->num_shards());
+  EXPECT_THAT(out_sharding_spec->sharding_param(),
+              sharding_spec->sharding_param());
+}
+
 INSTANTIATE_TEST_SUITE_P(
     SerDesVersion_NumShards, ShardingSpecSerDesTest,
     testing::Combine(testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
-                     testing::Values(2, 4)));
+                     testing::Values(2, 4)),
+    [](const testing::TestParamInfo<ShardingSpecSerDesTestParam>& info) {
+      return absl::StrCat("version_",
+                          std::get<0>(info.param).version_number().value(),
+                          "_num_shards_", std::get<1>(info.param));
+    });
 
 }  // namespace
 }  // namespace ifrt

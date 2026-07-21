@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda_bf16.h"
 #include "raft/core/device_mdspan.hpp"
 #include "raft/core/mdspan_types.hpp"
@@ -62,9 +63,9 @@ class OwningScratchAllocator {
 
   // Allocate memory and track ownership
   absl::StatusOr<se::DeviceAddress<uint8_t>> AllocateBytes(int64_t byte_size) {
-    TF_ASSIGN_OR_RETURN(se::ScopedDeviceAddress<uint8_t> buffer,
-                        allocator_->Allocate(device_ordinal_, byte_size,
-                                             /*retry_on_failure=*/false));
+    ASSIGN_OR_RETURN(se::ScopedDeviceAddress<uint8_t> buffer,
+                     allocator_->Allocate(device_ordinal_, byte_size,
+                                          /*retry_on_failure=*/false));
 
     se::DeviceAddress<uint8_t> res = *buffer;
     void* raw_ptr = res.opaque();
@@ -73,7 +74,7 @@ class OwningScratchAllocator {
   }
 
   // Deallocate tracked memory; safe no-op if pointer not found
-  absl::Status DeallocateBytes(void* ptr) {
+  absl::Status DeallocateBytes(void* ptr) noexcept {
     auto it = buffers_.find(ptr);
     if (it != buffers_.end()) {
       buffers_.erase(it);  // RAII frees memory
@@ -121,7 +122,7 @@ class XlaDeviceMemoryResource : public rmm::mr::device_memory_resource {
   }
 
   void do_deallocate(void* ptr, std::size_t bytes,
-                     rmm::cuda_stream_view stream) override {
+                     rmm::cuda_stream_view stream) noexcept override {
     auto status = scratch_allocator_.DeallocateBytes(ptr);
     if (!status.ok()) {
       // do_deallocate should be noexcept. Don’t throw; just log.

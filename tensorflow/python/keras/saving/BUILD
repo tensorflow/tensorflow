@@ -1,7 +1,7 @@
 # Description:
 #   Contains the Keras save model API (internal TensorFlow version).
 
-load("//tensorflow:py.default.bzl", "py_library")
+load("@xla//third_party/rules_python/python:defs.bzl", "py_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -33,6 +33,7 @@ py_library(
         "saving_utils.py",
     ],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/checkpoint:graph_view",
         "//tensorflow/python/eager:def_function",

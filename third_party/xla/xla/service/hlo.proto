@@ -48,6 +48,13 @@ enum TriState {
   TRI_STATE_FALSE = 2;
 }
 
+enum ConvolutionKind {
+  CONVOLUTION_KIND_UNSET = 0;
+  CONVOLUTION_KIND_FPROP = 1;
+  CONVOLUTION_KIND_DGRAD = 2;
+  CONVOLUTION_KIND_WGRAD = 3;
+}
+
 // The version of the API used by the custom call function. The signatures for
 // each version are given below.
 // TODO(b/189822916): Remove this enum when all clients are migrated to the
@@ -119,7 +126,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 97
+// Next ID: 101
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -261,6 +268,9 @@ message HloInstructionProto {
 
   // Backend configuration for the instruction. Has backend-specific meaning.
   bytes backend_config = 43;
+
+  // The backend configuration payload, can be either inline or an ID reference.
+  Payload backend_config_payload = 99;
 
   // Deprecated, but keeping for backward compatibility.
   // Use collective_device_list. Cross replica op fields.
@@ -414,6 +424,16 @@ message HloInstructionProto {
 
   // Whether the scan instruction is associative.
   TriState is_associative = 96;
+
+  // Conv type (fprop, dgrad, wgrad)
+  ConvolutionKind conv_kind = 97;
+
+  // Convolution sparsity config.
+  SparsityConfig sparsity_config = 98;
+
+  // For collective-broadcast: indicates the last operand is a scalar
+  // root rank index rather than a data tensor to broadcast.
+  bool has_dynamic_root = 100;
 }
 
 // Serialization of HloComputation.
@@ -569,6 +589,7 @@ message StackFrameIndexProto {
 }
 
 // Serialization of HloModule.
+// Next ID: 25
 message HloModuleProto {
   string name = 1;
   string entry_computation_name = 2;
@@ -582,13 +603,23 @@ message HloModuleProto {
   xla.ProgramShapeProto host_program_shape = 4;
 
   // The id of this module.
+  // During replays, this field is ignored and a new unique ID is assigned to
+  // the `HloModule` object.
   int64 id = 5;
+  // If provided, `pjrt_id` is assigned as the `id` of the `HloModule` object
+  // upon creation from an `HloModuleProto`. Do not populate this field in
+  // `HloModule` text or proto dumps to avoid reusing potentially non-unique IDs
+  // during replays.
+  optional int64 pjrt_id = 23;
 
   // The schedule for this module.
   HloScheduleProto schedule = 7;
 
   // Describes alias information between inputs and outputs.
   HloInputOutputAliasProto input_output_alias = 8;
+
+  // A list from payload_id to the payload bytes.
+  repeated bytes payloads = 22;
 
   // Describes the information of input buffer donors.
   HloBufferDonorProto buffer_donor = 18;
@@ -651,6 +682,11 @@ message HloModuleProto {
   xla.FrontendAttributes frontend_attributes = 19;
 
   xla.OriginalValueRecoveryTableProto original_value_recovery_table = 20;
+
+  // The type of the device that the module is targeted for.
+  string device_type = 21;
+
+  repeated DebugAttributeTableEntryProto debug_attributes = 24;
 
   reserved 9;
   reserved "dynamic_parameter_binding";
@@ -746,6 +782,31 @@ message HloModuleGroupProto {
   repeated HloModuleProto hlo_modules = 2;
 }
 
+// Serialization of memory usage report.
+message MemoryUsageReportProto {
+  // Individual allocation.
+  message AllocationEntry {
+    // BufferAllocation::Index (allocation ID, not sort position).
+    int64 index = 1;
+    int64 size = 2;
+    // Running sum as entries traverse largest→smallest within the memory space.
+    int64 cumulative_size = 3;
+    double cumulative_percentage = 4;
+    // Defining position(s) of HLO value(s) assigned to this allocation.
+    repeated string defining_positions = 5;
+    string hlo_text = 6;
+  }
+
+  // Allocations grouped by memory space (color).
+  message AllocationEntryInMemorySpace {
+    int64 total_bytes = 1;
+    optional int32 memory_space_color = 2;
+    repeated AllocationEntry allocation_entries = 3;
+  }
+
+  repeated AllocationEntryInMemorySpace memory_space_allocation_entries = 1;
+}
+
 // Serialization of BufferAssignment.
 message BufferAssignmentProto {
   // Alias represents a source LogicalBuffer, and the buffer location that
@@ -755,10 +816,18 @@ message BufferAssignmentProto {
     LogicalBufferProto.Location location = 2;
   }
 
+  // Set of buffers live at the point of peak memory usage for a
+  // given allocation, represented by its index.
+  message PeakBuffers {
+    int64 index = 1;
+    repeated int64 logical_buffer_ids = 2;
+  }
+
   repeated LogicalBufferProto logical_buffers = 1;
   repeated BufferAlias buffer_aliases = 2;
   repeated BufferAllocationProto buffer_allocations = 3;
   repeated HeapSimulatorTrace heap_simulator_traces = 4;
+  repeated PeakBuffers peak_buffers = 5;
 }
 
 // Grouping message that contains all of the information above.
@@ -879,6 +948,50 @@ message HloPassMetadata {
 
   // Used to log any number of key, value pair stats per pass.
   repeated KeyValueMetric kv_metrics = 11;
+}
+
+message DebugAttributesProto {
+  enum DebugLogModeProto {
+    // No logging is performed.
+    NONE = 0;
+    // Non-guaranteed delivery. Tensors might be dropped if Original Value
+    // Tracking fails or if the instruction is fused. However, this mode does
+    // not perturb the computation graph and the data logged is exactly what it
+    // would be without logging.
+    DEFAULT = 1;
+    // Same with DEFAULT, but fused value can logged at the expense of
+    // significant performance overhead.
+    FUSION_DEBUGGER = 2;
+    // Uses an optimization barrier to prevent fusion, preserving ordering but
+    // would perturb the computation graph and cause numerical differences. Log
+    // can still be dropped.
+    NO_FUSION = 3;
+    // Guaranteed delivery at the expense of significant graph perturbation and
+    // numerical differences.
+    GUARANTEED = 4;
+  }
+  DebugLogModeProto log_mode = 1;
+  // The id that uniquely identifies the xla.debug.Log in the HLO module.
+  int64 callback_id = 2;
+  // The index identifying which operand of the xla.debug.Log custom call this
+  // tensor belongs to.
+  int64 op_id = 3;
+  // If true, the device-specific sharded tensor is returned to the callback. If
+  // false, reconstructed tensor is returned to the callback as if XLA's
+  // automatic sharding didn't happen.
+  bool partitioned = 4;
+  // The sharding of the operands of the custom call. This is used by the
+  // runtime to unshard tensors logged in guaranteed mode.
+  string operands_sharding = 5;
+}
+
+message DebugLogBackendConfigProto {
+  DebugAttributesProto debug_attributes_config = 64;
+}
+
+message DebugAttributeTableEntryProto {
+  OriginalArrayProto original_array = 1;
+  repeated DebugAttributesProto debug_attributes = 2;
 }
 
 message OriginalValueRecoveryTableProto {

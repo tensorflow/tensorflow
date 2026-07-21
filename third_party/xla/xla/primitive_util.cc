@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/numeric/bits.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
@@ -43,16 +44,30 @@ int SignificandWidth(PrimitiveType type) {
 }
 
 int ExponentWidth(PrimitiveType type) {
-  // Per the IEEE-754 standard: a floating point type is stored as a sign bit, a
-  // biased exponent and a trailing significand field.
-  int total_bit_width = BitWidth(type);
-  // This field contains all bits in the significand other than the leading
-  // digit which is implied by the exponent.
-  int trailing_significand_field_width = SignificandWidth(type) - 1;
-  // The sign is encoded with a single bit.
-  int kSignBitWidth = 1;
-  // The remaining bits are used for encoding the biased exponent.
-  return total_bit_width - (trailing_significand_field_width + kSignBitWidth);
+  return FloatingPointTypeSwitch(
+      [&](auto constant_type) -> int {
+        using NativeType = NativeTypeOf<constant_type>;
+        // std::numeric_limits::max_exponent is the maximum integer e such that
+        // 2^(e-1) is finite. Subtract 1 to obtain the true maximum unbiased
+        // exponent for normalized numbers.
+        int max_normal_exp = std::numeric_limits<NativeType>::max_exponent - 1;
+        // Calculate the total count of distinct exponent values used for normal
+        // numbers (and subnormals/zero if present).
+        unsigned exponent_states = max_normal_exp + exponent_bias_v<NativeType>;
+        // Track additional exponent states reserved for special floating-point
+        // values.
+        unsigned reserved_states = 0;
+        // If the type supports infinity and NaN, reserve another exponent state
+        // (typically all-ones).
+        if constexpr (std::numeric_limits<NativeType>::has_infinity &&
+                      std::numeric_limits<NativeType>::has_quiet_NaN) {
+          ++reserved_states;
+        }
+        // Calculate the minimum number of bits required to encode all exponent
+        // states.
+        return Log2Ceiling(exponent_states + reserved_states);
+      },
+      type);
 }
 
 int UnderflowExponent(PrimitiveType type) {
@@ -82,7 +97,11 @@ int OverflowExponent(PrimitiveType type) {
 }
 
 int ExponentBias(PrimitiveType type) {
-  return (1 - UnderflowExponent(type)) + 1;
+  return FloatingPointTypeSwitch(
+      [&](auto constant_type) -> int {
+        return exponent_bias_v<NativeTypeOf<constant_type>>;
+      },
+      type);
 }
 
 bool HasInfinity(PrimitiveType type) {
@@ -119,8 +138,24 @@ bool HasNegativeZero(PrimitiveType type) {
   return false;
 }
 
+bool HasPositiveZero(PrimitiveType type) {
+  if (ABSL_PREDICT_TRUE(IsFloatingPointType(type))) {
+    return FloatingPointTypeSwitch(
+        [&](auto constant_type) -> bool {
+          return has_positive_zero_v<NativeTypeOf<constant_type>>;
+        },
+        type);
+  }
+  if (ABSL_PREDICT_TRUE(IsIntegralType(type)) || type == PRED) {
+    return true;
+  }
+  return false;
+}
+
 xla::PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
   switch (src_bitwidth) {
+    case 1:
+      return xla::S1;
     case 2:
       return xla::S2;
     case 4:
@@ -181,6 +216,8 @@ bool CastPreservesValues(const PrimitiveType from_type,
         (!HasNaN(from_type) || HasNaN(to_type)) &&
         // HasNegativeZero check.
         (!HasNegativeZero(from_type) || HasNegativeZero(to_type)) &&
+        // HasPositiveZero check.
+        (!HasPositiveZero(from_type) || HasPositiveZero(to_type)) &&
         // Minimum denormal should be representable by target type.
         (UnderflowExponent(from_type) - SignificandWidth(from_type)) >=
             (UnderflowExponent(to_type) - SignificandWidth(to_type)) &&

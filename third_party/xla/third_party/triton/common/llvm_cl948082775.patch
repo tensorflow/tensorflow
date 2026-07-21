@@ -1,0 +1,21 @@
+--- a/python/src/llvm.cc
++++ b/python/src/llvm.cc
+@@ -629,11 +629,12 @@
+       });
+ 
+   // optimization levels
+-  py::class_<llvm::OptimizationLevel>(m, "optimization_level");
+-  m.attr("OPTIMIZE_O0") = llvm::OptimizationLevel::O0;
+-  m.attr("OPTIMIZE_O1") = llvm::OptimizationLevel::O1;
+-  m.attr("OPTIMIZE_O2") = llvm::OptimizationLevel::O2;
+-  m.attr("OPTIMIZE_O3") = llvm::OptimizationLevel::O3;
++  py::enum_<llvm::OptimizationLevel>(m, "optimization_level")
++      .value("OPTIMIZE_O0", llvm::OptimizationLevel::O0)
++      .value("OPTIMIZE_O1", llvm::OptimizationLevel::O1)
++      .value("OPTIMIZE_O2", llvm::OptimizationLevel::O2)
++      .value("OPTIMIZE_O3", llvm::OptimizationLevel::O3)
++      .export_values();
+ 
+   m.def(
+       "to_module",
+

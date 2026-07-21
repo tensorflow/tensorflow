@@ -20,11 +20,13 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/base/macros.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/node_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -35,6 +37,7 @@ limitations under the License.
 #include "xla/runtime/execution_graph.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla::gpu {
 
@@ -46,7 +49,10 @@ class CommandExecutor {
   CommandExecutor(CommandExecutor&&) = default;
   CommandExecutor& operator=(CommandExecutor&&) = default;
 
-  using RecordParams = Command::RecordParams;
+  // Strongly-type integer for tagging `RecordCreate` and `RecordUpdate` with an
+  // extra id that distinguishes recording of the command executor into the
+  // same command buffer.
+  TSL_LIB_GTL_DEFINE_INT_TYPE(RecordId, int64_t);
 
   // Synchronization mode defines how much concurrency is allowed between
   // commands in the sequence.
@@ -62,6 +68,10 @@ class CommandExecutor {
     // Uses the same latency hidden scheduling results used in the thunk
     // scheduling.
     kLHS,
+
+    // Hybrid of kSerialize and kConcurrent. Builds a DAG for concurrent
+    // regions and serializes between them.
+    kConcurrentRegions,
   };
 
   template <typename Sink>
@@ -76,20 +86,25 @@ class CommandExecutor {
       case SynchronizationMode::kLHS:
         sink.Append("lhs");
         break;
+      case SynchronizationMode::kConcurrentRegions:
+        sink.Append("concurrent_regions");
+        break;
     }
   }
 
   // Creates a command executor from a sequence of commands using given
-  // synchronization mode.
+  // synchronization mode. `extra_resources` provides per-command additional
+  // resource uses (e.g. control-dependency tokens from the emitter); if empty,
+  // no extra resource uses are added.
   static absl::StatusOr<CommandExecutor> Create(
-      CommandSequence commands, SynchronizationMode synchronization_mode);
+      CommandSequence commands, SynchronizationMode synchronization_mode,
+      std::vector<Command::ResourceUses> extra_resources = {});
 
   // Prepares all commands added to a sequence.
   absl::Status Prepare(const Thunk::PrepareParams& params);
 
   // Initializes all commands added to a sequence.
-  absl::Status Initialize(const Thunk::InitializeParams& params,
-                          CommandStateManager& state);
+  absl::Status Initialize(const Thunk::InitializeParams& params);
 
   // Records commands into the command buffer.
   //
@@ -100,8 +115,9 @@ class CommandExecutor {
   // command buffer. For a more fine grained recording and updating of command
   // buffers see `RecordCreate` and `RecordUpdate` APIs defined below.
   absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer);
+                      const Command::RecordParams& record_params,
+                      se::CommandBuffer* command_buffer,
+                      RecordId record_id = RecordId(0));
 
   // Records command creation into the command buffer. Command buffer must be
   // in create state. The next command sequence recorded into the same command
@@ -115,19 +131,22 @@ class CommandExecutor {
   // commands will also depend on B's sink commands.
   absl::StatusOr<std::vector<const se::CommandBuffer::Command*>> RecordCreate(
       const Thunk::ExecuteParams& execute_params,
-      const RecordParams& record_params, se::CommandBuffer* command_buffer,
-      absl::Span<const se::CommandBuffer::Command* const> dependencies) const;
+      const Command::RecordParams& record_params,
+      se::CommandBuffer* command_buffer,
+      absl::Span<const se::CommandBuffer::Command* const> dependencies,
+      RecordId record_id = RecordId(0)) const;
 
   // Records command updates into the command buffer. Command buffer must be
   // in update state. Command buffer update can't change the dependency
   // structure of the underlying command buffer and can only update attributes
   // of the individual commands.
   absl::Status RecordUpdate(const Thunk::ExecuteParams& execute_params,
-                            const RecordParams& record_params,
-                            se::CommandBuffer* command_buffer) const;
+                            const Command::RecordParams& record_params,
+                            se::CommandBuffer* command_buffer,
+                            RecordId record_id = RecordId(0)) const;
 
   // Returns buffers referenced by commands in this sequence.
-  const absl::flat_hash_set<BufferUse>& buffers() const;
+  const absl::flat_hash_set<BufferUse>& buffer_uses() const;
 
   // Returns buffer allocations indices referenced by commands in this sequence.
   absl::Span<const BufferAllocation::Index> allocs_indices() const;
@@ -135,39 +154,74 @@ class CommandExecutor {
   bool empty() const { return commands_.empty(); }
   size_t size() const { return commands_.size(); }
 
-  bool requires_initialization() const {
-    return absl::c_any_of(commands_, [](const auto& cmd) {
-      return cmd->requires_initialization();
-    });
+  bool requires_update_on_initialize() const {
+    return requires_update_on_initialize_;
   }
 
-  bool force_update() const {
-    return absl::c_any_of(commands_,
-                          [](const auto& cmd) { return cmd->force_update(); });
+  bool requires_warmup() const {
+    bool requires_warmup = false;
+    commands_.Walk([&](const Command* command) {
+      requires_warmup |= command->requires_warmup();
+    });
+    return requires_warmup;
+  }
+
+  bool requires_update_on_execute() const {
+    return requires_update_on_execute_;
   }
 
   bool support_loop_unroll() const {
-    return absl::c_all_of(
-        commands_, [](const auto& cmd) { return cmd->support_loop_unroll(); });
+    bool support_loop_unroll = true;
+    commands_.Walk([&](const Command* command) {
+      support_loop_unroll &= command->support_loop_unroll();
+    });
+    return support_loop_unroll;
   }
 
   // Renders the execution graph using default renderer. Returns url of the
   // rendered graph, or an error if rendering failed.
-  absl::StatusOr<std::string> RenderExecutionGraph();
+  absl::StatusOr<std::string> RenderExecutionGraph() const;
+
+  // Recursively traverses all commands in the executor and nested executors.
+  absl::Status Walk(
+      absl::FunctionRef<absl::Status(const Command*)> callback) const {
+    return commands_.Walk(callback);
+  }
+
+  absl::Status Walk(absl::FunctionRef<absl::Status(Command*)> callback) {
+    return commands_.Walk(callback);
+  }
+
+  std::optional<const ExecutionGraph> execution_graph() const {
+    return execution_graph_;
+  }
 
  private:
   // We use index into the `commands_` vector as a command id.
   using CommandId = int64_t;
 
-  // A state associated with commands in the sequence. We rely on this state to
-  // efficiently update command recorded into the command buffer.
-  struct RecordState : public CommandState {
-    const se::CommandBuffer::Command* command;
+  // Commands recorded into the `se::CommandBuffer` by the `commands_` command
+  // sequence: commands returned from calls to `Command::Record`. Indexed by
+  // the command index in the `commands_` (aka `CommandId`). We pass these
+  // commands back when we are recording command buffer updates.
+  using RecordedCommands = std::vector<const se::CommandBuffer::Command*>;
+
+  // A state of recording command executors into the command buffer. Note that
+  // we can record multiple executors into the same command buffer.
+  struct CommandExecutorsState : public se::CommandBuffer::Resource {
+    // We don't need to synchronize access to `recorded_commands` as command
+    // buffers are not thread safe and record at most once executor at a time.
+    // However during the command buffer recording multiple nested command
+    // executors can record into the same command buffer, and to keep references
+    // to values valid during the execution we use a node hash map container.
+    using Key = std::pair<const CommandExecutor*, RecordId>;
+    absl::node_hash_map<Key, RecordedCommands> recorded_commands;
   };
 
   CommandExecutor(SynchronizationMode synchronization_mode,
                   CommandSequence commands,
-                  std::optional<ExecutionGraph> execution_graph);
+                  std::optional<ExecutionGraph> execution_graph,
+                  std::vector<Command::ResourceUses> extra_resources);
 
   absl::Status CheckCommandBufferState(
       se::CommandBuffer* command_buffer,
@@ -181,8 +235,9 @@ class CommandExecutor {
 
   // Returns dependencies of the command with the given id.
   std::vector<const se::CommandBuffer::Command*> Dependencies(
-      const RecordParams& record_params, se::CommandBuffer* command_buffer,
-      CommandId id) const;
+      const Command::RecordParams& record_params,
+      se::CommandBuffer* command_buffer, CommandId id,
+      RecordId record_id) const;
 
   SynchronizationMode synchronization_mode_;
   CommandSequence commands_;
@@ -192,15 +247,28 @@ class CommandExecutor {
   std::optional<ExecutionGraph> execution_graph_;
 
   // Buffers referenced by commands in this sequence.
-  absl::flat_hash_set<BufferUse> buffers_;
+  absl::flat_hash_set<BufferUse> buffer_uses_;
 
   // Unique buffer allocations indices referenced by all commands in this
   // sequence (sorted by the buffer allocation index).
   std::vector<BufferAllocation::Index> allocs_indices_;
 
+  // Whether any command in this sequence requires an update during
+  // initialization.
+  bool requires_update_on_initialize_ = false;
+
+  // Whether any command in this sequence requires an update on every
+  // execution.
+  bool requires_update_on_execute_ = false;
+
   // A mapping from command id to unique buffer allocations indices referenced
   // by the command (sorted by the buffer allocation index).
   std::vector<std::vector<BufferAllocation::Index>> cmd_allocs_indices_;
+
+  // Per-command extra resource uses passed at construction time (e.g.
+  // control-dependency tokens from the emitter). Stored so that
+  // RenderExecutionGraph() can reproduce the same dependency graph.
+  std::vector<Command::ResourceUses> extra_resources_;
 };
 
 using CommandBufferCmdExecutor ABSL_DEPRECATE_AND_INLINE() = CommandExecutor;

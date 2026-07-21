@@ -15,8 +15,8 @@ This consists of the following components:
     *   This is the unique name for the operation.
 *   Shape: `bf16[8,1,1280,16384]`
     *   This is the output shape of the Op. Here the dtype is
-        [bf316](https://en.wikipedia.org/wiki/Bfloat16_floating-point_format)
-        and the shape is `[8,1,1280,16384]`.
+        [bf16](https://en.wikipedia.org/wiki/Bfloat16_floating-point_format) and
+        the shape is `[8,1,1280,16384]`.
 *   Layout (with Tiling): `3,2,0,1:T(8,128)(2,1)`
     *   This describes how the array is stored in memory. `3,2,0,1` denotes the
         order of the axes in memory (i.e., column major, row major, etc.) and

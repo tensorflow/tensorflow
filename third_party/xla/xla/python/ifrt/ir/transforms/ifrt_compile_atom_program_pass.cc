@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
@@ -23,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -37,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
@@ -49,17 +53,23 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/compiler.h"
+#include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/constants.h"
+#include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
-#include "xla/python/ifrt/ir/transforms/multi_threaded_atom_program_compiler.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
+#include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/utils.h"
+#include "xla/tsl/platform/statusor.h"
+#include "tsl/platform/random.h"
 
 namespace xla {
 namespace ifrt {
@@ -75,10 +85,12 @@ class IfrtCompileAtomProgramPass
       std::shared_ptr<
           absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
           compile_options_overrides,
-      std::shared_ptr<AtomExecutableMap> atom_executable_map)
-      : atom_program_compiler_(std::move(compiler),
-                               std::move(compile_options_overrides), false),
-        atom_executable_map_(std::move(atom_executable_map)),
+      std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map)
+      : atom_program_compiler_(std::move(compiler)),
+        hlo_program_context_(std::make_shared<mlir::MLIRContext>(
+            mlir::MLIRContext::Threading::DISABLED)),
+        compile_options_overrides_(std::move(compile_options_overrides)),
+        atom_executable_future_map_(std::move(atom_executable_future_map)),
         user_context_(UserContextScope::current()) {}
 
   llvm::StringRef getArgument() const override {
@@ -106,20 +118,149 @@ class IfrtCompileAtomProgramPass
       mlir::ModuleOp module_op, absl::string_view symbol_name, CallOp call_op,
       mlir::OpBuilder& builder);
 
-  MultiThreadedAtomProgramCompiler atom_program_compiler_;
+  // Dispatches compilation of an atom program module.
+  // Depending on the type of module, a MLIR pipeline might be executed before
+  // the compilation is dispatched.
+  absl::StatusOr<AtomProgramCompileResult> CompileModule(
+      CallOp call_op, mlir::ModuleOp module_op);
+
+  // Gets the XLA compile options for the given atom program module.
+  absl::StatusOr<xla::CompileOptions> GetXlaCompileOptions(
+      CallOp call_op, mlir::ModuleOp module_op);
+
+  // Compiles an atom XLA program.
+  // Returns a future of a AtomProgramCompileResult for the compiled module.
+  //
+  // Note that the method runs `ifrt-compile-xla-preprocessing-pipeline`
+  // before dispatching compilation.
+  absl::StatusOr<AtomProgramCompileResult> CompileXla(CallOp call_op,
+                                                      mlir::ModuleOp module_op);
+
+  // Returns a future of a AtomProgramCompileResult for the MPMD reshard module.
+  absl::StatusOr<AtomProgramCompileResult> CompileMpmdReshard(
+      mlir::ModuleOp module_op);
+
+  std::shared_ptr<AtomProgramCompiler> atom_program_compiler_;
+
+  std::shared_ptr<mlir::MLIRContext> hlo_program_context_;
+
+  std::shared_ptr<
+      absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
+      compile_options_overrides_;
 
   // Map from symbol name of LoadedExecutableOp to LoadedExecutable.
-  std::shared_ptr<AtomExecutableMap> atom_executable_map_;
+  std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map_;
 
   // User context to use for compilation.
   UserContextRef user_context_;
 };
 
+absl::StatusOr<xla::CompileOptions>
+IfrtCompileAtomProgramPass::GetXlaCompileOptions(CallOp call_op,
+                                                 mlir::ModuleOp module_op) {
+  // If the CallOp has a compile options key, then try to use the provided
+  // compile options.
+  if (auto compile_options_key =
+          call_op->getAttrOfType<mlir::StringAttr>(kIfrtCompileOptionsKey)) {
+    ASSIGN_OR_RETURN(
+        std::optional<xla::CompileOptions> compile_options_override,
+        GetModuleXlaCompileOverrides(compile_options_key,
+                                     compile_options_overrides_));
+
+    if (compile_options_override.has_value()) {
+      return *compile_options_override;
+    }
+  }
+
+  return GetDefaultCompileOptions(call_op,
+                                  /*enable_sharding_propagation=*/false,
+                                  /*enable_parameter_tupling=*/false);
+}
+
+absl::StatusOr<AtomProgramCompileResult> IfrtCompileAtomProgramPass::CompileXla(
+    CallOp call_op, mlir::ModuleOp module_op) {
+  ASSIGN_OR_RETURN(xla::CompileOptions compile_options,
+                   GetXlaCompileOptions(call_op, module_op));
+  // In order to be able to compile multiple XLA computations in parallel, we
+  // need to:
+  // 1. Use an MLIR context with threading disabled to ensure MLIR doesn't
+  //    create too many threads when compiling many XLA computations in
+  //    parallel.
+  // 2. Clone the module into this new context. This cloning is necessary
+  //    because MLIR printing takes different paths depending on if a ModuleOp
+  //    has a parent or not. Thus, by cloning the module we ensure that the
+  //    module's string representation is maintained.
+  ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> cloned_module,
+                   CloneModuleIntoContext(module_op, *hlo_program_context_));
+  auto hlo_program = std::make_unique<HloProgram>(hlo_program_context_,
+                                                  std::move(cloned_module));
+  AtomProgramCompileResult result;
+  result.name =
+      absl::StrCat(hlo_program->name(), ".", tsl::random::ThreadLocalNew64());
+  result.executable = atom_program_compiler_->CompileXla(
+      std::move(hlo_program), std::move(compile_options));
+  return result;
+}
+
+absl::StatusOr<AtomProgramCompileResult>
+IfrtCompileAtomProgramPass::CompileMpmdReshard(mlir::ModuleOp module_op) {
+  auto main_func =
+      module_op.lookupSymbol<mlir::func::FuncOp>(kCalleeMainFuncName);
+  if (!main_func) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "requires module to have", kCalleeMainFuncName.str(), " function"));
+  }
+  std::vector<DType> dtypes;
+  std::vector<Shape> shapes;
+  std::vector<IfrtArrayType> in_arrays_types;
+  std::vector<IfrtArrayType> out_arrays_types;
+  dtypes.reserve(main_func.getArgumentTypes().size());
+  shapes.reserve(main_func.getArgumentTypes().size());
+  in_arrays_types.reserve(main_func.getArgumentTypes().size());
+  out_arrays_types.reserve(main_func.getResultTypes().size());
+  for (const mlir::Type arg_type : main_func.getArgumentTypes()) {
+    IfrtArrayType array_type = GetArrayType(arg_type);
+    ASSIGN_OR_RETURN(DType dtype,
+                     ToIfrtDType(array_type.getShape().getElementType()));
+    dtypes.push_back(std::move(dtype));
+    shapes.push_back(Shape(array_type.getShape().getShape()));
+    in_arrays_types.push_back(array_type);
+  }
+  for (const mlir::Type result_type : main_func.getResultTypes()) {
+    out_arrays_types.push_back(GetArrayType(result_type));
+  }
+  AtomProgramCompileResult result;
+  result.name = absl::StrCat("mpmd_reshard.", tsl::random::ThreadLocalNew64());
+  result.executable = atom_program_compiler_->CompileMpmdReshard(
+      std::move(dtypes), std::move(shapes), in_arrays_types, out_arrays_types);
+  return result;
+}
+
+absl::StatusOr<AtomProgramCompileResult>
+IfrtCompileAtomProgramPass::CompileModule(CallOp call_op,
+                                          mlir::ModuleOp module_op) {
+  auto module_type =
+      call_op->getAttrOfType<mlir::StringAttr>(kIfrtModuleTypeAttrName);
+  if (module_type == nullptr) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "CallOp requires `", kIfrtModuleTypeAttrName.str(), "` to be set"));
+  }
+  if (module_type == kIfrtModuleTypeXla) {
+    return CompileXla(call_op, module_op);
+  }
+  if (module_type == kIfrtModuleTypeMpmdReshard) {
+    return CompileMpmdReshard(module_op);
+  }
+  return absl::InvalidArgumentError(
+      absl::StrCat("No compiler for module type: ", module_type.str()));
+}
+
 void IfrtCompileAtomProgramPass::runOnOperation() {
   mlir::SymbolTableCollection symbol_table;
   mlir::OpBuilder builder(&getContext());
   // Map from the hash of the CallOp to the compile future.
-  llvm::DenseMap<CallOp, CompileFuture, IfrtCallOpInfo> call_to_compile_futures;
+  llvm::DenseMap<CallOp, AtomProgramCompileResult, IfrtCallOpInfo>
+      call_to_compile_results;
   mlir::ModuleOp module_op = getOperation();
 
   mlir::Attribute sdy_meshes_round_trip_attr =
@@ -134,10 +275,10 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
 
   // Walk and dispatch the compilations in parallel.
   module_op.walk([&](CallOp call_op) -> mlir::WalkResult {
-    xla::ifrt::UserContextScope user_context_scope(user_context_);
+    UserContextScope user_context_scope(user_context_);
     // Do not dispatch the atom program for compilation it has already been
     // dispatched.
-    if (!call_to_compile_futures.contains(call_op)) {
+    if (!call_to_compile_results.contains(call_op)) {
       mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
       auto callee_module =
           llvm::dyn_cast<mlir::ModuleOp>(callee->getParentOp());
@@ -164,18 +305,18 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
                                        sdy_meshes_round_trip_attr);
       }
 
-      absl::StatusOr<CompileFuture> compile_future =
-          atom_program_compiler_.CompileModule(call_op, callee_module);
-      if (!compile_future.ok()) {
+      absl::StatusOr<AtomProgramCompileResult> compile_result =
+          CompileModule(call_op, callee_module);
+      if (!compile_result.ok()) {
         call_op_to_error.try_emplace(
             call_op,
             absl::StrCat("failed to dispatch compilation of atom executable: ",
-                         compile_future.status().ToString()));
+                         compile_result.status().ToString()));
         return mlir::WalkResult::advance();
       }
       // Clone the CallOp because it will be modified later, but we want
       // to keep the original to be able to access the future.
-      call_to_compile_futures[call_op.clone()] = *std::move(compile_future);
+      call_to_compile_results[call_op.clone()] = *std::move(compile_result);
     }
     return mlir::WalkResult::advance();
   });
@@ -195,19 +336,12 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
         // created an op for the CallOp.
         loaded_exec_op_ref = loaded_exec_op_ref_it->second;
       } else {
-        auto compile_result = call_to_compile_futures[call_op].Await();
-        if (!compile_result.ok()) {
-          call_op_to_error.try_emplace(
-              call_op,
-              absl::StrCat(
-                  "failed to dispatch compilation of atom executable: ",
-                  compile_result.status().ToString()));
-          return mlir::WalkResult::advance();
-        }
+        const AtomProgramCompileResult& compile_result =
+            call_to_compile_results[call_op];
         auto callee_module = llvm::dyn_cast<mlir::ModuleOp>(
             call_op.getCalleeOp(symbol_table)->getParentOp());
         absl::StatusOr<mlir::SymbolRefAttr> symbol_ref =
-            GenerateLoadedExecutableOp(callee_module, compile_result->name,
+            GenerateLoadedExecutableOp(callee_module, compile_result.name,
                                        call_op, builder);
         if (!symbol_ref.ok()) {
           call_op_to_error.try_emplace(
@@ -220,12 +354,12 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
         // keep the original to get the symbol ref for equal CallOps.
         call_op_to_loaded_exec_op_ref[call_op.clone()] = loaded_exec_op_ref;
         // Save the atom program executable to extend its lifetime.
-        CHECK(atom_executable_map_
-                  ->try_emplace(compile_result->name,
-                                std::move(compile_result->executable))
+        CHECK(atom_executable_future_map_
+                  ->try_emplace(compile_result.name,
+                                std::move(compile_result.executable))
                   .second)
             << "Failed to insert atom program executable to map. "
-            << "Executable `" << compile_result->name << "` already exists";
+            << "Executable `" << compile_result.name << "` already exists";
       }
 
       // Generate CallLoadedExecutableOp.
@@ -247,22 +381,8 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
     }
   }
 
-  if (!call_op_to_error.empty()) {
-    // Wait on all compile futures to ensure that 1) the errors emitted here
-    // do not leak into any scoped diagnostic handlers that might be created
-    // during compilation dispatch, and 2) this->compiler_ is not accessed after
-    // the pass has been destructed. We don't care if the compilations succeed
-    // at this point because the pass has failed anyways.
-    for (auto& [call_op, future] : call_to_compile_futures) {
-      (void)future.Await();
-    }
-    for (auto& [call_op, error] : call_op_to_error) {
-      call_op.emitError(error);
-    }
-    signalPassFailure();
-  }
   // Erase the CallOp clones that we're used as keys of the map.
-  for (auto& [call_op, future] : call_to_compile_futures) {
+  for (auto& [call_op, future] : call_to_compile_results) {
     call_op.erase();
   }
 }
@@ -295,11 +415,11 @@ createIfrtCompileAtomProgramPass(
     std::shared_ptr<
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
         compile_options_overrides,
-    std::shared_ptr<AtomExecutableMap> atom_executable_map) {
+    std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map) {
   CHECK(compiler != nullptr);
   return std::make_unique<IfrtCompileAtomProgramPass>(
       std::move(compiler), std::move(compile_options_overrides),
-      std::move(atom_executable_map));
+      std::move(atom_executable_future_map));
 }
 
 void registerIfrtCompileAtomProgramPass(
@@ -307,15 +427,15 @@ void registerIfrtCompileAtomProgramPass(
     std::shared_ptr<
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
         compile_options_overrides,
-    std::shared_ptr<AtomExecutableMap> atom_executable_map) {
+    std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map) {
   mlir::registerPass(
       [compiler = std::move(compiler),
        compile_options_overrides = std::move(compile_options_overrides),
-       atom_executable_map =
-           std::move(atom_executable_map)]() -> std::unique_ptr<mlir::Pass> {
+       atom_executable_future_map = std::move(
+           atom_executable_future_map)]() -> std::unique_ptr<mlir::Pass> {
         return createIfrtCompileAtomProgramPass(
             std::move(compiler), std::move(compile_options_overrides),
-            std::move(atom_executable_map));
+            std::move(atom_executable_future_map));
       });
 }
 

@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/log/scoped_mock_log.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
@@ -31,7 +31,7 @@ using ::testing::_;
 
 namespace {
 
-TEST_F(GpuCodegenTest, OnNanShouldLogHloInstruction) {
+TEST_F(HloTestBase, OnNanShouldLogHloInstruction) {
   static constexpr absl::string_view kHloModule = R"hlo(
     HloModule test_module
     ENTRY main {
@@ -41,16 +41,16 @@ TEST_F(GpuCodegenTest, OnNanShouldLogHloInstruction) {
     }
   )hlo";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHloModule));
   module->mutable_config().mutable_debug_options().set_xla_gpu_detect_nan(
       DebugOptions::DETECTION_MODE_WARNING);
   absl::ScopedMockLog log;
-  EXPECT_CALL(
-      log, Log(absl::LogSeverity::kError, _,
-               ::testing::HasSubstr("Found entry with non zero nan count ")));
+  EXPECT_CALL(log,
+              Log(absl::LogSeverity::kError, _,
+                  ::testing::AllOf(::testing::HasSubstr("found NaN"),
+                                   ::testing::HasSubstr("nan_count: 1024,"))));
   EXPECT_CALL(log, Log(absl::LogSeverity::kError, _,
-                       ::testing::HasSubstr("Found NaN in HLO instruction ")));
+                       ::testing::HasSubstr("In HLO instruction")));
   EXPECT_CALL(log,
               Log(absl::LogSeverity::kError, _,
                   ::testing::HasSubstr("HLO fusion instruction computation")));
@@ -59,7 +59,7 @@ TEST_F(GpuCodegenTest, OnNanShouldLogHloInstruction) {
   log.StopCapturingLogs();
 }
 
-TEST_F(GpuCodegenTest, OnInfShouldLogHloInstruction) {
+TEST_F(HloTestBase, OnInfShouldLogHloInstruction) {
   static constexpr absl::string_view kHloModule = R"hlo(
     HloModule test_module
     ENTRY main {
@@ -70,16 +70,44 @@ TEST_F(GpuCodegenTest, OnInfShouldLogHloInstruction) {
     }
   )hlo";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHloModule));
   module->mutable_config().mutable_debug_options().set_xla_gpu_detect_inf(
       DebugOptions::DETECTION_MODE_WARNING);
   absl::ScopedMockLog log;
-  EXPECT_CALL(
-      log, Log(absl::LogSeverity::kError, _,
-               ::testing::HasSubstr("Found entry with non zero inf count ")));
+  EXPECT_CALL(log,
+              Log(absl::LogSeverity::kError, _,
+                  ::testing::AllOf(::testing::HasSubstr("found Inf"),
+                                   ::testing::HasSubstr("inf_count: 1024,"))));
   EXPECT_CALL(log, Log(absl::LogSeverity::kError, _,
-                       ::testing::HasSubstr("Found Inf in HLO instruction ")));
+                       ::testing::HasSubstr("In HLO instruction ")));
+  EXPECT_CALL(log,
+              Log(absl::LogSeverity::kError, _,
+                  ::testing::HasSubstr("HLO fusion instruction computation")));
+  log.StartCapturingLogs();
+  EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/true));
+  log.StopCapturingLogs();
+}
+
+TEST_F(HloTestBase, OnMinMaxShouldLogValuesAndHloInstruction) {
+  static constexpr absl::string_view kHloModule = R"hlo(
+    HloModule test_module
+    ENTRY main {
+      c0 = f32[] constant(-512)
+      iota = f32[1024] iota(), iota_dimension=0
+      offset = f32[1024] broadcast(c0), dimensions={}
+      ROOT add = f32[1024] add(iota, offset)
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHloModule));
+  module->mutable_config().mutable_debug_options().set_xla_gpu_log_minmax(true);
+  absl::ScopedMockLog log;
+  EXPECT_CALL(log,
+              Log(absl::LogSeverity::kError, _,
+                  ::testing::AllOf(::testing::HasSubstr("min_value: -512."),
+                                   ::testing::HasSubstr("max_value: 511."))));
+  EXPECT_CALL(log, Log(absl::LogSeverity::kError, _,
+                       ::testing::HasSubstr("In HLO instruction ")));
   EXPECT_CALL(log,
               Log(absl::LogSeverity::kError, _,
                   ::testing::HasSubstr("HLO fusion instruction computation")));

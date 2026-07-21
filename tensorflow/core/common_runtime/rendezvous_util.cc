@@ -13,8 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/rendezvous_util.h"
-#include "tensorflow/core/platform/mutex.h"
 
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/types/span.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/reffed_status_callback.h"
 
 namespace tensorflow {
@@ -25,19 +32,18 @@ absl::Status SendTensorsToRendezvous(
     const std::vector<std::string>& keys,
     absl::Span<const Tensor> tensors_to_send) {
   if (keys.size() != tensors_to_send.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "keys and tensors_to_send are not the same size. keys.size() = ",
-        keys.size(), "; tensors_to_send.size() = ", tensors_to_send.size());
+        keys.size(), "; tensors_to_send.size() = ", tensors_to_send.size()));
   }
   if (!alloc_attrs.empty() && (keys.size() != alloc_attrs.size())) {
-    return errors::InvalidArgument(
-        "keys and alloc_attrs are not the same size. ",
-        "keys.size() = ", keys.size(),
-        "; alloc_attrs.size() = ", alloc_attrs.size());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "keys and alloc_attrs are not the same size. ", "keys.size() = ",
+        keys.size(), "; alloc_attrs.size() = ", alloc_attrs.size()));
   }
 
   if (!rendezvous) {
-    return errors::InvalidArgument("Rendezvous is null.");
+    return absl::InvalidArgumentError("Rendezvous is null.");
   }
 
   Rendezvous::ParsedKey parsed;
@@ -64,9 +70,9 @@ void RecvOutputsFromRendezvousAsync(
     return;
   }
   if (!alloc_attrs.empty() && (keys.size() != alloc_attrs.size())) {
-    done(errors::InvalidArgument(
+    done(absl::InvalidArgumentError(absl::StrCat(
         "keys and alloc_attrs are not the same size. ", "keys.size() = ",
-        keys.size(), "; alloc_attrs.size() = ", alloc_attrs.size()));
+        keys.size(), "; alloc_attrs.size() = ", alloc_attrs.size())));
   }
 
   received_tensors->reserve(keys.size());
@@ -108,8 +114,8 @@ void RecvOutputsFromRendezvousAsync(
           if (status.ok()) {
             *val = v;
             if (is_dead) {
-              status = errors::InvalidArgument("The tensor returned for ", key,
-                                               " was not valid.");
+              status = absl::InvalidArgumentError(absl::StrCat(
+                  "The tensor returned for ", key, " was not valid."));
             }
           }
           status_cb->UpdateStatus(status);
@@ -131,8 +137,8 @@ absl::Status RecvOutputsFromRendezvous(RendezvousInterface* rendezvous,
     TF_RETURN_IF_ERROR(Rendezvous::ParseKey(key, &parsed));
     TF_RETURN_IF_ERROR(rendezvous->Recv(parsed, args, val, &is_dead));
     if (is_dead) {
-      return errors::InvalidArgument("The tensor returned for ", key,
-                                     " was not valid.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("The tensor returned for ", key, " was not valid."));
     }
   }
   return absl::OkStatus();

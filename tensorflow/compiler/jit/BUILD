@@ -12,7 +12,6 @@ load("//tensorflow/compiler/jit:package_groups.bzl", "legacy_jit_users_package_g
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
-    "if_static",
     "tf_cuda_tests_tags",
 )
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -55,6 +54,13 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "defs.cc",
+    ],
+    visibility = [":friends"],
+)
+
+filegroup(
+    name = "mobile_hdrs_no_runtime",
+    srcs = [
         "defs.h",
     ],
     visibility = [":friends"],
@@ -68,6 +74,8 @@ cc_library(
     visibility = internal_visibility([
         ":legacy_jit_users",
         "//tensorflow/python/profiler:__pkg__",
+        "//tensorflow/python/kernel_tests/nn_ops:__pkg__",
+        "//tensorflow/python/kernel_tests/linalg/sparse:__pkg__",
     ]),
     deps = [
         ":xla_cpu_device",
@@ -109,6 +117,7 @@ cc_library(
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
+        "@xla//xla/pjrt/plugin/xla_gpu:gpu_static_registration",
         "@xla//xla/service:gpu_plugin",
         "//tensorflow/core/tfrt/common:pjrt_gpu_client_registration",
     ]) + if_cuda([
@@ -125,7 +134,6 @@ cc_library(
     deps = if_libtpu([
         "//tensorflow/core/tpu/graph_rewrite:tpu_rewrite_pass_registration",
         "//tensorflow/core/tpu/graph_rewrite:configure_tpu_embedding_rewrite_registration",
-        "@xla//xla/stream_executor/tpu:tpu_transfer_manager",
     ]),
     alwayslink = 1,
 )
@@ -193,42 +201,15 @@ cc_library(
 cc_library(
     name = "xla_tpu_device",
     srcs = ["xla_tpu_device.cc"],
-    hdrs = ["xla_tpu_device.h"],
     visibility = [":friends"],
     deps = [
         ":xla_device",
-        ":xla_device_context",
-        ":xla_kernel_creator",  # buildcleaner: keep
-        "//tensorflow/compiler/jit/kernels:xla_ops",
-        "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/tf2xla:layout_util",
-        "//tensorflow/compiler/tf2xla:tf2xla_util",
-        "//tensorflow/compiler/tf2xla:xla_helpers",
-        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/jit/kernels:xla_ops_no_jit_rewrite_registration",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:session_options",
-        "//tensorflow/core/common_runtime:device",
-        "//tensorflow/core/common_runtime:device_factory",
-        "//tensorflow/core/common_runtime:dma_helper",
-        "//tensorflow/core/platform:status",
+        "//tensorflow/core/framework:kernel_def_proto_cc",
         "//tensorflow/core/tpu:tpu_defs",
-        "//tensorflow/core/tpu:tpu_node_device_util",
-        "//tensorflow/core/tpu:virtual_device",
-        "@com_google_absl//absl/types:optional",
-        "@tsl//tsl/platform:statusor",
-        "@xla//xla/stream_executor/tpu:c_api_conversions",
-        "@xla//xla/stream_executor/tpu:status_helper",
-        "@xla//xla/stream_executor/tpu:tpu_api",
-        "@xla//xla/stream_executor/tpu:tpu_executor_base",
-        "@xla//xla/stream_executor/tpu:tpu_node_context",
-        "@xla//xla/stream_executor/tpu:tpu_platform_interface",
-        "@xla//xla/stream_executor/tpu:tpu_stream_interface",
-    ] + if_static([
-        "//tensorflow/core/common_runtime:copy_tensor",
-        ":jit_compilation_passes",
-    ]),
+    ],
     alwayslink = 1,
 )
 
@@ -822,6 +803,7 @@ tf_proto_library(
     srcs = ["tf_graph_to_hlo_compiler.proto"],
     protodeps = tf_additional_all_protos(),
     visibility = ["//visibility:public"],
+    deps = ["//tensorflow/compiler/tf2xla:xla_argument_proto"],
 )
 
 cc_library(
@@ -2011,6 +1993,7 @@ tf_cuda_cc_test(
         "//tensorflow/cc:math_ops",
         "//tensorflow/cc:scope",
         "//tensorflow/compiler/jit/tests:device_compiler_test_helper",
+        "//tensorflow/compiler/tf2xla:xla_argument",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -2037,6 +2020,7 @@ tf_cuda_cc_test(
         "@xla//xla/hlo/builder:xla_computation",
         "@xla//xla/stream_executor:platform_manager",
         "@xla//xla/tsl/lib/strings:proto_serialization",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 

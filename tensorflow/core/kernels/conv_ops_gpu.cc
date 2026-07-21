@@ -65,7 +65,8 @@ bool ComputeInNhwcEnabled(DataType data_type, se::Stream* stream,
 // convolution on the stream) and parameters, by running all possible
 // algorithms and measuring execution time.
 template <typename T>
-StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
+absl::StatusOr<AutotuneEntry<stream_executor::dnn::FusedConvOp>>
+AutotuneFusedConv(
     bool cudnn_use_autotune,
     AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::FusedConvOp>>*
         autotune_map,
@@ -109,7 +110,7 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
     auto launch_func =
         [&](se::ScratchAllocator* allocator_used,
             const std::unique_ptr<const se::dnn::FusedConvRunner>& runner,
-            se::dnn::ProfileResult* profile_result) -> Status {
+            se::dnn::ProfileResult* profile_result) -> absl::Status {
       TF_ASSIGN_OR_RETURN(auto scratch, allocator_used->AllocateBytes(
                                             runner->GetWorkspaceSize()));
       return (*runner)(stream, profile_result, scratch, input_ptr, filter_ptr,
@@ -182,7 +183,7 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
 #endif
 }
 
-template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>>
+template absl::StatusOr<AutotuneEntry<stream_executor::dnn::FusedConvOp>>
 AutotuneFusedConv<double>(
     bool cudnn_use_autotune,
     AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::FusedConvOp>>*
@@ -195,11 +196,15 @@ AutotuneFusedConv<double>(
     const se::dnn::ConvolutionDescriptor& conv_desc,
     const se::dnn::ActivationMode activation_mode, double conv_scale,
     double side_input_scale, double leakyrelu_alpha,
-    se::DeviceMemory<double> input_ptr, se::DeviceMemory<double> filter_ptr,
-    se::DeviceMemory<double> output_ptr, se::DeviceMemory<double> bias_ptr,
-    se::DeviceMemory<double> side_input_ptr, int64_t scratch_size_limit);
+    stream_executor::DeviceAddress<double> input_ptr,
+    stream_executor::DeviceAddress<double> filter_ptr,
+    stream_executor::DeviceAddress<double> output_ptr,
+    stream_executor::DeviceAddress<double> bias_ptr,
+    stream_executor::DeviceAddress<double> side_input_ptr,
+    int64_t scratch_size_limit);
 
-template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv<float>(
+template absl::StatusOr<AutotuneEntry<stream_executor::dnn::FusedConvOp>>
+AutotuneFusedConv<float>(
     bool cudnn_use_autotune,
     AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::FusedConvOp>>*
         autotune_map,
@@ -211,11 +216,14 @@ template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv<float>(
     const se::dnn::ConvolutionDescriptor& conv_desc,
     const se::dnn::ActivationMode activation_mode, double conv_scale,
     double side_input_scale, double leakyrelu_alpha,
-    se::DeviceMemory<float> input_ptr, se::DeviceMemory<float> filter_ptr,
-    se::DeviceMemory<float> output_ptr, se::DeviceMemory<float> bias_ptr,
-    se::DeviceMemory<float> side_input_ptr, int64_t scratch_size_limit);
+    stream_executor::DeviceAddress<float> input_ptr,
+    stream_executor::DeviceAddress<float> filter_ptr,
+    stream_executor::DeviceAddress<float> output_ptr,
+    stream_executor::DeviceAddress<float> bias_ptr,
+    stream_executor::DeviceAddress<float> side_input_ptr,
+    int64_t scratch_size_limit);
 
-template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>>
+template absl::StatusOr<AutotuneEntry<stream_executor::dnn::FusedConvOp>>
 AutotuneFusedConv<Eigen::half>(
     bool cudnn_use_autotune,
     AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::FusedConvOp>>*
@@ -228,14 +236,15 @@ AutotuneFusedConv<Eigen::half>(
     const se::dnn::ConvolutionDescriptor& conv_desc,
     const se::dnn::ActivationMode activation_mode, double conv_scale,
     double side_input_scale, double leakyrelu_alpha,
-    se::DeviceMemory<Eigen::half> input_ptr,
-    se::DeviceMemory<Eigen::half> filter_ptr,
-    se::DeviceMemory<Eigen::half> output_ptr,
-    se::DeviceMemory<Eigen::half> bias_ptr,
-    se::DeviceMemory<Eigen::half> side_input_ptr, int64_t scratch_size_limit);
+    stream_executor::DeviceAddress<Eigen::half> input_ptr,
+    stream_executor::DeviceAddress<Eigen::half> filter_ptr,
+    stream_executor::DeviceAddress<Eigen::half> output_ptr,
+    stream_executor::DeviceAddress<Eigen::half> bias_ptr,
+    stream_executor::DeviceAddress<Eigen::half> side_input_ptr,
+    int64_t scratch_size_limit);
 
 template <typename T>
-StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
+absl::StatusOr<AutotuneEntry<stream_executor::dnn::ConvOp>> AutotuneUnfusedConv(
     bool cudnn_use_autotune,
     AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::ConvOp>>* autotune_map,
     const ConvParameters& conv_parameters, OpKernelContext* ctx,
@@ -275,7 +284,7 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
             WrapRedzoneBestEffort(&rz_allocator, filter_ptr));
         break;
       default:
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             absl::StrFormat("Unknown ConvolutionKind %d", kind));
     }
 
@@ -293,7 +302,7 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
     auto launch_func =
         [&](se::ScratchAllocator* allocator_used,
             const std::unique_ptr<const se::dnn::ConvRunner>& runner,
-            se::dnn::ProfileResult* profile_result) -> Status {
+            se::dnn::ProfileResult* profile_result) -> absl::Status {
       TF_ASSIGN_OR_RETURN(auto scratch, allocator_used->AllocateBytes(
                                             runner->GetWorkspaceSize()));
       return (*runner)(stream, profile_result, scratch, input_ptr, filter_ptr,

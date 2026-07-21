@@ -16,19 +16,25 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_THUNK_BUFFER_DEBUG_FLOAT_CHECK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_THUNK_BUFFER_DEBUG_FLOAT_CHECK_H_
 
+#include <vector>
+
 #include "absl/base/nullability.h"
 #include "absl/status/status.h"
-#include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
 
-absl::Status RunFloatCheckPassInternal(SequentialThunk* root_thunk,
-                                       const DebugOptions& debug_options,
-                                       const HloModule* absl_nonnull hlo_module,
-                                       ThunkPassBufferAllocator& allocator);
-}
+absl::Status RunFloatCheckPassInternal(
+    ThunkSequence* thunk_sequence, const DebugOptions& debug_options,
+    const HloModule* absl_nonnull hlo_module,
+    const std::vector<ShapedSlice>& module_output_slices,
+    ThunkPassBufferAllocator& allocator);
+
+}  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_THUNK_BUFFER_DEBUG_FLOAT_CHECK_H_

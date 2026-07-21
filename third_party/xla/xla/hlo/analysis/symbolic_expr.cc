@@ -21,7 +21,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <iterator>
+#include <limits>
 #include <numeric>
 #include <optional>
 #include <string>
@@ -32,296 +32,30 @@ limitations under the License.
 #include "absl/base/const_init.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/strings/ascii.h"
-#include "absl/strings/match.h"
-#include "absl/strings/numbers.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/strings/strip.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/MathExtras.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/StorageUniquer.h"
 #include "mlir/Support/TypeID.h"
+#include "xla/hlo/analysis/symbolic_map.h"
+#include "xla/hlo/analysis/symbolic_map_serialization.h"
 
 namespace xla {
 namespace {
 
-std::string GetBinaryOpString(SymbolicExprType type) {
-  switch (type) {
-    case SymbolicExprType::kAdd:
-      return "+";
-    case SymbolicExprType::kMul:
-      return "*";
-    case SymbolicExprType::kFloorDiv:
-      return "floordiv";
-    case SymbolicExprType::kCeilDiv:
-      return "ceildiv";
-    case SymbolicExprType::kMod:
-      return "mod";
-    case SymbolicExprType::kMax:
-      return "max";
-    case SymbolicExprType::kMin:
-      return "min";
-    default:
-      LOG(FATAL) << "unknown binary operation on symbolic expressions";
-  }
+uint64_t GetLargestKnownDivisor(SymbolicExpr expr);
+
+// Returns the absolute value of n as a uint64_t. This is safe for
+// n = std::numeric_limits<int64_t>::min().
+uint64_t SafeAbs(int64_t n) {
+  return n < 0 ? -static_cast<uint64_t>(n) : static_cast<uint64_t>(n);
 }
-
-bool IsVariableCharacter(char c) { return absl::ascii_isalnum(c) || c == '_'; }
-
-// Helper class to manage the state of the parser.
-class Parser {
- public:
-  Parser(absl::string_view str, mlir::MLIRContext* context,
-         std::optional<int64_t> num_dims = std::nullopt)
-      : remaining_str_(str), context_(context), num_dims_(num_dims) {}
-
-  Parser(absl::string_view str, mlir::MLIRContext* context,
-         const llvm::DenseMap<llvm::StringRef, SymbolicExpr>* variable_map)
-      : remaining_str_(str), context_(context), variable_map_(variable_map) {}
-
-  SymbolicExpr Parse() {
-    SymbolicExpr expr = ParseExpression();
-    SkipWhitespace();
-    if (expr && !remaining_str_.empty()) {
-      return ReportError("Did not parse entire string");
-    }
-    return expr;
-  }
-
-  SymbolicExpr ParsePartial() { return ParseExpression(); }
-
-  absl::string_view GetRemainingStr() const { return remaining_str_; }
-
- private:
-  // TODO: b/459357586 - Consider returning StatusOr instead of failing
-  // gracefully by returning an empty SymbolicExpr.
-  SymbolicExpr ReportError(absl::string_view msg) {
-    LOG(ERROR) << msg << " at: \"" << remaining_str_ << "\"";
-    return SymbolicExpr();
-  }
-
-  std::optional<int64_t> ParseNumber() {
-    size_t num_len = 0;
-    if (!remaining_str_.empty() &&
-        (absl::ascii_isdigit(remaining_str_[0]) || remaining_str_[0] == '-')) {
-      num_len = 1;
-    }
-    while (num_len < remaining_str_.size() &&
-           absl::ascii_isdigit(remaining_str_[num_len])) {
-      num_len++;
-    }
-    if (num_len == 0) {
-      return std::nullopt;
-    }
-    int64_t number;
-    if (!absl::SimpleAtoi(remaining_str_.substr(0, num_len), &number)) {
-      return std::nullopt;
-    }
-    remaining_str_.remove_prefix(num_len);
-    return number;
-  }
-
-  // Handles lowest precedence operators: +
-  SymbolicExpr ParseExpression() {
-    SymbolicExpr lhs = ParseTerm();
-    if (!lhs) {
-      return lhs;
-    }
-    while (true) {
-      SkipWhitespace();
-      if (absl::ConsumePrefix(&remaining_str_, "+")) {
-        SymbolicExpr rhs = ParseTerm();
-        if (!rhs) {
-          return SymbolicExpr();
-        }
-        lhs =
-            CreateSymbolicBinaryOp(SymbolicExprType::kAdd, lhs, rhs, context_);
-      } else if (absl::ConsumePrefix(&remaining_str_, "-")) {
-        SymbolicExpr rhs = ParseTerm();
-        if (!rhs) {
-          return SymbolicExpr();
-        }
-        lhs = lhs - rhs;
-      } else {
-        break;
-      }
-    }
-    return lhs;
-  }
-
-  // Handles higher precedence operators: *, floordiv, ceildiv
-  SymbolicExpr ParseTerm() {
-    SymbolicExpr lhs = ParseFactor();
-    if (!lhs) {
-      return lhs;
-    }
-    while (true) {
-      SkipWhitespace();
-      if (absl::ConsumePrefix(&remaining_str_, "*")) {
-        SymbolicExpr rhs = ParseFactor();
-        if (!rhs) {
-          return SymbolicExpr();
-        }
-        lhs =
-            CreateSymbolicBinaryOp(SymbolicExprType::kMul, lhs, rhs, context_);
-      } else if (absl::ConsumePrefix(&remaining_str_, "floordiv")) {
-        SymbolicExpr rhs = ParseFactor();
-        if (!rhs) {
-          return SymbolicExpr();
-        }
-        lhs = CreateSymbolicBinaryOp(SymbolicExprType::kFloorDiv, lhs, rhs,
-                                     context_);
-      } else if (absl::ConsumePrefix(&remaining_str_, "ceildiv")) {
-        SymbolicExpr rhs = ParseFactor();
-        if (!rhs) {
-          return SymbolicExpr();
-        }
-        lhs = CreateSymbolicBinaryOp(SymbolicExprType::kCeilDiv, lhs, rhs,
-                                     context_);
-      } else if (absl::ConsumePrefix(&remaining_str_, "mod")) {
-        SymbolicExpr rhs = ParseFactor();
-        if (!rhs) {
-          return SymbolicExpr();
-        }
-        lhs =
-            CreateSymbolicBinaryOp(SymbolicExprType::kMod, lhs, rhs, context_);
-      } else {
-        break;
-      }
-    }
-    return lhs;
-  }
-
-  // Attempts to parse a binary function call (e.g., "name(lhs, rhs)")
-  // Returns the parsed expression, or nullptr if `func_name` does not match.
-  SymbolicExpr ParseBinaryFunction(SymbolicExprType type) {
-    std::string func_name = GetBinaryOpString(type);
-    if (!absl::ConsumePrefix(&remaining_str_, absl::StrCat(func_name, "("))) {
-      return {};
-    }
-    SymbolicExpr lhs = ParseExpression();
-    if (!lhs) {
-      return SymbolicExpr();
-    }
-    SkipWhitespace();
-    if (!absl::ConsumePrefix(&remaining_str_, ",")) {
-      return ReportError("Missing ',' in " + func_name + "()");
-    }
-    SymbolicExpr rhs = ParseExpression();
-    if (!rhs) {
-      return SymbolicExpr();
-    }
-    SkipWhitespace();
-    if (!absl::ConsumePrefix(&remaining_str_, ")")) {
-      return ReportError("Missing ')' in " + func_name + "()");
-    }
-    return CreateSymbolicBinaryOp(type, lhs, rhs, context_);
-  }
-
-  SymbolicExpr MaybeParseVariableFromMap() {
-    auto it = absl::c_find_if_not(remaining_str_, IsVariableCharacter);
-    size_t var_len = std::distance(remaining_str_.begin(), it);
-    if (var_len > 0) {
-      auto var_it =
-          variable_map_->find(llvm::StringRef(remaining_str_.data(), var_len));
-      if (var_it != variable_map_->end()) {
-        remaining_str_.remove_prefix(var_len);
-        return var_it->second;
-      }
-    }
-    return SymbolicExpr();
-  }
-
-  SymbolicExpr MaybeParseDimAndSymbolVariables() {
-    if (absl::ConsumePrefix(&remaining_str_, "v") ||
-        absl::ConsumePrefix(&remaining_str_, "d")) {
-      std::optional<int64_t> var_id = ParseNumber();
-      if (!var_id.has_value()) {
-        return ReportError("Cannot parse variable id");
-      }
-      return CreateSymbolicVariable(var_id.value(), context_);
-    }
-    if (absl::ConsumePrefix(&remaining_str_, "s")) {
-      if (!num_dims_.has_value()) {
-        return ReportError(
-            "Symbol cannot be parsed because number of dimensions is not set.");
-      }
-      std::optional<int64_t> sym_id = ParseNumber();
-      // We need to know the number of dimensions to determine a symbol id.
-      if (!sym_id.has_value()) {
-        return ReportError("Cannot parse symbol id after 's'");
-      }
-      return CreateSymbolicVariable(num_dims_.value() + sym_id.value(),
-                                    context_);
-    }
-    return SymbolicExpr();
-  }
-
-  // Handles highest precedence items: numbers, variables, and functions.
-  SymbolicExpr ParseFactor() {
-    SkipWhitespace();
-    if (remaining_str_.empty()) {
-      return ReportError("Unexpected end of expression");
-    }
-
-    // Case 1:Function call like max( ... ) or min( ... )
-    if (absl::StartsWith(remaining_str_, "max(")) {
-      return ParseBinaryFunction(SymbolicExprType::kMax);
-    }
-    if (absl::StartsWith(remaining_str_, "min(")) {
-      return ParseBinaryFunction(SymbolicExprType::kMin);
-    }
-    // Case 2: Parenthesized subexpression
-    if (absl::ConsumePrefix(&remaining_str_, "(")) {
-      SymbolicExpr expr = ParseExpression();
-      if (!expr) {
-        return SymbolicExpr();
-      }
-      SkipWhitespace();
-      if (!absl::ConsumePrefix(&remaining_str_, ")")) {
-        return ReportError("Missing parenthesis");
-      }
-      return expr;
-    }
-
-    // Case 3: Variables from map. If `variable_map_` is provided, variables in
-    // it are checked before standard variables ('d', 's', 'v').
-    if (variable_map_ != nullptr) {
-      if (SymbolicExpr expr = MaybeParseVariableFromMap()) {
-        return expr;
-      }
-    }
-
-    // Case 4: Variable (e.g., "v123", "d0", "s0")
-    char c = remaining_str_[0];
-    if (c == 'v' || c == 'd' || c == 's') {
-      return MaybeParseDimAndSymbolVariables();
-    }
-
-    // Case 5: Number
-    std::optional<int64_t> val = ParseNumber();
-    if (val.has_value()) {
-      return CreateSymbolicConstant(val.value(), context_);
-    }
-    return ReportError("Failed to parse expression");
-  }
-
-  void SkipWhitespace() {
-    remaining_str_ = absl::StripLeadingAsciiWhitespace(remaining_str_);
-  }
-
-  absl::string_view remaining_str_;
-  mlir::MLIRContext* context_;
-  std::optional<int64_t> num_dims_;
-  const llvm::DenseMap<llvm::StringRef, SymbolicExpr>* variable_map_ = nullptr;
-};
 
 // Returns {BASE, COEFF}, where expr is equivalent to BASE * COEFF.
 std::pair<SymbolicExpr, int64_t> GetBaseAndCoeff(SymbolicExpr expr) {
@@ -349,16 +83,62 @@ void ExtractTerms(SymbolicExpr expr,
   }
 }
 
-// TODO(b/459357586): Remove this function and use CanonicalizeAdd instead.
-SymbolicExpr BasicAddSimplify(SymbolicExpr lhs, SymbolicExpr rhs) {
-  if (rhs.GetType() == SymbolicExprType::kConstant && rhs.GetValue() == 0) {
-    return lhs;
+// Pass to construct exprs by combining:
+//   (X floordiv C) * C * Y + (X % C) * Y => X * Y
+bool ConstructExprsCombiningFloorDivAndMod(
+    llvm::DenseMap<SymbolicExpr, int64_t>& term_map,
+    llvm::SmallVector<SymbolicExpr>& exprs, mlir::MLIRContext* ctx) {
+  bool changed = false;
+
+  // We are looking for two terms in the sum that conceptually represent:
+  // 1. A floor division: `(X floordiv C) * (C * Y)`
+  // 2. A modulo:         `(X mod C) * Y`
+  // If we find both, we can replace them with a single term: `X * Y`.
+  for (auto& [base, value] : term_map) {
+    if (value == 0 || base.GetType() != SymbolicExprType::kFloorDiv) {
+      continue;
+    }
+
+    SymbolicExpr rhs = base.GetRHS();
+    if (rhs.GetType() == SymbolicExprType::kConstant) {
+      int64_t C = rhs.GetValue();
+      int64_t Y_times_C = value;
+
+      // Ensure C is positive (valid divisor for the identity used) and that
+      // the coefficient is cleanly divisible by C (so we can extract the
+      // factor Y). The identity (X // C) * C + (X % C) == X only holds
+      // for the current Evaluate implementation when C > 0.
+      if (C > 0 && Y_times_C % C == 0) {
+        int64_t Y = Y_times_C / C;
+
+        // Construct the expected modulo term `(X mod C)` to look for.
+        SymbolicExpr mod_expr = (base.GetLHS() % rhs).Canonicalize();
+
+        auto it = term_map.find(mod_expr);
+        if (it != term_map.end()) {
+          if (it->second == Y) {
+            SymbolicExpr X = base.GetLHS();
+
+            // "Erase" both terms by zeroing their coefficients.
+            value = 0;
+            it->second = 0;
+
+            // Emit the cleanly collapsed algebraic result `X * Y`.
+            exprs.push_back((X * Y).Canonicalize());
+            changed = true;
+          }
+        }
+      }
+    }
   }
-  if (lhs.GetType() == SymbolicExprType::kConstant && lhs.GetValue() == 0) {
-    return rhs;
+
+  for (const auto& [term, coeff] : term_map) {
+    if (coeff != 0) {
+      exprs.push_back((term * coeff).Canonicalize());
+    }
   }
-  return CreateSymbolicBinaryOp(SymbolicExprType::kAdd, lhs, rhs,
-                                lhs.GetContext());
+
+  return changed;
 }
 
 SymbolicExpr CanonicalizeAdd(SymbolicExpr lhs, SymbolicExpr rhs) {
@@ -372,7 +152,7 @@ SymbolicExpr CanonicalizeAdd(SymbolicExpr lhs, SymbolicExpr rhs) {
   absl::c_sort(terms,
                [](const auto& a, const auto& b) { return a.first < b.first; });
 
-  llvm::SmallVector<SymbolicExpr> exprs;
+  llvm::DenseMap<SymbolicExpr, int64_t> term_map;
   int64_t const_val = 0;
 
   for (int i = 0; i < terms.size(); ++i) {
@@ -391,9 +171,13 @@ SymbolicExpr CanonicalizeAdd(SymbolicExpr lhs, SymbolicExpr rhs) {
     if (current_base.GetType() == SymbolicExprType::kConstant) {
       const_val += current_base.GetValue() * current_coeff;
     } else {
-      exprs.push_back((current_base * current_coeff).Canonicalize());
+      term_map[current_base] += current_coeff;
     }
   }
+
+  llvm::SmallVector<SymbolicExpr> exprs;
+
+  bool changed = ConstructExprsCombiningFloorDivAndMod(term_map, exprs, ctx);
 
   // Add the combined constant term as an expression
   if (const_val != 0) {
@@ -410,11 +194,11 @@ SymbolicExpr CanonicalizeAdd(SymbolicExpr lhs, SymbolicExpr rhs) {
     result =
         CreateSymbolicBinaryOp(SymbolicExprType::kAdd, result, exprs[i], ctx);
   }
-  return result;
+  return changed ? result.Canonicalize() : result;
 }
 
 // Helper to simplify multiplication when the RHS is a constant.
-SymbolicExpr SimplifyMulByConstantRHS(SymbolicExpr lhs, SymbolicExpr rhs) {
+SymbolicExpr TrySimplifyMulByConstantRHS(SymbolicExpr lhs, SymbolicExpr rhs) {
   if (rhs.GetType() != SymbolicExprType::kConstant) {
     return SymbolicExpr();
   }
@@ -438,31 +222,12 @@ SymbolicExpr SimplifyMulByConstantRHS(SymbolicExpr lhs, SymbolicExpr rhs) {
   return SymbolicExpr();
 }
 
-SymbolicExpr BasicMulSimplify(SymbolicExpr lhs, SymbolicExpr rhs) {
-  mlir::MLIRContext* ctx = lhs.GetContext();
-
-  // Try constant folding, neutral element simplification, and associativity.
-  if (rhs.GetType() == SymbolicExprType::kConstant) {
-    SymbolicExpr simplified = SimplifyMulByConstantRHS(lhs, rhs);
-    if (simplified) {
-      return simplified;
-    }
-  } else if (lhs.GetType() == SymbolicExprType::kConstant) {
-    SymbolicExpr simplified = SimplifyMulByConstantRHS(rhs, lhs);
-    if (simplified) {
-      return simplified;
-    }
-  }
-
-  return CreateSymbolicBinaryOp(SymbolicExprType::kMul, lhs, rhs, ctx);
-}
-
 SymbolicExpr CanonicalizeMul(SymbolicExpr lhs, SymbolicExpr rhs) {
   mlir::MLIRContext* ctx = lhs.GetContext();
 
   if (rhs.GetType() == SymbolicExprType::kConstant) {
     // Try constant folding, neutral element simplification, and associativity.
-    SymbolicExpr simplified = SimplifyMulByConstantRHS(lhs, rhs);
+    SymbolicExpr simplified = TrySimplifyMulByConstantRHS(lhs, rhs);
     if (simplified) {
       if (simplified.GetType() == SymbolicExprType::kConstant ||
           simplified == lhs) {
@@ -470,6 +235,12 @@ SymbolicExpr CanonicalizeMul(SymbolicExpr lhs, SymbolicExpr rhs) {
       }
       return simplified.Canonicalize();
     }
+  }
+
+  // Associativity: (X * C) * Y => (X * Y) * C
+  if (lhs.GetType() == SymbolicExprType::kMul &&
+      lhs.GetRHS().GetType() == SymbolicExprType::kConstant) {
+    return (lhs.GetLHS() * rhs * lhs.GetRHS()).Canonicalize();
   }
 
   // Distribute Mul over Add: (A + B) * C => (A * C) + (B * C)
@@ -553,6 +324,18 @@ SymbolicExpr TrySimplifyDivModByGCD(SymbolicExprType op_type, SymbolicExpr lhs,
   }
 }
 
+// Simplifies (A + B) mod C = B mod C if A is a multiple of C.
+SymbolicExpr SimplifyModAddOperand(SymbolicExpr a, SymbolicExpr b,
+                                   int64_t div) {
+  if (a.IsMultipleOf(div)) {
+    return (b % div).Canonicalize();
+  }
+  if (b.IsMultipleOf(div)) {
+    return (a % div).Canonicalize();
+  }
+  return SymbolicExpr();  // Cannot simplify
+}
+
 // Simplifies (A + B) floordiv C = (A / C) + (B floordiv C) if A is a multiple
 // of C.
 SymbolicExpr SimplifyFloorDivAddOperand(SymbolicExpr a, SymbolicExpr b,
@@ -598,6 +381,35 @@ SymbolicExpr CanonicalizeFloorDiv(SymbolicExpr lhs, SymbolicExpr rhs) {
         TrySimplifyDivModByGCD(SymbolicExprType::kFloorDiv, lhs, divisor);
     if (gcd_simplified) {
       return gcd_simplified;
+    }
+
+    // `(X + c) / D`, for constant `c` can be rewritten as `X / D + c / D` when
+    // adding the maximum possible remainder of `X / D` to `c` doesn't push the
+    // result over the next multiple of D, i.e. `|X % D| + |c % D| < |D|`.
+    // The absolute value of remainder of |X % D| is bounded by |D -
+    // GCD(X, D)|.
+    // Therefore we check that |c % D| < GCD(X, D).
+    if (lhs.GetType() == SymbolicExprType::kAdd &&
+        (lhs.GetRHS().GetType() == SymbolicExprType::kConstant ||
+         lhs.GetLHS().GetType() == SymbolicExprType::kConstant)) {
+      int64_t const_val = 0;
+      SymbolicExpr other = lhs;
+      if (lhs.GetRHS().GetType() == SymbolicExprType::kConstant) {
+        const_val = lhs.GetRHS().GetValue();
+        other = lhs.GetLHS();
+      } else {
+        const_val = lhs.GetLHS().GetValue();
+        other = lhs.GetRHS();
+      }
+      if (uint64_t const_d = GetLargestKnownDivisor(other); const_d > 1) {
+        int64_t g = std::gcd(const_d, std::abs(divisor));
+        int64_t c_div = llvm::divideFloorSigned(const_val, divisor);
+        int64_t rem = const_val - c_div * divisor;
+        if (std::abs(rem) < g) {
+          return (other.floorDiv(divisor) + CreateSymbolicConstant(c_div, ctx))
+              .Canonicalize();
+        }
+      }
     }
 
     // Distributivity for (A + C1) floordiv C2 where C1 % C2 == 0
@@ -666,20 +478,80 @@ SymbolicExpr CanonicalizeMod(SymbolicExpr lhs, SymbolicExpr rhs) {
     int64_t divisor = rhs.GetValue();
     CHECK_NE(divisor, 0) << "Modulo by zero";
 
+    if (divisor == 1 || divisor == -1) {
+      return CreateSymbolicConstant(0, ctx);
+    }
+
+    if (lhs.IsMultipleOf(divisor)) {
+      return CreateSymbolicConstant(0, ctx);
+    }
+
     if (SymbolicExpr gcd_simplified =
             TrySimplifyDivModByGCD(SymbolicExprType::kMod, lhs, divisor)) {
       return gcd_simplified;
     }
+
+    // Rewrite `(x % a) % b` to `x % b` if `a % b == 0`.
+    if (lhs.GetType() == SymbolicExprType::kMod &&
+        lhs.GetRHS().GetType() == SymbolicExprType::kConstant) {
+      int64_t inner_divisor = lhs.GetRHS().GetValue();
+      if (inner_divisor % divisor == 0) {
+        return (lhs.GetLHS() % divisor).Canonicalize();
+      }
+    }
+
+    // Distributivity for (A + C1) mod C2 where C1 % C2 == 0
+    if (lhs.GetType() == SymbolicExprType::kAdd) {
+      if (auto simplified =
+              SimplifyModAddOperand(lhs.GetLHS(), lhs.GetRHS(), divisor)) {
+        return simplified;
+      }
+    }
   }
 
-  // Fallback: A mod B = A - (A floordiv B) * B
-  SymbolicExpr floor_div_expr = lhs.floorDiv(rhs).Canonicalize();
-  if (floor_div_expr.GetType() == SymbolicExprType::kConstant &&
-      floor_div_expr.GetValue() == 0) {
-    return lhs;  // If A floordiv B is 0, then A mod B is A
+  return CreateSymbolicBinaryOp(SymbolicExprType::kMod, lhs, rhs, ctx);
+}
+
+uint64_t GetLargestKnownDivisor(SymbolicExpr expr) {
+  uint64_t lhs_largest = 1;
+  uint64_t rhs_largest = 1;
+  if (expr.IsBinaryOp()) {
+    lhs_largest = GetLargestKnownDivisor(expr.GetLHS());
+    rhs_largest = GetLargestKnownDivisor(expr.GetRHS());
   }
-  SymbolicExpr product = (floor_div_expr * rhs).Canonicalize();
-  return (lhs - product).Canonicalize();
+  switch (expr.GetType()) {
+    case SymbolicExprType::kVariable:
+      return 1;
+    case SymbolicExprType::kConstant:
+      return SafeAbs(expr.GetValue());
+    case SymbolicExprType::kAdd:
+    case SymbolicExprType::kMod:
+    case SymbolicExprType::kMin:
+    case SymbolicExprType::kMax:
+      // This is not necessarily correct. For example, (x + 2*x) is clearly
+      // multiple of 3. But this can be solved by canonicalizing the expression
+      // first.
+      return std::gcd(lhs_largest, rhs_largest);
+    case SymbolicExprType::kMul:
+      return lhs_largest * rhs_largest;
+    case SymbolicExprType::kFloorDiv:
+    case SymbolicExprType::kCeilDiv: {
+      SymbolicExpr rhs = expr.GetRHS();
+      if (rhs.GetType() == SymbolicExprType::kConstant) {
+        int64_t divisor = rhs.GetValue();
+        if (divisor != 0) {
+          uint64_t abs_divisor = SafeAbs(divisor);
+          if (lhs_largest % abs_divisor == 0) {
+            return lhs_largest / abs_divisor;
+          }
+        }
+      }
+      return 1;
+    }
+    default:
+      LOG(FATAL) << "Unsupported op_type in GetLargestKnownDivisor: "
+                 << GetBinaryOpString(expr.GetType());
+  }
 }
 
 }  // namespace
@@ -785,40 +657,29 @@ bool SymbolicExpr::operator<(const SymbolicExpr& other) const {
   }
 }
 
-std::string SymbolicExpr::ToString(int64_t num_dims) const {
-  switch (GetType()) {
-    case SymbolicExprType::kConstant:
-      return std::to_string(GetValue());
-    case SymbolicExprType::kVariable: {
-      int64_t var_id = GetValue();
-      if (num_dims == -1) {
-        return absl::StrCat("v", var_id);
-      }
-      // If num_dims is provided, then the first num_dims variables are
-      // dimensions, and the rest are symbols.
-      if (var_id < num_dims) {
-        return absl::StrCat("d", var_id);
-      }
-      return absl::StrCat("s", var_id - num_dims);
-    }
-    case SymbolicExprType::kAdd:
-    case SymbolicExprType::kMul:
-    case SymbolicExprType::kFloorDiv:
-    case SymbolicExprType::kCeilDiv:
-    case SymbolicExprType::kMod: {
-      auto bin_op_str = GetBinaryOpString(GetType());
-      return absl::StrCat("(", GetLHS().ToString(num_dims), " ", bin_op_str,
-                          " ", GetRHS().ToString(num_dims), ")");
-    }
-    case SymbolicExprType::kMax:
-    case SymbolicExprType::kMin: {
-      auto bin_op_str = GetBinaryOpString(GetType());
-      return absl::StrCat(bin_op_str, "(", GetLHS().ToString(num_dims), ", ",
-                          GetRHS().ToString(num_dims), ")");
-    }
-    default:
-      LOG(FATAL) << "unknown type on symbolic expressions";
-  }
+std::string SymbolicExpr::ToString(std::optional<int64_t> num_dims) const {
+  std::string s;
+  llvm::raw_string_ostream os(s);
+  xla::Print(*this, os, num_dims);
+  return os.str();
+}
+
+std::string SymbolicExpr::ToString(
+    absl::Span<const std::string> var_names) const {
+  std::string s;
+  llvm::raw_string_ostream os(s);
+  xla::Print(*this, os, var_names);
+  return os.str();
+}
+
+std::string SymbolicExpr::ToString(
+    absl::Span<const std::string> dim_names,
+    absl::Span<const std::string> sym_names) const {
+  llvm::SmallVector<std::string> var_names;
+  var_names.reserve(dim_names.size() + sym_names.size());
+  var_names.append(dim_names.begin(), dim_names.end());
+  var_names.append(sym_names.begin(), sym_names.end());
+  return ToString(var_names);
 }
 
 int64_t SymbolicExpr::Evaluate(
@@ -857,6 +718,68 @@ int64_t SymbolicExpr::Evaluate(
   }
 }
 
+std::optional<int64_t> SafeEvaluateSymbolicExpr(
+    SymbolicExpr expr, absl::Span<int64_t const> dims,
+    absl::Span<int64_t const> syms) {
+  if (!expr) {
+    return std::nullopt;
+  }
+  if (expr.GetType() == SymbolicExprType::kVariable) {
+    int64_t num_dims = dims.size();
+    if (IsSymbol(expr, num_dims)) {
+      int64_t sym_index = GetSymbolIndex(expr, num_dims);
+      if (sym_index < 0 || sym_index >= syms.size()) {
+        return std::nullopt;
+      }
+      return syms[sym_index];
+    }
+    int64_t dim_index = GetDimensionIndex(expr, num_dims);
+    if (dim_index < 0 || dim_index >= dims.size()) {
+      return std::nullopt;
+    }
+    return dims[dim_index];
+  }
+  if (expr.GetType() == SymbolicExprType::kConstant) {
+    return expr.GetValue();
+  }
+  auto lhs = SafeEvaluateSymbolicExpr(expr.GetLHS(), dims, syms);
+  auto rhs = SafeEvaluateSymbolicExpr(expr.GetRHS(), dims, syms);
+  if (!lhs || !rhs) return std::nullopt;
+
+  int64_t result;
+  bool result_division_is_undefined =
+      rhs == 0 || (lhs == std::numeric_limits<int64_t>::min() && rhs == -1);
+  switch (expr.GetType()) {
+    case SymbolicExprType::kAdd:
+      if (llvm::AddOverflow(*lhs, *rhs, result)) {
+        return std::nullopt;
+      }
+      return result;
+    case SymbolicExprType::kMul:
+      if (llvm::MulOverflow(*lhs, *rhs, result)) {
+        return std::nullopt;
+      }
+      return result;
+    case SymbolicExprType::kFloorDiv:
+      return result_division_is_undefined
+                 ? std::nullopt
+                 : std::make_optional(llvm::divideFloorSigned(*lhs, *rhs));
+    case SymbolicExprType::kCeilDiv:
+      return result_division_is_undefined
+                 ? std::nullopt
+                 : std::make_optional(llvm::divideCeilSigned(*lhs, *rhs));
+    case SymbolicExprType::kMod:
+      return *rhs <= 0 ? std::nullopt
+                       : std::make_optional(llvm::mod(*lhs, *rhs));
+    case SymbolicExprType::kMax:
+      return std::make_optional(std::max(*lhs, *rhs));
+    case SymbolicExprType::kMin:
+      return std::make_optional(std::min(*lhs, *rhs));
+    default:
+      LOG(FATAL) << "Unknown binary op: " << static_cast<int>(expr.GetType());
+  }
+}
+
 SymbolicExpr SymbolicExpr::ReplaceVariables(
     absl::Span<const SymbolicExpr> substitutions) const {
   mlir::MLIRContext* ctx = GetContext();
@@ -888,6 +811,34 @@ SymbolicExpr SymbolicExpr::ReplaceVariables(
     default:
       LOG(FATAL) << "Substitute not implemented for this type.";
   }
+}
+
+SymbolicExpr SymbolicExpr::ReplaceDims(
+    absl::Span<const SymbolicExpr> dim_replacements) const {
+  return ReplaceVariables(dim_replacements);
+}
+
+SymbolicExpr SymbolicExpr::ReplaceDims(
+    absl::Span<const SymbolicExpr> dim_replacements, int64_t current_num_dims,
+    int64_t new_num_dims, int64_t num_symbols) const {
+  CHECK_LE(dim_replacements.size(), current_num_dims);
+  if (current_num_dims == new_num_dims) {
+    return ReplaceDims(dim_replacements);
+  }
+
+  llvm::SmallVector<SymbolicExpr> all_replacements;
+  int64_t num_dims_to_replace = dim_replacements.size();
+  all_replacements.reserve(current_num_dims + num_symbols);
+  all_replacements.append(dim_replacements.begin(), dim_replacements.end());
+  for (int64_t i = 0; i < current_num_dims - num_dims_to_replace; ++i) {
+    all_replacements.push_back(
+        CreateSymbolicVariable(i + num_dims_to_replace, GetContext()));
+  }
+  for (int64_t i = 0; i < num_symbols; ++i) {
+    all_replacements.push_back(
+        CreateSymbolicVariable(new_num_dims + i, GetContext()));
+  }
+  return ReplaceVariables(all_replacements);
 }
 
 SymbolicExpr SymbolicExpr::ReplaceSymbols(
@@ -937,6 +888,12 @@ SymbolicExpr SymbolicExpr::Replace(
     return *this;
   }
   return CreateSymbolicBinaryOp(type, new_lhs, new_rhs, GetContext());
+}
+
+bool SymbolicExpr::IsFunctionOfVariable(VariableID var_id) const {
+  llvm::DenseSet<VariableID> used_vars;
+  GetUsedVariables(used_vars);
+  return used_vars.contains(var_id);
 }
 
 void SymbolicExpr::GetUsedVariables(
@@ -1024,9 +981,12 @@ SymbolicExpr SymbolicExpr::operator+(int64_t v) const {
   return *this + CreateSymbolicConstant(v, GetContext());
 }
 SymbolicExpr SymbolicExpr::operator+(SymbolicExpr other) const {
-  // TODO(b/433693782): We should use our own canonicalization here instead of
-  // relying on a similar one to AffineMap so tests do not fail.
-  return BasicAddSimplify(*this, other);
+  return CreateSymbolicBinaryOp(SymbolicExprType::kAdd, *this, other,
+                                GetContext());
+}
+
+SymbolicExpr operator+(int64_t lhs, SymbolicExpr rhs) {
+  return CreateSymbolicConstant(lhs, rhs.GetContext()) + rhs;
 }
 
 SymbolicExpr SymbolicExpr::operator-() const {
@@ -1041,15 +1001,22 @@ SymbolicExpr SymbolicExpr::operator*(int64_t v) const {
   return *this * CreateSymbolicConstant(v, GetContext());
 }
 SymbolicExpr SymbolicExpr::operator*(SymbolicExpr other) const {
-  // TODO(b/433693782): We should use our own canonicalization here instead of
-  // relying on a similar one to AffineMap so tests do not fail.
-  return BasicMulSimplify(*this, other);
+  return CreateSymbolicBinaryOp(SymbolicExprType::kMul, *this, other,
+                                GetContext());
+}
+
+SymbolicExpr operator*(int64_t lhs, SymbolicExpr rhs) {
+  return CreateSymbolicConstant(lhs, rhs.GetContext()) * rhs;
 }
 
 SymbolicExpr SymbolicExpr::operator%(int64_t v) const {
   return this->operator%(CreateSymbolicConstant(v, GetContext()));
 }
 SymbolicExpr SymbolicExpr::operator%(SymbolicExpr other) const {
+  if (other.GetType() == SymbolicExprType::kConstant &&
+      std::abs(other.GetValue()) == 1) {
+    return CreateSymbolicConstant(0, GetContext());
+  }
   return CreateSymbolicBinaryOp(SymbolicExprType::kMod, *this, other,
                                 GetContext());
 }
@@ -1058,6 +1025,9 @@ SymbolicExpr SymbolicExpr::floorDiv(int64_t v) const {
   return this->floorDiv(CreateSymbolicConstant(v, GetContext()));
 }
 SymbolicExpr SymbolicExpr::floorDiv(SymbolicExpr other) const {
+  if (other.GetType() == SymbolicExprType::kConstant && other.GetValue() == 1) {
+    return *this;
+  }
   return CreateSymbolicBinaryOp(SymbolicExprType::kFloorDiv, *this, other,
                                 GetContext());
 }
@@ -1066,6 +1036,9 @@ SymbolicExpr SymbolicExpr::ceilDiv(int64_t v) const {
   return this->ceilDiv(CreateSymbolicConstant(v, GetContext()));
 }
 SymbolicExpr SymbolicExpr::ceilDiv(SymbolicExpr other) const {
+  if (other.GetType() == SymbolicExprType::kConstant && other.GetValue() == 1) {
+    return *this;
+  }
   return CreateSymbolicBinaryOp(SymbolicExprType::kCeilDiv, *this, other,
                                 GetContext());
 }
@@ -1132,6 +1105,29 @@ SymbolicExpr CreateSymbolicBinaryOp(SymbolicExprType type, SymbolicExpr lhs,
         type != SymbolicExprType::kVariable && lhs && rhs)
       << "We expect a binary operation and two symbolic expressions as "
          "children.";
+
+  // Ensure constants are on the RHS for commutative operations.
+  if (type == SymbolicExprType::kAdd || type == SymbolicExprType::kMul ||
+      type == SymbolicExprType::kMin || type == SymbolicExprType::kMax) {
+    if (lhs.GetType() == SymbolicExprType::kConstant) {
+      std::swap(lhs, rhs);
+    }
+  }
+
+  // x + 0 => x
+  if (type == SymbolicExprType::kAdd &&
+      rhs.GetType() == SymbolicExprType::kConstant && rhs.GetValue() == 0) {
+    return lhs;
+  }
+
+  // Multiplication simplifications.
+  if (type == SymbolicExprType::kMul &&
+      rhs.GetType() == SymbolicExprType::kConstant) {
+    if (SymbolicExpr simplified = TrySimplifyMulByConstantRHS(lhs, rhs)) {
+      return simplified;
+    }
+  }
+
   auto result = GetOrCreateSymbolicExpr(type, 0, lhs, rhs, mlir_context);
   // Basic constant folding.
   if (lhs.GetType() == SymbolicExprType::kConstant &&
@@ -1150,28 +1146,10 @@ llvm::SmallVector<SymbolicExpr> CreateSymbolicConstantExprs(
   }
   return exprs;
 }
-SymbolicExpr ParseSymbolicExpr(absl::string_view expr_str,
-                               mlir::MLIRContext* mlir_context,
-                               std::optional<int64_t> num_dims) {
-  return ParseSymbolicExprAndAdvance(&expr_str, mlir_context, num_dims);
-}
 
-SymbolicExpr ParseSymbolicExprAndAdvance(absl::string_view* expr_str,
-                                         mlir::MLIRContext* mlir_context,
-                                         std::optional<int64_t> num_dims) {
-  Parser parser(*expr_str, mlir_context, num_dims);
-  SymbolicExpr expr = parser.ParsePartial();
-  *expr_str = parser.GetRemainingStr();
-  return expr;
-}
-
-SymbolicExpr ParseSymbolicExprAndAdvance(
-    absl::string_view* expr_str, mlir::MLIRContext* mlir_context,
-    const llvm::DenseMap<llvm::StringRef, SymbolicExpr>& variable_map) {
-  Parser parser(*expr_str, mlir_context, &variable_map);
-  SymbolicExpr expr = parser.ParsePartial();
-  *expr_str = parser.GetRemainingStr();
-  return expr;
+bool SymbolicExpr::IsMultipleOf(int64_t factor) const {
+  CHECK_NE(factor, 0);
+  return GetLargestKnownDivisor(*this) % SafeAbs(factor) == 0;
 }
 
 void SymbolicExpr::Walk(

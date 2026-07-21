@@ -16,16 +16,22 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_NCCL_COLLECTIVES_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_NCCL_COLLECTIVES_H_
 
-#include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <vector>
 
+#include "absl/base/call_once.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
+#include "xla/backends/gpu/collectives/gxl_collectives.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
@@ -39,7 +45,8 @@ class NcclCollectives : public GpuCollectives {
  public:
   bool IsImplemented() const final { return true; }
 
-  bool SupportsDeviceComm() const final;
+  absl::Status GroupLaunch(absl::Span<const GpuCommunicator* const> comms,
+                           absl::FunctionRef<absl::Status()> group) final;
 
   absl::StatusOr<CliqueId> CreateUniqueCliqueId() const final;
 
@@ -53,11 +60,10 @@ class NcclCollectives : public GpuCollectives {
   }
 
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
-  CreateCommunicatorsWithCancel(const CliqueKey& clique_key,
-                                const std::optional<CliqueIds>& clique_ids,
-                                absl::Span<const DeviceRank> ranks,
-                                const Collectives::Config& config,
-                                std::atomic_bool* cancel) final;
+  CreateCommunicatorsWithCancel(
+      const CliqueKey& clique_key, const std::optional<CliqueIds>& clique_ids,
+      absl::Span<const DeviceRank> ranks, const Collectives::Config& config,
+      std::shared_ptr<CancellationToken> cancel) final;
 
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> SplitCommunicators(
       absl::Span<const Communicator* const> comms, int32_t color,
@@ -72,18 +78,20 @@ class NcclCollectives : public GpuCollectives {
                                int32_t color, absl::Span<const RankId> keys,
                                const Collectives::Config& config,
                                absl::Span<const DeviceRank> ranks,
-                               std::atomic_bool* cancel) final;
+                               std::shared_ptr<CancellationToken> cancel) final;
 
   absl::StatusOr<std::unique_ptr<Communicator>> CreateCommunicator() final {
     return absl::UnimplementedError("Not implemented.");
   }
 
-  absl::StatusOr<void*> Allocate(uint64_t bytes) final;
-
-  absl::Status Deallocate(void* location) final;
-
   absl::StatusOr<CliqueIdCallback> InitializeTopology(
       const Topology& topology) final;
+
+ private:
+  GxlCollectives* gxl_collectives();
+
+  absl::once_flag gxl_init_flag_;
+  std::unique_ptr<GxlCollectives> gxl_collectives_;
 };
 
 }  // namespace xla::gpu

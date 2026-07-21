@@ -24,9 +24,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -106,8 +108,8 @@ absl::Status Serialize(const Serializable& serializable,
     }
     serdes = it->second;
   }
-  TF_ASSIGN_OR_RETURN(std::string data,
-                      serdes->Serialize(serializable, std::move(options)));
+  ASSIGN_OR_RETURN(absl::Cord data,
+                   serdes->Serialize(serializable, std::move(options)));
 
   proto.Clear();
   proto.set_type_name(std::string(serdes->type_name()));
@@ -119,7 +121,7 @@ absl::StatusOr<Serialized> Serialize(
     const Serializable& serializable,
     std::unique_ptr<SerializeOptions> options) {
   Serialized serialized;
-  TF_RETURN_IF_ERROR(Serialize(serializable, std::move(options), serialized));
+  RETURN_IF_ERROR(Serialize(serializable, std::move(options), serialized));
   return serialized;
 }
 

@@ -122,6 +122,17 @@ enum PrimitiveType {
   F4E2M1FN = 32;
   F8E8M0FNU = 33;
 
+  // MX float dtypes (FP6), as described in:
+  // https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf
+  //
+  // F6E3M2FN has 3 exponent bits and 2 mantissa bits.
+  // F6E2M3FN has 2 exponent bits and 3 mantissa bits.
+  //
+  // Only finite values are supported (hence "FN" suffix).
+  // Infinities and NaNs are not supported.
+  F6E3M2FN = 35;
+  F6E2M3FN = 36;
+
   // Complex values of fixed width.
   C64 = 15;   // Paired F32 (real, imag), as in std::complex<float>.
   C128 = 18;  // Paired F64 (real, imag), as in std::complex<double>.
@@ -151,7 +162,7 @@ enum PrimitiveType {
   // its underlying primitive type is in the tuple_shapes field.
   BUFFER = 34;
 
-  // Next = 35
+  // Next = 37
 }
 // LINT.ThenChange(
 //   https://www.tensorflow.org/code/tensorflow/compiler/xla/tools/driver.cc
@@ -480,6 +491,17 @@ enum ProfileGenerationStrategy {
   PROFILE_GENERATION_STRATEGY_LCM_MOE = 6;
 }
 
+// Represents a string payload that can be either stored inline (small)
+// or interned in the module's payloads list (large).
+message Payload {
+  oneof payload_source {
+    // Inlined value.
+    bytes value = 1;
+    // Reference to HloModuleProto.payloads.
+    int64 id = 2;
+  }
+}
+
 // Symbolization metadata for HLO Instructions.
 //
 // This metadata is used for debugging XLA code generation, as well as
@@ -558,6 +580,10 @@ message OpMetadata {
 
   // Instruction name available upon scheduling.
   string scheduling_name = 16;
+
+  // Metadata payload that may be stored inline as a value or by ID into
+  // HloModuleProto.payloads during module serialization.
+  Payload metadata_payload = 20;
 
   reserved 14;
 }
@@ -700,8 +726,11 @@ message LiteralProto {
   bytes f8e5m2fnuzs = 24;
   bytes f8e5m2s = 19;
   bytes f8e8m0fnus = 33;
+  bytes f6e3m2fns = 35;
+  bytes f6e2m3fns = 36;
   repeated int64 sparse_indices = 14;
-  // Next = 34
+  repeated int32 dynamic_sizes = 34;
+  // Next = 37
 }
 
 message WindowDimension {
@@ -850,6 +879,34 @@ message ConvolutionDimensionNumbers {
   // Next = 13
 }
 
+// Describes the structured sparsity configuration for a convolution's operands.
+//
+// Structured sparsity is a type of sparsity where the zero elements are placed
+// in a structured way, such that they can be represented by a compact encoding.
+// A M:N structured sparsity is a sparsity where for every N elements, there are
+// M non-zero elements.
+message SparsityConfig {
+  // Describes the structured sparsity configuration for a tensor.
+  message TensorSparsityConfig {
+    // The number of non-zero elements in each block (M in M:N).
+    int64 num_non_zero = 1;
+    // The size of the sparsity block (N in M:N).
+    int64 block_size = 2;
+    // The dimension along which the sparsity is applied.
+    int64 dimension = 3;
+    // The stride of the sparsity.
+    // - If it is 1, every N consecutive elements (i.e., 0,1,2,...,N-1) are a
+    //   sparsity block.
+    // - If it is k, every N elements with distance k (i.e., 0,k,2k,...,(N-1)k)
+    //   are a sparsity block.
+    int64 stride = 4;
+  }
+  // Sparsity config for the LHS operand.
+  TensorSparsityConfig lhs = 1;
+  // Sparsity config for the RHS operand.
+  TensorSparsityConfig rhs = 2;
+}
+
 enum PaddingType {
   PADDING_INVALID = 0;
   PADDING_VALID = 1;  // Only valid portion of the base are covered.
@@ -931,6 +988,18 @@ message CholeskyOptions {
   bool lower = 1;
 }
 
+message CubScanOptions {
+  int64 vector_length = 1;
+  int64 row_length = 2;
+  int64 column_length = 3;
+  enum Kind {
+    KIND_INVALID = 0;
+    SUM = 1;
+  }
+  Kind kind = 4;
+  bool is_reverse = 5;
+}
+
 // Attributes of the sort custom call (cub::DeviceRadixSort).
 message SortOptions {
   bool descending = 1;
@@ -968,12 +1037,11 @@ message StatisticsViz {
 //     integer, we call it a **maximal-sharding mesh**.
 
 // If the list of axes is provided
-//   - If a device ID list is specified, the product of the axis sizes should
+//   - If a device ID list is specified, the product of the axis sizes must
 //     match the number of devices.
-//   - If a device ID list is not specified, the implicit device ID list is
-//     iota(product(axes)). For simplicity, we also disallow specifying a
-//     device ID list that is the same as iota(product(axes)); in this case, a
-//     device ID list shouldn't be specified.
+//   - If a device ID list is not specified, then the device ID list is
+//     implicitly `iota(product(axis_sizes))` with an optional transform
+//     in the `iota_transform` field applied.
 //   - It is not a maximal-sharding mesh even if the total size of axes is 1.
 
 // Here are some examples of meshes:
@@ -982,27 +1050,34 @@ message StatisticsViz {
 //   propagation: <[]>
 // - A mesh without axes list and a single non-negative device ID, which is a
 //   maximal-sharding mesh: <[], device_ids=[3]>
-// - A mesh with two axes and implicit device IDs iota(6): <["a"=2, "b"=3]>
+// - A mesh with two axes and device IDs defined as iota(6) with no
+//   transformation applied: <["a"=2, "b"=3]>
+// - A mesh with two axes and device IDs defined as iota(6) with a transpose
+//   applied: <["a"=2, "b"=3], iota_transform=<[2, 3], [1, 0]>>
 // - A mesh with two axes and explicit device IDs specifying the device
 //   ordering: <["a"=3, "b"=2], device_ids=[0, 2, 4, 1, 3, 5]>
 
 // **Constraints:**
-// - Elements in `device_ids` should be non-negative.
+// - Elements in `device_ids` must be non-negative.
 // - If `axes` is empty, the size of `device_ids` can be 0 (empty mesh) or 1
 //   (maximal-sharding mesh).
 // - If `axes` is not empty,
 //     - Elements in `axes` must not have duplicate names.
 //     - If `device_ids` is specified, the original `device_ids` is not
-//       `iota(product(axis_sizes))` and the sorted `device_ids` is
-//       `iota(product(axis_sizes))`.
+//       describable via an iota with an IotaTransform and the sorted
+//       `device_ids` is `iota(product(axis_sizes))`.
 message MeshProto {
   message MeshAxis {
     string name = 1;
     int64 size = 2;
   }
-
+  message IotaTransform {
+    repeated int64 reshape_dims = 1;
+    repeated int64 transpose_perm = 2;
+  }
   repeated MeshAxis axes = 1;
   repeated int64 device_ids = 2;
+  optional IotaTransform iota_transform = 3;
 }
 
 // Reference to either a full axis via index into Mesh axes or a split
@@ -1067,6 +1142,12 @@ message NamedShardingProto {
   // A sharding can have unreduced axes, meaning the tensor is unreduced
   // along these axes.
   repeated AxisRefProto unreduced_axes = 5;
+  enum ReductionOpProto {
+    SUM = 0;
+    MAX = 1;
+    MIN = 2;
+  }
+  ReductionOpProto reduction_op = 8;
   // A list of axes that is controlled by the users.
   repeated AxisRefProto manual_axes = 7;
 
@@ -1234,9 +1315,8 @@ message CollectiveDeviceListProto {
   // lists.
   repeated ReplicaGroup replica_groups = 1;
 
-  // ReplicaGroupV2: Represents a list of replica groups with reshaping and
-  // transposing an iota array.
-  IotaReplicaGroupListProto iota_replica_group_list = 2;
+  reserved 2;
+  reserved "iota_replica_group_list";
 }
 
 // Describes the source target pair in the collective permute op.
@@ -1386,9 +1466,28 @@ message WhileLoopBackendConfig {
   // and tuple index 0.
   KnownInductionVariable known_induction_variable = 3;
 
-  // Variables that should be treated as induction variables for dynamic memcpy
-  // analysis, even though they are not the primary induction variable.
-  repeated int64 dynamic_variable_tuple_indices = 4;
+  // Field 4 was `repeated int64 dynamic_variable_tuple_indices`; merged into
+  // `dynamic_variables` below.
+  reserved 4;
+  reserved "dynamic_variable_tuple_indices";
+
+  message DynamicVariable {
+    int64 tuple_index = 1;
+    // `init` and `step` describe the affine value of this variable as
+    // `init + iteration * step`. They are optional: a writer that knows a
+    // tuple position is a dynamic variable but does not (yet) know the affine
+    // parameters can leave them unset, in which case consumers should fall
+    // back to `known_init_step` (e.g. for FusionDynamicMemcpyRewriter offset
+    // computation).
+    optional int64 init = 2;
+    optional int64 step = 3;
+  }
+
+  // Tuple positions that should be treated as induction variables for dynamic
+  // slice offset analysis, even though they are not the primary induction
+  // variable. When `init`/`step` are set, they take precedence over
+  // `known_init_step` for offset computation.
+  repeated DynamicVariable dynamic_variables = 5;
 }
 
 // Specifies a pair of output/operand buffers that alias each other for

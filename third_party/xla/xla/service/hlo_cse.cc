@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/service/hlo_domain_map.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -62,7 +64,7 @@ absl::StatusOr<bool> CombineConstants(
                      [&](const HloInstruction* instr) {
                        return instr->opcode() == HloOpcode::kDomain;
                      })) {
-    TF_ASSIGN_OR_RETURN(domain_map, HloDomainMap::Create(computation, ""));
+    ASSIGN_OR_RETURN(domain_map, HloDomainMap::Create(computation, ""));
   }
 
   // Map from the literal hash of a constant or the shape hash of an iota all
@@ -232,12 +234,23 @@ struct CseKey {
 
 /*static*/
 bool HloCSE::ShouldEliminateInstruction(const HloInstruction* instruction) {
+  const FrontendAttributes& frontend_attributes =
+      instruction->frontend_attributes();
+
   // If the instruction has zero operands (constants, parameters, etc.) skip
   // over it.
   if (instruction->operand_count() == 0 &&
       instruction->opcode() != HloOpcode::kPartitionId &&
-      instruction->opcode() != HloOpcode::kReplicaId) {
+      instruction->opcode() != HloOpcode::kReplicaId &&
+      (!frontend_attributes.IsInitialized() ||
+       !frontend_attributes.map().contains(kXlaCseSafeZeroOperandAttr))) {
     return false;
+  }
+
+  if (frontend_attributes.IsInitialized()) {
+    if (frontend_attributes.map().contains(kMustFuseAttr)) {
+      return false;
+    }
   }
 
   // Skip instructions which have side effects.
@@ -254,13 +267,12 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(
-      bool changed,
-      is_layout_sensitive_
-          ? CombineConstants<true>(computation,
-                                   std::move(should_combine_constant_))
-          : CombineConstants<false>(computation,
-                                    std::move(should_combine_constant_)));
+  ASSIGN_OR_RETURN(bool changed,
+                   is_layout_sensitive_
+                       ? CombineConstants<true>(
+                             computation, std::move(should_combine_constant_))
+                       : CombineConstants<false>(
+                             computation, std::move(should_combine_constant_)));
 
   const auto eq_instructions = [&](const HloInstruction* a,
                                    const HloInstruction* b) {
@@ -309,9 +321,8 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
     auto pair = representatives.insert(CseKey{instruction});
     if (!pair.second) {
       HloInstruction* equivalent_instruction = pair.first->hlo;
-      TF_RETURN_IF_ERROR(
-          instruction->ReplaceAllUsesWith(equivalent_instruction));
-      TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
+      RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(equivalent_instruction));
+      RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
           instruction, /*cleanup=*/std::nullopt, ignore_control_dependencies_));
       VLOG(4) << "Replaced " << instruction->name() << " with "
               << equivalent_instruction->name();
@@ -328,10 +339,10 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
         if (a == b || !eq_instructions(a, b)) {
           continue;
         }
-        TF_RETURN_IF_ERROR(instruction->ReplaceOperandWith(j, a));
+        RETURN_IF_ERROR(instruction->ReplaceOperandWith(j, a));
         changed = true;
         if (b->IsDead()) {
-          TF_RETURN_IF_ERROR(computation->RemoveInstruction(b));
+          RETURN_IF_ERROR(computation->RemoveInstruction(b));
         }
       }
     }
@@ -370,8 +381,7 @@ absl::StatusOr<bool> HloCSE::RunImpl(
   bool changed = false;
 
   for (auto* computation : module->computations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool computation_changed,
-                        RunOnComputation(computation));
+    ASSIGN_OR_RETURN(bool computation_changed, RunOnComputation(computation));
     changed |= computation_changed;
   }
   return changed;

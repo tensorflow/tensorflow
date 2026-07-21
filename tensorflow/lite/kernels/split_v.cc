@@ -185,29 +185,21 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   reference_ops::Split(op_params, GetTensorShape(op_context.input), \
                        GetTensorData<scalar>(op_context.input),     \
                        all_outputs.shapes(), all_outputs.data());
-  switch (op_context.input->type) {
-    case kTfLiteFloat32: {
-      TF_LITE_SPLIT_V(float);
-      break;
-    }
-    case kTfLiteUInt8: {
+  switch (TfLiteTypeGetSizeBits(op_context.input->type)) {
+    case 8: {
       TF_LITE_SPLIT_V(uint8_t);
       break;
     }
-    case kTfLiteInt16: {
-      TF_LITE_SPLIT_V(int16_t);
+    case 16: {
+      TF_LITE_SPLIT_V(uint16_t);
       break;
     }
-    case kTfLiteInt32: {
-      TF_LITE_SPLIT_V(int32_t);
+    case 32: {
+      TF_LITE_SPLIT_V(uint32_t);
       break;
     }
-    case kTfLiteInt64: {
-      TF_LITE_SPLIT_V(int64_t);
-      break;
-    }
-    case kTfLiteInt8: {
-      TF_LITE_SPLIT_V(int8_t);
+    case 64: {
+      TF_LITE_SPLIT_V(uint64_t);
       break;
     }
     default:

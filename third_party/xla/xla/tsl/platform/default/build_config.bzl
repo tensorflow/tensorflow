@@ -176,7 +176,8 @@ def tf_proto_library(
         create_service = False,  # @unused
         create_java_proto = False,  # @unused
         create_kotlin_proto = False,  # @unused
-        create_go_proto = False):  # @unused
+        create_go_proto = False,  # @unused
+        **kwargs):
     """A macro generating protobuf and/or gRPC stubs for C++ and Python.
 
     It is a backward-compatible (with old TF-custom protobuf and gGRPC rules) macro which wraps a
@@ -216,6 +217,7 @@ def tf_proto_library(
       create_java_proto: Obsolete.
       create_kotlin_proto: Obsolete.
       create_go_proto: Obsolete.
+      **kwargs: Other arguments to pass to the proto library.
     """
 
     native.filegroup(
@@ -242,6 +244,7 @@ def tf_proto_library(
         visibility = visibility,
         testonly = testonly,
         tags = tags,
+        **kwargs
     )
 
     cc_proto_name = name + "_cc"
@@ -581,7 +584,13 @@ def tf_portable_deps_no_runtime():
 def tf_google_mobile_srcs_no_runtime():
     return []
 
+def tf_google_mobile_hdrs_no_runtime():
+    return []
+
 def tf_google_mobile_srcs_only_runtime():
+    return []
+
+def tf_google_mobile_hdrs_only_runtime():
     return []
 
 def tf_cuda_root_path_deps():

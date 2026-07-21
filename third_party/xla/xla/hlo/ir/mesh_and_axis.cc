@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -30,36 +30,45 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/tile_assignment.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 
-absl::Status Mesh::ValidateMesh() {
-  // TODO(varcho): An empty mesh is valid in Shardy. If support for such meshes
-  // is required, update this validation.
-  if (device_assignment_.dimensions().empty() || axes_names_.empty()) {
-    return absl::InvalidArgumentError("Mesh must have at least one axis.");
+absl::Status Mesh::Validate() {
+  if (device_assignment_.num_dimensions() == 0) {
+    // Empty mesh or maximal mesh.
+    if (device_assignment_.num_elements() <= 1) {
+      return absl::OkStatus();
+    }
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Non-maximal mesh must have exactly 1 device id. Number of "
+        "device ids: ",
+        device_assignment_.num_elements()));
   }
 
-  if (device_assignment_.dimensions().size() != axes_names_.size()) {
-    return absl::InvalidArgumentError(
+  if (device_assignment_.num_dimensions() != axes_names_.size()) {
+    return absl::InvalidArgumentError(absl::StrCat(
         "Number of axes names must match number of dimensions in the device "
-        "assignment.");
+        "assignment. Number of axes names: ",
+        axes_names_.size(),
+        ", Number of dimensions: ", device_assignment_.dimensions().size()));
   }
 
   absl::flat_hash_set<std::string> seen_axis_names;
   for (const std::string& axis_name : axes_names_) {
     if (!seen_axis_names.insert(axis_name).second) {
-      return absl::InvalidArgumentError("Mesh has duplicate axis names.");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Mesh has duplicate axis names. Duplicate axis name: ", axis_name));
     }
   }
 
@@ -71,12 +80,12 @@ absl::Status Mesh::ValidateMesh() {
                                   device_assignment_.array().end());
   for (int64_t device_id : device_ids) {
     if (device_id < 0) {
-      return absl::InvalidArgumentError(
-          "Mesh device ids must be non-negative.");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Mesh device ids must be non-negative. Device id: ", device_id));
     }
   }
   std::vector<int64_t> iota(device_ids.size());
-  std::iota(iota.begin(), iota.end(), 0);
+  absl::c_iota(iota, 0);
 
   // For non-iota cases the device ids should be a non-identity permutation
   // of iota.
@@ -96,41 +105,41 @@ Mesh::Mesh(TileAssignment device_assignment,
            absl::Span<const absl::string_view> axes_names)
     : device_assignment_(std::move(device_assignment)),
       axes_names_(axes_names.begin(), axes_names.end()) {
-  CHECK_OK(ValidateMesh());
+  CHECK_OK(Validate());
 }
 
 std::string Mesh::ToString() const {
   if (IsMaximal()) {
     return absl::StrCat(
-        "@maximal_mesh<device_id=", device_assignment_.array()(0), ">");
+        "maximal_mesh[device_id=", device_assignment_.array()(0), "]");
   }
 
-  std::string mesh_str = "@mesh";
+  std::string mesh_str = "mesh";
   // Add the mesh axes names and sizes.
   std::vector<std::string> formatted_axes_names;
   formatted_axes_names.reserve(axes_names_.size());
   for (int64_t i = 0; i < axes_names_.size(); ++i) {
     formatted_axes_names.push_back(
-        absl::StrCat(axes_names_[i], "=", device_assignment_.dim(i)));
+        absl::StrCat("'", axes_names_[i], "'", "=", device_assignment_.dim(i)));
   }
 
   // Add the device assignment if it is not an iota case.
   std::optional<IotaTileAssignment> iota = device_assignment_.iota();
   std::string device_assignment_str = "";
-  if (!(iota.has_value() && iota->reshape_dims().size() == 1)) {
+  bool simple_iota = iota.has_value() && iota->reshape_dims().size() == 1;
+  if (!simple_iota && device_assignment_.num_elements() != 0) {
     device_assignment_str =
         absl::StrCat(", device_ids=(", device_assignment_.ArrayToString(), ")");
   }
-  absl::StrAppend(&mesh_str, "<", absl::StrJoin(formatted_axes_names, ","), ">",
+  absl::StrAppend(&mesh_str, "[", absl::StrJoin(formatted_axes_names, ","), "]",
                   device_assignment_str);
   return mesh_str;
 }
 
 MeshProto Mesh::ToProto() const {
   MeshProto proto;
-  int64_t num_axes = axes_names_.size();
 
-  if (num_axes == 0) {
+  if (num_axes() == 0) {
     if (device_assignment_.num_elements() == 0) {
       return MeshProto();
     }
@@ -141,7 +150,7 @@ MeshProto Mesh::ToProto() const {
   }
 
   std::vector<MeshProto::MeshAxis> axes;
-  axes.reserve(num_axes);
+  axes.reserve(num_axes());
 
   for (auto [name, size] :
        llvm::zip_equal(axes_names_, device_assignment_.dimensions())) {
@@ -152,23 +161,34 @@ MeshProto Mesh::ToProto() const {
   }
   proto.mutable_axes()->Assign(axes.begin(), axes.end());
 
+  // Serialize device IDs.
   std::optional<IotaTileAssignment> iota = device_assignment_.iota();
-  // Only add device ids for non-iota cases.
-  if (!(iota.has_value() && iota->reshape_dims().size() == 1)) {
+  if (iota.has_value() && iota->reshape_dims().size() != 1) {
+    proto.mutable_iota_transform()->mutable_reshape_dims()->Assign(
+        iota->reshape_dims().begin(), iota->reshape_dims().end());
+    for (int elem : iota.value().transpose_perm()) {
+      proto.mutable_iota_transform()->add_transpose_perm(
+          static_cast<int64_t>(elem));
+    }
+  } else if (!iota.has_value()) {
     proto.mutable_device_ids()->Assign(device_assignment_.array().begin(),
                                        device_assignment_.array().end());
   }
+  // The proto must not have defined both a device IDs list and have an
+  // iota transform, since the iota transform makes no sense in that case.
+  CHECK(!(proto.has_iota_transform() && proto.device_ids_size() != 0))
+      << "Mesh must not have an iota transform and a device ID list";
   return proto;
 }
 
 Mesh Mesh::FromProto(const MeshProto& proto) {
-  // TODO(b/454008727): Add validators for Mesh and AxisRef FromProto methods.
   if (proto.axes_size() == 0) {
     if (proto.device_ids_size() == 0) {
       return Mesh();
     }
     // Maximal mesh
-    // TODO(b/454008727): Validate device_ids_size is 1.
+    CHECK_EQ(proto.device_ids_size(), 1)
+        << "Maximal mesh must have exactly 1 device id.";
     return Mesh(proto.device_ids(0));
   }
 
@@ -177,6 +197,7 @@ Mesh Mesh::FromProto(const MeshProto& proto) {
   mesh_axis_sizes.reserve(proto.axes_size());
   mesh_axis_names.reserve(proto.axes_size());
   for (const auto& axis : proto.axes()) {
+    CHECK_GT(axis.size(), 0) << "Mesh axis size must be positive.";
     mesh_axis_sizes.push_back(axis.size());
     mesh_axis_names.push_back(axis.name());
   }
@@ -185,14 +206,28 @@ Mesh Mesh::FromProto(const MeshProto& proto) {
 
   // If device ids are not specified, create a mesh with iota tiling.
   if (proto.device_ids_size() == 0) {
+    if (proto.has_iota_transform()) {
+      // Transformed iota.
+      TileAssignment device_assignment = TileAssignment(
+          IotaTileAssignment::Create(mesh_axis_sizes, proto.iota_transform()));
+      return Mesh(device_assignment, mesh_axis_names_span);
+    }
+    // Simple iota.
     TileAssignment device_assignment =
         TileAssignment(IotaTileAssignment::Create(mesh_axis_sizes));
     return Mesh(device_assignment, mesh_axis_names_span);
   }
+  // The proto must not have defined both a device IDs list and have an
+  // iota transform, since the iota transform makes no sense in this case.
+  CHECK(!proto.has_iota_transform())
+      << "Mesh must not have an iota transform and a device ID list";
+
   // Otherwise, create a mesh with the specific device id ordering.
   std::vector<int64_t> device_ids(proto.device_ids().begin(),
                                   proto.device_ids().end());
   Array<int64_t> device_ids_array(mesh_axis_sizes);
+  CHECK_EQ(device_ids.size(), device_ids_array.num_elements())
+      << "Number of device ids must match the product of mesh axis sizes.";
   absl::c_copy(device_ids, device_ids_array.begin());
 
   TileAssignment tile_assignment =
@@ -200,14 +235,30 @@ Mesh Mesh::FromProto(const MeshProto& proto) {
   return Mesh(tile_assignment, mesh_axis_names_span);
 }
 
+bool Mesh::ContainsAllMeshAxesInOrder(absl::Span<const AxisRef> axes) const {
+  int64_t axes_idx = 0;
+  for (int64_t i = 0; i < num_axes(); ++i) {
+    if (axes_idx < axes.size() && axes[axes_idx].mesh_axis_index() == i) {
+      if (axes[axes_idx].sub_axis_info().has_value()) {
+        return false;
+      }
+      axes_idx++;
+    } else if (axis_size(i) != 1) {
+      return false;
+    }
+  }
+  return axes_idx == axes.size();
+}
+
 std::string AxisRef::ToString(const Mesh* mesh) const {
   // TODO(b/474013054): Remove these checks if they have significant overhead.
   CHECK_GE(mesh_axis_index_, 0);
   if (mesh) {
-    CHECK_LT(mesh_axis_index_, mesh->axis_names().size());
+    CHECK_LT(mesh_axis_index_, mesh->num_axes());
   }
-  std::string axis_str = mesh ? mesh->axis_names()[mesh_axis_index_]
-                              : std::to_string(mesh_axis_index_);
+  std::string axis_str =
+      mesh ? absl::StrCat("'", mesh->axis_names()[mesh_axis_index_], "'")
+           : std::to_string(mesh_axis_index_);
   if (sub_axis_info_.has_value()) {
     absl::StrAppend(&axis_str, ":(", sub_axis_info_->pre_size, ")",
                     sub_axis_info_->size);
@@ -226,12 +277,12 @@ AxisRefProto AxisRef::ToProto() const {
 }
 
 AxisRef AxisRef::FromProto(const AxisRefProto& proto) {
-  AxisRef axis_ref(proto.mesh_axis_index());
   if (proto.has_sub_axis_info()) {
-    axis_ref.sub_axis_info_ = {proto.sub_axis_info().pre_size(),
-                               proto.sub_axis_info().size()};
+    return AxisRef(proto.mesh_axis_index(),
+                   SubAxis{proto.sub_axis_info().pre_size(),
+                           proto.sub_axis_info().size()});
   }
-  return axis_ref;
+  return AxisRef(proto.mesh_axis_index());
 }
 
 AxisRef::AxisRef(int64_t mesh_axis_index) : mesh_axis_index_(mesh_axis_index) {}
@@ -240,6 +291,79 @@ AxisRef::AxisRef(int64_t mesh_axis_index, SubAxis sub_axis_info)
     : mesh_axis_index_(mesh_axis_index), sub_axis_info_(sub_axis_info) {
   CHECK_GT(sub_axis_info_->pre_size, 0) << "sub-axis pre-size must be >= 1";
   CHECK_GT(sub_axis_info_->size, 1) << "sub-axis size must be > 1";
+}
+
+namespace {
+
+bool CanSubAxesCoexist(int64_t min_pre_size, int64_t max_pre_size,
+                       int64_t min_next_pre_size, int64_t max_next_pre_size) {
+  if (min_next_pre_size > max_pre_size) {
+    // Sub-axes overlap, check if overlapping and non-overlapping parts are
+    // valid.
+    return min_next_pre_size % max_pre_size == 0 &&
+           max_pre_size % min_pre_size == 0 &&
+           max_next_pre_size % min_next_pre_size == 0;
+  }
+  // Sub-axes don't overlap, check if the gap is valid.
+  return max_pre_size % min_next_pre_size == 0;
+}
+
+}  // namespace
+
+bool AxisRef::CanCoexist(const AxisRef& other) const {
+  if (mesh_axis_index() != other.mesh_axis_index()) {
+    return true;
+  }
+  if (!sub_axis_info_.has_value() || !other.sub_axis_info_.has_value()) {
+    // One of the axes is full
+    return true;
+  }
+  const SubAxis& this_sub = *sub_axis_info_;
+  const SubAxis& other_sub = *other.sub_axis_info_;
+
+  auto [min_pre_size, max_pre_size] =
+      std::minmax(this_sub.pre_size, other_sub.pre_size);
+  auto [min_next_pre_size, max_next_pre_size] =
+      std::minmax({this_sub.next_pre_size(), other_sub.next_pre_size()});
+
+  return CanSubAxesCoexist(min_pre_size, max_pre_size, min_next_pre_size,
+                           max_next_pre_size);
+}
+
+bool AxisRef::Overlaps(const AxisRef& other) const {
+  if (mesh_axis_index() != other.mesh_axis_index()) {
+    return false;
+  }
+  if (!sub_axis_info_.has_value() || !other.sub_axis_info_.has_value()) {
+    // One of the axes is full
+    return true;
+  }
+  const SubAxis& this_sub = *sub_axis_info_;
+  const SubAxis& other_sub = *other.sub_axis_info_;
+
+  return this_sub.pre_size < other_sub.next_pre_size() &&
+         other_sub.pre_size < this_sub.next_pre_size();
+}
+
+std::optional<AxisRef> AxisRef::GetPrefixWithoutOverlap(
+    const AxisRef& other) const {
+  if (!CanCoexist(other)) {
+    return std::nullopt;
+  }
+  if (!Overlaps(other)) {
+    return *this;
+  }
+
+  int64_t this_pre_size =
+      sub_axis_info_.has_value() ? sub_axis_info_->pre_size : 1;
+  int64_t other_pre_size =
+      other.sub_axis_info_.has_value() ? other.sub_axis_info_->pre_size : 1;
+
+  if (this_pre_size >= other_pre_size) {
+    return std::nullopt;
+  }
+  return AxisRef(mesh_axis_index_,
+                 SubAxis{this_pre_size, other_pre_size / this_pre_size});
 }
 
 bool AxisRef::CanCoexistWithoutOverlap(const AxisRef& other) const {
@@ -303,23 +427,27 @@ bool AxisRef::Merge(const AxisRef& other, const Mesh& mesh) {
 }
 
 absl::Status AxisRef::Validate(const Mesh& mesh) const {
-  if (mesh_axis_index_ >= mesh.axis_names().size()) {
-    return absl::InvalidArgumentError(
-        "Axis index must be less than number of axes.");
+  if (mesh_axis_index_ >= mesh.num_axes()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Axis index must be less than number of axes. Axis index: ",
+        mesh_axis_index_, ", Number of axes: ", mesh.axis_names().size()));
   }
   if (!sub_axis_info_.has_value()) {
     return absl::OkStatus();
   }
 
   int64_t axis_size = mesh.axis_size(mesh_axis_index_);
-  if (axis_size % sub_axis_info_->pre_size != 0 ||
-      axis_size % sub_axis_info_->size != 0) {
-    return absl::InvalidArgumentError(
-        "Pre-size and size must divide the full axis size.");
+  if (axis_size % sub_axis_info_->next_pre_size() != 0) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Sub-axis next_pre_size must divide the full axis size. Next "
+        "pre-size: ",
+        sub_axis_info_->next_pre_size(), ", Axis size: ", axis_size));
   }
   if (sub_axis_info_->size >= axis_size) {
-    return absl::InvalidArgumentError(
-        "Sub-axis size must be strictly less than the full axis size.");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Sub-axis size must be strictly less than the full axis size. Sub-axis "
+        "size: ",
+        sub_axis_info_->size, ", Axis size: ", axis_size));
   }
   return absl::OkStatus();
 }
@@ -355,14 +483,82 @@ bool AxesCanCoexistWithoutOverlap(absl::Span<const AxisRef> axes) {
 }
 
 absl::Status ValidateSpanOfAxes(absl::Span<const AxisRef> axes,
-                                const Mesh& mesh) {
+                                const Mesh& mesh,
+                                bool allow_mergeable_neighbors) {
+  if (axes.empty()) {
+    return absl::OkStatus();
+  }
   for (const AxisRef& axis : axes) {
-    TF_RETURN_IF_ERROR(axis.Validate(mesh));
+    RETURN_IF_ERROR(axis.Validate(mesh));
   }
   if (!AxesCanCoexistWithoutOverlap(axes)) {
     return absl::InvalidArgumentError("Axes cannot coexist or axes overlap.");
   }
+  if (allow_mergeable_neighbors) {
+    return absl::OkStatus();
+  }
+  for (auto it = axes.begin(); it != std::prev(axes.end()); ++it) {
+    if (it->CanMerge(*std::next(it))) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Adjacent axes in dimension sharding can be merged: ",
+          it->ToString(&mesh), ", ", std::next(it)->ToString(&mesh)));
+    }
+  }
   return absl::OkStatus();
+}
+
+void MergeAxes(std::vector<AxisRef>& axes, const Mesh& mesh) {
+  if (axes.empty()) {
+    return;
+  }
+
+  auto current = axes.begin();
+  for (auto next = current + 1; next != axes.end(); ++next) {
+    if (current->Overlaps(*next)) {
+      LOG(FATAL) << "Axes should not overlap: " << current->ToString(&mesh)
+                 << " and " << next->ToString(&mesh);
+    }
+    if (current->CanMerge(*next)) {
+      CHECK(current->Merge(*next, mesh));
+    } else {
+      current++;
+      *current = *next;
+    }
+  }
+  axes.erase(current + 1, axes.end());
+}
+
+void SortAndMergeAxes(std::vector<AxisRef>& axes, const Mesh& mesh) {
+  if (axes.empty()) {
+    return;
+  }
+
+  absl::c_sort(axes);
+  MergeAxes(axes, mesh);
+}
+
+bool TruncateAxesByRemovingOverlaps(std::vector<AxisRef>& axes,
+                                    absl::Span<const AxisRef> other_axis_refs) {
+  for (size_t i = 0; i < axes.size(); ++i) {
+    std::optional<AxisRef> prefix = axes[i];
+    for (const AxisRef& other : other_axis_refs) {
+      prefix = prefix->GetPrefixWithoutOverlap(other);
+      if (!prefix) {
+        break;
+      }
+    }
+
+    if (!prefix) {
+      axes.erase(axes.begin() + i, axes.end());
+      return true;
+    }
+    if (axes[i] != *prefix) {
+      axes[i] = *prefix;
+      axes.erase(axes.begin() + i + 1, axes.end());
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace xla

@@ -19,10 +19,11 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "third_party/gpus/cuda/include/cuda/atomic"
 #include "third_party/gpus/cuda/include/cuda_bf16.h"
-#include "xla/service/collective_ops_utils.h"
+#include "xla/stream_executor/cuda/collective_signal_cuda.cu.h"  // IWYU pragma: keep
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel_lib.cu.h"
+#include "xla/stream_executor/gpu/collective_signal.cu.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/types.h"
@@ -36,27 +37,6 @@ union alignas(8) Vec<__nv_bfloat16> {
   __nv_bfloat16 data[4];
   PackedType packed;
 };
-
-template <>
-__device__ __forceinline__ void PutSignalFlag<PlatformType::CUDA>(
-    uint32_t* addr, uint32_t val) {
-  ::cuda::atomic_ref<uint32_t, ::cuda::thread_scope_system> ref(*addr);
-  // During signaling release semantics are used to ensure that writes
-  // by the current thread are visible to the waiting thread.
-  ref.store(val, ::cuda::memory_order_release);
-}
-
-template <>
-__device__ __forceinline__ void WaitSignalFlag<PlatformType::CUDA>(
-    uint32_t* addr, uint32_t expected) {
-  ::cuda::atomic_ref<uint32_t, ::cuda::thread_scope_system> ref(*addr);
-  // During waiting we use acquire semantics to ensure all memory writes by the
-  // remote thread are visible to the current thread.
-  // If the flag is greater it means that the other GPU has already signaled
-  // the next sync point.
-  while (ref.load(::cuda::memory_order_acquire) < expected) {
-  }
-}
 
 }  // namespace stream_executor::gpu
 
@@ -76,7 +56,7 @@ __device__ __forceinline__ void WaitSignalFlag<PlatformType::CUDA>(
             absl::bit_cast<void*>(&stream_executor::gpu::AllReduceKernelImpl<  \
                                   NV_TYPE, xla::ReductionKind::REDUCTION_KIND, \
                                   xla::se::gpu::AllReduceStrategy::STRATEGY,   \
-                                  stream_executor::gpu::PlatformType::CUDA>),  \
+                                  stream_executor::gpu::PlatformType::kCuda>), \
             "all_reduce_" #SUFFIX #STRATEGY, arity);                           \
       }));
 

@@ -30,8 +30,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "grpcpp/channel.h"
 #include "xla/pjrt/distributed/coordination/coordination_client.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.h"
 #include "xla/pjrt/distributed/coordination/coordination_service_agent.h"
 #include "xla/pjrt/distributed/coordination/grpc_coordination_client.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
@@ -98,7 +100,6 @@ DistributedRuntimeCoordinationServiceClient::
         std::shared_ptr<::grpc::Channel> channel, const Options& options) {
   // Convert options to coordination config.
   CoordinationServiceAgent::Config config;
-  config.service_leader = "/job:jax_worker/task:0";
   if (options.init_timeout > absl::ZeroDuration()) {
     config.cluster_register_timeout = options.init_timeout;
   }
@@ -111,9 +112,8 @@ DistributedRuntimeCoordinationServiceClient::
   std::unique_ptr<CoordinationClient> leader_client;
   leader_client.reset(NewGrpcCoordinationClient(channel));
   auto agent = CoordinationServiceAgent::Create(
-      options.env, "jax_worker", options.node_id, config,
-      std::move(leader_client), options.missed_heartbeat_callback,
-      options.recoverable);
+      options.env, options.node_id, config, std::move(leader_client),
+      options.missed_heartbeat_callback);
   if (!agent.ok()) {
     LOG(ERROR) << "Coordination agent failed to initialize: " << agent.status();
   } else {
@@ -182,7 +182,7 @@ DistributedRuntimeCoordinationServiceClient::KeyValueIncrement(
 absl::StatusOr<std::vector<std::pair<std::string, std::string>>>
 DistributedRuntimeCoordinationServiceClient::KeyValueDirGet(
     absl::string_view key) {
-  TF_ASSIGN_OR_RETURN(const auto results, coord_agent_->GetKeyValueDir(key));
+  ASSIGN_OR_RETURN(const auto results, coord_agent_->GetKeyValueDir(key));
 
   std::vector<std::pair<std::string, std::string>> kvs;
   kvs.reserve(results.size());
@@ -213,14 +213,11 @@ absl::Status DistributedRuntimeCoordinationServiceClient::KeyValueSet(
 absl::Status DistributedRuntimeCoordinationServiceClient::WaitAtBarrier(
     std::string barrier_id, absl::Duration timeout,
     std::optional<absl::Span<const int32_t>> process_ids) {
-  std::vector<tensorflow::CoordinatedTask> tasks;
+  std::vector<CoordinationService::TaskId> tasks;
   if (process_ids.has_value()) {
     tasks.reserve(process_ids->size());
     for (int32_t process_id : process_ids.value()) {
-      tensorflow::CoordinatedTask task;
-      task.set_job_name("jax_worker");
-      task.set_task_id(process_id);
-      tasks.push_back(std::move(task));
+      tasks.push_back(process_id);
     }
   }
   return coord_agent_->WaitAtBarrier(barrier_id, timeout, tasks);
@@ -235,17 +232,14 @@ DistributedRuntimeCoordinationServiceClient::GetLiveNodesWithIncarnations(
   // abstraction boundary from jax.distributed into the coordination service.
 
   // Wrap the node ids into tasks.
-  std::vector<tensorflow::CoordinatedTask> tasks;
+  std::vector<CoordinationService::TaskId> tasks;
   tasks.reserve(nodes.size());
   for (int32_t task_id : nodes) {
-    tensorflow::CoordinatedTask task;
-    task.set_job_name("jax_worker");
-    task.set_task_id(task_id);
-    tasks.push_back(std::move(task));
+    tasks.push_back(task_id);
   }
 
   // Get the set of live tasks.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       const std::vector<CoordinationServiceAgent::AliveTask> live_tasks,
       coord_agent_->GetAliveTasks(tasks));
 

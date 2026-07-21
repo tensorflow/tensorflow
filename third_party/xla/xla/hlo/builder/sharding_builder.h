@@ -35,7 +35,7 @@ OpSharding Replicate();
 OpSharding Manual();
 
 // Creates a sharding that assigns a tensor to just one device.
-OpSharding AssignDevice(int device);
+OpSharding SingleDevice(int device);
 
 // Creates a tiled sharding with the given tile shape and assignment of tiles
 // to devices.

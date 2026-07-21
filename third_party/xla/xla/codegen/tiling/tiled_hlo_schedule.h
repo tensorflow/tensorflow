@@ -83,7 +83,7 @@ class MajorToMinorTiledHloSchedule : public TiledHloSchedule {
 };
 
 // Convenience function to produce a `MajorToMinorTiledHloSchedule` that
-// can be passed to `SymbolicTileAnalysis::ComputeTiledHloInstructions`.
+// can be passed to `SymbolicTileAnalysis::ComputeTiledComputation`.
 absl::StatusOr<std::unique_ptr<TiledHloSchedule>>
 CreateMajorToMinorTiledHloSchedule(
     const TilingSpecification& tiling_specification);

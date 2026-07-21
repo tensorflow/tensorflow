@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -26,16 +27,21 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/runtime/buffer_debug_log.pb.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
-#include "xla/backends/gpu/runtime/collective_multimem_registry.h"
+#include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
@@ -88,6 +94,10 @@ class FakeThunk : public Thunk {
 
   BufferUses buffer_uses() const override { return buffer_uses_; }
 
+  absl::StatusOr<ThunkProto> ToProto() const override {
+    return absl::UnimplementedError("FakeThunk::ToProto is not implemented");
+  }
+
  private:
   BufferUses buffer_uses_;
 };
@@ -95,17 +105,20 @@ class FakeThunk : public Thunk {
 class BuffersDebugChecksumThunkTest : public ::testing::Test {
  protected:
   void SetUp() override {
+    std::string name = absl::AsciiStrToUpper(
+        xla::PlatformUtil::CanonicalPlatformName("gpu").value());
     TF_ASSERT_OK_AND_ASSIGN(platform_,
-                            se::PlatformManager::PlatformWithName("CUDA"));
+                            se::PlatformManager::PlatformWithName(name));
     TF_ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
     TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
     allocator_ =
         std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
             stream_->parent());
 
-    if (!executor_->GetDeviceDescription()
-             .cuda_compute_capability()
-             .IsAtLeastPascal()) {
+    if (const auto* cc = executor_->GetDeviceDescription()
+                             .gpu_compute_capability()
+                             .cuda_compute_capability();
+        cc != nullptr && !cc->IsAtLeastPascal()) {
       GTEST_SKIP()
           << "buffer checksumming is not supported on CUDA architectures "
              "older than Pascal due to missing atomic fetch_add with "
@@ -165,16 +178,16 @@ TEST_F(BuffersDebugChecksumThunkTest, CalculatesChecksums) {
       CollectiveParams::Create(run_options, /*async_streams=*/{},
                                LocalDeviceId(executor_->device_ordinal())));
   CollectiveCliqueRequests clique_requests;
-  CollectiveMultimemRegistry multimem_registry(
-      executor_, collective_params.global_device_id);
+  CollectiveMemoryRequests memory_requests(allocations);
   Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
-                                      &multimem_registry, executor_,
+                                      &memory_requests, executor_,
                                       &allocations};
 
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), allocations, stream_.get(),
       /*command_buffer_trace_stream=*/stream_.get(),
-      /*collective_params=*/nullptr, /*collective_cliques=*/nullptr);
+      /*collective_params=*/nullptr, /*collective_cliques=*/nullptr,
+      /*collective_memory=*/nullptr);
   auto metadata_store = std::make_shared<BufferDebugLogEntryMetadataStore>();
 
   BuffersDebugChecksumThunk thunk(
@@ -234,10 +247,10 @@ TEST_F(BuffersDebugChecksumThunkTest,
     BufferAllocations allocations;
   };
   auto setup_device = [this](int device_ordinal) -> absl::StatusOr<TestDevice> {
-    TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
-                        platform_->ExecutorForDevice(device_ordinal));
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
-                        executor->CreateStream());
+    ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+                     platform_->ExecutorForDevice(device_ordinal));
+    ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
+                     executor->CreateStream());
     auto allocator =
         std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
             executor);
@@ -270,7 +283,7 @@ TEST_F(BuffersDebugChecksumThunkTest,
       ServiceExecutableRunOptions(), device0.allocations, device0.stream.get(),
       /*command_buffer_trace_stream=*/device0.stream.get(),
       /*collective_params=*/nullptr,
-      /*collective_cliques=*/nullptr)));
+      /*collective_cliques=*/nullptr, /*collective_memory=*/nullptr)));
   TF_ASSERT_OK(device0.stream->BlockHostUntilDone());
 
   TF_ASSERT_OK(
@@ -279,7 +292,7 @@ TEST_F(BuffersDebugChecksumThunkTest,
       ServiceExecutableRunOptions(), device1.allocations, device1.stream.get(),
       /*command_buffer_trace_stream=*/device1.stream.get(),
       /*collective_params=*/nullptr,
-      /*collective_cliques=*/nullptr)));
+      /*collective_cliques=*/nullptr, /*collective_memory=*/nullptr)));
   TF_ASSERT_OK(device1.stream->BlockHostUntilDone());
 }
 

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 
 namespace xla::emitters {
@@ -53,6 +54,9 @@ class KernelArgument {
   bool written() const { return written_; }
   void set_written(bool written) { written_ = written; }
 
+  bool invariant() const { return invariant_; }
+  void set_invariant(bool invariant) { invariant_ = invariant; }
+
   // An alignment of 0 means that the alignment attribute shouldn't be set.
   int64_t alignment() const { return alignment_; }
   void set_alignment(int64_t alignment) { alignment_ = alignment; }
@@ -70,6 +74,7 @@ class KernelArgument {
   bool aliased_ = true;
   int64_t alignment_ = 1;
   bool written_ = true;
+  bool invariant_ = true;
 
   // The index of the unique slice in the kernel argument list. When the kernel
   // is called, runtime will pass the same buffer to arguments with the same
@@ -127,6 +132,15 @@ class KernelArguments {
       : args_(std::move(args)) {}
 
   const std::vector<KernelArgument>& args() const { return args_; }
+
+  std::vector<ShapedSlice> GetArgumentShapedSlices() const {
+    std::vector<ShapedSlice> arg_slices;
+    arg_slices.reserve(args_.size());
+    for (const KernelArgument& arg : args_) {
+      arg_slices.push_back({arg.slice(), arg.shape()});
+    }
+    return arg_slices;
+  }
 
   std::vector<BufferAllocation::Slice> GetArgumentBufferSlices() const {
     std::vector<BufferAllocation::Slice> arg_slices;

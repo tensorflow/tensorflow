@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -333,7 +334,7 @@ void TensorDescriptor::UploadData(const tflite::gpu::Tensor<BHWC, T>& src) {
 template <DataType T>
 void TensorDescriptor::DownloadData(tflite::gpu::Tensor<BHWC, T>* dst) {
   dst->shape = BHWC(shape_.b, shape_.h, shape_.w, shape_.c);
-  dst->data.resize(dst->shape.DimensionsProduct(), 0.0f);
+  dst->data.resize(dst->shape.DimensionsProduct());
   DownloadData(dst->data.data());
 }
 
@@ -346,7 +347,7 @@ void TensorDescriptor::UploadData(const tflite::gpu::Tensor<BHWDC, T>& src) {
 template <DataType T>
 void TensorDescriptor::DownloadData(tflite::gpu::Tensor<BHWDC, T>* dst) {
   dst->shape = shape_;
-  dst->data.resize(dst->shape.DimensionsProduct(), 0.0f);
+  dst->data.resize(dst->shape.DimensionsProduct());
   DownloadData(dst->data.data());
 }
 

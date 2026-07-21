@@ -158,6 +158,15 @@ add {
   ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0}, {1,2}, {3}}, use_global_device_ids=true, to_apply=add
 }
 
+// CHECK-LABEL:  func private @test_all_reduce_mesh_axes
+// CHECK-SAME:  ([[INPUT:%.*]]: tensor<128x32xf32>) -> tensor<128x32xf32>
+%test_all_reduce_mesh_axes {
+  input = f32[128,32]{0,1} parameter(0)
+  // CHECK:  "mhlo.all_reduce"([[INPUT]])
+  // CHECK-SAME:  replica_groups = #mhlo.replica_group_mesh_axes<mesh = @mesh, axes = [#mhlo.axis_ref<name = "axis_1">]>
+  ROOT result = f32[128,32]{0,1} all-reduce(input), replica_groups=mesh['axis_0'=2,'axis_1'=2] {'axis_1'}, to_apply=add
+}
+
 // CHECK-LABEL:  func private @test_tuple_all_reduce
 // FLATTEN-CHECK-LABEL:  func private @test_tuple_all_reduce
 %test_tuple_all_reduce {
@@ -1537,6 +1546,33 @@ add {
   ROOT %Arg_0.1 = f32[] parameter(0)
 }
 
+// Test scan: HLO `kScan` should import as `mhlo.scan` with multi-results
+// rather than as `mhlo.unknown` with a tuple result. The wrapper
+// `stablehlo.tuple` preserves the original HLO tuple shape so downstream
+// `get-tuple-element` users keep working.
+%scan_combiner {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  %add = f32[] add(f32[] %lhs, f32[] %rhs)
+  ROOT %t = (f32[], f32[]) tuple(f32[] %add, f32[] %add)
+}
+
+// CHECK-LABEL:  func private @test_scan
+// CHECK-SAME:   ([[ARG0:%.*]]: tensor<10xf32>) -> tensor<10xf32>
+%test_scan (Arg_0.1: f32[10]) -> f32[10] {
+  %Arg_0.1 = f32[10] parameter(0)
+  // CHECK-DAG: [[INIT:%.*]] = mhlo.constant dense<0.000000e+00>
+  %init = f32[] constant(0)
+  // CHECK: [[RESULT:%.*]]:2 = mhlo.scan([[ARG0]]) inits ([[INIT]]) dimension=0
+  // CHECK-SAME: attributes {is_associative = true, is_reverse = false}
+  // CHECK:   [[BADD:%.*]] = mhlo.add %{{.*}}, %{{.*}}
+  // CHECK:   mhlo.return [[BADD]], [[BADD]]
+  // CHECK: } : (tensor<10xf32>, tensor<f32>) -> (tensor<10xf32>, tensor<f32>)
+  // CHECK: return [[RESULT]]#0 : tensor<10xf32>
+  %scan = (f32[10], f32[]) scan(f32[10] %Arg_0.1, f32[] %init), dimensions={0}, num_carries=1, is_associative=true, to_apply=%scan_combiner
+  ROOT %get-tuple-element = f32[10] get-tuple-element((f32[10], f32[]) %scan), index=0
+}
+
 // Test scatter
 %update_computation {
   %lhs = f32[] parameter(0)
@@ -2139,7 +2175,7 @@ add {
 
 // Test HLO original value
 // CHECK-LABEL:  func private @add_original_value
-// CHECK-SAME:  {mhlo.original_value = "{{[{][{]}}\22a\22{{[}][}]}}"}
+// CHECK-SAME:  {mhlo.original_value = #mhlo.original_value<false, [<[], <"a", []>>]>}
 add_original_value {
   lhs = f32[] parameter(0), origin={{"a"}}
   rhs = f32[] parameter(1)
@@ -2148,13 +2184,13 @@ add_original_value {
 
 // CHECK-LABEL:  func private @test_orignal_value
 // CHECK-SAME:  ([[INPUT:%.*]]: tensor<8xf32>
-// CHECK-SAME:  {mhlo.original_value = "{{[{][{]}}\22b\22{{[}][}]}}"})
+// CHECK-SAME:  {mhlo.original_value = #mhlo.original_value<false, [<[], <"b", []>>]>})
 %test_orignal_value {
   input = f32[8] parameter(0), origin={{"b"}}
   // CHECK-NEXT:  "mhlo.all_reduce"([[INPUT]]) <{
   // CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
   // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
   // CHECK:    mhlo.return [[ADD]] : tensor<f32>
-  // CHECK:  }) {mhlo.original_value = "{{[{][{]}}\22c\22{{[}][}]}}"}
+  // CHECK:  }) {mhlo.original_value = #mhlo.original_value<false, [<[], <"c", []>>]>}
   ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0,1,2,3}, {4,5,6,7}}, to_apply=add_original_value, origin={{"c"}}
 }

@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_BROADCAST_TO_H_
 
 #include <cstddef>
+#include <vector>
 
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -29,11 +30,14 @@ void BroadcastImpl(const NdArrayDesc<N>& input_desc, const char* input_data,
                    const int type_size) {
   // Copy data from input to output.
   if (dim == last_broadcasting_dim) {
-    int copy_size = output_desc.strides[dim] * type_size;
+    size_t copy_size =
+        static_cast<size_t>(output_desc.strides[dim]) * type_size;
     const char* data_src =
-        input_data + SubscriptToIndex(input_desc, indexes) * type_size;
+        input_data +
+        static_cast<size_t>(SubscriptToIndex(input_desc, indexes)) * type_size;
     char* data_dst =
-        output_data + SubscriptToIndex(output_desc, indexes) * type_size;
+        output_data +
+        static_cast<size_t>(SubscriptToIndex(output_desc, indexes)) * type_size;
     for (int i = 0; i < output_desc.extents[dim]; ++i, data_dst += copy_size) {
       memcpy(data_dst, data_src, copy_size);
     }
@@ -50,9 +54,11 @@ void BroadcastImpl(const NdArrayDesc<N>& input_desc, const char* input_data,
   // Duplicate data in output tensor.
   indexes[dim] = 0;
   if (input_desc.extents[dim] != output_desc.extents[dim]) {
-    int copy_size = output_desc.strides[dim] * type_size;
+    size_t copy_size =
+        static_cast<size_t>(output_desc.strides[dim] * type_size);
     char* data_src =
-        output_data + SubscriptToIndex(output_desc, indexes) * type_size;
+        output_data +
+        static_cast<size_t>(SubscriptToIndex(output_desc, indexes)) * type_size;
     char* data_dst = data_src + copy_size;
     for (int i = 1; i < output_desc.extents[dim]; ++i, data_dst += copy_size) {
       memcpy(data_dst, data_src, copy_size);
@@ -94,6 +100,47 @@ inline void BroadcastTo(const RuntimeShape& unextended_input_shape,
   int indexes[N] = {0};
   BroadcastImpl<N>(input_desc, input_data, output_desc, output_data, indexes, 0,
                    last_broadcast_dim, TfLiteTypeGetSize(data_type));
+}
+
+inline void BroadcastTo(const RuntimeShape& unextended_input_shape,
+                        const char* input_data,
+                        const RuntimeShape& unextended_output_shape,
+                        char* output_data, TfLiteType data_type) {
+  const int dims = unextended_output_shape.DimensionsCount();
+  const RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(dims, unextended_input_shape);
+  const RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(dims, unextended_output_shape);
+  const int type_size = TfLiteTypeGetSize(data_type);
+  if (dims == 0) {
+    memcpy(output_data, input_data, type_size);
+    return;
+  }
+
+  std::vector<int> input_strides(dims);
+  std::vector<int> output_strides(dims);
+  input_strides[dims - 1] = 1;
+  output_strides[dims - 1] = 1;
+  for (int i = dims - 2; i >= 0; --i) {
+    input_strides[i] = input_strides[i + 1] * input_shape.Dims(i + 1);
+    output_strides[i] = output_strides[i + 1] * output_shape.Dims(i + 1);
+  }
+
+  const int output_flat_size = unextended_output_shape.FlatSize();
+  for (int output_index = 0; output_index < output_flat_size; ++output_index) {
+    int remaining_index = output_index;
+    int input_index = 0;
+    for (int dim = 0; dim < dims; ++dim) {
+      const int coordinate = remaining_index / output_strides[dim];
+      remaining_index %= output_strides[dim];
+      if (input_shape.Dims(dim) != 1) {
+        input_index += coordinate * input_strides[dim];
+      }
+    }
+    memcpy(output_data + static_cast<size_t>(output_index) * type_size,
+           input_data + static_cast<size_t>(input_index) * type_size,
+           type_size);
+  }
 }
 }  // namespace reference_ops
 }  // namespace tflite

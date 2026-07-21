@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string>
@@ -34,6 +35,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "llvm-c/Target.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
@@ -73,11 +75,54 @@ limitations under the License.
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 
 namespace xla::cpu {
+
+namespace internal {
+
+static absl::once_flag targets_init;
+static void InitializeTargets() {
+#if XLA_LLVM_AARCH32_AVAILABLE
+  LLVMInitializeARMTarget();
+  LLVMInitializeARMTargetInfo();
+  LLVMInitializeARMTargetMC();
+  LLVMInitializeARMAsmParser();
+  LLVMInitializeARMAsmPrinter();
+#endif
+#if XLA_LLVM_AARCH64_AVAILABLE
+  LLVMInitializeAArch64Target();
+  LLVMInitializeAArch64TargetInfo();
+  LLVMInitializeAArch64TargetMC();
+  LLVMInitializeAArch64AsmParser();
+  LLVMInitializeAArch64AsmPrinter();
+#endif
+#if XLA_LLVM_POWERPC_AVAILABLE
+  LLVMInitializePowerPCTarget();
+  LLVMInitializePowerPCTargetInfo();
+  LLVMInitializePowerPCTargetMC();
+  LLVMInitializePowerPCAsmParser();
+  LLVMInitializePowerPCAsmPrinter();
+#endif
+#if XLA_LLVM_S390X_AVAILABLE
+  LLVMInitializeSystemZTarget();
+  LLVMInitializeSystemZTargetInfo();
+  LLVMInitializeSystemZTargetMC();
+  LLVMInitializeSystemZAsmParser();
+  LLVMInitializeSystemZAsmPrinter();
+#endif
+#if XLA_LLVM_X86_AVAILABLE
+  LLVMInitializeX86Target();
+  LLVMInitializeX86TargetInfo();
+  LLVMInitializeX86TargetMC();
+  LLVMInitializeX86AsmParser();
+  LLVMInitializeX86AsmPrinter();
+#endif
+}
+
+}  // namespace internal
 
 void SetXlaCpuBackendOptions(llvm::Module& llvm_module,
                              const LlvmKernelOptions& options) {
@@ -103,10 +148,6 @@ void SetXlaCpuBackendOptions(llvm::Module& llvm_module,
 
 static llvm::OptimizationLevel GetOptimizationLevel(
     IrCompiler::Options options) {
-  if (options.optimize_for_size) {
-    return llvm::OptimizationLevel::Os;
-  }
-
   switch (options.opt_level) {
     case llvm::CodeGenOptLevel::None:
       return llvm::OptimizationLevel::O0;
@@ -141,9 +182,13 @@ static std::unique_ptr<HloModuleConfig> ParseXlaBackendExtraOptions(
 static absl_nullable std::unique_ptr<HloModuleConfig> GetXlaBackendExtraOptions(
     const llvm::Module& llvm_module) {
   llvm::Metadata* md = llvm_module.getModuleFlag("xla_backend_extra_options");
-  if (md == nullptr) return nullptr;
+  if (md == nullptr) {
+    return nullptr;
+  }
   auto* md_string = llvm::dyn_cast<llvm::MDString>(md);
-  if (md_string == nullptr) return nullptr;
+  if (md_string == nullptr) {
+    return nullptr;
+  }
   std::string config_csv = md_string->getString().str();
   return ParseXlaBackendExtraOptions(config_csv);
 }
@@ -206,14 +251,6 @@ IrCompiler::IrCompiler(TargetMachineBuilder target_machine_builder,
       options_(std::move(options)),
       hooks_(std::move(hooks)) {}
 
-// Initialize LLVM the first time `InferTargetMachine` is called.
-static void InitializeLLVMTarget() {
-  llvm::InitializeNativeTarget();
-  llvm::InitializeNativeTargetAsmPrinter();
-}
-
-absl::once_flag initialize_llvm_flag;
-
 absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
 IrCompiler::InferTargetMachine(
     const llvm::TargetOptions& target_options, llvm::CodeGenOptLevel opt_level,
@@ -221,7 +258,7 @@ IrCompiler::InferTargetMachine(
   auto attrs_vec = target_machine_options.GetTargetMachineFeaturesVector();
   llvm::SmallVector<std::string> attrs(attrs_vec.begin(), attrs_vec.end());
 
-  absl::call_once(initialize_llvm_flag, InitializeLLVMTarget);
+  absl::call_once(internal::targets_init, &internal::InitializeTargets);
   std::unique_ptr<llvm::TargetMachine> target_machine(
       llvm::EngineBuilder()
           .setTargetOptions(target_options)
@@ -234,7 +271,7 @@ IrCompiler::InferTargetMachine(
 
   if (target_machine == nullptr) {
     return Internal("Failed to create target machine for CPU %s",
-                    target_machine_options.cpu());
+                    target_machine_options.ToProto().DebugString());
   }
 
   return std::move(target_machine);
@@ -360,11 +397,23 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
   } else {
     LOG(FATAL) << "Unsupported CPU type: " << target_triple.str();
   }
+  int prefer_vector_width = 0;
+  for (const auto& func : module) {
+    if (func.hasFnAttribute("prefer-vector-width")) {
+      unsigned width = 0;
+      if (!func.getFnAttribute("prefer-vector-width")
+               .getValueAsString()
+               .getAsInteger(10, width)) {
+        prefer_vector_width =
+            std::max(prefer_vector_width, static_cast<int>(width));
+      }
+    }
+  }
 
   codegen::IntrinsicFunctionLib intrinsic_lib(
       {target_machine->getTargetFeatureString().str(), device_type,
        /*disable_platform_dependent_math=*/
-       options_.disable_platform_dependent_math});
+       options_.disable_platform_dependent_math, prefer_vector_width});
   target_library_info_impl->addVectorizableFunctions(
       intrinsic_lib.Vectorizations());
 

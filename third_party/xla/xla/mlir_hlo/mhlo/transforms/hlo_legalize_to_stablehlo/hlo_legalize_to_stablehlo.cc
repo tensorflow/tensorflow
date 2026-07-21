@@ -19,6 +19,7 @@ limitations under the License.
 #include <type_traits>
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/map_stablehlo_to_hlo_op.h"
 #include "mhlo/transforms/rewriters.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
@@ -145,6 +147,16 @@ std::optional<int64_t> getPublicFeaturesNotInStablehlo(HloOpTy hloOp) {
     // Version 1: Initial version for AsinhOp.
     return 1;
   }
+  // StableHLO doesn't support Mulhi yet.
+  if constexpr (std::is_same<HloOpTy, mhlo::MulhiOp>::value) {
+    // Version 1: Initial version for MulhiOp.
+    return 1;
+  }
+  // StableHLO doesn't support Scan yet.
+  if constexpr (std::is_same_v<HloOpTy, mhlo::ScanOp>) {
+    // Version 1: Initial version for ScanOp.
+    return 1;
+  }
   return std::nullopt;
 }
 
@@ -250,6 +262,29 @@ Attribute convertAttr(Attribute hloAttr) {
   // Handle MHLO attributes.
   // The logic that handles attributes from other dialects (e.g. builtin
   // attributes) lives below.
+  if (auto rgv3 = mlir::dyn_cast<mhlo::ReplicaGroupMeshAxesAttr>(hloAttr)) {
+    SmallVector<Attribute> stablehloAxes;
+    for (Attribute axisAttr : rgv3.getAxes().getValue()) {
+      stablehloAxes.push_back(convertAttr(axisAttr));
+    }
+    return stablehlo::ReplicaGroupMeshAxesAttr::get(
+        rgv3.getContext(), rgv3.getMesh(),
+        ArrayAttr::get(rgv3.getContext(), stablehloAxes));
+  }
+  if (auto attr = mlir::dyn_cast<mhlo::AxisRefAttr>(hloAttr)) {
+    stablehlo::SubAxisInfoAttr stablehloSubAxis;
+    if (auto sub = attr.getSubAxisInfo()) {
+      stablehloSubAxis =
+          llvm::cast<stablehlo::SubAxisInfoAttr>(convertAttr(sub));
+    }
+    return stablehlo::AxisRefAttr::get(attr.getContext(), attr.getName(),
+                                       stablehloSubAxis);
+  }
+  if (auto attr = mlir::dyn_cast<mhlo::SubAxisInfoAttr>(hloAttr)) {
+    return stablehlo::SubAxisInfoAttr::get(attr.getContext(), attr.getPreSize(),
+                                           attr.getSize());
+  }
+
   if (auto attr = mlir::dyn_cast<mhlo::ChannelHandleAttr>(hloAttr)) {
     return stablehlo::ChannelHandleAttr::get(attr.getContext(),
                                              attr.getHandle(), attr.getType());
@@ -329,6 +364,22 @@ Attribute convertAttr(Attribute hloAttr) {
     return stablehlo::ResultAccuracyAttr::get(attr.getContext(), attr.getAtol(),
                                               attr.getRtol(), attr.getUlps(),
                                               modeAttr);
+  }
+  if (auto attr = mlir::dyn_cast<mhlo::SubAxisInfoAttr>(hloAttr)) {
+    return stablehlo::SubAxisInfoAttr::get(attr.getContext(), attr.getPreSize(),
+                                           attr.getSize());
+  }
+  if (auto attr = mlir::dyn_cast<mhlo::AxisRefAttr>(hloAttr)) {
+    stablehlo::SubAxisInfoAttr subAxisInfo;
+    if (auto hloSubAxisInfo = attr.getSubAxisInfo()) {
+      subAxisInfo =
+          llvm::cast<stablehlo::SubAxisInfoAttr>(convertAttr(hloSubAxisInfo));
+    }
+    return stablehlo::AxisRefAttr::get(attr.getContext(), attr.getName(),
+                                       subAxisInfo);
+  }
+  if (auto attr = mlir::dyn_cast<mhlo::OriginalValueAttr>(hloAttr)) {
+    return attr;
   }
   if (hloAttr.getDialect().getNamespace() ==
       mhlo::MhloDialect::getDialectNamespace()) {
@@ -444,6 +495,9 @@ FailureOr<func::FuncOp> rewriteMhloRegionAsFunc(
       block.getArgumentTypes(), block.getTerminator()->getOperandTypes());
   auto funcOp = func::FuncOp::create(rewriter, region.getLoc(),
                                      op->getName().stripDialect(), type);
+  // The function only backs the custom_call's called_computations reference;
+  // keep it private so symbol DCE can clean it up after recomposition.
+  funcOp.setPrivate();
   symTable.insert(funcOp);
 
   // Move region into new function
@@ -474,15 +528,17 @@ LogicalResult convertAttributes(ConversionPatternRewriter& rewriter,
     }
 
     // Handle DenseElements --> DenseArray for certain StableHLO ops
-    if constexpr (!std::is_same<HloOpTy, mhlo::AcosOp>::value &&
-                  !std::is_same<HloOpTy, mhlo::AcoshOp>::value &&
-                  !std::is_same<HloOpTy, mhlo::AtanhOp>::value &&
-                  !std::is_same<HloOpTy, mhlo::CoshOp>::value &&
-                  !std::is_same<HloOpTy, mhlo::SinhOp>::value &&
-                  !std::is_same<HloOpTy, mhlo::AsinOp>::value &&
-                  !std::is_same<HloOpTy, mhlo::AsinhOp>::value &&
-                  !std::is_same<HloOpTy, mhlo::ErfOp>::value &&
-                  !std::is_same<HloOpTy, mhlo::TopKOp>::value) {
+    if constexpr (!std::is_same_v<HloOpTy, mhlo::AcosOp> &&
+                  !std::is_same_v<HloOpTy, mhlo::AcoshOp> &&
+                  !std::is_same_v<HloOpTy, mhlo::AtanhOp> &&
+                  !std::is_same_v<HloOpTy, mhlo::CoshOp> &&
+                  !std::is_same_v<HloOpTy, mhlo::SinhOp> &&
+                  !std::is_same_v<HloOpTy, mhlo::AsinOp> &&
+                  !std::is_same_v<HloOpTy, mhlo::AsinhOp> &&
+                  !std::is_same_v<HloOpTy, mhlo::ErfOp> &&
+                  !std::is_same_v<HloOpTy, mhlo::TopKOp> &&
+                  !std::is_same_v<HloOpTy, mhlo::MulhiOp> &&
+                  !std::is_same_v<HloOpTy, mhlo::ScanOp>) {
       if (!stablehloAttr) {
         stablehloAttr = convertDenseArray<HloToStablehloOp<HloOpTy>>(
             hloAttr.getName(), hloAttr.getValue());
@@ -679,15 +735,14 @@ class HloToStablehloOpConverter
     if (failed(convertAttributes(rewriter, hloOp, stablehloAttrs)))
       return failure();
 
-    // Convert the MHLO operation to a StableHLO equivalent.
-    // This can almost be done in a generic fashion, except for stablehlo.case
-    // that uses a variadic number of regions which means an additional argument
-    // for the generic builder.
+    // Convert the MHLO operation to a StableHLO equivalent. This can almost be
+    // done in a generic fashion, except for ops with a variadic number of
+    // regions which means an additional argument for the generic builder.
     HloToStablehloOp<HloOpTy> stablehloOp;
-    if constexpr (std::is_same<HloOpTy, mhlo::CaseOp>::value) {
-      stablehloOp = stablehlo::CaseOp::create(
+    if constexpr (HloOpTy::template hasTrait<OpTrait::VariadicRegions>()) {
+      stablehloOp = HloToStablehloOp<HloOpTy>::create(
           rewriter, hloOp.getLoc(), stablehloTypes, stablehloOperands,
-          stablehloAttrs, hloOp.getBranches().size());
+          stablehloAttrs, hloOp.getNumRegions());
     } else {
       stablehloOp = HloToStablehloOp<HloOpTy>::create(
           rewriter, hloOp.getLoc(), stablehloTypes, stablehloOperands,
@@ -697,7 +752,7 @@ class HloToStablehloOpConverter
     // Finally, populate the regions while converting argument types
     // and nested operations.
     for (auto [hloRegion, stablehloRegion] :
-         llvm::zip(hloOp->getRegions(), stablehloOp->getRegions())) {
+         llvm::zip_equal(hloOp->getRegions(), stablehloOp->getRegions())) {
       rewriter.inlineRegionBefore(hloRegion, stablehloRegion,
                                   stablehloRegion.end());
       if (failed(rewriter.convertRegionTypes(&stablehloRegion,
@@ -777,8 +832,8 @@ void populateHloToStablehloPatterns(RewritePatternSet* patterns,
 
   populateHloToStablehloCustomCallPatterns<
       mhlo::AcosOp, mhlo::AcoshOp, mhlo::AsinOp, mhlo::AsinhOp, mhlo::AtanhOp,
-      mhlo::CoshOp, mhlo::SinhOp, mhlo::ErfOp, mhlo::TopKOp>(
-      patterns, converter, context, allowExperimentalFeatures);
+      mhlo::CoshOp, mhlo::SinhOp, mhlo::ErfOp, mhlo::TopKOp, mhlo::MulhiOp,
+      mhlo::ScanOp>(patterns, converter, context, allowExperimentalFeatures);
 }
 
 }  // namespace stablehlo

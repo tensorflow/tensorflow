@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/ir/mesh_and_axis.h"
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -112,14 +113,12 @@ TEST(MeshAndAxisTest, MeshToProtoIotaTilingWithReshapeDims) {
   expected.mutable_axes(0)->set_size(4);
   expected.mutable_axes(1)->set_size(4);
   expected.mutable_axes(2)->set_size(1);
-  // When dims=[4,4,1] reshape_dims=[4,2,2], transpose_perm=[1,0,2] (swap dim 0
-  // and dim 1) corresponds to [4,4,1]<=[4,2,2]T(1,0,2) which in full array V1
-  // format is [0,1,4,5,8,9,12,13,2,3,6,7,10,11,14,15].
-  std::vector<int> expected_device_ids = {0, 1, 4, 5, 8,  9,  12, 13,
-                                          2, 3, 6, 7, 10, 11, 14, 15};
-  for (int i = 0; i < expected_device_ids.size(); ++i) {
-    expected.add_device_ids(expected_device_ids[i]);
-  }
+  expected.mutable_iota_transform()->add_reshape_dims(4);
+  expected.mutable_iota_transform()->add_reshape_dims(2);
+  expected.mutable_iota_transform()->add_reshape_dims(2);
+  expected.mutable_iota_transform()->add_transpose_perm(1);
+  expected.mutable_iota_transform()->add_transpose_perm(0);
+  expected.mutable_iota_transform()->add_transpose_perm(2);
 
   std::vector<absl::string_view> axes_names = {"axis1", "axis2", "axis3"};
   EXPECT_THAT(
@@ -163,9 +162,15 @@ TEST(MeshAndAxisTest, MeshFromProtoNonIotaTiling) {
 }
 
 TEST(MeshAndAxisTest, MeshRoundtripProto) {
-  // Iota tiling.
+  // Simple iota tiling.
   std::vector<absl::string_view> axes_xy = {"data", "model"};
-  Mesh mesh_iota({5, 3}, axes_xy);
+  Mesh mesh_simple_iota({5, 3}, axes_xy);
+  EXPECT_THAT(mesh_simple_iota, Mesh::FromProto(mesh_simple_iota.ToProto()));
+
+  // Transformed iota tiling.
+  Mesh mesh_iota(
+      TileAssignment(IotaTileAssignment::Create({5, 3}, {5, 3}, {1, 0})),
+      axes_xy);
   EXPECT_THAT(mesh_iota, Mesh::FromProto(mesh_iota.ToProto()));
 
   // Non-iota tiling.
@@ -184,15 +189,20 @@ TEST(MeshAndAxisTest, ValidatesAxisRef) {
       "sub-axis size must be");
 }
 
+TEST(MeshAndAxisTest, ValidatesMeshEmptyMesh) { Mesh(); }
+
+TEST(MeshAndAxisTest, ValidatesMeshMaximalMesh) { Mesh(5); }
+
 TEST(MeshAndAxisTest, ValidatesMesh) {
   EXPECT_DEATH(
       { Mesh mesh_dims_axes_mismatch({2, 3, 4}, {"x", "y"}); },
-      "Number of axes names must match number of dimensions");
+      "Number of axes names must match number of dimensions in the device "
+      "assignment. Number of axes names: 2, Number of dimensions: 3");
 
   Array2D<int64_t> negative_device_ids({{0, 1, 2}, {3, -4, 5}});
   EXPECT_DEATH(
       { Mesh mesh_invalid_non_iota(negative_device_ids, {"x", "y"}); },
-      "Mesh device ids must be non-negative");
+      "Mesh device ids must be non-negative. Device id: -4");
 
   Array2D<int64_t> invalid_non_iota_device_ids({{10, 11, 12}, {13, 14, 15}});
   EXPECT_DEATH(
@@ -203,32 +213,72 @@ TEST(MeshAndAxisTest, ValidatesMesh) {
       {
         Mesh mesh_with_duplicate_axis_names({1, 2, 3, 4}, {"x", "y", "z", "x"});
       },
-      "Mesh has duplicate axis names");
+      "Mesh has duplicate axis names. Duplicate axis name: x");
+}
 
-  EXPECT_DEATH(
-      { Mesh mesh_with_empty_dims(TileAssignment({}), {}); },
-      "Mesh must have at least one axis");
+TEST(MeshAndAxisTest, FromProtoValidation) {
+  {
+    MeshProto proto;
+    auto* axis = proto.add_axes();
+    axis->set_name("x");
+    axis->set_size(1);
+
+    // 1 axis of size 1, but 2 device IDs.
+    proto.add_device_ids(0);
+    proto.add_device_ids(1);
+
+    EXPECT_DEATH(
+        Mesh::FromProto(proto),
+        "Number of device ids must match the product of mesh axis sizes");
+  }
+
+  {
+    MeshProto proto;
+    auto* axis = proto.add_axes();
+    axis->set_name("x");
+    axis->set_size(0);
+
+    proto.add_device_ids(0);
+
+    EXPECT_DEATH(Mesh::FromProto(proto), "Mesh axis size must be positive");
+  }
+
+  {
+    MeshProto proto;
+    proto.add_device_ids(0);
+    proto.add_device_ids(1);
+    EXPECT_DEATH(Mesh::FromProto(proto),
+                 "Maximal mesh must have exactly 1 device id");
+  }
 }
 
 TEST(MeshAndAxisTest, MeshToString) {
+  Mesh empty_mesh;
+  EXPECT_EQ(empty_mesh.ToString(), "mesh[]");
+
   Mesh mesh_uvw({10, 12, 15}, {"u", "v", "w"});
-  EXPECT_EQ(mesh_uvw.ToString(), "@mesh<u=10,v=12,w=15>");
+  EXPECT_EQ(mesh_uvw.ToString(), "mesh['u'=10,'v'=12,'w'=15]");
 
   Mesh mesh_abcd(
       TileAssignment(/*dims=*/{2, 4, 4, 2}, /*reshape_dims=*/{1, 4, 1, 16},
                      /*transpose_perm=*/{2, 3, 0, 1}),
       {"a", "b", "c", "d"});
   EXPECT_EQ(mesh_abcd.ToString(),
-            "@mesh<a=2,b=4,c=4,d=2>, device_ids=([4,16]T(1,0))");
+            "mesh['a'=2,'b'=4,'c'=4,'d'=2], device_ids=([4,16]T(1,0))");
 
   Array<int64_t> array({{8, 3, 7, 5, 4, 2, 6, 0, 1, 9}});
   array.Reshape({10});
   Mesh mesh_ooo(array, {"ooo"});
   EXPECT_EQ(mesh_ooo.ToString(),
-            "@mesh<ooo=10>, device_ids=(8,3,7,5,4,2,6,0,1,9)");
+            "mesh['ooo'=10], device_ids=(8,3,7,5,4,2,6,0,1,9)");
 
   Mesh maximal_mesh(5);
-  EXPECT_EQ(maximal_mesh.ToString(), "@maximal_mesh<device_id=5>");
+  EXPECT_EQ(maximal_mesh.ToString(), "maximal_mesh[device_id=5]");
+
+  Mesh mesh_with_special_characters({10, 12, 15},
+                                    {"abc def", "xyz.pqr", "<axis> def"});
+  EXPECT_EQ(mesh_with_special_characters.ToString(),
+            "mesh['abc def'=10,'xyz.pqr'=12,'<axis> def'=15]");
 }
 
 TEST(MeshAndAxisTest, AxisRefToString) {
@@ -236,11 +286,11 @@ TEST(MeshAndAxisTest, AxisRefToString) {
   EXPECT_EQ(AxisRef(2, {3, 4}).ToString(), "2:(3)4");
 
   Mesh mesh({10, 12, 15}, {"u", "v", "w"});
-  EXPECT_EQ(AxisRef(0).ToString(&mesh), "u");
-  EXPECT_EQ(AxisRef(1).ToString(&mesh), "v");
-  EXPECT_EQ(AxisRef(2).ToString(&mesh), "w");
-  EXPECT_EQ(AxisRef(0, {1, 2}).ToString(&mesh), "u:(1)2");
-  EXPECT_EQ(AxisRef(1, {3, 4}).ToString(&mesh), "v:(3)4");
+  EXPECT_EQ(AxisRef(0).ToString(&mesh), "'u'");
+  EXPECT_EQ(AxisRef(1).ToString(&mesh), "'v'");
+  EXPECT_EQ(AxisRef(2).ToString(&mesh), "'w'");
+  EXPECT_EQ(AxisRef(0, {1, 2}).ToString(&mesh), "'u':(1)2");
+  EXPECT_EQ(AxisRef(1, {3, 4}).ToString(&mesh), "'v':(3)4");
 }
 
 TEST(MeshAndAxisTest, ValidateAxisForMesh) {
@@ -248,18 +298,30 @@ TEST(MeshAndAxisTest, ValidateAxisForMesh) {
 
   EXPECT_DEATH(
       { CHECK_OK(AxisRef(3, {1, 2}).Validate(mesh)); },
-      "Axis index must be less than number of axes");
+      "Axis index must be less than number of axes.*"
+      "Axis index: 3, Number of axes: 3");
 
   EXPECT_DEATH(
       { CHECK_OK(AxisRef(0, {5, 19}).Validate(mesh)); },
-      "Pre-size and size must divide the full axis size");
+      "Sub-axis next_pre_size must divide the full axis size.*"
+      "Next pre-size: 95, Axis size: 14");
   EXPECT_DEATH(
       { CHECK_OK(AxisRef(0, {2, 5}).Validate(mesh)); },
-      "Pre-size and size must divide the full axis size");
+      "Sub-axis next_pre_size must divide the full axis size.*"
+      "Next pre-size: 10, Axis size: 14");
 
   EXPECT_DEATH(
       { CHECK_OK(AxisRef(1, {1, 3 * 11}).Validate(mesh)); },
-      "Sub-axis size must be strictly less than the full axis size");
+      "Sub-axis size must be strictly less than the full axis size.*"
+      "Sub-axis size: 33, Axis size: 33");
+
+  AxisRefProto invalid_pre_size_proto;
+  invalid_pre_size_proto.set_mesh_axis_index(0);
+  invalid_pre_size_proto.mutable_sub_axis_info()->set_pre_size(0);
+  invalid_pre_size_proto.mutable_sub_axis_info()->set_size(2);
+  EXPECT_DEATH(
+      { CHECK_OK(AxisRef::FromProto(invalid_pre_size_proto).Validate(mesh)); },
+      "sub-axis pre-size must be >= 1");
 }
 
 TEST(MeshAndAxisTest, AxisRefCanCoexistWithoutOverlap) {
@@ -373,6 +435,149 @@ TEST(MeshAndAxisTest, AxisRefMerge) {
   AxisRef axis_ref4(0, {2, 4});
   EXPECT_FALSE(axis_ref4.Merge(AxisRef(0, {1, 2}), mesh));
   EXPECT_EQ(axis_ref4, AxisRef(0, {2, 4}));
+}
+
+TEST(MeshAndAxisTest, CanCoexist_DifferentAxes) {
+  EXPECT_TRUE(AxisRef(0).CanCoexist(AxisRef(1)));
+  EXPECT_TRUE(AxisRef(0, {1, 2}).CanCoexist(AxisRef(1, {1, 2})));
+}
+
+TEST(MeshAndAxisTest, CanCoexist_CompatibleSubAxes) {
+  EXPECT_TRUE(AxisRef(0, {1, 2}).CanCoexist(AxisRef(0, {2, 2})));
+  EXPECT_TRUE(AxisRef(0, {1, 2}).CanCoexist(AxisRef(0, {4, 2})));
+}
+
+TEST(MeshAndAxisTest, CanCoexist_CompatibleOverlappingSubAxes) {
+  EXPECT_TRUE(AxisRef(0, {1, 2}).CanCoexist(AxisRef(0, {1, 2})));
+  EXPECT_TRUE(AxisRef(0, {1, 2}).CanCoexist(AxisRef(0, {1, 4})));
+}
+
+TEST(MeshAndAxisTest, CanCoexist_IncompatibleSubAxes) {
+  EXPECT_FALSE(AxisRef(0, {1, 2}).CanCoexist(AxisRef(0, {1, 3})));
+  EXPECT_FALSE(AxisRef(0, {1, 2}).CanCoexist(AxisRef(0, {3, 2})));
+}
+
+TEST(MeshAndAxisTest, Overlaps_DifferentAxes) {
+  EXPECT_FALSE(AxisRef(0).Overlaps(AxisRef(1)));
+}
+
+TEST(MeshAndAxisTest, Overlaps_FullAxes) {
+  EXPECT_TRUE(AxisRef(0).Overlaps(AxisRef(0)));
+  EXPECT_TRUE(AxisRef(0).Overlaps(AxisRef(0, {1, 2})));
+}
+
+TEST(MeshAndAxisTest, Overlaps_SubAxes_NoOverlap) {
+  EXPECT_FALSE(AxisRef(0, {1, 2}).Overlaps(AxisRef(0, {2, 2})));
+  EXPECT_FALSE(AxisRef(0, {1, 2}).Overlaps(AxisRef(0, {4, 4})));
+}
+
+TEST(MeshAndAxisTest, Overlaps_SubAxes_Overlap) {
+  EXPECT_TRUE(AxisRef(0, {1, 2}).Overlaps(AxisRef(0, {1, 2})));
+  EXPECT_TRUE(AxisRef(0, {1, 2}).Overlaps(AxisRef(0, {1, 4})));
+  EXPECT_TRUE(AxisRef(0, {1, 4}).Overlaps(AxisRef(0, {2, 2})));
+}
+
+TEST(MeshAndAxisTest, GetPrefixWithoutOverlap_NoOverlap) {
+  EXPECT_EQ(AxisRef(0).GetPrefixWithoutOverlap(AxisRef(1)), AxisRef(0));
+}
+
+TEST(MeshAndAxisTest, GetPrefixWithoutOverlap_FullOverlap) {
+  EXPECT_EQ(AxisRef(0, {1, 4}).GetPrefixWithoutOverlap(AxisRef(0, {1, 2})),
+            std::nullopt);
+}
+
+TEST(MeshAndAxisTest, GetPrefixWithoutOverlap_PartialOverlap) {
+  EXPECT_EQ(AxisRef(0, {1, 4}).GetPrefixWithoutOverlap(AxisRef(0, {2, 2})),
+            AxisRef(0, {1, 2}));
+}
+
+TEST(MeshAndAxisTest, GetPrefixWithoutOverlap_PartialOverlap_NoPrefix) {
+  EXPECT_EQ(AxisRef(0, {1, 4}).GetPrefixWithoutOverlap(AxisRef(0, {1, 2})),
+            std::nullopt);
+}
+
+TEST(MeshAndAxisTest, SortAndMergeAxes) {
+  Mesh mesh({16, 16}, {"x", "y"});
+  std::vector<AxisRef> axes = {AxisRef(0, {2, 2}), AxisRef(0, {4, 2}),
+                               AxisRef(0, {1, 2}), AxisRef(1, {1, 2}),
+                               AxisRef(1, {4, 2}), AxisRef(1, {2, 2})};
+  SortAndMergeAxes(axes, mesh);
+
+  EXPECT_THAT(axes,
+              testing::ElementsAre(AxisRef(0, {1, 8}), AxisRef(1, {1, 8})));
+}
+
+TEST(MeshAndAxisTest, SortAndMergeAxesFull) {
+  Mesh mesh({4}, {"x"});
+  std::vector<AxisRef> axes = {AxisRef(0, {1, 2}), AxisRef(0, {2, 2})};
+  SortAndMergeAxes(axes, mesh);
+
+  EXPECT_THAT(axes, testing::ElementsAre(AxisRef(0)));
+}
+
+TEST(MeshAndAxisTest, MergeAxesMergeContiguous) {
+  Mesh mesh({16, 16}, {"x", "y"});
+  std::vector<AxisRef> axes = {AxisRef(1, {1, 2}), AxisRef(1, {2, 2}),
+                               AxisRef(0, {1, 2}), AxisRef(0, {4, 2})};
+  MergeAxes(axes, mesh);
+
+  EXPECT_THAT(axes, testing::ElementsAre(AxisRef(1, {1, 4}), AxisRef(0, {1, 2}),
+                                         AxisRef(0, {4, 2})));
+}
+
+TEST(MeshAndAxisTest, MergeAxesDoesNotSort) {
+  Mesh mesh({4, 4}, {"x", "y"});
+  std::vector<AxisRef> axes = {AxisRef(1), AxisRef(0)};
+  MergeAxes(axes, mesh);
+
+  EXPECT_THAT(axes, testing::ElementsAre(AxisRef(1), AxisRef(0)));
+}
+
+TEST(MeshAndAxisTest, TruncateAxesByRemovingOverlaps_PartialOverlap) {
+  std::vector<AxisRef> axes = {AxisRef(0, {1, 4})};
+  std::vector<AxisRef> other = {AxisRef(0, {2, 2})};
+
+  EXPECT_TRUE(TruncateAxesByRemovingOverlaps(axes, other));
+  EXPECT_THAT(axes, testing::ElementsAre(AxisRef(0, {1, 2})));
+}
+
+TEST(MeshAndAxisTest, TruncateAxesByRemovingOverlaps_FullOverlap) {
+  std::vector<AxisRef> axes = {AxisRef(0, {1, 2})};
+  std::vector<AxisRef> other = {AxisRef(0, {1, 4})};
+
+  EXPECT_TRUE(TruncateAxesByRemovingOverlaps(axes, other));
+  EXPECT_THAT(axes, testing::IsEmpty());
+}
+
+TEST(MeshAndAxisTest, TruncateAxesByRemovingOverlaps_MultipleAxes) {
+  std::vector<AxisRef> axes = {AxisRef(0, {1, 4}), AxisRef(1)};
+  std::vector<AxisRef> other = {AxisRef(0, {2, 2})};
+
+  EXPECT_TRUE(TruncateAxesByRemovingOverlaps(axes, other));
+  EXPECT_THAT(axes, testing::ElementsAre(AxisRef(0, {1, 2})));
+}
+
+TEST(MeshAndAxisTest, TruncateAxesByRemovingOverlaps_NoOverlap) {
+  std::vector<AxisRef> axes = {AxisRef(0, {1, 2}), AxisRef(1)};
+  std::vector<AxisRef> other = {AxisRef(2)};
+
+  EXPECT_FALSE(TruncateAxesByRemovingOverlaps(axes, other));
+  EXPECT_THAT(axes, testing::ElementsAre(AxisRef(0, {1, 2}), AxisRef(1)));
+}
+
+TEST(MeshAndAxisTest, OperatorLess) {
+  // "x" > "x":(1)2
+  EXPECT_TRUE(AxisRef(0, {1, 2}) < AxisRef(0));
+  EXPECT_FALSE(AxisRef(0) < AxisRef(0, {1, 2}));
+  // "x" < "x":(2)2
+  EXPECT_TRUE(AxisRef(0) < AxisRef(0, {2, 2}));
+  EXPECT_FALSE(AxisRef(0, {2, 2}) < AxisRef(0));
+
+  // "x":(1)2 < "x":(2)2
+  EXPECT_TRUE(AxisRef(0, {1, 2}) < AxisRef(0, {2, 2}));
+
+  // Different axes
+  EXPECT_TRUE(AxisRef(0) < AxisRef(1));
 }
 
 }  // namespace xla

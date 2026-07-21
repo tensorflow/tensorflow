@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/codegen/tiling/tiling_specification.h"
 
 #include <cstdint>
+#include <string>
 #include <utility>
 
 #include "absl/log/log.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -48,6 +50,19 @@ absl::StatusOr<int64_t> TilingSpecification::ParameterIndex(
       absl::StrCat("No tile sizes found for instruction: ", hlo->ToString()));
 }
 
+std::string TilingSpecification::ToString() const {
+  std::string s = "TilingSpecification{\n";
+  absl::StrAppend(&s, "  parameter_mapping={\n");
+  for (const auto& [instruction, num_params] : parameter_mapping_) {
+    absl::StrAppend(&s, "    ", instruction->name(), ": ", num_params, "\n");
+  }
+  absl::StrAppend(&s, "  }\n");
+  absl::StrAppend(&s, "  constraints=", constraints_.ToString(num_parameters_),
+                  "\n");
+  absl::StrAppend(&s, "}");
+  return s;
+}
+
 absl::StatusOr<absl::Span<const int64_t>> Tiling::TileSizesForInstruction(
     const HloInstruction* hlo) const {
   if (auto it = tile_sizes_.find(hlo); it != tile_sizes_.end()) {
@@ -63,8 +78,8 @@ absl::StatusOr<FlatTiling> Tiling::Flatten(
   FlatTiling flat_tile_sizes;
   flat_tile_sizes.reserve(tiling_specification.num_parameters());
   for (const auto& mapping : tiling_specification.parameter_mapping()) {
-    TF_ASSIGN_OR_RETURN(absl::Span<const int64_t> tile_sizes,
-                        TileSizesForInstruction(mapping.instruction));
+    ASSIGN_OR_RETURN(absl::Span<const int64_t> tile_sizes,
+                     TileSizesForInstruction(mapping.instruction));
     if (tile_sizes.size() != mapping.num_tiling_parameters) {
       return absl::FailedPreconditionError(
           absl::StrCat("Instruction ", mapping.instruction->ToString(),

@@ -15,18 +15,33 @@ limitations under the License.
 
 #include "xla/hlo/ir/backend_config.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/message.h"
-#include "xla/tsl/platform/errors.h"
+#include "re2/re2.h"
 #include "xla/util.h"
 #include "tsl/platform/human_readable_json.h"
 #include "tsl/platform/protobuf.h"
+
+// TODO(dasenov): Remove this after 2026-07-15.
+namespace {
+std::string RemoveWaitOnOperationQueues(std::string&& s) {
+  static constexpr LazyRE2 kReWaitOnOperationQueues = {
+      R"("wait_on_operation_queues"\s*:\s*\[\s*\]\s*,)"};
+  RE2::GlobalReplace(&s, *kReWaitOnOperationQueues, "");
+  return std::move(s);
+}
+}  // namespace
 
 namespace xla {
 
@@ -49,6 +64,9 @@ absl::StatusOr<std::string> BackendConfigToRawString(
   return tsl::ProtoToHumanReadableJson(proto, /*ignore_accuracy_loss=*/true);
 }
 
+BackendConfigWrapper::BackendConfigWrapper(std::string raw_string)
+    : raw_string_(RemoveWaitOnOperationQueues(std::move(raw_string))) {}
+
 const std::string& BackendConfigWrapper::GetRawStringWithoutMutex() const {
   if (proto_ && raw_string_.empty()) {
     // Cache the raw string.
@@ -62,21 +80,36 @@ absl::Status BackendConfigWrapper::GetProto(
     tsl::protobuf::Message* output_proto) const {
   output_proto->Clear();
 
-  absl::WriterMutexLock lock{mutex_};
-  if (proto_ != nullptr) {
+  auto copy_from_cache =
+      [&]() ABSL_SHARED_LOCKS_REQUIRED(mutex_) -> absl::Status {
     if (proto_->GetDescriptor() != output_proto->GetDescriptor()) {
       return Internal("Mismatched backend config descriptors.");
     }
     output_proto->CopyFrom(*proto_);
     return absl::OkStatus();
+  };
+
+  // Fast path: check with reader lock if proto is already cached.
+  {
+    absl::ReaderMutexLock lock{mutex_};
+    if (proto_ != nullptr) {
+      return copy_from_cache();
+    }
+    // Empty string does not parse as valid JSON, but it's a valid backend
+    // config, corresponding to the empty proto.
+    if (raw_string_.empty()) {
+      return absl::OkStatus();
+    }
   }
 
-  // Empty string does not parse as valid JSON, but it's a valid backend config,
-  // corresponding to the empty proto.
-  if (raw_string_.empty()) {
-    return absl::OkStatus();
+  absl::WriterMutexLock lock{mutex_};
+  // Check again if another thread parsed and cached the proto while we were
+  // waiting for the writer lock.
+  if (proto_ != nullptr) {
+    return copy_from_cache();
   }
-  TF_RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(raw_string_, output_proto));
+
+  RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(raw_string_, output_proto));
   // Cache the proto into the empty proto_.
   proto_ = CloneBackendConfigProto(output_proto);
   return absl::OkStatus();
@@ -102,25 +135,41 @@ BackendConfigWrapper& BackendConfigWrapper::operator=(
 }
 
 bool BackendConfigWrapper::operator==(const BackendConfigWrapper& other) const {
-  tsl::protobuf::Message* this_proto = nullptr;
-
-  // Do not hold two mutexes at the same time to avoid deadlocks.
-  {
-    absl::MutexLock this_lock{mutex_};
-    this_proto = proto_.get();
-  }
-
   const std::string* other_raw_string = nullptr;
   {
+    // Make sure to drop the lock on this mutex before calling GetRawString()
+    // to avoid deadlock.
     absl::MutexLock other_lock{other.mutex_};
-    if (this_proto != nullptr && other.proto_ != nullptr) {
-      using ::tsl::protobuf::util::MessageDifferencer;
-      return MessageDifferencer::Equals(*this_proto, *other.proto_);
-    }
     other_raw_string = &other.GetRawStringWithoutMutex();
   }
 
   return GetRawString() == *other_raw_string;
+}
+
+namespace {
+CoreAssignmentHandler* g_core_assignment_handler = nullptr;
+}  // namespace
+
+void RegisterCoreAssignmentHandler(CoreAssignmentHandler* handler) {
+  g_core_assignment_handler = handler;
+}
+
+absl::Status SetCoreAssignment(HloInstruction* inst,
+                               absl::Span<const int64_t> core_ids) {
+  if (g_core_assignment_handler != nullptr) {
+    return g_core_assignment_handler->SetCoreAssignment(inst, core_ids);
+  }
+  return absl::UnimplementedError(
+      "Core assignment is not implemented for this target.");
+}
+
+absl::StatusOr<std::vector<int64_t>> GetCoreAssignment(
+    const HloInstruction* inst) {
+  if (g_core_assignment_handler != nullptr) {
+    return g_core_assignment_handler->GetCoreAssignment(inst);
+  }
+  return absl::UnimplementedError(
+      "Core assignment is not implemented for this target.");
 }
 
 }  // namespace xla

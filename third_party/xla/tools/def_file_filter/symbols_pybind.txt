@@ -504,7 +504,7 @@ tensorflow::GetMlirCommonFlags
 tensorflow::GetXlaDeviceFlags
 tensorflow::ResetJitCompilerFlags
 
-[//external/local_tsl/tsl/platform:tensor_float_32_utils] # tensor_float_32
+[//external/tsl/tsl/platform:tensor_float_32_utils] # tensor_float_32
 tsl::enable_tensor_float_32_execution
 tsl::tensor_float_32_execution_enabled
 
@@ -545,6 +545,7 @@ tensorflow::PythonAPIInfo
 [//tensorflow/python:python_api_parameter_converter] # python_api_parameter_converter
 tensorflow::ConvertPythonAPIParameters
 tensorflow::CopyPythonAPITensorLists
+tensorflow::GetPythonAPIMaxIndex
 
 [//tensorflow/core/platform:statusor] # tfe
 tensorflow::internal_statusor::Helper::Crash

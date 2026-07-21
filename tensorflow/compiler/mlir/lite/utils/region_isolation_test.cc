@@ -104,7 +104,7 @@ TEST(RegionIsolationTest, CaseOp) {
       arith::ConstantOp::create(b, b.getUnknownLoc(), TestValData(3, b));
 
   // Iteration convenience.
-  llvm::OwningArrayRef<arith::ConstantOp> root_vals(
+  llvm::SmallVector<arith::ConstantOp> root_vals(
       {root_val_1, root_val_2, root_val_3});
 
   // Make a regioned op with computations that reference defined above vals.
@@ -126,7 +126,7 @@ TEST(RegionIsolationTest, CaseOp) {
     auto& block = reg.emplaceBlock();
     b.setInsertionPointToStart(&block);
     auto res = stablehlo::AddOp::create(b, b.getUnknownLoc(), root_val_1, val);
-    llvm::OwningArrayRef<Value> rets({res});
+    llvm::SmallVector<Value> rets({res});
     stablehlo::ReturnOp::create(b, b.getUnknownLoc(), rets);
   }
 

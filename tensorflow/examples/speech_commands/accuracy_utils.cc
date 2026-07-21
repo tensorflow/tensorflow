@@ -41,8 +41,8 @@ absl::Status ReadGroundTruthFile(
     std::vector<std::pair<std::string, int64_t>>* result) {
   std::ifstream file(file_name);
   if (!file) {
-    return tensorflow::errors::NotFound("Ground truth file '", file_name,
-                                        "' not found.");
+    return absl::NotFoundError(
+        absl::StrCat("Ground truth file '", file_name, "' not found."));
   }
   result->clear();
   std::string line;
@@ -53,8 +53,8 @@ absl::Status ReadGroundTruthFile(
     }
     float timestamp;
     if (!absl::SimpleAtof(pieces[1], &timestamp)) {
-      return tensorflow::errors::InvalidArgument(
-          "Wrong number format at line: ", line);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Wrong number format at line: ", line));
     }
     std::string label = pieces[0];
     auto timestamp_int64 = static_cast<int64_t>(timestamp);

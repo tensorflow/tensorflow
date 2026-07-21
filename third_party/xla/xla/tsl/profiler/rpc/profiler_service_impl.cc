@@ -20,23 +20,26 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/status.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/env_time.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/profiler/rpc/client/save_profile.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 #include "xla/tsl/profiler/utils/xplane_utils.h"
+#include "tsl/platform/host_info.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/profiler_service.grpc.pb.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
@@ -52,14 +55,39 @@ using tensorflow::MonitorRequest;
 using tensorflow::MonitorResponse;
 using tensorflow::ProfileRequest;
 using tensorflow::ProfileResponse;
+using tensorflow::StopContinuousProfilingRequest;
+using tensorflow::StopContinuousProfilingResponse;
 using tensorflow::TerminateRequest;
 using tensorflow::TerminateResponse;
 
+// Returns the hostname to be used for the profile filename.
+// Priority:
+// 1. advanced_configuration["use_system_hostname"] == true
+//    → tsl::port::Hostname()
+// 2. override_hostname non-empty → literal override_hostname value
+// 3. Default → request.host_name()
 std::string GetHostname(const ProfileRequest& request) {
+  const auto& advanced_config = request.opts().advanced_configuration();
+  if (auto it = advanced_config.find("use_system_hostname");
+      it != advanced_config.end() && it->second.bool_value()) {
+    return tsl::port::Hostname();
+  }
   if (!request.opts().override_hostname().empty()) {
     return request.opts().override_hostname();
   }
   return request.host_name();
+}
+
+bool IsValidSnapshotSessionId(absl::string_view id) {
+  if (id.size() > 128) {
+    return false;
+  }
+  for (char c : id) {
+    if (!absl::ascii_isalnum(c) && c != '_' && c != '-') {
+      return false;
+    }
+  }
+  return true;
 }
 
 // Collects data in XSpace format. The data is saved to a repository
@@ -71,7 +99,7 @@ absl::Status CollectData(const ProfileRequest& request,
   tensorflow::profiler::XSpace xspace;
   tensorflow::profiler::XSpace* xspace_ptr =
       request.emit_xspace() ? response->mutable_xspace() : &xspace;
-  TF_RETURN_IF_ERROR(profiler->CollectData(xspace_ptr));
+  RETURN_IF_ERROR(profiler->CollectData(xspace_ptr));
   VLOG(3) << "Collected XSpace to "
           << (request.emit_xspace() ? "response" : "repository") << ".";
   response->set_empty_trace(IsEmpty(*xspace_ptr));
@@ -139,7 +167,7 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
   ::grpc::Status StartContinuousProfiling(
       ::grpc::ServerContext* ctx, const ProfileRequest* req,
       ContinuousProfilingResponse* response) override {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     if (continuous_profiling_session_.has_value()) {
       return ::grpc::Status(::grpc::StatusCode::ALREADY_EXISTS,
                             "A profiling session is already running.");
@@ -150,8 +178,8 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
     if (!status.ok()) {
       LOG(ERROR) << "Failed to create profiler session: " << status;
       return ::grpc::Status(::grpc::StatusCode::INTERNAL,
-                            "Failed to create profiler session: " +
-                                std::string(status.message()));
+                            absl::StrCat("Failed to create profiler session: ",
+                                         status.message()));
     }
     tensorflow::ProfileRequest request = *req;
     request.set_emit_xspace(true);
@@ -159,17 +187,48 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
     return ::grpc::Status::OK;
   }
 
+  ::grpc::Status StopContinuousProfiling(
+      ::grpc::ServerContext* ctx, const StopContinuousProfilingRequest* req,
+      StopContinuousProfilingResponse* response) override {
+    std::optional<ContinuousSession> session_to_destroy;
+    {
+      absl::MutexLock lock(mutex_);
+      if (!continuous_profiling_session_.has_value()) {
+        return ::grpc::Status(::grpc::StatusCode::NOT_FOUND,
+                              "No continuous profiling session found.");
+      }
+      // Move session to a local variable so that it is destroyed after mutex
+      // is released, avoiding potentially expensive destruction of
+      // ProfilerSession under lock.
+      session_to_destroy.swap(continuous_profiling_session_);
+    }
+    return ::grpc::Status::OK;
+  }
+
   ::grpc::Status GetSnapshot(::grpc::ServerContext* ctx,
                              const GetSnapshotRequest* req,
                              ProfileResponse* response) override {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     if (!continuous_profiling_session_.has_value()) {
       return ::grpc::Status(::grpc::StatusCode::NOT_FOUND,
                             "No continuous profiling session found.");
     }
 
+    tensorflow::ProfileRequest snapshot_request =
+        continuous_profiling_session_->request;
+    if (!req->snapshot_session_id().empty() &&
+        !snapshot_request.repository_root().empty()) {
+      if (!IsValidSnapshotSessionId(req->snapshot_session_id())) {
+        return ::grpc::Status(
+            ::grpc::StatusCode::INVALID_ARGUMENT,
+            "Invalid snapshot_session_id. Only alphanumeric, underscores, "
+            "and hyphens are allowed.");
+      }
+      snapshot_request.set_session_id(req->snapshot_session_id());
+      snapshot_request.set_emit_xspace(false);
+    }
     absl::Status status =
-        CollectData(continuous_profiling_session_->request,
+        CollectData(snapshot_request,
                     continuous_profiling_session_->profiler.get(), response);
     if (!status.ok()) {
       LOG(ERROR) << "Failed to collect profile data: " << status;

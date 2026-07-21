@@ -1,4 +1,4 @@
-load("//xla:py_strict.bzl", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 load("//xla:pytype.bzl", "pytype_strict_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
@@ -46,6 +46,7 @@ cc_library(
         "//xla/service/cpu:cpu_options",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -90,7 +91,9 @@ cc_library(
     srcs = ["llvm_ir_kernel_emitter.cc"],
     hdrs = ["llvm_ir_kernel_emitter.h"],
     deps = [
+        "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/codegen:kernel_definition",
         "//xla/codegen:kernel_emitter",
         "//xla/codegen:kernel_spec",
@@ -98,6 +101,7 @@ cc_library(
         "//xla/runtime:buffer_use",
         "//xla/runtime:work_group",
         "//xla/service:buffer_assignment",
+        "//xla/service:shaped_slice",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
@@ -112,6 +116,8 @@ cc_library(
     srcs = ["mlir_kernel_emitter.cc"],
     hdrs = ["mlir_kernel_emitter.h"],
     deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/codegen:fusion_compiler",
         "//xla/codegen:kernel_definition",
         "//xla/codegen:kernel_emitter",
@@ -120,6 +126,8 @@ cc_library(
         "//xla/runtime:buffer_use",
         "//xla/runtime:work_group",
         "//xla/service:buffer_assignment",
+        "//xla/service:shaped_slice",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -201,10 +209,11 @@ xla_cc_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "kernel_runner_test_py",
     srcs = ["kernel_runner_test.py"],
     main = "kernel_runner_test.py",
+    strict_deps = True,
     tags = [
         "no_oss",
     ],
@@ -216,10 +225,11 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "elemental_kernel_emitter_test",
     srcs = ["elemental_kernel_emitter_test.py"],
     main = "elemental_kernel_emitter_test.py",
+    strict_deps = True,
     tags = [
         "no_oss",
     ],

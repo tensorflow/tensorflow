@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -31,6 +30,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
+#include "triton/Dialect/TritonGPU/IR/Attributes.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 
 namespace mlir::triton::xla {
@@ -138,10 +138,10 @@ LogicalResult LowerBlockBarrierOp(BlockBarrierOp block_barrier,
             builder,
             /*resultTypes=*/mlir::TypeRange{},
             /*ptr=*/signal_addresses,
-            /*signal_value=*/signal_value,
+            /*value=*/signal_value,
             /*mask=*/mlir::Value{},
-            /*scope=*/mlir::triton::MemSyncScope::SYSTEM,
-            /*sem=*/mlir::triton::MemSemantic::RELEASE);
+            /*mem_sync_scope=*/mlir::triton::MemSyncScope::SYSTEM,
+            /*mem_sync_semantic=*/mlir::triton::MemSemantic::RELEASE);
         // Pointer to SignalBuffers[rank]
         // -> !tt.ptr<i64>
         auto read_address_ptr_to_i64 = mlir::triton::AddPtrOp::create(
@@ -177,13 +177,13 @@ LogicalResult LowerBlockBarrierOp(BlockBarrierOp block_barrier,
             /*ptr=*/wait_addresses,
             /*expected=*/signal_value,
             /*mask=*/mlir::Value{},
-            /*scope=*/mlir::triton::MemSyncScope::SYSTEM,
-            /*sem=*/mlir::triton::MemSemantic::ACQUIRE,
-            /*comparator=*/Comparator::LT);
+            /*mem_sync_scope=*/mlir::triton::MemSyncScope::SYSTEM,
+            /*mem_sync_semantic=*/mlir::triton::MemSemantic::ACQUIRE,
+            /*comparator=*/Comparator::GE);
         // Terminate the block.
         mlir::scf::YieldOp::create(builder);
       });
-  builder.create<mlir::triton::gpu::LocalBarrierOp>();
+  builder.create<mlir::triton::gpu::BarrierOp>(triton::gpu::AddrSpace::Local);
   rewriter.eraseOp(block_barrier);
   return success();
 }
@@ -205,9 +205,5 @@ class TritonXLALowerBlockBarrierPass
 };
 
 }  // namespace
-
-std::unique_ptr<Pass> CreateTritonXLALowerBlockBarrierPass() {
-  return std::make_unique<TritonXLALowerBlockBarrierPass>();
-}
 
 }  // namespace mlir::triton::xla

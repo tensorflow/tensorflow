@@ -2890,9 +2890,9 @@ void ToBoolOp::getCanonicalizationPatterns(RewritePatternSet &results,
 }
 
 LogicalResult ToBoolOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
+    MLIRContext* context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, PropertyRef, RegionRange regions,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
   inferredReturnTypes.push_back(
       tensorflow::GetTypeFromTFTensorShape({}, IntegerType::get(context, 1)));
   return success();
@@ -3609,75 +3609,6 @@ LogicalResult WhileRegionOp::verify() {
 SmallVector<Region *> WhileRegionOp::getLoopRegions() { return {&getBody()}; }
 
 //===----------------------------------------------------------------------===//
-// WhileRegionOp RegionBranchOpInterface
-//===----------------------------------------------------------------------===//
-
-OperandRange WhileRegionOp::getEntrySuccessorOperands(
-    RegionSuccessor successor) {
-  if (successor.isParent()) {
-    // WhileRegionOp branches to the condition, which branches to the body. But
-    // the op itself doesn't branch back to itself. So this range is empty.
-    auto end = this->getOperation()->operand_end();
-    return ::mlir::OperandRange(end, end);
-  } else {
-    // "cond" gets the full arguments from the WhileRegionOp.
-    // As does "body", if the condition block only returns a single boolean.
-    auto begin = this->getOperation()->operand_begin();
-    auto end = this->getOperation()->operand_end();
-    return ::mlir::OperandRange(begin, end);
-  }
-}
-
-void WhileRegionOp::getSuccessorRegions(
-    RegionBranchPoint point, SmallVectorImpl<RegionSuccessor> &regions) {
-  if (!point.isParent() &&
-      (point.getTerminatorPredecessorOrNull() &&
-       point.getTerminatorPredecessorOrNull()->getParentRegion() ==
-           &(*this)->getRegion(0))) {
-    // 'cond' branches to the body or returns.
-    Operation *yield = getCond().front().getTerminator();
-    if (yield->getOperands().size() ==
-        1 + this->getOperation()->getOperands().size()) {
-      regions.push_back(
-          RegionSuccessor(&getBody(), getBody().front().getArguments()));
-      regions.push_back(RegionSuccessor::parent(getResults()));
-    } else {
-      // For compatibility with older code, we allow the "yield" in a condition
-      // to only yield a single boolean. In that case we can't forward any args.
-      regions.push_back(RegionSuccessor(&getBody()));
-      regions.push_back(RegionSuccessor::parent(getResults().take_front(0)));
-    }
-  } else if (!point.isParent() &&
-             (point.getTerminatorPredecessorOrNull() &&
-              point.getTerminatorPredecessorOrNull()->getParentRegion() ==
-                  &(*this)->getRegion(1))) {
-    // 'body' branches back to 'cond'.
-    regions.push_back(
-        RegionSuccessor(&getCond(), getCond().front().getArguments()));
-  } else if (point.isParent()) {
-    // The parent branches to 'cond'. It is also considered to branch to `body`
-    // in case the terminator of `cond` doesn't forward the arguments of `cond`.
-    regions.push_back(
-        RegionSuccessor(&getCond(), getCond().front().getArguments()));
-    regions.push_back(
-        RegionSuccessor(&getBody(), getBody().front().getArguments()));
-  }
-}
-
-void WhileRegionOp::getRegionInvocationBounds(
-    ArrayRef<Attribute> operands,
-    SmallVectorImpl<InvocationBounds> &invocationBounds) {
-  // We execute cond at least once, and body any number of times.
-  invocationBounds.emplace_back(InvocationBounds(1, std::nullopt));
-  invocationBounds.emplace_back(InvocationBounds::getUnknown());
-}
-
-bool WhileRegionOp::areTypesCompatible(Type t1, Type t2) {
-  // For now, we don't enforce type checking across control-flow edges.
-  return true;
-}
-
-//===----------------------------------------------------------------------===//
 // WhileRegionOp canonicalization
 //===----------------------------------------------------------------------===//
 namespace {
@@ -3851,10 +3782,10 @@ void XdivyOp::getCanonicalizationPatterns(RewritePatternSet &results,
 //===----------------------------------------------------------------------===//
 
 LogicalResult XlaBroadcastHelperOp::inferReturnTypeComponents(
-    MLIRContext *context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
+    MLIRContext* context, std::optional<Location> location,
+    ValueShapeRange operands, DictionaryAttr attributes, PropertyRef,
     RegionRange regions,
-    SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   XlaBroadcastHelperOpAdaptor op(operands.getValues(), attributes);
   Value lhs = op.getLhs();
   Value rhs = op.getRhs();
@@ -3990,10 +3921,10 @@ LogicalResult XlaConvV2Op::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypeComponents(
-    MLIRContext *context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
+    MLIRContext* context, std::optional<Location> location,
+    ValueShapeRange operands, DictionaryAttr attributes, PropertyRef,
     RegionRange regions,
-    SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   XlaSetDynamicDimensionSizeOpAdaptor op(operands.getValues(), attributes);
 
   TensorType operand_ty = llvm::cast<TensorType>(op.getInput().getType());

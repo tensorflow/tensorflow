@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/buffer_allocation_info.h"
 #include "xla/backends/cpu/buffer_allocation_info_util.h"
 #include "xla/backends/cpu/constant_allocation.h"
@@ -79,11 +80,11 @@ CpuAotCompilationResult::Create(
     absl::string_view function_name, std::vector<ObjFileProto> obj_files,
     std::vector<SymbolProto> symbols, const ThunkSequence& thunks,
     std::unique_ptr<FunctionLibrary> function_library,
-    TargetMachineOptionsProto target_machine_options) {
+    TargetMachineOptionsProto target_machine_options, std::string data_layout) {
   ThunkSequenceSerDesProtobuf thunk_sequence_serdes(
       hlo_module, &buffer_assignment->Allocations());
-  TF_ASSIGN_OR_RETURN(ThunkSequenceProto thunk_proto,
-                      thunk_sequence_serdes.ToProto(thunks));
+  ASSIGN_OR_RETURN(ThunkSequenceProto thunk_proto,
+                   thunk_sequence_serdes.ToProto(thunks));
 
   std::vector<cpu::BufferAllocationInfo> buffer_allocation_infos;
   std::optional<size_t> temp_allocation_index;
@@ -108,7 +109,7 @@ CpuAotCompilationResult::Create(
       hlo_module, buffer_assignment, function_name, std::move(obj_files),
       std::move(symbols), thunk_proto, std::move(temp_allocation_index),
       std::move(buffer_allocation_infos), std::move(function_library),
-      std::move(target_machine_options)));
+      std::move(target_machine_options), std::move(data_layout)));
 }
 
 CpuAotCompilationResult::CpuAotCompilationResult(
@@ -118,7 +119,7 @@ CpuAotCompilationResult::CpuAotCompilationResult(
     std::optional<size_t> temp_allocation_index,
     std::vector<BufferAllocationInfo> buffer_allocation_infos,
     std::unique_ptr<FunctionLibrary> function_library,
-    TargetMachineOptionsProto target_machine_options)
+    TargetMachineOptionsProto target_machine_options, std::string data_layout)
     : temp_allocation_index_(temp_allocation_index),
       buffer_allocation_infos_(std::move(buffer_allocation_infos)),
       function_library_(std::move(function_library)) {
@@ -128,6 +129,7 @@ CpuAotCompilationResult::CpuAotCompilationResult(
   *proto_.mutable_buffer_assignment() = buffer_assignment->ToProto();
   proto_.set_entry_function_name(function_name);
   *proto_.mutable_target_machine_options() = std::move(target_machine_options);
+  proto_.set_data_layout(std::move(data_layout));
   for (ObjFileProto& obj_file : obj_files) {
     *proto_.add_object_files() = std::move(obj_file);
   }
@@ -145,11 +147,9 @@ CpuAotCompilationResult::CpuAotCompilationResult(
 }
 
 absl::StatusOr<std::unique_ptr<Executable>>
-CpuAotCompilationResult::LoadExecutable(
-    const se::StreamExecutor* stream_exec) && {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> module,
-      HloModule::CreateFromProtoWithConfig(proto_.hlo_module()));
+CpuAotCompilationResult::LoadExecutable() && {
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                   HloModule::CreateFromProtoWithConfig(proto_.hlo_module()));
 
   VLOG(2) << "Load XLA:CPU executable for module: " << module->name();
 
@@ -161,10 +161,10 @@ CpuAotCompilationResult::LoadExecutable(
 
   // Recreate BufferAssignment from proto.
   AliasInfo alias_info;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> buffer_assignment,
-                      BufferAssignment::FromProto(
-                          proto_.buffer_assignment(), module.get(),
-                          buffer_size_bytes_function_getter, &alias_info));
+  ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> buffer_assignment,
+                   BufferAssignment::FromProto(
+                       proto_.buffer_assignment(), module.get(),
+                       buffer_size_bytes_function_getter, &alias_info));
 
   std::unique_ptr<CpuExecutable> cpu_executable;
 
@@ -174,25 +174,25 @@ CpuAotCompilationResult::LoadExecutable(
 
   ThunkSequenceSerDesProtobuf thunk_sequence_serdes(
       module.get(), &buffer_assignment->Allocations());
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<ThunkSequence> thunks,
-                      thunk_sequence_serdes.FromProto(proto_.thunk_sequence()));
+  ASSIGN_OR_RETURN(std::unique_ptr<ThunkSequence> thunks,
+                   thunk_sequence_serdes.FromProto(proto_.thunk_sequence()));
 
   VLOG(3) << "Loaded " << thunks->size() << " thunks.";
 
   // Create constant allocations from the buffer assignment.
-  TF_ASSIGN_OR_RETURN(std::vector<ConstantAllocation> constants,
-                      CreateConstantAllocations(*buffer_assignment));
+  ASSIGN_OR_RETURN(std::vector<ConstantAllocation> constants,
+                   CreateConstantAllocations(*buffer_assignment));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       TargetMachineOptions target_machine_options,
       TargetMachineOptions::FromProto(proto_.target_machine_options()));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       cpu_executable,
       CpuExecutable::Create(std::move(function_library_),
                             std::move(buffer_assignment), std::move(module),
                             std::move(*thunks), std::move(constants),
-                            target_machine_options));
+                            target_machine_options, proto_.data_layout()));
 
   // Dump computation proto state and buffer assignment for
   // GetCompiledMemoryStats results.
@@ -203,6 +203,14 @@ CpuAotCompilationResult::LoadExecutable(
   cpu_executable->set_hlo_proto(std::move(hlo_proto));
 
   return cpu_executable;
+}
+
+absl::StatusOr<std::unique_ptr<Executable>>
+CpuAotCompilationResult::LoadExecutable(
+    se::Platform::Id platform_id,
+    const se::DeviceDescription& device_description,
+    const DebugOptions& debug_options) && {
+  return std::move((*this)).LoadExecutable();
 }
 
 }  // namespace xla::cpu

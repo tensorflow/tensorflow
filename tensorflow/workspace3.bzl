@@ -1,12 +1,11 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
-load("@bazel_tools//tools/build_defs/repo:local.bzl", "local_repository")
-load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
+load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls", "tf_vendored")
 load("//third_party/tf_runtime:workspace.bzl", tf_runtime = "repo")
 
 def workspace():
-    local_repository(name = "xla", path = "third_party/xla")
-    local_repository(name = "tsl", path = "third_party/xla/third_party/tsl")
+    tf_vendored(name = "xla", path = "third_party/xla")
+    tf_vendored(name = "tsl", path = "third_party/xla/third_party/tsl")
 
     tf_http_archive(
         name = "io_bazel_rules_closure",
@@ -50,6 +49,17 @@ def workspace():
         strip_prefix = "bazel_features-1.25.0",
         urls = tf_mirror_urls(
             "https://github.com/bazel-contrib/bazel_features/releases/download/v1.25.0/bazel_features-v1.25.0.tar.gz",
+        ),
+    )
+
+    # Toolchains for ML projects hermetic builds.
+    # Details: https://github.com/google-ml-infra/rules_ml_toolchain
+    tf_http_archive(
+        name = "rules_ml_toolchain",
+        sha256 = "0b42f693a60c6050d87db1e0a0eaeb84ab3f54191fce094d86334faedc807da0",
+        strip_prefix = "rules_ml_toolchain-398d613aea7a4c294da49b79a6d6f3f8732bd84c",
+        urls = tf_mirror_urls(
+            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/398d613aea7a4c294da49b79a6d6f3f8732bd84c.tar.gz",
         ),
     )
 

@@ -85,11 +85,11 @@ TEST(SetDeviceTest, TestSetDevice) {
   TransformFuncContext context;
   context.input_names = {};
   context.output_names = {"mul_node1"};
-  context.params.insert(std::pair<string, std::vector<string>>(
-      {"device", {string("/device:CPU:0")}}));
+  context.params.insert(std::pair<std::string, std::vector<std::string>>(
+      {"device", {std::string("/device:CPU:0")}}));
   TF_ASSERT_OK(SetDevice(graph_def, context, &result));
 
-  std::map<string, const NodeDef*> node_lookup;
+  std::map<std::string, const NodeDef*> node_lookup;
   MapNamesToNodes(result, &node_lookup);
   EXPECT_EQ("/device:CPU:0", node_lookup.at("mul_node1")->device());
   EXPECT_EQ("/device:CPU:0", node_lookup.at("add_node2")->device());
@@ -106,13 +106,13 @@ TEST(SetDeviceTest, TestSetDeviceIfDefault) {
   TransformFuncContext context;
   context.input_names = {};
   context.output_names = {"mul_node1"};
-  context.params.insert(std::pair<string, std::vector<string>>(
-      {"device", {string("/device:GPU:0")}}));
-  context.params.insert(
-      std::pair<string, std::vector<string>>({"if_default", {string("true")}}));
+  context.params.insert(std::pair<std::string, std::vector<std::string>>(
+      {"device", {std::string("/device:GPU:0")}}));
+  context.params.insert(std::pair<std::string, std::vector<std::string>>(
+      {"if_default", {std::string("true")}}));
   TF_ASSERT_OK(SetDevice(graph_def, context, &result));
 
-  std::map<string, const NodeDef*> node_lookup;
+  std::map<std::string, const NodeDef*> node_lookup;
   MapNamesToNodes(result, &node_lookup);
   EXPECT_EQ("/device:CPU:0", node_lookup.at("mul_node1")->device());
   EXPECT_EQ("/device:GPU:1", node_lookup.at("add_node2")->device());

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/collectives_common.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <map>
 #include <string>
 #include <vector>
@@ -87,7 +88,8 @@ StatusOr<std::string> DeviceTypeFromMesh(const Mesh& mesh) {
       mesh.is_remote() ? mesh.global_devices()[0] : mesh.local_devices()[0];
   size_t device_path_pos = device_path.find_last_of(':');
   if (device_path_pos == std::string::npos) {
-    return errors::InvalidArgument("Unexpected device path: ", device_path);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unexpected device path: ", device_path));
   }
   return device_path.substr(0, device_path_pos);
 }

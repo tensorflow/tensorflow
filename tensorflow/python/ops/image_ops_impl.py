@@ -3234,6 +3234,11 @@ decode_webp = tf_export(
     'image.decode_webp',
     v1=['io.decode_webp', 'image.decode_webp'],
 )(dispatch.add_dispatch_support(gen_image_ops.decode_web_p))
+decode_jxl = tf_export(
+    'io.decode_jxl',
+    'image.decode_jxl',
+    v1=['io.decode_jxl', 'image.decode_jxl'],
+)(dispatch.add_dispatch_support(gen_image_ops.decode_jxl))
 
 encode_jpeg = tf_export(
     'io.encode_jpeg',
@@ -3273,8 +3278,9 @@ def encode_png(image, compression=-1, name=None):
   Returns:
     A `Tensor` of type `string`.
   """
-  return gen_image_ops.encode_png(
-      ops.convert_to_tensor(image), compression, name)
+  image = ops.convert_to_tensor(image)
+  image = _AssertAtLeast3DImage(image)
+  return gen_image_ops.encode_png(image, compression, name)
 
 
 @tf_export(
@@ -3289,9 +3295,9 @@ def decode_image(contents,
                  expand_animations=True):
   """Function for `decode_bmp`, `decode_gif`, `decode_jpeg`, and `decode_png`.
 
-  Detects whether an image is a BMP, GIF, JPEG, WebP or PNG, and performs the
-  appropriate operation to convert the input bytes `string` into a `Tensor`
-  of type `dtype`.
+  Detects whether an image is a BMP, GIF, JPEG, JPEG XL, WebP or PNG, and
+  performs the appropriate operation to convert the input bytes `string` into a
+  `Tensor` of type `dtype`.
 
   Note: `decode_gif` and `decode_webp` return a 4-D array of
   `[num_frames, height, width, 3]`, as opposed to the other image

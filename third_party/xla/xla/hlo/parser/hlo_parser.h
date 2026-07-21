@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -64,10 +65,22 @@ class HloParserOptions {
 
   bool keep_module_auto_layouts() const { return keep_module_auto_layouts_; }
 
+  // Maximum recursion depth for parsing nested operands. Protects against
+  // stack overflow from malicious or malformed input.
+  HloParserOptions& set_max_recursion_depth(int value) {
+    max_recursion_depth_ = value;
+    return *this;
+  }
+
+  int max_recursion_depth() const { return max_recursion_depth_; }
+
+  static constexpr int kDefaultMaxRecursionDepth = 8192;
+
  private:
   bool fill_missing_layouts_ = true;
   bool fill_shortform_constants_with_random_values_ = true;
   bool keep_module_auto_layouts_ = false;
+  int max_recursion_depth_ = kDefaultMaxRecursionDepth;
 };
 
 // Given a string in the HloModule::ToString() format, parses the string and
@@ -131,9 +144,10 @@ absl::StatusOr<Layout> ParseLayout(absl::string_view str);
 absl::StatusOr<std::vector<ReplicaGroup>> ParseReplicaGroupsOnly(
     absl::string_view str);
 
-// Parses and returns a `CollectiveDeviceList` from a `str`.
-absl::StatusOr<CollectiveDeviceList> ParseCollectiveDeviceListOnly(
-    absl::string_view str);
+
+// Parses and returns a `CollectiveDeviceListBase` from `str`.
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
+ParseCollectiveDeviceListBase(absl::string_view str);
 
 class HloParser {
  public:

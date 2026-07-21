@@ -130,7 +130,7 @@ class InitializeTRTResource : public OpKernel {
     do {
       tstring record;
       Status status = reader->ReadRecord(&offset, &record);
-      if (errors::IsOutOfRange(status)) break;
+      if (absl::IsOutOfRange(status)) break;
 
       TRTEngineInstance engine_instance;
       engine_instance.ParseFromString(record);

@@ -47,6 +47,7 @@ class DType {
     kPred = 1,
 
     // Signed integral values of fixed width.
+    kS1 = 30,
     kS2 = 26,
     kS4 = 21,
     kS8 = 2,
@@ -55,6 +56,7 @@ class DType {
     kS64 = 5,
 
     // Unsigned integral values of fixed width.
+    kU1 = 31,
     kU2 = 27,
     kU4 = 22,
     kU8 = 6,
@@ -94,8 +96,10 @@ class DType {
 
     // MX floating point types.
     kF4E2M1FN = 32,
+    kF6E3M2FN = 35,
+    kF6E2M3FN = 36,
 
-    // Next = 34
+    // Next = 37
 
     // Variable-length string represented as raw bytes, as in `bytes` in Python,
     // i.e., no encoding enforcement. String is not support in XLA. DType.Kind
@@ -146,15 +150,14 @@ class DType {
     return proto;
   }
 
-  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
-  std::string DebugString() const;
-
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const DType& dtype) {
     sink.Append(dtype.DebugString());
   }
 
  private:
+  std::string DebugString() const;
+
   Kind kind_;
 };
 

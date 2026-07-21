@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/cpu/autotuner/cpu_codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -48,6 +49,10 @@ class LlvmKernelBackend : public CpuCodegenBackend {
 
   absl::Status ApplyConfig(HloInstruction& instr,
                            const xla::BackendConfig& config) final;
+
+  autotuner::Backend backend() const final {
+    return autotuner::Backend::LLVM_KERNEL_EMITTER;
+  }
 
  protected:
   bool IsSupported(const HloInstruction& instr);

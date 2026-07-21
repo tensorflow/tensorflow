@@ -39,16 +39,16 @@ struct ProtoComparisonOptions {
   bool treat_nan_as_equal;
 };
 
-bool EqualsGraphDef(string graphdef_string1, string graphdef_string2,
+bool EqualsGraphDef(std::string graphdef_string1, std::string graphdef_string2,
                     const ProtoComparisonOptions& options) {
   GraphDef graph_def_1;
   if (!graph_def_1.ParseFromString(graphdef_string1)) {
-    MaybeRaiseFromStatus(errors::InvalidArgument(
+    MaybeRaiseFromStatus(absl::InvalidArgumentError(
         "Couldn't interpret first argument as a GraphDef"));
   }
   GraphDef graph_def_2;
   if (!graph_def_2.ParseFromString(graphdef_string2)) {
-    MaybeRaiseFromStatus(errors::InvalidArgument(
+    MaybeRaiseFromStatus(absl::InvalidArgumentError(
         "Couldn't interpret second argument as a GraphDef"));
   }
   tf::protobuf::util::MessageDifferencer differencer;

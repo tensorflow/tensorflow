@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 
@@ -177,7 +176,7 @@ strings_internal::AlphaNumBuffer LegacyPrecision(float f) {
   return result;
 }
 
-std::string FpToString(Fprint fp) {
+std::string FpToString(uint64_t fp) {
   return absl::StrCat(absl::Hex(fp, absl::kZeroPad16));
 }
 

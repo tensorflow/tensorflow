@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/lib/broadcast.h"
 #include "xla/hlo/builder/lib/constants.h"
@@ -48,8 +49,10 @@ absl::StatusOr<HloInstruction*> BitcastDtypesExpander::ExpandInstruction(
   const Shape& from_shape = input->shape();
   const Shape& to_shape = instruction->shape();
 
-  int input_bit_width = primitive_util::BitWidth(from_shape.element_type());
-  int output_bit_width = primitive_util::BitWidth(to_shape.element_type());
+  int input_bit_width =
+      primitive_util::StorageBitWidth(from_shape.element_type());
+  int output_bit_width =
+      primitive_util::StorageBitWidth(to_shape.element_type());
 
   PrimitiveType input_logical_type =
       primitive_util::UnsignedIntegralTypeForBitWidth(input_bit_width);
@@ -82,11 +85,10 @@ absl::StatusOr<HloInstruction*> BitcastDtypesExpander::ExpandInstruction(
       reshaped_input_shape.push_back(1);
       int64_t output_bit_width_mask = (int64_t{1} << output_bit_width) - 1;
 
-      TF_ASSIGN_OR_RETURN(input,
-                          BroadcastTo(Reshape(input, reshaped_input_shape),
-                                      broadcasted_input_shape));
+      ASSIGN_OR_RETURN(input, BroadcastTo(Reshape(input, reshaped_input_shape),
+                                          broadcasted_input_shape));
       input = BitcastConvertType(input, input_logical_type);
-      TF_ASSIGN_OR_RETURN(Shape input_shape, b.GetShape(input));
+      ASSIGN_OR_RETURN(Shape input_shape, b.GetShape(input));
       XlaOp iota = Iota(&b, input_shape, input_shape.dimensions().size() - 1);
       XlaOp iota_m = Mul(ScalarLike(input, output_bit_width), iota);
       input = And(ShiftRightLogical(input, iota_m),
@@ -110,9 +112,9 @@ absl::StatusOr<HloInstruction*> BitcastDtypesExpander::ExpandInstruction(
 
     BitcastConvertType(input, to_shape.element_type());
 
-    TF_ASSIGN_OR_RETURN(XlaComputation xla_computation, b.Build());
-    TF_ASSIGN_OR_RETURN(
-        computation, XlaComputationToHloComputation(xla_computation, module));
+    ASSIGN_OR_RETURN(XlaComputation xla_computation, b.Build());
+    ASSIGN_OR_RETURN(computation,
+                     XlaComputationToHloComputation(xla_computation, module));
   }
 
   HloInstruction* call =
@@ -126,15 +128,15 @@ absl::StatusOr<HloInstruction*> BitcastDtypesExpander::ExpandInstruction(
   // inlined. Since each function only has a single call-site anyway, this isn't
   // a big deal.
   CallInliner call_inliner;
-  TF_ASSIGN_OR_RETURN(auto inline_map, call_inliner.Inline(call));
+  ASSIGN_OR_RETURN(auto inline_map, call_inliner.Inline(call));
   return inline_map[root];
 }
 
 bool BitcastDtypesExpander::InstructionMatchesPattern(
     HloInstruction* instruction) {
   return instruction->opcode() == HloOpcode::kBitcastConvert &&
-         primitive_util::BitWidth(instruction->shape().element_type()) !=
-             primitive_util::BitWidth(
+         primitive_util::StorageBitWidth(instruction->shape().element_type()) !=
+             primitive_util::StorageBitWidth(
                  instruction->operand(0)->shape().element_type());
 }
 

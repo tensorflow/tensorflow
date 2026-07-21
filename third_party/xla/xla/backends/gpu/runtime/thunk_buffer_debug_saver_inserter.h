@@ -16,16 +16,22 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_THUNK_BUFFER_DEBUG_SAVER_INSERTER_H_
 #define XLA_BACKENDS_GPU_RUNTIME_THUNK_BUFFER_DEBUG_SAVER_INSERTER_H_
 
+#include <vector>
+
 #include "absl/status/status.h"
-#include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 
 // Records outputs of thunks selected by ThunkFilter.
-absl::Status RunDebugSaverInserter(SequentialThunk& root_thunk,
-                                   const DebugOptions& debug_options,
-                                   const HloModule& hlo_module);
+absl::Status RunDebugSaverInserter(
+    ThunkSequence* thunk_sequence, const DebugOptions& debug_options,
+    const HloModule& hlo_module,
+    const std::vector<ShapedSlice>& module_output_slices);
 
 }  // namespace xla::gpu
 

@@ -1,0 +1,13 @@
+diff --git a/BUILD b/BUILD
+index ef49b2d..1710abc 100644
+--- a/BUILD
++++ b/BUILD
+@@ -157,1 +155,5 @@ cc_library(
++        "hwy/highway.h",  # public
++        "hwy/foreach_target.h",  # public
+     ],
++    include_prefix = "third_party/highway",
++    includes = ["."],
+@@ -169,2 +173,0 @@ cc_library(
+-        "hwy/highway.h",  # public
+-        "hwy/foreach_target.h",  # public

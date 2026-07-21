@@ -15,29 +15,34 @@ limitations under the License.
 
 #include "xla/pjrt/cpu/cpu_pjrt_compiler.h"
 
+#include <cstdlib>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Parser/Parser.h"
-#include "xla/backends/cpu/codegen/cpu_features.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/transforms/hlo_module_stitcher.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/pjrt/cpu/cpu_client.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/cpu/executable.pb.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/env.h"
+#include "tsl/platform/path.h"
 
 namespace xla::cpu {
 namespace {
@@ -68,13 +73,10 @@ std::unique_ptr<CpuTopologyDescription> GetDefaultCpuTopologyDescription() {
   }
 
   return std::make_unique<CpuTopologyDescription>(
-      cpu::PlatformId(), cpu::PlatformName(), cpu::PlatformVersion(),
-      cpu_topology_devices,
-      DetectMachineAttributes(
-          CpuFeatureFromString(GetDebugOptionsFromFlags().xla_cpu_max_isa()))
-          .features);
+      xla::CpuPlatformId(), xla::CpuPlatformName(), xla::CpuPlatformVersion(),
+      CpuTopology(cpu_topology_devices,
+                  xla::cpu::TargetMachineOptions(GetDebugOptionsFromFlags())));
 }
-
 TEST_F(CpuPjrtCompilerTest, CompileXlaComputationSuccess) {
   xla::CompileOptions options;
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kProgram));
@@ -91,17 +93,20 @@ TEST_F(CpuPjrtCompilerTest, CompileXlaComputationSuccess) {
 
 TEST_F(CpuPjrtCompilerTest, CompileMlirOpSuccess) {
   xla::CompileOptions options;
-  mlir::MLIRContext context;
-  context.loadDialect<mlir::func::FuncDialect, mlir::mhlo::MhloDialect>();
+  auto context = std::make_unique<mlir::MLIRContext>();
+  context->loadDialect<mlir::func::FuncDialect, mlir::mhlo::MhloDialect>();
   auto mlir_module =
-      mlir::parseSourceString<mlir::ModuleOp>(kMlirProgram, &context);
+      mlir::parseSourceString<mlir::ModuleOp>(kMlirProgram, context.get());
 
   auto topology_description = GetDefaultCpuTopologyDescription();
 
   xla::cpu::CpuPjRtCompiler compiler;
   TF_ASSERT_OK_AND_ASSIGN(
       auto executable,
-      compiler.Compile(options, *mlir_module, *topology_description,
+      compiler.Compile(options,
+                       xla::MaybeOwningMlirModule(std::move(context),
+                                                  std::move(mlir_module)),
+                       *topology_description,
                        /*client=*/nullptr));
 }
 
@@ -120,8 +125,10 @@ TEST_F(CpuPjrtCompilerTest, CompileXlaComputationWithAvx512FeatureOn) {
 
   // Set custom topology.
   auto topology_description = std::make_unique<CpuTopologyDescription>(
-      PlatformId(), PlatformName(), PlatformVersion(), cpu_topology_devices,
-      std::vector<std::string>{"+avx512"});
+      xla::CpuPlatformId(), xla::CpuPlatformName(), xla::CpuPlatformVersion(),
+      CpuTopology(cpu_topology_devices,
+                  xla::cpu::TargetMachineOptions(/*triple=*/"", /*cpu=*/"",
+                                                 /*features=*/"+avx512")));
 
   xla::cpu::CpuPjRtCompiler compiler;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -145,6 +152,92 @@ TEST_F(CpuPjrtCompilerTest, CompileXlaComputationWithAvx512FeatureOn) {
 
   EXPECT_THAT(compilation_result_proto.target_machine_options().features(),
               testing::HasSubstr("+avx512"));
+}
+
+constexpr absl::string_view kMultiModuleProgram = R"(HloModule Computation
+
+Subcomputation1 {
+  p0 = s32[] parameter(0)
+  ROOT out = s32[] add(p0, p0)
+}
+
+ENTRY Computation {
+  p = s32[] constant(2)
+  c1 = s32[] call(p), to_apply=Subcomputation1, frontend_attributes={compilation_unit="Subcomputation1"}
+  ROOT root = s32[] add(c1, c1)
+})";
+
+bool SearchRecursively(tsl::Env* env, const std::string& path,
+                       absl::string_view search_str) {
+  if (env->IsDirectory(path).ok()) {
+    std::vector<std::string> children;
+    if (env->GetChildren(path, &children).ok()) {
+      for (const std::string& child : children) {
+        if (child == "." || child == "..") {
+          continue;
+        }
+        if (SearchRecursively(env, tsl::io::JoinPath(path, child),
+                              search_str)) {
+          return true;
+        }
+      }
+    }
+  } else {
+    std::string content;
+    if (tsl::ReadFileToString(env, path, &content).ok()) {
+      if (content.find(search_str) != std::string::npos) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool TempDirContainsHloString(absl::string_view search_str) {
+  std::string dump_dir =
+      std::getenv("TEST_TMPDIR") ? std::getenv("TEST_TMPDIR") : "/tmp";
+  return SearchRecursively(tsl::Env::Default(), dump_dir, search_str);
+}
+
+TEST_F(CpuPjrtCompilerTest, CompileMultiModuleHloSuccess) {
+  xla::CompileOptions options;
+  auto* debug_opts = options.executable_build_options.mutable_debug_options();
+  debug_opts->set_xla_dump_to(
+      std::getenv("TEST_TMPDIR") ? std::getenv("TEST_TMPDIR") : "/tmp");
+  debug_opts->set_xla_dump_hlo_pass_re(".*");
+  debug_opts->set_xla_dump_hlo_as_text(true);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kMultiModuleProgram));
+  xla::XlaComputation computation(module->ToProto());
+
+  auto topology_description = GetDefaultCpuTopologyDescription();
+
+  xla::cpu::CpuPjRtCompiler compiler;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      compiler.Compile(options, computation, *topology_description,
+                       /*client=*/nullptr));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto optimized_modules, executable->GetHloModules());
+  ASSERT_FALSE(optimized_modules.empty());
+
+  // Verify that the multi-module stitching logic executed correctly by checking
+  // for the stitching custom calls generated midway through the pipeline.
+  EXPECT_TRUE(TempDirContainsHloString(xla::kMultiModuleCustomCallTarget));
+}
+
+TEST_F(CpuPjrtCompilerTest, DeserializePjRtTopologyDescriptionSuccess) {
+  xla::cpu::CpuPjRtCompiler compiler;
+  auto topology_description = GetDefaultCpuTopologyDescription();
+  TF_ASSERT_OK_AND_ASSIGN(auto serialized_topology_description,
+                          topology_description->ToProto());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto deserialized_topology_description,
+      compiler.DeserializePjRtTopologyDescription(
+          serialized_topology_description.SerializeAsString()));
+  EXPECT_THAT(deserialized_topology_description->platform_name(),
+              xla::CpuPlatformName());
 }
 
 }  // namespace

@@ -6,9 +6,8 @@ def repo():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "44bf8a258cfd0d7b500b6058a2bb5c7387c8cebba295cfca985a68d16513f7c8",
-        strip_prefix = "XNNPACK-25b42dfddb0ee22170d73ff0d4b333ea1e6edfeb",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/25b42dfddb0ee22170d73ff0d4b333ea1e6edfeb.zip"),
-        patch_file = ["//third_party/xnnpack:layering_check_fix.patch"],
+        sha256 = "0dc79da84559117ed446db6798aea3e166b5da85a841f723787b234ae2d34b0a",
+        strip_prefix = "XNNPACK-efa2e754e390ab3024f6aa617385cb28bdfa9969",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/efa2e754e390ab3024f6aa617385cb28bdfa9969.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)

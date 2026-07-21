@@ -47,6 +47,7 @@
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/types.h"
+#include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
@@ -99,6 +100,14 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
       const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
       ArrayCopySemantics semantics);
 
+  // `Array::BitcastArrays()` implements `Client::BitcastArrays()`.
+  // TODO(hyeontaek): Implement logic directly in client.cc.
+  static absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> BitcastArrays(
+      xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
+      absl::Span<xla::ifrt::ArrayRef> arrays,
+      absl::Span<const xla::ifrt::ArraySpec> specs,
+      ArrayCopySemantics semantics);
+
   // Gets handles from an array span.
   static absl::StatusOr<::google::protobuf::RepeatedField<uint64_t>> GetHandles(
       absl::Span<xla::ifrt::ArrayRef> arrays, ArrayCopySemantics semantics);
@@ -109,13 +118,15 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
 
   Array(xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
         DType dtype, Shape shape, ShardingRef sharding, ArrayHandle arr_handle,
-        std::shared_ptr<const xla::PjRtLayout> layout)
+        std::shared_ptr<const xla::PjRtLayout> pjrt_layout)
       : client_(client),
         rpc_helper_(std::move(rpc_helper)),
         dtype_(dtype),
         shape_(std::move(shape)),
         sharding_(std::move(sharding)),
-        layout_(std::move(layout)),
+        layout_(pjrt_layout != nullptr
+                    ? xla::ifrt::PjRtLayout::Create(std::move(pjrt_layout))
+                    : nullptr),
         user_context_(UserContextScope::current()),
         handle_(arr_handle) {}
 
@@ -159,7 +170,10 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   ShardingRef shared_ptr_sharding() const override { return sharding_; }
   absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> pjrt_layout()
       const override;
+  LayoutRef layout() const override;
   UserContextRef user_context() const override { return user_context_; }
+
+  absl::StatusOr<std::optional<int64_t>> ByteSize() const override;
 
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
   DisassembleIntoSingleDeviceArrays(
@@ -194,7 +208,7 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   const DType dtype_;
   const Shape shape_;
   const ShardingRef sharding_;
-  const std::shared_ptr<const xla::PjRtLayout> layout_;
+  const std::shared_ptr<const xla::ifrt::PjRtLayout> layout_;
 
   const UserContextRef user_context_;
 

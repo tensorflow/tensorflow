@@ -418,85 +418,85 @@ class NcclAllToAllTest : public NcclTestBase {
 };
 
 TEST_F(NcclReducerTest, Test2Dev16Len) {
-  RunTest(/*num_ranks=*/2, /*tensor_length=*/16);
+  RunTest(/*num_ranks=*/2, /*input_length=*/16);
 }
 TEST_F(NcclReducerTest, Test4Dev16Len) {
-  RunTest(/*num_ranks=*/4, /*tensor_length=*/16);
+  RunTest(/*num_ranks=*/4, /*input_length=*/16);
 }
 TEST_F(NcclReducerTest, Test8Dev16Len) {
-  RunTest(/*num_ranks=*/8, /*tensor_length=*/16);
+  RunTest(/*num_ranks=*/8, /*input_length=*/16);
 }
 TEST_F(NcclReducerTest, Test8Dev128Len) {
-  RunTest(/*num_ranks=*/8, /*tensor_length=*/128);
+  RunTest(/*num_ranks=*/8, /*input_length=*/128);
 }
 TEST_F(NcclReducerTest, Test8Dev1048576Len) {
-  RunTest(/*num_ranks=*/8, /*tensor_length=*/1048576);
+  RunTest(/*num_ranks=*/8, /*input_length=*/1048576);
 }
 
 TEST_F(NcclBroadcasterTest, Test2Dev16LenSrc0) {
-  RunTest(/*num_ranks=*/2, /*tensor_length=*/16);
+  RunTest(/*num_ranks=*/2, /*input_length=*/16);
 }
 TEST_F(NcclBroadcasterTest, Test4Dev16LenSrc1) {
   source_rank_ = 1;
-  RunTest(/*num_ranks=*/4, /*tensor_length=*/16);
+  RunTest(/*num_ranks=*/4, /*input_length=*/16);
 }
 TEST_F(NcclBroadcasterTest, Test8Dev16LenSrc7) {
   source_rank_ = 7;
-  RunTest(/*num_ranks=*/8, /*tensor_length=*/16);
+  RunTest(/*num_ranks=*/8, /*input_length=*/16);
 }
 TEST_F(NcclBroadcasterTest, Test8Dev128LenSrc0) {
-  RunTest(/*num_ranks=*/8, /*tensor_length=*/128);
+  RunTest(/*num_ranks=*/8, /*input_length=*/128);
 }
 TEST_F(NcclBroadcasterTest, Test8Dev1048576LenSrc0) {
-  RunTest(/*num_ranks=*/8, /*tensor_length=*/1048576);
+  RunTest(/*num_ranks=*/8, /*input_length=*/1048576);
 }
 
 TEST_F(NcclGathererTest, Test2Dev16Len) {
-  RunTest(/*num_ranks=*/2, /*tensor_length=*/16);
+  RunTest(/*num_ranks=*/2, /*input_length=*/16);
 }
 TEST_F(NcclGathererTest, Test4Dev16Len) {
-  RunTest(/*num_ranks=*/4, /*tensor_length=*/16);
+  RunTest(/*num_ranks=*/4, /*input_length=*/16);
 }
 TEST_F(NcclGathererTest, Test8Dev16Len) {
-  RunTest(/*num_ranks=*/8, /*tensor_length=*/16);
+  RunTest(/*num_ranks=*/8, /*input_length=*/16);
 }
 TEST_F(NcclGathererTest, Test8Dev128Len) {
-  RunTest(/*num_ranks=*/8, /*tensor_length=*/128);
+  RunTest(/*num_ranks=*/8, /*input_length=*/128);
 }
 TEST_F(NcclGathererTest, Test8Dev1048576Len) {
-  RunTest(/*num_ranks=*/8, /*tensor_length=*/1048576);
+  RunTest(/*num_ranks=*/8, /*input_length=*/1048576);
 }
 
 TEST_F(NcclReduceScattererTest, Test2Dev16Len) {
-  RunTest(/*num_ranks=*/2, /*tensor_length=*/16);
+  RunTest(/*num_ranks=*/2, /*input_length=*/16);
 }
 TEST_F(NcclReduceScattererTest, Test4Dev16Len) {
-  RunTest(/*num_ranks=*/4, /*tensor_length=*/16);
+  RunTest(/*num_ranks=*/4, /*input_length=*/16);
 }
 TEST_F(NcclReduceScattererTest, Test8Dev16Len) {
-  RunTest(/*num_ranks=*/8, /*tensor_length=*/16);
+  RunTest(/*num_ranks=*/8, /*input_length=*/16);
 }
 TEST_F(NcclReduceScattererTest, Test8Dev128Len) {
-  RunTest(/*num_ranks=*/8, /*tensor_length=*/128);
+  RunTest(/*num_ranks=*/8, /*input_length=*/128);
 }
 TEST_F(NcclReduceScattererTest, Test8Dev1048576Len) {
-  RunTest(/*num_ranks=*/8, /*tensor_length=*/1048576);
+  RunTest(/*num_ranks=*/8, /*input_length=*/1048576);
 }
 
 TEST_F(NcclAllToAllTest, Test2Dev16Len) {
-  RunTest(/*num_ranks=*/2, /*tensor_length=*/16);
+  RunTest(/*num_ranks=*/2, /*input_length=*/16);
 }
 TEST_F(NcclAllToAllTest, Test4Dev16Len) {
-  RunTest(/*num_ranks=*/4, /*tensor_length=*/16);
+  RunTest(/*num_ranks=*/4, /*input_length=*/16);
 }
 TEST_F(NcclAllToAllTest, Test8Dev16Len) {
-  RunTest(/*num_ranks=*/8, /*tensor_length=*/16);
+  RunTest(/*num_ranks=*/8, /*input_length=*/16);
 }
 TEST_F(NcclAllToAllTest, Test8Dev128Len) {
-  RunTest(/*num_ranks=*/8, /*tensor_length=*/128);
+  RunTest(/*num_ranks=*/8, /*input_length=*/128);
 }
 TEST_F(NcclAllToAllTest, Test8Dev1048576Len) {
-  RunTest(/*num_ranks=*/8, /*tensor_length=*/1048576);
+  RunTest(/*num_ranks=*/8, /*input_length=*/1048576);
 }
 
 }  // namespace tensorflow

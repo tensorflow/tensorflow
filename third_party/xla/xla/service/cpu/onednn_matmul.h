@@ -33,16 +33,15 @@ Shape OneDnnMatMulOptWeightsShape(const Shape& input_shape,
                                   const Shape& output_shape,
                                   const OneDnnMatMulConfig* matmul_config);
 
-void ExecuteOneDnnMatMul(absl::Span<MemrefInfoHandler> arguments,
-                         absl::Span<MemrefInfoHandler> results,
-                         OneDnnMatMulConfig matmul_config,
+void ExecuteOneDnnMatMul(OneDnnMatMulConfig matmul_config,
                          const dnnl::engine& cpu_engine,
                          dnnl::stream& onednn_stream,
-                         OneDnnResources& resources);
+                         OneDnnPrimResources& resources);
 
 template <>
 struct PrimitiveTrait<kOnednnMatmulConfig> {
   using pointer_type = xla::cpu::OneDnnMatMulConfig*;
+  using primitive_desc = dnnl::matmul::primitive_desc;
   static const BackendConfigOneofCase kConfigVal = kOnednnMatmulConfig;
 };
 

@@ -34,11 +34,11 @@ absl::Status FreezeRequantizationRanges(const GraphDef& input_graph_def,
                                         const TransformFuncContext& context,
                                         GraphDef* output_graph_def);
 struct MinMaxRecord {
-  string name;
+  std::string name;
   float min;
   float max;
 };
-absl::Status ExtractMinMaxRecords(const string& log_file_name,
+absl::Status ExtractMinMaxRecords(const std::string& log_file_name,
                                   std::vector<MinMaxRecord>* records);
 
 class FreezeRequantizationRangesTest : public ::testing::Test {
@@ -100,7 +100,7 @@ class FreezeRequantizationRangesTest : public ::testing::Test {
     GraphDef graph_def;
     TF_ASSERT_OK(root.ToGraphDef(&graph_def));
 
-    const string min_max_log_file_name =
+    const std::string min_max_log_file_name =
         io::JoinPath(testing::TmpDir(), "min_max_log_file.txt");
     {
       std::unique_ptr<WritableFile> file;
@@ -123,15 +123,15 @@ class FreezeRequantizationRangesTest : public ::testing::Test {
     TF_EXPECT_OK(
         FreezeRequantizationRanges(graph_def, context, &frozen_graph_def));
 
-    std::map<string, const NodeDef*> node_map;
+    std::map<std::string, const NodeDef*> node_map;
     MapNamesToNodes(frozen_graph_def, &node_map);
     EXPECT_EQ(0, node_map.count("requantization_range_op"));
     EXPECT_EQ(1, node_map.count("requantize_op"));
-    const string& min_input =
+    const std::string& min_input =
         NodeNameFromInput(node_map.at("requantize_op")->input(3));
     ASSERT_EQ(1, node_map.count(min_input));
     EXPECT_EQ("Const", node_map.at(min_input)->op());
-    const string& max_input =
+    const std::string& max_input =
         NodeNameFromInput(node_map.at("requantize_op")->input(4));
     ASSERT_EQ(1, node_map.count(max_input));
     EXPECT_EQ("Const", node_map.at(max_input)->op());
@@ -154,7 +154,7 @@ class FreezeRequantizationRangesTest : public ::testing::Test {
   }
 
   void TestExtractMinMaxRecords() {
-    const string min_max_log_file_name =
+    const std::string min_max_log_file_name =
         io::JoinPath(testing::TmpDir(), "min_max_log_file2.txt");
     {
       std::unique_ptr<WritableFile> file;

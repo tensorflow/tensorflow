@@ -27,9 +27,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -47,12 +49,14 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_cpu_internal.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -144,6 +148,7 @@ TEST(PjRtCApiClientTest, CreateErrorBuffer) {
                           GetCApiClient("cpu"));
 
   absl::Status error = absl::InternalError("Test Error");
+  error.SetPayload("test_key", absl::Cord("test_payload_value"));
   Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -153,6 +158,8 @@ TEST(PjRtCApiClientTest, CreateErrorBuffer) {
   absl::Status awaited_status = error_buffer->GetReadyFuture().Await();
   EXPECT_TRUE(absl::IsInternal(awaited_status));
   EXPECT_THAT(awaited_status.message(), HasSubstr("Test Error"));
+  EXPECT_EQ(awaited_status.GetPayload("test_key"),
+            absl::Cord("test_payload_value"));
 }
 
 TEST(PjRtCApiClientTest, ConcurrentGetReadyFuture) {
@@ -204,6 +211,30 @@ TEST(PjRtCApiClientTest, ConcurrentGetReadyFuture) {
   }
 }
 
+TEST(PjRtCApiClientTest, GetReadyFutureDeletedBuffer) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+
+  std::vector<int32_t> data{1};
+  Shape shape = ShapeUtil::MakeShape(S32, {});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  buffer->Delete();
+  EXPECT_TRUE(buffer->IsDeleted());
+
+  auto future = buffer->GetReadyFuture();
+  EXPECT_THAT(future.Await(), StatusIs(absl::StatusCode::kInvalidArgument,
+                                       HasSubstr("deleted or donated")));
+}
+
 TEST(PjRtCApiClientTest, IsDynamicDimension) {
   SetUpCpuPjRtApi();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
@@ -252,6 +283,69 @@ TEST(PjRtCApiClientTest, IsDynamicDimension) {
             ShapeUtil::MakeShape(S32, {2, 3}, {false, true}));
   EXPECT_EQ(*result_buffer->logical_on_device_shape(),
             ShapeUtil::MakeShape(S32, {2, 2}, {false, true}));
+}
+
+TEST(PjRtCApiClientTest, DynamicShapesPipeline) {
+  SetUpCpuPjRtApi();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
+
+  // Computation 1: static F32[15] -> dynamic F32[<=15] (runtime size = input1)
+  Shape shape0 = ShapeUtil::MakeShape(F32, {15});
+  Shape shape1 = ShapeUtil::MakeShape(S32, {});
+
+  XlaBuilder builder1("Module1");
+  auto inp_0 = Parameter(&builder1, 0, shape0, "input0");
+  auto inp_1 = Parameter(&builder1, 1, shape1, "input1");
+  std::vector<bool> dims_are_dynamic1 = {true};
+  auto reshaped = DynamicReshape(inp_0, {inp_1}, {15}, dims_are_dynamic1);
+  ASSERT_OK_AND_ASSIGN(auto computation1, builder1.Build(reshaped));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable1,
+                       client->CompileAndLoad(computation1, CompileOptions()));
+
+  // Computation 2: dynamic F32[<=10] -> dynamic F32[<=10] (Identity)
+  Shape shape_expected = ShapeUtil::MakeShape(F32, {10}, {true});
+  XlaBuilder builder2("Module2");
+  auto inp_m2 = Parameter(&builder2, 0, shape_expected, "input");
+  ASSERT_OK_AND_ASSIGN(auto computation2, builder2.Build(inp_m2));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable2,
+                       client->CompileAndLoad(computation2, CompileOptions()));
+
+  // 1. Prepare input buffer (static F32[15], all 1.0f)
+  std::vector<float> input_data(15, 1.0f);
+  ASSERT_OK_AND_ASSIGN(
+      auto param0,
+      client->BufferFromHostBuffer(
+          input_data.data(), shape0.element_type(), shape0.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  // 2. Prepare dynamic size (we want the runtime size to be 4)
+  int32_t dynamic_size = 4;
+  ASSERT_OK_AND_ASSIGN(
+      auto param1,
+      client->BufferFromHostBuffer(
+          &dynamic_size, shape1.element_type(), shape1.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  // 3. Run Computation 1 -> returns dynamic buffer (runtime size 4, bound 15)
+  ASSERT_OK_AND_ASSIGN(
+      auto results1,
+      executable1->Execute({{param0.get(), param1.get()}}, ExecuteOptions()));
+  ASSERT_EQ(results1[0].size(), 1);
+  auto* dynamic_buffer = results1[0][0].get();
+
+  // Since we are on CPU (kSuffix), this must be REJECTED by
+  // CheckBufferCompatibilities.
+  auto status2 = executable2->Execute({{dynamic_buffer}}, ExecuteOptions());
+  EXPECT_THAT(status2.status(),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("E0102: RuntimeProgramInputMismatch")));
 }
 
 TEST(PjRtCApiClientTest, OnDeviceShape) {
@@ -310,6 +404,19 @@ TEST(PjRtCApiClientTest, TopologyGetDefaultLayout) {
 
   Layout expected_layout = LayoutUtil::MakeDescendingLayout(dims.size());
   EXPECT_EQ(layout, expected_layout);
+}
+
+TEST(PjRtCApiClientTest, TopologyFingerprint) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+
+  TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                          client->GetTopologyDescription());
+
+  ASSERT_NE(topology, nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(uint64_t fingerprint, topology->Fingerprint());
+  EXPECT_NE(fingerprint, 0);
 }
 
 TEST(PjRtCApiClientTest, NonEmptyExecutableFingerprint) {
@@ -413,9 +520,9 @@ TEST(PjRtClientTest, CompileUsesStableHloVersion) {
                           GetCApiClient("cpu"));
   static auto PJRT_Client_Compile_Orig = c_api->PJRT_Client_Compile;
   constexpr char kProgram[] = "func.func @main() {return}";
-  mlir::MLIRContext context;
+  auto context = std::make_unique<mlir::MLIRContext>();
   TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                          ParseMlirModuleString(kProgram, context));
+                          ParseMlirModuleString(kProgram, *context));
   const_cast<PJRT_Api*>(c_api)->PJRT_Client_Compile =
       [](PJRT_Client_Compile_Args* args) -> PJRT_Error* {
     mlir::vhlo::Version version = mlir::vhlo::Version::getCurrentVersion();
@@ -427,8 +534,11 @@ TEST(PjRtClientTest, CompileUsesStableHloVersion) {
                     .contains(version_string));
     return PJRT_Client_Compile_Orig(args);
   };
-  std::unique_ptr<PjRtLoadedExecutable> executable =
-      client->CompileAndLoad(*module, CompileOptions()).value();
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      client->CompileAndLoad(
+          MaybeOwningMlirModule(std::move(context), std::move(module)),
+          CompileOptions()));
   const_cast<PJRT_Api*>(c_api)->PJRT_Client_Compile = PJRT_Client_Compile_Orig;
 }
 
@@ -437,14 +547,108 @@ TEST(PjRtClientTest, CompileWorksInplace) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetCApiClient("cpu"));
   constexpr char kProgram[] = "func.func @main() {return}";
-  mlir::MLIRContext context;
+  auto context = std::make_unique<mlir::MLIRContext>();
   TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                          ParseMlirModuleString(kProgram, context));
+                          ParseMlirModuleString(kProgram, *context));
   CompileOptions options;
   options.allow_in_place_mlir_modification = true;
-  std::unique_ptr<PjRtLoadedExecutable> executable =
-      client->CompileAndLoad(*module, options).value();
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      client->CompileAndLoad(
+          MaybeOwningMlirModule(std::move(context), std::move(module)),
+          options));
   EXPECT_NE(executable.get(), nullptr);
+}
+
+TEST(PjRtClientTest, CompileMlirModule) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  constexpr char kProgram[] = "func.func @main() {return}";
+  auto context = std::make_unique<mlir::MLIRContext>();
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          ParseMlirModuleString(kProgram, *context));
+  CompileOptions options;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtExecutable> executable,
+      client->Compile(
+          MaybeOwningMlirModule(std::move(context), std::move(module)),
+          options));
+  EXPECT_NE(executable.get(), nullptr);
+}
+
+TEST(PjRtCApiClientTest, LoadExecutable) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  constexpr char kProgram[] = "func.func @main() {return}";
+  auto context = std::make_unique<mlir::MLIRContext>();
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          ParseMlirModuleString(kProgram, *context));
+  CompileOptions options;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtExecutable> executable,
+      client->Compile(
+          MaybeOwningMlirModule(std::move(context), std::move(module)),
+          options));
+  ASSERT_NE(executable.get(), nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
+      client->Load(std::move(executable), LoadOptions{}));
+  ASSERT_NE(loaded_executable.get(), nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results,
+      loaded_executable->Execute(/*argument_handles=*/{{}}, ExecuteOptions()));
+  ASSERT_EQ(results.size(), 1);
+  EXPECT_EQ(results[0].size(), 0);
+}
+
+TEST(PjRtCApiClientTest, LoadSameExecutableTwice) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  constexpr char kProgram[] = "func.func @main() {return}";
+  auto context = std::make_unique<mlir::MLIRContext>();
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          ParseMlirModuleString(kProgram, *context));
+  CompileOptions options;
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::shared_ptr<PjRtExecutable> executable,
+      client->Compile(
+          MaybeOwningMlirModule(std::move(context), std::move(module)),
+          options));
+  ASSERT_NE(executable.get(), nullptr);
+
+  // Load the executable twice.
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
+        client->Load(executable, LoadOptions{}));
+    ASSERT_NE(loaded_executable.get(), nullptr);
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results,
+        loaded_executable->Execute(/*argument_handles=*/{{}},
+                                   ExecuteOptions()));
+    ASSERT_EQ(results.size(), 1);
+    EXPECT_EQ(results[0].size(), 0);
+  }
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
+        client->Load(executable, LoadOptions{}));
+    ASSERT_NE(loaded_executable.get(), nullptr);
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results,
+        loaded_executable->Execute(/*argument_handles=*/{{}},
+                                   ExecuteOptions()));
+    ASSERT_EQ(results.size(), 1);
+    EXPECT_EQ(results[0].size(), 0);
+  }
 }
 
 TEST(PjRtClientTest, CanQueryMemoryDescriptions) {
@@ -625,6 +829,76 @@ TEST(PjRtCApiClientTest, GetOutputShapes) {
   EXPECT_EQ(output_shapes[0], expected_shape);
 }
 
+TEST(PjRtCApiClientTest, GetParameterAndOutputShardings) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  Shape shape = ShapeUtil::MakeShapeWithType<float>({4});
+  XlaBuilder builder("sum");
+  auto inp_0 = Parameter(&builder, 0, shape, "input0");
+  auto inp_1 = Parameter(&builder, 1, shape, "input1");
+  auto sum = Add(inp_0, inp_1);
+  auto computation = builder.Build(sum).value();
+
+  CompileOptions options;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                          client->CompileAndLoad(computation, options));
+
+  // CPU usually returns nullopt for shardings if not explicitly set.
+  auto parameter_shardings = executable->GetParameterShardings();
+  auto output_shardings = executable->GetOutputShardings();
+
+  // We expect them to be either nullopt or some default shardings.
+  // For CPU with default options, they are typically nullopt.
+  if (parameter_shardings.has_value()) {
+    EXPECT_EQ(parameter_shardings->size(), 2);
+  }
+  if (output_shardings.has_value()) {
+    EXPECT_EQ(output_shardings->size(), 1);
+  }
+}
+
+TEST(PjRtCApiClientTest, GetParameterAndOutputLayouts) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+
+  Shape shape = ShapeUtil::MakeShapeWithType<float>({4});
+  XlaBuilder builder("sum");
+  auto inp_0 = Parameter(&builder, 0, shape, "input0");
+  auto inp_1 = Parameter(&builder, 1, shape, "input1");
+  auto sum = Add(inp_0, inp_1);
+  auto computation = builder.Build(sum).value();
+
+  CompileOptions options;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                          client->CompileAndLoad(computation, options));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::shared_ptr<const PjRtLayout>> parameter_layouts,
+      executable->GetParameterLayouts());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::shared_ptr<const PjRtLayout>> output_layouts,
+      executable->GetOutputLayouts());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      xla::Layout expected_layout,
+      client->GetDefaultLayout(shape.element_type(), shape.dimensions()));
+
+  // We expect parameter and output layouts to be a default layout because we
+  // didn't specify any layouts in the HLO.
+  EXPECT_EQ(parameter_layouts.size(), 2);
+  for (const std::shared_ptr<const PjRtLayout>& parameter_layout :
+       parameter_layouts) {
+    EXPECT_EQ(parameter_layout->xla_layout(), expected_layout);
+  }
+  EXPECT_EQ(output_layouts.size(), 1);
+  for (const std::shared_ptr<const PjRtLayout>& output_layout :
+       output_layouts) {
+    EXPECT_EQ(output_layout->xla_layout(), expected_layout);
+  }
+}
+
 TEST(PjRtClientTest, BufferFromLiteralInt4) {
   SetUpCpuPjRtApi();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
@@ -734,15 +1008,20 @@ ENTRY Identity() -> f32[2, 2] {
 
   // Poisoning the execution should succeed because the execution has not
   // started with the input buffer not defined yet.
+  absl::Status poison_status = absl::InternalError("foobar1");
+  poison_status.SetPayload("test_key", absl::Cord("test_payload_value"));
+
   auto poison_result = client->addressable_devices().front()->PoisonExecution(
-      kLaunchId, Internal("foobar1"));
+      kLaunchId, poison_status);
   ASSERT_THAT(poison_result, IsOkAndHolds(true));
 
   // The buffer is expected to be poisoned with the error.
   ASSERT_EQ(result->size(), 1);
   ASSERT_EQ(result->at(0).size(), 1);
-  EXPECT_THAT(result->at(0).at(0)->ToLiteral().Await(),
-              StatusIs(tsl::error::INTERNAL, HasSubstr("foobar1")));
+  absl::Status status = result->at(0).at(0)->ToLiteral().Await().status();
+  EXPECT_THAT(status,
+              StatusIs(absl::StatusCode::kInternal, HasSubstr("foobar1")));
+  EXPECT_EQ(status.GetPayload("test_key"), absl::Cord("test_payload_value"));
 
   // A later error (propagated from the input buffer) would not affect the
   // already poisoned output buffer.
@@ -755,6 +1034,98 @@ ENTRY Identity() -> f32[2, 2] {
   poison_result = client->addressable_devices().front()->PoisonExecution(
       kLaunchId + 12, Internal("foobar3"));
   EXPECT_THAT(poison_result, IsOkAndHolds(false));
+}
+
+TEST(PjRtCApiClientTest, AddressableDeviceLogicalIds) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  ASSERT_GT(client->addressable_devices().size(), 1);
+
+  XlaBuilder builder("Identity");
+  Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
+  XlaOp input = Parameter(&builder, 0, shape, "input");
+  XlaComputation computation = builder.Build(input).value();
+
+  DeviceAssignment device_assignment(1, 2);
+  device_assignment(0, 0) = 0;
+  device_assignment(0, 1) = 1;
+
+  CompileOptions options;
+  options.executable_build_options.set_device_assignment(device_assignment);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                          client->CompileAndLoad(computation, options));
+
+  absl::Span<const PjRtLoadedExecutable::LogicalDeviceIds> logical_ids =
+      executable->addressable_device_logical_ids();
+  ASSERT_EQ(logical_ids.size(), 2);
+  EXPECT_EQ(logical_ids[0].replica, 0);
+  EXPECT_EQ(logical_ids[0].partition, 0);
+  EXPECT_EQ(logical_ids[1].replica, 0);
+  EXPECT_EQ(logical_ids[1].partition, 1);
+}
+
+TEST(PjRtCApiClientTest, Bitcast) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+
+  std::vector<int32_t> data{3};
+  Shape shape = ShapeUtil::MakeShape(S32, {});
+  TF_ASSERT_OK_AND_ASSIGN(
+      *shape.mutable_layout(),
+      client->GetDefaultLayout(shape.element_type(), shape.dimensions()));
+
+  Shape new_shape = ShapeUtil::MakeShape(S32, {1});
+  TF_ASSERT_OK_AND_ASSIGN(*new_shape.mutable_layout(),
+                          client->GetDefaultLayout(new_shape.element_type(),
+                                                   new_shape.dimensions()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto bitcast_buffer,
+      buffer->Bitcast(new_shape.element_type(), new_shape.dimensions(),
+                      &new_shape.layout()));
+  EXPECT_TRUE(buffer->IsDeleted());
+  ASSERT_EQ(bitcast_buffer->on_device_shape(), new_shape);
+
+  auto future = bitcast_buffer->ToLiteral();
+  TF_ASSERT_OK_AND_ASSIGN(auto shared_literal, future.Await());
+  std::vector<int32_t> expected = {3};
+  EXPECT_EQ(shared_literal->data<int32_t>(), expected);
+}
+
+TEST(PjRtCApiClientTest, MakeCanonicalShapeForMemorySpace) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+
+  TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                          client->GetTopologyDescription());
+  ASSERT_NE(topology, nullptr);
+
+  Shape input_shape = ShapeUtil::MakeShape(F32, {10, 20});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape canonical_shape,
+      topology->MakeCanonicalShapeForMemorySpace(
+          /*memory_space_kind_id=*/0, input_shape, /*layout=*/nullptr));
+  EXPECT_TRUE(canonical_shape.has_layout());
+
+  Layout specific_layout = LayoutUtil::MakeLayout({0, 1});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape canonical_shape_specific,
+      topology->MakeCanonicalShapeForMemorySpace(
+          /*memory_space_kind_id=*/0, input_shape, &specific_layout));
+  EXPECT_TRUE(canonical_shape_specific.has_layout());
+  EXPECT_EQ(canonical_shape_specific.layout().minor_to_major(),
+            specific_layout.minor_to_major());
 }
 
 }  // namespace

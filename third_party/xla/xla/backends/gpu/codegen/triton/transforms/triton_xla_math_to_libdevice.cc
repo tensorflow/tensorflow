@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-#include <string>
 #include <utility>
 
 #include "absl/status/statusor.h"
@@ -156,6 +154,11 @@ struct OpInfo<mlir::math::TanhOp> {
 };
 
 template <>
+struct OpInfo<mlir::math::RoundEvenOp> {
+  static constexpr auto kFunctionID = TargetDeviceFunctionID::kRint;
+};
+
+template <>
 struct OpInfo<mlir::math::CbrtOp> {
   static constexpr auto kFunctionID = TargetDeviceFunctionID::kCbrt;
 };
@@ -193,11 +196,18 @@ class ConvertToLibdevice : public mlir::OpRewritePattern<OpTy> {
     mlir::ImplicitLocOpBuilder builder(op->getLoc(), rewriter);
 
     llvm::SmallVector<Value, 2> casted_inputs;
-    if (output_type_is_16bit_float) {
+    if (output_type_is_16bit_float &&
+        !(output_type.isF16() && ::xla::gpu::HasF16Implementation(
+                                     OpInfo<OpTy>::kFunctionID, triple_))) {
       // Upcast the inputs to F32.
       for (auto operand : op->getOperands()) {
+        Type f32_type = rewriter.getF32Type();
+        if (auto shaped_type =
+                mlir::dyn_cast<mlir::ShapedType>(operand.getType())) {
+          f32_type = shaped_type.clone(f32_type);
+        }
         casted_inputs.push_back(
-            ::xla::xtile::Cast(builder, operand, rewriter.getF32Type()));
+            arith::ExtFOp::create(builder, op.getLoc(), f32_type, operand));
       }
     } else {
       casted_inputs = llvm::to_vector(op->getOperands());
@@ -210,9 +220,15 @@ class ConvertToLibdevice : public mlir::OpRewritePattern<OpTy> {
                                  triple_),
         /*pure=*/true);
 
-    if (res.getType() != output_type) {
+    Type original_output_type = output_type;
+    if (auto shaped_type = mlir::dyn_cast<mlir::ShapedType>(res.getType())) {
+      original_output_type = shaped_type.clone(output_type);
+    }
+
+    if (res.getType() != original_output_type) {
       // Downcast back to the original output type.
-      res = ::xla::xtile::Cast(builder, res, output_type);
+      res = arith::TruncFOp::create(builder, op.getLoc(), original_output_type,
+                                    res);
     }
 
     rewriter.replaceOp(op, res);
@@ -254,9 +270,10 @@ class TritonXLAMathToLibdevicePass
                mlir::math::CosOp, mlir::math::CoshOp, mlir::math::ExpOp,
                mlir::math::ErfOp, mlir::math::ExpM1Op, mlir::math::LogOp,
                mlir::math::Log1pOp, mlir::math::PowFOp, mlir::arith::RemFOp,
-               mlir::math::RsqrtOp, mlir::math::SinOp, mlir::math::SinhOp,
-               mlir::math::SqrtOp, mlir::math::TanOp, mlir::math::TanhOp,
-               mlir::math::CbrtOp>(patterns, libdevice_path_, triple);
+               mlir::math::RoundEvenOp, mlir::math::RsqrtOp, mlir::math::SinOp,
+               mlir::math::SinhOp, mlir::math::SqrtOp, mlir::math::TanOp,
+               mlir::math::TanhOp, mlir::math::CbrtOp>(patterns,
+                                                       libdevice_path_, triple);
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(module, std::move(patterns)))) {
@@ -267,14 +284,5 @@ class TritonXLAMathToLibdevicePass
 };
 
 }  // namespace
-
-std::unique_ptr<Pass> CreateTritonXLAMathToLibdevicePass(
-    absl::string_view libdevice_path, absl::string_view triple) {
-  TritonXLAMathToLibdevicePassOptions options;
-  options.libdevice_path_ = libdevice_path;
-  options.triple_string_ = triple;
-
-  return std::make_unique<TritonXLAMathToLibdevicePass>(options);
-}
 
 }  // namespace mlir::triton::xla

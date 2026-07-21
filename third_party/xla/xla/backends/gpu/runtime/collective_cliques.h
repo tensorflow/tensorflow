@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_CLIQUES_H_
 #define XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_CLIQUES_H_
 
+#include <memory>
+#include <utility>
+
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_cliques.h"
@@ -24,6 +27,8 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/runtime/device_id.h"
+#include "xla/tsl/util/tied_ref.h"
+#include "xla/util.h"
 
 namespace xla::gpu {
 
@@ -40,10 +45,25 @@ class CollectiveCliques {
   absl::StatusOr<GpuCommunicator*> GetComm(
       const GpuCliqueKey& clique_key, GlobalDeviceId global_device_id) const;
 
+  absl::StatusOr<GpuDeviceCommunicator*> GetDeviceComm(
+      const GpuCliqueKey& clique_key, RankId rank,
+      const GpuDeviceCommunicator::Requirements& reqs) const;
+
+  absl::StatusOr<GpuDeviceCommunicator*> GetDeviceComm(
+      const GpuCliqueKey& clique_key, GlobalDeviceId global_device_id,
+      const GpuDeviceCommunicator::Requirements& reqs) const;
+
   // Returns whether peer device memory access is possible between all devices
   // in the clique.
   absl::StatusOr<bool> peer_access_enabled(
       const GpuCliqueKey& clique_key) const;
+
+  // Ties an object to a clique. Clique takes ownership of the object and will
+  // destroy it when the clique is destroyed. When TiedRef is destroyed, the
+  // object will be garbage collected.
+  template <typename T>
+  absl::StatusOr<tsl::TiedRef<T>> Tie(const GpuCliqueKey& clique_key,
+                                      std::unique_ptr<T> object);
 
   bool empty() const { return cliques_map_.empty(); }
 
@@ -51,8 +71,23 @@ class CollectiveCliques {
   AcquiredCliquesMap cliques_map_;
 };
 
+template <typename T>
+absl::StatusOr<tsl::TiedRef<T>> CollectiveCliques::Tie(
+    const GpuCliqueKey& clique_key, std::unique_ptr<T> object) {
+  // Check that we locked access to a clique for `clique_key`.
+  auto clique = cliques_map_.find(clique_key);
+  if (clique == cliques_map_.end()) {
+    return NotFound("No clique found for clique key: %v", clique_key);
+  }
+  return (*clique->second)->Tie(std::move(object));
+}
+
 // Acquires collective cliques using the given collective parameters for all
 // requested GPU cliques.
+//
+// WARNING: This is a collective operation, that must be called by all
+// participating ranks in the requested cliques, otherwise it will lead to a
+// deadlock.
 absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
     const CollectiveParams& params, const CollectiveCliqueRequests& cliques);
 

@@ -1,5 +1,6 @@
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_xla_deps_py")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_strict_wrapper_private_py")
@@ -9,7 +10,6 @@ load(
 )
 
 visibility = [
-    "//engedu/ml/tf_from_scratch:__pkg__",
     "//third_party/cloud_tpu/convergence_tools:__subpackages__",
     "//third_party/mlperf:__subpackages__",
     "//tensorflow:internal",
@@ -36,9 +36,7 @@ visibility = [
     "//third_party/py/tensorflow_privacy:__subpackages__",
     "//third_party/reverb:__subpackages__",
     "//tensorflow_minigo:__subpackages__",
-    "//research/graph/fairness/inproc_fair_reg:__subpackages__",
     "//third_party/py/scenic:__subpackages__",
-    "//smartass/brain/ops:__subpackages__",
 ]
 
 package(
@@ -47,9 +45,10 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "map_fn",
     srcs = ["map_fn.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":tensor_array_ops",
@@ -83,9 +82,10 @@ tf_gen_op_strict_wrapper_private_py(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "functional_ops",
     srcs = ["functional_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":functional_ops_gen",
@@ -108,9 +108,10 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "functional_ops_test",
     srcs = ["functional_ops_test.py"],
+    strict_deps = True,
     deps = [
         ":functional_ops",
         "//tensorflow/python/eager:def_function",
@@ -137,7 +138,6 @@ tf_gen_op_strict_wrapper_private_py(
     name = "array_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
-        "//smartass/brain/ops:__subpackages__",
         "//tensorflow/compiler/mlir/tfr:__pkg__",
         "//tensorflow/compiler/mlir/tfr/python/experimental:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
@@ -194,6 +194,7 @@ tf_gen_op_strict_wrapper_private_py(
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/examples/speech_commands:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/summary:__pkg__",
     ],
 )
 
@@ -378,11 +379,12 @@ tf_gen_op_strict_wrapper_private_py(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "batch_ops",
     srcs = [
         "batch_ops.py",
     ],
+    strict_deps = True,
     deps = [
         ":batch_ops_gen",
         "//tensorflow/python/eager:def_function",
@@ -522,7 +524,6 @@ tf_gen_op_strict_wrapper_private_py(
 tf_gen_op_strict_wrapper_private_py(
     name = "resource_variable_ops_gen",
     visibility = [
-        "//smartass/brain/configure:__subpackages__",
         "//tensorflow/compiler/mlir/tfr:__pkg__",
         "//tensorflow/compiler/tf2xla:internal",
         "//tensorflow/dtensor:dtensor-internal",
@@ -680,7 +681,6 @@ tf_gen_op_strict_wrapper_private_py(
 tf_gen_op_strict_wrapper_private_py(
     name = "tpu_ops_gen",
     visibility = [
-        "//smartass/brain/configure/python:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/tpu:__pkg__",
@@ -734,9 +734,10 @@ tf_gen_op_strict_wrapper_private_py(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "array_grad",
     srcs = ["array_grad.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_gen",
@@ -776,12 +777,13 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "array_ops",
     srcs = [
         "array_ops.py",
         "tensor_getitem_override.py",
     ],
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = visibility,
     # copybara:uncomment_end_and_comment_begin
@@ -821,9 +823,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "array_ops_stack",
     srcs = ["array_ops_stack.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":array_ops_gen",
@@ -833,9 +836,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "inplace_ops",
     srcs = ["inplace_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_gen",
@@ -846,18 +850,20 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "bitwise_ops",
     srcs = ["bitwise_ops.py"],
+    strict_deps = True,
     deps = [
         ":bitwise_ops_gen",
         "//tensorflow/python/framework:ops",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "boosted_trees_ops",
     srcs = ["boosted_trees_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":boosted_trees_ops_gen",
@@ -867,26 +873,29 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "optional_grad",
     srcs = ["optional_grad.py"],
+    strict_deps = True,
     deps = [
         ":optional_ops_gen",
         "//tensorflow/python/framework:ops",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "sets",
     srcs = [
         "sets.py",
     ],
+    strict_deps = True,
     deps = [":sets_impl"],
 )
 
-py_strict_library(
+py_library(
     name = "candidate_sampling_ops",
     srcs = ["candidate_sampling_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":candidate_sampling_ops_gen",
@@ -898,9 +907,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "check_ops",
     srcs = ["check_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":cond",
@@ -923,9 +933,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "clip_ops",
     srcs = ["clip_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_gen",
@@ -961,9 +972,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "clustering_ops",
     srcs = ["clustering_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":check_ops",
@@ -996,9 +1008,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "collective_ops",
     srcs = ["collective_ops.py"],
+    strict_deps = True,
     deps = [":collective_ops_gen"],
 )
 
@@ -1102,9 +1115,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "control_flow_assert",
     srcs = ["control_flow_assert.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":cond",
@@ -1121,10 +1135,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "control_flow_grad",
     srcs =
         ["control_flow_grad.py"],
+    strict_deps = True,
     deps = [
         ":control_flow_ops",
         ":control_flow_util",
@@ -1137,9 +1152,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "control_flow_ops",
     srcs = ["control_flow_ops.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":array_ops",
@@ -1167,9 +1183,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "control_flow_case",
     srcs = ["control_flow_case.py"],
+    strict_deps = True,
     deps = [
         ":array_ops_stack",
         ":cond",
@@ -1186,9 +1203,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "control_flow_switch_case",
     srcs = ["control_flow_switch_case.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":cond_v2",
@@ -1202,9 +1220,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "cond",
     srcs = ["cond.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":cond_v2",
@@ -1227,9 +1246,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "while_loop",
     srcs = ["while_loop.py"],
+    strict_deps = True,
     deps = [
         ":control_flow_ops",
         ":control_flow_util",
@@ -1248,19 +1268,21 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "control_flow_util",
     srcs = ["control_flow_util.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python:tf2",
         "//tensorflow/python/platform:tf_logging",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "control_flow_util_v2",
     srcs = ["control_flow_util_v2.py"],
-    visibility = visibility + ["//waymo/ml:__subpackages__"],
+    strict_deps = True,
+    visibility = visibility,
     deps = [
         ":control_flow_util",
         ":control_flow_v2_func_graphs",
@@ -1280,18 +1302,20 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "control_flow_v2_func_graphs",
     srcs = ["control_flow_v2_func_graphs.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/framework:func_graph",
         "//tensorflow/python/framework:ops",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "control_flow_v2_toggles",
     srcs = ["control_flow_v2_toggles.py"],
+    strict_deps = True,
     deps = [
         ":control_flow_util",
         "//tensorflow/python/framework:ops",
@@ -1343,11 +1367,12 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "cond_v2",
     srcs = [
         "cond_v2.py",
     ],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":control_flow_util",
@@ -1378,11 +1403,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "while_v2",
     srcs = [
         "while_v2.py",
     ],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":control_flow_ops",
@@ -1417,9 +1443,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "bincount_ops",
     srcs = ["bincount_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":math_ops",
@@ -1452,9 +1479,11 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ctc_ops",
     srcs = ["ctc_ops.py"],
+    lazy_imports = True,
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_gen",
@@ -1485,18 +1514,20 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "cudnn_rnn_grad",
     srcs = ["cudnn_rnn_grad.py"],
+    strict_deps = True,
     deps = [
         ":cudnn_rnn_ops_gen",
         "//tensorflow/python/framework:ops",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "data_flow_grad",
     srcs = ["data_flow_grad.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":data_flow_ops",
@@ -1507,9 +1538,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "data_flow_ops",
     srcs = ["data_flow_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_stack",
@@ -1531,9 +1563,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "embedding_ops",
     srcs = ["embedding_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_stack",
@@ -1558,11 +1591,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "handle_data_util",
     srcs = [
         "handle_data_util.py",
     ],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/framework:cpp_shape_inference_proto_py",
@@ -1573,11 +1607,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "gradients",
     srcs = [
         "gradients.py",
     ],
+    strict_deps = True,
     deps = [
         ":custom_gradient",
         ":gradients_impl",
@@ -1589,11 +1624,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "gradients_impl",
     srcs = [
         "gradients_impl.py",
     ],
+    strict_deps = True,
     deps = [
         ":array_grad",
         ":array_ops",
@@ -1668,11 +1704,12 @@ pytype_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "default_gradient",
     srcs = [
         "default_gradient.py",
     ],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":resource_variable_ops",
@@ -1681,11 +1718,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "control_flow_state",
     srcs = [
         "control_flow_state.py",
     ],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":control_flow_ops",
@@ -1702,23 +1740,26 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "unconnected_gradients",
     srcs = ["unconnected_gradients.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/util:tf_export",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "filesystem_ops",
     srcs = ["filesystem_ops.py"],
+    strict_deps = True,
     deps = [":filesystem_ops_gen"],
 )
 
-py_strict_library(
+py_library(
     name = "histogram_ops",
     srcs = ["histogram_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":clip_ops",
@@ -1733,9 +1774,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "image_grad",
     srcs = ["image_grad.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_stack",
@@ -1746,11 +1788,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "image_ops",
     srcs = [
         "image_ops.py",
     ],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":array_ops",
@@ -1763,9 +1806,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "init_ops",
     srcs = ["init_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_stack",
@@ -1782,9 +1826,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "init_ops_v2",
     srcs = ["init_ops_v2.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":init_ops",
@@ -1800,18 +1845,20 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "initializers_ns",
     srcs = ["initializers_ns.py"],
+    strict_deps = True,
     deps = [
         ":init_ops",
         ":variables",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "io_ops",
     srcs = ["io_ops.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":data_flow_ops_gen",
@@ -1827,9 +1874,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "linalg_grad",
     srcs = ["linalg_grad.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_stack",
@@ -1843,9 +1891,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "linalg_ops",
     srcs = ["linalg_ops.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":array_ops",
@@ -1865,9 +1914,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "linalg_ops_impl",
     srcs = ["linalg_ops_impl.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":math_ops",
@@ -1879,18 +1929,20 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "manip_grad",
     srcs = ["manip_grad.py"],
+    strict_deps = True,
     deps = [
         ":manip_ops",
         "//tensorflow/python/framework:ops",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "manip_ops",
     srcs = ["manip_ops.py"],
+    strict_deps = True,
     deps = [
         ":manip_ops_gen",
         "//tensorflow/python/util:deprecation",
@@ -1899,9 +1951,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "logging_ops",
     srcs = ["logging_ops.py"],
+    strict_deps = True,
     deps = [
         ":logging_ops_gen",
         ":string_ops",
@@ -1919,9 +1972,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "lookup_ops",
     srcs = ["lookup_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":control_flow_ops",
@@ -1950,9 +2004,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "lookup_grad",
     srcs = ["lookup_grad.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/framework:ops",
     ],
@@ -1975,9 +2030,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "math_grad",
     srcs = ["math_grad.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_gen",
@@ -1996,9 +2052,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "op_selector",
     srcs = ["op_selector.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
@@ -2006,12 +2063,13 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "math_ops",
     srcs = [
         "math_ops.py",
         "tensor_math_operator_overrides.py",
     ],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":array_ops",
@@ -2047,9 +2105,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "resources",
     srcs = ["resources.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_stack",
@@ -2066,9 +2125,10 @@ alias(
     actual = ":variables",
 )
 
-py_strict_library(
+py_library(
     name = "critical_section_ops",
     srcs = ["critical_section_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":control_flow_ops",
@@ -2083,9 +2143,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "list_ops",
     srcs = ["list_ops.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":array_ops",
@@ -2102,9 +2163,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "map_ops",
     srcs = ["map_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":cond",
@@ -2113,9 +2175,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "nn",
     srcs = ["nn.py"],
+    strict_deps = True,
     deps = [
         ":candidate_sampling_ops",
         ":ctc_ops",
@@ -2129,9 +2192,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "nn_grad",
     srcs = ["nn_grad.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_stack",
@@ -2142,9 +2206,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "nn_fused_batch_norm_grad",
     srcs = ["nn_fused_batch_norm_grad.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":math_ops",
@@ -2154,9 +2219,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "nn_ops",
     srcs = ["nn_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_stack",
@@ -2188,9 +2254,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "numerics",
     srcs = ["numerics.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":control_flow_ops",
@@ -2203,9 +2270,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "parsing_config",
     srcs = ["parsing_config.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":check_ops",
@@ -2223,9 +2291,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "parsing_ops",
     srcs = ["parsing_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":control_flow_assert",
@@ -2242,15 +2311,17 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "parsing_grad",
     srcs = ["parsing_grad.py"],
+    strict_deps = True,
     deps = ["//tensorflow/python/framework:ops"],
 )
 
-py_strict_library(
+py_library(
     name = "partitioned_variables",
     srcs = ["partitioned_variables.py"],
+    strict_deps = True,
     deps = [
         ":variable_scope",
         "//tensorflow/python/framework:dtypes",
@@ -2260,9 +2331,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "random_grad",
     srcs = ["random_grad.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_gen",
@@ -2276,9 +2348,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "random_ops",
     srcs = ["random_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":math_ops",
@@ -2296,9 +2369,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "random_crop_ops",
     srcs = ["random_crop_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":control_flow_assert",
@@ -2314,9 +2388,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "stateful_random_ops",
     srcs = ["stateful_random_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_stack",
@@ -2341,9 +2416,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "stateless_random_ops",
     srcs = ["stateless_random_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_stack",
@@ -2364,9 +2440,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "stochastic_cast_op",
     srcs = ["stochastic_cast_op.py"],
+    strict_deps = True,
     deps = [
         ":random_ops_util",
         ":stochastic_cast_op_gen",
@@ -2377,9 +2454,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "rnn",
     srcs = ["rnn.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":array_ops",
@@ -2407,20 +2485,22 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "rnn_cell",
     srcs = [
         "rnn_cell.py",
     ],
+    strict_deps = True,
     deps = [":rnn_cell_impl"],
 )
 
-py_strict_library(
+py_library(
     name = "script_ops",
     srcs = [
         "autograph_ops.py",
         "script_ops.py",
     ],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":check_ops",
@@ -2456,18 +2536,20 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "sdca_ops",
     srcs = ["sdca_ops.py"],
+    strict_deps = True,
     deps = [
         ":sdca_ops_gen",
         "//tensorflow/python/framework:ops",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "session_ops",
     srcs = ["session_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":data_flow_ops_gen",
@@ -2483,9 +2565,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "shape_util",
     srcs = ["shape_util.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:dtypes",
@@ -2495,9 +2578,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "random_ops_util",
     srcs = ["random_ops_util.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_stack",
@@ -2511,9 +2595,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "sparse_grad",
     srcs = ["sparse_grad.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":math_ops",
@@ -2525,9 +2610,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "sparse_ops",
     srcs = ["sparse_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_stack",
@@ -2597,9 +2683,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "sort_ops",
     srcs = ["sort_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":math_ops",
@@ -2632,9 +2719,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "confusion_matrix",
     srcs = ["confusion_matrix.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_stack",
@@ -2650,11 +2738,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "weights_broadcast_ops",
     srcs = [
         "weights_broadcast_ops.py",
     ],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":cond",
@@ -2668,17 +2757,19 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "metrics",
     srcs = [
         "metrics.py",
     ],
+    strict_deps = True,
     deps = [":metrics_impl"],
 )
 
-py_strict_library(
+py_library(
     name = "special_math_ops",
     srcs = ["special_math_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":control_flow_ops",
@@ -2698,9 +2789,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "rnn_grad",
     srcs = ["rnn_grad.py"],
+    strict_deps = True,
     deps = [
         ":rnn_ops_gen",
         "//tensorflow/python/framework:ops",
@@ -2725,9 +2817,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "script_ops_test",
     srcs = ["script_ops_test.py"],
+    strict_deps = True,
     deps = [
         ":resource_variable_ops",
         ":script_ops",
@@ -2741,9 +2834,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "autograph_ops_test",
     srcs = ["autograph_ops_test.py"],
+    strict_deps = True,
     deps = [
         ":script_ops",
         "//tensorflow/python/framework:constant_op",
@@ -2751,9 +2845,10 @@ py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "standard_ops",
     srcs = ["standard_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_grad",
         ":array_ops",
@@ -2822,15 +2917,17 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "state_grad",
     srcs = ["state_grad.py"],
+    strict_deps = True,
     deps = ["//tensorflow/python/framework:ops"],
 )
 
-py_strict_library(
+py_library(
     name = "state_ops",
     srcs = ["state_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":math_ops_gen",
@@ -2844,9 +2941,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "string_ops",
     srcs = ["string_ops.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":array_ops",
@@ -2866,9 +2964,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "summary_ops_v2",
     srcs = ["summary_ops_v2.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         ":array_ops",
@@ -2898,9 +2997,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "template",
     srcs = ["template.py"],
+    strict_deps = True,
     deps = [
         ":variable_scope",
         "//tensorflow/python/checkpoint",
@@ -2916,9 +3016,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tensor_array_grad",
     srcs = ["tensor_array_grad.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":tensor_array_ops",
@@ -2926,9 +3027,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tensor_array_ops",
     srcs = ["tensor_array_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_stack",
@@ -2957,9 +3059,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "composite_tensor_ops",
     srcs = ["composite_tensor_ops.py"],
+    strict_deps = True,
     deps = [
         "composite_tensor_ops_gen",
         "//tensorflow/core:protos_all_py",
@@ -2972,9 +3075,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "variable_scope",
     srcs = ["variable_scope.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":init_ops",
@@ -2998,9 +3102,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "resource_variables_toggle",
     srcs = ["resource_variables_toggle.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python:tf2",
         "//tensorflow/python/eager:monitoring",
@@ -3010,12 +3115,13 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "variables",
     srcs = [
         "resource_variable_ops.py",
         "variables.py",
     ],
+    strict_deps = True,
     visibility = visibility,
     deps = [
         ":array_ops",
@@ -3072,12 +3178,13 @@ alias(
     actual = ":variable_v1",
 )
 
-py_strict_library(
+py_library(
     name = "variable_v1",
     srcs = [
         "ref_variable.py",
         "variable_v1.py",
     ],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_gen",
@@ -3105,9 +3212,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "gradient_checker",
     srcs = ["gradient_checker.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":gradients",
@@ -3125,9 +3233,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "gradient_checker_v2",
     srcs = ["gradient_checker_v2.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":gradients_impl",
@@ -3222,9 +3331,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "op_selector_test",
     srcs = ["op_selector_test.py"],
+    strict_deps = True,
     deps = [
         ":math_ops",
         ":op_selector",
@@ -3370,9 +3480,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "image_grad_test_base",
     srcs = ["image_grad_test_base.py"],
+    strict_deps = True,
     deps = [
         ":array_ops_stack",
         ":gradient_checker_v2",
@@ -3678,10 +3789,11 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "nn_loss_scaling_utilities_test",
     size = "small",
     srcs = ["nn_loss_scaling_utilities_test.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":nn_impl_distribute",
@@ -3714,10 +3826,11 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "tensor_array_ops_test",
     size = "small",
     srcs = ["tensor_array_ops_test.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":tensor_array_ops",
@@ -3809,9 +3922,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "summary_op_util",
     srcs = ["summary_op_util.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/framework:ops",
@@ -3872,9 +3986,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "array_ops_test",
     srcs = ["array_ops_test.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_gen",
@@ -3890,10 +4005,11 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "array_ops_shape_test",
     srcs = ["array_ops_shape_test.py"],
     env = {"TF_FLAG_TF_SHAPE_DEFAULT_INT64": "true"},
+    strict_deps = True,
     deps = [
         ":array_ops",
         "//tensorflow/core/config:flags_py",
@@ -4065,10 +4181,11 @@ cuda_py_benchmark_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "matmul_benchmark_main_lib",
     testonly = True,
     srcs = ["matmul_benchmark.py"],
+    strict_deps = True,
     deps = [
         ":control_flow_ops",
         ":math_ops",
@@ -4113,9 +4230,10 @@ tf_gen_op_strict_wrapper_private_py(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "nccl_ops",
     srcs = ["nccl_ops.py"],
+    strict_deps = True,
     visibility = visibility + [
         "//learning/deepmind/tensorflow:__subpackages__",
         "//third_party/car/deep_nets/tensorflow:__subpackages__",
@@ -4187,9 +4305,10 @@ tf_gen_op_strict_wrapper_private_py(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "proto_ops",
     srcs = ["proto_ops.py"],
+    strict_deps = True,
     deps = [
         ":decode_proto_ops_gen",
         ":encode_proto_ops_gen",
@@ -4215,9 +4334,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "nn_impl_distribute",
     srcs = ["nn_impl_distribute.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":check_ops",
@@ -4230,9 +4350,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "nn_impl",
     srcs = ["nn_impl.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_stack",
@@ -4251,6 +4372,7 @@ py_strict_library(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/platform:device_context",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
@@ -4258,15 +4380,17 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "rnn_cell_wrapper_impl",
     srcs = ["rnn_cell_wrapper_impl.py"],
+    strict_deps = True,
     deps = ["//tensorflow/python/keras/layers/legacy_rnn:rnn_cell_wrapper_impl"],
 )
 
-py_strict_library(
+py_library(
     name = "rnn_cell_impl",
     srcs = ["rnn_cell_impl.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         "//tensorflow/python/eager:context",
@@ -4280,9 +4404,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "image_ops_impl",
     srcs = ["image_ops_impl.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_stack",
@@ -4320,9 +4445,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "custom_gradient",
     srcs = ["custom_gradient.py"],
+    lazy_imports = True,
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_gen",
@@ -4347,9 +4474,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "while_v2_indexed_slices_rewriter",
     srcs = ["while_v2_indexed_slices_rewriter.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":resource_variable_ops_gen",
@@ -4364,9 +4492,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "metrics_impl",
     srcs = ["metrics_impl.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_stack",
@@ -4393,9 +4522,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "sets_impl",
     srcs = ["sets_impl.py"],
+    strict_deps = True,
     deps = [
         ":set_ops_gen",
         "//tensorflow/python/framework:dtypes",
@@ -4406,9 +4536,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "weak_tensor_ops",
     srcs = ["weak_tensor_ops.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_gen",
@@ -4436,9 +4567,10 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "weak_tensor_ops_test",
     srcs = ["weak_tensor_ops_test.py"],
+    strict_deps = True,
     tags = ["noasan"],  # TODO(b/293304945): Reenable.
     deps = [
         ":array_ops",
@@ -4470,9 +4602,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "weak_tensor_math_ops_test",
     srcs = ["weak_tensor_math_ops_test.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":math_ops",
@@ -4501,9 +4634,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "weak_tensor_array_ops_test",
     srcs = ["weak_tensor_array_ops_test.py"],
+    strict_deps = True,
     deps = [
         ":array_ops",
         ":array_ops_gen",
@@ -4566,9 +4700,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "weak_tensor_np_math_ops_test",
     srcs = ["weak_tensor_np_math_ops_test.py"],
+    strict_deps = True,
     deps = [
         ":weak_tensor_ops",
         ":weak_tensor_test_util",
@@ -4589,9 +4724,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "weak_tensor_np_array_ops_test",
     srcs = ["weak_tensor_np_array_ops_test.py"],
+    strict_deps = True,
     deps = [
         ":weak_tensor_ops",
         ":weak_tensor_test_util",
@@ -4615,9 +4751,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "weak_tensor_image_ops_test",
     srcs = ["weak_tensor_image_ops_test.py"],
+    strict_deps = True,
     deps = [
         ":image_ops",
         ":image_ops_impl",
@@ -4658,9 +4795,10 @@ tf_py_strict_test(
     ] + tf_additional_xla_deps_py(),
 )
 
-py_strict_library(
+py_library(
     name = "weak_tensor_test_util",
     srcs = ["weak_tensor_test_util.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -4670,9 +4808,10 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "tensor_math_operator_overrides_test",
     srcs = ["tensor_math_operator_overrides_test.py"],
+    strict_deps = True,
     deps = [
         ":math_ops",
         "//tensorflow/python/framework:constant_op",

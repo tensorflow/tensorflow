@@ -391,7 +391,7 @@ ExecuteProgram(
 
   TF_ASSIGN_OR_RETURN(
       xla::PjRtDevice * pjrt_device,
-      pjrt_client->LookupAddressableDevice(xla::PjRtLocalDeviceId(device_idx)));
+      pjrt_client->LookupAddressableDevice(xla::LocalDeviceId(device_idx)));
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<xla::PjRtBuffer>> executable_outputs,
       RunPjRtExecutable(/*num_missing_prefix_ctx_inputs=*/0, inputs,

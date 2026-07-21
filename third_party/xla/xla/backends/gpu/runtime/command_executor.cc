@@ -31,12 +31,14 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_state.h"
@@ -49,30 +51,31 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla::gpu {
 
 namespace {
-// An adaptor from CommandBufferCmd to ExecutionGraph::Operation for building an
+// An adaptor from Command to ExecutionGraph::Operation for building an
 // execution graph from a command sequence.
 class CommandOperation : public ExecutionGraph::Operation {
  public:
-  explicit CommandOperation(Command::BufferUseVector buffers,
-                            const Command* cmd)
-      : name_(absl::StrFormat("cmd %s: %s", cmd->ToString(),
+  explicit CommandOperation(const Command* cmd,
+                            absl::Span<const ResourceUse> extra_resources = {})
+      : name_(absl::StrFormat("cmd %s: %s", cmd->ToString(0),
                               cmd->profile_annotation())),
-        buffers_(std::move(buffers)),
         cmd_(cmd),
-        resources_(cmd_->resources()) {}
+        buffers_(CollectBufferUses(cmd)),
+        resources_({ResourceUse::Write(cmd->token())}) {
+    resources_.insert(resources_.end(), extra_resources.begin(),
+                      extra_resources.end());
+  }
 
   absl::string_view name() const final { return name_; }
   absl::Span<const BufferUse> BufferUses() const final { return buffers_; }
   absl::Span<const ResourceUse> ResourceUses() const final {
     return resources_;
-  }
-  void add_resource_use(ResourceUse resource_use) {
-    resources_.push_back(resource_use);
   }
 
   const Command* cmd() const { return cmd_; }
@@ -87,20 +90,24 @@ class CommandOperation : public ExecutionGraph::Operation {
       resource_reprs.push_back(
           absl::StrFormat("%s@%p(%s)", kind, use.resource().get(), access));
     }
-    return absl::StrFormat("%s resources=[%s]", cmd_->ToString(),
+    return absl::StrFormat("%s resources=[%s]", cmd_->ToString(0),
                            absl::StrJoin(resource_reprs, ", "));
   }
 
  private:
-  std::string name_;
-  Command::BufferUseVector buffers_;
-  const Command* cmd_;
-  Command::ResourceUseVector resources_;
+  static Command::BufferUses CollectBufferUses(const Command* cmd) {
+    absl::flat_hash_set<BufferUse> buffers;
+    cmd->Walk([&](const Command* command) {
+      auto command_buffers = command->buffer_uses();
+      buffers.insert(command_buffers.begin(), command_buffers.end());
+    });
+    return {buffers.begin(), buffers.end()};
+  }
 
-  // The token resource is used to specify dependency other than buffer data
-  // flow, e.g, LHS topology will use token resource to specify dependency
-  // across commands.
-  std::shared_ptr<Resource> token_;
+  std::string name_;
+  const Command* cmd_;
+  Command::BufferUses buffers_;
+  Command::ResourceUses resources_;
 };
 
 void VlogOperations(const std::vector<CommandOperation>& operations) {
@@ -112,47 +119,48 @@ void VlogOperations(const std::vector<CommandOperation>& operations) {
 }
 
 std::vector<CommandOperation> CreateCommandOperationsWithConcurrentMode(
-    const CommandSequence& commands) {
+    const CommandSequence& commands,
+    absl::Span<const Command::ResourceUses> extra_resources) {
   VLOG(3) << "CreateCommandOperations with synchronization mode: Concurrent";
   std::vector<CommandOperation> operations;
   operations.reserve(commands.size());
 
   // For concurrent synchronization mode, pass in buffer and resources for
   // dependency inference.
-  for (const std::unique_ptr<Command>& cmd : commands) {
-    operations.emplace_back(cmd->buffers(), cmd.get());
+  for (size_t i = 0; i < commands.size(); ++i) {
+    operations.emplace_back(commands[i], extra_resources.empty()
+                                             ? absl::Span<const ResourceUse>{}
+                                             : extra_resources[i]);
   }
 
   VlogOperations(operations);
   return operations;
 }
 
-// Helper: Check if an operation is an Async Start
-bool IsAsyncStart(const CommandOperation& op) {
-  const auto* cmd = dynamic_cast<const AsyncStartCommand*>(op.cmd());
-  return cmd && cmd->IsAsync();
+// Helper: Check if a command is an Async Start
+bool IsAsyncStart(const Command* cmd) {
+  const auto* async = dynamic_cast<const AsyncStartCommand*>(cmd);
+  return async && async->IsAsync();
 }
 
-// Helper: Check if an operation is an Async Done
-bool IsAsyncDone(const CommandOperation& op) {
-  const auto* cmd = dynamic_cast<const AsyncDoneCommand*>(op.cmd());
-  return cmd && cmd->IsAsync();
+// Helper: Check if a command is an Async Done
+bool IsAsyncDone(const Command* cmd) {
+  const auto* async = dynamic_cast<const AsyncDoneCommand*>(cmd);
+  return async && async->IsAsync();
 }
 
 // Helper: Find the corresponding Start command for a given Done command
-int64_t FindMatchingStartId(const std::vector<CommandOperation>& ops,
-                            int64_t done_idx) {
+int64_t FindMatchingStartId(const CommandSequence& commands, int64_t done_idx) {
   const auto* done_cmd =
-      dynamic_cast<const AsyncDoneCommand*>(ops[done_idx].cmd());
+      dynamic_cast<const AsyncDoneCommand*>(commands[done_idx]);
   CHECK(done_cmd);
 
   for (int64_t j = done_idx - 1; j >= 0; --j) {
-    if (!IsAsyncStart(ops[j])) {
+    if (!IsAsyncStart(commands[j])) {
       continue;
     }
 
-    const auto* start_cmd =
-        dynamic_cast<const AsyncStartCommand*>(ops[j].cmd());
+    const auto* start_cmd = dynamic_cast<const AsyncStartCommand*>(commands[j]);
     CHECK(start_cmd);
 
     if (start_cmd->IsAsync() && done_cmd->async_start() == start_cmd) {
@@ -163,53 +171,58 @@ int64_t FindMatchingStartId(const std::vector<CommandOperation>& ops,
 }
 
 // Helper: Add dependency on the nearest previous command that is NOT an Async
-// Start
-void AddDependencyOnPrevNonStart(std::vector<CommandOperation>& ops,
-                                 const CommandSequence& commands,
-                                 int64_t current_idx) {
+// Start, by pushing into `extras`.
+void AddDependencyOnPrevNonStart(const CommandSequence& commands,
+                                 int64_t current_idx,
+                                 Command::ResourceUses& extras) {
   for (int64_t j = current_idx - 1; j >= 0; --j) {
-    if (IsAsyncStart(ops[j])) {
+    if (IsAsyncStart(commands[j])) {
       // Skip other starts
       continue;
     }
 
-    ops[current_idx].add_resource_use(ResourceUse::Read(commands[j]->token()));
+    extras.push_back(ResourceUse::Read(commands[j]->token()));
     break;  // Found the dependency, stop scanning
   }
 }
 
 std::vector<CommandOperation> CreateCommandOperationsWithLHSMode(
-    const CommandSequence& commands) {
+    const CommandSequence& commands,
+    absl::Span<const Command::ResourceUses> extra_resources) {
   VLOG(3) << "CreateCommandOperations with synchronization mode: LHS";
-  std::vector<CommandOperation> operations;
-  operations.reserve(commands.size());
 
-  // 1. Initialization Phase: Convert commands to operations
-  for (const auto& cmd : commands) {
-    operations.emplace_back(Command::BufferUseVector{}, cmd.get());
-  }
-
-  // 2. Dependency Analysis Phase
-  for (int64_t i = 0; i < operations.size(); ++i) {
-    if (IsAsyncDone(operations[i])) {
-      // CASE A: Async Done
-      // Depends on its matching Start command
-      int64_t start_id = FindMatchingStartId(operations, i);
+  // 1. Dependency Analysis Phase: pre-compute LHS resource uses per command.
+  std::vector<Command::ResourceUses> lhs_extras(commands.size());
+  for (int64_t i = 0; i < static_cast<int64_t>(commands.size()); ++i) {
+    if (IsAsyncDone(commands[i])) {
+      // CASE A: Async Done — depends on its matching Start command
+      int64_t start_id = FindMatchingStartId(commands, i);
       CHECK_NE(start_id, -1);
-      operations[i].add_resource_use(
-          ResourceUse::Read(commands[start_id]->token()));
+      lhs_extras[i].push_back(ResourceUse::Read(commands[start_id]->token()));
 
       // Also depends on immediate predecessor (if it's not the start itself)
       CHECK_GT(i, 0);
       if ((i - 1) != start_id) {
-        operations[i].add_resource_use(
-            ResourceUse::Read(commands[i - 1]->token()));
+        lhs_extras[i].push_back(ResourceUse::Read(commands[i - 1]->token()));
       }
     } else {
       // CASE B: Standard Command OR Async Start
       // Both share the same logic: depend on the previous non-async-start
-      AddDependencyOnPrevNonStart(operations, commands, i);
+      AddDependencyOnPrevNonStart(commands, i, lhs_extras[i]);
     }
+  }
+
+  // 2. Construction Phase: build operations with merged extra resources.
+  std::vector<CommandOperation> operations;
+  operations.reserve(commands.size());
+  for (size_t i = 0; i < commands.size(); ++i) {
+    Command::ResourceUses merged;
+    if (!extra_resources.empty()) {
+      merged.insert(merged.end(), extra_resources[i].begin(),
+                    extra_resources[i].end());
+    }
+    merged.insert(merged.end(), lhs_extras[i].begin(), lhs_extras[i].end());
+    operations.emplace_back(commands[i], merged);
   }
 
   VlogOperations(operations);
@@ -220,15 +233,20 @@ std::vector<CommandOperation> CreateCommandOperationsWithLHSMode(
 
 static absl::StatusOr<std::vector<CommandOperation>> CreateCommandOperations(
     const CommandSequence& commands,
-    CommandExecutor::SynchronizationMode synchronization_mode) {
+    CommandExecutor::SynchronizationMode synchronization_mode,
+    absl::Span<const Command::ResourceUses> extra_resources) {
   using Mode = CommandExecutor::SynchronizationMode;
   switch (synchronization_mode) {
-    case Mode::kConcurrent: {
-      return CreateCommandOperationsWithConcurrentMode(commands);
+    // Building an execution graph works the same for kConcurrent and
+    // kConcurrentRegions.
+    case Mode::kConcurrent:
+    case Mode::kConcurrentRegions: {
+      return CreateCommandOperationsWithConcurrentMode(commands,
+                                                       extra_resources);
     }
 
     case Mode::kLHS: {
-      return CreateCommandOperationsWithLHSMode(commands);
+      return CreateCommandOperationsWithLHSMode(commands, extra_resources);
     }
 
     case Mode::kSerialize:
@@ -241,63 +259,77 @@ static absl::StatusOr<std::vector<CommandOperation>> CreateCommandOperations(
 }
 
 absl::StatusOr<CommandExecutor> CommandExecutor::Create(
-    CommandSequence commands, SynchronizationMode synchronization_mode) {
+    CommandSequence commands, SynchronizationMode synchronization_mode,
+    std::vector<Command::ResourceUses> extra_resources) {
   std::optional<ExecutionGraph> execution_graph = std::nullopt;
 
   // In automatic synchronization mode construct an execution graph for the
   // sequence of commands and derive the structure of command dependencies
   // from the buffer use conflicts.
   if (synchronization_mode != SynchronizationMode::kSerialize) {
-    TF_ASSIGN_OR_RETURN(auto operations, CreateCommandOperations(
-                                             commands, synchronization_mode));
-    TF_ASSIGN_OR_RETURN(execution_graph,
-                        ExecutionGraph::Create<CommandOperation>(operations));
+    ASSIGN_OR_RETURN(auto operations,
+                     CreateCommandOperations(commands, synchronization_mode,
+                                             extra_resources));
+    ASSIGN_OR_RETURN(execution_graph,
+                     ExecutionGraph::Create<CommandOperation>(operations));
     VLOG(3) << "Execution graph: " << execution_graph->ToString();
   }
 
   return CommandExecutor(synchronization_mode, std::move(commands),
-                         std::move(execution_graph));
+                         std::move(execution_graph),
+                         std::move(extra_resources));
 }
 
-CommandExecutor::CommandExecutor(SynchronizationMode synchronization_mode,
-                                 CommandSequence commands,
-                                 std::optional<ExecutionGraph> execution_graph)
+CommandExecutor::CommandExecutor(
+    SynchronizationMode synchronization_mode, CommandSequence commands,
+    std::optional<ExecutionGraph> execution_graph,
+    std::vector<Command::ResourceUses> extra_resources)
     : synchronization_mode_(synchronization_mode),
       commands_(std::move(commands)),
-      execution_graph_(std::move(execution_graph)) {
-  // Buffer allocations referenced by commands in this sequence.
+      execution_graph_(std::move(execution_graph)),
+      extra_resources_(std::move(extra_resources)) {
+  // Walk all nested commands and collect all buffers used by this executor.
+  commands_.Walk([&](const Command* command) {
+    Command::BufferUses buffer_uses = command->buffer_uses();
+    buffer_uses_.insert(buffer_uses.begin(), buffer_uses.end());
+    requires_update_on_initialize_ |= command->requires_update_on_initialize();
+    requires_update_on_execute_ |= command->requires_update_on_execute();
+  });
+
+  // Buffer allocations referenced by all buffer uses.
   absl::btree_set<BufferAllocation::Index> allocs_indices;
+  for (const BufferUse& buffer_use : buffer_uses_) {
+    allocs_indices.insert(buffer_use.slice().index());
+  }
+  allocs_indices_.assign(allocs_indices.begin(), allocs_indices.end());
 
-  for (const std::unique_ptr<Command>& cmd : commands_) {
+  // Iterate over the commands in the top level command sequence to build a
+  // mapping from command index to allocation indices.
+  for (Command* cmd : commands_) {
     absl::btree_set<BufferAllocation::Index> cmd_allocs_indices;
-
-    for (const BufferUse& buffer : cmd->buffers()) {
-      buffers_.insert(buffer);
-      allocs_indices.insert(buffer.slice().index());
-      cmd_allocs_indices.insert(buffer.slice().index());
-    }
+    cmd->Walk([&](const Command* command) {
+      for (const BufferUse& buffer_use : command->buffer_uses()) {
+        cmd_allocs_indices.insert(buffer_use.slice().index());
+      }
+    });
 
     // Record buffer allocations indices referenced by the `cmd`.
     cmd_allocs_indices_.emplace_back(cmd_allocs_indices.begin(),
                                      cmd_allocs_indices.end());
   }
-
-  // Record all buffer allocations indices referenced by all commands in this
-  // sequence.
-  allocs_indices_.assign(allocs_indices.begin(), allocs_indices.end());
 }
 
 absl::Status CommandExecutor::Prepare(const Thunk::PrepareParams& params) {
   for (auto& command : commands_) {
-    TF_RETURN_IF_ERROR(command->Prepare(params));
+    RETURN_IF_ERROR(command->Prepare(params));
   }
   return absl::OkStatus();
 }
 
-absl::Status CommandExecutor::Initialize(const Thunk::InitializeParams& params,
-                                         CommandStateManager& state) {
+absl::Status CommandExecutor::Initialize(
+    const Thunk::InitializeParams& params) {
   for (auto& command : commands_) {
-    TF_RETURN_IF_ERROR(command->Initialize(params, state));
+    RETURN_IF_ERROR(command->Initialize(params));
   }
   return absl::OkStatus();
 }
@@ -330,7 +362,7 @@ static void VlogCommandSequenceDetails(const CommandSequence& commands) {
     bool has_output = false;
     bool has_temp = false;
 
-    for (const auto& buffer : cmd->buffers()) {
+    for (const auto& buffer : cmd->buffer_uses()) {
       if (buffer.slice().allocation()->IsPreallocatedTempBuffer()) {
         has_temp = true;
       }
@@ -342,7 +374,7 @@ static void VlogCommandSequenceDetails(const CommandSequence& commands) {
       }
     }
 
-    std::string cmd_name = CommandTypeString(cmd->command_type());
+    std::string cmd_name = std::string(Thunk::KindToString(cmd->kind()));
 
     if (has_input && !has_output && !has_temp) {
       input_count++;
@@ -403,19 +435,20 @@ static void VlogCommandSequenceDetails(const CommandSequence& commands) {
 }
 
 absl::Status CommandExecutor::Record(const Thunk::ExecuteParams& execute_params,
-                                     const RecordParams& record_params,
-                                     se::CommandBuffer* command_buffer) {
+                                     const Command::RecordParams& record_params,
+                                     se::CommandBuffer* command_buffer,
+                                     RecordId record_id) {
   if (command_buffer->state() == se::CommandBuffer::State::kFinalized) {
-    TF_RETURN_IF_ERROR(command_buffer->Update());
+    RETURN_IF_ERROR(command_buffer->Update());
   }
 
   if (command_buffer->state() == se::CommandBuffer::State::kUpdate) {
-    TF_RETURN_IF_ERROR(
-        RecordUpdate(execute_params, record_params, command_buffer));
+    RETURN_IF_ERROR(
+        RecordUpdate(execute_params, record_params, command_buffer, record_id));
   } else {
-    TF_RETURN_IF_ERROR(RecordCreate(execute_params, record_params,
-                                    command_buffer, /*dependencies=*/{})
-                           .status());
+    RETURN_IF_ERROR(RecordCreate(execute_params, record_params, command_buffer,
+                                 /*dependencies=*/{}, record_id)
+                        .status());
   }
 
   return command_buffer->Finalize();
@@ -424,14 +457,18 @@ absl::Status CommandExecutor::Record(const Thunk::ExecuteParams& execute_params,
 absl::StatusOr<std::vector<const se::CommandBuffer::Command*>>
 CommandExecutor::RecordCreate(
     const Thunk::ExecuteParams& execute_params,
-    const RecordParams& record_params, se::CommandBuffer* command_buffer,
-    absl::Span<const se::CommandBuffer::Command* const> dependencies) const {
+    const Command::RecordParams& record_params,
+    se::CommandBuffer* command_buffer,
+    absl::Span<const se::CommandBuffer::Command* const> dependencies,
+    RecordId record_id) const {
   // Command buffer must be in create state.
-  TF_RETURN_IF_ERROR(CheckCommandBufferState(
-      command_buffer, se::CommandBuffer::State::kCreate));
+  RETURN_IF_ERROR(CheckCommandBufferState(command_buffer,
+                                          se::CommandBuffer::State::kCreate));
 
-  VLOG(1) << "Record create " << commands_.size()
-          << " commands: dependencies=" << dependencies.size();
+  VLOG(1) << absl::StreamFormat(
+      "Record create %d commands into command buffer %p: dependencies=%d, "
+      "record_id=%v",
+      commands_.size(), command_buffer, dependencies.size(), record_id);
   uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
   // Short-circuit if there are no commands to record.
@@ -439,32 +476,35 @@ CommandExecutor::RecordCreate(
     return std::vector<const se::CommandBuffer::Command*>{};
   }
 
-  // Keep a state associated with commands in the sequence in the state
-  // manager.
-  CommandStateManager& state = record_params.state;
+  auto* state = command_buffer->GetOrConstructResource<CommandExecutorsState>();
+  RecordedCommands& recorded_commands =
+      state->recorded_commands[std::make_pair(this, record_id)];
+
+  // Check that this executor was not already recorded into the command buffer.
+  if (!recorded_commands.empty()) {
+    return Internal(
+        "Recorded commands are not empty (size %d). Command executor can be "
+        "recorded into the command buffer at most once. After it was recorded "
+        "it can be only updated",
+        recorded_commands.size());
+  }
 
   // Collect sink commands while recording the command sequence.
   std::vector<const se::CommandBuffer::Command*> sink_commands;
 
   for (CommandId id = 0; id < commands_.size(); ++id) {
-    Command* command = commands_[id].get();
+    Command* command = commands_[id];
 
     std::optional<tsl::profiler::ScopedAnnotation> annotation =
         GetKernelAnnotation(command->profile_annotation());
 
     // Skip recording collective commands if mock collectives are enabled.
-    if (execute_params.mock_collectives && IsCollectiveCommand(*command)) {
+    if (execute_params.mock_collectives && command->IsCollective()) {
       continue;
     }
 
-    // Create new commands by recording them into the command buffer.
-    DCHECK(!state.GetOrNull<RecordState>(command, command_buffer))
-        << "Record state must be null for " << command->ToString();
-    auto* record_state =
-        state.GetOrCreate<RecordState>(command, command_buffer);
-
     std::vector<const se::CommandBuffer::Command*> command_dependencies =
-        Dependencies(record_params, command_buffer, id);
+        Dependencies(record_params, command_buffer, id, record_id);
 
     // Source command must depend on external dependencies passed by the
     // caller, internal commands dependencies are defined by the command
@@ -473,20 +513,21 @@ CommandExecutor::RecordCreate(
                              ? Command::RecordCreate{dependencies}
                              : Command::RecordCreate{command_dependencies};
 
-    TF_ASSIGN_OR_RETURN(
-        record_state->command,
-        command->Record(execute_params, record_params, std::move(record_action),
-                        command_buffer));
+    ASSIGN_OR_RETURN(const se::CommandBuffer::Command* recorded_command,
+                     command->Record(execute_params, record_params,
+                                     std::move(record_action), command_buffer));
 
     // Collect sink commands as external dependencies for the next command
     // sequence recorded into the same command buffer.
     if (IsSink(id)) {
-      sink_commands.push_back(record_state->command);
+      sink_commands.push_back(recorded_command);
     }
+
+    recorded_commands.push_back(recorded_command);
   }
 
   uint64_t end_micros = tsl::Env::Default()->NowMicros();
-  VLOG(1) << absl::StrFormat(
+  VLOG(1) << absl::StreamFormat(
       "Created %d commands in %d μs (num sink commands: %d)", commands_.size(),
       end_micros - start_micros, sink_commands.size());
 
@@ -500,23 +541,31 @@ CommandExecutor::RecordCreate(
 
 absl::Status CommandExecutor::RecordUpdate(
     const Thunk::ExecuteParams& execute_params,
-    const RecordParams& record_params,
-    se::CommandBuffer* command_buffer) const {
-  VLOG(1) << "Record update " << commands_.size() << " commands";
+    const Command::RecordParams& record_params,
+    se::CommandBuffer* command_buffer, RecordId record_id) const {
+  VLOG(1) << absl::StreamFormat(
+      "Record update %d commands into command buffer %p: record_id=%v",
+      commands_.size(), command_buffer, record_id);
   uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
   // Command buffer must be already prepared for recording updates.
-  TF_RETURN_IF_ERROR(CheckCommandBufferState(
-      command_buffer, se::CommandBuffer::State::kUpdate));
+  RETURN_IF_ERROR(CheckCommandBufferState(command_buffer,
+                                          se::CommandBuffer::State::kUpdate));
 
   // Short-circuit if there are no commands to update.
   if (commands_.empty()) {
     return absl::OkStatus();
   }
 
-  // Keep a state associated with commands in the sequence in the state
-  // manager.
-  CommandStateManager& state = record_params.state;
+  auto* state = command_buffer->GetOrConstructResource<CommandExecutorsState>();
+  CommandExecutorsState::Key key = std::make_pair(this, record_id);
+  RecordedCommands& recorded_commands = state->recorded_commands[key];
+
+  if (execute_params.persistent_alloc_indices.has_value()) {
+    DCHECK(absl::c_is_sorted(*execute_params.persistent_alloc_indices))
+        << "Persistent allocs must be sorted: "
+        << absl::StrJoin(*execute_params.persistent_alloc_indices, ", ");
+  }
 
   // Check if command `id` has to be updated based on the buffer allocations
   // that changed since the last call to `Record`. We keep intersection vector
@@ -529,14 +578,31 @@ absl::Status CommandExecutor::RecordUpdate(
       return false;
     }
 
-    // We always update commands that require initialization, even if buffer
-    // allocations didn't change.
-    Command* command = commands_[id].get();
-    if (command->requires_initialization() && record_params.is_initialization) {
+    Command* command = commands_[id];
+
+    if (command->requires_update_on_execute()) {
       return false;
     }
 
-    if (command->force_update()) {
+    // Persistent allocations keep stable command-buffer-visible addresses. If
+    // every allocation referenced by this command is persistent, the command
+    // does not need an update, including traced collective commands that also
+    // require initialization.
+    if (execute_params.persistent_alloc_indices.has_value()) {
+      DCHECK(absl::c_is_sorted(cmd_allocs_indices_[id]))
+          << "Command allocs must be sorted: "
+          << absl::StrJoin(cmd_allocs_indices_[id], ", ");
+    }
+    if (execute_params.persistent_alloc_indices.has_value() &&
+        absl::c_includes(*execute_params.persistent_alloc_indices,
+                         cmd_allocs_indices_[id])) {
+      return true;
+    }
+
+    // We always update commands that require updates on initialization, even if
+    // buffer allocations didn't change.
+    if (command->requires_update_on_initialize() &&
+        record_params.is_initialization) {
       return false;
     }
 
@@ -555,36 +621,38 @@ absl::Status CommandExecutor::RecordUpdate(
     return alloc_intersection.empty();
   };
 
+  // Check this this executor was correctly recorded into the command buffer.
+  if (recorded_commands.size() != commands_.size()) {
+    return Internal(
+        "The number of recorded commands must match the size of command "
+        "sequence: %d vs %d",
+        recorded_commands.size(), commands_.size());
+  }
+
   size_t num_skipped_command_updates = 0;
 
   for (CommandId id = 0; id < commands_.size(); ++id) {
-    Command* command = commands_[id].get();
-
-    std::optional<tsl::profiler::ScopedAnnotation> annotation =
-        GetKernelAnnotation(command->profile_annotation());
+    Command* command = commands_[id];
 
     // Skip updating collective commands if mock collectives are enabled.
-    if (execute_params.mock_collectives && IsCollectiveCommand(*command)) {
+    if (execute_params.mock_collectives && command->IsCollective()) {
       continue;
     }
 
     // Skip updating command if it doesn't use any of the updated allocations.
     if (skip_command_update(id)) {
-      VLOG(3) << "Skip updating command " << command->ToString();
+      VLOG(3) << "Skip updating command " << command->ToString(0);
       ++num_skipped_command_updates;
       continue;
     }
 
-    // Update existing commands in the command buffer.
-    auto* record_state = state.GetOrNull<RecordState>(command, command_buffer);
-    DCHECK(record_state) << "Record state must be not null for "
-                         << command->ToString();
+    std::optional<tsl::profiler::ScopedAnnotation> annotation =
+        GetKernelAnnotation(command->profile_annotation());
 
-    Command::RecordUpdate record_action{record_state->command};
-    TF_ASSIGN_OR_RETURN(
-        record_state->command,
-        command->Record(execute_params, record_params, std::move(record_action),
-                        command_buffer));
+    Command::RecordUpdate record_action{recorded_commands[id]};
+    ASSIGN_OR_RETURN(recorded_commands[id],
+                     command->Record(execute_params, record_params,
+                                     std::move(record_action), command_buffer));
   }
 
   uint64_t end_micros = tsl::Env::Default()->NowMicros();
@@ -615,8 +683,8 @@ bool CommandExecutor::IsSink(CommandId id) const {
 }
 
 std::vector<const se::CommandBuffer::Command*> CommandExecutor::Dependencies(
-    const RecordParams& record_params, se::CommandBuffer* command_buffer,
-    CommandId id) const {
+    const Command::RecordParams& record_params,
+    se::CommandBuffer* command_buffer, CommandId id, RecordId record_id) const {
   // Collect commands that are dependencies of the command `id`.
   absl::InlinedVector<CommandId, 4> dependencies_ids;
 
@@ -635,32 +703,33 @@ std::vector<const se::CommandBuffer::Command*> CommandExecutor::Dependencies(
     dependencies_ids.push_back(id - 1);
   }
 
+  auto* state = command_buffer->GetOrConstructResource<CommandExecutorsState>();
+  RecordedCommands& recorded_commands =
+      state->recorded_commands[std::make_pair(this, record_id)];
+
   // Collect dependencies from the recorded command state.
   std::vector<const se::CommandBuffer::Command*> dependencies;
   for (CommandId dependency_id : dependencies_ids) {
-    auto* record_state = record_params.state.GetOrNull<RecordState>(
-        commands_[dependency_id].get(), command_buffer);
-    DCHECK(record_state) << "Record state must be not null for "
-                         << commands_[dependency_id]->ToString();
-
-    if (record_state->command == nullptr) {
+    DCHECK_LT(dependency_id, recorded_commands.size());
+    if (recorded_commands[dependency_id] == nullptr) {
       // Some commands might end up not recording anything into the command
       // buffer, e.g. memcpy commands where source and destination are the
       // same. We have to follow dependencies of such commands to find the
       // real dependencies, so we don't record a command that is immediately
       // ready to execute, as it will create data races.
-      auto deps = Dependencies(record_params, command_buffer, dependency_id);
+      auto deps =
+          Dependencies(record_params, command_buffer, dependency_id, record_id);
       dependencies.insert(dependencies.end(), deps.begin(), deps.end());
     } else {
-      dependencies.push_back(record_state->command);
+      dependencies.push_back(recorded_commands[dependency_id]);
     }
   }
 
   return dependencies;
 }
 
-const absl::flat_hash_set<BufferUse>& CommandExecutor::buffers() const {
-  return buffers_;
+const absl::flat_hash_set<BufferUse>& CommandExecutor::buffer_uses() const {
+  return buffer_uses_;
 }
 
 absl::Span<const BufferAllocation::Index> CommandExecutor::allocs_indices()
@@ -668,7 +737,7 @@ absl::Span<const BufferAllocation::Index> CommandExecutor::allocs_indices()
   return allocs_indices_;
 }
 
-absl::StatusOr<std::string> CommandExecutor::RenderExecutionGraph() {
+absl::StatusOr<std::string> CommandExecutor::RenderExecutionGraph() const {
   ExecutionGraph::Renderer* renderer = ExecutionGraph::GetRenderer();
   if (renderer == nullptr) {
     return Unimplemented("No execution graph renderer registered");
@@ -680,8 +749,9 @@ absl::StatusOr<std::string> CommandExecutor::RenderExecutionGraph() {
         "concurrent/LHS synchronization mode");
   }
 
-  TF_ASSIGN_OR_RETURN(auto operations, CreateCommandOperations(
-                                           commands_, synchronization_mode_));
+  ASSIGN_OR_RETURN(auto operations,
+                   CreateCommandOperations(commands_, synchronization_mode_,
+                                           extra_resources_));
   absl::InlinedVector<const ExecutionGraph::Operation*, 32> operations_ptrs;
   operations_ptrs.reserve(operations.size());
   for (const auto& operation : operations) {

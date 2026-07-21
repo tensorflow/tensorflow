@@ -287,6 +287,10 @@ Subgraph::Subgraph(ErrorReporter* error_reporter,
   context_.GetTensor = nullptr;
   context_.GetEvalTensor = nullptr;
   context_.GetModelMetadata = GetModelMetadata;
+#if defined(_WIN32)
+  context_.TfLiteIntArrayCreate = TfLiteIntArrayCreate;
+  context_.TfLiteIntArrayFree = TfLiteIntArrayFree;
+#endif  // defined(_WIN32)
 
   // Reserve some space for the tensors to avoid excessive resizing.
   tensors_.reserve(kTensorsReservedCapacity);
@@ -506,7 +510,8 @@ TfLiteStatus Subgraph::PartitionGraph(const TfLiteIntArray* nodes_to_replace,
                                       std::vector<NodeSubset>* node_subsets) {
   const InterpreterInfo info(this);
   // Tensor preservation requires node fusion to be disabled.
-  const bool disable_node_fusion = ShouldPreserveAllTensors();
+  const bool disable_node_fusion =
+      ShouldPreserveAllTensors() || DisableDelegateNodeFusion();
   return tflite::PartitionGraphIntoIndependentNodeSubsets(
       &info, nodes_to_replace, node_subsets,
       /*greedily=*/!DisableDelegateClustering(), control_edges_,
@@ -573,10 +578,10 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
   TFLITE_LOG_PROD(tflite::TFLITE_LOG_VERBOSE,
                   "Replacing %d out of %d node(s) with delegate (%s) node, "
                   "yielding %zu partitions "
-                  "for subgraph %d.",
+                  "for subgraph %d (%s).",
                   nodes_to_replace->size, execution_plan_.size(),
                   GetDelegateKernalName(registration), node_subsets.size(),
-                  subgraph_index_);
+                  subgraph_index_, name_.c_str());
 
   execution_plan_.clear();
 
@@ -1701,10 +1706,14 @@ TfLiteStatus Subgraph::InvokeImpl() {
 #endif  // TF_LITE_TENSORFLOW_PROFILER
 
     // If per operator profiling flag is set in the delegate, this macro op
-    // should not be profiled, thus a nullptr is passed to the ScopedProfile
-    bool profile_op =
-        !(node.delegate != nullptr &&
-          (node.delegate->flags & kTfLiteDelegateFlagsPerOperatorProfiling));
+    // should not be profiled, thus a nullptr is passed to the ScopedProfile.
+    // However, if ForceDelegateNodeProfiling() is true, we bypass this
+    // suppression (useful for calibration).
+    bool profile_op = true;
+    if (node.delegate != nullptr && !ForceDelegateNodeProfiling()) {
+      profile_op =
+          !(node.delegate->flags & kTfLiteDelegateFlagsPerOperatorProfiling);
+    }
     TFLITE_SCOPED_TAGGED_OPERATOR_PROFILE(
         profile_op ? profiler_.get() : nullptr, op_name, node_index);
 
@@ -1990,7 +1999,8 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
 TfLiteStatus Subgraph::SetTensorParametersReadWrite(
     int tensor_index, TfLiteType type, const char* name, const size_t ndims,
     const int* dims, TfLiteQuantization quantization, bool is_variable,
-    const size_t ndims_signature, const int* dims_signature) {
+    const size_t ndims_signature, const int* dims_signature,
+    const size_t external_buffer_id) {
   // Ensure quantization cleanup on failure.
   ScopedTfLiteQuantization scoped_quantization(&quantization);
   if (state_ == kStateInvokableAndImmutable) {
@@ -2034,6 +2044,10 @@ TfLiteStatus Subgraph::SetTensorParametersReadWrite(
   tensor.quantization = *scoped_quantization.release();
   tensor.dims_signature =
       ConvertArrayToTfLiteIntArray(ndims_signature, dims_signature);
+  if (external_buffer_id != kTfLiteNoBufferIdentifier &&
+      external_buffer_id != 0) {
+    tensor_external_buffer_ids_[tensor_index] = external_buffer_id;
+  }
   return kTfLiteOk;
 }
 

@@ -70,7 +70,7 @@ absl::Status BuildWhileLoop(const Scope& scope,
                             const std::vector<Output>& inputs,
                             const CondGraphBuilderFn& cond,
                             const BodyGraphBuilderFn& body,
-                            const string& frame_name, OutputList* outputs,
+                            const std::string& frame_name, OutputList* outputs,
                             bool create_while_ctx = true,
                             Output* cond_output = nullptr);
 

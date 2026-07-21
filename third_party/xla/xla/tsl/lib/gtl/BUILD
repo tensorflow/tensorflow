@@ -34,9 +34,10 @@ package(
         "//tensorflow/core/profiler/convert:__pkg__",
         # xprof /convert and /utils uses map_util and top_n
         "//third_party/xprof/convert:__pkg__",
+        "//third_party/xprof/convert/megascale_perfetto:__pkg__",
         "//third_party/xprof/utils:__pkg__",
         # Pathways uses int_type.
-        "//learning/pathways/ifrt/sidecar:__pkg__",
+        "//third_party/pathways/ifrt/sidecar:__pkg__",
     ]),
     licenses = ["notice"],
 )
@@ -179,7 +180,7 @@ filegroup(
 
 # Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
-    name = "mobile_srcs_no_runtime",
+    name = "mobile_hdrs_no_runtime",
     srcs = [
         "flatmap.h",
         "flatrep.h",
@@ -193,7 +194,7 @@ filegroup(
 )
 
 filegroup(
-    name = "mobile_srcs_only_runtime",
+    name = "mobile_hdrs_only_runtime",
     srcs = [
         "flatset.h",
         "int_type.h",

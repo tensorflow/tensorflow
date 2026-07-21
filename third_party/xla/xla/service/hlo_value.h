@@ -25,9 +25,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/lazy.h"
@@ -191,7 +193,7 @@ class HloValue : public BufferValue {
 
   // The set of uses of this HloValue. This is lazily constructed until getting
   // accessed.
-  Lazy<Uses> uses_;
+  ABSL_ATTRIBUTE_NO_UNIQUE_ADDRESS Lazy<Uses> uses_;
 
   // Whether this instruction is a phi value.
   bool is_phi_ : 1;
@@ -237,6 +239,12 @@ class HloValueSet {
   // Return the unique HLO value in the set. CHECKs if the set does not contain
   // exactly one value.
   const HloValue& GetUniqueValue() const {
+    if (values_.size() != 1) {
+      LOG(ERROR) << "GetUniqueValue failed, size is " << values_.size();
+      for (const auto* val : values_) {
+        LOG(ERROR) << "  value: " << val->ToShortString();
+      }
+    }
     CHECK_EQ(values_.size(), 1);
     return *values_[0];
   }

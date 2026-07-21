@@ -89,14 +89,6 @@ TYPED_TEST(BroadcastToOpTest, ShapeMustBe1D) {
   EXPECT_THAT(m.Invoke(), kTfLiteError);
 }
 
-TYPED_TEST(BroadcastToOpTest, TooManyDimensions) {
-  EXPECT_DEATH(BroadcastToOpModel<TypeParam>({1, 2, 3, 4, 5, 6, 7, 8, 9}, {9},
-                                             {2, 2, 3, 4, 5, 6, 7, 8, 9}),
-               "BroadcastTo only supports 1-8D tensor.");
-  EXPECT_DEATH(BroadcastToOpModel<TypeParam>({1, 2, 3, 4, 5, 6, 7, 8, 9}, {9}),
-               "BroadcastTo only supports 1-8D tensor.");
-}
-
 TYPED_TEST(BroadcastToOpTest, MismatchDimension) {
   EXPECT_DEATH(BroadcastToOpModel<TypeParam>({2, 4, 1, 2}, {4}, {2, 4, 1, 3}),
                "Output shape must be broadcastable from input shape.");
@@ -139,6 +131,16 @@ TYPED_TEST(BroadcastToOpTest, BroadcastTo8DConstTest) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 3, 4, 4}));
 }
 
+TYPED_TEST(BroadcastToOpTest, BroadcastTo9DConstTest) {
+  BroadcastToOpModel<TypeParam> m({1, 1, 1, 1, 1, 1, 1, 2, 1}, {9},
+                                  {1, 1, 1, 1, 1, 1, 1, 2, 2});
+  m.SetInput({3, 4});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(),
+              ElementsAreArray({1, 1, 1, 1, 1, 1, 1, 2, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 3, 4, 4}));
+}
+
 TYPED_TEST(BroadcastToOpTest, BroadcastTo1DDynamicTest) {
   BroadcastToOpModel<TypeParam> m({1}, {1});
   m.SetInput({3});
@@ -163,6 +165,16 @@ TYPED_TEST(BroadcastToOpTest, BroadcastTo8DDynamicTest) {
   m.SetShape({1, 1, 1, 1, 1, 1, 2, 2});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 1, 1, 1, 2, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 3, 4, 4}));
+}
+
+TYPED_TEST(BroadcastToOpTest, BroadcastTo9DDynamicTest) {
+  BroadcastToOpModel<TypeParam> m({1, 1, 1, 1, 1, 1, 1, 2, 1}, {9});
+  m.SetInput({3, 4});
+  m.SetShape({1, 1, 1, 1, 1, 1, 1, 2, 2});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(),
+              ElementsAreArray({1, 1, 1, 1, 1, 1, 1, 2, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 3, 4, 4}));
 }
 

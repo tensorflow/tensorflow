@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include "fp16.h"  // from @FP16
+
 // This file is an excerpt from
 // https://github.com/Maratyszcza/FP16/blob/master/include/fp16/fp16.h,
 // including only the minimal functionality we need in XNNPACK. This works
@@ -33,6 +35,8 @@ limitations under the License.
 // FP16_H and FP16_BITCASTS_H are defined by //third_party/FP16/fp16.h and
 // //third_party/FP16/bitcasts.h respectively.
 #if !defined(FP16_H) && !defined(FP16_BITCASTS_H)
+
+namespace tflite {
 
 static inline float fp32_from_bits(uint32_t w) {
   union {
@@ -222,6 +226,8 @@ static inline uint16_t fp16_ieee_from_fp32_value(float f) {
   return (sign >> 16) |
          (shl1_w > UINT32_C(0xFF000000) ? UINT16_C(0x7E00) : nonsign);
 }
+
+}  // namespace tflite
 
 #endif  // !defined(FP16_H) && !defined(FP16_BITCASTS_H)
 

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -37,11 +38,13 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/array.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/ffi/invoke.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -52,11 +55,16 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
+#include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
@@ -84,10 +92,11 @@ XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(::xla::Range, StructMember<int64_t>("lo"),
 namespace xla {
 namespace {
 using ::absl_testing::StatusIs;
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 
 class CustomCallTest : public ClientLibraryTestRunnerMixin<
-                           HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+                           HloInterpreterReferenceMixin<HloTestBase>> {
  public:
   std::string PlatformName() {
     if (test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuCuda)) {
@@ -213,6 +222,24 @@ TEST_F(CustomCallTest, WithStatusFailed) {
   auto status = ExecuteAndTransfer(&b, {}).status();
   EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
   EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed"));
+}
+
+TEST_F(CustomCallTest, WithNoCallback) {
+  XlaBuilder b(TestName());
+  CustomCall(
+      &b, "NoCallback", /*operands=*/{}, ShapeUtil::MakeShape(F32, {}),
+      /*opaque=*/"",
+      /*has_side_effect=*/false,
+      /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+      /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+      /*api_version=*/CustomCallApiVersion::API_VERSION_STATUS_RETURNING);
+  auto status = ExecuteAndTransfer(&b, {}).status();
+  EXPECT_THAT(
+      status,
+      StatusIs(
+          absl::StatusCode::kNotFound,
+          HasSubstr(
+              "No registered implementation for custom call to NoCallback")));
 }
 
 //===----------------------------------------------------------------------===//
@@ -369,9 +396,6 @@ TEST_F(CustomCallTest, ExportedFfiUnknownTarget) {
           HasSubstr(
               "No FFI handler registered for __xla_test$$unknown_target")));
 }
-
-// Memcpy and SubBuffers tests are already ported in
-// fusions/address_computation_fusion_test.cc
 
 std::string& kExpectedOpaque = *new std::string("abc\0def", 7);
 
@@ -791,21 +815,52 @@ TEST_F(CustomCallTest, FfiExecutionContext) {
 // Stateful XLA:FFI handler
 //===----------------------------------------------------------------------===//
 
-struct SomeState {
-  explicit SomeState(int32_t value) : value(value) {}
+// This is the state that created for each instance of a custom call in the
+// XLA program. Its lifetime is tied to the XLA GPU executable itself.
+struct InstanceState {
+  explicit InstanceState(int32_t value) : value(value) {}
+  int32_t value = 0;
+};
+
+// This is the state that created by the prepare handler during XLA GPU
+// executable initialization and destroyed automatically when XLA execution is
+// complete. Note that it's not the same as creating state inside `Execute`, as
+// custom call can be inside the control flow and executed arbitrary number of
+// times (or not executed at all). Prepare and Initialize are guaranteed to be
+// invoked exactly once before XLA starts executing the program.
+struct PreparedState {
+  explicit PreparedState(int32_t value) : value(value) {}
+  int32_t value = 0;
+};
+
+// Same as `PreparedState` but for initialization.
+struct InitializedState {
+  explicit InitializedState(int32_t value) : value(value) {}
   int32_t value = 0;
 };
 
 // Every time custom call HLO operation is instantiated as a GPU runtime Thunk,
 // XLA calls instantiate callback to create a new instance of the handler state,
 // that will be passed to all other FFI handler calls.
-static absl::StatusOr<std::unique_ptr<SomeState>> InstantiateState() {
-  return std::make_unique<SomeState>(42);
+static absl::StatusOr<std::unique_ptr<InstanceState>> InstantiateState() {
+  return std::make_unique<InstanceState>(42);
 }
 
-// At run time we can access the state created by the instantiate callback.
-static absl::Status GetState(ffi::Result<ffi::AnyBuffer>, SomeState* state) {
-  if (state->value != 42) {
+static absl::StatusOr<std::unique_ptr<PreparedState>> PrepareState() {
+  return std::make_unique<PreparedState>(42);
+}
+
+static absl::StatusOr<std::unique_ptr<InitializedState>> InitializeState() {
+  return std::make_unique<InitializedState>(42);
+}
+
+// At run time we can access both of the state objects.
+static absl::Status ExecuteWithState(ffi::Result<ffi::AnyBuffer>,
+                                     InstanceState* instance_state,
+                                     PreparedState* prep_state,
+                                     InitializedState* init_state) {
+  if (instance_state->value != 42 || prep_state->value != 42 ||
+      init_state->value != 42) {
     return absl::InternalError("Unexpected value");
   }
   return absl::OkStatus();
@@ -814,18 +869,26 @@ static absl::Status GetState(ffi::Result<ffi::AnyBuffer>, SomeState* state) {
 XLA_FFI_DEFINE_HANDLER(kInstantiateState, InstantiateState,
                        ffi::Ffi::BindInstantiate());
 
-XLA_FFI_DEFINE_HANDLER(
-    kGetState, GetState,
-    ffi::Ffi::Bind().Ret<ffi::AnyBuffer>().Ctx<ffi::State<SomeState>>());
+XLA_FFI_DEFINE_HANDLER(kPrepareState, PrepareState, ffi::Ffi::BindPrepare());
 
-TEST_F(CustomCallTest, FfiExecutionState) {
+XLA_FFI_DEFINE_HANDLER(kInitializeState, InitializeState,
+                       ffi::Ffi::BindInitialize());
+
+XLA_FFI_DEFINE_HANDLER(kExecuteWithState, ExecuteWithState,
+                       ffi::Ffi::Bind()
+                           .Ret<ffi::AnyBuffer>()
+                           .Ctx<ffi::State<InstanceState>>()
+                           .Ctx<ffi::Prepared<PreparedState>>()
+                           .Ctx<ffi::Initialized<InitializedState>>());
+
+TEST_F(CustomCallTest, FfiInitializationState) {
   xla::ffi::Ffi::RegisterStaticHandler(
       ffi::GetXlaFfiApi(), "xla.gpu.ffi_execution_state", PlatformName(),
       {
           /*instantiate=*/kInstantiateState,
-          /*prepare=*/nullptr,
-          /*initialize=*/nullptr,
-          /*execute=*/kGetState,
+          /*prepare=*/kPrepareState,
+          /*initialize=*/kInitializeState,
+          /*execute=*/kExecuteWithState,
       });
 
   XlaBuilder b(TestName());
@@ -943,14 +1006,14 @@ static absl::Status AddOne(se::Stream* stream, ffi::AnyBuffer src,
 
   int32_t data[2];
   se::DeviceAddressBase buffer_mem = ret->device_memory();
-  TF_RETURN_IF_ERROR(stream->Memcpy(data, buffer_mem, sizeof(data)));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  RETURN_IF_ERROR(stream->Memcpy(data, buffer_mem, sizeof(data)));
+  RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   data[0] += 1;
   data[1] += 1;
 
-  TF_RETURN_IF_ERROR(stream->Memcpy(&buffer_mem, data, sizeof(data)));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  RETURN_IF_ERROR(stream->Memcpy(&buffer_mem, data, sizeof(data)));
+  RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   return absl::OkStatus();
 }
@@ -1061,7 +1124,7 @@ TEST_F(CustomCallHloTest, HloBufferRotated) {
 }
 
 // Adds 1 to 2 elements with the given offset in the input buffer.
-absl::Status UpadteBufferImpl(se::Stream* stream, ffi::AnyBuffer src,
+absl::Status UpdateBufferImpl(se::Stream* stream, ffi::AnyBuffer src,
                               ffi::Result<ffi::AnyBuffer> ret, int offset) {
   if (src.untyped_data() != ret->untyped_data()) {
     return absl::InternalError("Input and output buffers must be the same.");
@@ -1071,14 +1134,14 @@ absl::Status UpadteBufferImpl(se::Stream* stream, ffi::AnyBuffer src,
   }
   int32_t data[4];
   se::DeviceAddressBase buffer_mem = ret->device_memory();
-  TF_RETURN_IF_ERROR(stream->Memcpy(data, buffer_mem, sizeof(data)));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  RETURN_IF_ERROR(stream->Memcpy(data, buffer_mem, sizeof(data)));
+  RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   data[offset] += 1;
   data[offset + 1] += 1;
 
-  TF_RETURN_IF_ERROR(stream->Memcpy(&buffer_mem, data, sizeof(data)));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  RETURN_IF_ERROR(stream->Memcpy(&buffer_mem, data, sizeof(data)));
+  RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   return absl::OkStatus();
 }
@@ -1086,12 +1149,12 @@ absl::Status UpadteBufferImpl(se::Stream* stream, ffi::AnyBuffer src,
 // Adds 1 to the first 2 elements of the input buffer.
 static absl::Status UpdateBuffer1(se::Stream* stream, ffi::AnyBuffer src,
                                   ffi::Result<ffi::AnyBuffer> ret) {
-  return UpadteBufferImpl(stream, src, ret, /*offset=*/0);
+  return UpdateBufferImpl(stream, src, ret, /*offset=*/0);
 }
 // Adds 1 to the last 2 elements of the input buffer.
 static absl::Status UpdateBuffer2(se::Stream* stream, ffi::AnyBuffer src,
                                   ffi::Result<ffi::AnyBuffer> ret) {
-  return UpadteBufferImpl(stream, src, ret, /*offset=*/2);
+  return UpdateBufferImpl(stream, src, ret, /*offset=*/2);
 }
 
 XLA_FFI_DEFINE_HANDLER(kUpdateBuffer1, UpdateBuffer1,
@@ -1174,8 +1237,7 @@ TEST_F(CustomCallHloTest, CallConcurrentUpdateTwoBuffers) {
   EXPECT_THAT(results[0].data<int32_t>(), ::testing::Each(1));
 }
 
-// TODO: Enable this test once the runtime failure is fixed.
-TEST_F(CustomCallHloTest, DISABLED_CustomCallConcurrentUpdateTwoBuffers) {
+TEST_F(CustomCallHloTest, CustomCallConcurrentUpdateTwoBuffers) {
   xla::ffi::Ffi::RegisterStaticHandler(ffi::GetXlaFfiApi(),
                                        "xla.gpu.update_buffer1", PlatformName(),
                                        kUpdateBuffer1);
@@ -1213,12 +1275,12 @@ TEST_F(CustomCallHloTest, DISABLED_CustomCallConcurrentUpdateTwoBuffers) {
       frontend_attributes={_xla_stream_annotation="1"}
     b1_1 = b(s32[4]) async-done(b1_1_start),
       frontend_attributes={_xla_stream_annotation="1"},
-      backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
+      backend_config={"operation_queue_id":"0","force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
     b2_1_start = ((b(s32[4])), b(s32[4])) async-start(b2_0), calls=async_comp2,
       frontend_attributes={_xla_stream_annotation="2"}
     b2_1 = b(s32[4]) async-done(b2_1_start),
       frontend_attributes={_xla_stream_annotation="2"},
-      backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
+      backend_config={"operation_queue_id":"0","force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
 
     v_1 = s32[4] custom-call(b1_1), custom_call_target="Unpin",
       output_to_operand_aliasing={{}: (0, {})}
@@ -1248,6 +1310,94 @@ TEST_F(CustomCallHloTest, DISABLED_CustomCallConcurrentUpdateTwoBuffers) {
                         /*use_threads=*/true, /*run_hlo_passes=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_THAT(results[0].data<int32_t>(), ::testing::Each(1));
+}
+
+TEST_F(CustomCallHloTest, InstantiateCanAccessTargetGpuComputeCapability) {
+  XLA_FFI_DEFINE_HANDLER(
+      kInstantiateCanAccessTargetComputeCapability,
+      [](const se::GpuComputeCapability* gpu_compute_capability) {
+        if (gpu_compute_capability == nullptr) {
+          return absl::InvalidArgumentError("Gpu compute capability is null");
+        }
+        return absl::OkStatus();
+      },
+      ffi::Ffi::BindInstantiate().Ctx<ffi::TargetGpuComputeCapability>());
+
+  XLA_FFI_DEFINE_HANDLER(
+      kWriteTargetComputeCapabilityIntoBuffer,
+      ([](ffi::Result<ffi::AnyBuffer> output_buffer,
+          const se::GpuComputeCapability* gpu_compute_capability,
+          se::Stream* stream) -> absl::Status {
+        const stream_executor::CudaComputeCapability* cuda_compute_capability =
+            gpu_compute_capability->cuda_compute_capability();
+
+        std::array<int32_t, 2> result{};
+        if (cuda_compute_capability != nullptr) {
+          result[0] = gpu_compute_capability->cuda_compute_capability()->major;
+          result[1] = gpu_compute_capability->cuda_compute_capability()->minor;
+        } else {
+          // If we can't represent the compute capability with a pair of
+          // integers, we return a made up value.
+          result[0] = 42;
+          result[1] = 24;
+        }
+        se::DeviceAddressBase output_buffer_mem =
+            output_buffer->device_memory();
+        return stream->Memcpy(&output_buffer_mem, result.data(),
+                              result.size() * sizeof(int32_t));
+      }),
+      ffi::Ffi::Bind()
+          .Ret<ffi::AnyBuffer>()
+          .Ctx<ffi::TargetGpuComputeCapability>()
+          .Ctx<ffi::Stream>());
+
+  xla::ffi::Ffi::RegisterStaticHandler(
+      ffi::GetXlaFfiApi(), "xla.gpu.access_target_gpu_compute_capability",
+      PlatformName(),
+      {
+          /*.instantiate=*/kInstantiateCanAccessTargetComputeCapability,
+          /*.prepare=*/nullptr,
+          /*.initialize=*/nullptr,
+          /*.execute=*/kWriteTargetComputeCapabilityIntoBuffer,
+      });
+
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    p1 = s32[2] parameter(0)
+    ROOT v = s32[2] custom-call(p1), custom_call_target="xla.gpu.access_target_gpu_compute_capability",
+      api_version=API_VERSION_TYPED_FFI
+  })";
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnUnverifiedModule(
+          kModuleStr, GetModuleConfigForTest(/*replica_count=*/1)));
+
+  // The input literal is not used.
+  auto input_literal = LiteralUtil::CreateR1<int32_t>({1, 2});
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       Execute(std::move(module), {&input_literal}));
+
+  // Determining the compute capability of the device we're
+  // running on.
+  stream_executor::Platform* platform =
+      PlatformUtil::GetPlatform("gpu").value();
+  se::StreamExecutor* stream_executor = platform->ExecutorForDevice(0).value();
+  se::GpuComputeCapability gpu_compute_capability =
+      stream_executor->GetDeviceDescription().gpu_compute_capability();
+  const se::CudaComputeCapability* cuda_compute_capability =
+      gpu_compute_capability.cuda_compute_capability();
+
+  // If we can represent the compute capability with a pair of integers, we
+  // expect to get those values back. Otherwise, we expect to get made up
+  // values.
+  if (cuda_compute_capability != nullptr) {
+    EXPECT_THAT(result.data<int32_t>(),
+                ElementsAre(cuda_compute_capability->major,
+                            cuda_compute_capability->minor));
+  } else {
+    EXPECT_THAT(result.data<int32_t>(), ElementsAre(42, 24));
+  }
 }
 
 }  // anonymous namespace

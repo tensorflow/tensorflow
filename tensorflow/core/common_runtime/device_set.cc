@@ -35,7 +35,7 @@ void DeviceSet::AddDevice(Device* device) {
   devices_.push_back(device);
   prioritized_devices_.clear();
   prioritized_device_types_.clear();
-  for (const string& name :
+  for (const std::string& name :
        DeviceNameUtils::GetNamesForDeviceMappings(device->parsed_name())) {
     device_by_name_.insert({name, device});
   }
@@ -62,7 +62,7 @@ void DeviceSet::FindMatchingDevices(const DeviceNameUtils::ParsedName& spec,
   matching_device_cache_.insert({spec, *devices});
 }
 
-Device* DeviceSet::FindDeviceByName(const string& name) const {
+Device* DeviceSet::FindDeviceByName(const std::string& name) const {
   return gtl::FindPtrOrNull(device_by_name_, name);
 }
 
@@ -85,7 +85,7 @@ static bool DeviceTypeComparator(const DeviceType& a, const DeviceType& b) {
 
 std::vector<DeviceType> DeviceSet::PrioritizedDeviceTypeList() const {
   std::vector<DeviceType> result;
-  std::set<string> seen;
+  std::set<std::string> seen;
   for (Device* d : devices_) {
     const auto& t = d->device_type();
     if (seen.insert(t).second) {
@@ -114,14 +114,14 @@ void DeviceSet::SortPrioritizedDeviceTypeVector(
 }
 
 void DeviceSet::SortPrioritizedDeviceVector(PrioritizedDeviceVector* vector) {
-  auto device_sort = [](const std::pair<Device*, int32>& a,
-                        const std::pair<Device*, int32>& b) {
+  auto device_sort = [](const std::pair<Device*, int32_t>& a,
+                        const std::pair<Device*, int32_t>& b) {
     if (a.second != b.second) {
       return a.second > b.second;
     }
 
-    const string& a_type_name = a.first->device_type();
-    const string& b_type_name = b.first->device_type();
+    const std::string& a_type_name = a.first->device_type();
+    const std::string& b_type_name = b.first->device_type();
     if (a_type_name != b_type_name) {
       auto a_priority = DeviceFactory::DevicePriority(a_type_name);
       auto b_priority = DeviceFactory::DevicePriority(b_type_name);
@@ -157,7 +157,7 @@ void UpdatePrioritizedVectors(
   if (prioritized_device_types != nullptr &&
       prioritized_device_types->size() != devices.size()) {
     std::set<DeviceType> seen;
-    for (const std::pair<Device*, int32>& p : *prioritized_devices) {
+    for (const std::pair<Device*, int32_t>& p : *prioritized_devices) {
       DeviceType t(p.first->device_type());
       if (seen.insert(t).second) {
         prioritized_device_types->emplace_back(t, p.second);

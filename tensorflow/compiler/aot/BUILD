@@ -53,6 +53,7 @@ cc_library(
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/backends/cpu/runtime:convolution_dims",
         "@xla//xla/backends/cpu/runtime:dot_dims",
+        "@xla//xla/backends/cpu/runtime:kernel_thunk",
         "@xla//xla/backends/cpu/runtime:thunk_proto_cc",
         "@xla//xla/service/cpu:executable_proto_cc",
         "@xla//xla/tsl/platform:statusor",
@@ -90,7 +91,6 @@ cc_library(
     ],
     deps = [
         ":aot_only_var_handle_op",
-        ":embedded_constant_buffers",
         ":embedded_protocol_buffers",
         ":llvm_targets",  # fixdeps: keep
         ":thunk_proto_execution_deserializer",
@@ -139,6 +139,7 @@ cc_library(
         "@xla//xla/service/cpu:cpu_executable",
         "@xla//xla/stream_executor:platform",
         "@xla//xla/stream_executor:platform_manager",
+        "@xla//xla/util:embedded_constant_buffers",
     ],
 )
 
@@ -356,6 +357,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -366,45 +368,6 @@ cc_library(
         "@llvm-project//llvm:TargetParser",
         "@xla//xla:util",
         "@xla//xla/service/llvm_ir:llvm_type_conversion_util",
-    ],
-)
-
-cc_library(
-    name = "embedded_constant_buffers",
-    srcs = ["embedded_constant_buffers.cc"],
-    hdrs = ["embedded_constant_buffers.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:MC",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:Target",
-        "@llvm-project//llvm:TargetParser",
-        "@xla//xla:util",
-        "@xla//xla/backends/cpu:alignment",
-        "@xla//xla/service/llvm_ir:llvm_type_conversion_util",
-    ],
-)
-
-tf_cc_test(
-    name = "embedded_constant_buffers_test",
-    srcs = ["embedded_constant_buffers_test.cc"],
-    deps = [
-        ":embedded_constant_buffers",
-        ":llvm_targets",  # fixdeps: keep
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:Support",
-        "@tsl//tsl/platform:statusor",
-        "@xla//xla/service/cpu:test_header_helper",
     ],
 )
 

@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -320,8 +321,8 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
       }
     }
 
-    std::string ToString() const {
-      return absl::StrFormat(
+    std::string ToString(bool print_named_properties = false) const {
+      std::string string = absl::StrFormat(
           "HloCostAnalysis::Properties{\n"
           " flops: %f,\n"
           " transcendentals: %f\n"
@@ -333,12 +334,18 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
           " operand0_bytes_accessed: %f\n"
           " operand1_bytes_accessed: %f\n"
           " output_root_bytes_accessed: %f\n"
-          " reserved0: %f\n"
-          "}",
+          " reserved0: %f\n",
           flops_, transcendentals_, bytes_accessed_, optimal_seconds_,
           utilization_, operand0_utilization_, operand1_utilization_,
           operand0_bytes_accessed_, operand1_bytes_accessed_,
           output_root_bytes_accessed_, reserved0_);
+      if (print_named_properties) {
+        for (const auto& [k, v] : named_props_) {
+          absl::StrAppend(&string, absl::StrFormat(" %s: %f\n", k, v));
+        }
+      }
+      absl::StrAppend(&string, "}");
+      return string;
     }
 
    private:
@@ -648,21 +655,21 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
 
   // Allows exclusion of certain types of inputs from bytes accessed during
   // FusionProcessOperandBytesRead.
-  virtual bool ShouldFilterFusionInput(const HloInstruction* fusion,
-                                       int64_t input_index) {
+  virtual absl::StatusOr<bool> ShouldFilterFusionInput(
+      const HloInstruction* fusion, int64_t input_index) {
     return false;
   }
 
   // Allows exclusion of certain instructions from FusionCalculateUtilizations.
-  virtual bool ShouldFilterFusionInstruction(
+  virtual absl::StatusOr<bool> ShouldFilterFusionInstruction(
       const HloInstruction* fusion, const HloInstruction* instruction) {
     return false;
   }
 
   // Allows exclusion of certain types of output from bytes written during
   // FusionProcessOutputBytesAccessed.
-  virtual bool ShouldFilterFusionOutputIndex(const HloInstruction* fusion,
-                                             const ShapeIndex& output_index) {
+  virtual absl::StatusOr<bool> ShouldFilterFusionOutputIndex(
+      const HloInstruction* fusion, const ShapeIndex& output_index) {
     return false;
   }
 
@@ -719,6 +726,9 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // The hardware-specific options that contains things like the shape size
   // function and per-second rates.
   Options options_;
+
+  absl::flat_hash_map<const HloInstruction*, int64_t>
+      instruction_shape_size_cache_;
 
   // Determines which properties propagate from subcomputations to parents.
   virtual bool KeyToCopyFromSubcomputation(absl::string_view key) const;

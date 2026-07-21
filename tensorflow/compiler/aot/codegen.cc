@@ -39,7 +39,6 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/aot/compile.h"
-#include "tensorflow/compiler/aot/embedded_constant_buffers.h"
 #include "tensorflow/compiler/aot/embedded_protocol_buffers.h"
 #include "tensorflow/compiler/aot/thunk_proto_execution_deserializer.h"
 #include "tensorflow/compiler/tf2xla/allocator.h"
@@ -58,6 +57,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/util/embedded_constant_buffers.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tsl/platform/casts.h"
@@ -106,8 +106,9 @@ absl::Status XLATypeToCpp(xla::PrimitiveType type, std::string* str) {
       *str = "double";
       break;
     default:
-      return errors::Unimplemented("XLA type ", xla::PrimitiveType_Name(type),
-                                   " has no equivalent in C++");
+      return absl::UnimplementedError(
+          absl::StrCat("XLA type ", xla::PrimitiveType_Name(type),
+                       " has no equivalent in C++"));
   }
   return absl::OkStatus();
 }
@@ -203,9 +204,9 @@ absl::Status GenArgMethods(const tf2xla::Config& config,
   // feed_size() + variable_size() is the maximum number of args as an
   // implementation may not create an argument for an unused variable.
   if (config.feed_size() + config.variable_size() < num_args) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "mismatch between feed_size(", config.feed_size(), ")+variable_size(",
-        config.variable_size(), ") and num_args(", num_args, ")");
+        config.variable_size(), ") and num_args(", num_args, ")"));
   }
   for (int i = 0; i < config.feed_size(); ++i) {
     std::vector<std::pair<std::string, std::string>> rewrites;
@@ -261,10 +262,10 @@ absl::Status GenResultMethods(const tf2xla::Config& config,
   const int actual_num_results =
       config.fetch_size() + config.variable_size() - readonly_variables;
   if (actual_num_results != num_results) {
-    return errors::InvalidArgument("mismatch between fetch_size(",
-                                   config.fetch_size(), ")+variable_size(",
-                                   config.variable_size(), ") and tuple_size(",
-                                   ps.result().tuple_shapes_size(), ")");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "mismatch between fetch_size(", config.fetch_size(), ")+variable_size(",
+        config.variable_size(), ") and tuple_size(",
+        ps.result().tuple_shapes_size(), ")"));
   }
   for (int i = 0; i < config.fetch_size(); ++i) {
     std::vector<std::pair<std::string, std::string>> rewrites;
@@ -624,7 +625,7 @@ absl::StatusOr<std::vector<xla::cpu::ThunkProto>> ExtractThunksOfKind(
 
 absl::StatusOr<std::string> GetThunkSpecificConstantAllocationsInitializers(
     const xla::cpu::CompilationResultProto& proto,
-    const EmbeddedConstantBuffers& embedded_constant_buffers) {
+    const xla::EmbeddedConstantBuffers& embedded_constant_buffers) {
   std::vector<absl::string_view> constant_buffer_accesses;
   constant_buffer_accesses.reserve(
       embedded_constant_buffers.variable_decls.size());
@@ -647,7 +648,7 @@ absl::Status ExtendRewrites(
     std::vector<std::pair<std::string, std::string>>& rewrites,
     const xla::cpu::CpuAotCompilationResult* aot_thunks,
     const MetadataResult& metadata_result, const CodegenOpts& codegen_opts,
-    const EmbeddedConstantBuffers& embedded_constant_buffers) {
+    const xla::EmbeddedConstantBuffers& embedded_constant_buffers) {
   std::vector<xla::cpu::SymbolProto> entry_point_symbols =
       ExtractEntryPointSymbols(aot_thunks->proto());
 
@@ -700,6 +701,11 @@ absl::Status ExtendRewrites(
                    xla::cpu::ThunkProto::kTopKThunk)) {
     runtime_specific_includes.push_back(
         R"(#include "xla/backends/cpu/runtime/topk_lib.h")");
+  }
+
+  if (HasThunkKind(aot_thunks->proto().thunk_sequence(),
+                   xla::cpu::ThunkProto::kRngSeedThunk)) {
+    runtime_specific_includes.push_back(R"(#include <random>)");
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -825,7 +831,7 @@ absl::Status ExtendRewrites(
 absl::Status GenerateHeader(
     const CodegenOpts& opts, const tf2xla::Config& config,
     const CompileResult& compile_result, const MetadataResult& metadata_result,
-    const EmbeddedConstantBuffers& embedded_constant_buffers,
+    const xla::EmbeddedConstantBuffers& embedded_constant_buffers,
     std::string* header) {
   TF_RETURN_IF_ERROR(ValidateConfig(config));
   TF_RETURN_IF_ERROR(ValidateFeedFetchCppNames(config));
@@ -1195,7 +1201,7 @@ static std::string CreateUniqueIdentifier(const CodegenOpts& opts,
   return result;
 }
 
-absl::StatusOr<EmbeddedConstantBuffers> GenerateConstantBuffersData(
+absl::StatusOr<xla::EmbeddedConstantBuffers> GenerateConstantBuffersData(
     const CodegenOpts& opts, const CompileResult& compile_result) {
   auto aot_thunk_result = compile_result.aot.get();
 
@@ -1207,13 +1213,12 @@ absl::StatusOr<EmbeddedConstantBuffers> GenerateConstantBuffersData(
       xla::cpu::CpuAotCompilationResult::FromString(serialized, nullptr));
 
   TF_ASSIGN_OR_RETURN(auto executable,
-                      std::move(*aot_thunk_result_temp)
-                          .LoadExecutable(/*stream_exec=*/nullptr));
+                      std::move(*aot_thunk_result_temp).LoadExecutable());
 
   xla::cpu::CpuExecutable* cpu_executable =
-      tsl::down_cast<xla::cpu::CpuExecutable*>(executable.get());
+      absl::down_cast<xla::cpu::CpuExecutable*>(executable.get());
 
-  std::vector<ConstantToEmbed> constants_to_embed;
+  std::vector<xla::ConstantToEmbed> constants_to_embed;
 
   int constant_identifier = 0;
   for (const auto& constant : cpu_executable->constants()) {
@@ -1226,7 +1231,7 @@ absl::StatusOr<EmbeddedConstantBuffers> GenerateConstantBuffersData(
       continue;
     }
 
-    ConstantToEmbed constant_to_embed;
+    xla::ConstantToEmbed constant_to_embed;
     constant_to_embed.SerializeIntoBuffer(
         absl::MakeSpan(constant_data_bytes_ptr, constant_size));
 
@@ -1236,8 +1241,8 @@ absl::StatusOr<EmbeddedConstantBuffers> GenerateConstantBuffersData(
     constants_to_embed.push_back(std::move(constant_to_embed));
   }
 
-  return CreateEmbeddedConstantBuffers(opts.target_triple,
-                                       absl::MakeSpan(constants_to_embed));
+  return xla::CreateEmbeddedConstantBuffers(opts.target_triple,
+                                            absl::MakeSpan(constants_to_embed));
 }
 
 absl::Status GenerateMetadata(const CodegenOpts& opts,
@@ -1299,7 +1304,7 @@ absl::Status ParseCppClass(const std::string& cpp_class,
   class_name->clear();
   namespaces->clear();
   if (cpp_class.empty()) {
-    return errors::InvalidArgument("empty cpp_class: " + cpp_class);
+    return absl::InvalidArgumentError("empty cpp_class: " + cpp_class);
   }
   std::vector<std::string> parts = absl::StrSplit(cpp_class, "::");
   if (parts.front().empty()) {
@@ -1322,7 +1327,7 @@ absl::Status ParseCppClass(const std::string& cpp_class,
 
 absl::Status ValidateCppIdent(absl::string_view ident, absl::string_view msg) {
   if (ident.empty()) {
-    return errors::InvalidArgument("empty identifier: ", msg);
+    return absl::InvalidArgumentError(absl::StrCat("empty identifier: ", msg));
   }
   // Require that the identifier starts with a nondigit, and is composed of
   // nondigits and digits, as specified in section [2.11 Identifiers] of the
@@ -1335,11 +1340,12 @@ absl::Status ValidateCppIdent(absl::string_view ident, absl::string_view msg) {
   // better error messages, at the expensive of being more restrictive than
   // the standard.
   if (ident[0] != '_' && !absl::ascii_isalpha(ident[0])) {
-    return errors::InvalidArgument("illegal leading char: ", msg);
+    return absl::InvalidArgumentError(
+        absl::StrCat("illegal leading char: ", msg));
   }
   for (size_t pos = 1; pos < ident.size(); ++pos) {
     if (ident[pos] != '_' && !absl::ascii_isalnum(ident[pos])) {
-      return errors::InvalidArgument("illegal char: ", msg);
+      return absl::InvalidArgumentError(absl::StrCat("illegal char: ", msg));
     }
   }
   return absl::OkStatus();

@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -26,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -38,17 +38,18 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
 #include "tensorflow/core/tfrt/ifrt/checkpoint_loader.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_config.pb.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_utils.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_restore_context.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/future.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/tstring.h"
 
 using tensorflow::ifrt_serving::IfrtModelContext;
@@ -80,8 +81,12 @@ struct MlrtIfrtRestoreVariableKernel : mlrt::KernelFrame {
     return attributes().GetAs<mlrt::bc::Vector<tensorflow::DataType>>(0);
   }
 
+  mlrt::bc::Vector<mlrt::bc::String> returned_tensor_names() const {
+    return attributes().GetAs<mlrt::bc::Vector<mlrt::bc::String>>(1);
+  }
+
   mlrt::bc::Vector<bool> truncate_in_cast() const {
-    return attributes().GetAs<mlrt::bc::Vector<bool>>(1);
+    return attributes().GetAs<mlrt::bc::Vector<bool>>(2);
   }
 
   std::vector<tensorflow::tfrt_stub::FallbackTensor> var_handles() const {
@@ -181,9 +186,67 @@ absl::Status MlrtIfrtRestoreVariableKernel::InvokeHelper() {
       restored_dtypes().begin(), restored_dtypes().end());
   std::vector<bool> truncate_in_cast_vec(truncate_in_cast().begin(),
                                          truncate_in_cast().end());
-  return checkpoint_loader->Load(prefix(), var_handles(), tensor_names(),
-                                 shape_and_slices(), restored_dtypes_vec,
-                                 truncate_in_cast_vec, context());
+  // Asynchronously load variables from the checkpoint. The loaded tensors will
+  // be stored in the IfrtRestoreTensorRegistry.
+  TF_RETURN_IF_ERROR(checkpoint_loader->Load(
+      prefix(), var_handles(), tensor_names(), shape_and_slices(),
+      restored_dtypes_vec, truncate_in_cast_vec, context()));
+
+  std::optional<ifrt_serving::IfrtModelContext*> ifrt_model_context =
+      context().resource_context().GetResource<ifrt_serving::IfrtModelContext>(
+          ifrt_serving::kIfrtModelContextName);
+  if (!ifrt_model_context.has_value()) {
+    return absl::InternalError("Did not find IfrtModelContext resource.");
+  }
+  if (*ifrt_model_context == nullptr) {
+    return absl::InternalError("IfrtModelContext must not be null.");
+  }
+  const ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry =
+      (*ifrt_model_context)->GetRestoreTensorRegistry();
+
+  // Handle tensors that are not assigned to variables and need to be returned
+  // as results of this op.
+  auto returned_names = returned_tensor_names();
+  if (results().size() != returned_names.size()) {
+    return absl::InternalError(
+        "IfrtRestoreVariableOp: number of results does not match number of "
+        "returned_tensor_names.");
+  }
+
+  for (int i = 0; i < returned_names.size(); ++i) {
+    std::string returned_name;
+    for (auto var_handle : var_handles()) {
+      if (var_handle.tensor().scalar<tensorflow::ResourceHandle>()().name() ==
+          returned_names[i].Get()) {
+        returned_name = ifrt_serving::GetRuntimeNameFromVarHandle(
+            var_handle.tensor().scalar<tensorflow::ResourceHandle>()());
+        break;
+      }
+    }
+
+    // Get the future for the restored tensor from the registry.
+    tsl::Future<tensorflow::Tensor> restored_tensor_future =
+        ifrt_restore_tensor_registry.GetRestoredTensor(returned_name);
+
+    // Set up a promise that will be fulfilled when the tensor is restored.
+    auto promise =
+        mlrt::Promise::Allocate<tensorflow::tfrt_stub::FallbackTensor>();
+    results()[i].Set(promise.GetFuture());
+
+    // Fulfill the promise when the tensor is ready.
+    restored_tensor_future.OnReady(
+        [promise = std::move(promise)](
+            absl::StatusOr<tensorflow::Tensor> restored_tensor) mutable {
+          if (!restored_tensor.ok()) {
+            std::move(promise).SetError(restored_tensor.status());
+            return;
+          }
+          std::move(promise).Set<tensorflow::tfrt_stub::FallbackTensor>(
+              tensorflow::tfrt_stub::FallbackTensor(*restored_tensor));
+        });
+  }
+
+  return absl::OkStatus();
 }
 
 class MlrtIfrtLoadVariableKernel : public mlrt::KernelFrame {
@@ -222,25 +285,24 @@ void MlrtIfrtLoadVariableKernel::Invoke() {
 
 absl::Status MlrtIfrtLoadVariableKernel::InvokeHelper() {
   DCHECK_EQ(2, results().size());
-  std::optional<IfrtModelContext*> ifrt_model_context =
-      context().resource_context().GetResource<IfrtModelContext>(
-          "IfrtModelContext");
-  if (!ifrt_model_context.has_value()) {
-    return absl::FailedPreconditionError(
-        "LoadVariableOp: failed to fetch IfrtModelContext: ");
-  }
   auto tensor_promise =
       mlrt::Promise::Allocate<tensorflow::tfrt_stub::FallbackTensor>();
   auto tensor_future = tensor_promise.GetFuture();
-
-  ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry =
-      (*ifrt_model_context)->GetRestoreTensorRegistry();
 
   auto& resource_handle = variable_handler_tensor().scalar<ResourceHandle>()();
   std::string runtime_name =
       ifrt_serving::GetRuntimeNameFromVarHandle(resource_handle);
 
   if (used_by_host()) {
+    std::optional<IfrtModelContext*> ifrt_model_context =
+        context().resource_context().GetResource<IfrtModelContext>(
+            "IfrtModelContext");
+    if (!ifrt_model_context.has_value()) {
+      return absl::FailedPreconditionError(
+          "LoadVariableOp: failed to fetch IfrtModelContext: ");
+    }
+    ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry =
+        (*ifrt_model_context)->GetRestoreTensorRegistry();
     if (ifrt_restore_tensor_registry.SetUsedByHost(runtime_name).ok()) {
       tsl::Future<tensorflow::Tensor> restored_tensor_future =
           ifrt_restore_tensor_registry.GetRestoredTensor(runtime_name);
@@ -294,9 +356,102 @@ absl::Status MlrtIfrtLoadVariableKernel::InvokeHelper() {
   return absl::OkStatus();
 }
 
+class MlrtAsyncIfrtCallKernel : public mlrt::KernelFrame {
+ public:
+  using KernelFrame::KernelFrame;
+
+  static constexpr char kName[] = "tf_mlrt.async_ifrt_call";
+
+  const tensorflow::Tensor& inputs(int i) const {
+    return arguments()[i].Get<tensorflow::tfrt_stub::FallbackTensor>().tensor();
+  }
+
+  int64_t program_id() const { return attributes().GetAs<int64_t>(0); }
+  mlrt::bc::Vector<int32_t> variable_arg_indices() const {
+    return attributes().GetAs<mlrt::bc::Vector<int32_t>>(1);
+  }
+
+  Context& context() { return execution_context().GetUserContext<Context>(); }
+  void Invoke();
+
+ private:
+  absl::once_flag init_once_;
+  tensorflow::ifrt_serving::IfrtServingExecutable* executable_;  // Not owned.
+};
+
+void MlrtAsyncIfrtCallKernel::Invoke() {
+  absl::call_once(init_once_, [&]() {
+    executable_ = tensorflow::ifrt_serving::ServingExecutableRegistry::Lookup(
+        program_id());
+  });
+
+  if (!executable_) {
+    execution_context().Fail(absl::InternalError(
+        absl::StrCat("Executable not found for program_id: ", program_id())));
+    return;
+  }
+
+  std::vector<tensorflow::Tensor> input_tensors;
+
+  input_tensors.reserve(arguments().size());
+  for (int i = 0; i < arguments().size(); ++i) {
+    input_tensors.push_back(inputs(i));
+  }
+
+  std::vector<int> var_indices(variable_arg_indices().begin(),
+                               variable_arg_indices().end());
+
+  absl::StatusOr<tsl::Future<std::vector<tensorflow::Tensor>>> result_future =
+      executable_->ExecuteAsync(input_tensors, var_indices);
+  if (!result_future.ok()) {
+    execution_context().Fail(result_future.status());
+    return;
+  }
+
+  // Allocate promises for each result
+  std::vector<mlrt::Promise> promises;
+  promises.reserve(results().size());
+  for (int i = 0; i < results().size(); ++i) {
+    auto promise =
+        mlrt::Promise::Allocate<tensorflow::tfrt_stub::FallbackTensor>();
+    results()[i].Set(promise.GetFuture());
+    promises.push_back(std::move(promise));
+  }
+
+  result_future->OnReady(
+      [promises = std::move(promises)](
+          absl::StatusOr<std::vector<tensorflow::Tensor>> results) mutable {
+        if (!results.ok()) {
+          for (auto& promise : promises) {
+            std::move(promise).SetError(results.status());
+          }
+          return;
+        }
+        auto& results_vec = results.value();
+        if (results_vec.size() != promises.size()) {
+          for (auto& promise : promises) {
+            std::move(promise).SetError(
+                absl::InternalError("Result size mismatch"));
+          }
+          return;
+        }
+        for (int i = 0; i < results_vec.size(); ++i) {
+          std::move(promises[i])
+              .Set<tensorflow::tfrt_stub::FallbackTensor>(
+                  tensorflow::tfrt_stub::FallbackTensor(
+                      std::move(results_vec[i])));
+        }
+      });
+}
+
+// Note: The await side is handled by the existing tf_mlrt.await_all kernel
+// registered in kernel.cc. The IfrtAwaitAllOpConversion in tf_to_mlrt.cc
+// maps tf.IfrtAwaitAll to tf_mlrt.await_all directly.
+
 void RegisterTfMlrtIfrtKernels(mlrt::KernelRegistry& registry) {
   registry.Register<MlrtIfrtLoadVariableKernel>();
   registry.Register<MlrtIfrtRestoreVariableKernel>();
+  registry.Register<MlrtAsyncIfrtCallKernel>();
 }
 
 }  // namespace

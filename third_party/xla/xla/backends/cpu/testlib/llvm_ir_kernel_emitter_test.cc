@@ -57,7 +57,8 @@ TEST(LlvmIrKernelEmitterTest, ParseLlvmIr) {
   // Check that kernel results were converted to buffer allocations.
   ASSERT_EQ(kernel_spec.result_buffers().size(), 1);
 
-  BufferAllocation::Slice result_slice = kernel_spec.result_buffers().front();
+  BufferAllocation::Slice result_slice =
+      kernel_spec.result_buffers().front().slice;
   EXPECT_EQ(result_slice.index(), 0);
   EXPECT_EQ(result_slice.offset(), 0);
   EXPECT_EQ(result_slice.size(), 1024);

@@ -91,6 +91,10 @@ class AlgebraicSimplifierOptions {
     conv_is_lowerable_callback_ = std::move(conv_is_lowerable_callback);
   }
 
+  ConvIsLowerableCallback conv_is_lowerable_callback() const {
+    return conv_is_lowerable_callback_;
+  }
+
   // If is_layout_sensitive is true, then the simplifier preserves layout during
   // transformation. Otherwise, layout is ignored.
   void set_is_layout_sensitive(bool is_layout_sensitive) {
@@ -371,6 +375,22 @@ class AlgebraicSimplifierOptions {
     enable_conditional_simplification_ = value;
   }
 
+  bool enable_hoist_transpose_of_reshape() const {
+    return enable_hoist_transpose_of_reshape_;
+  }
+
+  void set_enable_hoist_transpose_of_reshape(bool value) {
+    enable_hoist_transpose_of_reshape_ = value;
+  }
+
+  bool enable_fold_transpose_into_scatter() const {
+    return enable_fold_transpose_into_scatter_;
+  }
+
+  void set_enable_fold_transpose_into_scatter(bool value) {
+    enable_fold_transpose_into_scatter_ = value;
+  }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplifierOptions that can be later used in an
@@ -419,6 +439,8 @@ class AlgebraicSimplifierOptions {
   bool run_to_fixed_point_{true};
   bool rewrite_no_op_bitcast_convert_to_bitcast_{false};
   bool enable_conditional_simplification_{false};
+  bool enable_hoist_transpose_of_reshape_{false};
+  bool enable_fold_transpose_into_scatter_{false};
   Metadata metadata_;
 };
 
@@ -466,6 +488,10 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   absl::Status HandleAdd(HloInstruction* add) override;
 
   absl::Status HandleAllGather(HloInstruction* all_gather) override;
+
+  absl::Status HandleAllReduce(HloInstruction* all_reduce) override;
+
+  absl::Status HandleReduceScatter(HloInstruction* reduce_scatter) override;
 
   absl::Status HandleAllToAll(HloInstruction* all_to_all) override;
 
@@ -605,14 +631,16 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Allow backend constraints on tiling etc. to invalidate optimizations.
   virtual bool IsValidLayout(const Shape& shape) { return true; }
   // Allow backend targets to determine whether a layout is inefficient.
-  virtual bool ShouldStrengthReduceDotToReduce(const HloInstruction* hlo) {
-    return true;
-  }
+  virtual bool ShouldStrengthReduceDotToReduce(const HloInstruction* hlo);
 
  protected:
-  // Allow backend targets to amend user-guided fusion attributes based on
-  // various criteria.
-  virtual void AmendUserGuidedFusionAttr(HloInstruction* inst) {}
+  // A method that allows various backends to specialize the propagation of
+  // various attributes to the new instruction.
+  virtual void SetupDerivedInstruction(HloInstruction* old_inst,
+                                       HloInstruction* new_inst,
+                                       bool preserve_user_fusion_attr) {
+    old_inst->SetupDerivedInstruction(new_inst);
+  }
 
  protected:
   // The backend-specific options selected for the algebraic simplifier.
@@ -629,6 +657,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // corresponding multiply instructions.
   virtual absl::StatusOr<HloInstruction*> MakeMultiplyForPrecisionAlgorithm(
       HloInstruction* dot, HloInstruction* lhs, HloInstruction* rhs);
+
+  absl::Status HandleAllReduceOrReduceScatter(HloInstruction* collective);
 
   // Rewrite dot as mul(broadcast(transpose(x)),broadcast(transpose(y)))
   absl::Status RewriteAsMultiplyDotWithZeroLhsContractingDim(
@@ -659,6 +689,10 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // bitcast transpose.
   absl::Status SimplifyTransposeOfBroadcast(
       HloInstruction* transpose, absl::Span<const int64_t> dimensions);
+
+  // Folds a trailing Transpose into a Scatter operation by transposing the
+  // scatter operand and updates upfront.
+  absl::StatusOr<bool> TryFoldTransposeIntoScatter(HloInstruction* transpose);
 
   // Converts to primitive type if the input hlo is not that type, otherwise
   // returns the original hlo.
@@ -859,6 +893,10 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // replaced with a nop.
   absl::StatusOr<bool> TryRemovingBitcastOrReshapeTransposeChain(
       HloInstruction* instruction);
+
+  // Tries to hoist transpose over reshape:
+  // Reshape(Transpose(Reshape(x))) -> Transpose(Reshape(x))
+  absl::StatusOr<bool> TryHoistTransposeOfReshape(HloInstruction* reshape);
 
   // Helper function for HandleReduce. Reorders reduce dot
   // to a dot reduce. reduce(dot(A, B)) to dot(A, reduce(B))

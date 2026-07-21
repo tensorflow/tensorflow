@@ -99,7 +99,7 @@ StatusOr<mlir::Value> GetDeviceOrdinal(const Mesh& mesh,
                                        mlir::OpBuilder* builder,
                                        bool return_int64_type) {
   // Create as many entries as the number of devices in the entire mesh.
-  llvm::SmallVector<int32, 4> device_id_to_ordinal(mesh.num_devices(), 0);
+  llvm::SmallVector<int32_t, 4> device_id_to_ordinal(mesh.num_devices(), 0);
   // Only fill in entries with indices equal to local device IDs. For TPUs,
   // there are usually 8 local devices.
   for (int i = 0; i < mesh.local_device_ids().size(); ++i) {
@@ -173,11 +173,12 @@ StatusOr<mlir::Operation*> LowerDTensorSendToXlaOp(
       auto send_cluster =
           dtensor_send->getParentOfType<mlir::tf_device::ClusterOp>();
       if (!send_cluster) {
-        return errors::InvalidArgument("DTensorSend is not inside a ClusterOp");
+        return absl::InvalidArgumentError(
+            "DTensorSend is not inside a ClusterOp");
       }
       auto send_func = send_cluster->getParentOfType<mlir::func::FuncOp>();
       if (!send_func) {
-        return errors::InvalidArgument("DTensorSend is not inside a FuncOp");
+        return absl::InvalidArgumentError("DTensorSend is not inside a FuncOp");
       }
       TF_ASSIGN_OR_RETURN(
           device_ordinal,
@@ -234,7 +235,7 @@ StatusOr<mlir::Operation*> LowerDTensorRecvToXlaOp(
     TF_ASSIGN_OR_RETURN(std::optional<Mesh> mesh,
                         ExtractDeviceMeshFromOp(recv_cluster));
     if (!mesh.has_value())
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "failed to get device ordinal as mesh for operation is not "
           "specified.");
 
@@ -894,12 +895,12 @@ StatusOr<mlir::Operation*> LowerDTensorSendAndRecv(mlir::Operation* send_op,
           send_op->getParentOfType<mlir::tf_device::ClusterOp>()));
 
   if (!send_mesh.has_value())
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "failed to get device ordinal as mesh for operation is not "
         "specified.");
 
   if (!send_mesh->is_tpu_mesh() && !recv_mesh.is_tpu_mesh()) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "Multi-mesh tensor transfer between non-xla devices are not yet "
         "supported.");
   }

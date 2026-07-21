@@ -78,7 +78,8 @@ enum AttributeMarker {
   kMappingV1Attr = 4,
   kArrayMappingV1Attr = 5,
   kTypeV1Attr = 6,
-  // Always increment the enum value; Next available code: 7
+  kShardingParamV2Attr = 7,
+  // Always increment the enum value; Next available code: 8
   // ADD ATTRIBUTE: Add an enum value for new VIFRT attr.
 };
 
@@ -131,6 +132,8 @@ class VifrtBytecodeInterface : public mlir::BytecodeDialectInterface {
       mlir::DialectBytecodeReader &reader) const;
   VifrtShardingParamV1Attr readShardingParamV1Attr(
       mlir::DialectBytecodeReader &reader) const;
+  VifrtShardingParamV2Attr readShardingParamV2Attr(
+      mlir::DialectBytecodeReader& reader) const;
   VifrtIntervalV1Attr readIntervalV1Attr(
       mlir::DialectBytecodeReader &reader) const;
   VifrtMappingV1Attr readMappingV1Attr(
@@ -146,6 +149,8 @@ class VifrtBytecodeInterface : public mlir::BytecodeDialectInterface {
              mlir::DialectBytecodeWriter &writer) const;
   void write(VifrtShardingParamV1Attr attr,
              mlir::DialectBytecodeWriter &writer) const;
+  void write(VifrtShardingParamV2Attr attr,
+             mlir::DialectBytecodeWriter& writer) const;
   void write(VifrtIntervalV1Attr attr,
              mlir::DialectBytecodeWriter &writer) const;
   void write(VifrtMappingV1Attr attr,
@@ -205,6 +210,8 @@ mlir::Attribute VifrtBytecodeInterface::readAttribute(
       return readArrayMappingV1Attr(reader);
     case vifrt_encoding::kTypeV1Attr:
       return readTypeV1Attr(reader);
+    case vifrt_encoding::kShardingParamV2Attr:
+      return readShardingParamV2Attr(reader);
     default:
       reader.emitError() << "unknown VIFRT attribute marker: " << marker;
       return mlir::Attribute();
@@ -218,8 +225,9 @@ mlir::LogicalResult VifrtBytecodeInterface::writeAttribute(
     mlir::Attribute attr, mlir::DialectBytecodeWriter &writer) const {
   return llvm::TypeSwitch<mlir::Attribute, mlir::LogicalResult>(attr)
       .Case<VifrtDevicesV1Attr, VifrtUnspecifiedShardingV1Attr,
-            VifrtShardingParamV1Attr, VifrtIntervalV1Attr, VifrtMappingV1Attr,
-            VifrtArrayMappingV1Attr, VifrtTypeV1Attr>([&](auto attr) {
+            VifrtShardingParamV1Attr, VifrtShardingParamV2Attr,
+            VifrtIntervalV1Attr, VifrtMappingV1Attr, VifrtArrayMappingV1Attr,
+            VifrtTypeV1Attr>([&](auto attr) {
         LOG_WRITE_CALL;
         write(attr, writer);
         return mlir::success();
@@ -292,10 +300,52 @@ void VifrtBytecodeInterface::write(VifrtShardingParamV1Attr attr,
   auto sharding = attr.getSharding();
   writer.writeSignedVarInts(sharding.dim_shards());
   writer.writeList(sharding.minor_to_major().permutation, [&](int value) {
-    return writer.writeSignedVarInt(static_cast<int64_t>(value));
+    writer.writeSignedVarInt(static_cast<int64_t>(value));
   });
   writer.writeList(sharding.minor_to_major().axis_sizes, [&](int value) {
-    return writer.writeSignedVarInt(static_cast<int64_t>(value));
+    writer.writeSignedVarInt(static_cast<int64_t>(value));
+  });
+}
+
+VifrtShardingParamV2Attr VifrtBytecodeInterface::readShardingParamV2Attr(
+    mlir::DialectBytecodeReader& reader) const {
+  LOG_READ_CALL;
+  llvm::SmallVector<int64_t> dim_shards;
+  llvm::SmallVector<int64_t> permutation;
+  llvm::SmallVector<int64_t> axis_sizes;
+  llvm::SmallVector<int64_t> unreduced_axes;
+  if (mlir::failed(reader.readSignedVarInts(dim_shards)) ||
+      mlir::failed(reader.readSignedVarInts(permutation)) ||
+      mlir::failed(reader.readSignedVarInts(axis_sizes)) ||
+      mlir::failed(reader.readSignedVarInts(unreduced_axes))) {
+    reader.emitError() << "Failed to read VifrtShardingParamV2Attr";
+    return VifrtShardingParamV2Attr();
+  }
+  ShardingParam::MinorToMajor minor_to_major;
+  minor_to_major.permutation =
+      llvm::SmallVector<int, 4>(permutation.begin(), permutation.end());
+  minor_to_major.axis_sizes =
+      llvm::SmallVector<int, 4>(axis_sizes.begin(), axis_sizes.end());
+  ShardingParam sharding_param(
+      std::vector(dim_shards.begin(), dim_shards.end()),
+      std::move(minor_to_major),
+      std::vector<int>(unreduced_axes.begin(), unreduced_axes.end()));
+  return VifrtShardingParamV2Attr::get(getContext(), std::move(sharding_param));
+}
+
+void VifrtBytecodeInterface::write(VifrtShardingParamV2Attr attr,
+                                   mlir::DialectBytecodeWriter& writer) const {
+  writer.writeVarInt(vifrt_encoding::kShardingParamV2Attr);
+  auto sharding = attr.getSharding();
+  writer.writeSignedVarInts(sharding.dim_shards());
+  writer.writeList(sharding.minor_to_major().permutation, [&](int value) {
+    writer.writeSignedVarInt(static_cast<int64_t>(value));
+  });
+  writer.writeList(sharding.minor_to_major().axis_sizes, [&](int value) {
+    writer.writeSignedVarInt(static_cast<int64_t>(value));
+  });
+  writer.writeList(sharding.unreduced_axes(), [&](int value) {
+    writer.writeSignedVarInt(static_cast<int64_t>(value));
   });
 }
 

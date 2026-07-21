@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cctype>
 #include <memory>
 #include <string>
 #include <utility>
@@ -21,18 +20,28 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
 #include "llvm-c/Target.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_compiler.h"
-#include "xla/service/cpu/tests/cpu_codegen_test.h"
+#include "xla/service/llvm_compiler.h"
+#include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/tests/codegen_utils.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -42,6 +51,18 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 namespace {
+
+std::unique_ptr<Compiler> GetCpuCompiler() {
+  absl::StatusOr<std::string> name = PlatformUtil::CanonicalPlatformName("cpu");
+  TF_CHECK_OK(name.status());
+  absl::StatusOr<stream_executor::Platform::Id> platform_id =
+      PlatformUtil::GetPlatformIdFromCanonicalName(*name);
+  TF_CHECK_OK(platform_id.status());
+  absl::StatusOr<std::unique_ptr<Compiler>> compiler =
+      Compiler::GetForPlatform(*platform_id);
+  TF_CHECK_OK(compiler.status());
+  return std::move(*compiler);
+}
 
 const char* const kTriple_x86_64 = "x86_64-pc-linux";
 const char* const kTriple_android_arm = "armv7-none-android";
@@ -55,7 +76,7 @@ struct VectorizationTestSpec {
 
 // Tests that the vectorizer does what we want.
 class CpuVectorizationTest
-    : public CpuCodegenTest,
+    : public HloHardwareIndependentTestBase,
       public ::testing::WithParamInterface<VectorizationTestSpec> {
  public:
   static std::string Name(
@@ -89,7 +110,7 @@ class CpuVectorizationTest
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =
         HloHardwareIndependentTestBase::GetDebugOptionsForTest();
-    HloTestBase::SetAotFastMathDebugOptions(&debug_options);
+    HloHardwareIndependentTestBase::SetAotFastMathDebugOptions(&debug_options);
     return debug_options;
   }
 };
@@ -124,8 +145,11 @@ TEST_P(CpuVectorizationTest, DoIt) {
 
   std::string check_lines{spec.check_lines.data(), spec.check_lines.size()};
 
-  CompileAheadOfTimeAndVerifyIr(std::move(hlo_module), options, check_lines,
-                                /*match_optimized_ir=*/true);
+  auto compiler = GetCpuCompiler();
+  auto llvm_compiler = absl::down_cast<LLVMCompiler*>(compiler.get());
+  TF_ASSERT_OK(CompileAheadOfTimeAndVerifyIr(llvm_compiler, options,
+                                             std::move(hlo_module), check_lines,
+                                             /*match_optimized_ir=*/true));
 }
 
 VectorizationTestSpec CpuVectorizationTestCases[] = {
@@ -154,7 +178,7 @@ struct MaxIsaTestSpec {
   bool should_enable;
 };
 
-class MaxIsaTest : public CpuCodegenTest,
+class MaxIsaTest : public HloHardwareIndependentTestBase,
                    public ::testing::WithParamInterface<MaxIsaTestSpec> {
  public:
   static std::string Name(
@@ -231,7 +255,7 @@ INSTANTIATE_TEST_SUITE_P(AArch64MaxIsaTestInstantiation, AArch64MaxIsaTest,
                          ::testing::ValuesIn(GetAArch64MaxIsaTestCases()),
                          AArch64MaxIsaTest::Name);
 
-class DefaultMaxIsaTest : public CpuCodegenTest {};
+class DefaultMaxIsaTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(DefaultMaxIsaTest, NeonForOssAArch64) {
   if (!tsl::port::IsAarch64CPU()) {
@@ -250,7 +274,7 @@ struct JitVectorizationTestSpec {
 };
 
 class JitVectorizationTest
-    : public CpuCodegenTest,
+    : public HloHardwareIndependentTestBase,
       public ::testing::WithParamInterface<JitVectorizationTestSpec> {
  public:
   static std::string Name(
@@ -312,8 +336,13 @@ TEST_P(JitVectorizationTest, JitX86UpToIsa) {
   auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  CompileAndVerifyIr(std::move(hlo_module), check_lines,
-                     /*match_optimized_ir=*/true);
+  auto compiler = GetCpuCompiler();
+  auto llvm_compiler = absl::down_cast<LLVMCompiler*>(compiler.get());
+  Compiler::CompileOptions compile_options;
+  compile_options.device_allocator = nullptr;
+  TF_ASSERT_OK(CompileAndVerifyIr(llvm_compiler, compile_options,
+                                  std::move(hlo_module), check_lines,
+                                  /*match_optimized_ir=*/true));
 }
 
 std::vector<JitVectorizationTestSpec> GetJitVectorizationTestCases() {
@@ -331,6 +360,58 @@ INSTANTIATE_TEST_SUITE_P(JitVectorizationTestInstantiation,
                          JitVectorizationTest,
                          ::testing::ValuesIn(GetJitVectorizationTestCases()),
                          JitVectorizationTest::Name);
+
+class AtanJitVectorizationTest : public HloHardwareIndependentTestBase {
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_cpu_max_isa("AVX512");
+    debug_options.set_xla_cpu_prefer_vector_width(512);
+    return debug_options;
+  }
+};
+
+TEST_F(AtanJitVectorizationTest, AtanF32) {
+  if (!tsl::port::IsX86CPU()) {
+    GTEST_SKIP() << "This feature only works for x86 CPUs.";
+  }
+
+  const absl::string_view hlo_text = R"(
+    HloModule AtanF32
+
+    ENTRY AtanF32 {
+      p0 = f32[1024] parameter(0)
+      c1 = f32[] constant(1)
+      b1 = f32[1024] broadcast(c1), dimensions={}
+      ROOT atan2 = f32[1024] atan2(p0, b1)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  auto compiler = GetCpuCompiler();
+  auto llvm_compiler = absl::down_cast<LLVMCompiler*>(compiler.get());
+  Compiler::CompileOptions compile_options;
+  compile_options.device_allocator = nullptr;
+
+  int num_elements = 16;
+  if (!tsl::port::TestCPUFeature(tsl::port::CPUFeature::AVX512F)) {
+    if (tsl::port::TestCPUFeature(tsl::port::CPUFeature::AVX2)) {
+      num_elements = 8;
+    } else {
+      num_elements = 4;
+    }
+  }
+
+  std::string check_lines =
+      absl::StrFormat("CHECK: fdiv <%d x float>", num_elements);
+
+  TF_ASSERT_OK(CompileAndVerifyIr(llvm_compiler, compile_options,
+                                  std::move(hlo_module), check_lines,
+                                  /*match_optimized_ir=*/true));
+}
 
 }  // namespace
 }  // namespace cpu

@@ -62,6 +62,10 @@ struct BatchResourceOptions {
   int32_t low_priority_max_enqueued_batches;
   std::vector<int32_t> low_priority_allowed_batch_sizes;
   MixedPriorityBatchingPolicy mixed_priority_batching_policy;
+  bool enable_priority_aware_batch_scheduler;
+  bool enable_priority_aware_batch_scheduler_resplit;
+  bool enable_batching_task_lazy_cancellation;
+  int32_t num_warmup_batch_threads;
 };
 
 // Base class for resource that encapsulating the state and logic for batching
@@ -77,14 +81,22 @@ class BatchResourceBase : public ResourceBase {
   // One task to be batched, corresponds to a `slice` of input from one batch-op
   // invocation.
   //
-  // Given input from one batch-op invocation, a `slice` of this input is:
+  // Given input from one batch-op invocation or a subtask that is split from
+  // the input from an invocation, a `slice` is:
   // 1) Split each Tensor in `BatchTask::inputs` along the 0th dimension.
   // 2) 'split_index' is calculated along the 0-th dimension.
+  // A subtask may itself be re-split, allowing arbitrary nesting.
   //
   // Note input from one batch-op invocation is valid and considered a
   // specialized `slice`.
   struct BatchTask : public tensorflow::serving::BatchTask {
     BatchTask() : criticality_val(tsl::criticality::GetCriticality()) {};
+
+    BatchTask(AsyncOpKernel::DoneCallback done_callback,
+              std::shared_ptr<ThreadSafeStatus> status)
+        : status(status),
+          done_callback(std::move(done_callback)),
+          criticality_val(tsl::criticality::GetCriticality()) {}
 
     // A unique ID to identify this invocation of Batch.
     int64_t guid;
@@ -94,29 +106,38 @@ class BatchResourceBase : public ResourceBase {
     std::vector<Tensor> inputs;
     std::vector<Tensor> captured_inputs;
     OpKernelContext* context;
-    AsyncOpKernel::DoneCallback done_callback;
 
     // The index of this split, along the 0-th dimension of input from op
     // invocation.
     int split_index = 0;
 
-    // Two-dimensional tensor matrix, ownership shared by:
-    // 1) each split of task (to fill one row in this matrix)
-    // and
+    // Two-dimensional tensor matrix where output of all splits of task is
+    // collected. The splits can be further split; BatchTask supports
+    // arbitrary levels of splits.
+    // Ownership shared by:
+    // 1) each split of task (to fill one row in this matrix) and
     // 2) callback that runs to merge output of individual splits for an op
     // invocation, after all splits complete.
     std::shared_ptr<TensorMatrix> output;
-
-    // 'status' records error (could be from any split) if at least one split
-    // returns error, OK otherwise.
-    // Ownership is shared by individual splits and callback.
-    std::shared_ptr<ThreadSafeStatus> status;
 
     bool is_partial = false;
 
     uint64 start_time;
 
+    // Absolute RPC deadline. When set, the task is considered expired if
+    // absl::Now() > rpc_deadline. Defaults to nullopt (no enforcement).
+    std::optional<absl::Time> rpc_deadline;
+
+    // Callback: returns true if client actively cancelled the RPC.
+    std::function<bool()> is_rpc_cancelled;
+
     size_t size() const override { return inputs[0].shape().dim_size(0); }
+
+    bool is_subtask() const override { return is_partial; }
+
+    bool IsDeadlineExceeded(absl::Time now) const override;
+
+    bool IsCancelled() const override;
 
     // Create a split task from this one. The caller needs to setup the inputs
     // of the new task
@@ -143,12 +164,50 @@ class BatchResourceBase : public ResourceBase {
     // batch is processed, but is not propagated to the kernel outputs.
     int forced_warmup_batch_size = 0;
 
+    // If true, the task is a warmup task.
+    bool is_warmup_task = false;
+
+    bool is_warmup() const override { return is_warmup_task; }
+
+    // 'status' records error (could be from any split) if at least one split
+    // returns error, OK otherwise.
+    // Ownership is shared by individual splits and callback.
+    std::shared_ptr<ThreadSafeStatus> status;
+
+    // Note the done callback MUST NOT (although unlikely in practice) attempt
+    // to acquire the queue's lock — e.g., by calling methods like Schedule() on
+    // the same queue — as this may lead to deadlock.
+    void set_done_callback(AsyncOpKernel::DoneCallback callback) {
+      done_callback = std::move(callback);
+    }
+
    protected:
+    void FinishTaskImpl(const absl::Status& status) override {
+      WithContext wc(this->propagated_context);
+
+      if (!status.ok()) {
+        this->status->Update(status);
+      }
+      if (this->done_callback) {
+        this->done_callback();
+        // Clear the callback to avoid double deletion.
+        this->done_callback = nullptr;
+      }
+    }
+
     virtual std::unique_ptr<BatchTask> CreateDerivedTask() {
+#if defined(PLATFORM_GOOGLE)
+      // ScopedCriticality is needed to ensure that the criticality is set
+      // correctly for the derived task.
+      tsl::criticality::ScopedCriticality scoped_criticality(
+          this->criticality());
+#endif
       return std::make_unique<BatchTask>();
     }
 
    private:
+    AsyncOpKernel::DoneCallback done_callback;
+
     // Criticality associated with the task.
     ::tsl::criticality::Criticality criticality_val;
   };
@@ -223,7 +282,10 @@ class BatchResourceBase : public ResourceBase {
       int32_t low_priority_batch_timeout_micros,
       int32_t low_priority_max_enqueued_batches,
       const std::vector<int32>& low_priority_allowed_batch_sizes,
-      MixedPriorityBatchingPolicy mixed_priority_batching_policy);
+      MixedPriorityBatchingPolicy mixed_priority_batching_policy,
+      bool enable_priority_aware_batch_scheduler,
+      bool enable_priority_aware_batch_scheduler_resplit,
+      bool enable_batching_task_lazy_cancellation);
 
   static AdaptiveBatcherT::QueueOptions GetAdaptiveBatcherQueueOptions(
       int32_t max_batch_size, int32_t batch_timeout_micros,

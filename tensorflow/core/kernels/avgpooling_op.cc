@@ -57,31 +57,32 @@ template <typename Device, typename T>
 class AvgPoolingOp : public UnaryOp<T> {
  public:
   explicit AvgPoolingOp(OpKernelConstruction* context) : UnaryOp<T>(context) {
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
+                absl::InvalidArgumentError("Invalid data format"));
     OP_REQUIRES(
         context, data_format_ == FORMAT_NHWC,
-        errors::InvalidArgument("Default AvgPoolingOp only supports NHWC ",
-                                "on device type ",
-                                DeviceTypeString(context->device_type())));
+        absl::InvalidArgumentError(absl::StrCat(
+            "Default AvgPoolingOp only supports NHWC ", "on device type ",
+            DeviceTypeString(context->device_type()))));
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
-                errors::InvalidArgument("Sliding window ksize field must "
-                                        "specify 4 dimensions"));
+                absl::InvalidArgumentError("Sliding window ksize field must "
+                                           "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,
-                errors::InvalidArgument("Sliding window stride field must "
-                                        "specify 4 dimensions"));
+                absl::InvalidArgumentError("Sliding window stride field must "
+                                           "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
-                errors::Unimplemented(
+                absl::UnimplementedError(
                     "Pooling is not yet supported on the batch dimension."));
     for (int i = 0; i < ksize_.size(); ++i) {
-      OP_REQUIRES(context, ksize_[i] > 0,
-                  errors::InvalidArgument(
-                      "ksize must be a positive int32 value, got:", ksize_[i]));
+      OP_REQUIRES(
+          context, ksize_[i] > 0,
+          absl::InvalidArgumentError(absl::StrCat(
+              "ksize must be a positive int32 value, got:", ksize_[i])));
     }
   }
 
@@ -98,12 +99,12 @@ class AvgPoolingOp : public UnaryOp<T> {
       return;
     }
     OP_REQUIRES(context, params.depth_window == 1,
-                errors::Unimplemented("Non-spatial pooling is not "
-                                      "yet supported. Volunteers? :)"));
+                absl::UnimplementedError("Non-spatial pooling is not "
+                                         "yet supported. Volunteers? :)"));
 
     // For avgpooling, tensor_in should have 4 dimensions.
     OP_REQUIRES(context, tensor_in.dims() == 4,
-                errors::InvalidArgument("tensor_in must be 4-dimensional"));
+                absl::InvalidArgumentError("tensor_in must be 4-dimensional"));
 
     Tensor* output = nullptr;
     TensorShape params_forward_output_shape;
@@ -116,8 +117,8 @@ class AvgPoolingOp : public UnaryOp<T> {
   }
 
  private:
-  std::vector<int32> ksize_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> ksize_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   TensorFormat data_format_;
 };
@@ -135,33 +136,34 @@ class AvgPoolingOp<GPUDevice, T> : public UnaryOp<T> {
  public:
   typedef GPUDevice Device;
   explicit AvgPoolingOp(OpKernelConstruction* context) : UnaryOp<T>(context) {
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
+                absl::InvalidArgumentError("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
-                errors::InvalidArgument("Sliding window ksize field must "
-                                        "specify 4 dimensions"));
+                absl::InvalidArgumentError("Sliding window ksize field must "
+                                           "specify 4 dimensions"));
     for (int i = 0; i < ksize_.size(); ++i) {
-      OP_REQUIRES(context, ksize_[i] > 0,
-                  errors::InvalidArgument(
-                      "ksize must be a positive int32 value, got:", ksize_[i]));
+      OP_REQUIRES(
+          context, ksize_[i] > 0,
+          absl::InvalidArgumentError(absl::StrCat(
+              "ksize must be a positive int32 value, got:", ksize_[i])));
     }
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,
-                errors::InvalidArgument("Sliding window stride field must "
-                                        "specify 4 dimensions"));
+                absl::InvalidArgumentError("Sliding window stride field must "
+                                           "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     const int32_t ksize_n = GetTensorDim(ksize_, data_format_, 'N');
     const int32_t stride_n = GetTensorDim(stride_, data_format_, 'N');
     OP_REQUIRES(context, ksize_n == 1 && stride_n == 1,
-                errors::Unimplemented(
+                absl::UnimplementedError(
                     "Pooling is not yet supported on the batch dimension."));
 
     for (int i = 0; i < ksize_.size(); ++i) {
       OP_REQUIRES(context, ksize_[i] != 0,
-                  errors::InvalidArgument("ksize cannot be zero"));
+                  absl::InvalidArgumentError("ksize cannot be zero"));
     }
   }
 
@@ -178,12 +180,12 @@ class AvgPoolingOp<GPUDevice, T> : public UnaryOp<T> {
       return;
     }
     OP_REQUIRES(context, params.depth_window == 1,
-                errors::Unimplemented("Non-spatial pooling is not "
-                                      "yet supported. Volunteers? :)"));
+                absl::UnimplementedError("Non-spatial pooling is not "
+                                         "yet supported. Volunteers? :)"));
 
     // For avgpooling, tensor_in should have 4 dimensions.
     OP_REQUIRES(context, tensor_in.dims() == 4,
-                errors::InvalidArgument("tensor_in must be 4-dimensional"));
+                absl::InvalidArgumentError("tensor_in must be 4-dimensional"));
 
     TensorShape output_shape;
     OP_REQUIRES_OK(context, params.forward_output_shape(&output_shape));
@@ -219,8 +221,8 @@ class AvgPoolingOp<GPUDevice, T> : public UnaryOp<T> {
   }
 
  private:
-  std::vector<int32> ksize_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> ksize_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   TensorFormat data_format_;
 };
@@ -257,26 +259,26 @@ template <typename Device, class T>
 class AvgPoolingGradOp : public OpKernel {
  public:
   explicit AvgPoolingGradOp(OpKernelConstruction* context) : OpKernel(context) {
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
+                absl::InvalidArgumentError("Invalid data format"));
     OP_REQUIRES(
         context, data_format_ == FORMAT_NHWC,
-        errors::InvalidArgument("Default AvgPoolingGradOp only supports NHWC ",
-                                "on device type ",
-                                DeviceTypeString(context->device_type())));
+        absl::InvalidArgumentError(absl::StrCat(
+            "Default AvgPoolingGradOp only supports NHWC ", "on device type ",
+            DeviceTypeString(context->device_type()))));
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
-                errors::InvalidArgument("Sliding window ksize field must "
-                                        "specify 4 dimensions"));
+                absl::InvalidArgumentError("Sliding window ksize field must "
+                                           "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 4 dimensions"));
+                absl::InvalidArgumentError("Sliding window strides field must "
+                                           "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
-                errors::Unimplemented(
+                absl::UnimplementedError(
                     "Pooling is not yet supported on the batch dimension."));
   }
 
@@ -287,18 +289,19 @@ class AvgPoolingGradOp : public OpKernel {
     OP_REQUIRES(
         context,
         tensor_in_shape.dims() == 1 && tensor_in_shape.NumElements() == 4,
-        errors::InvalidArgument("out_backprop must be 1-dimensional and 4 "
-                                "elements"));
+        absl::InvalidArgumentError("out_backprop must be 1-dimensional and 4 "
+                                   "elements"));
     // For avgpooling, out_backprop should have 4 dimensions.
-    OP_REQUIRES(context, out_backprop.dims() == 4,
-                errors::InvalidArgument("out_backprop must be 4-dimensional"));
+    OP_REQUIRES(
+        context, out_backprop.dims() == 4,
+        absl::InvalidArgumentError("out_backprop must be 4-dimensional"));
     const int64_t out_backprop_batch = out_backprop.dim_size(0);
     const int64_t out_backprop_rows = out_backprop.dim_size(1);
     const int64_t out_backprop_cols = out_backprop.dim_size(2);
     const int64_t out_backprop_depth = out_backprop.dim_size(3);
 
     TensorShape output_shape;
-    auto shape_vec = tensor_in_shape.vec<int32>();
+    auto shape_vec = tensor_in_shape.vec<int32_t>();
     for (int64_t i = 0; i < tensor_in_shape.NumElements(); ++i) {
       OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(shape_vec(i)));
     }
@@ -324,8 +327,8 @@ class AvgPoolingGradOp : public OpKernel {
     //
     // Spatial pooling is when depth_window = 1
     OP_REQUIRES(context, depth_window == 1,
-                errors::Unimplemented("Non-spatial pooling is not "
-                                      "yet supported. Volunteers? :)"));
+                absl::UnimplementedError("Non-spatial pooling is not "
+                                         "yet supported. Volunteers? :)"));
 
     int64_t out_height, out_width, pad_rows, pad_cols;
     OP_REQUIRES_OK(context, GetWindowedOutputSize(
@@ -352,12 +355,12 @@ class AvgPoolingGradOp : public OpKernel {
             ((out_backprop_batch - 1) * in_rows + rindex + rsize - 1) *
                 in_cols +
             cindex + csize - 1;
-        OP_REQUIRES(
-            context, input_max < output->NumElements(),
-            errors::InvalidArgument("Output only has ", output->NumElements(),
-                                    " elements but computation requested would "
-                                    "use element with index=",
-                                    input_max));
+        OP_REQUIRES(context, input_max < output->NumElements(),
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Output only has ", output->NumElements(),
+                        " elements but computation requested would "
+                        "use element with index=",
+                        input_max)));
       }
     }
 
@@ -419,8 +422,8 @@ class AvgPoolingGradOp : public OpKernel {
   }
 
  private:
-  std::vector<int32> ksize_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> ksize_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   TensorFormat data_format_;
 };
@@ -444,23 +447,23 @@ class AvgPoolingGradOp<GPUDevice, T> : public OpKernel {
   typedef GPUDevice Device;
 
   explicit AvgPoolingGradOp(OpKernelConstruction* context) : OpKernel(context) {
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
+                absl::InvalidArgumentError("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
-                errors::InvalidArgument("Sliding window ksize field must "
-                                        "specify 4 dimensions"));
+                absl::InvalidArgumentError("Sliding window ksize field must "
+                                           "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 4 dimensions"));
+                absl::InvalidArgumentError("Sliding window strides field must "
+                                           "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     const int32_t ksize_n = GetTensorDim(ksize_, data_format_, 'N');
     const int32_t stride_n = GetTensorDim(stride_, data_format_, 'N');
     OP_REQUIRES(context, ksize_n == 1 && stride_n == 1,
-                errors::Unimplemented(
+                absl::UnimplementedError(
                     "Pooling is not yet supported on the batch dimension."));
   }
 
@@ -471,14 +474,15 @@ class AvgPoolingGradOp<GPUDevice, T> : public OpKernel {
     OP_REQUIRES(
         context,
         tensor_in_shape.dims() == 1 && tensor_in_shape.NumElements() == 4,
-        errors::InvalidArgument("out_backprop must be 1-dimensional and 4 "
-                                "elements"));
+        absl::InvalidArgumentError("out_backprop must be 1-dimensional and 4 "
+                                   "elements"));
     // For avgpooling, out_backprop should have 4 dimensions.
-    OP_REQUIRES(context, out_backprop.dims() == 4,
-                errors::InvalidArgument("out_backprop must be 4-dimensional"));
+    OP_REQUIRES(
+        context, out_backprop.dims() == 4,
+        absl::InvalidArgumentError("out_backprop must be 4-dimensional"));
 
     TensorShape output_shape;
-    auto shape_vec = tensor_in_shape.vec<int32>();
+    auto shape_vec = tensor_in_shape.vec<int32_t>();
     for (int64_t i = 0; i < tensor_in_shape.NumElements(); ++i) {
       OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(shape_vec(i)));
     }
@@ -497,8 +501,8 @@ class AvgPoolingGradOp<GPUDevice, T> : public OpKernel {
   }
 
  private:
-  std::vector<int32> ksize_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> ksize_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   TensorFormat data_format_;
 };
@@ -531,23 +535,23 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
 
   explicit AvgPoolingGradOpCustomGPUKernel(OpKernelConstruction* context)
       : OpKernel(context) {
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
+                absl::InvalidArgumentError("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
-                errors::InvalidArgument("Sliding window ksize field must "
-                                        "specify 4 dimensions"));
+                absl::InvalidArgumentError("Sliding window ksize field must "
+                                           "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 4 dimensions"));
+                absl::InvalidArgumentError("Sliding window strides field must "
+                                           "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     const int32_t ksize_n = GetTensorDim(ksize_, data_format_, 'N');
     const int32_t stride_n = GetTensorDim(stride_, data_format_, 'N');
     OP_REQUIRES(context, ksize_n == 1 && stride_n == 1,
-                errors::Unimplemented(
+                absl::UnimplementedError(
                     "Pooling is not yet supported on the batch dimension."));
   }
 
@@ -558,13 +562,14 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
     OP_REQUIRES(
         context,
         tensor_in_shape.dims() == 1 && tensor_in_shape.NumElements() == 4,
-        errors::InvalidArgument("out_backprop must be 1-dimensional and 4 "
-                                "elements"));
+        absl::InvalidArgumentError("out_backprop must be 1-dimensional and 4 "
+                                   "elements"));
     // For avgpooling, out_backprop should have 4 dimensions.
-    OP_REQUIRES(context, out_backprop.dims() == 4,
-                errors::InvalidArgument("out_backprop must be 4-dimensional"));
+    OP_REQUIRES(
+        context, out_backprop.dims() == 4,
+        absl::InvalidArgumentError("out_backprop must be 4-dimensional"));
     TensorShape output_shape;
-    auto shape_vec = tensor_in_shape.vec<int32>();
+    auto shape_vec = tensor_in_shape.vec<int32_t>();
     for (int64_t i = 0; i < tensor_in_shape.NumElements(); ++i) {
       OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(shape_vec(i)));
     }
@@ -618,21 +623,23 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
                                   in_cols, window_cols, /*dilation_rate=*/1,
                                   col_stride, padding_, &out_width, &pad_cols));
 
-      RunAvePoolBackwardNHWC<T>(out_backprop.flat<T>().data(),  // top_diff
-                                out_backprop_batch,             // num
-                                in_rows,                        // height
-                                in_cols,                        // width
-                                out_backprop_depth,             // channels
-                                out_backprop_rows,              // pooled_height
-                                out_backprop_cols,              // pooled_width
-                                window_rows,                    // kernel_h
-                                window_cols,                    // kernel_w
-                                row_stride,                     // stride_h
-                                col_stride,                     // stride_w
-                                pad_rows,                       // pad_t
-                                pad_cols,                       // pad_l
-                                output->flat<T>().data(),       // bottom_diff
-                                context->eigen_gpu_device());   // d
+      OP_REQUIRES_OK(
+          context,
+          RunAvePoolBackwardNHWC<T>(out_backprop.flat<T>().data(),  // top_diff
+                                    out_backprop_batch,             // num
+                                    in_rows,                        // height
+                                    in_cols,                        // width
+                                    out_backprop_depth,             // channels
+                                    out_backprop_rows,         // pooled_height
+                                    out_backprop_cols,         // pooled_width
+                                    window_rows,               // kernel_h
+                                    window_cols,               // kernel_w
+                                    row_stride,                // stride_h
+                                    col_stride,                // stride_w
+                                    pad_rows,                  // pad_t
+                                    pad_cols,                  // pad_l
+                                    output->flat<T>().data(),  // bottom_diff
+                                    context->eigen_gpu_device()));  // d
     } else {
       DnnPoolingGradOp<T>::Compute(context, se::dnn::PoolingMode::kAverage,
                                    ksize_, stride_, padding_,
@@ -644,8 +651,8 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
   }
 
  private:
-  std::vector<int32> ksize_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> ksize_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   TensorFormat data_format_;
 };

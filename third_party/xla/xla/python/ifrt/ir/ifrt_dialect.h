@@ -17,6 +17,8 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_IR_IFRT_DIALECT_H_
 
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/Value.h"
 #include "xla/pjrt/layout_mode.h"
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
@@ -28,5 +30,29 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_attrs.h.inc"  // IWYU pragma: export
 #define GET_TYPEDEF_CLASSES
 #include "xla/python/ifrt/ir/ifrt_types.h.inc"  // IWYU pragma: export
+
+namespace xla {
+namespace ifrt {
+
+// Returns true if the given function is an IFRT function.
+bool IsIfrtFunction(mlir::Operation* op);
+
+// Returns the `IfrtArrayType` of the given value.
+//
+// CHECK fails if the type of the value is not an `IfrtArrayType`.
+IfrtArrayType GetArrayType(mlir::Value value);
+
+IfrtArrayType GetArrayType(mlir::Type type);
+
+// Returns the `IfrtShardingParamAttr` of the given `IfrtArrayType`.
+//
+// CHECK fails if the sharding attribute is not an `IfrtShardingParamAttr`.
+IfrtShardingParamAttr GetShardingParamAttr(IfrtArrayType array_type);
+
+// Returns true if the given attribute is has unspecified sharding.
+bool IsUnspecifiedSharding(IfrtShardingAttrInterface sharding_attr);
+
+}  // namespace ifrt
+}  // namespace xla
 
 #endif  // XLA_PYTHON_IFRT_IR_IFRT_DIALECT_H_

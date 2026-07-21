@@ -65,7 +65,7 @@ StatusOr<int> CanonicalizeAxis(int axis, int packed_rank) {
   if (axis >= -packed_rank && axis < 0) {
     axis += packed_rank;
   } else if (axis < -packed_rank || axis >= packed_rank) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Invalid axis; expected a value in [-packed_rank, packed_rank)");
   }
   return axis;
@@ -143,7 +143,7 @@ StatusOr<mlir::Operation*> PackSPMDExpander::ExpandOp(mlir::Operation* op) {
 
   const int output_rank = ValueRank(pack.getOutput());
   if (output_rank == -1)
-    return errors::Unimplemented("output must have a rank");
+    return absl::UnimplementedError("output must have a rank");
 
   TF_ASSIGN_OR_RETURN(
       int axis, CanonicalizeAxis(pack.getAxis(), /*packed_rank=*/output_rank));
@@ -159,7 +159,9 @@ StatusOr<mlir::Operation*> PackSPMDExpander::ExpandOp(mlir::Operation* op) {
   for (int i = 0; i < op->getNumOperands(); ++i) {
     TF_ASSIGN_OR_RETURN(const absl::optional<Layout> layout,
                         ExtractLayoutFromOperand(pack.getOperand(i)));
-    if (!layout) return errors::InvalidArgument("missing layout for input ", i);
+    if (!layout)
+      return absl::InvalidArgumentError(
+          absl::StrCat("missing layout for input ", i));
 
     TF_ASSIGN_OR_RETURN(
         mlir::Value new_input,
@@ -194,12 +196,12 @@ StatusOr<mlir::Operation*> UnpackSPMDExpander::ExpandOp(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(const absl::optional<Layout> input_layout,
                       ExtractLayoutFromOperand(unpack.getOperand()));
   if (!input_layout) {
-    return errors::Unimplemented("input must have a layout");
+    return absl::UnimplementedError("input must have a layout");
   }
 
   const int input_rank = ValueRank(unpack.getOperand());
   if (input_rank == -1) {
-    return errors::Unimplemented("input must have a rank");
+    return absl::UnimplementedError("input must have a rank");
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -255,7 +257,7 @@ absl::Status VerifyPaddedDimensionNotSharded(const Layout& layout,
   auto output_type =
       mlir::dyn_cast<mlir::RankedTensorType>(pad_output.getType());
   if (!input_type || !output_type)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "pad op input/output should have statically known shape for SPMD.");
 
   const auto input_shape = input_type.getShape();
@@ -266,7 +268,7 @@ absl::Status VerifyPaddedDimensionNotSharded(const Layout& layout,
     if ((input_shape_for_dim == -1 || output_shape_for_dim == -1 ||
          output_shape_for_dim != input_shape_for_dim) &&
         layout.num_shards_for_dim(index) > 1) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Padding over sharded dimension is not allowed.");
     }
   }
@@ -285,7 +287,7 @@ StatusOr<mlir::Operation*> PadSPMDExpander::ExpandOp(mlir::Operation* op) {
   assert(input_layout && op_layout);
 
   if (op_layout != input_layout)
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "pad op with input layout different from op output layout is not yet "
         "supported.");
 
@@ -357,7 +359,7 @@ absl::Status VerifyTileOperandLayout(const Layout& operand_layout,
     const auto& index = tensor_dim_and_multiple.index();
     const int64_t multiple_factor = tensor_dim_and_multiple.value();
     if (multiple_factor > 1 && operand_layout.num_shards_for_dim(index) > 1)
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "tile op with input sharded at dimension where `multiple` > 1 is not "
           "supported.");
   }
@@ -373,13 +375,13 @@ StatusOr<mlir::Operation*> TileSPMDExpander::ExpandOp(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(std::optional<Layout> output_layout,
                       ExtractSingleLayoutFromOp(op));
   if (!output_layout)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "TileOP doesn't have a layout after layout propagation");
 
   TF_ASSIGN_OR_RETURN(std::optional<Layout> operand_layout,
                       ExtractLayoutFromOperand(tile_op.getInput()));
   if (!operand_layout)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Input operand to TileOp doesn't have a layout after layout "
         "propagation.");
 
@@ -393,7 +395,7 @@ StatusOr<mlir::Operation*> TileSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto status =
       ExtractConstVectorFromValue(tile_op.getMultiples(), &static_multiples);
   if (!status.ok())
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "Tile with a sharded output is not implemented for dynamic "
         "`multiples`.");
 
@@ -403,10 +405,10 @@ StatusOr<mlir::Operation*> TileSPMDExpander::ExpandOp(mlir::Operation* op) {
       VerifyTileOperandLayout(*operand_layout, static_multiples));
 
   llvm::SmallVector<int, 4> local_tile_multiples;
-  std::vector<int32> operand_shards = operand_layout->num_shards();
-  std::vector<int32> output_shards = output_layout->num_shards();
+  std::vector<int32_t> operand_shards = operand_layout->num_shards();
+  std::vector<int32_t> output_shards = output_layout->num_shards();
   if (operand_shards.size() != output_shards.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Expected inputs and outputs to have the same rank.");
   }
 
@@ -418,11 +420,11 @@ StatusOr<mlir::Operation*> TileSPMDExpander::ExpandOp(mlir::Operation* op) {
     if (output_shards[dim_index] > static_multiples[dim_index])
       // TODO(b/161012891): Split the input to support sharding the output
       // more than `multiples` ways.
-      return errors::Unimplemented(
+      return absl::UnimplementedError(
           "Sharding the output of Tile into more than `multiples` shards is "
           "not currently supported.");
     if (static_multiples[dim_index] % output_shards[dim_index] != 0)
-      return errors::Unimplemented(
+      return absl::UnimplementedError(
           "The output sharding of Tile must evenly divide `multiples`.");
     if (!Layout::IsUnshardedDimension(
             operand_layout->sharding_spec(dim_index)) &&
@@ -430,11 +432,11 @@ StatusOr<mlir::Operation*> TileSPMDExpander::ExpandOp(mlir::Operation* op) {
              output_layout->sharding_spec(dim_index)) ||
          (operand_layout->sharding_spec(dim_index) !=
           output_layout->sharding_spec(dim_index))))
-      return errors::Unimplemented(
+      return absl::UnimplementedError(absl::StrCat(
           "Input is replicated on tensor dimension ", dim_index,
           " but the "
           "output is not replicated or is replicated on a different mesh "
-          "dimension.");
+          "dimension."));
     local_tile_multiples.push_back(static_multiples[dim_index] /
                                    output_shards[dim_index]);
   }
@@ -468,7 +470,7 @@ StatusOr<llvm::DenseMap<int, Layout>> TileSPMDExpander::ComputeLayoutForward(
   auto output_ranked_type =
       mlir::dyn_cast<mlir::RankedTensorType>(tile_op.getOutput().getType());
   if (!output_ranked_type || !output_ranked_type.hasStaticShape()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         llvm::formatv(
             "requires output type to have statically known rank, but got : {0}",
             output_ranked_type)
@@ -513,7 +515,7 @@ StatusOr<llvm::DenseMap<int, Layout>> TileSPMDExpander::ComputeLayoutBackward(
   auto input_ranked_type =
       mlir::dyn_cast<mlir::RankedTensorType>(tile_op.getInput().getType());
   if (!input_ranked_type || !input_ranked_type.hasStaticShape()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         llvm::formatv(
             "requires input type to have statically known rank, but got : {0}",
             input_ranked_type)
@@ -596,8 +598,8 @@ void ComputeReshapeSegments(
     input_segment_start.emplace_back(input_offset);
     output_segment_start.emplace_back(output_offset);
 
-    int64 input_prod = input_shape[input_offset++];
-    int64 output_prod = output_shape[output_offset++];
+    int64_t input_prod = input_shape[input_offset++];
+    int64_t output_prod = output_shape[output_offset++];
     while (input_prod != output_prod) {
       if (input_prod < output_prod)
         input_prod *= input_shape[input_offset++];
@@ -669,7 +671,7 @@ StatusOr<mlir::Operation*> ReshapeSPMDExpander::ExpandOp(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto output_layout, ExtractSingleLayoutFromOp(op));
 
   if (!input_layout || !output_layout)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Input and output layouts of Reshape op must be known before SPMD "
         "expansion.");
 
@@ -880,24 +882,24 @@ StatusOr<mlir::Operation*> TransposeSPMDExpander::ExpandOp(
                         ExtractLayoutFromOperand(op->getOperand(0)));
 
     if (!output_layout)
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "output layout of TransposeOp must be known before SPMD expansion.");
     if (!operand_layout)
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "operand layout of TransposeOp must be known before SPMD expansion.");
 
     auto transpose = mlir::cast<mlir::TF::TransposeOp>(op);
-    llvm::SmallVector<int64, 4> perm;
+    llvm::SmallVector<int64_t, 4> perm;
     TF_RETURN_IF_ERROR(ExtractConstVectorFromValue(transpose.getPerm(), &perm));
 
     for (const auto& p : llvm::enumerate(perm)) {
       if (operand_layout->sharding_spec(p.value()) !=
           output_layout->sharding_spec(p.index())) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "TransposeOp SPMD needs communication is not supported yet. \n "
             "operand layout: ",
             operand_layout->ToString(),
-            "\n output layout: ", output_layout->ToString());
+            "\n output layout: ", output_layout->ToString()));
       }
     }
   }
@@ -913,12 +915,12 @@ TransposeSPMDExpander::ComputeLayoutForward(
     return llvm::DenseMap<int, Layout>();
 
   auto transpose = mlir::cast<mlir::TF::TransposeOp>(op);
-  llvm::SmallVector<int64, 4> perm;
+  llvm::SmallVector<int64_t, 4> perm;
   TF_RETURN_IF_ERROR(ExtractConstVectorFromValue(transpose.getPerm(), &perm));
 
   const Layout input_layout = input_layouts.lookup(0);
   std::vector<std::string> output_layout_specs;
-  for (int64 p : perm)
+  for (int64_t p : perm)
     output_layout_specs.push_back(input_layout.sharding_spec(p));
 
   TF_ASSIGN_OR_RETURN(
@@ -931,7 +933,7 @@ StatusOr<llvm::DenseMap<int, Layout>>
 TransposeSPMDExpander::ComputeLayoutBackward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& output_layouts) {
   auto transpose = mlir::cast<mlir::TF::TransposeOp>(op);
-  llvm::SmallVector<int64, 4> perm;
+  llvm::SmallVector<int64_t, 4> perm;
   TF_RETURN_IF_ERROR(ExtractConstVectorFromValue(transpose.getPerm(), &perm));
   TF_ASSIGN_OR_RETURN(const Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
 
@@ -941,7 +943,7 @@ TransposeSPMDExpander::ComputeLayoutBackward(
   if (output_layouts.find(0) != output_layouts.end()) {
     const Layout output_layout = output_layouts.lookup(0);
 
-    llvm::SmallVector<int64, 4> inverse_perm(perm.size());
+    llvm::SmallVector<int64_t, 4> inverse_perm(perm.size());
     for (const auto& p : llvm::enumerate(perm)) {
       inverse_perm[p.value()] = p.index();
     }
@@ -966,7 +968,7 @@ absl::Status RelayoutOneHotInput(const absl::optional<Layout>& input_layout,
                                  const absl::optional<Layout>& output_layout,
                                  const int axis, mlir::TF::OneHotOp& one_hot) {
   if (!input_layout || !output_layout)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "layout for tf.OneHot operation inputs and outputs must be known before"
         " SPMD expansion. Consider adding Relayout() op to specify the "
         "layout.");
@@ -1022,7 +1024,7 @@ StatusOr<mlir::Operation*> OneHotSPMDExpander::ExpandOp(mlir::Operation* op) {
 
   if (mesh_dim_name != Layout::kUnshardedDim) {
     if (!depth_statically_divisible_by_sharding)
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "OneHot axis dimension is sharded with incorrect layout. OneHot op "
           "depth should be evenly divisible by number of shards.");
 
@@ -1152,11 +1154,11 @@ StatusOr<mlir::Operation*> ShapeSPMDExpander::ExpandOp(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto result_layouts, ExtractLayoutFromOp(op));
   for (const auto& layout : result_layouts) {
     if (!layout.has_value())
-      return errors::Internal(
+      return absl::InternalError(
           "All op result layouts must be specified for SPMD expansion.");
 
     if (!layout->IsFullyReplicated()) {
-      return errors::Internal(
+      return absl::InternalError(
           "Shape/Rank ops must output value with replicated layout.");
     }
   }
@@ -1171,7 +1173,7 @@ StatusOr<mlir::Operation*> ShapeSPMDExpander::ExpandOp(mlir::Operation* op) {
   // shape op result is returned to the cluster.
   auto enclosing_cluster = op->getParentOfType<mlir::tf_device::ClusterOp>();
   if (!enclosing_cluster)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Error during SPMD expansion of Shape op. Op must be enclosed in a "
         "device_cluster.");
 
@@ -1189,7 +1191,7 @@ StatusOr<mlir::Operation*> ShapeSPMDExpander::ExpandOp(mlir::Operation* op) {
     TF_ASSIGN_OR_RETURN(auto input_layout,
                         ExtractLayoutFromOperand(op->getOperand(i)));
     if (!input_layout)
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Input layout to shape op must be known before SPMD expansion.");
 
     // Fully replicated tensors: local shape = global shape.

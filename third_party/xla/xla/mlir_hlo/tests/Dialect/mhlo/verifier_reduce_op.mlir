@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: mlir-hlo-opt %s -verify-diagnostics -split-input-file  | FileCheck %s
 
 // A few valid test-cases.
@@ -273,7 +287,7 @@ func.func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32
 // -----
 
 func.func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
-    %arg2: tensor<f32>, %arg3: tensor<f32>) -> (tensor<?xf32>, tensor<?xf32>) {
+    %arg2: tensor<f32>, %arg3: tensor<f32>) -> (tensor<?xf32>, tensor<?xi32>) {
 
   // expected-error@+1 {{The type of reduction-region's parameter at index 3 is different than the corresponding result type: 'tensor<i32>' vs 'tensor<f32>'}}
   %0:2 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ({
@@ -397,7 +411,7 @@ func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
 // -----
 
 func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
-    -> (tensor<?x?xi32>) {
+    -> (tensor<?xf32>) {
 
   // expected-error@+2 {{'mhlo.reduce' op failed to infer returned types}}
   // expected-error@+1 {{'mhlo.reduce' op inferred type(s) 'tensor<?xf32>' are incompatible with return type(s) of operation 'tensor<?xf32>', 'tensor<?xf32>'}}
@@ -452,7 +466,7 @@ func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
 // -----
 
 func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
-    -> (tensor<?x?xi32>) {
+    -> (tensor<?x?xf32>) {
 
   // expected-error@+2 {{'mhlo.reduce' op failed to infer returned types}}
   // expected-error@+1 {{'mhlo.reduce' op inferred type(s) 'tensor<?xf32>' are incompatible with return type(s) of operation 'tensor<?x?xf32>'}}

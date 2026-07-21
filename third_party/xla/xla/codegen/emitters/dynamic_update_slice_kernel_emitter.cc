@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -64,6 +65,7 @@ limitations under the License.
 #include "xla/runtime/work_item.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -103,7 +105,7 @@ DynamicUpdateSliceKernelEmitter::EmitKernelDefinition() {
   bool force_64_bit = backend_kind_ == BackendKind::kCpu;
   emitters::SetIndexDataLayout(*module, fusion_, force_64_bit);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       mlir::func::FuncOp entry_func,
       emitters::EmitKernelApi(*module, fusion_, buffer_assignment_,
                               buffer_alignment_, entry_function_name_));
@@ -111,13 +113,13 @@ DynamicUpdateSliceKernelEmitter::EmitKernelDefinition() {
 
   emitters::PartitionedComputations computations(
       fusion_.fused_instructions_computation(), &mlir_context_, GetEpilogues());
-  TF_ASSIGN_OR_RETURN(auto call_targets, emitters::EmitPartitionedComputations(
-                                             *module, computations));
+  ASSIGN_OR_RETURN(auto call_targets, emitters::EmitPartitionedComputations(
+                                          *module, computations));
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       EmitEntryFunction(computations, call_targets, entry_func, fusion_));
 
-  TF_ASSIGN_OR_RETURN(auto kernel_spec, GetKernelSpec());
+  ASSIGN_OR_RETURN(auto kernel_spec, GetKernelSpec());
 
   return KernelDefinition(std::move(kernel_spec),
                           MlirKernelSource(std::move(module)));
@@ -155,11 +157,12 @@ absl::StatusOr<KernelSpec> DynamicUpdateSliceKernelEmitter::GetKernelSpec()
   }
 
   KernelSpec::Buffers result_buffers;
-  for (auto& indexed : ShapeUtil::GetLeafShapes(fusion_.shape())) {
-    TF_ASSIGN_OR_RETURN(
+  for (ShapeUtil::IndexedShape& indexed :
+       ShapeUtil::GetLeafShapes(fusion_.shape())) {
+    ASSIGN_OR_RETURN(
         BufferAllocation::Slice slice,
         buffer_assignment_->GetUniqueSlice(&fusion_, indexed.index));
-    result_buffers.push_back(std::move(slice));
+    result_buffers.push_back({slice, indexed.shape});
   }
 
   KernelSpec::Buffers argument_buffers;
@@ -167,20 +170,19 @@ absl::StatusOr<KernelSpec> DynamicUpdateSliceKernelEmitter::GetKernelSpec()
   int64_t operand_index = 0;
   for (HloInstruction* operand : fusion_.operands()) {
     for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           BufferAllocation::Slice slice,
           buffer_assignment_->GetUniqueSlice(operand, indexed.index));
 
       bool invariant = absl::c_none_of(
-          result_buffers,
-          [&slice](const BufferAllocation::Slice& result_slice) {
-            return result_slice.OverlapsWith(slice);
+          result_buffers, [&slice](const ShapedSlice& result_slice) {
+            return result_slice.slice.OverlapsWith(slice);
           });
       if (invariant) {
         invariant_arguments.insert(operand_index);
       }
 
-      argument_buffers.push_back(std::move(slice));
+      argument_buffers.push_back({slice, indexed.shape});
       ++operand_index;
     }
   }

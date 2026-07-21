@@ -44,7 +44,7 @@ jobs:
   generate:
     name: Generate Matrix (${{ inputs.workflow_type }})
     runs-on: linux-x86-n2-64
-    container: us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest
+    container: us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest # zizmor: ignore[unpinned-images]
     outputs:
       matrix_json_output: ${{ steps.run_generator.outputs.matrix_json }}
     defaults:
@@ -54,26 +54,21 @@ jobs:
 
     steps:
       - name: Checkout OpenXLA
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           # Use inputs.checkout_ref if provided, otherwise default to the event's ref
           # (e.g., PR's HEAD SHA or caller's commit SHA)
-          ref: ${{ inputs.checkout_ref || github.ref }} 
+          ref: ${{ inputs.checkout_ref || github.ref }}
           fetch-depth: 0 # Fetch all history, might be needed by build/configure scripts
+          persist-credentials: false
 
       - name: Configure OpenXLA
-        run: |
-          echo "Configuring OpenXLA for CPU to build the generator tool..."
-          if [ -f "./configure.py" ]; then
-            ./configure.py --backend=CPU 
-          else
-            echo "::warning::configure.py not found. Assuming C++ tool build doesn't require it or is pre-configured."
-          fi
+        run: "echo \"Configuring OpenXLA for CPU to build the generator tool...\"\nif [ -f \"./configure.py\" ]; then\n  ./configure.py --backend=CPU \nelse\n  echo \"::warning::configure.py not found. Assuming C++ tool build doesn't require it or is pre-configured.\"\nfi\n"
       # TODO(juliagmt): Use build.py to build the binary.
       - name: Build generate_benchmark_matrices_main
         run: |
           echo "Building generator..."
-          bazel build \
+          if ! bazel build \
                 --build_tag_filters=-no_oss,-gpu,-requires-gpu-nvidia,-requires-gpu-amd \
                 --test_tag_filters=-no_oss,-gpu,-requires-gpu-nvidia,-requires-gpu-amd \
                 --config=warnings \
@@ -88,21 +83,18 @@ jobs:
                 --flaky_test_attempts=3 \
                 --jobs=150 \
                 --bes_upload_mode=fully_async \
-                //xla/tools/benchmarks/utils:generate_benchmark_matrices_main
-          if [ $? -ne 0 ]; then
+                //xla/tools/benchmarks/utils:generate_benchmark_matrices_main; then
              echo "::error::Failed to build generate_benchmark_matrices_main"
              exit 1
           fi
-
-
       - name: Run generate_benchmark_matrices_main
         id: run_generator
         run: |
           BINARY_PATH="./bazel-bin/xla/tools/benchmarks/utils/generate_benchmark_matrices_main"
-          REGISTRY_PATH="${{ inputs.registry_file }}"
+          REGISTRY_PATH="${INPUTS_REGISTRY_FILE}"
           # Convert workflow_type input to uppercase for the C++ binary, 
           # as the binary's GetWorkflowTypeFromStr expects uppercase or known aliases.
-          WORKFLOW_TYPE_ARG_UPPER=$(echo "${{ inputs.workflow_type }}" | tr '[:lower:]' '[:upper:]')
+          WORKFLOW_TYPE_ARG_UPPER=$(echo "${INPUTS_WORKFLOW_TYPE}" | tr '[:lower:]' '[:upper:]')
 
 
           if [ ! -f "$BINARY_PATH" ]; then 
@@ -113,7 +105,7 @@ jobs:
             exit 1
           fi
 
-          echo "Generating matrix for workflow type: $WORKFLOW_TYPE_ARG_UPPER (original input: ${{ inputs.workflow_type }}) using registry: $REGISTRY_PATH"
+          echo "Generating matrix for workflow type: $WORKFLOW_TYPE_ARG_UPPER (original input: ${INPUTS_WORKFLOW_TYPE}) using registry: $REGISTRY_PATH"
 
           # Execute and capture output
           JSON_ARRAY_STRING=$("$BINARY_PATH" --registry_file="$REGISTRY_PATH" --workflow_type="$WORKFLOW_TYPE_ARG_UPPER")
@@ -136,6 +128,60 @@ jobs:
           echo "Generated matrix JSON array string:"
           echo "$JSON_ARRAY_STRING"
 
-          echo "matrix_json<<EOF_MATRIX_JSON" >> $GITHUB_OUTPUT
-          echo "$JSON_ARRAY_STRING" >> $GITHUB_OUTPUT
-          echo "EOF_MATRIX_JSON" >> $GITHUB_OUTPUT
+          {
+            echo "matrix_json<<EOF_MATRIX_JSON"
+            echo "$JSON_ARRAY_STRING"
+            echo "EOF_MATRIX_JSON"
+          } >> "$GITHUB_OUTPUT"
+        env:
+          INPUTS_REGISTRY_FILE: ${{ inputs.registry_file }}
+          INPUTS_WORKFLOW_TYPE: ${{ inputs.workflow_type }}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

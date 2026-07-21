@@ -38,7 +38,8 @@ namespace {
 class DependencyOptimizerTest : public GrapplerTest {};
 
 void VerifyGraphsEqual(const GraphDef& original_graph,
-                       const GraphDef& optimized_graph, const string& func) {
+                       const GraphDef& optimized_graph,
+                       const std::string& func) {
   EXPECT_EQ(original_graph.node_size(), optimized_graph.node_size()) << func;
   for (int i = 0; i < original_graph.node_size(); ++i) {
     const NodeDef& original = original_graph.node(i);
@@ -979,8 +980,8 @@ TEST_F(DependencyOptimizerTest, GroupCrossHostControlDeps) {
                                   {1, 2}, DT_FLOAT);
     for (int t = 0; t < 4; ++t) {
       for (int c = 0; c < 8; ++c) {
-        string opname = absl::StrCat("t", t, "/c", c);
-        string device = absl::StrCat("/task:", t, "/device:TPU:", c);
+        std::string opname = absl::StrCat("t", t, "/c", c);
+        std::string device = absl::StrCat("/task:", t, "/device:TPU:", c);
         Output output = ops::RandomUniform(
             s.WithOpName(opname).WithDevice(device), {1, 2}, DT_FLOAT);
         ops.push_back(output.op());
@@ -1006,7 +1007,7 @@ TEST_F(DependencyOptimizerTest, GroupCrossHostControlDeps) {
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
   EXPECT_EQ(output.node_size(), item.graph.node_size() + 4);
-  std::set<string> tasks;
+  std::set<std::string> tasks;
   for (const auto& n : output.node()) {
     if (n.op() == "NoOp") {
       EXPECT_TRUE(absl::StartsWith(n.name(), "GroupCrossDeviceControlEdges"));

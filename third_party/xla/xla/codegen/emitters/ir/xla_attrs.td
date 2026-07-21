@@ -24,8 +24,8 @@ class XLA_Attr<string name, list<Trait> traits = []> :
       AttrDef<XlaDialect, name, traits> {
 }
 
-def XLA_AffineMapParameter :
-    AttrOrTypeParameter<"::mlir::AffineMap", ""> {
+def XLA_SymbolicMapParameter :
+    AttrOrTypeParameter<"::xla::SymbolicMap", ""> {
 }
 
 def XLA_IndexingMapVariableParameter
@@ -34,8 +34,18 @@ def XLA_IndexingMapVariableParameter
 }
 
 def XLA_ConstraintsParameter :
-    ArrayRefParameter<"::std::pair<::mlir::AffineExpr, ::xla::Interval>",
+    ArrayRefParameter<"::std::pair<::xla::SymbolicExpr, ::xla::Interval>",
                       "ContraintsArray"> {
+}
+
+def XLA_SymbolicMapAttr : XLA_Attr<"SymbolicMap"> {
+  let summary = "An Attribute representing a symbolic map.";
+  let mnemonic = "symbolic_map";
+  let description = [{A symbolic map generalizes AffineMap to support more
+    operations. It contains dimensions, symbols, and a list of result
+    expressions.}];
+  let parameters = (ins XLA_SymbolicMapParameter:$map);
+  let hasCustomAssemblyFormat = 1;
 }
 
 def XLA_IndexingMapAttr : XLA_Attr<"IndexingMap"> {
@@ -44,7 +54,7 @@ def XLA_IndexingMapAttr : XLA_Attr<"IndexingMap"> {
   let description = [{This attribute stores an indexing map. See
     https://openxla.org/xla/indexing for more details.
   }];
-  let parameters = (ins XLA_AffineMapParameter:$map,
+  let parameters = (ins XLA_SymbolicMapParameter:$map,
                         XLA_IndexingMapVariableParameter:$dim_vars,
                         XLA_IndexingMapVariableParameter:$range_vars,
                         XLA_ConstraintsParameter:$constraints);

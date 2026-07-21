@@ -23,6 +23,7 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -39,6 +40,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/execution_graph.h"
@@ -193,9 +195,9 @@ ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
 absl::StatusOr<ThunkExecutor> ThunkExecutor::Create(
     ThunkSequence thunk_sequence, const ThunkExecutor::Options& options) {
   // Construct an execution graph for the given thunk sequence.
-  TF_ASSIGN_OR_RETURN(ExecutionGraph execution_graph,
-                      ExecutionGraph::Create<ThunkOperation>(
-                          CreateThunkOperations(thunk_sequence)));
+  ASSIGN_OR_RETURN(ExecutionGraph execution_graph,
+                   ExecutionGraph::Create<ThunkOperation>(
+                       CreateThunkOperations(thunk_sequence)));
 
   return ThunkExecutor(std::move(thunk_sequence), std::move(execution_graph),
                        options);
@@ -302,11 +304,9 @@ tsl::AsyncValueRef<ThunkExecutor::ExecuteEvent> ThunkExecutor::Execute(
   return execute_event;
 }
 
-// We deliberately opt-out from the cognitive complexity check, as this
-// function is on a hot path, any any attempt to split it leads to measurable
-// regressions in microbenchmarks.
+// Note: this function is on a hot path, any any attempt to split it leads to
+// measurable regressions in microbenchmarks.
 tsl::AsyncValueRef<ThunkExecutor::ExecuteEvent>
-// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 ThunkExecutor::ExecuteSequential(const Thunk::ExecuteParams& params) {
   if constexpr (UseBlockingThunkExecutor()) {
     VLOG(2) << absl::StreamFormat(
@@ -430,18 +430,19 @@ void ThunkExecutor::ResumeExecuteSequential(
   event.SetStateConcrete();
 }
 
-// We deliberately opt-out from the cognitive complexity check, as this
-// function is on a hot path, any any attempt to split it leads to measurable
-// regressions in microbenchmarks.
+// Note: this function is on a hot path, any any attempt to split it leads to
+// measurable regressions in microbenchmarks.
 template <typename ReadyQueue>
-// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 void ThunkExecutor::Execute(std::shared_ptr<ExecuteState> state,
                             const Thunk::ExecuteParams& params,
                             ReadyQueue ready_queue,
                             Thunk::ExecuteSession::Lock lock) {
   DCHECK(!ready_queue.Empty()) << "Ready queue must not be empty";
 
-  tsl::profiler::TraceMe trace("ThunkExecutor::Execute");
+  std::optional<tsl::profiler::TraceMe> trace;
+  if (ABSL_PREDICT_FALSE(tsl::profiler::TraceMe::Active())) {
+    trace.emplace("ThunkExecutor::Execute");
+  }
   bool has_runner = params.task_runner != nullptr;
   bool has_lock = static_cast<bool>(lock);
 

@@ -96,7 +96,7 @@ TEST_F(ShapeOptimizerTest, OptimizeShapeProductMissingKernel) {
   }
 
   tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/cpu:0");
-  Output a = ops::Const(s.WithOpName("a"), string("Hello"), {32, 16});
+  Output a = ops::Const(s.WithOpName("a"), std::string("Hello"), {32, 16});
   Output c = ops::Shape(s.WithOpName("c"), a);
   Output d = ops::Const(s.WithOpName("d"), 0, {1});
   ops::ReduceProd::Attrs attrs;

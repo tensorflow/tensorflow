@@ -4,7 +4,7 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
 # Provides stable ABI delegate.
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 
-# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:LICENSE"])
 
 cc_library(
     name = "delegate_provider",

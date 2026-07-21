@@ -29,10 +29,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/command.h"
-#include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
+#include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
@@ -40,6 +41,8 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/service/shaped_slice.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
@@ -52,6 +55,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -61,8 +65,8 @@ using ::testing::ElementsAre;
 using ::testing::IsEmpty;
 
 absl::StatusOr<stream_executor::Platform*> GetPlatform() {
-  TF_ASSIGN_OR_RETURN(std::string name,
-                      PlatformUtil::CanonicalPlatformName("gpu"));
+  ASSIGN_OR_RETURN(std::string name,
+                   PlatformUtil::CanonicalPlatformName("gpu"));
   return stream_executor::PlatformManager::PlatformWithName(
       absl::AsciiStrToUpper(name));
 }
@@ -131,6 +135,7 @@ void LaunchCommandBufferThunk(stream_executor::StreamExecutor* executor,
 
   constexpr int64_t kLength = 4;
   constexpr int64_t kLengthInBytes = sizeof(int32_t) * kLength;
+  Shape shape = ShapeUtil::MakeShape(S32, {kLength});
 
   stream_executor::DeviceAddress<int32_t> a =
       executor->AllocateArray<int32_t>(kLength, 0);
@@ -151,24 +156,25 @@ void LaunchCommandBufferThunk(stream_executor::StreamExecutor* executor,
   BufferAllocation::Slice slice_b(&alloc_b, 0, kLengthInBytes);
   BufferAllocation::Slice slice_c(&alloc_c, 0, kLengthInBytes);
 
-  auto args = {slice_a, slice_b, slice_c};  // c = a + b
+  std::vector<ShapedSlice> args{
+      {slice_a, shape}, {slice_b, shape}, {slice_c, shape}};  // c = a + b
   auto args_access = {BufferUse::MemoryAccess::kRead,
                       BufferUse::MemoryAccess::kRead,
                       BufferUse::MemoryAccess::kWrite};
 
   // Prepare commands sequence for constructing command buffer.
   CommandSequence commands;
-  commands.Emplace<LaunchCmd>("AddI32", args, args_access,
-                              LaunchDimensions(1, kLength),
-                              /*shmem_bytes=*/0);
-  commands.Emplace<LaunchCmd>("AddI32", args, args_access,
-                              LaunchDimensions(1, kLength),
-                              /*shmem_bytes=*/0);
+  commands.Append(KernelThunk::MakeKernelThunk("AddI32", args, args_access,
+                                               LaunchDimensions(1, kLength),
+                                               /*shmem_bytes=*/0));
+  commands.Append(KernelThunk::MakeKernelThunk("AddI32", args, args_access,
+                                               LaunchDimensions(1, kLength),
+                                               /*shmem_bytes=*/0));
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor cmd_buffer_executor,
-      CommandBufferCmdExecutor::Create(
+      CommandExecutor cmd_buffer_executor,
+      CommandExecutor::Create(
           std::move(commands),
-          CommandBufferCmdExecutor::SynchronizationMode::kConcurrent));
+          CommandExecutor::SynchronizationMode::kConcurrent));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(cmd_buffer_executor), Thunk::ThunkInfo());
@@ -178,7 +184,7 @@ void LaunchCommandBufferThunk(stream_executor::StreamExecutor* executor,
   BufferAllocations allocations({a, b, c}, 0, &allocator);
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream, stream, nullptr, nullptr);
+      run_options, allocations, stream, stream, nullptr, nullptr, nullptr);
 
   // This is where we're getting the 'AddI32' kernel from.
   TF_ASSERT_OK_AND_ASSIGN(std::vector<uint8_t> fatbin,

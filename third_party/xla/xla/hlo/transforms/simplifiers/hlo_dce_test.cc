@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -34,6 +35,8 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal_util.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -834,6 +837,47 @@ TEST_F(HloDceTest,
   EXPECT_EQ(add2->control_predecessors()[0], fusion);
 }
 
+TEST_F(HloDceTest, MultiOutputFusionPreserveUnusedSideEffectingOutput) {
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  fused_comp {
+    p0 = f32[32,32]{1,0} parameter(0)
+    p1 = f32[32,32]{1,0} parameter(1)
+    add = f32[32,32]{1,0} add(p0, p1)
+    cc = f32[32,32]{1,0} custom-call(p0), custom_call_target="foo", custom_call_has_side_effect=true
+    neg = f32[32,32]{1,0} negate(add)
+    ROOT res = (f32[32,32]{1,0}, f32[32,32]{1,0}, f32[32,32]{1,0}) tuple(add, cc, neg)
+  }
+
+  ENTRY reduce {
+    param0 = f32[32,32]{1,0} parameter(0)
+    param1 = f32[32,32]{1,0} parameter(1)
+    fusion = (f32[32,32]{1,0}, f32[32,32]{1,0}, f32[32,32]{1,0}) fusion(param0, param1), kind=kLoop, calls=fused_comp
+    gte.2 = f32[32,32]{1,0} get-tuple-element(fusion), index=2
+    ROOT root = f32[32,32]{1,0} add(gte.2, gte.2)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+  HloDCE dce;
+  ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+  ASSERT_NE(fusion, nullptr);
+  EXPECT_TRUE(fusion->shape().IsTuple());
+  EXPECT_EQ(fusion->shape().tuple_shapes().size(), 2);
+
+  HloInstruction* gte_2 = FindInstruction(module.get(), "gte.2");
+  ASSERT_NE(gte_2, nullptr);
+  EXPECT_EQ(static_cast<HloGetTupleElementInstruction*>(gte_2)->tuple_index(),
+            1);
+
+  Shape shape = ShapeUtil::MakeShape(F32, {32, 32});
+  Shape expected_shape = ShapeUtil::MakeTupleShape({shape, shape});
+  EXPECT_THAT(fusion->fused_expression_root(),
+              GmockMatch(m::Tuple(m::CustomCall(), m::Negate())
+                             .WithShapeEqualTo(&expected_shape)));
+}
+
 TEST_F(HloDceTest, UnusedCalledParameter) {
   constexpr absl::string_view kHlo = R"(
 HloModule main
@@ -1012,6 +1056,75 @@ ENTRY entry_computation {
               ShapeLayout(p0_p2_shape));
   EXPECT_TRUE(module->entry_computation_layout().parameter_layout(1) ==
               ShapeLayout(p0_p2_shape));
+}
+
+TEST_F(HloDceTest, DceWithSideEffectingDebugLog) {
+  constexpr absl::string_view kHloString = R"hlo(
+HloModule module_dce_debug_log,
+  entry_computation_layout={(s32[1,8]{1,0:T(1,128)}, s32[1,8]{1,0:T(1,128)})->(s32[1,8]{1,0:T(1,128)}, s32[1,8]{1,0:T(1,128)})}
+
+
+fused_computation.2 {
+  p0 = s32[1,8]{1,0} parameter(0)
+  p1 = s32[1,8]{1,0} parameter(1)
+  ROOT t = (s32[1,8]{1,0}, s32[1,8]{1,0}) tuple(p0, p1)
+}
+
+ENTRY main.6 {
+  x.1 = s32[1,8]{1,0} parameter(0)
+  y.1 = s32[1,8]{1,0} parameter(1)
+  ROOT and_select_fusion.1 = (s32[1,8]{1,0}, s32[1,8]{1,0}) fusion(x.1, y.1), kind=kLoop, calls=fused_computation.2
+  get-tuple-element.1 = s32[1,8]{1,0} get-tuple-element(and_select_fusion.1), index=1
+  xla_debug_log.1 = () custom-call(get-tuple-element.1), custom_call_target="xla.debug.Log", custom_call_has_side_effect=true
+}
+)hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  HloDCE dce;
+  TF_ASSERT_OK(dce.Run(module.get()).status());
+
+  const Shape s32_shape_with_layout =
+      ShapeUtil::MakeShapeWithDenseLayout(S32, {1, 8}, {1, 0});
+  const Shape expected_shape =
+      ShapeUtil::MakeTupleShape({s32_shape_with_layout, s32_shape_with_layout});
+  EXPECT_TRUE(
+      ShapeUtil::Equal(module->entry_computation()->root_instruction()->shape(),
+                       expected_shape));
+}
+
+TEST_F(HloDceTest, DceWithSideEffectingOutfeed) {
+  constexpr absl::string_view kHloString = R"hlo(
+HloModule module_dce_outfeed,
+  entry_computation_layout={(s32[1,8]{1,0:T(1,128)}, s32[1,8]{1,0:T(1,128)})->(s32[1,8]{1,0:T(1,128)}, s32[1,8]{1,0:T(1,128)})}
+
+
+fused_computation.2 {
+  p0 = s32[1,8]{1,0} parameter(0)
+  p1 = s32[1,8]{1,0} parameter(1)
+  ROOT t = (s32[1,8]{1,0}, s32[1,8]{1,0}) tuple(p0, p1)
+}
+
+ENTRY main.6 {
+  x.1 = s32[1,8]{1,0} parameter(0)
+  y.1 = s32[1,8]{1,0} parameter(1)
+  token.0 = token[] after-all()
+  ROOT and_select_fusion.1 = (s32[1,8]{1,0}, s32[1,8]{1,0}) fusion(x.1, y.1), kind=kLoop, calls=fused_computation.2
+  get-tuple-element.1 = s32[1,8]{1,0} get-tuple-element(and_select_fusion.1), index=1
+  outfeed.1 = token[] outfeed(get-tuple-element.1, token.0)
+}
+)hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  HloDCE dce;
+  TF_ASSERT_OK(dce.Run(module.get()).status());
+
+  const Shape s32_shape_with_layout =
+      ShapeUtil::MakeShapeWithDenseLayout(S32, {1, 8}, {1, 0});
+  const Shape expected_shape =
+      ShapeUtil::MakeTupleShape({s32_shape_with_layout, s32_shape_with_layout});
+  EXPECT_TRUE(
+      ShapeUtil::Equal(module->entry_computation()->root_instruction()->shape(),
+                       expected_shape));
 }
 
 }  // namespace

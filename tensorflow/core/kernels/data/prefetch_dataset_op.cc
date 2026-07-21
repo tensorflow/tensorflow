@@ -15,15 +15,29 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/prefetch_dataset_op.h"
 
 #include <algorithm>
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
 #include <deque>
+#include <functional>
 #include <limits>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/stats_utils.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -87,7 +101,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
@@ -100,7 +114,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
@@ -118,7 +132,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     return input_->CheckExternalState();
   }
 
-  absl::Status Get(OpKernelContext* ctx, int64 index,
+  absl::Status Get(OpKernelContext* ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
     return input_->Get(ctx, index, out_tensors);
   }
@@ -337,7 +351,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           "buffer_limit",
           limit == -1
               ? kTraceInfoUnavailable
-              : strings::Printf("%lld", static_cast<long long>(limit))));
+              : absl::StrFormat("%lld", static_cast<long long>(limit))));
       result.push_back(std::make_pair(
           "autotune",
           dataset()->buffer_size_ == model::kAutotune ? "true" : "false"));
@@ -346,11 +360,11 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       if (dataset()->slack_period_ > 0) {
         result.push_back(std::make_pair(
             "slack",
-            strings::Printf("%lld", static_cast<long long>(slack_us_.load()))));
+            absl::StrFormat("%lld", static_cast<long long>(slack_us_.load()))));
       }
       result.push_back(std::make_pair(
           "interleave_depth",
-          strings::Printf("%lld", static_cast<long long>(interleave_depth_))));
+          absl::StrFormat("%lld", static_cast<long long>(interleave_depth_))));
       return result;
     }
 
@@ -359,7 +373,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     // OK) a vector of tensors, representing an element of the input dataset.
     struct BufferElement {
       explicit BufferElement(IteratorContext* ctx)
-          : uid(tensorflow::EnvTime::NowNanos()),
+          : created_us(0),
+            uid(tensorflow::EnvTime::NowNanos()),
             checkpoint(MemoryCheckpoint{ctx->id_registry()}) {}
 
       // The producer sets `status` if getting the input element fails.
@@ -367,7 +382,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       // The buffered data element.
       std::vector<Tensor> value;
       int64_t created_us;
-      const uint64 uid;
+      const uint64_t uid;
       MemoryCheckpoint checkpoint;
     };
 
@@ -383,6 +398,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       for (size_t i = 0; i < buffer_size; i++) {
         buffer_.emplace_back(ctx);
         auto& buffer_element = buffer_.back();
+        buffer_element.created_us = EnvTime::NowMicros();
         TF_RETURN_IF_ERROR(ReadStatus(reader, i, &buffer_element.status));
         if (buffer_element.status.ok()) {
           size_t value_size;
@@ -415,7 +431,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     }
 
     void CancelThreads() TF_LOCKS_EXCLUDED(mu_) {
-      cancellation_manager_->StartCancel();
+      if (cancellation_manager_ != nullptr) {
+        cancellation_manager_->StartCancel();
+      }
       mutex_lock l(*mu_);
       cancelled_ = true;
       cond_var_->notify_all();
@@ -443,7 +461,25 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       // (if we successfully got an element) the output values.
       absl::Status s = buffer_.front().status;
       if (s.ok()) {
-        int64_t buffer_element_id = buffer_.front().uid;
+        uint64_t buffer_element_id = buffer_.front().uid;
+
+        // 1. Calculate the exact time this element sat in the buffer
+        int64_t residence_time_us =
+            EnvTime::NowMicros() - buffer_.front().created_us;
+
+        // 2. Record it to our Histogram
+        metrics::RecordTFDataPrefetchResidenceTime(dataset()->node_name(),
+                                                   residence_time_us);
+
+        // 3. Log extreme severity outliers (e.g., > 10 seconds)
+        if (residence_time_us > 10000000) {
+          LOG_EVERY_N_SEC(WARNING, 10)
+              << "SEVERE STARVATION: Element UID " << buffer_element_id
+              << " in buffer '" << dataset()->node_name()
+              << "' sat unconsumed for " << (residence_time_us / 1000000.0)
+              << " seconds!";
+        }
+
         tsl::profiler::TraceMe traceme(
             [&] {
               return tsl::profiler::TraceMeEncode(
@@ -485,6 +521,10 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         buffer_size_->value = auto_tuner_->buffer_limit();
       }
       buffer_.pop_front();
+
+      metrics::RecordTFDataPrefetchDequeue(dataset()->node_name());
+      metrics::RecordTFDataPrefetchBufferSize(dataset()->node_name(),
+                                              buffer_.size());
       *end_of_sequence = false;
 
       // Wake the prefetch thread, in case it has been waiting for space
@@ -572,6 +612,11 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           RecordBufferEnqueue(ctx.get(), buffer_element.value);
           buffer_element.created_us = EnvTime::NowMicros();
           buffer_.push_back(std::move(buffer_element));
+
+          metrics::RecordTFDataPrefetchEnqueue(dataset()->node_name());
+          metrics::RecordTFDataPrefetchBufferSize(dataset()->node_name(),
+                                                  buffer_.size());
+
           cond_var_->notify_all();
         }
         ++num_produced;
@@ -612,9 +657,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    string CodeKey() { return absl::StrCat(kStatus, kCodeSuffix); }
+    std::string CodeKey() { return absl::StrCat(kStatus, kCodeSuffix); }
 
-    string ErrorMessageKey() {
+    std::string ErrorMessageKey() {
       return absl::StrCat(kStatus, kErrorMessageSuffix);
     }
 
@@ -651,7 +696,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     // root node to this node (not including this node) in the input pipeline
     // tree. We record the interleave depth so that it can be included in the
     // trace metadata.
-    int64 interleave_depth_ = -1;
+    int64_t interleave_depth_ = -1;
     std::unique_ptr<Thread> prefetch_thread_ TF_GUARDED_BY(*mu_);
   };
 

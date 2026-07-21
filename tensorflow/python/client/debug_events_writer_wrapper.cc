@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/strings/str_format.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/core/lib/core/status.h"

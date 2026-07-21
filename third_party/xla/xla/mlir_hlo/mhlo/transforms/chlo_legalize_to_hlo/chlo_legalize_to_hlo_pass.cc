@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <optional>
 #include <utility>
 #include <vector>
 
+#include "llvm/ADT/STLExtras.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/passes.h"
 #include "mhlo/transforms/rewriters.h"
@@ -152,8 +154,8 @@ struct ChloLegalizeToHighLevelMhloPass
             return !qualifiesForDirectMhloLoweringAsinh(op);
           });
     }
-    conversionTarget
-        .addIllegalOp<chlo::TopKOp, chlo::ErfOp, chlo::RaggedDotOp>();
+    conversionTarget.addIllegalOp<chlo::TopKOp, chlo::ErfOp, chlo::RaggedDotOp,
+                                  chlo::ScanOp, chlo::MulhiOp>();
 
     if (failed(applyPartialConversion(getOperation(), conversionTarget,
                                       std::move(conversionPatterns)))) {
@@ -190,6 +192,29 @@ struct ChloLegalizeToHloPass
   }
 };
 
+LogicalResult convertScanChloToMhlo(chlo::ScanOp op,
+                                    PatternRewriter& rewriter) {
+  auto mhloOp = mhlo::ScanOp::create(
+      rewriter, op.getLoc(), op.getOutputs().getTypes(),
+      op.getInits().getTypes(), op.getInputs(), op.getInits(),
+      op.getDimensionAttr(), op.getScanDimSizeAttr(), op.getIsReverseAttr(),
+      op.getIsAssociativeAttr());
+
+  rewriter.inlineRegionBefore(op.getBody(), mhloOp.getBody(),
+                              mhloOp.getBody().end());
+
+  // Convert terminator to mhlo.return
+  for (auto& block : mhloOp.getBody()) {
+    Operation* terminator = block.getTerminator();
+    rewriter.setInsertionPoint(terminator);
+    rewriter.replaceOpWithNewOp<mhlo::ReturnOp>(terminator,
+                                                terminator->getOperands());
+  }
+
+  rewriter.replaceOp(op, mhloOp.getResults());
+  return success();
+}
+
 LogicalResult convertRaggedDotChloToMhlo(chlo::RaggedDotOp raggedDotOp,
                                          PatternRewriter& rewriter) {
   auto moduleOp = raggedDotOp->getParentOfType<ModuleOp>();
@@ -203,10 +228,6 @@ LogicalResult convertRaggedDotChloToMhlo(chlo::RaggedDotOp raggedDotOp,
       chloRaggedDotDimNums.getRhsBatchingDimensions(),
       chloRaggedDotDimNums.getLhsContractingDimensions(),
       chloRaggedDotDimNums.getRhsContractingDimensions());
-  auto raggedDotDimNums = mhlo::RaggedDotDimensionNumbersAttr::get(
-      builder.getContext(), dotDimNums,
-      chloRaggedDotDimNums.getLhsRaggedDimensions(),
-      chloRaggedDotDimNums.getRhsGroupDimensions());
 
   auto mhloPrecision =
       [](chlo::Precision precision) -> std::optional<mhlo::Precision> {
@@ -232,10 +253,25 @@ LogicalResult convertRaggedDotChloToMhlo(chlo::RaggedDotOp raggedDotOp,
     precisionConfig = rewriter.getArrayAttr(vector);
   }
 
-  auto mhloOp = mhlo::RaggedDotOp::create(
-      rewriter, raggedDotOp.getLoc(), raggedDotOp.getResult().getType(),
-      raggedDotOp.getLhs(), raggedDotOp.getRhs(), raggedDotOp.getGroupSizes(),
-      raggedDotDimNums, precisionConfig);
+  mlir::Operation* mhloOp;
+  const int64_t lhsRaggedDim = chloRaggedDotDimNums.getLhsRaggedDimensions()[0];
+  if (llvm::is_contained(chloRaggedDotDimNums.getLhsBatchingDimensions(),
+                         lhsRaggedDim)) {
+    mhloOp = mhlo::DotGeneralOp::create(
+        rewriter, raggedDotOp.getLoc(), raggedDotOp.getResult().getType(),
+        raggedDotOp.getLhs(), raggedDotOp.getRhs(), dotDimNums, precisionConfig,
+        nullptr);
+  } else {
+    auto raggedDotDimNums = mhlo::RaggedDotDimensionNumbersAttr::get(
+        builder.getContext(), dotDimNums,
+        chloRaggedDotDimNums.getLhsRaggedDimensions(),
+        chloRaggedDotDimNums.getRhsGroupDimensions());
+    mhloOp = mhlo::RaggedDotOp::create(
+        rewriter, raggedDotOp.getLoc(), raggedDotOp.getResult().getType(),
+        raggedDotOp.getLhs(), raggedDotOp.getRhs(), raggedDotOp.getGroupSizes(),
+        raggedDotDimNums, precisionConfig);
+  }
+
   std::optional<NamedAttribute> frontendAttributes =
       raggedDotOp->getAttrDictionary().getNamed("mhlo.frontend_attributes");
   if (frontendAttributes.has_value()) {
@@ -245,7 +281,7 @@ LogicalResult convertRaggedDotChloToMhlo(chlo::RaggedDotOp raggedDotOp,
     mhloOp->setDiscardableAttrs(rewriter.getDictionaryAttr(attributes));
   }
 
-  rewriter.replaceOp(raggedDotOp, mhloOp.getOperation());
+  rewriter.replaceOp(raggedDotOp, mhloOp);
   return success();
 }
 
@@ -311,6 +347,11 @@ LogicalResult convertAsinhChloToMhlo(chlo::AsinhOp op,
   rewriter.replaceOpWithNewOp<mhlo::AsinhOp>(op, op->getOperands());
   return success();
 }
+LogicalResult convertMulhiChloToMhlo(chlo::MulhiOp op,
+                                     PatternRewriter& rewriter) {
+  rewriter.replaceOpWithNewOp<mhlo::MulhiOp>(op, op->getOperands());
+  return success();
+}
 
 }  // namespace
 
@@ -363,6 +404,8 @@ void populateChloToHighLevelMhloOpPatterns(
     patterns->add(mhlo::convertAsinhChloToMhlo, kBenefit);
   }
   patterns->add(mhlo::convertRaggedDotChloToMhlo, kBenefit);
+  patterns->add(mhlo::convertScanChloToMhlo, kBenefit);
+  patterns->add(mhlo::convertMulhiChloToMhlo, kBenefit);
   populateWithGenerated(*patterns);
 }
 

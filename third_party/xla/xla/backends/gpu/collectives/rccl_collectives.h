@@ -16,16 +16,18 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_RCCL_COLLECTIVES_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_RCCL_COLLECTIVES_H_
 
-#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
@@ -39,6 +41,9 @@ class RcclCollectives : public GpuCollectives {
  public:
   bool IsImplemented() const final { return true; }
 
+  absl::Status GroupLaunch(absl::Span<const GpuCommunicator* const> comms,
+                           absl::FunctionRef<absl::Status()> group) final;
+
   absl::StatusOr<CliqueId> CreateUniqueCliqueId() const final;
 
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
@@ -51,11 +56,10 @@ class RcclCollectives : public GpuCollectives {
   }
 
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
-  CreateCommunicatorsWithCancel(const CliqueKey& clique_key,
-                                const std::optional<CliqueIds>& clique_ids,
-                                absl::Span<const DeviceRank> ranks,
-                                const Collectives::Config& config,
-                                std::atomic_bool* cancel) final;
+  CreateCommunicatorsWithCancel(
+      const CliqueKey& clique_key, const std::optional<CliqueIds>& clique_ids,
+      absl::Span<const DeviceRank> ranks, const Collectives::Config& config,
+      std::shared_ptr<CancellationToken> cancel) final;
 
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> SplitCommunicators(
       absl::Span<const Communicator* const> comms, int32_t color,
@@ -70,7 +74,7 @@ class RcclCollectives : public GpuCollectives {
                                int32_t color, absl::Span<const RankId> keys,
                                const Collectives::Config& config,
                                absl::Span<const DeviceRank> ranks,
-                               std::atomic_bool* cancel) final;
+                               std::shared_ptr<CancellationToken> cancel) final;
 
   absl::StatusOr<std::unique_ptr<Communicator>> CreateCommunicator() final {
     return absl::UnimplementedError("Not implemented.");

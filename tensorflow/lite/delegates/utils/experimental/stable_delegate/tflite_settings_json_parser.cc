@@ -1,3 +1,4 @@
+
 /* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,9 +15,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/utils/experimental/stable_delegate/tflite_settings_json_parser.h"
 
+#include <cstdint>
 #include <string>
 
+#include "flatbuffers/base.h"  // from @flatbuffers
+#include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/idl.h"  // from @flatbuffers
+#include "flatbuffers/util.h"  // from @flatbuffers
+#include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "tensorflow/lite/acceleration/configuration/configuration_fbs_contents-inl.h"
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -34,6 +40,14 @@ TfLiteSettingsJsonParser::TfLiteSettingsJsonParser() {
 const TFLiteSettings* TfLiteSettingsJsonParser::Parse(
     const std::string& json_file_path) {
   if (!LoadFromJsonFile(json_file_path) || buffer_pointer_ == nullptr) {
+    return nullptr;
+  }
+  flatbuffers::Verifier verifier(buffer_pointer_, buffer_size_);
+  if (!verifier.VerifyBuffer<TFLiteSettings>()) {
+    TFLITE_LOG(ERROR) << "Failed to verify the delegate settings buffer ("
+                      << json_file_path << ").";
+    buffer_pointer_ = nullptr;
+    buffer_size_ = 0;
     return nullptr;
   }
   return flatbuffers::GetRoot<TFLiteSettings>(buffer_pointer_);
@@ -61,6 +75,7 @@ bool TfLiteSettingsJsonParser::LoadFromJsonFile(
                       << json_file_path << ").";
     return false;
   }
+  parser_.opts.root_type = "TFLiteSettings";
   if (!parser_.Parse(json_file.c_str())) {
     TFLITE_LOG(ERROR) << "Failed to parse the delegate settings file ("
                       << json_file_path << ").";

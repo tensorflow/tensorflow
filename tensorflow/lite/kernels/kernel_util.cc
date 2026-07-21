@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <complex>
+#include <initializer_list>
 #include <limits>
 #include <memory>
 
@@ -101,9 +102,8 @@ inline TfLiteStatus GetMutableInputSafe(const TfLiteContext* context,
                                         const TfLiteNode* node, int index,
                                         const TfLiteTensor** tensor) {
   int tensor_index;
-  TF_LITE_ENSURE_OK(
-      context, ValidateTensorIndexingSafe(context, index, node->inputs->size,
-                                          node->inputs->data, &tensor_index));
+  TF_LITE_ENSURE_STATUS(ValidateTensorIndexingSafe(
+      context, index, node->inputs->size, node->inputs->data, &tensor_index));
   *tensor = GetTensorAtIndex(context, tensor_index);
   return kTfLiteOk;
 }
@@ -140,9 +140,8 @@ TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
 TfLiteStatus GetOutputSafe(const TfLiteContext* context, const TfLiteNode* node,
                            int index, TfLiteTensor** tensor) {
   int tensor_index;
-  TF_LITE_ENSURE_OK(
-      context, ValidateTensorIndexingSafe(context, index, node->outputs->size,
-                                          node->outputs->data, &tensor_index));
+  TF_LITE_ENSURE_STATUS(ValidateTensorIndexingSafe(
+      context, index, node->outputs->size, node->outputs->data, &tensor_index));
   *tensor = GetTensorAtIndex(context, tensor_index);
   return kTfLiteOk;
 }
@@ -167,8 +166,8 @@ TfLiteStatus GetTemporarySafe(const TfLiteContext* context,
                               const TfLiteNode* node, int index,
                               TfLiteTensor** tensor) {
   int tensor_index;
-  TF_LITE_ENSURE_OK(context, ValidateTensorIndexingSafe(
-                                 context, index, node->temporaries->size,
+  TF_LITE_ENSURE_STATUS(
+      ValidateTensorIndexingSafe(context, index, node->temporaries->size,
                                  node->temporaries->data, &tensor_index));
   *tensor = GetTensorAtIndex(context, tensor_index);
   return kTfLiteOk;
@@ -188,8 +187,8 @@ TfLiteStatus GetIntermediatesSafe(const TfLiteContext* context,
                                   const TfLiteNode* node, int index,
                                   TfLiteTensor** tensor) {
   int tensor_index;
-  TF_LITE_ENSURE_OK(context, ValidateTensorIndexingSafe(
-                                 context, index, node->intermediates->size,
+  TF_LITE_ENSURE_STATUS(
+      ValidateTensorIndexingSafe(context, index, node->intermediates->size,
                                  node->intermediates->data, &tensor_index));
   *tensor = GetTensorAtIndex(context, tensor_index);
   return kTfLiteOk;
@@ -528,51 +527,52 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
 
 // Size of string is not constant, return 0 in such case.
 int TfLiteTypeGetSize(TfLiteType type) {
-  switch (type) {
-    case kTfLiteUInt8:
-      static_assert(sizeof(uint8_t) == 1, "");
-      return 1;
-    case kTfLiteInt8:
-      static_assert(sizeof(int8_t) == 1, "");
-      return 1;
-    case kTfLiteBool:
-      return sizeof(bool);
-    case kTfLiteUInt16:
-      static_assert(sizeof(uint16_t) == 2, "");
-      return 2;
-    case kTfLiteInt16:
-      static_assert(sizeof(int16_t) == 2, "");
-      return 2;
-    case kTfLiteFloat16:
-      static_assert(sizeof(int16_t) == 2, "");
-      return 2;
-    case kTfLiteFloat32:
-      static_assert(sizeof(float) == 4, "");
-      return 4;
-    case kTfLiteInt32:
-      static_assert(sizeof(int32_t) == 4, "");
-      return 4;
-    case kTfLiteUInt32:
-      static_assert(sizeof(uint32_t) == 4, "");
-      return 4;
-    case kTfLiteInt64:
-      static_assert(sizeof(int64_t) == 8, "");
-      return 8;
-    case kTfLiteUInt64:
-      static_assert(sizeof(uint64_t) == 8, "");
-      return 8;
-    case kTfLiteFloat64:
-      static_assert(sizeof(double) == 8, "");
-      return 8;
-    case kTfLiteComplex64:
-      static_assert(sizeof(std::complex<float>) == 8, "");
-      return 8;
-    case kTfLiteComplex128:
-      static_assert(sizeof(std::complex<double>) == 16, "");
-      return 16;
-    default:
-      return 0;
+  int size_bits = TfLiteTypeGetSizeBits(type);
+  if (size_bits % 8 == 0) {
+    return size_bits / 8;
+  } else {
+    // For non-byte sized types, return 0.
+    return 0;
   }
+}
+
+int TfLiteTypeGetSizeBits(TfLiteType type) {
+  switch (type) {
+    case kTfLiteInt2:
+      return 2;
+    case kTfLiteInt4:
+    case kTfLiteUInt4:
+      return 4;
+    case kTfLiteUInt8:
+    case kTfLiteInt8:
+    case kTfLiteFloat8E4M3FN:
+    case kTfLiteFloat8E5M2:
+      return 8;
+    case kTfLiteUInt16:
+    case kTfLiteInt16:
+    case kTfLiteFloat16:
+    case kTfLiteBFloat16:
+      return 16;
+    case kTfLiteFloat32:
+    case kTfLiteInt32:
+    case kTfLiteUInt32:
+      return 32;
+    case kTfLiteInt64:
+    case kTfLiteUInt64:
+    case kTfLiteFloat64:
+    case kTfLiteComplex64:
+      return 64;
+    case kTfLiteComplex128:
+      return 128;
+    case kTfLiteBool:
+      return sizeof(bool) * 8;
+    case kTfLiteString:
+    case kTfLiteNoType:
+    case kTfLiteResource:
+    case kTfLiteVariant:
+      break;
+  }
+  return 0;
 }
 
 bool IsMobilePlatform() {
@@ -594,6 +594,56 @@ bool HasUnspecifiedDimension(const TfLiteTensor* tensor) {
   }
 #endif  // TF_LITE_STATIC_MEMORY
   return false;
+}
+
+TfLiteStatus CheckedShapeProduct(TfLiteContext* context,
+                                 std::initializer_list<int> dims,
+                                 const char* error_message, size_t& product) {
+  return CheckedShapeProduct(context, dims.begin(), dims.size(), error_message,
+                             product);
+}
+
+TfLiteStatus CheckedShapeProduct(TfLiteContext* context, const int* dims,
+                                 int count, const char* error_message,
+                                 size_t& product) {
+  TF_LITE_ENSURE(context, count >= 0);
+  TF_LITE_ENSURE(context, dims != nullptr || count == 0);
+  size_t checked_count = 1;
+  for (int i = 0; i < count; ++i) {
+    const int d = dims[i];
+    TF_LITE_ENSURE_MSG(context, d >= 0, "Encountered a negative dimension.");
+    TF_LITE_ENSURE_MSG(
+        context,
+        checked_count == 0 ||
+            static_cast<size_t>(d) <=
+                std::numeric_limits<size_t>::max() / checked_count,
+        "%s", error_message);
+    checked_count *= d;
+  }
+  product = checked_count;
+  return kTfLiteOk;
+}
+
+TfLiteStatus CheckedShapeProductToInt(TfLiteContext* context,
+                                      std::initializer_list<int> dims,
+                                      const char* error_message, int& product) {
+  size_t checked_count = 1;
+  for (const int d : dims) {
+    TF_LITE_ENSURE_MSG(context, d >= 0, "Encountered a negative dimension.");
+    TF_LITE_ENSURE_MSG(
+        context,
+        checked_count == 0 ||
+            static_cast<size_t>(d) <=
+                std::numeric_limits<size_t>::max() / checked_count,
+        "%s", error_message);
+    checked_count *= d;
+  }
+  TF_LITE_ENSURE_MSG(
+      context,
+      checked_count <= static_cast<size_t>(std::numeric_limits<int>::max()),
+      "%s", error_message);
+  product = static_cast<int>(checked_count);
+  return kTfLiteOk;
 }
 
 }  // namespace tflite

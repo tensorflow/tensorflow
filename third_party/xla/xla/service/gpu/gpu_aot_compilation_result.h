@@ -19,25 +19,37 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 
-#include "absl/memory/memory.h"
+#include "absl/base/nullability.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "riegeli/bytes/string_writer.h"
-#include "xla/debug_options_flags.h"
+#include "google/protobuf/arena.h"
+#include "riegeli/bytes/reader.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
-#include "xla/stream_executor/kernel_symbol_registry.h"
+#include "xla/stream_executor/abi/executable_abi_version.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
-#include "xla/util/split_proto/split_gpu_executable_writer.h"
+#include "xla/xla.pb.h"
+#include "tsl/platform/fingerprint.h"
 
 namespace xla::gpu {
+
+namespace internal {
+struct ArenaAllocatedGpuExecutableProto {
+  ArenaAllocatedGpuExecutableProto(
+      std::unique_ptr<google::protobuf::Arena> absl_nonnull arena,
+      GpuExecutableProto* absl_nonnull proto)
+      : arena(std::move(arena)), proto(proto) {}
+
+  std::unique_ptr<google::protobuf::Arena> absl_nonnull arena;
+  GpuExecutableProto* absl_nonnull proto;
+};
+}  // namespace internal
 
 // `AotCompilationResult` implementation for GPU, containing a serialized
 // `GpuExecutable`.
@@ -48,51 +60,59 @@ namespace xla::gpu {
 class GpuAotCompilationResult : public CompiledModule {
  public:
   static absl::StatusOr<std::unique_ptr<GpuAotCompilationResult>> FromProto(
-      GpuExecutableProto executable) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                        HloModule::CreateFromProtoWithConfig(
-                            executable.hlo_module_with_config()));
+      GpuExecutableProto executable_proto);
 
-    return absl::WrapUnique(
-        new GpuAotCompilationResult(std::move(executable), std::move(module)));
+  // Creates a `GpuAotCompilationResult` from a serialized result (i.e. as it
+  // would be returned by `SerializeAsString`).
+  static absl::StatusOr<std::unique_ptr<GpuAotCompilationResult>>
+  FromSerialized(std::unique_ptr<riegeli::Reader> reader);
+
+  absl::StatusOr<std::string> SerializeAsString() const final;
+
+  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable() && final {
+    return absl::UnimplementedError(
+        "LoadExecutable without parameters not supported");
   }
 
-  absl::StatusOr<std::string> SerializeAsString() const final {
-    std::string serialized;
-    TF_RETURN_IF_ERROR(WriteSplitGpuExecutable(
-        executable_, std::make_unique<riegeli::StringWriter<>>(&serialized)));
-    return serialized;
-  }
+  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
+      se::Platform::Id platform_id,
+      const se::DeviceDescription& device_description,
+      const DebugOptions& debug_options) &&
+      final;
 
-  absl::StatusOr<std::unique_ptr<Executable>>
-      LoadExecutable(const se::StreamExecutor* stream_exec) && final {
-    stream_executor::Platform::Id platform_id =
-        stream_exec->GetPlatform()->id();
-    const auto symbol_resolver = [&](absl::string_view symbol_name) {
-      stream_executor::KernelSymbolRegistry& registry =
-          stream_executor::KernelSymbolRegistry::GetGlobalInstance();
-      return registry.FindSymbol(symbol_name, platform_id);
-    };
-    return GpuExecutable::FromProto(
-        executable_, stream_exec->GetDeviceDescription(),
-        stream_exec->GetPlatform()->Name(), GetDebugOptionsFromFlags(),
-        symbol_resolver);
-  }
-
-  const HloModule* optimized_module() const final { return hlo_module_.get(); };
+  const HloModule* optimized_module() const final { return hlo_module_.get(); }
 
   std::shared_ptr<HloModule> shared_optimized_module() final {
     return hlo_module_;
-  };
+  }
+
+  absl::StatusOr<stream_executor::ExecutableAbiVersion>
+  GetExecutableAbiVersion() const final {
+    return stream_executor::ExecutableAbiVersion::FromProto(
+        GetExecutableProto().executable_abi_version());
+  }
+
+  absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const final;
 
  private:
-  explicit GpuAotCompilationResult(GpuExecutableProto executable,
-                                   std::unique_ptr<HloModule> hlo_module)
-      : executable_(std::move(executable)),
-        hlo_module_(std::move(hlo_module)) {}
+  const GpuExecutableProto& GetExecutableProto() const;
 
-  GpuExecutableProto executable_;
+  explicit GpuAotCompilationResult(
+      std::variant<internal::ArenaAllocatedGpuExecutableProto,
+                   GpuExecutableProto>
+          gpu_executable_proto,
+      std::shared_ptr<HloModule> hlo_module, tsl::Fprint128 hlo_fingerprint,
+      tsl::Fprint128 executable_fingerprint)
+      : gpu_executable_proto_(std::move(gpu_executable_proto)),
+        hlo_module_(std::move(hlo_module)),
+        hlo_fingerprint_(hlo_fingerprint),
+        executable_fingerprint_(executable_fingerprint) {}
+
+  std::variant<internal::ArenaAllocatedGpuExecutableProto, GpuExecutableProto>
+      gpu_executable_proto_;
   std::shared_ptr<HloModule> hlo_module_;
+  tsl::Fprint128 hlo_fingerprint_;
+  tsl::Fprint128 executable_fingerprint_;
 };
 
 }  // namespace xla::gpu
