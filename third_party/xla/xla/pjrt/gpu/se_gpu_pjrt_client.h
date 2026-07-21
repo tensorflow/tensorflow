@@ -240,10 +240,6 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       PjRtDevice* device, Shape shape);
 };
 
-std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
-    std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
-    int process_id);
-
 std::string MakeComputeCapabilityString(const se::DeviceDescription* desc);
 
 absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
@@ -259,6 +255,15 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     const GpuClientOptions& options);
+
+// Constructs a StreamExecutorGpuClient which is intended to be used by
+// tensorflow. Don't use this for anything because it has tensorflow specific
+// quirks.
+absl::StatusOr<std::unique_ptr<PjRtClient>> GetSharedStreamExecutorGpuClient(
+    const GpuClientOptions& options, LocalClient* local_client,
+    std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
+    std::unique_ptr<se::DeviceAddressAllocator> allocator,
+    std::unique_ptr<HostMemoryAllocator> host_memory_allocator);
 
 // Get the fabric info of a local device ordinal in the format of
 // "clusterUuid/cliqueId". Empty on SM90 or lower.
