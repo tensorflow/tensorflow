@@ -6594,7 +6594,7 @@ TEST_F(MemorySpaceAssignmentTest, EvictionsShouldntBeDelayed) {
       continue;
     }
 
-    HloLiveRange::TimeBound time_bound =
+    HloLiveRange::LiveRangeBounds time_bound =
         hlo_live_range->buffer_live_ranges().at(value);
     for (int i = time_bound.start; i <= time_bound.end; ++i) {
       ++num_live_buffers_in_alternate_mem[i];
@@ -16722,7 +16722,7 @@ ENTRY entry {
   gte_param0_0 = f32[2,3]{1,0} get-tuple-element(prefetch_start_param0), index=0
   gte_param0_1 = s32[]{:T(128)S(2)} get-tuple-element(prefetch_start_param0), index=1
   prefetch_done_param0 = f32[2,3]{1,0} custom-call(p0, gte_param0_0, gte_param0_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
-  
+
   negate0 = f32[2,3]{1,0} negate(prefetch_done_param0)
   negate1 = f32[2,3]{1,0} negate(negate0)
   negate2 = f32[2,3]{1,0} negate(negate1)
