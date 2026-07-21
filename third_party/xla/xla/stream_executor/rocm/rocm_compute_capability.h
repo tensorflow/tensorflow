@@ -202,7 +202,7 @@ class RocmComputeCapability {
   // Native bf16 transcendental instructions (v_exp_bf16, v_sqrt_bf16,
   // v_rsq_bf16, v_tanh_bf16, v_log_bf16, etc.), backed by the LLVM
   // FeatureBF16TransInsts subtarget feature. Lets us compute these bf16 ops
-  // without upcasting to f32 (currently used for exp, log, sqrt, rsqrt, tanh).
+  // without upcasting to f32 (currently used for log, sqrt, rsqrt, tanh).
   bool has_bf16_transcendental_support() const { return gfx1250(); }
 
   bool has_tdm_support() const { return gfx1250(); }

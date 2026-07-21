@@ -33,8 +33,20 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__eq__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'shape\', \'dtype\', \'ragged_rank\', \'row_splits_dtype\', \'flat_values_spec\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\", \'None\', \"<dtype: \'int64\'>\", \'None\'], "
+  }
+  member_method {
+    name: "__ne__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__tf_tracing_type__"
+    argspec: "args=[\'self\', \'context\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "cast"
@@ -63,6 +75,7 @@ tf_class {
   member_method {
     name: "from_value"
     argspec: "args=[\'cls\', \'value\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "is_compatible_with"

@@ -95,7 +95,7 @@ TEST_P(XlaShardingSerDesTest, RejectHloShardingV3Serialization) {
   auto options = std::make_unique<SerializeOptions>(version());
   EXPECT_THAT(
       Serialize(*sharding, std::move(options)),
-      StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kInvalidArgument,
           HasSubstr(
               "XLA HloShardingV3 format is not supported for serialization")));

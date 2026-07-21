@@ -1,1 +1,44 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+--- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
++++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+@@ -24633,9 +24633,10 @@
+   const Value *Base2 = getUnderlyingObject(Ptr2);
+   if (Base1 == Base2)
+     return false;
+-  if (Base2 < Base1)
+-    std::swap(Base1, Base2);
+-  return It->second.contains({Base1, Base2});
++  // The recorded pairs keep their discovery order (see
++  // recordRuntimeAliasCheck), so accept either orientation.
++  return It->second.contains({Base1, Base2}) ||
++         It->second.contains({Base2, Base1});
+ }
+ 
+ /// Returns true if \p BB's body already contains vector instructions, e.g.
+@@ -24675,16 +24676,20 @@
+   // Only a single block can be versioned per attempt.
+   if (RTChecks.BB && RTChecks.BB != BB)
+     return false;
+-  // Normalize the pair order so duplicate checks collapse.
+-  if (Base2 < Base1)
+-    std::swap(Base1, Base2);
++  // A base-object pair is unordered: (Base1, Base2) and (Base2, Base1) are the
++  // same check. Keep it in discovery (program) order and drop the reverse as a
++  // duplicate, rather than ordering by pointer value, which would make the
++  // emitted checks depend on allocation addresses.
+   auto Pair = std::make_pair(Base1, Base2);
++  bool Present = RTChecks.BasePairs.contains(Pair) ||
++                 RTChecks.BasePairs.contains({Base2, Base1});
+   // After the checks have been validated and bounded, do not introduce new
+   // pairs.
+   if (RTChecksFinalized)
+-    return RTChecks.BasePairs.contains(Pair);
++    return Present;
+   RTChecks.BB = BB;
+-  RTChecks.BasePairs.insert(Pair);
++  if (!Present)
++    RTChecks.BasePairs.insert(Pair);
+   return true;
+ }
+ 
