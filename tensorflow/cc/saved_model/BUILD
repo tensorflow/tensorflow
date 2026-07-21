@@ -421,7 +421,6 @@ cc_library(
         "//tensorflow/core:portable_tensorflow_lib_lite",
     ]) + [
         "//tensorflow/core/protobuf:for_core_protos_cc",
-        "//tensorflow/core/platform:protobuf",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
