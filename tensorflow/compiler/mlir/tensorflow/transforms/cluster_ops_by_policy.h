@@ -200,7 +200,7 @@ class ClusteringPolicySet {
  private:
   template <typename T, typename... Args>
   void AddImpl(Args&&... args) {
-    static_assert(std::is_base_of<ClusteringPolicy, T>::value,
+    static_assert(std::is_base_of_v<ClusteringPolicy, T>,
                   "T must implement ClusteringPolicy");
     policies_.emplace_back(std::make_unique<T>(std::forward<Args>(args)...));
   }

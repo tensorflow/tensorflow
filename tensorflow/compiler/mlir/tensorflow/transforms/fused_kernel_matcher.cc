@@ -199,7 +199,7 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     attrs.push_back(
         NamedAttribute(StringAttr::get(context, "epsilon"), epsilon));
 
-    if (std::is_same<FusedOpT, _FusedConv2DOp>::value) {
+    if (std::is_same_v<FusedOpT, _FusedConv2DOp>) {
       // Here TArgs types do not include types of the first two parameters,
       // i.e. the convolution input and the filter. TArgs are parameters for
       // the extras like the bias etc.
