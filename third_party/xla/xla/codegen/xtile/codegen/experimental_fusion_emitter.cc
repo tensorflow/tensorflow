@@ -892,6 +892,7 @@ absl::StatusOr<std::vector<TensorValue>> EmitScan(
   int num_operands = hlo_scan.inputs().size();
   SmallVector<Value> inputs;
   SmallVector<Value> inits;
+  SmallVector<Type> carry_types;
   SmallVector<Type> output_types;
 
   ASSIGN_OR_RETURN(SmallVector<int64_t> unpadded_tile_sizes,
@@ -918,22 +919,18 @@ absl::StatusOr<std::vector<TensorValue>> EmitScan(
     input = mlir::cast<TensorValue>(
         b.createOrFold<xtile::MaskOp>(input, mask_dim_bounds, neutral_value));
 
+    TensorValue init = emitter_ctx.TiledHloToTensorValue(
+        *tiled_hlo_scan.operand(num_operands + i));
+
     inputs.push_back(input);
-    inits.push_back(emitter_ctx.TiledHloToTensorValue(
-        *tiled_hlo_scan.operand(num_operands + i)));
+    inits.push_back(init);
+    carry_types.push_back(init.getType());
     output_types.push_back(input.getType());
   }
 
-  auto scan =
-      xtile::ScanOp::create(b,
-                            /*outputs=*/output_types,
-                            /*carries=*/output_types,
-                            /*inputs=*/inputs,
-                            /*inits=*/inits,
-                            /*dimension=*/hlo_scan.scan_dimension(),
-                            /*scan_dim_size=*/
-                            unpadded_tile_sizes[hlo_scan.scan_dimension()],
-                            /*is_reverse=*/hlo_scan.is_reverse());
+  auto scan = xtile::ScanOp::create(
+      b, output_types, carry_types, inputs, inits, hlo_scan.scan_dimension(),
+      unpadded_tile_sizes[hlo_scan.scan_dimension()], hlo_scan.is_reverse());
 
   RETURN_IF_ERROR(EmitScanComputation(b, &hlo_scan, hlo_scan.to_apply(), scan));
 
