@@ -656,8 +656,7 @@ absl::StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
 }
 
 bool RequireDeterminism(const HloModuleConfig& config) {
-  return config.debug_options().xla_gpu_deterministic_ops() ||
-         config.debug_options().xla_gpu_exclude_nondeterministic_ops();
+  return config.debug_options().xla_gpu_exclude_nondeterministic_ops();
 }
 
 namespace {

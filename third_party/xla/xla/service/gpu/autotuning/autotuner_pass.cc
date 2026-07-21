@@ -273,7 +273,6 @@ ConfigAssigner::Options GetConfigAssignerOptions(
       debug_options.xla_gpu_crash_on_verification_failures();
   options.dump_logs_to = debug_options.xla_gpu_dump_autotune_logs_to();
   options.select_first_config =
-      debug_options.xla_gpu_deterministic_ops() ||
       debug_options.xla_gpu_exclude_nondeterministic_ops() ||
       debug_options.xla_gpu_autotune_level() == 0;
 
@@ -380,8 +379,7 @@ AutotunerPass::GetGpuAutotunerBackends(
         autotuner::Backend::BLOCK_LEVEL_EMITTER);
   }
 
-  if (debug_options.xla_gpu_exclude_nondeterministic_ops() ||
-      debug_options.xla_gpu_deterministic_ops()) {
+  if (debug_options.xla_gpu_exclude_nondeterministic_ops()) {
     disabled_autotune_backends.push_back(autotuner::Backend::TRITON);
   }
 

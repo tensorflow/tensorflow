@@ -39,7 +39,6 @@ License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -61,13 +60,7 @@ bool HasTritonBlockLevelFusionConfig(const HloInstruction* fusion) {
                  .kind() == kTritonFusionKind;
 }
 
-struct FusionBlockLevelRewriterTestParams {
-  bool enable_same_shape_multi_output_fusion;
-};
-
-class FusionBlockLevelRewriterTest
-    : public HloHardwareIndependentTestBase,
-      public testing::WithParamInterface<FusionBlockLevelRewriterTestParams> {
+class FusionBlockLevelRewriterTest : public HloHardwareIndependentTestBase {
  public:
   FusionBlockLevelRewriterTest() {
     RegisterSymbolicExprStorage(&mlir_context_);
@@ -82,22 +75,12 @@ class FusionBlockLevelRewriterTest
         HloHardwareIndependentTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_experimental_enable_fusion_block_level_rewriter(
         true);
-    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(true);
-    debug_options.set_xla_experimental_enable_same_shape_multi_output_fusion(
-        GetParam().enable_same_shape_multi_output_fusion);
     return debug_options;
   }
   mlir::MLIRContext mlir_context_;
 };
 
-INSTANTIATE_TEST_SUITE_P(FusionBlockLevelRewriterTest,
-                         FusionBlockLevelRewriterTest,
-                         testing::ValuesIn<FusionBlockLevelRewriterTestParams>({
-                             {/*enable_same_shape_multi_output_fusion=*/true},
-                             {/*enable_same_shape_multi_output_fusion=*/false},
-                         }));
-
-TEST_P(FusionBlockLevelRewriterTest,
+TEST_F(FusionBlockLevelRewriterTest,
        DoesNotRewriteFusionThatIsAlreadyBlockLevel) {
   const absl::string_view hlo_text = R"(
 fusion_computation {
@@ -120,7 +103,7 @@ ENTRY entry {
       IsOkAndHolds(false));
 }
 
-TEST_P(FusionBlockLevelRewriterTest,
+TEST_F(FusionBlockLevelRewriterTest,
        RewritesFusionThatIsNotBlockLevelAndCanBeTiledAndCodegenedCorrectly) {
   const absl::string_view hlo_text = R"(
 fusion_computation {
@@ -146,20 +129,18 @@ ENTRY entry {
   EXPECT_TRUE(HasTritonBlockLevelFusionConfig(root));
 }
 
-TEST_P(FusionBlockLevelRewriterTest,
+TEST_F(FusionBlockLevelRewriterTest,
        DoesNotRewriteFusionThatIsNotBlockLevelAndCannotBeTiledCorrectly) {
   // TODO: b/502910372 - update the test when we support multi-output fusions.
   const absl::string_view hlo_text = R"hlo(
 f {
   p0 = f32[10] parameter(0)
-  p1 = f32[20] parameter(1)
-  ROOT multi_output = (f32[10], f32[20]) tuple(p0, p1)
+  ROOT multi_output = (f32[10], f32[10]) tuple(p0, p0)
 }
 
 ENTRY entry {
   p0 = f32[10] parameter(0)
-  p1 = f32[20] parameter(1)
-  ROOT fusion = (f32[10], f32[20]) fusion(p0, p1), kind=kLoop, calls=f
+  ROOT fusion = (f32[10], f32[10]) fusion(p0), kind=kLoop, calls=f
 })hlo";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_text));
@@ -177,41 +158,7 @@ ENTRY entry {
       IsOkAndHolds(false));
 }
 
-TEST_P(FusionBlockLevelRewriterTest,
-       RewritesMultiOutputFusionWithIdenticalShapes) {
-  if (!GetParam().enable_same_shape_multi_output_fusion) {
-    GTEST_SKIP() << "Multi-output fusion with identical shapes requires "
-                    "xla_experimental_enable_same_shape_multi_output_fusion";
-  }
-
-  const absl::string_view hlo_text = R"hlo(
-f {
-  p0 = f32[10,10] parameter(0)
-  p1 = f32[10,10] parameter(1)
-  add = f32[10,10] add(p0, p1)
-  sub = f32[10,10] subtract(p0, p1)
-  ROOT multi_output = (f32[10,10], f32[10,10]) tuple(add, sub)
-}
-
-ENTRY entry {
-  p0 = f32[10,10] parameter(0)
-  p1 = f32[10,10] parameter(1)
-  ROOT fusion = (f32[10,10], f32[10,10]) fusion(p0, p1), kind=kLoop, calls=f
-})hlo";
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                       ParseAndReturnVerifiedModule(hlo_text));
-  EXPECT_THAT(
-      FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize,
-                               &mlir_context_)
-          .Run(module.get()),
-      IsOkAndHolds(true));
-  const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_EQ(root->opcode(), HloOpcode::kFusion);
-  EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kCustom);
-  EXPECT_TRUE(HasTritonBlockLevelFusionConfig(root));
-}
-
-TEST_P(FusionBlockLevelRewriterTest,
+TEST_F(FusionBlockLevelRewriterTest,
        DoesNotRewriteFusionThatIsNotBlockLevelAndCannotBeCodegenedCorrectly) {
   const absl::string_view hlo_text = R"(
 fusion_computation {
@@ -236,7 +183,7 @@ ENTRY entry {
       IsOkAndHolds(false));
 }
 
-TEST_P(FusionBlockLevelRewriterTest, RewritesS32ReductionFusions) {
+TEST_F(FusionBlockLevelRewriterTest, RewritesS32ReductionFusions) {
   constexpr absl::string_view kHloText = R"(
 
 %scalar_add_computation {
@@ -275,7 +222,7 @@ ENTRY entry  {
   EXPECT_TRUE(HasTritonBlockLevelFusionConfig(root));
 }
 
-TEST_P(FusionBlockLevelRewriterTest,
+TEST_F(FusionBlockLevelRewriterTest,
        RewritesLoopTransposeFusionWithSplitDimensions) {
   // This test checks if the rewriter can handle a transpose where dimensions
   // are split in the HLO but logically contiguous.
@@ -307,7 +254,7 @@ ENTRY entry {
   EXPECT_TRUE(HasTritonBlockLevelFusionConfig(root));
 }
 
-TEST_P(FusionBlockLevelRewriterTest,
+TEST_F(FusionBlockLevelRewriterTest,
        DoesNotRewriteMultiOutputFusionIfTritonMultiOutputDisabled) {
   const absl::string_view hlo_text = R"(
 %scalar_add_computation {
@@ -343,7 +290,7 @@ ENTRY entry  {
       IsOkAndHolds(false));
 }
 
-TEST_P(FusionBlockLevelRewriterTest, DoesNotRewriteFusionContainingDot) {
+TEST_F(FusionBlockLevelRewriterTest, DoesNotRewriteFusionContainingDot) {
   const absl::string_view hlo_text = R"(
 fusion_computation {
   param_0 = f32[10,10] parameter(0)

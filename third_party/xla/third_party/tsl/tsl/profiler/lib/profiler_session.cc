@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
@@ -75,6 +76,55 @@ void SetProfileOptionsIntoSpace(const ProfileOptions& options, XSpace* space) {
 absl::Status ProfilerSession::Status() {
   absl::MutexLock l(mutex_);
   return status_;
+}
+
+bool ProfilerSession::IsContinuousProfilingEnabled() const {
+#if defined(IS_MOBILE_PLATFORM)
+  return false;
+#else
+  const auto& advanced_config = options_.advanced_configuration();
+  auto it = advanced_config.find("enable_continuous_profiling");
+  return (it != advanced_config.end()) && it->second.bool_value();
+#endif
+}
+
+absl::Status ProfilerSession::Stop() {
+#if !defined(IS_MOBILE_PLATFORM)
+  absl::MutexLock l(mutex_);
+  if (profilers_ != nullptr) {
+    auto status = profilers_->Stop();
+    stop_time_ns_ = profiler::GetCurrentTimeNanos();
+    return status;
+  }
+#endif
+  return absl::OkStatus();
+}
+
+std::vector<tensorflow::profiler::XSpace> ProfilerSession::SerializeChunks() {
+  std::vector<tensorflow::profiler::XSpace> spaces;
+#if !defined(IS_MOBILE_PLATFORM)
+  absl::MutexLock l(mutex_);
+  if (profilers_ == nullptr) {
+    profiler_lock_.ReleaseIfActive();
+    return spaces;
+  }
+
+  auto* orchestrator = dynamic_cast<
+      profiler::ContinuousProfilerOrchestrator<profiler::ProfilerInterface>*>(
+      profilers_.get());
+  if (orchestrator != nullptr) {
+    spaces = orchestrator->SerializeChunks();
+  }
+  for (auto& space : spaces) {
+    profiler::SetXSpacePidIfNotSet(space, tsl::Env::Default()->GetProcessId());
+    profiler::PostProcessSingleHostXSpace(&space, start_time_ns_,
+                                          stop_time_ns_);
+    SetProfileOptionsIntoSpace(options_, &space);
+  }
+  profilers_.reset();
+  profiler_lock_.ReleaseIfActive();
+#endif
+  return spaces;
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
