@@ -1245,6 +1245,16 @@ TEST_F(HloInstructionTest, IdenticalInstructions) {
   EXPECT_FALSE(Identical(
       *HloInstruction::CreateBinary(shape, HloOpcode::kAdd, op1, op2),
       *HloInstruction::CreateBinary(shape, HloOpcode::kDivide, op1, op2)));
+
+  // Constants with no literal. This might happen if something called
+  // DropLiteral on the HLO instruction. If two distinct constant instructions
+  // have their literals dropped, then we conservatively assume those
+  // instructions didn't match.
+  HloConstantInstruction no_literal0(shape);
+  HloConstantInstruction no_literal1(shape);
+  EXPECT_TRUE(Identical(no_literal0, no_literal0));
+  EXPECT_FALSE(Identical(no_literal0, no_literal1));
+  EXPECT_FALSE(Identical(no_literal0, *operand1));
 }
 
 TEST_F(HloInstructionTest, IdenticalCallInstructions) {

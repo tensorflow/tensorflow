@@ -2031,8 +2031,13 @@ bool HloConstantInstruction::IdenticalSlowPath(
     const HloInstruction& other,
     absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
-  const auto& other_slice = static_cast<const HloSliceInstruction&>(other);
-  return literal() == other_slice.literal();
+  const auto& other_constant =
+      static_cast<const HloConstantInstruction&>(other);
+  // Conservatively assume that if a literal is missing it doesn't match.
+  if (!HasLiteral() || !other_constant.HasLiteral()) {
+    return false;
+  }
+  return literal() == other_constant.literal();
 }
 
 std::unique_ptr<HloInstruction>
