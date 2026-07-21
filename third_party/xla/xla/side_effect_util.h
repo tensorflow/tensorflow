@@ -132,6 +132,9 @@ extern const char kXlaSampleCountAttr[];
 // Collectives with different combiner_key values will not be combined together.
 extern const char kCombinerKeyAttr[];
 
+// Frontend attribute key marking collectives selected for explicit pipelining.
+extern const char kIsPipelineableAttr[];
+
 // Frontend attribute key used to control loop unrolling.
 extern const char kXlaLoopUnrollAttr[];
 
