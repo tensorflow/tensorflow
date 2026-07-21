@@ -18,6 +18,8 @@ limitations under the License.
 #include <memory>
 
 #include "google/protobuf/any.pb.h"
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -480,6 +482,59 @@ TEST_P(CollRMADistTest, ConsFirstAbort) {
   rma_->StartAbort(absl::InternalError("Deliberate Failure"));
   consumer_note.WaitForNotification();
   EXPECT_EQ(consumer_status.message(), "Cancelled");
+}
+
+TEST_P(CollRMADistTest, ResponseTooLargeTriggersUAF) {
+  // When running this test, use the following arguments: --config=asan
+  ResolveDeviceAttributes();
+  absl::Notification consumer_note;
+  absl::Notification producer_note;
+  absl::Status consumer_status;
+  absl::Status producer_status;
+  FakeWorker* wi = workers_[1];
+  const std::string kBufKey = "fake_buf_key";
+  wi->buf_rendezvous()->ProvideBuf(
+      kBufKey, nullptr /*device*/, nullptr /*dev_ctx*/, &large_response_,
+      AllocatorAttributes(),
+      [&producer_note, &producer_status](const absl::Status& s) {
+        producer_status.Update(s);
+        producer_note.Notify();
+      },
+      nullptr /*cancellation_manager*/);
+  Device* dst_device = nullptr;
+  std::string dev_name = "CPU:0";
+  TF_EXPECT_OK(device_mgrs_[0]->LookupDevice(dev_name, &dst_device));
+  DeviceContext* to_device_ctx = nullptr;
+  MaybeSetGPUDevice(dst_device);
+
+  FakeCache* dynamic_wc = new FakeCache();
+  for (int w = 0; w < 2; ++w) {
+    std::string name = absl::StrCat("/job:worker/replica:0/task:", w);
+    dynamic_wc->AddWorker(name, workers_[w]);
+  }
+
+  auto dynamic_rma = std::make_unique<CollectiveRemoteAccessDistributed>(
+      device_mgrs_[0], dev_resolvers_["/job:worker/replica:0/task:0"],
+      work_queue_, dynamic_wc, kStepId, "/job:worker/replica:0/task:0");
+
+  dynamic_rma->RecvFromPeer(
+      "/job:worker/replica:0/task:1/device:" + dev_name,  // peer_dev
+      "/job:worker/replica:0/task:1",                     // peer_task
+      false,                                              // peer_is_local
+      kBufKey, dst_device, to_device_ctx, alloc_attr_, &to_tensor_,
+      device_locality_, 0 /*dev_to_dev_stream_index*/,
+      nullptr /*cancellation_manager*/,
+      [&consumer_status, &consumer_note, dynamic_wc](const absl::Status& s) {
+        consumer_status = s;
+        delete dynamic_wc;  // This will cause UAF in delete state;
+        consumer_note.Notify();
+      });
+  consumer_note.WaitForNotification();
+  EXPECT_THAT(consumer_status.message(),
+              ::testing::HasSubstr("Tensor Size Mismatch"));
+  producer_note.WaitForNotification();
+  TF_EXPECT_OK(producer_status);
+  ValidateResultTensorUnchanged();
 }
 
 TEST_P(CollRMADistTest, ResponseTooLarge) {
