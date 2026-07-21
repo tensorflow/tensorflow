@@ -103,10 +103,10 @@ class GpuExecutableVaRemapAllocator::VaRemapExecutionScope
   bool va_remap_enabled() const override { return true; }
 
   // Builds an execution-only address table, maps caller- or allocator-owned
-  // parameter buffers into their stable reservation addresses, and passes the
-  // persistent allocation indices (constants and VA-remapped allocations) to
-  // `execute`. The owning address table remains unchanged for result handling
-  // and TearDown.
+  // input/output buffers into their stable reservation addresses, and passes
+  // the persistent allocation indices (constants and VA-remapped allocations)
+  // to `execute`. The owning address table remains unchanged for result
+  // handling and TearDown.
   absl::Status ExecuteWithBufferAllocations(
       const BufferAllocations& owning_buffer_allocations, int device_ordinal,
       absl::FunctionRef<
@@ -141,9 +141,9 @@ class GpuExecutableVaRemapAllocator::VaRemapExecutionScope
   absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> AllocateBuffer(
       int device_ordinal, const BufferAllocation& allocation,
       int64_t buffer_size);
-  // Installs reservation aliases for selected parameter buffers and returns an
-  // execution-only address table that refers to them. The owning address table
-  // remains unchanged.
+  // Installs reservation aliases for selected input/output buffers and returns
+  // an execution-only address table that refers to them. The owning address
+  // table remains unchanged.
   absl::StatusOr<BufferAllocations> GetRemappedBufferAllocations(
       const BufferAllocations& owning_buffer_allocations, int device_ordinal);
 
@@ -260,9 +260,9 @@ absl::StatusOr<BufferAllocations> GpuExecutableVaRemapAllocator::
         const BufferAllocations& owning_buffer_allocations,
         int device_ordinal) {
   // This is a non-owning copy of the finalized address table. Output donation
-  // and copy protection run before this method and may replace parameter
-  // entries, so parameter aliases must be installed from these current
-  // addresses instead of during GenerateBufferAllocations.
+  // and copy protection run before this method and may replace input/output
+  // entries, so aliases must be installed from these current addresses instead
+  // of during GenerateBufferAllocations.
   BufferAllocations execution_allocations(
       owning_buffer_allocations.buffers(),
       owning_buffer_allocations.device_ordinal(),
@@ -270,15 +270,15 @@ absl::StatusOr<BufferAllocations> GpuExecutableVaRemapAllocator::
 
   for (BufferAllocation::Index index : owner_->va_remapped_alloc_indices_) {
     const BufferAllocation& allocation = *owner_->allocations()[index];
-    if (!allocation.is_entry_computation_parameter()) {
+    if (!allocation.IsInputOrOutput()) {
       continue;
     }
     const se::DeviceAddressBase buffer =
         owning_buffer_allocations.GetDeviceAddress(index);
     if (buffer.is_null()) {
       return Internal(
-          "Command buffer VA remapping selected parameter allocation %d, but "
-          "the parameter buffer is null for this execution",
+          "Command buffer VA remapping selected input/output allocation %d, "
+          "but its buffer is null for this execution",
           allocation.index());
     }
     ASSIGN_OR_RETURN(uint64_t va_offset,
@@ -286,8 +286,8 @@ absl::StatusOr<BufferAllocations> GpuExecutableVaRemapAllocator::
     ASSIGN_OR_RETURN(uint64_t mapping_size,
                      remapping_->GetMappingSize(allocation.index()));
     // Map() reactivates a matching stale mapping from the previous execution,
-    // so a parameter that keeps its address across executions performs no VMM
-    // driver calls here.
+    // so an input/output that keeps its address across executions performs no
+    // VMM driver calls here.
     RETURN_IF_ERROR(vmm_allocator_->Map(device_ordinal, buffer,
                                         remapping_->va_reservation.get(),
                                         va_offset, mapping_size));
@@ -316,7 +316,8 @@ absl::StatusOr<se::DeviceAddressBase>
 GpuExecutableVaRemapAllocator::VaRemapExecutionScope::AllocateTransientBuffer(
     int device_ordinal, const BufferAllocation& allocation, int64_t buffer_size,
     se::DeviceAddressAllocator* memory_allocator) {
-  if (!ShouldRemapAllocation(allocation.index())) {
+  if (!ShouldRemapAllocation(allocation.index()) ||
+      allocation.maybe_live_out()) {
     return ExecutionScope::AllocateTransientBuffer(
         device_ordinal, allocation, buffer_size, memory_allocator);
   }
