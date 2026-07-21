@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
@@ -538,19 +539,20 @@ void DnnPoolingGradImpl(OpKernelContext* context,
     return;
   }
 
-  PoolParameters params{context,           size,        stride,         padding,
-                        explicit_paddings, data_format, tensor_in_shape};
-
-  if (params.out_height == 0 || params.out_width == 0) {
-    input_backprop->flat<T>()
-         .device(context->eigen_device<GPUDevice>())
-         .setZero();
-    return;
-  }
+  PoolParameters params{context, size, stride, padding, explicit_paddings,
+                        data_format, tensor_in_shape};
 
   if (!context->status().ok()) {
     return;
   }
+
+  if (params.out_height == 0 || params.out_width == 0) {
+    functor::SetZeroFunctor<GPUDevice, T>()(
+        context->eigen_device<GPUDevice>(),
+        input_backprop->flat<T>());
+    return;
+  }
+
   if (tensor_out) {
     TensorShape params_forward_output_shape;
     OP_REQUIRES_OK(context,
