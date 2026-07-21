@@ -97,6 +97,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "riegeli/bytes/cord_reader.h"
 #include "riegeli/bytes/string_reader.h"
 #include "riegeli/bytes/string_writer.h"
 #include "xla/client/executable_build_options.h"
@@ -2377,9 +2378,10 @@ PjRtStreamExecutorClient::BuildPjRtExecutable(
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
 PjRtStreamExecutorClient::DeserializeExecutable(
-    absl::string_view serialized, std::optional<CompileOptions> options) {
+    std::unique_ptr<riegeli::Reader> reader,
+    std::optional<CompileOptions> options) {
   ASSIGN_OR_RETURN(ExecutableAndOptionsProto proto,
-                   SerializedGpuExecutableFromString(serialized));
+                   SerializedGpuExecutableFromReader(std::move(reader)));
   if (!proto.pjrt_client_name().empty() &&
       proto.pjrt_client_name() != kPjRtClientName) {
     return Internal(
@@ -2409,9 +2411,32 @@ PjRtStreamExecutorClient::DeserializeExecutable(
   return BuildPjRtExecutable(std::nullopt, std::move(loaded), compile_options);
 }
 
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+PjRtStreamExecutorClient::DeserializeExecutable(
+    absl::string_view serialized, std::optional<CompileOptions> options) {
+  return DeserializeExecutable(
+      std::make_unique<riegeli::StringReader<>>(serialized),
+      std::move(options));
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+PjRtStreamExecutorClient::DeserializeExecutable(
+    const absl::Cord& serialized, std::optional<CompileOptions> options) {
+  return DeserializeExecutable(
+      std::make_unique<riegeli::CordReader<>>(&serialized), std::move(options));
+}
+
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtStreamExecutorClient::LoadSerializedExecutable(
     absl::string_view serialized, std::optional<CompileOptions> options,
+    const LoadOptions& load_options) {
+  ASSIGN_OR_RETURN(auto executable, DeserializeExecutable(serialized, options));
+  return LoadInternal(std::move(executable), /*dump=*/true);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+PjRtStreamExecutorClient::LoadSerializedExecutable(
+    const absl::Cord& serialized, std::optional<CompileOptions> options,
     const LoadOptions& load_options) {
   ASSIGN_OR_RETURN(auto executable, DeserializeExecutable(serialized, options));
   return LoadInternal(std::move(executable), /*dump=*/true);

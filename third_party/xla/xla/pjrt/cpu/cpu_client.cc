@@ -131,6 +131,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/denormal.h"
 #include "tsl/platform/fingerprint.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/setround.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -630,15 +631,11 @@ PjRtCpuExecutable::GetOutputMemoryKinds() const {
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtCpuClient::LoadSerializedExecutable(absl::string_view serialized,
-                                        std::optional<CompileOptions> options,
-                                        const LoadOptions& load_options) {
+PjRtCpuClient::LoadSerializedExecutableInternal(
+    google::protobuf::io::ZeroCopyInputStream* stream,
+    std::optional<CompileOptions> options, const LoadOptions& load_options) {
   ExecutableAndOptionsProto proto;
-  if (serialized.size() > std::numeric_limits<int>::max()) {
-    return Internal(
-        "PjRtCpuClient::DeserializeExecutable proto too large (>2GB)");
-  }
-  if (!proto.ParseFromString(serialized)) {
+  if (!proto.ParseFromZeroCopyStream(stream)) {
     return Internal(
         "PjRtCpuClient::DeserializeExecutable proto deserialization failed");
   }
@@ -704,6 +701,32 @@ PjRtCpuClient::LoadSerializedExecutable(absl::string_view serialized,
   RETURN_IF_ERROR(cpu_executable->SetUpDonation(
       compile_options.parameter_is_tupled_arguments));
   return LoadInternal(std::move(cpu_executable), std::move(device_assignment));
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+PjRtCpuClient::LoadSerializedExecutable(absl::string_view serialized,
+                                        std::optional<CompileOptions> options,
+                                        const LoadOptions& load_options) {
+  if (serialized.size() > std::numeric_limits<int>::max()) {
+    return Internal(
+        "PjRtCpuClient::DeserializeExecutable proto too large (>2GB)");
+  }
+  google::protobuf::io::ArrayInputStream stream(serialized.data(), serialized.size());
+  return LoadSerializedExecutableInternal(&stream, std::move(options),
+                                          load_options);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+PjRtCpuClient::LoadSerializedExecutable(const absl::Cord& serialized,
+                                        std::optional<CompileOptions> options,
+                                        const LoadOptions& load_options) {
+  if (serialized.size() > std::numeric_limits<int>::max()) {
+    return Internal(
+        "PjRtCpuClient::DeserializeExecutable proto too large (>2GB)");
+  }
+  google::protobuf::io::CordInputStream stream(&serialized);
+  return LoadSerializedExecutableInternal(&stream, std::move(options),
+                                          load_options);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
@@ -2099,8 +2122,8 @@ PjRtCpuLoadedExecutable::Execute(
                          argument_handles[0], wrapped_results[0]);
     return wrapped_results;
   }
-    return CommonPjRtLoadedExecutable::Execute(argument_handles, options,
-                                               returned_futures);
+  return CommonPjRtLoadedExecutable::Execute(argument_handles, options,
+                                             returned_futures);
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>

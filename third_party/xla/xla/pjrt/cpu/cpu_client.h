@@ -77,6 +77,7 @@ limitations under the License.
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -190,6 +191,11 @@ class PjRtCpuClient final : public CommonPjRtClient {
   // TODO(b/237720161): make it actually optional
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
   LoadSerializedExecutable(absl::string_view serialized,
+                           std::optional<CompileOptions> options,
+                           const LoadOptions& load_options) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+  LoadSerializedExecutable(const absl::Cord& serialized,
                            std::optional<CompileOptions> options,
                            const LoadOptions& load_options) override;
 
@@ -311,6 +317,11 @@ class PjRtCpuClient final : public CommonPjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadInternal(
       std::shared_ptr<PjRtCpuExecutable> cpu_executable,
       std::shared_ptr<DeviceAssignment> device_assignment);
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+  LoadSerializedExecutableInternal(google::protobuf::io::ZeroCopyInputStream* stream,
+                                   std::optional<CompileOptions> options,
+                                   const LoadOptions& load_options);
 
   CpuDeviceMemory::Allocator* allocator() const { return allocator_.get(); }
 

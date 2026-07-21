@@ -26,7 +26,9 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
+#include "riegeli/bytes/reader.h"
 #include "xla/client/local_client.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/pjrt_abi_version.h"
@@ -127,8 +129,12 @@ class StreamExecutorExecutable : public PjRtExecutable {
 // Reads a serialized ExecutableAndOptionsProto from a string. GPU executables
 // are serialized as a custom format that supports executables larger than 2GB
 // (unlike regular protos).
+absl::StatusOr<ExecutableAndOptionsProto> SerializedGpuExecutableFromReader(
+    std::unique_ptr<riegeli::Reader> reader);
 absl::StatusOr<ExecutableAndOptionsProto> SerializedGpuExecutableFromString(
     absl::string_view serialized);
+absl::StatusOr<ExecutableAndOptionsProto> SerializedGpuExecutableFromString(
+    const absl::Cord& serialized);
 
 }  // namespace xla
 

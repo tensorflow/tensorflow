@@ -27,11 +27,14 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "riegeli/base/maker.h"
+#include "riegeli/bytes/cord_reader.h"
 #include "riegeli/bytes/string_reader.h"
 #include "riegeli/bytes/string_writer.h"
+#include "riegeli/messages/parse_message.h"
 #include "xla/client/local_client.h"
 #include "xla/layout.h"
 #include "xla/pjrt/compiled_memory_stats.h"
@@ -400,10 +403,9 @@ StreamExecutorExecutable::GetAbiVersion() const {
       platform_id_, std::move(executable_abi_version));
 }
 
-absl::StatusOr<ExecutableAndOptionsProto> SerializedGpuExecutableFromString(
-    absl::string_view serialized) {
+absl::StatusOr<ExecutableAndOptionsProto> SerializedGpuExecutableFromReader(
+    std::unique_ptr<riegeli::Reader> reader) {
   ExecutableAndOptionsProto proto;
-  auto reader = std::make_unique<riegeli::StringReader<>>(serialized);
   // The serialized string may be of the new SplitProto format (which allows
   // executables larger than 2GB) or the legacy format which is just a regular
   // proto.
@@ -415,13 +417,20 @@ absl::StatusOr<ExecutableAndOptionsProto> SerializedGpuExecutableFromString(
     return proto;
   }
 
-  if (!proto.ParseFromString(serialized)) {
-    return Internal(
-        "Failed to read serialized StreamExecutorExecutable: Proto "
-        "deserialization failed");
-  }
-
+  RETURN_IF_ERROR(riegeli::ParseMessage(std::move(reader), proto));
   return proto;
+}
+
+absl::StatusOr<ExecutableAndOptionsProto> SerializedGpuExecutableFromString(
+    absl::string_view serialized) {
+  return SerializedGpuExecutableFromReader(
+      std::make_unique<riegeli::StringReader<>>(serialized));
+}
+
+absl::StatusOr<ExecutableAndOptionsProto> SerializedGpuExecutableFromString(
+    const absl::Cord& serialized) {
+  return SerializedGpuExecutableFromReader(
+      std::make_unique<riegeli::CordReader<>>(&serialized));
 }
 
 }  // namespace xla

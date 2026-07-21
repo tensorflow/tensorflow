@@ -250,6 +250,7 @@ cc_library(
         "@eigen_archive//:eigen3",
         "@tsl//tsl/platform:denormal",
         "@tsl//tsl/platform:fingerprint",
+        "@tsl//tsl/platform:protobuf",
         "@tsl//tsl/platform:setround",
         "@tsl//tsl/profiler/lib:traceme",
     ],

@@ -705,6 +705,13 @@ class PjRtClient {
         "Deserializing serialized executable not supported.");
   }
 
+  // A variant of `DeserializeExecutable` that accepts a Cord.
+  virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      const absl::Cord& serialized, std::optional<CompileOptions> options) {
+    return DeserializeExecutable(absl::Cord(serialized).Flatten(),
+                                 std::move(options));
+  }
+
   // LoadSerializedExecutable takes the serialized output of PjRtExecutable. The
   // returned executable is loaded by this client. The same checks are made as
   // in Load that the serialized executable is compatible with the client.
@@ -717,6 +724,15 @@ class PjRtClient {
                            const LoadOptions& load_options) {
     return absl::UnimplementedError(
         "Loading serialized executable not supported.");
+  }
+
+  // A variant of `LoadSerializedExecutable` that accepts a Cord.
+  virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+  LoadSerializedExecutable(const absl::Cord& serialized,
+                           std::optional<CompileOptions> options,
+                           const LoadOptions& load_options) {
+    return LoadSerializedExecutable(absl::Cord(serialized).Flatten(),
+                                    std::move(options), load_options);
   }
 
   // Loads the executable returns aa PjRtLoadedExecutable runnable by this
