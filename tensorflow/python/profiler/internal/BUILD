@@ -183,7 +183,7 @@ cc_library(
     name = "profiler_pywrap_impl",
     srcs = ["profiler_pywrap_impl.cc"],
     hdrs = ["profiler_pywrap_impl.h"],
-    visibility = ["//visibility:private"],
+    visibility = ["//tensorflow/python:__pkg__"],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
