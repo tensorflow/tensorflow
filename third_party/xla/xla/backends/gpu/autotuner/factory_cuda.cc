@@ -55,7 +55,8 @@ std::unique_ptr<HloPassPipeline> GetCublasLtRewriterPipeline(
     const stream_executor::DeviceDescription& device_description) {
   auto pipeline =
       std::make_unique<HloPassPipeline>("cublaslt_rewriter_pipeline");
-  pipeline->AddPass(std::make_unique<DotAlgorithmRewriter>());
+  pipeline->AddPass(std::make_unique<DotAlgorithmRewriter>(
+      device_description.gpu_compute_capability()));
   pipeline->AddPass(std::make_unique<ScaledDotRewriter>());
   for (GemmRewriterOptions::DType dtype :
        {GemmRewriterOptions::DType::kFp8Only,

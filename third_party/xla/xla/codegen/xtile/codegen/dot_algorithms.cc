@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/service/algorithm_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/tensor_float_32_utils.h"
 
 namespace xla {
 namespace xtile {
@@ -162,30 +163,9 @@ Value EmitStableHloDotAndAdd(mlir::ImplicitLocOpBuilder& b, Value lhs,
 absl::StatusOr<Type> GetAlgUnsetAccumulatorType(mlir::ImplicitLocOpBuilder& b,
                                                 const HloDotInstruction& dot) {
   ASSIGN_OR_RETURN(
-      Type lhs_type,
-      PrimitiveTypeToMlirType(b, dot.operand(0)->shape().element_type()));
-  ASSIGN_OR_RETURN(
-      Type rhs_type,
-      PrimitiveTypeToMlirType(b, dot.operand(1)->shape().element_type()));
-  ASSIGN_OR_RETURN(Type accumulator_type,
-                   PrimitiveTypeToMlirType(b, dot.shape().element_type()));
-
-  // The code below assumes that lhs and rhs have the same type. However
-  // this may not always be the case with f8 matmuls, e.g. e4m3×e5m2 is
-  // supported at the hardware level. NVIDIA GPUs currently only support f32
-  // accumulators for such matmuls.
-  if (lhs_type.isFloat(8) && rhs_type.isFloat(8)) {
-    return b.getF32Type();
-  }
-
-  CHECK(lhs_type == rhs_type);
-
-  // Currently allowing 8x8-bit ints -> i32.
-  if (lhs_type == b.getIntegerType(8) && accumulator_type.isInteger(32)) {
-    return b.getI32Type();
-  }
-  return (accumulator_type.isF64() && lhs_type.isF64()) ? b.getF64Type()
-                                                        : b.getF32Type();
+      PrimitiveType accumulator_type,
+      algorithm_util::GetDefaultGemmAlgorithmAccumulatorType(&dot));
+  return PrimitiveTypeToMlirType(b, accumulator_type);
 }
 
 absl::StatusOr<std::optional<Type>> DotDefaultOperandsType(
@@ -200,6 +180,9 @@ absl::StatusOr<std::optional<Type>> DotDefaultOperandsType(
   if (lhs_type != rhs_type) {
     return std::nullopt;
   }
+  LOG(INFO) << "DotDefaultOperandsType: dot=" << dot.name()
+            << " lhs_type=" << dot.operand(0)->shape().ToString()
+            << " rhs_type=" << dot.operand(1)->shape().ToString();
   if (!lhs_type.isFloat(32)) {
     return std::nullopt;
   }
@@ -209,7 +192,8 @@ absl::StatusOr<std::optional<Type>> DotDefaultOperandsType(
       return lhs_type;
     }
   }
-  if (debug_options.xla_gpu_default_to_alg_dot_bf16_bf16_f32()) {
+  if (debug_options.xla_gpu_match_tpu_precision() &&
+      tsl::tensor_float_32_execution_enabled()) {
     return b.getBF16Type();
   }
   return lhs_type;

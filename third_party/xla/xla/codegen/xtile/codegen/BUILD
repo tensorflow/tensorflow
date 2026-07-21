@@ -170,6 +170,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@stablehlo//:stablehlo_ops",
+        "@tsl//tsl/platform:tensor_float_32_utils",
     ],
 )
 

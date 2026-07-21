@@ -132,6 +132,10 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__call__"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'name\', \'dtype\', \'from_logits\', \'label_smoothing\'], varargs=None, keywords=None, defaults=[\'binary_crossentropy\', \'None\', \'False\', \'0\'], "
   }

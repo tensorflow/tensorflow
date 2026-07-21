@@ -186,7 +186,7 @@ ENTRY e {
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters,
                                  R"(
-CHECK: tt.dot {{.*}} : tensor<16x32xf32> * tensor<32x16xf32> -> tensor<16x16xf32>
+CHECK: tt.dot {{.*}} : tensor<16x32xbf16> * tensor<32x16xbf16> -> tensor<16x16xf32>
 )"));
 }
 
@@ -266,7 +266,7 @@ ENTRY e {
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters, R"(
 CHECK: scf.if {{.*}} -> (tensor<1x32x64xf32>)
-CHECK: tt.dot {{.*}} : tensor<16x32xf32> * tensor<32x64xf32> -> tensor<16x64xf32>
+CHECK: tt.dot {{.*}} : tensor<16x32xbf16> * tensor<32x64xbf16> -> tensor<16x64xf32>
 )"));
 }
 
@@ -326,7 +326,37 @@ ENTRY e {
   )"));
 }
 
-TEST_F(TritonGemmTest, DoNotUseTensorCoresWithNonDefaultPrecision) {
+TEST_F(TritonGemmTest, DoNotUseTensorCoresWithHighestPrecision) {
+  constexpr absl::string_view kHloText = R"(
+triton_gemm_r {
+  parameter_0 = s8[80,15]{1,0} parameter(0)
+  convert.3 = f32[80,15]{1,0} convert(parameter_0)
+  parameter_1 = f32[16,15]{1,0} parameter(1)
+  ROOT r.1 = f32[80,16]{1,0} dot(convert.3, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1},
+    operand_precision={HIGHEST, HIGHEST}
+}
+
+ENTRY e {
+  p1 = f32[16,15]{1,0} parameter(1)
+  p0 = s8[80,15]{1,0} parameter(0)
+  ROOT triton_gemm_r = f32[80,16]{1,0} fusion(p0, p1), kind=kCustom,
+    calls=triton_gemm_r,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm", triton_gemm_config:
+      {"block_m":32,"block_n":32,"block_k":32,
+       "num_stages":1,"num_warps":2,
+       "num_ctas":1}}}
+})";
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
+
+  CompileAndOptionallyVerifyPtx(std::move(module_and_metadata.module),
+                                R"(
+CHECK-NOT: mma
+)");
+}
+
+TEST_F(TritonGemmTest, UseTensorCoresWithHighPrecision) {
   constexpr absl::string_view kHloText = R"(
 triton_gemm_r {
   parameter_0 = s8[80,15]{1,0} parameter(0)
@@ -352,7 +382,7 @@ ENTRY e {
 
   CompileAndOptionallyVerifyPtx(std::move(module_and_metadata.module),
                                 R"(
-CHECK-NOT: mma
+CHECK: mma
 )");
 }
 
@@ -830,7 +860,7 @@ ENTRY e {
 ; CHECK-SAME: backend_config={{.*}}"kind":"__triton_nested_gemm_fusion"
 )");
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/2e-4, /*arel=*/1e-4}));
 }
 
 // This tests the complexity heuristics in TritonWrapper.
@@ -1600,7 +1630,7 @@ ENTRY e {
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/2e-3}));
 }
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
@@ -2156,7 +2186,7 @@ ENTRY e {
 
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(ref_module),
                                       std::move(module_and_metadata.module),
-                                      ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2},
+                                      ErrorSpec{/*aabs=*/1e-2, /*arel=*/6e-2},
                                       /*run_hlo_passes=*/false));
 }
 

@@ -46,8 +46,7 @@ class XTileDialectTestParameterized
       public ::testing::WithParamInterface<bool> {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options =
-        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = XTileDialectTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_experimental_enable_tiling_propagation(
         GetParam());
     return debug_options;
@@ -285,7 +284,7 @@ ENTRY e {
 // CHECK:         %[[EXTRACT1:.*]] = xtile.extract %arg1[] [] [] : memref<f32> -> tensor<f32>
 // CHECK:         %[[OUTPUT:.*]], %{{.*}} = xtile.scan(%[[EXTRACT0]]) inits(%[[EXTRACT1]])
 // CHECK-SAME:        dimension = 0 {scan_dim_size = 1024 : i64}
-// CHECK-SAME:        : (tensor<1024xf32>), (tensor<f32>) -> (tensor<1024xf32>), (tensor<1024xf32>) {
+// CHECK-SAME:        : (tensor<1024xf32>), (tensor<f32>) -> (tensor<1024xf32>), (tensor<f32>) {
 // CHECK:         ^bb0(%[[INPUT:.*]]: tensor<f32>, %[[CARRY:.*]]: tensor<f32>):
 // CHECK:           %[[ADD:.*]] = stablehlo.add %[[INPUT]], %[[CARRY]] : tensor<f32>
 // CHECK:           stablehlo.return %[[ADD]], %[[ADD]] : tensor<f32>, tensor<f32>
@@ -349,7 +348,7 @@ ENTRY e {
   EXPECT_OK(CreateXTileIrAndFileCheck(
       *module->GetComputationWithName("dot_fusion"), block_level_parameters,
       R"(
-CHECK: %[[RES:.*]] = stablehlo.dot_general %[[ARG0:.*]], %[[ARG1:.*]], contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT] : (tensor<32x8xf32>, tensor<8x8xf32>) -> tensor<32x8xf32>
+CHECK: %[[RES:.*]] = stablehlo.dot_general %[[ARG0:.*]], %[[ARG1:.*]], contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT] : (tensor<32x8xbf16>, tensor<8x8xbf16>) -> tensor<32x8xf32>
 CHECK: %[[ADD_RES:.*]] = arith.addf %[[ARG2:.*]], %[[RES]] : tensor<32x8xf32>
 )"));
 }
@@ -532,7 +531,9 @@ TEST_F(XTileDialectTest, HloAllGatherDotLowering) {
     CHECK-SAME: : memref<2xi64> -> memref<128x128xf32>
     CHECK: %[[LHS_TILE:.*]] = xtile.extract %[[SELECT2]]
     CHECK: %[[RHS_TILE:.*]] = xtile.extract %arg1
-    CHECK: stablehlo.dot_general %[[LHS_TILE]], %[[RHS_TILE]]
+    CHECK: %[[LHS_CONV:.*]] = stablehlo.convert %[[LHS_TILE]]
+    CHECK: %[[RHS_CONV:.*]] = stablehlo.convert %[[RHS_TILE]]
+    CHECK: stablehlo.dot_general %[[LHS_CONV]], %[[RHS_CONV]]
     )"));
 }
 

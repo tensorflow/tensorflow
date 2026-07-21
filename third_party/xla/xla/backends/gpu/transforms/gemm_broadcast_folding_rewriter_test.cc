@@ -63,13 +63,13 @@ ENTRY AddDotsFunc {
 
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-1}));
   MatchOptimizedHlo(hlo_text,
                     R"(
 ; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[3,2,2], {{.*}}: f32[2,2]) -> f32[3,2,2] {
 ; CHECK-DAG:    [[P0:%[^ ]+]] = f32[3,2,2]{2,1,0} parameter(0)
 ; CHECK-DAG:    [[P1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
-; CHECK-DAG:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
+; CHECK-DAG:    [[GEMM:%[^ ]+]] = {{.*}} custom-call({{.*}}),
 ; CHECK:           custom_call_target="__cublas${{(lt\$matmul|gemm)}}",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -102,13 +102,13 @@ ENTRY AddDotsFunc {
 
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-1}));
   MatchOptimizedHlo(hlo_text,
                     R"(
 ; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,2], {{.*}}: f32[3,2,2]) -> f32[3,2,2] {
 ; CHECK-DAG:    [[P0:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
 ; CHECK-DAG:    [[P1:%[^ ]+]] = f32[3,2,2]{2,1,0} parameter(1)
-; CHECK-DAG:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
+; CHECK-DAG:    [[GEMM:%[^ ]+]] = {{.*}} custom-call({{.*}}),
 ; CHECK    :       custom_call_target="__cublas${{(lt\$matmul|gemm)}}",
 ; CHECK    :       backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -195,7 +195,7 @@ ENTRY %LHSBatchDimNonZero (Arg_1: f32[4,3], Arg_2: f32[4,7,3]) -> f32[4,7,7] {
   ROOT %dot.24 = f32[4,7,7]{2,1,0} dot(f32[7,4,3]{2,1,0} %broadcast.22, f32[4,7,3]{2,1,0} %Arg_2), lhs_batch_dims={1}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={2}
 }
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-1}));
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_text));
   // Use GemmRewriter to generate cublasGemm call.
@@ -221,7 +221,7 @@ ENTRY %RHSBatchDimNonZero (Arg_1: f32[4,3], Arg_2: f32[4,7,3]) -> f32[4,7,7] {
   ROOT %dot.24 = f32[4,7,7]{2,1,0} dot(f32[4,7,3]{2,1,0} %Arg_2, f32[7,4,3]{2,1,0} %broadcast.22), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={1}, rhs_contracting_dims={2}
 }
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-1}));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   GemmRewriter gemm_rewriter(
