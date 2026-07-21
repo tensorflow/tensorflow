@@ -55,9 +55,13 @@ absl::Status CollectiveCliqueRequests::RequestClique(
   if (auto it = cliques_.find(clique_key); it != cliques_.end()) {
     CliqueRequest& req = it->second;
 
-    // It is illegal to request the same GPU clique with different device
-    // groups. This must never happen under SPMD programming model.
-    if (!absl::c_equal(req.device_groups, device_groups)) {
+    // It is illegal to request the same multi-device GPU clique with different
+    // device groups under SPMD. Single-device (singleton) cliques are exempt:
+    // they involve no communication and are never split, so connected-component
+    // collective-permute may legitimately request the same singleton key with
+    // different surrounding device groups.
+    if (clique_key.devices().size() > 1 &&
+        !absl::c_equal(req.device_groups, device_groups)) {
       return InvalidArgument(
           "GPU clique %v requested from different device groups: [%s] vs [%s]",
           clique_key, HumanReadableDeviceGroups(req.device_groups),
@@ -71,6 +75,8 @@ absl::Status CollectiveCliqueRequests::RequestClique(
     if (requirements.barrier_reqs.has_value()) {
       req.barrier_after_module_execution_requested |=
           requirements.barrier_reqs->module_execution_barrier;
+      req.use_cross_device_barrier_requested |=
+          requirements.barrier_reqs->use_cross_device_barrier;
     }
 
     return absl::OkStatus();
@@ -89,6 +95,8 @@ absl::Status CollectiveCliqueRequests::RequestClique(
   if (requirements.barrier_reqs.has_value()) {
     req.barrier_after_module_execution_requested |=
         requirements.barrier_reqs->module_execution_barrier;
+    req.use_cross_device_barrier_requested |=
+        requirements.barrier_reqs->use_cross_device_barrier;
   }
 
   cliques_.try_emplace(clique_key, std::move(req));

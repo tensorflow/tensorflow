@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # Description:
 #   Implementation of XLA’s HLO expander transformations.
 
@@ -106,12 +121,12 @@ cc_library(
     hdrs = ["qr_expander.h"],
     deps = [
         ":op_expander_pass",
-        "//xla:literal",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
+        "//xla/hlo/builder:xla_computation",
         "//xla/hlo/builder/lib:arithmetic",
         "//xla/hlo/builder/lib:constants",
         "//xla/hlo/builder/lib:loops",
@@ -119,8 +134,10 @@ cc_library(
         "//xla/hlo/builder/lib:matrix",
         "//xla/hlo/builder/lib:qr",
         "//xla/hlo/builder/lib:slicing",
+        "//xla/hlo/ir:hlo",
         "//xla/service:hlo_creation_utils",
         "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -128,7 +145,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@tsl//tsl/platform:errors",
     ],
 )
 
@@ -138,12 +154,12 @@ cc_library(
     hdrs = ["eigh_expander.h"],
     deps = [
         ":op_expander_pass",
-        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
+        "//xla/hlo/builder:xla_computation",
         "//xla/hlo/builder/lib:arithmetic",
         "//xla/hlo/builder/lib:comparators",
         "//xla/hlo/builder/lib:constants",
@@ -151,6 +167,7 @@ cc_library(
         "//xla/hlo/builder/lib:math",
         "//xla/hlo/builder/lib:matrix",
         "//xla/hlo/builder/lib:slicing",
+        "//xla/hlo/ir:hlo",
         "//xla/service:hlo_creation_utils",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
@@ -161,7 +178,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@tsl//tsl/platform:errors",
     ],
 )
 
@@ -274,20 +290,14 @@ cc_library(
         ":op_expander_pass",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
-        "//xla/hlo/builder:xla_builder",
-        "//xla/hlo/builder:xla_computation",
-        "//xla/hlo/builder/lib:arithmetic",
-        "//xla/hlo/builder/lib:broadcast",
-        "//xla/hlo/builder/lib:constants",
         "//xla/hlo/ir:hlo",
-        "//xla/service:call_inliner",
         "//xla/service:hlo_creation_utils",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

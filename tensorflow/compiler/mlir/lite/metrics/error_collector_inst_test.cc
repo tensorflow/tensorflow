@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
@@ -171,7 +172,7 @@ TEST(ErrorCollectorTest, TessFailurePass) {
                 "\"tf.Const\"() <{value = dense<1> : tensor<4xi32>}> : () -> "
                 "tensor<4xi32>\nError code: ERROR_NEEDS_FLEX_OPS",
                 ConverterErrorData::ERROR_NEEDS_FLEX_OPS, "tf.Const",
-                mlir::FileLineColLoc::get(input_file_id, 2, 9))),
+                mlir::FileLineColLoc::get(input_file_id, 17, 9))),
             1);
   EXPECT_EQ(collected_errors.count(NewConverterErrorData(
                 "MockFailurePass",
@@ -179,7 +180,7 @@ TEST(ErrorCollectorTest, TessFailurePass) {
                 "\"tf.Const\"() <{value = dense<0> : tensor<4xi32>}> : () -> "
                 "tensor<4xi32>\nError code: ERROR_NEEDS_FLEX_OPS",
                 ConverterErrorData::ERROR_NEEDS_FLEX_OPS, "tf.Const",
-                mlir::FileLineColLoc::get(input_file_id, 2, 9))),
+                mlir::FileLineColLoc::get(input_file_id, 18, 9))),
             1);
   EXPECT_EQ(
       collected_errors.count(NewConverterErrorData(
@@ -191,7 +192,7 @@ TEST(ErrorCollectorTest, TessFailurePass) {
           "(tensor<*xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) "
           "-> tensor<*xf32>\nError code: ERROR_NEEDS_FLEX_OPS",
           ConverterErrorData::ERROR_NEEDS_FLEX_OPS, "tf.StridedSlice",
-          mlir::FileLineColLoc::get(input_file_id, 4, 10))),
+          mlir::FileLineColLoc::get(input_file_id, 19, 10))),
       1);
 
   // Check the location information.
@@ -203,9 +204,9 @@ TEST(ErrorCollectorTest, TessFailurePass) {
 
   EXPECT_THAT(locations, Each(testing::HasSubstr("CALLSITELOC")));
   EXPECT_THAT(locations, Each(testing::HasSubstr(input_file)));
-  EXPECT_THAT(locations, Contains(testing::HasSubstr("line: 2")));
+  EXPECT_THAT(locations, Contains(testing::HasSubstr("line: 17")));
   EXPECT_THAT(locations, Contains(testing::HasSubstr("column: 9")));
-  EXPECT_THAT(locations, Contains(testing::HasSubstr("line: 4")));
+  EXPECT_THAT(locations, Contains(testing::HasSubstr("line: 19")));
   EXPECT_THAT(locations, Contains(testing::HasSubstr("column: 10")));
 }
 }  // namespace

@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # Description:
 #   Base testing infrastructure for XLA.
 
@@ -7,7 +22,7 @@ load(
     "if_rocm_is_configured",
 )
 load("//xla:package_groups.bzl", "xla_test_friend_package_group")
-load("//xla:xla.default.bzl", "tests_build_defs_bzl_deps", "xla_cc_test", "xla_internal")
+load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
 load("//xla/tests:build_defs.bzl", "generate_backend_suites", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google", "if_oss", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
@@ -148,10 +163,15 @@ cc_library(
 
 cc_library(
     name = "pjrt_client_registry",
+    testonly = True,
     srcs = ["pjrt_client_registry.cc"],
     hdrs = ["pjrt_client_registry.h"],
     deps = [
+        ":aot_interception_pjrt_client",
         "//xla/pjrt:pjrt_client",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -220,6 +240,8 @@ cc_library(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test_helpers",
         "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/hlo/transforms:despecializer",
+        "//xla/hlo/transforms/simplifiers:float_normalization",
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_module_util",
@@ -3467,15 +3489,22 @@ xla_test(
 )
 
 bzl_library(
-    name = "plugin_bzl",
-    srcs = ["plugin.bzl"],
-    deps = ["//xla/tsl:package_groups_bzl"],
+    name = "backend_defs_bzl",
+    srcs = ["backend_defs.bzl"],
+    deps = [
+        ":plugin_bzl",
+        "//xla/tsl:package_groups_bzl",
+        "//xla/tsl:tsl_bzl",
+        "//xla/tsl/platform:build_config_root_bzl",
+    ],
 )
 
+# copybara:comment_begin(oss-only)
 bzl_library(
     name = "build_defs_bzl",
     srcs = ["build_defs.bzl"],
     deps = [
+        ":backend_defs_bzl",
         ":plugin_bzl",
         "//xla:xla_bzl",
         "//xla/stream_executor:build_defs_bzl",
@@ -3485,7 +3514,14 @@ bzl_library(
         "//xla/tsl/platform/default:build_config_bzl",
         "//xla/tsl/platform/default:cuda_build_defs_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",
-    ] + tests_build_defs_bzl_deps(),
+    ],
+)
+# copybara:comment_end
+
+bzl_library(
+    name = "plugin_bzl",
+    srcs = ["plugin.bzl"],
+    deps = ["//xla/tsl:package_groups_bzl"],
 )
 
 xla_test(
@@ -3603,5 +3639,27 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:test",
         "//xla/tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "aot_interception_pjrt_client",
+    testonly = True,
+    srcs = ["aot_interception_pjrt_client.cc"],
+    hdrs = ["aot_interception_pjrt_client.h"],
+    deps = [
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_common",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/runtime:device_id",
+        "//xla/service:computation_placer_hdr",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )

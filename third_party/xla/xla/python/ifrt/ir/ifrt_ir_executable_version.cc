@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -249,7 +250,7 @@ class IfrtIrExecutableVersionSerDes
     return "xla::ifrt::IfrtIrExecutableVersion";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     const SerDesVersion version = GetRequestedSerDesVersion(options.get());
@@ -259,7 +260,7 @@ class IfrtIrExecutableVersionSerDes
 
     ASSIGN_OR_RETURN(IfrtIrExecutableVersionProto proto,
                      ifrt_ir_executable_version.ToProto(version));
-    std::string serialized;
+    absl::Cord serialized;
     if (!proto.SerializeToString(&serialized)) {
       return absl::InternalError(
           "Failed to serialize IfrtIrExecutableVersionProto");
@@ -268,7 +269,7 @@ class IfrtIrExecutableVersionSerDes
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     auto* deserialize_options =
         llvm::dyn_cast<IfrtIrExecutableVersionDeserializeOptions>(

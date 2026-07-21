@@ -161,9 +161,6 @@ class GpuCollectives : public Collectives {
     return group();
   }
 
-  // Returns minimum alignment requirement for symmetric memory.
-  virtual size_t SymmetricMemoryAlignment() const { return 1; }
-
   // Returns a slice of device memory `buff` containing `count` values of data
   // type `dtype` starting from `offset`.
   static stream_executor::DeviceAddressBase Slice(

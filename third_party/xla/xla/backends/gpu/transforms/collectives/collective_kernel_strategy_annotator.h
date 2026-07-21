@@ -21,9 +21,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/stream_executor/device_description.h"
 
 namespace xla {
+class GpuTopology;
 namespace gpu {
 
 // Annotates AllReduce / AllReduceStart instructions with the kernel strategy
@@ -38,12 +38,13 @@ namespace gpu {
 // when the flag is off all AllReduces will keep the default NCCL annotation.
 class CollectiveKernelStrategyAnnotator : public HloModulePass {
  public:
-  // `device_info`         : target GPU description (used for capability checks
-  //                         and replica-group size computation).
+  // `gpu_topology`        : GpuTopology instance for which the compilation is
+  //                         being done; holds target GPU description (used for
+  //                         capability checks)
   // `is_multimem_enabled` : mirrors the runtime flag for multimem strategy
   //                         selection (currently unused in cost model, reserved
   //                         for future kMultimem support).
-  CollectiveKernelStrategyAnnotator(const se::DeviceDescription& device_info,
+  CollectiveKernelStrategyAnnotator(const GpuTopology& gpu_topology,
                                     bool is_multimem_enabled);
 
   absl::string_view name() const override {
@@ -56,7 +57,7 @@ class CollectiveKernelStrategyAnnotator : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  const se::DeviceDescription& device_info_;
+  const GpuTopology& gpu_topology_;
   const bool is_multimem_enabled_;
 };
 

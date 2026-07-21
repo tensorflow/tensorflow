@@ -147,6 +147,10 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__call__"
+    argspec: "args=[\'self\', \'inputs\', \'state\', \'scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'cells\', \'state_is_tuple\'], varargs=None, keywords=None, defaults=[\'True\'], "
   }

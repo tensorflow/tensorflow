@@ -58,6 +58,8 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/codegen/triton/lowering_util.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"  // IWYU pragma: keep
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
@@ -72,6 +74,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -209,14 +212,23 @@ absl::StatusOr<AllReduceEmitterContext> CreateAllReduceEmitterContext(
 // where only the last dimension is used as a tiling dimension.
 absl::StatusOr<std::optional<BlockLevelFusionConfig>>
 GetBlockLevelFusionConfigForAllReduce(
-    const se::DeviceDescription& device_info,
-    const HloAllReduceInstruction* all_reduce) {
+    const GpuTopology& gpu_topology, const HloAllReduceInstruction* all_reduce,
+    const DeviceAssignment* device_assignment) {
+  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                   all_reduce->backend_config<GpuBackendConfig>());
+  if (!IsTritonCollectiveKernel(
+          gpu_config.collective_backend_config().kernel_strategy())) {
+    VLOG(3) << "All-reduce is not annotated with Triton strategy. Skipping.";
+    return std::nullopt;
+  }
+
   absl::StatusOr<AllReduceInfo> maybe_all_reduce_info = BuildAllReduceInfo(
       /*is_collective_kernel_enabled=*/all_reduce->GetModule()
           ->config()
           .debug_options()
           .xla_gpu_unsupported_use_all_reduce_one_shot_kernel(),
-      /*is_multimem_enabled=*/false, device_info, all_reduce);
+      /*is_multimem_enabled=*/false, gpu_topology, all_reduce,
+      device_assignment);
   if (absl::IsUnimplemented(maybe_all_reduce_info.status())) {
     VLOG(3) << "Codegen for all-reduce is not supported: "
             << maybe_all_reduce_info.status();
@@ -225,9 +237,11 @@ GetBlockLevelFusionConfigForAllReduce(
   ASSIGN_OR_RETURN(AllReduceInfo all_reduce_info,
                    std::move(maybe_all_reduce_info));
   const Shape& output_shape = all_reduce->shape();
+  const se::DeviceDescription& device_info =
+      gpu_topology.gpu_target_config().device_description;
   const LaunchDimensions launch_dims = AllReduceLaunchDimensions(
       all_reduce_info.num_elements, all_reduce_info.num_devices,
-      all_reduce_info.all_reduce_strategy);
+      all_reduce_info.all_reduce_strategy, device_info);
   BlockLevelFusionConfig block_level_config;
   block_level_config.set_num_warps(xla::CeilOfRatio(
       static_cast<int64_t>(launch_dims.num_threads_per_block()),
@@ -986,24 +1000,25 @@ llvm::SmallVector<int64_t> GreedyPowerOfTwoTiles(const Shape& output_shape,
 }
 
 absl::StatusOr<std::optional<BlockLevelFusionConfig>>
-GetCollectiveBlockLevelFusionConfig(const se::DeviceDescription& device_info,
-                                    const HloFusionInstruction* fusion_instr) {
+GetCollectiveBlockLevelFusionConfig(const GpuTopology& gpu_topology,
+                                    const HloFusionInstruction* fusion_instr,
+                                    const DeviceAssignment* device_assignment) {
   const HloInstruction* root = fusion_instr->fused_expression_root();
   switch (root->opcode()) {
-    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduce:
       return GetBlockLevelFusionConfigForAllReduce(
-          device_info, Cast<HloAllReduceInstruction>(root));
+          gpu_topology, Cast<HloAllReduceInstruction>(root), device_assignment);
     default:
       return std::nullopt;
   }
 }
 
 absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
-    const se::DeviceDescription& device_info,
-    HloFusionInstruction* fusion_instr) {
-  ASSIGN_OR_RETURN(
-      const std::optional<BlockLevelFusionConfig> block_config,
-      GetCollectiveBlockLevelFusionConfig(device_info, fusion_instr));
+    const GpuTopology& gpu_topology, HloFusionInstruction* fusion_instr,
+    const DeviceAssignment* device_assignment) {
+  ASSIGN_OR_RETURN(const std::optional<BlockLevelFusionConfig> block_config,
+                   GetCollectiveBlockLevelFusionConfig(
+                       gpu_topology, fusion_instr, device_assignment));
   if (!block_config.has_value()) {
     VLOG(3) << "No block level fusion config calculated for collective: "
             << fusion_instr->ToString()
@@ -1026,7 +1041,7 @@ absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
   const HloComputation* computation = fusion->fused_instructions_computation();
   const HloInstruction* root = computation->root_instruction();
   switch (root->opcode()) {
-    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduce:
       return GetAllReduceUnmanagedKernelArguments(
           computation, Cast<HloAllReduceInstruction>(root));
     default:
@@ -1081,6 +1096,23 @@ mlir::LogicalResult RewriteAllReduce(mlir::stablehlo::AllReduceOp op,
   VLOG(3) << "AllReduceEmitter::Emit using strategy: "
           << maybe_context->strategy;
   return AllReduceEmitter::Emit(maybe_context.value(), rewriter);
+}
+
+absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
+    const HloInstruction* instr, const LaunchDimensions& launch_dimensions) {
+  const HloInstruction* collective = instr;
+  if (instr->opcode() == HloOpcode::kFusion) {
+    collective = instr->fused_instructions_computation()->root_instruction();
+  }
+  switch (collective->opcode()) {
+    case HloOpcode::kAllReduce:
+      return CreateAllReduceKernelSpec(collective, launch_dimensions);
+    default:
+      return absl::UnimplementedError(
+          absl::StrFormat("CollectiveKernelSpec creation not implemented for "
+                          "opcode: %s",
+                          HloOpcodeString(collective->opcode())));
+  }
 }
 
 }  // namespace xla::gpu

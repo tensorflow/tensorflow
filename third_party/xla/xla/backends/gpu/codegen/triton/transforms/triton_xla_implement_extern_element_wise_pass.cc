@@ -18,7 +18,6 @@ limitations under the License.
 // of custom atomic functions by replacing llvm.call operations with LLVM
 // intrinsics. Supports both CUDA and ROCM backends.
 
-#include <memory>
 #include <optional>
 #include <utility>
 
@@ -129,10 +128,3 @@ class TritonXLAImplementExternElementWisePass
 
 }  // namespace mlir::triton::xla
 
-std::unique_ptr<mlir::Pass>
-mlir::triton::xla::CreateTritonXLAImplementExternElementWisePass(
-    TargetBackend target) {
-  TritonXLAImplementExternElementWisePassOptions options;
-  options.target_ = target;
-  return std::make_unique<TritonXLAImplementExternElementWisePass>(options);
-}

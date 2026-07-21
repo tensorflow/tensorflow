@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_IR_EMITTER_CONTEXT_H_
 #define XLA_SERVICE_GPU_IR_EMITTER_CONTEXT_H_
 
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -27,15 +26,12 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/Operation.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
-#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/host_execute_thunk.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -45,11 +41,10 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/gpu_executable.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/name_uniquer.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
@@ -68,7 +63,7 @@ class IrEmitterContext {
                    const BufferAssignment* buffer_assignment,
                    const ExecutionStreamAssignment* execution_stream_assignment,
                    absl::string_view platform_name,
-                   const se::DeviceDescription& gpu_device_info,
+                   const GpuTopology& gpu_topology,
                    mlir::MLIRContext* mlir_context, llvm::Triple target_triple,
                    std::string data_layout, KernelCompiler* compiler,
                    xla::cpu::TargetMachineOptions cpu_target_machine_options,
@@ -77,13 +72,17 @@ class IrEmitterContext {
         buffer_assignment_(buffer_assignment),
         execution_stream_assignment_(execution_stream_assignment),
         platform_name_(platform_name),
-        gpu_device_info_(gpu_device_info),
+        gpu_topology_(gpu_topology),
         mlir_context_(mlir_context),
         data_layout_(std::move(data_layout)),
         target_triple_(std::move(target_triple)),
         compiler_(compiler),
         cpu_target_machine_options_(std::move(cpu_target_machine_options)),
-        mlir_context_pool_(pool) {}
+        mlir_context_pool_(pool) {
+    CHECK(gpu_topology_.has_gpu_target_config())
+        << "GpuTopology must have a valid GpuTargetConfig when used for IR "
+           "emission.";
+  }
 
   // Disallow copy and assign.
   IrEmitterContext(const IrEmitterContext&) = delete;
@@ -99,10 +98,12 @@ class IrEmitterContext {
   }
   absl::string_view platform_name() const { return platform_name_; }
   const se::DeviceDescription& gpu_device_info() const {
-    return gpu_device_info_;
+    CHECK(gpu_topology_.has_gpu_target_config());
+    return gpu_topology_.gpu_target_config().device_description;
   }
+  const GpuTopology& gpu_topology() const { return gpu_topology_; }
   const se::GpuComputeCapability& gpu_compute_capability() const {
-    return gpu_device_info_.gpu_compute_capability();
+    return gpu_device_info().gpu_compute_capability();
   }
 
   const xla::cpu::TargetMachineOptions& cpu_target_machine_options() const {
@@ -169,7 +170,7 @@ class IrEmitterContext {
   const BufferAssignment* buffer_assignment_;
   const ExecutionStreamAssignment* execution_stream_assignment_;
   absl::string_view platform_name_;
-  const se::DeviceDescription& gpu_device_info_;
+  const GpuTopology& gpu_topology_;
   mlir::MLIRContext* mlir_context_;
   NameUniquer name_uniquer_;
   std::vector<GpuExecutable::ConstantInfo> constants_;

@@ -23,26 +23,33 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
+#include "xla/backends/gpu/collectives/gxl_communicator.h"
+#include "xla/backends/gpu/collectives/nccl_types.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/core/collectives/registered_memory.h"
 #include "xla/core/collectives/symmetric_memory.h"
+#include "xla/debug_options_flags.h"
 #include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/util/tied_ref.h"
 #include "xla/xla_data.pb.h"
 
 // Include NCCL after XLA headers.
@@ -66,6 +73,8 @@ struct NcclCapabilities {
 
 // XLA collectives communicator wrapping an NCCL communicator.
 class NcclCommunicator : public GpuCommunicator {
+  friend class NcclDeviceCommunicator;
+
  public:
   // Creates a NCCL communicator.
   //
@@ -93,12 +102,23 @@ class NcclCommunicator : public GpuCommunicator {
   absl::Status Abort() final;
   absl::Status HealthCheck() const final;
   absl::StatusOr<size_t> NumRanks() const final;
+  absl::StatusOr<size_t> CurrentRank() final;
 
   PlatformCommunicatorHandle platform_comm() const final {
-    return PlatformCommunicatorHandle{comm_};
+    absl::MutexLock lock(comm_->mutex);
+    return PlatformCommunicatorHandle{comm_->comm};
   }
 
   bool SupportsDeviceComm() const final;
+
+  GxlCommunicator* gxl_communicator() const final {
+    return gxl_communicator_.get();
+  }
+
+  void set_gxl_communicator(
+      std::unique_ptr<GxlCommunicator> gxl_communicator) final {
+    gxl_communicator_ = std::move(gxl_communicator);
+  }
 
   absl::StatusOr<std::unique_ptr<GpuDeviceCommunicator>> CreateDeviceComm(
       const GpuDeviceCommunicator::Requirements& requirements) final;
@@ -157,20 +177,26 @@ class NcclCommunicator : public GpuCommunicator {
   Future<> WaitSignal(RankId peer, int op_cnt, const SignalDesc& signal_desc,
                       const Executor& executor) final;
 
+  Future<> WaitSignals(absl::Span<const PeerWaitDesc> peer_wait_descs,
+                       const Executor& executor) final;
+
   std::string ToString() const final;
 
-  ncclComm_t comm() const { return comm_; }
+  std::shared_ptr<NcclCommState> comm_state() const { return comm_; }
 
   se::StreamExecutor* stream_executor() const final { return stream_executor_; }
 
   bool IsBlocking() const { return executor_ == nullptr; }
+
+  std::shared_ptr<tsl::Executor> executor() const { return executor_; }
 
   // Polls the communicator until any pending non-blocking operations are done
   // or aborted.
   absl::Status PollUntilDone() const;
 
  private:
-  NcclCommunicator(se::StreamExecutor* stream_executor, ncclComm_t comm,
+  NcclCommunicator(se::StreamExecutor* stream_executor,
+                   std::shared_ptr<NcclCommState> comm,
                    std::unique_ptr<tsl::Executor> executor,
                    std::shared_ptr<CancellationToken> cancel);
 
@@ -230,6 +256,21 @@ class NcclCommunicator : public GpuCommunicator {
                                 const SignalDesc& signal_desc,
                                 const Executor& executor) final;
 
+  absl::Status LaunchWaitSignals(absl::Span<const PeerWaitDesc> peer_wait_descs,
+                                 const Executor& executor) final;
+
+  absl::Status LaunchMultiGpuBarrier(const Executor& executor) final;
+
+  void InitializeCrossDeviceBarrier(
+      tsl::TiedRef<se::MemoryAllocation> tied_signal_value,
+      tsl::TiedRef<se::MemoryAllocation> tied_signal,
+      tsl::TiedRef<SymmetricMemory> tied_symmetric_memory) final;
+
+  bool IsCrossDeviceBarrierInitiated() const final {
+    absl::MutexLock lock(barrier_mu_);
+    return is_cross_device_barrier_initiated_;
+  }
+
   // Executes f on executor_, or calls f directly if executor_ is null.
   Future<> Execute(absl::AnyInvocable<absl::Status() &&> f) const;
 
@@ -253,7 +294,7 @@ class NcclCommunicator : public GpuCommunicator {
   se::StreamExecutor* stream_executor_;
 
   // Underlying NCCL communicator.
-  ncclComm_t comm_;
+  std::shared_ptr<NcclCommState> comm_;
 
   // If not null, used to execute methods.
   //
@@ -279,6 +320,17 @@ class NcclCommunicator : public GpuCommunicator {
   bool aborted_ = false;
 
   NcclCapabilities capabilities_;
+
+  std::unique_ptr<GxlCommunicator> gxl_communicator_;
+
+  mutable absl::Mutex barrier_mu_;
+  bool is_cross_device_barrier_initiated_ ABSL_GUARDED_BY(barrier_mu_) = false;
+  tsl::TiedRef<se::MemoryAllocation> tied_cross_device_barrier_signal_value_
+      ABSL_GUARDED_BY(barrier_mu_);
+  tsl::TiedRef<se::MemoryAllocation> tied_cross_device_barrier_signal_
+      ABSL_GUARDED_BY(barrier_mu_);
+  tsl::TiedRef<SymmetricMemory> tied_cross_device_barrier_symmetric_memory_
+      ABSL_GUARDED_BY(barrier_mu_);
 };
 
 //===----------------------------------------------------------------------===//
@@ -308,9 +360,14 @@ class NcclDeviceCommunicator : public GpuDeviceCommunicator {
   se::PackedKernelArg PackKernelArg() const final;
 
  private:
-  NcclDeviceCommunicator(const NcclCommunicator* comm, ncclDevComm dev_comm);
+  NcclDeviceCommunicator(std::shared_ptr<NcclCommState> parent_comm,
+                         se::StreamExecutor* stream_executor,
+                         std::shared_ptr<tsl::Executor> executor,
+                         ncclDevComm dev_comm);
 
-  const NcclCommunicator* comm_;
+  std::shared_ptr<NcclCommState> parent_comm_;
+  se::StreamExecutor* stream_executor_;
+  std::shared_ptr<tsl::Executor> executor_;
   ncclDevComm dev_comm_;
 };
 

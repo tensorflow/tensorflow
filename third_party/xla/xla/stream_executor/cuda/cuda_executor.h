@@ -126,15 +126,20 @@ class CudaExecutor : public GpuExecutor {
       const override {
     return CudaExecutor::CreateDeviceDescription(device_ordinal());
   }
+
+  absl::StatusOr<std::string> GetInterconnectStatus() const override;
+
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) override;
 
   bool HostMemoryRegister(void* location, uint64_t size) override;
   bool HostMemoryUnregister(void* location) override;
+  bool IsHostMemoryPinned(const void* ptr, uint64_t size) override;
 
   bool IsVmmMemory(const DeviceAddressBase& address) override;
 
   absl::StatusOr<MemorySpace> GetPointerMemorySpace(const void* ptr) override;
+  absl::StatusOr<uint64_t> GetCollectiveMemoryGranularity() const override;
 
   Stream* FindAllocatedStream(void* gpu_stream) override {
     absl::MutexLock lock(alive_gpu_streams_mu_);

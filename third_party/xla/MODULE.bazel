@@ -4,7 +4,7 @@ module(name = "xla")
 # Bazel module dependencies
 
 # go/keep-sorted start
-bazel_dep(name = "abseil-cpp", version = "20260107.1", repo_name = "com_google_absl")
+bazel_dep(name = "abseil-cpp", version = "20260526.0", repo_name = "com_google_absl")
 bazel_dep(name = "abseil-py", version = "2.1.0", repo_name = "absl_py")
 bazel_dep(name = "bazel_features", version = "1.36.0")
 bazel_dep(name = "bazel_skylib", version = "1.8.2")
@@ -45,9 +45,9 @@ bazel_dep(name = "rules_ml_toolchain")
 # echo "sha256-${HASH}"
 archive_override(
     module_name = "rules_ml_toolchain",
-    integrity = "sha256-QJY+S8Ji36mkMUb2EBQK8AaLAjrOjzxQ8XBae1DeCDA=",
-    strip_prefix = "rules_ml_toolchain-cad1047facbac4fb3c1124da68bf2cb36c7eb9ac",
-    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/cad1047facbac4fb3c1124da68bf2cb36c7eb9ac.tar.gz"],
+    integrity = "sha256-izPVqzV2I7ox7EYzRzcRY6ogeLcHUr4LRP2xMrkWh6A=",
+    strip_prefix = "rules_ml_toolchain-236a498d8624bef88e35ce2518a833204b0db19f",
+    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/236a498d8624bef88e35ce2518a833204b0db19f.tar.gz"],
 )
 
 # TODO: Upstream the patch?
@@ -63,12 +63,12 @@ single_version_override(
 # TODO: Upstream those patch?
 single_version_override(
     module_name = "abseil-cpp",
+    version = "20260526.0",
     patch_strip = 1,
     patches = [
         "//third_party/absl:btree.patch",
         "//third_party/absl:build_dll.patch",
         "//third_party/absl:endian.patch",
-        "//third_party/absl:append_and_overwrite.patch",
     ],
 )
 
@@ -129,6 +129,7 @@ use_repo(
     "nvtx_archive",
     "onednn",
     "onednn_async",
+    "org_sqlite",
     "pthreadpool",
     "raft",
     "rapids_logger",
@@ -294,11 +295,8 @@ register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64_cuda")
 local_clang_configure = use_extension("@rules_ml_toolchain//extensions:local_clang_configure.bzl", "local_clang_configure_ext")
 use_repo(local_clang_configure, "local_config_clang")
 
-hipcc_configure = use_extension("@rules_ml_toolchain//extensions:hipcc_configure.bzl", "hipcc_configure_ext")
-use_repo(hipcc_configure, "config_rocm_hipcc")
-
 rocm_configure = use_extension("//third_party/extensions:rocm_configure.bzl", "rocm_configure_ext")
-use_repo(rocm_configure, "local_config_rocm")
+use_repo(rocm_configure, "config_rocm_hipcc", "local_config_rocm")
 
 tensorrt_configure = use_extension("//third_party/extensions:tensorrt_configure.bzl", "tensorrt_configure_ext")
 use_repo(tensorrt_configure, "local_config_tensorrt")

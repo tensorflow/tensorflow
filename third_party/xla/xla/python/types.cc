@@ -62,6 +62,8 @@ namespace {
 struct CustomDtypes {
   nb_dtype bfloat16;
   nb_dtype float4_e2m1fn;
+  nb_dtype float6_e2m3fn;
+  nb_dtype float6_e3m2fn;
   nb_dtype float8_e3m4;
   nb_dtype float8_e4m3;
   nb_dtype float8_e4m3fn;
@@ -86,6 +88,10 @@ const CustomDtypes& GetCustomDtypes() {
     dtypes->bfloat16 = nb_dtype::from_args(ml_dtypes.attr("bfloat16"));
     dtypes->float4_e2m1fn =
         nb_dtype::from_args(ml_dtypes.attr("float4_e2m1fn"));
+    dtypes->float6_e2m3fn =
+        nb_dtype::from_args(ml_dtypes.attr("float6_e2m3fn"));
+    dtypes->float6_e3m2fn =
+        nb_dtype::from_args(ml_dtypes.attr("float6_e3m2fn"));
     dtypes->float8_e3m4 = nb_dtype::from_args(ml_dtypes.attr("float8_e3m4"));
     dtypes->float8_e4m3 = nb_dtype::from_args(ml_dtypes.attr("float8_e4m3"));
     dtypes->float8_e4m3fn =
@@ -160,6 +166,8 @@ absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const nb_dtype& np_type) {
         absl::flat_hash_map<nb_dtype, PrimitiveType, DtypeHash, DtypeEq>>();
     map->emplace(custom_dtypes.bfloat16, BF16);
     map->emplace(custom_dtypes.float4_e2m1fn, F4E2M1FN);
+    map->emplace(custom_dtypes.float6_e2m3fn, F6E2M3FN);
+    map->emplace(custom_dtypes.float6_e3m2fn, F6E3M2FN);
     map->emplace(custom_dtypes.float8_e3m4, F8E3M4);
     map->emplace(custom_dtypes.float8_e4m3, F8E4M3);
     map->emplace(custom_dtypes.float8_e4m3fn, F8E4M3FN);
@@ -235,6 +243,12 @@ absl::StatusOr<nb_dtype> PrimitiveTypeToNbDtype(PrimitiveType type) {
       return to_nb_dtype(NPY_UINT64);
     case F4E2M1FN:
       return custom_dtypes.float4_e2m1fn;
+      break;
+    case F6E2M3FN:
+      return custom_dtypes.float6_e2m3fn;
+      break;
+    case F6E3M2FN:
+      return custom_dtypes.float6_e3m2fn;
       break;
     case F8E3M4:
       return custom_dtypes.float8_e3m4;
@@ -331,6 +345,10 @@ absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype) {
       return to_nb_dtype(NPY_COMPLEX128);
     case ifrt::DType::kF4E2M1FN:
       return custom_dtypes.float4_e2m1fn;
+    case ifrt::DType::kF6E2M3FN:
+      return custom_dtypes.float6_e2m3fn;
+    case ifrt::DType::kF6E3M2FN:
+      return custom_dtypes.float6_e3m2fn;
     case ifrt::DType::kF8E3M4:
       return custom_dtypes.float8_e3m4;
     case ifrt::DType::kF8E4M3:
@@ -408,6 +426,8 @@ const NumpyScalarTypes& GetNumpyScalarTypes() {
     dtypes->np_uint64 = nb::object(numpy.attr("uint64"));
     dtypes->np_bfloat16 = nb::object(ml_dtypes.attr("bfloat16"));
     dtypes->np_float4_e2m1fn = nb::object(ml_dtypes.attr("float4_e2m1fn"));
+    dtypes->np_float6_e2m3fn = nb::object(ml_dtypes.attr("float6_e2m3fn"));
+    dtypes->np_float6_e3m2fn = nb::object(ml_dtypes.attr("float6_e3m2fn"));
     dtypes->np_float8_e3m4 = nb::object(ml_dtypes.attr("float8_e3m4"));
     dtypes->np_float8_e4m3 = nb::object(ml_dtypes.attr("float8_e4m3"));
     dtypes->np_float8_e4m3fn = nb::object(ml_dtypes.attr("float8_e4m3fn"));

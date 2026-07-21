@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
@@ -115,7 +114,7 @@ class DeviceThread {
                     std::vector<TFE_TensorHandle*> inputs,
                     const TFE_OpAttrs* attributes, int expected_max_outputs,
                     CancellationManager& cancellation_manager,
-                    std::optional<int64_t> step_id = absl::nullopt);
+                    std::optional<int64_t> step_id = std::nullopt);
   // Block until the previous `StartExecute` operation has executed. Forwards
   // the status from `TFE_Execute` and returns outputs if the status is OK.
   std::vector<TensorHandlePtr> Join(TF_Status* status);
@@ -156,7 +155,7 @@ class DeviceThread {
   TFE_Context* context_ TF_GUARDED_BY(execution_mutex_);
   const char* operation_name_ TF_GUARDED_BY(execution_mutex_);
   std::optional<int64_t> step_id_ TF_GUARDED_BY(execution_mutex_) =
-      absl::nullopt;
+      std::nullopt;
   std::vector<TFE_TensorHandle*> op_inputs_ TF_GUARDED_BY(execution_mutex_);
   const TFE_OpAttrs* attributes_ TF_GUARDED_BY(execution_mutex_);
   int expected_max_outputs_ TF_GUARDED_BY(execution_mutex_);
@@ -305,7 +304,7 @@ void DeviceThread::Execute(TFE_Context* context, const char* operation_name,
 ParallelDevice::ParallelDevice(const std::vector<std::string>& devices,
                                bool is_async, int in_flight_nodes_limit)
     : underlying_devices_(devices),
-      default_cancellation_manager_(absl::make_unique<CancellationManager>()) {
+      default_cancellation_manager_(std::make_unique<CancellationManager>()) {
   device_threads_.reserve(devices.size());
   for (int device_index = 0; device_index < devices.size(); ++device_index) {
     device_threads_.emplace_back(new DeviceThread(
@@ -359,7 +358,7 @@ ParallelDevice::Execute(TFE_Context* context,
     TFE_ContextAsyncWait(context, await_status.get());
     // Reset the cancellation manager on a bad status. Otherwise we'll cancel
     // all future operations.
-    default_cancellation_manager_ = absl::make_unique<CancellationManager>();
+    default_cancellation_manager_ = std::make_unique<CancellationManager>();
   }
   return result;
 }

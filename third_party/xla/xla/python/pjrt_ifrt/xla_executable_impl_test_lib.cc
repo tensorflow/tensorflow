@@ -919,6 +919,32 @@ module @add_sub {
   }
 }
 
+// Regression test for a segfault during executable serialization when both a
+// sharded parameter and a token parameter are present.
+TEST_P(LoadedExecutableImplTest, ShardingsAndTokens) {
+  static constexpr absl::string_view kModule = R"(
+module @f attributes {mhlo.num_partitions = 2 : i32, mhlo.num_replicas = 1 : i32} {
+  func.func @main(
+    %arg0: !stablehlo.token,
+    %arg1: tensor<2x4xf32> {mhlo.sharding = "{devices=[2,1]<=[2]}"}
+  ) -> (
+    !stablehlo.token,
+    tensor<2x4xf32> {mhlo.sharding = "{devices=[2,1]<=[2]}"}
+  ) {
+    %0 = stablehlo.add %arg1, %arg1 : tensor<2x4xf32>
+    return %arg0, %0 : !stablehlo.token, tensor<2x4xf32>
+  }
+})";
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  Compiler* compiler = client->GetDefaultCompiler();
+  absl::Span<Device* const> devices =
+      client->addressable_devices().subspan(0, 2);
+  ASSERT_OK_AND_ASSIGN(
+      const LoadedExecutableRef executable,
+      CompileOnDevices(client.get(), compiler, kModule, devices,
+                       /*replicated=*/false, /*serialize=*/GetParam()));
+}
+
 INSTANTIATE_TEST_SUITE_P(
     LoadedExecutableImplTest, LoadedExecutableImplTest,
     /*serialize=*/testing::Bool(),

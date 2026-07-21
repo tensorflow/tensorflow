@@ -24,14 +24,14 @@ message IfrtIrAtomProgramProto {
   optional string version = 2;
   // Serialized atom program. If version is set then the serialized program
   // is in the VHLO dialect, otherwise it is in its original dialect.
-  bytes program = 3;
+  bytes program = 3 [ctype = CORD];
 }
 
 // Proto for storing a serialized IFRT IR program.
 message IfrtIrProgramProto {
   int32 version_number = 4;
 
-  bytes ifrt_program = 1;
+  bytes ifrt_program = 1 [ctype = CORD];
 
   // String of the form "major.minor.patch", representing the IFRT IR version.
   // If ifrt version is not set, then the program is not versioned and the

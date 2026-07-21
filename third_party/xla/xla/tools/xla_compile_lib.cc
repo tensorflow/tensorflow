@@ -70,6 +70,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/tools/hlo_module_loader.h"
+#include "xla/tools/xla_cpu_compile_lib.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/env_time.h"
 #include "xla/tsl/platform/errors.h"
@@ -81,20 +82,6 @@ limitations under the License.
 #include "tsl/platform/path.h"
 
 namespace xla {
-
-static absl::StatusOr<std::string> AotCompileCpuExecutable(
-    std::unique_ptr<HloModule> hlo_module,
-    std::optional<Compiler::CpuTargetConfig> target_config) {
-  cpu::CpuCompiler cpu_compiler;
-  Compiler::CompileOptions compile_options;
-  compile_options.cpu_target_config = std::move(target_config);
-  ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<Executable>> executables,
-      cpu_compiler.Compile(std::move(hlo_module), {nullptr}, compile_options));
-  ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> aot_result,
-                   cpu_compiler.Export(executables[0].get()));
-  return aot_result->SerializeAsString();
-}
 
 static absl::StatusOr<stream_executor::StreamExecutor*> GetStreamExecutor(
     stream_executor::Platform* platform, int ordinal) {
@@ -241,8 +228,12 @@ absl::StatusOr<std::string> CompileExecutable(
     int32_t num_partitions, int32_t num_replicas, CompilationResult& result,
     absl::string_view target_platform_version, bool use_attached_device) {
   if (backend == BackendType::kCpu) {
+    std::optional<cpu::TargetMachineOptions> target_options = std::nullopt;
+    if (cpu_target_config.has_value()) {
+      target_options = cpu_target_config->cpu_target_machine_options;
+    }
     return AotCompileCpuExecutable(std::move(hlo_module),
-                                   std::move(cpu_target_config));
+                                   std::move(target_options));
   }
   return CompileGpuExecutable(std::move(hlo_module),
                               std::move(gpu_target_config), result,
@@ -576,7 +567,7 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
   }
 
   if (options.repo_options.wait_for_uploads) {
-    MaybeWaitForUploads();
+    gpu::MaybeWaitForUploads();
   }
   return absl::OkStatus();
 }

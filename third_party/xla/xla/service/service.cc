@@ -25,7 +25,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/const_init.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -33,7 +32,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/executable_run_options.h"
@@ -80,12 +78,6 @@ namespace {
 
 using absl::StrCat;
 using absl::StrFormat;
-
-// Number of VA reservation sets used for command buffer remapping multiplexing.
-// With 2 sets, one VA range can be remapped by the CPU while the GPU executes
-// commands on the other, enabling CPU/GPU overlap.
-constexpr int kNumVaReservationSets = 2;
-
 
 // Records the arguments used to invoke a computation in an HloSnapshot proto.
 absl::Status RecordArguments(
@@ -371,9 +363,6 @@ absl::StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
         backend->eigen_intra_op_thread_pool_device());
     options.set_device_assignment(device_assignment_ptr);
     options.set_execution_profile(profile);
-    options.set_command_buffer_va_range_idx(
-        executable->GetNextCommandBufferVaRangeIdx(
-            stream->parent()->device_ordinal(), kNumVaReservationSets));
     run_options.emplace_back(options, backend->StreamBorrowerWithPriority());
   }
 

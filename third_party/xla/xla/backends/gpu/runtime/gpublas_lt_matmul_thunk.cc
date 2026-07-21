@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -22,7 +23,6 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 #include <variant>
-#include <vector>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"

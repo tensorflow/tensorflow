@@ -110,7 +110,7 @@ class InputDataTest(test.TestCase):
   def testPrepareDataIndexEmpty(self):
     tmp_dir = self.get_temp_dir()
     self._saveWavFolders(tmp_dir, ["a", "b", "c"], 0)
-    with self.assertRaises(Exception) as e:
+    with self.assertRaises(FileNotFoundError) as e:
       _ = input_data.AudioProcessor("", tmp_dir, 10, 10, ["a", "b"], 10, 10,
                                     self._model_settings(), tmp_dir)
     self.assertIn("No .wavs found", str(e.exception))
@@ -118,7 +118,7 @@ class InputDataTest(test.TestCase):
   def testPrepareDataIndexMissing(self):
     tmp_dir = self.get_temp_dir()
     self._saveWavFolders(tmp_dir, ["a", "b", "c"], 100)
-    with self.assertRaises(Exception) as e:
+    with self.assertRaises(ValueError) as e:
       _ = input_data.AudioProcessor("", tmp_dir, 10, 10, ["a", "b", "d"], 10,
                                     10, self._model_settings(), tmp_dir)
     self.assertIn("Expected to find", str(e.exception))

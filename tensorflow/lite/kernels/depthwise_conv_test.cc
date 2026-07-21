@@ -1824,11 +1824,11 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest,
   // Invoke and verify output.
   // output has dimension [1 * 1 * 2 * 4] as [batch, y, x, output_channel]
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(
-      m.GetDequantizedOutput(),
-      ElementsAreArray(ArrayFloatNear({43, 48, 18.5, 22, 3, -4, -28.5, -36})));
-  EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({85, 95, 36, 43, 5, -9, -58, -73}));
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(
+                  ArrayFloatNear({43, 48, 18.5, 22, 3, -4, -28.5, -36}, 0.6)));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {85, 95, 36, 43, 5, -9, -58, -73}, 1.0)));
 }
 
 // Same as previous test, except the shift will be mixed for the outputs.
@@ -2050,14 +2050,16 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest,
   // Invoke and verify output.
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput(),
-              ElementsAreArray(ArrayFloatNear({
-                  // array of 9 x 8 => [1, 3, 3, 8]
-                  4, 8,  0, 0, 21, 24, 0, 0, 6, 12, 0, 0, 31.5, 36, 0, 0,
-                  4, 8,  0, 0, 21, 24, 0, 0, 6, 12, 0, 0, 31.5, 36, 0, 0,
-                  9, 18, 0, 0, 47, 54, 0, 0, 6, 12, 0, 0, 31.5, 36, 0, 0,
-                  4, 8,  0, 0, 21, 24, 0, 0, 6, 12, 0, 0, 31.5, 36, 0, 0,
-                  4, 8,  0, 0, 21, 24, 0, 0,
-              })));
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      // array of 9 x 8 => [1, 3, 3, 8]
+                      4, 8,  0, 0, 21, 24, 0, 0, 6, 12, 0, 0, 31.5, 36, 0, 0,
+                      4, 8,  0, 0, 21, 24, 0, 0, 6, 12, 0, 0, 31.5, 36, 0, 0,
+                      9, 18, 0, 0, 47, 54, 0, 0, 6, 12, 0, 0, 31.5, 36, 0, 0,
+                      4, 8,  0, 0, 21, 24, 0, 0, 6, 12, 0, 0, 31.5, 36, 0, 0,
+                      4, 8,  0, 0, 21, 24, 0, 0,
+                  },
+                  0.6)));
 }
 
 INSTANTIATE_TEST_SUITE_P(

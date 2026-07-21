@@ -4,6 +4,10 @@ tf_class {
   is_instance: "<class \'tf_keras.optimizers.schedules.learning_rate_schedule.LearningRateSchedule\'>"
   is_instance: "<class \'object\'>"
   member_method {
+    name: "__call__"
+    argspec: "args=[\'self\', \'step\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'initial_learning_rate\', \'first_decay_steps\', \'t_mul\', \'m_mul\', \'alpha\', \'name\'], varargs=None, keywords=None, defaults=[\'2.0\', \'1.0\', \'0.0\', \'None\'], "
   }

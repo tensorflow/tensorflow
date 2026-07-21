@@ -384,7 +384,7 @@ class FunctionRecord : public core::RefCounted {
   const FunctionDef& fdef() const;
   const StackTracesMap& stack_traces() const;
   const OpRegistrationData& op_registration_data() const;
-  const bool finalized() const;
+  bool finalized() const;
 
  private:
   bool finalized_ = false;
@@ -422,6 +422,9 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   explicit FunctionLibraryDefinition(
       const OpRegistryInterface* default_registry,
       const FunctionDefLibrary& lib_def = {},
+      const FunctionDefLibraryStackTraces& library_traces = {});
+  FunctionLibraryDefinition(
+      const OpRegistryInterface* default_registry, FunctionDefLibrary&& lib_def,
       const FunctionDefLibraryStackTraces& library_traces = {});
   FunctionLibraryDefinition(const OpRegistryInterface* default_registry,
                             const GraphDef& graph_def);
@@ -657,6 +660,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
  private:
   void Initialize(const FunctionDefLibrary& library,
                   const FunctionDefLibraryStackTraces& library_traces);
+  void Initialize(FunctionDefLibrary&& library,
+                  const FunctionDefLibraryStackTraces& library_traces);
 
   core::RefCountPtr<FunctionRecord> FindHelper(const std::string& func) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
@@ -784,7 +789,7 @@ class FunctionLibraryRuntime : public core::WeakRefCounted {
     std::vector<std::string> output_devices;
 
     // If set, it indicates the original output indices of a component function.
-    absl::optional<std::vector<int>> ret_indices = absl::nullopt;
+    absl::optional<std::vector<int>> ret_indices = std::nullopt;
 
     // Maps from a CompositeDevice name to a list of underlying physical
     // devices.
@@ -908,7 +913,7 @@ class FunctionLibraryRuntime : public core::WeakRefCounted {
                                    Handle* handle) = 0;
   absl::Status Instantiate(const std::string& function_name, AttrSlice attrs,
                            Handle* handle) {
-    auto opts = absl::make_unique<InstantiateOptions>();
+    auto opts = std::make_unique<InstantiateOptions>();
     return Instantiate(function_name, attrs, *opts, handle);
   }
 
@@ -954,7 +959,7 @@ class FunctionLibraryRuntime : public core::WeakRefCounted {
     // remote outputs lazily. All components of a remote multi-device function
     // should use the same op_id, in order to correctly map remote output
     // tensors to the remote TensorHandles in the default device.
-    absl::optional<int64_t> op_id = absl::nullopt;
+    absl::optional<int64_t> op_id = std::nullopt;
 
     // Not owned. Caller makes sure that the rendezvous outlives this Options.
     RendezvousInterface* rendezvous = nullptr;
@@ -964,7 +969,7 @@ class FunctionLibraryRuntime : public core::WeakRefCounted {
     StepStatsCollectorInterface* stats_collector = nullptr;
     tsl::CoordinationServiceAgent* coordination_service_agent = nullptr;
 
-    absl::optional<ManagedStackTrace> stack_trace = absl::nullopt;
+    absl::optional<ManagedStackTrace> stack_trace = std::nullopt;
 
     std::function<void(std::function<void()>)>* runner = nullptr;
 
@@ -1089,7 +1094,7 @@ class FunctionLibraryRuntime : public core::WeakRefCounted {
 // Returns the device of the `arg_index`-th function input. Update
 // `composite_devices` if the input device is a composite device.
 std::string GetFunctionResourceInputDevice(
-    const Tensor& input, const int arg_index, const FunctionDef& function_def,
+    const Tensor& input, int arg_index, const FunctionDef& function_def,
     absl::flat_hash_map<std::string, std::vector<std::string>>*
         composite_devices);
 

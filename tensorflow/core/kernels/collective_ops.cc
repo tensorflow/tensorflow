@@ -12,9 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <atomic>
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/activity_watcher/activity.h"
@@ -874,6 +881,11 @@ class CollectiveGatherV2OpKernel : public CollectiveOpV2Kernel {
                                               c->input(3)),
                          done_with_cleanup);
     auto output_shape = c->input(0).shape();
+    OP_REQUIRES_ASYNC(
+        c, output_shape.dims() > 0,
+        absl::InvalidArgumentError(absl::StrCat(
+            "input should have rank > 0, received ", output_shape.dims())),
+        done_with_cleanup);
     output_shape.set_dim(
         0, output_shape.dim_size(0) * col_params->group.group_size);
     col_params->instance.shape = output_shape;
@@ -1483,6 +1495,11 @@ class CollectiveReduceScatterV2OpKernel : public CollectiveOpV2Kernel {
     col_params->instance.impl_details.max_subdivs_per_device =
         max_subdivs_per_device_;
     auto output_shape = c->input(0).shape();
+    OP_REQUIRES_ASYNC(
+        c, output_shape.dims() > 0,
+        absl::InvalidArgumentError(absl::StrCat(
+            "input should have rank > 0, received ", output_shape.dims())),
+        done_with_cleanup);
     output_shape.set_dim(
         0, output_shape.dim_size(0) / col_params->group.group_size);
     col_params->instance.shape = output_shape;

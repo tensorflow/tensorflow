@@ -55,9 +55,7 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -131,7 +129,10 @@ absl::Status AllToAllThunk::Initialize(const InitializeParams& params) {
   XLA_VLOG_DEVICE(5, params.executor->device_ordinal())
       << "Local device count : " << params.local_device_count;
 
-  if (is_local(params.local_device_count) && p2p_memcpy_enabled_) {
+  if (IsAllReplicasLocal(params.local_device_count,
+                         config_.config.replica_groups,
+                         config_.config.group_mode) &&
+      p2p_memcpy_enabled_) {
     ASSIGN_OR_RETURN(
         GpuCliqueKey clique_key,
         GetGpuCliqueKey(*params.collective_params, config().replica_groups,
@@ -228,7 +229,9 @@ absl::Status AllToAllThunk::RunCollective(const ExecuteParams& params,
                    ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
                                           config_.config.operand_element_type));
 
-  if (is_local(params.collective_params->local_device_count) &&
+  if (IsAllReplicasLocal(params.collective_params->local_device_count,
+                         config_.config.replica_groups,
+                         config_.config.group_mode) &&
       p2p_memcpy_enabled_) {
     uint64_t* receive_pointer_map = nullptr;
     {
@@ -256,19 +259,6 @@ absl::Status AllToAllThunk::RunCollective(const ExecuteParams& params,
   return xla::gpu::RunAllToAll(config_.has_split_dimension, device_buffers,
                                stream, comm,
                                config_.config.use_symmetric_buffer);
-}
-
-bool AllToAllThunk::is_local(int device_count) const {
-  for (const auto& replica_group : config_.config.replica_groups) {
-    const int64_t node_id = replica_group.replica_ids().at(0) / device_count;
-    if (!absl::c_all_of(replica_group.replica_ids(),
-                        [node_id, device_count](const int64_t rank) {
-                          return rank / device_count == node_id;
-                        })) {
-      return false;
-    }
-  }
-  return true;
 }
 
 absl::StatusOr<std::unique_ptr<AllToAllThunk>> AllToAllThunk::FromProto(

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_buffer_conversion_pass.h"
 
 #include <algorithm>
+#include <bitset>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -51,11 +52,11 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/ffi/ffi_registry.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/platform.h"
@@ -68,12 +69,49 @@ namespace {
 
 using CommandBufferConfig = CommandBufferConversionPass::CommandBufferConfig;
 
+std::optional<DebugOptions::CollectiveOpType> GetCollectiveOpType(
+    Thunk::Kind kind) {
+  switch (kind) {
+    case Thunk::kAllGather:
+      return DebugOptions::ALLGATHER;
+    case Thunk::kAllReduce:
+      return DebugOptions::ALLREDUCE;
+    case Thunk::kAllToAll:
+      return DebugOptions::ALLTOALL;
+    case Thunk::kCollectiveBroadcast:
+      return DebugOptions::COLLECTIVEBROADCAST;
+    case Thunk::kCollectivePermute:
+      return DebugOptions::COLLECTIVEPERMUTE;
+    case Thunk::kRaggedAllToAll:
+      return DebugOptions::RAGGEDALLTOALL;
+    case Thunk::kReduceScatter:
+      return DebugOptions::REDUCESCATTER;
+    default:
+      return std::nullopt;
+  }
+}
+
 CommandBufferConfig GetCommandBufferConfig(
     const DebugOptions& debug_options, const se::DeviceDescription& device_info,
     const HloModule* hlo_module) {
   absl::flat_hash_set<DebugOptions::CommandBufferCmdType> commands;
   for (auto cmd_type : debug_options.xla_gpu_enable_command_buffer()) {
     commands.insert(static_cast<DebugOptions::CommandBufferCmdType>(cmd_type));
+  }
+
+  std::bitset<CommandBufferConfig::kMaxCollectiveOps> enabled_collectives;
+  const auto& filter =
+      debug_options.xla_gpu_enable_collectives_command_buffer_filter();
+  if (!filter.empty()) {
+    for (auto op_type : filter) {
+      if (op_type >= 0 && op_type < CommandBufferConfig::kMaxCollectiveOps) {
+        enabled_collectives.set(op_type);
+      } else {
+        LOG(WARNING) << "Invalid collective op type: " << op_type;
+      }
+    }
+  } else {
+    enabled_collectives.set(DebugOptions::ALLCOLLECTIVES);
   }
 
   // Extract slice_size (partition_size) from HloModule config if available.
@@ -83,8 +121,7 @@ CommandBufferConfig GetCommandBufferConfig(
   }
 
   CommandBufferConfig config{
-      std::move(commands), device_info,
-      debug_options.xla_gpu_command_buffer_update_mode(),
+      std::move(commands), std::move(enabled_collectives), device_info,
       debug_options.xla_gpu_command_buffer_unroll_loops(), num_local_devices};
 
   // Erase command buffer cmd types that are not supported by the gpu runtime.
@@ -282,7 +319,9 @@ bool IsConvertible(const RaggedAllToAllThunk& ra2a_thunk,
   // kernel (and P2P) cannot be used.
   if (config.num_local_devices > 0) {
     bool is_local = IsAllReplicasLocal(
-        config.num_local_devices, ra2a_thunk.ragged_all_to_all_config().config);
+        config.num_local_devices,
+        ra2a_thunk.ragged_all_to_all_config().config.replica_groups,
+        ra2a_thunk.ragged_all_to_all_config().config.group_mode);
     if (!is_local) {
       VLOG(2) << "Skipping RaggedAllToAll Command Buffer conversion: "
                  "Operation requires multi-host communication "
@@ -324,13 +363,6 @@ static bool IsConvertible(
                "buffers because runtime offset verification is enabled";
     return false;
   }
-  if (config.update_mode == DebugOptions::NEVER_UPDATE &&
-      dynamic_slice_fusion_thunk.HasLoopDependentOffsets()) {
-    VLOG(2) << "DynamicSliceFusionV2Thunk is not convertible in NEVER_UPDATE "
-               "command-buffer mode because its offsets depend on loop "
-               "iteration";
-    return false;
-  }
   return ThunkSequenceIsConvertible(dynamic_slice_fusion_thunk.thunks(),
                                     config);
 }
@@ -365,6 +397,17 @@ bool IsConvertible(const Thunk& thunk, const CommandBufferConfig& config) {
             << " lowering is not enabled by the user for type "
             << DebugOptions::CommandBufferCmdType_Name(*cmd_type);
     return false;  // Thunk kind is not supported for command buffer conversion.
+  }
+
+  if (*cmd_type == DebugOptions::COLLECTIVES) {
+    if (!config.enabled_collectives.test(DebugOptions::ALLCOLLECTIVES)) {
+      auto op_type = GetCollectiveOpType(thunk.kind());
+      if (op_type.has_value() && !config.enabled_collectives.test(*op_type)) {
+        VLOG(2) << "Collective thunk kind " << Thunk::KindToString(thunk.kind())
+                << " is not enabled by the collectives filter";
+        return false;
+      }
+    }
   }
 
   if (thunk.kind() == Thunk::kWhile) {
@@ -501,13 +544,11 @@ ConvertThunksToCommandBuffer(
     CommandExecutor::SynchronizationMode synchronization_mode,
     const DebugOptions& debug_options) {
   bool enable_loop_unroll = debug_options.xla_gpu_command_buffer_unroll_loops();
-  DebugOptions::CommandBufferUpdateMode update_mode =
-      debug_options.xla_gpu_command_buffer_update_mode();
-  ASSIGN_OR_RETURN(CommandExecutor cmd_executor,
-                   ConvertToCommands(thunks_to_convert,
-                                     ConvertToCommandsOptions{
-                                         synchronization_mode,
-                                         enable_loop_unroll, update_mode}));
+  ASSIGN_OR_RETURN(
+      CommandExecutor cmd_executor,
+      ConvertToCommands(
+          thunks_to_convert,
+          ConvertToCommandsOptions{synchronization_mode, enable_loop_unroll}));
 
   std::string command_buffer_profile_annotation = absl::StrCat(
       "command_buffer",
@@ -538,7 +579,7 @@ ConvertThunksToCommandBuffer(
       std::move(cmd_executor), std::move(thunk_info),
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
                                         std::move(thunks_to_convert)),
-      debug_options.xla_enable_command_buffers_during_profiling(), update_mode);
+      debug_options.xla_enable_command_buffers_during_profiling());
 }
 
 absl::Status FlushCommandBuffer(
@@ -587,7 +628,24 @@ std::string CommandBufferConversionPass::CommandBufferConfig::ToString() const {
     absl::StrAppend(out, DebugOptions::CommandBufferCmdType_Name(cmd));
   };
   std::string cmd_names = absl::StrJoin(enabled_commands, ", ", formatter);
-  return absl::StrCat("enabled_commands: [", cmd_names, "]");
+
+  std::string collectives_filter;
+  if (enabled_collectives.test(DebugOptions::ALLCOLLECTIVES)) {
+    collectives_filter = "ALLCOLLECTIVES";
+  } else {
+    std::vector<std::string> enabled_names;
+    for (int i = 0; i < kMaxCollectiveOps; ++i) {
+      if (enabled_collectives.test(i) &&
+          DebugOptions::CollectiveOpType_IsValid(i)) {
+        enabled_names.push_back(DebugOptions::CollectiveOpType_Name(
+            static_cast<DebugOptions::CollectiveOpType>(i)));
+      }
+    }
+    collectives_filter = absl::StrJoin(enabled_names, ", ");
+  }
+
+  return absl::StrCat("enabled_commands: [", cmd_names,
+                      "], enabled_collectives: [", collectives_filter, "]");
 }
 
 absl::StatusOr<bool> CommandBufferConversionPass::Run(

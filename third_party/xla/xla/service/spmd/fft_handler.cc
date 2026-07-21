@@ -387,9 +387,15 @@ absl::Status SpmdPartitioningVisitor::HandleFft(HloInstruction* hlo) {
       partitioned_input.state().next_channel_id,
       partitioned_input.state().partition_id, partitioned_input.state().b);
 
-  if (padded_hlo.has_value()) {
-    result = padded_hlo.value();
+  if (!padded_hlo.has_value()) {
+    // Halo exchange is what establishes the divisibility that
+    // ShuffleWithinEachPartitionUsingOneHot requires (its CHECK_EQ). If it was
+    // not possible for this sharding (e.g. a halo larger than the per-shard
+    // size), fall back to the default partitioning instead of proceeding with
+    // an un-padded operand and hitting that CHECK.
+    return DefaultAction(hlo);
   }
+  result = padded_hlo.value();
 
   // 1.b Shuffle data within each partition using one hot and matmul.
   // If partition 0 has {0, 1, 2, 3} and num partitions is 2, after shuffling,

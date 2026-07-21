@@ -19,10 +19,15 @@ def _bitcode_library_impl(ctx):
 
             extra_flags = ctx.attr.file_specific_flags.get(src.basename, [])
             include_flags = ["-I{}".format(dir) for dir in include_dirs]
-            include_flags += ["-I{}".format(ctx.files._clang_header[0].dirname)]
-            include_flags += ["-I{}".format(ctx.files._clang_includes[0].dirname)]
 
-            # https://github.com/ROCm/llvm-project/blob/679865ee84553d564ad0551d878196e58c9d03f3/amd/device-libs/cmake/OCL.cmake#L33
+            clang_header_dir = ctx.files._clang_header[0].dirname
+            clang_includes_dir = ctx.files._clang_includes[0].dirname
+            include_flags += ["-I{}".format(clang_header_dir)]
+            include_flags += ["-I{}".format(clang_includes_dir)]
+            include_flags += ["-isystem", clang_header_dir]
+            include_flags += ["-isystem", clang_includes_dir]
+
+            # https://github.com/ROCm/llvm-project/blob/c7235dceaf25c6ef9ad8bcae4b4a10a3ac691588/amd/device-libs/cmake/OCL.cmake#L33
             args = [
                 "-fcolor-diagnostics",
                 "-Werror",
@@ -36,6 +41,7 @@ def _bitcode_library_impl(ctx):
                 "-fomit-frame-pointer",
                 "-Xclang",
                 "-finclude-default-header",
+                "-nostdlibinc",
                 "-Xclang",
                 "-fexperimental-strict-floating-point",
                 "-Xclang",

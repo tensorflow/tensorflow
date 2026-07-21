@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 
@@ -108,10 +107,6 @@ class Command : public Thunk {
     // A flag indicating whether we record commands at command buffer thunk
     // initialization time.
     bool is_initialization = false;
-
-    // The CommandBufferUpdateMode for the enclosing command buffer thunk.
-    DebugOptions::CommandBufferUpdateMode command_buffer_update_mode =
-        DebugOptions::ALWAYS_UPDATE;
   };
 
   // Create new commands in the command buffer using the given dependencies.
@@ -150,8 +145,8 @@ class Command : public Thunk {
     return absl::UnimplementedError("Record is not implemented");
   }
 
-  // Returns true if command requires initialization (has to be recorded at
-  // command buffer thunk initialization).
+  // Returns true if command requires a command buffer update during command
+  // buffer thunk initialization.
   //
   // Today this is only true for collective commands that might use NCCL for
   // communication. With NCCL, all participating ranks must record collective
@@ -159,7 +154,7 @@ class Command : public Thunk {
   // they got lucky and got the same buffer allocations), it will lead to
   // deadlocks. By forcing the command update at thunk initialization time, we
   // ensure that all ranks execute NCCL command update.
-  virtual bool requires_initialization() const { return false; }
+  virtual bool requires_update_on_initialize() const { return false; }
 
   // Returns true if command requires a one-time fallback execution before it is
   // recorded into a command buffer.
@@ -167,7 +162,7 @@ class Command : public Thunk {
 
   // Returns true if command buffer command parameters can change even when
   // buffer allocation base addresses are unchanged.
-  virtual bool requires_update() const { return false; }
+  virtual bool requires_update_on_execute() const { return false; }
 
   // Returns true if this command is implemented via CUDA stream activity
   // tracing (i.e. a subclass of TracedCommand).

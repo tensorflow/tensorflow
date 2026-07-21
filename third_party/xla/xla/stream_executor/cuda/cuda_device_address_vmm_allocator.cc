@@ -48,6 +48,14 @@ CudaDeviceAddressVmmAllocator::CudaDeviceAddressVmmAllocator(
     const Platform* platform)
     : DeviceAddressVmmAllocator(platform) {}
 
+CudaDeviceAddressVmmAllocator::~CudaDeviceAddressVmmAllocator() {
+  absl::Status status = SynchronizeAllPendingOperations();
+  if (!status.ok()) {
+    LOG(FATAL) << "Failed to synchronize pending CUDA VMM deallocations: "
+               << status;
+  }
+}
+
 absl::StatusOr<std::unique_ptr<CudaDeviceAddressVmmAllocator>>
 CudaDeviceAddressVmmAllocator::Create(const Platform* platform,
                                       absl::Span<const DeviceConfig> devices) {

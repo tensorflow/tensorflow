@@ -29,10 +29,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -1343,16 +1345,16 @@ std::vector<HloUse> GetUsesAndExtendIfConcatBitcast(
 
 // If a value is used by a ConcatBitcastCustomCall, we extend the time bound to
 // represent the time bound of the concatenated value.
-HloLiveRange::TimeBound GetTimeBoundAndExtendIfConcatBitcast(
+HloLiveRange::LiveRangeBounds GetTimeBoundAndExtendIfConcatBitcast(
     const HloValue* value, const HloDataflowAnalysis& dataflow_analysis,
     const HloLiveRange& hlo_live_range) {
-  HloLiveRange::TimeBound time_bound =
+  HloLiveRange::LiveRangeBounds time_bound =
       hlo_live_range.buffer_live_ranges().at(value);
   for (const HloUse& use : value->GetUses()) {
     if (IsConcatBitcastCustomCall(use.instruction)) {
       const HloValue& concat_bitcast_value =
           dataflow_analysis.GetUniqueValueAt(use.instruction);
-      const HloLiveRange::TimeBound& concat_time_bound =
+      const HloLiveRange::LiveRangeBounds& concat_time_bound =
           hlo_live_range.buffer_live_ranges().at(&concat_bitcast_value);
       time_bound.start = std::min(time_bound.start, concat_time_bound.start);
       time_bound.end = std::max(time_bound.end, concat_time_bound.end);
@@ -1451,7 +1453,7 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
     seen_buffers.insert(buffer.id());
 
     for (const HloValue* value : buffer.values()) {
-      const HloLiveRange::TimeBound& time_bound =
+      const HloLiveRange::LiveRangeBounds& time_bound =
           GetTimeBoundAndExtendIfConcatBitcast(
               value, alias_analysis.dataflow_analysis(), *hlo_live_range);
       const HloInstruction* last_use_instruction = nullptr;

@@ -22,14 +22,18 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/dataset.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -158,8 +162,16 @@ absl::Status UncompressElement(const CompressedElement& compressed,
     if (metadata.dtype() == DT_STRING) {
       ++num_string_tensors;
       num_string_tensor_strings += metadata.uncompressed_bytes_size();
-    } else if (!DataTypeCanUseMemcpy(metadata.dtype())) {
-      total_nonmemcpyable_size += metadata.uncompressed_bytes(0);
+    } else {
+      TensorShape shape(metadata.tensor_shape());
+      int64_t num_elements = shape.num_elements();
+      if (num_elements > 0 && metadata.uncompressed_bytes_size() == 0) {
+        return absl::InvalidArgumentError(
+            "Missing uncompressed_bytes metadata for non-empty tensor");
+      }
+      if (!DataTypeCanUseMemcpy(metadata.dtype()) && num_elements > 0) {
+        total_nonmemcpyable_size += metadata.uncompressed_bytes(0);
+      }
     }
   }
 
@@ -175,22 +187,39 @@ absl::Status UncompressElement(const CompressedElement& compressed,
   char* nonmemcpyable_pos = nonmemcpyable.mdata();
   for (const auto& metadata : compressed.component_metadata()) {
     if (DataTypeCanUseMemcpy(metadata.dtype())) {
+      TensorShape shape(metadata.tensor_shape());
+      int64_t num_elements = shape.num_elements();
       out->emplace_back(metadata.dtype(), metadata.tensor_shape());
       TensorBuffer* buffer = DMAHelper::buffer(&out->back());
-      if (buffer) {
+      if (buffer && num_elements > 0) {
+        if (metadata.uncompressed_bytes(0) > buffer->size()) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "uncompressed_bytes (", metadata.uncompressed_bytes(0),
+              ") exceeds allocated buffer size (", buffer->size(), ")"));
+        }
         iov.Add(buffer->data(), metadata.uncompressed_bytes(0));
       }
     } else if (metadata.dtype() == DT_STRING) {
       out->emplace_back(metadata.dtype(), metadata.tensor_shape());
       const auto& flats = out->back().unaligned_flat<tstring>();
+      if (metadata.uncompressed_bytes_size() > flats.size()) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "uncompressed_bytes count (", metadata.uncompressed_bytes_size(),
+            ") exceeds allocated string tensor elements count (", flats.size(),
+            ")"));
+      }
       for (int i = 0; i < metadata.uncompressed_bytes_size(); ++i) {
         flats.data()[i].resize(metadata.uncompressed_bytes(i));
         iov.Add(flats.data()[i].mdata(), metadata.uncompressed_bytes(i));
       }
     } else {
+      TensorShape shape(metadata.tensor_shape());
+      int64_t num_elements = shape.num_elements();
       out->emplace_back();
-      iov.Add(nonmemcpyable_pos, metadata.uncompressed_bytes(0));
-      nonmemcpyable_pos += metadata.uncompressed_bytes(0);
+      if (num_elements > 0) {
+        iov.Add(nonmemcpyable_pos, metadata.uncompressed_bytes(0));
+        nonmemcpyable_pos += metadata.uncompressed_bytes(0);
+      }
     }
   }
 

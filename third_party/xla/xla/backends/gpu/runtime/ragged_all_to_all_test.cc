@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/tsl/platform/status_macros.h"
 #include "third_party/nccl/nccl.h"
 #include "xla/backends/gpu/collectives/nccl_symmetric_memory.h"
+#include "xla/backends/gpu/collectives/nccl_types.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/primitive_util.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -137,13 +138,17 @@ std::vector<std::vector<T>> CopyDeviceToHost2D(
 absl::StatusOr<std::vector<std::unique_ptr<xla::SymmetricMemory>>>
 CreateSymmetricMemory(
     std::shared_ptr<tsl::Executor> exec, const std::vector<ncclComm_t>& comms,
-    const std::vector<std::unique_ptr<se::MemoryAllocation>>& buffers) {
+    const std::vector<std::unique_ptr<se::MemoryAllocation>>& buffers,
+    const std::vector<se::StreamExecutor*>& executors) {
   int64_t num_devices = comms.size();
   std::vector<tsl::Future<std::unique_ptr<NcclSymmetricMemory>>>
       symmetric_memory_futures(num_devices);
   for (int i = 0; i < num_devices; ++i) {
     symmetric_memory_futures[i] = tsl::MakeFutureOn(*exec, [&, exec, i]() {
-      return NcclSymmetricMemory::Create(comms[i], buffers[i]->address(), exec);
+      std::shared_ptr<NcclCommState> comm_state =
+          std::make_shared<NcclCommState>(comms[i]);
+      return NcclSymmetricMemory::Create(comm_state, buffers[i]->address(),
+                                         exec, executors[i]);
     });
   }
 
@@ -310,9 +315,10 @@ TEST_F(RaggedAllToAllKernelTest, KernelWithSymmetricMemory) {
   auto exec =
       std::shared_ptr<tsl::Executor>(pool.AsExecutor(), [](tsl::Executor*) {});
 
-  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<xla::SymmetricMemory>>
-                           output_buffers_symmetric_memory,
-                       CreateSymmetricMemory(exec, comms, output_buffers));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<xla::SymmetricMemory>>
+          output_buffers_symmetric_memory,
+      CreateSymmetricMemory(exec, comms, output_buffers, executors));
 
   TF_ASSERT_OK(RunRaggedAllToAllWithSymmetricMemoryKernel(
       streams[0].get(), primitive_util::NativeToPrimitiveType<T>(),

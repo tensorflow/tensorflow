@@ -578,10 +578,10 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
   TFLITE_LOG_PROD(tflite::TFLITE_LOG_VERBOSE,
                   "Replacing %d out of %d node(s) with delegate (%s) node, "
                   "yielding %zu partitions "
-                  "for subgraph %d.",
+                  "for subgraph %d (%s).",
                   nodes_to_replace->size, execution_plan_.size(),
                   GetDelegateKernalName(registration), node_subsets.size(),
-                  subgraph_index_);
+                  subgraph_index_, name_.c_str());
 
   execution_plan_.clear();
 
@@ -1706,10 +1706,14 @@ TfLiteStatus Subgraph::InvokeImpl() {
 #endif  // TF_LITE_TENSORFLOW_PROFILER
 
     // If per operator profiling flag is set in the delegate, this macro op
-    // should not be profiled, thus a nullptr is passed to the ScopedProfile
-    bool profile_op =
-        !(node.delegate != nullptr &&
-          (node.delegate->flags & kTfLiteDelegateFlagsPerOperatorProfiling));
+    // should not be profiled, thus a nullptr is passed to the ScopedProfile.
+    // However, if ForceDelegateNodeProfiling() is true, we bypass this
+    // suppression (useful for calibration).
+    bool profile_op = true;
+    if (node.delegate != nullptr && !ForceDelegateNodeProfiling()) {
+      profile_op =
+          !(node.delegate->flags & kTfLiteDelegateFlagsPerOperatorProfiling);
+    }
     TFLITE_SCOPED_TAGGED_OPERATOR_PROFILE(
         profile_op ? profiler_.get() : nullptr, op_name, node_index);
 

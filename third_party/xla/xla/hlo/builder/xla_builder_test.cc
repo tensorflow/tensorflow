@@ -964,6 +964,56 @@ TEST(XlaBuilderTest, CollectiveBroadcast) {
   EXPECT_EQ(GetRoot(*module)->opcode(), HloOpcode::kCollectiveBroadcast);
 }
 
+TEST(XlaBuilderTest, CollectiveBroadcastWithDynamicRoot) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
+  auto root = Parameter(&b, 1, ShapeUtil::MakeShape(S32, {1}), "root");
+
+  ReplicaGroup replica_group;
+  replica_group.add_replica_ids(0);
+  replica_group.add_replica_ids(1);
+  CollectiveBroadcast({x, root}, {replica_group}, std::nullopt,
+                      /*has_dynamic_root=*/true);
+  ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  EXPECT_EQ(GetRoot(*module)->opcode(), HloOpcode::kCollectiveBroadcast);
+}
+
+TEST(XlaBuilderTest, CollectiveBroadcastWithDynamicRootFailWithOpMismatch) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
+  auto root = Parameter(&b, 1, ShapeUtil::MakeShape(S32, {2}), "root");
+
+  ReplicaGroup replica_group;
+  replica_group.add_replica_ids(0);
+  replica_group.add_replica_ids(1);
+  CollectiveBroadcast({x, root}, {replica_group}, std::nullopt,
+                      /*has_dynamic_root=*/true);
+  absl::Status status = b.Build().status();
+
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr(
+          "the same number of elements as the number of non-root operands"));
+}
+
+TEST(XlaBuilderTest,
+     CollectiveBroadcastWithDynamicRootFailWithRootDimMismatch) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
+  auto root = Parameter(&b, 1, ShapeUtil::MakeShape(S32, {2, 1}), "root");
+
+  ReplicaGroup replica_group;
+  replica_group.add_replica_ids(0);
+  replica_group.add_replica_ids(1);
+  CollectiveBroadcast({x, root}, {replica_group}, std::nullopt,
+                      /*has_dynamic_root=*/true);
+  absl::Status status = b.Build().status();
+
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("a 1-D array of S32"));
+}
+
 TEST(XlaBuilderTest, CollectivePermute) {
   XlaBuilder b(TestName());
   auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");

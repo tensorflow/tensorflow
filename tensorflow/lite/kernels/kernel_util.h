@@ -18,12 +18,12 @@ limitations under the License.
 #include <stdint.h>
 
 #include <cstddef>
+#include <initializer_list>
 #include <limits>
 #ifndef TF_LITE_STATIC_MEMORY
 #include <string>
 #endif  // TF_LITE_STATIC_MEMORY
 
-#include "absl/types/span.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #ifndef NDEBUG
@@ -352,7 +352,7 @@ bool HasUnspecifiedDimension(const TfLiteTensor* tensor);
  * @param product The output parameter to store the product.
  */
 TfLiteStatus CheckedShapeProduct(TfLiteContext* context,
-                                 absl::Span<const int> dims,
+                                 std::initializer_list<int> dims,
                                  const char* error_message, size_t& product);
 
 /**
@@ -360,11 +360,25 @@ TfLiteStatus CheckedShapeProduct(TfLiteContext* context,
  * the dimensions is negative or if the product overflows.
  * @param context The context to use for error reporting.
  * @param dims The dimensions to multiply.
+ * @param count The length of the dims array.
+ * @param error_message The error message to use if an error is encountered.
+ * @param product The output parameter to store the product.
+ */
+TfLiteStatus CheckedShapeProduct(TfLiteContext* context, const int* dims,
+                                 int count, const char* error_message,
+                                 size_t& product);
+
+/**
+ * Calculates the product of the given dimensions. Returns an error if any of
+ * the dimensions is negative or if the product overflows. (Same as above
+ * function with dims built on the fly)
+ * @param context The context to use for error reporting.
+ * @param dims The dimensions to multiply.
  * @param error_message The error message to use if an error is encountered.
  * @param product The output parameter to store the product.
  */
 TfLiteStatus CheckedShapeProductToInt(TfLiteContext* context,
-                                      absl::Span<const int> dims,
+                                      std::initializer_list<int> dims,
                                       const char* error_message, int& product);
 
 }  // namespace tflite

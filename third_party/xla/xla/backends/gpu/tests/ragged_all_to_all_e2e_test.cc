@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/array.h"
 #include "xla/backends/gpu/tests/collective_ops_e2e_test_base.h"
+#include "xla/backends/gpu/tests/ragged_all_to_all_test_utils.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
@@ -58,8 +58,6 @@ enum class RaggedAllToAllImplType {
   kDecomposer,
   kOneShotWithMultiGpuBarrier,
   kOneShotWithMultiGpuBarrierWithNccl,
-  // TODO: b/482045400 - Remove double-copy approach once testing is done.
-  kOneShotWithMultiGpuBarrierWithNcclZeroCopy,
 };
 
 class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
@@ -182,15 +180,17 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
     Array<int64_t> output_sizes = input_sizes;
     output_sizes.TransposeDimensions({1, 0, 2});
 
-    Array<int64_t> input_offsets = CalculateOffsetsFromSizes(input_sizes);
-    Array<int64_t> output_offsets = CalculateOffsetsFromSizes(output_sizes);
+    Array<int64_t> input_offsets =
+        gpu::ragged_all_to_all::CalculateOffsetsFromSizes(input_sizes);
+    Array<int64_t> output_offsets =
+        gpu::ragged_all_to_all::CalculateOffsetsFromSizes(output_sizes);
     output_offsets.TransposeDimensions({1, 0, 2});
 
     std::vector<Array<float>> input_data(
         num_replicas, Array<float>(input_param->shape().dimensions()));
     std::vector<Array<float>> output_data(num_replicas, output_init_data);
-    FillWithRandomData(input_data, output_data, input_offsets, output_offsets,
-                       input_sizes);
+    gpu::ragged_all_to_all::FillWithRandomData(
+        input_data, output_data, input_offsets, output_offsets, input_sizes);
 
     // Create literals from array data.
     for (int64_t i = 0; i < num_replicas; ++i) {
@@ -253,13 +253,14 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
     opts.set_xla_gpu_unsupported_enable_ragged_all_to_all_decomposer(
         impl_type_ == RaggedAllToAllImplType::kDecomposer);
     opts.set_xla_gpu_ragged_all_to_all_mode(collectives_mode_);
+    // Requires symmetric memory.
+    opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(
+        false);
     if (IsSymmetricNcclPath()) {
       opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(false);
     }
     if (impl_type_ == RaggedAllToAllImplType::kOneShotWithMultiGpuBarrier) {
       opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(true);
-      opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(
-          false);
     }
     if (impl_type_ ==
             RaggedAllToAllImplType::kOneShotWithMultiGpuBarrierWithNccl &&
@@ -273,71 +274,7 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
       opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(
           true);
     }
-    // TODO: b/482045400 - Remove double-copy approach once testing is done.
-    if (impl_type_ == RaggedAllToAllImplType::
-                          kOneShotWithMultiGpuBarrierWithNcclZeroCopy &&
-        // Do not enable use_barrier_with_nccl on pre-Hopper architectures
-        Capability().cuda_compute_capability()->IsAtLeastHopper()) {
-      opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(true);
-      opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier(false);
-      opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(
-          true);
-      opts.set_xla_gpu_experimental_ragged_all_to_all_zero_copy(true);
-    }
     return opts;
-  }
-
-  // Computes ragged tensor offsets based on the sizes of the ragged rows.
-  Array<int64_t> CalculateOffsetsFromSizes(const Array<int64_t>& sizes) {
-    int64_t num_replicas = sizes.dim(0);
-    int64_t num_updates_per_replica = sizes.dim(2);
-    Array<int64_t> offsets(sizes.dimensions());
-    for (int i = 0; i < num_replicas; ++i) {
-      int64_t cur_offset = 0;
-      for (int j = 0; j < num_replicas; ++j) {
-        for (int k = 0; k < num_updates_per_replica; ++k) {
-          offsets(i, j, k) = cur_offset;
-          cur_offset += sizes(i, j, k);
-        }
-      }
-    }
-    return offsets;
-  }
-
-  // Fill the input and output tensors with random data. An all-to-all is
-  // effectively a transpose. We generate a chunk of random data for each update
-  // of each pair of replicas and write the chunk starting from the (i, j, k)
-  // offset of the input tensor and starting from the (j, i, k) offset of the
-  // output tensor.
-  void FillWithRandomData(std::vector<Array<float>>& input_data,
-                          std::vector<Array<float>>& output_data,
-                          const Array<int64_t>& input_offsets,
-                          const Array<int64_t>& output_offsets,
-                          const Array<int64_t>& input_sizes) {
-    int64_t num_replicas = input_sizes.dim(0);
-    int64_t num_updates_per_replica = input_sizes.dim(2);
-    std::vector<int64_t> start_indices(input_data[0].num_dimensions());
-    std::vector<int64_t> chunk_sizes{input_data[0].dimensions().begin(),
-                                     input_data[0].dimensions().end()};
-
-    for (int i = 0; i < num_replicas; ++i) {
-      for (int j = 0; j < num_replicas; ++j) {
-        for (int k = 0; k < num_updates_per_replica; ++k) {
-          chunk_sizes[0] = input_sizes(i, j, k);
-
-          Array<float> chunk_data(chunk_sizes);
-          chunk_data.FillRandomUniform(
-              1, 127,
-              /*seed=*/(i * num_replicas + j) * num_updates_per_replica + k);
-
-          start_indices[0] = input_offsets(i, j, k);
-          input_data[i].UpdateSlice(chunk_data, start_indices);
-
-          start_indices[0] = output_offsets(i, j, k);
-          output_data[j].UpdateSlice(chunk_data, start_indices);
-        }
-      }
-    }
   }
 
   // Returns a literal for the given parameter of the given replica.
@@ -1085,9 +1022,6 @@ std::string RaggedAllToAllImplTypeName(
       return "one_shot_with_multi_gpu_barrier";
     case RaggedAllToAllImplType::kOneShotWithMultiGpuBarrierWithNccl:
       return "one_shot_with_multi_gpu_barrier_with_nccl";
-    // TODO: b/482045400 - Remove double-copy approach once testing is done.
-    case RaggedAllToAllImplType::kOneShotWithMultiGpuBarrierWithNcclZeroCopy:
-      return "one_shot_with_multi_gpu_barrier_with_nccl_zero_copy";
     default:
       LOG(FATAL) << "Unknown ragged all-to-all implementation type.";
   }
@@ -1125,9 +1059,7 @@ BuildRaggedAllToAllTestParams() {
     for (RaggedAllToAllImplType impl_type :
          {RaggedAllToAllImplType::kDecomposer,
           RaggedAllToAllImplType::kOneShotWithMultiGpuBarrier,
-          RaggedAllToAllImplType::kOneShotWithMultiGpuBarrierWithNccl,
-          RaggedAllToAllImplType::
-              kOneShotWithMultiGpuBarrierWithNcclZeroCopy}) {
+          RaggedAllToAllImplType::kOneShotWithMultiGpuBarrierWithNccl}) {
       params.emplace_back(enable_async, impl_type,
                           DebugOptions::COLLECTIVES_PRIVATE_MEMORY);
     }

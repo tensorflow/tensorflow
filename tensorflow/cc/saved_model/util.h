@@ -48,7 +48,7 @@ std::set<std::string> GetMapKeys(
 absl::Status GetInputValues(
     const SignatureDef& signature,
     const ::google::protobuf::Map<std::string, ::tensorflow::TensorProto>& request_inputs,
-    std::vector<std::pair<string, Tensor>>& inputs);
+    std::vector<std::pair<std::string, Tensor>>& inputs);
 
 }  // namespace saved_model
 }  // namespace tensorflow

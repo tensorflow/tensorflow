@@ -556,6 +556,11 @@ absl::StatusOr<bool> HoistFusedBitcasts::RunOnModule(
 absl::StatusOr<bool> HoistFusedBitcasts::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  if (module->config().debug_options().xla_gpu_experimental_gemm_fusion_v2()) {
+    VLOG(2) << "Skipping HoistFusedBitcasts because "
+               "xla_gpu_experimental_gemm_fusion_v2 is set.";
+    return false;
+  }
   return RunOnModule(module, execution_threads);
 }
 

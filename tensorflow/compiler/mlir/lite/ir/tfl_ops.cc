@@ -565,7 +565,7 @@ bool VerifySubOpShapeConstraints(SubOp op) {
 
   // Allows F32, QUI8, and QI16 outputs when the operands have valid shapes,
   // which are broadcastable shapes up to five dimension or have same shapes.
-  if (element_type.isF32() || IsI32Type(element_type) ||
+  if (element_type.isF32() || element_type.isF16() || IsI32Type(element_type) ||
       IsI64Type(element_type) || IsQUI8Type(element_type) ||
       IsQI16Type(element_type)) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
@@ -5403,7 +5403,7 @@ void IfOp::getSuccessorRegions(RegionBranchPoint point,
                                SmallVectorImpl<RegionSuccessor>& regions) {
   // The `then` and the `else` region branch back to the parent operation.
   if (!point.isParent()) {
-    regions.push_back(RegionSuccessor::parent());
+    regions.push_back(RegionSuccessor(getOperation()));
     return;
   }
 
@@ -5439,7 +5439,7 @@ void IfOp::getEntrySuccessorRegions(ArrayRef<Attribute> operands,
 }
 
 mlir::ValueRange IfOp::getSuccessorInputs(RegionSuccessor successor) {
-  return successor.isParent() ? getOperation()->getResults() : ValueRange();
+  return successor.isOperation() ? getOperation()->getResults() : ValueRange();
 }
 
 //===----------------------------------------------------------------------===//

@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -74,16 +89,21 @@ cc_library(
 xla_cc_test(
     name = "cpu_cliques_test",
     srcs = ["cpu_cliques_test.cc"],
-    tags = ["notap"],
     deps = [
         ":cpu_clique_key",
         ":cpu_cliques",
+        ":cpu_collectives",
         ":in_process_collectives",
+        ":in_process_communicator",
+        "//xla/core/collectives:clique_id",
+        "//xla/core/collectives:clique_key",
+        "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/runtime:device_id",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
     ],
 )

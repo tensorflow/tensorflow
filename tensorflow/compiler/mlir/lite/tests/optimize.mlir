@@ -1,3 +1,18 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
 // Run optimize pass only and check the results.
 // RUN: litert-opt %s -tfl-optimize='enable-canonicalization=false' | FileCheck %s
 // Run optimize pass and then canonicalize pass, and make sure some folding is applied.
@@ -4687,13 +4702,13 @@ func.func @broadcast_to_i32_with_dynamic_shape_and_output(%arg0: tensor<3xi32>, 
 
 // CHECK-LABEL: @broadcast_to_ui32_with_dynamic_output
 func.func @broadcast_to_ui32_with_dynamic_output(%arg0: tensor<1xi32>) -> tensor<?xui32> {
-  %cst = arith.constant dense<0> : tensor<1xui32>
+  %cst = "tfl.pseudo_const"() {value = dense<0> : tensor<1xui32>} : () -> tensor<1xui32>
   %0 = "tfl.broadcast_to"(%cst, %arg0) : (tensor<1xui32>, tensor<1xi32>) -> tensor<?xui32>
   return %0 : tensor<?xui32>
 
-  // CHECK:  %cst = arith.constant dense<0> : tensor<1xui32>
-  // CHECK:  %0 = "tfl.broadcast_to"(%cst, %arg0) : (tensor<1xui32>, tensor<1xi32>) -> tensor<?xui32>
-  // CHECK:  return %0 : tensor<?xui32>
+  // CHECK:  %[[CST:.*]] = "tfl.pseudo_const"(){{.*}}dense<0> : tensor<1xui32>
+  // CHECK:  %[[VAL:.*]] = "tfl.broadcast_to"(%[[CST]], %arg0) : (tensor<1xui32>, tensor<1xi32>) -> tensor<?xui32>
+  // CHECK:  return %[[VAL]] : tensor<?xui32>
 }
 
 

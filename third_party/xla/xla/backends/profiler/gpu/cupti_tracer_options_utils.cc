@@ -84,10 +84,6 @@ absl::Status UpdateCuptiTracerOptionsFromProfilerOptions(
       [&](bool value) { tracer_options.enable_nvtx_tracking = value; }));
 
   RETURN_IF_ERROR(SetValue<bool>(
-      profile_options, "gpu_reuse_cupti_v2_subscriber", input_keys,
-      [&](bool value) { tracer_options.reuse_cupti_v2_subscriber = value; }));
-
-  RETURN_IF_ERROR(SetValue<bool>(
       profile_options, "gpu_aggregated_tracing", input_keys,
       [&](bool value) { collector_options.aggregated_tracing = value; }));
 

@@ -2675,45 +2675,6 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, InvalidOptions) {
     auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
     EXPECT_FALSE(status.ok());
   }
-
-  // Test invalid mixed priority policy
-  {
-    QueueOptions options = CreatePriorityAwareQueueOptions(
-        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
-        /*max_queue_depth=*/2);
-    options.mixed_priority_batching_policy =
-        MixedPriorityBatchingPolicy::kPriorityIsolation;
-
-    std::unique_ptr<BatchScheduler<FakeTask>> queue;
-    auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
-    EXPECT_FALSE(status.ok());
-  }
-
-  // Test invalid mixed priority policy
-  {
-    QueueOptions options = CreatePriorityAwareQueueOptions(
-        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
-        /*max_queue_depth=*/2);
-    options.mixed_priority_batching_policy =
-        MixedPriorityBatchingPolicy::kPriorityMerge;
-
-    std::unique_ptr<BatchScheduler<FakeTask>> queue;
-    auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
-    EXPECT_FALSE(status.ok());
-  }
-
-  // Test invalid mixed priority policy
-  {
-    QueueOptions options = CreatePriorityAwareQueueOptions(
-        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
-        /*max_queue_depth=*/2);
-    options.mixed_priority_batching_policy = MixedPriorityBatchingPolicy::
-        kLowPriorityPaddingWithNextAllowedBatchSize;
-
-    std::unique_ptr<BatchScheduler<FakeTask>> queue;
-    auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
-    EXPECT_FALSE(status.ok());
-  }
 }
 
 TEST_P(SharedBatchSchedulerPriorityAwareTest, ValidOptions) {

@@ -177,15 +177,19 @@ typedef PJRT_Error* PJRT_TpuExecutable_IsTpuPredeterminedError(
 
 typedef struct PJRT_TpuExecutable_Extension {
   PJRT_Extension_Base base;
-  PJRT_TpuExecutable_GetTargetArguments* get_target_arguments;
-  PJRT_TpuExecutable_GetHloModuleWithConfig* get_hlo_module_with_config;
+  PJRT_NO_DISCARD PJRT_TpuExecutable_GetTargetArguments* get_target_arguments;
+  PJRT_NO_DISCARD PJRT_TpuExecutable_GetHloModuleWithConfig*
+      get_hlo_module_with_config;
   void* get_core_program_abi_version;  // deprecated
-  PJRT_TpuExecutable_GetCompiledMemoryStats* get_compiled_memory_stats;
-  PJRT_TpuExecutable_RunHloCostAnalysis* run_hlo_cost_analysis;
-  PJRT_TpuExecutable_SetTpuCompilationEnv* set_tpu_compilation_env;
-  PJRT_TpuExecutable_GetTpuCompilationEnvFieldAsString*
+  PJRT_NO_DISCARD PJRT_TpuExecutable_GetCompiledMemoryStats*
+      get_compiled_memory_stats;
+  PJRT_NO_DISCARD PJRT_TpuExecutable_RunHloCostAnalysis* run_hlo_cost_analysis;
+  PJRT_NO_DISCARD PJRT_TpuExecutable_SetTpuCompilationEnv*
+      set_tpu_compilation_env;
+  PJRT_NO_DISCARD PJRT_TpuExecutable_GetTpuCompilationEnvFieldAsString*
       get_tpu_compilation_env_field_as_string;
-  PJRT_TpuExecutable_IsTpuPredeterminedError* is_tpu_predetermined_error;
+  PJRT_NO_DISCARD PJRT_TpuExecutable_IsTpuPredeterminedError*
+      is_tpu_predetermined_error;
 } PJRT_TpuExecutable_Extension;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuExecutable_Extension,
                           is_tpu_predetermined_error);

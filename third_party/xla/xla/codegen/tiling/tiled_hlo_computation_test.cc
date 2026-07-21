@@ -45,6 +45,15 @@ class TiledHloComputationTest : public HloHardwareIndependentTestBase {
   TiledHloComputationTest() { RegisterSymbolicExprStorage(&mlir_context_); }
 
  protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    // TODO: b/514293537 - remove this test completely after switching to new
+    // tiling.
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(false);
+    return debug_options;
+  }
+
   mlir::MLIRContext mlir_context_;
   TiledHloScheduleBuilder default_schedule_builder_ =
       CreateMajorToMinorTiledHloSchedule;

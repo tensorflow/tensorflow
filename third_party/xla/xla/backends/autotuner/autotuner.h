@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,47 +17,66 @@ limitations under the License.
 #define XLA_BACKENDS_AUTOTUNER_AUTOTUNER_H_
 
 #include <memory>
-#include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
+#include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
-#include "xla/backends/autotuner/autotuner_cache_interface.h"
-#include "xla/backends/autotuner/codegen_backend.h"
-#include "xla/backends/autotuner/config_assigner.h"
+#include "xla/backends/autotuner/codegen_orchestrator.h"
+#include "xla/backends/autotuner/config_runner.h"
+#include "xla/backends/autotuner/hlo_extractor.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
 
-// Autotuner class, now a thin wrapper over ConfigAssigner.
-// To be deleted once the refactoring is complete.
+// Can tune configs for a given HLO module and returns the best config for
+// each instruction.
 class Autotuner {
  public:
+  struct Options {
+    int scratch_bytes_window_size_us = 2;
+    ConfigRunner::CorrectnessCheckOptions correctness_check_options;
+  };
+
+  using Config = CodegenOrchestrator::Config;
+
   static absl::StatusOr<std::unique_ptr<Autotuner>> Create(
-      std::vector<std::unique_ptr<CodegenBackend>> codegen_backends,
-      std::unique_ptr<Profiler> profiler, AutotuneConfig autotune_config,
-      std::unique_ptr<AutotunerCacheInterface> cache,
-      tsl::thread::ThreadPool* thread_pool = nullptr);
+      absl_nonnull std::unique_ptr<CodegenOrchestrator> orchestrator,
+      std::vector<absl_nonnull std::unique_ptr<Profiler>> profilers,
+      Options options, tsl::thread::ThreadPool* thread_pool = nullptr);
 
-  absl::Status Autotune(HloInstruction* instr);
+  struct TuningResult {
+    const HloInstruction* absl_nonnull instruction;
+    Config config;
+  };
 
-  absl::Status Autotune(HloModule* module,
-                        const InstructionFilterFn& should_autotune);
-
-  absl::Status Autotune(HloModule* module,
-                        const InstructionFilterFn& should_autotune,
-                        MultiProcessKeyValueStore& sharding_kv_store);
-
-  AutotunerCacheInterface::CacheStats GetCacheStats();
+  // This method extracts instructions, compiles them, profiles them,
+  // and returns the selected best config for each instruction.
+  absl::StatusOr<std::vector<TuningResult>> TuneConfigs(
+      const HloModule& module, const InstructionFilterFn& should_autotune,
+      bool tolerate_no_supported_configs = false) const;
 
  private:
-  explicit Autotuner(std::unique_ptr<ConfigAssigner> assigner)
-      : assigner_(std::move(assigner)) {}
+  Autotuner(absl_nonnull std::unique_ptr<CodegenOrchestrator> orchestrator,
+            std::vector<absl_nonnull std::unique_ptr<ConfigRunner>> runners,
+            Options options, tsl::thread::ThreadPool* thread_pool);
 
-  std::unique_ptr<ConfigAssigner> assigner_;
+  // Returns the best config for the given HLO instruction by profiling all
+  // supported configs and selecting the best one.
+  // If runner_index is not 0, the runner at the given index will be used
+  // instead of the first runner.
+  // The method is thread-safe.
+  tsl::Future<Config> GetTunedConfig(const HloInstruction* absl_nonnull instr,
+                                     int runner_index = 0) const;
+
+  Options options_;
+
+  absl_nonnull std::unique_ptr<CodegenOrchestrator> orchestrator_;
+  std::vector<absl_nonnull std::unique_ptr<ConfigRunner>> runners_;
+  tsl::thread::ThreadPool* absl_nullable thread_pool_;
 };
 
 }  // namespace xla

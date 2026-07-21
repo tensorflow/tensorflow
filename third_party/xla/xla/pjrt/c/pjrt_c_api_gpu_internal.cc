@@ -133,7 +133,7 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
     auto allocator_name = std::get<std::string>(it->second);
     if (allocator_name == "default") {
       allocator_config.kind = xla::GpuAllocatorConfig::Kind::kDefault;
-    } else if (allocator_name == "platform") {
+    } else if (allocator_name == "platform" || allocator_name == "address") {
       allocator_config.kind = xla::GpuAllocatorConfig::Kind::kPlatform;
     } else if (allocator_name == "bfc") {
       allocator_config.kind = xla::GpuAllocatorConfig::Kind::kBFC;
@@ -145,7 +145,8 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
       return StatusToPjRtError(absl::UnimplementedError(absl::StrFormat(
           "Allocator %s not supported for PJRT GPU plugin. Supported "
           "allocator "
-          "options are: 'default', 'platform', 'bfc', 'cuda_async' and 'vmm'.",
+          "options are: 'default', 'platform', 'bfc', 'cuda_async', 'vmm' and "
+          "'address'.",
           allocator_name)));
     }
   }

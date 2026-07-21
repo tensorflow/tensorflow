@@ -38,22 +38,23 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
-#include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/host_memory_allocator.h"
-#include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_stream_executor_client.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/raw_buffer.h"
-#include "xla/pjrt/se_raw_buffer.h"
+#include "xla/pjrt/se/buffer_sequencing_event.h"
+#include "xla/pjrt/se/local_device_state.h"
+#include "xla/pjrt/se/pjrt_stream_executor_client.h"
+#include "xla/pjrt/se/se_raw_buffer.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
@@ -239,10 +240,6 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       PjRtDevice* device, Shape shape);
 };
 
-std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
-    std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
-    int process_id);
-
 std::string MakeComputeCapabilityString(const se::DeviceDescription* desc);
 
 absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
@@ -259,9 +256,23 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     const GpuClientOptions& options);
 
+// Constructs a StreamExecutorGpuClient which is intended to be used by
+// tensorflow. Don't use this for anything because it has tensorflow specific
+// quirks.
+absl::StatusOr<std::unique_ptr<PjRtClient>> GetSharedStreamExecutorGpuClient(
+    const GpuClientOptions& options, LocalClient* local_client,
+    std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
+    std::unique_ptr<se::DeviceAddressAllocator> allocator,
+    std::unique_ptr<HostMemoryAllocator> host_memory_allocator);
+
 // Get the fabric info of a local device ordinal in the format of
 // "clusterUuid/cliqueId". Empty on SM90 or lower.
 absl::StatusOr<std::string> GetDeviceFabricInfo(int device_ordinal);
+
+// Creates allocator memory registration and adds the required suballocator
+// visitors to `allocator_config`.
+std::shared_ptr<gpu::AllocatorMemoryRegistration>
+CreateAllocatorMemoryRegistration(GpuAllocatorConfig* allocator_config);
 
 }  // namespace xla
 

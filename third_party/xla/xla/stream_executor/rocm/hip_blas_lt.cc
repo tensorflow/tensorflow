@@ -12,7 +12,6 @@ limitations under the License.
 #include "xla/stream_executor/rocm/hip_blas_lt.h"
 
 #include <algorithm>
-#include <any>
 #include <climits>
 #include <cstddef>
 #include <cstdint>
@@ -53,6 +52,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 #define SET_ATTR(setter, handle, attr, value) \
   ToStatus(setter(handle, attr, &value, sizeof(decltype(value))), #setter)
@@ -480,6 +480,10 @@ absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetMatmulPlan(
     TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E5M2, HIP_R_16F, HIP_R_8F_E5M2)
     TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E5M2, HIP_R_16F, HIP_R_16F)
     TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E5M2, HIP_R_32F, HIP_R_32F)
+    TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E5M2, HIP_R_8F_E5M2,
+                 HIP_R_8F_E5M2)
+    TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E5M2, HIP_R_8F_E4M3,
+                 HIP_R_8F_E4M3)
 
     TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_8F_E4M3, HIP_R_16BF, HIP_R_16BF)
     TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_8F_E4M3, HIP_R_16BF, HIP_R_8F_E4M3)
@@ -488,6 +492,10 @@ absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetMatmulPlan(
     TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_8F_E4M3, HIP_R_16F, HIP_R_8F_E5M2)
     TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_8F_E4M3, HIP_R_16F, HIP_R_16F)
     TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_8F_E4M3, HIP_R_32F, HIP_R_32F)
+    TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_8F_E4M3, HIP_R_8F_E5M2,
+                 HIP_R_8F_E5M2)
+    TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_8F_E4M3, HIP_R_8F_E4M3,
+                 HIP_R_8F_E4M3)
 
     // MX FP4 (F4E2M1FN) type combinations
     TYPED_MATMUL(float, HIP_R_4F_E2M1, HIP_R_4F_E2M1, HIP_R_32F, HIP_R_32F)

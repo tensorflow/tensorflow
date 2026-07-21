@@ -82,6 +82,13 @@ class TritonEmitterConstraintsTest : public HloHardwareIndependentTestBase {
     return std::nullopt;
   }
 
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(false);
+    return debug_options;
+  }
+
   mlir::MLIRContext mlir_context_;
   se::DeviceDescription device_description_ =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -445,7 +452,7 @@ ENTRY entry_computation {
 
   EXPECT_OK(CheckTiling(module.get(), {128, 128}));
   EXPECT_THAT(CheckTiling(module.get(), {1, 1}),
-              StatusIs(_, HasSubstr("Number of blocks exceeds the device")));
+              StatusIs(_, HasSubstr("exceeds the device grid")));
 }
 
 TEST_F(VerifyTritonConstraintsTest, FusionHasValidTileSizes) {

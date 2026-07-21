@@ -19,7 +19,6 @@ common_patch_list = [
     "//third_party/triton:common/f8e5m2_conversion.patch",
     "//third_party/triton:common/no_accelerate_through_broadcast.patch",
     "//third_party/triton:common/speed_up_int4_unpacking.patch",
-    "//third_party/triton:common/convert_layout_heuristic.patch",
     "//third_party/triton:common/verify_nvmma_encoding.patch",
     "//third_party/triton:common/construction_order.patch",
     "//third_party/triton:common/include_functional.patch",
@@ -34,5 +33,12 @@ common_patch_list = [
     "//third_party/triton:common/test_cache_determinism_fix.patch",
     "//third_party/triton:common/mig_limits_pytests.patch",
     "//third_party/triton:common/llvm_cl930478990.patch",
+    "//third_party/triton:common/llvm_cl933453789.patch",
+    "//third_party/triton:common/amdbufferopsemitter.patch",
+    "//third_party/triton:common/allocator.patch",
+    "//third_party/triton:common/llvm_cl943393061.patch",
+    "//third_party/triton:common/convert_layout_heuristic.patch",
+    "//third_party/triton:common/llvm_cl947230825.patch",
+    "//third_party/triton:common/llvm_cl948082775.patch",
     # Add new patches just above this line
 ]

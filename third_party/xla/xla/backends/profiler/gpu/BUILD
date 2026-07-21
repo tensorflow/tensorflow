@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//xla:xla.default.bzl", "xla_cc_test")
@@ -209,7 +224,6 @@ xla_test(
         ":cupti_wrapper",
         ":mock_cupti",
         "//xla/tsl/profiler/utils:time_utils",
-        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
         "@local_config_cuda//cuda:cupti_headers",
     ],
@@ -670,8 +684,10 @@ cc_library(
         ":cupti_buffer_events",
         ":cupti_interface",
         ":cupti_pm_sampler_utils",
+        ":cupti_utils",
         "//xla/tsl/cuda",
         "//xla/tsl/cuda:cupti",
+        "//xla/tsl/platform:env",
         "//xla/tsl/profiler/utils:lock_free_queue",
         "//xla/tsl/profiler/utils:math_utils",
         "//xla/tsl/profiler/utils:parse_annotation",
@@ -724,7 +740,6 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_cuda//cuda:cupti_headers",
         "@tsl//tsl/platform:errors",
         "@tsl//tsl/platform:platform_port",
         "@tsl//tsl/platform:thread_annotations",

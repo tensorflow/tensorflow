@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.pb.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
-#include "xla/backends/gpu/runtime/scratch_memory_requests.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_proto_deserialization.h"
 #include "xla/ffi/attribute_map.h"
@@ -83,6 +82,7 @@ class DummyThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return absl::OkStatus();
   }
+  BufferUses buffer_uses() const override { return {}; }
   absl::StatusOr<ThunkProto> ToProto() const override {
     return absl::UnimplementedError("DummyThunk::ToProto is not implemented");
   }
@@ -2025,11 +2025,8 @@ TEST_F(DynamicSliceThunkTest,
 
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests memory_requests(allocations);
-  ScratchMemoryRequests scratch_memory_requests;
-
-  Thunk::PrepareParams prepare_params{
-      &collective_params,       &clique_requests, &memory_requests,
-      &scratch_memory_requests, executor,         &allocations};
+  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
+                                      &memory_requests, executor, &allocations};
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       run_options, /*buffer_allocations=*/allocations, stream.get(),

@@ -29,6 +29,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -67,6 +69,15 @@ struct CanonicalAsyncOp {
 };
 
 CanonicalAsyncOp DefaultGetCanonicalAsyncOp(const HloInstruction& hlo);
+
+inline bool IsNopInstruction(HloOpcode op, const HloInstruction& hlo) {
+  return op == HloOpcode::kGetTupleElement || op == HloOpcode::kBitcast ||
+         op == HloOpcode::kConstant || op == HloOpcode::kParameter ||
+         op == HloOpcode::kBroadcast || op == HloOpcode::kIota ||
+         hlo.IsEffectiveBitcast(op) ||
+         (op == HloOpcode::kTuple && hlo.user_count() == 1 &&
+          hlo.users().front()->opcode() == HloOpcode::kWhile);
+}
 
 using GetCanonicalAsyncOpFunc =
     std::function<CanonicalAsyncOp(const HloInstruction& hlo)>;
@@ -174,6 +185,8 @@ struct SchedulerConfig {
   bool track_sync_op_resource_usage = false;
   // If true, use top down scheduling.
   bool top_down_scheduling = false;
+  // If true, enable schedule by structure.
+  bool enable_schedule_by_structure = false;
   // If set, only log computations that match the given regular expression.
   std::string log_computation_re;
 };
@@ -783,8 +796,12 @@ class HloGraphNode {
     num_hops_to_closest_selective_resource_occupier_ =
         num_hops_to_closest_selective_resource_occupier;
   }
-  void SetPreference(double preference) { preference_ = preference; }
+  void SetPreference(double preference) {
+    preference_ = preference;
+    has_preference_ = true;
+  }
   double GetPreference() const { return preference_; }
+  bool HasPreference() const { return has_preference_; }
   const ResourcesVector& GetResources() const { return rare_->resources; }
   bool DoesOccupyAnyResource() const { return does_occupy_any_resource_; }
   bool DoesReleaseAnyResource() const { return does_release_any_resource_; }
@@ -956,6 +973,7 @@ class HloGraphNode {
 
  private:
   friend class HloScheduleGraph;
+  friend class PriorityBasedHloScheduleGraph;
 
   // Older c++ versions don't allow initializers for bitfields, so we initialize
   // these in this routine, invoked by the constructor
@@ -1020,6 +1038,7 @@ class HloGraphNode {
   // Preference value used for scheduling heuristics,
   // a graph node having a higher preference value means it's scheduled
   // earlier. See ReadySetLt::operator()
+  bool has_preference_ = false;
   float preference_ = 0.0;
 
   // Other boolean fields are less performance sensitive so can be stored in
@@ -1165,12 +1184,17 @@ class HloGraphNode {
 // of HLO instructions.
 class HloScheduleGraph {
  public:
+  HloScheduleGraph() = default;
+
   // Instructions in the list passed to the constructor shouldn't be
   // altered/deleted during the existence of the HloScheduleGraph.
   // Nullptr is not a valid value for 'post_order_instructions' and
   // 'alias_analysis'.
   HloScheduleGraph(const std::vector<HloInstruction*>* post_order_instructions,
                    std::shared_ptr<const SchedulingContext> scheduling_context);
+  virtual ~HloScheduleGraph() = default;
+  HloScheduleGraph(HloScheduleGraph&&) = default;
+  HloScheduleGraph& operator=(HloScheduleGraph&&) = default;
   void PrintSizes() const {
     LOG(INFO) << "HloScheduleGraph sizes: node_storage: "
               << node_storage_.size()
@@ -1182,7 +1206,7 @@ class HloScheduleGraph {
               << " original_order: " << original_order_.size();
   }
 
-  std::string ToString() const;
+  virtual std::string ToString() const;
 
   HloGraphNode& GetNode(const HloInstruction* instr) const;
   HloGraphNode* GetNodePtr(const HloInstruction* instr) const;
@@ -1191,9 +1215,11 @@ class HloScheduleGraph {
 
   std::vector<HloGraphNode*> FindTopRoots() const;
 
-  void InitializeGraphAnalysis();
+  virtual void InitializeGraphAnalysis();
 
   void AnnotateGraph(const AnnotationTracker* annotation_tracker);
+
+  const HloReachabilityMap& reachability() const { return *reachability_; }
 
   // List of instructions in the original scheduled order. (Before scheduling).
   absl::Span<const HloInstruction* const> GetOriginalInstrList() const {
@@ -1246,7 +1272,7 @@ class HloScheduleGraph {
     sharable_resources_storage_.resize(1);
   }
 
- private:
+ protected:
   friend class HloEdge;
 
   // Backing store for the nodes in the graph
@@ -1271,6 +1297,7 @@ class HloScheduleGraph {
                                  const HloGraphNode* possible_predecessor);
   // Scheduling context for the graph.
   std::shared_ptr<const SchedulingContext> scheduling_context_;
+  std::unique_ptr<HloReachabilityMap> reachability_;
 };
 
 // These HloEdge routines need to be defined after HloScheduleGraph, since
@@ -1558,16 +1585,10 @@ class ModulePressureState {
         top_down_scheduling_(top_down_scheduling) {}
   // Initializes the pressure states for all computations in the module, only
   // needs to be called once at the beginning of the scheduling process.
-  void InitializePressureStates(
-      std::shared_ptr<absl::flat_hash_map<
-          const HloComputation*, std::shared_ptr<MemoryPressureTracker>>>
-          pressure_trackers = nullptr);
+  void InitializePressureStates();
   // Resets the pressure states for all computations in the module, must be
   // called to reset the memory pressure trackers after each scheduling attempt.
-  void ResetPressureStates(
-      std::shared_ptr<absl::flat_hash_map<
-          const HloComputation*, std::shared_ptr<MemoryPressureTracker>>>
-          pressure_trackers);
+  void ResetPressureStates();
   bool ComputationIsMemoryTracked(const HloComputation* computation) const {
     return ContainsKey(memory_pressure_states_, computation);
   }
@@ -1624,8 +1645,16 @@ struct ComputationScheduleInfo {
   uint64_t peak_memory;
 };
 
+// Comparator for the ready set. This class represents the priority policies
+// for the nodes in the ready set. The policy can be whatever is appropriate to
+// reduce the execution time of the graph or achieve interesting properties
+// (best CMEM/VMEM allocations, latency hiding, memory pressure ... etc).
+class ReadySetLt;
+
 // Implementation of the default scheduling algorithm.
 class DefaultSchedulerCore : public SchedulerCore {
+  friend class ReadySetLt;
+
  public:
   using ReadyQueueSet = std::vector<HloGraphNode*>;
   using ResourceMap = absl::flat_hash_map<int64_t, int64_t>;
@@ -1697,7 +1726,7 @@ class DefaultSchedulerCore : public SchedulerCore {
   // this struct instead of having to pass many individual pointers to elements
   // of the state.
   struct SchedulingState : public SchedulerCore::SchedulingState {
-    HloScheduleGraph sched_graph;
+    std::unique_ptr<HloScheduleGraph> sched_graph;
     // Ready set for the nodes. Its ordered by our heuristic defined in
     // ReadySetLt.
     ReadyQueueSet ready_set;
@@ -1775,8 +1804,8 @@ class DefaultSchedulerCore : public SchedulerCore {
         const HloInstructionSequence* instr_sequence,
         std::shared_ptr<const SchedulingContext>& scheduling_context,
         std::shared_ptr<MemoryPressureTracker> memory_pressure_tracker,
-        const SchedulerConfig& config)
-        : sched_graph(&instr_sequence->instructions(), scheduling_context),
+        const SchedulerConfig& config, std::unique_ptr<HloScheduleGraph> graph)
+        : sched_graph(std::move(graph)),
           latency_estimator(scheduling_context->GetLatencyEstimator().get()),
           async_tracker(scheduling_context->GetAsyncTracker().get()),
           memory_pressure_tracker(std::move(memory_pressure_tracker)),
@@ -1822,8 +1851,11 @@ class DefaultSchedulerCore : public SchedulerCore {
   absl::StatusOr<std::shared_ptr<SchedulerCore::SchedulingState>>
   MakeSchedulingState(const HloComputation* computation) override;
 
+  virtual std::unique_ptr<ReadySetLt> CreateReadySetComparator(
+      SchedulingState& sched_state) const;
+
   absl::Status ResetScheduler(const HloModule* module) override {
-    module_pressure_state_->ResetPressureStates(pressure_trackers_);
+    module_pressure_state_->ResetPressureStates();
     return absl::OkStatus();
   }
   absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
@@ -1894,7 +1926,11 @@ class DefaultSchedulerCore : public SchedulerCore {
   }
 
  protected:
+  virtual std::unique_ptr<HloScheduleGraph> CreateScheduleGraph(
+      const std::vector<HloInstruction*>* instructions,
+      std::shared_ptr<const SchedulingContext> context) const;
   virtual void LogInstruction(const HloInstruction* instr) const;
+
   // Schedules the given annotated node.
   absl::Status AnnotatedSchedulingStep(
       HloGraphNode* node,
@@ -1915,9 +1951,6 @@ class DefaultSchedulerCore : public SchedulerCore {
       DefaultSchedulerCore::ShouldSkipNodeFunction should_skip_node);
 
   std::unique_ptr<ModulePressureState> module_pressure_state_;
-  std::shared_ptr<absl::flat_hash_map<const HloComputation*,
-                                      std::shared_ptr<MemoryPressureTracker>>>
-      pressure_trackers_;
   SchedulerConfig config_;
   TargetSchedulingRule target_scheduling_rule_ = nullptr;
   TargetSchedulingRule early_target_scheduling_rule_ = nullptr;
@@ -1930,6 +1963,120 @@ class DefaultSchedulerCore : public SchedulerCore {
   SchedulerCore::GraphProcessingHook graph_processing_hook_;
   std::shared_ptr<const SchedulingContext> scheduling_context_;
   bool top_down_scheduling_ = false;
+};
+
+class ReadySetLt {
+ public:
+  using SchedulingState = DefaultSchedulerCore::SchedulingState;
+  using ScheduleCandidate = DefaultSchedulerCore::ScheduleCandidate;
+  using TargetSchedulingRule = DefaultSchedulerCore::TargetSchedulingRule;
+  using CandidateResult = DefaultSchedulerCore::CandidateResult;
+
+  explicit ReadySetLt(DefaultSchedulerCore::SchedulingState& sched_state,
+                      const DefaultSchedulerCore* core)
+      : sched_state_(sched_state), core_(core) {}
+  virtual ~ReadySetLt() = default;
+
+  virtual bool MaybeUpdate(DefaultSchedulerCore::ScheduleCandidate& a,
+                           DefaultSchedulerCore::ScheduleCandidate& b,
+                           const char** reason) const;
+
+  virtual bool AIsBetterThanB(DefaultSchedulerCore::ScheduleCandidate& a,
+                              DefaultSchedulerCore::ScheduleCandidate& b,
+                              const char** reason) const;
+
+ protected:
+  template <typename T>
+  static int ThreeWay(T avalue, T bvalue) {
+    if (ABSL_PREDICT_TRUE(avalue == bvalue)) {
+      return 0;
+    }
+    return (avalue < bvalue) ? -1 : 1;
+  }
+
+  template <typename T>
+  static std::optional<bool> CmpExplicit(T pa, T pb, const char* reason_str,
+                                         const char** reason) {
+    if (int v = ThreeWay(pa, pb)) {
+      *reason = reason_str;
+      return v > 0;
+    }
+    return std::nullopt;
+  }
+
+  template <typename T>
+  static std::optional<bool> CmpDirectional(bool top_down, T pa, T pb,
+                                            const char* reason_str,
+                                            const char** reason) {
+    return top_down ? CmpExplicit(pa, pb, reason_str, reason)
+                    : CmpExplicit(pb, pa, reason_str, reason);
+  }
+  std::optional<bool> MemoryPressurePolicy(
+      const DefaultSchedulerCore::SchedulingState& state,
+      const HloGraphNode* an, std::pair<int64_t, int64_t>& a_increase,
+      const HloGraphNode* bn, std::pair<int64_t, int64_t>& b_increase,
+      const char** reason) const;
+
+  std::optional<bool> ReleaseStartPolicy(
+      const DefaultSchedulerCore::SchedulingState& state,
+      const HloGraphNode* an, const HloGraphNode* bn,
+      const char** reason) const;
+
+  bool AsyncDepth0CandidateCondition(
+      const DefaultSchedulerCore::SchedulingState& state,
+      DefaultSchedulerCore::ScheduleCandidate& a,
+      const HloGraphNode* a_node) const;
+
+  bool ShouldScheduleAsyncDone(
+      const DefaultSchedulerCore::SchedulingState& state,
+      DefaultSchedulerCore::ScheduleCandidate& gn_cand,
+      const HloGraphNode* gn_node) const;
+
+  bool ShouldDelaySendHostDone(
+      const DefaultSchedulerCore::SchedulingState& state,
+      DefaultSchedulerCore::ScheduleCandidate& gn_cand,
+      const HloGraphNode* gn_node) const;
+
+  bool ShouldScheduleAsyncStart(
+      const DefaultSchedulerCore::SchedulingState& state,
+      DefaultSchedulerCore::ScheduleCandidate& gn_cand,
+      const HloGraphNode* gn_node) const;
+
+  std::optional<bool> IsValuableForSelectiveOverlap(
+      const DefaultSchedulerCore::SchedulingState& state,
+      DefaultSchedulerCore::ScheduleCandidate& a,
+      DefaultSchedulerCore::ScheduleCandidate& b, const char** reason) const;
+
+  static std::optional<bool> InvokeTargetSchedulingFunction(
+      DefaultSchedulerCore::TargetSchedulingRule func,
+      DefaultSchedulerCore::ScheduleCandidate& a,
+      DefaultSchedulerCore::ScheduleCandidate& b, const char** reason);
+
+  void UpdateCandidateResourceConstrained(
+      const DefaultSchedulerCore::SchedulingState& state,
+      DefaultSchedulerCore::ScheduleCandidate& cand,
+      const HloGraphNode* cand_node) const;
+
+  bool IsResourceConstrained(const DefaultSchedulerCore::SchedulingState& state,
+                             DefaultSchedulerCore::ScheduleCandidate& cand,
+                             const HloGraphNode* cand_node) const;
+
+  HloGraphNode::TimeCost PastDueCyclesForNonextendableResource(
+      const DefaultSchedulerCore::SchedulingState& state,
+      const HloGraphNode* cand_node) const;
+
+  std::pair<int64_t, int64_t> GetMemoryPressureChanges(
+      const DefaultSchedulerCore::SchedulingState& state,
+      DefaultSchedulerCore::ScheduleCandidate& cand,
+      const HloGraphNode* cand_node) const;
+
+  int64_t GetNumConflictingSerialResources(
+      const DefaultSchedulerCore::SchedulingState& state,
+      DefaultSchedulerCore::ScheduleCandidate& cand,
+      const HloGraphNode* cand_node) const;
+
+  DefaultSchedulerCore::SchedulingState& sched_state_;
+  const DefaultSchedulerCore* core_;
 };
 
 // A scheduler oriented to hiding latencies of operations that can run in

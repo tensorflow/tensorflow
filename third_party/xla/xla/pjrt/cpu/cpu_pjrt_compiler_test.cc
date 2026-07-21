@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/cpu/cpu_pjrt_compiler.h"
 
+#include <cstdint>
 #include <cstdlib>
 #include <memory>
 #include <string>
@@ -23,8 +24,10 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -36,9 +39,13 @@ limitations under the License.
 #include "xla/hlo/transforms/hlo_module_stitcher.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
+#include "xla/pjrt/mock_pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/tsl/platform/env.h"
@@ -79,16 +86,15 @@ std::unique_ptr<CpuTopologyDescription> GetDefaultCpuTopologyDescription() {
 }
 TEST_F(CpuPjrtCompilerTest, CompileXlaComputationSuccess) {
   xla::CompileOptions options;
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kProgram));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kProgram));
   xla::XlaComputation computation(module->ToProto());
 
   auto topology_description = GetDefaultCpuTopologyDescription();
 
   xla::cpu::CpuPjRtCompiler compiler;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      compiler.Compile(options, computation, *topology_description,
-                       /*client=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(auto executable, compiler.Compile(options, computation,
+                                                         *topology_description,
+                                                         /*client=*/nullptr));
 }
 
 TEST_F(CpuPjrtCompilerTest, CompileMlirOpSuccess) {
@@ -101,7 +107,7 @@ TEST_F(CpuPjrtCompilerTest, CompileMlirOpSuccess) {
   auto topology_description = GetDefaultCpuTopologyDescription();
 
   xla::cpu::CpuPjRtCompiler compiler;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto executable,
       compiler.Compile(options,
                        xla::MaybeOwningMlirModule(std::move(context),
@@ -112,7 +118,7 @@ TEST_F(CpuPjrtCompilerTest, CompileMlirOpSuccess) {
 
 TEST_F(CpuPjrtCompilerTest, CompileXlaComputationWithAvx512FeatureOn) {
   xla::CompileOptions options;
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kProgram));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kProgram));
   xla::XlaComputation computation(module->ToProto());
 
   constexpr int kCpuDeviceCount = 1;
@@ -131,16 +137,15 @@ TEST_F(CpuPjrtCompilerTest, CompileXlaComputationWithAvx512FeatureOn) {
                                                  /*features=*/"+avx512")));
 
   xla::cpu::CpuPjRtCompiler compiler;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      compiler.Compile(options, computation, *topology_description,
-                       /*client=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(auto executable, compiler.Compile(options, computation,
+                                                         *topology_description,
+                                                         /*client=*/nullptr));
 
   // We serialize and then load the executable to confirm that the target
   // machine options were set correctly.
 
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized_executable,
-                          executable->SerializeExecutable());
+  ASSERT_OK_AND_ASSIGN(auto serialized_executable,
+                       executable->SerializeExecutable());
 
   ExecutableAndOptionsProto proto;
   EXPECT_TRUE(proto.ParseFromString(serialized_executable));
@@ -207,19 +212,18 @@ TEST_F(CpuPjrtCompilerTest, CompileMultiModuleHloSuccess) {
   debug_opts->set_xla_dump_hlo_pass_re(".*");
   debug_opts->set_xla_dump_hlo_as_text(true);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kMultiModuleProgram));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kMultiModuleProgram));
   xla::XlaComputation computation(module->ToProto());
 
   auto topology_description = GetDefaultCpuTopologyDescription();
 
   xla::cpu::CpuPjRtCompiler compiler;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      compiler.Compile(options, computation, *topology_description,
-                       /*client=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(auto executable, compiler.Compile(options, computation,
+                                                         *topology_description,
+                                                         /*client=*/nullptr));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto optimized_modules, executable->GetHloModules());
+  ASSERT_OK_AND_ASSIGN(auto optimized_modules, executable->GetHloModules());
   ASSERT_FALSE(optimized_modules.empty());
 
   // Verify that the multi-module stitching logic executed correctly by checking
@@ -227,5 +231,77 @@ TEST_F(CpuPjrtCompilerTest, CompileMultiModuleHloSuccess) {
   EXPECT_TRUE(TempDirContainsHloString(xla::kMultiModuleCustomCallTarget));
 }
 
+TEST_F(CpuPjrtCompilerTest, DeserializePjRtTopologyDescriptionSuccess) {
+  xla::cpu::CpuPjRtCompiler compiler;
+  auto topology_description = GetDefaultCpuTopologyDescription();
+  ASSERT_OK_AND_ASSIGN(auto serialized_topology_description,
+                       topology_description->ToProto());
+  ASSERT_OK_AND_ASSIGN(
+      auto deserialized_topology_description,
+      compiler.DeserializePjRtTopologyDescription(
+          serialized_topology_description.SerializeAsString()));
+  EXPECT_THAT(deserialized_topology_description->platform_name(),
+              xla::CpuPlatformName());
+}
+
+TEST_F(CpuPjrtCompilerTest, CompileClientlessAndExecuteOnClient) {
+  xla::CompileOptions options;
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kProgram));
+  xla::XlaComputation computation(module->ToProto());
+
+  auto topology_description = GetDefaultCpuTopologyDescription();
+
+  xla::cpu::CpuPjRtCompiler compiler;
+  ASSERT_OK_AND_ASSIGN(auto executable, compiler.Compile(options, computation,
+                                                         *topology_description,
+                                                         /*client=*/nullptr));
+  ASSERT_NE(executable, nullptr);
+
+  // Get active CPU client.
+  xla::CpuClientOptions client_options;
+  ASSERT_OK_AND_ASSIGN(auto client, xla::GetXlaPjrtCpuClient(client_options));
+  ASSERT_NE(client, nullptr);
+
+  // Load the compiled executable.
+  xla::LoadOptions load_options;
+  ASSERT_OK_AND_ASSIGN(auto loaded_executable,
+                       client->Load(std::move(executable), load_options));
+  ASSERT_NE(loaded_executable, nullptr);
+
+  // Execute it and verify correctness.
+  xla::ExecuteOptions exec_options;
+  ASSERT_OK_AND_ASSIGN(auto results,
+                       loaded_executable->Execute({{}}, exec_options));
+  ASSERT_EQ(results.size(), 1);
+  ASSERT_EQ(results[0].size(), 1);
+
+  ASSERT_OK_AND_ASSIGN(auto literal, results[0][0]->ToLiteralSync());
+  EXPECT_EQ(literal->Get<int32_t>({}), 2);
+}
+
+TEST_F(CpuPjrtCompilerTest,
+       CompileMlirWithNonCpuClientBypassesClientDelegation) {
+  xla::CompileOptions options;
+  auto context = std::make_unique<mlir::MLIRContext>();
+  context->loadDialect<mlir::func::FuncDialect, mlir::mhlo::MhloDialect>();
+  auto mlir_module =
+      mlir::parseSourceString<mlir::ModuleOp>(kMlirProgram, context.get());
+
+  auto topology_description = GetDefaultCpuTopologyDescription();
+
+  xla::MockPjRtClient non_cpu_client;
+  EXPECT_CALL(non_cpu_client, platform_id())
+      .WillRepeatedly(testing::Return(12345));
+  EXPECT_CALL(non_cpu_client, Compile(testing::_, testing::_)).Times(0);
+
+  xla::cpu::CpuPjRtCompiler compiler;
+  ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      compiler.Compile(options,
+                       xla::MaybeOwningMlirModule(std::move(context),
+                                                  std::move(mlir_module)),
+                       *topology_description, &non_cpu_client));
+  EXPECT_NE(executable, nullptr);
+}
 }  // namespace
 }  // namespace xla::cpu

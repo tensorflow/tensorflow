@@ -36,7 +36,12 @@ class Version {
   static mlir::FailureOr<Version> fromString(llvm::StringRef version_ref);
 
   // Returns a Version representing the current IFRT IR version.
-  static Version getCurrentVersion() { return Version(0, 4, 0); }
+  static Version getCurrentVersion() {
+    // v0.2.0 - 2026-03-26
+    // v0.3.0 - 2026-05-07
+    // v0.4.0 - 2026-05-21
+    return Version(0, 4, 0);
+  }
 
   /// Returns a Version representing the minimum supported IFRT IR version.
   static Version getMinimumVersion() { return Version(0, 1, 0); }

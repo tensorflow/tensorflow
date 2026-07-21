@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"
 #include "mlir/Conversion/GPUToROCDL/GPUToROCDLPass.h"
 #include "mlir/Conversion/GPUToROCDL/Runtimes.h"
+#include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // IWYU pragma: keep
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // IWYU pragma: keep
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"  // IWYU pragma: keep
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Location.h"
@@ -61,16 +63,84 @@ limitations under the License.
 
 namespace xla {
 namespace emitters {
-namespace {
-
-namespace se = ::stream_executor;
 
 #define GEN_PASS_DEF_LOWERTOLLVMGPUPASS
 #include "xla/codegen/emitters/transforms/lower_to_llvm_gpu.h.inc"
 
+namespace {
+
+namespace se = ::stream_executor;
+
+// ln(2), used to express log(x) = log2(x) * ln(2).
+constexpr double kLn2 = 0.6931471805599453;
+
+// Lowers a scalar bf16 unary `math` op to the matching native gfx1250 bf16
+// transcendental instruction (v_exp_bf16, v_sqrt_bf16, v_rsq_bf16, v_tanh_bf16,
+// v_log_bf16, ...) via its `llvm.amdgcn.*` intrinsic, when the op maps 1:1 to
+// the instruction. Without this, the default MathToROCDL lowering upcasts bf16
+// to f32 and calls an `__ocml_*_f32` library function, never using the hardware
+// bf16 transcendental unit. Vector ops are scalarized first by MathToROCDL's
+// ScalarizeVectorOpLowering (lower benefit), so this pattern only needs to
+// handle the scalar case.
+template <typename OpTy>
+struct TranscendentalBF16ToAMDGPU : public mlir::ConvertOpToLLVMPattern<OpTy> {
+  TranscendentalBF16ToAMDGPU(const mlir::LLVMTypeConverter& converter,
+                             llvm::StringRef intrinsic,
+                             mlir::PatternBenefit benefit)
+      : mlir::ConvertOpToLLVMPattern<OpTy>(converter, benefit),
+        intrinsic(intrinsic) {}
+
+  mlir::LogicalResult matchAndRewrite(
+      OpTy op, typename OpTy::Adaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    if (!op.getType().isBF16()) {
+      return rewriter.notifyMatchFailure(op, "not a scalar bf16 op");
+    }
+    mlir::Value operand = adaptor.getOperands().front();
+    rewriter.replaceOpWithNewOp<mlir::LLVM::CallIntrinsicOp>(
+        op, /*resultType=*/operand.getType(), rewriter.getStringAttr(intrinsic),
+        mlir::ValueRange{operand});
+    return mlir::success();
+  }
+
+  llvm::StringRef intrinsic;
+};
+
+// Lowers a scalar bf16 `math.log` to the native gfx1250 `v_log_bf16`
+// instruction by rewriting log(x) = log2(x) * ln(2) and emitting the
+// `llvm.amdgcn.log` intrinsic. See TranscendentalBF16ToAMDGPU for the
+// rationale.
+struct LogBF16ToAMDGPU
+    : public mlir::ConvertOpToLLVMPattern<mlir::math::LogOp> {
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::math::LogOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    if (!op.getType().isBF16()) {
+      return rewriter.notifyMatchFailure(op, "not a scalar bf16 log");
+    }
+    mlir::Location loc = op.getLoc();
+    mlir::Value operand = adaptor.getOperands().front();
+    mlir::Type bf16 = operand.getType();
+    mlir::Value log2x = rewriter
+                            .create<mlir::LLVM::CallIntrinsicOp>(
+                                loc, /*resultType=*/bf16,
+                                rewriter.getStringAttr("llvm.amdgcn.log"),
+                                mlir::ValueRange{operand})
+                            .getResults();
+    mlir::Value ln2 = rewriter.create<mlir::LLVM::ConstantOp>(
+        loc, bf16, rewriter.getFloatAttr(bf16, kLn2));
+    rewriter.replaceOpWithNewOp<mlir::LLVM::FMulOp>(op, log2x, ln2);
+    return mlir::success();
+  }
+};
+
 class LowerToLLVMGPUPass
     : public impl::LowerToLLVMGPUPassBase<LowerToLLVMGPUPass> {
  public:
+  LowerToLLVMGPUPass() = default;
+
   explicit LowerToLLVMGPUPass(const LowerToLLVMGPUPassOptions& options)
       : LowerToLLVMGPUPassBase(options) {}
 
@@ -108,6 +178,26 @@ class LowerToLLVMGPUPass
         mlir::configureGpuToROCDLConversionLegality(target);
         mlir::populateAMDGPUToROCDLConversionPatterns(converter, patterns,
                                                       *maybeChipset);
+        // On gfx1250 emit native bf16 transcendentals (v_exp_bf16, v_sqrt_bf16,
+        // v_rsq_bf16, v_tanh_bf16, v_log_bf16, ...) instead of upcasting to f32
+        // and calling __ocml_*_f32. Higher benefit than the default MathToROCDL
+        // patterns so it wins for scalar bf16 ops.
+        if (device_spec_.gpu()
+                .rocm_compute_capability()
+                .has_bf16_transcendental_support()) {
+          mlir::PatternBenefit benefit(2);
+          patterns.add<LogBF16ToAMDGPU>(converter, benefit);
+          patterns.add<TranscendentalBF16ToAMDGPU<mlir::math::Exp2Op>>(
+              converter, "llvm.amdgcn.exp2", benefit);
+          patterns.add<TranscendentalBF16ToAMDGPU<mlir::math::SqrtOp>>(
+              converter, "llvm.amdgcn.sqrt", benefit);
+          patterns.add<TranscendentalBF16ToAMDGPU<mlir::math::RsqrtOp>>(
+              converter, "llvm.amdgcn.rsq", benefit);
+          patterns.add<TranscendentalBF16ToAMDGPU<mlir::math::TanhOp>>(
+              converter, "llvm.amdgcn.tanh", benefit);
+          patterns.add<TranscendentalBF16ToAMDGPU<mlir::math::Log2Op>>(
+              converter, "llvm.amdgcn.log", benefit);
+        }
         target.addIllegalDialect<mlir::amdgpu::AMDGPUDialect>();
       } else if (device_spec_.IsIntelGpu()) {
         // Add sub-group-size attribute to functions.
@@ -148,14 +238,7 @@ class LowerToLLVMGPUPass
 
 }  // namespace
 
-std::unique_ptr<::mlir::Pass> CreateLowerToLLVMGPUPass(
-    const std::string& gpu_device_info) {
-  LowerToLLVMGPUPassOptions options;
-  options.gpu_device_info_ = gpu_device_info;
-  return std::make_unique<LowerToLLVMGPUPass>(options);
-}
-
-std::unique_ptr<::mlir::Pass> CreateLowerToLLVMGPUPass(
+std::unique_ptr<::mlir::Pass> createLowerToLLVMGPUPass(
     const se::DeviceDescription& device_description) {
   return std::make_unique<LowerToLLVMGPUPass>(device_description);
 }

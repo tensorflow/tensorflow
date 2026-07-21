@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/xla_transform.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -29,11 +30,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -162,6 +163,9 @@ absl::Status UpdateHloModuleFromProto(HloModule* module,
   module->ReplaceEntryComputation(new_entry);
   module->mutable_config().SetComputationLayoutIfExists(
       new_entry->ComputeProgramShape());
+  module->set_input_output_alias_config(
+      temp_module->input_output_alias_config());
+  module->set_buffer_donor_config(temp_module->buffer_donor_config());
 
   RETURN_IF_ERROR(module->RemoveUnusedComputations());
 

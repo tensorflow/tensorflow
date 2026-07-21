@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
@@ -88,13 +103,12 @@ cc_library(
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/ir:hlo",
         "//xla/pjrt:async_work_runner",
         "//xla/pjrt:common_pjrt_client",
         "//xla/pjrt:device_event",
-        "//xla/pjrt:event_pool",
         "//xla/pjrt:host_memory_allocator",
         "//xla/pjrt:host_memory_spaces",
-        "//xla/pjrt:local_device_state",
         "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_abi_version",
@@ -103,11 +117,7 @@ cc_library(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_executable",
-        "//xla/pjrt:pjrt_stream_executor_client",
         "//xla/pjrt:raw_buffer",
-        "//xla/pjrt:stream_executor_executable",
-        "//xla/pjrt:stream_executor_executable_proto_cc",
-        "//xla/pjrt:stream_executor_pjrt_abi_version",
         "//xla/pjrt:utils",
         "//xla/pjrt:worker_thread",
         "//xla/pjrt/distributed:client",
@@ -119,6 +129,12 @@ cc_library(
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_allocator_config",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/pjrt/proto:compile_options_proto_cc",
+        "//xla/pjrt/se:event_pool",
+        "//xla/pjrt/se:local_device_state",
+        "//xla/pjrt/se:pjrt_stream_executor_client",
+        "//xla/pjrt/se:stream_executor_executable",
+        "//xla/pjrt/se:stream_executor_executable_proto_cc",
+        "//xla/pjrt/se:stream_executor_pjrt_abi_version",
         "//xla/runtime:device_id",
         "//xla/runtime:hang_watchdog",
         "//xla/runtime:process_id",
@@ -145,6 +161,7 @@ cc_library(
         "//xla/stream_executor:memory_space",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_address_allocator",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/integrations:device_mem_allocator",
         "//xla/stream_executor/integrations:tf_allocator_adapter",
@@ -155,6 +172,7 @@ cc_library(
         "//xla/tsl/framework:bfc_allocator",
         "//xla/tsl/framework:device_id",
         "//xla/tsl/framework:device_id_impl",
+        "//xla/tsl/framework:scoped_allocation_trace",
         "//xla/tsl/lib/strings:proto_serialization",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
@@ -199,6 +217,7 @@ cc_library(
         "//xla:debug_options_flags",
         "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:gpu_executable",
+        "//xla/service/gpu:gpu_executable_buffer_allocator",
         "//xla/service/gpu:stream_executor_util",
     ]) + if_cuda([
         # keep sorted
@@ -208,12 +227,14 @@ cc_library(
         "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm([
         # keep sorted
+        "//xla/stream_executor/rocm:rocm_device_address_vmm_allocator",
         "@local_config_rocm//rocm:rocm_headers",
     ]) + if_sycl([
         # keep sorted
         "//xla:debug_options_flags",
         "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:gpu_executable",
+        "//xla/service/gpu:gpu_executable_buffer_allocator",
         "//xla/service/gpu:stream_executor_util",
         "@local_config_sycl//sycl:sycl_headers",
     ]),
@@ -259,6 +280,22 @@ cc_library(
 )
 
 xla_test(
+    name = "pjrt_client_test_gpu",
+    srcs = ["pjrt_client_test_gpu.cc"],
+    backends = ["gpu"],
+    tags = [
+        "multi_gpu",
+        "no_oss",
+    ],
+    deps = [
+        ":se_gpu_pjrt_client",
+        ":se_gpu_pjrt_client_test_lib",
+        "//xla/pjrt:pjrt_client_test_common",
+        "//xla/tsl/platform:test_main",
+    ],
+)
+
+xla_test(
     name = "se_gpu_pjrt_client_test",
     srcs = ["se_gpu_pjrt_client_test.cc"],
     backends = ["gpu"],
@@ -269,9 +306,11 @@ xla_test(
         ":se_gpu_pjrt_client",
         ":se_gpu_pjrt_client_test_lib",
         ":se_gpu_topology_description",
+        "//xla:debug_options_flags",
         "//xla:future",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:parse_flags_from_env",
         "//xla:shape_util",
         "//xla:types",
         "//xla:util",
@@ -283,7 +322,6 @@ xla_test(
         "//xla/hlo/testlib:test",
         "//xla/pjrt:device_event",
         "//xla/pjrt:host_memory_spaces",
-        "//xla/pjrt:local_device_state",
         "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_abi_version",
@@ -291,20 +329,25 @@ xla_test(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_executable",
-        "//xla/pjrt:pjrt_stream_executor_client",
         "//xla/pjrt:raw_buffer",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_allocator_config",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/pjrt/profiling:device_time_measurement",
-        "//xla/pjrt/profiling/test_util:mock_device_time_measurement",
         "//xla/pjrt/proto:compile_options_proto_cc",
+        "//xla/pjrt/se:local_device_state",
+        "//xla/pjrt/se:pjrt_stream_executor_client",
+        "//xla/pjrt/se:stream_executor_executable",
         "//xla/runtime:device_id",
         "//xla/service:gpu_topology",
         "//xla/service:gpu_topology_proto_cc",
         "//xla/service:platform_util",
+        "//xla/stream_executor:stream_executor_address_allocator",
+        "//xla/stream_executor/integrations:tf_allocator_adapter",
         "//xla/tests:literal_test_util",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "//xla/util/split_proto:split_executable_and_options_writer",
@@ -329,6 +372,7 @@ xla_test(
         "@com_google_googletest//:gtest_main",
         "@com_google_protobuf//:protobuf",
         "@llvm-project//mlir:IR",
+        "@riegeli//riegeli/base:initializer",
         "@riegeli//riegeli/bytes:string_reader",
         "@riegeli//riegeli/bytes:string_writer",
         "@tsl//tsl/platform",
@@ -337,6 +381,8 @@ xla_test(
     ] + if_cuda([
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/cuda:cuda_device_address_vmm_allocator",
+    ]) + if_rocm([
+        "//xla/stream_executor/rocm:rocm_device_address_vmm_allocator",
     ]) + if_google([
         # In OSS this dependency is added automatically for xla_test targets. See
         # third_party/tensorflow/compiler/xla/xla.default.bzl.
@@ -379,7 +425,6 @@ xla_test(
         "//xla/pjrt:common_pjrt_client",
         "//xla/pjrt:device_event",
         "//xla/pjrt:host_memory_spaces",
-        "//xla/pjrt:local_device_state",
         "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_abi_version",
@@ -388,7 +433,6 @@ xla_test(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_executable",
-        "//xla/pjrt:pjrt_stream_executor_client",
         "//xla/pjrt:raw_buffer",
         "//xla/pjrt/distributed",
         "//xla/pjrt/distributed:client",
@@ -396,8 +440,9 @@ xla_test(
         "//xla/pjrt/distributed:service",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/pjrt/profiling:device_time_measurement",
-        "//xla/pjrt/profiling/test_util:mock_device_time_measurement",
         "//xla/pjrt/proto:compile_options_proto_cc",
+        "//xla/pjrt/se:local_device_state",
+        "//xla/pjrt/se:pjrt_stream_executor_client",
         "//xla/runtime:device_id",
         "//xla/service:gpu_topology",
         "//xla/service:gpu_topology_proto_cc",
@@ -419,6 +464,7 @@ xla_test(
         "//xla/util/split_proto:split_executable_and_options_writer",
         "//xla/util/split_proto:split_proto_reader",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -499,8 +545,8 @@ cc_library(
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
-        "//xla/pjrt:stream_executor_executable",
         "//xla/pjrt:utils",
+        "//xla/pjrt/se:stream_executor_executable",
         "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:dump",
@@ -539,7 +585,7 @@ cc_library(
     deps = [
         ":se_gpu_pjrt_compiler_impl",
         "//xla/pjrt:pjrt_compiler",
-        "//xla/pjrt:stream_executor_platform_id_mapping",
+        "//xla/pjrt/se:stream_executor_platform_id_mapping",
         "//xla/service/gpu:nvptx_compiler",  # buildcleaner: keep
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/platform:initialize",
@@ -559,7 +605,7 @@ cc_library(
     deps = [
         ":se_gpu_pjrt_compiler_impl",
         "//xla/pjrt:pjrt_compiler",
-        "//xla/pjrt:stream_executor_platform_id_mapping",
+        "//xla/pjrt/se:stream_executor_platform_id_mapping",
         "//xla/service/gpu:amdgpu_compiler",  # buildcleaner: keep
         "//xla/stream_executor/platform:initialize",
         "//xla/stream_executor/rocm:rocm_platform_id",
@@ -584,7 +630,7 @@ cc_library(
     deps = [
         ":se_gpu_pjrt_compiler_impl",
         "//xla/pjrt:pjrt_compiler",
-        "//xla/pjrt:stream_executor_platform_id_mapping",
+        "//xla/pjrt/se:stream_executor_platform_id_mapping",
         "//xla/service/gpu:intel_gpu_compiler",
         "//xla/stream_executor/platform:initialize",
         "//xla/stream_executor/sycl:sycl_platform_id",
@@ -741,8 +787,8 @@ cc_library(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_device_dimensions",
-        "//xla/pjrt:pjrt_stream_executor_device_description",
         "//xla/pjrt/proto:topology_description_proto_cc",
+        "//xla/pjrt/se:pjrt_stream_executor_device_description",
         "//xla/runtime:device_id",
         "//xla/service:gpu_topology",
         "//xla/service:gpu_topology_proto_cc",
@@ -770,8 +816,7 @@ xla_cc_test(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_device_dimensions",
-        "//xla/pjrt:pjrt_stream_executor_device_description",
-        "//xla/runtime:process_id",
+        "//xla/pjrt/se:pjrt_stream_executor_device_description",
         "//xla/service:gpu_topology",
         "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
@@ -786,8 +831,8 @@ cc_library(
     deps = [
         "//xla/pjrt:pjrt_abi_version",
         "//xla/pjrt:pjrt_common",
-        "//xla/pjrt:stream_executor_pjrt_abi_version",
         "//xla/pjrt/proto:pjrt_abi_version_proto_cc",
+        "//xla/pjrt/se:stream_executor_pjrt_abi_version",
         "//xla/stream_executor/abi:runtime_abi_version",
         "//xla/stream_executor/abi:runtime_abi_version_proto_cc",
         "//xla/stream_executor/abi:runtime_abi_version_resolver",
@@ -804,8 +849,8 @@ xla_cc_test(
     deps = [
         ":se_gpu_pjrt_runtime_abi_version",
         "//xla/pjrt:pjrt_common",
-        "//xla/pjrt:stream_executor_pjrt_abi_version",
         "//xla/pjrt/proto:pjrt_abi_version_proto_cc",
+        "//xla/pjrt/se:stream_executor_pjrt_abi_version",
         "//xla/stream_executor/abi:executable_abi_version",
         "//xla/stream_executor/abi:executable_abi_version_proto_cc",
         "//xla/stream_executor/abi:mock_runtime_abi_version",

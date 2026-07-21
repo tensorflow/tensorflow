@@ -1,10 +1,26 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load(
     "//xla:xla.default.bzl",
     "xla_cc_test",
+    "xla_internal",
 )
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
-load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
+load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable", "if_include_google_deps")
 load("//xla/tsl/mkl:build_defs.bzl", "if_graph_api", "if_onednn")
 load("//xla/tsl/mkl:graph.bzl", "onednn_cc_library")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
@@ -141,6 +157,7 @@ cc_library(
         ":cpu_options",
         ":dot_op_emitter",
         ":executable_proto_cc",
+        ":export_hlo",
         ":fusion_wrapper",
         ":ir_emission_utils",
         ":ir_emitter",
@@ -426,6 +443,17 @@ cc_library(
 )
 
 cc_library(
+    name = "export_hlo",
+    hdrs = ["export_hlo.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":executable_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     # The old target name will still be used so that dependencies won't break.
     # In the future, dependencies should be cleaned up and relinked to the above
     # target if registration is not necessary.
@@ -459,7 +487,9 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
-    ],
+    ] + if_include_google_deps(
+        xla_internal(["//xla/service/cpu/google:export_hlo"]),
+    ),
     alwayslink = True,  # Contains compiler registration
 )
 

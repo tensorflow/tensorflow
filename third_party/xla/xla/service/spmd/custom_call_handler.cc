@@ -1349,6 +1349,10 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
     return HandleElementwise(hlo);
   }
 
+  if (hlo->custom_call_target() == "LayoutConstraint") {
+    return HandleElementwise(hlo);
+  }
+
   if (hlo->custom_call_target() ==
           memory_annotations::kMoveToDeviceCustomCallTarget ||
       hlo->custom_call_target() ==

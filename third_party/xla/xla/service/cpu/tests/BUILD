@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # Description:
 #    Tests for LLVM-based CPU backend for XLA.
 
@@ -191,15 +206,12 @@ xla_cc_test(
     name = "tree_reduction_rewriter_test",
     srcs = ["tree_reduction_rewriter_test.cc"],
     deps = [
-        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
         "//xla/hlo/transforms/simplifiers:tree_reduction_rewriter",
         "//xla/service/cpu:cpu_compiler",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -292,6 +304,7 @@ xla_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:Target",

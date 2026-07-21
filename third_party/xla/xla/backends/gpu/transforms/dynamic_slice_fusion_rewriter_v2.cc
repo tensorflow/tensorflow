@@ -508,17 +508,48 @@ std::optional<DynamicSliceFusionPlan> BuildFusionPlan(
     }
   }
 
-  // Sink constants into the fusion body instead of capturing them as
-  // parameters. Constants have no operands so they go at the front.
-  std::vector<HloInstruction*> constants;
+  // Sink constants that are part of offset expressions into the fusion body
+  // instead of capturing them as parameters. Other constants must remain fusion
+  // parameters because the dynamic-slice fusion emitter expects hero operands
+  // and DUS targets to be backed by fusion parameters.
+  auto is_offset_use = [&](HloInstruction* instr, int64_t operand_index) {
+    if (offset_instruction_set.contains(instr)) {
+      return true;
+    }
+    return (instr->opcode() == HloOpcode::kDynamicSlice &&
+            operand_index >= 1) ||
+           (instr->opcode() == HloOpcode::kDynamicUpdateSlice &&
+            operand_index >= 2);
+  };
+
+  std::vector<HloInstruction*> offset_constants;
+  absl::flat_hash_set<HloInstruction*> offset_constant_set;
+  absl::flat_hash_set<HloInstruction*> non_offset_constant_set;
+
   for (HloInstruction* instr : clone_instructions) {
-    for (HloInstruction* operand : instr->operands()) {
-      if (HloPredicateIsOp<HloOpcode::kConstant>(operand) &&
-          clone_instruction_set.insert(operand).second) {
-        constants.push_back(operand);
+    for (int64_t i = 0; i < instr->operand_count(); ++i) {
+      HloInstruction* operand = instr->mutable_operand(i);
+      if (!HloPredicateIsOp<HloOpcode::kConstant>(operand)) {
+        continue;
+      }
+      if (is_offset_use(instr, i)) {
+        if (offset_constant_set.insert(operand).second) {
+          offset_constants.push_back(operand);
+        }
+      } else {
+        non_offset_constant_set.insert(operand);
       }
     }
   }
+
+  std::vector<HloInstruction*> constants;
+  for (HloInstruction* constant : offset_constants) {
+    if (!non_offset_constant_set.contains(constant) &&
+        clone_instruction_set.insert(constant).second) {
+      constants.push_back(constant);
+    }
+  }
+
   clone_instructions.insert(clone_instructions.begin(), constants.begin(),
                             constants.end());
 
@@ -531,10 +562,6 @@ std::optional<DynamicSliceFusionPlan> BuildFusionPlan(
   absl::flat_hash_set<HloInstruction*> visited_offset_instruction_set;
 
   auto collect_external_operand = [&](auto& self, HloInstruction* operand) {
-    // Constants have already been sunk into the fusion body.
-    if (HloPredicateIsOp<HloOpcode::kConstant>(operand)) {
-      return;
-    }
     // Any non-cloned operand is external to the fusion body and must become a
     // fusion parameter.
     if (!clone_instruction_set.contains(operand)) {

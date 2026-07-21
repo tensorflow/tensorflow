@@ -543,6 +543,13 @@ class Subgraph {
     return (options_ && options_->GetDisableDelegateNodeFusion());
   }
 
+  // WARNING: This is an experimental API and subject to change.
+  // If true, force TFLite to profile delegated nodes even if the delegate
+  // supports per-operator internal profiling.
+  bool ForceDelegateNodeProfiling() const {
+    return (options_ && options_->GetForceDelegateNodeProfiling());
+  }
+
   // Retrieves the corresponding TfLiteContext of a subgraph given a subgraph
   // index and switches to the delegate context for this subgraph. If an invalid
   // subgraph index is given, returns kTfLiteError.

@@ -51,18 +51,12 @@ struct CompileModuleResults {
   std::vector<uint8_t> constants_binary;
   std::unique_ptr<BufferAssignment> buffer_assignment;
   std::unique_ptr<ExecutionStreamAssignment> execution_stream_assignment;
-  std::vector<BufferAllocation> allocations;
   std::unique_ptr<SequentialThunk> executable;
   std::vector<GpuExecutable::ConstantInfo> constants;
   absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo> output_info;
   Shape output_shape;
   std::string module_name;
   CompilationCacheProto kernel_compilation_cache;
-
-  // If true, the compiled module uses buffer allocations owned by
-  // buffer_assignment. Otherwise the compiled module uses buffer allocations
-  // stored in allocations.
-  bool use_original_allocations;
 };
 
 absl::Status LoadCache(IrEmitterContext& ir_emitter_context,

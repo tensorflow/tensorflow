@@ -40,7 +40,7 @@ class AsyncCollectiveCreator : public HloModulePass {
   // Function to query the shape of the "context" for collectives that use
   // HLO async-start/async-done.
   using ContextShapeQuery =
-      std::function<std::vector<Shape>(const HloInstruction *)>;
+      std::function<std::vector<Shape>(const HloInstruction*)>;
   struct CollectiveCreatorConfig {
     HloPredicate convert_all_reduce = HloPredicateFalse;
     HloPredicate convert_all_gather = HloPredicateFalse;
@@ -49,22 +49,29 @@ class AsyncCollectiveCreator : public HloModulePass {
     HloPredicate convert_all_to_all = HloPredicateFalse;
     HloPredicate convert_reduce_scatter = HloPredicateFalse;
     HloPredicate convert_ragged_all_to_all = HloPredicateFalse;
-    ContextShapeQuery get_context_shapes = [](const HloInstruction *) {
+    ContextShapeQuery get_context_shapes = [](const HloInstruction*) {
       return std::vector<Shape>{};
     };
     int64_t all_reduce_min_threshold_in_bytes = 0;
     int64_t all_gather_min_threshold_in_bytes = 0;
     int64_t reduce_scatter_min_threshold_in_bytes = 0;
+    // If true, use generic async start/done for all collectives.
+    // Otherwise, kAllReduce, kAllGather, and kCollectivePermute will use
+    // instruction-specific async start/done.
+    // Ideally this should be true for all backends so all collectives can
+    // benefit from the modernization. Currently only the GPU backend explicitly
+    // turns this on by default.
+    bool use_generic_async_start_done = false;
   };
   explicit AsyncCollectiveCreator(CollectiveCreatorConfig creator_config)
       : config_(std::move(creator_config)) {}
   absl::string_view name() const override { return "async-collective-creator"; }
 
-  std::vector<HloInstruction *> MatchCollectives(HloComputation *computation);
+  std::vector<HloInstruction*> MatchCollectives(HloComputation* computation);
   absl::StatusOr<bool> ReplaceCollectives(
-      HloComputation *computation,
-      std::vector<HloInstruction *> &supported_collectives);
-  const CollectiveCreatorConfig *config() const { return &config_; }
+      HloComputation* computation,
+      std::vector<HloInstruction*>& supported_collectives);
+  const CollectiveCreatorConfig* config() const { return &config_; }
 
  protected:
   absl::StatusOr<bool> RunImpl(

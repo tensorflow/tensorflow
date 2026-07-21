@@ -44,6 +44,7 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -4795,7 +4796,7 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
   if (is_sequential_call) {
     for (const HloComputation* called_computation :
          hlo_use.instruction->called_computations()) {
-      const HloLiveRange::TimeBound& computation_span =
+      const HloLiveRange::LiveRangeBounds& computation_span =
           hlo_live_range_.computation_span_times().at(called_computation);
       latest_prefetch_time =
           std::min(computation_span.start - 1, latest_prefetch_time);

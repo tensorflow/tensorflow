@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/python/ifrt/client_impl_util.h"
 
-#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -158,14 +157,12 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
 
       std::function<void()> on_done_with_host_buffer_per_device;
       if (host_buffer.on_done != nullptr) {
-        auto count = std::make_shared<std::atomic<int64_t>>(
-            addressable_shard_indices.size());
+        auto shared_on_done = std::shared_ptr<void>(
+            nullptr,
+            [on_done = std::move(host_buffer.on_done)](void*) { on_done(); });
         on_done_with_host_buffer_per_device =
-            [on_done = std::move(host_buffer.on_done), count]() mutable {
-              if (count->fetch_sub(1, std::memory_order_relaxed) == 1) {
-                on_done();
-              }
-              on_done = nullptr;
+            [shared_on_done = std::move(shared_on_done)]() mutable {
+              shared_on_done.reset();
             };
       }
 

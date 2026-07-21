@@ -20,7 +20,11 @@ import inspect
 import types
 
 from tensorflow.python.platform import googletest
+from tensorflow.tools.api.lib import api_objects_pb2
 from tensorflow.tools.api.lib import python_object_to_proto_visitor as visitor_lib
+
+
+MethodKind = api_objects_pb2.TFAPIMethod.MethodKind
 
 
 def _TensorFlowOwnedBase(module):
@@ -126,6 +130,81 @@ class PythonObjectToProtoVisitorTest(googletest.TestCase):
     visitor('errors.Exported', exported, children)
 
     self.assertEqual(['tf_owned_member'], [name for name, _ in children])
+
+  def test_dunders_included(self):
+    try:
+      from tensorflow.python import ops
+    except ImportError:
+      self.skipTest('Skipping test because ops is not available.')
+
+    class Exported:
+      __module__ = ops.__name__
+
+      def __add__(self, other):
+        pass
+
+      def __eq__(self, other):
+        pass
+
+      def __repr__(self):
+        pass
+
+    children = [
+        ('__init__', Exported.__init__),
+        ('__add__', Exported.__add__),
+        ('__eq__', Exported.__eq__),
+        ('__repr__', Exported.__repr__),
+        ('__module__', Exported.__module__),
+    ]
+
+    visitor = visitor_lib.PythonObjectToProtoVisitor()
+    visitor('errors.Exported', Exported, children)
+
+    proto = visitor.GetProtos()['tensorflow.errors.Exported']
+    method_names = [method.name for method in proto.tf_class.member_method]
+    self.assertIn('__init__', method_names)
+    self.assertIn('__add__', method_names)
+    self.assertIn('__eq__', method_names)
+    self.assertNotIn('__repr__', method_names)  # Defined on object.
+    member_names = [member.name for member in proto.tf_class.member]
+    self.assertNotIn('__module__', member_names)  # Not callable.
+
+  def test_method_kind(self):
+    try:
+      from tensorflow.python import ops
+    except ImportError:
+      self.skipTest('Skipping test because ops is not available.')
+
+    class Exported:
+      __module__ = ops.__name__
+
+      def instance_method(self):
+        pass
+
+      @classmethod
+      def class_method(cls):
+        pass
+
+      @staticmethod
+      def static_method():
+        pass
+
+    children = [
+        ('instance_method', Exported.instance_method),
+        ('class_method', Exported.class_method),
+        ('static_method', Exported.static_method),
+    ]
+
+    visitor = visitor_lib.PythonObjectToProtoVisitor()
+    visitor('ops.Exported', Exported, children)
+
+    proto = visitor.GetProtos()['tensorflow.ops.Exported']
+    methods = {m.name: m for m in proto.tf_class.member_method}
+    self.assertEqual(
+        methods['instance_method'].method_kind, MethodKind.INSTANCE
+    )
+    self.assertEqual(methods['class_method'].method_kind, MethodKind.CLASS)
+    self.assertEqual(methods['static_method'].method_kind, MethodKind.STATIC)
 
 
 if __name__ == '__main__':

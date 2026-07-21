@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
@@ -14,10 +29,6 @@ load(
     "if_gpu_is_configured",
 )
 load("//xla/tsl:tsl.default.bzl", "filegroup")
-load(
-    "//xla/tsl/platform:build_config_root.bzl",
-    "tf_gpu_tests_tags",
-)
 
 # hlo-opt tool.
 load(
@@ -259,7 +270,7 @@ lit_test_suite(
     ]),
     cfg = "//xla:lit.cfg.py",
     data = [":test_utilities"],
-    default_tags = tf_gpu_tests_tags(),
+    default_tags = ["gpu"],  # Needs to run in a build with a gpu configured.
     hermetic_cuda_data_dir = "%S/../../../../../" + get_canonical_repo_name("cuda_nvcc"),
     tags_override = {
         "tests/gpu_hlo_ptx.hlo": ["cuda-only"],

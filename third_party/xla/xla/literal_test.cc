@@ -874,6 +874,49 @@ TEST_F(LiteralUtilTest, IsAll) {
   EXPECT_FALSE(LiteralUtil::CreateR2<uint64_t>(
                    {{uint64_max, uint64_max}, {uint64_max, uint64_max}})
                    .IsAll(-1));
+
+  // Tests for IsAll optimization (double-memcmp logic)
+  // Empty literals
+  EXPECT_TRUE(Literal::CreateFromShape(ShapeUtil::MakeShape(F32, {0}))
+                  .IsAll(LiteralUtil::CreateR0<float>(42.0f)));
+  EXPECT_TRUE(Literal::CreateFromShape(ShapeUtil::MakeShape(S32, {0}))
+                  .IsAll(LiteralUtil::CreateR0<int32_t>(42)));
+
+  // Single element
+  EXPECT_TRUE(LiteralUtil::CreateR1<float>({42.0f}).IsAll(
+      LiteralUtil::CreateR0<float>(42.0f)));
+  EXPECT_FALSE(LiteralUtil::CreateR1<float>({42.0f}).IsAll(
+      LiteralUtil::CreateR0<float>(43.0f)));
+  EXPECT_TRUE(LiteralUtil::CreateR1<int32_t>({42}).IsAll(
+      LiteralUtil::CreateR0<int32_t>(42)));
+  EXPECT_FALSE(LiteralUtil::CreateR1<int32_t>({42}).IsAll(
+      LiteralUtil::CreateR0<int32_t>(43)));
+
+  // Multi-element
+  EXPECT_TRUE(LiteralUtil::CreateR1<float>({42.0f, 42.0f, 42.0f})
+                  .IsAll(LiteralUtil::CreateR0<float>(42.0f)));
+  EXPECT_FALSE(LiteralUtil::CreateR1<float>({42.0f, 42.0f, 42.0f})
+                   .IsAll(LiteralUtil::CreateR0<float>(43.0f)));
+  EXPECT_FALSE(LiteralUtil::CreateR1<float>({42.0f, 43.0f, 42.0f})
+                   .IsAll(LiteralUtil::CreateR0<float>(42.0f)));
+  EXPECT_FALSE(LiteralUtil::CreateR1<float>({43.0f, 42.0f, 42.0f})
+                   .IsAll(LiteralUtil::CreateR0<float>(42.0f)));
+  EXPECT_FALSE(LiteralUtil::CreateR1<float>({42.0f, 42.0f, 43.0f})
+                   .IsAll(LiteralUtil::CreateR0<float>(42.0f)));
+
+  // NaNs (memcmp comparison behaves as bitwise comparison)
+  float nan_val = std::numeric_limits<float>::quiet_NaN();
+  // All elements are same NaN
+  EXPECT_TRUE(LiteralUtil::CreateR1<float>({nan_val, nan_val, nan_val})
+                  .IsAll(LiteralUtil::CreateR0<float>(nan_val)));
+  // elements are NaN but we check for non-NaN
+  EXPECT_FALSE(LiteralUtil::CreateR1<float>({nan_val, nan_val, nan_val})
+                   .IsAll(LiteralUtil::CreateR0<float>(42.0f)));
+  // Mixed elements
+  EXPECT_FALSE(LiteralUtil::CreateR1<float>({42.0f, nan_val, 42.0f})
+                   .IsAll(LiteralUtil::CreateR0<float>(42.0f)));
+  EXPECT_FALSE(LiteralUtil::CreateR1<float>({nan_val, 42.0f, nan_val})
+                   .IsAll(LiteralUtil::CreateR0<float>(nan_val)));
 }
 
 TEST_F(LiteralUtilTest, MaterializeSparseOperandValidConfigReturnsDense) {
@@ -3564,6 +3607,21 @@ BENCHMARK_POPULATE(Populate);
 BENCHMARK_POPULATE(PopulateParallel);
 BENCHMARK_POPULATE(PopulateLinear);
 BENCHMARK_POPULATE(PopulateLinearParallel);
+
+void BM_MakeFakeLiteral(::testing::benchmark::State& state) {
+  int64_t d0 = state.range(0);
+  Shape shape = ShapeUtil::MakeShape(F32, {d0, d0});
+  for (auto s : state) {
+    auto literal = MakeFakeLiteral(shape, /*pseudo_random=*/true,
+                                   /*use_large_range=*/true);
+    benchmark::DoNotOptimize(literal);
+  }
+}
+BENCHMARK(BM_MakeFakeLiteral)
+    ->MeasureProcessCPUTime()
+    ->Arg(64)
+    ->Arg(256)
+    ->Arg(1024);
 
 TEST(LiteralTest, SetShapeClearsCustomElementSizeInBitsOnTupleLeafArrays) {
   Shape leaf = ShapeUtil::MakeShape(F32, {1024});

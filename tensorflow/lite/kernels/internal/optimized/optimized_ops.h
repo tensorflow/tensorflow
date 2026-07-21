@@ -24,10 +24,9 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <limits>
-#include <memory>
-#include <tuple>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -2361,13 +2360,13 @@ void BroadcastDivSlow(const ArithmeticParams& params,
   T output_activation_max;
   GetActivationParams(params, &output_activation_min, &output_activation_max);
 
-  reference_ops::ForEachBroadcastedElement(
-      unextended_input1_shape, unextended_input2_shape, unextended_output_shape,
-      [&](int output_index, int input1_index, int input2_index) {
-        output_data[output_index] = ActivationFunctionWithMinMax(
-            input1_data[input1_index] / input2_data[input2_index],
-            output_activation_min, output_activation_max);
-      });
+  auto op = [output_activation_min, output_activation_max](T a, T b) {
+    return ActivationFunctionWithMinMax(a / b, output_activation_min,
+                                        output_activation_max);
+  };
+  reference_ops::BroadcastBinaryOpSimple(
+      unextended_input1_shape, input1_data, unextended_input2_shape,
+      input2_data, unextended_output_shape, output_data, op);
 }
 
 // BroadcastDiv is intentionally duplicated from reference_ops.h.
@@ -2402,35 +2401,37 @@ inline void BroadcastDivSlowQuantized(
     TFLITE_DCHECK_LT(params.output_offset, 32768);
   }
 
-  reference_ops::ForEachBroadcastedElement(
-      unextended_input1_shape, unextended_input2_shape, unextended_output_shape,
-      [&](int output_index, int input1_index, int input2_index) {
-        int32_t input1_val = params.input1_offset + input1_data[input1_index];
-        int32_t input2_val = params.input2_offset + input2_data[input2_index];
-        TFLITE_DCHECK_NE(input2_val, 0);
-        if (input2_val < 0) {
-          // Invert signs to avoid a negative input2_val as input2_inv needs to
-          // be positive to be used as multiplier of
-          // MultiplyByQuantizedMultiplier.
-          input1_val = -input1_val;
-          input2_val = -input2_val;
-        }
-        int recip_shift;
-        const int32_t input2_inv = GetReciprocal(input2_val, 31, &recip_shift);
-        const int headroom = CountLeadingSignBits(input1_val);
-        const int32_t unscaled_quotient =
-            MultiplyByQuantizedMultiplierGreaterThanOne(input1_val, input2_inv,
-                                                        headroom);
-        const int total_shift = params.output_shift - recip_shift - headroom;
-        const int32_t unclamped_result =
-            params.output_offset +
-            MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                unscaled_quotient, params.output_multiplier, total_shift);
-        const int32_t clamped_output = std::min(
-            params.quantized_activation_max,
-            std::max(params.quantized_activation_min, unclamped_result));
-        output_data[output_index] = static_cast<T>(clamped_output);
-      });
+  auto op = [&params](T a, T b) {
+    int32_t input1_val = params.input1_offset + a;
+    int32_t input2_val = params.input2_offset + b;
+    TFLITE_DCHECK_NE(input2_val, 0);
+    if (input2_val < 0) {
+      // Invert signs to avoid a negative input2_val as input2_inv needs to
+      // be positive to be used as multiplier of
+      // MultiplyByQuantizedMultiplier.
+      input1_val = -input1_val;
+      input2_val = -input2_val;
+    }
+    int recip_shift;
+    const int32_t input2_inv = GetReciprocal(input2_val, 31, &recip_shift);
+    const int headroom = CountLeadingSignBits(input1_val);
+    const int32_t unscaled_quotient =
+        MultiplyByQuantizedMultiplierGreaterThanOne(input1_val, input2_inv,
+                                                    headroom);
+    const int total_shift = params.output_shift - recip_shift - headroom;
+    const int32_t unclamped_result =
+        params.output_offset +
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            unscaled_quotient, params.output_multiplier, total_shift);
+    const int32_t clamped_output =
+        std::min(params.quantized_activation_max,
+                 std::max(params.quantized_activation_min, unclamped_result));
+    return static_cast<T>(clamped_output);
+  };
+
+  reference_ops::BroadcastBinaryOpSimple(
+      unextended_input1_shape, input1_data, unextended_input2_shape,
+      input2_data, unextended_output_shape, output_data, op);
 }
 
 template <int N = 5>
@@ -4398,6 +4399,13 @@ inline void PadImpl(const tflite::PadParams& op_params,
       RuntimeShape::ExtendedShape(max_supported_dims, input_shape);
   const RuntimeShape ext_output_shape =
       RuntimeShape::ExtendedShape(max_supported_dims, output_shape);
+  // A zero-element tensor may legitimately have null data pointers. There is
+  // nothing to copy or fill in that case, and even a zero-byte memcpy must not
+  // receive those null pointers under UBSan. Scan dimensions instead of using
+  // FlatSize(), which intentionally does not check for integer overflow.
+  if (output_shape.HasZeroDimension()) {
+    return;
+  }
   TFLITE_DCHECK_LE(op_params.left_padding_count, max_supported_dims);
   TFLITE_DCHECK_LE(op_params.right_padding_count, max_supported_dims);
 
@@ -4472,13 +4480,16 @@ inline void PadImpl(const tflite::PadParams& op_params,
                            pad_value, left_c_padding);
           }
 
-          T* out = output_data + Offset(ext_output_shape, out_b, out_p, out_h,
-                                        out_w, left_c_padding);
-          const T* in = input_data +
-                        Offset(ext_input_shape, out_b - left_b_padding,
-                               out_p - left_s1_padding, out_h - left_s2_padding,
-                               out_w - left_s3_padding, 0);
-          memcpy(out, in, input_depth * sizeof(T));
+          if (input_depth != 0) {
+            T* out = output_data + Offset(ext_output_shape, out_b, out_p, out_h,
+                                          out_w, left_c_padding);
+            const T* in =
+                input_data + Offset(ext_input_shape, out_b - left_b_padding,
+                                    out_p - left_s1_padding,
+                                    out_h - left_s2_padding,
+                                    out_w - left_s3_padding, 0);
+            memcpy(out, in, input_depth * sizeof(T));
+          }
 
           if (right_c_padding != 0) {
             TypedMemset<T>(
@@ -4574,6 +4585,9 @@ inline void PadImageStyleMemset(const tflite::PadParams& op_params,
       RuntimeShape::ExtendedShape(4, input_shape);
   const RuntimeShape ext_output_shape =
       RuntimeShape::ExtendedShape(4, output_shape);
+  if (output_shape.HasZeroDimension()) {
+    return;
+  }
   TFLITE_DCHECK_LE(op_params.left_padding_count, 4);
   TFLITE_DCHECK_LE(op_params.right_padding_count, 4);
 
@@ -4625,9 +4639,10 @@ inline void PadImageStyleMemset(const tflite::PadParams& op_params,
   const int inner_line_size = input_width * depth;
   const size_t num_inner_line_bytes = inner_line_size * sizeof(T);
 
-  if (input_height == 0) {
-    memset(output_data, pad_value,
-           num_top_block_bytes + num_bottom_block_bytes);
+  // Empty tensors may have null data pointers. If an empty spatial dimension
+  // is padded into a non-empty output, every output element is padding.
+  if (input_height == 0 || input_width == 0) {
+    TypedMemset<T>(output_data, pad_value, ext_output_shape.FlatSize());
   } else {
     for (int i = 0; i < batch; ++i) {
       // For each image in the batch, apply the top padding, then iterate
@@ -7520,11 +7535,20 @@ inline int ArgMinVector(const float* input_data, int size) {
       // Increase indices by 4.
       index_s32x4 = vaddq_s32(index_s32x4, inc);
       float32x4_t v = vld1q_f32(&input_data[i]);
-      uint32x4_t mask = vcltq_f32(v, min_value_f32x4);
-      min_value_f32x4 = vminq_f32(min_value_f32x4, v);
+      // NaN-aware comparison: update if candidate is finite AND
+      // (current is NaN OR candidate < current).
+      uint32x4_t v_not_nan = vceqq_f32(v, v);
+      uint32x4_t min_is_nan =
+          vmvnq_u32(vceqq_f32(min_value_f32x4, min_value_f32x4));
+      uint32x4_t v_lt_min = vcltq_f32(v, min_value_f32x4);
+      uint32x4_t mask = vandq_u32(v_not_nan, vorrq_u32(min_is_nan, v_lt_min));
+      min_value_f32x4 = vbslq_f32(mask, v, min_value_f32x4);
       min_index_s32x4 = vbslq_s32(mask, index_s32x4, min_index_s32x4);
     }
     // Find min element within float32x4_t.
+    // Note: on ARMv8, vminvq_f32 uses fminnm which correctly ignores NaN
+    // lanes. On ARMv7, vpmin_f32 may propagate NaN; this is a pre-existing
+    // limitation that does not affect non-NaN inputs.
 #ifdef __aarch64__
     min_value = vminvq_f32(min_value_f32x4);
 #else
@@ -7549,15 +7573,17 @@ inline int ArgMinVector(const float* input_data, int size) {
 #endif  // __aarch64__
   }
 #endif  // USE_NEON
-  // Leftover loop.
+  // Leftover loop (NaN-aware).
   for (; i < size; ++i) {
     const float curr_value = input_data[i];
-    if (curr_value < min_value) {
+    if (!std::isnan(curr_value) &&
+        (std::isnan(min_value) || curr_value < min_value)) {
       min_value = curr_value;
       min_index = i;
     }
   }
-  return min_index;
+  // All-NaN inputs: deterministically return first index.
+  return std::isnan(min_value) ? 0 : min_index;
 }
 
 template <>
@@ -7576,11 +7602,20 @@ inline int ArgMaxVector(const float* input_data, int size) {
       // Increase indices by 4.
       index_s32x4 = vaddq_s32(index_s32x4, inc);
       float32x4_t v = vld1q_f32(&input_data[i]);
-      uint32x4_t mask = vcgtq_f32(v, max_value_f32x4);
-      max_value_f32x4 = vmaxq_f32(max_value_f32x4, v);
+      // NaN-aware comparison: update if candidate is finite AND
+      // (current is NaN OR candidate > current).
+      uint32x4_t v_not_nan = vceqq_f32(v, v);
+      uint32x4_t max_is_nan =
+          vmvnq_u32(vceqq_f32(max_value_f32x4, max_value_f32x4));
+      uint32x4_t v_gt_max = vcgtq_f32(v, max_value_f32x4);
+      uint32x4_t mask = vandq_u32(v_not_nan, vorrq_u32(max_is_nan, v_gt_max));
+      max_value_f32x4 = vbslq_f32(mask, v, max_value_f32x4);
       max_index_s32x4 = vbslq_s32(mask, index_s32x4, max_index_s32x4);
     }
     // Find max element within float32x4_t.
+    // Note: on ARMv8, vmaxvq_f32 uses fmaxnm which correctly ignores NaN
+    // lanes. On ARMv7, vpmax_f32 may propagate NaN; this is a pre-existing
+    // limitation that does not affect non-NaN inputs.
 #ifdef __aarch64__
     max_value = vmaxvq_f32(max_value_f32x4);
 #else
@@ -7605,15 +7640,17 @@ inline int ArgMaxVector(const float* input_data, int size) {
 #endif  // __aarch64__
   }
 #endif  // USE_NEON
-  // Leftover loop.
+  // Leftover loop (NaN-aware).
   for (; i < size; ++i) {
     const float curr_value = input_data[i];
-    if (curr_value > max_value) {
+    if (!std::isnan(curr_value) &&
+        (std::isnan(max_value) || curr_value > max_value)) {
       max_value = curr_value;
       max_index = i;
     }
   }
-  return max_index;
+  // All-NaN inputs: deterministically return first index.
+  return std::isnan(max_value) ? 0 : max_index;
 }
 
 template <>

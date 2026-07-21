@@ -188,6 +188,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/executable.pb.h"
+#include "xla/service/cpu/export_hlo.h"
 #include "xla/service/cpu/fusion_wrapper.h"
 #include "xla/service/cpu/ir_emitter.h"
 #include "xla/service/cpu/ir_emitter2.h"
@@ -519,8 +520,6 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
     // - Improving performance by allowing parallelism.
     // YNNPACK doesn't need TreeReductionRewriter to do either of these.
     pipeline->AddPass<TreeReductionRewriter>(
-        /*reduce_window_size=*/32,
-        /*reduce_window_size_stride_one_dim=*/std::nullopt,
         [](const HloInstruction* hlo) {
           return !(IsInstructionPreferredByYnn(hlo) &&
                    IsReduceLikeOpSupportedByYnn(hlo));
@@ -1165,11 +1164,50 @@ absl::Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
                                        llvm::TargetMachine* target_machine,
                                        const CompileOptions& compile_options) {
   TargetMachineFeatures target_machine_features(target_machine);
+
+  bool has_uploader = GetGlobalSymbolUploaderRegistry().uploader() != nullptr;
+  TargetMachineOptionsProto target_machine_options_proto;
+  std::optional<std::string> unoptimized_fingerprint;
+
+  if (has_uploader) {
+    TargetMachineOptions target_machine_options;
+    if (target_machine != nullptr) {
+      target_machine_options =
+          TargetMachineOptions(target_machine->getTargetTriple().normalize(),
+                               target_machine->getTargetCPU(),
+                               target_machine->getTargetFeatureString());
+    } else {
+      target_machine_options =
+          TargetMachineOptions(module->config().debug_options());
+      if (compile_options.cpu_target_config &&
+          compile_options.cpu_target_config->cpu_target_machine_options) {
+        target_machine_options = compile_options.cpu_target_config
+                                     ->cpu_target_machine_options.value();
+      }
+    }
+    target_machine_options_proto = target_machine_options.ToProto();
+    unoptimized_fingerprint =
+        MaybeUploadUnoptimizedCpuSymbols(module, target_machine_options_proto);
+  }
+
   RETURN_IF_ERROR(RunHloPassesThroughLayoutAssn(module, is_aot_compile,
                                                 &target_machine_features));
 
-  return RunHloPassesAfterLayoutAssn(module, is_aot_compile,
-                                     &target_machine_features, compile_options);
+  RETURN_IF_ERROR(RunHloPassesAfterLayoutAssn(
+      module, is_aot_compile, &target_machine_features, compile_options));
+
+  if (has_uploader) {
+    const std::optional<std::string> optimized_fingerprint =
+        MaybeUploadOptimizedCpuSymbols(module, target_machine_options_proto);
+
+    if (unoptimized_fingerprint.has_value() &&
+        optimized_fingerprint.has_value()) {
+      MaybeUploadCpuSymbolMapping(*unoptimized_fingerprint,
+                                  *optimized_fingerprint);
+    }
+  }
+
+  return absl::OkStatus();
 }
 
 namespace {
@@ -2380,7 +2418,7 @@ CpuCompiler::LoadAotCompilationResult(
 }
 
 absl::StatusOr<HloSchedule> CpuCompiler::CreateHloSchedule(
-    const HloModule& hlo_module) const {
+    HloModule& hlo_module) const {
   AliasInfo alias_info;
   auto scheduler =
       hlo_module.config().debug_options().xla_cpu_scheduler_type() ==

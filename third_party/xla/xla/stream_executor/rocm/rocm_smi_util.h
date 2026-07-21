@@ -16,7 +16,9 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 
+#include "absl/base/attributes.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 
 namespace stream_executor::gpu {
 
@@ -26,6 +28,12 @@ struct BdfComponents {
   uint64_t device;
   uint64_t function;
 };
+
+// Process-global lock serializing all rocm_smi (rsmi_*) access from XLA.
+// rocm_smi only guards state with a per-device mutex, but some of it is global
+// (e.g. the shared gpu_metrics object), so concurrent queries on different
+// devices race. Hold this across each full rsmi call sequence.
+ABSL_CONST_INIT extern absl::Mutex rocm_smi_mutex;
 
 // Returns true if rocm_smi was successfully initialized.
 bool InitRocmSmi();

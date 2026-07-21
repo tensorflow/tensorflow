@@ -285,6 +285,69 @@ TEST(PjRtCApiClientTest, IsDynamicDimension) {
             ShapeUtil::MakeShape(S32, {2, 2}, {false, true}));
 }
 
+TEST(PjRtCApiClientTest, DynamicShapesPipeline) {
+  SetUpCpuPjRtApi();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
+
+  // Computation 1: static F32[15] -> dynamic F32[<=15] (runtime size = input1)
+  Shape shape0 = ShapeUtil::MakeShape(F32, {15});
+  Shape shape1 = ShapeUtil::MakeShape(S32, {});
+
+  XlaBuilder builder1("Module1");
+  auto inp_0 = Parameter(&builder1, 0, shape0, "input0");
+  auto inp_1 = Parameter(&builder1, 1, shape1, "input1");
+  std::vector<bool> dims_are_dynamic1 = {true};
+  auto reshaped = DynamicReshape(inp_0, {inp_1}, {15}, dims_are_dynamic1);
+  ASSERT_OK_AND_ASSIGN(auto computation1, builder1.Build(reshaped));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable1,
+                       client->CompileAndLoad(computation1, CompileOptions()));
+
+  // Computation 2: dynamic F32[<=10] -> dynamic F32[<=10] (Identity)
+  Shape shape_expected = ShapeUtil::MakeShape(F32, {10}, {true});
+  XlaBuilder builder2("Module2");
+  auto inp_m2 = Parameter(&builder2, 0, shape_expected, "input");
+  ASSERT_OK_AND_ASSIGN(auto computation2, builder2.Build(inp_m2));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable2,
+                       client->CompileAndLoad(computation2, CompileOptions()));
+
+  // 1. Prepare input buffer (static F32[15], all 1.0f)
+  std::vector<float> input_data(15, 1.0f);
+  ASSERT_OK_AND_ASSIGN(
+      auto param0,
+      client->BufferFromHostBuffer(
+          input_data.data(), shape0.element_type(), shape0.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  // 2. Prepare dynamic size (we want the runtime size to be 4)
+  int32_t dynamic_size = 4;
+  ASSERT_OK_AND_ASSIGN(
+      auto param1,
+      client->BufferFromHostBuffer(
+          &dynamic_size, shape1.element_type(), shape1.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  // 3. Run Computation 1 -> returns dynamic buffer (runtime size 4, bound 15)
+  ASSERT_OK_AND_ASSIGN(
+      auto results1,
+      executable1->Execute({{param0.get(), param1.get()}}, ExecuteOptions()));
+  ASSERT_EQ(results1[0].size(), 1);
+  auto* dynamic_buffer = results1[0][0].get();
+
+  // Since we are on CPU (kSuffix), this must be REJECTED by
+  // CheckBufferCompatibilities.
+  auto status2 = executable2->Execute({{dynamic_buffer}}, ExecuteOptions());
+  EXPECT_THAT(status2.status(),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("E0102: RuntimeProgramInputMismatch")));
+}
+
 TEST(PjRtCApiClientTest, OnDeviceShape) {
   SetUpCpuPjRtApi();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,

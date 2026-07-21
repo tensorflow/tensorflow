@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/gradients/grad_helper.h"
@@ -62,13 +61,13 @@ std::optional<int> EinsumGetAxisFromLabel(absl::string_view subscripts,
     return index;
   }
   if (splits.size() < 2) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   index = splits[1].find(label);
   if (index != splits[1].npos) {
     return index - splits[1].length();
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 // Returns a tuple denoting the slice mapping to ellipsis.
@@ -95,7 +94,7 @@ std::tuple<int, std::optional<int>> EinsumGetBcastSubshape(
   if (remaining > 0) {
     end = -remaining;
   } else {
-    end = absl::nullopt;
+    end = std::nullopt;
   }
   return std::make_tuple(start, end);
 }

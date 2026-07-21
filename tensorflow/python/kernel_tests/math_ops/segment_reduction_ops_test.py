@@ -315,6 +315,64 @@ class SegmentReductionOpTest(SegmentReductionHelper, parameterized.TestCase):
           s = op(data=np.ones((1, 10, 1)), segment_ids=[1676240524292489355])
           self.evaluate(s)
 
+  def testNaNPropagation(self):
+    for dtype in [
+        dtypes_lib.float16,
+        dtypes_lib.bfloat16,
+        dtypes_lib.float32,
+        dtypes_lib.float64,
+    ]:
+      gpu_options = [False]
+      if test.is_gpu_available():
+        gpu_options.append(True)
+      for use_gpu in gpu_options:
+        device_name = "/device:GPU:0" if use_gpu else "/device:CPU:0"
+        with self.session(use_gpu=use_gpu):
+          with ops.device(device_name):
+            # Input [1.0, NaN, 3.0]
+            data_min = constant_op.constant(
+                [1.0, float("nan"), 3.0], dtype=dtype
+            )
+            segment_ids = [0, 0, 0]
+            res_min = math_ops.segment_min(data_min, segment_ids)
+
+            data_max = constant_op.constant(
+                [3.0, float("nan"), 1.0], dtype=dtype
+            )
+            res_max = math_ops.segment_max(data_max, segment_ids)
+
+            if use_gpu:
+              # GPU sorted segment reductions use GpuAtomicMin/GpuAtomicMax
+              # which do not propagate NaNs (they prefer numeric values).
+              self.assertAllClose(self.evaluate(res_min)[0], 1.0)
+              self.assertAllClose(self.evaluate(res_max)[0], 3.0)
+            else:
+              # CPU propagates NaNs via Eigen::PropagateNaN.
+              self.assertTrue(np.isnan(self.evaluate(res_min)[0]))
+              self.assertTrue(np.isnan(self.evaluate(res_max)[0]))
+
+            # Test 2D input NaN propagation
+            data_2d = constant_op.constant(
+                [[1.0, 2.0], [float("nan"), 3.0], [3.0, 1.0]], dtype=dtype
+            )
+            res_2d_min = math_ops.segment_min(data_2d, segment_ids)
+            evaluated_min = self.evaluate(res_2d_min)
+
+            res_2d_max = math_ops.segment_max(data_2d, segment_ids)
+            evaluated_max = self.evaluate(res_2d_max)
+
+            if use_gpu:
+              # GPU does not propagate NaNs
+              self.assertAllClose(evaluated_min[0][0], 1.0)
+              self.assertAllClose(evaluated_min[0][1], 1.0)
+              self.assertAllClose(evaluated_max[0][0], 3.0)
+              self.assertAllClose(evaluated_max[0][1], 3.0)
+            else:
+              self.assertTrue(np.isnan(evaluated_min[0][0]))
+              self.assertAllClose(evaluated_min[0][1], 1.0)
+              self.assertTrue(np.isnan(evaluated_max[0][0]))
+              self.assertAllClose(evaluated_max[0][1], 3.0)
+
 
 class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
 
@@ -606,44 +664,65 @@ class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
       ):
         self.evaluate(unsorted)
 
-  @test_util.run_in_graph_and_eager_modes
-  def testOrderIndependentNaNHandling(self):
-    # MinOp and MaxOp use Eigen::PropagateNumbers, which prefers the numeric
-    # operand and returns NaN only when both operands are NaN. The reduction
-    # therefore returns the numeric min and max regardless of input order, and
-    # an all-NaN segment returns the reduction identity (the type maximum for
-    # min and the type minimum for max) rather than NaN.
-    for dtype in [np.float32, np.float64]:
-      hi = np.finfo(dtype).max
-      lo = np.finfo(dtype).min
-      # Each case is (data, segment_ids, expected_min, expected_max).
-      test_cases = [
-          # 1D inputs exercise the scalar path. Every ordering of a single NaN
-          # among the numbers {1, 3} reduces to min 1 and max 3.
-          ([1.0, np.nan, 3.0], [0, 0, 0], [1.0], [3.0]),
-          ([np.nan, 1.0, 3.0], [0, 0, 0], [1.0], [3.0]),
-          ([1.0, 3.0, np.nan], [0, 0, 0], [1.0], [3.0]),
-          ([3.0, np.nan, 1.0], [0, 0, 0], [1.0], [3.0]),
-          ([1.0, np.nan, 3.0, 2.0], [0, 0, 0, 0], [1.0], [3.0]),
-          # An all-NaN segment returns the identity: hi for min, lo for max.
-          ([np.nan, np.nan], [0, 0], [hi], [lo]),
-          # 2D inputs exercise the matrix-chip path. Column 0 reduces over
-          # {1, NaN} to 1 and column 1 reduces over {NaN, 3} to 3, for both
-          # min and max.
-          ([[1.0, np.nan], [np.nan, 3.0]], [0, 0], [[1.0, 3.0]], [[1.0, 3.0]]),
-          # All-NaN columns return the identity in every column.
-          ([[np.nan, np.nan], [np.nan, np.nan]], [0, 0],
-           [[hi, hi]], [[lo, lo]]),
-      ]
-      for data, seg_ids, expected_min, expected_max in test_cases:
-        data_np = np.array(data, dtype=dtype)
-        segment_ids = np.array(seg_ids, dtype=np.int32)
-        res_min = math_ops.unsorted_segment_min(
-            data_np, segment_ids, num_segments=1)
-        self.assertAllClose(self.evaluate(res_min), expected_min)
-        res_max = math_ops.unsorted_segment_max(
-            data_np, segment_ids, num_segments=1)
-        self.assertAllClose(self.evaluate(res_max), expected_max)
+  def testNaNPropagation(self):
+    for dtype in [dtypes_lib.float32, dtypes_lib.float64]:
+      gpu_options = [False]
+      if test.is_gpu_available():
+        gpu_options.append(True)
+      for use_gpu in gpu_options:
+        device_name = "/device:GPU:0" if use_gpu else "/device:CPU:0"
+        with self.session(use_gpu=use_gpu):
+          with ops.device(device_name):
+            # Input [1.0, NaN, 3.0]
+            data_min = constant_op.constant(
+                [1.0, float("nan"), 3.0], dtype=dtype
+            )
+            segment_ids = [0, 0, 0]
+            res_min = math_ops.unsorted_segment_min(
+                data_min, segment_ids, num_segments=1
+            )
+
+            data_max = constant_op.constant(
+                [3.0, float("nan"), 1.0], dtype=dtype
+            )
+            res_max = math_ops.unsorted_segment_max(
+                data_max, segment_ids, num_segments=1
+            )
+
+            if use_gpu:
+              # GPU segment reductions currently do not support NaN
+              # propagation due to hardware/atomic operation limitations.
+              self.assertAllClose(self.evaluate(res_min)[0], 1.0)
+              self.assertAllClose(self.evaluate(res_max)[0], 3.0)
+            else:
+              self.assertTrue(np.isnan(self.evaluate(res_min)[0]))
+              self.assertTrue(np.isnan(self.evaluate(res_max)[0]))
+
+            # 2D input
+            data_2d = constant_op.constant(
+                [[1.0, 2.0], [float("nan"), 3.0], [3.0, 1.0]], dtype=dtype
+            )
+            res_2d_min = math_ops.unsorted_segment_min(
+                data_2d, segment_ids, num_segments=1
+            )
+            evaluated_min = self.evaluate(res_2d_min)
+
+            res_2d_max = math_ops.unsorted_segment_max(
+                data_2d, segment_ids, num_segments=1
+            )
+            evaluated_max = self.evaluate(res_2d_max)
+
+            if use_gpu:
+              # GPU does not propagate NaNs
+              self.assertAllClose(evaluated_min[0][0], 1.0)
+              self.assertAllClose(evaluated_min[0][1], 1.0)
+              self.assertAllClose(evaluated_max[0][0], 3.0)
+              self.assertAllClose(evaluated_max[0][1], 3.0)
+            else:
+              self.assertTrue(np.isnan(evaluated_min[0][0]))
+              self.assertAllClose(evaluated_min[0][1], 1.0)
+              self.assertTrue(np.isnan(evaluated_max[0][0]))
+              self.assertAllClose(evaluated_max[0][1], 3.0)
 
 
 class SparseSegmentReductionHelper(SegmentReductionHelper):

@@ -20,8 +20,11 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/base/call_once.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
@@ -30,6 +33,7 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"

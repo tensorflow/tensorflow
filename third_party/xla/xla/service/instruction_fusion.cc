@@ -806,7 +806,11 @@ HloInstruction* InstructionFusion::AddFusionInstruction(
     // have the same value as the root of the fused computation. However, we
     // copy the value nontheless to simplify some use cases that involve
     // fusions.
-    CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
+    auto status_or_changed = computation->ReplaceInstruction(
+        consumer, fusion_instruction, /*preserve_sharding=*/false,
+        /*relay_control_dependency=*/true);
+    CHECK_OK(status_or_changed.status());
+    CHECK(status_or_changed.value());
   }
   return fusion_instruction;
 }

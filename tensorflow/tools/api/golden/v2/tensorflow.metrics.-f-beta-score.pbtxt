@@ -129,6 +129,10 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__call__"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'average\', \'beta\', \'threshold\', \'name\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'1.0\', \'None\', \'fbeta_score\', \'None\'], "
   }

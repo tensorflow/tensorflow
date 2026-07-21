@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -104,6 +105,58 @@ TEST(InterpreterClientTest, EvaluateTwiceShouldSucceed) {
     TF_ASSERT_OK(actual_buffers.front()->ToLiteralSync(&actual_literal));
     EXPECT_TRUE(LiteralTestUtil::Equal(actual_literal, expected_literals[i]));
   }
+}
+
+TEST(InterpreterClientTest, EvaluateWithHloOutputCallbackSucceeds) {
+  InterpreterClient client;
+  const Shape shape = ShapeUtil::MakeShape(S32, {4});
+  XlaBuilder builder("test");
+
+  auto parameter = Parameter(&builder, 0, shape, "parameter0");
+  auto constant = ConstantR1(&builder, absl::Span<const int32_t>{1, 1, 1, 1});
+
+  FrontendAttributes frontend_attributes;
+  (*frontend_attributes.mutable_map())["_xla_tag"] = "42";
+  builder.SetFrontendAttributes(frontend_attributes);
+
+  Add(parameter, constant);
+  builder.ClearFrontendAttributes();
+
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder.Build());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                          client.CompileAndLoad(computation, CompileOptions()));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> argument,
+      client.BufferFromHostLiteral(
+          LiteralUtil::CreateR1(absl::Span<const int32_t>{1, 2, 3, 4}),
+          client.memory_spaces().front()));
+
+  bool callback_called = false;
+  HloOutputCallback callback;
+  callback.callback_id = 42;
+  callback.num_operands = 0;
+  callback.callback =
+      [&](int64_t replica_id, int64_t partition_id,
+          absl::Span<std::shared_ptr<const Literal> const> literals) {
+        callback_called = true;
+        ASSERT_EQ(literals.size(), 1);
+        ASSERT_NE(literals[0], nullptr);
+        EXPECT_TRUE(LiteralTestUtil::Equal(
+            *literals[0],
+            LiteralUtil::CreateR1(absl::Span<const int32_t>{2, 3, 4, 5})));
+      };
+
+  std::vector<HloOutputCallback> callbacks;
+  callbacks.push_back(std::move(callback));
+  ExecuteOptions options;
+  options.hlo_output_callbacks = callbacks;
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results,
+      executable->Execute({{argument.get()}}, options));
+
+  EXPECT_TRUE(callback_called);
 }
 
 }  // namespace

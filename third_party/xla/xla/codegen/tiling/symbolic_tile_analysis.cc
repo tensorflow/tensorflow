@@ -37,7 +37,6 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/die_if_null.h"
 #include "absl/log/log.h"
-#include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -1400,6 +1399,13 @@ SymbolicTileAnalysis::AnalyzeFromInstruction(
 /*static*/ SymbolicTileAnalysisOrError SymbolicTileAnalysis::AnalyzeFusion(
     const HloFusionAdaptor& fusion, MLIRContext* mlir_context,
     EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder) {
+  CHECK(!fusion.GetRoots()
+             .front()
+             .instruction()
+             .GetModule()
+             ->config()
+             .debug_options()
+             .xla_gpu_experimental_enable_tiling_propagation());
   RegisterSymbolicExprStorage(mlir_context);
   auto real_root_index_or = GetRealRootIndex(fusion.GetRoots());
   if (!real_root_index_or.ok()) {
