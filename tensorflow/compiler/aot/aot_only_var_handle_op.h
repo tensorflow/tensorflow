@@ -16,12 +16,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_AOT_AOT_ONLY_VAR_HANDLE_OP_H_
 
 namespace tensorflow {
-namespace tfcompile {
-
-static constexpr const char* const kXlaAotOnlyVarHandleOp =
-    "_XlaAotOnlyVarHandleOp";
-
-}  // namespace tfcompile
+namespace tfcompile {}  // namespace tfcompile
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_AOT_AOT_ONLY_VAR_HANDLE_OP_H_
