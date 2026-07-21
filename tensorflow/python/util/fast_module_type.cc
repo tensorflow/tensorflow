@@ -383,6 +383,23 @@ PYBIND11_MODULE(fast_module_type, m, pybind11::mod_gil_not_used()) {
                                   PyObject* value) -> int {
     auto* fast_module = FastModuleObject::UncheckedCast(module);
     PyObject* to_decref = nullptr;
+
+    if (value == nullptr) {
+      PyObject* key_to_decref = nullptr;
+      {
+        absl::MutexLock lock(&fast_module->mutex);
+        auto& attr_map = fast_module->attr_map;
+        if (auto it = attr_map.find(name); it != attr_map.end()) {
+          key_to_decref = it->first;
+          to_decref = it->second;
+          attr_map.erase(it);
+        }
+      }
+      Py_XDECREF(key_to_decref);
+      Py_XDECREF(to_decref);
+      return PyObject_GenericSetAttr(module, name, value);
+    }
+
     Py_INCREF(value);
     {
       absl::MutexLock lock(&fast_module->mutex);
@@ -395,8 +412,23 @@ PYBIND11_MODULE(fast_module_type, m, pybind11::mod_gil_not_used()) {
       }
     }
     Py_XDECREF(to_decref);
-    PyObject_GenericSetAttr(module, name, value);
-    return 0;
+    int status = PyObject_GenericSetAttr(module, name, value);
+    if (status < 0) {
+      PyObject* key_to_decref = nullptr;
+      PyObject* val_to_decref = nullptr;
+      {
+        absl::MutexLock lock(&fast_module->mutex);
+        auto& attr_map = fast_module->attr_map;
+        if (auto it = attr_map.find(name); it != attr_map.end()) {
+          key_to_decref = it->first;
+          val_to_decref = it->second;
+          attr_map.erase(it);
+        }
+      }
+      Py_XDECREF(key_to_decref);
+      Py_XDECREF(val_to_decref);
+    }
+    return status;
   };
 
   m.doc() = R"pbdoc(
