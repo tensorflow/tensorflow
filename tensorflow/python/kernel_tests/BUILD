@@ -209,6 +209,21 @@ cuda_py_strict_test(
 )
 
 tf_py_strict_test(
+    name = "image_ops_combined_nms_shape_test",
+    size = "small",
+    srcs = ["image_ops_combined_nms_shape_test.py"],
+    deps = [
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/ops:image_ops_impl",
+        "//tensorflow/python/ops:random_ops",
+        "//tensorflow/python/platform:client_testlib",
+    ],
+)
+
+tf_py_strict_test(
     name = "logging_ops_logging_level_test",
     size = "small",
     srcs = ["logging_ops_logging_level_test.py"],
