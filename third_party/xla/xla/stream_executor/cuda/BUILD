@@ -3242,3 +3242,76 @@ xla_cc_test(
         "@com_google_googletest//:gtest",
     ],
 )
+
+cc_library(
+    name = "cudart_kernel_registry",
+    srcs = ["cudart_kernel_registry.cc"],
+    hdrs = ["cudart_kernel_registry.h"],
+    linkopts = [
+        "-Wl,--wrap=__cudaRegisterFatBinary",
+        "-Wl,--wrap=__cudaRegisterFunction",
+    ],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+    ],
+    alwayslink = 1,
+)
+
+cuda_library(
+    name = "simple_kernel_cuda",
+    testonly = 1,
+    srcs = ["simple_kernel_cuda.cu.cc"],
+    hdrs = ["simple_kernel_cuda.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":cuda_status",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:stream",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = 1,
+)
+
+xla_test(
+    name = "cudart_kernel_registry_test",
+    srcs = ["cudart_kernel_registry_test.cc"],
+    backends = ["nvgpu_any"],
+    tags = [
+        "cuda-only",
+    ],
+    deps = [
+        ":cuda_platform",
+        ":cuda_platform_id",
+        ":cudart_kernel_registry",
+        ":make_batch_pointers_kernel_cuda",
+        ":simple_kernel_cuda",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:kernel",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor:typed_kernel_factory",
+        "//xla/stream_executor/gpu:gpu_test_kernels",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
