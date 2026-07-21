@@ -40,6 +40,7 @@ py_test(
     srcs = ["python_object_to_proto_visitor_test.py"],
     strict_deps = True,
     deps = [
+        ":api_objects_proto_py",
         ":python_object_to_proto_visitor",
         "//tensorflow/python/platform:test",
     ],

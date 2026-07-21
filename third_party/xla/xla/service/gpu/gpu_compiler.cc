@@ -609,6 +609,8 @@ GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
                         .getPointerSize(0 /* default address space */)),
       mlir_context_pool_(CreateMlirContext, kPreallocateMlirContexts) {}
 
+void GpuCompiler::ClearMlirContextPool() { mlir_context_pool_.Clear(); }
+
 namespace {
 // Adds the HloVerifier for GPU to the given pipeline.
 void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
@@ -666,7 +668,6 @@ absl::Status RunPreSPMDPartitionerPasses(HloModule* hlo_module,
   pre_spmd_pipeline.AddPass<CuDnnCustomCallConverter>();
   pre_spmd_pipeline.AddPass<CompositeRewriter>();
   pre_spmd_pipeline.AddPass<ConvertMemoryPlacementToInternalAnnotations>();
-  pre_spmd_pipeline.AddPass<ScanRewriter>();
   pre_spmd_pipeline.AddPass<FlattenCallGraph>();
   pre_spmd_pipeline.AddPass<CallInliner>(
       /*single_call_site=*/false, /*update_domain=*/false,
@@ -873,6 +874,13 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<LogisticExpander>();
   pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicDimensionSimplifier>();
+
+  // Rewrite eligible scans to CUB device scans only after SPMD partitioning,
+  // so sharded scans are partitioned as scans (the partitioner replicates
+  // unknown custom calls, and the CUB call's tuple result crashes the Shardy
+  // sharding import). The scans that remain fall through to
+  // AssociativeScanRewriter and ScanExpander below.
+  pipeline.AddPass<ScanRewriter>();
 
   int64_t rw_length = debug_options.xla_reduce_window_rewrite_base_length();
   pipeline.AddPass<HloPassFix<AssociativeScanRewriter>>(rw_length);
@@ -1662,6 +1670,10 @@ AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
   opts.set_rewrite_no_op_bitcast_convert_to_bitcast(true);
   opts.set_enable_conditional_simplification(true);
   opts.set_enable_fold_transpose_into_scatter(true);
+
+  if (!is_rocm && debug_options.xla_gpu_experimental_enable_conv_fusion()) {
+    opts.set_enable_folding_pad_into_convolution(false);
+  }
 
   switch (mode) {
     case AlgebraicSimplifierMode::kPostFusionSimplification:
@@ -3137,10 +3149,7 @@ absl::Status GpuCompiler::RunPreSchedulingPasses(
         gpu_device_info, cost_analysis_options, mlir_context,
         module->config()
             .debug_options()
-            .xla_gpu_experimental_enable_tiling_propagation(),
-        module->config()
-            .debug_options()
-            .xla_experimental_enable_same_shape_multi_output_fusion());
+            .xla_gpu_experimental_enable_tiling_propagation());
     // S-curve model analysis for collectives.
     if (module->config()
             .debug_options()
