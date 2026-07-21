@@ -56,7 +56,6 @@ cc_library(
     srcs = ["xla_internal_test_main.cc"],
     deps = [
         "//xla:debug_options_flags",
-        "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_for_library",
@@ -158,6 +157,27 @@ cc_library(
         "@tsl//tsl/platform:errors",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
+    name = "aot_compatibility_test_lib",
+    testonly = True,
+    srcs = ["aot_compatibility_test_lib.cc"],
+    hdrs = ["aot_compatibility_test_lib.h"],
+    deps = [
+        ":aot_interception_pjrt_client",
+        ":aot_utils",
+        ":hlo_runner_agnostic_test_base",
+        ":pjrt_client_registry",
+        "//xla:shape_util",
+        "//xla/pjrt:pjrt_client",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_for_library",
+        "@tsl//tsl/platform:path",
     ],
 )
 
@@ -2698,13 +2718,11 @@ xla_test(
         ":hlo_pjrt_test_base",
         ":literal_test_util",
         ":pjrt_client_registry",
-        ":test_utils",
         ":xla_internal_test_main",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:types",
-        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:computation_placer",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_runner_interface",
@@ -3153,7 +3171,6 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:path",
-        "@tsl//tsl/platform:test",
     ],
 )
 
@@ -3565,7 +3582,6 @@ xla_test(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
         "//xla/tsl/lib/core:status_test_util",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
