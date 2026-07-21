@@ -392,7 +392,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_experimental_enable_fusion_block_level_rewriter(false);
 
-  opts.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(false);
+  opts.set_xla_gpu_match_tpu_precision(false);
   opts.set_xla_gpu_enable_libnvptxcompiler(
       stream_executor::IsLibNvPtxCompilerSupported());
   opts.set_xla_gpu_libnvjitlink_mode(DebugOptions::LIB_NV_JIT_LINK_MODE_AUTO);
@@ -1877,14 +1877,17 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_force_compilation_parallelism(),
       "Overrides normal multi-threaded compilation setting to use this many "
       "threads. Setting to 0 (the default value) means no enforcement."));
-
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_default_to_alg_dot_bf16_bf16_f32",
+                bool_setter_for(&DebugOptions::set_xla_gpu_match_tpu_precision),
+                debug_options->xla_gpu_match_tpu_precision(),
+                "Deprecated. Use `xla_gpu_match_tpu_precision` instead."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_default_to_alg_dot_bf16_bf16_f32",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_default_to_alg_dot_bf16_bf16_f32),
-      debug_options->xla_gpu_default_to_alg_dot_bf16_bf16_f32(),
+      "xla_gpu_match_tpu_precision",
+      bool_setter_for(&DebugOptions::set_xla_gpu_match_tpu_precision),
+      debug_options->xla_gpu_match_tpu_precision(),
       "Use the dot precision algorithm `ALG_DOT_BF16_BF16_F32 by default for "
-      "f32 dots."));
+      "f32 dots. This leads to the same precision as on TPU."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_deterministic_ops",
                 bool_setter_for(&DebugOptions::set_xla_gpu_deterministic_ops),
@@ -1994,13 +1997,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_collective_inflation_factor(),
       "Inflation factor for collectives. If set to > 1, each XLA/GPU "
       "collective will execute multiple times (will yield incorrect results)"));
-
-  flag_list->push_back(tsl::Flag(
-      "xla_llvm_force_inline_before_split",
-      bool_setter_for(&DebugOptions::set_xla_llvm_force_inline_before_split),
-      debug_options->xla_llvm_force_inline_before_split(),
-      "Decide whether to force inline before llvm module split to get a more "
-      "balanced splits for parallel compilation"));
 
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_reassociation_for_converted_ar",

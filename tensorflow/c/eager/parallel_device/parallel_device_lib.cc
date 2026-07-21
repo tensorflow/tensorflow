@@ -304,7 +304,7 @@ void DeviceThread::Execute(TFE_Context* context, const char* operation_name,
 ParallelDevice::ParallelDevice(const std::vector<std::string>& devices,
                                bool is_async, int in_flight_nodes_limit)
     : underlying_devices_(devices),
-      default_cancellation_manager_(absl::make_unique<CancellationManager>()) {
+      default_cancellation_manager_(std::make_unique<CancellationManager>()) {
   device_threads_.reserve(devices.size());
   for (int device_index = 0; device_index < devices.size(); ++device_index) {
     device_threads_.emplace_back(new DeviceThread(
@@ -358,7 +358,7 @@ ParallelDevice::Execute(TFE_Context* context,
     TFE_ContextAsyncWait(context, await_status.get());
     // Reset the cancellation manager on a bad status. Otherwise we'll cancel
     // all future operations.
-    default_cancellation_manager_ = absl::make_unique<CancellationManager>();
+    default_cancellation_manager_ = std::make_unique<CancellationManager>();
   }
   return result;
 }

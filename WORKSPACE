@@ -23,6 +23,17 @@ tf_http_archive(
 # a macro from that repository in the same file.
 load("@//tensorflow:workspace3.bzl", "tf_workspace3")
 
+# Toolchains for ML projects hermetic builds.
+# Details: https://github.com/google-ml-infra/rules_ml_toolchain
+tf_http_archive(
+    name = "rules_ml_toolchain",
+    sha256 = "995904a9a9999920207ac040f71ca3edd6768304729120ffe46f53c0c9b20a85",
+    strip_prefix = "rules_ml_toolchain-2af725253c7b546add84dd1ae7e5610daaf7a1dc",
+    urls = tf_mirror_urls(
+        "https://github.com/yuriivcs/rules_ml_toolchain/archive/2af725253c7b546add84dd1ae7e5610daaf7a1dc.tar.gz",
+    ),
+)
+
 tf_workspace3()
 
 load("@bazel_features//:deps.bzl", "bazel_features_deps")
