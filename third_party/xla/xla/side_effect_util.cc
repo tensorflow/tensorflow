@@ -91,6 +91,8 @@ const char kFuseLimitAttr[] = "FUSE_LIMIT";
 
 const char kMaximalFuseAttr[] = "MAXIMAL_FUSE";
 
+const char kVmemLimitBytesAttr[] = "vmem_limit_bytes";
+
 const char kXlaCseSafeZeroOperandAttr[] = "_xla_cse_safe_zero_operand";
 
 const char kCollectivesGroupAttr[] = "_collectives_group";

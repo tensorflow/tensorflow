@@ -543,11 +543,22 @@ mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
         toSdyAxisRefAttr(axisRef, namedSharding.mesh(), context));
   }
 
-  CHECK(namedSharding.manual_axes().empty())
-      << "Manual axes should be handled by shard maps import.";
+  mlir::sdy::ReductionOp reductionOp = mlir::sdy::ReductionOp::SUM;
+  switch (namedSharding.reduction_op()) {
+    case xla::ReductionOp::kSum:
+      reductionOp = mlir::sdy::ReductionOp::SUM;
+      break;
+    case xla::ReductionOp::kMax:
+      reductionOp = mlir::sdy::ReductionOp::MAX;
+      break;
+    case xla::ReductionOp::kMin:
+      reductionOp = mlir::sdy::ReductionOp::MIN;
+      break;
+  }
 
   return mlir::sdy::TensorShardingAttr::get(context, meshAttr, dimShardings,
-                                            replicatedAxes, unreducedAxes);
+                                            replicatedAxes, unreducedAxes,
+                                            reductionOp);
 }
 
 mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(

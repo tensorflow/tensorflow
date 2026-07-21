@@ -287,6 +287,9 @@ CallInliner::Inline(HloInstruction* call, bool propagate_metadata) {
               : std::nullopt,
           call_attributes.map().contains("mosaic_fusion_group")
               ? std::make_optional("mosaic_fusion_group")
+              : std::nullopt,
+          call_attributes.map().contains("vmem_limit_bytes")
+              ? std::make_optional("vmem_limit_bytes")
               : std::nullopt}) {
       if (!maybe_attribute.has_value()) {
         continue;
