@@ -297,6 +297,9 @@ class CommonPjRtClient : public PjRtClient {
 
   virtual bool IsOnCpu(PjRtMemorySpace* memory_space) { return false; }
   virtual bool use_stream_based_compaction() const { return false; }
+  // If true, created buffers rely on external reference counting for their
+  // lifetime without internal hold tracking, and cannot be donated.
+  virtual bool use_undonatable_buffer() const { return false; }
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,

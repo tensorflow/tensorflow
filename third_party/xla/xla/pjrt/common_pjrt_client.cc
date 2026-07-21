@@ -483,6 +483,11 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::DefineBuffer(
                         raw_buffer->memory_space()->DebugString(),
                         memory_space->DebugString()));
   }
+  if (use_undonatable_buffer()) {
+    return std::make_unique<UndonatableCommonPjRtBuffer>(
+        std::move(on_device_shape), std::move(raw_buffer),
+        std::move(definition_device_events), memory_space);
+  }
   return std::make_unique<CommonPjRtBufferImpl>(
       std::move(on_device_shape),
       std::make_unique<AbstractTrackedDeviceBuffer>(
