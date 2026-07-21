@@ -82,8 +82,10 @@ limitations under the License.
 #define TF_GPU_USE_PJRT
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
-#include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/pjrt/se/local_device_state.h"
+#include "xla/pjrt/se/pjrt_stream_executor_client.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu_topology.h"
 #include "tensorflow/core/framework/resource_base.h"
@@ -268,6 +270,27 @@ absl::Status CreateClientOnce(
       return absl::OkStatus();
     }
     VLOG(2) << "Creating PjRtGpuClientCreationInfo in CreateClientOnce.";
+    // Tell any other threads are waiting to call BuildDistributedDevices to
+    // proceed.
+    creation_state->SetReady();
+    auto kv_store =
+        std::make_shared<XlaKeyValueStore>(coordination_service_agent);
+    xla::GpuClientOptions options;
+    options.kv_store = kv_store;
+    options.node_id = node_id;
+    options.num_nodes = num_nodes;
+    auto pjrt_client = xla::GetSharedStreamExecutorGpuClient(
+        options, info->local_client, std::move(info->local_device_states),
+        std::move(info->allocator), std::move(info->host_memory_allocator));
+    if (!pjrt_client.ok()) {
+      creation_state->SetDone();
+      return pjrt_client.status();
+    }
+    VLOG(2) << "PJRT GPU client with remote devices created.";
+    auto status = SetPjRtClientInTFGlobalResourceManager(
+        DeviceType(DEVICE_GPU), *std::move(pjrt_client));
+    creation_state->SetDone();
+    return status;
   } else {
     LOG(INFO)
         << "Skipping using GetPjRtGpuClientCreationInfo in CreateClientOnce "
@@ -279,73 +302,29 @@ absl::Status CreateClientOnce(
                    "this thread to exit.";
       return absl::OkStatus();
     }
-  }
 
-  std::vector<std::unique_ptr<xla::PjRtStreamExecutorDevice>> pjrt_devices;
-  auto gpu_run_options = std::make_unique<xla::gpu::GpuExecutableRunOptions>();
+    std::vector<std::unique_ptr<xla::PjRtStreamExecutorDevice>> pjrt_devices;
+    auto gpu_run_options =
+        std::make_unique<xla::gpu::GpuExecutableRunOptions>();
 #if TENSORFLOW_USE_ROCM
-  auto platform_name = xla::RocmName();
+    auto platform_name = xla::RocmName();
 #elif TENSORFLOW_USE_SYCL
-  auto pjrt_platform_name = xla::SyclName();
+    auto platform_name = xla::SyclName();
 #else   // TENSORFLOW_USE_ROCM
-  auto platform_name = xla::CudaName();
+    auto platform_name = xla::CudaName();
 #endif  // TENSORFLOW_USE_ROCM
 
-  auto kv_store =
-      std::make_shared<XlaKeyValueStore>(coordination_service_agent);
-  std::map<int, std::unique_ptr<xla::LocalDeviceState>> local_device_states;
-  if (use_creation_info) {
-    local_device_states = std::move(info->local_device_states);
-  }
-  if (use_creation_info) {
-    // Tell any other threads are waiting to call BuildDistributedDevices to
-    // proceed.
-    creation_state->SetReady();
-  }
-  auto device_topology_pair = BuildDistributedDevices(
-      platform_name, std::move(local_device_states), node_id, num_nodes,
-      gpu_run_options.get(), kv_store, /*enable_mock_nccl=*/false);
-  if (!device_topology_pair.ok()) {
-    if (use_creation_info) {
-      creation_state->SetDone();
+    auto kv_store =
+        std::make_shared<XlaKeyValueStore>(coordination_service_agent);
+    std::map<int, std::unique_ptr<xla::LocalDeviceState>> local_device_states;
+    // TODO(parkers): figure out why the old code was dilligently calling just
+    // this with an empty 'local_device_states' when !use_creation_info.
+    auto device_topology_pair = BuildDistributedDevices(
+        platform_name, std::move(local_device_states), node_id, num_nodes,
+        gpu_run_options.get(), kv_store, /*enable_mock_nccl=*/false);
+    if (!device_topology_pair.ok()) {
+      return device_topology_pair.status();
     }
-    return device_topology_pair.status();
-  }
-
-  pjrt_devices = std::move(device_topology_pair->first);
-  VLOG(2) << "Distributed devices built with size=" << pjrt_devices.size();
-  int i = 0;
-  for (const auto& pjrt_device : pjrt_devices) {
-    if (pjrt_device != nullptr) {
-      VLOG(2) << "  pjrt_device " << i++ << ":"
-              << pjrt_device->description().DebugString();
-    } else {
-      VLOG(2) << "  pjrt_device " << i++ << ":" << "nullptr";
-    }
-  }
-
-  if (use_creation_info) {
-    TF_ASSIGN_OR_RETURN(
-        auto gpu_topology,
-        absl::StatusOr<std::shared_ptr<const xla::GpuTopology>>(
-            xla::GpuTopology::FromProto(device_topology_pair->second)));
-    std::unique_ptr<xla::PjRtClient> pjrt_client =
-        std::make_unique<xla::StreamExecutorGpuClient>(
-            platform_name, info->local_client, std::move(pjrt_devices),
-            /*process_index=*/node_id,
-            /*allocator=*/std::move(info->allocator),
-            /*host_memory_allocator=*/std::move(info->host_memory_allocator),
-            /*should_stage_host_to_device_transfers=*/true,
-            /*gpu_run_options=*/std::move(gpu_run_options), kv_store,
-            /*abort_collectives_on_failure=*/false,
-            /*gpu_topology=*/std::move(gpu_topology),
-            /*num_nodes=*/num_nodes);
-    VLOG(2) << "PJRT GPU client with remote devices created.";
-    auto status = SetPjRtClientInTFGlobalResourceManager(
-        DeviceType(DEVICE_GPU), std::move(pjrt_client));
-    creation_state->SetDone();
-    return status;
-  } else {
     LOG(INFO) << "Skipping creating PJRT GPU client, another thread has "
                  "already created the client.";
     creation_state->WaitForDone();
