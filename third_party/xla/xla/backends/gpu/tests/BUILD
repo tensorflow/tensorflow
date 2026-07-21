@@ -2,10 +2,6 @@
 # verify the IR emitted.
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm_is_configured",
-)
 
 # copybara:uncomment load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
@@ -15,10 +11,6 @@ load("//xla/backends/gpu/tests:helper.bzl", "get_canonical_repo_name")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google", "if_oss")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
-load(
-    "//xla/tsl/platform:build_config_root.bzl",
-    "tf_gpu_tests_tags",
-)
 load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -61,7 +53,7 @@ cc_library(
     testonly = True,
     srcs = ["gpu_pjrt_codegen_test.cc"],
     hdrs = ["gpu_pjrt_codegen_test.h"],
-    tags = tf_gpu_tests_tags(),
+    tags = ["gpu"],
     deps = [
         ":hlo_pjrt_gpu_test_base",
         "//xla:shape_util",
@@ -164,8 +156,6 @@ xla_test(
     name = "async_kernel_launch_test",
     srcs = ["async_kernel_launch_test.cc"],
     backends = ["gpu"],
-    # "requires-net:external" tag allows uploading `xprof` results.
-    tags = if_google(["requires-net:external"]),
     deps = [
         "//xla:debug_options_flags",
         "//xla:error_spec",
@@ -715,9 +705,6 @@ xla_test(
     name = "sorting_test",
     srcs = ["sorting_test.cc"],
     backends = ["gpu"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
     shard_count = 15,
     deps = [
         "//xla:error_spec",
@@ -891,13 +878,13 @@ xla_test(
 
 xla_test(
     name = "dynamic_shared_memory_test",
-    srcs = if_cuda_is_configured(["dynamic_shared_memory_test.cc"]),
+    srcs = ["dynamic_shared_memory_test.cc"],
     backends = ["gpu"],
     tags = ["cuda-only"],
     deps = [
-        "//xla:shape_util",
-        "//xla:types",
         "//xla:xla_proto_cc",
+        "//xla/service/gpu:stream_executor_util",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:launch_dim",
@@ -911,13 +898,7 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:status",
-        "@tsl//tsl/platform:statusor",
-        "@tsl//tsl/platform:test",
-    ] + if_cuda_is_configured([
-        "//xla/service/gpu:stream_executor_util",
-        "//xla/stream_executor:device_address",
-    ]),
+    ],
 )
 
 xla_test(
@@ -1046,7 +1027,6 @@ cc_library(
     name = "simple_optimization_test",
     testonly = True,
     srcs = ["simple_optimization_test.cc"],
-    tags = tf_gpu_tests_tags(),
     deps = [
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/tests:hlo_pjrt_test_base",
@@ -1388,13 +1368,17 @@ cuda_library(
     alwayslink = True,  # static kernel registration
 )
 
-xla_cc_test(
+xla_test(
     name = "collective_ops_ffi_kernels_test",
     srcs = ["collective_ops_ffi_kernels_test.cc"],
+    backend_tags = {
+        "gpu": [
+            "multi_gpu",
+        ],
+    },
+    backends = ["gpu"],
     tags = [
         "cuda-only",
-        "gpu",
-        "requires-gpu-nvidia:2",
     ],
     deps = [
         ":collective_ops_ffi_kernels",
@@ -1406,10 +1390,8 @@ xla_cc_test(
         "//xla/core/collectives",
         "//xla/core/collectives:clique_id",
         "//xla/core/collectives:rank_id",
-        "//xla/core/collectives:symmetric_memory",
         "//xla/runtime:device_id",
         "//xla/stream_executor:device_address",
-        "//xla/stream_executor:kernel",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:memory_allocator",
@@ -1506,6 +1488,7 @@ xla_test(
     backends = [
         "gpu",
     ],
+    env = {"NCCL_IGNORE_DISABLED_P2P": "1"},
     deps = [
         ":collective_ops_e2e_test_base",
         "//xla:error_spec",
@@ -1552,6 +1535,7 @@ xla_test(
     backends = [
         "gpu",
     ],
+    env = {"NCCL_IGNORE_DISABLED_P2P": "1"},
     deps = [
         ":collective_ops_e2e_test_base",
         ":ragged_all_to_all_test_utils",
@@ -1770,6 +1754,7 @@ xla_test(
     backends = [
         "gpu",
     ],
+    env = {"NCCL_IGNORE_DISABLED_P2P": "1"},
     deps = [
         ":collective_ops_e2e_test_base",
         "//xla:literal",

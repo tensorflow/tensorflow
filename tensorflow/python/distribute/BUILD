@@ -1982,6 +1982,7 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "mirrored_strategy_test",
     srcs = ["mirrored_strategy_test.py"],
+    env = {"NCCL_IGNORE_DISABLED_P2P": "1"},
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
@@ -2391,6 +2392,7 @@ distribute_py_strict_test(
     name = "strategy_gather_test",
     srcs = ["strategy_gather_test.py"],
     disable_mlir_bridge = False,
+    env = {"NCCL_IGNORE_DISABLED_P2P": "1"},
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
