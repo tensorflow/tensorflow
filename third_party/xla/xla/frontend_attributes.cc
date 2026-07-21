@@ -14,14 +14,26 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/frontend_attributes.h"
 
+#include <cstdlib>
+
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+namespace {
+
+bool IsTrueVal(absl::string_view val) {
+  return absl::EqualsIgnoreCase(val, "true") || val == "1" ||
+         absl::EqualsIgnoreCase(val, "yes");
+}
+
+}  // namespace
 
 void SetDisjointReadWriteRegionsAttr(HloInstruction* instruction) {
   instruction->set_frontend_attribute(xla::kXlaDisjointReadWriteRegions,
@@ -31,6 +43,38 @@ void SetDisjointReadWriteRegionsAttr(HloInstruction* instruction) {
 bool HasDisjointReadWriteRegionsAttr(HloInstruction* instruction) {
   return instruction->frontend_attributes().map().contains(
       xla::kXlaDisjointReadWriteRegions);
+}
+
+bool HasDisableWhileLoopCopiesAttr(const HloInstruction* instruction) {
+  if (instruction == nullptr) {
+    return false;
+  }
+  if (instruction->has_frontend_attributes()) {
+    const auto& map = instruction->frontend_attributes().map();
+    for (absl::string_view key :
+         {kXlaDisableWhileLoopCopies, kXlaDisableWhileLoopCopiesNoUnderscore,
+          "xla.disable_while_loop_copies"}) {
+      auto it = map.find(key);
+      if (it != map.end() && IsTrueVal(it->second)) {
+        return true;
+      }
+    }
+  }
+  if (instruction->GetModule() != nullptr) {
+    const auto& extra_options = instruction->GetModule()
+                                    ->config()
+                                    .debug_options()
+                                    .xla_backend_extra_options();
+    for (const char* key :
+         {kXlaDisableWhileLoopCopies, kXlaDisableWhileLoopCopiesNoUnderscore,
+          "xla.disable_while_loop_copies"}) {
+      auto it = extra_options.find(key);
+      if (it != extra_options.end() && IsTrueVal(it->second)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 bool DoesPdlLaunch(const HloInstruction& instruction) {
