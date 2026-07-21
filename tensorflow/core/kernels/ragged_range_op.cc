@@ -139,6 +139,10 @@ class RaggedRangeOp : public OpKernel {
         // The following is copied from tensorflow::RangeOp::Compute().
         auto size_auto =
             Eigen::numext::ceil(Eigen::numext::abs((limit - start) / delta));
+        // Inf/Inf (and similar) yields NaN; NaN comparisons are false, so
+        // casting NaN to an integer is undefined behavior without this check.
+        OP_REQUIRES(context, !Eigen::numext::isnan(size_auto),
+                    absl::InvalidArgumentError("Requires non-NaN Range size"));
         OP_REQUIRES(
             context, size_auto <= std::numeric_limits<SPLITS_TYPE>::max(),
             errors::InvalidArgument("Requires ((limit - start) / delta) <= ",

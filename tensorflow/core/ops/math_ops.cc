@@ -1554,6 +1554,11 @@ absl::Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
   } else {
     auto size_auto =
         Eigen::numext::ceil(Eigen::numext::abs((limit - start) / delta));
+    // Inf/Inf (and similar) yields NaN; NaN comparisons are false, so casting
+    // NaN to int64_t is undefined behavior without this check.
+    if (Eigen::numext::isnan(size_auto)) {
+      return absl::InvalidArgumentError("Requires non-NaN Range size");
+    }
     if (size_auto > std::numeric_limits<int64_t>::max()) {
       return absl::InvalidArgumentError(
           absl::StrCat("Requires ((limit - start) / delta) <= ",

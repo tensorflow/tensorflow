@@ -92,6 +92,11 @@ absl::StatusOr<xla::XlaOp> CreateRangeTensor(
     }
   } else {
     auto size_auto = std::ceil(std::abs((limit - start) / delta));
+    // Inf/Inf (and similar) yields NaN; NaN comparisons are false, so casting
+    // NaN to int64_t is undefined behavior without this check.
+    if (std::isnan(size_auto)) {
+      return absl::InvalidArgumentError("Requires non-NaN Range size");
+    }
     if (size_auto > std::numeric_limits<int64_t>::max()) {
       return absl::InvalidArgumentError(
           absl::StrCat("Requires ((limit - start) / delta) <= ",

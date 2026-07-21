@@ -139,6 +139,10 @@ class RangeOp : public OpKernel {
     } else {
       auto size_auto =
           Eigen::numext::ceil(Eigen::numext::abs((limit - start) / delta));
+      // Inf/Inf (and similar) yields NaN; NaN comparisons are false, so casting
+      // NaN to int64_t is undefined behavior without this check.
+      OP_REQUIRES(context, !Eigen::numext::isnan(size_auto),
+                  absl::InvalidArgumentError("Requires non-NaN Range size"));
       OP_REQUIRES(context, size_auto <= std::numeric_limits<int64_t>::max(),
                   absl::InvalidArgumentError(
                       absl::StrCat("Requires ((limit - start) / delta) <= ",
