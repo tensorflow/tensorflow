@@ -49,6 +49,33 @@ cc_library(
 )
 
 cc_library(
+    name = "drop_shape_assertions",
+    srcs = [
+        "transforms/drop_shape_assertions.cc",
+    ],
+    hdrs = [
+        "transforms/stablehlo_passes.h",
+        "transforms/stablehlo_passes.h.inc",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        ":passes_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
+        "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:vhlo_ops",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "stablehlo_util",
     srcs = [
         "transforms/stablehlo_util.cc",
@@ -150,6 +177,7 @@ cc_library(
     ],
     deps = [
         ":drop_savedmodel_semantics",
+        ":drop_shape_assertions",
         ":legalize_stablehlo_custom_call_to_composite",
         ":legalize_tf_xla_call_module_to_stablehlo_pass",
         ":optimize",
@@ -903,6 +931,7 @@ tf_cc_binary(
     tags = ["hostonly"],
     deps = [
         ":compose_uniform_quantized_type_pass",
+        ":drop_shape_assertions",
         ":legalize_stablehlo_composite_to_tfl_custom",
         ":legalize_stablehlo_custom_call_to_composite",
         ":legalize_stablehlo_to_vhlo_pass",
