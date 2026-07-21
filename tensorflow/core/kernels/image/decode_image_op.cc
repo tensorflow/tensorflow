@@ -331,21 +331,12 @@ class DecodeImageV2Op : public OpKernel {
     uint8_t* buffer = jpeg::Uncompress(
         input.data(), input.size(), flags, nullptr /* nwarn */,
         [&](int width, int height, int channels) -> uint8_t* {
+          // NOTE: jpeg::Uncompress already rejects images with total_size >=
+          // 512 MiB (1LL << 29) in jpeg_mem.cc *before* this callback is
+          // invoked. An additional op-level 1 GiB bound here is unreachable
+          // and was removed after review.
           const int64_t temp_buffer_size =
               static_cast<int64_t>(height) * width * channels;
-
-          // Bounds check on total allocated bytes. DecodeBmpV2 applies
-          // int32_max/8 to pixel count (width*height), which with up to 4
-          // channels implies a ~1GB (2^30) allocation ceiling. Check bytes
-          // directly so JPEG matches that effective limit without being 4x
-          // more restrictive.
-          if (temp_buffer_size >= (1LL << 30)) {
-            context->SetStatus(absl::InvalidArgumentError(absl::StrCat(
-                "JPEG image too large: ", temp_buffer_size, " bytes (", height,
-                "x", width, "x", channels, ").",
-                " Total possible pixel bytes must be less than 2^30")));
-            return nullptr;
-          }
           buffer_size = static_cast<int>(temp_buffer_size);
           absl::Status status;
           // By the existing API, we support decoding JPEG with `DecodeGif`
@@ -543,11 +534,10 @@ class DecodeImageV2Op : public OpKernel {
           buffer_size =
               static_cast<int64_t>(num_frames) * height * width * channels;
 
-          // Bounds check on total allocation across all frames. Matches
-          // DecodeBmpV2's effective ~1GB ceiling (pixel limit int32_max/8
-          // with up to 4 channels). Total bytes matter for multi-frame GIF
-          // DoS (per-frame pixel limits alone would still allow huge
-          // animations).
+          // Post-decode bound on the *final* TF output tensor only. gif::Decode
+          // calls DGifSlurp before this callback, so giflib may already have
+          // allocated SavedImages/RasterBits; a pre-slurp logical-screen check
+          // lives in gif_io.cc. Total-bytes matter for multi-frame output DoS.
           if (buffer_size >= (1LL << 30)) {
             context->SetStatus(absl::InvalidArgumentError(absl::StrCat(
                 "GIF image too large: ", buffer_size, " bytes (",
