@@ -1614,9 +1614,16 @@ TEST_P(GpuCompilerSelectKTest, SelectKOrCustomKernelThunk) {
   auto [n, k, expected_impl] = GetParam();
 
   bool is_rocm = device_description().gpu_compute_capability().IsRocm();
+  bool is_oneapi = device_description().gpu_compute_capability().IsOneAPI();
 
   if (is_rocm && expected_impl == TopKImpl::kSelectK) {
     GTEST_SKIP() << "raft::select_k is not supported in ROCm.";
+  }
+  // TODO(intel-tf): Remove this check once TopK specialization for SYCL/oneAPI
+  // backend is added.
+  if (is_oneapi && expected_impl != TopKImpl::kSort) {
+    GTEST_SKIP()
+        << "oneAPI does not support raft::select_k and custom TopK yet.";
   }
   // Generate HLO text with parameters substituted.
   std::string hlo_text = absl::Substitute(R"(

@@ -285,6 +285,29 @@ ENTRY entry {
               AllOf(op::CustomCall(op::Parameter(0)), op::Shape("f32[8,128]")));
   EXPECT_TRUE(module->has_spmd_output_sharding());
   EXPECT_EQ(module->spmd_output_sharding(), HloSharding::Unreduced());
+}
+
+TEST_P(SpmdPartitioningTest, LayoutConstraintCustomCallUnreducedMax) {
+  if (GetParam() != ShardingFormatPicker::ShardingType::kNamed) {
+    GTEST_SKIP();
+  }
+  absl::string_view hlo_string = R"(
+HloModule module
+ENTRY entry {
+  %param = f32[8,128]{1,0} parameter(0), sharding={mesh['x'=2], [{}, {}], unreduced=max{'x'}}
+  ROOT %cc = f32[8,128]{0,1} custom-call(%param), custom_call_target="LayoutConstraint",
+    operand_layout_constraints={f32[8,128]{0,1}}, sharding={mesh['x'=2], [{}, {}], unreduced=max{'x'}}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              AllOf(op::CustomCall(op::Parameter(0)), op::Shape("f32[8,128]")));
+  EXPECT_TRUE(module->has_spmd_output_sharding());
+  EXPECT_TRUE(module->spmd_output_sharding().UseNamedShardingLeaf());
+  EXPECT_EQ(module->spmd_output_sharding().named_sharding().reduction_op(),
+            ReductionOp::kMax);
   VerifyNoCollectives(module.get());
 }
 
@@ -4168,6 +4191,571 @@ ENTRY entry {
     EXPECT_EQ(operand->shape().dimensions(0), 128);
     EXPECT_EQ(operand->shape().dimensions(1), 1024);
   }
+}
+
+TEST_P(SpmdPartitioningTest, ScanShardedOnNonScanDim) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add_computation {
+  p0 = f32[128] parameter(0)
+  p1 = f32[128] parameter(1)
+  add = f32[128] add(p0, p1)
+  ROOT tuple = (f32[128], f32[128]) tuple(add, add)
+}
+
+ENTRY entry {
+  param.0 = f32[128,1024] parameter(0), sharding={devices=[8,1]<=[8]}
+  init = f32[128] parameter(1), sharding={devices=[8]<=[8]}
+  ROOT scan.0 = (f32[128,1024], f32[128]) scan(param.0, init), dimensions={1}, num_carries=1, is_associative=true, to_apply=add_computation, sharding={{devices=[8,1]<=[8]},{devices=[8]<=[8]}}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  // The scan is partitioned along the non-scan dimension: no collectives, and
+  // per-shard shapes everywhere, including the rebuilt body computation.
+  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllGather), nullptr);
+  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
+  HloInstruction* scan = FindInstruction(module.get(), HloOpcode::kScan);
+  ASSERT_NE(scan, nullptr);
+  EXPECT_EQ(scan->operand(0)->shape().dimensions(0), 16);
+  EXPECT_EQ(scan->operand(0)->shape().dimensions(1), 1024);
+  EXPECT_EQ(scan->operand(1)->shape().dimensions(0), 16);
+  for (HloInstruction* param : scan->to_apply()->parameter_instructions()) {
+    EXPECT_EQ(param->shape().dimensions(0), 16);
+  }
+}
+
+TEST_P(SpmdPartitioningTest, ScanShardedOnScanDim_ParallelPrefix) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add_computation {
+  p0 = f32[128] parameter(0)
+  p1 = f32[128] parameter(1)
+  add = f32[128] add(p0, p1)
+  ROOT tuple = (f32[128], f32[128]) tuple(add, add)
+}
+
+ENTRY entry {
+  param.0 = f32[128,1024] parameter(0), sharding={devices=[1,8]<=[8]}
+  init = f32[128] parameter(1), sharding={replicated}
+  ROOT scan.0 = (f32[128,1024], f32[128]) scan(param.0, init), dimensions={1}, num_carries=1, is_associative=true, to_apply=add_computation, sharding={{devices=[1,8]<=[8]},{replicated}}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  // An associative scan sharded on the scan dimension is partitioned in
+  // place with a distributed parallel prefix: a shard-totals scan over the
+  // remaining 127 slices, a stack scan over the 8 gathered totals, and the
+  // final shard-local scan over all 128 slices.
+  std::vector<int64_t> scan_dim_sizes;
+  for (HloInstruction* instr :
+       module->entry_computation()->MakeInstructionPostOrder()) {
+    if (instr->opcode() == HloOpcode::kScan) {
+      EXPECT_EQ(instr->operand(0)->shape().dimensions(0), 128);
+      scan_dim_sizes.push_back(instr->operand(0)->shape().dimensions(1));
+    }
+  }
+  EXPECT_THAT(scan_dim_sizes, ::testing::UnorderedElementsAre(127, 8, 128));
+  // The only communication is the all-gather of the carry-sized shard
+  // totals.
+  int64_t all_gather_count = 0;
+  for (HloInstruction* instr :
+       module->entry_computation()->MakeInstructionPostOrder()) {
+    if (instr->opcode() == HloOpcode::kAllGather) {
+      ++all_gather_count;
+      EXPECT_THAT(instr->shape().dimensions(), ::testing::ElementsAre(128, 8));
+    }
+  }
+  EXPECT_EQ(all_gather_count, 1);
+  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
+}
+
+TEST_P(SpmdPartitioningTest, ScanShardedOnScanAndNonScanDims_ParallelPrefix) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add_computation {
+  p0 = f32[128] parameter(0)
+  p1 = f32[128] parameter(1)
+  add = f32[128] add(p0, p1)
+  ROOT tuple = (f32[128], f32[128]) tuple(add, add)
+}
+
+ENTRY entry {
+  param.0 = f32[128,1024] parameter(0), sharding={devices=[2,4]<=[8]}
+  init = f32[128] parameter(1), sharding={devices=[2,4]<=[8] last_tile_dim_replicate}
+  ROOT scan.0 = (f32[128,1024], f32[128]) scan(param.0, init), dimensions={1}, num_carries=1, is_associative=true, to_apply=add_computation, sharding={{devices=[2,4]<=[8]},{devices=[2,4]<=[8] last_tile_dim_replicate}}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  // Sharded on both dimensions: the parallel prefix runs within each group
+  // of the scan mesh axis, on a body rebuilt for the 64-row shards of the
+  // non-scan dimension.
+  std::vector<int64_t> scan_dim_sizes;
+  for (HloInstruction* instr :
+       module->entry_computation()->MakeInstructionPostOrder()) {
+    if (instr->opcode() == HloOpcode::kScan) {
+      EXPECT_EQ(instr->operand(0)->shape().dimensions(0), 64);
+      scan_dim_sizes.push_back(instr->operand(0)->shape().dimensions(1));
+      for (HloInstruction* param :
+           instr->to_apply()->parameter_instructions()) {
+        EXPECT_EQ(param->shape().dimensions(0), 64);
+      }
+    }
+  }
+  EXPECT_THAT(scan_dim_sizes, ::testing::UnorderedElementsAre(255, 4, 256));
+  // The only communication is the all-gather of the carry-sized shard
+  // totals along the scan mesh axis.
+  int64_t all_gather_count = 0;
+  for (HloInstruction* instr :
+       module->entry_computation()->MakeInstructionPostOrder()) {
+    if (instr->opcode() == HloOpcode::kAllGather) {
+      ++all_gather_count;
+      EXPECT_THAT(instr->shape().dimensions(), ::testing::ElementsAre(64, 4));
+    }
+  }
+  EXPECT_EQ(all_gather_count, 1);
+  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
+}
+
+TEST_P(SpmdPartitioningTest, ScanShardedOnScanDim_NonElementwiseBody) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+combiner {
+  p0 = f32[128] parameter(0)
+  p1 = f32[128] parameter(1)
+  rev = f32[128] reverse(p0), dimensions={0}
+  add = f32[128] add(rev, p1)
+  ROOT tuple = (f32[128], f32[128]) tuple(add, add)
+}
+
+ENTRY entry {
+  param.0 = f32[128,1024] parameter(0), sharding={devices=[1,8]<=[8]}
+  init = f32[128] parameter(1), sharding={replicated}
+  ROOT scan.0 = (f32[128,1024], f32[128]) scan(param.0, init), dimensions={1}, num_carries=1, is_associative=true, to_apply=combiner, sharding={{devices=[1,8]<=[8]},{replicated}}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  // Sharding the scan dimension never changes the slice shapes, so the
+  // parallel prefix works even though the body (a reverse) is not
+  // pointwise: no rebuild is needed and the original combiner is reused.
+  std::vector<int64_t> scan_dim_sizes;
+  for (HloInstruction* instr :
+       module->entry_computation()->MakeInstructionPostOrder()) {
+    if (instr->opcode() == HloOpcode::kScan) {
+      scan_dim_sizes.push_back(instr->operand(0)->shape().dimensions(1));
+    }
+  }
+  EXPECT_THAT(scan_dim_sizes, ::testing::UnorderedElementsAre(127, 8, 128));
+}
+
+TEST_P(SpmdPartitioningTest, ScanShardedOnScanDim_ReverseParallelPrefix) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add_computation {
+  p0 = f32[128] parameter(0)
+  p1 = f32[128] parameter(1)
+  add = f32[128] add(p0, p1)
+  ROOT tuple = (f32[128], f32[128]) tuple(add, add)
+}
+
+ENTRY entry {
+  param.0 = f32[128,1024] parameter(0), sharding={devices=[1,8]<=[8]}
+  init = f32[128] parameter(1), sharding={replicated}
+  ROOT scan.0 = (f32[128,1024], f32[128]) scan(param.0, init), dimensions={1}, num_carries=1, is_reverse=true, is_associative=true, to_apply=add_computation, sharding={{devices=[1,8]<=[8]},{replicated}}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  // Reverse scans use the same parallel prefix, seeded from the other end.
+  std::vector<int64_t> scan_dim_sizes;
+  for (HloInstruction* instr :
+       module->entry_computation()->MakeInstructionPostOrder()) {
+    if (instr->opcode() == HloOpcode::kScan) {
+      scan_dim_sizes.push_back(instr->operand(0)->shape().dimensions(1));
+    }
+  }
+  EXPECT_THAT(scan_dim_sizes, ::testing::UnorderedElementsAre(127, 8, 128));
+}
+
+TEST_P(SpmdPartitioningTest, ScanShardedOnScanDim_RankOneParallelPrefix) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  add = f32[] add(p0, p1)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+ENTRY entry {
+  param.0 = f32[1024] parameter(0), sharding={devices=[8]<=[8]}
+  init = f32[] parameter(1), sharding={replicated}
+  ROOT scan.0 = (f32[1024], f32[]) scan(param.0, init), dimensions={0}, num_carries=1, is_associative=true, to_apply=add_computation, sharding={{devices=[8]<=[8]},{replicated}}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  // A rank-1 associative scan sharded on its only dimension still runs the
+  // parallel prefix: every scan operates on a shard (or the totals stack),
+  // never on the full 1024 elements.
+  std::vector<int64_t> scan_dim_sizes;
+  for (HloInstruction* instr :
+       module->entry_computation()->MakeInstructionPostOrder()) {
+    if (instr->opcode() == HloOpcode::kScan) {
+      scan_dim_sizes.push_back(instr->operand(0)->shape().dimensions(0));
+    }
+  }
+  EXPECT_THAT(scan_dim_sizes, ::testing::UnorderedElementsAre(127, 8, 128));
+}
+
+TEST_P(SpmdPartitioningTest, ScanShardedOnScanDim_NotDivisibleMovedToFreeDim) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add_computation {
+  p0 = f32[128] parameter(0)
+  p1 = f32[128] parameter(1)
+  add = f32[128] add(p0, p1)
+  ROOT tuple = (f32[128], f32[128]) tuple(add, add)
+}
+
+ENTRY entry {
+  param.0 = f32[128,1030] parameter(0), sharding={devices=[1,8]<=[8]}
+  init = f32[128] parameter(1), sharding={replicated}
+  ROOT scan.0 = (f32[128,1030], f32[128]) scan(param.0, init), dimensions={1}, num_carries=1, is_associative=true, to_apply=add_computation, sharding={{devices=[1,8]<=[8]},{replicated}}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  // 1030 does not divide into 8 shards, so the parallel prefix (which would
+  // fold shard padding into the totals) is skipped; the sharding moves to
+  // the free dimension and the scan runs on the full scan dimension.
+  HloInstruction* scan = FindInstruction(module.get(), HloOpcode::kScan);
+  ASSERT_NE(scan, nullptr);
+  EXPECT_EQ(scan->operand(0)->shape().dimensions(0), 16);
+  EXPECT_EQ(scan->operand(0)->shape().dimensions(1), 1030);
+  EXPECT_EQ(scan->operand(1)->shape().dimensions(0), 16);
+}
+
+TEST_P(SpmdPartitioningTest, ScanShapeChangingBody_Replicated) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add_scalar {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT r = f32[] add(a, b)
+}
+
+reduce_body {
+  p0 = f32[128] parameter(0)
+  p1 = f32[] parameter(1)
+  zero = f32[] constant(0)
+  sum = f32[] reduce(p0, zero), dimensions={0}, to_apply=add_scalar
+  add = f32[] add(sum, p1)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+ENTRY entry {
+  param.0 = f32[1024,128] parameter(0), sharding={devices=[8,1]<=[8]}
+  init = f32[] parameter(1), sharding={replicated}
+  ROOT scan.0 = (f32[1024], f32[]) scan(param.0, init), dimensions={0}, num_carries=1, is_associative=true, to_apply=reduce_body, sharding={{devices=[8]<=[8]},{replicated}}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  // The body maps f32[128] input slices to f32[] output slices, so the
+  // output rank differs from the input rank and the output sharding cannot
+  // be applied to the inputs: the scan runs replicated on full shapes with
+  // the original body.
+  HloInstruction* scan = FindInstruction(module.get(), HloOpcode::kScan);
+  ASSERT_NE(scan, nullptr);
+  EXPECT_THAT(scan->operand(0)->shape().dimensions(),
+              ::testing::ElementsAre(1024, 128));
+  EXPECT_THAT(scan->to_apply()->parameter_instruction(0)->shape().dimensions(),
+              ::testing::ElementsAre(128));
+}
+
+TEST_P(SpmdPartitioningTest, ScanScalarCarry_Replicated) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+scalar_carry_body {
+  p0 = f32[128] parameter(0)
+  p1 = f32[] parameter(1)
+  b = f32[128] broadcast(p1), dimensions={}
+  add = f32[128] add(p0, b)
+  ROOT t = (f32[128], f32[]) tuple(add, p1)
+}
+
+ENTRY entry {
+  param.0 = f32[128,1024] parameter(0), sharding={devices=[8,1]<=[8]}
+  init = f32[] parameter(1), sharding={replicated}
+  ROOT scan.0 = (f32[128,1024], f32[]) scan(param.0, init), dimensions={1}, num_carries=1, is_associative=true, to_apply=scalar_carry_body, sharding={{devices=[8,1]<=[8]},{replicated}}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  // The scalar carry does not have rank input_rank - 1, so the carry
+  // sharding derived from the input sharding cannot be applied to it: the
+  // scan runs replicated on full shapes instead of crashing.
+  HloInstruction* scan = FindInstruction(module.get(), HloOpcode::kScan);
+  ASSERT_NE(scan, nullptr);
+  EXPECT_THAT(scan->operand(0)->shape().dimensions(),
+              ::testing::ElementsAre(128, 1024));
+}
+
+TEST_P(SpmdPartitioningTest, ScanHigherRankCarry_Replicated) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+rank2_carry_body {
+  p0 = f32[128] parameter(0)
+  p1 = f32[128,3] parameter(1)
+  ROOT t = (f32[128], f32[128,3]) tuple(p0, p1)
+}
+
+ENTRY entry {
+  param.0 = f32[128,1024] parameter(0), sharding={devices=[8,1]<=[8]}
+  init = f32[128,3] parameter(1), sharding={replicated}
+  ROOT scan.0 = (f32[128,1024], f32[128,3]) scan(param.0, init), dimensions={1}, num_carries=1, is_associative=true, to_apply=rank2_carry_body, sharding={{devices=[8,1]<=[8]},{replicated}}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  // A rank 2 carry cannot take the rank 1 carry sharding: replicated.
+  HloInstruction* scan = FindInstruction(module.get(), HloOpcode::kScan);
+  ASSERT_NE(scan, nullptr);
+  EXPECT_THAT(scan->operand(0)->shape().dimensions(),
+              ::testing::ElementsAre(128, 1024));
+}
+
+TEST_P(SpmdPartitioningTest, ScanArrayShaped_Replicated) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+no_carry_body {
+  p0 = f32[8] parameter(0)
+  neg = f32[8] negate(p0)
+  ROOT t = (f32[8]) tuple(neg)
+}
+
+ENTRY entry {
+  param.0 = f32[16,8] parameter(0), sharding={devices=[2,1]<=[2]}
+  ROOT scan.0 = f32[16,8] scan(param.0), dimensions={0}, num_carries=0, is_associative=true, to_apply=no_carry_body, sharding={devices=[2,1]<=[2]}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  // A scan with num_carries=0 has an array shape, not a tuple: replicated
+  // without crashing on the tuple accessors.
+  HloInstruction* scan = FindInstruction(module.get(), HloOpcode::kScan);
+  ASSERT_NE(scan, nullptr);
+  EXPECT_THAT(scan->operand(0)->shape().dimensions(),
+              ::testing::ElementsAre(16, 8));
+}
+
+TEST_P(SpmdPartitioningTest, ScanSameRankShapeChanging_Replicated) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+narrowing_body {
+  p0 = f32[128] parameter(0)
+  p1 = f32[64] parameter(1)
+  s = f32[64] slice(p0), slice={[0:64]}
+  ROOT t = (f32[64], f32[64]) tuple(s, s)
+}
+
+ENTRY entry {
+  param.0 = f32[1024,128] parameter(0), sharding={devices=[8,1]<=[8]}
+  init = f32[64] parameter(1), sharding={replicated}
+  ROOT scan.0 = (f32[1024,64], f32[64]) scan(param.0, init), dimensions={0}, num_carries=1, is_associative=true, to_apply=narrowing_body, sharding={{devices=[8,1]<=[8]},{replicated}}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  // Output slices are narrower than input slices at the same rank; applying
+  // the output sharding to the inputs would emit malformed HLO, so the scan
+  // is replicated.
+  HloInstruction* scan = FindInstruction(module.get(), HloOpcode::kScan);
+  ASSERT_NE(scan, nullptr);
+  EXPECT_THAT(scan->operand(0)->shape().dimensions(),
+              ::testing::ElementsAre(1024, 128));
+}
+
+TEST_P(SpmdPartitioningTest, ScanBodyOutputNotCarry_MovedToFreeDim) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+post_processing_body {
+  p0 = f32[128] parameter(0)
+  p1 = f32[128] parameter(1)
+  add = f32[128] add(p0, p1)
+  neg = f32[128] negate(add)
+  ROOT t = (f32[128], f32[128]) tuple(neg, add)
+}
+
+ENTRY entry {
+  param.0 = f32[128,1024] parameter(0), sharding={devices=[1,8]<=[8]}
+  init = f32[128] parameter(1), sharding={replicated}
+  ROOT scan.0 = (f32[128,1024], f32[128]) scan(param.0, init), dimensions={1}, num_carries=1, is_associative=true, to_apply=post_processing_body, sharding={{devices=[1,8]<=[8]},{replicated}}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  // The body post-processes its carry into the output (root output element
+  // is not the carry element), so the parallel prefix cannot feed prefix
+  // outputs back as carries: the sharding moves to the free dimension and
+  // the scan keeps the full scan length.
+  HloInstruction* scan = FindInstruction(module.get(), HloOpcode::kScan);
+  ASSERT_NE(scan, nullptr);
+  EXPECT_THAT(scan->operand(0)->shape().dimensions(),
+              ::testing::ElementsAre(16, 1024));
+}
+
+TEST_P(SpmdPartitioningTest, ScanFusionInBody_Replicated) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+fused_add {
+  fp0 = f32[128] parameter(0)
+  fp1 = f32[128] parameter(1)
+  ROOT fadd = f32[128] add(fp0, fp1)
+}
+
+fusion_body {
+  p0 = f32[128] parameter(0)
+  p1 = f32[128] parameter(1)
+  f = f32[128] fusion(p0, p1), kind=kLoop, calls=fused_add
+  ROOT t = (f32[128], f32[128]) tuple(f, f)
+}
+
+ENTRY entry {
+  param.0 = f32[128,1024] parameter(0), sharding={devices=[8,1]<=[8]}
+  init = f32[128] parameter(1), sharding={replicated}
+  ROOT scan.0 = (f32[128,1024], f32[128]) scan(param.0, init), dimensions={1}, num_carries=1, is_associative=true, to_apply=fusion_body, sharding={{devices=[8,1]<=[8]},{replicated}}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  // Cloning a fusion with new shapes would not resize its fused
+  // computation, so bodies containing called computations are replicated.
+  HloInstruction* scan = FindInstruction(module.get(), HloOpcode::kScan);
+  ASSERT_NE(scan, nullptr);
+  EXPECT_THAT(scan->operand(0)->shape().dimensions(),
+              ::testing::ElementsAre(128, 1024));
+}
+
+TEST_P(SpmdPartitioningTest, ScanMultipleOperandsShardedOnNonScanDim) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add_mul_computation {
+  p0 = f32[128] parameter(0)
+  p1 = f32[128] parameter(1)
+  p2 = f32[128] parameter(2)
+  p3 = f32[128] parameter(3)
+  add = f32[128] add(p0, p2)
+  mul = f32[128] multiply(p1, p3)
+  ROOT tuple = (f32[128], f32[128], f32[128], f32[128]) tuple(add, mul, add, mul)
+}
+
+ENTRY entry {
+  param.0 = f32[128,1024] parameter(0), sharding={devices=[8,1]<=[8]}
+  param.1 = f32[128,1024] parameter(1), sharding={devices=[8,1]<=[8]}
+  init.0 = f32[128] parameter(2), sharding={devices=[8]<=[8]}
+  init.1 = f32[128] parameter(3), sharding={devices=[8]<=[8]}
+  ROOT scan.0 = (f32[128,1024], f32[128,1024], f32[128], f32[128]) scan(param.0, param.1, init.0, init.1), dimensions={1}, num_carries=2, is_associative=true, to_apply=add_mul_computation, sharding={{devices=[8,1]<=[8]},{devices=[8,1]<=[8]},{devices=[8]<=[8]},{devices=[8]<=[8]}}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllGather), nullptr);
+  HloInstruction* scan = FindInstruction(module.get(), HloOpcode::kScan);
+  ASSERT_NE(scan, nullptr);
+  for (int64_t i = 0; i < 2; ++i) {
+    EXPECT_EQ(scan->operand(i)->shape().dimensions(0), 16);
+    EXPECT_EQ(scan->operand(i)->shape().dimensions(1), 1024);
+    EXPECT_EQ(scan->operand(2 + i)->shape().dimensions(0), 16);
+  }
+  for (HloInstruction* param : scan->to_apply()->parameter_instructions()) {
+    EXPECT_EQ(param->shape().dimensions(0), 16);
+  }
+}
+
+TEST_P(SpmdPartitioningTest,
+       ScanMultipleOperandsShardedOnScanDim_ParallelPrefix) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add_mul_computation {
+  p0 = f32[128] parameter(0)
+  p1 = f32[128] parameter(1)
+  p2 = f32[128] parameter(2)
+  p3 = f32[128] parameter(3)
+  add = f32[128] add(p0, p2)
+  mul = f32[128] multiply(p1, p3)
+  ROOT tuple = (f32[128], f32[128], f32[128], f32[128]) tuple(add, mul, add, mul)
+}
+
+ENTRY entry {
+  param.0 = f32[128,1024] parameter(0), sharding={devices=[1,8]<=[8]}
+  param.1 = f32[128,1024] parameter(1), sharding={devices=[1,8]<=[8]}
+  init.0 = f32[128] parameter(2), sharding={replicated}
+  init.1 = f32[128] parameter(3), sharding={replicated}
+  ROOT scan.0 = (f32[128,1024], f32[128,1024], f32[128], f32[128]) scan(param.0, param.1, init.0, init.1), dimensions={1}, num_carries=2, is_associative=true, to_apply=add_mul_computation, sharding={{devices=[1,8]<=[8]},{devices=[1,8]<=[8]},{replicated},{replicated}}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  // The parallel prefix carries both operands through every phase: each of
+  // the three scans (shard totals, totals stack, final shard-local) keeps
+  // two inputs and two carries.
+  std::vector<int64_t> scan_dim_sizes;
+  for (HloInstruction* instr :
+       module->entry_computation()->MakeInstructionPostOrder()) {
+    if (instr->opcode() == HloOpcode::kScan) {
+      EXPECT_EQ(instr->operand_count(), 4);
+      EXPECT_EQ(instr->operand(0)->shape().dimensions(0), 128);
+      scan_dim_sizes.push_back(instr->operand(0)->shape().dimensions(1));
+    }
+  }
+  EXPECT_THAT(scan_dim_sizes, ::testing::UnorderedElementsAre(127, 8, 128));
+  // One shard-totals all-gather per operand.
+  int64_t all_gather_count = 0;
+  for (HloInstruction* instr :
+       module->entry_computation()->MakeInstructionPostOrder()) {
+    if (instr->opcode() == HloOpcode::kAllGather) {
+      ++all_gather_count;
+      EXPECT_THAT(instr->shape().dimensions(), ::testing::ElementsAre(128, 8));
+    }
+  }
+  EXPECT_EQ(all_gather_count, 2);
+  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
 }
 
 TEST_P(SpmdPartitioningTest, SortShardedOnSortDim_RankOne) {
