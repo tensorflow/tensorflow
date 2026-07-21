@@ -70,7 +70,7 @@ tf_cc_shared_object(
             ":test_file_system_stripped",
             "//tensorflow/python:tensorflow_common_framework",
         ],
-    ) + ["//tensorflow/core/platform:protobuf"],
+    ) + ["@com_google_protobuf//:protobuf_headers"],
 )
 
 tf_py_strict_test(
