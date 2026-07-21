@@ -652,8 +652,7 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
 
     ASSIGN_OR_RETURN(
         llvm::SmallVector<int64_t> tile_sizes,
-        GetTilingSpaceConcreteSizes(*tiling_space, block_level_parameters,
-                                    enable_same_shape_multi_output_fusion_));
+        GetTilingSpaceConcreteSizes(*tiling_space, block_level_parameters));
     RETURN_IF_ERROR(tiling_space->AssignTileSizes(
         xla::xtile::GetPaddedTileSizes(tile_sizes)));
 
