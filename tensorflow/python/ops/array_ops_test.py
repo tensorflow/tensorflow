@@ -545,7 +545,8 @@ class TestFoldGradients(test.TestCase):
       return math_ops.reduce_sum(y)
 
     with self.cached_session():
-      theoretical, numerical = gradient_checker_v2.compute_gradient(forward, [x])
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+        forward, [x])
 
     self.assertAllClose(
       theoretical[0],

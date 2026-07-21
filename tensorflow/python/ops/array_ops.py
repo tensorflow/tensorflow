@@ -6562,7 +6562,8 @@ def fold(patches, output_size, sizes, strides, padding='VALID',
   # No-op if padding='VALID' or 0
   # Safer check for Graph mode
   if padding == "SAME" or (isinstance(padding, int) and padding > 0):
-    output = output[:, pad_top : pad_top + height, pad_left : pad_left + width, :]
+    output = output[:, pad_top : pad_top + height, pad_left : pad_left + width,
+                     :]
     
   return output
 
