@@ -2,7 +2,7 @@ diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llv
 index 9affa75801b7..2f681c82c298 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-@@ -42,6 +42,36 @@ exports_files([
+@@ -42,6 +42,24 @@ exports_files([
      "utils/lldbDataFormatters.py",
  ])
  
@@ -20,12 +20,6 @@ index 9affa75801b7..2f681c82c298 100644
 +        "@platforms//os:macos",
 +        "@platforms//cpu:x86_64",
 +    ],
-+)
-+
-+py_library(
-+    name = "lit_lib",
-+    testonly = True,
-+    srcs = ["utils/lit/lit.py"] + glob(["utils/lit/lit/**/*.py"]),
 +)
 +
 +config_setting(
@@ -55,3 +49,20 @@ index d592f9e5bfcc..7b87dad91e1b 100644
      Label("//llvm:linux_aarch64"): native_arch_defines("AArch64", "aarch64-unknown-linux-gnu"),
      Label("//llvm:linux_ppc64le"): native_arch_defines("PowerPC", "powerpc64le-unknown-linux-gnu"),
      Label("//llvm:linux_riscv64"): native_arch_defines("RISCV", "riscv64-unknown-linux-gnu"),
+
+diff --git a/utils/bazel/llvm-project-overlay/llvm/utils/lit/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/utils/lit/BUILD.bazel
+index 7be02b1..a20e4b8 100644
+--- a/utils/bazel/llvm-project-overlay/llvm/utils/lit/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/llvm/utils/lit/BUILD.bazel
+@@ -26,3 +26,10 @@
+     deps = [":lit"],
+ )
+ 
++
++py_library(
++    name = "lit_lib",
++    testonly = True,
++    srcs = ["lit.py"],
++    deps = [":lit"],
++)
+
