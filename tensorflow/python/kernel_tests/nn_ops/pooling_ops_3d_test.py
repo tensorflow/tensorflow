@@ -192,16 +192,16 @@ class PoolingTest(test.TestCase):
   def testAvgPool3dGradOutputWithZeroDim(self):
     for data_format, use_gpu in GetTestConfigs():
       with self.cached_session(use_gpu=use_gpu):
-      orig_input_shape = [1, 10, 7, 1, 9]
-      ksize = [1, 2, 2, 2, 1]
-      strides = [1, 1, 1, 1, 1]
-      grad_shape = [1, 9, 6, 0, 9]
+        orig_input_shape = [1, 10, 7, 1, 9]
+        ksize = [1, 2, 2, 2, 1]
+        strides = [1, 1, 1, 1, 1]
+        grad_shape = [1, 9, 6, 0, 9]
 
-      if data_format == "NCDHW":
-        orig_input_shape = test_util.NHWCToNCHW(orig_input_shape)
-        ksize = test_util.NHWCToNCHW(ksize)
-        strides = test_util.NHWCToNCHW(strides)
-        grad_shape = test_util.NHWCToNCHW(list(grad_shape))
+        if data_format == "NCDHW":
+          orig_input_shape = test_util.NHWCToNCHW(orig_input_shape)
+          ksize = test_util.NHWCToNCHW(ksize)
+          strides = test_util.NHWCToNCHW(strides)
+          grad_shape = test_util.NHWCToNCHW(list(grad_shape))
 
         orig_input_shape_tensor = constant_op.constant(
             orig_input_shape, dtype=dtypes.int32
