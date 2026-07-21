@@ -167,6 +167,9 @@ class GpuCompiler : public LLVMCompiler {
     user_asm_hook_ = nullptr;
   }
 
+  // Clears the MLIR context pool.
+  void ClearMlirContextPool();
+
  protected:
   struct BackendCompileResult {
     std::string asm_text;

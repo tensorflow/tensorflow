@@ -27,7 +27,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using SimpleOptimizationTest = HloPjRtTestBase;
+using SimpleOptimizationTest = HloTestBase;
 
 TEST_F(SimpleOptimizationTest, OptimizeModule) {
   constexpr absl::string_view kHloText = R"(

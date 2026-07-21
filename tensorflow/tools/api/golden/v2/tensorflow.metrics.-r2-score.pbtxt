@@ -129,6 +129,10 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__call__"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'class_aggregation\', \'num_regressors\', \'name\', \'dtype\'], varargs=None, keywords=None, defaults=[\'uniform_average\', \'0\', \'r2_score\', \'None\'], "
   }
