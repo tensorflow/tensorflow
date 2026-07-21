@@ -78,6 +78,9 @@ class CpuElementalIrEmitter final : public ElementalIrEmitter {
   absl::StatusOr<llvm::Value*> EmitErf(PrimitiveType prim_type,
                                        llvm::Value* value) override;
 
+  absl::StatusOr<llvm::Value*> EmitErfc(PrimitiveType prim_type,
+                                        llvm::Value* value) override;
+
   absl::StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type,
                                        llvm::Value* value,
                                        absl::string_view name) override;

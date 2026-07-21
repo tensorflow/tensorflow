@@ -142,6 +142,7 @@ absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
         HloOpcode::kCos,
         HloOpcode::kCosh,
         HloOpcode::kErf,
+        HloOpcode::kErfc,
         HloOpcode::kExp,
         HloOpcode::kExpm1,
         HloOpcode::kFloor,

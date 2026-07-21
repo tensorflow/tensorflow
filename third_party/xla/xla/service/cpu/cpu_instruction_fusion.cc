@@ -211,6 +211,7 @@ bool CpuInstructionFusion::IsExpensive(const HloInstruction& instruction) {
       return true;
 
     case HloOpcode::kErf:
+    case HloOpcode::kErfc:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kLog:
