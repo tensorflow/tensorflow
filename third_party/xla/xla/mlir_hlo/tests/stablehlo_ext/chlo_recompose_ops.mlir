@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: mlir-hlo-opt --stablehlo-ext-chlo-recompose-ops --symbol-dce --split-input-file --verify-diagnostics %s | FileCheck %s
 
 /////
@@ -407,4 +421,35 @@ func.func private @chlo.scan.impl(%arg0: tensor<2xf64>, %arg1: tensor<3xf64>, %a
   %cst = stablehlo.constant dense<0.000000e+00> : tensor<f64>
   %0 = stablehlo.add %arg2, %arg2 : tensor<4xf64>
   func.return %cst, %0 : tensor<f64>, tensor<4xf64>
+}
+
+// -----
+
+// The custom_call encoding hlo-legalize-to-stablehlo produces for mhlo.scan
+// recomposes to chlo.scan as well (the body function uses a stablehlo.return
+// terminator on this path).
+// CHECK-LABEL: @scan_recompose_cc_mhlo
+func.func @scan_recompose_cc_mhlo(%arg0: tensor<10xf32>, %arg1: tensor<f32>) -> (tensor<10xf32>, tensor<f32>) {
+  // CHECK: chlo.scan(%arg0) inits (%arg1) dimension=0
+  // CHECK-SAME: is_associative = true, is_reverse = true, scan_dim_size = 10
+  // CHECK: stablehlo.add
+  // CHECK: stablehlo.return
+  %0:2 = stablehlo.custom_call @mhlo.scan(%arg0, %arg1) {
+    called_computations = [@scan],
+    mhlo.attributes = {
+      dimension = 0 : i64,
+      is_associative = true,
+      is_reverse = true,
+      operandSegmentSizes = array<i32: 1, 1>,
+      resultSegmentSizes = array<i32: 1, 1>,
+      scan_dim_size = 10 : i64
+    },
+    mhlo.version = 1 : i64
+  } : (tensor<10xf32>, tensor<f32>) -> (tensor<10xf32>, tensor<f32>)
+  return %0#0, %0#1 : tensor<10xf32>, tensor<f32>
+}
+// CHECK-NOT: @scan
+func.func private @scan(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
+  %0 = stablehlo.add %arg0, %arg1 : tensor<f32>
+  stablehlo.return %0, %0 : tensor<f32>, tensor<f32>
 }

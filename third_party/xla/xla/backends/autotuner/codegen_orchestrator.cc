@@ -57,10 +57,12 @@ CodegenOrchestrator::Create(
 absl::StatusOr<std::vector<CodegenOrchestrator::Config>>
 CodegenOrchestrator::GetSupportedConfigs(const HloInstruction& instr) const {
   std::vector<Config> configs;
+  std::vector<absl::Status> errors;
   for (auto& codegen_backend : codegen_backends_) {
     absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
         per_backend_configs = codegen_backend->GetSupportedConfigs(instr);
     if (!per_backend_configs.ok()) {
+      errors.push_back(per_backend_configs.status());
       VLOG(3) << "Failed to get supported configs for backend "
               << codegen_backend->name() << ": "
               << per_backend_configs.status();
@@ -72,20 +74,33 @@ CodegenOrchestrator::GetSupportedConfigs(const HloInstruction& instr) const {
       configs.push_back({codegen_backend.get(), std::move(config)});
     }
   }
+  if (configs.empty() && !errors.empty()) {
+    std::string combined_error = "All backends failed to get configs: ";
+    for (const auto& err : errors) {
+      absl::StrAppend(&combined_error, "\n - ", err.ToString());
+    }
+    return absl::InternalError(combined_error);
+  }
   return configs;
 }
 
 absl::StatusOr<CodegenOrchestrator::Config>
 CodegenOrchestrator::GetDefaultConfig(const HloInstruction& instr) const {
+  std::vector<absl::Status> errors;
   for (auto& backend : codegen_backends_) {
     auto config = backend->GetDefaultConfig(instr);
     if (config.ok()) {
       return Config{backend.get(), std::move(*config)};
     }
+    errors.push_back(config.status());
   }
-  return absl::NotFoundError(
+  std::string combined_error =
       absl::StrCat("No backend with default config found for instruction: ",
-                   instr.ToString()));
+                   instr.ToString());
+  for (const auto& err : errors) {
+    absl::StrAppend(&combined_error, "\n - ", err.ToString());
+  }
+  return absl::NotFoundError(combined_error);
 }
 
 absl::StatusOr<std::unique_ptr<Executable>> CodegenOrchestrator::Compile(

@@ -24,14 +24,9 @@ cc_library(
     deps = [
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "//xla/tsl/platform:status_macros",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "//xla/service:hlo_cse",
         "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@tsl//tsl/platform:errors",
     ],
 )
 
@@ -44,11 +39,9 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/utils:hlo_matchers",
-        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",  # fixdeps: keep
-        "@tsl//tsl/platform:statusor",
     ],
 )
 

@@ -42,20 +42,7 @@ jobs:
         run: git fetch origin main --depth=1
       - name: Install uv dependencies
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
-      - name: "Install clang-format"
-        run: uv tool install clang-format==17.0.6
-      - name: "Run clang-format-diff"
-        run: |
-          # Run diff against origin/main.
-          # -U0: Context of 0 lines (ignore surrounding code)
-          # clang-format-diff: Checks only lines present in the diff
-
-          REFERENCE="origin/${GITHUB_BASE_REF:-main}"
-          MERGE_BASE="$(git merge-base "$REFERENCE" HEAD)" # Merge base is the commit on main this PR was branched from.
-          CLANG_FORMAT_BIN="$(command -v clang-format)"
-          DIFF=$(git diff -U0 --no-color "$MERGE_BASE" -- '*.cc' '*.h' | clang-format-diff.py -binary "$CLANG_FORMAT_BIN" -p1 -style=file)
-          if [ -n "$DIFF" ]; then
-            echo "Clang-format failed on the following changes:"
-            echo "$DIFF"
-            exit 1
-          fi
+      - name: "Run clang-format check"
+        env:
+          TARGET_REF: "origin/${{ github.base_ref || 'main' }}"
+        run: ./build_tools/ci/run_clang_format.sh

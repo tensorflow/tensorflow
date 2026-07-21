@@ -329,6 +329,7 @@ sycl_library(
             "src/cpu/sycl/**",
             "src/common/ittnotify/**",
             "src/gpu/amd/**",
+            "src/gpu/intel/conv/jit/v2/planner/planner_main.cpp",
             "src/gpu/nvidia/**",
         ],
     ) + [

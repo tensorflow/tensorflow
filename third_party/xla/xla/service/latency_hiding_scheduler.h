@@ -1585,16 +1585,10 @@ class ModulePressureState {
         top_down_scheduling_(top_down_scheduling) {}
   // Initializes the pressure states for all computations in the module, only
   // needs to be called once at the beginning of the scheduling process.
-  void InitializePressureStates(
-      std::shared_ptr<absl::flat_hash_map<
-          const HloComputation*, std::shared_ptr<MemoryPressureTracker>>>
-          pressure_trackers = nullptr);
+  void InitializePressureStates();
   // Resets the pressure states for all computations in the module, must be
   // called to reset the memory pressure trackers after each scheduling attempt.
-  void ResetPressureStates(
-      std::shared_ptr<absl::flat_hash_map<
-          const HloComputation*, std::shared_ptr<MemoryPressureTracker>>>
-          pressure_trackers);
+  void ResetPressureStates();
   bool ComputationIsMemoryTracked(const HloComputation* computation) const {
     return ContainsKey(memory_pressure_states_, computation);
   }
@@ -1861,7 +1855,7 @@ class DefaultSchedulerCore : public SchedulerCore {
       SchedulingState& sched_state) const;
 
   absl::Status ResetScheduler(const HloModule* module) override {
-    module_pressure_state_->ResetPressureStates(pressure_trackers_);
+    module_pressure_state_->ResetPressureStates();
     return absl::OkStatus();
   }
   absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
@@ -1957,9 +1951,6 @@ class DefaultSchedulerCore : public SchedulerCore {
       DefaultSchedulerCore::ShouldSkipNodeFunction should_skip_node);
 
   std::unique_ptr<ModulePressureState> module_pressure_state_;
-  std::shared_ptr<absl::flat_hash_map<const HloComputation*,
-                                      std::shared_ptr<MemoryPressureTracker>>>
-      pressure_trackers_;
   SchedulerConfig config_;
   TargetSchedulingRule target_scheduling_rule_ = nullptr;
   TargetSchedulingRule early_target_scheduling_rule_ = nullptr;

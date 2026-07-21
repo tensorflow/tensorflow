@@ -57,7 +57,8 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
       const se::DeviceDescription* device_info,
       HloFusionAnalysisCache* fusion_analysis_cache,
       HloCostAnalysis::ShapeSizeFunction shape_size,
-      mlir::MLIRContext* mlir_context, bool use_experimental_tiling)
+      mlir::MLIRContext* mlir_context, bool use_experimental_tiling,
+      bool enable_same_shape_multi_output_fusion)
       : hlo_op_profile_(&HloOpProfiles::Singleton().GetProfile(*device_info)),
         device_info_(device_info),
         fusion_analysis_cache_(fusion_analysis_cache),
@@ -69,7 +70,9 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
                                         /*count_multiple_input_accesses=*/true},
             *device_info_),
         mlir_context_(mlir_context),
-        use_experimental_tiling_(use_experimental_tiling) {}
+        use_experimental_tiling_(use_experimental_tiling),
+        enable_same_shape_multi_output_fusion_(
+            enable_same_shape_multi_output_fusion) {}
 
   // Returns the number of warps for the given tiled HLO computation.
   static int64_t EstimateNumWarps(
@@ -128,6 +131,7 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
   GpuHloCostAnalysis cost_analysis_;
   mlir::MLIRContext* mlir_context_;
   bool use_experimental_tiling_;
+  bool enable_same_shape_multi_output_fusion_;
 };
 
 }  // namespace gpu

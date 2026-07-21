@@ -30,6 +30,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/base/no_destructor.h"
+#include "absl/base/nullability.h"
 #include "absl/base/optimization.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/bind_front.h"
@@ -157,17 +158,49 @@ class FutureHelpers {
   // blocking a thread.
   using OnBlockEnd = std::function<void(ProfilingKeys)>;
 
+  struct OnBlockCallbacks {
+    absl_nonnull OnBlockStart start;
+    absl_nonnull OnBlockEnd end;
+
+    static absl_nullable std::shared_ptr<OnBlockCallbacks> Create(
+        absl_nullable OnBlockStart on_block_start,
+        absl_nullable OnBlockEnd on_block_end) {
+      if (!on_block_start && !on_block_end) [[likely]] {
+        return nullptr;
+      }
+
+      auto callbacks = std::make_shared<OnBlockCallbacks>();
+      if (on_block_start) {
+        callbacks->start = std::move(on_block_start);
+      } else {
+        callbacks->start = []() { return ProfilingKeys(); };
+      }
+      if (on_block_end) {
+        callbacks->end = std::move(on_block_end);
+      } else {
+        callbacks->end = [](ProfilingKeys) {};
+      }
+      return callbacks;
+    }
+  };
+
   // Returns a Future<T> with optionally updated profiling handlers. If
   // profiling handlers are not provided, the original ones will be used.
   template <int&... ExplicitParameterBarrier, typename T>
   static Future<T> WithProfiling(Future<T> future,
                                  OnBlockStart on_block_start = nullptr,
                                  OnBlockEnd on_block_end = nullptr) {
+    if (future.on_block_callbacks_) {
+      if (!on_block_start) {
+        on_block_start = future.on_block_callbacks_->start;
+      }
+      if (!on_block_end) {
+        on_block_end = future.on_block_callbacks_->end;
+      }
+    }
     return Future<T>(std::move(future.promise_),
-                     on_block_start ? std::move(on_block_start)
-                                    : std::move(future.on_block_start_),
-                     on_block_end ? std::move(on_block_end)
-                                  : std::move(future.on_block_end_));
+                     FutureHelpers::OnBlockCallbacks::Create(
+                         std::move(on_block_start), std::move(on_block_end)));
   }
 };
 
@@ -257,11 +290,10 @@ class FutureBase : public FutureMoveControl<is_move_only> {
   // A protected constructor that hides AsyncValueRef implementation detail
   // from the end users of Future and Promise. Must not be made public!
   FutureBase(tsl::AsyncValueRef<T> promise,
-             FutureHelpers::OnBlockStart on_block_start,
-             FutureHelpers::OnBlockEnd on_block_end)
+             absl_nullable std::shared_ptr<FutureHelpers::OnBlockCallbacks>
+                 on_block_callbacks)
       : promise_(std::move(promise)),
-        on_block_start_(std::move(on_block_start)),
-        on_block_end_(std::move(on_block_end)) {}
+        on_block_callbacks_(std::move(on_block_callbacks)) {}
 
   // Constructor for an already-available Future.
   template <int&... ExplicitParameterBarrier, typename U,
@@ -269,7 +301,7 @@ class FutureBase : public FutureMoveControl<is_move_only> {
                              std::is_same_v<T, U>>* = nullptr>
   explicit FutureBase(U&& value)
       : FutureBase(tsl::MakeAvailableAsyncValueRef<T>(std::forward<U>(value)),
-                   /*on_block_start=*/nullptr, /*on_block_end=*/nullptr) {}
+                   /*on_block_callbacks=*/nullptr) {}
 
  public:
   using value_type = T;
@@ -315,8 +347,8 @@ class FutureBase : public FutureMoveControl<is_move_only> {
                      FutureHelpers::ProfilingKeys keys)
         : parent_(parent), keys_(std::move(keys)) {}
     ~ProfilingCleanup() {
-      if (parent_ && parent_->on_block_end_) {
-        parent_->on_block_end_(std::move(keys_));
+      if (parent_ && parent_->on_block_callbacks_) {
+        parent_->on_block_callbacks_->end(std::move(keys_));
       }
     }
     ProfilingCleanup(const ProfilingCleanup& other) = delete;
@@ -328,8 +360,8 @@ class FutureBase : public FutureMoveControl<is_move_only> {
   };
 
   ProfilingCleanup OnBlockStartScope() const {
-    return ProfilingCleanup(this, on_block_start_
-                                      ? on_block_start_()
+    return ProfilingCleanup(this, on_block_callbacks_
+                                      ? on_block_callbacks_->start()
                                       : FutureHelpers::ProfilingKeys());
   }
 
@@ -479,11 +511,8 @@ class FutureBase : public FutureMoveControl<is_move_only> {
   }
 
   tsl::AsyncValueRef<T> promise_;
-
-  // Function that is called before a thread starts blocking on the promise.
-  FutureHelpers::OnBlockStart on_block_start_;
-  // Function that is called after a thread finishes blocking on the promise.
-  FutureHelpers::OnBlockEnd on_block_end_;
+  absl_nullable std::shared_ptr<FutureHelpers::OnBlockCallbacks>
+      on_block_callbacks_;
 };
 
 template <typename T>
@@ -795,13 +824,12 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   // Constructor for unavailable future that will be fulfilled later via the
   // promise object.
   //
-  // - on_block_start is called before Await starts to block.
-  // - on_block_end is called after Await finishes blocking.
+  // - on_block_callback->start is called before Await starts to block.
+  // - on_block_callback->end is called after Await finishes blocking.
   Future(const internal::PromiseBase<absl::StatusOr<T>>& promise,
-         FutureHelpers::OnBlockStart on_block_start,
-         FutureHelpers::OnBlockEnd on_block_end)
-      : Base(promise.ref(), std::move(on_block_start),
-             std::move(on_block_end)) {}
+         absl_nullable std::shared_ptr<FutureHelpers::OnBlockCallbacks>
+             on_block_callbacks)
+      : Base(promise.ref(), std::move(on_block_callbacks)) {}
 };
 
 template <typename T>
@@ -834,7 +862,9 @@ class [[nodiscard]] Promise : public internal::PromiseBase<absl::StatusOr<T>> {
   [[nodiscard]] Future<T> future(
       FutureHelpers::OnBlockStart on_block_start = nullptr,
       FutureHelpers::OnBlockEnd on_block_end = nullptr) const {
-    return Future<T>(*this, std::move(on_block_start), std::move(on_block_end));
+    return Future<T>(*this,
+                     FutureHelpers::OnBlockCallbacks::Create(
+                         std::move(on_block_start), std::move(on_block_end)));
   }
 
  private:
@@ -864,7 +894,7 @@ class Future<void> : public internal::FutureBase<absl::Status> {
                  ? ready_promise_->AsRef()
                  : tsl::MakeAvailableAsyncValueRef<absl::Status>(
                        std::move(status)),
-             /*on_block_start=*/nullptr, /*on_block_end=*/nullptr) {}
+             /*on_block_callbacks=*/nullptr) {}
 
   // Support implicit construction from immediate `U` convertible to
   // `absl::Status`.
@@ -971,13 +1001,12 @@ class Future<void> : public internal::FutureBase<absl::Status> {
   // Constructor for unavailable future that will be fulfilled later via the
   // promise object.
   //
-  // - on_block_start is called before Await starts to block.
-  // - on_block_end is called after Await finishes blocking.
+  // - on_block_callbacks->start is called before Await starts to block.
+  // - on_block_callbacks->end is called after Await finishes blocking.
   Future(const internal::PromiseBase<absl::Status>& promise,
-         FutureHelpers::OnBlockStart on_block_start,
-         FutureHelpers::OnBlockEnd on_block_end)
-      : Base(promise.ref(), std::move(on_block_start),
-             std::move(on_block_end)) {}
+         absl_nullable std::shared_ptr<FutureHelpers::OnBlockCallbacks>
+             on_block_callbacks)
+      : Base(promise.ref(), std::move(on_block_callbacks)) {}
 };
 
 template <>
@@ -1006,7 +1035,9 @@ class [[nodiscard]] Promise<void> : public internal::PromiseBase<absl::Status> {
   [[nodiscard]] Future<> future(
       FutureHelpers::OnBlockStart on_block_start = nullptr,
       FutureHelpers::OnBlockEnd on_block_end = nullptr) const {
-    return Future<>(*this, std::move(on_block_start), std::move(on_block_end));
+    return Future<>(*this,
+                    FutureHelpers::OnBlockCallbacks::Create(
+                        std::move(on_block_start), std::move(on_block_end)));
   }
 
  private:
@@ -1028,8 +1059,9 @@ class PromiseMaker {
       FutureHelpers::OnBlockEnd on_block_end) {
     Promise<T> promise(tsl::MakeUnconstructedAsyncValueRef<
                        typename tsl::Future<T>::value_type>());
-    Future<T> future(promise, std::move(on_block_start),
-                     std::move(on_block_end));
+    Future<T> future(promise,
+                     FutureHelpers::OnBlockCallbacks::Create(
+                         std::move(on_block_start), std::move(on_block_end)));
     return std::make_pair(std::move(promise), std::move(future));
   }
 };
@@ -1107,7 +1139,7 @@ template <int&... ExplicitParameterBarrier, typename U,
 Future<future_type_t<T>> FutureBase<T, is_move_only>::Detach(
     Executor& executor) const& {
   if (IsReady()) {
-    return Future<future_type_t<T>>(promise_, on_block_start_, on_block_end_);
+    return Future<future_type_t<T>>(promise_, on_block_callbacks_);
   }
 
   RCReference<IndirectAsyncValue> detached = MakeIndirectAsyncValue<T>();
@@ -1123,7 +1155,7 @@ Future<future_type_t<T>> FutureBase<T, is_move_only>::Detach(
     }
   });
   return Future<future_type_t<T>>(AsyncValueRef<T>(std::move(detached)),
-                                  on_block_start_, on_block_end_);
+                                  on_block_callbacks_);
 }
 
 template <typename T, bool is_move_only>
@@ -1131,8 +1163,7 @@ Future<future_type_t<T>> FutureBase<T, is_move_only>::Detach(
     Executor& executor) && {
   if (IsReady()) {
     return Future<future_type_t<T>>(std::move(promise_),
-                                    std::move(on_block_start_),
-                                    std::move(on_block_end_));
+                                    std::move(on_block_callbacks_));
   }
 
   AsyncValuePtr<T> ptr = promise_.AsPtr();
@@ -1149,8 +1180,7 @@ Future<future_type_t<T>> FutureBase<T, is_move_only>::Detach(
     }
   });
   return Future<future_type_t<T>>(AsyncValueRef<T>(std::move(detached)),
-                                  std::move(on_block_start_),
-                                  std::move(on_block_end_));
+                                  std::move(on_block_callbacks_));
 }
 
 template <typename T, bool is_move_only>

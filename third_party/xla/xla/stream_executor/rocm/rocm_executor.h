@@ -111,6 +111,7 @@ class RocmExecutor : public GpuExecutor {
 
   bool HostMemoryRegister(void* location, uint64_t size) override;
   bool HostMemoryUnregister(void* location) override;
+  bool IsHostMemoryPinned(const void* ptr, uint64_t size) override;
 
   absl::StatusOr<MemorySpace> GetPointerMemorySpace(const void* ptr) override;
 

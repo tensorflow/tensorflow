@@ -402,7 +402,8 @@ absl::Status runShardingPropagation(HloModule* hloModule,
         spanToArrayRef(hloModule->config()
                            .allow_spmd_sharding_propagation_to_parameters()),
         spanToArrayRef(
-            hloModule->config().allow_spmd_sharding_propagation_to_output()));
+            hloModule->config().allow_spmd_sharding_propagation_to_output()),
+        enableHloShardingV3);
   } else {
     // This branch is in production.
     addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/true,
@@ -424,6 +425,8 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   stablehloExportPipelineOptions.exportAllReduceScatter =
       debugOptions.xla_sdy_export_all_reduce_scatter();
   stablehloExportPipelineOptions.simplifyReplicatedShardings = true;
+  stablehloExportPipelineOptions.clearReverseOpSharding =
+      options.clearReverseOpSharding;
   addStablehloExportPipeline(pm, stablehloExportPipelineOptions);
   pm.addPass(mlir::sdy::createSaveModuleOpPass(shardyDir, "output_module",
                                                dumpIndex++));

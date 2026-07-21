@@ -799,17 +799,12 @@ CudaCommandBuffer::CreateConditionalHandle() {
 }
 
 absl::Status CudaCommandBuffer::WriteGraphToDotFile(absl::string_view path) {
-#if CUDA_VERSION >= 12000
   VLOG(2) << "Print CUDA graph " << graph_ << " debug dot file to " << path;
 
   int flags = CU_GRAPH_DEBUG_DOT_FLAGS_VERBOSE;
   return cuda::ToStatus(
       cuGraphDebugDotPrint(graph_, std::string{path}.c_str(), flags),
       "Failed to print gpu graph debug file");
-#endif  // CUDA_VERSION >= 12000
-
-  return absl::UnimplementedError(
-      "CUDA graph debug dot print is not supported.");
 }
 
 absl::Status CudaCommandBuffer::InstantiateGraph() {
@@ -879,7 +874,6 @@ absl::Status CudaCommandBuffer::CheckCanBeUpdated() {
 
 std::string CudaCommandBuffer::ToString() const {
   std::string path = tsl::io::GetTempFilename(/*extension=*/"dot");
-#if CUDA_VERSION >= 12000
   int flags = CU_GRAPH_DEBUG_DOT_FLAGS_VERBOSE;
   auto dot_print_status =
       cuda::ToStatus(cuGraphDebugDotPrint(graph_, path.c_str(), flags),
@@ -894,8 +888,6 @@ std::string CudaCommandBuffer::ToString() const {
     return std::string(read_status.message());
   }
   return dot_file_contents;
-#endif  // CUDA_VERSION >= 12000
-  return "CUDA graph debug dot print is not supported.";
 }
 
 }  // namespace stream_executor::gpu

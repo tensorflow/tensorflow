@@ -836,6 +836,8 @@ TEST_P(TritonBackendTest, CostModelOptions_Combination) {
   EXPECT_THAT(configs.value(), SizeIs(7));
 }
 
+TEST_P(TritonBackendTest, Version) { EXPECT_NE(backend_.version(), ""); }
+
 INSTANTIATE_TEST_SUITE_P(TritonBackendTestSuite, TritonBackendTest,
                          ::testing::Bool());
 

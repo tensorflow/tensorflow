@@ -367,7 +367,8 @@ struct FinalBufferizePass
     vector::registerBufferizableOpInterfaceExternalModels(registry);
     if (dialectsCallback) dialectsCallback(registry);
   }
-  // Default alignment_ specified in passes.td
+  using impl::FinalBufferizePassBase<
+      FinalBufferizePass>::FinalBufferizePassBase;
   FinalBufferizePass() = default;
 
   explicit FinalBufferizePass(uint64_t alignment) { alignment_ = alignment; }
@@ -443,20 +444,6 @@ struct FinalBufferizePass
 };
 
 }  // namespace
-
-namespace hlo {
-std::unique_ptr<OperationPass<ModuleOp>> createOneShotBufferizePass() {
-  return std::make_unique<OneShotBufferizePass>();
-}
-}  // namespace hlo
-
-std::unique_ptr<OperationPass<ModuleOp>> createComputeOpAndFuncBufferizePass() {
-  return std::make_unique<ComputeOpAndFuncBufferizePass>();
-}
-
-std::unique_ptr<OperationPass<ModuleOp>> createFinalBufferizePass() {
-  return std::make_unique<FinalBufferizePass>();
-}
 
 std::unique_ptr<OperationPass<ModuleOp>> createFinalBufferizePass(
     uint64_t alignment, BufferizeDialectsCallback dc,

@@ -748,7 +748,8 @@ bool BackendConfigDeviceTypeIsHost(HloInstruction* instr) {
 }
 
 absl::Status RunOptimizationPasses(
-    HloModule* hlo_module, const GpuTargetConfig& gpu_target_config,
+    const GpuCompiler& compiler, HloModule* hlo_module,
+    const GpuTargetConfig& gpu_target_config,
     const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts,
     bool is_deviceless, bool is_early_exit_with_layouts,
     CompilationStats* compilation_stats) {
@@ -764,9 +765,10 @@ absl::Status RunOptimizationPasses(
   }
   pipeline.AddPass<RaggedDotRewriter>(gpu_version,
                                       gpu_target_config.dnn_version_info);
-  if (!debug_options.xla_gpu_experimental_scaled_dot_with_triton()) {
-    pipeline.AddPass<ScaledDotRewriter>();
-  }
+  pipeline.AddPass<ScaledDotRewriter>([&compiler, &gpu_target_config](
+                                          const HloInstruction* instr) {
+    return !compiler.IsScaledDotSupportedByBackend(instr, gpu_target_config);
+  });
   pipeline.AddPass<BatchedGatherScatterNormalizer>();
   if (debug_options.xla_gpu_multi_streamed_windowed_einsum()) {
     pipeline.AddPass<WindowedEinsumHandler>();
@@ -971,7 +973,8 @@ absl::Status RunOptimizationPasses(
                                         .xla_gpu_dot_merger_threshold_mb()}
           << 20,
       queue_id);
-  pipeline.AddPass<DotDimensionNormalizer>();
+  pipeline.AddPass<DotDimensionNormalizer>(
+      !debug_options.xla_gpu_enable_triton_gemm());
   // Folding transpose operands into dots can undo the normal form established
   // by DotDecomposer. Subsequent passes must not rely on it from this point on.
   pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot);
@@ -1130,7 +1133,8 @@ absl::Status RunCollectiveOptimizationPasses(
     collectives_pipeline.AddPass<CollectivePipeliner>(config);
   }
 
-  if (debug_options.xla_gpu_enable_pipelined_host_offloading()) {
+  if (debug_options.xla_gpu_enable_pipelined_host_offloading() ||
+      IsPassEnabledAtOptimizationEffort<CollectivePipeliner>(*hlo_module)) {
     // Forward pass host offloading pipelining
     CollectivePipeliner::Config config{
         /*level_to_operate_on=*/0,
@@ -1160,7 +1164,8 @@ absl::Status RunCollectiveOptimizationPasses(
     collectives_pipeline.AddPass<CollectivePipeliner>(config);
   }
 
-  if (debug_options.xla_gpu_enable_pipelined_host_offloading()) {
+  if (debug_options.xla_gpu_enable_pipelined_host_offloading() ||
+      IsPassEnabledAtOptimizationEffort<CollectivePipeliner>(*hlo_module)) {
     // Backward pass host offloading pipelining
     auto acceptable_formatting = [](const HloInstruction* instr) {
       return instr->opcode() == HloOpcode::kReshape ||
@@ -1631,6 +1636,17 @@ bool RequiresCollectiveScheduleLinearizer(const HloModule* module,
 
 }  // namespace
 
+bool GpuCompiler::IsScaledDotSupportedByBackend(
+    const HloInstruction* instr,
+    const GpuTargetConfig& gpu_target_config) const {
+  const DebugOptions& debug_options =
+      instr->GetModule()->config().debug_options();
+  const se::GpuComputeCapability& gpu_version =
+      gpu_target_config.device_description.gpu_compute_capability();
+  return debug_options.xla_gpu_experimental_scaled_dot_with_triton() &&
+         IsTritonSupportedInstruction(*instr, gpu_version).IsAllowed();
+}
+
 AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
     AlgebraicSimplifierMode mode, const DebugOptions& debug_options,
     bool is_rocm) {
@@ -1769,7 +1785,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
   DumpHloModuleIfEnabled(*hlo_module, "after_spmd_partitioner");
 
   RETURN_IF_ERROR(RunOptimizationPasses(
-      hlo_module, gpu_topology.gpu_target_config(),
+      *this, hlo_module, gpu_topology.gpu_target_config(),
       layout_insensitive_algsimp_opts,
       /*is_deviceless=*/stream_exec == nullptr, options.early_exit_with_layouts,
       compilation_stats));
@@ -1856,6 +1872,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
         mlir_context, ShapeSizeBytesFunction(), options.key_value_store));
 
     RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+    mlir_context_pool_.Clear();
   }
 
   {
@@ -2339,14 +2356,12 @@ bool DefinesCollectiveMemorySpaceFrontendAttr(const HloValue* value) {
 }
 
 bool RequiresCollectiveInput(const HloUse& use, const DebugOptions& opts) {
-  const bool is_nccl_buffers_used =
-      opts.xla_gpu_enable_nccl_user_buffers() ||
-      opts.xla_gpu_experimental_enable_nccl_symmetric_buffers();
-
   HloInstruction* user = use.instruction;
 
   // Handle standard non-fusion/fusion collectives under NCCL user buffers
-  if (is_nccl_buffers_used && IsCollective(user)) {
+  if (IsCollective(user) &&
+      (opts.xla_gpu_enable_nccl_user_buffers() ||
+       IsNcclSymmetricBuffersEnabledForCollective(user, opts))) {
     return true;
   }
   // Handle one-shot RaggedAllToAll with NCCL enabled.
@@ -2379,12 +2394,11 @@ bool RequiresCollectiveInput(const HloUse& use, const DebugOptions& opts) {
 
 bool RequiresCollectiveOutput(const HloValue* value, const DebugOptions& opts) {
   HloInstruction* def = value->defining_instruction();
-  const bool is_nccl_buffers_used =
-      opts.xla_gpu_enable_nccl_user_buffers() ||
-      opts.xla_gpu_experimental_enable_nccl_symmetric_buffers();
 
   // Handle standard non-fusion/fusion collectives under NCCL user buffers
-  if (is_nccl_buffers_used && IsCollective(def)) {
+  if (IsCollective(def) &&
+      (opts.xla_gpu_enable_nccl_user_buffers() ||
+       IsNcclSymmetricBuffersEnabledForCollective(def, opts))) {
     return true;
   }
   // Handle one-shot RaggedAllToAll with NCCL enabled.
@@ -3123,7 +3137,10 @@ absl::Status GpuCompiler::RunPreSchedulingPasses(
         gpu_device_info, cost_analysis_options, mlir_context,
         module->config()
             .debug_options()
-            .xla_gpu_experimental_enable_tiling_propagation());
+            .xla_gpu_experimental_enable_tiling_propagation(),
+        module->config()
+            .debug_options()
+            .xla_experimental_enable_same_shape_multi_output_fusion());
     // S-curve model analysis for collectives.
     if (module->config()
             .debug_options()

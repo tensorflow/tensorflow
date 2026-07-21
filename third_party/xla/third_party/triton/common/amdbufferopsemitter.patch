@@ -1,6 +1,6 @@
 --- a/test/Conversion/amd/buffer_load_to_local_to_llvm.mlir
 +++ b/test/Conversion/amd/buffer_load_to_local_to_llvm.mlir
-@@ -189,10 +189,7 @@
+@@ -189,10 +189,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32, "ttg.thr
      // The first constant 0 skips the LDS offset which is also 0.
      // Match the i32 select used to compute voffset
      // COMMON: %[[VOFFSET:.*]] = llvm.select {{.*}} : i1, i32
@@ -15,7 +15,7 @@
 
 --- a/third_party/amd/lib/TritonAMDGPUToLLVM/BufferOpsEmitter.cpp
 +++ b/third_party/amd/lib/TritonAMDGPUToLLVM/BufferOpsEmitter.cpp
-@@ -113,7 +113,8 @@
+@@ -113,7 +113,8 @@ Value BufferEmitter::emitLoad(Type type, Value rsrcDesc, Value offset,
                                triton::CacheModifier cm) {
    auto b = TritonLLVMOpBuilder(loc, rewriter);
    SmallVector<Value, 6> args;
@@ -25,7 +25,7 @@
    Type bufferType = getBufferOpType(type, false);
    SmallVector<NamedAttribute> attrs;
    attrs.push_back(
-@@ -132,23 +133,26 @@
+@@ -132,23 +133,26 @@ BufferEmitter::emitLoadToLds(Type type, Value byteWidth, Value rsrcDesc,
                               triton::CacheModifier cm) {
    auto b = TritonLLVMOpBuilder(loc, rewriter);
    SmallVector<Value, 6> commonArgs;
@@ -62,7 +62,7 @@
  }
  
  Value BufferEmitter::emitAtomicCAS(Type type, Value rsrcDesc, Value offset,
-@@ -223,10 +227,12 @@
+@@ -223,10 +227,12 @@ void BufferEmitter::emitStore(Value rsrcDesc, Value offset, Value data,
    if (vecTy != bufferType)
      data = b.bitcast(data, bufferType);
    SmallVector<Value, 6> args{data};
@@ -79,7 +79,7 @@
  }
  
  Type BufferEmitter::getBufferOpType(Type type, bool atomicsOp) {
-@@ -275,10 +281,11 @@
+@@ -275,10 +281,11 @@ Type BufferEmitter::getBufferOpType(Type type, bool atomicsOp) {
    return bufferType;
  }
  
@@ -95,7 +95,7 @@
    auto b = TritonLLVMOpBuilder(loc, rewriter);
    // 1. Create the (masked) offset
    Type elementType = getElementTypeOrSelf(type);
-@@ -303,7 +310,7 @@
+@@ -303,7 +310,7 @@ void BufferEmitter::fillCommonArgs(Type type, Value rsrcDesc,
    args.push_back(rsrcDesc);
    args.push_back(maskedOffsetBytes);
    args.push_back(sgprOffset);
@@ -107,7 +107,7 @@
 
 --- a/third_party/amd/lib/TritonAMDGPUToLLVM/BufferOpsEmitter.h
 +++ b/third_party/amd/lib/TritonAMDGPUToLLVM/BufferOpsEmitter.h
-@@ -92,24 +92,24 @@
+@@ -92,24 +92,24 @@ struct BufferEmitter {
  
  private:
    // Fill common buffer operation arguments.

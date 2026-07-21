@@ -39,13 +39,15 @@ class GpuCostModelStatsCollection : public HloModulePass {
   explicit GpuCostModelStatsCollection(
       const se::DeviceDescription& d,
       const GpuHloCostAnalysis::Options& cost_analysis_options,
-      mlir::MLIRContext* mlir_context, bool use_experimental_tiling)
+      mlir::MLIRContext* mlir_context, bool use_experimental_tiling,
+      bool enable_same_shape_multi_output_fusion)
       : device_info_(d),
         cost_analysis_(cost_analysis_options, device_info_),
         fusion_analysis_cache_(device_info_),
         indexing_cost_analysis_(&device_info_, &fusion_analysis_cache_,
                                 cost_analysis_options.shape_size, mlir_context,
-                                use_experimental_tiling) {}
+                                use_experimental_tiling,
+                                enable_same_shape_multi_output_fusion) {}
 
   absl::string_view name() const override {
     return "gpu_cost_model_stats_collection";

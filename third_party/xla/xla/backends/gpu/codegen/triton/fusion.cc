@@ -140,10 +140,10 @@ AsyncThunkSequence TritonFusion::Emit(
                     result.entry.launch_dimensions.block_counts(),
                     result.entry.launch_dimensions.thread_counts_per_block(),
                     result.entry.shmem_bytes));
-            return ThunkSequence::Of(std::make_unique<CustomKernelThunk>(
+            return ThunkSequence::Of<CustomKernelThunk>(
                 thunk_info, std::move(custom_kernel), result.kernel_arguments,
                 result.entry.use_pdl, std::vector<int64_t>{},
-                result.entry.tma_metadata));
+                result.entry.tma_metadata);
           });
 }
 

@@ -545,6 +545,7 @@ tensorflow::PythonAPIInfo
 [//tensorflow/python:python_api_parameter_converter] # python_api_parameter_converter
 tensorflow::ConvertPythonAPIParameters
 tensorflow::CopyPythonAPITensorLists
+tensorflow::GetPythonAPIMaxIndex
 
 [//tensorflow/core/platform:statusor] # tfe
 tensorflow::internal_statusor::Helper::Crash

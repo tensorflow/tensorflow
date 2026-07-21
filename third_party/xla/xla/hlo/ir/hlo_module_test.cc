@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -81,6 +80,16 @@ MATCHER(EqualsProto, "") {
   const auto& a = ::testing::get<0>(arg);
   const auto& b = ::testing::get<1>(arg);
   return ::testing::Matches(tsl::proto_testing::EqualsProto(b))(a);
+}
+
+OriginalValueRecoveryTableProto ClearRecoveryModuleIds(
+    OriginalValueRecoveryTableProto proto) {
+  for (auto& entry : *proto.mutable_entries()) {
+    if (entry.has_recovery_module()) {
+      entry.mutable_recovery_module()->clear_id();
+    }
+  }
+  return proto;
 }
 
 TEST(HloModuleTest, AbslHashValue) {
@@ -1354,6 +1363,177 @@ ENTRY entry_comp {
   std::string string_after = module->ToString(options);
 
   EXPECT_THAT(string_before, StrEq(string_after));
+}
+
+TEST(HloModuleTest, OriginalValueRecoveryTableProtoRoundTrip) {
+  const char* const hlo_string =
+      R"(HloModule module, entry_computation_layout={()->s32[1,3]{1,0}}, num_partitions=2, origin_recovery_table={
+  {"constant"} : {"constant__ovp0"},
+  "
+    HloModule recovery_module, entry_computation_layout={(s32[2,3]{1,0})->s32[2,3]{1,0}}
+
+    %add (x: s32[], y: s32[]) -> s32[] {
+      %x = s32[] parameter(0)
+      %y = s32[] parameter(1)
+      ROOT %add = s32[] add(%x, %y)
+    }
+
+    %add.clone (x.1: s32[], y.1: s32[]) -> s32[] {
+      %x.1 = s32[] parameter(0)
+      %y.1 = s32[] parameter(1)
+      ROOT %add.1 = s32[] add(%x.1, %y.1)
+    }
+
+    ENTRY %recovery_computation (param: s32[2,3]) -> s32[2,3] {
+      %partition-id = u32[] partition-id()
+      %constant = u32[] constant(0)
+      %compare = pred[] compare(%partition-id, %constant), direction=EQ
+      %broadcast = pred[2,3]{1,0} broadcast(%compare), dimensions={}
+      %param = s32[2,3]{1,0} parameter(0), sharding={maximal device=0}
+      %constant.1 = s32[] constant(0)
+      %broadcast.1 = s32[2,3]{1,0} broadcast(%constant.1), dimensions={}
+      %select = s32[2,3]{1,0} select(%broadcast, %param, %broadcast.1)
+      ROOT %all-reduce = s32[2,3]{1,0} all-reduce(%select), channel_id=1, replica_groups={{0,1}}, use_global_device_ids=true, to_apply=%add.clone, sharding={replicated}
+    }
+  "
+}
+
+%add.clone (x.1: s32[], y.1: s32[]) -> s32[] {
+  %x.1 = s32[] parameter(0)
+  %y.1 = s32[] parameter(1)
+  ROOT %add.1 = s32[] add(s32[] %x.1, s32[] %y.1)
+}
+
+ENTRY %entry_spmd () -> s32[1,3] {
+  %partition-id = u32[] partition-id()
+  %constant.2 = u32[] constant(0)
+  %compare = pred[] compare(u32[] %partition-id, u32[] %constant.2), direction=EQ
+  %broadcast = pred[2,3]{1,0} broadcast(pred[] %compare), dimensions={}
+  %constant.1 = s32[2,3]{1,0} constant({ { 1, 1, 1 }, { 1, 1, 1 } }), origin={{"constant__ovp0"}}
+  %constant.3 = s32[] constant(0)
+  %broadcast.1 = s32[2,3]{1,0} broadcast(s32[] %constant.3), dimensions={}
+  %select = s32[2,3]{1,0} select(pred[2,3]{1,0} %broadcast, s32[2,3]{1,0} %constant.1, s32[2,3]{1,0} %broadcast.1)
+  %all-reduce = s32[2,3]{1,0} all-reduce(s32[2,3]{1,0} %select), channel_id=1, replica_groups={{0,1}}, use_global_device_ids=true, to_apply=%add.clone
+  %constant.4 = s32[2]{0} constant({1, 0})
+  %dynamic-slice = s32[1]{0} dynamic-slice(s32[2]{0} %constant.4, u32[] %partition-id), dynamic_slice_sizes={1}
+  %reshape = s32[] reshape(s32[1]{0} %dynamic-slice)
+  %dynamic-slice.1 = s32[1,3]{1,0} dynamic-slice(s32[2,3]{1,0} %all-reduce, s32[] %reshape, s32[] %constant.3), dynamic_slice_sizes={1,3}
+  ROOT %copy.1 = s32[1,3]{1,0} copy(s32[1,3]{1,0} %dynamic-slice.1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+  HloModuleProto module_proto = module->ToProto();
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module_from_proto,
+      HloModule::CreateFromProto(module_proto, module->config()));
+  EXPECT_THAT(ClearRecoveryModuleIds(
+                  module_from_proto->original_value_recovery_table().ToProto()),
+              EqualsProto(ClearRecoveryModuleIds(
+                  module->original_value_recovery_table().ToProto())));
+}
+
+TEST(HloModuleTest, DebugAttributesProtoRoundTrip) {
+  const char* const hlo_string =
+      R"(HloModule module, entry_computation_layout={()->s32[2,3]{1,0}},
+debug_attributes={
+  {"constant"}:({log_mode=default,callback_id=123,partitioned=true}),
+  {"constant.1"}:({log_mode=fusion_debugger,callback_id=456,partitioned=false})
+}
+
+
+ENTRY %entry_comp () -> s32[2,3] {
+  %c = s32[2,3]{1,0} constant({ { 1, 1, 1 }, { 1, 1, 1 } }), origin={{"constant"}}
+  ROOT %c1 = s32[2,3]{1,0} copy(%c), origin={{"constant.1"}}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+  HloModuleProto module_proto = module->ToProto();
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module_from_proto,
+      HloModule::CreateFromProto(module_proto, module->config()));
+  EXPECT_THAT(module_from_proto->ToProto().debug_attributes(),
+              Pointwise(EqualsProto(), module->ToProto().debug_attributes()));
+}
+
+TEST(HloModuleTest,
+     OriginalValueRecoveryTableAndDebugAttributesProtoRoundTrip) {
+  const char* const hlo_string =
+      R"(HloModule module, entry_computation_layout={()->s32[1,3]{1,0}}, num_partitions=2,
+origin_recovery_table={
+  {"constant"} : {"constant__ovp0"},
+  "
+    HloModule recovery_module, entry_computation_layout={(s32[2,3]{1,0})->s32[2,3]{1,0}}
+
+    %add (x: s32[], y: s32[]) -> s32[] {
+      %x = s32[] parameter(0)
+      %y = s32[] parameter(1)
+      ROOT %add = s32[] add(%x, %y)
+    }
+
+    %add.clone (x.1: s32[], y.1: s32[]) -> s32[] {
+      %x.1 = s32[] parameter(0)
+      %y.1 = s32[] parameter(1)
+      ROOT %add.1 = s32[] add(%x.1, %y.1)
+    }
+
+    ENTRY %recovery_computation (param: s32[2,3]) -> s32[2,3] {
+      %partition-id = u32[] partition-id()
+      %constant = u32[] constant(0)
+      %compare = pred[] compare(%partition-id, %constant), direction=EQ
+      %broadcast = pred[2,3]{1,0} broadcast(%compare), dimensions={}
+      %param = s32[2,3]{1,0} parameter(0), sharding={maximal device=0}
+      %constant.1 = s32[] constant(0)
+      %broadcast.1 = s32[2,3]{1,0} broadcast(%constant.1), dimensions={}
+      %select = s32[2,3]{1,0} select(%broadcast, %param, %broadcast.1)
+      ROOT %all-reduce = s32[2,3]{1,0} all-reduce(%select), channel_id=1, replica_groups={{0,1}}, use_global_device_ids=true, to_apply=%add.clone, sharding={replicated}
+    }
+  "
+},
+debug_attributes={
+  {"constant"}:({log_mode=default,callback_id=123,partitioned=true}),
+  {"constant.1"}:({log_mode=fusion_debugger,callback_id=456,partitioned=false})
+}
+
+%add.clone (x.1: s32[], y.1: s32[]) -> s32[] {
+  %x.1 = s32[] parameter(0)
+  %y.1 = s32[] parameter(1)
+  ROOT %add.1 = s32[] add(s32[] %x.1, s32[] %y.1)
+}
+
+ENTRY %entry_spmd () -> s32[1,3] {
+  %partition-id = u32[] partition-id()
+  %constant.2 = u32[] constant(0)
+  %compare = pred[] compare(u32[] %partition-id, u32[] %constant.2), direction=EQ
+  %broadcast = pred[2,3]{1,0} broadcast(pred[] %compare), dimensions={}
+  %constant.1 = s32[2,3]{1,0} constant({ { 1, 1, 1 }, { 1, 1, 1 } }), origin={{"constant__ovp0"}}
+  %constant.3 = s32[] constant(0)
+  %broadcast.1 = s32[2,3]{1,0} broadcast(s32[] %constant.3), dimensions={}
+  %select = s32[2,3]{1,0} select(pred[2,3]{1,0} %broadcast, s32[2,3]{1,0} %constant.1, s32[2,3]{1,0} %broadcast.1)
+  %all-reduce = s32[2,3]{1,0} all-reduce(s32[2,3]{1,0} %select), channel_id=1, replica_groups={{0,1}}, use_global_device_ids=true, to_apply=%add.clone
+  %constant.4 = s32[2]{0} constant({1, 0})
+  %dynamic-slice = s32[1]{0} dynamic-slice(s32[2]{0} %constant.4, u32[] %partition-id), dynamic_slice_sizes={1}
+  %reshape = s32[] reshape(s32[1]{0} %dynamic-slice)
+  %dynamic-slice.1 = s32[1,3]{1,0} dynamic-slice(s32[2,3]{1,0} %all-reduce, s32[] %reshape, s32[] %constant.3), dynamic_slice_sizes={1,3}
+  ROOT %copy.1 = s32[1,3]{1,0} copy(s32[1,3]{1,0} %dynamic-slice.1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+  HloModuleProto module_proto = module->ToProto();
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module_from_proto,
+      HloModule::CreateFromProto(module_proto, module->config()));
+  EXPECT_THAT(ClearRecoveryModuleIds(
+                  module_from_proto->original_value_recovery_table().ToProto()),
+              EqualsProto(ClearRecoveryModuleIds(
+                  module->original_value_recovery_table().ToProto())));
+  EXPECT_THAT(module_from_proto->ToProto().debug_attributes(),
+              Pointwise(EqualsProto(), module->ToProto().debug_attributes()));
 }
 
 TEST(HloModuleTest, TestCreateFromProtoUpdatesBufferAssignment) {

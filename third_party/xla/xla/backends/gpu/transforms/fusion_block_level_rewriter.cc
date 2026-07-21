@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/IR/MLIRContext.h"
@@ -47,6 +49,7 @@ limitations under the License.
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
@@ -153,6 +156,20 @@ bool ShouldRewriteReductionFusion(
   return true;
 }
 
+bool IsTupleWithSameSizeSubshapes(const Shape& shape) {
+  if (!shape.IsTuple()) {
+    return false;
+  }
+  if (shape.tuple_shapes().empty()) {
+    return true;
+  }
+  const Shape& first_subshape = shape.tuple_shapes()[0];
+  Shape::Equal eq = Shape::Equal().IgnoreElementType();
+  return absl::c_all_of(
+      absl::MakeSpan(shape.tuple_shapes()).subspan(1),
+      [&](const Shape& subshape) { return eq(subshape, first_subshape); });
+}
+
 absl::StatusOr<bool> ShouldTryRewriteFusion(
     const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_description) {
@@ -166,18 +183,20 @@ absl::StatusOr<bool> ShouldTryRewriteFusion(
     }
   }
 
+  const DebugOptions& debug_options =
+      fusion->GetModule()->config().debug_options();
+  const bool is_same_shape_fusion =
+      IsTupleWithSameSizeSubshapes(fusion->shape());
+
   if (fusion->IsMultiOutputFusion() &&
-      !fusion->GetModule()
-           ->config()
-           .debug_options()
-           .xla_gpu_unsupported_enable_triton_multi_output_fusion()) {
+      !(is_same_shape_fusion &&
+        debug_options
+            .xla_experimental_enable_same_shape_multi_output_fusion()) &&
+      !debug_options.xla_gpu_unsupported_enable_triton_multi_output_fusion()) {
     return false;
   }
 
-  if (fusion->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_experimental_enable_fusion_block_level_rewriter()) {
+  if (debug_options.xla_gpu_experimental_enable_fusion_block_level_rewriter()) {
     return true;
   }
 
@@ -235,7 +254,11 @@ absl::StatusOr<bool> ProcessFusionInstruction(
   HloFusionAnalysisCache fusion_analysis_cache(device_info);
   GpuPerformanceModelWithIndexingAnalysis indexing_performance_model(
       &device_info, &fusion_analysis_cache, shape_size, mlir_context,
-      use_experimental_tiling);
+      use_experimental_tiling,
+      fusion_instruction->GetModule()
+          ->config()
+          .debug_options()
+          .xla_experimental_enable_same_shape_multi_output_fusion());
 
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
       Cast<HloFusionInstruction>(fusion_instruction));

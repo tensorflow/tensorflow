@@ -137,6 +137,17 @@ absl::StatusOr<bool> RemoveMultiOutputFusionsUnusedOutputs(
     used_tuple_elements.insert(gte->tuple_index());
   }
 
+  // Any side effecting outputs to be kept.
+  HloInstruction* root = computation->root_instruction();
+  for (int64_t i = 0; i < root->operand_count(); ++i) {
+    if (used_tuple_elements.count(i) > 0) {
+      continue;
+    }
+    if (root->operand(i)->HasSideEffect()) {
+      used_tuple_elements.insert(i);
+    }
+  }
+
   // If all outputs are used, nothing to clean up.
   if (used_tuple_elements.size() ==
       computation->root_instruction()->operand_count()) {

@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/future.h"
 #include "xla/runtime/device_id.h"
+#include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -126,9 +127,8 @@ WaitCliques(std::vector<Future<std::shared_ptr<LockableGpuClique::Lock>>> fs) {
 
 TEST(GpuCliquesTest, AcquireCliques) {
   auto cleanup = absl::MakeCleanup([] { internal::DestroyAcquiredCliques(); });
-
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
@@ -158,7 +158,7 @@ TEST(GpuCliquesTest, OnGpuCliqueCreatedCallback) {
   auto cleanup = absl::MakeCleanup([] { internal::DestroyAcquiredCliques(); });
 
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
@@ -201,7 +201,7 @@ TEST(GpuCliquesTest, SplitCliques) {
   auto cleanup = absl::MakeCleanup([] { internal::DestroyAcquiredCliques(); });
 
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 4) {
     GTEST_SKIP() << "Test requires at least 4 GPUs";
@@ -252,7 +252,7 @@ TEST(GpuCliquesTest, SplitCliquesKeepsReorderedRanksOnCorrectExecutors) {
   auto cleanup = absl::MakeCleanup([] { internal::DestroyAcquiredCliques(); });
 
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("CUDA"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
@@ -311,7 +311,7 @@ TEST(GpuCliquesTest, SplitCliquesNoDeadlock0) {
   auto cleanup = absl::MakeCleanup([] { internal::DestroyAcquiredCliques(); });
 
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 4) {
     GTEST_SKIP() << "Test requires at least 4 GPUs";
@@ -368,7 +368,7 @@ TEST(GpuCliquesTest, SplitCliquesNoDeadlock1) {
   auto cleanup = absl::MakeCleanup([] { internal::DestroyAcquiredCliques(); });
 
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 4) {
     GTEST_SKIP() << "Test requires at least 4 GPUs";
@@ -431,7 +431,7 @@ TEST(GpuCliquesTest, ParentSupersetSkipsAbandon) {
   auto cleanup = absl::MakeCleanup([] { internal::DestroyAcquiredCliques(); });
 
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 8) {
     GTEST_SKIP() << "Test requires at least 8 GPUs";
@@ -541,7 +541,7 @@ TEST(GpuCliquesTest, DifferentCollectivesProduceDifferentCliques) {
   auto cleanup = absl::MakeCleanup([] { internal::DestroyAcquiredCliques(); });
 
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";

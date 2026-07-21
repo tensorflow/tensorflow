@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/container/node_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
@@ -43,9 +42,8 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
+#include "xla/backends/gpu/collectives/gxl_communicator.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_kernel_api.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
@@ -83,6 +81,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/casts.h"
 
 namespace xla {
 namespace gpu {
@@ -555,7 +554,6 @@ absl::Status RaggedAllToAllThunk::Initialize(const InitializeParams& params) {
             state->device_ordinal, state->rank, state->clique_key,
             device_buffers, state->barrier_signal_buffer->address()));
   }
-
   return absl::OkStatus();
 }
 
@@ -841,7 +839,7 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
                            device_buffers, stream, comm, ragged_metadata_allocs,
                            state->output_offsets_device_buffer.cref(),
                            collectives_mode(), output_sym_mem,
-                           output_base_offset);
+                           output_base_offset, state->rank.value());
 }
 
 // Executes the rendezvous to exchange buffer addresses and barrier signal
@@ -898,11 +896,24 @@ absl::Status RunRaggedAllToAll(
     Communicator& comm, absl::Span<int64_t* const> ragged_metadata_allocs,
     const se::DeviceAddressBase& output_offsets_device_buffer,
     CollectiveThunk::CollectivesMode collectives_mode,
-    SymmetricMemory* output_symmetric_memory, size_t output_base_offset) {
+    SymmetricMemory* output_symmetric_memory, size_t output_base_offset,
+    int64_t rank) {
   int device_ordinal = stream.parent()->device_ordinal();
   XLA_VLOG_DEVICE(3, device_ordinal)
       << "Performing ragged-all-to-all from device ordinal: " << device_ordinal;
   ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
+
+  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
+  if (gpu_comm->gxl_communicator() != nullptr) {
+    GxlCommunicator* gxl_nccl_comm = gpu_comm->gxl_communicator();
+    return gxl_nccl_comm->RunRaggedAllToAllGxl(
+        &stream, original_buffers[0].element_type,
+        original_buffers[0].source_buffer,
+        original_buffers[1].destination_buffer,
+        original_buffers[2].source_buffer, original_buffers[3].source_buffer,
+        original_buffers[4].source_buffer, original_buffers[5].source_buffer,
+        ragged_row_element_size, num_total_updates, rank);
+  }
 
   std::vector<DeviceBufferPair> buffers = original_buffers;
 
@@ -940,7 +951,6 @@ absl::Status RunRaggedAllToAll(
     int64_t element_byte_width = primitive_util::ByteWidth(element_type);
     se::DeviceAddressBase input_buffer = buffers[0].source_buffer;
 
-    auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
     Future<> future = gpu_comm->GroupExecute([&]() -> absl::Status {
       for (int peer = 0; peer < num_ranks; ++peer) {
         for (int64_t i = 0; i < num_updates_per_replica; ++i) {
@@ -981,7 +991,6 @@ absl::Status RunRaggedAllToAll(
       << "RunRaggedAllToAll: using Send/Recv path";
   const int64_t* recv_sizes = ragged_metadata_allocs[3];
 
-  auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
   Future<> future = gpu_comm->GroupExecute([&]() -> absl::Status {
     PrimitiveType element_type = buffers[0].element_type;
 

@@ -1250,6 +1250,22 @@ TEST_F(IndexingMapTest, SymbolicMapSimplification_DivSumDiv) {
   EXPECT_FALSE(indexing_map.Simplify());
 }
 
+TEST_F(IndexingMapTest, SymbolicMapSimplification_SumDivToNegativeOne) {
+  auto indexing_map = Parse(R"(
+    ()[s0] -> ((s0 * 16 - 497) / 512),
+    domain:
+    s0 in [0, 4]
+  )");
+  // s0 * 16 is in [0, 64], thus (s0 * 16 - 497) is in [-497, -448],
+  // making the floordiv result in [-1, -1].
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      ()[s0] -> (-1),
+      domain:
+      s0 in [0, 4]
+    )"));
+}
+
 TEST_F(IndexingMapTest, SymbolicMapSimplification_NegativeDiv) {
   // (s0 floordiv 2) floordiv -7 is not s0 floordiv -14:
   // 15 // 2 // -7 = -1
