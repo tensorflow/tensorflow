@@ -13,6 +13,7 @@ build:warnings --host_per_file_copt=external/.*@-w
 build:warnings --copt=-Wall
 build:warnings --copt=-Werror
 build:warnings --copt=-Wno-address-of-packed-member
+build:warnings --copt=-Wno-attribute-alias
 build:warnings --copt=-Wno-defaulted-function-deleted
 build:warnings --copt=-Wno-deprecated-builtins
 build:warnings --copt=-Wno-enum-compare-switch
