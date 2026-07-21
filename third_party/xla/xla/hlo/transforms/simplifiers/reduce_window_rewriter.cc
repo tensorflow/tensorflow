@@ -700,6 +700,20 @@ static absl::StatusOr<bool> TryOptimizeAssociativeScan(
   if (!hlo_query::IsStandardAssociativeScan(scan)) {
     return false;
   }
+  // The reduce-window rewrite emits a forward cumulative sum and drops the
+  // final carry, so reverse scans and scans whose carry is read keep their
+  // other lowerings. Non get-tuple-element users are dead
+  // (IsStandardAssociativeScan).
+  if (scan->is_reverse()) {
+    return false;
+  }
+  for (const HloInstruction* user : scan->users()) {
+    if (user->opcode() == HloOpcode::kGetTupleElement &&
+        user->tuple_index() == 1 &&
+        (user->user_count() > 0 || user->IsRoot())) {
+      return false;
+    }
+  }
 
   const Shape& operand_shape = scan->inputs()[0]->shape();
   int64_t rank = operand_shape.dimensions().size();

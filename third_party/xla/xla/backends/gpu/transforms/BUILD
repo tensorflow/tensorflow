@@ -3021,6 +3021,7 @@ cc_library(
     hdrs = ["scan_rewriter.h"],
     deps = [
         "//xla:shape_util",
+        "//xla:status_macros",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/utils:hlo_query",
