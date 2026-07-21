@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_executable_va_remap_allocator.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -93,7 +95,16 @@ class TestMemoryAllocation final : public se::MemoryAllocation {
 
 class TestMemoryReservation final : public se::MemoryReservation {
  public:
-  explicit TestMemoryReservation(uint64_t size) : storage_(size), size_(size) {}
+  TestMemoryReservation(
+      uint64_t size,
+      std::shared_ptr<std::vector<TestMemoryReservation*>> registry)
+      : storage_(size), size_(size), registry_(std::move(registry)) {
+    registry_->push_back(this);
+  }
+
+  ~TestMemoryReservation() override {
+    registry_->erase(std::find(registry_->begin(), registry_->end(), this));
+  }
 
   se::DeviceAddressBase address() const override {
     return se::DeviceAddressBase(storage_.data(), size_);
@@ -102,6 +113,12 @@ class TestMemoryReservation final : public se::MemoryReservation {
   int active_mapping_count() const { return active_mapping_count_; }
   const void* last_mapped_allocation_address() const {
     return last_mapped_allocation_address_;
+  }
+
+  bool Contains(const void* addr) const {
+    const uintptr_t base = reinterpret_cast<uintptr_t>(storage_.data());
+    const uintptr_t ptr = reinterpret_cast<uintptr_t>(addr);
+    return ptr >= base && ptr < base + size_;
   }
 
  private:
@@ -132,6 +149,7 @@ class TestMemoryReservation final : public se::MemoryReservation {
 
   AlignedStorage storage_;
   uint64_t size_;
+  std::shared_ptr<std::vector<TestMemoryReservation*>> registry_;
   int active_mapping_count_ = 0;
   const void* last_mapped_allocation_address_ = nullptr;
 };
@@ -159,6 +177,16 @@ class TestVmmAllocator final : public se::DeviceAddressVmmAllocator {
     fail_next_deferred_deallocation_ = true;
   }
 
+  // Returns the live reservation whose storage contains `addr`, or null.
+  TestMemoryReservation* FindReservationContaining(const void* addr) const {
+    for (TestMemoryReservation* reservation : *live_reservations_) {
+      if (reservation->Contains(addr)) {
+        return reservation;
+      }
+    }
+    return nullptr;
+  }
+
  protected:
   absl::Status InitializeDeviceState(PerDeviceState& state) override {
     state.allocation_granularity = kGranularity;
@@ -178,8 +206,8 @@ class TestVmmAllocator final : public se::DeviceAddressVmmAllocator {
 
   absl::StatusOr<std::unique_ptr<se::MemoryReservation>> CreateReservation(
       se::StreamExecutor* /*executor*/, uint64_t size) override {
-    auto reservation =
-        std::make_unique<TestMemoryReservation>(RoundUpTestSize(size));
+    auto reservation = std::make_unique<TestMemoryReservation>(
+        RoundUpTestSize(size), live_reservations_);
     last_reservation_ = reservation.get();
     return reservation;
   }
@@ -201,6 +229,8 @@ class TestVmmAllocator final : public se::DeviceAddressVmmAllocator {
   TestMemoryReservation* last_reservation_ = nullptr;
   const void* last_created_allocation_address_ = nullptr;
   bool fail_next_deferred_deallocation_ = false;
+  std::shared_ptr<std::vector<TestMemoryReservation*>> live_reservations_ =
+      std::make_shared<std::vector<TestMemoryReservation*>>();
 };
 
 class GpuExecutableVaRemapAllocatorTest : public ::testing::Test {
@@ -471,6 +501,100 @@ TEST_F(GpuExecutableVaRemapAllocatorTest,
   scope.reset();
   ASSERT_OK(vmm_allocator->SynchronizePendingOperations(/*device_ordinal=*/0));
   EXPECT_EQ(vmm_allocator->last_reservation()->active_mapping_count(), 0);
+}
+
+TEST_F(GpuExecutableVaRemapAllocatorTest,
+       RemapsOutputBufferUsingExecutionOnlyAllocationTable) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TestVmmAllocator> vmm_allocator,
+                       CreateAllocator());
+
+  // Exercise a logical allocation size that is not VMM-granularity aligned.
+  constexpr int64_t kBufferSize = 1000;
+  BufferAllocation output_alloc(/*index=*/0, kBufferSize, /*color=*/0);
+  output_alloc.set_maybe_live_out(true);
+  std::vector<const BufferAllocation*> allocations = {&output_alloc};
+
+  ThunkExecutor thunk_executor{ThunkSequence{}};
+  DebugOptions debug_options;
+  debug_options.set_xla_gpu_command_buffer_update_mode(DebugOptions::SKIP_TEMP);
+  GpuExecutableVaRemapAllocator allocator("test", allocations,
+                                          ShapeUtil::MakeShape(F32, {250}),
+                                          &debug_options, &thunk_executor);
+  allocator.AddVaRemappedAllocationForTesting(0);
+
+  auto get_parameter_buffer = [&](const BufferAllocation& allocation)
+      -> absl::StatusOr<GpuExecutableBufferAllocator::ParameterBuffer> {
+    return absl::InternalError("no parameters in this test");
+  };
+  GpuExecutableBufferAllocator::BufferAllocToDeviceMemoryMap globals;
+
+  const void* reservation_address = nullptr;
+  TestMemoryReservation* va_reservation = nullptr;
+  for (int run = 0; run < 2; ++run) {
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<GpuExecutableBufferAllocator::ExecutionScope> scope,
+        allocator.CreateExecutionScope(&service_run_options_,
+                                       vmm_allocator.get(),
+                                       /*device_ordinal=*/0));
+    ASSERT_OK_AND_ASSIGN(BufferAllocations buffer_allocations,
+                         scope->GenerateBufferAllocations(
+                             &service_run_options_, get_parameter_buffer,
+                             &globals, vmm_allocator.get(),
+                             /*device_ordinal=*/0));
+
+    // GenerateBufferAllocations leaves an allocator-owned address in the
+    // owning table, so callers can expose and eventually deallocate it.
+    const se::DeviceAddressBase external =
+        buffer_allocations.GetDeviceAddress(0);
+    EXPECT_EQ(external.size(), kBufferSize);
+    se::MemoryAllocation* raw_allocation =
+        vmm_allocator->GetRawAllocation(/*device_ordinal=*/0, external);
+    ASSERT_NE(raw_allocation, nullptr);
+
+    bool executed = false;
+    ASSERT_OK(scope->ExecuteWithBufferAllocations(
+        buffer_allocations, /*device_ordinal=*/0,
+        [&](const BufferAllocations& execution_buffers,
+            std::optional<absl::Span<const BufferAllocation::Index>>
+                persistent_alloc_indices) {
+          executed = true;
+          const se::DeviceAddressBase mapped =
+              execution_buffers.GetDeviceAddress(0);
+          EXPECT_NE(mapped.opaque(), external.opaque());
+          if (run == 0) {
+            reservation_address = mapped.opaque();
+            va_reservation =
+                vmm_allocator->FindReservationContaining(mapped.opaque());
+            if (va_reservation == nullptr) {
+              return absl::InternalError(
+                  "execution address is outside the VA reservation");
+            }
+            EXPECT_EQ(mapped.opaque(), va_reservation->address().opaque());
+          }
+          EXPECT_EQ(mapped.opaque(), reservation_address);
+          EXPECT_EQ(va_reservation->last_mapped_allocation_address(),
+                    raw_allocation->address().opaque());
+          EXPECT_TRUE(persistent_alloc_indices.has_value());
+          EXPECT_THAT(*persistent_alloc_indices, ElementsAre(0));
+          return absl::OkStatus();
+        }));
+    EXPECT_TRUE(executed);
+
+    // ExecuteWithBufferAllocations remaps only its local copy.
+    EXPECT_EQ(buffer_allocations.GetDeviceAddress(0).opaque(),
+              external.opaque());
+    EXPECT_EQ(buffer_allocations.GetDeviceAddress(0).size(), kBufferSize);
+
+    // The external buffer escapes to the caller; release it like a result
+    // consumer would.
+    ASSERT_OK(vmm_allocator->Deallocate(/*device_ordinal=*/0, external));
+  }
+
+  // All reservation-address aliases are released once deferred operations
+  // complete.
+  ASSERT_OK(vmm_allocator->SynchronizePendingOperations(/*device_ordinal=*/0));
+  ASSERT_NE(va_reservation, nullptr);
+  EXPECT_EQ(va_reservation->active_mapping_count(), 0);
 }
 
 }  // namespace

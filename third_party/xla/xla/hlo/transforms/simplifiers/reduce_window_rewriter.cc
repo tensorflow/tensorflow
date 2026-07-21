@@ -170,29 +170,28 @@ static absl::StatusOr<HloComputation*> ScalarizeComputation(
       builder.Build(replacements[comp->root_instruction()]));
 }
 
-static absl::StatusOr<HloInstruction*> GetScalarInitValue(
-    HloInstruction* init, HloComputation* parent) {
+// Walks through broadcasts, reshapes, and bitcasts to the value that seeds a
+// scan. Returns the scalar instruction or the uniform constant behind the
+// init, or nullptr when no scalar init value can be derived. Does not modify
+// the module.
+static HloInstruction* FindScalarInitSource(HloInstruction* init) {
   while (HloPredicateIsOp<HloOpcode::kBroadcast, HloOpcode::kReshape,
                           HloOpcode::kBitcast>(init)) {
     if (init->opcode() == HloOpcode::kBitcast &&
         init->shape().element_type() !=
             init->operand(0)->shape().element_type()) {
-      return absl::InvalidArgumentError(
-          "Bitcast changes element type, cannot extract scalar init value.");
+      // Bitcast changes element type; cannot extract a scalar init value.
+      return nullptr;
     }
     init = init->mutable_operand(0);
   }
   if (ShapeUtil::IsScalar(init->shape())) {
     return init;
   }
-  if (init->opcode() != HloOpcode::kConstant) {
-    return absl::InvalidArgumentError("Init value is not a constant.");
+  if (init->opcode() == HloOpcode::kConstant && init->literal().IsAllFirst()) {
+    return init;
   }
-  if (!init->literal().IsAllFirst()) {
-    return absl::InvalidArgumentError("Init value is a non-uniform constant.");
-  }
-  return parent->AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::GetFirstScalarLiteral(init->literal())));
+  return nullptr;
 }
 
 static size_t FlattenShapeIndex(const ShapeIndex& shape_index) {
@@ -665,6 +664,37 @@ static absl::StatusOr<bool> TryOptimizeCumSumOrProd(
   return true;
 }
 
+// Returns true if it is safe to rewrite the scan as a tree reduction with
+// `init_source` as the seed. RewriteScanAsTreeReduction folds the init into
+// both tree levels, which changes the result unless the extra fold is a
+// no-op: the init is the combiner's identity, or the combiner is idempotent
+// in the init (min/max), or the init is absorbing.
+static bool IsTreeRewriteSafeInit(const HloScanInstruction* scan,
+                                  const HloInstruction* init_source) {
+  const HloInstruction* root = scan->to_apply()->root_instruction();
+  if (root->opcode() != HloOpcode::kTuple || root->operand_count() != 2 ||
+      root->operand(0) != root->operand(1) ||
+      root->operand(0)->operand_count() != 2) {
+    return false;
+  }
+  switch (root->operand(0)->opcode()) {
+    case HloOpcode::kMinimum:
+    case HloOpcode::kMaximum:
+      // Idempotent: folding any init again is a no-op.
+      return true;
+    case HloOpcode::kAdd:
+    case HloOpcode::kOr:
+    case HloOpcode::kXor:
+      return init_source->IsConstant() && init_source->literal().IsAll(0);
+    case HloOpcode::kMultiply:
+      // One is the identity, zero is absorbing.
+      return init_source->IsConstant() && (init_source->literal().IsAll(1) ||
+                                           init_source->literal().IsAll(0));
+    default:
+      return false;
+  }
+}
+
 static absl::StatusOr<bool> TryOptimizeAssociativeScan(
     HloModulePass* pass, int64_t base_length, HloScanInstruction* scan) {
   if (!hlo_query::IsStandardAssociativeScan(scan)) {
@@ -679,10 +709,45 @@ static absl::StatusOr<bool> TryOptimizeAssociativeScan(
   VLOG(2) << "Rewriting associative scan: " << scan->ToString();
   HloComputation* parent = scan->parent();
 
-  ASSIGN_OR_RETURN(HloInstruction * init,
-                   GetScalarInitValue(scan->inits()[0], parent));
-  ASSIGN_OR_RETURN(HloComputation * scan_to_apply,
-                   ScalarizeComputation(scan->to_apply(), parent));
+  // Scans whose init is not a broadcast scalar (e.g. the vector carry seeds
+  // the SPMD partitioner builds) cannot be expressed as a reduce-window
+  // cumsum: reduce-window inits are scalars. Skip them; ScanExpander lowers
+  // them instead. This classification does not modify the module, so gate
+  // rejections below leave the module untouched.
+  HloInstruction* init_source = FindScalarInitSource(scan->inits()[0]);
+  if (init_source == nullptr) {
+    return false;
+  }
+
+  const bool use_single_reduce_window =
+      base_length == 0 || scan_length <= base_length;
+  if (!use_single_reduce_window && !IsTreeRewriteSafeInit(scan, init_source)) {
+    // The tree rewrite folds the init into both tree levels, which is only
+    // correct when the extra fold is a no-op (an identity, idempotent, or
+    // absorbing init for the combiner). A single reduce-window handles any
+    // scalar init but is quadratic in the scan length, so past base_length
+    // the scan is left to ScanExpander.
+    return false;
+  }
+
+  absl::StatusOr<HloComputation*> scan_to_apply_or =
+      ScalarizeComputation(scan->to_apply(), parent);
+  if (absl::IsInvalidArgument(scan_to_apply_or.status())) {
+    // Bodies that are not elementwise cannot be scalarized into a
+    // reduce-window combiner; leave them to ScanExpander. ScalarizeComputation
+    // does not modify the module when it fails.
+    return false;
+  }
+  ASSIGN_OR_RETURN(HloComputation * scan_to_apply, std::move(scan_to_apply_or));
+
+  // Every gate has passed; from here on the module is modified. Materialize
+  // the scalar init: the scalar instruction itself, or a scalar constant
+  // extracted from a uniform higher-rank constant.
+  HloInstruction* init =
+      ShapeUtil::IsScalar(init_source->shape())
+          ? init_source
+          : parent->AddInstruction(HloInstruction::CreateConstant(
+                LiteralUtil::GetFirstScalarLiteral(init_source->literal())));
   HloComputation::Builder builder(
       absl::StrCat(scan_to_apply->name(), "_rw_wrapper"));
 
@@ -701,7 +766,7 @@ static absl::StatusOr<bool> TryOptimizeAssociativeScan(
 
   HloInstruction* result = nullptr;
   HloInstruction* input = scan->inputs()[0];
-  if (base_length == 0 || scan_length <= base_length) {
+  if (use_single_reduce_window) {
     Window window = window_util::MakeWindow(std::vector<int64_t>(rank, 1));
     window.mutable_dimensions(scan_dim)->set_size(scan_length);
     window.mutable_dimensions(scan_dim)->set_padding_low(scan_length - 1);
