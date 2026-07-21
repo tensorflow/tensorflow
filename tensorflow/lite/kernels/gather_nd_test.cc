@@ -35,13 +35,16 @@ using ::testing::Pointwise;
 
 class GatherNdOpModel : public SingleOpModel {
  public:
-  GatherNdOpModel(const TensorData& params, const TensorData& indices) {
+  GatherNdOpModel(const TensorData& params, const TensorData& indices,
+                  bool allocate_and_delegate = true) {
     params_ = AddInput(params);
     indices_ = AddInput(indices);
     output_ = AddOutput(params.type);
     SetBuiltinOp(BuiltinOperator_GATHER_ND, BuiltinOptions_GatherNdOptions,
                  CreateGatherNdOptions(builder_).Union());
-    BuildInterpreter({GetShape(params_), GetShape(indices_)});
+    BuildInterpreter({GetShape(params_), GetShape(indices_)},
+                     /*num_threads=*/-1, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true, allocate_and_delegate);
   }
 
   template <typename T>
@@ -60,6 +63,11 @@ class GatherNdOpModel : public SingleOpModel {
   }
 
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
+
+  void SetIndicesLastDimension(int size) {
+    TfLiteTensor* tensor = interpreter_->tensor(indices_);
+    tensor->dims->data[tensor->dims->size - 1] = size;
+  }
 
  protected:
   int params_;
@@ -567,6 +575,13 @@ TEST(GatherNdOpTest, EmptyParamsAndIndex) {
   GatherNdOpModel m({TensorType_FLOAT32, {1, 0}}, {TensorType_INT32, {0, 2}});
   EXPECT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({0}));
+}
+
+TEST(GatherNdOpTest, ErrorOnNegativeInnermostIndicesDimension) {
+  GatherNdOpModel m({TensorType_FLOAT32, {2, 2}}, {TensorType_INT32, {2, 2}},
+                    /*allocate_and_delegate=*/false);
+  m.SetIndicesLastDimension(-1);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
 }
 
 }  // namespace
