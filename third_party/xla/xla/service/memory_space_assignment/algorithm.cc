@@ -549,6 +549,55 @@ MsaAlgorithm::MsaAlgorithm(HloModule* module, AllocationSequence* allocations,
   eviction_async_copy_resource_ = AsynchronousCopyResource(initial_resources);
 }
 
+// Finds the matching AllocationValue for a given HloUse.
+AllocationValue* MsaAlgorithm::FindMatchingAllocationValue(
+    const HloUse& use,
+    absl::Span<AllocationValue> candidate_allocation_values) const {
+  CHECK(!candidate_allocation_values.empty());
+
+  if (HloDataflowAnalysis::IsAsynchronousOperationDone(
+          use.instruction->opcode())) {
+    // Case A: uses of AsynchronousOperationDone. Find the AllocationValue
+    // defined by the previous async instruction in the chain.
+    for (int i = 0; i < candidate_allocation_values.size(); ++i) {
+      AllocationValue* allocation_value = &candidate_allocation_values.at(i);
+      if (allocation_value->defining_instruction() ==
+              use.instruction->operand(0) &&
+          use.operand_index == allocation_value->defining_position().index) {
+        return allocation_value;
+      }
+    }
+  } else {
+    // Case B: uses other than AsynchronousOperationDone.
+    // Find the latest valid AllocationValue before
+    // this use. Since AllocationValues in candidate_allocation_values are
+    // sorted by time, we iterate backwards.
+    HloComputation* use_computation = use.instruction->parent();
+    const absl::flat_hash_map<const HloInstruction*, int64_t>&
+        instruction_schedule = hlo_live_range_.instruction_schedule();
+    int64_t use_time = instruction_schedule.at(use.instruction);
+
+    for (int i = candidate_allocation_values.size() - 1; i >= 0; --i) {
+      AllocationValue* allocation_value = &candidate_allocation_values.at(i);
+      int64_t definition_time = instruction_schedule.at(
+          allocation_value->defining_position().instruction);
+      if (definition_time >= use_time) {
+        // Skip definitions that are after the use.
+        continue;
+      }
+      // Skip definitions from async-start and different computations
+      if (HloDataflowAnalysis::IsAsynchronousOperationStart(
+              allocation_value->defining_instruction()->opcode()) ||
+          allocation_value->computation() != use_computation) {
+        continue;
+      }
+      // Pick the closest allocation value preceding the use
+      return allocation_value;
+    }
+  }
+  return nullptr;
+}
+
 void MsaAlgorithm::CreateAllocationValues(
     const MsaBufferInterval& buffer_interval,
     std::vector<AllocationValue>& allocation_values) const {
@@ -600,29 +649,11 @@ void MsaAlgorithm::CreateAllocationValues(
   // CopyStart/CopyDone with an operand of the latest position.
   for (const HloUse& use : uses) {
     int64_t use_time = instruction_schedule.at(use.instruction);
-    HloComputation* use_computation = use.instruction->parent();
+    AllocationValue* matching_allocation_value = FindMatchingAllocationValue(
+        use, absl::MakeSpan(allocation_values).subspan(beginning_idx));
 
-    AllocationValue* last_allocation_value = nullptr;
-    for (int i = beginning_idx; i < allocation_values.size(); ++i) {
-      AllocationValue* allocation_value = &allocation_values.at(i);
-      if (HloDataflowAnalysis::IsAsynchronousOperationDone(
-              use.instruction->opcode())) {
-        if (allocation_value->defining_instruction() ==
-                use.instruction->operand(0) &&
-            use.operand_index == allocation_value->defining_position().index) {
-          last_allocation_value = allocation_value;
-        }
-      } else if (!HloDataflowAnalysis::IsAsynchronousOperationStart(
-                     allocation_value->defining_instruction()->opcode()) &&
-                 allocation_value->computation() == use_computation &&
-                 instruction_schedule.at(
-                     allocation_value->defining_position().instruction) <
-                     use_time) {
-        last_allocation_value = allocation_value;
-      }
-    }
-    CHECK(last_allocation_value != nullptr);
-    last_allocation_value->AddUse(use, use_time);
+    CHECK(matching_allocation_value != nullptr);
+    matching_allocation_value->AddUse(use, use_time);
   }
 
   for (int i = beginning_idx; i < allocation_values.size(); ++i) {
