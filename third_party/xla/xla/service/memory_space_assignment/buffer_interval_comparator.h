@@ -99,6 +99,7 @@ class MemoryBoundednessBufferIntervalComparator
   ComparisonTuple GetTuple(const MsaBufferInterval& buffer_interval);
   int64_t GetLatestUseTime(const MsaBufferInterval& buffer_interval);
   absl::flat_hash_map<const HloValue*, int64_t> buffer_to_latest_use_;
+  absl::flat_hash_map<const HloValue*, int64_t> buffer_to_override_priority_;
   const CostAnalysis& cost_analysis_;
   CostAnalysis::Cache* cost_analysis_cache_;
 
@@ -140,6 +141,7 @@ class DefaultCrossProgramPrefetchBufferIntervalComparator
 
   absl::flat_hash_map<const HloValue*, AdditionalSortData>
       additional_sort_data_;
+  absl::flat_hash_map<const HloValue*, int64_t> buffer_to_override_priority_;
   const HloLiveRange& hlo_live_range_;
   const MsaSortOrderOverrides& msa_sort_order_overrides_;
 };
