@@ -39,7 +39,7 @@ constexpr ErrorSpec kErrorSpec = ErrorSpec{1e-4, 1e-4};
 // the global variable.
 class TensorFloat32GlobalVarTest
     : public ::testing::WithParamInterface<bool>,
-      public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+      public HloInterpreterReferenceMixin<HloPjRtTestBase> {
  protected:
   TensorFloat32GlobalVarTest() {
     tsl::enable_tensor_float_32_execution(false);
@@ -50,7 +50,7 @@ class TensorFloat32GlobalVarTest
   }
 
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     const bool enable_triton_gemm = GetParam();
     if (enable_triton_gemm) {
       debug_options.set_xla_gpu_enable_triton_gemm(true);

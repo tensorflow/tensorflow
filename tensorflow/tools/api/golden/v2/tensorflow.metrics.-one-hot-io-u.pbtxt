@@ -131,6 +131,10 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__call__"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'num_classes\', \'target_class_ids\', \'name\', \'dtype\', \'ignore_class\', \'sparse_y_pred\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'False\', \'-1\'], "
   }
