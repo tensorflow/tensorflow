@@ -56,3 +56,16 @@ index a7e652c..5b8ac5e 100644
          "//conditions:default": [
              "BLAKE3_NO_AVX2",
              "BLAKE3_NO_AVX512",
+
+diff --git a/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl b/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl
+index 5ef02b1..a20e4b8 100644
+--- a/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl
++++ b/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl
+@@ -362,6 +362,7 @@ def gentbl_filegroup(
+             str(hash(" ".join(opts))),
+         )
+         gentbl_name = "%s_%s_genrule" % (name, rule_suffix)
++        print("GENTBL NAME: " + gentbl_name)
+         gentbl_rule(
+             name = gentbl_name,
+             td_file = td_file,
