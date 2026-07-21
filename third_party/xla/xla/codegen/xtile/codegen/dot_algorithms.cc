@@ -57,6 +57,17 @@ using ::mlir::Value;
 
 Type ElementType(Value v) { return mlir::getElementTypeOrSelf(v); }
 
+// tt.dot_scaled accepts scale tensors as floating point values or i8. UE8M0
+// has no MLIR FloatType representation that Triton recognizes, so XLA carries
+// it as i8.
+Value ReinterpretScaleIfNeeded(mlir::ImplicitLocOpBuilder& b, Value scale) {
+  if (mlir::isa<mlir::Float8E8M0FNUType>(
+          getElementTypeOrSelf(scale.getType()))) {
+    return Bitcast(b, scale, b.getI8Type());
+  }
+  return scale;
+}
+
 mlir::stablehlo::Precision XlaPrecisionToStableHloPrecision(
     PrecisionConfig::Precision precision) {
   switch (precision) {
@@ -76,26 +87,19 @@ mlir::stablehlo::Precision XlaPrecisionToStableHloPrecision(
 namespace {
 
 absl::StatusOr<Value> ScaledDot(mlir::ImplicitLocOpBuilder& b,
+                                const HloScaledDotInstruction& dot,
                                 ScaledDotOperands& operands) {
-  mlir::Type lhs_dot_elem_type = getElementTypeOrSelf(operands.lhs.getType());
-  mlir::Type rhs_dot_elem_type = getElementTypeOrSelf(operands.rhs.getType());
+  PrimitiveType lhs_primitive_type = dot.operand(0)->shape().element_type();
+  PrimitiveType rhs_primitive_type = dot.operand(1)->shape().element_type();
 
   Value lhs_scale;
-  if (lhs_dot_elem_type != b.getBF16Type() && operands.lhs_scale) {
-    lhs_scale = operands.lhs_scale;
-    if (mlir::isa<mlir::Float8E8M0FNUType>(
-            getElementTypeOrSelf(lhs_scale.getType()))) {
-      lhs_scale = Bitcast(b, lhs_scale, b.getI8Type());
-    }
+  if (IsTritonDotScaledOperandType(lhs_primitive_type) && operands.lhs_scale) {
+    lhs_scale = ReinterpretScaleIfNeeded(b, operands.lhs_scale);
   }
 
   Value rhs_scale;
-  if (rhs_dot_elem_type != b.getBF16Type() && operands.rhs_scale) {
-    rhs_scale = operands.rhs_scale;
-    if (mlir::isa<mlir::Float8E8M0FNUType>(
-            getElementTypeOrSelf(rhs_scale.getType()))) {
-      rhs_scale = Bitcast(b, rhs_scale, b.getI8Type());
-    }
+  if (IsTritonDotScaledOperandType(rhs_primitive_type) && operands.rhs_scale) {
+    rhs_scale = ReinterpretScaleIfNeeded(b, operands.rhs_scale);
     auto rhs_scale_type = mlir::cast<mlir::ShapedType>(rhs_scale.getType());
     int64_t rank = rhs_scale_type.getRank();
     CHECK_GE(rank, 2) << "RHS scale must be at least rank 2 for scaled dot.";
@@ -109,24 +113,29 @@ absl::StatusOr<Value> ScaledDot(mlir::ImplicitLocOpBuilder& b,
         b, rhs_scale, b.getDenseI64ArrayAttr(permutation));
   }
 
-  int64_t lhs_rank = mlir::cast<ShapedType>(operands.lhs.getType()).getRank();
-  int64_t lhs_contracting_dim =
-      operands.dot_dimension_numbers.getLhsContractingDimensions()[0];
-  const bool lhs_k_pack =
-      (lhs_dot_elem_type != mlir::Float4E2M1FNType::get(b.getContext())) ||
-      (lhs_contracting_dim == lhs_rank - 1);
+  // Non-sub-byte operands are represented as K-packed.
+  bool lhs_k_pack = true;
+  bool rhs_k_pack = true;
+  if (IsPackedTritonDotScaledOperandType(lhs_primitive_type)) {
+    const int64_t lhs_c =
+        dot.dot_dimension_numbers().lhs_contracting_dimensions(0);
+    lhs_k_pack = dot.operand(0)->shape().layout().minor_to_major(0) == lhs_c;
+  }
+  if (IsPackedTritonDotScaledOperandType(rhs_primitive_type)) {
+    const int64_t rhs_c =
+        dot.dot_dimension_numbers().rhs_contracting_dimensions(0);
+    rhs_k_pack = dot.operand(1)->shape().layout().minor_to_major(0) == rhs_c;
+  }
 
-  int64_t rhs_rank = mlir::cast<ShapedType>(operands.rhs.getType()).getRank();
-  int64_t rhs_contracting_dim =
-      operands.dot_dimension_numbers.getRhsContractingDimensions()[0];
-  const bool rhs_k_pack =
-      (rhs_dot_elem_type != mlir::Float4E2M1FNType::get(b.getContext())) ||
-      (rhs_contracting_dim == rhs_rank - 1);
+  ASSIGN_OR_RETURN(Type lhs_elem_type,
+                   PrimitiveTypeToMlirType(b, lhs_primitive_type));
+  ASSIGN_OR_RETURN(Type rhs_elem_type,
+                   PrimitiveTypeToMlirType(b, rhs_primitive_type));
 
   auto dot_scaled_op = xtile::DotScaledOp::create(
       b, operands.accumulator.getType(), operands.lhs, operands.rhs, lhs_scale,
-      rhs_scale, /*fastMath=*/true, lhs_k_pack, rhs_k_pack, lhs_dot_elem_type,
-      rhs_dot_elem_type, operands.dot_dimension_numbers);
+      rhs_scale, /*fastMath=*/true, lhs_k_pack, rhs_k_pack, lhs_elem_type,
+      rhs_elem_type, operands.dot_dimension_numbers);
 
   auto add_result =
       mlir::isa<mlir::IntegerType>(
@@ -162,30 +171,9 @@ Value EmitStableHloDotAndAdd(mlir::ImplicitLocOpBuilder& b, Value lhs,
 absl::StatusOr<Type> GetAlgUnsetAccumulatorType(mlir::ImplicitLocOpBuilder& b,
                                                 const HloDotInstruction& dot) {
   ASSIGN_OR_RETURN(
-      Type lhs_type,
-      PrimitiveTypeToMlirType(b, dot.operand(0)->shape().element_type()));
-  ASSIGN_OR_RETURN(
-      Type rhs_type,
-      PrimitiveTypeToMlirType(b, dot.operand(1)->shape().element_type()));
-  ASSIGN_OR_RETURN(Type accumulator_type,
-                   PrimitiveTypeToMlirType(b, dot.shape().element_type()));
-
-  // The code below assumes that lhs and rhs have the same type. However
-  // this may not always be the case with f8 matmuls, e.g. e4m3×e5m2 is
-  // supported at the hardware level. NVIDIA GPUs currently only support f32
-  // accumulators for such matmuls.
-  if (lhs_type.isFloat(8) && rhs_type.isFloat(8)) {
-    return b.getF32Type();
-  }
-
-  CHECK(lhs_type == rhs_type);
-
-  // Currently allowing 8x8-bit ints -> i32.
-  if (lhs_type == b.getIntegerType(8) && accumulator_type.isInteger(32)) {
-    return b.getI32Type();
-  }
-  return (accumulator_type.isF64() && lhs_type.isF64()) ? b.getF64Type()
-                                                        : b.getF32Type();
+      PrimitiveType accumulator_type,
+      algorithm_util::GetDefaultGemmAlgorithmAccumulatorType(&dot));
+  return PrimitiveTypeToMlirType(b, accumulator_type);
 }
 
 absl::StatusOr<std::optional<Type>> DotDefaultOperandsType(
@@ -209,7 +197,7 @@ absl::StatusOr<std::optional<Type>> DotDefaultOperandsType(
       return lhs_type;
     }
   }
-  if (debug_options.xla_gpu_default_to_alg_dot_bf16_bf16_f32()) {
+  if (debug_options.xla_gpu_match_tpu_precision()) {
     return b.getBF16Type();
   }
   return lhs_type;
@@ -335,7 +323,7 @@ absl::StatusOr<Value> EmitSingleTileScaledDot(
   dot_operands.dot_dimension_numbers =
       ::xla::stablehlo::ConvertDotDimensionNumbers(
           scaled_dot.dot_dimension_numbers(), &b);
-  return ScaledDot(b, dot_operands);
+  return ScaledDot(b, scaled_dot, dot_operands);
 }
 
 }  // namespace xtile

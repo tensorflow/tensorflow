@@ -11,12 +11,18 @@ tf_class {
     name: "__init__"
   }
   member_method {
+    name: "__tf_tracing_type__"
+    argspec: "args=[\'self\', \'context\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "empty"
     argspec: "args=[\'element_spec\'], varargs=None, keywords=None, defaults=None"
+    method_kind: STATIC
   }
   member_method {
     name: "from_value"
     argspec: "args=[\'value\'], varargs=None, keywords=None, defaults=None"
+    method_kind: STATIC
   }
   member_method {
     name: "get_value"
