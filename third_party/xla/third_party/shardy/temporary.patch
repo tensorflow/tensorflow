@@ -1,64 +1,15 @@
-diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 509398da..ce46b4ce 100644
---- a/third_party/llvm/generated.patch
-+++ b/third_party/llvm/generated.patch
-@@ -1 +1,44 @@
- Auto generated patch. Do not edit or delete it, even if empty.
-+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
-+--- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
-++++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
-+@@ -24633,9 +24633,10 @@
-+   const Value *Base2 = getUnderlyingObject(Ptr2);
-+   if (Base1 == Base2)
-+     return false;
-+-  if (Base2 < Base1)
-+-    std::swap(Base1, Base2);
-+-  return It->second.contains({Base1, Base2});
-++  // The recorded pairs keep their discovery order (see
-++  // recordRuntimeAliasCheck), so accept either orientation.
-++  return It->second.contains({Base1, Base2}) ||
-++         It->second.contains({Base2, Base1});
-+ }
-+ 
-+ /// Returns true if \p BB's body already contains vector instructions, e.g.
-+@@ -24675,16 +24676,20 @@
-+   // Only a single block can be versioned per attempt.
-+   if (RTChecks.BB && RTChecks.BB != BB)
-+     return false;
-+-  // Normalize the pair order so duplicate checks collapse.
-+-  if (Base2 < Base1)
-+-    std::swap(Base1, Base2);
-++  // A base-object pair is unordered: (Base1, Base2) and (Base2, Base1) are the
-++  // same check. Keep it in discovery (program) order and drop the reverse as a
-++  // duplicate, rather than ordering by pointer value, which would make the
-++  // emitted checks depend on allocation addresses.
-+   auto Pair = std::make_pair(Base1, Base2);
-++  bool Present = RTChecks.BasePairs.contains(Pair) ||
-++                 RTChecks.BasePairs.contains({Base2, Base1});
-+   // After the checks have been validated and bounded, do not introduce new
-+   // pairs.
-+   if (RTChecksFinalized)
-+-    return RTChecks.BasePairs.contains(Pair);
-++    return Present;
-+   RTChecks.BB = BB;
-+-  RTChecks.BasePairs.insert(Pair);
-++  if (!Present)
-++    RTChecks.BasePairs.insert(Pair);
-+   return true;
-+ }
-+ 
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index fee4d954..0632f277 100644
+index 0632f277..66531127 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "6e6272088e69834fde6e30f0033f36ee63806d00"
--    LLVM_SHA256 = "abe7edebbe526c2b4f8c8f323c1e4db981eaa2aabf0fa89ecd0fed78e40ac723"
-+    LLVM_COMMIT = "9ec7974432975674b0128ea85a54cb3e5b0ffa75"
-+    LLVM_SHA256 = "5657b40438128de5fc2f8ec36eda82537c44a3c8770e89cf5f9eb6121901b08f"
+-    LLVM_COMMIT = "9ec7974432975674b0128ea85a54cb3e5b0ffa75"
+-    LLVM_SHA256 = "5657b40438128de5fc2f8ec36eda82537c44a3c8770e89cf5f9eb6121901b08f"
++    LLVM_COMMIT = "f57bdc62619417a2ee9076ac05db9d115c3ba464"
++    LLVM_SHA256 = "24c5d1fa7809aaac5439d815af8c3b8e1363c20ee5762e199632622c983d1ef1"
  
      tf_http_archive(
          name = name,
