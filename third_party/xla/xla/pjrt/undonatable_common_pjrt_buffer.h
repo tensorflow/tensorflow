@@ -82,6 +82,9 @@ class UndonatableCommonPjRtBuffer : public PjRtBuffer {
 
   ~UndonatableCommonPjRtBuffer() override;
 
+  static absl::StatusOr<std::unique_ptr<PjRtBuffer>> Create(
+      std::unique_ptr<PjRtBuffer> buffer);
+
   // Hold-Free Inference Extensions
 
   // Acquires a reference to the underlying device memory that the caller MUST
@@ -95,6 +98,9 @@ class UndonatableCommonPjRtBuffer : public PjRtBuffer {
   PjRtMemorySpace* memory_space() const override { return memory_space_; }
   PjRtDevice* device() const override;
   PjRtClient* client() const override;
+  absl::Span<const PjRtDeviceEventRef> definition_events() const {
+    return definition_events_;
+  }
 
   absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
   absl::StatusOr<Shape> logical_on_device_shape() override;
