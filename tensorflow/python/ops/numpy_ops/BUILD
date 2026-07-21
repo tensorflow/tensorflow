@@ -239,6 +239,7 @@ cuda_py_strict_test(
         ":np_array_ops",
         ":np_arrays",
         ":np_math_ops",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",

@@ -959,8 +959,10 @@ absl::Status MetaOptimizer::RunOptimizer(
     VLOG(3) << "Replace function library with a stub for " << optimizer->name();
     optimized_graph_function_library =
         absl::WrapUnique(optimized_graph->release_library());
-    *optimized_graph->mutable_library() =
-        GetFunctionDefLibraryStub(*optimized_graph_function_library);
+    if (optimized_graph_function_library) {
+      *optimized_graph->mutable_library() =
+          GetFunctionDefLibraryStub(*optimized_graph_function_library);
+    }
   }
 
   // This swaps the current optimized_graph into optimized item and
