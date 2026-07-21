@@ -20,7 +20,15 @@ tf_class {
     mtype: "<class \'abc.abstractproperty\'>"
   }
   member_method {
+    name: "__gt__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
+  }
+  member_method {
+    name: "__lt__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "create_state"

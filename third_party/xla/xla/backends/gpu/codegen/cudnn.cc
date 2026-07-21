@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/cudnn.h"
 
-#include <memory>
-
 #include "absl/log/log.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
