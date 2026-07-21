@@ -77,8 +77,8 @@ TfLiteStatus EvalHashtable(TfLiteContext* context, TfLiteNode* node) {
 
   Subgraph* subgraph = reinterpret_cast<Subgraph*>(context->impl_);
   auto& resources = subgraph->resources();
-  resource::CreateHashtableResourceIfNotAvailable(
-      &resources, resource_id, params->key_dtype, params->value_dtype);
+  TF_LITE_ENSURE_STATUS(resource::CreateHashtableResourceIfNotAvailable(
+      &resources, resource_id, params->key_dtype, params->value_dtype));
   return kTfLiteOk;
 }
 

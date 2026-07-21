@@ -51,12 +51,13 @@ class LookupInterface : public ResourceBase {
 };
 
 // Creates an resource hash table, shared among all the subgraphs with the
-// given resource id if there is an existing one.
+// given resource id if there is an existing one. Returns kTfLiteError if the
+// given resource id is already used by a resource of a different type.
 // WARNING: Experimental interface, subject to change.
-void CreateHashtableResourceIfNotAvailable(ResourceMap* resources,
-                                           int resource_id,
-                                           TfLiteType key_dtype,
-                                           TfLiteType value_dtype);
+TfLiteStatus CreateHashtableResourceIfNotAvailable(ResourceMap* resources,
+                                                   int resource_id,
+                                                   TfLiteType key_dtype,
+                                                   TfLiteType value_dtype);
 
 // Returns the corresponding resource hash table, or nullptr if none.
 // WARNING: Experimental interface, subject to change.

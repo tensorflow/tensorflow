@@ -716,8 +716,9 @@ void InitHashtableResource(resource::ResourceMap* resources, int resource_id,
                            TfLiteType key_type, TfLiteType value_type,
                            std::initializer_list<KeyType> keys,
                            std::initializer_list<ValueType> values) {
-  resource::CreateHashtableResourceIfNotAvailable(resources, resource_id,
-                                                  key_type, value_type);
+  auto status = resource::CreateHashtableResourceIfNotAvailable(
+      resources, resource_id, key_type, value_type);
+  EXPECT_EQ(status, kTfLiteOk);
   auto lookup = resource::GetHashtableResource(resources, resource_id);
 
   TfLiteContext context;
@@ -755,8 +756,9 @@ class BaseHashtableOpModel : public SingleOpModel {
     auto value_tensor = interpreter_->tensor(values_);
 
     auto& resources = GetResources();
-    resource::CreateHashtableResourceIfNotAvailable(
+    auto status = resource::CreateHashtableResourceIfNotAvailable(
         &resources, resource_id, key_tensor->type, value_tensor->type);
+    EXPECT_EQ(status, kTfLiteOk);
   }
 
   template <typename ValueType>
@@ -981,6 +983,23 @@ TEST(HashtableOpsTest, TestHashtableSizeNonInitialized) {
 
   // Invoke without hash table initialization.
   EXPECT_NE(m.Invoke(), kTfLiteOk);
+}
+
+class DummyVariableResource : public resource::ResourceBase {
+ public:
+  ResourceType GetResourceType() const override {
+    return ResourceType::kResourceVariable;
+  }
+  bool IsInitialized() override { return true; }
+};
+
+TEST(HashtableOpsTest, CreateHashtableResourceIfNotAvailable_TypeCollision) {
+  resource::ResourceMap resources;
+  const int kResourceId = 42;
+  resources[kResourceId] = std::make_unique<DummyVariableResource>();
+  EXPECT_EQ(kTfLiteError,
+            resource::CreateHashtableResourceIfNotAvailable(
+                &resources, kResourceId, kTfLiteInt64, kTfLiteString));
 }
 
 }  // namespace
