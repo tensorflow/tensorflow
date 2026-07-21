@@ -42,6 +42,25 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+// Keep in sync with kMaxRangeOutputBytes in
+// tensorflow/core/kernels/sequence_ops.cc.
+constexpr int64_t kMaxRangeOutputBytes = 1LL << 40;  // 1 TiB
+
+// Reject oversized Range outputs before XLA materializes them (e.g. Iota).
+// Equivalent to the CPU check: size * sizeof(T) >= 1 TiB. Uses division so we
+// do not need MultiplyWithoutOverflow; safe for Range dtypes (sizeof 4 or 8).
+template <typename T>
+absl::Status CheckRangeOutputSize(int64_t size) {
+  if (size < 0 ||
+      size >= kMaxRangeOutputBytes / static_cast<int64_t>(sizeof(T))) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Requires Range output size in bytes to be less than ",
+                     kMaxRangeOutputBytes, ", but got size ", size,
+                     " with element size ", sizeof(T)));
+  }
+  return absl::OkStatus();
+}
+
 // The type-specific part of the implementation of Range.
 template <typename T>
 absl::StatusOr<xla::XlaOp> CreateRangeTensor(
@@ -103,6 +122,11 @@ absl::StatusOr<xla::XlaOp> CreateRangeTensor(
                        std::numeric_limits<int64_t>::max()));
     }
     size = static_cast<int64_t>(size_auto);
+  }
+
+  absl::Status status = CheckRangeOutputSize<T>(size);
+  if (!status.ok()) {
+    return status;
   }
 
   return xla::ConstantR0(builder, start) +
