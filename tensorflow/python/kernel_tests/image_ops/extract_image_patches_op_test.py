@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -161,6 +162,22 @@ class ExtractImagePatches(test.TestCase):
       self.evaluate(
           array_ops.extract_image_patches(
               image, ksizes=ksizes, strides=strides, padding="SAME"))
+
+  def testLargeKsize(self):
+    """Test for integer overflow with large ksizes."""
+    image = np.ones([1, 1, 1, 3], dtype=np.float32)
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError, r"Output size would overflow"
+    ):
+      out_tensor = array_ops.extract_image_patches(
+          constant_op.constant(image),
+          ksizes=[1, 2147483647, 2147483647, 1],
+          strides=[1, 1, 1, 1],
+          rates=[1, 1, 1, 1],
+          padding="SAME",
+      )
+      self.evaluate(out_tensor)
+
 
 if __name__ == "__main__":
   test.main()

@@ -18,8 +18,10 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
+
 
 class ExtractVolumePatches(test.TestCase):
   """Functional tests for ExtractVolumePatches op."""
@@ -128,6 +130,21 @@ class ExtractVolumePatches(test.TestCase):
         strides=[1, 1, 1],
         padding="SAME",
         patches=patches)
+
+  def testLargeKsize(self):
+    """Test for integer overflow with large ksizes."""
+    image = np.ones([1, 1, 1, 1, 2], dtype=np.float32)
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError, r"Output size would overflow"
+    ):
+      out_tensor = array_ops.extract_volume_patches(
+          constant_op.constant(image),
+          ksizes=[1, 2000000, 2000000, 2000000, 1],
+          strides=[1, 1, 1, 1, 1],
+          padding="SAME",
+      )
+      self.evaluate(out_tensor)
+
 
 if __name__ == "__main__":
   test.main()

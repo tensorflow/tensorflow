@@ -26,19 +26,21 @@ when rates are to be added.
 
 #include "tensorflow/core/kernels/image/extract_volume_patches_op.h"
 
+#include <string>
 #include <vector>
 
-#include "tensorflow/core/framework/bounds_check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/ops_util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/util/tensor_format.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/util/overflow.h"
+#include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
 
@@ -77,19 +79,19 @@ class ExtractVolumePatchesOp : public UnaryOp<T> {
         absl::InvalidArgumentError(absl::StrCat("input must be 5-dimensional",
                                                 input.shape().DebugString())));
 
-    const int batch = input.dim_size(0);
-    const int in_planes = input.dim_size(1);
-    const int in_rows = input.dim_size(2);
-    const int in_cols = input.dim_size(3);
-    const int depth = input.dim_size(4);
+    const int64_t batch = input.dim_size(0);
+    const int64_t in_planes = input.dim_size(1);
+    const int64_t in_rows = input.dim_size(2);
+    const int64_t in_cols = input.dim_size(3);
+    const int64_t depth = input.dim_size(4);
 
-    const int ksize_planes = ksizes_[1];
-    const int ksize_rows = ksizes_[2];
-    const int ksize_cols = ksizes_[3];
+    const int64_t ksize_planes = ksizes_[1];
+    const int64_t ksize_rows = ksizes_[2];
+    const int64_t ksize_cols = ksizes_[3];
 
-    const int stride_planes = strides_[1];
-    const int stride_rows = strides_[2];
-    const int stride_cols = strides_[3];
+    const int64_t stride_planes = strides_[1];
+    const int64_t stride_rows = strides_[2];
+    const int64_t stride_cols = strides_[3];
 
     /*
     // TODO(hsgkim): enable rates
@@ -124,9 +126,17 @@ class ExtractVolumePatchesOp : public UnaryOp<T> {
                                 in_cols, ksize_cols, /*dilation_rate=*/1,
                                 stride_cols, padding_, &out_cols, &pad_cols));
 
-    const std::vector<int64_t> out_sizes = {
-        batch, out_planes, out_rows, out_cols,
-        ksize_planes * ksize_rows * ksize_cols * depth};
+    int64_t patch_size = MultiplyWithoutOverflow(
+        ksize_planes,
+        MultiplyWithoutOverflow(ksize_rows,
+                                MultiplyWithoutOverflow(ksize_cols, depth)));
+    OP_REQUIRES(context, patch_size >= 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Output size would overflow: ", ksize_planes, " x ",
+                    ksize_rows, " x ", ksize_cols, " x ", depth)));
+
+    const std::vector<int64_t> out_sizes = {batch, out_planes, out_rows,
+                                            out_cols, patch_size};
     TensorShape out_shape(out_sizes);
 
     Tensor* output = nullptr;
@@ -138,8 +148,10 @@ class ExtractVolumePatchesOp : public UnaryOp<T> {
     }
 
     functor::ExtractVolumePatchesForward<Device, T>()(
-        context->eigen_device<Device>(), input.tensor<T, 5>(), ksize_planes,
-        ksize_rows, ksize_cols, stride_planes, stride_rows, stride_cols,
+        context->eigen_device<Device>(), input.tensor<T, 5>(),
+        static_cast<int>(ksize_planes), static_cast<int>(ksize_rows),
+        static_cast<int>(ksize_cols), static_cast<int>(stride_planes),
+        static_cast<int>(stride_rows), static_cast<int>(stride_cols),
         /* rate_planes, rate_rows, rate_cols, */
         BrainPadding2EigenPadding(padding_), output->tensor<T, 5>());
   }
