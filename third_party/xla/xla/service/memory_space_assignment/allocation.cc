@@ -1155,7 +1155,8 @@ absl::Status WindowPrefetchedAllocation::InsertWindowPrefetchInstruction(
       use_instruction->operand_index(producing_instruction);
   int64_t buffer_index = use_instruction->operand_index(get_buffer);
   custom_call->set_raw_backend_config_string(absl::StrCat(
-      "parameter_index=", parameter_index, " buffer_index=", buffer_index));
+      "parameter_index=", parameter_index, " buffer_index=", buffer_index,
+      " dma_base_offset=", options_.dma_base_offset));
 
   // The buffer's defining position is the get_tuple_element instruction.
   prefetch_instruction_ = get_buffer;
