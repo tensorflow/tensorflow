@@ -1935,6 +1935,8 @@ class XlaBuilder {
                      bool expand);
   friend XlaOp Erf(XlaOp operand,
                    const std::optional<ResultAccuracy>& result_accuracy);
+  friend XlaOp Erfc(XlaOp operand,
+                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Exp(XlaOp operand,
                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Expm1(XlaOp operand,

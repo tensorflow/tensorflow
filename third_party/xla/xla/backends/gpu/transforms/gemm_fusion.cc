@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/literal.h"
 #include "xla/map_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -1376,6 +1377,36 @@ FusionDecision ShouldFuseConcat(const HloInstruction& concat,
   return FusionDecision::Allow();
 }
 
+// Returns true if the specified dimensions map to the parameter such that their
+// minor-most physical dimension has stride 1 and a size that is at least 16
+// bytes (128 bits) and 16-byte aligned for vectorized and coalesced memory
+// loads.
+bool HasCoalescedMinorDimension(const ShapeTracker& inverted_tracker,
+                                const Shape& operand_shape,
+                                absl::Span<const int64_t> dims) {
+  std::optional<std::vector<int64_t>> mapped_dims =
+      inverted_tracker.MapInputDimensionsToOutputUnordered(dims);
+  if (!mapped_dims.has_value() || mapped_dims->empty()) {
+    return false;
+  }
+
+  absl::Span<const int64_t> minor_to_major =
+      operand_shape.layout().minor_to_major();
+  auto minor_dim = absl::c_find_if(minor_to_major, [&](int64_t dim) {
+    return operand_shape.dimensions(dim) != 1;
+  });
+  if (minor_dim == minor_to_major.end()) {
+    return false;
+  }
+  if (!absl::c_linear_search(*mapped_dims, *minor_dim)) {
+    return false;
+  }
+
+  int64_t minor_bits = operand_shape.dimensions(*minor_dim) *
+                       primitive_util::BitWidth(operand_shape.element_type());
+  return minor_bits >= 128 && minor_bits % 128 == 0;
+}
+
 FusionDecision ShouldFuseTranspose(const HloInstruction& transpose,
                                    const HloInstruction& fusion,
                                    const TrackerInfo& tracker) {
@@ -1417,7 +1448,9 @@ FusionDecision ShouldFuseTranspose(const HloInstruction& transpose,
     return FusionDecision::Forbid("Batch dimension splits other dimensions.");
   }
   if (operand_index == 1 &&
-      !inverted_tracker->MapsToOneStride(non_contracting)) {
+      !inverted_tracker->MapsToOneStride(non_contracting) &&
+      !HasCoalescedMinorDimension(
+          *inverted_tracker, transpose.operand(0)->shape(), non_contracting)) {
     return FusionDecision::Forbid(
         "Non-contracting RHS dimension has non-contiguous section.");
   }

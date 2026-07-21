@@ -2128,7 +2128,7 @@ ENTRY main {
   RunAndFilecheckHloRewrite(hlo_text, GemmFusion(gpu_version_), std::nullopt);
 }
 
-TEST_P(GemmFusionTest, TransposeFusesInConcatGemm) {
+TEST_P(GemmFusionTestVersioned, TransposeFusesInConcatGemm) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
 HloModule module
@@ -2460,17 +2460,17 @@ ENTRY e {
 }
 
 TEST_P(GemmFusionProfitabilityTest,
-       DisallowTransposeSplittingRhsNoncontracting) {
+       DisallowTransposeSplittingUncoalescedRhsNoncontracting) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 ENTRY e {
   p0 = s8[512,4096]{1,0} parameter(0)
   cvt_lhs = bf16[512,4096]{1,0} convert(p0)
-  p1 = bf16[16,4096,256]{2,1,0} parameter(1)
-  t1 = bf16[4096,16,256]{2,1,0} transpose(p1), dimensions={1,0,2}
-  b1 = bf16[4096,4096]{1,0} bitcast(t1)
-  ROOT dot = bf16[512,4096]{1,0} dot(cvt_lhs, b1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  p1 = bf16[16,4096,3]{2,1,0} parameter(1)
+  t1 = bf16[4096,16,3]{2,1,0} transpose(p1), dimensions={1,0,2}
+  b1 = bf16[4096,48]{1,0} bitcast(t1)
+  ROOT dot = bf16[512,48]{1,0} dot(cvt_lhs, b1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 )"));
   ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
