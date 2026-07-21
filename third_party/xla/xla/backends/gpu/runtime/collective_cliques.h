@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/util.h"
 
 namespace xla::gpu {
-
 // A collection of collective cliques acquired based on GPU clique requests
 // collected from all thunks at prepare stage.
 class CollectiveCliques {

@@ -61,11 +61,29 @@ cc_library(
 )
 
 cc_library(
+    name = "collective_memory_cache",
+    srcs = ["collective_memory_cache.cc"],
+    hdrs = ["collective_memory_cache.h"],
+    deps = [
+        ":gpu_clique_key",
+        "//xla/core/collectives:symmetric_memory",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:memory_allocation",
+        "//xla/stream_executor/gpu:multicast_memory",
+        "//xla/tsl/util:tied_ref",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
     name = "gpu_clique",
     srcs = ["gpu_clique.cc"],
     hdrs = ["gpu_clique.h"],
     deps = [
         ":cancellation_token",
+        ":collective_memory_cache",
         ":gpu_clique_key",
         ":gpu_communicator",
         "//xla:util",

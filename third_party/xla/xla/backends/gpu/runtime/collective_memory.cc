@@ -36,10 +36,10 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/collectives/collective_memory_cache.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
-#include "xla/backends/gpu/runtime/collective_memory_cache.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/core/collectives/rank_id.h"
@@ -75,12 +75,19 @@ std::pair<SymmetricMemory*, size_t> CollectiveMemory::FindSymmetricMemory(
   if (it == sym_memories_.end()) {
     return std::make_pair(nullptr, 0);
   }
-  return std::make_pair(it->second.get(), 0);
+  SymmetricMemory* sym = it->second.get();
+  se::DeviceAddressBase base = buffers_.GetDeviceAddress(allocation);
+  size_t offset = tsl::safe_reinterpret_cast<uintptr_t>(base.opaque()) -
+                  tsl::safe_reinterpret_cast<uintptr_t>(sym->addr().opaque());
+  return std::make_pair(sym, offset);
 }
 
 std::pair<SymmetricMemory*, size_t> CollectiveMemory::FindSymmetricMemory(
     const GpuCliqueKey& clique, BufferAllocation::Slice slice) const {
   auto [sym, sym_offset] = FindSymmetricMemory(clique, slice.index());
+  if (sym == nullptr) {
+    return std::make_pair(nullptr, 0);
+  }
   return std::make_pair(sym, sym_offset + slice.offset());
 }
 
@@ -91,12 +98,13 @@ std::pair<SymmetricMemory*, size_t> CollectiveMemory::FindSymmetricMemory(
     return std::make_pair(nullptr, 0);
   }
 
-  // Find offset from the base allocation.
+  auto [sym, sym_offset] = FindSymmetricMemory(clique, *allocation);
+  if (sym == nullptr) {
+    return std::make_pair(nullptr, 0);
+  }
   se::DeviceAddressBase base = buffers_.GetDeviceAddress(*allocation);
   size_t offset = tsl::safe_reinterpret_cast<uintptr_t>(addr.opaque()) -
                   tsl::safe_reinterpret_cast<uintptr_t>(base.opaque());
-
-  auto [sym, sym_offset] = FindSymmetricMemory(clique, *allocation);
   return std::make_pair(sym, sym_offset + offset);
 }
 
@@ -188,15 +196,18 @@ namespace {
 // Wrap GpuCliqueKey into a unique struct to guarantee we do not accidentally
 // try to run multiple unrelated rendezvous for a same key.
 struct RendezvousKey {
+  int64_t run_id;
+  size_t alloc_id;
   GpuCliqueKey clique_key;
 
   bool operator==(const RendezvousKey& other) const {
-    return clique_key == other.clique_key;
+    return run_id == other.run_id && alloc_id == other.alloc_id &&
+           clique_key == other.clique_key;
   }
 
   template <typename H>
   friend H AbslHashValue(H h, const RendezvousKey& key) {
-    return H::combine(std::move(h), key.clique_key);
+    return H::combine(std::move(h), key.run_id, key.alloc_id, key.clique_key);
   }
 };
 
@@ -263,20 +274,88 @@ AcquireSymmetricMemory(
     // Currently it's very simple proof of concept.
 
     ASSIGN_OR_RETURN(GpuCommunicator * comm, cliques.GetComm(r.clique, *rank));
+
+    std::vector<se::DeviceAddressBase> cache_keys;
+    cache_keys.reserve(r.allocations.size());
+    for (BufferAllocation::Index i : r.allocations) {
+      se::DeviceAddressBase addr = buffers.GetDeviceAddress(i);
+      se::DeviceAddressBase cache_key = addr;
+      auto phys_range_or = params.executor->GetMemoryRange(addr);
+      if (phys_range_or.ok()) {
+        cache_key = *phys_range_or;
+      }
+      cache_keys.push_back(cache_key);
+    }
+
+    absl::flat_hash_set<BufferAllocation::Index> force_register;
+
+    if (r.clique.is_local()) {
+      struct SyncParams {
+        RankId rank;
+        absl::flat_hash_set<BufferAllocation::Index> misses;
+      };
+
+      SyncParams sync_params;
+      sync_params.rank = *rank;
+      size_t idx = 0;
+      for (BufferAllocation::Index i : r.allocations) {
+        se::DeviceAddressBase addr = buffers.GetDeviceAddress(i);
+        if (!memory_cache.FindSymmetricMemory(r.clique, *rank, addr,
+                                              cache_keys[idx])) {
+          sync_params.misses.insert(i);
+        }
+        idx++;
+      }
+
+      auto check = [&](absl::Span<SyncParams*> sync_params_list)
+          -> absl::StatusOr<absl::flat_hash_set<BufferAllocation::Index>> {
+        absl::flat_hash_set<BufferAllocation::Index> aggregated;
+        for (const SyncParams* param : sync_params_list) {
+          for (BufferAllocation::Index idx : param->misses) {
+            aggregated.insert(idx);
+          }
+        }
+        return aggregated;
+      };
+
+      RendezvousKey rendezvous_key = {params.run_id.ToInt(), r.id, r.clique};
+      std::string rendezvous_name = absl::StrFormat(
+          "acquire_symmetric_memory::%v::%v", params.run_id.ToInt(),
+          absl::StrJoin(r.allocations, ","));
+
+      ASSIGN_OR_RETURN(
+          std::shared_ptr<absl::flat_hash_set<BufferAllocation::Index>>
+              aggregated_misses,
+          Rendezvous<absl::flat_hash_set<BufferAllocation::Index>>(
+              rendezvous_name, rendezvous_key, sync_params,
+              r.clique.num_local_participants(), check));
+
+      force_register = *aggregated_misses;
+    }
+
+    size_t idx = 0;
     for (BufferAllocation::Index i : r.allocations) {
       se::DeviceAddressBase addr = buffers.GetDeviceAddress(i);
       CollectiveMemory::Key mem_key = std::make_pair(r.clique, i);
-      // Check cache first to avoid redundant collective window registration.
-      if (auto cached = memory_cache.FindSymmetricMemory(r.clique, addr)) {
-        sym_memories[mem_key] = std::move(cached);
-        continue;
+      se::DeviceAddressBase cache_key = cache_keys[idx++];
+
+      bool force_cache_miss = force_register.contains(i);
+
+      if (!force_cache_miss) {
+        if (auto cached = memory_cache.FindSymmetricMemory(r.clique, *rank,
+                                                           addr, cache_key)) {
+          sym_memories[mem_key] = std::move(cached);
+          continue;
+        }
       }
+
       ASSIGN_OR_RETURN(std::unique_ptr<SymmetricMemory> symm,
                        comm->CreateSymmetricMemory(addr));
       ASSIGN_OR_RETURN(tsl::TiedRef<SymmetricMemory> tied_symm,
                        cliques.Tie(r.clique, std::move(symm)));
-      sym_memories[mem_key] =
-          memory_cache.AddSymmetricMemory(r.clique, addr, std::move(tied_symm));
+
+      sym_memories[mem_key] = memory_cache.AddSymmetricMemory(
+          r.clique, *rank, cache_key, std::move(tied_symm));
     }
   }
 
@@ -322,7 +401,9 @@ absl::StatusOr<MulticastMemoryMap> AcquireMulticastMemory(
 
   MulticastMemoryMap mcast_memories;
 
+  int alloc_idx = 0;
   for (const CollectiveMemoryRequests::CollectiveAllocations& r : allocs) {
+    ++alloc_idx;
     std::optional<RankId> rank = r.clique.rank(params.global_device_id);
 
     if (!rank.has_value()) {
@@ -416,7 +497,8 @@ absl::StatusOr<MulticastMemoryMap> AcquireMulticastMemory(
         se::DeviceAddressBase mcast_addr =
             params[0]->buffers.GetDeviceAddress(i);
         std::shared_ptr<se::gpu::MulticastMemory> cached =
-            memory_cache.AddMulticastMemory(r.clique, mcast_addr,
+            memory_cache.AddMulticastMemory(r.clique, params[0]->rank,
+                                            mcast_addr,
                                             std::move(tied_multicast_memory));
 
         clique_mcast_memories[std::make_pair(r.clique, i)] =
@@ -428,7 +510,7 @@ absl::StatusOr<MulticastMemoryMap> AcquireMulticastMemory(
     // We expect that all local participants will collectively allocate the
     // multicast memory. We do one rendezvous for each clique, and from the
     // rendezvous callback allocate multicast memory for all allocations.
-    RendezvousKey rendezvous_key = {r.clique};
+    RendezvousKey rendezvous_key = {params.run_id.ToInt(), r.id, r.clique};
     RendezvousParams allocate_params = {*rank, params.executor, buffers};
 
     int64_t num_participants = r.clique.num_local_participants();
@@ -467,7 +549,9 @@ absl::StatusOr<PeerMemoryMap> AcquirePeerMemory(
 
   PeerMemoryMap peer_memories;
 
+  int alloc_idx = 0;
   for (const CollectiveMemoryRequests::CollectiveAllocations& r : allocs) {
+    ++alloc_idx;
     std::optional<RankId> rank = r.clique.rank(params.global_device_id);
 
     if (!rank.has_value()) {
@@ -515,7 +599,7 @@ absl::StatusOr<PeerMemoryMap> AcquirePeerMemory(
     // We expect that all local participants will collectively allocate the
     // multicast memory. We do one rendezvous for each clique, and from the
     // rendezvous callback allocate multicast memory for all allocations.
-    RendezvousKey rendezvous_key = {r.clique};
+    RendezvousKey rendezvous_key = {params.run_id.ToInt(), r.id, r.clique};
     RendezvousParams allocate_params = {*rank, params.executor, buffers};
 
     int64_t num_participants = r.clique.num_local_participants();

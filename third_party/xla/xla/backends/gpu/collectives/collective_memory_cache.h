@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_MEMORY_CACHE_H_
-#define XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_MEMORY_CACHE_H_
+#ifndef XLA_BACKENDS_GPU_COLLECTIVES_COLLECTIVE_MEMORY_CACHE_H_
+#define XLA_BACKENDS_GPU_COLLECTIVES_COLLECTIVE_MEMORY_CACHE_H_
 
 #include <cstdint>
 #include <memory>
@@ -32,40 +32,20 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// Caches collective memories (symmetric, multicast) across executable
-// invocations. On the first invocation, collective memory windows are
-// registered with the communication library (a collective operation). On
-// subsequent invocations, the cached windows are reused to avoid redundant
-// registration calls and to keep signal counters consistent.
-//
-//
-// Correctness note: window registration is a collective operation — all ranks
-// must call it together. Caching is safe because all ranks share the same
-// buffer assignment, so they all get cache hits or misses for a given address.
-// However, memory is allocated independently by each rank on its local device,
-// so different ranks may allocate different addresses, or by chance allocate
-// the same address. The cache key must include the RankId to avoid mixing up
-// windows registered by different ranks.
-//
-// Lifetime: owned by GpuClique, persists across executions. Cached entries
-// hold TiedRefs to the global GpuClique, so the underlying windows remain
-// valid as long as the clique exists.
 class CollectiveMemoryCache {
  public:
-  // Returns a locked shared_ptr to the cached memory, or nullptr if not cached
-  // or if the underlying TiedRef has expired.
   std::shared_ptr<SymmetricMemory> FindSymmetricMemory(
       const GpuCliqueKey& clique, RankId rank,
-      stream_executor::DeviceAddressBase addr);
+      stream_executor::DeviceAddressBase addr,
+      stream_executor::DeviceAddressBase cache_key);
 
   std::shared_ptr<stream_executor::gpu::MulticastMemory> FindMulticastMemory(
       const GpuCliqueKey& clique, RankId rank,
       stream_executor::DeviceAddressBase addr);
 
-  // Inserts or replaces a cached entry. Returns a locked shared_ptr.
   std::shared_ptr<SymmetricMemory> AddSymmetricMemory(
       const GpuCliqueKey& clique, RankId rank,
-      stream_executor::DeviceAddressBase addr,
+      stream_executor::DeviceAddressBase cache_key,
       tsl::TiedRef<SymmetricMemory> sym_memory);
 
   std::shared_ptr<stream_executor::gpu::MulticastMemory> AddMulticastMemory(
@@ -88,4 +68,4 @@ class CollectiveMemoryCache {
 
 }  // namespace xla::gpu
 
-#endif  // XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_MEMORY_CACHE_H_
+#endif  // XLA_BACKENDS_GPU_COLLECTIVES_COLLECTIVE_MEMORY_CACHE_H_

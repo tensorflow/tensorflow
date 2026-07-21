@@ -430,14 +430,22 @@ NcclCollectives::CreateCommunicatorsWithCancel(
     ASSIGN_OR_RETURN(ncclConfig_t comm_config,
                      AsNcclConfig(gpu_config, stream_executors[i]));
 
-    ncclComm_t comm;
+    ncclComm_t comm = nullptr;
     if (nccl_unique_ids.size() > 1) {
-      XLA_NCCL_RETURN_IF_ERROR(ncclCommInitRankScalable(
+      absl::Status s = XLA_NCCL_STATUS(ncclCommInitRankScalable(
           &comm, num_ranks, rank.value(), nccl_unique_ids.size(),
           nccl_unique_ids.data(), &comm_config));
+      if (!s.ok()) {
+        if (comm != nullptr) ncclCommAbort(comm);
+        return s;
+      }
     } else {
-      XLA_NCCL_RETURN_IF_ERROR(ncclCommInitRankConfig(
+      absl::Status s = XLA_NCCL_STATUS(ncclCommInitRankConfig(
           &comm, num_ranks, nccl_unique_ids[0], rank.value(), &comm_config));
+      if (!s.ok()) {
+        if (comm != nullptr) ncclCommAbort(comm);
+        return s;
+      }
     }
 
     absl::Time init_done = absl::Now();
