@@ -1389,7 +1389,7 @@ xla_test(
     name = "scatter_deterministic_expander_test",
     srcs = ["scatter_test.cc"],
     args = [
-        "--xla_gpu_deterministic_ops",
+        "--xla_gpu_exclude_nondeterministic_ops",
         "--xla_gpu_enable_scatter_determinism_expander",
     ],
     backends = ["gpu"],

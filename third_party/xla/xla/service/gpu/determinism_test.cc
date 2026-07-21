@@ -223,7 +223,7 @@ ENTRY e {
 })hlo";
 
   // Disable autotuning.
-  debug_options_.set_xla_gpu_deterministic_ops(true);
+  debug_options_.set_xla_gpu_exclude_nondeterministic_ops(true);
   AutotunerCache::ClearAutotuneResults();
   // Deterministic GEMM should use the first config from the list and with the
   // current backend order this should be cuBLAS LT.
@@ -243,7 +243,6 @@ TEST_F(DeterminismTest, ExcludingNonDeterministicOpsUsesFirstConfig) {
   }
 
   ASSERT_TRUE(debug_options_.xla_gpu_exclude_nondeterministic_ops());
-  ASSERT_FALSE(debug_options_.xla_gpu_deterministic_ops());
   AutotunerCache::ClearAutotuneResults();
   // We select the first config from the list and with the current backend order
   // this should be cuBLAS LT.

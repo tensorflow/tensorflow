@@ -354,7 +354,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_enable_triton_gemm(true);
   opts.set_xla_gpu_unsupported_enable_triton_multi_output_fusion(false);
-  opts.set_xla_experimental_enable_same_shape_multi_output_fusion(false);
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(true);
   opts.set_xla_gpu_experimental_gemm_fusion_v2(false);
@@ -392,7 +391,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_experimental_enable_fusion_block_level_rewriter(false);
 
-  opts.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(false);
+  opts.set_xla_gpu_match_tpu_precision(false);
   opts.set_xla_gpu_enable_libnvptxcompiler(
       stream_executor::IsLibNvPtxCompilerSupported());
   opts.set_xla_gpu_libnvjitlink_mode(DebugOptions::LIB_NV_JIT_LINK_MODE_AUTO);
@@ -1877,19 +1876,22 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_force_compilation_parallelism(),
       "Overrides normal multi-threaded compilation setting to use this many "
       "threads. Setting to 0 (the default value) means no enforcement."));
-
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_default_to_alg_dot_bf16_bf16_f32",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_default_to_alg_dot_bf16_bf16_f32),
-      debug_options->xla_gpu_default_to_alg_dot_bf16_bf16_f32(),
-      "Use the dot precision algorithm `ALG_DOT_BF16_BF16_F32 by default for "
-      "f32 dots."));
   flag_list->push_back(
-      tsl::Flag("xla_gpu_deterministic_ops",
-                bool_setter_for(&DebugOptions::set_xla_gpu_deterministic_ops),
-                debug_options->xla_gpu_deterministic_ops(),
-                "Guarantees run-to-run determinism on GPU."));
+      tsl::Flag("xla_gpu_default_to_alg_dot_bf16_bf16_f32",
+                bool_setter_for(&DebugOptions::set_xla_gpu_match_tpu_precision),
+                debug_options->xla_gpu_match_tpu_precision(),
+                "Deprecated. Use `xla_gpu_match_tpu_precision` instead."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_match_tpu_precision",
+      bool_setter_for(&DebugOptions::set_xla_gpu_match_tpu_precision),
+      debug_options->xla_gpu_match_tpu_precision(),
+      "Use the dot precision algorithm `ALG_DOT_BF16_BF16_F32 by default for "
+      "f32 dots. This leads to the same precision as on TPU."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_deterministic_ops",
+      bool_setter_for(&DebugOptions::set_xla_gpu_exclude_nondeterministic_ops),
+      debug_options->xla_gpu_exclude_nondeterministic_ops(),
+      "Deprecated. Use `xla_gpu_exclude_nondeterministic_ops` instead."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_exclude_nondeterministic_ops",
       bool_setter_for(&DebugOptions::set_xla_gpu_exclude_nondeterministic_ops),
@@ -1994,13 +1996,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_collective_inflation_factor(),
       "Inflation factor for collectives. If set to > 1, each XLA/GPU "
       "collective will execute multiple times (will yield incorrect results)"));
-
-  flag_list->push_back(tsl::Flag(
-      "xla_llvm_force_inline_before_split",
-      bool_setter_for(&DebugOptions::set_xla_llvm_force_inline_before_split),
-      debug_options->xla_llvm_force_inline_before_split(),
-      "Decide whether to force inline before llvm module split to get a more "
-      "balanced splits for parallel compilation"));
 
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_reassociation_for_converted_ar",
@@ -2414,14 +2409,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
               set_xla_gpu_unsupported_enable_triton_multi_output_fusion),
       debug_options->xla_gpu_unsupported_enable_triton_multi_output_fusion(),
       "Enable Triton multi-output fusions."));
-  flag_list->push_back(tsl::Flag(
-      "xla_experimental_enable_same_shape_multi_output_fusion",
-      bool_setter_for(
-          &DebugOptions::
-              set_xla_experimental_enable_same_shape_multi_output_fusion),
-      debug_options->xla_experimental_enable_same_shape_multi_output_fusion(),
-      "Enable experimental support for multi-output Triton fusions where all "
-      "roots share the same shape."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_verify_triton_fusion_numerics",
       bool_setter_for(&DebugOptions::set_xla_gpu_verify_triton_fusion_numerics),
@@ -3031,7 +3018,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "be made deterministic using a slower implementation. "
       "Note that even when this flag is disabled, scatter operations may still "
       "be deterministic. This is the case when "
-      "'xla_gpu_exclude_nondeterministic_ops' or 'xla_gpu_deterministic_ops' "
+      "'xla_gpu_exclude_nondeterministic_ops' "
       "is enabled."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_unsupported_enable_all_reduce_decomposer",

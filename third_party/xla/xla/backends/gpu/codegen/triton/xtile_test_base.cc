@@ -45,7 +45,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/decision.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
@@ -53,6 +52,7 @@ limitations under the License.
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 
 namespace xla::gpu {
@@ -127,12 +127,7 @@ XTileTestBase::CreateXTileIrAndFileCheck(
                      ge::TilingSpace::Create(*fusion_adaptor, mlir_context()));
     ASSIGN_OR_RETURN(
         llvm::SmallVector<int64_t> concrete_sizes,
-        GetTilingSpaceConcreteSizes(
-            *tiling_space, block_level_parameters,
-            computation.parent()
-                ->config()
-                .debug_options()
-                .xla_experimental_enable_same_shape_multi_output_fusion()));
+        GetTilingSpaceConcreteSizes(*tiling_space, block_level_parameters));
     RETURN_IF_ERROR(tiling_space->AssignTileSizes(
         xtile::GetPaddedTileSizes(concrete_sizes)));
     ASSIGN_OR_RETURN(ge::TiledHloComputation tiled_computation,
