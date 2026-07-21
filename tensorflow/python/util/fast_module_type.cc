@@ -377,7 +377,7 @@ FastModuleObject *FastModuleObject::UncheckedCast(PyObject *obj) {
   return reinterpret_cast<FastModuleObject *>(obj);
 }
 
-PYBIND11_MODULE(fast_module_type, m, pybind11::mod_gil_not_used()) {
+PYBIND11_MODULE(fast_module_type, m) {
   FastModuleType.tp_base = &PyModule_Type;
   FastModuleType.tp_setattro = [](PyObject* module, PyObject* name,
                                   PyObject* value) -> int {
