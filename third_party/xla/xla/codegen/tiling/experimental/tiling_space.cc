@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
 
@@ -315,6 +316,92 @@ absl::Status TilingSpace::AssignTileSizes(
   return absl::OkStatus();
 }
 
+namespace {
+
+bool AreShapesEqual(absl::Span<const HloInstructionAdaptor> roots,
+                    Shape::Equal eq) {
+  if (roots.empty()) {
+    return true;
+  }
+  return absl::c_all_of(roots.subspan(1),
+                        [&](const HloInstructionAdaptor& root) {
+                          return eq(roots[0].shape(), root.shape());
+                        });
+}
+
+}  // namespace
+
+absl::Status TilingSpace::InitializeDimensions(
+    absl::Span<const HloInstructionAdaptor> roots) {
+  TF_RET_CHECK(dimensions_.empty()) << "Already initialized.";
+
+  for (const auto& root : roots) {
+    const Shape& root_shape = root.shape();
+    if (!root.shape().IsArray() && root.opcode() != HloOpcode::kReduce &&
+        root.opcode() != HloOpcode::kScan) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported root shape ", root_shape.ToString(),
+                       " for root ", root.instruction().ToString()));
+    }
+
+    const Shape& shape = GetFirstShape(&root.instruction());
+    for (auto [index, dim] : llvm::enumerate(shape.dimensions())) {
+      AppendDimension(&root.instruction(), index, dim,
+                      DimensionSemantics::kParallel);
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status TilingSpace::InitializeDimensionsForSimpleMultiOutputFusion(
+    absl::Span<const HloInstructionAdaptor> roots) {
+  TF_RET_CHECK(dimensions_.empty()) << "Already initialized.";
+  TF_RET_CHECK(!roots.empty()) << "Roots cannot be empty.";
+  TF_RET_CHECK(AreShapesEqual(roots, Shape::Equal().IgnoreElementType()))
+      << "Roots have different shapes.";
+
+  // This handles the specific case where all roots of a multi-output fusion
+  // share the same shape (ignoring element type). We assume we can reuse the
+  // same tiling for every root. This lets us significantly reduce the search
+  // space.
+
+  const HloInstructionAdaptor& first_root = roots[0];
+  absl::Span<const HloInstructionAdaptor> rest_roots = roots.subspan(1);
+
+  const Shape& first_shape = GetFirstShape(&first_root.instruction());
+  for (auto [index, dim] : llvm::enumerate(first_shape.dimensions())) {
+    AppendDimension(&first_root.instruction(), index, dim,
+                    DimensionSemantics::kParallel);
+  }
+
+  // Propagate the dimensions from the first root to the rest of the roots.
+  for (const HloInstructionAdaptor& root : rest_roots) {
+    if (&root.instruction() == &first_root.instruction()) {
+      // We may see the same instruction in multiple roots, but we only need
+      // to process each instruction once.
+      continue;
+    }
+
+    absl::Span<const int64_t> dims =
+        GetFirstShape(&root.instruction()).dimensions();
+    for (auto [index, dim] : llvm::enumerate(dims)) {
+      auto it = hlo_to_dimension_.find(
+          std::make_pair(&first_root.instruction(), index));
+      // We should have already added the dimensions for the first root.
+      TF_RET_CHECK(it != hlo_to_dimension_.end())
+          << "BUG: dimension not found for "
+          << first_root.instruction().ToString() << " dimension " << index
+          << ". This is an invariant that should be guaranteed by " << __func__
+          << ".";
+
+      hlo_to_dimension_[std::make_pair(&root.instruction(), index)] =
+          it->second;
+    }
+  }
+
+  return absl::OkStatus();
+}
+
 absl::StatusOr<std::unique_ptr<TilingSpace>> TilingSpace::Create(
     const HloFusionAdaptor& fusion, mlir::MLIRContext* ctx) {
   RegisterSymbolicExprStorage(ctx);
@@ -323,39 +410,28 @@ absl::StatusOr<std::unique_ptr<TilingSpace>> TilingSpace::Create(
   auto roots = fusion.GetRoots();
   TF_RET_CHECK(!roots.empty()) << "Fusion has no roots";
 
-  // TODO: b/502910372 - Support multi-output fusions. The option name is
-  // misleading as it is not GPU specific.
-  if (roots.size() > 1 &&
-      !roots.back()
-           .instruction()
-           .GetModule()
-           ->config()
-           .debug_options()
-           .xla_gpu_unsupported_enable_triton_multi_output_fusion()) {
-    return absl::UnimplementedError(
-        "TilingSpace does not support fusions with multiple roots");
-  }
+  // Append dimensions. This is necessary because symbols are created using the
+  // total number of dimensions, which needs to be known before any symbols are
+  // generated.
+  // TODO(b/502910372): Support arbitrary multi-output fusions. The option name
+  // is misleading as it is not GPU specific.
+  const HloModule* module = fusion.GetRoots().back().instruction().GetModule();
+  TF_RET_CHECK(module != nullptr) << "Fusion has no module";
+  const DebugOptions& debug_options = module->config().debug_options();
 
-  // First pass: Append all dimensions. This is necessary because symbols
-  // are created using the total number of dimensions, which needs to be known
-  // before any symbols are generated.
-  for (const HloInstructionAdaptor& root : roots) {
-    const Shape& root_shape = root.shape();
-    if (!root.shape().IsArray() && root.opcode() != HloOpcode::kReduce &&
-        root.opcode() != HloOpcode::kScan) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Unsupported root shape ", root_shape.ToString(),
-                       " for root ", root.instruction().ToString()));
-    }
-    // TODO(goncharov): why do we only care about the first shape of a tuple?
-    absl::Span<const int64_t> dims =
-        GetFirstShape(&root.instruction()).dimensions();
-    for (auto [index, dim] : llvm::enumerate(dims)) {
-      // Dimensions must be appended first so that the total count is known
-      // when creating Symbols.
-      tiling_space->AppendDimension(&root.instruction(), index, dim,
-                                    DimensionSemantics::kParallel);
-    }
+  if (roots.size() > 1 &&
+      AreShapesEqual(roots, Shape::Equal().IgnoreElementType()) &&
+      debug_options.xla_experimental_enable_same_shape_multi_output_fusion()) {
+    RETURN_IF_ERROR(
+        tiling_space->InitializeDimensionsForSimpleMultiOutputFusion(roots));
+  } else if (roots.size() == 1 ||
+             debug_options
+                 .xla_gpu_unsupported_enable_triton_multi_output_fusion()) {
+    // General case.
+    RETURN_IF_ERROR(tiling_space->InitializeDimensions(roots));
+  } else {
+    return absl::UnimplementedError(
+        "TilingSpace does not support fusions with multiple roots.");
   }
 
   // Iterator in reversed post-order (use-before-def).
