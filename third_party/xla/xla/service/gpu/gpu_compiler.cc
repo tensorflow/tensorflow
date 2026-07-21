@@ -609,6 +609,8 @@ GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
                         .getPointerSize(0 /* default address space */)),
       mlir_context_pool_(CreateMlirContext, kPreallocateMlirContexts) {}
 
+void GpuCompiler::ClearMlirContextPool() { mlir_context_pool_.Clear(); }
+
 namespace {
 // Adds the HloVerifier for GPU to the given pipeline.
 void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
@@ -666,7 +668,6 @@ absl::Status RunPreSPMDPartitionerPasses(HloModule* hlo_module,
   pre_spmd_pipeline.AddPass<CuDnnCustomCallConverter>();
   pre_spmd_pipeline.AddPass<CompositeRewriter>();
   pre_spmd_pipeline.AddPass<ConvertMemoryPlacementToInternalAnnotations>();
-  pre_spmd_pipeline.AddPass<ScanRewriter>();
   pre_spmd_pipeline.AddPass<FlattenCallGraph>();
   pre_spmd_pipeline.AddPass<CallInliner>(
       /*single_call_site=*/false, /*update_domain=*/false,
@@ -748,7 +749,8 @@ bool BackendConfigDeviceTypeIsHost(HloInstruction* instr) {
 }
 
 absl::Status RunOptimizationPasses(
-    HloModule* hlo_module, const GpuTargetConfig& gpu_target_config,
+    const GpuCompiler& compiler, HloModule* hlo_module,
+    const GpuTargetConfig& gpu_target_config,
     const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts,
     bool is_deviceless, bool is_early_exit_with_layouts,
     CompilationStats* compilation_stats) {
@@ -764,9 +766,10 @@ absl::Status RunOptimizationPasses(
   }
   pipeline.AddPass<RaggedDotRewriter>(gpu_version,
                                       gpu_target_config.dnn_version_info);
-  if (!debug_options.xla_gpu_experimental_scaled_dot_with_triton()) {
-    pipeline.AddPass<ScaledDotRewriter>();
-  }
+  pipeline.AddPass<ScaledDotRewriter>([&compiler, &gpu_target_config](
+                                          const HloInstruction* instr) {
+    return !compiler.IsScaledDotSupportedByBackend(instr, gpu_target_config);
+  });
   pipeline.AddPass<BatchedGatherScatterNormalizer>();
   if (debug_options.xla_gpu_multi_streamed_windowed_einsum()) {
     pipeline.AddPass<WindowedEinsumHandler>();
@@ -872,6 +875,13 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicDimensionSimplifier>();
 
+  // Rewrite eligible scans to CUB device scans only after SPMD partitioning,
+  // so sharded scans are partitioned as scans (the partitioner replicates
+  // unknown custom calls, and the CUB call's tuple result crashes the Shardy
+  // sharding import). The scans that remain fall through to
+  // AssociativeScanRewriter and ScanExpander below.
+  pipeline.AddPass<ScanRewriter>();
+
   int64_t rw_length = debug_options.xla_reduce_window_rewrite_base_length();
   pipeline.AddPass<HloPassFix<AssociativeScanRewriter>>(rw_length);
   if (rw_length != 0) {
@@ -971,7 +981,8 @@ absl::Status RunOptimizationPasses(
                                         .xla_gpu_dot_merger_threshold_mb()}
           << 20,
       queue_id);
-  pipeline.AddPass<DotDimensionNormalizer>();
+  pipeline.AddPass<DotDimensionNormalizer>(
+      !debug_options.xla_gpu_enable_triton_gemm());
   // Folding transpose operands into dots can undo the normal form established
   // by DotDecomposer. Subsequent passes must not rely on it from this point on.
   pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot);
@@ -1633,6 +1644,17 @@ bool RequiresCollectiveScheduleLinearizer(const HloModule* module,
 
 }  // namespace
 
+bool GpuCompiler::IsScaledDotSupportedByBackend(
+    const HloInstruction* instr,
+    const GpuTargetConfig& gpu_target_config) const {
+  const DebugOptions& debug_options =
+      instr->GetModule()->config().debug_options();
+  const se::GpuComputeCapability& gpu_version =
+      gpu_target_config.device_description.gpu_compute_capability();
+  return debug_options.xla_gpu_experimental_scaled_dot_with_triton() &&
+         IsTritonSupportedInstruction(*instr, gpu_version).IsAllowed();
+}
+
 AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
     AlgebraicSimplifierMode mode, const DebugOptions& debug_options,
     bool is_rocm) {
@@ -1648,6 +1670,10 @@ AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
   opts.set_rewrite_no_op_bitcast_convert_to_bitcast(true);
   opts.set_enable_conditional_simplification(true);
   opts.set_enable_fold_transpose_into_scatter(true);
+
+  if (!is_rocm && debug_options.xla_gpu_experimental_enable_conv_fusion()) {
+    opts.set_enable_folding_pad_into_convolution(false);
+  }
 
   switch (mode) {
     case AlgebraicSimplifierMode::kPostFusionSimplification:
@@ -1771,7 +1797,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
   DumpHloModuleIfEnabled(*hlo_module, "after_spmd_partitioner");
 
   RETURN_IF_ERROR(RunOptimizationPasses(
-      hlo_module, gpu_topology.gpu_target_config(),
+      *this, hlo_module, gpu_topology.gpu_target_config(),
       layout_insensitive_algsimp_opts,
       /*is_deviceless=*/stream_exec == nullptr, options.early_exit_with_layouts,
       compilation_stats));

@@ -66,6 +66,10 @@ class NVPTXCompiler : public GpuCompiler {
       HloPassPipeline& pipeline, const DebugOptions& debug_options,
       const se::GpuComputeCapability& gpu_version) override;
 
+  bool IsScaledDotSupportedByBackend(
+      const HloInstruction* instr,
+      const GpuTargetConfig& gpu_target_config) const override;
+
   absl::Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       const CompileOptions& options, const GpuTargetConfig& gpu_target_config,

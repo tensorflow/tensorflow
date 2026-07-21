@@ -93,22 +93,21 @@ TEST(AsyncThunkTest, ConcurrentMemsets) {
     BufferAllocation::Slice slice(&alloc, i * kChunkBytes, kChunkBytes);
     uint32_t value = static_cast<uint32_t>(100 + i);
 
-    ThunkSequence nested;
-    nested.push_back(std::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(),
-                                                             value, slice));
+    ThunkSequence nested = ThunkSequence::Of<Memset32BitValueThunk>(
+        Thunk::ThunkInfo(), value, slice);
 
     Thunk::ThunkInfo start_info;
     start_info.profile_annotation = absl::StrCat("start#", i);
     start_info.thunk_id = ThunkId(i + 1);
 
-    thunks.push_back(std::make_unique<AsyncStartThunk>(
-        std::move(start_info), ComputationStreamId(i), std::move(nested)));
+    thunks.Emplace<AsyncStartThunk>(std::move(start_info),
+                                    ComputationStreamId(i), std::move(nested));
   }
 
   for (int i = 0; i < kNumChunks; ++i) {
     auto* start = static_cast<AsyncStartThunk*>(thunks[i].get());
-    thunks.push_back(std::make_unique<AsyncDoneThunk>(
-        Thunk::ThunkInfo(), start->async_execution()));
+    thunks.Emplace<AsyncDoneThunk>(Thunk::ThunkInfo(),
+                                   start->async_execution());
   }
 
   // Build a ThunkExecutor to execute all thunks.

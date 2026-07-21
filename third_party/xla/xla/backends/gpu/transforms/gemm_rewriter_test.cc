@@ -2672,6 +2672,183 @@ ENTRY AddDotsFunc {
   }
 }
 
+TEST_F(ParameterizedGemmRewriteTest, ComplexGemmTransposeCombinations) {
+  if (!IsRocm()) {
+    GTEST_SKIP() << "rocBLAS complex GEMM redirect is ROCm-only";
+  }
+  // Exercises all 4 transpose combinations (NN, NT, TN, TT) with non-square
+  // C64 matrices to verify the rocBLAS fallback computes transposes correctly.
+  // NN: lhs[M,K] x rhs[K,N], contracting lhs={1}, rhs={0}
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemm_NN
+
+ENTRY main {
+  lhs = c64[3,5] parameter(0)
+  rhs = c64[5,7] parameter(1)
+  ROOT dot = c64[3,7] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+  // NT: lhs[M,K] x rhs[N,K], contracting lhs={1}, rhs={1}
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemm_NT
+
+ENTRY main {
+  lhs = c64[3,5] parameter(0)
+  rhs = c64[7,5] parameter(1)
+  ROOT dot = c64[3,7] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+  // TN: lhs[K,M] x rhs[K,N], contracting lhs={0}, rhs={0}
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemm_TN
+
+ENTRY main {
+  lhs = c64[5,3] parameter(0)
+  rhs = c64[5,7] parameter(1)
+  ROOT dot = c64[3,7] dot(lhs, rhs), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+  // TT: lhs[K,M] x rhs[N,K], contracting lhs={0}, rhs={1}
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemm_TT
+
+ENTRY main {
+  lhs = c64[5,3] parameter(0)
+  rhs = c64[7,5] parameter(1)
+  ROOT dot = c64[3,7] dot(lhs, rhs), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+}
+
+TEST_F(ParameterizedGemmRewriteTest, ComplexGemmTransposeCombinationsC128) {
+  if (!IsRocm()) {
+    GTEST_SKIP() << "rocBLAS complex GEMM redirect is ROCm-only";
+  }
+  // Same transpose coverage for C128 (complex double).
+  // NN
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemm128_NN
+
+ENTRY main {
+  lhs = c128[3,5] parameter(0)
+  rhs = c128[5,7] parameter(1)
+  ROOT dot = c128[3,7] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-12, 1e-12}));
+  }
+  // NT
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemm128_NT
+
+ENTRY main {
+  lhs = c128[3,5] parameter(0)
+  rhs = c128[7,5] parameter(1)
+  ROOT dot = c128[3,7] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-12, 1e-12}));
+  }
+  // TN
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemm128_TN
+
+ENTRY main {
+  lhs = c128[5,3] parameter(0)
+  rhs = c128[5,7] parameter(1)
+  ROOT dot = c128[3,7] dot(lhs, rhs), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-12, 1e-12}));
+  }
+  // TT
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemm128_TT
+
+ENTRY main {
+  lhs = c128[5,3] parameter(0)
+  rhs = c128[7,5] parameter(1)
+  ROOT dot = c128[3,7] dot(lhs, rhs), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-12, 1e-12}));
+  }
+}
+
+TEST_F(ParameterizedGemmRewriteTest, ComplexGemmBatchedTranspose) {
+  if (!IsRocm()) {
+    GTEST_SKIP() << "rocBLAS complex GEMM redirect is ROCm-only";
+  }
+  // NN
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemmBatched_NN
+
+ENTRY main {
+  lhs = c64[4,3,5] parameter(0)
+  rhs = c64[4,5,7] parameter(1)
+  ROOT dot = c64[4,3,7] dot(lhs, rhs), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+  // NT
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemmBatched_NT
+
+ENTRY main {
+  lhs = c64[4,3,5] parameter(0)
+  rhs = c64[4,7,5] parameter(1)
+  ROOT dot = c64[4,3,7] dot(lhs, rhs), lhs_contracting_dims={2}, rhs_contracting_dims={2}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+  // TN
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemmBatched_TN
+
+ENTRY main {
+  lhs = c64[4,5,3] parameter(0)
+  rhs = c64[4,5,7] parameter(1)
+  ROOT dot = c64[4,3,7] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+  // TT
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemmBatched_TT
+
+ENTRY main {
+  lhs = c64[4,5,3] parameter(0)
+  rhs = c64[4,7,5] parameter(1)
+  ROOT dot = c64[4,3,7] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={2}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+}
+
 TEST_F(ParameterizedGemmRewriteTest, ComplexAlphaSimpleRewrite) {
   if (IsRocm() && GetDebugOptionsForTest().xla_gpu_enable_cublaslt()) {
     GTEST_SKIP() << "TODO: Unsupported C64 gpublas-lt datatype on ROCM";

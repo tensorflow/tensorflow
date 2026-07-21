@@ -123,9 +123,13 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
     mlir::sdy::registerAllDialects(registry);
     context->appendDialectRegistry(registry);
 
+    // The MLIR Lexer (used by the text/assembly parser) assumes the input
+    // buffer is null-terminated. To avoid ASan stack-buffer-overflows when
+    // parsing text-based StableHLO, we copy the serialized data to a
+    // `std::string` to guarantee null-termination before deserialization.
+    std::string flat_str(serialized);
     mlir::OwningOpRef<mlir::ModuleOp> module =
-        mlir::stablehlo::deserializePortableArtifact(
-            absl::Cord(serialized).Flatten(), context.get());
+        mlir::stablehlo::deserializePortableArtifact(flat_str, context.get());
     if (!module) {
       const absl::Status status = diagnostic_handler.ConsumeStatus();
       return absl::InvalidArgumentError(

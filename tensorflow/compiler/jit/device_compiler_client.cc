@@ -38,7 +38,8 @@ xla::ExecutableBuildOptions GetExecutableBuildOptions(
   build_options.mutable_debug_options()->set_xla_detailed_logging(
       options.detailed_logging);
   if (tensorflow::OpDeterminismRequired()) {
-    build_options.mutable_debug_options()->set_xla_gpu_deterministic_ops(true);
+    build_options.mutable_debug_options()
+        ->set_xla_gpu_exclude_nondeterministic_ops(true);
   }
   return build_options;
 }

@@ -2714,5 +2714,40 @@ TEST_F(LayoutAssignmentTest, SharedBranchComputationMismatch) {
   EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
 }
 
+TEST_F(LayoutAssignmentTest, AsyncStartDoneMandatoryConstraints) {
+  const char* module_str = R"hlo(
+HloModule AsyncStartDoneMandatoryConstraints, entry_computation_layout={(f32[4,8]{0,1})->f32[4,8]{0,1}}
+
+%async_comp (param: f32[4,8]) -> f32[4,8] {
+  %param = f32[4,8]{0,1} parameter(0)
+  ROOT %copy = f32[4,8]{0,1} copy(%param)
+}
+
+ENTRY %main (param: f32[4,8]) -> f32[4,8] {
+  %param = f32[4,8]{0,1} parameter(0)
+  %async_start = ((f32[4,8]{0,1}), f32[4,8]{0,1}, s32[]) async-start(%param), calls=%async_comp
+  ROOT %async_done = f32[4,8]{0,1} async-done(%async_start)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout* computation_layout = m->mutable_entry_computation_layout();
+  LayoutAssignment layout_assignment(computation_layout);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+
+  const HloInstruction* async_start =
+      FindInstruction(m.get(), HloOpcode::kAsyncStart);
+  ASSERT_NE(async_start, nullptr);
+  EXPECT_TRUE(LayoutUtil::Equal(async_start->operand(0)->shape().layout(),
+                                LayoutUtil::MakeLayout({0, 1})));
+
+  const HloInstruction* async_done =
+      FindInstruction(m.get(), HloOpcode::kAsyncDone);
+  ASSERT_NE(async_done, nullptr);
+  EXPECT_TRUE(LayoutUtil::Equal(async_done->shape().layout(),
+                                LayoutUtil::MakeLayout({0, 1})));
+}
+
 }  // namespace
 }  // namespace xla

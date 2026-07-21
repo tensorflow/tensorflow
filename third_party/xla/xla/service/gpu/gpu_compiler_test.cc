@@ -1553,10 +1553,10 @@ TEST_F(GpuCompilerTest, NoCudnnVectorizationOnHopperAndBeyond) {
   const HloModule* optimized_module = optimized_module_and_executable.first;
 
   constexpr absl::string_view kVectorizationdExpected = R"(
-    CHECK: (f32[10,64,19,29]{3,2,1,0}, u8[{{[0-9]*}}]{0}) custom-call
+    CHECK: f32[10,64,19,29]{3,2,1,0}{{(, u8\[.*\]\{0\}\) custom-call| convolution)\(}}
   )";
   constexpr absl::string_view kNoVectorizationExpected = R"(
-    CHECK: (f32[10,19,29,64]{3,2,1,0}, u8[{{[0-9]*}}]{0}) custom-call
+    CHECK: f32[10,19,29,64]{3,2,1,0}{{(, u8\[.*\]\{0\}\) custom-call| convolution)\(}}
   )";
   absl::string_view expected =
       is_hopper_or_beyond ? kNoVectorizationExpected : kVectorizationdExpected;
@@ -1614,9 +1614,16 @@ TEST_P(GpuCompilerSelectKTest, SelectKOrCustomKernelThunk) {
   auto [n, k, expected_impl] = GetParam();
 
   bool is_rocm = device_description().gpu_compute_capability().IsRocm();
+  bool is_oneapi = device_description().gpu_compute_capability().IsOneAPI();
 
   if (is_rocm && expected_impl == TopKImpl::kSelectK) {
     GTEST_SKIP() << "raft::select_k is not supported in ROCm.";
+  }
+  // TODO(intel-tf): Remove this check once TopK specialization for SYCL/oneAPI
+  // backend is added.
+  if (is_oneapi && expected_impl != TopKImpl::kSort) {
+    GTEST_SKIP()
+        << "oneAPI does not support raft::select_k and custom TopK yet.";
   }
   // Generate HLO text with parameters substituted.
   std::string hlo_text = absl::Substitute(R"(
@@ -1711,8 +1718,9 @@ XLA_FFI_DEFINE_HANDLER(
         .Ret<ffi::AnyBuffer>());
 
 TEST_F(GpuCompilerTest, MosaicMultimemRequiresSymmetricMemoryCopies) {
-  if (device_description().gpu_compute_capability().IsRocm()) {
-    GTEST_SKIP() << "Mosaic GPU is not supported on ROCm.";
+  if (device_description().gpu_compute_capability().IsRocm() ||
+      device_description().gpu_compute_capability().IsOneAPI()) {
+    GTEST_SKIP() << "Mosaic GPU is not supported on ROCm and oneAPI.";
   }
   XLA_FFI_Handler_Bundle bundle = {
       /*instantiate=*/nullptr,
@@ -1782,8 +1790,9 @@ TEST_F(GpuCompilerTest, MosaicMultimemRequiresSymmetricMemoryCopies) {
 }
 
 TEST_F(GpuCompilerTest, MosaicCollectiveMetadataRequiresSymmetricMemoryCopies) {
-  if (device_description().gpu_compute_capability().IsRocm()) {
-    GTEST_SKIP() << "Mosaic GPU is not supported on ROCm.";
+  if (device_description().gpu_compute_capability().IsRocm() ||
+      device_description().gpu_compute_capability().IsOneAPI()) {
+    GTEST_SKIP() << "Mosaic GPU is not supported on ROCm and oneAPI.";
   }
   XLA_FFI_Handler_Bundle bundle = {
       /*instantiate=*/nullptr,
@@ -2806,7 +2815,7 @@ TEST_F(GpuCompilerTest, SymmetricBuffersMultipleCollectives) {
       ar = f32[1024] all-reduce(p0), replica_groups={}, to_apply=add, channel_id=1
       ag = f32[1024] all-gather(p_ag), replica_groups={{0,1}}, dimensions={0}, use_global_device_ids=true, channel_id=2
       ar_large = f32[2048] all-reduce(p1), replica_groups={}, to_apply=add, channel_id=3
-      
+
       ROOT tuple = (f32[1024], f32[1024], f32[2048]) tuple(ar, ag, ar_large)
     }
   )";
@@ -2861,7 +2870,7 @@ TEST_F(GpuCompilerTest, SymmetricBuffersSeveralFilters) {
 
       ar = f32[1024] all-reduce(p0), replica_groups={}, to_apply=add, channel_id=1
       ag = s32[2048] all-gather(p1), replica_groups={{0,1}}, dimensions={0}, use_global_device_ids=true, channel_id=2
-      
+
       ROOT tuple = (f32[1024], s32[2048]) tuple(ar, ag)
     }
   )";
@@ -2923,7 +2932,7 @@ TEST_F(GpuCompilerTest, SymmetricBuffersOverlappingFilters) {
 
       ar_small = f32[1024] all-reduce(p0), replica_groups={}, to_apply=add, channel_id=1
       ar_large = f32[2048] all-reduce(p1), replica_groups={}, to_apply=add, channel_id=2
-      
+
       ROOT tuple = (f32[1024], f32[2048]) tuple(ar_small, ar_large)
     }
   )";
@@ -2966,6 +2975,38 @@ TEST_F(GpuCompilerTest, SymmetricBuffersOverlappingFilters) {
                                                  .set_print_operand_shape(false)
                                                  .set_print_metadata(false)),
                   expected_check),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(GpuCompilerTest, TritonGemmDisabledDotNormalization) {
+  const char* hlo_text = R"(
+HloModule source_dots
+
+ENTRY source_dots_computation {
+  %lhs = bf16[1024,32,128]{2,1,0} parameter(0)
+  %rhs_q = bf16[128,128]{1,0} parameter(1)
+  %rhs_k = bf16[128,128]{1,0} parameter(2)
+  %rhs_v = bf16[128,128]{1,0} parameter(3)
+
+  %dot_q = bf16[1024,32,128]{2,1,0} dot(%lhs, %rhs_q), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  %dot_k = bf16[1024,32,128]{2,1,0} dot(%lhs, %rhs_k), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  %dot_v = bf16[1024,32,128]{2,1,0} dot(%lhs, %rhs_v), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+
+  ROOT %result = (bf16[1024,32,128]{2,1,0}, bf16[1024,32,128]{2,1,0}, bf16[1024,32,128]{2,1,0}) tuple(%dot_q, %dot_k, %dot_v)
+}
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options().set_xla_gpu_enable_triton_gemm(false);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(hlo_text, config));
+
+  constexpr absl::string_view expected_check = R"(
+    // CHECK: custom_call_target="__cublas
+  )";
+
+  EXPECT_THAT(RunFileCheck(optimized_module->ToString(), expected_check),
               absl_testing::IsOkAndHolds(true));
 }
 

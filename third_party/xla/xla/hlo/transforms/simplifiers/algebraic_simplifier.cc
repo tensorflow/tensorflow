@@ -10010,6 +10010,9 @@ absl::Status AlgebraicSimplifierVisitor::HandleTranspose(
 
 absl::StatusOr<bool> AlgebraicSimplifierVisitor::FoldConvInputPad(
     HloInstruction* convolution) {
+  if (!options_.enable_folding_pad_into_convolution()) {
+    return false;
+  }
   HloInstruction *lhs, *a, *b;
   if (Match(convolution,
             m::Convolution(m::Pad(&lhs, m::Op(&a), m::ConstantScalar(0)),
@@ -10071,6 +10074,9 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::FoldConvInputPad(
 
 absl::StatusOr<bool> AlgebraicSimplifierVisitor::FoldConvFilterPad(
     HloInstruction* convolution) {
+  if (!options_.enable_folding_pad_into_convolution()) {
+    return false;
+  }
   auto* lhs = convolution->mutable_operand(0);
   auto* rhs = convolution->mutable_operand(1);
   const ConvolutionDimensionNumbers& dnums =

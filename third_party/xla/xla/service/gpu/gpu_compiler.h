@@ -130,6 +130,10 @@ class GpuCompiler : public LLVMCompiler {
     return false;
   }
 
+  virtual bool IsScaledDotSupportedByBackend(
+      const HloInstruction* instr,
+      const GpuTargetConfig& gpu_target_config) const;
+
   enum class AlgebraicSimplifierMode {
     kLayoutInsensitive,
     kPostFusionSimplification,
@@ -162,6 +166,9 @@ class GpuCompiler : public LLVMCompiler {
     absl::MutexLock lock(user_asm_hook_m_);
     user_asm_hook_ = nullptr;
   }
+
+  // Clears the MLIR context pool.
+  void ClearMlirContextPool();
 
  protected:
   struct BackendCompileResult {

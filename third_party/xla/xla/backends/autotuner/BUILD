@@ -455,9 +455,13 @@ xla_cc_test(
     deps = [
         ":autotuner_cache_interface",
         ":backends_proto_cc",
+        ":codegen_backend",
+        ":fake_codegen_backend",
         ":local_cache",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
     ],

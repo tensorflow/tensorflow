@@ -33,7 +33,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/lib/comparators.h"
-#include "xla/hlo/builder/lib/sorting.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -43,13 +42,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
-#include "xla/service/call_inliner.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -479,12 +477,15 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
     if (should_decompose_ && !should_decompose_(inst)) {
       return absl::OkStatus();
     }
-    TF_RET_CHECK(inst != nullptr);
     auto* topk = DynCast<HloTopKInstruction>(inst);
-    TF_RET_CHECK(topk != nullptr);
 
+    // Use packed BF16 sort optimization when applicable: BF16 input with
+    // largest=true, both values and indices used, and the last dimension size
+    // fits in 16 bits so indices can be packed.
+    constexpr int32_t kLow16BitsLimit = int32_t{1} << 16;
     if (topk->largest() && topk->operand(0)->shape().element_type() == BF16 &&
-        !HasSingleUserReadingOnlyTheValueOutput(topk)) {
+        !HasSingleUserReadingOnlyTheValueOutput(topk) &&
+        topk->operand(0)->shape().dimensions().back() < kLow16BitsLimit) {
       return DecomposeTopKWithSorting(topk);
     }
 
@@ -518,44 +519,145 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
     return comparator;
   }
 
+  // Decompose BF16 TopK by packing values and indices into a single S32 value,
+  // sorting, then unpacking. This avoids the two-operand sort and uses an
+  // unstable single-operand sort on packed S32 values. The BF16 values occupy
+  // the high 16 bits (in ones' complement form for correct ordering) and the
+  // indices occupy the low 16 bits.
+  //
+  // This implementation constructs HLO directly rather than going through
+  // XlaBuilder to avoid generating SetDimensionSize instructions that are
+  // incompatible with while loop bodies on some GPU backends.
   absl::Status DecomposeTopKWithSorting(HloInstruction* call) {
     HloInstruction* input = call->mutable_operand(0);
-    TF_RET_CHECK(input != nullptr);
     const Shape& input_shape = input->shape();
+    int64_t rank = input_shape.dimensions().size();
+    int64_t last_dim = rank - 1;
 
-    int64_t k_elements = 0;
-    if (call->opcode() == HloOpcode::kTopK) {
-      auto* topk = DynCast<HloTopKInstruction>(call);
-      TF_RET_CHECK(topk != nullptr);
-      k_elements = topk->k();
-    } else {
-      k_elements = call->shape().tuple_shapes(0).dimensions().back();
-    }
+    HloTopKInstruction* topk = DynCast<HloTopKInstruction>(call);
+    int64_t k = topk->k();
 
-    XlaBuilder b(absl::StrCat("decompose_topk_with_sorting_", call->name()));
-    XlaOp input_op = Parameter(&b, 0, input_shape, "input");
-    PrimitiveType index_type = call->shape().tuple_shapes(1).element_type();
-    XlaOp topk_op = xla::TopK(input_op, k_elements, index_type);
-    ASSIGN_OR_RETURN(XlaComputation xla_comp, b.Build(topk_op));
+    constexpr int32_t kLow16BitsLimit = int32_t{1} << 16;
+    constexpr int32_t kLow16BitsMask = kLow16BitsLimit - 1;
+    constexpr int32_t kHigh16BitsMask = ~kLow16BitsMask;
+    constexpr int32_t kAllNonSignBits = 0x7fffffff;
+
+    HloComputation* parent_comp = call->parent();
+    Shape s32_shape = ShapeUtil::ChangeElementType(input_shape, S32);
+    Shape f32_shape = ShapeUtil::ChangeElementType(input_shape, F32);
+
+    // Helper: broadcast an S32 scalar constant to the given shape.
+    auto broadcast_s32 = [&](int32_t value, const Shape& shape) {
+      return parent_comp->AddInstruction(HloInstruction::CreateBroadcast(
+          shape,
+          parent_comp->AddInstruction(HloInstruction::CreateConstant(
+              LiteralUtil::CreateR0<int32_t>(value))),
+          {}));
+    };
+
+    // Sign-magnitude to ones' complement conversion: converts IEEE 754 floats
+    // (viewed as S32 after bitcast) to a representation where integer
+    // comparison preserves float ordering.
+    auto sign_mag_to_ones_comp = [&](HloInstruction* s32_input,
+                                     const Shape& shape) {
+      HloInstruction* non_sign = parent_comp->AddInstruction(
+          HloInstruction::CreateBinary(shape, HloOpcode::kAnd, s32_input,
+                                       broadcast_s32(kAllNonSignBits, shape)));
+      HloInstruction* sign_mask = parent_comp->AddInstruction(
+          HloInstruction::CreateBinary(shape, HloOpcode::kShiftRightArithmetic,
+                                       s32_input, broadcast_s32(31, shape)));
+      return parent_comp->AddInstruction(HloInstruction::CreateBinary(
+          shape, HloOpcode::kXor, non_sign, sign_mask));
+    };
+
+    // Step 1: Convert BF16 -> F32 -> bitcast to S32.
+    HloInstruction* input_f32 = parent_comp->AddInstruction(
+        HloInstruction::CreateConvert(f32_shape, input));
+    HloInstruction* input_s32 = parent_comp->AddInstruction(
+        HloInstruction::CreateBitcastConvert(s32_shape, input_f32));
+
+    // Step 2: Apply sign-magnitude to ones' complement conversion.
+    HloInstruction* input_ones_comp =
+        sign_mag_to_ones_comp(input_s32, s32_shape);
+
+    // Step 3: OR with kLow16BitsMask to set low 16 bits, reversing the index
+    // order for tie-breaking in the sort.
+    HloInstruction* input_with_low_bits = parent_comp->AddInstruction(
+        HloInstruction::CreateBinary(s32_shape, HloOpcode::kOr, input_ones_comp,
+                                     broadcast_s32(kLow16BitsMask, s32_shape)));
+
+    // Step 4: Create iota for indices.
+    HloInstruction* iota = parent_comp->AddInstruction(
+        HloInstruction::CreateIota(s32_shape, last_dim));
+
+    // Step 5: XOR input with iota to pack values and indices together.
+    HloInstruction* packed =
+        parent_comp->AddInstruction(HloInstruction::CreateBinary(
+            s32_shape, HloOpcode::kXor, input_with_low_bits, iota));
+
+    // Step 6: Sort in descending order (GT comparator on S32, unstable).
+    XlaBuilder b(absl::StrCat("packed_comparator_", call->name()));
+    XlaComputation gt_comp = CreateScalarGtComputation({S32}, &b);
     ASSIGN_OR_RETURN(
-        HloComputation * decomp_comp,
-        XlaComputationToHloComputation(xla_comp, call->parent()->parent()));
-    HloInstruction* kCall = call->parent()->AddInstruction(
-        HloInstruction::CreateCall(call->shape(), {input}, decomp_comp));
-    RETURN_IF_ERROR(ReplaceInstruction(call, kCall));
-    RETURN_IF_ERROR(CallInliner::Inline(kCall).status());
+        HloComputation * comparator,
+        XlaComputationToHloComputation(gt_comp, parent_comp->parent()));
+
+    HloInstruction* sorted = parent_comp->AddInstruction(
+        HloInstruction::CreateSort(s32_shape, last_dim, {packed}, comparator,
+                                   /*is_stable=*/false));
+
+    // Step 7: Slice top-k elements.
+    std::vector<int64_t> zeroes(rank, 0);
+    std::vector<int64_t> ones(rank, 1);
+    std::vector<int64_t> limits(input_shape.dimensions().begin(),
+                                input_shape.dimensions().end());
+    limits[last_dim] = k;
+    Shape sliced_s32_shape = call->shape().tuple_shapes(1);  // S32[..., k]
+
+    HloInstruction* sliced =
+        parent_comp->AddInstruction(HloInstruction::CreateSlice(
+            sliced_s32_shape, sorted, zeroes, limits, ones));
+
+    // Step 8: Extract values. Apply ones' complement conversion back, mask
+    // high 16 bits, bitcast to F32, convert to BF16.
+    HloInstruction* sliced_ones_comp =
+        sign_mag_to_ones_comp(sliced, sliced_s32_shape);
+    HloInstruction* high_bits =
+        parent_comp->AddInstruction(HloInstruction::CreateBinary(
+            sliced_s32_shape, HloOpcode::kAnd, sliced_ones_comp,
+            broadcast_s32(kHigh16BitsMask, sliced_s32_shape)));
+    Shape sliced_f32_shape =
+        ShapeUtil::ChangeElementType(sliced_s32_shape, F32);
+    HloInstruction* values_f32 = parent_comp->AddInstruction(
+        HloInstruction::CreateBitcastConvert(sliced_f32_shape, high_bits));
+    HloInstruction* values =
+        parent_comp->AddInstruction(HloInstruction::CreateConvert(
+            call->shape().tuple_shapes(0), values_f32));
+
+    // Step 9: Extract indices. XOR with kLow16BitsMask to invert the index
+    // bits back, AND with kLow16BitsMask to isolate the index bits.
+    HloInstruction* indices_xor =
+        parent_comp->AddInstruction(HloInstruction::CreateBinary(
+            sliced_s32_shape, HloOpcode::kXor, sliced,
+            broadcast_s32(kLow16BitsMask, sliced_s32_shape)));
+    HloInstruction* indices =
+        parent_comp->AddInstruction(HloInstruction::CreateBinary(
+            sliced_s32_shape, HloOpcode::kAnd, indices_xor,
+            broadcast_s32(kLow16BitsMask, sliced_s32_shape)));
+
+    // Step 10: Create tuple of (values, indices) and replace.
+    RETURN_IF_ERROR(ReplaceInstruction(
+        call, parent_comp->AddInstruction(
+                  HloInstruction::CreateTuple({values, indices}))));
     return absl::OkStatus();
   }
 
   absl::Status DecomposeTopKFallback(HloInstruction* call,
                                      HloComputation* variadic_comparator) {
     HloInstruction* input = call->mutable_operand(0);
-    TF_RET_CHECK(input != nullptr);
     const Shape& input_shape = input->shape();
     int64_t rank = input_shape.dimensions().size();
-    TF_RET_CHECK(rank > 0);
     size_t sort_dimension = rank - 1;
-
     Shape iota_shape = input->shape();
     iota_shape.set_element_type(S32);
     bool is_stable = true;

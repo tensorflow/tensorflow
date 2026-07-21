@@ -6206,27 +6206,6 @@ ENTRY main {
   EXPECT_EQ(actual.GetFirstElement<int32_t>(), static_cast<int32_t>(3));
 }
 
-TEST_F(HloEvaluatorTest, SetDimensionSizeStatic) {
-  const absl::string_view hlo_text = R"(
-HloModule Test
-
-ENTRY main {
-  size = s32[] parameter(0)
-  data = s32[4] parameter(1)
-  ROOT result = s32[4] set-dimension-size(data, size), dimensions={0}
-}
-)";
-  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
-
-  Literal size_arg = LiteralUtil::CreateR0<int32_t>(3);
-  Literal data_arg = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4});
-
-  ASSERT_OK_AND_ASSIGN(Literal actual, Evaluate({&size_arg, &data_arg}));
-
-  EXPECT_FALSE(actual.shape().is_dynamic_dimension(0));
-  EXPECT_EQ(actual.GetFirstElement<int32_t>(), 1);
-}
-
 // Check that we get a useful error if we pass inputs of the wrong shape.
 TEST_F(HloEvaluatorTest, EvaluateWithWrongInputShapes) {
   const absl::string_view hlo_text = R"(
