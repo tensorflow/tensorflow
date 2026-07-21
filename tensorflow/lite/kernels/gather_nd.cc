@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <stdint.h>
+#include <cstdint>
 
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -83,9 +83,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_KERNEL_LOG(context, "Indices must be at least a vector.");
     return kTfLiteError;
   }
-  if (indices_nd > params_rank) {
+  if (indices_nd < 0 || indices_nd > params_rank) {
     TF_LITE_KERNEL_LOG(
-        context, "Index innermost dimension length must be <= params rank.");
+        context,
+        "Index innermost dimension length must be in [0, params rank].");
     return kTfLiteError;
   }
 
@@ -95,6 +96,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // The result shape is
   // indices.shape[:-1] + params.shape[indices.shape[-1]:]
   const int output_rank = indices_rank + params_rank - indices_nd - 1;
+  TF_LITE_ENSURE(context, output_rank >= 0);
   TfLiteIntArray* output_shape = TfLiteIntArrayCreate(output_rank);
   int output_index = 0;
   for (int i = 0; i < indices_rank - 1; ++i) {
