@@ -27,6 +27,10 @@ tf_class {
     argspec: "args=[\'self\', \'dtype\', \'size\', \'dynamic_size\', \'clear_after_read\', \'tensor_array_name\', \'handle\', \'flow\', \'infer_shape\', \'element_shape\', \'colocate_with_first_write_call\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'True\', \'None\', \'True\', \'None\'], "
   }
   member_method {
+    name: "__tf_tracing_type__"
+    argspec: "args=[\'self\', \'_\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "close"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
