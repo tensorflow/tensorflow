@@ -4299,13 +4299,24 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
                          scheduler_core_->GetMemoryPeak() + fragmentation_size >
                              initial_memory_limit;
        iter++) {
+    double backoff_factor = 0.9;
+    if (iter == scheduler_core_->GetRerunTimes() - 1) {
+      double excess_ratio =
+          static_cast<double>(scheduler_core_->GetMemoryPeak() +
+                              fragmentation_size - initial_memory_limit) /
+          initial_memory_limit;
+      backoff_factor = std::max(0.1, std::min(0.9, 1.0 - excess_ratio));
+    }
     LOG(INFO) << "LatencyHidingScheduler current memory usage: "
               << scheduler_core_->GetMemoryPeak() + fragmentation_size
               << " bytes, does not fit in initial limit: "
               << initial_memory_limit << ". Setting the new limit to "
-              << static_cast<uint64_t>(scheduler_core_->GetMemoryLimit() * 0.9);
+              << static_cast<uint64_t>(scheduler_core_->GetMemoryLimit() *
+                                       backoff_factor)
+              << " (backoff factor: " << backoff_factor << ")";
     RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
-    scheduler_core_->SetMemoryLimit(scheduler_core_->GetMemoryLimit() * 0.9);
+    scheduler_core_->SetMemoryLimit(scheduler_core_->GetMemoryLimit() *
+                                    backoff_factor);
     for (HloComputation* computation : computations_to_schedule_) {
       ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
                        scheduler_core_->ScheduleComputation(computation));
