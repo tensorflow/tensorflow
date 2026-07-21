@@ -205,6 +205,14 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
                 .set_int64_value(value);
           },
           options.mutable_profiler_options());
+    } else if (key == "use_system_hostname") {
+      SetOption<bool>(
+          key, kw.second,
+          [](tensorflow::ProfileOptions* options, bool value) {
+            (*options->mutable_advanced_configuration())["use_system_hostname"]
+                .set_bool_value(value);
+          },
+          options.mutable_profiler_options());
     } else if (absl::StartsWith(key, "tpu_")) {
       std::visit(
           SetAdvancedOption{options.mutable_profiler_options(), kw.first},

@@ -54,6 +54,7 @@ gpu_device_info {
   device_interconnect_info {
     active_links: 6
   }
+  collective_memory_granularity: 2097152
 }
 platform_name: "CUDA"
 dnn_version_info {

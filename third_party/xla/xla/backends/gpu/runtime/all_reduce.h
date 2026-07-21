@@ -86,10 +86,11 @@ se::gpu::AllReduceStrategy GetAllReduceStrategy(int64_t input_size_bytes,
 int64_t GetMaxSupportedAllReduceSizeBytes(se::gpu::AllReduceStrategy strategy);
 
 // Returns the launch dimensions for the all-reduce kernel.
-// The launch dimensions are determined by the number of elements and the
-// the all-reduce strategy.
-LaunchDimensions AllReduceLaunchDimensions(int64_t elements, int64_t num_ranks,
-                                           se::gpu::AllReduceStrategy strategy);
+// The launch dimensions are determined by the number of elements, the
+// all-reduce strategy, and the warp size of the target device.
+LaunchDimensions AllReduceLaunchDimensions(
+    int64_t elements, int64_t num_ranks, se::gpu::AllReduceStrategy strategy,
+    const se::DeviceDescription& device_info);
 
 // Creates a CollectiveKernelSpec for a given all-reduce instruction.
 absl::StatusOr<CollectiveKernelSpec> CreateAllReduceKernelSpec(

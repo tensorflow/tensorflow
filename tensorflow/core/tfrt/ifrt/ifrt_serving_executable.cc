@@ -972,45 +972,50 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
 
   LOG(INFO) << "Cache missed. Building executable";
 
-  tensorflow::tpu::TPUCompileMetadataProto compile_metadata =
-      original_compile_metadata_;
+  auto create_bundle = [&]() -> absl::StatusOr<SharedCachedExecutableBundle> {
+    tensorflow::tpu::TPUCompileMetadataProto compile_metadata =
+        original_compile_metadata_;
 
-  // b/469105465: Add test coverage for core selection in execution.
-  if (UsePortableExecution()) {
-    // Clear device_assignment because portable execution doesn't allow device
-    // assignment.
-    compile_metadata.clear_device_assignment();
-  }
-
-  TF_RETURN_IF_ERROR(
-      UpdateCompileMetadata(compile_metadata, dtypes_and_shapes));
-
-  absl::StatusOr<SharedCachedExecutableBundle> executable_bundle =
-      CreateExecutableSynchronously(std::move(module_copy), compile_metadata,
-                                    dtypes_and_shapes, variable_arg_indices);
-
-  if (!executable_bundle.ok()) {
-    promise.Set(executable_bundle.status());
-    return executable_bundle.status();
-  }
-
-  if (UsePortableExecution()) {
-    // If core selector is enabled, we load variables on all cores.
-    for (const auto& device : ifrt_client_->addressable_devices()) {
-      TF_ASSIGN_OR_RETURN(xla::ifrt::DeviceListRef selected_device_list,
-                          ifrt_client_->MakeDeviceList({device}));
-      TF_RETURN_IF_ERROR(LoadAndRegisterVariableOnExecutable(
-          inputs, variable_arg_indices, selected_device_list,
-          (*executable_bundle).get()));
+    // b/469105465: Add test coverage for core selection in execution.
+    if (UsePortableExecution()) {
+      // Clear device_assignment because portable execution doesn't allow device
+      // assignment.
+      compile_metadata.clear_device_assignment();
     }
-  } else {
-    TF_RETURN_IF_ERROR(LoadAndRegisterVariableOnExecutable(
-        inputs, variable_arg_indices, device_list, (*executable_bundle).get()));
+
+    TF_RETURN_IF_ERROR(
+        UpdateCompileMetadata(compile_metadata, dtypes_and_shapes));
+
+    TF_ASSIGN_OR_RETURN(
+        SharedCachedExecutableBundle executable_bundle,
+        CreateExecutableSynchronously(std::move(module_copy), compile_metadata,
+                                      dtypes_and_shapes, variable_arg_indices));
+
+    if (UsePortableExecution()) {
+      // If core selector is enabled, we load variables on all cores.
+      for (const auto& device : ifrt_client_->addressable_devices()) {
+        TF_ASSIGN_OR_RETURN(xla::ifrt::DeviceListRef selected_device_list,
+                            ifrt_client_->MakeDeviceList({device}));
+        TF_RETURN_IF_ERROR(LoadAndRegisterVariableOnExecutable(
+            inputs, variable_arg_indices, selected_device_list,
+            executable_bundle.get()));
+      }
+    } else {
+      TF_RETURN_IF_ERROR(LoadAndRegisterVariableOnExecutable(
+          inputs, variable_arg_indices, device_list, executable_bundle.get()));
+    }
+
+    return executable_bundle;
+  }();
+
+  if (!create_bundle.ok()) {
+    promise.Set(create_bundle.status());
+    return create_bundle.status();
   }
 
-  promise.Set(std::move(executable_bundle));
+  promise.Set(*create_bundle);
 
-  // Here is a immediate return as promise is already set.
+  // Here is an immediate return as promise is already set.
   return future;
 }
 

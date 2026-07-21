@@ -73,9 +73,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
 
@@ -211,7 +209,11 @@ class PriorityFusionQueue {
         cost_analysis_(std::move(cost_analysis)),
         combined_gpu_performance_model_(
             *device_info, fusion_analysis_cache, *mlir_context,
-            cost_analysis_options.shape_size, use_experimental_tiling),
+            cost_analysis_options.shape_size, use_experimental_tiling,
+            computation->parent()
+                ->config()
+                .debug_options()
+                .xla_experimental_enable_same_shape_multi_output_fusion()),
         fusion_process_dump_(fusion_process_dump),
         thread_pool_(thread_pool),
         fusion_analysis_cache_(fusion_analysis_cache),

@@ -435,5 +435,6 @@ cc_library(
         "@com_google_absl//absl/time",
         "@xla//xla/tsl/platform:env",
         "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:logging",
     ],
 )

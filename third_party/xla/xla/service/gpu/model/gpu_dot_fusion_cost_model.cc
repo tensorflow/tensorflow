@@ -366,6 +366,52 @@ absl::Duration CalculatePipelinedLoopTime(int64_t num_stages,
   return prologue_time + overlap_time + epilogue_time + hbm_timing.write_time;
 }
 
+int64_t CalculateHardwareLaunchWaves(int64_t threadblock_count,
+                                     int64_t shared_memory_per_block_bytes,
+                                     int num_warps,
+                                     const se::DeviceDescription& device_info) {
+  const int64_t hardware_max_shmem = device_info.shared_memory_per_core();
+  const int64_t hardware_max_threads = device_info.threads_per_core_limit();
+  const int64_t max_blocks_by_shmem =
+      shared_memory_per_block_bytes > 0
+          ? hardware_max_shmem / shared_memory_per_block_bytes
+          : hardware_max_threads;
+  const int64_t max_blocks_by_threads =
+      hardware_max_threads / (num_warps * device_info.threads_per_warp());
+
+  const int64_t active_blocks_per_sm = std::max<int64_t>(
+      1, std::min(max_blocks_by_shmem, max_blocks_by_threads));
+  const int64_t total_gpu_capacity =
+      active_blocks_per_sm * device_info.core_count();
+  return CeilOfRatio<int64_t>(threadblock_count, total_gpu_capacity);
+}
+
+absl::Duration CalculatePipelinedLoopTimeWithLaunchWaves(
+    int64_t num_stages, int64_t k_loop_iterations, int64_t threadblock_count,
+    absl::Duration compute_time, const HbmEstimates& hbm_timing,
+    int64_t shared_memory_per_block_bytes, int num_warps,
+    const se::DeviceDescription& device_info) {
+  if (threadblock_count == 0) {
+    return absl::ZeroDuration();
+  }
+
+  const int64_t launch_waves = CalculateHardwareLaunchWaves(
+      threadblock_count, shared_memory_per_block_bytes, num_warps, device_info);
+
+  // Evaluate the pipeline loop per-wave so the latency tax isn't diluted.
+  // The total execution time is then the cost of a single wave multiplied by
+  // the number of sequentially executed waves.
+  const absl::Duration single_wave_compute = compute_time / launch_waves;
+
+  HbmEstimates single_wave_hbm;
+  single_wave_hbm.read_time = hbm_timing.read_time / launch_waves;
+  single_wave_hbm.write_time = hbm_timing.write_time / launch_waves;
+
+  return CalculatePipelinedLoopTime(num_stages, k_loop_iterations,
+                                    single_wave_compute, single_wave_hbm) *
+         launch_waves;
+}
+
 int64_t CalculateLoopIterBytes(const DotProblemInfo& dot,
                                const DotTileSize& dot_tile) {
   int64_t lhs_iter_bytes = CeilOfRatio<int64_t>(
@@ -373,6 +419,19 @@ int64_t CalculateLoopIterBytes(const DotProblemInfo& dot,
   int64_t rhs_iter_bytes = CeilOfRatio<int64_t>(
       dot_tile.b * dot_tile.k * dot_tile.n * BitWidth(dot.rhs_element_type), 8);
   return lhs_iter_bytes + rhs_iter_bytes;
+}
+
+int64_t CalculateSharedMemoryPerBlockBytes(const DotProblemInfo& dot_info,
+                                           const DotTileSize& dot_tile,
+                                           int64_t num_stages) {
+  const int64_t lhs_tile_bytes =
+      dot_tile.m * dot_tile.k *
+      primitive_util::BitWidth(dot_info.lhs_element_type) / 8;
+  const int64_t rhs_tile_bytes =
+      dot_tile.n * dot_tile.k *
+      primitive_util::BitWidth(dot_info.rhs_element_type) / 8;
+
+  return (lhs_tile_bytes + rhs_tile_bytes) * num_stages;
 }
 
 }  // namespace detail
@@ -498,6 +557,10 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   estimates.l2_bytes_read =
       detail::CalculateL2Bytes(dot_info, dot_tile, threadblock_count);
 
+  estimates.shared_memory_per_block_bytes =
+      detail::CalculateSharedMemoryPerBlockBytes(dot_info, dot_tile,
+                                                 num_stages);
+
   // Calculate L2 time.
   ASSIGN_OR_RETURN(absl::Duration l2_time,
                    detail::CalculateL2Time(dot_info.k, dot_tile.k, device_info,
@@ -511,9 +574,12 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   const int64_t k_loop_iterations =
       CeilOfRatio<int64_t>(dot_info.k, block_k_val);
 
-  absl::Duration pipelined_loop_time = detail::CalculatePipelinedLoopTime(
-      num_stages, k_loop_iterations, compute_and_flops.compute_time,
-      hbm_timing);
+  absl::Duration pipelined_loop_time =
+      detail::CalculatePipelinedLoopTimeWithLaunchWaves(
+          num_stages, k_loop_iterations, threadblock_count,
+          compute_and_flops.compute_time, hbm_timing,
+          estimates.shared_memory_per_block_bytes, block_params.num_warps,
+          device_info);
 
   // Assuming perfect overlap between compute and memory for the rest,
   // but main loop is now modeled precisely.

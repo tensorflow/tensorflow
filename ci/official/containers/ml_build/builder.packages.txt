@@ -11,7 +11,7 @@ sudo
 swig
 unzip
 zip
-openjdk-21-jdk
+openjdk-25-jdk
 vim
 wget
 jq

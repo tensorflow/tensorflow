@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -36,11 +35,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
-#include "xla/service/gpu/triton_fusion_analysis.h"
+#include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -53,17 +50,20 @@ namespace {
 // layout. Logically, dot output shape has lhs non-contracting dimensions
 // followed by rhs non-contracting dimensions that have to be swapped, but
 // that's countered by the layout.
-HloDotInstruction* MakeDotWithSwappedOperands(HloInstruction* dot) {
+absl::StatusOr<HloDotInstruction*> MakeDotWithSwappedOperands(
+    HloInstruction* dot) {
   HloComputation* computation = dot->parent();
 
-  const DotDimensionNumbers& dot_dims = dot->dot_dimension_numbers();
-  const size_t num_batch_dims = dot_dims.lhs_batch_dimensions_size();
+  ASSIGN_OR_RETURN(DotOperandDims lhs_dims,
+                   DotOperandDims::FromDotOperand(dot, 0));
+  ASSIGN_OR_RETURN(DotOperandDims rhs_dims,
+                   DotOperandDims::FromDotOperand(dot, 1));
+
+  const size_t num_batch_dims = lhs_dims.Rank(DotOperandDims::kBatch);
   const size_t num_lhs_noncontracting_dims =
-      dot->operand(0)->shape().dimensions().size() - num_batch_dims -
-      dot_dims.lhs_contracting_dimensions_size();
+      lhs_dims.Rank(DotOperandDims::kNonContracting);
   const size_t num_rhs_noncontracting_dims =
-      dot->operand(1)->shape().dimensions().size() - num_batch_dims -
-      dot_dims.rhs_contracting_dimensions_size();
+      rhs_dims.Rank(DotOperandDims::kNonContracting);
 
   std::vector<int64_t> out_shape_permutation;
   out_shape_permutation.reserve(dot->shape().dimensions().size());
@@ -82,11 +82,9 @@ HloDotInstruction* MakeDotWithSwappedOperands(HloInstruction* dot) {
   const Shape new_dot_shape =
       ShapeUtil::ReorderLogicalDimensions(dot->shape(), out_shape_permutation);
 
-  DotDimensionNumbers new_dot_dims = dot_dims;
-  std::swap(*new_dot_dims.mutable_lhs_batch_dimensions(),
-            *new_dot_dims.mutable_rhs_batch_dimensions());
-  std::swap(*new_dot_dims.mutable_lhs_contracting_dimensions(),
-            *new_dot_dims.mutable_rhs_contracting_dimensions());
+  ASSIGN_OR_RETURN(
+      DotDimensionNumbers new_dot_dims,
+      DotOperandDims::CreateDotDimensionNumbers(rhs_dims, lhs_dims));
 
   return DynCast<HloDotInstruction>(computation->AddInstruction(
       HloInstruction::CreateDot(new_dot_shape, dot->mutable_operand(1),
@@ -101,7 +99,8 @@ HloDotInstruction* MakeDotWithSwappedOperands(HloInstruction* dot) {
 absl::Status SwapDotOperandsInFusion(HloComputation* computation) {
   HloInstruction* dot =
       hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
-  HloDotInstruction* new_dot = MakeDotWithSwappedOperands(dot);
+  ASSIGN_OR_RETURN(HloDotInstruction * new_dot,
+                   MakeDotWithSwappedOperands(dot));
   HloInstruction* new_bitcast = computation->AddInstruction(
       HloInstruction::CreateBitcast(dot->shape(), new_dot), &dot->metadata());
   RETURN_IF_ERROR(dot->ReplaceAllUsesWith(new_bitcast));
@@ -131,23 +130,6 @@ bool HasCodeGeneratingInstructions(const HloInstruction* instruction) {
   return false;
 }
 
-absl::StatusOr<int64_t> GetNonContractingDimsNumElements(
-    const HloInstruction* dot, size_t operand_index) {
-  const Shape& shape = dot->operand(operand_index)->shape();
-  const DotDimensionNumbers& dot_dims = dot->dot_dimension_numbers();
-  const absl::Span<const int64_t> batch_dim_indices =
-      operand_index == 0 ? dot_dims.lhs_batch_dimensions()
-                         : dot_dims.rhs_batch_dimensions();
-  const absl::Span<const int64_t> contracting_dim_indices =
-      operand_index == 0 ? dot_dims.lhs_contracting_dimensions()
-                         : dot_dims.rhs_contracting_dimensions();
-  const DimensionVector noncontracting_dim_indices = GetNonContractingDims(
-      shape.dimensions().size(), contracting_dim_indices, batch_dim_indices);
-  return absl::c_accumulate(
-      noncontracting_dim_indices, int64_t{1},
-      [&](int64_t acc, int64_t dim) { return acc * shape.dimensions(dim); });
-}
-
 // There are two reasons to swap operands:
 // 1. If one side performs computation and the other doesn't, we want the
 // "computing" side to be the lhs. wgmma supports lhs in registers, and
@@ -163,10 +145,14 @@ absl::StatusOr<bool> ShouldSwapOperands(const HloInstruction* instr) {
   }
   const bool lhs_has_code = HasCodeGeneratingInstructions(dot->operand(0));
   const bool rhs_has_code = HasCodeGeneratingInstructions(dot->operand(1));
-  ASSIGN_OR_RETURN(const int64_t lhs_size,
-                   GetNonContractingDimsNumElements(dot, /*operand_index=*/0));
-  ASSIGN_OR_RETURN(const int64_t rhs_size,
-                   GetNonContractingDimsNumElements(dot, /*operand_index=*/1));
+
+  ASSIGN_OR_RETURN(DotOperandDims lhs_dims,
+                   DotOperandDims::FromDotOperand(dot, /*operand_number=*/0));
+  ASSIGN_OR_RETURN(DotOperandDims rhs_dims,
+                   DotOperandDims::FromDotOperand(dot, /*operand_number=*/1));
+  const int64_t lhs_size = lhs_dims.TotalSize(DotOperandDims::kNonContracting);
+  const int64_t rhs_size = rhs_dims.TotalSize(DotOperandDims::kNonContracting);
+
   if (lhs_size < 64 && rhs_size >= 64) {
     return true;
   }
@@ -174,21 +160,6 @@ absl::StatusOr<bool> ShouldSwapOperands(const HloInstruction* instr) {
     return true;
   }
   return false;
-}
-
-// Triton emitter is not fully symmetric, so it's not possible to emit all
-// fusions with swapped dot operands. This function checks if the emitter could
-// handle such a fusion.
-absl::StatusOr<bool> EmitterCanHandleSwappedOperands(
-    const HloInstruction* dot) {
-  auto tmp_module = HloModule("tmp", dot->parent()->parent()->config());
-  HloCloneContext clone_context(&tmp_module);
-  HloComputation* cloned_computation = tmp_module.AddEntryComputation(
-      dot->parent()->CloneInContext(clone_context));
-  RETURN_IF_ERROR(SwapDotOperandsInFusion(cloned_computation));
-  // If we fail to create a TritonFusionAnalysis, then the emitter can't handle
-  // the fusion and choose not to make any changes.
-  return TritonFusionAnalysis::Execute(*cloned_computation).ok();
 }
 
 absl::StatusOr<bool> MaybeSwapOperands(HloComputation* computation) {
@@ -199,11 +170,6 @@ absl::StatusOr<bool> MaybeSwapOperands(HloComputation* computation) {
   }
   ASSIGN_OR_RETURN(const bool should_swap_operands, ShouldSwapOperands(dot));
   if (!should_swap_operands) {
-    return false;
-  }
-  ASSIGN_OR_RETURN(const bool can_handle_swapped_operands,
-                   EmitterCanHandleSwappedOperands(dot));
-  if (!can_handle_swapped_operands) {
     return false;
   }
   RETURN_IF_ERROR(SwapDotOperandsInFusion(computation));

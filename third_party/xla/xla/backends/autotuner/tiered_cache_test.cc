@@ -122,7 +122,7 @@ TEST_F(TieredCacheTest, PropagationOnLookupMiss) {
   auto persistent_cache = std::make_unique<DirectoryCache>(
       cache_ctx, cache_dir_, CacheMode::kReadWrite, KeyMatchingMode::kStrict);
   auto local_cache = std::make_unique<LocalCache>(
-      persistent_cache->GetKeyMatchingMode(), &local_storage_);
+      cache_ctx, persistent_cache->GetKeyMatchingMode(), &local_storage_);
   TieredCache cache(std::move(local_cache), std::move(persistent_cache));
 
   // Verify that the statistics start empty.
@@ -161,7 +161,7 @@ TEST_F(TieredCacheTest, TotalMissStat) {
   auto persistent_cache = std::make_unique<DirectoryCache>(
       cache_ctx, cache_dir_, CacheMode::kReadWrite, KeyMatchingMode::kStrict);
   auto local_cache = std::make_unique<LocalCache>(
-      persistent_cache->GetKeyMatchingMode(), &local_storage_);
+      cache_ctx, persistent_cache->GetKeyMatchingMode(), &local_storage_);
   TieredCache cache(std::move(local_cache), std::move(persistent_cache));
 
   // Verify stats start at 0.
@@ -188,7 +188,7 @@ TEST_F(TieredCacheTest, DualInsertion) {
   auto persistent_cache = std::make_unique<DirectoryCache>(
       cache_ctx, cache_dir_, CacheMode::kReadWrite, KeyMatchingMode::kStrict);
   auto local_cache = std::make_unique<LocalCache>(
-      persistent_cache->GetKeyMatchingMode(), &local_storage_);
+      cache_ctx, persistent_cache->GetKeyMatchingMode(), &local_storage_);
   TieredCache cache(std::move(local_cache), std::move(persistent_cache));
   AutotunerCacheInterface::Config config = CreateTestConfig();
 

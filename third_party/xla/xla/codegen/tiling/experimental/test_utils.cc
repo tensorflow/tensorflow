@@ -136,6 +136,7 @@ absl::StatusOr<std::vector<int64_t>> EvaluateAccessedIndexesForTile(
 absl::Status VerifyTileEquivalence(const Tile& tile_a, const Shape& shape_a,
                                    const Tile& tile_b, const Shape& shape_b,
                                    TilingSpace* tiling_space) {
+  // TODO: b/532069302 - remove after updating tests.
   if (tiling_space->IsSymbolic()) {
     return absl::OkStatus();
   }

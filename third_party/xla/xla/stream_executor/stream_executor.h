@@ -204,10 +204,24 @@ class StreamExecutor {
     return absl::UnimplementedError("Not implemented for this executor.");
   }
 
+  virtual absl::StatusOr<uint64_t> GetCollectiveMemoryGranularity() const {
+    return absl::UnimplementedError("Not implemented for this executor.");
+  }
+
   virtual bool HostMemoryUnregister(void* location) { return false; };
   virtual bool HostMemoryRegister(void* location, uint64_t size) {
     return false;
   };
+  virtual bool IsHostMemoryPinned(const void* ptr, uint64_t size) {
+    if (size == 0) return false;
+    auto start_space = GetPointerMemorySpace(ptr);
+    if (!start_space.ok() || *start_space != MemorySpace::kHost) {
+      return false;
+    }
+    auto end_space =
+        GetPointerMemorySpace(static_cast<const char*>(ptr) + size - 1);
+    return end_space.ok() && *end_space == MemorySpace::kHost;
+  }
 
   // Blocks the caller while "size" bytes are copied to the given location in
   // device memory.

@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/backends/profiler/cpu/host_tracer.h"
 
+#include <any>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -22,6 +24,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/tsl/profiler/backends/cpu/host_tracer_utils.h"
 #include "xla/tsl/profiler/backends/cpu/threadpool_listener.h"
 #include "xla/tsl/profiler/backends/cpu/traceme_recorder.h"
@@ -54,6 +57,11 @@ class HostTracer : public tsl::profiler::ProfilerInterface {
 
   absl::Status CollectData(  // TENSORFLOW_STATUS_OK
       tensorflow::profiler::XSpace* space) override;
+
+  absl::StatusOr<tsl::profiler::ConsumeResult> Consume() override;
+
+  absl::Status Serialize(std::any data,
+                         tensorflow::profiler::XSpace* space) override;
 
  private:
   // Level of host tracing.
@@ -89,6 +97,7 @@ HostTracer::HostTracer(int host_trace_level, uint64_t filter_mask,
 HostTracer::~HostTracer() { Stop().IgnoreError(); }  // NOLINT
 
 absl::Status HostTracer::Start() {  // TENSORFLOW_STATUS_OK
+  VLOG(1) << "HostTracer::Start called";
   if (recording_) {
     return absl::InternalError("TraceMeRecorder already started");
   }
@@ -128,6 +137,86 @@ absl::Status HostTracer::CollectData(  // TENSORFLOW_STATUS_OK
           space, tsl::profiler::kHostThreadsPlaneName);
   ConvertCompleteEventsToXPlane(start_timestamp_ns_, std::exchange(events_, {}),
                                 plane);
+  return absl::OkStatus();
+}
+
+absl::StatusOr<tsl::profiler::ConsumeResult> HostTracer::Consume() {
+  VLOG(1) << "HostTracer::Consume called, recording=" << recording_;
+  tsl::profiler::TraceMeRecorder::Events events;
+  if (recording_) {
+    events = tsl::profiler::TraceMeRecorder::Flush();
+  } else {
+    events = std::exchange(events_, {});
+  }
+  uint64_t current_chunk_start_ns = start_timestamp_ns_;
+  uint64_t now_ns = tsl::profiler::GetCurrentTimeNanos();
+  start_timestamp_ns_ = now_ns;
+
+  size_t total_events = 0;
+  size_t estimated_size = 0;
+  constexpr size_t kAverageEventNameCapacity = 64;
+  for (const auto& thread : events) {
+    size_t num_events = thread.events.size();
+    total_events += num_events;
+    estimated_size += sizeof(thread.thread);
+    estimated_size += thread.thread.name.capacity();
+    estimated_size +=
+        num_events * sizeof(tsl::profiler::TraceMeRecorder::Event);
+    estimated_size += num_events * kAverageEventNameCapacity;
+  }
+  VLOG(1) << "HostTracer::Consume: flushed " << events.size()
+          << " threads, total events=" << total_events;
+
+  HostTracerChunk chunk;
+  chunk.start_timestamp_ns = current_chunk_start_ns;
+  chunk.events = std::move(events);
+
+  tsl::profiler::ConsumeResult result;
+  result.data = std::make_any<HostTracerChunk>(std::move(chunk));
+  result.estimated_size_bytes = estimated_size;
+  return result;
+}
+
+absl::Status HostTracer::Serialize(std::any data,
+                                   tensorflow::profiler::XSpace* space) {
+  VLOG(1) << "HostTracer::Serialize called";
+  if (space == nullptr) {
+    return absl::InvalidArgumentError("XSpace pointer cannot be null.");
+  }
+  auto* chunk = std::any_cast<HostTracerChunk>(&data);
+  if (chunk == nullptr) {
+    return absl::InvalidArgumentError("Invalid data type passed to Serialize.");
+  }
+  if (chunk->events.empty()) {
+    VLOG(1) << "HostTracer::Serialize: events is empty, doing nothing";
+    return absl::OkStatus();
+  }
+  size_t total_events = 0;
+  for (const auto& thread : chunk->events) {
+    total_events += thread.events.size();
+  }
+  VLOG(1) << "HostTracer::Serialize: serializing " << chunk->events.size()
+          << " threads, total events=" << total_events;
+
+  // TODO(sannidhya): Find a better way to align the events. This computation
+  // of min event time might be redundant as it is also done later.
+  uint64_t min_event_time_ns = 0;
+  for (const auto& thread : chunk->events) {
+    for (const auto& event : thread.events) {
+      if (min_event_time_ns == 0 || event.start_time < min_event_time_ns) {
+        min_event_time_ns = event.start_time;
+      }
+    }
+  }
+
+  uint64_t baseline_ns =
+      (min_event_time_ns > 0) ? min_event_time_ns : chunk->start_timestamp_ns;
+
+  tensorflow::profiler::XPlane* plane =
+      tsl::profiler::FindOrAddMutablePlaneWithName(
+          space, tsl::profiler::kHostThreadsPlaneName);
+  ConvertCompleteEventsToXPlane(baseline_ns, std::move(chunk->events), plane);
+  chunk->events.clear();
   return absl::OkStatus();
 }
 

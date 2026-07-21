@@ -100,9 +100,31 @@ absl::Duration CalculatePipelinedLoopTime(int64_t num_stages,
                                           absl::Duration compute_time,
                                           const HbmEstimates& hbm_timing);
 
+// Estimates main loop and epilogue execution time, accounting for
+// memory/compute pipelining. Unlike CalculatePipelinedLoopTime, this restricts
+// pipeline overlap potential by evaluating latency overhead per hardware wave,
+// assuming discrete waves execute sequentially.
+absl::Duration CalculatePipelinedLoopTimeWithLaunchWaves(
+    int64_t num_stages, int64_t k_loop_iterations, int64_t threadblock_count,
+    absl::Duration compute_time, const HbmEstimates& hbm_timing,
+    int64_t shared_memory_per_block_bytes, int num_warps,
+    const se::DeviceDescription& device_info);
+
+// Calculates the estimated number of hardware launch waves required to execute
+// the threadblocks.
+int64_t CalculateHardwareLaunchWaves(int64_t threadblock_count,
+                                     int64_t shared_memory_per_block_bytes,
+                                     int num_warps,
+                                     const se::DeviceDescription& device_info);
+
 // Calculates the bytes read from HBM for one inner loop iteration.
 int64_t CalculateLoopIterBytes(const DotProblemInfo& dot,
                                const DotTileSize& dot_tile);
+
+// Calculates the shared memory per block in bytes.
+int64_t CalculateSharedMemoryPerBlockBytes(const DotProblemInfo& dot_info,
+                                           const DotTileSize& dot_tile,
+                                           int64_t num_stages);
 
 // Calculates the L2 time for a GPU DOT operation.
 absl::StatusOr<absl::Duration> CalculateL2Time(

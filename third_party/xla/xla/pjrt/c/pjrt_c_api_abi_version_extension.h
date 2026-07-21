@@ -166,20 +166,26 @@ typedef PJRT_Error* PJRT_ExecutableAbiVersion_FromProto(
 
 typedef struct PJRT_AbiVersion_Extension {
   PJRT_Extension_Base base;
-  PJRT_Client_RuntimeAbiVersion* client_runtime_abi_version;
-  PJRT_Executable_GetAbiVersion* executable_get_abi_version;
-  PJRT_RuntimeAbiVersion_Destroy* runtime_abi_version_destroy;
-  PJRT_RuntimeAbiVersion_IsCompatibleWithRuntime*
+  PJRT_NO_DISCARD PJRT_Client_RuntimeAbiVersion* client_runtime_abi_version;
+  PJRT_NO_DISCARD PJRT_Executable_GetAbiVersion* executable_get_abi_version;
+  PJRT_NO_DISCARD PJRT_RuntimeAbiVersion_Destroy* runtime_abi_version_destroy;
+  PJRT_NO_DISCARD PJRT_RuntimeAbiVersion_IsCompatibleWithRuntime*
       runtime_abi_version_is_compatible_with_runtime;
-  PJRT_RuntimeAbiVersion_IsCompatibleWithExecutable*
+  PJRT_NO_DISCARD PJRT_RuntimeAbiVersion_IsCompatibleWithExecutable*
       runtime_abi_version_is_compatible_with_executable;
-  PJRT_RuntimeAbiVersion_ToProto* runtime_abi_version_to_proto;
-  PJRT_RuntimeAbiVersion_PlatformId* runtime_abi_version_platform_id;
-  PJRT_ExecutableAbiVersion_Destroy* executable_abi_version_destroy;
-  PJRT_ExecutableAbiVersion_ToProto* executable_abi_version_to_proto;
-  PJRT_ExecutableAbiVersion_PlatformId* executable_abi_version_platform_id;
-  PJRT_RuntimeAbiVersion_FromProto* runtime_abi_version_from_proto;
-  PJRT_ExecutableAbiVersion_FromProto* executable_abi_version_from_proto;
+  PJRT_NO_DISCARD PJRT_RuntimeAbiVersion_ToProto* runtime_abi_version_to_proto;
+  PJRT_NO_DISCARD PJRT_RuntimeAbiVersion_PlatformId*
+      runtime_abi_version_platform_id;
+  PJRT_NO_DISCARD PJRT_ExecutableAbiVersion_Destroy*
+      executable_abi_version_destroy;
+  PJRT_NO_DISCARD PJRT_ExecutableAbiVersion_ToProto*
+      executable_abi_version_to_proto;
+  PJRT_NO_DISCARD PJRT_ExecutableAbiVersion_PlatformId*
+      executable_abi_version_platform_id;
+  PJRT_NO_DISCARD PJRT_RuntimeAbiVersion_FromProto*
+      runtime_abi_version_from_proto;
+  PJRT_NO_DISCARD PJRT_ExecutableAbiVersion_FromProto*
+      executable_abi_version_from_proto;
 } PJRT_AbiVersion_Extension;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_AbiVersion_Extension,
                           executable_abi_version_from_proto);

@@ -456,15 +456,12 @@ TEST(WhileThunkTest, ToProto) {
   BufferAllocation::Slice slice(&alloc, /*offset=*/0, /*size=*/256);
 
   ThunkSequence condition_thunks;
-  condition_thunks.push_back(
-      std::make_unique<DummyThunk>(Kind::kConditional, thunk_info));
-  condition_thunks.push_back(
-      std::make_unique<DummyThunk>(Kind::kConditional, thunk_info));
+  condition_thunks.Emplace<DummyThunk>(Kind::kConditional, thunk_info);
+  condition_thunks.Emplace<DummyThunk>(Kind::kConditional, thunk_info);
 
   ThunkSequence body_thunks;
-  body_thunks.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
-  body_thunks.push_back(
-      std::make_unique<DummyThunk>(Kind::kCustomCall, thunk_info));
+  body_thunks.Emplace<DummyThunk>(Kind::kGemm, thunk_info);
+  body_thunks.Emplace<DummyThunk>(Kind::kCustomCall, thunk_info);
 
   WhileThunk thunk =
       CreateWhileThunk(thunk_info, slice, std::move(condition_thunks),
@@ -535,11 +532,10 @@ TEST(WhileThunkTest, TransformNested) {
   Thunk::ThunkInfo thunk_info;
   BufferAllocation::Slice slice;
 
-  ThunkSequence condition_thunks;
-  condition_thunks.push_back(
-      std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
-  ThunkSequence body_thunks;
-  body_thunks.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
+  ThunkSequence condition_thunks =
+      ThunkSequence::Of<DummyThunk>(Kind::kGemm, thunk_info);
+  ThunkSequence body_thunks =
+      ThunkSequence::Of<DummyThunk>(Kind::kGemm, thunk_info);
 
   auto while_thunk = std::make_unique<WhileThunk>(
       Thunk::ThunkInfo(),

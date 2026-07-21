@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/constraint_expression.h"
@@ -224,6 +225,11 @@ class TilingSpace {
   absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>> GetValidTilings();
 
  private:
+  absl::Status InitializeDimensions(
+      absl::Span<const HloInstructionAdaptor> roots);
+  absl::Status InitializeDimensionsForSimpleMultiOutputFusion(
+      absl::Span<const HloInstructionAdaptor> roots);
+
   void ProcessDotLike(const HloInstruction& hlo);
   void ProcessReduce(const HloInstruction& hlo);
   void ProcessScan(const HloInstruction& hlo);
@@ -275,6 +281,10 @@ class TilingSpace {
 // If the shape is a tuple, return the shape at the given index.
 // Otherwise, return the shape itself.
 const Shape& GetFirstShape(const HloInstruction* instr, int64_t index = 0);
+
+// Returns a symbol replacement map to set concrete tile sizes.
+llvm::DenseMap<SymbolicExpr, SymbolicExpr> GetTileSizeReplacementMap(
+    const TilingSpace& tiling_space, absl::Span<const int64_t> tile_sizes);
 
 }  // namespace xla::gpu::experimental
 

@@ -508,7 +508,7 @@ TEST_F(ElementalHloToMlirTest, Pad) {
     // CHECK:        %[[FROM_INPUT:.*]] = arith.andi %[[X_AND_CONSTRAINT]], %[[Y_BOUNDS]]
     // CHECK:        %[[RET:.*]] = scf.if %[[FROM_INPUT]]
     // CHECK:          %[[IN0:.*]] = xla.apply_indexing
-    // CHECK-SAME:         <"(d0) -> ((d0 - 1) / 2), domain: d0 in [1, 7]">(%[[X]])
+    // CHECK-SAME:         <"(d0) -> ((d0 + 1) / 2 - 1), domain: d0 in [1, 7]">(%[[X]])
     // CHECK:          %[[IN1:.*]] = xla.apply_indexing
     // CHECK-SAME:         <"(d0) -> (d0 - 4), domain: d0 in [4, 7]">(%[[Y]])
     // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]][%[[IN0]], %[[IN1]]]
@@ -550,7 +550,7 @@ TEST_F(ElementalHloToMlirTest, PadUnsigned) {
     // CHECK:        %[[FROM_INPUT:.*]] = arith.andi %[[X_AND_CONSTRAINT]], %[[Y_BOUNDS]]
     // CHECK:        %[[RET:.*]] = scf.if %[[FROM_INPUT]]
     // CHECK:          %[[IN0:.*]] = xla.apply_indexing
-    // CHECK-SAME:         <"(d0) -> ((d0 - 1) / 2), domain: d0 in [1, 7]">(%[[X]])
+    // CHECK-SAME:         <"(d0) -> ((d0 + 1) / 2 - 1), domain: d0 in [1, 7]">(%[[X]])
     // CHECK:          %[[IN1:.*]] = xla.apply_indexing
     // CHECK-SAME:         <"(d0) -> (d0 - 4), domain: d0 in [4, 7]">(%[[Y]])
     // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]][%[[IN0]], %[[IN1]]]

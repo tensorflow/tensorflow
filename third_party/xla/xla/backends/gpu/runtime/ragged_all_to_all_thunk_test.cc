@@ -526,7 +526,7 @@ TEST_F(GpuRaggedAllToAllTest, TestCommandBufferThunkContainsCorrectThunks) {
   // The collective is sync (single device), so no AsyncStart/Done wrapping.
   EXPECT_THAT(kinds, ElementsAre(Kind::kCustomKernel, Kind::kCustomKernel,
                                  Kind::kCustomKernel, Kind::kCustomKernel,
-                                 Kind::kRaggedAllToAll));
+                                 Kind::kRaggedAllToAll, Kind::kCopy));
 }
 
 TEST(CollectiveThunkTest, ProtoRoundTrip) {

@@ -6104,5 +6104,84 @@ TEST_F(LatencyHidingSchedulerTest, NopBypassPreferenceInteraction) {
       << "Expected bitcast.0 to be scheduled before negate.0";
 }
 
+TEST_F(LatencyHidingSchedulerTest, NoOOMWithManyComputationsAndBuffers) {
+  // Verifies that the memory tracking in LatencyHidingScheduler does not
+  // cause host OOM for a model with a large number of computations  and a large
+  // number of global buffers.
+  auto hlo_module = std::make_unique<VerifiedHloModule>(
+      "memory_explosion_module", GetModuleConfigForTest(),
+      /*verifier_layout_sensitive=*/false,
+      /*allow_mixed_precision_in_hlo_verifier=*/true, ShapeSizeBytes);
+
+  const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+
+  // Create kNumSubComputations sub-computations. Each sub-computation contains
+  // a parameter and a negate.
+  static constexpr int kNumSubComputations = 40000;
+  std::vector<HloComputation*> sub_computations;
+  sub_computations.reserve(kNumSubComputations);
+  for (int i = 0; i < kNumSubComputations; ++i) {
+    HloComputation::Builder sub_builder(absl::StrCat("sub_comp_", i));
+    HloInstruction* sub_param = sub_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "sub_param"));
+    HloInstruction* sub_negate =
+        sub_builder.AddInstruction(HloInstruction::CreateUnary(
+            scalar_shape, HloOpcode::kNegate, sub_param));
+    sub_computations.push_back(
+        hlo_module->AddEmbeddedComputation(sub_builder.Build(sub_negate)));
+  }
+
+  // Create entry computation.
+  HloComputation::Builder entry_builder("entry");
+  HloInstruction* param = entry_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "param"));
+
+  // Add a dummy custom call with force_delay to trigger the scheduler.
+  HloInstruction* custom_call = entry_builder.AddInstruction(
+      HloInstruction::CreateCustomCall(scalar_shape, {param}, "dummy_target"));
+  FrontendAttributes attributes;
+  (*attributes.mutable_map())["scheduler_hint"] = "force_delay";
+  custom_call->set_frontend_attributes(attributes);
+
+  // Create a flat chain of kNegate instructions to create kNumBuffers global
+  // values/buffers.
+  static constexpr int kNumBuffers = 200000;
+  HloInstruction* last_negate = custom_call;
+  for (int i = 0; i < kNumBuffers; ++i) {
+    last_negate = entry_builder.AddInstruction(HloInstruction::CreateUnary(
+        scalar_shape, HloOpcode::kNegate, last_negate));
+  }
+
+  HloInstruction* last_call = last_negate;
+  for (int i = 0; i < kNumSubComputations; ++i) {
+    last_call = entry_builder.AddInstruction(HloInstruction::CreateCall(
+        scalar_shape, {last_call}, sub_computations[i]));
+  }
+
+  hlo_module->AddEntryComputation(entry_builder.Build(last_call));
+
+  // Construct and set an initial valid HloSchedule on the module.
+  HloSchedule schedule(hlo_module.get());
+  for (HloComputation* comp : hlo_module->computations()) {
+    schedule.set_sequence(comp, comp->MakeInstructionPostOrder());
+  }
+  TF_ASSERT_OK(hlo_module->set_schedule(std::move(schedule)));
+
+  // Run the scheduler.
+  SchedulerConfig sched_config = GetDefaultSchedConfig();
+
+  absl::StatusOr<std::pair<std::unique_ptr<LatencyHidingScheduler>,
+                           std::shared_ptr<SchedulerCore>>>
+      scheduler_setup_or = SetupScheduler(hlo_module.get(), sched_config);
+  TF_ASSERT_OK(scheduler_setup_or.status());
+  std::pair<std::unique_ptr<LatencyHidingScheduler>,
+            std::shared_ptr<SchedulerCore>>
+      scheduler_setup = std::move(*scheduler_setup_or);
+  std::unique_ptr<LatencyHidingScheduler> scheduler =
+      std::move(scheduler_setup.first);
+
+  TF_EXPECT_OK(scheduler->Run(hlo_module.get()));
+}
+
 }  // namespace
 }  // namespace xla

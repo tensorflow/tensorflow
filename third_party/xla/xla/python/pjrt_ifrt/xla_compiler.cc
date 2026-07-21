@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -51,7 +52,7 @@ class XlaCompileOptionsSerDes
     return "xla::ifrt::XlaCompileOptions";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     const SerDesVersion version = GetRequestedSerDesVersion(options.get());
@@ -87,11 +88,11 @@ class XlaCompileOptionsSerDes
           xla_compile_options.outputs_bundle_slice_sizes->begin(),
           xla_compile_options.outputs_bundle_slice_sizes->end());
     }
-    return proto.SerializeAsString();
+    return proto.SerializeAsCord();
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions>) override {
     XlaCompileOptionsProto proto;
     if (!proto.ParseFromString(serialized)) {

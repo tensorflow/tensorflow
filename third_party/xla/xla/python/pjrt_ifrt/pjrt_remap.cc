@@ -47,9 +47,9 @@ PjRtCompatibleClientRemapArrays(PjRtCompatibleClient* client,
                                 absl::Span<xla::ifrt::ArrayRef> arrays,
                                 ArrayCopySemantics semantics) {
   RETURN_IF_ERROR(plan.CheckArrayCopySemantics(semantics));
-  const int num_inputs = plan.input_specs.size();
+  const int num_inputs = plan.input_specs().size();
   const int num_actual_inputs = arrays.size();
-  const int num_outputs = plan.output_specs.size();
+  const int num_outputs = plan.output_specs().size();
   if (num_inputs != num_actual_inputs) {
     return InvalidArgument("RemapArrays expects %d input arrays, but got %d",
                            num_inputs, num_actual_inputs);
@@ -61,29 +61,29 @@ PjRtCompatibleClientRemapArrays(PjRtCompatibleClient* client,
           arrays[i]->DebugString());
     }
 
-    if (plan.input_specs[i].dtype != arrays[i]->dtype()) {
+    if (plan.input_specs()[i].dtype != arrays[i]->dtype()) {
       return InvalidArgument(
           "RemapArrays expects input #%d to have dtype %v, but got %v", i,
-          plan.input_specs[i].dtype, arrays[i]->dtype());
+          plan.input_specs()[i].dtype, arrays[i]->dtype());
     }
-    if (plan.input_specs[i].shape != arrays[i]->shape()) {
+    if (plan.input_specs()[i].shape != arrays[i]->shape()) {
       return InvalidArgument(
           "RemapArrays expects input #%d to have shape %v, but got %v", i,
-          plan.input_specs[i].shape, arrays[i]->shape());
+          plan.input_specs()[i].shape, arrays[i]->shape());
     }
     // Skip xla::ifrt::Sharding::HasSamePartitioning() check because RemapArrays
     // is currently called with input arrays with implicit sharding
     // reinterpretation. Such patterns should be fixed before enabling stricter
     // checking to avoid false positives.
-    if (*plan.input_specs[i].sharding->devices() !=
+    if (*plan.input_specs()[i].sharding->devices() !=
             *arrays[i]->sharding().devices() ||
-        plan.input_specs[i].sharding->memory_kind() !=
+        plan.input_specs()[i].sharding->memory_kind() !=
             arrays[i]->sharding().memory_kind()) {
       return InvalidArgument(
           "RemapArrays expects input #%d to be on %v with "
           "%v, but is on %v with %v",
-          i, *plan.input_specs[i].sharding->devices(),
-          plan.input_specs[i].sharding->memory_kind(),
+          i, *plan.input_specs()[i].sharding->devices(),
+          plan.input_specs()[i].sharding->memory_kind(),
           *arrays[i]->sharding().devices(),
           arrays[i]->sharding().memory_kind());
     }
@@ -91,13 +91,13 @@ PjRtCompatibleClientRemapArrays(PjRtCompatibleClient* client,
 
   std::vector<PjRtArray::PjRtBuffers> out_buffers_list(num_outputs);
   for (int i = 0; i < num_outputs; ++i) {
-    out_buffers_list[i].resize(plan.output_specs[i]
+    out_buffers_list[i].resize(plan.output_specs()[i]
                                    .sharding->devices()
                                    ->AddressableDeviceList()
                                    ->size());
   }
 
-  for (const RemapPlan::Mapping& mapping : *plan.mappings) {
+  for (const RemapPlan::Mapping& mapping : plan.mappings()) {
     ASSIGN_OR_RETURN(
         absl::Span<std::shared_ptr<xla::PjRtBuffer>> in_buffers,
         static_cast<PjRtCompatibleArray*>(arrays[mapping.in_array].get())
@@ -137,9 +137,9 @@ PjRtCompatibleClientRemapArrays(PjRtCompatibleClient* client,
         out_buffers_list[i].front()->layout();
     ASSIGN_OR_RETURN(
         auto output_array,
-        PjRtArray::Create(client, plan.output_specs[i].dtype,
-                          plan.output_specs[i].shape,
-                          plan.output_specs[i].sharding,
+        PjRtArray::Create(client, plan.output_specs()[i].dtype,
+                          plan.output_specs()[i].shape,
+                          plan.output_specs()[i].sharding,
                           std::move(out_buffers_list[i]), std::move(layout)));
     output_arrays.push_back(std::move(output_array));
   }
