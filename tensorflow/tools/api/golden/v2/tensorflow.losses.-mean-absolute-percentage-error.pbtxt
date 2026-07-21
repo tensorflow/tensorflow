@@ -5,6 +5,10 @@ tf_class {
   is_instance: "<class \'tf_keras.losses.Loss\'>"
   is_instance: "<class \'object\'>"
   member_method {
+    name: "__call__"
+    argspec: "args=[\'self\', \'y_true\', \'y_pred\', \'sample_weight\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'reduction\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'mean_absolute_percentage_error\'], "
   }

@@ -13,6 +13,7 @@ tf_class {
   member_method {
     name: "children"
     argspec: "args=[\'cls\', \'obj\', \'save_type\'], varargs=None, keywords=kwargs, defaults=[\'SaveType.CHECKPOINT\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "descendants"

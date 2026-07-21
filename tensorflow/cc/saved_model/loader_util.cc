@@ -28,9 +28,9 @@ namespace internal {
 // A SavedModel may store the name of the initialization op to run in the
 // in the SignatureDef (v2) or a collection (v1). If an init_op collection
 // exists, then the collection must contain exactly one op.
-absl::Status GetInitOp(const string& export_dir,
+absl::Status GetInitOp(const std::string& export_dir,
                        const MetaGraphDef& meta_graph_def,
-                       string* init_op_name) {
+                       std::string* init_op_name) {
   const auto& sig_def_map = meta_graph_def.signature_def();
   const auto& init_op_sig_it =
       meta_graph_def.signature_def().find(kSavedModelInitOpSignatureKey);
@@ -47,7 +47,7 @@ absl::Status GetInitOp(const string& export_dir,
   }
 
   const auto& collection_def_map = meta_graph_def.collection_def();
-  string init_op_collection_key;
+  std::string init_op_collection_key;
   if (collection_def_map.find(kSavedModelMainOpKey) !=
       collection_def_map.end()) {
     init_op_collection_key = kSavedModelMainOpKey;
