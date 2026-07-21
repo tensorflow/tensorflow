@@ -1419,6 +1419,49 @@ INSTANTIATE_TEST_SUITE_P(
       return test_name;
     });
 
+class NullLibraryOptimizer : public CustomGraphOptimizer {
+ public:
+  std::string name() const override { return "null_library_optimizer"; }
+  bool UsesFunctionLibrary() const override { return true; }
+
+  absl::Status Init(
+      const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
+    return absl::OkStatus();
+  }
+
+  absl::Status Optimize(Cluster* cluster, const GrapplerItem& item,
+                        GraphDef* optimized_graph) override {
+    *optimized_graph = item.graph;
+    delete optimized_graph->release_library();
+    return absl::OkStatus();
+  }
+};
+
+REGISTER_GRAPH_OPTIMIZER(NullLibraryOptimizer);
+
+TEST_F(MetaOptimizerTest, NullLibraryCrash) {
+  // When running this test, use the following arguments: --config=asan
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {kDevice});
+  GrapplerItem item;
+  ASSERT_TRUE(fake_input.NextItem(&item));
+
+  ConfigProto config_proto;
+  auto& rewriter_config =
+      *config_proto.mutable_graph_options()->mutable_rewrite_options();
+  // Run an optimizer that clears the library, followed by one that needs a
+  // stub.
+  rewriter_config.add_optimizers("NullLibraryOptimizer");
+  rewriter_config.add_optimizers(
+      "TestOptimizer");  // TestOptimizer is not function library aware
+  rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);
+  rewriter_config.set_min_graph_nodes(-1);
+
+  MetaOptimizer optimizer(nullptr, config_proto);
+  GraphDef output;
+  const absl::Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow
