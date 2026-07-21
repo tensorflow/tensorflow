@@ -212,6 +212,9 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   virtual absl::StatusOr<llvm::Value*> EmitErf(PrimitiveType prim_type,
                                                llvm::Value* value);
 
+  virtual absl::StatusOr<llvm::Value*> EmitErfc(PrimitiveType prim_type,
+                                                llvm::Value* value);
+
   virtual absl::StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
                                                 llvm::Value* value);
 

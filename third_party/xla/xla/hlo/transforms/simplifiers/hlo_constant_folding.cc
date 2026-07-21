@@ -470,8 +470,22 @@ absl::StatusOr<bool> HloConstantFolding::RunImpl(
 
   // Visit computations in reverse post-order, so that we can propagate constant
   // arguments from callers to callees.
+  absl::flat_hash_set<const HloComputation*> live_computations;
   for (auto it = computations.rbegin(); it != computations.rend(); ++it) {
     HloComputation* computation = *it;
+    // If all callers were folded, skip instruction folding entirely.
+    if (!computation->IsEntryComputation()) {
+      bool has_live_caller =
+          absl::c_any_of(computation->caller_instructions(),
+                         [&](const HloInstruction* caller) {
+                           return live_computations.contains(caller->parent());
+                         });
+      if (!has_live_caller) {
+        continue;
+      }
+    }
+    live_computations.insert(computation);
+
     // If the computation is only used by call instructions, check whether for
     // any of the parameters of the computation, the argument passed by the
     // call-sites is always the same constant. In that case, we can sink the
