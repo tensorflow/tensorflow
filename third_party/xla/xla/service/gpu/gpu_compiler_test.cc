@@ -1535,7 +1535,9 @@ TEST_F(GpuCompilerTest, NoCudnnVectorizationOnHopperAndBeyond) {
         << "Skipping test as it requires cuDNN >= 9.12. on GB200. Otherwise, "
            "test will crash.";
   }
-  bool is_hopper_or_beyond = get_cuda_cc().IsAtLeastHopper();
+  const bool is_hopper_or_beyond_or_oneapi =
+      get_cuda_cc().IsAtLeastHopper() ||
+      device_description().gpu_compute_capability().IsOneAPI();
 
   constexpr absl::string_view kHlo = R"(
   HloModule TestModule
@@ -1558,8 +1560,9 @@ TEST_F(GpuCompilerTest, NoCudnnVectorizationOnHopperAndBeyond) {
   constexpr absl::string_view kNoVectorizationExpected = R"(
     CHECK: f32[10,19,29,64]{3,2,1,0}{{(, u8\[.*\]\{0\}\) custom-call| convolution)\(}}
   )";
-  absl::string_view expected =
-      is_hopper_or_beyond ? kNoVectorizationExpected : kVectorizationdExpected;
+  absl::string_view expected = is_hopper_or_beyond_or_oneapi
+                                   ? kNoVectorizationExpected
+                                   : kVectorizationdExpected;
 
   EXPECT_THAT(RunFileCheck(optimized_module->ToString(), expected),
               absl_testing::IsOkAndHolds(true));
