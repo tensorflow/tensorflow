@@ -49,6 +49,9 @@ class ConfigAssigner {
     // If true, the config-assigner will dump HLO modules before and after
     // applying the best config.
     bool dump_hlos = false;
+    // TODO(b/545120488): Remove when xla_gpu_use_new_autotune_cache_format flag
+    // is removed.
+    bool use_new_cache_format = false;
 
     std::string ToString() const;
   };

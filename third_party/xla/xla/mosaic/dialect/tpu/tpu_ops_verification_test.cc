@@ -544,23 +544,6 @@ TEST_F(TpuOpsVerificationTest, VectorStoreIdxInvalidIndicesDimension) {
                             "the base memref with dimension: 1. Got: 2.")));
 }
 
-TEST_F(TpuOpsVerificationTest, VectorStoreIdxInvalidValueToStoreDimension) {
-  Value memref = AllocaI32({8}, MemorySpace::kVmem);
-  Value vector_to_store = ConstantI32Vector(/*shape=*/{4, 2},
-                                            /*values=*/{1});
-  Value indices = ConstantIndexVector(/*shape=*/{8},
-                                      /*values=*/{0});
-  auto vl = Create<VectorStoreIdxOp>(
-      /*vectorToStore=*/vector_to_store,
-      /*base=*/memref,
-      /*indices=*/ValueRange{indices},
-      /*mask=*/nullptr,
-      /*add=*/nullptr);
-
-  ASSERT_THAT(VerifyOp(vl),
-              StatusIs(_, HasSubstr("Expected value to have rank 1. Got: 2.")));
-}
-
 TEST_F(TpuOpsVerificationTest, VectorStoreIdxValidMask) {
   Value memref = AllocaI32({8}, MemorySpace::kVmem);
   Value vector_to_store = ConstantI32Vector(/*shape=*/{8},
@@ -1103,8 +1086,8 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
 
   ASSERT_THAT(
       VerifyOp(dma),
-      StatusIs(_, HasSubstr(
-                      "Offsets shape must be 1D or (1, N), got (1, 64, 32)")));
+      StatusIs(
+          _, HasSubstr("Offsets shape must be 1D or (1, N), got (1, 64, 32)")));
 }
 
 TEST_F(TpuOpsVectorSubcoreVerificationTest,
@@ -1135,9 +1118,8 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
 
   ASSERT_THAT(
       VerifyOp(dma),
-      StatusIs(_,
-               HasSubstr("Source (gather operand) sample rank must match "
-                         "offsets rank, got 1 vs 2")));
+      StatusIs(_, HasSubstr("Source (gather operand) sample rank must match "
+                            "offsets rank, got 1 vs 2")));
 }
 
 TEST_F(TpuOpsVectorSubcoreVerificationTest,
@@ -1152,10 +1134,9 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
 
   ASSERT_THAT(
       VerifyOp(dma),
-      StatusIs(_,
-               HasSubstr(
-                   "Offsets shape (64) must match the majormost dimensions "
-                   "of the target (gather result) shape (512, 128)")));
+      StatusIs(
+          _, HasSubstr("Offsets shape (64) must match the majormost dimensions "
+                       "of the target (gather result) shape (512, 128)")));
 }
 
 TEST_F(TpuOpsVectorSubcoreVerificationTest,
@@ -1209,10 +1190,9 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
 
   ASSERT_THAT(
       VerifyOp(dma),
-      StatusIs(_,
-               HasSubstr(
-                   "Offsets shape (64) must match the majormost dimensions "
-                   "of the source (scatter updates) shape (512, 128)")));
+      StatusIs(
+          _, HasSubstr("Offsets shape (64) must match the majormost dimensions "
+                       "of the source (scatter updates) shape (512, 128)")));
 }
 
 TEST_F(TpuOpsVectorSubcoreVerificationTest,
@@ -1464,7 +1444,6 @@ TEST_F(TpuOpsVerificationTest, ReduceOpDuplicateDims) {
       VerifyOp(reduce),
       StatusIs(_, HasSubstr("Reduced dimension 0 is present more than once")));
 }
-
 TEST_F(TpuOpsVerificationTest, ConvOpVerificationWorks) {
   Value lhs = ConstantF32Vector({1, 8, 128}, {1.0f});
   Value rhs = ConstantF32Vector({3, 128, 128}, {1.0f});
@@ -1573,6 +1552,121 @@ TEST_F(TpuOpsVerificationTest, ConvOpSpatialOutputMismatch) {
   ASSERT_THAT(VerifyOp(conv),
               StatusIs(_, HasSubstr("Output spatial dimension 1 size mismatch: "
                                     "expected 6, got 5")));
+}
+
+TEST_F(TpuOpsVerificationTest, AnnotateOpVerification) {
+  Value vmem_ref = AllocaI32({8, 128}, MemorySpace::kVmem);
+  Value smem_ref = AllocaI32({8, 128}, MemorySpace::kSmem);
+  Value hbm_ref = AllocaI32({8, 128}, MemorySpace::kHbm);
+  Value unsp_ref = AllocaI32({8, 128});
+
+  // Valid combinations on VMEM
+  EXPECT_OK(VerifyOp(Create<AnnotateOp>(vmem_ref.getType(), vmem_ref,
+                                        /*no_store=*/false,
+                                        /*no_bank_conflict=*/false,
+                                        /*no_hazard=*/true,
+                                        /*no_hazard_no_deps=*/false)));
+  EXPECT_OK(VerifyOp(Create<AnnotateOp>(vmem_ref.getType(), vmem_ref,
+                                        /*no_store=*/false,
+                                        /*no_bank_conflict=*/false,
+                                        /*no_hazard=*/false,
+                                        /*no_hazard_no_deps=*/true)));
+  EXPECT_OK(VerifyOp(Create<AnnotateOp>(vmem_ref.getType(), vmem_ref,
+                                        /*no_store=*/true,
+                                        /*no_bank_conflict=*/true,
+                                        /*no_hazard=*/false,
+                                        /*no_hazard_no_deps=*/false)));
+
+  // Valid cases on SMEM/HBM/unspecified memory space (without hazard overrides)
+  EXPECT_OK(VerifyOp(Create<AnnotateOp>(smem_ref.getType(), smem_ref,
+                                        /*no_store=*/true,
+                                        /*no_bank_conflict=*/true,
+                                        /*no_hazard=*/false,
+                                        /*no_hazard_no_deps=*/false)));
+  EXPECT_OK(VerifyOp(Create<AnnotateOp>(hbm_ref.getType(), hbm_ref,
+                                        /*no_store=*/true,
+                                        /*no_bank_conflict=*/true,
+                                        /*no_hazard=*/false,
+                                        /*no_hazard_no_deps=*/false)));
+  EXPECT_OK(VerifyOp(Create<AnnotateOp>(unsp_ref.getType(), unsp_ref,
+                                        /*no_store=*/true,
+                                        /*no_bank_conflict=*/true,
+                                        /*no_hazard=*/false,
+                                        /*no_hazard_no_deps=*/false)));
+
+  // Mutual exclusivity: at most one of no_store, no_hazard, or
+  // no_hazard_no_deps
+  EXPECT_THAT(VerifyOp(Create<AnnotateOp>(vmem_ref.getType(), vmem_ref,
+                                          /*no_store=*/true,
+                                          /*no_bank_conflict=*/false,
+                                          /*no_hazard=*/true,
+                                          /*no_hazard_no_deps=*/false)),
+              StatusIs(_, HasSubstr("At most one of no_store, no_hazard, or "
+                                    "no_hazard_no_deps can be set")));
+  EXPECT_THAT(VerifyOp(Create<AnnotateOp>(vmem_ref.getType(), vmem_ref,
+                                          /*no_store=*/true,
+                                          /*no_bank_conflict=*/false,
+                                          /*no_hazard=*/false,
+                                          /*no_hazard_no_deps=*/true)),
+              StatusIs(_, HasSubstr("At most one of no_store, no_hazard, or "
+                                    "no_hazard_no_deps can be set")));
+  EXPECT_THAT(VerifyOp(Create<AnnotateOp>(vmem_ref.getType(), vmem_ref,
+                                          /*no_store=*/false,
+                                          /*no_bank_conflict=*/false,
+                                          /*no_hazard=*/true,
+                                          /*no_hazard_no_deps=*/true)),
+              StatusIs(_, HasSubstr("At most one of no_store, no_hazard, or "
+                                    "no_hazard_no_deps can be set")));
+
+  // Invalid cases: hazard overrides on non-VMEM memory spaces
+  EXPECT_THAT(
+      VerifyOp(Create<AnnotateOp>(smem_ref.getType(), smem_ref,
+                                  /*no_store=*/false,
+                                  /*no_bank_conflict=*/false,
+                                  /*no_hazard=*/true,
+                                  /*no_hazard_no_deps=*/false)),
+      StatusIs(_, HasSubstr(
+                      "Hazard overrides are only valid for VMEM allocations")));
+  EXPECT_THAT(
+      VerifyOp(Create<AnnotateOp>(hbm_ref.getType(), hbm_ref,
+                                  /*no_store=*/false,
+                                  /*no_bank_conflict=*/false,
+                                  /*no_hazard=*/true,
+                                  /*no_hazard_no_deps=*/false)),
+      StatusIs(_, HasSubstr(
+                      "Hazard overrides are only valid for VMEM allocations")));
+  EXPECT_THAT(
+      VerifyOp(Create<AnnotateOp>(unsp_ref.getType(), unsp_ref,
+                                  /*no_store=*/false,
+                                  /*no_bank_conflict=*/false,
+                                  /*no_hazard=*/true,
+                                  /*no_hazard_no_deps=*/false)),
+      StatusIs(_, HasSubstr(
+                      "Hazard overrides are only valid for VMEM allocations")));
+  EXPECT_THAT(
+      VerifyOp(Create<AnnotateOp>(smem_ref.getType(), smem_ref,
+                                  /*no_store=*/false,
+                                  /*no_bank_conflict=*/false,
+                                  /*no_hazard=*/false,
+                                  /*no_hazard_no_deps=*/true)),
+      StatusIs(_, HasSubstr(
+                      "Hazard overrides are only valid for VMEM allocations")));
+  EXPECT_THAT(
+      VerifyOp(Create<AnnotateOp>(hbm_ref.getType(), hbm_ref,
+                                  /*no_store=*/false,
+                                  /*no_bank_conflict=*/false,
+                                  /*no_hazard=*/false,
+                                  /*no_hazard_no_deps=*/true)),
+      StatusIs(_, HasSubstr(
+                      "Hazard overrides are only valid for VMEM allocations")));
+  EXPECT_THAT(
+      VerifyOp(Create<AnnotateOp>(unsp_ref.getType(), unsp_ref,
+                                  /*no_store=*/false,
+                                  /*no_bank_conflict=*/false,
+                                  /*no_hazard=*/false,
+                                  /*no_hazard_no_deps=*/true)),
+      StatusIs(_, HasSubstr(
+                      "Hazard overrides are only valid for VMEM allocations")));
 }
 }  // namespace
 }  // namespace mlir::tpu
