@@ -32,9 +32,8 @@ namespace {
 
 void FuzzDecodeJpeg(absl::string_view data) {
   // Allocate at most 256 MB of output to avoid OOM in the fuzzer itself.
-  // The purpose of the bounds-check patch (PR #115498) is to enforce this
-  // limit inside the TF op kernel, consistent with the existing 512 MB cap
-  // already enforced by jpeg_mem.cc.
+  // jpeg_mem.cc already rejects outputs >= 512 MiB before the allocation
+  // callback; no additional op-level JPEG bound is needed (PR #115498).
   constexpr int64_t kMaxFuzzerAlloc = 256 * 1024 * 1024;  // 256 MB
 
   tensorflow::jpeg::UncompressFlags flags;

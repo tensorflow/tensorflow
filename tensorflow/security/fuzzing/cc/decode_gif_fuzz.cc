@@ -33,8 +33,9 @@ namespace {
 void FuzzDecodeGif(absl::string_view data) {
   std::string error_string;
   // Allocate at most 256 MB of output to avoid OOM in the fuzzer itself.
-  // The purpose of the bounds-check patch (PR #115498) is to enforce this
-  // limit inside the TF op kernel before giflib is even called.
+  // PR #115498: gif_io.cc rejects huge logical-screen sizes before DGifSlurp;
+  // the TF op also bounds the final output tensor after decode. Frame-count
+  // is only known post-slurp, so this fuzzer still caps its own allocator.
   constexpr int64_t kMaxFuzzerAlloc = 256 * 1024 * 1024;  // 256 MB
 
   std::vector<uint8_t> output;
