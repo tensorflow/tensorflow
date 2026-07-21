@@ -2125,12 +2125,258 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
       {&operand_shape, &feature_shape, &feature_shape});
 }
 
+namespace {
+
+absl::StatusOr<Shape> InferFpropConvolveShape(
+    const Shape& lhs, const Shape& rhs, int64_t feature_group_count,
+    int64_t batch_group_count, const Window& window,
+    const ConvolutionDimensionNumbers& dnums,
+    absl::Span<const int64_t> input_spatial_dims,
+    absl::Span<const int64_t> kernel_spatial_dims, int64_t input_features,
+    int64_t input_batch, int64_t kernel_input_features,
+    int64_t kernel_output_features,
+    std::optional<PrimitiveType> preferred_element_type) {
+  const int num_spatial_dims = dnums.input_spatial_dimensions_size();
+  const int num_dims = num_spatial_dims + 2;
+
+  if (input_features % feature_group_count != 0 ||
+      input_features / feature_group_count != kernel_input_features) {
+    return InvalidArgument(
+        "Expected LHS feature dimension (value %d) to be a multiple of "
+        "feature_group_count (value %d), and LHS feature dimension / "
+        "feature_group_count = RHS feature dimension (value %d); "
+        "got <conv>(%s, %s)\n"
+        "Dimension numbers: {%s}.",
+        input_features, feature_group_count, kernel_input_features,
+        ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs),
+        dnums.DebugString());
+  }
+
+  std::vector<int64_t> window_dims(num_spatial_dims);
+  for (int i = 0; i < num_spatial_dims; ++i) {
+    window_dims[i] = window.dimensions(i).size();
+  }
+  if (kernel_spatial_dims != window_dims) {
+    return InvalidArgument(
+        "Window dimensions do not match RHS shape:\n\t"
+        "RHS shape: %s\n\t"
+        "Window: {%s}\n\t"
+        "Dimension numbers: {%s}.",
+        ShapeUtil::HumanString(rhs), window.ShortDebugString(),
+        dnums.ShortDebugString());
+  }
+
+  std::vector<bool> dynamic_dimensions(input_spatial_dims.size());
+  for (auto it = input_spatial_dims.begin(); it != input_spatial_dims.end();
+       ++it) {
+    dynamic_dimensions[it - input_spatial_dims.begin()] =
+        IsUnboundedDynamicSize(*it);
+  }
+  Shape base_shape = ShapeUtil::MakeShape(
+      lhs.element_type(), input_spatial_dims, dynamic_dimensions);
+  ASSIGN_OR_RETURN(
+      Shape window_output_shape,
+      InferWindowOutputShape(base_shape, window, lhs.element_type()));
+
+  std::vector<int64_t> dimensions(num_dims);
+  dimensions[dnums.output_batch_dimension()] = input_batch / batch_group_count;
+  dimensions[dnums.output_feature_dimension()] = kernel_output_features;
+  for (int i = 0; i < num_spatial_dims; ++i) {
+    dimensions[dnums.output_spatial_dimensions(i)] =
+        window_output_shape.dimensions(i);
+  }
+
+  std::vector<bool> is_dynamic(num_dims);
+  for (int i = 0; i < num_dims; i++) {
+    if (lhs.is_dynamic_dimension(i)) {
+      if (i == dnums.input_batch_dimension()) {
+        is_dynamic[dnums.output_batch_dimension()] = true;
+      } else if (i != dnums.input_feature_dimension()) {
+        for (int64_t j = 0; j < dnums.output_spatial_dimensions_size(); ++j) {
+          if (i == dnums.input_spatial_dimensions(j)) {
+            is_dynamic[dnums.output_spatial_dimensions(j)] = true;
+          }
+        }
+      }
+    }
+    if (rhs.is_dynamic_dimension(i)) {
+      if (i == dnums.kernel_output_feature_dimension()) {
+        return InvalidArgument(
+            "Dynamic output feature dim on convolution kernel is not "
+            "supported: rhs shape is %s ",
+            rhs.ToString());
+      }
+      if (i != dnums.kernel_input_feature_dimension()) {
+        for (int64_t j = 0; j < dnums.kernel_spatial_dimensions_size(); ++j) {
+          if (i == dnums.kernel_spatial_dimensions(j)) {
+            is_dynamic[dnums.output_spatial_dimensions(j)] = true;
+          }
+        }
+      }
+    }
+  }
+
+  PrimitiveType type = preferred_element_type.value_or(
+      ShapeUtil::HigherPrecisionElementType(lhs, rhs));
+  return ShapeUtil::MakeShape(type, dimensions, is_dynamic);
+}
+
+absl::StatusOr<Shape> InferDgradConvolveShape(
+    const Shape& lhs, const Shape& rhs, int64_t feature_group_count,
+    int64_t batch_group_count, const Window& window,
+    const ConvolutionDimensionNumbers& dnums,
+    absl::Span<const int64_t> input_spatial_dims,
+    absl::Span<const int64_t> kernel_spatial_dims, int64_t input_features,
+    int64_t input_batch, int64_t kernel_input_features,
+    int64_t kernel_output_features,
+    std::optional<PrimitiveType> preferred_element_type) {
+  const int num_spatial_dims = dnums.input_spatial_dimensions_size();
+  const int num_dims = num_spatial_dims + 2;
+
+  if (input_features % feature_group_count != 0 ||
+      input_features / feature_group_count != kernel_output_features) {
+    return InvalidArgument(
+        "Expected LHS feature dimension (value %d) to be a multiple of "
+        "feature_group_count (value %d), and LHS feature dimension / "
+        "feature_group_count = RHS output feature dimension (value %d); "
+        "got <conv>(%s, %s)\n"
+        "Dimension numbers: {%s}.",
+        input_features, feature_group_count, kernel_output_features,
+        ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs),
+        dnums.DebugString());
+  }
+
+  std::vector<int64_t> window_dims(num_spatial_dims);
+  for (int i = 0; i < num_spatial_dims; ++i) {
+    window_dims[i] = window.dimensions(i).size();
+  }
+  if (kernel_spatial_dims != window_dims) {
+    return InvalidArgument(
+        "Window dimensions do not match RHS shape:\n\t"
+        "RHS shape: %s\n\t"
+        "Window: {%s}\n\t"
+        "Dimension numbers: {%s}.",
+        ShapeUtil::HumanString(rhs), window.ShortDebugString(),
+        dnums.ShortDebugString());
+  }
+
+  std::vector<int64_t> dimensions(num_dims);
+  dimensions[dnums.output_batch_dimension()] = input_batch / batch_group_count;
+  dimensions[dnums.output_feature_dimension()] = kernel_input_features;
+
+  for (int i = 0; i < num_spatial_dims; ++i) {
+    int64_t lhs_size = input_spatial_dims[i];
+    int64_t dilated_lhs =
+        IsUnboundedDynamicSize(lhs_size)
+            ? lhs_size
+            : 1 + (lhs_size - 1) * window.dimensions(i).base_dilation();
+    int64_t kernel_size = window.dimensions(i).size();
+    int64_t dilated_kernel =
+        1 + (kernel_size - 1) * window.dimensions(i).window_dilation();
+    int64_t output_size =
+        IsUnboundedDynamicSize(lhs_size)
+            ? lhs_size
+            : (dilated_lhs - 1) * window.dimensions(i).stride() +
+                  dilated_kernel - window.dimensions(i).padding_low() -
+                  window.dimensions(i).padding_high();
+    dimensions[dnums.output_spatial_dimensions(i)] = output_size;
+  }
+
+  std::vector<bool> is_dynamic(num_dims);
+  for (int i = 0; i < num_dims; i++) {
+    if (lhs.is_dynamic_dimension(i)) {
+      if (i == dnums.input_batch_dimension()) {
+        is_dynamic[dnums.output_batch_dimension()] = true;
+      } else if (i != dnums.input_feature_dimension()) {
+        for (int64_t j = 0; j < dnums.output_spatial_dimensions_size(); ++j) {
+          if (i == dnums.input_spatial_dimensions(j)) {
+            is_dynamic[dnums.output_spatial_dimensions(j)] = true;
+          }
+        }
+      }
+    }
+    if (rhs.is_dynamic_dimension(i)) {
+      if (i == dnums.kernel_output_feature_dimension()) {
+        return InvalidArgument(
+            "Dynamic output feature dim on convolution kernel is not "
+            "supported: rhs shape is %s ",
+            rhs.ToString());
+      }
+      if (i != dnums.kernel_input_feature_dimension()) {
+        for (int64_t j = 0; j < dnums.kernel_spatial_dimensions_size(); ++j) {
+          if (i == dnums.kernel_spatial_dimensions(j)) {
+            is_dynamic[dnums.output_spatial_dimensions(j)] = true;
+          }
+        }
+      }
+    }
+  }
+
+  PrimitiveType type = preferred_element_type.value_or(
+      ShapeUtil::HigherPrecisionElementType(lhs, rhs));
+  return ShapeUtil::MakeShape(type, dimensions, is_dynamic);
+}
+
+absl::StatusOr<Shape> InferWgradConvolveShape(
+    const Shape& lhs, const Shape& rhs, int64_t feature_group_count,
+    int64_t batch_group_count, const Window& window,
+    const ConvolutionDimensionNumbers& dnums,
+    absl::Span<const int64_t> kernel_spatial_dims, int64_t input_features,
+    int64_t input_batch, int64_t kernel_input_features,
+    std::optional<PrimitiveType> preferred_element_type) {
+  const int num_spatial_dims = dnums.input_spatial_dimensions_size();
+  const int num_dims = num_spatial_dims + 2;
+
+  int64_t rhs_batch = rhs.dimensions(dnums.output_batch_dimension());
+  if (input_batch != rhs_batch) {
+    return InvalidArgument(
+        "Expected LHS batch dimension (value %d) to match RHS batch "
+        "dimension (value %d) for WGRAD; got <conv>(%s, %s)\n"
+        "Dimension numbers: {%s}.",
+        input_batch, rhs_batch, ShapeUtil::HumanString(lhs),
+        ShapeUtil::HumanString(rhs), dnums.DebugString());
+  }
+
+  std::vector<int64_t> dimensions(num_dims);
+  dimensions[dnums.kernel_output_feature_dimension()] =
+      rhs.dimensions(dnums.output_feature_dimension());
+  dimensions[dnums.kernel_input_feature_dimension()] =
+      input_features / feature_group_count;
+
+  for (int i = 0; i < num_spatial_dims; ++i) {
+    dimensions[dnums.kernel_spatial_dimensions(i)] =
+        window.dimensions(i).size();
+  }
+
+  std::vector<bool> is_dynamic(num_dims);
+  for (int i = 0; i < num_dims; i++) {
+    if (lhs.is_dynamic_dimension(i)) {
+      if (i == dnums.input_batch_dimension()) {
+        is_dynamic[dnums.output_batch_dimension()] = true;
+      } else if (i != dnums.input_feature_dimension()) {
+        for (int64_t j = 0; j < dnums.output_spatial_dimensions_size(); ++j) {
+          if (i == dnums.input_spatial_dimensions(j)) {
+            is_dynamic[dnums.output_spatial_dimensions(j)] = true;
+          }
+        }
+      }
+    }
+  }
+
+  PrimitiveType type = preferred_element_type.value_or(
+      ShapeUtil::HigherPrecisionElementType(lhs, rhs));
+  return ShapeUtil::MakeShape(type, dimensions, is_dynamic);
+}
+
+}  // namespace
+
 /* static */ absl::StatusOr<Shape> ShapeInference::InferConvolveShape(
     const Shape& lhs, const Shape& rhs_arg, int64_t feature_group_count,
     int64_t batch_group_count, const Window& window,
     const ConvolutionDimensionNumbers& dnums,
     const SparsityConfig& sparsity_config,
-    std::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type,
+    ConvolutionKind convolution_kind) {
   const Shape* rhs_ptr = &rhs_arg;
   if (rhs_arg.IsTuple()) {
     if (rhs_arg.tuple_shapes().size() != 2) {
@@ -2298,26 +2544,7 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
         ShapeUtil::HumanString(rhs), dnums.DebugString());
   }
 
-  if (input_features % feature_group_count != 0 ||
-      input_features / feature_group_count != kernel_input_features) {
-    return InvalidArgument(
-        "Expected LHS feature dimension (value %d) to be a multiple of "
-        "feature_group_count (value %d), and LHS feature dimension / "
-        "feature_group_count = RHS feature dimension (value %d); "
-        "got <conv>(%s, %s)\n"
-        "Dimension numbers: {%s}.",
-        input_features, feature_group_count, kernel_input_features,
-        ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs),
-        dnums.DebugString());
-  }
-
   if (kernel_output_features % feature_group_count > 0) {
-    // A depthwise/grouped filter has the shape
-    // [space0, .. spaceN, GROUP_SIZE, NUM_OUTPUT_FEATURES]. When
-    // [space0, .. spaceN, GROUP_SIZE] is convolved with the input, a shape
-    // [space0, .. spaceN, feature_group_count] is formed. Therefore, the output
-    // feature count (which is equal to kernel output features) has to be a
-    // multiple of feature_group_count.
     return InvalidArgument(
         "Expected output feature dimension (value %d) to be divisible by "
         "feature_group_count (value %d); "
@@ -2338,81 +2565,27 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
         ShapeUtil::HumanString(rhs), dnums.DebugString());
   }
 
-  std::vector<int64_t> window_dims(num_spatial_dims);
-  for (int i = 0; i < num_spatial_dims; ++i) {
-    window_dims[i] = window.dimensions(i).size();
+  switch (convolution_kind) {
+    case CONVOLUTION_KIND_DGRAD:
+      return InferDgradConvolveShape(
+          lhs, rhs, feature_group_count, batch_group_count, window, dnums,
+          input_spatial_dims, kernel_spatial_dims, input_features, input_batch,
+          kernel_input_features, kernel_output_features,
+          preferred_element_type);
+    case CONVOLUTION_KIND_WGRAD:
+      return InferWgradConvolveShape(
+          lhs, rhs, feature_group_count, batch_group_count, window, dnums,
+          kernel_spatial_dims, input_features, input_batch,
+          kernel_input_features, preferred_element_type);
+    case CONVOLUTION_KIND_FPROP:
+    case CONVOLUTION_KIND_UNSET:
+    default:
+      return InferFpropConvolveShape(
+          lhs, rhs, feature_group_count, batch_group_count, window, dnums,
+          input_spatial_dims, kernel_spatial_dims, input_features, input_batch,
+          kernel_input_features, kernel_output_features,
+          preferred_element_type);
   }
-  if (kernel_spatial_dims != window_dims) {
-    return InvalidArgument(
-        "Window dimensions do not match RHS shape:\n\t"
-        "RHS shape: %s\n\t"
-        "Window: {%s}\n\t"
-        "Dimension numbers: {%s}.",
-        ShapeUtil::HumanString(rhs), window.ShortDebugString(),
-        dnums.ShortDebugString());
-  }
-
-  std::vector<bool> dynamic_dimensions(input_spatial_dims.size());
-  for (auto it = input_spatial_dims.begin(); it != input_spatial_dims.end();
-       ++it) {
-    dynamic_dimensions[it - input_spatial_dims.begin()] =
-        IsUnboundedDynamicSize(*it);
-  }
-  Shape base_shape = ShapeUtil::MakeShape(
-      lhs.element_type(), input_spatial_dims, dynamic_dimensions);
-  ASSIGN_OR_RETURN(
-      Shape window_output_shape,
-      InferWindowOutputShape(base_shape, window, lhs.element_type()));
-
-  std::vector<int64_t> dimensions(num_dims);
-  dimensions[dnums.output_batch_dimension()] = input_batch / batch_group_count;
-  dimensions[dnums.output_feature_dimension()] = kernel_output_features;
-
-  for (int i = 0; i < num_spatial_dims; ++i) {
-    dimensions[dnums.output_spatial_dimensions(i)] =
-        window_output_shape.dimensions(i);
-  }
-  std::vector<bool> is_dynamic(num_dims);
-  for (int i = 0; i < num_dims; i++) {
-    if (lhs.is_dynamic_dimension(i)) {
-      if (i == dnums.input_batch_dimension()) {
-        is_dynamic[dnums.output_batch_dimension()] = true;
-      } else if (i == dnums.input_feature_dimension()) {
-        // Input feature dimension is a contracting dimension, which does not
-        // affect the output dimension size. So we need to do nothing.
-      } else {
-        for (int64_t j = 0; j < dnums.output_spatial_dimensions_size(); ++j) {
-          if (i == dnums.input_spatial_dimensions(j)) {
-            // i is a spatial dimension, find corresponding output spatial
-            // dimension.
-            is_dynamic[dnums.output_spatial_dimensions(j)] = true;
-          }
-        }
-      }
-    }
-    if (rhs.is_dynamic_dimension(i)) {
-      if (i == dnums.kernel_input_feature_dimension()) {
-        // Kernel feature dimension does not affect the output dimension size.
-        // So we need to do nothing.
-      } else if (i == dnums.kernel_output_feature_dimension()) {
-        return InvalidArgument(
-            "Dynamic output feature dim on convolution kernel is not "
-            "supported: rhs shape is %s ",
-            rhs.ToString());
-      } else {
-        for (int64_t j = 0; j < dnums.kernel_spatial_dimensions_size(); ++j) {
-          if (i == dnums.kernel_spatial_dimensions(j)) {
-            // i is a spatial dimension, find corresponding output spatial
-            // dimension.
-            is_dynamic[dnums.output_spatial_dimensions(j)] = true;
-          }
-        }
-      }
-    }
-  }
-  PrimitiveType type = preferred_element_type.value_or(
-      ShapeUtil::HigherPrecisionElementType(lhs, rhs));
-  return ShapeUtil::MakeShape(type, dimensions, is_dynamic);
 }
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferFftShape(

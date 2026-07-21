@@ -92,8 +92,20 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__getitem__"
+    argspec: "args=[\'self\', \'slices\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'col\', \'row\', \'is_non_singular\', \'is_self_adjoint\', \'is_positive_definite\', \'is_square\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'LinearOperatorToeplitz\'], "
+  }
+  member_method {
+    name: "__matmul__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__tf_tracing_type__"
+    argspec: "args=[\'self\', \'context\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "add_to_tensor"
