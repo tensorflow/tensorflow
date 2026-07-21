@@ -20,15 +20,11 @@ limitations under the License.
 #include <limits>
 #include <type_traits>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/hlo/builder/lib/constants.h"
-#include "xla/hlo/builder/value_inference.h"
-#include "xla/hlo/builder/xla_builder.h"
-#include "xla/literal.h"
-#include "xla/primitive_util.h"
-#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -36,6 +32,12 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/value_inference.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/literal.h"
+#include "xla/primitive_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -51,17 +53,18 @@ absl::StatusOr<xla::XlaOp> CreateRangeTensor(
   T delta = delta_literal.Get<T>({});
 
   if (delta == 0) {
-    return errors::InvalidArgument("Requires delta != 0: ", delta);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Requires delta != 0: ", delta));
   }
   if (delta > 0) {
     if (start > limit) {
-      return errors::InvalidArgument(
-          "Requires start <= limit when delta > 0: ", start, "/", limit);
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Requires start <= limit when delta > 0: ", start, "/", limit));
     }
   } else {
     if (start < limit) {
-      return errors::InvalidArgument(
-          "Requires start >= limit when delta < 0: ", start, "/", limit);
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Requires start >= limit when delta < 0: ", start, "/", limit));
     }
   }
   int64_t size;
@@ -81,17 +84,18 @@ absl::StatusOr<xla::XlaOp> CreateRangeTensor(
       UT size_unsigned = (range - 1) / abs_delta + 1;
       if (size_unsigned >
           static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
-        return errors::InvalidArgument(
-            "Requires ((limit - start) / delta) <= ",
-            std::numeric_limits<int64_t>::max());
+        return absl::InvalidArgumentError(
+            absl::StrCat("Requires ((limit - start) / delta) <= ",
+                         std::numeric_limits<int64_t>::max()));
       }
       size = static_cast<int64_t>(size_unsigned);
     }
   } else {
     auto size_auto = std::ceil(std::abs((limit - start) / delta));
     if (size_auto > std::numeric_limits<int64_t>::max()) {
-      return errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
-                                     std::numeric_limits<int64_t>::max());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Requires ((limit - start) / delta) <= ",
+                       std::numeric_limits<int64_t>::max()));
     }
     size = static_cast<int64_t>(size_auto);
   }

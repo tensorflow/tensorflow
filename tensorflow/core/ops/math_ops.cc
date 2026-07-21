@@ -16,6 +16,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -1506,10 +1507,10 @@ template <typename T>
 absl::Status CheckRangeOutputSize(int64_t size) {
   const int64_t num_bytes = MultiplyWithoutOverflow(size, sizeof(T));
   if (num_bytes < 0 || num_bytes >= kMaxRangeOutputBytes) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Requires Range output size in bytes to be less than ",
-        kMaxRangeOutputBytes, ", but got size ", size, " with element size ",
-        sizeof(T)));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Requires Range output size in bytes to be less than ",
+                     kMaxRangeOutputBytes, ", but got size ", size,
+                     " with element size ", sizeof(T)));
   }
   return absl::OkStatus();
 }

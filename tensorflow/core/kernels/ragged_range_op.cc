@@ -22,12 +22,12 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/util/overflow.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -43,10 +43,10 @@ template <typename T>
 absl::Status CheckRangeOutputSize(int64_t size) {
   const int64_t num_bytes = MultiplyWithoutOverflow(size, sizeof(T));
   if (num_bytes < 0 || num_bytes >= kMaxRangeOutputBytes) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Requires Range output size in bytes to be less than ",
-        kMaxRangeOutputBytes, ", but got size ", size, " with element size ",
-        sizeof(T)));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Requires Range output size in bytes to be less than ",
+                     kMaxRangeOutputBytes, ", but got size ", size,
+                     " with element size ", sizeof(T)));
   }
   return absl::OkStatus();
 }
