@@ -1597,11 +1597,23 @@ absl::Status PjRtClient::WatchGlobalProcessInfo(
       }
 
       if (!response.ok()) {
+        LOG(WARNING) << "WatchTasksAsync failed for task " << task_id << ": "
+                     << response.status();
+        // If the coordination agent has entered an unrecoverable ERROR state,
+        // retrying will never succeed. Return the error instead of retrying
+        // indefinitely.
+        if (agent.IsError()) {
+          LOG(WARNING)
+              << "Coordination agent is in ERROR state (e.g., due to a "
+                 "service incarnation mismatch after the coordinator "
+                 "restarted). Returning error instead of retrying "
+                 "indefinitely for task "
+              << task_id << ": " << response.status();
+          return response.status();
+        }
         // Sleep to avoid repeatedly issuing a request that fails immediately.
         //
         // TODO: mwhittaker - Perform exponential backoff.
-        LOG(WARNING) << "WatchTasksAsync failed for task " << task_id << ": "
-                     << response.status();
         shutting_down_mu_.AwaitWithTimeout(absl::Condition(&shutting_down_),
                                            absl::Seconds(1));
         continue;
