@@ -153,6 +153,7 @@ class ArrayOpTest(test.TestCase):
     s1 = array_ops.shape_v2(array_ops.zeros([1, 2]))
     self.assertEqual(s1.dtype, dtypes.int32)
 
+@test_util.run_all_in_graph_and_eager_modes
 class TestFoldNonOverlapping(test.TestCase):
 
   def setUp(self):
@@ -488,6 +489,7 @@ class TestFoldInputValidation(test.TestCase):
       array_ops.fold(patches, (4, 4),2,(1,-2))
       array_ops.fold(patches, (4, 4),2,2)
 
+@test_util.run_all_in_graph_and_eager_modes
 class TestFoldGradients(test.TestCase):
   """Verifies that fold is differentiable and produces numerically correct gradients 
   when composed with extract_patches."""
@@ -528,7 +530,6 @@ class TestFoldGradients(test.TestCase):
     self.assertGreater(
       self.evaluate(math_ops.reduce_sum(math_ops.abs(grad))), 0.0)
     
-  @test_util.run_in_graph_and_eager_modes
   def test_fold_gradient_numerical_correctness(self):
     """To check if autodiff matches numerical gradient """
     x = random_ops.random_normal([1, 4, 4, 1]) 
@@ -553,7 +554,7 @@ class TestFoldGradients(test.TestCase):
       rtol=1e-3,
       msg="Autodiff and numerical gradients don't match",
       )
-    
+@test_util.run_all_in_graph_and_eager_modes 
 class TestFoldSamePadding(test.TestCase):
   
   def _extract_patches(self, x, kernel, stride, padding="VALID", dilation=1):
@@ -574,7 +575,7 @@ class TestFoldSamePadding(test.TestCase):
   def test_perfect_inverse_no_overlap_same(self):
     """Verifies SAME padding reconstructs perfectly when stride == kernel.
     An image size of 5 with kernel/stride 3 forces 1 pixel of padding."""
-    x = random_ops.random_normal([2, 5, 5, 3])
+    x = random_ops.random_normal([2, 5, 5, 3],seed=42)
     patches = self._extract_patches(x, kernel=3, stride=3, padding='SAME')
     
     reconstructed = array_ops.fold(
@@ -595,7 +596,7 @@ class TestFoldSamePadding(test.TestCase):
     Image 6x6, Kernel 3, Stride 2 requires EXACTLY 1 pixel of total padding.
     TensorFlow puts this on the bottom/right."""
     image_size, kernel_size, stride = 6, 3, 2
-    x = random_ops.random_normal([1, image_size, image_size, 1])
+    x = random_ops.random_normal([1, image_size, image_size, 1],seed=42)
     
     patches = self._extract_patches(
         x, kernel=kernel_size, stride=stride, padding='SAME')
@@ -627,7 +628,7 @@ class TestFoldSamePadding(test.TestCase):
     """Verifies k_eff (Effective Kernel) calculation.
     A 3x3 kernel with dilation 2 acts like a 5x5 kernel physically."""
     image_size, kernel_size, stride, dilation = 7, 3, 1, 2
-    x = random_ops.random_normal([1, image_size, image_size, 2])
+    x = random_ops.random_normal([1, image_size, image_size, 2],seed=42)
     
     patches = self._extract_patches(
         x, kernel=kernel_size,
@@ -682,7 +683,7 @@ class TestFoldSamePadding(test.TestCase):
     height, width = 5, 4
     kernel_size, stride = 3, 2
 
-    x = random_ops.random_normal([1, height, width, 1])
+    x = random_ops.random_normal([1, height, width, 1],seed=42)
 
     patches = self._extract_patches(
         x,
@@ -723,7 +724,7 @@ def test_fold_same_padding_with_dilation(self):
   """
   image_size, kernel_size, stride, dilation = 6, 3, 2, 2
 
-  x = random_ops.random_normal([1, image_size, image_size, 1])
+  x = random_ops.random_normal([1, image_size, image_size, 1],seed=42)
 
   patches = self._extract_patches(
       x,
@@ -766,7 +767,7 @@ def test_fold_non_square_parameters(self):
   stride = (2, 3)
   dilation = (1, 2)
 
-  x = random_ops.random_normal([1, height, width, 2])
+  x = random_ops.random_normal([1, height, width, 2],seed=42)
 
   patches = self._extract_patches(
       x,
@@ -802,6 +803,7 @@ def test_fold_non_square_parameters(self):
   expected = x * overlap_counts
   self.assertAllClose(reconstructed, expected)
 
+@test_util.run_all_in_graph_and_eager_modes
 class TestFoldDeterminism(test.TestCase):
 
   def setUp(self):
@@ -818,7 +820,6 @@ class TestFoldDeterminism(test.TestCase):
         padding=padding,
     )
   @test_util.run_gpu_only
-  @test_util.run_in_graph_and_eager_modes
   def test_fold_gpu_deterministic(self):
     """To check if GPU output is deterministic if op determinism is turned off"""
     config.disable_op_determinism()
