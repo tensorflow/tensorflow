@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <numeric>
 
+#include "absl/log/check.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
