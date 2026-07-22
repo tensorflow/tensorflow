@@ -13,7 +13,7 @@
 # limitations under the License.
 #==============================================================================
 """Lookup operations."""
-
+import sys
 from tensorflow.python.data.experimental.ops.cardinality import assert_cardinality
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -168,10 +168,11 @@ def table_from_dataset(dataset=None,
       vocab_size < 1):
     raise ValueError(f"`vocab_size` must be greater than 0, got {vocab_size}.")
   if not isinstance(vocab_size, tensor.Tensor) and vocab_size is not None:
-    if vocab_size >= dtypes.int64.max:
+    max_safe_vocab_size = min(sys.maxsize, dtypes.int64.max)
+    if vocab_size >= max_safe_vocab_size:
       raise ValueError(
           f"`vocab_size` ({vocab_size}) exceeds the maximum safe value "
-          f"({dtypes.int64.max}).")
+          f"({max_safe_vocab_size}).")
     known_cardinality = tensor_util.constant_value(dataset.cardinality())
     if (known_cardinality is not None and
         known_cardinality >= 0 and vocab_size > known_cardinality):
