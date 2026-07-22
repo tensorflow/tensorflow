@@ -239,7 +239,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_cpu_enable_fast_math(false);
   opts.set_xla_cpu_enable_platform_dependent_math(true);
-  opts.set_xla_cpu_experimental_enable_tiling_propagation(false);
+  opts.set_xla_cpu_experimental_enable_tiling_propagation(true);
   // Disable forms of fast math that have caused users problems in the past.
   opts.set_xla_cpu_fast_math_honor_nans(true);
   opts.set_xla_cpu_fast_math_honor_infs(true);
