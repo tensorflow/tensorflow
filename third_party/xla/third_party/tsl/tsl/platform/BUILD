@@ -316,6 +316,29 @@ filegroup(
 )
 
 cc_library(
+    name = "tracing_hdrs_lib",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["tracing.h"],
+    deps = tf_platform_deps("tracing_impl") + [
+        ":platform",
+        ":stringpiece",
+        "@xla//xla/tsl/platform:macros",
+        "@xla//xla/tsl/platform:types",
+    ],
+)
+
+cc_library(
+    name = "tracing_base",
+    srcs = ["tracing.cc"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":hash",
+        ":tracing_hdrs_lib",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "tracing",
     textual_hdrs = ["tracing.h"],
     deps = tf_platform_deps("tracing"),
@@ -707,6 +730,16 @@ filegroup(
 )
 
 cc_library(
+    name = "net_hdrs_lib",
+    hdrs = ["net.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "net",
     textual_hdrs = ["net.h"],
     deps = tf_windows_aware_platform_deps("net") + [
@@ -719,6 +752,44 @@ cc_library(
     name = "platform",
     hdrs = ["platform.h"],
     compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
+    name = "platform_port_hdrs_lib",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = [
+        "cpu_info.h",
+        "demangle.h",
+        "host_info.h",
+        "init_main.h",
+        "mem.h",
+        "numa.h",
+        "snappy.h",
+    ],
+    deps = [
+        "//tsl/platform",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+        "@xla//xla/tsl/platform:byte_order",
+        "@xla//xla/tsl/platform:dynamic_annotations",
+        "@xla//xla/tsl/platform:macros",
+        "@xla//xla/tsl/platform:types",
+    ],
+)
+
+cc_library(
+    name = "cpu_info",
+    srcs = ["cpu_info.cc"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":platform_port_hdrs_lib",
+        "//tsl/platform",
+        "@com_google_absl//absl/base",
+        "@xla//xla/tsl/platform:logging",
+        "@xla//xla/tsl/platform:types",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -937,6 +1008,16 @@ cc_library(
 )
 
 cc_library(
+    name = "error_logging_hdrs_lib",
+    hdrs = ["error_logging.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
     name = "error_logging",
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["error_logging.h"],
@@ -959,6 +1040,18 @@ cc_library(
         ":stringpiece",
         "@com_google_absl//absl/strings:string_view",
         "@xla//xla/tsl/platform:macros",
+        "@xla//xla/tsl/platform:types",
+    ],
+)
+
+cc_library(
+    name = "human_readable_json_hdrs_lib",
+    hdrs = ["human_readable_json.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tsl/platform:protobuf",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@xla//xla/tsl/platform:types",
     ],
 )
@@ -1033,6 +1126,12 @@ tsl_cc_test(
         "@xla//xla/tsl/platform:logging",
         "@xla//xla/tsl/platform:test",
     ],
+)
+
+cc_library(
+    name = "cuda_root_path_hdrs_lib",
+    hdrs = ["cuda_root_path.h"],
+    compatible_with = get_compatible_with_portable(),
 )
 
 cc_library(
@@ -1222,10 +1321,30 @@ tsl_cc_test(
 )
 
 cc_library(
+    name = "context_hdrs_lib",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["context.h"],
+    deps = [
+        ":platform",
+        "@xla//xla/tsl/platform/default:context",
+        "@xla//xla/tsl/platform/google:context",
+    ],
+)
+
+cc_library(
     name = "context",
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["context.h"],
-    deps = tf_platform_deps("context"),
+    deps = [":platform"] + tf_platform_deps("context"),
+)
+
+cc_library(
+    name = "load_library_hdrs_lib",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["load_library.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+    ],
 )
 
 cc_library(
