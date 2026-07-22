@@ -162,7 +162,7 @@ struct Processor<DimensionHandle> {
   absl::Status RefineDim(int64_t dim, int64_t* result) {
     if (*result >= 0) {
       if (!(*result == dim || dim < 0)) {
-        return errors::InvalidArgument("Inconsistent dimensions detected");
+        return absl::InvalidArgumentError("Inconsistent dimensions detected");
       }
     } else if (dim >= 0) {
       *result = dim;
@@ -792,9 +792,9 @@ class SymbolicShapeRefiner {
     TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(*function_node, &function));
     auto it = fun_to_grappler_function_item_.find(function.name());
     if (it == fun_to_grappler_function_item_.end()) {
-      return errors::InvalidArgument(
-          function.name(),
-          " was not previously added to SymbolicShapeRefiner.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(function.name(),
+                       " was not previously added to SymbolicShapeRefiner."));
     }
 
     const absl::optional<GrapplerFunctionItem>& maybe_grappler_function_item =
@@ -826,20 +826,21 @@ class SymbolicShapeRefiner {
       const TensorId input_tensor = ParseTensorName(function_node->input(i));
 
       if (IsControlInput(input_tensor)) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(
             "Function inputs should not contain control nodes.");
       }
 
       const NodeDef* input_node = graph_.GetNode(input_tensor.node());
       if (input_node == nullptr) {
-        return errors::FailedPrecondition(input_tensor.node(),
-                                          " was not found in the graph.");
+        return absl::FailedPreconditionError(
+            absl::StrCat(input_tensor.node(), " was not found in the graph."));
       }
 
       InferenceContext* input_ic = GetContext(input_node);
       if (input_ic == nullptr) {
-        return errors::FailedPrecondition(
-            "Inference context has not been created for ", input_tensor.node());
+        return absl::FailedPreconditionError(
+            absl::StrCat("Inference context has not been created for ",
+                         input_tensor.node()));
       }
 
       int output_port_num = input_tensor.index();
@@ -956,18 +957,18 @@ class SymbolicShapeRefiner {
       TensorId out_tensor = ParseTensorName(out_arg.node_name);
 
       if (output_nodes.count(out_tensor.node()) <= 0) {
-        return errors::FailedPrecondition(
-            "Unable to find return function_node ", out_tensor.node(), " for ",
-            function_node->name());
+        return absl::FailedPreconditionError(
+            absl::StrCat("Unable to find return function_node ",
+                         out_tensor.node(), " for ", function_node->name()));
       }
       const NodeDef* retnode = output_nodes[out_tensor.node()];
 
       auto output_properties = gp.GetOutputProperties(retnode->name());
       int output_properties_size = output_properties.size();
       if (out_tensor.index() >= output_properties_size) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             out_tensor.ToString(), " has invalid position ", out_tensor.index(),
-            " (output_properties.size() = ", output_properties.size(), ").");
+            " (output_properties.size() = ", output_properties.size(), ")."));
       }
       auto& outprop = output_properties[out_tensor.index()];
       TensorShapeProto shape = outprop.shape();
@@ -1011,16 +1012,16 @@ class SymbolicShapeRefiner {
       const NodeDef* src = fanin.node;
       NodeContext* src_ctx = GetNodeContext(src);
       if (src_ctx == nullptr) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(absl::StrCat(
             "Input ", dst_input, " for '", node->name(),
-            "' was not previously added to SymbolicShapeRefiner.");
+            "' was not previously added to SymbolicShapeRefiner."));
       }
 
       InferenceContext* src_ic = src_ctx->inference_context.get();
       if (src_output >= src_ic->num_outputs()) {
-        return errors::OutOfRange("src_output = ", src_output,
-                                  ", but num_outputs is only ",
-                                  src_ic->num_outputs());
+        return absl::OutOfRangeError(absl::StrCat("src_output = ", src_output,
+                                                  ", but num_outputs is only ",
+                                                  src_ic->num_outputs()));
       }
 
       // Propagate input node's NodeContext info to the current node's
@@ -1138,12 +1139,12 @@ class SymbolicShapeRefiner {
         GetUnknownOutputShape(node, output_port);
     InferenceContext* ctx = GetContext(node);
     if (ctx == nullptr) {
-      return errors::InvalidArgument("SetUnknownShape: Missing context");
+      return absl::InvalidArgumentError("SetUnknownShape: Missing context");
     }
     if (output_port < 0 || output_port >= ctx->num_outputs()) {
-      return errors::InvalidArgument(
-          "SetUnknownShape: output_port must be in [0, ", ctx->num_outputs(),
-          ") but was ", output_port);
+      return absl::InvalidArgumentError(
+          absl::StrCat("SetUnknownShape: output_port must be in [0, ",
+                       ctx->num_outputs(), ") but was ", output_port));
     }
     ctx->set_output(output_port, shape);
     return absl::OkStatus();
@@ -1332,7 +1333,7 @@ class SymbolicShapeRefiner {
 
     if (static_cast<int>(grappler_function_item.inputs().size()) >
         function_node->input_size()) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           "Function input size should be smaller than node input size.");
     }
 
@@ -1341,9 +1342,9 @@ class SymbolicShapeRefiner {
          i < end; ++i) {
       const std::string& input = function_node->input(i);
       if (!IsControlInput(input)) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(absl::StrCat(
             "Found regular input (", input,
-            ") instead of control nodes for node ", function_node->name());
+            ") instead of control nodes for node ", function_node->name()));
       }
     }
 
@@ -2242,17 +2243,17 @@ absl::Status GraphProperties::RelaxEnqueueShapesAndMergeTypes(
     const std::vector<ShapeAndType>& shapes_and_types,
     std::vector<ShapeAndType>* queue_shapes_and_types) {
   if (shapes_and_types.size() != queue_shapes_and_types->size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Enqueue nodes mixed number of tensors: ", shapes_and_types.size(),
-        "  vs ", queue_shapes_and_types->size());
+        "  vs ", queue_shapes_and_types->size()));
   }
   for (size_t i = 0; i < shapes_and_types.size(); ++i) {
     const ShapeAndType& a = shapes_and_types[i];
     ShapeAndType& b = (*queue_shapes_and_types)[i];
     if (a.dtype != b.dtype) {
-      return errors::InvalidArgument("Enqueue nodes mixed dtypes for tensor ",
-                                     i, ": ", DataTypeString(a.dtype), " vs ",
-                                     DataTypeString(b.dtype));
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Enqueue nodes mixed dtypes for tensor ", i, ": ",
+          DataTypeString(a.dtype), " vs ", DataTypeString(b.dtype)));
     }
 
     b.shape = shape_refiner->OutputAsUnion(qnode, i, a.shape, b.shape);
@@ -2418,7 +2419,7 @@ absl::Status GraphProperties::PropagateShapes(
            num_resource_iterations++ < max_resource_iterations);
 
   if (!new_shapes->empty()) {
-    return errors::Internal("Shape inference failed to converge");
+    return absl::InternalError("Shape inference failed to converge");
   }
 
   return absl::OkStatus();
