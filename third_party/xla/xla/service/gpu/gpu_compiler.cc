@@ -1646,8 +1646,9 @@ bool RequiresCollectiveScheduleLinearizer(const HloModule* module,
     return false;
   }
   for (const HloComputation* comp : module->MakeNonfusionComputations()) {
-    for (const HloInstruction* inst : comp->instructions()) {
-      if (IsCustomCallToDnnConvolution(*inst)) {
+    for (const HloInstruction* instruction : comp->instructions()) {
+      if (IsCustomCallToDnnConvolution(*instruction) ||
+          IsConvFusion(*instruction)) {
         return true;
       }
     }
