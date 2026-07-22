@@ -382,6 +382,9 @@ class SpmdPartitioner : public HloModulePass {
   virtual bool CanSideEffectingHaveReplicatedSharding(
       const HloInstruction* hlo) {
     if (hlo->opcode() == HloOpcode::kCustomCall) {
+      if (hlo->custom_call_target() == "torch_tpu.keep_alive") {
+        return true;
+      }
       if (auto* partitioner =
               GetCustomCallPartitioner(hlo->custom_call_target())) {
         return partitioner->CanSideEffectingHaveReplicatedSharding();

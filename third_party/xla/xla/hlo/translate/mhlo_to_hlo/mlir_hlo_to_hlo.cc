@@ -4562,6 +4562,11 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   }
 
   xla::XlaOp custom_call;
+  std::optional<xla::XlaScopedShardingAssignment> keep_alive_sharding;
+  if (call_target_name == "torch_tpu.keep_alive") {
+    keep_alive_sharding.emplace(ctx.builder,
+                                xla::HloSharding::Replicate().ToProto());
+  }
   if (op.getCalledComputations().size() == 1 && op.getOperandLayouts() &&
       op.getResultLayouts()) {
     mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
@@ -4620,6 +4625,10 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   }
 
   if (op->getNumResults() == 1 && !return_tuple) {
+    if (call_target_name == "torch_tpu.keep_alive") {
+      ABSL_CHECK_OK(ctx.builder->SetInstructionSharding(
+          custom_call, xla::HloSharding::Replicate().ToProto()));
+    }
     value_map[op.getResult(0)] = custom_call;
   } else if (op.getCallTargetName() ==
                  xla::sdy::kGlobalToLocalShapeCallTargetName ||
