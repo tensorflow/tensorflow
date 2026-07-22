@@ -95,6 +95,10 @@ class DatasetRandomAccessCache {
   // out_tensors with the element at that index.
   absl::Status Get(OpKernelContext* ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) {
+    if (index < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected index >= 0; Received index: ", index));
+    }
     if (!iter_resource_) {
       TF_ASSIGN_OR_RETURN(iter_resource_,
                           GetIteratorResourceFromDataset(ctx, input_));
@@ -102,10 +106,6 @@ class DatasetRandomAccessCache {
     }
     if (index >= cache_.size()) {
       TF_RETURN_IF_ERROR(ExtendTempCacheToIndex(index, ctx));
-    }
-    if (index < 0) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Expected index >= 0; Received index: ", index));
     }
     *out_tensors = cache_.at(index);
     return absl::OkStatus();
@@ -159,6 +159,12 @@ class IteratorRandomAccessCache {
 
   absl::Status Get(AnyContext ctx, size_t element_position,
                    std::vector<Tensor>* out_tensors) {
+    if (element_position == std::numeric_limits<size_t>::max() ||
+        element_position >= cache_.max_size()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Element position too large or invalid."));
+    }
+
     if (element_position < cache_.size() && !cache_[element_position].empty()) {
       *out_tensors = cache_[element_position];
       return absl::OkStatus();

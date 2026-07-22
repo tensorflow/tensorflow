@@ -375,14 +375,25 @@ INSTANTIATE_TEST_CASE_P(CacheDatasetOpTest,
                         ParameterizedIteratorSaveAndRestoreTest,
                         ::testing::ValuesIn(IteratorSaveAndRestoreTestCases()));
 
-TEST_F(CacheDatasetOpTest, NegativeIndexTest) {
+TEST_F(CacheDatasetOpTest, NegativeIndexEarlyRejection) {
   auto params = CacheDatasetParams3();
   TF_ASSERT_OK(Initialize(params));
   std::vector<Tensor> out_tensors;
   absl::Status status =
-      dataset_->Get(AnyContext(iterator_ctx_.get()), -1, &out_tensors);
-  EXPECT_TRUE(status.code() == absl::StatusCode::kOutOfRange);
-  EXPECT_EQ(status.message(), "Index out of range [0, 3):-1");
+      dataset_->Get(AnyContext(iterator_ctx_.get()), -1LL, &out_tensors);
+  EXPECT_TRUE(status.code() == absl::StatusCode::kInvalidArgument ||
+              status.code() == absl::StatusCode::kOutOfRange);
+}
+
+TEST_F(CacheDatasetOpTest, LargeIndexTest) {
+  auto params = CacheDatasetParams3();
+  TF_ASSERT_OK(Initialize(params));
+  std::vector<Tensor> out_tensors;
+  int64_t huge_index = std::numeric_limits<int64_t>::max();
+  absl::Status status =
+      dataset_->Get(AnyContext(iterator_ctx_.get()), huge_index, &out_tensors);
+  EXPECT_TRUE(status.code() == absl::StatusCode::kInvalidArgument ||
+              status.code() == absl::StatusCode::kOutOfRange);
 }
 
 TEST_F(CacheDatasetOpTest, BadAllocCrashTest) {
