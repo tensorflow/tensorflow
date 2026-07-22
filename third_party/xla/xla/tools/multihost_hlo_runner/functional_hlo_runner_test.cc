@@ -381,6 +381,41 @@ TEST_F(FunctionalHloRunnerTest,
   }
 }
 
+TEST_F(FunctionalHloRunnerTest, GPUProfilerWarmupRunSuppressesUpload) {
+  if (test::DeviceTypeIs(test::kCpu)) {
+    GTEST_SKIP() << "GPU-only test";
+  }
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          GetPjRtClient());
+  std::string profile_dump_path =
+      tsl::io::JoinPath(testing::TempDir(), "warmup_xspace.pb");
+
+  std::unique_ptr<HLORunnerProfiler> profiler;
+  FunctionalHloRunner::RunningOptions running_options;
+  TF_ASSERT_OK_AND_ASSIGN(
+      profiler,
+      HLORunnerProfiler::Create(profile_dump_path, /*keep_xspace=*/true));
+  running_options.profiler = profiler.get();
+
+  running_options.num_repeats = 3;
+  running_options.num_repeats_with_profiler = 2;
+  running_options.profiler_warmup_run = true;
+  running_options.recreate_profiler_session_between_repeats = true;
+
+  TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
+      *client,
+      /* debug_options= */ {}, /* preproc_options= */ {},
+      /* raw_compile_options = */ {}, running_options,
+      {GetHloPath("single_device.hlo")}, InputFormat::kText));
+
+  tsl::Env* env = tsl::Env::Default();
+  std::vector<std::string> dumped_files;
+  TF_ASSERT_OK(env->GetMatchingPaths(
+      tsl::io::JoinPath(testing::TempDir(), "warmup_xspace*"), &dumped_files));
+  // Only 1 profile from the final repeat should be dumped.
+  EXPECT_EQ(dumped_files.size(), 1);
+}
+
 TEST_F(FunctionalHloRunnerTest, Sharded2Devices) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
                           GetPjRtClient());

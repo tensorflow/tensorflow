@@ -567,6 +567,12 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> device_buffers;
   std::vector<std::vector<PjRtBuffer*>> argument_ptrs;
 
+  if (running_options.profiler_warmup_run &&
+      !running_options.recreate_profiler_session_between_repeats) {
+    LOG(WARNING) << "profiler_warmup_run=true was set, but "
+                    "recreate_profiler_session_between_repeats=false. Warmup "
+                    "profiling data will still be recorded and combined.";
+  }
   bool has_active_profiler_session = false;
   for (int repeat = 0; repeat < running_options.num_repeats; ++repeat) {
     const bool is_last_repeat = (repeat == running_options.num_repeats - 1);
@@ -607,12 +613,30 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
         RETURN_IF_ERROR(future.Await());
       }
 
-      const bool upload_active_profiler_session =
+      const bool is_first_repeat_with_profiler =
+          repeat == running_options.num_repeats -
+                        running_options.num_repeats_with_profiler;
+      const bool is_profiler_warmup_run =
+          running_options.profiler_warmup_run && is_first_repeat_with_profiler;
+      const bool end_profiler_session =
           running_options.recreate_profiler_session_between_repeats ||
           is_last_repeat;
-      if (has_active_profiler_session && upload_active_profiler_session) {
-        XLA_SCOPED_LOGGING_TIMER("FunctionalHloRunner::XProfUpload");
-        running_options.profiler->UploadSession();
+      const bool upload_active_profiler_session =
+          (running_options.recreate_profiler_session_between_repeats &&
+           !is_profiler_warmup_run) ||
+          is_last_repeat;
+      if (has_active_profiler_session) {
+        if (upload_active_profiler_session) {
+          XLA_SCOPED_LOGGING_TIMER("FunctionalHloRunner::XProfUpload");
+          running_options.profiler->UploadSession();
+        } else if (is_profiler_warmup_run) {
+          if (auto* xspace_profiler = dynamic_cast<XSpaceProfilerInterface*>(
+                  running_options.profiler)) {
+            xspace_profiler->StopSession();
+          }
+        }
+      }
+      if (end_profiler_session) {
         has_active_profiler_session = false;
       }
     }
@@ -1760,6 +1784,8 @@ void HLORunnerProfiler::UploadSession() {
     xspace_ = nullptr;
   }
 }
+
+void HLORunnerProfiler::StopSession() { session_.reset(); }
 
 const tensorflow::profiler::XSpace* HLORunnerProfiler::GetXSpace() {
   return xspace_.get();
