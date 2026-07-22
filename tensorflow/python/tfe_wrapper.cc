@@ -1292,10 +1292,18 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     return tensorflow::PyoOrThrow(
         TFE_Py_TapeSetNew(persistent.ptr(), watch_accessed_variables.ptr()));
   });
-  m.def("TFE_Py_TapeSetAdd",
-        [](const py::handle& tape) { TFE_Py_TapeSetAdd(tape.ptr()); });
-  m.def("TFE_Py_TapeSetRemove",
-        [](const py::handle& tape) { TFE_Py_TapeSetRemove(tape.ptr()); });
+  m.def("TFE_Py_TapeSetAdd", [](const py::handle& tape) {
+    TFE_Py_TapeSetAdd(tape.ptr());
+    if (PyErr_Occurred()) {
+      throw py::error_already_set();
+    }
+  });
+  m.def("TFE_Py_TapeSetRemove", [](const py::handle& tape) {
+    TFE_Py_TapeSetRemove(tape.ptr());
+    if (PyErr_Occurred()) {
+      throw py::error_already_set();
+    }
+  });
   m.def("TFE_Py_TapeSetStopOnThread", &TFE_Py_TapeSetStopOnThread);
   m.def("TFE_Py_TapeSetRestartOnThread", &TFE_Py_TapeSetRestartOnThread);
   m.def("TFE_Py_TapeSetIsStopped",
@@ -1356,10 +1364,16 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_Py_TapeWatch",
         [](const py::handle& tape, const py::handle& tensor) {
           TFE_Py_TapeWatch(tape.ptr(), tensor.ptr());
+          if (PyErr_Occurred()) {
+            throw py::error_already_set();
+          }
         });
   m.def("TFE_Py_TapeWatchVariable",
         [](const py::handle& tape, const py::handle& variable) {
           TFE_Py_TapeWatchVariable(tape.ptr(), variable.ptr());
+          if (PyErr_Occurred()) {
+            throw py::error_already_set();
+          }
         });
   m.def("TFE_Py_TapeWatchedVariables", [](const py::handle& tape) {
     return tensorflow::PyoOrThrow(TFE_Py_TapeWatchedVariables(tape.ptr()));
@@ -1370,6 +1384,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         []() { return tensorflow::PyoOrThrow(TFE_Py_VariableWatcherNew()); });
   m.def("TFE_Py_VariableWatcherRemove", [](const py::handle& variable_watcher) {
     TFE_Py_VariableWatcherRemove(variable_watcher.ptr());
+    if (PyErr_Occurred()) {
+      throw py::error_already_set();
+    }
   });
   m.def("TFE_Py_VariableWatcherVariableAccessed",
         [](const py::handle& variable) {
@@ -1393,6 +1410,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_Py_ForwardAccumulatorSetRemove",
         [](const py::handle& accumulator) {
           TFE_Py_ForwardAccumulatorSetRemove(accumulator.ptr());
+          if (PyErr_Occurred()) {
+            throw py::error_already_set();
+          }
         });
 
   m.def("TFE_Py_ForwardAccumulatorWatch",
@@ -1400,6 +1420,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
            const py::handle& tangent) {
           TFE_Py_ForwardAccumulatorWatch(accumulator.ptr(), tensor.ptr(),
                                          tangent.ptr());
+          if (PyErr_Occurred()) {
+            throw py::error_already_set();
+          }
         });
   m.def("TFE_Py_ForwardAccumulatorJVP",
         [](const py::handle& accumulator, const py::handle& tensor) {

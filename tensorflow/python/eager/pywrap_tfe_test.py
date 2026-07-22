@@ -383,6 +383,51 @@ class Tests(test.TestCase):
                                       shape, minval, maxval,
                                       "seed", seed)
 
+  def testTypeConfusionSafety(self):
+    dummy_obj = 123
+
+    # Test Tape API functions with incorrect type arguments
+    with self.assertRaisesRegex(TypeError, "Expected a TFE_Py_Tape object"):
+      pywrap_tfe.TFE_Py_TapeSetAdd(dummy_obj)
+    with self.assertRaisesRegex(TypeError, "Expected a TFE_Py_Tape object"):
+      pywrap_tfe.TFE_Py_TapeSetRemove(dummy_obj)
+    with self.assertRaisesRegex(TypeError, "Expected a TFE_Py_Tape object"):
+      pywrap_tfe.TFE_Py_TapeWatch(dummy_obj, None)
+    with self.assertRaisesRegex(TypeError, "Expected a TFE_Py_Tape object"):
+      pywrap_tfe.TFE_Py_TapeWatchVariable(dummy_obj, None)
+    with self.assertRaisesRegex(TypeError, "Expected a TFE_Py_Tape object"):
+      pywrap_tfe.TFE_Py_TapeWatchedVariables(dummy_obj)
+    with self.assertRaisesRegex(TypeError, "Expected a TFE_Py_Tape object"):
+      pywrap_tfe.TFE_Py_TapeGradient(dummy_obj, None, None, None, None, None)
+
+    # Test ForwardAccumulator API functions with incorrect type arguments
+    with self.assertRaisesRegex(
+        TypeError, "Expected a TFE_Py_ForwardAccumulator object"
+    ):
+      pywrap_tfe.TFE_Py_ForwardAccumulatorSetAdd(dummy_obj)
+    with self.assertRaisesRegex(
+        TypeError, "Expected a TFE_Py_ForwardAccumulator object"
+    ):
+      pywrap_tfe.TFE_Py_ForwardAccumulatorSetRemove(dummy_obj)
+    with self.assertRaisesRegex(
+        TypeError, "Expected a TFE_Py_ForwardAccumulator object"
+    ):
+      pywrap_tfe.TFE_Py_ForwardAccumulatorWatch(dummy_obj, None, None)
+    with self.assertRaisesRegex(
+        TypeError, "Expected a TFE_Py_ForwardAccumulator object"
+    ):
+      pywrap_tfe.TFE_Py_ForwardAccumulatorJVP(dummy_obj, None)
+
+    # Test VariableWatcher API functions with incorrect type arguments
+    with self.assertRaisesRegex(
+        TypeError, "Expected a TFE_Py_VariableWatcher object"
+    ):
+      pywrap_tfe.TFE_Py_VariableWatcherRemove(dummy_obj)
+    with self.assertRaisesRegex(
+        TypeError, "Expected a TFE_Py_VariableWatcher object"
+    ):
+      pywrap_tfe.TFE_Py_VariableWatcherWatchedVariables(dummy_obj)
+
 
 if __name__ == "__main__":
   test.main()
