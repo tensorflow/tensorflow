@@ -78,6 +78,12 @@ class EncodePngOp : public OpKernel {
     const int32_t channels =
         static_cast<int32_t>(image.dim_size(batch_dims + 2));
 
+    OP_REQUIRES(
+        context, height > 0 && width > 0,
+        absl::InvalidArgumentError(absl::StrCat(
+            "image height and width must be > 0, got shape ",
+            image.shape().DebugString())));
+
     // In some cases, we pass width*channels*2 to png.
     const int32_t max_row_width = std::numeric_limits<int32_t>::max() / 2;
 
