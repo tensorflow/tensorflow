@@ -842,5 +842,31 @@ TEST_F(MathTest, ZetaF64) {
                               ErrorSpec{0.00000000000001});
 }
 
+// Regression test for b/121501: for finite x > 1 and q -> +inf every term
+// (k + q)^-x is zero, so zeta(x, +inf) == 0. The Euler-Maclaurin correction
+// otherwise produces 0 * inf = NaN.
+TEST_F(MathTest, ZetaF64Infinity) {
+  const double inf = std::numeric_limits<double>::infinity();
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<double>(&builder, {2.0, 3.0, 2.0});
+  auto q = ConstantR1<double>(&builder, {inf, inf, 5.0});
+  Zeta(x, q);
+  std::vector<double> expected = {0.0, 0.0, 0.22132295573711525};
+
+  ComputeAndCompareR1<double>(&builder, expected, {},
+                              ErrorSpec{0.00000000000001});
+}
+
+TEST_F(MathTest, ZetaF32Infinity) {
+  const float inf = std::numeric_limits<float>::infinity();
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(&builder, {2.0f, 3.0f});
+  auto q = ConstantR1<float>(&builder, {inf, inf});
+  Zeta(x, q);
+  std::vector<float> expected = {0.0f, 0.0f};
+
+  ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec{1e-6});
+}
+
 }  // namespace
 }  // namespace xla
