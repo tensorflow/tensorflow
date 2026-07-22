@@ -357,6 +357,18 @@ namespace xla {
 namespace gpu {
 namespace {
 
+bool IsTritonGemmEnabled(const DebugOptions& debug_options,
+                         const se::GpuComputeCapability& gpu_version) {
+  if (!debug_options.xla_gpu_enable_triton_gemm()) {
+    return false;
+  }
+  const auto* cuda_cc = gpu_version.cuda_compute_capability();
+  const auto* rocm_cc = gpu_version.rocm_compute_capability();
+  return (cuda_cc != nullptr &&
+          cuda_cc->IsAtLeast(se::CudaComputeCapability::kAmpere)) ||
+         rocm_cc != nullptr;
+}
+
 tsl::thread::ThreadPool* GetCompilationThreadPool() {
   static constexpr int kMaxCompilationThreads = 32;
   tsl::ThreadOptions thread_options;
@@ -981,8 +993,10 @@ absl::Status RunOptimizationPasses(
                                         .xla_gpu_dot_merger_threshold_mb()}
           << 20,
       queue_id);
-  pipeline.AddPass<DotDimensionNormalizer>(
-      !debug_options.xla_gpu_enable_triton_gemm());
+  // TODO(crem): Change the condition to !IsTritonGemmEnabled(debug_options,
+  // gpu_version) once Triton emitter supports multiple non-contracting
+  // dimensions.
+  pipeline.AddPass<DotDimensionNormalizer>(true);
   // Folding transpose operands into dots can undo the normal form established
   // by DotDecomposer. Subsequent passes must not rely on it from this point on.
   pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot);
@@ -2011,18 +2025,13 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     se::GpuComputeCapability gpu_version =
         gpu_target_config.device_description.gpu_compute_capability();
     pipeline.AddPass<AlgorithmChecker>(gpu_version);
-    const auto* cuda_cc = gpu_version.cuda_compute_capability();
-    const auto* rocm_cc = gpu_version.rocm_compute_capability();
 
     // Make sure that dots have at least 1 contracting dimension in the
     // operands. Needs to happen shortly before the dot rewrite, as otherwise
     // AlgebraicSimplifier will simplify it away again.
     // TODO(b/375566188): Figure out whether we can get rid of this pass.
     pipeline.AddPass<DotNormalizer>();
-    if (debug_options.xla_gpu_enable_triton_gemm() &&
-        ((cuda_cc != nullptr &&
-          cuda_cc->IsAtLeast(se::CudaComputeCapability::kAmpere)) ||
-         rocm_cc != nullptr)) {
+    if (IsTritonGemmEnabled(debug_options, gpu_version)) {
       pipeline.AddPass<DotDimensionNormalizer>(
           /*normalize_noncontracting_dimensions=*/!debug_options
               .xla_gpu_experimental_gemm_fusion_v2());
@@ -2062,9 +2071,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // in the softmax codegen pipeline. However we should run before
     // ReductionDimensionGrouper, as that makes matching the softmax pattern
     // harder.
-    if ((cuda_cc != nullptr &&
-         cuda_cc->IsAtLeast(se::CudaComputeCapability::kAmpere)) ||
-        rocm_cc != nullptr) {
+    if (IsTritonGemmEnabled(debug_options, gpu_version)) {
       pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(simplifier_options,
                                                            gpu_version);
       pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
