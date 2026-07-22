@@ -79,6 +79,43 @@ def _ctc_loss_v2(labels, inputs, sequence_length,
       logits_time_major=time_major)
 
 
+class CTCLossValidationTest(test.TestCase):
+
+  def _callCtcLoss(self, ctc_loss_fn, logits, blank_index=0):
+    labels = constant_op.constant([[0]], dtype=dtypes.int32)
+    label_length = constant_op.constant([1], dtype=dtypes.int32)
+    logit_length = constant_op.constant([1], dtype=dtypes.int32)
+    return ctc_loss_fn(
+        labels=labels,
+        logits=logits,
+        label_length=label_length,
+        logit_length=logit_length,
+        blank_index=blank_index)
+
+  def testStaticLogitsRankTooSmallRejected(self):
+    logits = constant_op.constant([[1.0, 2.0]], dtype=dtypes.float32)
+    for ctc_loss_fn in [ctc_ops.ctc_loss_v2, ctc_ops.ctc_loss_v3]:
+      with self.subTest(ctc_loss_fn=ctc_loss_fn.__name__):
+        with self.assertRaisesRegex(ValueError, "rank at least 3"):
+          self._callCtcLoss(ctc_loss_fn, logits)
+
+  def testStaticZeroClassesRejected(self):
+    logits = constant_op.constant(
+        np.zeros([1, 1, 0], dtype=np.float32), dtype=dtypes.float32)
+    for ctc_loss_fn in [ctc_ops.ctc_loss_v2, ctc_ops.ctc_loss_v3]:
+      with self.subTest(ctc_loss_fn=ctc_loss_fn.__name__):
+        with self.assertRaisesRegex(ValueError, "at least 1 class"):
+          self._callCtcLoss(ctc_loss_fn, logits)
+
+  def testStaticBlankIndexOutOfRangeRejected(self):
+    logits = constant_op.constant(
+        np.zeros([1, 1, 3], dtype=np.float32), dtype=dtypes.float32)
+    for ctc_loss_fn in [ctc_ops.ctc_loss_v2, ctc_ops.ctc_loss_v3]:
+      with self.subTest(ctc_loss_fn=ctc_loss_fn.__name__):
+        with self.assertRaisesRegex(ValueError, r"must be in range \[-3, 3\)"):
+          self._callCtcLoss(ctc_loss_fn, logits, blank_index=-4)
+
+
 class CTCLossTest(test.TestCase):
 
   def _testCTCLoss(self,
