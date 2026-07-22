@@ -33,6 +33,7 @@ cc_library(
     hdrs = ["preemption_notifier.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//third_party/gloop/thread",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
@@ -51,6 +52,7 @@ tsl_cc_test(
     srcs = ["preemption_notifier_test.cc"],
     deps = [
         ":preemption_notifier",
+        "//third_party/gloop/thread",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:env_impl",  # build_cleaner: keep
         "//xla/tsl/platform:errors",
