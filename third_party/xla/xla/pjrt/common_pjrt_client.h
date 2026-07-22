@@ -693,6 +693,15 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
     return GetExecutable()->FingerprintExecutable();
   }
 
+  // Invoked once per device at the top of ExecuteLaunch (phase 2 of the
+  // two-phase launch). The hook must be thread-safe: it may be called
+  // concurrently from per-device launch threads. Must not be set concurrently
+  // with Execute. Intended for tests that need to observe which devices reach
+  // phase 2.
+  void SetExecuteLaunchHookForTesting(std::function<void(PjRtDevice*)> hook) {
+    execute_launch_hook_ = std::move(hook);
+  }
+
  protected:
   // Execute is split into Prepare and Launch.
   // Prepare can fail and be retried, while Launch is guaranteed to succeed.
@@ -791,6 +800,8 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
   std::shared_ptr<DeviceAssignment> device_assignment_;
 
   std::unique_ptr<DispatchInfo::Extras> extras_;
+
+  std::function<void(PjRtDevice*)> execute_launch_hook_;
 };
 
 class CommonPjRtRawBufferImpl : public PjRtRawBuffer {
