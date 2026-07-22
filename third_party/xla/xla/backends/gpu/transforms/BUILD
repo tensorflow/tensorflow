@@ -1768,6 +1768,41 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "triton_collective_fusion",
+    srcs = ["triton_collective_fusion.cc"],
+    hdrs = ["triton_collective_fusion.h"],
+    deps = [
+        "//xla/backends/gpu/codegen/triton:collective_emitter",
+        "//xla/backends/gpu/codegen/triton:support",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:ir_emission_utils",
+        "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "triton_collective_fusion_test",
+    srcs = ["triton_collective_fusion_test.cc"],
+    deps = [
+        ":triton_collective_fusion",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 xla_cc_test(
     name = "gemm_fusion_swap_operands_test",
     srcs = ["gemm_fusion_swap_operands_test.cc"],
