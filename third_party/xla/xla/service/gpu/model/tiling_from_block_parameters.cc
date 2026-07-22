@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/model/tiling_from_block_parameters.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <utility>
 #include <vector>
@@ -24,16 +25,18 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/experimental/tiling_space_utils.h"
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
 
 namespace xla::gpu {
@@ -102,14 +105,36 @@ absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
 
 absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
     const xla::gpu::experimental::TilingSpace& tiling_space,
-    const BlockLevelParameters& block_level_parameters) {
-  if (block_level_parameters.output_tile_sizes.size() != 1) {
-    return Unimplemented(
-        "Only single-result fusions are supported for now. Received %d "
-        "roots.",
-        block_level_parameters.output_tile_sizes.size());
-  }
+    const BlockLevelParameters& block_level_parameters,
+    bool enable_same_shape_multi_output_fusion) {
+  TF_RET_CHECK(!block_level_parameters.output_tile_sizes.empty())
+      << "output_tile_sizes cannot be empty.";
+
+  // For multi-output fusions with identical shapes, we enforce that all outputs
+  // share the same tiling. Therefore, the block-level parameters must specify
+  // identical tile sizes for all outputs.
+  // TODO(b/502910372): Support arbitrary multi-output fusions.
   const auto& parallel_tile_sizes = block_level_parameters.output_tile_sizes[0];
+  if (block_level_parameters.output_tile_sizes.size() > 1) {
+    if (!enable_same_shape_multi_output_fusion) {
+      return Unimplemented(
+          "Only single-result fusions are supported for now. Received %d "
+          "roots.",
+          block_level_parameters.output_tile_sizes.size());
+    }
+
+    for (size_t i = 1; i < block_level_parameters.output_tile_sizes.size();
+         ++i) {
+      if (parallel_tile_sizes != block_level_parameters.output_tile_sizes[i]) {
+        return Unimplemented(
+            "Same-shape multi-output fusions must have identical tile sizes "
+            "for all outputs. Received different tile sizes for root 0 [%s] "
+            "and root %d [%s].",
+            absl::StrJoin(parallel_tile_sizes, ", "), i,
+            absl::StrJoin(block_level_parameters.output_tile_sizes[i], ", "));
+      }
+    }
+  }
   if (int64_t num_parallel_dims = tiling_space.num_parallel_dimensions();
       num_parallel_dims != parallel_tile_sizes.size()) {
     return Internal(

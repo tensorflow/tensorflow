@@ -477,6 +477,51 @@ CHECK: stablehlo.add{{.*}}: tensor<16xui32>
 )"));
 }
 
+TEST_P(XTileDialectTestParameterized,
+       HloSameShapeMultiOutputFusionIsLoweredToXTileInsert) {
+  if (!GetParam()) {
+    GTEST_SKIP() << "Skipping test for legacy emitter.";
+  }
+
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+multi_output_fusion {
+  p0 = f32[150,160] parameter(0)
+  p1 = f32[150,160] parameter(1)
+  add = f32[150,160] add(p0, p1)
+  mul = f32[150,160] multiply(p0, p1)
+  ROOT t = (f32[150,160], f32[150,160]) tuple(add, mul)
+}
+
+ENTRY e {
+  p0 = f32[150,160] parameter(0)
+  p1 = f32[150,160] parameter(1)
+  ROOT custom-call = (f32[150,160], f32[150,160]) fusion(p0, p1), kind=kCustom,
+    calls=multi_output_fusion,
+    backend_config={"fusion_backend_config": {kind: "__triton"}}
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_experimental_enable_same_shape_multi_output_fusion(true);
+
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{16, 32}, {16, 32}};
+
+  EXPECT_OK(CreateXTileIrAndFileCheck(
+      *module->GetComputationWithName("multi_output_fusion"),
+      block_level_parameters,
+      R"(
+CHECK: stablehlo.add
+CHECK: stablehlo.multiply
+CHECK: xtile.insert {{.*}} into %arg2
+CHECK: xtile.insert {{.*}} into %arg3
+)"));
+}
+
 TEST_F(XTileDialectTest, HloAllGatherDotLowering) {
   constexpr absl::string_view kHloText = R"(
     HloModule nested_all_gather_dot
