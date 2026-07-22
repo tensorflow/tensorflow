@@ -1588,7 +1588,7 @@ TEST(HloModuleTest, TestCreateFromProtoUpdatesBufferAssignment) {
           /*buffer_size=*/std::move(buffer_size_func),
           /*alias_info=*/&alias_info,
           /*color_alignment=*/[](LogicalBuffer::Color) -> int64_t { return 1; },
-          /*options=*/std::move(opts)));
+          /*opts=*/std::move(opts)));
 
   BufferAssignmentProto buffer_assignment_proto = buffer_assignment->ToProto();
   *opt_hlo_module_proto.mutable_buffer_assignment() = buffer_assignment_proto;
