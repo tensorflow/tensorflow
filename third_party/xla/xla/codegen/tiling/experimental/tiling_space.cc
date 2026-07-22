@@ -376,7 +376,7 @@ absl::StatusOr<std::unique_ptr<TilingSpace>> TilingSpace::Create(
       int64_t global_dim_id =
           tiling_space->GetDimensionInfo(root.instruction(), index).id.value();
       dim_tiles.push_back(GetDefaultDimTile(
-          index,
+          global_dim_id,
           CreateSymbolExpr(global_dim_id, tiling_space->num_dimensions(), ctx),
           dim));
     }
