@@ -230,7 +230,8 @@ NB_MODULE(_profiler, m) {
               xla::ThrowIfError(sess->session->CollectData(&xspace));
               if (sess->session_id.empty()) {
                 xla::ThrowIfError(tsl::profiler::ExportToTensorBoard(
-                    xspace, tensorboard_dir));
+                    xspace, tensorboard_dir,
+                    /* also_export_trace_json= */ true));
               } else {
                 xla::ThrowIfError(tsl::profiler::ExportToTensorBoard(
                     xspace, tensorboard_dir, sess->session_id,
