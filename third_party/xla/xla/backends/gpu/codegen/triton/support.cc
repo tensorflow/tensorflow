@@ -568,6 +568,9 @@ CodegenDecision IsTritonSupportedDot(
   if (result_type == PrimitiveType::S4) {
     return CodegenDecision::Forbid("S4 is not supported.");
   }
+  if (result_type == PrimitiveType::F64) {
+    return CodegenDecision::Forbid("F64 is not supported.");
+  }
 
   absl::Status status = CheckSupportedCheckDotDimensions(dot);
   if (!status.ok()) {
