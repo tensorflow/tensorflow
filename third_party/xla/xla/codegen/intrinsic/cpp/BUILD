@@ -139,6 +139,7 @@ cc_library(
     ],
     deps = [
         ":vector_ops",
+        "@XNNPACK//ynnpack/base/simd",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -160,6 +161,7 @@ cc_ir_header(
         ":cpp_context_provider",
         ":eigen_unary_lib",
         ":vector_ops",
+        "@XNNPACK//ynnpack/base/simd",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -181,6 +183,7 @@ cc_ir_header(
         ":cpp_context_provider",
         ":eigen_unary_lib",
         ":vector_ops",
+        "@XNNPACK//ynnpack/base/simd",
         "@eigen_archive//:eigen3",
     ],
 )

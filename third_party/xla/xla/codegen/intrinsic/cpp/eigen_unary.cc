@@ -19,7 +19,11 @@ limitations under the License.
 #include "xla/codegen/intrinsic/cpp/eigen_unary.h"
 
 #include <cmath>
+#include <cstddef>
+#include <type_traits>
 
+#include "ynnpack/base/simd/gnu_vector.h"
+#include "ynnpack/base/simd/vec.h"
 #include "Eigen/Core"  // NOLINT(misc-include-cleaner)
 #include "xla/codegen/intrinsic/cpp/vector_ops.h"
 
@@ -160,6 +164,72 @@ double atan_f64(double x_in) {
 }
 Vec4d atan_v4f64(Vec4d x) { return VectorAtan(x); }
 Vec8d atan_v8f64(Vec8d x) { return VectorAtan(x); }
+
+//===--------------------------------------------------------------------===//
+// Sine and Cosine Kernels (using YNNPACK SIMD)
+//===--------------------------------------------------------------------===//
+
+namespace {
+
+template <typename VecType>
+inline VecType VectorSin(VecType x) {
+  using Scalar = std::remove_reference_t<decltype(x[0])>;
+  constexpr size_t N = sizeof(VecType) / sizeof(Scalar);
+  return ynn::simd::sin(  // NOLINT(misc-include-cleaner)
+             ynn::simd::vec<Scalar, N>(x))
+      .v_;
+}
+
+template <typename VecType>
+inline VecType VectorCos(VecType x) {
+  using Scalar = std::remove_reference_t<decltype(x[0])>;
+  constexpr size_t N = sizeof(VecType) / sizeof(Scalar);
+  return ynn::simd::cos(  // NOLINT(misc-include-cleaner)
+             ynn::simd::vec<Scalar, N>(x))
+      .v_;
+}
+
+}  // namespace
+
+// Single precision sin
+float sin_f32(float x) {
+  return ynn::simd::sin(  // NOLINT(misc-include-cleaner)
+             ynn::simd::vec<float, 4>(x))
+      .v_[0];
+}
+Vec4f sin_v4f32(Vec4f x) { return VectorSin(x); }
+Vec8f sin_v8f32(Vec8f x) { return VectorSin(x); }
+Vec16f sin_v16f32(Vec16f x) { return VectorSin(x); }
+
+// Double precision sin
+double sin_f64(double x) {
+  return ynn::simd::sin(  // NOLINT(misc-include-cleaner)
+             ynn::simd::vec<double, 4>(x))
+      .v_[0];
+}
+Vec2d sin_v2f64(Vec2d x) { return VectorSin(x); }
+Vec4d sin_v4f64(Vec4d x) { return VectorSin(x); }
+Vec8d sin_v8f64(Vec8d x) { return VectorSin(x); }
+
+// Single precision cos
+float cos_f32(float x) {
+  return ynn::simd::cos(  // NOLINT(misc-include-cleaner)
+             ynn::simd::vec<float, 4>(x))
+      .v_[0];
+}
+Vec4f cos_v4f32(Vec4f x) { return VectorCos(x); }
+Vec8f cos_v8f32(Vec8f x) { return VectorCos(x); }
+Vec16f cos_v16f32(Vec16f x) { return VectorCos(x); }
+
+// Double precision cos
+double cos_f64(double x) {
+  return ynn::simd::cos(  // NOLINT(misc-include-cleaner)
+             ynn::simd::vec<double, 4>(x))
+      .v_[0];
+}
+Vec2d cos_v2f64(Vec2d x) { return VectorCos(x); }
+Vec4d cos_v4f64(Vec4d x) { return VectorCos(x); }
+Vec8d cos_v8f64(Vec8d x) { return VectorCos(x); }
 
 }  // namespace xla::codegen
 #endif  // defined(__has_attribute) && __has_attribute(vector_size) &&
