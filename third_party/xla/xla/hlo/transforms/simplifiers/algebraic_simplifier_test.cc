@@ -169,8 +169,7 @@ TEST_F(AlgebraicSimplifierTest, IsNonNegative_Op_NegativeTestCase) {
 
 TEST_F(AlgebraicSimplifierTest,
        IsNonNegativeSignedIntegerOverflowNegativeTestCase) {
-  for (const auto op : {"abs(p0)", "multiply(p0, p0)",
-                        "power(constant(10), constant(10))"}) {
+  for (const auto op : {"abs(p0)", "multiply(p0, p0)", "power(p0, p0)"}) {
     const auto kModuleStr = absl::StrFormat(R"(
       HloModule m
       test {
@@ -193,6 +192,17 @@ TEST_F(AlgebraicSimplifierTest, IsNonNegativeSignedIntegerIotaCanOverflow) {
     }
   )"));
   ASSERT_FALSE(AlgebraicSimplifierVisitor::IsNonNegative(
+      m->entry_computation()->root_instruction(), default_options_));
+}
+
+TEST_F(AlgebraicSimplifierTest, IsNonNegativeSignedIntegerIotaFitsRange) {
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(R"(
+    HloModule m
+    ENTRY test {
+      ROOT iota = s8[128] iota(), iota_dimension=0
+    }
+  )"));
+  ASSERT_TRUE(AlgebraicSimplifierVisitor::IsNonNegative(
       m->entry_computation()->root_instruction(), default_options_));
 }
 

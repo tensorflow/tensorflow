@@ -553,7 +553,18 @@ bool AlgebraicSimplifierVisitor::IsNonNegative(
       return true;
     }
     case HloOpcode::kIota: {
-      return !HasSignedIntegralElementType(hlo);
+      if (!HasSignedIntegralElementType(hlo)) {
+        return true;
+      }
+      const auto* iota = Cast<HloIotaInstruction>(hlo);
+      const int64_t dim_size =
+          iota->shape().dimensions(iota->iota_dimension());
+      const int bit_width =
+          primitive_util::BitWidth(hlo->shape().element_type());
+      if (bit_width >= 64) {
+        return true;
+      }
+      return dim_size <= (1LL << (bit_width - 1));
     }
     case HloOpcode::kAbs: {
       return !HasSignedIntegralElementType(hlo);
