@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
+#include "third_party/re2/re2.h"
 #include "tensorflow/core/platform/regexp.h"
 
 namespace tensorflow {
