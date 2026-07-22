@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <stdint.h>
+#include <cstdint>
+#include <limits>
 
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
@@ -39,13 +40,15 @@ TfLiteStatus ResizeOutputImpl(TfLiteContext* context, const TfLiteTensor* dims,
   TfLiteIntArray* output_shape = TfLiteIntArrayCreate(dims->dims->data[0]);
   for (int i = 0; i < output_shape->size; ++i) {
     T data = GetTensorData<T>(dims)[i];
-    if (data < 0) {
+    if (data < 0 || data > std::numeric_limits<int32_t>::max()) {
       TfLiteIntArrayFree(output_shape);
-      TF_LITE_KERNEL_LOG(context, "Fill dimensions must be >= 0 got %d",
-                         dims->type);
+      TF_LITE_KERNEL_LOG(
+          context,
+          "Fill dimension out of int32 range at index %d for type %d", i,
+          dims->type);
       return kTfLiteError;
     }
-    output_shape->data[i] = data;
+    output_shape->data[i] = static_cast<int>(data);
   }
   return context->ResizeTensor(context, output, output_shape);
 }
