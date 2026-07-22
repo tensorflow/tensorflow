@@ -1,0 +1,76 @@
+diff --git a/src/api.cpp b/src/api.cpp
+index d6430ae..e709c5c 100644
+--- a/src/api.cpp
++++ b/src/api.cpp
+@@ -142,55 +142,17 @@ std::string to_string(onecclPluginType_t type) {
+     }
+ }
+ 
+-onecclResult_t load_plugin(onecclPlugin_t *plugin, const std::string &path) {
+-    if (plugin == nullptr) {
+-        return onecclInvalidArgument;
+-    }
++extern "C" void* onecclPluginCall(onecclPluginCall_t call_type);
+ 
+-    dl_handle handle = nullptr;
+-    {
+-        // Attempt to read from the library cache using the path as the key
+-        std::shared_lock<std::shared_mutex> const lock(plugin_lock);
+-        auto cached_library = library_cache.find(path);
+-        if (cached_library != library_cache.end()) {
+-            handle = cached_library->second;
+-        }
+-    }
+-
+-    if (handle == nullptr) {
+-        {
+-            std::scoped_lock const lock(plugin_lock);
+-            handle = dlopen(path.c_str(), RTLD_LAZY);
+-            if (handle == nullptr) {
+-                ONECCL_INFO("Cannot open plugin library: %s", dlerror());
+-                return onecclError;
+-            }
+-            // Cache the loaded library
+-            library_cache[path] = handle;
+-        }
+-    }
+-
+-    dlerror(); // Clear any existing error
+-
+-    // Get pointer the plugin entrypoint
+-    const char *symbol = "onecclPluginCall";
++onecclResult_t load_plugin(onecclPlugin_t *plugin, const std::string &path) {
+     auto plugin_call =
+-        reinterpret_cast<onecclPluginEntrypoint_t>(dlsym(handle, symbol));
+-    const char *dlsym_error = dlerror();
+-    if (dlsym_error != nullptr) {
+-        ONECCL_ERROR("Cannot load plugin entrypoint: '%s': %s", symbol,
+-                     dlsym_error);
+-        return onecclError;
+-    }
+-
++        reinterpret_cast<onecclPluginEntrypoint_t>(onecclPluginCall);
+     plugin->call = plugin_call;
+-
+     auto plugin_init_fn = reinterpret_cast<onecclPluginCallInit_t>(
+         plugin->call(ONECCL_PLUGIN_INIT));
+     if (plugin_init_fn != nullptr) {
+         return plugin_init_fn();
+     }
+-
+     return onecclSuccess;
+ }
+ 
+diff --git a/src/internal/api/plugin.h b/src/internal/api/plugin.h
+index 59e664a..0eb8f42 100644
+--- a/src/internal/api/plugin.h
++++ b/src/internal/api/plugin.h
+@@ -26,7 +26,7 @@
+ extern "C" {
+ #endif
+ 
+-typedef enum onecclPluginCall {
++typedef enum onecclPluginCall_ {
+     ONECCL_PLUGIN_INIT = 1,
+     ONECCL_PLUGIN_INIT_ID,
+     ONECCL_PLUGIN_INIT_COMM,
