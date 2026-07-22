@@ -75,6 +75,27 @@
     #app_container.collapsed #frames_list {
       display: none;
     }
+    #search_container {
+      padding: 10px 15px;
+      border-bottom: 1px solid #e0e0e0;
+      background-color: #f7f7f7;
+    }
+    #search_box {
+      width: 100%;
+      padding: 6px 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.15s ease-in-out;
+    }
+    #search_box:focus {
+      border-color: #007acc;
+      box-shadow: 0 0 0 2px rgba(0,122,204,0.2);
+    }
+    #app_container.collapsed #search_container {
+      display: none;
+    }
     #frames_list {
       list-style: none;
       padding: 0;
@@ -110,6 +131,7 @@
       overflow: hidden;
       background-color: white;
       position: relative;
+      min-height: 0;
     }
     #svg_container {
       width: 100%;
@@ -117,6 +139,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      min-height: 0;
     }
     #rendered svg {
       height: 100% !important;
@@ -178,6 +201,9 @@
           <span id="collapsed_frame_desc"></span>
           <button id="toggle_sidebar" title="Collapse Sidebar">▼</button>
         </div>
+        <div id="search_container">
+          <input type="text" id="search_box" placeholder="Filter frames..." autocomplete="off" disabled>
+        </div>
         <ul id="frames_list"></ul>
       </div>
       <div id="rendered">
@@ -195,6 +221,7 @@
   const cssregex = new RegExp('stylesheet=<([^]*)\n>\n', 'gm');
   const hpccWasm = window["@hpcc-js/wasm"];
   window.currentPanZoom = null;
+  let filteredIndices = [];
 
   const getIdFromHash = () => {
     let hash = window.location.hash;
@@ -253,15 +280,13 @@
     for (let selected of frames_list.getElementsByClassName('selected')) {
         selected.classList.remove('selected');
     }
-    if (frames_list.children.length > currId) {
-      const items = frames_list.getElementsByTagName('li');
-      for (let item of items) {
-        const link = item.getElementsByTagName('a')[0];
-        if (link && link.getAttribute('href') === `#frame${currId}`) {
-          item.classList.add('selected');
-          item.scrollIntoView({ block: 'nearest' });
-          break;
-        }
+    const items = frames_list.getElementsByTagName('li');
+    for (let item of items) {
+      const link = item.getElementsByTagName('a')[0];
+      if (link && link.getAttribute('href') === `#frame${currId}`) {
+        item.classList.add('selected');
+        item.scrollIntoView({ block: 'nearest' });
+        break;
       }
     }
 
@@ -277,7 +302,7 @@
       }
       // Change cursor.
       let text_nodes = document.getElementsByTagName("text");
-      for (var el of text_nodes) {
+      for (const el of text_nodes) {
         if (title_to_id.has(el.innerHTML)) {
           el.style.cursor = "pointer";
         }
@@ -335,23 +360,34 @@
   };
 
   const update = (delta) => {
+    if (filteredIndices.length === 0) return;
     let currId = getIdFromHash();
-    currId = (currId + delta + frames.length) % frames.length;
-    window.location.hash = `#frame${currId}`
+    let filteredIdx = filteredIndices.indexOf(currId);
+    if (filteredIdx === -1) {
+      filteredIdx = delta > 0 ? 0 : filteredIndices.length - 1;
+    } else {
+      filteredIdx = (filteredIdx + delta + filteredIndices.length) % filteredIndices.length;
+    }
+    const nextOriginalIndex = filteredIndices[filteredIdx];
+    window.location.hash = `#frame${nextOriginalIndex}`;
   };
 
   const renderFrameList = () => {
     const currId = getIdFromHash();
     const frames_list = document.getElementById('frames_list');
     frames_list.innerHTML = ''; // Clear if re-rendering
-    for (let i = 0; i < window.frames.length; i++) {
-      const f = window.frames[i];
+    for (let i = 0; i < filteredIndices.length; i++) {
+      const originalIndex = filteredIndices[i];
+      const f = window.frames[originalIndex];
       let frameDescr = f.label || "Unnamed state";
       const rendered = document.createElement("li");
-      rendered.innerHTML = `<a href="#frame${i}">${frameDescr}</a>`;
-      if (i == currId) {
+      const link = document.createElement("a");
+      link.href = `#frame${originalIndex}`;
+      link.textContent = frameDescr;
+      if (originalIndex === currId) {
         rendered.classList.add('selected');
       }
+      rendered.appendChild(link);
       frames_list.appendChild(rendered);
     }
   };
@@ -362,6 +398,9 @@
 
   window.addEventListener("keydown", (event) => {
     if (event.defaultPrevented) {
+      return;
+    }
+    if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
       return;
     }
     if (event.key == "j") {
@@ -389,8 +428,9 @@
           sidebarTitle.title = data.title;
         }
 
-        window.frames = data.frames;
+        window.frames = data.frames || [];
         window.graphs = {};
+        filteredIndices = Array.from({length: window.frames.length}, (_, i) => i);
 
         window.title_to_id = new Map();
         for (let i=0; i < window.frames.length; i++) {
@@ -401,6 +441,7 @@
         renderCurrentFrame();
 
         document.getElementById('performance_note').textContent = "Metadata loaded";
+        document.getElementById('search_box').disabled = false;
       })
       .catch(err => {
         document.getElementById('performance_note').textContent = `Error: ${err.message}`;
@@ -425,6 +466,26 @@
           window.currentPanZoom.center();
         }
       });
+    });
+
+    // Setup search
+    const searchBox = document.getElementById('search_box');
+    let searchTimeout = null;
+    searchBox.addEventListener('input', () => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+      searchTimeout = setTimeout(() => {
+        const query = searchBox.value.toLowerCase();
+        filteredIndices = [];
+        for (let i = 0; i < window.frames.length; i++) {
+          const label = (window.frames[i].label || "").toLowerCase();
+          if (label.includes(query)) {
+            filteredIndices.push(i);
+          }
+        }
+        renderFrameList();
+      }, 200);
     });
 
     // Navigate to next elements on click.
