@@ -5016,9 +5016,10 @@ XlaOp XlaBuilder::GetDimensionSize(XlaOp operand, int64_t dimension) {
     ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferGetDimensionSizeShape(
                                       *operand_shape, dimension));
-    // Calling GetDimensionSize on a static dimension returns a constant
-    // instruction.
+    // A static dimension returns a rank-0 constant, which must not pick up the
+    // enclosing op's (possibly rank>0) sharding.
     if (operand_shape->is_static_dimension(dimension)) {
+      XlaScopedShardingAssignment scoped_sharding(this, std::nullopt);
       return ConstantR0<int32_t>(this, operand_shape->dimensions(dimension));
     }
     *instr.mutable_shape() = shape.ToProto();
@@ -5034,10 +5035,15 @@ XlaOp XlaBuilder::RemoveDynamicDimension(XlaOp operand, int64_t dimension) {
 
     Shape shape = *operand_shape;
     shape.set_dynamic_dimension(dimension, false);
-    // Setting an op's dynamic dimension to its static size removes the dynamic
-    // dimension.
-    XlaOp static_size =
-        ConstantR0<int32_t>(this, operand_shape->dimensions(dimension));
+    // Setting a dynamic dimension to its static size removes the dynamic
+    // dimension. The rank-0 size constant must not pick up the enclosing op's
+    // (possibly rank>0) sharding.
+    XlaOp static_size;
+    {
+      XlaScopedShardingAssignment scoped_sharding(this, std::nullopt);
+      static_size =
+          ConstantR0<int32_t>(this, operand_shape->dimensions(dimension));
+    }
     return SetDimensionSizeInternal(shape, operand, static_size, dimension);
   });
 }
