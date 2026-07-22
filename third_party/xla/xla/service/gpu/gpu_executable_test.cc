@@ -337,6 +337,15 @@ TEST_F(GpuExecutableTest, CommandBufferAllocationPolicy) {
   EXPECT_EQ(skip_temp_policy.command_buffer_allocation_count, 2);
   EXPECT_THAT(skip_temp_policy.persistent_alloc_indices,
               Optional(ElementsAre(1)));
+
+  // Without a VMM allocator, SKIP_PROFILED falls back to the base scope and
+  // passes only the constant (1) as persistent.
+  ASSERT_OK_AND_ASSIGN(
+      auto skip_profiled_policy,
+      get_allocation_policy_without_vmm(DebugOptions::SKIP_PROFILED));
+  EXPECT_EQ(skip_profiled_policy.command_buffer_allocation_count, 2);
+  EXPECT_THAT(skip_profiled_policy.persistent_alloc_indices,
+              Optional(ElementsAre(1)));
 }
 
 TEST_F(GpuExecutableTest, ComputeComputationLayout) {

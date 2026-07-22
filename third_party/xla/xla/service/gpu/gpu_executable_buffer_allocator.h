@@ -48,11 +48,11 @@ class ThunkExecutor;
 //
 // This base class implements the ALWAYS_UPDATE command buffer update mode,
 // which needs no allocation-address policy beyond global constants. The
-// SKIP_TEMP update mode is implemented by GpuExecutableVaRemapAllocator (see
-// gpu_executable_va_remap_allocator.h), which assigns stable addresses to
-// selected command-buffer allocations via VMM VA remapping. The base-class
-// behavior also serves as the runtime fallback for that mode when VA
-// remapping is unavailable for an execution.
+// SKIP_TEMP and SKIP_PROFILED update modes are implemented by
+// GpuExecutableVaRemapAllocator (see gpu_executable_va_remap_allocator.h),
+// which assigns stable addresses to selected command-buffer allocations via
+// VMM VA remapping. The base-class behavior also serves as the runtime
+// fallback for those modes when VA remapping is unavailable for an execution.
 class GpuExecutableBufferAllocator {
  public:
   struct ParameterBuffer {
@@ -157,8 +157,8 @@ class GpuExecutableBufferAllocator {
 
   // Creates the buffer allocator implementing
   // `debug_options->xla_gpu_command_buffer_update_mode()`: this class for
-  // ALWAYS_UPDATE, GpuExecutableVaRemapAllocator for SKIP_TEMP. Check-fails
-  // on any other mode.
+  // ALWAYS_UPDATE, GpuExecutableVaRemapAllocator for SKIP_TEMP and
+  // SKIP_PROFILED. Check-fails on any other mode.
   static std::unique_ptr<GpuExecutableBufferAllocator> Create(
       absl::string_view module_name,
       absl::Span<const BufferAllocation* const> allocations,
