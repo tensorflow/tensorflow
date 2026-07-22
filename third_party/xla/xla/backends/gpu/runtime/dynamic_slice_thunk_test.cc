@@ -104,10 +104,40 @@ se::StreamExecutor* GpuExecutor() {
 }
 void CheckProtoRoundTrip(const DynamicSliceThunk& thunk,
                          const DynamicSliceThunkProto& proto) {
+  // Size allocations to cover every slice referenced by the thunk. Hardcoding
+  // 1024 used to work when FromProto only checked the allocation index; with
+  // offset/size bounds checks it must also fit workspace slices (e.g. 1MiB).
+  std::vector<int64_t> allocation_sizes(10, 1024);
+  auto ensure_fits = [&](const BufferAllocation::Slice& slice) {
+    const int index = slice.index();
+    if (index >= static_cast<int>(allocation_sizes.size())) {
+      allocation_sizes.resize(index + 1, 1024);
+    }
+    allocation_sizes[index] =
+        std::max(allocation_sizes[index], slice.offset() + slice.size());
+  };
+  for (const std::optional<BufferAllocation::Slice>& arg :
+       thunk.get_arguments()) {
+    if (arg.has_value()) {
+      ensure_fits(*arg);
+    }
+  }
+  for (const std::optional<std::vector<DynamicSliceThunk::Offset>>& offsets :
+       thunk.get_offsets()) {
+    if (!offsets.has_value()) {
+      continue;
+    }
+    for (const DynamicSliceThunk::Offset& offset : *offsets) {
+      if (std::holds_alternative<BufferAllocation::Slice>(offset)) {
+        ensure_fits(std::get<BufferAllocation::Slice>(offset));
+      }
+    }
+  }
   std::vector<BufferAllocation> buffer_allocations;
-  for (int i = 0; i < 10; ++i) {
-    buffer_allocations.push_back(BufferAllocation(
-        /*index=*/i, /*size=*/1024, /*color=*/0));
+  buffer_allocations.reserve(allocation_sizes.size());
+  for (int i = 0; i < static_cast<int>(allocation_sizes.size()); ++i) {
+    buffer_allocations.push_back(
+        BufferAllocation(/*index=*/i, allocation_sizes[i], /*color=*/0));
   }
 
   std::vector<BufferAllocation> fake_allocations_span;

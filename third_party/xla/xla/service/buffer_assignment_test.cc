@@ -4091,6 +4091,45 @@ TEST(BufferAllocationSliceProtoTest, FromProtoErrorAllocationNotFound) {
                   HasSubstr("Buffer allocation index 2 is out of range.")));
 }
 
+TEST(BufferAllocationSliceProtoTest, FromProtoErrorNegativeOffsetOrSize) {
+  std::vector<BufferAllocation> allocations;
+  allocations.push_back(
+      BufferAllocation(/*index=*/0, /*size=*/200, /*color=*/0));
+
+  xla::buffer_assignment::BufferAllocationSliceProto proto;
+  proto.set_buffer_allocation_index(0);
+  proto.set_offset(-1);
+  proto.set_size(60);
+  EXPECT_THAT(BufferAllocation::Slice::FromProto(proto, allocations),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kOutOfRange,
+                  HasSubstr("Buffer slice has negative offset/size")));
+
+  proto.set_offset(50);
+  proto.set_size(-1);
+  EXPECT_THAT(BufferAllocation::Slice::FromProto(proto, allocations),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kOutOfRange,
+                  HasSubstr("Buffer slice has negative offset/size")));
+}
+
+TEST(BufferAllocationSliceProtoTest, FromProtoErrorSliceOutOfRange) {
+  std::vector<BufferAllocation> allocations;
+  allocations.push_back(
+      BufferAllocation(/*index=*/0, /*size=*/200, /*color=*/0));
+
+  xla::buffer_assignment::BufferAllocationSliceProto proto;
+  proto.set_buffer_allocation_index(0);
+  proto.set_offset(150);
+  proto.set_size(60);
+
+  EXPECT_THAT(BufferAllocation::Slice::FromProto(proto, allocations),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kOutOfRange,
+                  HasSubstr("Buffer slice [offset=150, size=60] is out of "
+                            "range for allocation #0 of size 200")));
+}
+
 TEST(BufferAllocationTest, ToProto) {
   BufferAllocation alloc{42, 64, 3};
   alloc.set_constant(true);

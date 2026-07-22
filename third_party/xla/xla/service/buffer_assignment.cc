@@ -584,6 +584,18 @@ absl::StatusOr<BufferAllocation::Slice> BufferAllocation::Slice::FromProto(
   }
   const BufferAllocation& allocation =
       buffer_allocations[proto.buffer_allocation_index()];
+  if (proto.offset() < 0 || proto.size() < 0) {
+    return absl::OutOfRangeError(absl::StrCat(
+        "Buffer slice has negative offset/size: offset=", proto.offset(),
+        " size=", proto.size()));
+  }
+  if (proto.size() > allocation.size() ||
+      proto.offset() > allocation.size() - proto.size()) {
+    return absl::OutOfRangeError(absl::StrCat(
+        "Buffer slice [offset=", proto.offset(), ", size=", proto.size(),
+        "] is out of range for allocation #", proto.buffer_allocation_index(),
+        " of size ", allocation.size()));
+  }
   return BufferAllocation::Slice(&allocation, proto.offset(), proto.size(),
                                  proto.element_type());
 }
