@@ -16,6 +16,7 @@
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors
@@ -905,6 +906,61 @@ class BinaryOpTest(test.TestCase):
       expected = np.array([4, 0, np.inf, -np.inf, 0, -1], dtype=dtype)
 
       self.assertAllClose(self.evaluate(math_ops.mod(x, y)), expected)
+
+
+class IgammaGradBoundaryTest(test.TestCase):
+  """Gradient of igamma(a, x) w.r.t. x must be finite at a=1, x=0.
+
+  igamma(1, x) = 1 - e^{-x}, so d/dx igamma(1, x) = e^{-x}.  At x=0 this
+  equals 1, which is finite and well-defined.  xlogy(a-1, x) evaluates to 0
+  rather than 0*(-inf) when a=1 and x=0, matching the analytic limit.
+  """
+
+  @test_util.run_in_graph_and_eager_modes
+  def testIgammaGradSingularBoundary(self):
+    # igamma(1, x) = 1 - e^{-x}; its gradient w.r.t. x at x=0 is e^0 = 1.
+    for dtype, tol in [(dtypes_lib.float32, 1e-5),
+                       (dtypes_lib.float64, 1e-10)]:
+      a = constant_op.constant(1.0, dtype=dtype)
+      x = constant_op.constant(0.0, dtype=dtype)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = math_ops.igamma(a, x)
+      grad = tape.gradient(y, x)
+      self.assertIsNotNone(grad)
+      self.assertTrue(np.isfinite(self.evaluate(grad)),
+                      "igamma grad w.r.t. x is not finite at a=1, x=0")
+      self.assertAllClose(self.evaluate(grad), 1.0, atol=tol)
+
+  @test_util.run_deprecated_v1
+  def testIgammaGradNumericalJacobian(self):
+    # For a=1 and x near zero, the analytic gradient e^{-x} must match
+    # the numerical Jacobian to high accuracy.
+    x_val = np.array([[1e-4, 1e-2]], dtype=np.float64)
+    a_val = np.array([[1.0, 1.0]], dtype=np.float64)
+    with self.cached_session():
+      a = ops.convert_to_tensor(a_val)
+      x = ops.convert_to_tensor(x_val)
+      y = math_ops.igamma(a, x)
+      jacob_t, jacob_n = gradient_checker.compute_gradient(
+          x, list(x_val.shape), y, list(x_val.shape), x_init_value=x_val)
+    self.assertAllClose(jacob_t, jacob_n, rtol=1e-5, atol=1e-5)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testIgammacGradSingularBoundary(self):
+    # igammac = 1 - igamma, so d/dx igammac(1, x) = -e^{-x} = -1 at x=0.
+    for dtype, tol in [(dtypes_lib.float32, 1e-5),
+                       (dtypes_lib.float64, 1e-10)]:
+      a = constant_op.constant(1.0, dtype=dtype)
+      x = constant_op.constant(0.0, dtype=dtype)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = math_ops.igammac(a, x)
+      grad = tape.gradient(y, x)
+      self.assertIsNotNone(grad)
+      self.assertTrue(np.isfinite(self.evaluate(grad)),
+                      "igammac grad w.r.t. x is not finite at a=1, x=0")
+      self.assertAllClose(self.evaluate(grad), -1.0, atol=tol)
 
 
 class ComparisonOpTest(test.TestCase):
