@@ -2314,6 +2314,45 @@ ENTRY AddDotsFunc {
 )");
 }
 
+TEST_F(ParameterizedGemmRewriteTest, RhsArgTransposeFoldCheck) {
+  const char* hlo_text = R"(
+HloModule RhsArgTransposeFoldGemm
+
+ENTRY AddDotsFunc {
+  x = f32[2,3] parameter(0)
+  y = f32[4,3] parameter(1)
+  y_transposed = f32[3,4] transpose(y), dimensions={1, 0}
+  ROOT dot_a = f32[2,4] dot(x, y_transposed), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,3], {{.*}}: f32[4,3]) -> f32[2,4] {
+; CHECK-DAG:     [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK-DAG:     [[P1:%[^ ]+]] = f32[4,3]{1,0} parameter(1)
+; CHECK:         [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
+)");
+}
+
 TEST_F(ParameterizedGemmRewriteTest, BatchedArgRowColTransposeFoldCheck) {
   const char* hlo_text = R"(
 HloModule BatchedArgRowColTransposeFoldGemm
