@@ -576,6 +576,35 @@ class TrainingOpsTest(TensorFlowTestCase):
       with self.assertRaises(errors.InvalidArgumentError):
         self.evaluate(apply_op())
 
+  @test_util.run_v2_only
+  def testResourceSparseApplyAdagradDAInvalidGradRank(self):
+    # A scalar `grad` with a higher-rank `var` used to hit a fatal CHECK
+    # instead of raising InvalidArgumentError (see GitHub issue #94130).
+    var = variables.Variable([[0.0, 0.0]] * 10, dtype=dtypes.float32)
+    gradient_accumulator = variables.Variable(
+        [[0.0, 0.0]] * 10, dtype=dtypes.float32)
+    gradient_squared_accumulator = variables.Variable(
+        [[0.0, 0.0]] * 10, dtype=dtypes.float32)
+    self.evaluate(variables.global_variables_initializer())
+
+    grad = constant_op.constant(0.0, dtype=dtypes.float32)  # wrong rank
+    indices = constant_op.constant([0, 0], dtype=dtypes.int32)
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "grad must have the same number of dimensions as var"):
+      self.evaluate(
+          gen_training_ops.resource_sparse_apply_adagrad_da(
+              var.handle,
+              gradient_accumulator.handle,
+              gradient_squared_accumulator.handle,
+              grad,
+              indices,
+              constant_op.constant(0.0, dtype=dtypes.float32),
+              constant_op.constant(0.0, dtype=dtypes.float32),
+              constant_op.constant(0.0, dtype=dtypes.float32),
+              constant_op.constant(1, dtype=dtypes.int64)))
+
 
 if __name__ == '__main__':
   googletest.main()
