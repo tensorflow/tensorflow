@@ -380,6 +380,13 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
     if (value->shape().element_type() == BF16) {
       continue;
     }
+    // If there are no other users, the value is used only by the reduce itself.
+    if (const HloInstruction* root =
+            (hlo.opcode() == HloOpcode::kFusion ? hlo.fused_expression_root()
+                                                : &hlo);
+        value->GetUses().empty() && root->opcode() == HloOpcode::kReduce) {
+      return false;
+    }
     for (const HloUse& use : value->GetUses()) {
       if (!ContainsKey(instructions_visited_in_backward_pass_,
                        use.instruction)) {
