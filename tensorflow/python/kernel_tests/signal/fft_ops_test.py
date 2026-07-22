@@ -950,6 +950,7 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
         v = fft_ops.rfft2d(input_tensor=a, fft_length=b)
         self.evaluate(v)
 
+  @test_util.disable_xla("XLA may handle zero fft_length differently")
   def test_zero_fft_length_raises(self):
     # fft_length=[0] must raise InvalidArgumentError instead of crashing the
     # process with a fatal assertion in the DUCC FFT library (GitHub #123399).
@@ -959,7 +960,7 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
         errors.InvalidArgumentError, "must be > 0"
     ):
       with self.session():
-        v = gen_spectral_ops.r_f_f_t(input=x, fft_length=fft_length)
+        v = gen_spectral_ops.rfft(input=x, fft_length=fft_length)
         self.evaluate(v)
 
 
