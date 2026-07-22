@@ -5502,7 +5502,6 @@ tf_cuda_cc_tests(
     srcs = [
         "sparse_fill_empty_rows_op_test.cc",
         "sparse_tensor_dense_matmul_op_test.cc",
-        "sparse_to_dense_op_test.cc",
         "sparse_xent_op_test.cc",
     ],
     deps = [
@@ -5519,6 +5518,28 @@ tf_cuda_cc_tests(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:status_matchers",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "sparse_to_dense_op_test",
+    size = "small",
+    srcs = ["sparse_to_dense_op_test.cc"],
+    data = ["sparse_to_dense_op_gpu.cu.cc"],
+    deps = [
+        ":host_constant_op",
+        ":ops_testutil",
+        ":sparse",
+        ":xent_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
+        "@local_config_cuda//cuda:cuda_headers",
     ],
 )
 
