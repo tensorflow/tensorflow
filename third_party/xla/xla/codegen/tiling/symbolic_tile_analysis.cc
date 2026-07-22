@@ -77,9 +77,7 @@ limitations under the License.
 #include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -757,6 +755,20 @@ absl::InlinedVector<const HloInstruction*, 2> ToInstructions(
   return hlo_instructions;
 }
 
+bool IsSameShapeMultiOutputFusion(
+    absl::Span<const HloInstructionAdaptor> roots) {
+  if (roots.size() <= 1) {
+    return false;
+  }
+  Shape::Equal eq = Shape::Equal().IgnoreElementType();
+  for (int64_t i = 1; i < roots.size(); ++i) {
+    if (!eq(roots[i].instruction().shape(), roots[0].instruction().shape())) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Returns the index of the single root without any users among the given roots.
 // This implies that any other root is an ancestor of the returned root.
 // Returns an error if there are multiple or no roots without any users.
@@ -771,11 +783,21 @@ absl::StatusOr<int64_t> GetRealRootIndex(
         "Each fusion should have at least one root without users but no root "
         "was found.");
   }
+  const bool allow_same_shape_multi_output_fusion =
+      fusion_adaptor_roots[0]
+          .instruction()
+          .GetModule()
+          ->config()
+          .debug_options()
+          .xla_experimental_enable_same_shape_multi_output_fusion();
   if (std::find_if(std::next(it), fusion_adaptor_roots.end(), has_no_users) !=
-      fusion_adaptor_roots.end()) {
+          fusion_adaptor_roots.end() &&
+      !(allow_same_shape_multi_output_fusion &&
+        IsSameShapeMultiOutputFusion(fusion_adaptor_roots))) {
     return absl::FailedPreconditionError(
-        "Only simple multi-output fusions with one real root are supported but "
-        "multiple roots were found.");
+        "Only simple multi-output fusions with one real root, or same shape "
+        "multi-output fusions are supported but multiple roots with different "
+        "shapes were found.");
   }
   return it - fusion_adaptor_roots.begin();
 }
