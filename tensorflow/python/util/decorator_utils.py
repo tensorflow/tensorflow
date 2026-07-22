@@ -102,7 +102,14 @@ def add_notice_to_docstring(doc,
     lines = [no_doc_str]
   else:
     lines = _normalize_docstring(doc).splitlines()
-    lines[0] += ' ' + suffix_str
+    # Avoid duplicating the suffix when this decorator is applied to a
+    # function that has already been decorated by a sibling that injected
+    # the same suffix (e.g. multiple stacked `@deprecated_args` decorators
+    # on `tf.function` previously produced
+    # "... (deprecated arguments) (deprecated arguments) (deprecated arguments)").
+    # See https://github.com/tensorflow/tensorflow/issues/90927.
+    if suffix_str and not lines[0].rstrip().endswith(suffix_str):
+      lines[0] += ' ' + suffix_str
 
   if not notice:
     raise ValueError('The `notice` arg must not be empty.')
