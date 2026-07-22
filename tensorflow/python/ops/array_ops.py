@@ -6442,7 +6442,7 @@ def fold(patches, output_size, sizes, strides, padding='VALID',
     from tensorflow.python.framework import config #* Local imports - to avoid circular imports
     from tensorflow.python.platform import tf_logging
     if not config.is_op_determinism_enabled():
-      tf_logging.get_logger().warning(
+      tf_logging.warning(
         msg="The fold operation may produce non-deterministic results" \
         " for floating-point data types " \
         "when patches are overlapping (stride < kernel_size). " \
@@ -6546,7 +6546,10 @@ def fold(patches, output_size, sizes, strides, padding='VALID',
     shape=[batch_size, padded_height, padded_width, channels]
   )
   if reduction == 'mean':
-    ones_updates = ones_like(updates)
+    ones_updates = ones(
+        shape=shape_internal(updates), 
+        dtype=updates.dtype
+    )
     divisor_matrix = gen_array_ops.scatter_nd( #calc overlapping count
       indices=indices,
       updates=ones_updates,
