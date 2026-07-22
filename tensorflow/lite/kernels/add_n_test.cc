@@ -28,6 +28,33 @@ namespace {
 
 using ::testing::ElementsAreArray;
 
+// Builds the interpreter without allocating tensors (allocate_and_delegate =
+// false) so AllocateTensors() can be called explicitly and its failure
+// observed, instead of CHECK-failing inside BuildInterpreter().
+class DynamicAddNOpModel : public SingleOpModel {
+ public:
+  DynamicAddNOpModel(const std::vector<TensorData>& inputs,
+                     const TensorData& output) {
+    int num_inputs = inputs.size();
+    std::vector<std::vector<int>> input_shapes;
+    for (int i = 0; i < num_inputs; ++i) {
+      inputs_.push_back(AddInput(inputs[i]));
+      input_shapes.push_back(GetShape(inputs_[i]));
+    }
+    output_ = AddOutput(output);
+    SetBuiltinOp(BuiltinOperator_ADD_N, BuiltinOptions_AddNOptions,
+                 CreateAddNOptions(builder_).Union());
+    BuildInterpreter(input_shapes, /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false,
+                     /*allocate_and_delegate=*/false);
+  }
+
+ private:
+  std::vector<int> inputs_;
+  int output_;
+};
+
 TEST(FloatAddNOpModel, AddMultipleTensors) {
   FloatAddNOpModel m({{TensorType_FLOAT32, {1, 2, 2, 1}},
                       {TensorType_FLOAT32, {1, 2, 2, 1}},
@@ -62,6 +89,19 @@ TEST(IntegerAddNOpModel, AddMultipleTensors) {
   m.PopulateTensor<int32_t>(m.input(2), {10, -5, 1, -2});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-9, -1, 11, 11}));
+}
+
+TEST(IntegerAddNOpModel, OverflowScratchBuffer) {
+  // 2 * 1,073,741,825 = 2,147,483,650 > INT32_MAX, so the input element count
+  // overflows int32_t (independent of the host thread count) and Prepare() must
+  // reject the shape rather than size an undersized scratch buffer.
+  // allocate_and_delegate=false lets us observe the AllocateTensors() failure
+  // instead of BuildInterpreter() CHECK-failing, and Prepare() returns the
+  // error before any large buffer is allocated.
+  DynamicAddNOpModel m({{TensorType_INT32, {2, 1073741825}},
+                        {TensorType_INT32, {2, 1073741825}}},
+                       {TensorType_INT32, {}});
+  EXPECT_NE(m.AllocateTensors(), kTfLiteOk);
 }
 
 }  // namespace

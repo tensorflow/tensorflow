@@ -51,6 +51,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:tensor_ctypes",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

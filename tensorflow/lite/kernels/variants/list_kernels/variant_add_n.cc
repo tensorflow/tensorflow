@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include <algorithm>
 #include <cstring>
+#include <limits>
 #include <utility>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/lite/array.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -212,8 +214,23 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     const int thread_count =
         std::min(std::max(1, static_cast<int>(num_inputs_for_row) / 2),
                  cpu_backend_context->max_num_threads());
-    IntArrayUniquePtr scratch_shape = BuildTfLiteArray(
-        {thread_count * static_cast<int>(NumElements(row_tensors[0]))});
+    // scratch_shape narrows to int32_t and NumElements() has no release-mode
+    // overflow check, while the dimensions are attacker-controlled. Compute the
+    // element count with CheckedShapeProductToInt() and verify the scratch size
+    // fits in int32_t before building it. thread_count is std::max(1, ...).
+    int num_elements = 0;
+    TF_LITE_ENSURE_OK(
+        context,
+        CheckedShapeProductToInt(
+            context,
+            absl::Span<const int>(row_tensors[0]->dims->data,
+                                  row_tensors[0]->dims->size),
+            "variant add_n element count overflowed.", num_elements));
+    TF_LITE_ENSURE(
+        context,
+        num_elements <= std::numeric_limits<int32_t>::max() / thread_count);
+    IntArrayUniquePtr scratch_shape =
+        BuildTfLiteArray({thread_count * num_elements});
     TF_LITE_ENSURE(context, scratch_shape != nullptr);
     scratch_tensor->type = t;
     TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scratch_tensor,

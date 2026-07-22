@@ -15,7 +15,9 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
+#include <limits>
 
+#include "absl/types/span.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
@@ -80,8 +82,25 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       std::min(std::max(1, static_cast<int>(num_inputs) / 2),
                cpu_backend_context->max_num_threads());
 
+  // The scratch buffer holds thread_count copies of the input element count and
+  // scratch_shape->data[0] is int32_t. The dimensions are attacker-controlled
+  // and NumElements() has no release-mode overflow check, so compute the count
+  // with CheckedShapeProductToInt() and verify the scratch size fits in int32_t
+  // before allocating scratch_shape (created only after the checks pass, so it
+  // is never leaked on an early return). thread_count is std::max(1, ...).
+  int num_elements = 0;
+  TF_LITE_ENSURE_OK(
+      context,
+      CheckedShapeProductToInt(
+          context,
+          absl::Span<const int>(input1->dims->data, input1->dims->size),
+          "add_n input element count overflowed.", num_elements));
+  TF_LITE_ENSURE(
+      context,
+      num_elements <= std::numeric_limits<int32_t>::max() / thread_count);
+
   TfLiteIntArray* scratch_shape = TfLiteIntArrayCreate(1);
-  scratch_shape->data[0] = thread_count * NumElements(input1);
+  scratch_shape->data[0] = thread_count * num_elements;
   TF_LITE_ENSURE_OK(
       context, context->ResizeTensor(context, scratch_tensor, scratch_shape));
 
