@@ -19,6 +19,7 @@ import math
 import numpy as np
 
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import ops
@@ -679,6 +680,28 @@ class UnaryOpTest(test.TestCase):
     err = gradient_checker_v2.max_error(
         *gradient_checker_v2.compute_gradient(g, [ops.convert_to_tensor(2.0)]))
     self.assertLess(err, 1e-3)
+
+
+  @test_util.run_in_graph_and_eager_modes
+  def testRoundInt(self):
+    # CPU kernel registers int32 and int64 only.
+    for dtype in [dtypes_lib.int32, dtypes_lib.int64]:
+      inputs = constant_op.constant([-3, 1, 0, -1], dtype=dtype)
+      outputs = gen_math_ops.round(x=inputs)
+      self.assertAllEqual([-3, 1, 0, -1], self.evaluate(outputs))
+
+  def testRoundIntXLA(self):
+    # XLA kernel registers int8, int16, int32, int64.
+    @def_function.function(jit_compile=True)
+    def round_fn(x):
+      return gen_math_ops.round(x=x)
+
+    for dtype in [
+        dtypes_lib.int8, dtypes_lib.int16,
+        dtypes_lib.int32, dtypes_lib.int64,
+    ]:
+      inputs = constant_op.constant([-3, 1, 0, -1], dtype=dtype)
+      self.assertAllEqual([-3, 1, 0, -1], round_fn(inputs))
 
 
 if __name__ == "__main__":
