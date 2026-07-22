@@ -25,6 +25,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -45,7 +46,7 @@ limitations under the License.
 #include "tensorflow/core/lib/png/png_io.h"
 #include "tensorflow/core/lib/webp/webp_io.h"
 #include "tensorflow/core/platform/byte_order.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/jpeg.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -217,7 +218,7 @@ class DecodeImageV2Op : public OpKernel {
   }
 
   // Helper for decoding BMP.
-  inline int32_t ByteSwapInt32ForBigEndian(int32_t x) {
+  int32_t ByteSwapInt32ForBigEndian(int32_t x) {
     if (!port::kLittleEndian) {
       return BYTE_SWAP_32(x);
     } else {
@@ -226,7 +227,7 @@ class DecodeImageV2Op : public OpKernel {
   }
 
   // Helper for decoding BMP.
-  inline int16_t ByteSwapInt16ForBigEndian(int16_t x) {
+  int16_t ByteSwapInt16ForBigEndian(int16_t x) {
     if (!port::kLittleEndian) {
       return BYTE_SWAP_16(x);
     } else {
@@ -373,6 +374,10 @@ class DecodeImageV2Op : public OpKernel {
     // Use eigen threadpooling to speed up the copy operation.
     const auto& device = context->eigen_device<Eigen::ThreadPoolDevice>();
     TTypes<uint8_t>::UnalignedConstFlat buffer_view(buffer, buffer_size);
+
+    OP_REQUIRES(context, output != nullptr,
+                absl::InternalError("Output tensor is null"));
+
     if (data_type_ == DataType::DT_UINT16) {
       uint16_t scale = floor((std::numeric_limits<uint16_t>::max() + 1) /
                              (std::numeric_limits<uint8_t>::max() + 1));
@@ -579,6 +584,9 @@ class DecodeImageV2Op : public OpKernel {
     }
     // Make sure we don't forget to deallocate `buffer`.
     std::unique_ptr<uint8_t[]> buffer_unique_ptr(buffer);
+
+    OP_REQUIRES(context, output != nullptr,
+                absl::InternalError("Output tensor is null"));
 
     // Convert the raw uint8 buffer to desired dtype.
     // Use eigen threadpooling to speed up the copy operation.
@@ -818,18 +826,20 @@ class DecodeImageV2Op : public OpKernel {
     const bool use_threads = (width * height > 1024 * 1024);
     uint8_t* buffer = webp::DecodeWebPAnimation(
         input,
-        [&](int num_frames, int width, int height, int channels) -> uint8_t* {
-          // If expand_animations is false, we want {height, width, channels}
-          // otherwise, we want {num_frames, height, width, channels} even if
-          // it's a single frame.
+        [&](int num_frames, int width, int height,
+            int alloc_channels) -> uint8_t* {
+          // If expand_animations is false, we want {height, width,
+          // alloc_channels} otherwise, we want {num_frames, height, width,
+          // alloc_channels} even if it's a single frame.
           absl::Status status;
 
           if (expand_animations_) {
             status = context->allocate_output(
-                0, TensorShape({num_frames, height, width, channels}), &output);
+                0, TensorShape({num_frames, height, width, alloc_channels}),
+                &output);
           } else {
             status = context->allocate_output(
-                0, TensorShape({height, width, channels}), &output);
+                0, TensorShape({height, width, alloc_channels}), &output);
           }
 
           if (!status.ok()) {
@@ -879,9 +889,8 @@ class DecodeImageV2Op : public OpKernel {
   }
 
  private:
-  void DecodeBMP(const uint8_t* input, const int row_size,
-                 uint8_t* const output, const int width, const int height,
-                 const int output_channels, const int input_channels,
+  void DecodeBMP(const uint8_t* input, int row_size, uint8_t* output, int width,
+                 int height, int output_channels, int input_channels,
                  bool top_down);
 
   int channels_ = 0;
@@ -902,10 +911,10 @@ REGISTER_KERNEL_BUILDER(Name("DecodeBmp").Device(DEVICE_CPU), DecodeImageV2Op);
 REGISTER_KERNEL_BUILDER(Name("DecodeWebP").Device(DEVICE_CPU), DecodeImageV2Op);
 REGISTER_KERNEL_BUILDER(Name("DecodeJxl").Device(DEVICE_CPU), DecodeImageV2Op);
 
-void DecodeImageV2Op::DecodeBMP(const uint8_t* input, const int row_size,
-                                uint8_t* const output, const int width,
-                                const int height, const int output_channels,
-                                const int input_channels, bool top_down) {
+void DecodeImageV2Op::DecodeBMP(const uint8_t* input, int row_size,
+                                uint8_t* output, int width, int height,
+                                int output_channels, int input_channels,
+                                bool top_down) {
   for (int i = 0; i < height; i++) {
     int src_pos;
     int dst_pos;
