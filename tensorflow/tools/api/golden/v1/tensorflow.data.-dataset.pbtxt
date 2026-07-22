@@ -74,6 +74,7 @@ tf_class {
   member_method {
     name: "choose_from_datasets"
     argspec: "args=[\'datasets\', \'choice_dataset\', \'stop_on_empty_dataset\'], varargs=None, keywords=None, defaults=[\'True\'], "
+    method_kind: STATIC
   }
   member_method {
     name: "concatenate"
@@ -82,6 +83,7 @@ tf_class {
   member_method {
     name: "counter"
     argspec: "args=[\'start\', \'step\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'1\', \"<dtype: \'int64\'>\", \'None\'], "
+    method_kind: STATIC
   }
   member_method {
     name: "enumerate"
@@ -147,6 +149,7 @@ tf_class {
   member_method {
     name: "load"
     argspec: "args=[\'path\', \'element_spec\', \'compression\', \'reader_func\', \'wait\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'False\'], "
+    method_kind: STATIC
   }
   member_method {
     name: "make_initializable_iterator"
@@ -183,6 +186,7 @@ tf_class {
   member_method {
     name: "random"
     argspec: "args=[\'seed\', \'rerandomize_each_iteration\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    method_kind: STATIC
   }
   member_method {
     name: "range"
@@ -208,6 +212,7 @@ tf_class {
   member_method {
     name: "sample_from_datasets"
     argspec: "args=[\'datasets\', \'weights\', \'seed\', \'stop_on_empty_dataset\', \'rerandomize_each_iteration\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'None\'], "
+    method_kind: STATIC
   }
   member_method {
     name: "save"

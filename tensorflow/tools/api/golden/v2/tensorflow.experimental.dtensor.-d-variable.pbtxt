@@ -307,6 +307,7 @@ tf_class {
   member_method {
     name: "from_proto"
     argspec: "args=[\'variable_def\', \'import_scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    method_kind: STATIC
   }
   member_method {
     name: "gather_nd"
