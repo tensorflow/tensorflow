@@ -656,6 +656,7 @@ cc_library(
         "//xla/hlo/analysis:hlo_dataflow_analysis",
         "//xla/hlo/analysis:hlo_operand_index",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_instruction_utils",
         "//xla/hlo/transforms:memory_space_propagation",
         "//xla/hlo/utils:hlo_live_range",
         "//xla/service:buffer_value",
