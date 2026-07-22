@@ -80,7 +80,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/graph_executor/executable_context.h"
-#include "tensorflow/core/tfrt/graph_executor/export_mlir.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/sync_resource_state.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
@@ -309,8 +308,8 @@ absl::StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
 absl::Status GraphExecutionRunOnFunction(
     const GraphExecutionOptions& options,
     const GraphExecutionRunOptions& run_options,
-    absl::string_view signature_name, const SymbolUids& symbol_uids,
-    const tfrt::Function* func, const mlrt::LoadedExecutable* loaded_executable,
+    absl::string_view signature_name, const tfrt::Function* func,
+    const mlrt::LoadedExecutable* loaded_executable,
     absl::Span<const tensorflow::Tensor> inputs,
     std::vector<tensorflow::Tensor>* outputs,
     tfrt::ResourceContext* resource_context,
@@ -333,18 +332,15 @@ absl::Status GraphExecutionRunOnFunction(
   int64_t request_id = request_info->tfrt_request_context->id();
   // The top level traceme root for this request. The thread pool used later
   // will add TraceMeProducer and TraceMeConsumer to connect async tasks.
-  tsl::profiler::TraceMe traceme(
-      [request_id, signature_name, &options, symbol_uids] {
-        return tsl::profiler::TraceMeEncode(
-            "TfrtModelRun",
-            {{"_r", 1},
-             {"id", request_id},
-             {"signature", signature_name},
-             {"model_id", absl::StrCat(options.model_metadata.name(), ":",
-                                       options.model_metadata.version())},
-             {"tf_symbol_uid", symbol_uids.tf_symbol_uid},
-             {"tfrt_symbol_uid", symbol_uids.tfrt_symbol_uid}});
-      });
+  tsl::profiler::TraceMe traceme([request_id, signature_name, &options] {
+    return tsl::profiler::TraceMeEncode(
+        "TfrtModelRun",
+        {{"_r", 1},
+         {"id", request_id},
+         {"signature", signature_name},
+         {"model_id", absl::StrCat(options.model_metadata.name(), ":",
+                                   options.model_metadata.version())}});
+  });
 
   // Only configure timer when the deadline is set.
   if (run_options.deadline.has_value()) {
@@ -613,9 +609,8 @@ absl::Status GraphExecutor::RunWithSortedInputsOutputs(
 
   std::vector<tensorflow::Tensor> flat_outputs;
   TF_RETURN_IF_ERROR(GraphExecutionRunOnFunction(
-      options_, run_options, loaded_client_graph.name(),
-      loaded_client_graph.symbol_uids(), func, loaded_executable, flat_inputs,
-      &flat_outputs, resource_context_.get(),
+      options_, run_options, loaded_client_graph.name(), func,
+      loaded_executable, flat_inputs, &flat_outputs, resource_context_.get(),
       &executable_context->resource_context,
       &loaded_client_graph.runner_table(),
       &loaded_client_graph.resource_array(), runtime(), fallback_state(),
@@ -719,10 +714,6 @@ GraphExecutor::ImportAndCompileClientGraph(
       auto stream_callback_id,
       CreateStreamCallbackId(options().model_metadata.name(), module.get()));
 
-  // TODO(b/278143179): Upload module w/o control flow.
-  SymbolUids symbol_uids;
-  symbol_uids.tf_symbol_uid = MaybeUploadMlirToXsymbol(module.get());
-
   auto import_duration = absl::Now() - import_start_time;
   LOG(INFO) << "TFRT finished importing client graph (" << &client_graph
             << "). Took " << absl::ToInt64Milliseconds(import_duration)
@@ -779,7 +770,6 @@ GraphExecutor::ImportAndCompileClientGraph(
     executable_context = std::make_shared<ExecutableContext>(
         std::move(bef), std::move(bef_file));
   }
-  symbol_uids.tfrt_symbol_uid = MaybeUploadMlirToXsymbol(module.get());
 
   auto compile_duration = absl::Now() - compile_start_time;
   LOG(INFO) << "TFRT finished compiling client graph (" << &client_graph
@@ -790,7 +780,7 @@ GraphExecutor::ImportAndCompileClientGraph(
           options_.model_metadata.name(), options_.model_metadata.version(),
           client_graph.name);
   return std::make_unique<LoadedClientGraph>(
-      client_graph.name, std::move(symbol_uids), this, std::move(context),
+      client_graph.name, this, std::move(context),
       std::move(module_with_op_keys), std::move(module),
       std::move(executable_context), stream_callback_id, std::move(flib_def),
       latency_sampler);
@@ -1103,7 +1093,7 @@ absl::Status GraphExecutor::LoadedClientGraph::UpdateCost(
 }
 
 GraphExecutor::LoadedClientGraph::LoadedClientGraph(
-    std::string name, SymbolUids symbol_uids, GraphExecutor* graph_executor,
+    std::string name, GraphExecutor* graph_executor,
     std::unique_ptr<mlir::MLIRContext> mlir_context,
     mlir::OwningOpRef<mlir::ModuleOp> tf_mlir_with_op_keys,
     mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir,
@@ -1112,7 +1102,6 @@ GraphExecutor::LoadedClientGraph::LoadedClientGraph(
     FunctionLibraryDefinition flib_def,
     tsl::monitoring::SamplerCell* latency_sampler)
     : name_(std::move(name)),
-      symbol_uids_(std::move(symbol_uids)),
       graph_executor_(graph_executor),
       mlir_context_(std::move(mlir_context)),
       executable_context_(std::move(executable_context)),
