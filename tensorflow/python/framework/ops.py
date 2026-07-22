@@ -5862,11 +5862,32 @@ class name_scope_v2(contextlib.AbstractContextManager[str]):
       if not name:
         scope_name = ""
       elif name[-1] == "/":
+        # Fully-specified scope name; bypass validation to keep the
+        # historical "trailing slash means I know what I'm doing" escape
+        # hatch (mirrors Graph.name_scope behaviour).
         scope_name = name
-      elif old_name:
-        scope_name = old_name + name + "/"
       else:
-        scope_name = name + "/"
+        # Mirror the validation Graph.name_scope already performs in
+        # graph mode (see ops.py:3402-3420). Without this check, scope
+        # names with characters that are illegal for ops (e.g. spaces)
+        # silently pass in eager mode and only blow up later when the
+        # same code is wrapped in `tf.function` — see #38754.
+        if old_name:
+          if not _VALID_SCOPE_NAME_REGEX.match(name):
+            raise ValueError(
+                f"'{name}' is not a valid scope name. A scope name has to "
+                f"match the following pattern: "
+                f"{_VALID_SCOPE_NAME_REGEX.pattern}")
+        else:
+          if not _VALID_OP_NAME_REGEX.match(name):
+            raise ValueError(
+                f"'{name}' is not a valid root scope name. A root scope "
+                f"name has to match the following pattern: "
+                f"{_VALID_OP_NAME_REGEX.pattern}")
+        if old_name:
+          scope_name = old_name + name + "/"
+        else:
+          scope_name = name + "/"
       ctx.scope_name = scope_name
 
       def _restore_name_scope(*_):
