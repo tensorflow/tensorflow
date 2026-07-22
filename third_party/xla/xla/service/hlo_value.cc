@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <ostream>
 #include <string>
 #include <utility>
@@ -114,17 +115,20 @@ std::string HloValue::ToString(int indent) const {
 namespace {
 
 // Returns true if the instruction 'user' may use the value at the given
-// ShapeIndex in the given operand. Generally, instruction which pass through
-// values transparently without reading the value are not considered to use the
-// value.
-bool MayUseOperandValue(const ShapeIndex& index, const HloInstruction* user) {
+// 'operand_index' in the given 'operand_number'. Generally, instructions which
+// pass through values transparently without reading the value are not
+// considered to use the value. By considering the operational semantics of the
+// user instruction, this check goes beyond mere structural dependencies in the
+// dataflow graph to determine if the value is truly consumed.
+bool MayUseOperandValue(const HloInstruction* user, int64_t operand_number,
+                        const ShapeIndex& operand_index) {
   switch (user->opcode()) {
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kCopy:
       // These instructions only access the top-level values of their
       // operand. Non-top-level (nested) values are passed through
       // transparently.
-      return index.empty();
+      return operand_index.empty();
     case HloOpcode::kDomain:
     case HloOpcode::kTuple:
       // These instructions always pass through their operands transparently.
@@ -181,14 +185,8 @@ HloValue::Uses HloValue::ComputeUses() const {
         CHECK(user->IsRoot());
       }
 #endif  // NDEBUG
-      // Root instructions of computations are considered to be uses whether
-      // or not the root instruction itself actually uses the value.
-      if (!MayUseOperandValue(position.index, user) &&
-          !(user->IsRoot() && root_positions.contains(user))) {
-        continue;
-      }
 
-      int i = -1;
+      int64_t i = -1;
       for (const auto& operand : user->operands()) {
         ++i;
 
@@ -196,10 +194,22 @@ HloValue::Uses HloValue::ComputeUses() const {
           continue;
         }
 
+        // Root instructions of computations are considered to be uses whether
+        // or not the root instruction itself actually uses the value.
+        // Skip uses where the instruction does not actually read the value.
+        // We look beyond structural dataflow dependencies and check the
+        // operational semantics of the user instruction to determine true
+        // usage. For example, a `tuple` instruction does not actually use the
+        // value.
+        if (!MayUseOperandValue(user, i, position.index) &&
+            !(user->IsRoot() && root_positions.contains(user))) {
+          continue;
+        }
+
         uses.emplace_back(user, i, position.index);
 #ifndef NDEBUG
         // The new use must not already exist in uses.
-        for (int index = 0; index + 1 < uses.size(); ++index) {
+        for (int64_t index = 0; index + 1 < uses.size(); ++index) {
           DCHECK_NE(uses[index], uses.back());
         }
 #endif  // NDEBUG
