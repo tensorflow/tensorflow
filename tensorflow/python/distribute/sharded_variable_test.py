@@ -276,6 +276,16 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(v.sparse_read(indices), sv.sparse_read(indices))
 
+    # Test empty indices
+    empty_indices = constant_op.constant([], dtype=dtypes.int32)
+    self.assertAllEqual(
+        v.sparse_read(empty_indices), sv.sparse_read(empty_indices)
+    )
+
+    # Test duplicate indices
+    dup_indices = constant_op.constant([10, 10, 0, 21])
+    self.assertAllEqual(v.sparse_read(dup_indices), sv.sparse_read(dup_indices))
+
     @def_function.function
     def func():
       return v.sparse_read(indices), sv.sparse_read(indices)
