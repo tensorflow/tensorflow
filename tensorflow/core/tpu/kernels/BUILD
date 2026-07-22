@@ -955,7 +955,6 @@ tf_cc_test(
     srcs = ["sparse_core_ops_utils_test.cc"],
     deps = [
         ":sparse_core_ops_utils",
-        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@xla//xla:xla_data_proto_cc",
