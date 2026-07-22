@@ -499,6 +499,32 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
     Allocation* allocation;
   };
 
+  // Holds transient state for allocation tracking.
+  struct AllocationTransientState {
+    // Maps a while loop body computation to its preferred memory offset.
+    // This is used to ensure that the allocations for loop inputs (outside the
+    // loop) and loop outputs/parameters (inside the loop body) use the same
+    // offset.
+    absl::flat_hash_map<const HloComputation*, AliasedOffset*>
+        preferred_offset_for_computation;
+    absl::flat_hash_map<const AllocationValue*, AliasedOffset*>
+        preferred_offset_for_allocation_value;
+    absl::flat_hash_map<const AllocationValue*, int64_t>
+        definition_time_for_allocation_value;
+  };
+
+  // Gets or creates the definition time for the given allocation value.
+  // Also assigns default memory if not allowed in alternate memory.
+  int64_t GetOrCreateDefinitionTime(
+      AllocationTransientState& state,
+      AllocationValue& allocation_value_to_update);
+
+  // Updates and gets preferred offset for the allocation value and use.
+  AliasedOffset* UpdateAndGetPreferredOffset(
+      AllocationTransientState& state,
+      const AllocationValue& allocation_value_to_update,
+      const AllocationValue::Use& use);
+
   // This struct contains mandatory memory assignments at a given time. E.g., an
   // input's required memory assignment time would correspond to the definition
   // time of the parameter instruction, and an output's time would correspond to
@@ -547,6 +573,20 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
 
     std::string ToString() const;
     static std::string SourceToString(Source source);
+  };
+
+  // Holds constraints gathered for a segment allocation.
+  struct SegmentConstraints {
+    std::optional<RequiredMemoryAssignment> start_assignment;
+    std::optional<RequiredMemoryAssignment> end_assignment;
+    std::optional<MemorySpace> start_space;
+    std::optional<MemorySpace> end_space;
+  };
+
+  // Result of EnsureDefaultMemoryAllocation.
+  struct DefaultMemoryAllocationResult {
+    std::optional<AllocationResult> failure;
+    Allocation* allocation = nullptr;
   };
 
   // A struct that contains a pointer to loop-optimized allocation along with
@@ -860,6 +900,16 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   bool RequiresNoCopyAlternateMemAllocation(
       AllocationValue& allocation_value) const;
 
+  // Returns a sorted list of all use times for the given allocation values.
+  std::vector<int64_t> GetSortedUseTimes(
+      absl::Span<const AllocationValue> allocation_values) const;
+
+  // Returns a map from synchronous instructions to indices of allocation values
+  // defined by them, for instructions pending replacements.
+  absl::flat_hash_map<const HloInstruction*, std::vector<size_t>>
+  GetValueIndicesBySyncInstruction(
+      absl::Span<const AllocationValue> allocation_values) const;
+
   // Adds a required assignment in default memory, at the given time, if
   // allocation_value's defining position is not allowed in alternate memory.
   void AssignDefaultMemIfNotAllowedInAlternateMem(
@@ -874,6 +924,23 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       int allocation_value_idx) const;
 
   bool VerifyAllConversionsAreSuccessful();
+
+  // Processes a single allocation segment.
+  absl::StatusOr<AllocationResult> ProcessAllocationSegment(
+      const AllocationSegmentContext& entry, AllocationValue& allocation_value,
+      absl::Span<AllocationValue> allocation_values, int alloc_value_idx,
+      const std::vector<int64_t>& all_use_times,
+      const AllocationValue::Use*& previous_use,
+      AllocationTransientState& state, AllocationResult& result);
+
+  // Validates the async copy allocation found for the request and records
+
+  // the result in failed_async_conversions_ or
+  // not_finalized_async_conversions_.
+  // Updates the result if validation fails.
+  void ValidateRequiredCopyAllocation(
+      const AllocationRequest& request,
+      const AllocationSequence& allocation_sequence, AllocationResult& result);
 
   // Finds allocations for allocation values generated from colocated intervals.
   // All of the allocation values have a must-alias relationship with each
@@ -925,6 +992,51 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // other Result with an OR of reasons why the buffer couldn't be placed in
   // alternate memory.
   AllocationResult AllocateSegment(AllocationRequest& request);
+
+  // Handles zero-length segment special case.
+  std::optional<AllocationResult> HandleZeroLengthSegment(
+      AllocationRequest& request);
+
+  // Gathers start and end memory space constraints for the segment.
+  SegmentConstraints GetSegmentConstraints(
+      const AllocationRequest& request) const;
+
+  // Verifies that start and end constraints do not conflict.
+  void VerifyConstraints(const AllocationRequest& request,
+                         const SegmentConstraints& constraints) const;
+
+  // Applies start constraint (pinning/extending).
+  void ApplyStartConstraint(AllocationRequest& request,
+                            const SegmentConstraints& constraints);
+
+  // Try allocating in alternate memory without any copies (No-Copy).
+  std::optional<AllocationResult> TryAllocateInAlternateMemoryNoCopy(
+      AllocationRequest& request, const SegmentConstraints& constraints);
+
+  // Handles failures in No-Copy allocation.
+  void HandleNoCopyFailure(AllocationRequest& request,
+                           const SegmentConstraints& constraints,
+                           AllocationResult& allocation_result);
+
+  // Ensures that there is an allocation in default memory (performing eviction
+  // if needed).
+  DefaultMemoryAllocationResult EnsureDefaultMemoryAllocation(
+      AllocationRequest& request, const SegmentConstraints& constraints,
+      AllocationResult& allocation_result);
+
+  // Try to prefetch the buffer into alternate memory.
+  std::optional<AllocationResult> TryPrefetch(
+      AllocationRequest& request, const SegmentConstraints& constraints,
+      Allocation& prev_default_allocation);
+
+  // Handles failures in prefetch allocation.
+  std::optional<AllocationResult> HandlePrefetchFailure(
+      const AllocationRequest& request, const SegmentConstraints& constraints,
+      AllocationResult& allocation_result);
+
+  // Fallback to default memory allocation.
+  void FallbackToDefaultMemory(AllocationRequest& request,
+                               Allocation& prev_default_allocation);
 
   // Try allocating in alternate memory without any copies.
   AllocationResult AllocateInAlternateMemoryNoCopy(
@@ -1304,6 +1416,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
                               absl::string_view producer_name,
                               ShapeIndex producer_shape_index,
                               absl::string_view consumer_name) const;
+
+  // Finds the matching AllocationValue for a given HloUse.
+  AllocationValue* FindMatchingAllocationValue(
+      const HloUse& use,
+      absl::Span<AllocationValue> candidate_allocation_values) const;
 
   // Takes a group of allocation values and splits them if they can be split on
   // the same dimension.
