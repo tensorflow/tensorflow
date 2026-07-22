@@ -80,10 +80,10 @@ class ReplaceCastHacksWithTFXLAOpsPass
 };
 
 // Generates params for the XLA Convolution op.
-void PrepareXlaConvParams(OpBuilder &builder, Location loc, ArrayAttr strides,
+void PrepareXlaConvParams(OpBuilder& builder, Location loc, ArrayAttr strides,
                           ArrayAttr dilations, int feature_group_cnt,
-                          Value &window_strides, Value &lhs_dilation,
-                          Value &rhs_dilation, Value &feature_group_count,
+                          Value& window_strides, Value& lhs_dilation,
+                          Value& rhs_dilation, Value& feature_group_count,
                           int num_dims) {
   SmallVector<int32_t> lhs_dilation_values(num_dims - 2, 1);
   SmallVector<int32_t> stride_values, rhs_dilation_values;
@@ -101,7 +101,7 @@ void PrepareXlaConvParams(OpBuilder &builder, Location loc, ArrayAttr strides,
 }
 
 // Calculates other_tensor_zp * tensor for zero point offset calculation.
-Value CreateZeroPointPartialOffset(OpBuilder &builder, Location loc,
+Value CreateZeroPointPartialOffset(OpBuilder& builder, Location loc,
                                    Value tensor, int8_t other_tensor_zp,
                                    const ArrayRef<int64_t> output_dims) {
   if (other_tensor_zp == 0) {
@@ -143,7 +143,7 @@ Value CreateZeroPointPartialOffset(OpBuilder &builder, Location loc,
 // zp_weight_contribution = w * sigma(k)p_ik
 // In case z != 0 and w != 0, we need to additionally calculate sigma(k)z*w,
 // which is: # of reduced dim(n in this case) * input_zp * weight_zp
-Value MergeZeroPointOffset(OpBuilder &builder, Location loc, Value weight,
+Value MergeZeroPointOffset(OpBuilder& builder, Location loc, Value weight,
                            const ArrayRef<int64_t> weight_output_dims,
                            int8_t input_zp, int8_t weight_zp,
                            Value zp_input_contribution,
@@ -224,7 +224,7 @@ Value MergeZeroPointOffset(OpBuilder &builder, Location loc, Value weight,
 // This function calculates the `offset` value mentioned above. Note that the
 // `output_dims` is the weight dimensions that are not contracted, so they
 // appear in the output shape.
-Value CalculateZeroPointOffset(OpBuilder &builder, Location loc, Value input,
+Value CalculateZeroPointOffset(OpBuilder& builder, Location loc, Value input,
                                Value weight, int8_t input_zp, int8_t weight_zp,
                                const ArrayRef<int64_t> input_output_dims,
                                const ArrayRef<int64_t> weight_output_dims) {
@@ -244,8 +244,8 @@ Value CalculateZeroPointOffset(OpBuilder &builder, Location loc, Value input,
 }
 
 // Copy the value of d1 into d2.
-void CopyXlaDotDimensionNumbers(const xla::DotDimensionNumbers &d1,
-                                xla::DotDimensionNumbers &d2,
+void CopyXlaDotDimensionNumbers(const xla::DotDimensionNumbers& d1,
+                                xla::DotDimensionNumbers& d2,
                                 const bool copy_left = true) {
   if (copy_left) {
     for (auto v : d1.lhs_batch_dimensions()) {
@@ -274,9 +274,9 @@ void CopyXlaDotDimensionNumbers(const xla::DotDimensionNumbers &d1,
 // c1,..,cn,1,...,1 for rhs opponent, 1,..,1, c1,..,cn for lhs opponent.
 // Returns the number of contracting dims.
 int GetXLADotPseudoOpponentShapeForReducingContractDims(
-    const xla::DotDimensionNumbers &dnums, const int xladot_output_rank,
+    const xla::DotDimensionNumbers& dnums, const int xladot_output_rank,
     ShapedType tensor_shape, const bool is_lhs,
-    SmallVector<int64_t> &opponent_shape) {
+    SmallVector<int64_t>& opponent_shape) {
   int opponent_required_dim = xladot_output_rank;
   int used_rank = tensor_shape.getRank();
 
@@ -311,9 +311,9 @@ int GetXLADotPseudoOpponentShapeForReducingContractDims(
 }
 
 // Create a matrix with 1s using the given shape.
-Operation *Create1sMatrix(OpBuilder &builder, Location loc,
-                          const SmallVector<int64_t> &shape) {
-  SmallVector<int64_t> shape_ones(/*Size=*/shape.size(), /*Value=*/1);
+Operation* Create1sMatrix(OpBuilder& builder, Location loc,
+                          const SmallVector<int64_t>& shape) {
+  SmallVector<int64_t> shape_ones(/*SizeArg=*/shape.size(), /*Value=*/1);
 
   return TF::BroadcastToOp::create(
       builder, loc, RankedTensorType::get(shape, builder.getIntegerType(32)),
@@ -323,7 +323,7 @@ Operation *Create1sMatrix(OpBuilder &builder, Location loc,
 
 // Create the output shape for XlaDotV2, given dot dimension numbers and shapes
 // of both inputs.
-SmallVector<int64_t> CreateOutputShape(const xla::DotDimensionNumbers &ddn,
+SmallVector<int64_t> CreateOutputShape(const xla::DotDimensionNumbers& ddn,
                                        const ArrayRef<int64_t> lhs_shape,
                                        const ArrayRef<int64_t> rhs_shape) {
   SmallVector<int64_t> output_shape;
@@ -372,7 +372,7 @@ SmallVector<int64_t> CreateOutputShape(const xla::DotDimensionNumbers &ddn,
 }
 
 // Generate an einsum equation from the given DotDimensionNumber.
-std::string CreateEinsumEquation(const xla::DotDimensionNumbers &ddn,
+std::string CreateEinsumEquation(const xla::DotDimensionNumbers& ddn,
                                  const int lhs_rank, const int rhs_rank) {
   // Prepare necessary indices.
   absl::flat_hash_set<int64_t> lhs_batch_idx, rhs_batch_idx;
@@ -452,8 +452,8 @@ std::string CreateEinsumEquation(const xla::DotDimensionNumbers &ddn,
 
 // Check if the given einsum equation could be replaced with "reduce".
 bool IsReducable(const StringRef einsum_equation,
-                 const xla::DotDimensionNumbers &dnums, const bool is_lhs,
-                 SmallVector<int64_t> &out_dims) {
+                 const xla::DotDimensionNumbers& dnums, const bool is_lhs,
+                 SmallVector<int64_t>& out_dims) {
   int idx_arrow = einsum_equation.find("->");
   StringRef calc_eq = einsum_equation.substr(0, idx_arrow);
   StringRef out_eq = einsum_equation.substr(idx_arrow + 2);
@@ -466,12 +466,16 @@ bool IsReducable(const StringRef einsum_equation,
   if (is_lhs) {
     target_eq = lhs_eq;
     for (auto v : dnums.lhs_contracting_dimensions()) {
-      target_eq[v] = '_';
+      if (v >= 0 && v < target_eq.size()) {
+        target_eq[v] = '_';
+      }
     }
   } else {
     target_eq = rhs_eq;
     for (auto v : dnums.rhs_contracting_dimensions()) {
-      target_eq[v] = '_';
+      if (v >= 0 && v < target_eq.size()) {
+        target_eq[v] = '_';
+      }
     }
   }
 
@@ -503,8 +507,8 @@ bool IsReducable(const StringRef einsum_equation,
 // postprocessing passes later to further optimize the graph after constant
 // folding.
 Value CreateZeroPointPartialOffsetXlaDotV2(
-    OpBuilder &builder, Location loc, Value tensor,
-    const int8_t other_tensor_zp, const xla::DotDimensionNumbers &dnums,
+    OpBuilder& builder, Location loc, Value tensor,
+    const int8_t other_tensor_zp, const xla::DotDimensionNumbers& dnums,
     const bool is_lhs, const int xladot_output_rank) {
   if (other_tensor_zp == 0) {
     return CreateScalarConstValue<int32_t>(builder, loc, 0);
@@ -543,7 +547,7 @@ Value CreateZeroPointPartialOffsetXlaDotV2(
   }
 
   // Create the pseudo opponent matrix.
-  Operation *one_matrix = Create1sMatrix(builder, loc, opponent_shape);
+  Operation* one_matrix = Create1sMatrix(builder, loc, opponent_shape);
 
   // Calculate output shape of the reduce einsum operation.
   SmallVector<int64_t> output_shape;
@@ -599,10 +603,10 @@ Value CreateZeroPointPartialOffsetXlaDotV2(
 // This function calculates the `offset` value mentioned above. Note that the
 // `output_dims` is the weight dimensions that are not contracted, so they
 // appear in the output shape.
-Value CalculateZeroPointOffsetXLADotV2(OpBuilder &builder, Location loc,
+Value CalculateZeroPointOffsetXLADotV2(OpBuilder& builder, Location loc,
                                        Value input, Value weight,
                                        int8_t input_zp, int8_t weight_zp,
-                                       const xla::DotDimensionNumbers &dnums,
+                                       const xla::DotDimensionNumbers& dnums,
                                        int output_rank) {
   Value zp_input_contribution = CreateZeroPointPartialOffsetXlaDotV2(
       builder, loc, input, weight_zp, dnums, /*is_lhs=*/true, output_rank);
@@ -635,7 +639,7 @@ Value CalculateZeroPointOffsetXLADotV2(OpBuilder &builder, Location loc,
 
 // Helper function to create a XlaConvV2Op for Conv2DOp, DepthwiseConv2DOp and
 // Conv3DOp.
-Value CreateXlaConvOp(OpBuilder &builder, Location loc, Value input,
+Value CreateXlaConvOp(OpBuilder& builder, Location loc, Value input,
                       Value filter, Value input_zp, Value conv_output,
                       ArrayAttr strides, ArrayAttr dilations,
                       StringAttr conv_padding, ArrayAttr explicit_paddings,
@@ -687,7 +691,7 @@ Value CreateXlaConvOp(OpBuilder &builder, Location loc, Value input,
   std::string precision_config_str;
   Value xla_conv_output =
       TF::XlaConvV2Op::create(
-          builder, loc, /*output_type=*/conv_output.getType(),
+          builder, loc, /*output=*/conv_output.getType(),
           /*lhs=*/input,
           /*rhs=*/filter, window_strides, padding, lhs_dilation, rhs_dilation,
           feature_group_count, builder.getStringAttr(dnums.SerializeAsString()),
@@ -707,7 +711,7 @@ Value CreateXlaConvOp(OpBuilder &builder, Location loc, Value input,
 
 // Creates a XlaConvV2Op from TF Conv2DOp and returns its output. The returned
 // value will be used as an input of the next op.
-Value CreateXlaConvOpFromTfConv2dOp(OpBuilder &builder, Location loc,
+Value CreateXlaConvOpFromTfConv2dOp(OpBuilder& builder, Location loc,
                                     Value input, Value filter, Value input_zp,
                                     Value conv_output, ArrayAttr strides,
                                     ArrayAttr dilations,
@@ -730,7 +734,7 @@ Value CreateXlaConvOpFromTfConv2dOp(OpBuilder &builder, Location loc,
 
 // Creates a XlaConvV2Op from TF DepthwiseConv2DOp and returns its output.
 Value CreateXlaConvOpFromTfDepthwiseConv2dOp(
-    OpBuilder &builder, Location loc, Value input, Value filter, Value input_zp,
+    OpBuilder& builder, Location loc, Value input, Value filter, Value input_zp,
     Value conv_output, ArrayAttr strides, ArrayAttr dilations,
     StringAttr conv_padding, ArrayAttr explicit_paddings) {
   auto input_shape = mlir::cast<ShapedType>(input.getType());
@@ -756,7 +760,7 @@ Value CreateXlaConvOpFromTfDepthwiseConv2dOp(
 }
 
 // Creates a XlaConvV2Op from TF Conv3DOp and returns its output.
-Value CreateXlaConvOpFromTfConv3dOp(OpBuilder &builder, Location loc,
+Value CreateXlaConvOpFromTfConv3dOp(OpBuilder& builder, Location loc,
                                     Value input, Value filter, Value input_zp,
                                     Value conv_output, ArrayAttr strides,
                                     ArrayAttr dilations,
@@ -778,9 +782,9 @@ Value CreateXlaConvOpFromTfConv3dOp(OpBuilder &builder, Location loc,
 }
 
 // Helper function to create an XlaDotV2Op.
-Value CreateXlaDotV2Op(OpBuilder &builder, Location loc, Value input,
+Value CreateXlaDotV2Op(OpBuilder& builder, Location loc, Value input,
                        Value weight, Value input_zp, Value weight_zp,
-                       Value output, const xla::DotDimensionNumbers &dnums) {
+                       Value output, const xla::DotDimensionNumbers& dnums) {
   int32_t input_zp_value = 0;
   int32_t weight_zp_value = 0;
   if (input_zp != nullptr && !GetSplatValue(input_zp, input_zp_value)) {
@@ -816,7 +820,7 @@ Value CreateXlaDotV2Op(OpBuilder &builder, Location loc, Value input,
   return TF::SubOp::create(builder, loc, dot_result, zp_offset);
 }
 
-Value CreateXlaDotV2OpFromTfMatMulOp(OpBuilder &builder, Location loc,
+Value CreateXlaDotV2OpFromTfMatMulOp(OpBuilder& builder, Location loc,
                                      Value input, Value weight, Value input_zp,
                                      Value weight_zp, Value output,
                                      BoolAttr transpose_a,
@@ -881,8 +885,8 @@ GetBroadcastShapesForBatchMatmul(ShapedType input_type,
 // Broadcasts batch dimensions of the input and weight of the BatchMatMul
 // op. In XLA, shapes are all constants, so all operations created in this
 // function, except BroadcastTo, are expected to be folded.
-void BroadcastBatchDimensionsForBatchMatMul(OpBuilder &builder, Location loc,
-                                            Value &input, Value &weight) {
+void BroadcastBatchDimensionsForBatchMatMul(OpBuilder& builder, Location loc,
+                                            Value& input, Value& weight) {
   ShapedType input_type = mlir::cast<ShapedType>(input.getType());
   ShapedType weight_type = mlir::cast<ShapedType>(weight.getType());
   const int32_t input_rank = input_type.getRank();
@@ -970,7 +974,7 @@ void BroadcastBatchDimensionsForBatchMatMul(OpBuilder &builder, Location loc,
                                      weight, broacasted_weight_shape);
 }
 
-Value CreateXlaDotV2OpFromTfBatchMatMulOp(OpBuilder &builder, Location loc,
+Value CreateXlaDotV2OpFromTfBatchMatMulOp(OpBuilder& builder, Location loc,
                                           Value input, Value weight,
                                           Value input_zp, Value weight_zp,
                                           Value output, BoolAttr adj_x,
@@ -1027,7 +1031,7 @@ bool IsRankedInt(Value value, const int integer_width) {
 // 5. The type of the const tensor (or input of the cast operation) is int8.
 bool IsEinsumOpSupported(Value output, OperandRange args,
                          StringAttr equation_attr) {
-  Operation *op = output.getDefiningOp();
+  Operation* op = output.getDefiningOp();
   if (op->getAttrOfType<BoolAttr>(kTfQuantCreatedEinsum) != nullptr) {
     return false;
   }
@@ -1035,14 +1039,15 @@ bool IsEinsumOpSupported(Value output, OperandRange args,
   // Only supports einsum with two inputs and one specified output.
   if (args.size() != 2) return false;
   if (!absl::StrContains(equation_attr.str(), "->")) return false;
+  if (absl::StrContains(equation_attr.str(), "...")) return false;
 
   // Check the types and ranks of the input arguments.
   if (!IsRankedInt(args[0], 32)) return false;
   if (!IsRankedInt(args[1], 32)) return false;
 
   // Trace the graph to see if the conversion is applicable.
-  Operation *op_input = args[0].getDefiningOp();
-  Operation *op_weight = args[1].getDefiningOp();
+  Operation* op_input = args[0].getDefiningOp();
+  Operation* op_weight = args[1].getDefiningOp();
   if (isa<TF::SubOp>(op_input)) {
     op_input = op_input->getOperand(0).getDefiningOp();
   }
@@ -1072,10 +1077,16 @@ xla::DotDimensionNumbers ConvertEinsumEquationIntoXlaDotDimensionNumbers(
     const StringRef equation) {
   xla::DotDimensionNumbers dnums;
 
+  std::string sanitized_equation = equation.str();
+  sanitized_equation.erase(
+      std::remove_if(sanitized_equation.begin(), sanitized_equation.end(),
+                     [](char c) { return c == ' ' || c == '.'; }),
+      sanitized_equation.end());
+
   // 1. Parse the given equation.
-  int idx_arrow = equation.find("->");
-  StringRef calc_eq = equation.substr(0, idx_arrow);
-  StringRef out_eq = equation.substr(idx_arrow + 2);
+  int idx_arrow = sanitized_equation.find("->");
+  StringRef calc_eq = StringRef(sanitized_equation).substr(0, idx_arrow);
+  StringRef out_eq = StringRef(sanitized_equation).substr(idx_arrow + 2);
 
   int idx_comma = calc_eq.find(',');
   StringRef lhs_eq = calc_eq.substr(0, idx_comma);
@@ -1107,7 +1118,7 @@ xla::DotDimensionNumbers ConvertEinsumEquationIntoXlaDotDimensionNumbers(
 }
 
 // Trace the graph to find out the actual operation.
-Value getActualValue(Operation *op) {
+Value getActualValue(Operation* op) {
   if (isa<TF::CastOp>(op)) {
     op = op->getOperand(0).getDefiningOp();
   }
@@ -1118,7 +1129,7 @@ Value getActualValue(Operation *op) {
   return op->getResult(0);
 }
 
-Value CreateXlaDotV2OpFromTfEinsumOp(OpBuilder &builder, Location loc,
+Value CreateXlaDotV2OpFromTfEinsumOp(OpBuilder& builder, Location loc,
                                      StringAttr equation_attr,
                                      OperandRange args, Value output) {
   xla::DotDimensionNumbers dnums =
@@ -1127,8 +1138,8 @@ Value CreateXlaDotV2OpFromTfEinsumOp(OpBuilder &builder, Location loc,
   // Look for zp.
   Value input_zp = nullptr;
   Value weight_zp = nullptr;
-  Operation *op_input = args[0].getDefiningOp();
-  Operation *op_weight = args[1].getDefiningOp();
+  Operation* op_input = args[0].getDefiningOp();
+  Operation* op_weight = args[1].getDefiningOp();
   if (isa<TF::SubOp>(op_input)) {
     input_zp = op_input->getOperand(1);
     op_input = op_input->getOperand(0).getDefiningOp();
@@ -1156,7 +1167,7 @@ Value CreateXlaDotV2OpFromTfEinsumOp(OpBuilder &builder, Location loc,
 
 void ReplaceCastHacksWithTFXLAOpsPass::runOnOperation() {
   func::FuncOp func = getOperation();
-  MLIRContext *ctx = &getContext();
+  MLIRContext* ctx = &getContext();
   RewritePatternSet patterns(ctx);
   populateWithGenerated(patterns);
   if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
