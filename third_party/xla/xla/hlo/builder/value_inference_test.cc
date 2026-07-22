@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/builder/value_inference.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -739,6 +740,24 @@ TEST_F(ConstValueInferenceTest, ParamaterValuePassThroughSetBound) {
       ComputeConstantValueLiteral(set_bound, &b).value().Get<int32_t>({});
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), 32);
+}
+
+
+// Regression test for github.com/tensorflow/tensorflow/issues/122050:
+// AnalyzeConstant previously fell through to AnalyzeConstantValueFallback for
+// kTan, which returned InvalidArgument("AnalyzeConstantValueFallback can't
+// handle opcode: tan"). kTan is now handled alongside kSin/kCos.
+TEST_F(ConstValueInferenceTest, TanOfConstant) {
+  XlaBuilder b(TestName());
+  auto c = ConstantR0<float>(&b, 1.0f);
+  auto result = Tan(c);
+  ASSERT_TRUE(b.first_error().ok()) << b.first_error().message();
+  auto value = ComputeConstantValueLiteral(result, &b);
+  ASSERT_TRUE(value.ok()) << value.status();
+  // The inferred value must be present and correct.
+  std::optional<float> val = value.value().Get<float>({});
+  ASSERT_TRUE(val.has_value());
+  EXPECT_NEAR(val.value(), 1.5574077f, 1e-5f);
 }
 
 }  // namespace
