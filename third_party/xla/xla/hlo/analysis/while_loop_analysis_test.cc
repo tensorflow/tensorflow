@@ -1167,5 +1167,81 @@ ENTRY entry {
   EXPECT_TRUE(range->step().has_value());
   EXPECT_EQ(range->step().value().GetSignedValue(), 1);
 }
+
+// Verifies that while loop analysis correctly resolves deep GTE chains,
+// nested tuple copies, and fusions in both the body and condition
+// computations using the LookThroughTupleIndirection helper.
+TEST_F(WhileLoopAnalysisTest, AdvancedBFSReachabilityVerification) {
+  absl::string_view hlo_string = R"(
+HloModule AdvancedBFSVerification
+
+fused_scalar_add {
+  p0 = s32[] parameter(0)
+  c1 = s32[] constant(1)
+  ROOT res = s32[] add(p0, c1)
+}
+
+fused_identity {
+  p0 = s32[] parameter(0)
+  ROOT res = s32[] copy(p0)
+}
+
+fused_tuple_identity {
+  p0 = (s32[], f32[100,100]) parameter(0)
+  ROOT res = (s32[], f32[100,100]) copy(p0)
+}
+
+body {
+  param = (s32[], f32[100,100]) parameter(0)
+
+  wrapped = ((s32[], f32[100,100])) tuple(param)
+  param_unwrapped = (s32[], f32[100,100]) get-tuple-element(wrapped), index=0
+
+  iter = s32[] get-tuple-element(param_unwrapped), index=0
+  noise_data = f32[100,100] get-tuple-element(param_unwrapped), index=1
+
+  iter_next = s32[] fusion(iter), kind=kLoop, calls=fused_scalar_add
+  noise_next = f32[100,100] add(noise_data, noise_data)
+
+  ROOT root = (s32[], f32[100,100]) tuple(iter_next, noise_next)
+}
+
+condition {
+  param = (s32[], f32[100,100]) parameter(0)
+
+  fused_param = (s32[], f32[100,100]) fusion(param), kind=kLoop, calls=fused_tuple_identity
+
+  iter = s32[] get-tuple-element(fused_param), index=0
+  noise = f32[100,100] get-tuple-element(fused_param), index=1
+
+  mixed_tuple = (f32[100,100], s32[]) tuple(noise, iter)
+  iter_extracted = s32[] get-tuple-element(mixed_tuple), index=1
+
+  id1 = s32[] copy(iter_extracted)
+  id2 = s32[] fusion(iter_extracted), kind=kLoop, calls=fused_identity
+  iter_recombined = s32[] maximum(id1, id2)
+
+  limit = s32[] constant(10)
+  ROOT compare = pred[] compare(iter_recombined, limit), direction=LT
+}
+
+ENTRY main {
+  init_iter = s32[] constant(0)
+  zero = f32[] constant(0.0)
+  init_noise = f32[100,100] broadcast(zero)
+  while_init = (s32[], f32[100,100]) tuple(init_iter, init_noise)
+  ROOT while = (s32[], f32[100,100]) while(while_init), body=body, condition=condition
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloInstruction* while_op = m->entry_computation()->root_instruction();
+  std::optional<int64_t> indvar = GetLoopInductionVarTupleIdx(while_op);
+  ASSERT_TRUE(indvar.has_value());
+  EXPECT_EQ(*indvar, 0);
+}
+
 }  // namespace
 }  // namespace xla
