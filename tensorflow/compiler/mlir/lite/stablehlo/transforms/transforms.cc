@@ -24,8 +24,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/stablehlo/transforms/fold_broadcast_pass.h"
 #include "tensorflow/compiler/mlir/stablehlo/transforms/rename_entrypoint_to_main.h"
 #include "tensorflow/compiler/mlir/stablehlo/transforms/tf_stablehlo_pass.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
+// #include
+// "third_party/tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+// #include
+// "third_party/tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 
@@ -44,30 +46,30 @@ void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
 
   // Optimizes TF graph via cleanups, merges, rewrites, constant folding,
   // and edge case handling where possible.
-  pm.addNestedPass<func::FuncOp>(TF::CreateDropWhileShapeInvariantPass());
-  pm.addNestedPass<func::FuncOp>(
-      tf_executor::CreateTFExecutorGraphPruningPass());
-  pm.addNestedPass<func::FuncOp>(
-      tf_executor::CreateTFExecutorIslandCoarseningPass());
-  pm.addPass(TF::CreateTFFunctionalControlFlowToRegions());
+  // pm.addNestedPass<func::FuncOp>(TF::CreateDropWhileShapeInvariantPass());
+  // pm.addNestedPass<func::FuncOp>(
+  //     tf_executor::CreateTFExecutorGraphPruningPass());
+  // pm.addNestedPass<func::FuncOp>(
+  //     tf_executor::CreateTFExecutorIslandCoarseningPass());
+  // pm.addPass(TF::CreateTFFunctionalControlFlowToRegions());
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
-  pm.addNestedPass<func::FuncOp>(
-      mlir::TFDevice::CreateDecomposeResourceOpsPass());
+  // pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  // pm.addPass(mlir::createCanonicalizerPass());
+  // pm.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
+  // pm.addNestedPass<func::FuncOp>(
+  //     mlir::TFDevice::CreateDecomposeResourceOpsPass());
 
   // FreezeVariables only freezes variables for TF v1 types. Separately handle
   // freezing of TF v2 GlobalTensor ops. (Ref: b/206855389)
-  pm.addPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
-  pm.addPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass(
-      /*allow_mutable_tensors=*/true));
+  // pm.addPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
+  // pm.addPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass(
+  //     /*allow_mutable_tensors=*/true));
 
   // Generic MLIR optimization passes.
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  // pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 
   // Legalizes TF UniformQuantized types into MHLO.
   pm.addNestedPass<func::FuncOp>(
