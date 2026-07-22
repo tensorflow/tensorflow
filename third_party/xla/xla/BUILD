@@ -791,6 +791,21 @@ xla_cc_test(
     ],
 )
 
+xla_cc_test(
+    name = "literal_util_benchmark",
+    srcs = ["literal_util_benchmark.cc"],
+    deps = [
+        ":literal_util",
+        ":shape_util",
+        ":xla_data_proto_cc",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@tsl//tsl/platform:stacktrace_handler",
+    ],
+)
+
 cc_library(
     name = "literal_util",
     srcs = ["literal_util.cc"],

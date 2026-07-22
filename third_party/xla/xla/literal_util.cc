@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -60,6 +61,16 @@ namespace xla {
 namespace {
 
 using absl::StrCat;
+
+template <typename To, typename From>
+inline To FastCast(From val) {
+  return static_cast<To>(val);
+}
+
+template <>
+inline bfloat16 FastCast<bfloat16, float>(float val) {
+  return bfloat16(Eigen::bfloat16_impl::float_to_bfloat16_rtne<true>(val));
+}
 
 // Return a literal with all arrays of type FromNativeT converted to type
 // ToNativeT in the given literal.
@@ -361,15 +372,60 @@ void PopulateWithRandomFloatingPointData(
   }
   if (min == max) {
     for (FloatT& value : literal->data<FloatT>()) {
-      value = static_cast<FloatT>(min);
+      value = FastCast<FloatT, GeneratorT>(min);
     }
     return;
   }
-  std::uniform_real_distribution<GeneratorT> generator(min, max);
-  for (FloatT& value : literal->data<FloatT>()) {
-    value = static_cast<FloatT>(generator(*engine));
-    while (interval.has_value() && interval->exclude_zero && value == 0.0f) {
-      value = static_cast<FloatT>(generator(*engine));
+  if constexpr (std::is_same_v<GeneratorT, float>) {
+    auto data = literal->data<FloatT>();
+    if (!data.empty()) {
+      const float range = max - min;
+      const float inv_lcg_range = 1.0f / 2147483646.0f;
+      uint32_t state = (*engine)();
+      uint32_t last_state = state;
+      const bool use_fast_path =
+          !interval.has_value() || !interval->exclude_zero;
+      if (use_fast_path) {
+        constexpr size_t kChunkSize = 1024;
+        std::array<float, kChunkSize> float_buf;
+        for (size_t i = 0; i < data.size(); i += kChunkSize) {
+          size_t current_chunk_size = std::min(kChunkSize, data.size() - i);
+          for (size_t j = 0; j < current_chunk_size; ++j) {
+            last_state = state;
+            float u = (static_cast<float>(state) - 1.0f) * inv_lcg_range;
+            float_buf[j] = u * range + min;
+            state = (static_cast<uint64_t>(state) * 16807) % 2147483647;
+          }
+          for (size_t j = 0; j < current_chunk_size; ++j) {
+            data[i + j] = FastCast<FloatT, float>(float_buf[j]);
+          }
+        }
+      } else {
+        for (FloatT& value : data) {
+          last_state = state;
+          float u = (static_cast<float>(state) - 1.0f) * inv_lcg_range;
+          float val = u * range + min;
+          value = FastCast<FloatT, float>(val);
+          while (interval.has_value() && interval->exclude_zero &&
+                 value == 0.0f) {
+            state = (static_cast<uint64_t>(state) * 16807) % 2147483647;
+            last_state = state;
+            u = (static_cast<float>(state) - 1.0f) * inv_lcg_range;
+            val = u * range + min;
+            value = FastCast<FloatT, float>(val);
+          }
+          state = (static_cast<uint64_t>(state) * 16807) % 2147483647;
+        }
+      }
+      engine->seed(last_state);
+    }
+  } else {
+    std::uniform_real_distribution<GeneratorT> generator(min, max);
+    for (FloatT& value : literal->data<FloatT>()) {
+      value = FastCast<FloatT, GeneratorT>(generator(*engine));
+      while (interval.has_value() && interval->exclude_zero && value == 0.0f) {
+        value = FastCast<FloatT, GeneratorT>(generator(*engine));
+      }
     }
   }
 }
@@ -406,7 +462,13 @@ void PopulateWithUniformFullRangeFloatingPointData(Literal* literal,
         LOG(FATAL) << "Unsupported float size: " << sizeof(FloatT);
       }
 
-      bool is_forbidden = std::isinf(value) || std::isnan(value);
+      bool is_forbidden = false;
+      if constexpr (std::numeric_limits<FloatT>::has_infinity) {
+        is_forbidden = is_forbidden || std::isinf(value);
+      }
+      if constexpr (std::numeric_limits<FloatT>::has_quiet_NaN) {
+        is_forbidden = is_forbidden || std::isnan(value);
+      }
 
       if (!is_forbidden) {
         break;
