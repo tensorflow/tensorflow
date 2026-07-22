@@ -154,7 +154,7 @@ TEST(DumpHloModule, WithBufferAssignment) {
           },
           &alias_info,
           /*color_alignment=*/[](LogicalBuffer::Color) -> int64_t { return 1; },
-          /*options=*/std::move(opts))
+          /*opts=*/std::move(opts))
           .value();
   std::string dump_name = "dump";
   std::vector<std::string> paths =
@@ -212,7 +212,7 @@ TEST(DumpHloModule, DumpRiegeli) {
           },
           &alias_info,
           /*color_alignment=*/[](LogicalBuffer::Color) -> int64_t { return 1; },
-          /*options=*/std::move(opts))
+          /*opts=*/std::move(opts))
           .value();
   std::string dump_name = "dump";
   std::vector<std::string> paths =
