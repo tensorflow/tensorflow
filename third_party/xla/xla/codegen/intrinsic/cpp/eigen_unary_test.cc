@@ -123,14 +123,14 @@ TEST(EigenUnaryTest, FastTanhfIsVectorized32) {
   llvm::raw_string_ostream stream(ir);
   module->print(stream, nullptr);
 
-  bool is_512 = absl::StrContains(ir, "fmul <16 x float>");
-  bool is_256 = absl::StrContains(ir, "fmul <8 x float>");
-  EXPECT_TRUE(is_512 || is_256);
-
   std::string v16f32_ir = GetFunctionIr(*module, "xla.unused.tanh.v16f32");
   std::string v8f32_ir = GetFunctionIr(*module, "xla.unused.tanh.v8f32");
   std::string v8f64_ir = GetFunctionIr(*module, "xla.unused.tanh.v8f64");
   std::string v4f64_ir = GetFunctionIr(*module, "xla.unused.tanh.v4f64");
+
+  bool is_512 = absl::StrContains(v16f32_ir, "fmul <16 x float>");
+  bool is_256 = absl::StrContains(v8f32_ir, "fmul <8 x float>");
+  EXPECT_TRUE(is_512 || is_256);
 
   if (is_512) {
     EXPECT_THAT(v16f32_ir, ContainsRegex("fmul <16 x float>"));
@@ -247,14 +247,14 @@ TEST(EigenUnaryTest, AtanIsVectorized32) {
   llvm::raw_string_ostream stream(ir);
   module->print(stream, nullptr);
 
-  bool is_512 = absl::StrContains(ir, "fmul <16 x float>");
-  bool is_256 = absl::StrContains(ir, "fmul <8 x float>");
-  EXPECT_TRUE(is_512 || is_256);
-
   std::string v16f32_ir = GetFunctionIr(*module, "xla.atan.v16f32");
   std::string v8f32_ir = GetFunctionIr(*module, "xla.atan.v8f32");
   std::string v8f64_ir = GetFunctionIr(*module, "xla.atan.v8f64");
   std::string v4f64_ir = GetFunctionIr(*module, "xla.atan.v4f64");
+
+  bool is_512 = absl::StrContains(v16f32_ir, "fmul <16 x float>");
+  bool is_256 = absl::StrContains(v8f32_ir, "fmul <8 x float>");
+  EXPECT_TRUE(is_512 || is_256);
 
   if (is_512) {
     EXPECT_THAT(v16f32_ir, ContainsRegex("fmul <16 x float>"));
@@ -322,6 +322,114 @@ TEST(EigenUnaryTest, AtanEdgeCases) {
   double inf_d = std::numeric_limits<double>::infinity();
   EXPECT_NEAR(atan_f64(inf_d), kPiOver2, 1e-14);
   EXPECT_NEAR(atan_f64(-inf_d), -kPiOver2, 1e-14);
+}
+
+constexpr int kSincosUlps = 3;
+
+TEST(EigenUnaryTest, FastSinfIsCorrect) {
+  Vec16f x = {1.0f,  2.0f,  -1.0f, 4.0f,  3.0f,   1.5f,  0.25f, 0.1f,
+              -2.0f, -4.0f, -3.0f, -1.5f, -0.25f, -0.1f, 0.0f,  0.5f};
+  Vec16f y = sin_v16f32(x);
+  for (int i = 0; i < 16; ++i) {
+    EXPECT_THAT(y[i], NearUlps(std::sin(x[i]), kSincosUlps))
+        << x[i] << " " << std::sin(x[i]);
+  }
+}
+
+TEST(EigenUnaryTest, FastSindIsCorrect) {
+  Vec4d x = {1.0, 2.0, -1.0, 4.0};
+  Vec4d y = sin_v4f64(x);
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_THAT(y[i], NearUlps(std::sin(x[i]), kSincosUlps));
+  }
+}
+
+TEST(EigenUnaryTest, FastCosfIsCorrect) {
+  Vec16f x = {1.0f,  2.0f,  -1.0f, 4.0f,  3.0f,   1.5f,  0.25f, 0.1f,
+              -2.0f, -4.0f, -3.0f, -1.5f, -0.25f, -0.1f, 0.0f,  0.5f};
+  Vec16f y = cos_v16f32(x);
+  for (int i = 0; i < 16; ++i) {
+    EXPECT_THAT(y[i], NearUlps(std::cos(x[i]), kSincosUlps))
+        << x[i] << " " << std::cos(x[i]);
+  }
+}
+
+TEST(EigenUnaryTest, FastCosdIsCorrect) {
+  Vec4d x = {1.0, 2.0, -1.0, 4.0};
+  Vec4d y = cos_v4f64(x);
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_THAT(y[i], NearUlps(std::cos(x[i]), kSincosUlps));
+  }
+}
+
+TEST(EigenUnaryTest, LinspaceInputsSinfCorrectness) {
+  constexpr float start = -10.0f;
+  constexpr float end = 10.0f;
+  constexpr int steps = 1000 * 16;
+  constexpr float step = (end - start) / steps;
+
+  for (int i = 0; i < steps; i += 16) {
+    Vec16f x = {};
+    for (int j = 0; j < 16; ++j) {
+      x[j] = start + (i + j) * step;
+    }
+    Vec16f y = sin_v16f32(x);
+    for (int j = 0; j < 16; ++j) {
+      EXPECT_NEAR(y[j], std::sin(x[j]), 1e-5f);
+    }
+  }
+}
+
+TEST(EigenUnaryTest, LinspaceInputsCosfCorrectness) {
+  constexpr float start = -10.0f;
+  constexpr float end = 10.0f;
+  constexpr int steps = 1000 * 16;
+  constexpr float step = (end - start) / steps;
+
+  for (int i = 0; i < steps; i += 16) {
+    Vec16f x = {};
+    for (int j = 0; j < 16; ++j) {
+      x[j] = start + (i + j) * step;
+    }
+    Vec16f y = cos_v16f32(x);
+    for (int j = 0; j < 16; ++j) {
+      EXPECT_NEAR(y[j], std::cos(x[j]), 1e-5f);
+    }
+  }
+}
+
+TEST(EigenUnaryTest, SinIsVectorized32) {
+  llvm::LLVMContext context;
+  std::unique_ptr<llvm::Module> module =
+      ParseEmbeddedBitcode(context, llvm_ir::kEigenUnary32LlIr);
+
+  std::string ir;
+  llvm::raw_string_ostream stream(ir);
+  module->print(stream, nullptr);
+
+  EXPECT_THAT(ir, Not(ContainsRegex("llvm.x86")));
+  EXPECT_THAT(ir, Not(ContainsRegex("llvm.aarch64")));
+  EXPECT_THAT(ir, ContainsRegex("xla.sin.v16f32"));
+  EXPECT_THAT(ir, ContainsRegex("xla.sin.v8f64"));
+  EXPECT_THAT(ir, ContainsRegex("xla.sin.f32"));
+  EXPECT_THAT(ir, ContainsRegex("xla.sin.f64"));
+}
+
+TEST(EigenUnaryTest, CosIsVectorized32) {
+  llvm::LLVMContext context;
+  std::unique_ptr<llvm::Module> module =
+      ParseEmbeddedBitcode(context, llvm_ir::kEigenUnary32LlIr);
+
+  std::string ir;
+  llvm::raw_string_ostream stream(ir);
+  module->print(stream, nullptr);
+
+  EXPECT_THAT(ir, Not(ContainsRegex("llvm.x86")));
+  EXPECT_THAT(ir, Not(ContainsRegex("llvm.aarch64")));
+  EXPECT_THAT(ir, ContainsRegex("xla.cos.v16f32"));
+  EXPECT_THAT(ir, ContainsRegex("xla.cos.v8f64"));
+  EXPECT_THAT(ir, ContainsRegex("xla.cos.f32"));
+  EXPECT_THAT(ir, ContainsRegex("xla.cos.f64"));
 }
 
 }  // namespace

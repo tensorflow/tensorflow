@@ -43,6 +43,28 @@ double atan_f64(double x) asm("xla.atan.f64");
 Vec4d atan_v4f64(Vec4d x) asm("xla.atan.v4f64");
 Vec8d atan_v8f64(Vec8d x) asm("xla.atan.v8f64");
 
+// Sin single precision
+float sin_f32(float x) asm("xla.sin.f32");
+Vec4f sin_v4f32(Vec4f x) asm("xla.sin.v4f32");
+Vec8f sin_v8f32(Vec8f x) asm("xla.sin.v8f32");
+Vec16f sin_v16f32(Vec16f x) asm("xla.sin.v16f32");
+
+// Sin double precision
+double sin_f64(double x) asm("xla.sin.f64");
+Vec4d sin_v4f64(Vec4d x) asm("xla.sin.v4f64");
+Vec8d sin_v8f64(Vec8d x) asm("xla.sin.v8f64");
+
+// Cos single precision
+float cos_f32(float x) asm("xla.cos.f32");
+Vec4f cos_v4f32(Vec4f x) asm("xla.cos.v4f32");
+Vec8f cos_v8f32(Vec8f x) asm("xla.cos.v8f32");
+Vec16f cos_v16f32(Vec16f x) asm("xla.cos.v16f32");
+
+// Cos double precision
+double cos_f64(double x) asm("xla.cos.f64");
+Vec4d cos_v4f64(Vec4d x) asm("xla.cos.v4f64");
+Vec8d cos_v8f64(Vec8d x) asm("xla.cos.v8f64");
+
 }  // namespace xla::codegen
 
 #endif  // XLA_CODEGEN_INTRINSIC_CPP_EIGEN_UNARY_H_

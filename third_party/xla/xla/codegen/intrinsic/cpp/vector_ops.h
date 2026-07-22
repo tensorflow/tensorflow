@@ -44,9 +44,17 @@ typedef double Vec8d __attribute__((vector_size(64)));
 // Corresponding integer types
 typedef uint32_t Vec4i __attribute__((vector_size(16)));
 typedef uint32_t Vec8i __attribute__((vector_size(32)));
+typedef uint32_t Vec16i __attribute__((vector_size(64)));
 typedef uint64_t Vec2q __attribute__((vector_size(16)));
 typedef uint64_t Vec4q __attribute__((vector_size(32)));
 typedef uint64_t Vec8q __attribute__((vector_size(64)));
+
+typedef int32_t Vec4s __attribute__((vector_size(16)));
+typedef int32_t Vec8s __attribute__((vector_size(32)));
+typedef int32_t Vec16s __attribute__((vector_size(64)));
+typedef int64_t Vec2l __attribute__((vector_size(16)));
+typedef int64_t Vec4l __attribute__((vector_size(32)));
+typedef int64_t Vec8l __attribute__((vector_size(64)));
 
 namespace internal {
 // Helper type to select the corresponding integer vector type.
@@ -60,6 +68,10 @@ struct MakeIntVec<uint32_t, 4> {
 template <>
 struct MakeIntVec<uint32_t, 8> {
   using type = Vec8i;
+};
+template <>
+struct MakeIntVec<uint32_t, 16> {
+  using type = Vec16i;
 };
 template <>
 struct MakeIntVec<uint64_t, 2> {
@@ -142,7 +154,7 @@ FloatVec BitwiseAbs(FloatVec x) {
   // Create a mask to clear the sign bit (e.g., 0x7FFFFFFF for int).
   // This is a vector where every element is the mask.
   const IntVec abs_mask =
-      IntVec{~(static_cast<ScalarInt>(1) << (sizeof(ScalarInt) * 8 - 1))};
+      IntVec{} + ~(static_cast<ScalarInt>(1) << (sizeof(ScalarInt) * 8 - 1));
 
   // Reinterpret float as int, apply the mask, and reinterpret back.
   return __builtin_bit_cast(FloatVec, __builtin_bit_cast(IntVec, x) & abs_mask);
@@ -159,7 +171,7 @@ FloatVec BitwiseCopysign(FloatVec value, FloatVec sign_source) {
   using IntVec = typename internal::CorrespondingIntVector<FloatVec>::type;
   using ScalarInt = decltype(IntVec{}[0]);
   const IntVec sign_mask =
-      IntVec{static_cast<ScalarInt>(1) << (sizeof(ScalarInt) * 8 - 1)};
+      IntVec{} + (static_cast<ScalarInt>(1) << (sizeof(ScalarInt) * 8 - 1));
   FloatVec value_abs = BitwiseAbs<FloatVec>(value);
   IntVec sign_bits = __builtin_bit_cast(IntVec, sign_source) & sign_mask;
   return __builtin_bit_cast(FloatVec,
