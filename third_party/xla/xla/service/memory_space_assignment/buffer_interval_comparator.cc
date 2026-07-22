@@ -97,9 +97,17 @@ int64_t MemoryBoundednessBufferIntervalComparator::GetLatestUseTime(
 MemoryBoundednessBufferIntervalComparator::ComparisonTuple
 MemoryBoundednessBufferIntervalComparator::GetTuple(
     const MsaBufferInterval& buffer_interval) {
-  int64_t priority =
-      MemorySpaceAssignmentUtils::GetBufferIntervalOverridePriority(
-          msa_sort_order_overrides_, buffer_interval);
+  absl::flat_hash_map<const HloValue*, int64_t>::iterator priority_it =
+      buffer_to_override_priority_.find(buffer_interval.buffer);
+  if (priority_it == buffer_to_override_priority_.end()) {
+    int64_t priority =
+        MemorySpaceAssignmentUtils::GetBufferIntervalOverridePriority(
+            msa_sort_order_overrides_, buffer_interval);
+    priority_it = buffer_to_override_priority_
+                      .insert(std::make_pair(buffer_interval.buffer, priority))
+                      .first;
+  }
+  int64_t priority = priority_it->second;
   float inverse_memory_boundedness =
       -1.0 * cost_analysis_.GetMemoryBoundedness(buffer_interval,
                                                  cost_analysis_cache_);
@@ -141,10 +149,18 @@ bool DefaultCrossProgramPrefetchBufferIntervalComparator::LessThan(
 DefaultCrossProgramPrefetchBufferIntervalComparator::ComparisonTuple
 DefaultCrossProgramPrefetchBufferIntervalComparator::GetTuple(
     const MsaBufferInterval& buffer_interval) {
-  int64_t priority =
-      MemorySpaceAssignmentUtils::GetBufferIntervalOverridePriority(
-          msa_sort_order_overrides_, buffer_interval,
-          /*is_cross_program_prefetch=*/true);
+  absl::flat_hash_map<const HloValue*, int64_t>::iterator priority_it =
+      buffer_to_override_priority_.find(buffer_interval.buffer);
+  if (priority_it == buffer_to_override_priority_.end()) {
+    int64_t priority =
+        MemorySpaceAssignmentUtils::GetBufferIntervalOverridePriority(
+            msa_sort_order_overrides_, buffer_interval,
+            /*is_cross_program_prefetch=*/true);
+    priority_it = buffer_to_override_priority_
+                      .insert(std::make_pair(buffer_interval.buffer, priority))
+                      .first;
+  }
+  int64_t priority = priority_it->second;
   auto sort_data_it = additional_sort_data_.find(buffer_interval.buffer);
   if (sort_data_it == additional_sort_data_.end()) {
     AdditionalSortData sort_data;
