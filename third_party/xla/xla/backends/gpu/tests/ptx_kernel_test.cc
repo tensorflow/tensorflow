@@ -25,7 +25,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class PtxKernelE2ETest : public HloPjRtTestBase {};
+class PtxKernelE2ETest : public HloTestBase {};
 
 TEST_F(PtxKernelE2ETest, ScalarAdd) {
   absl::string_view module_str = R"(

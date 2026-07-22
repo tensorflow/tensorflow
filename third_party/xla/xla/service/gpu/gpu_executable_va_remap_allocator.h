@@ -71,6 +71,12 @@ class GpuExecutableVaRemapAllocator : public GpuExecutableBufferAllocator {
       se::DeviceAddressAllocator* memory_allocator,
       int device_ordinal) override;
 
+  // Test-only: adds `index` to the VA-remapped allocation set (and the
+  // persistent set), as if it had been selected at construction time. Lets
+  // unit tests exercise remapping of allocation kinds that no production
+  // update mode selects yet.
+  void AddVaRemappedAllocationForTesting(BufferAllocation::Index index);
+
  private:
   // Per-executor VA remapping state, owned by the allocator and shared by the
   // execution scopes created for that executor.
@@ -80,11 +86,14 @@ class GpuExecutableVaRemapAllocator : public GpuExecutableBufferAllocator {
     uint64_t total_size = 0;
     absl::flat_hash_map<BufferAllocation::Index, uint64_t>
         allocation_to_reservation_offset;
+    absl::flat_hash_map<BufferAllocation::Index, uint64_t>
+        allocation_to_mapping_size;
     std::unique_ptr<se::MemoryReservation> va_reservation;
     se::DeviceAddressVmmAllocator* vmm_allocator = nullptr;
 
     absl::StatusOr<uint64_t> GetReservationOffset(
         BufferAllocation::Index idx) const;
+    absl::StatusOr<uint64_t> GetMappingSize(BufferAllocation::Index idx) const;
   };
 
   // The VA-remapping ExecutionScope, defined in the .cc file.

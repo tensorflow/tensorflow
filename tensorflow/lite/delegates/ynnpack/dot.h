@@ -23,9 +23,18 @@ limitations under the License.
 namespace tflite {
 namespace ynnpack {
 
+bool IsRuntimeBmm(const TfLiteRegistration* registration,
+                  const TfLiteNode* node);
+bool IsRuntimeBmm(TfLiteContext* context, int node_index);
+
 TfLiteStatus IsBatchMatMulSupported(const TfLiteRegistration* registration,
                                     const TfLiteNode* node,
-                                    TfLiteContext* context);
+                                    TfLiteContext* context,
+                                    bool is_runtime_bmm = false);
+
+TfLiteStatus IsRuntimeBatchedMatMulSupported(
+    const TfLiteRegistration* registration, const TfLiteNode* node,
+    TfLiteContext* context);
 
 TfLiteStatus IsFullyConnectedSupported(const TfLiteRegistration* registration,
                                        const TfLiteNode* node,
@@ -35,6 +44,11 @@ TfLiteStatus DefineBatchMatMulNode(TfLiteContext* context,
                                    ynn_subgraph_t subgraph,
                                    TensorToValueIdMap& tensor_to_value_id,
                                    const NodeInfo& node);
+
+TfLiteStatus DefineRuntimeBatchedMatMulNode(
+    TfLiteContext* context, ynn_subgraph_t subgraph,
+    TensorToValueIdMap& tensor_to_value_id, uint32_t& next_external_id,
+    std::vector<DummyInputInfo>& dummy_inputs, const NodeInfo& node);
 
 TfLiteStatus DefineFullyConnectedNode(TfLiteContext* context,
                                       ynn_subgraph_t subgraph,

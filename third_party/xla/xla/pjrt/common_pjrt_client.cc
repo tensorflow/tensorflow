@@ -69,6 +69,7 @@ limitations under the License.
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/staging_buffer.h"
 #include "xla/pjrt/transpose.h"
+#include "xla/pjrt/undonatable_common_pjrt_buffer.h"
 #include "xla/pjrt/utils.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/device_id.h"
@@ -78,6 +79,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/context.h"
@@ -171,7 +173,7 @@ CommonPjRtClient::AllocateLinearizeDest(bool sync,
 absl::Status CommonPjRtClient::Linearize(
     absl::Span<uint8_t> dest, const void* data,
     absl::Span<const int64_t> byte_strides, const Shape& device_shape,
-    PjRtMemorySpace* memory_space, absl::Span<const uint32_t> dynamic_sizes) {
+    absl::Span<const uint32_t> dynamic_sizes, PjRtMemorySpace* memory_space) {
   PjRtDynamicShapeKind layout_kind =
       GetDynamicShapeKind(memory_space->kind_id());
   auto requirements =
@@ -221,7 +223,9 @@ absl::Status CommonPjRtClient::Linearize(
   options.elem_size_in_bytes = primitive_util::ByteWidth(type);
   options.dims = dims;
   options.permutation = permutation;
-  options.input_striding = TransposePlan::Striding{byte_strides};
+  if (!byte_strides.empty()) {
+    options.input_striding = TransposePlan::Striding{byte_strides};
+  }
 
   bool should_pack = device_shape.layout().element_size_in_bits() != 0 &&
                      device_shape.layout().element_size_in_bits() <
@@ -234,6 +238,44 @@ absl::Status CommonPjRtClient::Linearize(
 
   transpose->Execute(data, array_dest.data());
   return absl::OkStatus();
+}
+
+absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeHostBufferInto(
+    const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+    std::optional<absl::Span<int64_t const>> byte_strides,
+    HostBufferSemantics host_buffer_semantics,
+    absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+    const xla::Shape& device_shape, PjRtRawBufferRef raw_buffer) {
+  if (device_shape.IsToken()) {
+    return raw_buffer->MakeAllocationReadyEvent();
+  }
+  return LinearizeIntoImpl(data, type, dims, byte_strides,
+                           host_buffer_semantics,
+                           std::move(on_done_with_host_buffer), device_shape,
+                           /*dynamic_sizes=*/{}, raw_buffer);
+}
+
+absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeInto(
+    const LiteralSlice& literal, const xla::Shape& device_shape,
+    HostBufferSemantics host_buffer_semantics, PjRtRawBufferRef raw_buffer) {
+  if (device_shape.IsToken()) {
+    return raw_buffer->MakeAllocationReadyEvent();
+  }
+  absl::InlinedVector<int64_t, 4> strides(literal.shape().dimensions().size());
+  RETURN_IF_ERROR(
+      ShapeUtil::ByteStrides(literal.shape(), absl::MakeSpan(strides)));
+  absl::InlinedVector<uint32_t, 4> dynamic_sizes;
+  if (literal.shape().is_dynamic()) {
+    dynamic_sizes.reserve(literal.shape().dimensions().size());
+    for (int i = 0; i < literal.shape().dimensions().size(); ++i) {
+      dynamic_sizes.push_back(literal.GetDynamicSize(i));
+    }
+  }
+  return LinearizeIntoImpl(literal.untyped_data(), device_shape.element_type(),
+                           device_shape.dimensions(), strides,
+                           host_buffer_semantics,
+                           /*on_done_with_host_buffer=*/nullptr, device_shape,
+                           dynamic_sizes, raw_buffer);
 }
 
 absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeIntoImpl(
@@ -252,7 +294,7 @@ absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeIntoImpl(
       host_buffer_semantics != HostBufferSemantics::kImmutableOnlyDuringCall &&
       dynamic_sizes.empty() &&
       ShouldPerformZeroCopyLinearize(data, device_shape, type, dims,
-                                     byte_strides)) {
+                                     byte_strides, memory_space)) {
     linearized = CreateStagingForZeroCopyLinearize(
         data, device_shape, memory_space, std::move(on_done_with_host_buffer));
   } else {
@@ -274,7 +316,7 @@ absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeIntoImpl(
       RETURN_IF_ERROR(
           Linearize(linearized->data(), data,
                     byte_strides.value_or(absl::Span<const int64_t>()),
-                    device_shape, memory_space, dynamic_sizes));
+                    device_shape, dynamic_sizes, memory_space));
       if (on_done_with_host_buffer) {
         std::move(on_done_with_host_buffer)();
         on_done_with_host_buffer = nullptr;
@@ -308,7 +350,7 @@ absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeIntoImpl(
                 return *error;
               }
               return Linearize(staging_data, data, byte_strides, device_shape,
-                               memory_space, dynamic_sizes);
+                               dynamic_sizes, memory_space);
             }();
             if (on_done_with_host_buffer) {
               std::move(on_done_with_host_buffer)();
@@ -447,6 +489,37 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::DefineBuffer(
           std::move(raw_buffer), std::move(definition_device_events),
           use_stream_based_compaction()),
       memory_space);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::MakeUndonatable(
+    std::unique_ptr<PjRtBuffer> buffer) {
+  if (!buffer) {
+    return absl::InvalidArgumentError("buffer cannot be null");
+  }
+  auto* common_pjrt_buffer = dynamic_cast<CommonPjRtBuffer*>(buffer.get());
+  if (!common_pjrt_buffer) {
+    return absl::InvalidArgumentError(
+        "MakeUndonatable requires a buffer backed by CommonPjRtBuffer");
+  }
+  std::shared_ptr<const Shape> on_device_shape =
+      std::make_shared<const Shape>(common_pjrt_buffer->on_device_shape());
+  PjRtMemorySpace* memory_space = common_pjrt_buffer->memory_space();
+
+  ASSIGN_OR_RETURN(auto tracked_buffer,
+                   common_pjrt_buffer->DonateTrackedBuffer());
+
+  PjRtRawBufferRef raw_buffer = tracked_buffer->raw_buffer();
+  absl::InlinedVector<PjRtDeviceEventRef, 2> definition_events(
+      tracked_buffer->definition_events().begin(),
+      tracked_buffer->definition_events().end());
+
+  // Defer raw buffer reclamation until in-flight definition and usage events
+  // finish.
+  tracked_buffer.release()->Delete(memory_space);
+
+  return std::make_unique<UndonatableCommonPjRtBuffer>(
+      std::move(on_device_shape), std::move(raw_buffer),
+      std::move(definition_events), memory_space);
 }
 
 Future<> CommonPjRtClient::CreateProfiledFuture(PjRtMemorySpace* memory_space,
@@ -1048,17 +1121,15 @@ absl::Status CommonPjRtClient::PrepareArguments(
     std::vector<std::pair<int, size_t>> donated_buffer_stats;
     for (int i = 0; i < argument_handles.size(); ++i) {
       PjRtBuffer* handle = argument_handles[i];
-      auto* tfrt_buffer = absl::down_cast<CommonPjRtBufferImpl*>(handle);
-      if (tfrt_buffer->device() != device) {
+      if (handle->device() != device) {
         return InvalidArgument(
             "Buffer passed to Execute() as argument %d to replica %d is on "
             "device %s, but replica is assigned to device %s.",
-            i, replica, tfrt_buffer->device()->DebugString(),
-            device->DebugString());
+            i, replica, handle->device()->DebugString(), device->DebugString());
       }
 
       const Shape& expected_shape = parameter_device_shapes[i];
-      const Shape& on_device_shape = tfrt_buffer->on_device_shape();
+      const Shape& on_device_shape = handle->on_device_shape();
 
       if (options.strict_shape_checking &&
           // Skip shape check for non-array shapes (e.g. tuples).
@@ -1089,6 +1160,78 @@ absl::Status CommonPjRtClient::PrepareArguments(
             "`ExecuteOptions::non_donatable_input_indices`");
       }
       bool must_donate = donated_param && !donation_denied_at_runtime;
+
+      auto strip_dynamic_shape_metadata = [&](PjRtRawBufferRef actual_buffer)
+          -> absl::StatusOr<PjRtRawBufferRef> {
+        if (!on_device_shape.is_dynamic() || expected_shape.is_dynamic()) {
+          return actual_buffer;
+        }
+        ASSIGN_OR_RETURN(auto handle_logical_device_shape,
+                         handle->logical_on_device_shape());
+        auto* client = absl::down_cast<CommonPjRtClient*>(
+            actual_buffer->memory_space()->client());
+        auto ds_kind = client->GetDynamicShapeKind(
+            actual_buffer->memory_space()->kind_id());
+        auto status_or_buffer = xla::RemoveDynamicShapeMetadataIfPresent(
+            actual_buffer, on_device_shape, handle_logical_device_shape,
+            ds_kind);
+        if (!status_or_buffer.ok()) {
+          absl::Status status = status_or_buffer.status();
+          tsl::errors::AppendToMessage(
+              &status, absl::StrCat("; Error when preparing the input buffer "
+                                    "to Execute() as argument ",
+                                    i, " to replica ", replica));
+          return status;
+        }
+        return status_or_buffer;
+      };
+
+      auto accumulate_definition_events =
+          [&](absl::Span<const PjRtDeviceEventRef> events) {
+            for (const auto& ev : events) {
+              if (ev) {
+                switch (ev.ptr().state()) {
+                  case PJRT_DeviceEvent_State_Error:
+                    is_error = true;
+                    ABSL_FALLTHROUGH_INTENDED;
+                  case PJRT_DeviceEvent_State_Unavailable:
+                    if (extra_deps_seen.insert(ev.ptr().ToC().device_event)
+                            .second) {
+                      extra_deps.push_back(ev);
+                    }
+                    break;
+                  default:
+                    break;
+                }
+              }
+            }
+          };
+
+      if (auto* undonatable =
+              dynamic_cast<UndonatableCommonPjRtBuffer*>(handle)) {
+        if (must_donate) {
+          return InvalidArgument(
+              "Donation requested on UndonatableCommonPjRtBuffer for argument "
+              "%d to replica %d.",
+              i, replica);
+        }
+        ASSIGN_OR_RETURN(
+            auto actual_buffer,
+            strip_dynamic_shape_metadata(
+                undonatable->AcquireRawBufferRef("PrepareArguments")));
+        // Extract definition events directly to enforce data dependencies
+        // (blocking or aborting on errors) since standard PjRt holds are
+        // bypassed.
+        accumulate_definition_events(undonatable->definition_events());
+        input_buffers.push_back(std::move(actual_buffer));
+        // Push empty ScopedHold to maintain index parity with input_buffers;
+        // this is ignored during usage event registration.
+        device_buffers.emplace_back(
+            CommonPjRtBuffer::ScopedHold::UninitializedTag{});
+        continue;
+      }
+
+      auto* tfrt_buffer = absl::down_cast<CommonPjRtBufferImpl*>(handle);
       RETURN_IF_ERROR(TestBufferDonationClashes(
           tfrt_buffer, donation_clashes, must_donate, i, replica, partition));
       if (allow_fallback_for_donation && must_donate) {
@@ -1121,50 +1264,16 @@ absl::Status CommonPjRtClient::PrepareArguments(
       auto* device_buffer = hold.buffer();
 
       if (device_buffer->raw_buffer()) {
-        PjRtRawBufferRef actual_buffer = device_buffer->raw_buffer();
-        if (on_device_shape.is_dynamic() && !expected_shape.is_dynamic()) {
-          ASSIGN_OR_RETURN(auto handle_logical_device_shape,
-                           handle->logical_on_device_shape());
-          auto* client = absl::down_cast<CommonPjRtClient*>(
-              actual_buffer->memory_space()->client());
-          auto ds_kind = client->GetDynamicShapeKind(
-              actual_buffer->memory_space()->kind_id());
-          auto status_or_buffer = xla::RemoveDynamicShapeMetadataIfPresent(
-              actual_buffer, on_device_shape, handle_logical_device_shape,
-              ds_kind);
-
-          if (!status_or_buffer.ok()) {
-            absl::Status status = status_or_buffer.status();
-            tsl::errors::AppendToMessage(
-                &status, absl::StrCat("; Error when preparing the input buffer "
-                                      "to Execute() as argument ",
-                                      i, " to replica ", replica));
-            return status;
-          }
-          actual_buffer = std::move(status_or_buffer).value();
-        }
+        ASSIGN_OR_RETURN(
+            PjRtRawBufferRef actual_buffer,
+            strip_dynamic_shape_metadata(device_buffer->raw_buffer()));
         input_buffers.push_back(std::move(actual_buffer));
       } else {
         is_error = true;
       }
 
       // Definition events are never modified after buffer construction.
-      for (const auto& ev : device_buffer->definition_events()) {
-        if (ev) {
-          switch (ev.ptr().state()) {
-            case PJRT_DeviceEvent_State_Error:
-              is_error = true;
-              ABSL_FALLTHROUGH_INTENDED;
-            case PJRT_DeviceEvent_State_Unavailable:
-              if (extra_deps_seen.insert(ev.ptr().ToC().device_event).second) {
-                extra_deps.push_back(ev);
-              }
-              break;
-            case PJRT_DeviceEvent_State_Ready:
-              break;
-          }
-        }
-      }
+      accumulate_definition_events(device_buffer->definition_events());
       // If we are trying to donate this buffer, we must wait on its usage
       // events as well as its definition events to ensure that all reads on
       // this buffer (e.g., d2h transfer) have been completed before it can be
@@ -1341,6 +1450,7 @@ CommonPjRtClient::AllocateOutputBuffersWithInputReuse(
       }
       const CommonPjRtBuffer::ScopedHold& input_hold =
           input_device_buffer_holds[parameter_number];
+      CHECK(input_hold.ok());
       buffers[i] = input_hold.buffer()->raw_buffer();
     }
   }
@@ -1949,6 +2059,11 @@ CommonPjRtLoadedExecutable::ExecuteLaunch(ExecuteLaunchArgs& launch_args,
     tsl::profiler::TraceMe t3("Handle input event recording");
     // Handle input event recording.
     for (CommonPjRtBuffer::ScopedHold& b : launch_args.device_buffers) {
+      if (!b.ok()) {
+        // Skip uninitialized holds used as placeholders for undonatable
+        // buffers.
+        continue;
+      }
       if (b.type() == CommonPjRtBuffer::ScopedHold::kUsage) {
         b.ConvertUsageHold(results.primary_execute_event);
       } else {

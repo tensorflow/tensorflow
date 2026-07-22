@@ -1342,7 +1342,7 @@ module {
 // CHECK-NEXT:  %[[custom_call_11:[^ ]+]] = (bf16[16,128], s32[16,128]) custom-call(%[[Arg_0_1]], %[[Arg_2_3]], %[[Arg_3_4]], %[[Arg_1_2]]), custom_call_target="PartialReduce", called_computations={%[[$top_k_gt_comparator_5]]}, metadata=
 // CHECK-NEXT:  %[[get_tuple_element_12:[^ ]+]] = bf16[16,128] get-tuple-element(%[[custom_call_11]]), index=0, metadata=
 // CHECK-NEXT:  %[[get_tuple_element_13:[^ ]+]] = s32[16,128] get-tuple-element(%[[custom_call_11]]), index=1, metadata=
-// CHECK-NEXT:  %[[sort_20:[^ ]+]] = (bf16[16,128], s32[16,128]) sort(%[[get_tuple_element_12]], %[[get_tuple_element_13]]), dimensions={1}, is_stable=true, to_apply=%[[$top_k_gt_comparator_5]], metadata=
+// CHECK-NEXT:  %[[sort_20:[^ ]+]] = (bf16[16,128], s32[16,128]) sort(%[[get_tuple_element_12]], %[[get_tuple_element_13]]), dimensions={1}, to_apply=%[[$top_k_gt_comparator_5]], metadata=
 // CHECK-NEXT:  %[[get_tuple_element_21:[^ ]+]] = bf16[16,128] get-tuple-element(%[[sort_20]]), index=0, metadata=
 // CHECK-NEXT:  %[[slice_22:[^ ]+]] = bf16[16,4] slice(%[[get_tuple_element_21]]), slice={[0:16], [0:4]}, metadata=
 // CHECK-NEXT:  %[[get_tuple_element_23:[^ ]+]] = s32[16,128] get-tuple-element(%[[sort_20]]), index=1, metadata=

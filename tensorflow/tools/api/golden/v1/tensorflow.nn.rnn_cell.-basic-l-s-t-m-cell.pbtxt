@@ -148,6 +148,10 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__call__"
+    argspec: "args=[\'self\', \'inputs\', \'state\', \'scope\'], varargs=args, keywords=kwargs, defaults=[\'None\'], "
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'num_units\', \'forget_bias\', \'state_is_tuple\', \'activation\', \'reuse\', \'name\', \'dtype\'], varargs=None, keywords=kwargs, defaults=[\'1.0\', \'True\', \'None\', \'None\', \'None\', \'None\'], "
   }

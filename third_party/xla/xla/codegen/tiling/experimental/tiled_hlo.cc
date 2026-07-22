@@ -34,7 +34,6 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/log/vlog_is_on.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -195,22 +194,24 @@ void SortTiledHloInstructionsInPostOrder(
   for (const TiledHloInstruction* root_with_no_user : roots_with_no_users) {
     visit_instruction(root_with_no_user);
   }
-  absl::c_sort(tiled_hlo_instructions,
-               [&](const std::unique_ptr<TiledHloInstruction>& t1,
-                   const std::unique_ptr<TiledHloInstruction>& t2) {
-                 return topological_order[t1.get()] <
-                        topological_order[t2.get()];
-               });
-  if (VLOG_IS_ON(4)) {
-    VLOG(4)
-        << "Sorted symbolic tiled HLO instructions in def-before-use order:\n"
-        << absl::StrJoin(
-               tiled_hlo_instructions, "\n",
-               [](std::string* out,
-                  const std::unique_ptr<TiledHloInstruction>& instruction) {
-                 absl::StrAppend(out, instruction->ToString("; "));
-               });
-  }
+  absl::c_sort(
+      tiled_hlo_instructions,
+      [&](const std::unique_ptr<TiledHloInstruction>& t1,
+          const std::unique_ptr<TiledHloInstruction>& t2) {
+        auto it1 = topological_order.find(t1.get());
+        auto it2 = topological_order.find(t2.get());
+        int64_t order1 = (it1 != topological_order.end()) ? it1->second : -1;
+        int64_t order2 = (it2 != topological_order.end()) ? it2->second : -1;
+        return order1 < order2;
+      });
+
+  VLOG(4) << "Sorted symbolic tiled HLO instructions in def-before-use order:\n"
+          << absl::StrJoin(
+                 tiled_hlo_instructions, "\n",
+                 [](std::string* out,
+                    const std::unique_ptr<TiledHloInstruction>& instruction) {
+                   absl::StrAppend(out, instruction->ToString("; "));
+                 });
 }
 // Defines how the operands of a TiledHloInstruction are partitioned during
 // region reconstruction.

@@ -247,6 +247,12 @@ class GpuCommunicator : public Communicator {
     return Unimplemented("LaunchWaitSignal is not implemented");
   }
 
+  virtual absl::Status LaunchWaitSignals(
+      absl::Span<const PeerWaitDesc> peer_wait_descs,
+      const Executor& executor) {
+    return Unimplemented("LaunchWaitSignals is not implemented");
+  }
+
   virtual absl::Status LaunchMultiGpuBarrier(const Executor& executor) {
     return Unimplemented("LaunchMultiGpuBarrier is not implemented");
   }

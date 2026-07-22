@@ -130,8 +130,8 @@ class GpuExecutableBufferAllocator {
 
     // Hook called once per GenerateBufferAllocations before any allocation is
     // resolved. The base implementation does nothing.
-    virtual absl::Status PrepareReservation(
-        const ServiceExecutableRunOptions* run_options, int device_ordinal) {
+    virtual absl::Status Prepare(const ServiceExecutableRunOptions* run_options,
+                                 int device_ordinal) {
       return absl::OkStatus();
     }
 

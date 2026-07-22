@@ -130,16 +130,13 @@ TEST(SequentialThunkTest, ToString) {
   thunk_info.thunk_id = ThunkId(1);
 
   ThunkSequence thunks;
-  thunks.push_back(
-      std::make_unique<DummyThunk>(Thunk::Kind::kGemm, thunk_info));
+  thunks.Emplace<DummyThunk>(Thunk::Kind::kGemm, thunk_info);
 
   thunk_info.thunk_id = ThunkId(2);
-  thunks.push_back(
-      std::make_unique<DummyThunk>(Thunk::Kind::kGemm, thunk_info));
+  thunks.Emplace<DummyThunk>(Thunk::Kind::kGemm, thunk_info);
 
   thunk_info.thunk_id = ThunkId(3);
-  thunks.push_back(
-      std::make_unique<DummyThunk>(Thunk::Kind::kGemm, thunk_info));
+  thunks.Emplace<DummyThunk>(Thunk::Kind::kGemm, thunk_info);
 
   thunk_info.thunk_id = ThunkId(4);
   SequentialThunk sequential_thunk(thunk_info, std::move(thunks));
@@ -160,12 +157,9 @@ TEST(SequentialThunkTest, TransformNested) {
     return info;
   };
   ThunkSequence thunks;
-  thunks.push_back(
-      std::make_unique<DummyThunk>(Thunk::Kind::kGemm, make_info(1)));
-  thunks.push_back(
-      std::make_unique<DummyThunk>(Thunk::Kind::kGemm, make_info(2)));
-  thunks.push_back(
-      std::make_unique<DummyThunk>(Thunk::Kind::kGemm, make_info(3)));
+  thunks.Emplace<DummyThunk>(Thunk::Kind::kGemm, make_info(1));
+  thunks.Emplace<DummyThunk>(Thunk::Kind::kGemm, make_info(2));
+  thunks.Emplace<DummyThunk>(Thunk::Kind::kGemm, make_info(3));
   SequentialThunk sequential_thunk(Thunk::ThunkInfo(), std::move(thunks));
 
   TF_EXPECT_OK(sequential_thunk.TransformNested(

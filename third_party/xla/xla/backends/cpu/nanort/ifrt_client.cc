@@ -1266,7 +1266,7 @@ class NanoCompiler final
   }
 
   tsl::Future<ifrt::LoadedExecutableRef> DeserializeLoadedExecutable(
-      absl::string_view serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<ifrt::DeserializeExecutableOptions> options) override {
     return absl::UnimplementedError(
         "DeserializeLoadedExecutable is not implemented.");
