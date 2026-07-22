@@ -114,8 +114,8 @@ GetHardwareToContainerImage() {
            "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
            "ml-build:latest"},
           {"CPU_ARM64",
-           "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
-           "ml-build-arm64:latest"},
+           "us-docker.pkg.dev/ml-oss-artifacts-transient/"
+           "ml-public-testing-container/ml-build-arm64:846436444"},
           {"GPU_L4",
            "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
            "ml-build-cuda12.8-cudnn9.8:latest"},
