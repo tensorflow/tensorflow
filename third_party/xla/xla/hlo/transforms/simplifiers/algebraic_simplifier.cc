@@ -5228,10 +5228,10 @@ absl::Status AlgebraicSimplifierVisitor::HandleOr(HloInstruction* logical_or) {
 }
 
 absl::Status AlgebraicSimplifierVisitor::HandleLog(HloInstruction* log) {
-  // ln(exp(A)) => A
+  // ln(exp(A)) => A optimization is gated behind fast math flag.
   VLOG(10) << "trying transform [ln(exp(A)) => A]: " << log->ToString();
   HloInstruction *a, *b;
-  if (Match(log, m::Log(m::Exp(m::Op(&a)))) &&
+  if (options_.enable_fast_math() && Match(log, m::Log(m::Exp(m::Op(&a)))) &&
       ReplaceInstructionIfCompatible(log, a)) {
     return absl::OkStatus();
   }
@@ -9551,7 +9551,9 @@ absl::Status AlgebraicSimplifierVisitor::HandleSort(HloInstruction* sort) {
 absl::Status AlgebraicSimplifierVisitor::HandleSqrt(HloInstruction* sqrt) {
   VLOG(10) << "trying transform [sqrt(A*A) => |A|] " << sqrt->ToString();
   HloInstruction* sqrt_operand = sqrt->mutable_operand(0);
-  if (sqrt_operand->opcode() == HloOpcode::kMultiply &&
+  // sqrt(A*A) => |A| optimization is gated behind fast math flag.
+  if (options_.enable_fast_math() &&
+      sqrt_operand->opcode() == HloOpcode::kMultiply &&
       sqrt_operand->operand(0) == sqrt_operand->operand(1)) {
     PrimitiveType element_type = sqrt_operand->shape().element_type();
     // For 'A' of type C{64,128}, |A| has type F{32,64}, and the transformation
