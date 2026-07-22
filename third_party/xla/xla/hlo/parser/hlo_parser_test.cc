@@ -3420,6 +3420,48 @@ ENTRY e {
   EXPECT_THAT(result.status().message(), HasSubstr("device_ids"));
 }
 
+TEST_F(HloParserTest, RecvNonTupleShape) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  tok = token[] after-all()
+  ROOT recv = f32[10] recv(tok)
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+}
+
+TEST_F(HloParserTest, ConditionalNoOperands) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  ROOT c = f32[] conditional()
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+}
+
+TEST_F(HloParserTest, RngBitGeneratorNoOperands) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  ROOT r = (u64[2], u32[4]) rng-bit-generator(), algorithm=rng_three_fry
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+}
+
+TEST_F(HloParserTest, ReduceWindowNoOperands) {
+  const std::string original = R"(HloModule m
+add {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT s = f32[] add(a, b)
+}
+ENTRY e {
+  ROOT rw = reduce-window(), to_apply=add
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+}
+
 TEST_F(HloParserTest, CompactGteRoundTrip) {
   const std::string original =
       R"(HloModule test, entry_computation_layout={((f32[10]{0}, f16[10]{0}))->f32[10]{0}}
