@@ -16,9 +16,9 @@ limitations under the License.
 
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace tensorflow {
@@ -26,14 +26,15 @@ namespace {
 
 TEST(SetSparseCoreFrontendAttributesTest, Basic) {
   xla::FrontendAttributes attributes;
-  ASSERT_OK(SetSparseCoreFrontendAttributes(&attributes,
-                                            /*max_ids_per_partition=*/100,
-                                            /*max_unique_ids_per_partition=*/20,
-                                            /*num_sparsecores_per_device=*/4,
-                                            /*vocab_size=*/4000,
-                                            /*feature_width=*/64,
-                                            /*input_size=*/128,
-                                            /*table_name=*/"test_table"));
+  TF_ASSERT_OK(
+      SetSparseCoreFrontendAttributes(&attributes,
+                                      /*max_ids_per_partition=*/100,
+                                      /*max_unique_ids_per_partition=*/20,
+                                      /*num_sparsecores_per_device=*/4,
+                                      /*vocab_size=*/4000,
+                                      /*feature_width=*/64,
+                                      /*input_size=*/128,
+                                      /*table_name=*/"test_table"));
   const auto& attr_map = attributes.map();
   EXPECT_EQ(attr_map.at("_xla_compute_type"), "sparse");
   EXPECT_EQ(attr_map.at("_xla_sharding_strategy"), "mod");
@@ -48,7 +49,7 @@ TEST(SetSparseCoreFrontendAttributesTest, Basic) {
 
 TEST(SetSparseCoreFrontendAttributesTest, WithOptionals) {
   xla::FrontendAttributes attributes;
-  ASSERT_OK(SetSparseCoreFrontendAttributes(
+  TF_ASSERT_OK(SetSparseCoreFrontendAttributes(
       &attributes, /*max_ids_per_partition=*/100,
       /*max_unique_ids_per_partition=*/20,
       /*num_sparsecores_per_device=*/4,
